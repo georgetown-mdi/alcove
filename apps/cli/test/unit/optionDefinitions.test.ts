@@ -7,9 +7,12 @@ import type { Arguments } from "yargs";
 import { UsageError } from "@alcove/core";
 
 import {
+  configFileFlag,
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   connectionOverridesFrom,
   hostKeyFingerprintFlag,
+  keyFileFlag,
+  namedConfigFileFlag,
   serverProvisionFlag,
   warnConnectionPerPollShortInterval,
   warnOptionsOverridesIgnoredOffline,
@@ -44,6 +47,37 @@ function atFile(name: string, contents: string): string {
   fs.writeFileSync(p, contents);
   return `@${p}`;
 }
+
+// --- configFileFlag / keyFileFlag ---------------------------------------------
+
+test("the path flags default when absent", () => {
+  expect(configFileFlag(argv({}))).toBe("./alcove.yaml");
+  expect(keyFileFlag(argv({}))).toBe("./.alcove.key");
+  expect(namedConfigFileFlag(argv({}))).toBeUndefined();
+});
+
+test.each([
+  ["config-file", configFileFlag],
+  ["key-file", keyFileFlag],
+  ["config-file", namedConfigFileFlag],
+] as const)("--%s expands a leading ~ and trims", (flag, read) => {
+  expect(read(argv({ [flag]: "~/p/file \r" }))).toBe(
+    path.join(os.homedir(), "p", "file"),
+  );
+  expect(read(argv({ [flag]: "~" }))).toBe(os.homedir());
+  expect(read(argv({ [flag]: "dir/~/file" }))).toBe("dir/~/file");
+  expect(read(argv({ [flag]: "~other/file" }))).toBe("~other/file");
+});
+
+test.each([
+  ["config-file", configFileFlag],
+  ["key-file", keyFileFlag],
+  ["config-file", namedConfigFileFlag],
+] as const)("--%s refuses an empty value and a repeat", (flag, read) => {
+  expect(() => read(argv({ [flag]: "  " }))).toThrow(UsageError);
+  expect(() => read(argv({ [flag]: "  " }))).toThrow(`--${flag} is empty`);
+  expect(() => read(argv({ [flag]: ["a", "b"] }))).toThrow(UsageError);
+});
 
 // --- hostKeyFingerprintFlag ---------------------------------------------------
 

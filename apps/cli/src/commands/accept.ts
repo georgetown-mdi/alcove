@@ -61,9 +61,10 @@ import {
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import {
-  acceptPositionalsAfterDoubleDash,
+  declarePositionals,
   positionalsBeforeDoubleDash,
-} from "../util/doubleDash";
+  refuseSurplusPositionals,
+} from "../util/positionals";
 import { configureLogging } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
 import {
@@ -130,12 +131,17 @@ export const ACCEPT_NEEDS_TERMINAL =
   "answer, or pass --consent-to-terms to consent to them in advance for an " +
   "unattended run.";
 
+const ACCEPT_OFFLINE_USAGE =
+  "--identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]";
+const ACCEPT_ONLINE_USAGE =
+  "--identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FOLDER]";
+
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
     addCsvDelimiterOption(
-      acceptPositionalsAfterDoubleDash(
+      declarePositionals(
         cmd,
-        { optional: ["args"] },
+        { command: "accept", usage: ACCEPT_OFFLINE_USAGE, optional: ["args"] },
         {
           // Capture all positionals into `args` (rather than relying on the
           // global `_`) and treat an unknown `-`-leading token as a positional,
@@ -228,8 +234,7 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
     positionals[0] !== undefined ? String(positionals[0]) : undefined;
   if (arg0 === undefined)
     throw new UsageError(
-      "an invitation is required; usage: alcove accept --identity IDENTITY " +
-        "INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
+      `an invitation is required; usage: alcove accept ${ACCEPT_OFFLINE_USAGE}`,
     );
 
   if (looksLikeUrl(arg0)) {
@@ -240,24 +245,25 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
     if (invitation === undefined || input === undefined)
       throw new UsageError(
         "online acceptance requires an invitation and an input file; usage: " +
-          "alcove accept --identity IDENTITY URL INVITATION INPUT_FILE " +
-          "[OUTPUT_FOLDER]",
+          `alcove accept ${ACCEPT_ONLINE_USAGE}`,
       );
-    if (positionals.length > 4)
-      throw new UsageError(
-        "online acceptance takes at most four positionals; usage: alcove " +
-          "accept --identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FOLDER]",
-      );
+    refuseSurplusPositionals(
+      positionals.length,
+      4,
+      "accept",
+      ACCEPT_ONLINE_USAGE,
+    );
     const output =
       positionals[3] !== undefined ? String(positionals[3]) : undefined;
     return { mode: "online", url: new URL(arg0), invitation, input, output };
   }
 
-  if (positionals.length > 3)
-    throw new UsageError(
-      "offline acceptance takes at most three positionals; usage: alcove " +
-        "accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
-    );
+  refuseSurplusPositionals(
+    positionals.length,
+    3,
+    "accept",
+    ACCEPT_OFFLINE_USAGE,
+  );
   return {
     mode: "offline",
     invitation: arg0,

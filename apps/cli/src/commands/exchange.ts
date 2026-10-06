@@ -30,7 +30,6 @@ import {
   assertRetainSweepGuard,
   configWithNamedRuleSetRules,
   csvDelimiterForRun,
-  DEFAULT_CONFIG_PATH,
   describeConfigSchemaError,
   linkageTermsStandingOf,
   persistFilledPayloadReceive,
@@ -61,7 +60,6 @@ import {
   checkKeyFileExpiry,
   rotationInFlightNotice,
   provisionKeyFileFromInvitation,
-  DEFAULT_KEY_PATH,
   type KeyFile,
   type KeyFileExpiryStatus,
 } from "../keyFile";
@@ -82,7 +80,7 @@ import {
   exitWithError,
   INTERNAL_FAULT_EXIT_CODE,
 } from "../util/exit";
-import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
+import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
@@ -95,7 +93,10 @@ import {
 import {
   addCommonBootstrapOptions,
   addCsvDelimiterOption,
+  addSweepOptions,
   connectionOverridesFrom,
+  EXCHANGE_CONFIG_FILE_DESCRIPTION,
+  SHARED_KEY_FILE_DESCRIPTION,
   parseCommonBootstrapArgs,
   warnConnectionPerPollShortInterval,
   warnLowPollingFrequency,
@@ -118,127 +119,90 @@ import {
 import type { SigningConfig } from "@alcove/core";
 
 export function builder(cmd: Argv): Argv {
-  return addCommonBootstrapOptions(
-    addCsvDelimiterOption(
-      acceptPositionalsAfterDoubleDash(cmd, {
-        required: ["input"],
-        optional: ["output"],
-      }),
-    )
-      .usage(
-        "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FOLDER]\n\n" +
-          "Run a recurring exchange from alcove.yaml and the shared secret in\n" +
-          "the key file, both written by invite, accept, or a quick exchange\n" +
-          "run with --save. Each run replaces the secret the key file holds.",
+  return addSweepOptions(
+    addCommonBootstrapOptions(
+      addCsvDelimiterOption(
+        declarePositionals(cmd, {
+          command: "exchange",
+          usage: "[options] INPUT_FILE [OUTPUT_FOLDER]",
+          required: ["input"],
+          optional: ["output"],
+        }),
       )
-      .positional("input", {
-        type: "string",
-        describe: "CSV to link; use `-` to read from stdin",
-        demandOption: true,
-      })
-      .positional("output", {
-        type: "string",
-        describe:
-          "folder for the run's files, created if missing: a new " +
-          "alcove-results-<time>.csv each run, beside the record, keys and " +
-          "receipt stamped with the same time. Without it the result goes " +
-          "to stdout and the other files to the working directory",
-      }),
-    // exchange reads a config and has no URL, so the config/key files are read
-    // (not written) and the server-* / peer-id overrides apply to the config.
-    {
-      "config-file": `exchange configuration file (default: ${DEFAULT_CONFIG_PATH})`,
-      "key-file": `shared key file (default: ${DEFAULT_KEY_PATH})`,
-      "server-port": "server port; overrides connection.server.port in config",
-      "server-username":
-        "server username; overrides connection.server.username in config",
-      "server-password":
-        "server password; use @path to read from file; overrides " +
-        "connection.server.password in config",
-      "server-private-key":
-        "SSH private key; use @path to read from file; overrides " +
-        "connection.server.privateKey in config",
-      "server-private-key-passphrase":
-        "passphrase for an encrypted SSH private key; use @path to read from " +
-        "file; overrides connection.server.privateKeyPassphrase in config",
-      "server-keyboard-interactive":
-        "answer the server's keyboard-interactive prompts with the password, " +
-        "overriding connection.server.keyboard_interactive in config; requires " +
-        "a password. Enable for a server that rejects the direct password " +
-        "method but accepts the same password over keyboard-interactive",
-      "server-host-key-fingerprint":
-        "pre-pin the server's SSH host-key fingerprint (OpenSSH SHA256 " +
-        "format; use @path to read from file), overriding " +
-        "connection.server.host_key_fingerprint in config. Lets an " +
-        "unattended run connect without the interactive trust prompt; a " +
-        "server presenting a different key still fails closed",
-      "peer-id":
-        "stable identifier for this party; appears in filenames and logs. " +
-        "Overrides connection.options.peer_id in config. Requires " +
-        "timestamp_in_filename: true. Both parties must use distinct ids",
-      "timestamp-in-filename":
-        "encode a UTC timestamp and per-session counter in each outgoing " +
-        "message filename; --retain-files implies it, so it need not be passed " +
-        "explicitly. Both parties must use the same value",
-      "retain-files":
-        "keep all exchange files as a permanent transcript instead of " +
-        "deleting them after consumption. They persist in the shared " +
-        "directory -- a directory on the remote SFTP host, or the shared " +
-        "folder both parties reach -- along with the plaintext rendezvous " +
-        "metadata that accompanies them. Intended for sync-mediated " +
-        "transports that do not propagate deletions and for audit use cases. " +
-        "Turns on --timestamp-in-filename and --lockless-rendezvous, which it " +
-        "needs; setting either to false with it is an error. Both parties " +
-        "must set this flag identically -- a mismatch is detected at " +
-        "rendezvous and fails fast on both sides with a clear error naming " +
-        "each side's setting, rather than " +
-        "stalling until the inactivity timeout. A fresh " +
-        "directory is required for each exchange and is enforced: reusing a " +
-        "directory with retained files from a prior session is rejected with " +
-        "an error at startup",
-      "outbound-path":
-        "set the outbound (self-written) directory, overriding " +
-        "connection.outbound_path in the config; the config supplies the " +
-        "inbound (peer-written) directory -- its single path, or an " +
-        "already-configured inbound_path. Requires retain mode; the two " +
-        "directories must differ",
-    },
-  )
-    .option("sweep-exchange-files", {
-      type: "boolean",
-      describe:
-        "before rendezvous, delete every protocol file left in the directory " +
-        "(this party's and the peer's: hellos, acks, locks, joining sentinels, " +
-        "messages) and start a fresh exchange. Foreign (non-protocol) files are " +
-        "never deleted. Use to recover a directory after a crashed or " +
-        "mismatched prior run, once you have confirmed no other session is " +
-        "using it. CLI-only and invocation-scoped: it is never persisted to " +
-        "alcove.yaml. Refuses on a retain-mode signal unless " +
-        "--force-retain-sweep is also set",
-    })
-    .option("force-retain-sweep", {
-      type: "boolean",
-      describe:
-        "DANGEROUS. Permit --sweep-exchange-files to delete a retain-mode audit " +
-        "transcript (a directory that is, or whose peer is, in retain mode); the " +
-        "prior transcript is permanently lost. Requires --sweep-exchange-files " +
-        "-- on its own it is rejected. Only use when you intend to discard the " +
-        "transcript",
-    })
-    .option("invitation", {
-      type: "string",
-      describe:
-        "provision the key file from an invitation code (use @path -- " +
-        "`--invitation @code.txt` -- to keep the code out of shell history), the " +
-        "same code `alcove accept` takes. For the party that composed the " +
-        "exchange in the web app and downloaded a config that has no secret: " +
-        "this completes local provisioning from the invitation and runs the " +
-        "exchange in one command. The code is decoded and validated (checksum, " +
-        "schema, expiry) before anything is written; a malformed or expired code " +
-        "fails with nothing written. Errors if a key file already exists at the " +
-        "key path -- after the first exchange the secret rotates, so the original " +
-        "code must not resurrect a stale secret",
-    });
+        .usage(
+          "Usage: $0 exchange [options] INPUT_FILE [OUTPUT_FOLDER]\n\n" +
+            "Run a recurring exchange from alcove.yaml and the shared secret in\n" +
+            "the key file, both written by invite, accept, or a quick exchange\n" +
+            "run with --save. Each run replaces the secret the key file holds.",
+        )
+        .positional("input", {
+          type: "string",
+          describe: "CSV to link; use `-` to read from stdin",
+          demandOption: true,
+        })
+        .positional("output", {
+          type: "string",
+          describe:
+            "folder for the run's files, created if missing: a new " +
+            "alcove-results-<time>.csv each run, beside the record, keys and " +
+            "receipt stamped with the same time. Without it the result goes " +
+            "to stdout and the other files to the working directory",
+        }),
+      // exchange reads a config and has no URL, so the config/key files are read
+      // (not written) and the server-* / peer-id overrides apply to the config.
+      {
+        "config-file": EXCHANGE_CONFIG_FILE_DESCRIPTION,
+        "key-file": SHARED_KEY_FILE_DESCRIPTION,
+        "server-port":
+          "server port; overrides connection.server.port in config",
+        "server-username":
+          "server username; overrides connection.server.username in config",
+        "server-password":
+          "server password; use @path to read from file; overrides " +
+          "connection.server.password in config",
+        "server-private-key":
+          "SSH private key; use @path to read from file; overrides " +
+          "connection.server.privateKey in config",
+        "server-private-key-passphrase":
+          "passphrase for an encrypted SSH private key; use @path to read from " +
+          "file; overrides connection.server.privateKeyPassphrase in config",
+        "server-keyboard-interactive":
+          "answer the server's keyboard-interactive prompts with the password, " +
+          "overriding connection.server.keyboard_interactive in config; requires " +
+          "a password. Enable for a server that rejects the direct password " +
+          "method but accepts the same password over keyboard-interactive",
+        "server-host-key-fingerprint":
+          "pre-pin the server's SSH host-key fingerprint (OpenSSH SHA256 " +
+          "format; use @path to read from file), overriding " +
+          "connection.server.host_key_fingerprint in config. Lets an " +
+          "unattended run connect without the interactive trust prompt; a " +
+          "server presenting a different key still fails closed",
+        "peer-id":
+          "stable identifier for this party; appears in filenames and logs. " +
+          "Overrides connection.options.peer_id in config. Requires " +
+          "timestamp_in_filename: true. Both parties must use distinct ids",
+        "outbound-path":
+          "set the outbound (self-written) directory, overriding " +
+          "connection.outbound_path in the config; the config supplies the " +
+          "inbound (peer-written) directory -- its single path, or an " +
+          "already-configured inbound_path. Requires retain mode; the two " +
+          "directories must differ",
+      },
+    ),
+  ).option("invitation", {
+    type: "string",
+    describe:
+      "provision the key file from an invitation code (use @path -- " +
+      "`--invitation @code.txt` -- to keep the code out of shell history), the " +
+      "same code `alcove accept` takes. For the party that composed the " +
+      "exchange in the web app and downloaded a config that has no secret: " +
+      "this completes local provisioning from the invitation and runs the " +
+      "exchange in one command. The code is decoded and validated (checksum, " +
+      "schema, expiry) before anything is written; a malformed or expired code " +
+      "fails with nothing written. Errors if a key file already exists at the " +
+      "key path -- after the first exchange the secret rotates, so the original " +
+      "code must not resurrect a stale secret",
+  });
 }
 
 // The common bootstrap options (config/key paths, identity, server-* overrides,
@@ -300,10 +264,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
     // exchange resolves any @path credential ref here at parse time, unlike the
     // persistence commands (--save, invite/accept), which defer resolution to
     // preserve the reference in a saved config; exchange only reads a config, so
-    // there is nothing to preserve. (server-password / -private-key /
-    // -private-key-passphrase are credential values, not paths to tilde-expand.)
-    configFile: expandTilde(common.configFile),
-    keyFile: expandTilde(common.keyFile),
+    // there is nothing to preserve.
     serverPassword: resolveAtSignRefs(common.serverPassword) as
       string | undefined,
     serverPrivateKey: resolveAtSignRefs(common.serverPrivateKey) as

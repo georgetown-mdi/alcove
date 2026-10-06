@@ -1,4 +1,4 @@
-import { positionalsBeforeDoubleDash } from "./util/doubleDash";
+import { positionalsBeforeDoubleDash } from "./util/positionals";
 
 /**
  * The command names `alcove` registers, in the order its help lists them. The

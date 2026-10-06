@@ -3,10 +3,15 @@ import type { Argv, Arguments } from "yargs";
 import { ConnectionError, UsageError } from "@alcove/core";
 import type { RelayRegistrar } from "@alcove/core";
 
-import { DEFAULT_CONFIG_PATH } from "../config";
-import { expandTilde } from "../fileUtils";
-import { clearRelayRegistrationPending, DEFAULT_KEY_PATH } from "../keyFile";
-import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
+import { clearRelayRegistrationPending } from "../keyFile";
+import {
+  addLoggingOptions,
+  configFileFlag,
+  EXCHANGE_CONFIG_FILE_DESCRIPTION,
+  keyFileFlag,
+  SHARED_KEY_FILE_DESCRIPTION,
+} from "../optionDefinitions";
+import { declarePositionals } from "../util/positionals";
 import {
   enrollRelayKey,
   relayRegistrarForRun,
@@ -27,7 +32,10 @@ import { promptHiddenText } from "../util/prompt";
 import { loadConfig } from "./exchange";
 
 export function builder(cmd: Argv): Argv {
-  const beforeLogging = cmd
+  const beforeLogging = declarePositionals(cmd, {
+    command: "enroll-relay",
+    usage: "",
+  })
     .usage(
       "Usage: $0 enroll-relay [options]\n\n" +
         "Register this exchange's relay key with the relay named in\n" +
@@ -38,11 +46,11 @@ export function builder(cmd: Argv): Argv {
     )
     .option("config-file", {
       type: "string",
-      describe: `exchange configuration file (default: ${DEFAULT_CONFIG_PATH})`,
+      describe: EXCHANGE_CONFIG_FILE_DESCRIPTION,
     })
     .option("key-file", {
       type: "string",
-      describe: `key file holding the shared secret (default: ${DEFAULT_KEY_PATH})`,
+      describe: SHARED_KEY_FILE_DESCRIPTION,
     })
     .option("replace-relay-key", {
       type: "boolean",
@@ -226,11 +234,8 @@ export async function handler(argv: Arguments): Promise<void> {
     }),
   );
   try {
-    const configFile = expandTilde(
-      (singleValue(argv, "config-file") as string | undefined) ??
-        DEFAULT_CONFIG_PATH,
-    );
-    const keyFile = expandTilde(keyFileFlag(argv));
+    const configFile = configFileFlag(argv);
+    const keyFile = keyFileFlag(argv);
     const notice = await enrollRelay({
       configFile,
       keyFile,

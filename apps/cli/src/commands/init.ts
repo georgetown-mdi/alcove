@@ -20,11 +20,7 @@ import {
   writeConfigFile,
 } from "../config";
 import { channelForScheme, connectionFromURL } from "../connectionFromUrl";
-import {
-  detectFileConflicts,
-  expandTilde,
-  FileExistsError,
-} from "../fileUtils";
+import { detectFileConflicts, FileExistsError } from "../fileUtils";
 import {
   DEFAULT_TEMPLATE_CONNECTION,
   PLACEHOLDER_FILEDROP_PATH,
@@ -44,12 +40,18 @@ import {
   singleValue,
 } from "../util/flags";
 import {
-  acceptPositionalsAfterDoubleDash,
+  declarePositionals,
   positionalsBeforeDoubleDash,
-} from "../util/doubleDash";
+  refuseSurplusPositionals,
+  startsWithUrlScheme,
+} from "../util/positionals";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptConfirm, stdinAnswersPrompts } from "../util/prompt";
-import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
+import {
+  addCsvDelimiterOption,
+  addLoggingOptions,
+  configFileFlag,
+} from "../optionDefinitions";
 import {
   buildDataSpec,
   looksLikeUrl,
@@ -62,11 +64,17 @@ import {
   PLACEHOLDER_IDENTITY,
 } from "../partyIdentity";
 
+const INIT_USAGE = "[options] [URL] [INPUT_FILE]";
+
 export function builder(cmd: Argv): Argv {
   const withoutLogging = addCsvDelimiterOption(
-    acceptPositionalsAfterDoubleDash(
+    declarePositionals(
       cmd,
-      { optional: ["args"] },
+      {
+        command: "init",
+        usage: INIT_USAGE,
+        optional: ["args"],
+      },
       {
         // Capture positionals into `args` (rather than the global `_`) and
         // treat an unknown `-`-leading token as a positional, so a bare `-`
@@ -135,9 +143,7 @@ export async function handler(argv: Arguments): Promise<void> {
       });
       closeLogging = close;
 
-      const configFile =
-        expandTilde(singleValue(argv, "config-file") as string | undefined) ??
-        DEFAULT_CONFIG_PATH;
+      const configFile = configFileFlag(argv);
       // Read here, with the other flags, so a repeated --identity is a usage
       // error before any question is asked or any file is written; what the
       // value means is decided below, once it is known whether this run can ask
@@ -287,7 +293,7 @@ export function resolveInitPositionals(positionals: Array<unknown>): {
   const given = positionals.map(String);
   if (
     given[0] !== undefined &&
-    /^[a-z][a-z0-9+.-]*:\//i.test(given[0]) &&
+    startsWithUrlScheme(given[0]) &&
     !looksLikeUrl(given[0])
   )
     throw new UsageError(INIT_URL_UNREADABLE);
@@ -296,11 +302,7 @@ export function resolveInitPositionals(positionals: Array<unknown>): {
       ? new URL(given[0])
       : undefined;
   const rest = url !== undefined ? given.slice(1) : given;
-  if (rest.length > 1)
-    throw new UsageError(
-      "init takes at most a URL and one INPUT_FILE; usage: alcove init " +
-        "[URL] [INPUT_FILE]",
-    );
+  refuseSurplusPositionals(rest.length, 1, "init", INIT_USAGE);
   return {
     ...(url !== undefined ? { url } : {}),
     ...(rest[0] !== undefined ? { input: rest[0] } : {}),

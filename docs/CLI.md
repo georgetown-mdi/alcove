@@ -171,14 +171,16 @@ A flag value that is empty or blank -- what a scripted `--identity "$ORG"` sends
 A leading `~` (or `~/`) in a local filesystem path -- whether given on the command line or written into the configuration file -- is expanded to the current user's home directory. Which paths are expanded depends on the command:
 
 - The path inside an `@`-file reference (for example, `@~/secrets/id_rsa`) is expanded wherever a reference is resolved.
-- `alcove exchange` expands `--config-file`, `--key-file`, the input and output paths, and `signing.identity_file`.
-- The zero-setup form expands `--config-file` and `--key-file`; its input and output positionals are taken literally.
-- `alcove init` expands `--config-file`; `alcove fingerprint` expands `--config-file`, `--identity-file`, and `--export-certificate`; `alcove verify-receipt` expands `RECORD`, `--keys`, `--signed-record`, `--config-file`, `--partner-terms`, `--identity-file`, and `signing.identity_file`.
-- `alcove invite` and `alcove accept` expand no path argument. A `~/`-relative path given to either is taken literally and creates a directory named `~`, so pass an absolute path.
+- `--config-file` and `--key-file` are expanded on every command that takes them, after surrounding whitespace is removed.
+- `alcove exchange` also expands the input and output paths, and `signing.identity_file`.
+- The zero-setup form takes its input and output positionals literally.
+- `alcove fingerprint` also expands `--identity-file` and `--export-certificate`; `alcove verify-receipt` also expands `RECORD`, `--keys`, `--signed-record`, `--partner-terms`, `--identity-file`, and `signing.identity_file`.
+- `alcove invite` and `alcove accept` expand no positional path. A `~/`-relative path given to either as a positional is taken literally and creates a directory named `~`, so pass an absolute path.
 
 Note that `~user` (another user's home) is not resolved.
 
 Every command that takes a path or other positional argument reads the arguments after a `--` separator as positional arguments, never as options, so a path beginning with `-` can be given as `alcove exchange [options] -- -input.csv ./results`.
+An argument past the last positional a command takes, before or after `--`, is refused with a usage error (exit 64) that shows the command's usage.
 
 When a connection is supplied as a URL, Alcove percent-decodes the host, path, username, and password into the stored connection fields, so a reserved or non-ASCII character must be percent-encoded in the URL and is stored decoded -- for example `sftp://user@host/my%20drop` targets the directory `my drop`, and a percent-encoded password is sent decoded. All URL-to-config paths decode identically. A malformed percent-escape (such as a lone `%`) is rejected with a usage error (exit 64), and the credential is redacted from the message.
 

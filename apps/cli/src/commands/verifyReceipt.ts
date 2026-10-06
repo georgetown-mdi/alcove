@@ -66,7 +66,11 @@ import {
 } from "../config";
 import { expandTilde } from "../fileUtils";
 import { checkInputFitsMainThreadHeap } from "../inputHeapCheck";
-import { addCsvDelimiterOption, addLoggingOptions } from "../optionDefinitions";
+import {
+  addCsvDelimiterOption,
+  addLoggingOptions,
+  namedConfigFileFlag,
+} from "../optionDefinitions";
 import { agreedTermsPathFor, keysPathFor } from "../recordFile";
 import { parseSensitiveJson, parseSensitiveYaml } from "../sensitiveFile";
 import { loadSigningCertificate } from "../signingIdentityFile";
@@ -78,7 +82,7 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
   worseReceiptVerdictExitCode,
 } from "../util/exit";
-import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
+import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 
@@ -115,7 +119,9 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 
 export function builder(cmd: Argv): Argv {
   const beforeLogging = addCsvDelimiterOption(
-    acceptPositionalsAfterDoubleDash(cmd, {
+    declarePositionals(cmd, {
+      command: "verify-receipt",
+      usage: "<record> [input-file] [result-file] [options]",
       required: ["record"],
       optional: ["input-file", "result-file"],
     }),
@@ -1305,7 +1311,7 @@ export async function handler(argv: Arguments): Promise<void> {
     const csvDelimiterArg = csvDelimiterFlag(argv);
     const resultFile = singleValue(argv, "result-file") as string | undefined;
     const keysArg = singleValue(argv, "keys") as string | undefined;
-    const configFile = singleValue(argv, "config-file") as string | undefined;
+    const configFile = namedConfigFileFlag(argv);
     const partnerTermsFile = singleValue(argv, "partner-terms") as
       string | undefined;
     const signedRecordArg = singleValue(argv, "signed-record") as

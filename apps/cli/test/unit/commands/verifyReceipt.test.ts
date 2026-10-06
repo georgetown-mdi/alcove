@@ -872,6 +872,7 @@ describe("builder", () => {
       usage: () => recorder,
       parserConfiguration: () => recorder,
       middleware: () => recorder,
+      demandCommand: () => recorder,
       demandOption: () => recorder,
       positional: () => recorder,
       option: (name: string, config: { describe: string }) => {

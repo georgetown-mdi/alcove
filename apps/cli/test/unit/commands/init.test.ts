@@ -558,8 +558,21 @@ test("resolveInitPositionals: a further positional is a usage error", () => {
   );
   expect(() =>
     resolveInitPositionals(["sftp://h/drop", "data.csv", "out.csv"]),
-  ).toThrow(UsageError);
+  ).toThrow(
+    "too many arguments for alcove init; usage: alcove init [options] [URL] " +
+      "[INPUT_FILE]",
+  );
 });
+
+test.each(["C:/data/in.csv", "C:\\data\\in.csv", "c:/in.csv"])(
+  "resolveInitPositionals: a Windows drive path %s is the input file, not a URL",
+  (drivePath) => {
+    expect(resolveInitPositionals([drivePath])).toEqual({ input: drivePath });
+    expect(resolveInitPositionals(["sftp://h/drop", drivePath])).toMatchObject({
+      input: drivePath,
+    });
+  },
+);
 
 test("resolveInitPositionals: an unparsable scheme-prefixed URL is refused without echo", () => {
   for (const bad of [

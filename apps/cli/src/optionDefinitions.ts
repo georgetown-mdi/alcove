@@ -14,6 +14,7 @@ import {
 import type { ConnectionConfig, ServerProvision } from "@alcove/core";
 
 import { type ConnectionOverrides, DEFAULT_CONFIG_PATH } from "./config";
+import { expandTilde } from "./fileUtils";
 import { DEFAULT_KEY_PATH } from "./keyFile";
 import {
   durationFlagMs,
@@ -45,23 +46,65 @@ function serverPortFlag(argv: Arguments): number | undefined {
 }
 
 /**
- * Read `--key-file` from parsed `Arguments`, defaulting to
- * {@link DEFAULT_KEY_PATH}, with surrounding whitespace removed. Trimmed here,
- * where every command first reads the path, so the key is read from and the
- * rotated key written to one path: a trailing space or the CR a CRLF file
- * leaves on `KEY=$(cat path.txt)` would otherwise name a second file. Rejects
- * a repeat (via {@link singleValue}) and a value that is empty once trimmed.
+ * Read a local file path flag, or `undefined` when it is absent. The value is
+ * trimmed, so a trailing space or the CR a CRLF file leaves on
+ * `KEY=$(cat path.txt)` does not name a second file, then a leading `~` is
+ * expanded ({@link expandTilde}), since a `--flag=~/path` word reaches the CLI
+ * unexpanded under zsh and in a quoted argument. Rejects a repeat (via
+ * {@link singleValue}) and a value that is empty once trimmed.
  */
-export function keyFileFlag(argv: Arguments): string {
-  const raw = singleValue(argv, "key-file");
-  if (raw === undefined) return DEFAULT_KEY_PATH;
+function localPathFlag(
+  argv: Arguments,
+  name: "config-file" | "key-file",
+  fallback: string,
+): string;
+function localPathFlag(
+  argv: Arguments,
+  name: "config-file" | "key-file",
+  fallback: undefined,
+): string | undefined;
+function localPathFlag(
+  argv: Arguments,
+  name: "config-file" | "key-file",
+  fallback: string | undefined,
+): string | undefined {
+  const raw = singleValue(argv, name);
+  if (raw === undefined) return fallback;
   const trimmed = String(raw).trim();
   if (trimmed.length === 0)
     throw new UsageError(
-      "--key-file is empty; name the key file, or omit the flag to use " +
-        DEFAULT_KEY_PATH,
+      `--${name} is empty; name the ` +
+        (name === "key-file" ? "key file" : "configuration file") +
+        (fallback === undefined
+          ? ", or omit the flag."
+          : `, or omit the flag to use ${fallback}`),
     );
-  return trimmed;
+  return expandTilde(trimmed);
+}
+
+/**
+ * Read `--key-file` through {@link localPathFlag}, defaulting to
+ * {@link DEFAULT_KEY_PATH}: every command reads the path here, so the key is
+ * read from and the rotated key written to one path.
+ */
+export function keyFileFlag(argv: Arguments): string {
+  return localPathFlag(argv, "key-file", DEFAULT_KEY_PATH);
+}
+
+/**
+ * Read `--config-file` through {@link localPathFlag}, defaulting to
+ * {@link DEFAULT_CONFIG_PATH}.
+ */
+export function configFileFlag(argv: Arguments): string {
+  return localPathFlag(argv, "config-file", DEFAULT_CONFIG_PATH);
+}
+
+/**
+ * Read `--config-file` through {@link localPathFlag} for a command that loads
+ * no configuration unless one is named: `undefined` when the flag is absent.
+ */
+export function namedConfigFileFlag(argv: Arguments): string | undefined {
+  return localPathFlag(argv, "config-file", undefined);
 }
 
 /**
@@ -238,6 +281,88 @@ export function addLoggingOptions(cmd: Argv): Argv {
 }
 
 /**
+ * Add `--verbose`, for {@link addCommonBootstrapOptions} and any command that
+ * takes it without the rest of that set.
+ */
+export function addVerboseOption(cmd: Argv): Argv {
+  return cmd.option("verbose", {
+    alias: "v",
+    type: "count",
+    describe:
+      "generate additional logging information for sub-libraries at all " +
+      "logging levels",
+  });
+}
+
+/**
+ * `--config-file` for a command that reads an exchange's configuration.
+ */
+export const EXCHANGE_CONFIG_FILE_DESCRIPTION = `exchange configuration file (default: ${DEFAULT_CONFIG_PATH})`;
+
+/** `--key-file` for a command that reads, and may rotate, the shared secret. */
+export const SHARED_KEY_FILE_DESCRIPTION = `key file holding the shared secret (default: ${DEFAULT_KEY_PATH})`;
+
+/** `--key-file` for a terms-update command, which never writes the key file. */
+export const UNCHANGED_KEY_FILE_DESCRIPTION = `this partnership's key file, read and not changed (default: ${DEFAULT_KEY_PATH})`;
+
+/**
+ * Add `--sweep-exchange-files` and `--force-retain-sweep`, the CLI-only
+ * controls of a command that runs an exchange from a shared directory.
+ */
+export function addSweepOptions(cmd: Argv): Argv {
+  return cmd
+    .option("sweep-exchange-files", {
+      type: "boolean",
+      describe:
+        "before rendezvous, delete every protocol file left in the directory " +
+        "(this party's and the peer's: hellos, acks, locks, joining sentinels, " +
+        "messages) and start a fresh exchange. Foreign (non-protocol) files are " +
+        "never deleted. Use to recover a directory after a crashed or " +
+        "mismatched prior run, once you have confirmed no other session is " +
+        "using it. CLI-only and invocation-scoped: it is never persisted to " +
+        "alcove.yaml. Refuses on a retain-mode signal unless " +
+        "--force-retain-sweep is also set",
+    })
+    .option("force-retain-sweep", {
+      type: "boolean",
+      describe:
+        "DANGEROUS. Permit --sweep-exchange-files to delete a retain-mode audit " +
+        "transcript (a directory that is, or whose peer is, in retain mode); the " +
+        "prior transcript is permanently lost. Requires --sweep-exchange-files; " +
+        "on its own it is rejected. Only use when you intend to discard the " +
+        "transcript",
+    });
+}
+
+/**
+ * Add `--linkage-strategy`. The sentence after the shared text differs by
+ * command: `invite` can take its terms from a configuration file, where the
+ * flag does nothing, and a quick exchange infers each party's terms
+ * separately, so the two values must match.
+ */
+export function addLinkageStrategyOption(
+  cmd: Argv,
+  command: "invite" | "quick exchange",
+): Argv {
+  return cmd.option("linkage-strategy", {
+    type: "string",
+    describe:
+      "how the agreed linkage keys are run on the wire (default: cascade). " +
+      "cascade runs one dependent PSI round per key; single-pass batches " +
+      "every key into one exchange for a constant round-trip count, at the " +
+      "cost of disclosing your full per-key value structure to the " +
+      "receiver; this is a consented disclosure tradeoff, not a free " +
+      "speed-up. " +
+      (command === "invite"
+        ? "Has no effect when linkage terms come from an existing " +
+          "configuration file (set linkage_strategy there). "
+        : "Both parties must select the same value or the exchange aborts. ") +
+      "See https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
+      "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy).",
+  });
+}
+
+/**
  * Add `--csv-delimiter`, declared once here and called from the builder of
  * every command that reads a CSV, so the flag keeps one name, type, and
  * description across the CLI; `csvDelimiterFlag` (util/flags.ts) reads it
@@ -279,8 +404,6 @@ export type CommonBootstrapDescribeOverrides = Partial<
     | "server-keyboard-interactive"
     | "server-host-key-fingerprint"
     | "peer-id"
-    | "timestamp-in-filename"
-    | "retain-files"
     | "outbound-path",
     string
   >
@@ -434,7 +557,7 @@ export function addCommonBootstrapOptions(
         "past that many session drops the exchange fails, and " +
         "--connection-per-poll is not charged against it.",
     });
-  return addLoggingOptions(beforeLogging)
+  const withoutVerbose = addLoggingOptions(beforeLogging)
     .option("record", {
       type: "boolean",
       default: true,
@@ -484,22 +607,25 @@ export function addCommonBootstrapOptions(
     .option("timestamp-in-filename", {
       type: "boolean",
       describe:
-        describe["timestamp-in-filename"] ??
         "encode a UTC timestamp and per-session counter in each outgoing " +
-          "message filename; --retain-files implies it. Both parties must use " +
-          "the same value",
+        "message filename; --retain-files implies it. Both parties must use " +
+        "the same value",
     })
     .option("retain-files", {
       type: "boolean",
       describe:
-        describe["retain-files"] ??
         "keep all exchange files as a permanent transcript instead of " +
-          "deleting them after consumption. They persist in the shared " +
-          "directory -- a directory on the remote SFTP host, or the shared " +
-          "folder both parties reach -- along with the plaintext rendezvous " +
-          "metadata that accompanies them. Turns on --timestamp-in-filename " +
-          "and --lockless-rendezvous, which it needs; setting either to false " +
-          "with it is an error. Both parties must set this flag identically",
+        "deleting them after consumption. They persist in the shared " +
+        "directory (a directory on the remote SFTP host, or the shared " +
+        "folder both parties reach), along with the plaintext rendezvous " +
+        "metadata that accompanies them. Intended for sync-mediated " +
+        "transports that do not propagate deletions and for audit use " +
+        "cases. Turns on --timestamp-in-filename and --lockless-rendezvous, " +
+        "which it needs; setting either to false with it is an error. Both " +
+        "parties must set this flag identically: a mismatch is detected at " +
+        "rendezvous and fails the exchange on both sides. Each exchange " +
+        "needs a fresh directory: one holding retained files from an " +
+        "earlier session is refused at startup",
     })
     .option("connection-per-poll", {
       type: "boolean",
@@ -520,14 +646,8 @@ export function addCommonBootstrapOptions(
           "distinct drop and pickup folders. Requires --retain-files; the two " +
           "directories must differ. Leave unset for a single shared directory. " +
           "Each party sets its own directories",
-    })
-    .option("verbose", {
-      alias: "v",
-      type: "count",
-      describe:
-        "generate additional logging information for sub-libraries at all " +
-        "logging levels",
     });
+  return addVerboseOption(withoutVerbose);
 }
 
 /** The options common to `invite` and `accept`, parsed from yargs `Arguments`. */
@@ -606,9 +726,7 @@ export function parseCommonBootstrapArgs(
   // keep their plain casts: a repeat is valid for them.
   const serverProvision = serverProvisionFlag(argv);
   return {
-    configFile:
-      (singleValue(argv, "config-file") as string | undefined) ??
-      DEFAULT_CONFIG_PATH,
+    configFile: configFileFlag(argv),
     keyFile: keyFileFlag(argv),
     identity: singleValue(argv, "identity") as string | undefined,
     serverPort: serverPortFlag(argv),

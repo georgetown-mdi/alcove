@@ -27,7 +27,12 @@ import type { SigningIdentity } from "@alcove/core";
 
 import { DEFAULT_CONFIG_PATH } from "../config";
 import { expandTilde, FileExistsError, writeFileAtomic } from "../fileUtils";
-import { addLoggingOptions } from "../optionDefinitions";
+import {
+  addLoggingOptions,
+  EXCHANGE_CONFIG_FILE_DESCRIPTION,
+  namedConfigFileFlag,
+} from "../optionDefinitions";
+import { declarePositionals } from "../util/positionals";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { warnOnIdentityDivergence } from "../signingIdentityDivergence";
 import {
@@ -72,7 +77,10 @@ const NO_IDENTITY_PATH_REFUSAL =
   "before your receipts verify again.";
 
 export function builder(cmd: Argv): Argv {
-  const beforeLogging = cmd
+  const beforeLogging = declarePositionals(cmd, {
+    command: "fingerprint",
+    usage: "",
+  })
     .usage(
       "Usage: $0 fingerprint [options]\n\n" +
         "Print the fingerprint of this party's signing certificate, creating\n" +
@@ -97,7 +105,7 @@ export function builder(cmd: Argv): Argv {
     })
     .option("config-file", {
       type: "string",
-      describe: `exchange configuration file (default: ${DEFAULT_CONFIG_PATH})`,
+      describe: EXCHANGE_CONFIG_FILE_DESCRIPTION,
     })
     .option("force", {
       type: "boolean",
@@ -545,8 +553,7 @@ export async function handler(argv: Arguments): Promise<void> {
     const identityArg = singleValue(argv, "identity") as string | undefined;
     const identityFileArg = singleValue(argv, "identity-file") as
       string | undefined;
-    const configFileArg = singleValue(argv, "config-file") as
-      string | undefined;
+    const configFileArg = namedConfigFileFlag(argv);
     const force = argv["force"] as boolean;
     const exportCertificate = singleValue(argv, "export-certificate") as
       string | undefined;

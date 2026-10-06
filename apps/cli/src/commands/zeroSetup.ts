@@ -34,11 +34,7 @@ import { displayZeroSetupDisclosure } from "../exchangeDisclosure";
 import { outcomeLineWriter } from "../exchangeOutcome";
 import { assertFirstRoundFits } from "../firstRoundFits";
 import { withFirstRoundCountDisplay } from "../psiProgressDisplay";
-import {
-  detectFileConflicts,
-  expandTilde,
-  FileExistsError,
-} from "../fileUtils";
+import { detectFileConflicts, FileExistsError } from "../fileUtils";
 import {
   assertBootstrapUrlPasswordStorable,
   BOOTSTRAP_CREDENTIAL_FLAGS,
@@ -77,6 +73,8 @@ import {
 import {
   addCommonBootstrapOptions,
   addCsvDelimiterOption,
+  addLinkageStrategyOption,
+  addSweepOptions,
   connectionOverridesFrom,
   parseCommonBootstrapArgs,
   warnConnectionPerPollShortInterval,
@@ -106,6 +104,10 @@ import {
 } from "./provision";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
 import { BARE_INVOCATION_SUMMARY, unknownCommandMessage } from "../usageHints";
+import {
+  isWindowsDrivePath,
+  refuseSurplusPositionals,
+} from "../util/positionals";
 
 /**
  * The top-level usage text: the command form and the quick-exchange form,
@@ -144,90 +146,50 @@ export const QUICK_EXCHANGE_TRUST_NOTICE =
 export { channelFromURL };
 
 export function builder(cmd: Argv): Argv {
-  const built = addCommonBootstrapOptions(
-    addCsvDelimiterOption(cmd)
-      .epilog(
-        "Quick exchange arguments:\n" +
-          "  URL            server URL (sftp://, ssh://, or file://)\n" +
-          "  INPUT_FILE     CSV to link; use `-` to read from stdin\n" +
-          "  OUTPUT_FOLDER  folder for the result, record and receipt, created\n" +
-          "                 if missing; without it the result goes to stdout\n\n" +
-          "Both parties run the quick exchange against the same server URL.\n" +
-          "Linkage terms are inferred from each party's input file. No\n" +
-          "configuration files are required or written unless --save is given.\n" +
-          "It sends matches only: your id for each matched record, and no\n" +
-          "other column; to send columns, write a configuration with\n" +
-          "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
-          "waits up to one poll interval (--polling-frequency), so even a\n" +
-          "small practice run takes a minute or more.\n" +
-          "There is no shared secret, so anyone who administers the server or\n" +
-          "shared folder could stand in for your partner; set up a recurring\n" +
-          "exchange with 'alcove invite' and 'alcove accept' for one protected\n" +
-          "by a shared secret.",
-      )
-      .option("save", {
-        type: "boolean",
-        default: false,
-        describe:
-          "save exchange config and establish a shared secret for future " +
-          "recurring exchanges",
-      }),
-    // The config/key files are written only under --save; the longer file-sync
-    // describe text matches exchange's. The server-* / peer-id defaults (URL-
-    // sourced) already fit zero-setup, so only these differ from the shared text.
-    {
-      "config-file":
-        "where to write alcove.yaml when --save is given (default: " +
-        DEFAULT_CONFIG_PATH +
-        ")",
-      "key-file":
-        "where to write .alcove.key when --save is given (default: " +
-        DEFAULT_KEY_PATH +
-        ")",
-      "timestamp-in-filename":
-        "encode a UTC timestamp and per-session counter in each outgoing " +
-        "message filename; --retain-files implies it, so it need not be passed " +
-        "explicitly. Both parties must use the same value",
-      "retain-files":
-        "keep all exchange files as a permanent transcript instead of " +
-        "deleting them after consumption. They persist in the shared " +
-        "directory -- a directory on the remote SFTP host, or the shared " +
-        "folder both parties reach -- along with the plaintext rendezvous " +
-        "metadata that accompanies them. Intended for sync-mediated " +
-        "transports that do not propagate deletions and for audit use cases. " +
-        "Turns on --timestamp-in-filename and --lockless-rendezvous, which it " +
-        "needs; setting either to false with it is an error. Both parties " +
-        "must set this flag identically -- a mismatch is detected at " +
-        "rendezvous and fails fast on both sides with a clear error naming " +
-        "each side's setting, rather than " +
-        "stalling until the inactivity timeout. A fresh " +
-        "directory is required for each exchange and is enforced: reusing a " +
-        "directory with retained files from a prior session is rejected with " +
-        "an error at startup",
-    },
-  )
-    .option("sweep-exchange-files", {
-      type: "boolean",
-      describe:
-        "before rendezvous, delete every protocol file left in the directory " +
-        "(this party's and the peer's: hellos, acks, locks, joining sentinels, " +
-        "messages) and start a fresh exchange. Foreign (non-protocol) files are " +
-        "never deleted. Use to recover a directory after a crashed or " +
-        "mismatched prior run, once you have confirmed no other session is " +
-        "using it. CLI-only and invocation-scoped: it is never persisted to " +
-        "alcove.yaml. Refuses on a retain-mode signal unless " +
-        "--force-retain-sweep is also set",
-    })
-    .option("force-retain-sweep", {
-      type: "boolean",
-      describe:
-        "DANGEROUS. Permit --sweep-exchange-files to delete a retain-mode audit " +
-        "transcript (a directory that is, or whose peer is, in retain mode); the " +
-        "prior transcript is permanently lost. Requires --sweep-exchange-files " +
-        "-- on its own it is rejected. Only use when you intend to discard the " +
-        "transcript",
-    })
-    .option("deduplicate", {
+  const built = addLinkageStrategyOption(
+    addSweepOptions(
+      addCommonBootstrapOptions(
+        addCsvDelimiterOption(cmd)
+          .epilog(
+            "Quick exchange arguments:\n" +
+              "  URL            server URL (sftp://, ssh://, or file://)\n" +
+              "  INPUT_FILE     CSV to link; use `-` to read from stdin\n" +
+              "  OUTPUT_FOLDER  folder for the result, record and receipt, created\n" +
+              "                 if missing; without it the result goes to stdout\n\n" +
+              "Both parties run the quick exchange against the same server URL.\n" +
+              "Linkage terms are inferred from each party's input file. No\n" +
+              "configuration files are required or written unless --save is given.\n" +
+              "It sends matches only: your id for each matched record, and no\n" +
+              "other column; to send columns, write a configuration with\n" +
+              "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
+              "waits up to one poll interval (--polling-frequency), so even a\n" +
+              "small practice run takes a minute or more.\n" +
+              "There is no shared secret, so anyone who administers the server or\n" +
+              "shared folder could stand in for your partner; set up a recurring\n" +
+              "exchange with 'alcove invite' and 'alcove accept' for one protected\n" +
+              "by a shared secret.",
+          )
+          .option("save", {
+            type: "boolean",
+            default: false,
+            describe:
+              "save exchange config and establish a shared secret for future " +
+              "recurring exchanges",
+          }),
+        // The config/key files are written only under --save. The server-* /
+        // peer-id defaults (URL-sourced) already fit zero-setup.
+        {
+          "config-file":
+            "where to write alcove.yaml when --save is given (default: " +
+            DEFAULT_CONFIG_PATH +
+            ")",
+          "key-file":
+            "where to write .alcove.key when --save is given (default: " +
+            DEFAULT_KEY_PATH +
+            ")",
+        },
+      ),
+    ).option("deduplicate", {
       type: "boolean",
       default: false,
       describe:
@@ -241,19 +203,9 @@ export function builder(cmd: Argv): Argv {
         "party's records may group the other's. " +
         "See https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
         "EXCHANGE_REFERENCE.md (linkage_terms.deduplicate).",
-    })
-    .option("linkage-strategy", {
-      type: "string",
-      describe:
-        "how the agreed linkage keys are run on the wire (default: cascade). " +
-        "cascade runs one dependent PSI round per key; single-pass batches " +
-        "every key into one exchange for a constant round-trip count, at the " +
-        "cost of disclosing your full per-key value structure to the receiver " +
-        "-- a consented disclosure tradeoff, not a free speed-up. Both " +
-        "parties must select the same value or the exchange aborts. See " +
-        "https://github.com/georgetown-mdi/alcove/blob/main/docs/" +
-        "EXCHANGE_REFERENCE.md (linkage_terms.linkage_strategy).",
-    });
+    }),
+    "quick exchange",
+  );
   for (const [heading, keys] of ZERO_SETUP_OPTION_GROUPS)
     built.group([...keys], heading);
   return built;
@@ -362,9 +314,6 @@ function parseArgs(argv: Arguments): ZeroSetupArgs {
   const common = parseCommonBootstrapArgs(argv);
   return {
     ...common,
-    // Local filesystem paths accept a leading `~`.
-    configFile: expandTilde(common.configFile),
-    keyFile: expandTilde(common.keyFile),
     save: (argv["save"] as boolean | undefined) ?? false,
     // CLI-only, never persisted: resolve to a definite boolean here since there
     // is no config layer to merge with (unlike the file-sync flags above).
@@ -425,6 +374,17 @@ export function resolvePositionals(positionals: Array<unknown>): {
       "input file not specified; usage: alcove URL INPUT_FILE [OUTPUT_FOLDER]",
     );
   }
+  refuseSurplusPositionals(
+    positionals.length,
+    3,
+    "",
+    "[options] URL INPUT_FILE [OUTPUT_FOLDER]",
+  );
+  if (isWindowsDrivePath(arg0))
+    throw new UsageError(
+      "the first argument is a Windows path, not a server URL; name a " +
+        "folder as a file:// URL, e.g. file:///C:/share/drop",
+    );
 
   const server = tryParseURL(
     arg0,

@@ -6,7 +6,6 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   termsUpdateFor,
-  UsageError,
 } from "@alcove/core";
 
 import {
@@ -15,8 +14,13 @@ import {
   replacedPayloadSendWarning,
   warnOnLinkageRuleSetCitationDrift,
 } from "../config";
-import { DEFAULT_KEY_PATH } from "../keyFile";
-import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
+import {
+  addLoggingOptions,
+  configFileFlag,
+  keyFileFlag,
+  UNCHANGED_KEY_FILE_DESCRIPTION,
+} from "../optionDefinitions";
+import { declarePositionals } from "../util/positionals";
 import { resolveTermsUpdateIdentity } from "../partyIdentity";
 import {
   readPartnershipSecret,
@@ -28,7 +32,7 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
-    cmd
+    declarePositionals(cmd, { command: "update", usage: "" })
       .usage(
         "Usage: $0 update [options]\n\n" +
           "Make a terms update from this party's configuration: its linkage\n" +
@@ -43,7 +47,7 @@ export function builder(cmd: Argv): Argv {
       })
       .option("key-file", {
         type: "string",
-        describe: `this partnership's key file, read and not changed (default: ${DEFAULT_KEY_PATH})`,
+        describe: UNCHANGED_KEY_FILE_DESCRIPTION,
       }),
   );
 }
@@ -58,17 +62,7 @@ export async function handler(argv: Arguments): Promise<void> {
         name: "update",
       });
       closeLogging = close;
-      const positionals = ((argv["_"] as Array<unknown> | undefined) ?? [])
-        .slice(1)
-        .map(String);
-      if (positionals.length > 0)
-        throw new UsageError(
-          "alcove update takes no positional arguments; it reads the " +
-            "configuration named by --config-file.",
-        );
-      const configPath =
-        (singleValue(argv, "config-file") as string | undefined) ??
-        DEFAULT_CONFIG_PATH;
+      const configPath = configFileFlag(argv);
       const keyPath = keyFileFlag(argv);
 
       const source = readPartnershipTermsSource(configPath);

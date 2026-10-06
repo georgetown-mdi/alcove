@@ -35,8 +35,12 @@ import {
   displayInvitation,
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
-import { DEFAULT_KEY_PATH } from "../keyFile";
-import { addLoggingOptions, keyFileFlag } from "../optionDefinitions";
+import {
+  addLoggingOptions,
+  configFileFlag,
+  keyFileFlag,
+  UNCHANGED_KEY_FILE_DESCRIPTION,
+} from "../optionDefinitions";
 import { resolveTermsUpdateIdentity } from "../partyIdentity";
 import {
   readPartnershipConfig,
@@ -47,17 +51,20 @@ import { resolveAtSignRefs } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, singleValue } from "../util/flags";
 import {
-  acceptPositionalsAfterDoubleDash,
+  declarePositionals,
   positionalsBeforeDoubleDash,
-} from "../util/doubleDash";
+  refuseSurplusPositionals,
+} from "../util/positionals";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptConfirm } from "../util/prompt";
 
+const APPLY_USAGE = "[options] UPDATE";
+
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
-    acceptPositionalsAfterDoubleDash(
+    declarePositionals(
       cmd,
-      { optional: ["args"] },
+      { command: "apply", usage: APPLY_USAGE, optional: ["args"] },
       {
         // A terms update is base64url and may begin with `-`, so an unknown
         // `-`-leading token is taken as the positional, as accept takes an
@@ -84,7 +91,7 @@ export function builder(cmd: Argv): Argv {
       })
       .option("key-file", {
         type: "string",
-        describe: `this partnership's key file, read and not changed (default: ${DEFAULT_KEY_PATH})`,
+        describe: UNCHANGED_KEY_FILE_DESCRIPTION,
       })
       // No short form, as on accept: skipping the confirmation takes an
       // explicit token, and `unknown-options-as-args` would make a
@@ -287,14 +294,12 @@ export async function handler(argv: Arguments): Promise<void> {
         (argv["args"] as Array<unknown> | undefined) ?? []
       ).map(String);
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
-      if (positionals.length !== 1)
+      if (positionals.length === 0)
         throw new UsageError(
-          "alcove apply takes exactly one argument, the terms update; " +
-            "usage: alcove apply [options] UPDATE",
+          `a terms update is required; usage: alcove apply ${APPLY_USAGE}`,
         );
-      const configPath =
-        (singleValue(argv, "config-file") as string | undefined) ??
-        DEFAULT_CONFIG_PATH;
+      refuseSurplusPositionals(positionals.length, 1, "apply", APPLY_USAGE);
+      const configPath = configFileFlag(argv);
       const keyPath = keyFileFlag(argv);
       const consentToTerms = argv["consent-to-terms"] === true;
 

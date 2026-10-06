@@ -17,11 +17,11 @@ import { SSH2SFTPClientAdapter } from "../connection/ssh2SftpAdapter";
 import { HOST_KEY_PROBE_DIALS_ONCE } from "../hostKeyTrust";
 import { peerIdentificationDiagnosisOf } from "../connection/sftpPeerIdentification";
 import { exitCodeForError, exitWithError } from "../util/exit";
-import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
+import { declarePositionals } from "../util/positionals";
 import { durationFlagSeconds, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { asciiSafeJsonLine } from "../util/jsonLine";
-import { addLoggingOptions } from "../optionDefinitions";
+import { addLoggingOptions, addVerboseOption } from "../optionDefinitions";
 
 // `alcove probe-host-key` is the ssh-keyscan analogue: it connects only far
 // enough to read the SFTP server's presented host key, then refuses before any
@@ -55,7 +55,9 @@ const REAL_DEPS: ProbeHostKeyDeps = {
 };
 
 export function builder(cmd: Argv): Argv {
-  const beforeLogging = acceptPositionalsAfterDoubleDash(cmd, {
+  const beforeLogging = declarePositionals(cmd, {
+    command: "probe-host-key",
+    usage: "SFTP_URL [options]",
     required: ["sftp-url"],
   })
     .usage(
@@ -86,13 +88,7 @@ export function builder(cmd: Argv): Argv {
         '({"diagnosis":"non_ssh"|"closed_unanswered", ...}) on stdout before ' +
         "exiting 69, so a caller that discards stderr still gets the cause",
     });
-  return addLoggingOptions(beforeLogging).option("verbose", {
-    alias: "v",
-    type: "count",
-    describe:
-      "generate additional logging information for sub-libraries at all " +
-      "logging levels",
-  });
+  return addVerboseOption(addLoggingOptions(beforeLogging));
 }
 
 /**
