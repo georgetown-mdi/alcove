@@ -38,8 +38,9 @@ Several targets under one role invocation is a mis-invocation: stop and say so.
 Role mode requires the contract. If `--role` is given and `--claims` is missing, its
 file is unreadable, or it yields no claims, stop and say the round belongs to the plain
 `/light-review` lens form or a lens-scoped `general-purpose` reviewer. The requirement
-is CLAUDE.md's, not this command's: quote its refutation-contract bullet in Agent
-conventions as the reason -- these two roles run only under a named list of claims to
+is the orchestration ruleset's, not this command's: quote its refutation-contract bullet
+(`.claude/orchestration/ruleset.md`, Review flow) as the reason -- these two
+roles run only under a named list of claims to
 refute -- rather than presenting the stop as a rule of your own.
 
 Role mode also requires adversary-reachable surface in the branch diff: production code
@@ -138,9 +139,11 @@ rows of any kind -- CLAIMS covers only the DELTA: a claim whose subject the last
 touched, plus one claim per path that fix added. Re-running an unaffected claim the
 ledger already records as HOLDS is forbidden.
 A branch that staging has moved under is brought forward by a rebase, re-attested by
-the rebase-invariance verifier rather than by a round (assess-review.md, Step 4), and
+the rebase-invariance verifier rather than by a round
+(`.claude/commands/assess-review.md`, Step 4), and
 not by a base sync, which costs a full round. A rebase that verifier refused, or a base
-sync -- the merge shape assess-review.md's Step 4 defines, a merge of origin/staging
+sync -- the merge shape `.claude/commands/assess-review.md`, Step 4, defines,
+a merge of origin/staging
 into the branch -- is not a fix: the branch owns no verdict at the moved head, so the
 delta rule does not apply. The contract is the branch's standing contract in full (the
 union of the claims its role rounds have run, recorded verbatim in the ledger's rows),

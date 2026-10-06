@@ -13,7 +13,7 @@
 // history. GitHub fills the subject from the pull request's title, whose budget
 // ../../scripts/lib/squashSubjectBudget.mjs holds for the title hook and the
 // PR checklist check, so a draft here is a body and nothing else. Prose
-// restating CONTRIBUTING.md's Commit Messages rules at each producer -- the
+// restating `CONTRIBUTING.md`, Commit Messages, at each producer -- the
 // remind-squash-message.mjs reminder, squash-message.mjs's prompt -- checks
 // nothing, and a 120-column body line reaches the maintainer intact. This is
 // where those rules are executable. The wrap column below is the only copy of
@@ -405,7 +405,7 @@ export const USAGE =
 /** The refusal report, for a caller that prints it rather than throwing. */
 export function refusalReport(broken) {
   return (
-    "This draft breaks the Commit Messages rules in CONTRIBUTING.md, and " +
+    "This draft breaks the rules in `CONTRIBUTING.md`, Commit Messages, and " +
     "nothing here can fix it without rewriting the message:\n" +
     broken.map((problem) => `  - ${problem}\n`).join("")
   );
@@ -421,7 +421,7 @@ export function selfCheckReport(broken) {
     "format-squash-message.mjs produced a message that breaks the rules it " +
     "checks for, which is a bug in the script:\n" +
     broken.map((problem) => `  - ${problem}\n`).join("") +
-    "Write the message by hand under CONTRIBUTING.md's Commit Messages rules.\n"
+    "Write the message by hand under `CONTRIBUTING.md`, Commit Messages.\n"
   );
 }
 

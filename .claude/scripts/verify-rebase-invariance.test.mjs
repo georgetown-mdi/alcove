@@ -105,7 +105,7 @@ describe("across a real rebase", () => {
 
     // The moved code is what the two heads disagree on, and it is outside the
     // branch's own diff: this is the composition with unread staging content
-    // that assess-review.md Step 4 admits, stated here as a measurement rather
+    // that `.claude/commands/assess-review.md`, Step 4, admits, stated here as a measurement rather
     // than left implicit in a passing verdict.
     expect(
       fixture.git(["diff", "--name-only", oldHead, newHead]).split("\n"),

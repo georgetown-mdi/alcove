@@ -882,7 +882,7 @@ describe("against a real git repository", () => {
     });
   });
 
-  // The base-sync route in `.claude/commands/assess-review.md` (Step 4) is about
+  // The base-sync route in `.claude/commands/assess-review.md`, Step 4, is about
   // what this verifier reports across a merge whose first parent is the attested
   // sha and whose second is the staging tip, so these build that merge with real
   // git rather than reasoning about it. The attested-to-head diff holds the

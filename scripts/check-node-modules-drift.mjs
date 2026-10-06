@@ -108,6 +108,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { installedAs } from "./lib/lockfile.mjs";
+
 const NAME = "check-node-modules-drift";
 const LISTED = 12;
 
@@ -294,14 +296,6 @@ export function formatDrift(dir, drift, sharedFrom = null, limit = LISTED) {
   return lines;
 }
 
-/** The install-path key's package name: "@openmined/psi.js" from
- * "node_modules/@openmined/psi.js", "leaf" from
- * "node_modules/has-nested/node_modules/leaf". */
-function nameFromInstallPath(path) {
-  const marker = "node_modules/";
-  return path.slice(path.lastIndexOf(marker) + marker.length);
-}
-
 /**
  * What npm's own record of what it extracted, node_modules/.package-lock.json,
  * says about the lockfile's `file:` tarball dependencies (a `resolved` starting
@@ -345,7 +339,7 @@ export function fileDependencyIntegrity(dir, lock) {
     // only the gap that leaves: same recorded version, different bytes.
     if (installed.version !== entry.version) continue;
     if (installed.integrity !== entry.integrity) {
-      stale.push({ name: nameFromInstallPath(path), version: entry.version });
+      stale.push({ name: installedAs(path), version: entry.version });
     }
   }
   return { stale, unreadableRecord: null };

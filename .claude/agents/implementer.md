@@ -31,10 +31,10 @@ produce is your final message to the caller. Never end expecting a reply.
   branch's work: an untracked leftover there blocks
   `require-clean-tree-for-review.mjs` on the branch's next review round.
   Anything the change itself needs belongs in the commit.
-- Wait on a long command as `CLAUDE.md`'s one-shot wait rule says (Agent
-  conventions, Spawns and reports).
-- Before you report, run the repo-wide gates once, as `CLAUDE.md` names them
-  (Writing, tooling and commits), after the tests relevant to your change pass
+- Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
+  and reports, says.
+- Before you report, run the repo-wide gates once, as `CLAUDE.md`, Writing,
+  tooling and commits, names them, after the tests relevant to your change pass
   (a core change means every workspace unit suite); while working, check only
   what you changed (`CONTRIBUTING.md`, Code Conventions). State in your report
   whether the work is committed.

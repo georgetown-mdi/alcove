@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { coversAction as coversName } from "./check-dependabot-ignore-shape.mjs";
+import { coversDependencyName as coversName } from "./lib/dependabot.mjs";
 import {
   coverageViolations,
   exactnessViolations,

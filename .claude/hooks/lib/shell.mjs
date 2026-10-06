@@ -108,6 +108,74 @@ export function leadingCdDestination(command, from) {
 }
 
 /**
+ * Words that stand in front of the real command word without changing which
+ * command runs. Each takes only option-shaped arguments of its own, so peeling
+ * it needs no knowledge of its grammar -- which is why `timeout`, whose
+ * duration stands as a bare positional, is absent by design.
+ */
+export const COMMAND_PREFIX_WORDS = new Set([
+  "command",
+  "doas",
+  "env",
+  "nice",
+  "nohup",
+  "setsid",
+  "stdbuf",
+  "sudo",
+  "time",
+]);
+
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
+/**
+ * Peel the leading environment assignments, prefix words, and the flags that
+ * follow a prefix word (`env -i`, `nice -n`) off a segment's tokens. Returns the
+ * assignments peeled and the index of the command word, which is
+ * `tokens.length` when the segment invokes nothing. Before any prefix word, a
+ * flag ends the peel: the segment is not a command invocation at all.
+ *
+ * A prefix word's flag may take a value (`sudo -u NAME`) that would then stand
+ * where the command word belongs. `isFlagValue(token, index)` says whether the
+ * token after a flag is such a value; by default none is, so the value is read
+ * as the command, which loses an invocation rather than inventing one.
+ */
+export function peelCommandPrefix(
+  tokens,
+  { prefixWords = COMMAND_PREFIX_WORDS, isFlagValue = () => false } = {},
+) {
+  const assignments = [];
+  let sawPrefixWord = false;
+  let index = 0;
+  while (index < tokens.length) {
+    const token = tokens[index];
+    if (ASSIGNMENT.test(token)) {
+      assignments.push(token);
+      index++;
+      continue;
+    }
+    if (prefixWords.has(token)) {
+      sawPrefixWord = true;
+      index++;
+      continue;
+    }
+    if (sawPrefixWord && token.startsWith("-")) {
+      index++;
+      const next = tokens[index];
+      if (
+        next !== undefined &&
+        !next.startsWith("-") &&
+        isFlagValue(next, index)
+      ) {
+        index++;
+      }
+      continue;
+    }
+    break;
+  }
+  return { assignments, index };
+}
+
+/**
  * Run git and return its trimmed stdout, or null on any failure: a non-zero
  * exit, no git on PATH, a directory that is not a repository. What a null means
  * is the caller's to decide, since these hooks do not fail the same way.

@@ -46,6 +46,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { lineOf } from "./lib/text.mjs";
+
 /** The constant every copy below is held to, and the file that declares it. */
 const SOURCE = {
   file: "apps/cli/src/connection/webrtc/weriftPeer.ts",
@@ -108,10 +110,6 @@ export function declaredStringConstant(source, name) {
 const CLAIM_WINDOW_CHARS = 200;
 
 /** The 1-based line `index` falls on in `text`. */
-function lineOf(text, index) {
-  return text.slice(0, index).split("\n").length;
-}
-
 /**
  * Every endpoint `text` presents AS a built-in default, with its line, as
  * `{line, endpoint}` pairs normalized to the `host:port` authority. A claim is
@@ -157,7 +155,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const uri = declaredStringConstant(read(SOURCE.file), SOURCE.name);
   if (uri === undefined) {
     console.error(
-      `${SOURCE.file}: no \`export const ${SOURCE.name} = "..."\` declaration matched -- the extraction pattern rotted, or the constant moved; fix scripts/check-stun-default-claims.mjs`,
+      `${SOURCE.file}: no \`export const ${SOURCE.name} = "..."\` declaration was found. If you moved or reshaped the constant, update SOURCE or the pattern in scripts/check-stun-default-claims.mjs to match.`,
     );
     process.exit(1);
   }

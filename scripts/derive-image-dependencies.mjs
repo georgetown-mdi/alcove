@@ -42,9 +42,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { registeredCommands } from "./check-command-inventory.mjs";
+import { CLI_PARSER, registeredCommands } from "./lib/cliCommands.mjs";
 
-export const CLI_PARSER = "apps/cli/src/cliParser.ts";
 export const ENTRYPOINT = "docker-entrypoint.sh";
 export const SUPPORT_DIR = "support/windows-network-filedrop";
 
@@ -336,7 +335,7 @@ export function deriveVerdictVersion(sources) {
       const match = (sources[filename] ?? "").match(pattern);
       if (match === null) {
         throw new Error(
-          `${filename}: no verdict version declaration matched -- the extraction pattern rotted; fix scripts/derive-image-dependencies.mjs`,
+          `${filename}: no verdict version declaration was found. If you changed how the file declares it, update the pattern in scripts/derive-image-dependencies.mjs to read the new form.`,
         );
       }
       return { filename, version: Number(match[1]) };
@@ -382,13 +381,13 @@ export function deriveImageDependencies(root) {
   const registered = registeredCommands(parser);
   if (registered.length === 0) {
     throw new Error(
-      `${CLI_PARSER}: no .command("...") registrations matched -- the extraction pattern rotted; fix scripts/check-command-inventory.mjs`,
+      `${CLI_PARSER}: no .command("...") registration was found. If you changed how the CLI registers its commands, update the pattern in scripts/lib/cliCommands.mjs to read the new form.`,
     );
   }
   const dispatched = dispatchedWords(entrypoint);
   if (dispatched.length === 0) {
     throw new Error(
-      `${ENTRYPOINT}: no dispatch word matched -- the extraction pattern rotted; fix scripts/derive-image-dependencies.mjs`,
+      `${ENTRYPOINT}: no dispatch word was found. If you changed how the entrypoint dispatches, update the pattern in scripts/derive-image-dependencies.mjs to read the new form.`,
     );
   }
   const commands = [...new Set([...dispatched, ...registered])];
@@ -396,14 +395,14 @@ export function deriveImageDependencies(root) {
   const cli = deriveCliCapabilities(support, commands);
   if (cli.length === 0) {
     throw new Error(
-      `${SUPPORT_DIR}: no Alcove argument vector was derived from any support script -- the extraction pattern rotted; fix scripts/derive-image-dependencies.mjs`,
+      `${SUPPORT_DIR}: no Alcove argument vector was found in any support script. If you changed how the scripts invoke Alcove, update the pattern in scripts/derive-image-dependencies.mjs to read the new form.`,
     );
   }
 
   const helpers = deriveHelperInvocations(support[CMD_SETUP_SCRIPT]);
   if (helpers.length === 0) {
     throw new Error(
-      `${SUPPORT_DIR}/${CMD_SETUP_SCRIPT}: no helper script redirect was derived -- the extraction pattern rotted; fix scripts/derive-image-dependencies.mjs`,
+      `${SUPPORT_DIR}/${CMD_SETUP_SCRIPT}: no helper script redirect was found. If you changed how the script writes its helpers, update the pattern in scripts/derive-image-dependencies.mjs to read the new form.`,
     );
   }
   for (const helper of helpers) {

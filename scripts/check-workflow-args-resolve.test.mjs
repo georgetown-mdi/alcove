@@ -2,10 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  sourceFiles,
-  workflowScriptFiles,
-} from "./check-workflow-agent-models.mjs";
+import { sourceFiles, workflowScriptFiles } from "./lib/workflowScripts.mjs";
 import {
   canonicalResolveCount,
   looseArgsReads,

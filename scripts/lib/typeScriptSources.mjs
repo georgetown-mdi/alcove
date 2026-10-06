@@ -73,6 +73,18 @@ export function descendants(node) {
   return found;
 }
 
+/** True when `sourceFile` exports a function named `name`. */
+export function exportsFunction(sourceFile, name) {
+  return descendants(sourceFile).some(
+    (node) =>
+      ts.isFunctionDeclaration(node) &&
+      node.name?.text === name &&
+      node.modifiers?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ),
+  );
+}
+
 /**
  * Every file under a repository-relative `dir`, whatever its extension, itself
  * repository-relative and sorted -- the whole tree {@link sourceModules}

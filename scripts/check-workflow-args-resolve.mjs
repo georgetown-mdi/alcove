@@ -13,8 +13,8 @@
 // A convention nothing enforces is one edit from gone, and the reads that break
 // it -- `args.role`, `const {role} = args`, `{...args}`, `args[k]` -- all look
 // ordinary. So it is encoded as a check over the same two committed script shapes
-// check-workflow-agent-models.mjs scans, whose block reader and lexer this
-// imports: a fenced js block under .claude/commands/, .claude/agents/, or
+// check-workflow-agent-models.mjs scans, read through the block reader and
+// lexer in scripts/lib/workflowScripts.mjs: a fenced js block under .claude/commands/, .claude/agents/, or
 // .claude/skills/, and a checked-in Workflow script a command invokes by path
 // (.claude/scripts/*-workflow.mjs, whose whole file is the block).
 //
@@ -48,7 +48,7 @@ import {
   sourceFiles,
   tokenize,
   workflowScriptFiles,
-} from "./check-workflow-agent-models.mjs";
+} from "./lib/workflowScripts.mjs";
 
 const ARGS = "args";
 const RESOLVER = "resolveWorkflowArgs";
@@ -159,7 +159,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   if (resolves === 0) {
     console.error(
-      `no \`${CANONICAL}\` call matched in any scanned block -- either no committed Workflow script resolves its arguments, or the extraction pattern rotted; fix scripts/check-workflow-args-resolve.mjs`,
+      `no \`${CANONICAL}\` call was found in any committed Workflow script. If a script still resolves its arguments, update the pattern in scripts/check-workflow-args-resolve.mjs to read the form it uses; if none does any longer, delete this check.`,
     );
     process.exit(1);
   }

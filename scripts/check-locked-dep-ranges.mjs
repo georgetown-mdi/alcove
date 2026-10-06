@@ -42,8 +42,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import semver from "semver";
 
+import { installedAs, packageIdentity } from "./lib/lockfile.mjs";
+
 const SCRIPT = "scripts/check-locked-dep-ranges.mjs";
-const NM = "node_modules/";
 const ALIAS_PREFIX = "npm:";
 const SOURCE_PREFIXES = ["file:", "link:", "workspace:"];
 const DEPENDENCY_FIELDS = [
@@ -70,13 +71,8 @@ export const OUT_OF_RANGE_BY_DESIGN = [
   },
 ];
 
-/** The directory name a lockfile entry installs under. */
-const installedAs = (path) =>
-  path.includes(NM) ? path.slice(path.lastIndexOf(NM) + NM.length) : path;
-
 /** The package a lockfile entry holds: its `name` field, else its directory. */
-const identity = (path, entry) =>
-  typeof entry?.name === "string" ? entry.name : installedAs(path);
+const identity = (path, entry) => packageIdentity(installedAs(path), entry);
 
 /**
  * The lockfile paths Node's lookup tries for `name` from a dependent at

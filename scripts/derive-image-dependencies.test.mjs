@@ -242,7 +242,7 @@ describe("the tripwires that keep an empty derivation from passing", () => {
         "Start-Alcove.ps1": "",
         "start-alcove.sh": "ALCOVE_VERDICT_VERSION='1'",
       }),
-    ).toThrow(/extraction pattern rotted/);
+    ).toThrow(/no verdict version declaration was found/);
   });
 });
 

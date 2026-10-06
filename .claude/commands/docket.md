@@ -30,7 +30,8 @@ Run only when the owner invokes this command; never start the docket unasked.
 5. Before presenting an item that touches screen copy, a user flow, CLI
    ergonomics, or a consent surface, spawn `ux-reviewer` on the code it
    concerns. An item on a security surface takes `security-reviewer`, run
-   under the refutation contract in the ruleset's Review flow; an item
+   under the refutation contract in `.claude/orchestration/ruleset.md`,
+   Review flow; an item
    touching both takes both. Their findings go into the item's background.
 
 ## Present, one message per item

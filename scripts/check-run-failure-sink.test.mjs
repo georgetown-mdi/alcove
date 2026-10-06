@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  exportsFunction,
   parseFile,
   parseSource,
   sourceModules,
@@ -10,7 +11,6 @@ import {
   TEXT_SINKS,
   WEB_SOURCE_DIR,
   declaresType,
-  exportsFunction,
   failureBindingNames,
   failureTextRenders,
 } from "./check-run-failure-sink.mjs";

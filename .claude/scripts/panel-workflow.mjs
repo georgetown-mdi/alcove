@@ -138,6 +138,17 @@ function resolveSeats(seats) {
   return resolved;
 }
 
+// The clean checkout the panelists read, made by the caller under a fresh
+// `mktemp -d` directory so two panels in flight never share one.
+function resolveBase(base) {
+  if (!isText(base) || !base.startsWith("/") || base.endsWith("/")) {
+    throw new Error(
+      `base is the absolute path of the panel's clean checkout, with no trailing slash; got ${JSON.stringify(base)}.`,
+    );
+  }
+  return base;
+}
+
 function resolveDocs(docs) {
   if (docs === undefined) return [];
   if (!Array.isArray(docs) || !docs.every(isText)) {
@@ -159,6 +170,7 @@ function resolveFirstRound(first) {
     !isObject(first) ||
     first.round !== "first" ||
     !isText(first.question) ||
+    !isText(first.base) ||
     !Array.isArray(first.seats) ||
     !Array.isArray(first.positions)
   ) {
@@ -193,6 +205,7 @@ function resolveFirstRound(first) {
   }
   return {
     question: first.question,
+    base: resolveBase(first.base),
     docs: resolveDocs(first.docs),
     seats,
     positions: first.positions.map((answer) => ({
@@ -207,10 +220,10 @@ const input = resolveWorkflowArgs(args);
 const deliberating = input.deliberate !== undefined;
 if (
   deliberating &&
-  ["question", "docs", "seats"].some((key) => input[key] !== undefined)
+  ["question", "base", "docs", "seats"].some((key) => input[key] !== undefined)
 ) {
   throw new Error(
-    "A deliberation call passes deliberate alone: its question, docs, and seats come from the first round's result.",
+    "A deliberation call passes deliberate alone: its question, base, docs, and seats come from the first round's result.",
   );
 }
 if (!deliberating && !isText(input.question)) {
@@ -220,12 +233,13 @@ const panel = deliberating
   ? resolveFirstRound(input.deliberate)
   : {
       question: input.question,
+      base: resolveBase(input.base),
       docs: resolveDocs(input.docs),
       seats: resolveSeats(input.seats),
     };
 
 const docsClause = panel.docs.length
-  ? `Read these first for context: ${panel.docs.map((d) => "/tmp/panel-base/" + d).join(", ")}.\n\n`
+  ? `Read these first for context: ${panel.docs.map((d) => `${panel.base}/${d}`).join(", ")}.\n\n`
   : "";
 
 const requiredKeysClause = (schema) =>
@@ -233,7 +247,7 @@ const requiredKeysClause = (schema) =>
 
 const briefing = (
   lens,
-) => `You are an independent expert panelist. Read ONLY under /tmp/panel-base, a clean checkout of the project's mainline: do not read, cd into, or search /workspace, and do not run builds or tests (the tree has no node_modules). You are one of several panelists and must not coordinate; answer from your own read.
+) => `You are an independent expert panelist. Read ONLY under ${panel.base}, a clean checkout of the project's mainline: do not read, cd into, or search /workspace, and do not run builds or tests (the tree has no node_modules). You are one of several panelists and must not coordinate; answer from your own read.
 
 ${docsClause}Weigh the question primarily through this lens: ${lens}. Then answer it directly -- an answer, not a survey of options.
 
@@ -257,6 +271,7 @@ if (!deliberating) {
   return {
     round: "first",
     question: panel.question,
+    base: panel.base,
     docs: panel.docs,
     seats: panel.seats,
     positions: panel.seats.flatMap((seat, i) =>
@@ -299,6 +314,7 @@ return {
   round: "deliberation",
   note: DELIBERATION_NOTE,
   question: panel.question,
+  base: panel.base,
   docs: panel.docs,
   seats: panel.seats,
   panelists: panel.positions.map((own, i) => ({

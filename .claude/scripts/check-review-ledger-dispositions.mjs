@@ -3,7 +3,7 @@
 // (`.claude/commands/assess-review.md`, Step 4 readiness).
 //
 // A branch's rounds ledger (`scratch/review-rounds/<key>.jsonl`, row shape in
-// `.claude/commands/light-review.md` Step 3) records how each finding was
+// `.claude/commands/light-review.md`, Step 3) records how each finding was
 // disposed of. Two of those dispositions assert something outside the ledger,
 // and this check tests both against the PR head:
 //

@@ -130,7 +130,7 @@ import { parse } from "yaml";
 // Dependabot's `dependency-name` and a group's `patterns` share one glob
 // syntax, so the ignore-shape check's matcher serves both rather than being
 // written twice.
-import { coversAction as coversName } from "./check-dependabot-ignore-shape.mjs";
+import { coversDependencyName as coversName } from "./lib/dependabot.mjs";
 import { stripFences, UnterminatedFenceError } from "./lib/markdownFences.mjs";
 
 const PINS_DOC = "docs/spec/DEPENDENCY_PINS.md";
@@ -401,7 +401,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   if (sections.length === 0) {
     console.error(
-      `${PINS_DOC}: no "Upgrading ..." heading matched -- either the upgrade checklists were removed, in which case delete this check, or the extraction rotted; fix scripts/check-dependabot-pin-coverage.mjs`,
+      `${PINS_DOC}: no "Upgrading ..." heading was found. If you renamed the upgrade checklist headings, keep the "Upgrading" prefix or update the pattern in scripts/check-dependabot-pin-coverage.mjs to read yours; if the checklists were removed, delete this check.`,
     );
     process.exit(1);
   }
@@ -413,7 +413,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const groups = npmGroups(readFileSync(resolve(root, CONFIG_FILE), "utf8"));
   if (groups === null) {
     console.error(
-      `${CONFIG_FILE}: no ${ECOSYSTEM} update block matched -- either Dependabot no longer covers npm packages, in which case delete this check, or the extraction rotted; fix scripts/check-dependabot-pin-coverage.mjs`,
+      `${CONFIG_FILE}: no ${ECOSYSTEM} update block was found. If you reshaped that block, update the pattern in scripts/check-dependabot-pin-coverage.mjs to read the new form; if Dependabot no longer covers npm packages, delete this check.`,
     );
     process.exit(1);
   }
@@ -447,7 +447,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (paths === null) {
     console.error(
-      `${ROOT_MANIFEST}: no "workspaces" list of globs matched -- either this repository is no longer an npm workspace, in which case reduce this check to the root manifest, or the extraction rotted; fix scripts/check-dependabot-pin-coverage.mjs`,
+      `${ROOT_MANIFEST}: no "workspaces" list of globs was found. If you reshaped the list, update the reading in scripts/check-dependabot-pin-coverage.mjs to match; if this repository is no longer an npm workspace, reduce this check to the root manifest.`,
     );
     process.exit(1);
   }

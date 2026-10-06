@@ -1,6 +1,6 @@
 # Background-resume probe
 
-The rule in `block-sleep-poll.mjs` and `CLAUDE.md`'s one-shot wait bullet rests on one harness behavior: a subagent that starts a background command and ends its turn is resumed with the command's result. Re-run this probe after a Claude Code upgrade, and record the date and build in the hook's header.
+The rule in `block-sleep-poll.mjs` and the one-shot wait bullet in `CLAUDE.md`, Spawns and reports, rests on one harness behavior: a subagent that starts a background command and ends its turn is resumed with the command's result. Re-run this probe after a Claude Code upgrade, and record the date and build in the hook's header.
 
 Run it from a session on a host with `timeout` on PATH (the dev container has it). Spawn it with the Agent tool, `subagent_type: general-purpose`, `model: sonnet`, and this prompt:
 

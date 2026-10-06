@@ -58,6 +58,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { packageIdentity } from "./lib/lockfile.mjs";
+
 const NM = "node_modules";
 const SCRIPT = "scripts/check-nested-root-package.mjs";
 
@@ -99,13 +101,6 @@ export function topLevelInstalls(lock, directory) {
   }
   return installs;
 }
-
-/**
- * The package a copy actually holds. npm writes the `name` field only where it
- * disagrees with the directory, which is what an alias does.
- */
-const identity = (installedAs, entry) =>
-  typeof entry?.name === "string" ? entry.name : installedAs;
 
 /**
  * Every package the committed lockfile installs at the top level of both the
@@ -186,7 +181,8 @@ export function assess(lock, allowlist = NESTED_BY_DESIGN) {
 
   const aliased = splits.filter(
     ({ installedAs, nested, root }) =>
-      identity(installedAs, nested.entry) !== identity(installedAs, root.entry),
+      packageIdentity(installedAs, nested.entry) !==
+      packageIdentity(installedAs, root.entry),
   );
   if (aliased.length > 0) {
     return {
@@ -197,7 +193,7 @@ export function assess(lock, allowlist = NESTED_BY_DESIGN) {
         ),
         ...aliased.map(
           ({ installedAs, nested, root }) =>
-            `${installedAs}: ${nested.path} holds ${identity(installedAs, nested.entry)} and ${root.path} holds ${identity(installedAs, root.entry)}.`,
+            `${installedAs}: ${nested.path} holds ${packageIdentity(installedAs, nested.entry)} and ${root.path} holds ${packageIdentity(installedAs, root.entry)}.`,
         ),
       ],
     };

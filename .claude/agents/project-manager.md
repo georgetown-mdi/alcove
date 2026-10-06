@@ -22,8 +22,8 @@ user to "let me know" -- you will not hear back. If you need something only the
 human can answer, return a NEEDS INPUT result (below); the main thread that
 spawned you owns the loop and will re-spawn you with the answers folded in.
 
-Wait on a long command as `CLAUDE.md`'s one-shot wait rule says (Agent
-conventions, Spawns and reports).
+Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
+and reports, says.
 
 ## Workflow
 
@@ -54,7 +54,7 @@ one-line summary, and any unresolved points you logged. Unanswered questions do
 **not** block a capture -- a full-tier draft holds them in its **Open
 questions** section (an accurate draft with open choices is fine) and a light-tier
 draft states them in its summary sentence. How many items you may file, and
-what lifts that limit, is the ruleset's Filing and updating items section;
+what lifts that limit, is `.claude/pm/ruleset.md`, Filing and updating items;
 what it does not let you file, draft in your report and leave to the owner's
 word. Also run the ruleset's epic/order
 step: set both fields autonomously when an existing epic clearly fits, and note

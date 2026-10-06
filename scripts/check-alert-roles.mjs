@@ -34,6 +34,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   descendants,
+  exportsFunction,
   parseFile,
   parseSource,
   sourceModules,
@@ -233,18 +234,6 @@ function record(sourceFile, node, title, problem) {
     title: title ?? "(none)",
     problem,
   };
-}
-
-/** True when `sourceFile` exports a function named `name`. */
-export function exportsFunction(sourceFile, name) {
-  return descendants(sourceFile).some(
-    (node) =>
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === name &&
-      node.modifiers?.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-      ),
-  );
 }
 
 /**

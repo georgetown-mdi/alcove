@@ -17,7 +17,12 @@
 // can never wedge every Bash command.
 
 import { commandOf, eventForTools } from "./lib/event.mjs";
-import { splitSegments, tokenize } from "./lib/shell.mjs";
+import {
+  COMMAND_PREFIX_WORDS,
+  peelCommandPrefix,
+  splitSegments,
+  tokenize,
+} from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
 export const EXPIRES_ON = "2026-12-31";
@@ -38,44 +43,17 @@ function block(reason) {
   process.exit(2);
 }
 
-// Words that stand in front of the real command word without changing which
-// command runs; `export` earns its place here because `export FOO=bar` sets the
-// same variable a `FOO=bar cmd` prefix does.
-const COMMAND_PREFIX_WORDS = new Set([
-  "sudo",
-  "command",
-  "env",
-  "nice",
-  "export",
-]);
+// The shared prefix words, plus `export`: `export FOO=bar` sets the same
+// variable a `FOO=bar cmd` prefix does.
+const PREFIX_WORDS = new Set([...COMMAND_PREFIX_WORDS, "export"]);
 
 // Peel the leading environment assignments and prefix words off a segment,
 // returning those assignments and the command that follows them.
 function splitCommandPrefix(tokens) {
-  const assignments = [];
-  let sawPrefixWord = false;
-  let i = 0;
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) {
-      assignments.push(token);
-      i++;
-      continue;
-    }
-    if (COMMAND_PREFIX_WORDS.has(token)) {
-      sawPrefixWord = true;
-      i++;
-      continue;
-    }
-    // A flag belonging to a prefix word (`env -i FOO=bar git ...`); before any
-    // prefix word a flag means this segment is not a command invocation at all.
-    if (sawPrefixWord && token.startsWith("-")) {
-      i++;
-      continue;
-    }
-    break;
-  }
-  return { assignments, rest: tokens.slice(i) };
+  const { assignments, index } = peelCommandPrefix(tokens, {
+    prefixWords: PREFIX_WORDS,
+  });
+  return { assignments, rest: tokens.slice(index) };
 }
 
 function identityAssignment(assignments) {

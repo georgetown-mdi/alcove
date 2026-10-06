@@ -44,7 +44,8 @@ const FABLE_PATTERNS = [
 
 const ASK_REASON =
   "This Workflow's script requests the Fable tier for one of its agents, which " +
-  "requires your explicit approval (per the model-tiering rule in CLAUDE.md): " +
+  "requires your explicit approval " +
+  "(per `.claude/orchestration/ruleset.md`, Models and spawns): " +
   "Fable is reserved for deliberate hard cases and is never chosen " +
   "autonomously. Approve to run it on Fable, or deny and it will be re-issued on " +
   "a cheaper tier.";

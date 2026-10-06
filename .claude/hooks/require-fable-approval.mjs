@@ -22,9 +22,9 @@
 // on an unverifiable bare spawn, so an unresolvable pin is blocked upstream before
 // it could reach a live spawn.
 
-import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { agentDefinitions } from "./lib/agentDefinitions.mjs";
 import { eventForTools } from "./lib/event.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
@@ -32,9 +32,10 @@ export const EXPIRES_ON = "2026-12-31";
 
 const ASK_REASON =
   "This spawn runs on the Fable tier, which requires your explicit approval " +
-  "(per the model-tiering rule in CLAUDE.md): Fable is reserved for deliberate " +
-  "hard cases and is never chosen autonomously. Approve to run it on Fable, or " +
-  "deny and it will be re-issued on a cheaper tier.";
+  "(per `.claude/orchestration/ruleset.md`, Models and spawns): " +
+  "Fable is reserved for deliberate hard cases and is never chosen " +
+  "autonomously. Approve to run it on Fable, or deny and it will be re-issued " +
+  "on a cheaper tier.";
 
 function ask(reason) {
   process.stdout.write(
@@ -50,25 +51,12 @@ function ask(reason) {
 }
 
 // Return the pinned `model:` value of the .claude/agents/<name>.md whose leading
-// frontmatter names `subagentType`, or null. Mirrors require-agent-model.mjs's
-// frontmatter read, but keeps the model value so a Fable pin is detectable.
+// frontmatter names `subagentType`, or null.
 function pinnedModelFor(agentsDir, subagentType) {
-  for (const entry of readdirSync(agentsDir)) {
-    if (!entry.endsWith(".md")) continue;
-    const lines = readFileSync(join(agentsDir, entry), "utf8").split("\n");
-    if (lines[0].trim() !== "---") continue;
-    let name = null;
-    let model = null;
-    for (let i = 1; i < lines.length; i++) {
-      if (lines[i].trim() === "---") break;
-      const nameMatch = lines[i].match(/^name:\s*(.+?)\s*$/);
-      if (nameMatch) name = nameMatch[1];
-      const modelMatch = lines[i].match(/^model:\s*(.+?)\s*$/);
-      if (modelMatch) model = modelMatch[1];
-    }
-    if (name === subagentType) return model;
-  }
-  return null;
+  const definition = agentDefinitions(agentsDir).find(
+    ({ name }) => name === subagentType,
+  );
+  return definition?.model ?? null;
 }
 
 function main() {

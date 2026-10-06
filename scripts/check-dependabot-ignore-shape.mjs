@@ -49,6 +49,7 @@ import { fileURLToPath } from "node:url";
 
 import { parse } from "yaml";
 
+import { coversDependencyName } from "./lib/dependabot.mjs";
 import { WORKFLOW_DIR, treeReferences } from "./lib/workflows.mjs";
 
 const CONFIG_FILE = ".github/dependabot.yml";
@@ -95,17 +96,6 @@ export function suppressesWithinMajor({ updateTypes }) {
 }
 
 /**
- * Whether a `dependency-name` pattern covers an action name. `*` matches any run
- * of characters including `/`; every other character is literal.
- */
-export function coversAction(pattern, name) {
-  const expression = pattern.replace(/[.*+?^${}()|[\]\\]/g, (character) =>
-    character === "*" ? ".*" : `\\${character}`,
-  );
-  return new RegExp(`^${expression}$`).test(name);
-}
-
-/**
  * Whether a ref is a bare floating major tag -- the shape a within-major ignore
  * entry's rationale assumes of every pin it covers.
  */
@@ -123,7 +113,7 @@ export function shapeViolations(references, entries) {
   const messages = references.flatMap(({ file, name, ref }) => {
     if (ref === null || isFloatingMajor(ref)) return [];
     const entry = suppressing.find(({ dependencyName }) =>
-      coversAction(dependencyName, name),
+      coversDependencyName(dependencyName, name),
     );
     if (!entry) return [];
     return [
@@ -142,14 +132,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (entries === null) {
     console.error(
-      `${CONFIG_FILE}: no ${ECOSYSTEM} update block matched -- either Dependabot no longer covers GitHub Actions, in which case delete this check, or the extraction rotted; fix scripts/check-dependabot-ignore-shape.mjs`,
+      `${CONFIG_FILE}: no ${ECOSYSTEM} update block was found. If you reshaped that block, update the pattern in scripts/check-dependabot-ignore-shape.mjs to read the new form; if Dependabot no longer covers GitHub Actions, delete this check.`,
     );
     process.exit(1);
   }
   const { workflowReferences, actionReferences } = treeReferences(root);
   if (workflowReferences.length === 0) {
     console.error(
-      `${WORKFLOW_DIR}: no action references matched in any workflow -- the shared extraction rotted; fix scripts/lib/workflows.mjs`,
+      `${WORKFLOW_DIR}: no action reference was found in any workflow. If you changed how workflows write \`uses:\` lines, update the reading in scripts/lib/workflows.mjs to match.`,
     );
     process.exit(1);
   }

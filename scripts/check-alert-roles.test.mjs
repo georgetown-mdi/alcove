@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseFile, sourceModules } from "./lib/typeScriptSources.mjs";
+import {
+  exportsFunction,
+  parseFile,
+  sourceModules,
+} from "./lib/typeScriptSources.mjs";
 import {
   QUIET_ERROR_ALERTS,
   ROLE_HELPER,
@@ -8,7 +12,6 @@ import {
   alertRoleFailures,
   errorAlertsInSource,
   errorAlerts,
-  exportsFunction,
 } from "./check-alert-roles.mjs";
 
 const FILE = "apps/web/src/fixture.tsx";

@@ -5,12 +5,12 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { pinViolations } from "./check-action-pin-drift.mjs";
 import {
-  coversAction,
   githubActionsIgnoreEntries,
   isFloatingMajor,
   shapeViolations,
   suppressesWithinMajor,
 } from "./check-dependabot-ignore-shape.mjs";
+import { coversDependencyName } from "./lib/dependabot.mjs";
 import { fileReferences, treeReferences } from "./lib/workflows.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -124,15 +124,25 @@ describe("what an entry suppresses", () => {
 
 describe("dependency-name matching", () => {
   it("reads * inclusively, across a subpath separator", () => {
-    expect(coversAction("github/*", "github/codeql-action/init")).toBe(true);
-    expect(coversAction("actions/*", "actions/checkout")).toBe(true);
-    expect(coversAction("actions/*", "actions-rs/toolchain")).toBe(false);
+    expect(coversDependencyName("github/*", "github/codeql-action/init")).toBe(
+      true,
+    );
+    expect(coversDependencyName("actions/*", "actions/checkout")).toBe(true);
+    expect(coversDependencyName("actions/*", "actions-rs/toolchain")).toBe(
+      false,
+    );
   });
 
   it("matches an exact dependency-name and treats other characters literally", () => {
-    expect(coversAction("actions/checkout", "actions/checkout")).toBe(true);
-    expect(coversAction("actions/checkout", "actions/checkout-v2")).toBe(false);
-    expect(coversAction("actions.checkout", "actionsXcheckout")).toBe(false);
+    expect(coversDependencyName("actions/checkout", "actions/checkout")).toBe(
+      true,
+    );
+    expect(
+      coversDependencyName("actions/checkout", "actions/checkout-v2"),
+    ).toBe(false);
+    expect(coversDependencyName("actions.checkout", "actionsXcheckout")).toBe(
+      false,
+    );
   });
 });
 
@@ -295,7 +305,7 @@ describe("the real repository configuration", () => {
     const covered = [...workflowReferences, ...actionReferences].filter(
       ({ name }) =>
         suppressing.some(({ dependencyName }) =>
-          coversAction(dependencyName, name),
+          coversDependencyName(dependencyName, name),
         ),
     );
     expect(covered.length).toBeGreaterThan(0);

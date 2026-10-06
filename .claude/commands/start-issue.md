@@ -86,8 +86,9 @@ assumption against the merged code first: an obviated or reduced assumption is a
 scope finding to raise, not a stale design to build. Explore with the Read and Grep tools, not shell `sed`/`cat`/`grep`:
 they read and search without a permission prompt and keep large file dumps out of
 context. Settle a purely local open question yourself and note your choice.
-Routing a question the issue itself left open belongs to `CLAUDE.md`'s Agent
-conventions, not to this command; the split below covers the decisions the
+Routing a question the issue itself left open belongs to
+`.claude/orchestration/ruleset.md`, Decisions, briefs and reporting, not to
+this command; the split below covers the decisions the
 implementation itself raises.
 
 Know when to decide and when to ask:
@@ -108,15 +109,15 @@ Know when to decide and when to ask:
 Implement on the branch, following CONTRIBUTING.md. Verify before you commit:
 rebuild core (`npm run build -w packages/core`) if you touched it -- it was built
 at issue start, so this only picks up changes you made. Then run the tests
-covering what you changed, and once they pass, the repo-wide gates `CLAUDE.md`
-names (Writing, tooling and commits), once. Then sweep your own
+covering what you changed, and once they pass, the repo-wide gates
+`CLAUDE.md`, Writing, tooling and commits, names, once. Then sweep your own
 diff (`git diff`): delete every comment that restates the code, narrates the
 change, or cites a board id, and move any "this cannot happen" claim into a
 check. Report what you ran and the result; do not commit on red without saying
 so. When the issue has an Open Questions section, the report also names
 each question and the route it took -- settled as obvious, paneled, or asked.
 
-Commit to the new branch following CONTRIBUTING.md's commit conventions (no
+Commit to the new branch following `CONTRIBUTING.md`, Commit Messages (no
 markdown, no top-level lists, no self-attribution). Never commit to staging or
 main. Each substantial set of changes should receive its own commit; small
 patches can be amendments. Stop at the commit -- do not push or open a PR unless
@@ -127,8 +128,8 @@ asked; an instruction to orchestrate is that ask (see Orchestrating, below).
 The review-depth decision needs the actual diff, which does not exist at issue
 time, so it is made here. Measure the branch -- `git diff "staging...HEAD"
 --stat` for files and net lines, and check the touched files against the
-security-review scope (the enumeration in CONTRIBUTING.md's Pull Request
-Process and the PR template's security-review comment) -- and end your report
+security-review scope (the enumeration in `CONTRIBUTING.md`, Dependency Policy,
+and the PR template's security-review comment) -- and end your report
 with a one-line review-tier recommendation:
 
 - Docs-only or trivial mechanical change -> no cold review of any kind, lens or

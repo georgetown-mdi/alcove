@@ -48,8 +48,9 @@
 //     direction, and only where the path they hold resolves into a worktree.
 //   - A path that only exists at runtime is not seen: one held in a variable,
 //     produced by a glob, or read from a file.
-//   - A writing command reached through a prefix word outside COMMAND_PREFIX_WORDS
-//     (`timeout 5 cp ...`), or through `xargs` or `find -exec`, is not read.
+//   - A writing command reached through a prefix word outside lib/shell.mjs's
+//     COMMAND_PREFIX_WORDS (`timeout 5 cp ...`), or through `xargs` or
+//     `find -exec`, is not read.
 //   - A program that writes files of its own accord -- an interpreter given a
 //     script, a build tool handed an output directory -- names no write here.
 //   - A `cd` on the line does not move what a relative path resolves against;
@@ -69,7 +70,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 
 import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import { canonicalPath, nearestExistingDirectory } from "./lib/paths.mjs";
-import { splitSegments, tokenize } from "./lib/shell.mjs";
+import { peelCommandPrefix, splitSegments, tokenize } from "./lib/shell.mjs";
 import {
   isInside,
   isStrictlyInside,
@@ -106,23 +107,6 @@ const WRITING_COMMANDS = new Set([
   "touch",
   "truncate",
 ]);
-
-// Words that stand in front of the real command word without changing which
-// command runs. Each takes only option-shaped arguments of its own, which is why
-// `timeout`, whose duration stands as a bare positional, is absent.
-const COMMAND_PREFIX_WORDS = new Set([
-  "command",
-  "doas",
-  "env",
-  "nice",
-  "nohup",
-  "setsid",
-  "stdbuf",
-  "sudo",
-  "time",
-]);
-
-const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 // A redirection operator at the head of a token: an optional file descriptor or
 // `&`, and one or two `>`. What follows it in the same token is the target when
@@ -164,25 +148,7 @@ function isPathOperand(token) {
 // (`sudo -u NAME`) then stands where the command word belongs and is read as the
 // command, which loses a write rather than inventing one.
 function invocation(tokens) {
-  let index = 0;
-  let sawPrefixWord = false;
-  while (index < tokens.length) {
-    const token = tokens[index];
-    if (ASSIGNMENT.test(token)) {
-      index++;
-      continue;
-    }
-    if (COMMAND_PREFIX_WORDS.has(token)) {
-      sawPrefixWord = true;
-      index++;
-      continue;
-    }
-    if (sawPrefixWord && token.startsWith("-")) {
-      index++;
-      continue;
-    }
-    break;
-  }
+  const { index } = peelCommandPrefix(tokens);
   const word = tokens[index];
   if (word === undefined) return null;
   return { name: basename(word), args: tokens.slice(index + 1) };

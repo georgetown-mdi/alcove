@@ -2,7 +2,7 @@
 // Additive-test-delta verifier, run by an agent re-attesting a review whose head
 // moved by adding tests.
 //
-// `.claude/commands/assess-review.md` (Step 4) lets a round-attested head be
+// `.claude/commands/assess-review.md`, Step 4, lets a round-attested head be
 // re-attested with no fresh round when its diff against the attested sha only
 // INSERTS lines in test files. This decides that property, mechanically, for the
 // reason the sibling verifier's header states: nothing in CI can catch a false

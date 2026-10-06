@@ -60,8 +60,9 @@ Start with the whole, not the parts:
   round only against prior rounds of the same kind -- a role round's claims and
   a lens round's clusters count different things. Same-kind scoping governs
   trajectory only: the branch's round budget is the ledger's full line count,
-  every kind included, capped by the review-tier bucket (start-issue.md, Step
-  5) -- a round of a new kind is not a fresh budget. In a role row, a claim whose
+  every kind included, capped by the review-tier bucket
+  (`.claude/commands/start-issue.md`, Step 5) -- a round of a new kind is not a
+  fresh budget. In a role row, a claim whose
   verdict is `REFUTED` or `COULD-NOT-VERIFY` is a confirmed finding on its file,
   and so is an out-of-claim `finding` of severity critical or major -- the role
   round's gate ignores those by design, the trajectory does not.
@@ -71,7 +72,8 @@ Start with the whole, not the parts:
   or it raised nothing -- is the session's default recommendation to stop,
   stated when it asks for a cap raise; a branch's first role round is exempt.
   With that ask, state also the size-keyed default recommendations
-  light-review.md's Step 1 gives for the branch's changed lines. All are
+  `.claude/commands/light-review.md`, Step 1, gives for the branch's changed
+  lines. All are
   advisory, with thresholds measured on the 2026-08-31 to 2026-09-25 rounds and
   re-fit at each retro; nothing enforces them.
 
@@ -149,9 +151,9 @@ the branch is worse for leaving. Absent that line, state it and move on.
   Step 4); one that confirms it makes the fix a measured one.
 - **A gated role round's disposition can take a consult.** Choosing among fix,
   contest, narrow, and stated limit on a gated `security-reviewer` or
-  `adversarial-verifier` round is the adjudication CLAUDE.md's model-tier rule
-  reserves Fable for -- a one-shot, owner-approved consult on the choice, never
-  a Fable fix round.
+  `adversarial-verifier` round is the adjudication the model-tier rule in
+  `.claude/orchestration/ruleset.md`, Models and spawns, reserves Fable for -- a one-shot,
+  owner-approved consult on the choice, never a Fable fix round.
 - **A fix that adds behavior gets a test.** When a fix introduces new branching
   or a new code path (error handling, a guard, a fallback), the brief orders its
   guarantees pinned with a test in the same pass. No later round re-reviews a
@@ -222,10 +224,10 @@ there is the one the brief describes.
   edits written out inside the same brief.
 - The brief ends by ordering the verification and the commit: build core
   (`npm run build -w packages/core`) if the fix touched it, then the tests
-  covering what changed, then the repo-wide gates `CLAUDE.md` names (Writing,
-  tooling and commits), once, then a commit
-  to the branch -- never staging or main -- following CONTRIBUTING.md's commit
-  conventions (no markdown, no top-level lists, no self-attribution). Report what
+  covering what changed, then the repo-wide gates `CLAUDE.md`, Writing,
+  tooling and commits, names, once, then a commit
+  to the branch -- never staging or main -- following `CONTRIBUTING.md`, Commit
+  Messages (no markdown, no top-level lists, no self-attribution). Report what
   the spawn ran and what it reported.
 
 Then record what you decided. The round's row in

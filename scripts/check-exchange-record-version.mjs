@@ -340,7 +340,7 @@ export function inspect(root) {
   const declared = declaredRecordVersion(read(RECORD_VERSION_SOURCE));
   if (declared === undefined) {
     blocked.push(
-      `${RECORD_VERSION_SOURCE}: EXCHANGE_RECORD_VERSION's declaration did not read as a quoted string literal -- the extraction pattern rotted; fix ${CHECK_SOURCE} rather than dropping the check.`,
+      `${RECORD_VERSION_SOURCE}: EXCHANGE_RECORD_VERSION is not declared as a quoted string literal. Declare it as one, or update the pattern in ${CHECK_SOURCE} to read the new form; do not drop the check.`,
     );
   }
 

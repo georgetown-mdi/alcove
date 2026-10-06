@@ -26,44 +26,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const CLAUDE_MD = "CLAUDE.md";
+import {
+  CLAUDE_MD,
+  enforcementClaims,
+  registeredHooks,
+} from "./lib/hookClaims.mjs";
 const ORCHESTRATION_LEDGER = ".claude/orchestration/ruleset.md";
 const SETTINGS = ".claude/settings.json";
 const HOOKS_DIR = ".claude/hooks";
 
 /** The rule ledgers whose enforcement prose this check holds. */
 export const RULE_LEDGERS = [CLAUDE_MD, ORCHESTRATION_LEDGER];
-
-/**
- * Enforcement claims in a rule ledger's prose: each `Enforced by \`<file>.mjs\``
- * with the line that holds it, so the tool-naming rule can read the surrounding
- * sentence, and the file it came from, so a violation names it.
- */
-export function enforcementClaims(source, file = CLAUDE_MD) {
-  const claims = [];
-  source.split("\n").forEach((line, index) => {
-    for (const match of line.matchAll(/[Ee]nforced by `([^`]+\.mjs)`/g)) {
-      claims.push({ hook: match[1], file, line, lineNumber: index + 1 });
-    }
-  });
-  return claims;
-}
-
-/** Hook registrations in settings.json as `{file, event, matcher}` triples. */
-export function registeredHooks(settings) {
-  const registrations = [];
-  for (const [event, entries] of Object.entries(settings.hooks ?? {})) {
-    for (const entry of entries ?? []) {
-      for (const hook of entry.hooks ?? []) {
-        const file = /hooks\/([\w.-]+\.mjs)/.exec(hook.command ?? "")?.[1];
-        if (file) {
-          registrations.push({ file, event, matcher: entry.matcher ?? "*" });
-        }
-      }
-    }
-  }
-  return registrations;
-}
 
 /** Split a .claude/hooks listing into hook scripts and the tests beside them. */
 export function hookInventory(entries) {
@@ -147,7 +120,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     );
     if (found.length === 0) {
       console.error(
-        `${ledger}: no \`Enforced by \`<hook>.mjs\`\` claims matched -- the extraction pattern rotted; fix scripts/check-enforcement-claims.mjs`,
+        `${ledger}: no \`Enforced by \`<hook>.mjs\`\` claim was found. If you reworded the claims, keep that form or update the pattern in scripts/check-enforcement-claims.mjs to read yours.`,
       );
       process.exit(1);
     }
