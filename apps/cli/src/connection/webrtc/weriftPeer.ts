@@ -1052,9 +1052,8 @@ export async function openWebRtcPeerSession(
       assertSctpDrainSupported(peer);
       await logSelectedCandidatePair(peer, signal);
       // Take the state hook back off the negotiation, whose interest in it
-      // ended when the channel opened. werift leaves `connected` after that
-      // only for `failed`, which it does not recover from
-      // (webrtcPostOpenLoss.test.ts), so any departure is the partner lost.
+      // ended when the channel opened.
+      // Any departure from `connected` is the partner lost: docs/spec/WEBRTC_TRANSPORT.md#the-clean-close.
       let onLost: (() => void) | undefined;
       peer.onconnectionstatechange = () => {
         log.debug("the peer connection is now", peer.connectionState);

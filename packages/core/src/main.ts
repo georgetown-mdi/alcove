@@ -125,6 +125,7 @@ export { MAX_FILE_NAME_BYTES } from "./connection/fileSyncRendezvous";
 export { TEARDOWN_LEFTOVER_FILES_CLAUSE } from "./transportTeardownNotice";
 export {
   ConnectionError,
+  DeliveryUnconfirmedError,
   QueuedMessageConnection,
   asConnectionError,
   errorMessage,

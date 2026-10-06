@@ -39,6 +39,8 @@ const mockState = vi.hoisted(() => ({
   logLines: [] as Array<string>,
   /** Every `log.warn` line, joined the same way. */
   warnLines: [] as Array<string>,
+  /** A side whose key exchange asks for the AEAD layer, as a partner may. */
+  encryptionRequestedBy: undefined as "inviter" | "acceptor" | undefined,
 }));
 
 vi.mock("@openmined/psi.js", () => ({
@@ -75,16 +77,13 @@ vi.mock("@alcove/core", async (importActual) => {
         // The linked pair below hands each party its own connection object, so
         // identity is what attributes a captured handshake to the side that ran
         // it -- the argument list itself has no party name.
-        mockState.handshakes.push({
-          side: connection === pair.inviter ? "inviter" : "acceptor",
-          role,
-          requestEncryption,
-        });
+        const side = connection === pair.inviter ? "inviter" : "acceptor";
+        mockState.handshakes.push({ side, role, requestEncryption });
         return actual.authenticateConnection(
           connection,
           params,
           role,
-          requestEncryption,
+          requestEncryption || mockState.encryptionRequestedBy === side,
         );
       },
     ),
@@ -254,6 +253,7 @@ beforeEach(() => {
   mockState.exchangeConnections.length = 0;
   mockState.logLines.length = 0;
   mockState.warnLines.length = 0;
+  mockState.encryptionRequestedBy = undefined;
 });
 
 afterEach(() => {
@@ -463,19 +463,27 @@ function captureSignalExit(): {
   return { exit, exited };
 }
 
-test("a finished exchange whose last message the partner never confirmed warns the operator", async () => {
-  pair.inviter.close = async () => {
-    throw new FinalFrameUnconfirmedError(
-      FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
-    );
-  };
-  await Promise.all([runParty("inviter"), runParty("acceptor")]);
-  expect(mockState.warnLines).toContain(
-    sanitizeErrorForDisplay(
+test.each([
+  ["", undefined],
+  [" through the encrypted layer", "acceptor"],
+] as const)(
+  "a finished exchange whose last message the partner never confirmed warns the operator once%s",
+  async (_label, encryptionRequestedBy) => {
+    mockState.encryptionRequestedBy = encryptionRequestedBy;
+    pair.inviter.close = async () => {
+      throw new FinalFrameUnconfirmedError(
+        FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+      );
+    };
+    await Promise.all([runParty("inviter"), runParty("acceptor")]);
+    const warning = sanitizeErrorForDisplay(
       new FinalFrameUnconfirmedError(FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE),
-    ),
-  );
-});
+    );
+    expect(mockState.warnLines.filter((line) => line === warning)).toHaveLength(
+      1,
+    );
+  },
+);
 
 test("any other close failure of a finished exchange is not raised to the operator", async () => {
   const { ConnectionError } = await import("@alcove/core");

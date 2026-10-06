@@ -1,5 +1,6 @@
 import {
   ConnectionError,
+  DeliveryUnconfirmedError,
   MAX_WEBRTC_FRAME_BYTES,
   QueuedMessageConnection,
   asConnectionError,
@@ -142,11 +143,7 @@ export interface WebRtcMessageConnectionOptions {
  * frame handed over before it: the connection is torn down either way, and the
  * partner may or may not have the last frame this side sent.
  */
-export class FinalFrameUnconfirmedError extends ConnectionError {
-  constructor(message: string) {
-    super(message, "transport");
-  }
-}
+export class FinalFrameUnconfirmedError extends DeliveryUnconfirmedError {}
 
 /** @internal */
 export const FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE =

@@ -1589,11 +1589,19 @@ async function closeRunLayers(params: {
   if (run.opened) log.info("closing connection");
   // A finished exchange whose last message the partner never confirmed is
   // the one close failure the operator acts on: the partner's run may have
-  // ended without it. Any other close failure stays a debug line.
+  // ended without it. Any other close failure stays a debug line. The
+  // encrypted layer passes the transport's rejection on, so the transport's
+  // own close can report the same delivery a second time.
+  let unconfirmedReported = false;
   const reportCloseFailure = (label: string, err: unknown): void => {
-    if (err instanceof FinalFrameUnconfirmedError && run.exchangeComplete)
+    if (
+      err instanceof FinalFrameUnconfirmedError &&
+      run.exchangeComplete &&
+      !unconfirmedReported
+    ) {
+      unconfirmedReported = true;
       log.warn(sanitizeErrorForDisplay(err));
-    else log.debug(label, sanitizeErrorForDisplay(err));
+    } else log.debug(label, sanitizeErrorForDisplay(err));
   };
   return closeWithinCeiling(ceilingMs, async () => {
     // When the AEAD decorator was built (encryption negotiated), close it:

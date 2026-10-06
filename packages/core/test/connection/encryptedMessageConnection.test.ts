@@ -16,6 +16,7 @@ import {
 import {
   createMessagePipe,
   ConnectionError,
+  DeliveryUnconfirmedError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import { deriveAeadKey, AEAD_CONTEXTS, type AeadContext } from "../../src/auth";
@@ -831,12 +832,9 @@ test("a security failure tears down the inner transport", async () => {
   await expect(peer.receive()).rejects.toThrow(/peer closed/i);
 });
 
-test("close() reports the inner connection's close rejection, tearing it down once", async () => {
+test("close() passes through an unconfirmed-delivery rejection, tearing down once", async () => {
   let closeCalls = 0;
-  const innerFailure = new ConnectionError(
-    "last frame not confirmed",
-    "transport",
-  );
+  const innerFailure = new DeliveryUnconfirmedError("last frame not confirmed");
   const inner: MessageConnection = {
     send: () => Promise.resolve(),
     receive: () => new Promise<unknown>(() => {}),
@@ -857,11 +855,30 @@ test("close() reports the inner connection's close rejection, tearing it down on
   expect(closeCalls).toBe(1);
 });
 
-test("an inner close rejection during a failure teardown is reported by the later close()", async () => {
-  const innerFailure = new ConnectionError(
-    "last frame not confirmed",
-    "transport",
+test("close() resolves when the inner close rejects with anything else", async () => {
+  let closeCalls = 0;
+  const inner: MessageConnection = {
+    send: () => Promise.resolve(),
+    receive: () => new Promise<unknown>(() => {}),
+    close: () => {
+      closeCalls++;
+      return Promise.reject(
+        new ConnectionError("inner close boom", "transport"),
+      );
+    },
+  };
+  const enc = await EncryptedMessageConnection.create(
+    inner,
+    SESSION_KEY,
+    "initiator",
   );
+  await expect(enc.close()).resolves.toBeUndefined();
+  await expect(enc.close()).resolves.toBeUndefined();
+  expect(closeCalls).toBe(1);
+});
+
+test("an unconfirmed-delivery rejection during a failure teardown is reported by the later close()", async () => {
+  const innerFailure = new DeliveryUnconfirmedError("last frame not confirmed");
   let rejectInnerClose: (reason: unknown) => void = () => {};
   const inner: MessageConnection = {
     send: () => Promise.resolve(),
