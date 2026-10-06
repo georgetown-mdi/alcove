@@ -1652,8 +1652,9 @@ class Negotiation {
    * candidates may still complete, and a peer that sends only bad ones fails on
    * the connection-state or rendezvous deadline instead. Past
    * {@link MAX_APPLIED_REMOTE_CANDIDATES} a candidate is dropped, silently for
-   * the same reason a parse failure is. A rejected candidate does not count
-   * toward the cap.
+   * the same reason a parse failure is. A candidate counts toward the cap
+   * while its application is pending and is uncounted once the ICE agent
+   * rejects it.
    */
   private async addRemoteCandidate(
     candidate: Record<string, unknown>,
