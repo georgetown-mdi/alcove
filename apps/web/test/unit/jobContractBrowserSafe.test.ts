@@ -22,41 +22,16 @@ import { afterAll, describe, expect, test } from "vitest";
 /**
  * src/jobContract holds the job API's contract, which the console server and the
  * browser client both import, so nothing any of its modules reaches may be
- * server-only: a Node builtin makes the module unloadable in the browser, the
- * environment-schema loader (`env-schema`, and the `dotenv` behind it) reads the
- * server's environment, and a module under src/jobs is the server's own
- * machinery -- `intentArgv` there does import `node:url`. This walk is what keeps
- * those imports from creeping across the boundary.
+ * server-only. The walk refuses a Node builtin (`node:`-prefixed or not), the
+ * environment-schema loader (`env-schema`, and the `dotenv` behind it) and any
+ * module under src/jobs.
  *
- * The walk resolves what the app's own specifiers can reach: every path alias
- * apps/web/tsconfig.json declares, and relative paths. A bare package specifier
- * is left alone -- this asserts nothing about a dependency's own graph, which the
- * bundler resolves and which no source edit here changes.
+ * It parses each module's syntax tree for specifiers, and resolves the app's own
+ * path aliases (apps/web/tsconfig.json) and relative paths with the TypeScript
+ * resolver. A bare package specifier is left alone: a dependency's own graph is
+ * not asserted.
  *
- * Three ways the walk could pass while seeing nothing decide its shape.
- *
- * It reads specifiers off the parsed syntax tree rather than out of the text,
- * because a side-effect `import "node:fs";` and an `await import("node:fs")`
- * name no binding and so match no `from "..."` scan.
- *
- * A path under the app that resolves to no file fails the run by name rather
- * than counting as a bare package, because counting it that way drops its whole
- * subtree from the walk and leaves every claim below it unmade.
- *
- * And every specifier is placed by the TypeScript compiler's own resolver,
- * `ts.resolveModuleName` under apps/web/tsconfig.json's merged options, so each
- * alias the project declares resolves the way the project resolves it -- the
- * `@*` -> `./src/*` catch-all included, under which `@/jobContract/intentSchemas` and
- * `@theme` name app sources -- and a specifier the resolver places in
- * node_modules is the bare package it leaves alone. A re-implementation of the
- * `paths` matching would answer for its own rules instead, walking neither
- * subtree behind an alias it got wrong while still reporting green.
- *
- * A builtin is any specifier Node resolves as one -- `node:`-prefixed or not --
- * since `import "fs"` loads the same module and is as unloadable in a browser.
- * It is answered ahead of the resolver, which places a builtin on an
- * `@types/node` declaration or nowhere at all depending on what is installed
- * beside the tree being walked.
+ * Run it with `npx vitest run apps/web/test/unit/jobContractBrowserSafe.test.ts`.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));

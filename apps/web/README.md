@@ -28,18 +28,18 @@ An invitation created on this server carries `localhost` as its address, so it o
 the list is registered in `vite.config.ts` (`srcAliases`); `tsconfig.json`
 resolves them through its `@*` catch-all.
 
-| Path             | Alias         | What it holds                                                                       |
-| ---------------- | ------------- | ----------------------------------------------------------------------------------- |
-| `src/exchange/`  | `@exchange`   | The one-off exchange: the invite, accept, direct and verify screens and their models |
-| `src/recurring/` | `@recurring`  | The recurring-exchange manager: the saved list, the managed run surface, schedules   |
-| `src/console/`   | `@console`    | What only the console build renders: the mount file pickers, SFTP authoring, the server-job settings cards |
-| `src/psi/`       | `@psi`        | The protocol and run models, React-free, with a subdirectory per feature below      |
-| `src/components/`| `@components` | React pieces more than one product renders                                          |
+| Path               | Alias          | What it holds                                                                                                                              |
+| ------------------ | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/exchange/`    | `@exchange`    | The one-off exchange: the invite, accept, direct and verify screens and their models                                                       |
+| `src/recurring/`   | `@recurring`   | The recurring-exchange manager: the saved list, the managed run surface, schedules                                                         |
+| `src/console/`     | `@console`     | What only the console build renders: the mount file pickers, SFTP authoring, the server-job settings cards                                 |
+| `src/psi/`         | `@psi`         | The protocol and run models, React-free, with a subdirectory per feature below                                                             |
+| `src/components/`  | `@components`  | React pieces more than one product renders                                                                                                 |
 | `src/jobContract/` | `@jobContract` | The job API's contract the console server and its client share: the intent schemas, artifact names and refusal tokens, with no Node import |
-| `src/jobs/`      | `@jobs`       | The console server's job machinery, behind the API routes                           |
-| `src/utils/`     | `@utils`      | Configuration and generic helpers                                                    |
-| `src/styles/`    | `@styles`     | The design tokens and the stylesheet the screens share                              |
-| `src/routes/`    |               | Route entries, which compose the products                                            |
+| `src/jobs/`        | `@jobs`        | The console server's job machinery, behind the API routes                                                                                  |
+| `src/utils/`       | `@utils`       | Configuration and generic helpers                                                                                                          |
+| `src/styles/`      | `@styles`      | The design tokens and the stylesheet the screens share                                                                                     |
+| `src/routes/`      |                | Route entries, which compose the products                                                                                                  |
 
 `src/psi/` keeps the exchange itself at its top level and gives each feature
 beside it a subdirectory: `managed/` (the recurring-exchange records, store,
@@ -50,9 +50,9 @@ workers with their controllers).
 
 The direction runs one way: `src/components`, `src/jobContract`, `src/jobs`,
 `src/psi` and `src/utils` sit below the three product directories and must not
-import from them, which is what keeps the headless scheduled runner -- it enters through
-`src/psi` -- out of the screens' graph, and a route handler's server-side graph
-out of it too. Three rules in `eslint.config.js` enforce it:
+import from them, which is what keeps the headless scheduled runner -- it enters
+through `src/psi` -- out of the screens' graph, and a route handler's server-side
+graph out of it too. Three rules in `eslint.config.js` enforce it:
 `no-restricted-imports` groups for static specifiers, a `no-restricted-syntax`
 selector over every string-literal specifier with dynamic imports included, and
 a third holding a dynamic import below the products to a plain string literal,

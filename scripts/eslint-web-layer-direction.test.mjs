@@ -12,8 +12,8 @@ import {
 
 // Coverage of the web app's layer-direction ban (productDirectorySpecifierBan and
 // productDirectoryBans in apps/web/eslint.config.js): src/components,
-// src/jobContract, src/jobs, src/psi and src/utils sit below the three product directories and may not
-// import from them, plus the dynamic-import shape the ban depends on being able
+// src/jobContract, src/jobs, src/psi and src/utils sit below the three product
+// directories and may not import from them, plus the dynamic-import shape the ban depends on being able
 // to read (dynamicImportLiteralBan, below the products only). A
 // specifier pattern that stops matching fails silently -- it keeps reporting zero
 // problems, which is indistinguishable from clean source -- and the ban is folded
