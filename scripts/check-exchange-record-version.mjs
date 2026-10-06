@@ -1,97 +1,37 @@
 #!/usr/bin/env node
-// The two obligations EXCHANGE_RECORD_VERSION holds, run by
-// static_checks.yaml on every PR. Both read the same literal out of
-// packages/core/src/records/exchangeRecord.ts, and both fall due long after the
-// sentence stating them was written, which is the shape that rots: nothing
-// fails when they are forgotten. They are one check so that one literal edit
-// gets one verdict rather than two failures to be read together.
+// The two obligations on EXCHANGE_RECORD_VERSION: `npm run
+// check:exchange-record-version`, run by static_checks.yaml on every PR. Reads
+// the literal out of packages/core/src/records/exchangeRecord.ts (not the built
+// package: this runs before any build), the recovery sources
+// RECOVERY_ENTRY_POINTS names, and the release marker apps/cli/package.json's
+// version, through lib/releaseManifest.mjs.
 //
-// The literal is read out of the source rather than imported from the built
-// package because this runs before any build, and a check that silently skipped
-// on a missing dist/ would be inert exactly when it is needed.
+// Rule 1, the bump. A move invalidates every managed accounting of disclosures
+// at rest in a browser (docs/spec/MANAGED_EXCHANGE_RECORD.md), and its recovery
+// has been driven against RECORD_VERSION_PIN alone. So a literal off the pin
+// fails, naming the recovery obligations to discharge before recording the new
+// value: re-drive the envelope/entries split
+// (apps/web/test/unit/psi/disclosureAccounting.test.ts), re-check both recovery
+// arms are reachable in order
+// (apps/web/test/browser/managedExchangeDetail.test.ts), restate what the bump
+// does to a stored accounting in the spec and docs/MANAGED_EXCHANGE.md if it
+// changed, then set RECORD_VERSION_PIN. Each RECOVERY_ENTRY_POINTS function no
+// longer exported also fails.
 //
-// RULE 1, THE BUMP. A managed web exchange keeps an accounting of disclosures:
-// one stored value per exchange, holding its runs' exchange records verbatim,
-// and the source an operator draws a HIPAA 164.528 accounting or a FERPA 99.32
-// disclosure record from (docs/spec/MANAGED_EXCHANGE_RECORD.md, "The accounting
-// of disclosures"). Every entry was admissible under the record format current
-// when it was written, and the reader rejects an unrecognized version rather
-// than migrating it -- so moving EXCHANGE_RECORD_VERSION invalidates, on every
-// device holding one, an accounting nothing else holds a copy of. The read
-// refuses the whole value, and so does the APPEND, which re-reads the accounting
-// inside its own transaction: a still-scheduled exchange goes on disclosing and
-// files nothing, unattended, with only a completion-screen notice nobody is
-// there to see.
+// Rule 2, the reset. First publication, a marker above PRE_PUBLICATION_RELEASE,
+// ships the counter at RESET_RECORD_VERSION. Before it, the literal at that
+// value fails; from it, the check fails until the literal is at that value and
+// RESET_TAKEN_AT_RELEASE records the release that took the reset, which retires
+// the rule. A recorded release that is not published or is ahead of the marker
+// fails. The steps are docs/RELEASES.md, "Reset the exchange-record format at
+// first publication".
 //
-// The recovery for that is built (the stored-form export and the
-// accounting-scoped reset, offered in that order from the unreadable state), but
-// it rests on an assumption only the CURRENT format has been driven against:
-// that a move invalidates the entries and leaves the accounting envelope
-// readable, so the entries come back whole. An assumption about a format that
-// does not exist yet cannot be tested ahead of the bump. So the literal is
-// pinned to RECORD_VERSION_PIN below, and a move fails with a message naming
-// what to re-take before the new value is recorded. Beside it, the entry points
-// the recovery is built on must be declared: a tree that lost that path would
-// pass the pin while deferring to nothing.
-//
-// RULE 2, THE RESET. EXCHANGE_RECORD_VERSION is an internal development counter.
-// It has cycled freely -- from the format's first v1 under the earlier
-// product name and on up -- because
-// no published artifact contains any of its literals: packages/core/src/records/exchangeRecord.ts
-// does not exist at v0.1.0, the only release this project has tagged. First
-// publication ships the counter reset to alcove-exchange-record/v1, and the
-// reset is taken AT that release rather than earlier: re-using a
-// previously-cycled value mid-development would let a development artifact
-// written under the OLD v1 parse as the current version and fail on its field
-// set, instead of taking the clean version refusal the reader is built to give.
-//
-// The release marker deciding when the reset is due is apps/cli/package.json's
-// version, read through lib/releaseManifest.mjs -- the same marker and the same
-// publication floor check-protocol-version-bump.mjs arms on, so "first
-// publication" has one definition rather than two. It is read from the tree
-// rather than from a git tag because the checkout the gate runs in has no tags:
-// static_checks.yaml pins neither `fetch-depth` nor `fetch-tags` on its
-// checkout, and a marker absent from the checkout would leave this check
-// silently inert forever.
-//
-// Both rules record their own discharge here -- RECORD_VERSION_PIN for the bump,
-// RESET_TAKEN_AT_RELEASE for the reset -- rather than in a ledger beside this
-// file, so that recording one is an edit to the check itself: the diff a
-// reviewer sees, and the moment the decision is taken.
-//
-// What this check cannot see:
-//   - Whether the recovery still WORKS. It reads declarations, not behaviour. The
-//     behaviour is held by apps/web/test/unit/psi/disclosureAccounting.test.ts (the
-//     envelope-parses/entries-reject split, driven against the real parsers),
-//     apps/web/test/browser/managedExchangeStore.test.ts (the read's
-//     classification and the reset against real IndexedDB), and
-//     apps/web/test/browser/managedExchangeDetail.test.ts (both arms reachable
-//     from the unreadable state, in order).
-//   - The artifact side of the reset. A development artifact already at rest --
-//     a browser-stored accounting of disclosures, a record file on an operator's
-//     disk -- is outside this tree, and a leftover entry numbered above the
-//     reset value is worse than unreadable: the managed accounting's direction
-//     split orders entry literals ordinally, so it classifies as stale-page,
-//     whose remedy is a reload that cannot help and which withholds the
-//     export-then-reset arms (docs/spec/MANAGED_EXCHANGE_RECORD.md, "What an
-//     exchange-record version bump does to a stored accounting"). That
-//     confirm-or-wipe obligation is held by the Release Checklist step this
-//     check's failures name.
-//   - Whether the record vectors were regenerated. That is held by `npm run
-//     check:vectors`, which fails on its own once the literal moves.
-//   - Whether a recorded discharge -- either one -- was recorded after the
-//     decision was taken or instead of taking it. Moving a constant is a
-//     one-line edit this check cannot tell from a correct one -- the same limit
-//     the pull-request checklist's security-review sha has -- so it is a
-//     reviewer's call.
-//   - The CLI's record files. The CLI writes a standalone record file per run and
-//     accumulates no accounting store, so it holds nothing a bump could strand: a
-//     version its build does not recognize is refused at the point of reading the
-//     file, with the file still in the operator's hands. The recovery obligation
-//     rule 1 defers is the web accounting's alone.
-//   - A version literal that is not a literal. It reads the `export const`
-//     initializer out of the source and fails rather than guessing when that
-//     line does not read as a quoted string.
+// Both discharges are recorded in this file, so recording one is an edit a
+// reviewer sees. `--root <tree>` reads another tree. Exit 0 when the tree meets
+// both rules; 1 on a violation or an input it cannot read (a
+// marker that is not a release version, a literal that is not a quoted string);
+// 2 on `--root` naming no tree. Rationale and what the check cannot see:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";

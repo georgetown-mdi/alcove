@@ -1,81 +1,25 @@
 #!/usr/bin/env node
-// Comment history-narration guard, run by static_checks.yaml on every pull
-// request.
+// Comment history-narration guard: `npm run check:comment-narration`, run by
+// static_checks.yaml on every pull request. Enforces the source-comment half
+// of CONTRIBUTING.md's Documentation rule: write the target state, not a
+// narration of what changed.
 //
-// CONTRIBUTING.md's Documentation section states the rule in prose: write the
-// target state, not a narration of what changed -- no "now", "previously" or
-// "no longer" -- because the reader cannot see the diff, and change history
-// belongs in the commit message. It holds in the documentation tiers and in
-// source comments alike. A narrating comment goes stale the moment the next
-// change lands, and nothing fails when it does: a sentence about what a function
-// returns "now" survives three rewrites of that function and then tells the next
-// reader something false.
+// Fails when a comment line the working tree adds or modifies against the base
+// branch, untracked files included, matches one of NARRATION_TELLS. Tells are
+// phrases binding a temporal word to a change verb or noun, not the bare words
+// CONTRIBUTING.md names. Reads files in SCANNED_EXTENSIONS through a TypeScript
+// parse, every token's trivia included, joining adjacent comment lines into one
+// block. A comment already in the tree is not read until its block is touched.
+// The base is ALCOVE_NARRATION_BASE (static_checks.yaml hands in the pull
+// request's base sha), else the symbolic refs baseCandidates names; no network
+// is reached, and a base the checkout cannot resolve fails rather than reading
+// an empty range.
 //
-// This is the source-comment half of that rule as a check. It reads only the
-// comment lines a change ADDS or MODIFIES, so a comment already in the tree is
-// out of scope and drains when someone edits the block it sits in. No
-// repository-wide sweep stands behind it, and none is implied by it.
-//
-// THE THREE PARTS
-//
-//   A. THE RANGE. What the working tree holds that the base branch does not: a
-//      merge base against the base branch, then a zero-context diff from there
-//      to the working tree, plus the untracked files. Uncommitted work is in
-//      scope because the rule is a pre-commit sweep -- a contributor running
-//      `npm run check:all` before committing is the run this is written for. The
-//      base comes from baseCandidates below -- in CI the pull request event's
-//      own base sha, handed in by static_checks.yaml. Nothing here reaches the
-//      network, so the base has to be in the checkout already.
-//
-//   B. THE COMMENT LINES. Comments are read out of the TypeScript parse rather
-//      than matched out of the raw text, so a `//` inside a string or a regular
-//      expression is not a comment and a comment inside a template literal is.
-//      The parse is walked down to its TOKENS and every one's trivia is read, so
-//      a comment sharing a line with the code before it -- after a comma, a
-//      brace or an operator -- is read like a comment on a line of its own.
-//      Adjacent comment lines are joined into one block before matching, since a
-//      phrase written across a line break is one phrase to a reader and two
-//      lines to a scan. The override is scoped tighter than the block: to the
-//      one `//` line or the one block comment it is written in.
-//
-//   C. THE TELLS. NARRATION_TELLS below, each a phrase whose ordinary reading is
-//      a statement about how this repository changed. They are phrases rather
-//      than the three words CONTRIBUTING.md names, which is the design decision
-//      this check rests on: measured over the 117,042 comment lines of the tree
-//      it was written against, bare "now" appears on 329, "no longer" on 188 and
-//      "previously" on 11, and nearly every one of those is a statement about
-//      run time -- `Date.now()`, a path that no longer exists, a previously
-//      captured error. A check on the bare words would report a few hundred
-//      correct lines, which is a check nobody keeps green. Each tell below binds
-//      the temporal word to a change verb or a change noun instead. The
-//      measurement, and the false-positive rate over a sample of merged pull
-//      requests, are in docs/notes/comment-history-narration-check.md.
-//
-// WHAT THIS CHECK DOES NOT COVER
-//
-//   - Narration written with none of the tells. "The parser accepts a bare
-//     number now" is narration to a reviewer and matches nothing here. The tells
-//     are the phrases that measured at an acceptable false-positive rate, not a
-//     model of the English of change; the reviewer still reads the comment.
-//   - Documentation. CONTRIBUTING.md's rule holds in `docs/` too, and none of it
-//     is read here: Markdown has no comment syntax to scope a match to, so the
-//     same phrases over a document would report its legitimate history sections.
-//     The Markdown half stays with review.
-//   - Any file outside SCANNED_EXTENSIONS. A YAML, shell or Dockerfile comment
-//     narrating history is unreported, and so is a `.jsx` one -- the parse
-//     selects JSX by the `.tsx` name, and this repository writes JSX there.
-//   - A comment already in the tree. That is the scope decision above rather
-//     than a gap: an untouched block is never read, while a block that IS
-//     touched is read whole, so editing one line of a narrating comment reports
-//     the comment.
-//   - Whether the narration is TRUE. It reports the shape of the sentence. A
-//     comment about what an external tool changed between its own versions is
-//     the legitimate case it cannot tell apart, and takes the override.
-//   - A path git prints quoted. `core.quotePath` has git C-escape a non-ASCII
-//     path in the diff header, and that spelling names no file on disk, so the
-//     file is skipped rather than read.
-//   - A base branch it cannot find. It fails rather than passing an empty range:
-//     a check that silently reads nothing is worse than no check.
+// Exit 0 clean, 1 on a finding or no base. A comment about something other than
+// this repository's history takes `allow-history-narration -- <why>`, which
+// exempts the one `//` line or block comment it is written in. The
+// measurement, false-positive rate and limits:
+// docs/notes/comment-history-narration-check.md.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";

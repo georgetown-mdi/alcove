@@ -8,8 +8,8 @@
 // Alpine native build). So the set only grows. CHECKS below is that set, a line
 // per check, and the job is a single step invoking this runner -- which is also
 // the command a contributor runs before pushing, rather than meeting a check
-// when CI reddens. Each check's reasoning stays in its own script header; the
-// line here says what the check holds, not why.
+// when CI reddens. Each check's reasoning is reached from its own script
+// header; the line here says what the check holds, not why.
 //
 // Serial, and it does not stop at the first failure. Serial because two of the
 // checks regenerate a file in the working tree and restore it (check:routetree
