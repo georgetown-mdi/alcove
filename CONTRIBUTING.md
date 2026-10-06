@@ -135,13 +135,13 @@ not add one. Rationale and what the report covers: [docs/TESTING.md](docs/TESTIN
 - **Windows paths**: support wherever a user can supply a local path. Normalize backslashes on ingestion; use `fileURLToPath` for `file://` URLs.
 - **Plain language**: use the plainest accurate word. Do not coin a metaphor where a domain word exists, and do not promote an internal name into text a user reads. A user-visible string states what happened and what to do, and nothing else -- no justification of the design, no reassurance the reader cannot act on, no refutation of an objection they did not raise. A comment inside code states a constraint, not an argument, and stays under roughly six lines -- the ceiling on the multi-line blocks the **Comments** bullet above permits; when the reasoning is longer than that, it is a design record and belongs in `docs/notes/`. A file header that `CLAUDE.md` or this document cites as the documentation of a hook, check script, or module is bounded by what it documents rather than by that length, and it still states constraints rather than arguing for them. The negative wordlist below is the list to check a rewrite against; it is a prompt to reread a sentence, not a substitution table, and no CI check enforces it -- a word-list check would fire on `mintExchangeFile` and `honest-but-curious` and teach contributors to route around it.
 
-  Prefer the right-hand word. Judge each in context; none is a safe blind substitution.
+  Prefer the right-hand word. Judge each in context; none is a safe blind substitution. An entry reading "rewrite the sentence" offers no replacement: remove the word by rewriting the sentence around what it means, never by swapping in another word, since the swapped-in word becomes the next overused one.
 
-      carries | carry | carried      -> has / holds / contains / includes / states
+      carries | carry | carried      -> has / contains / includes / states
           "sends" only where the subject is a party or a channel, never a message,
           list, or field. In a MUST, pick the verb that keeps what the sentence
-          requires: a requirement about what a list or field holds takes "contains".
-      honest | honestly              -> accurate / correct / does not overstate
+          requires: a requirement on the contents of a list or field takes "contains".
+      honest | honestly              -> correct / does not overstate
       load-bearing                   -> required / critical
           "required" where a rule or check demands it, "critical" where losing it
           breaks a behavior the sentence names.
@@ -181,6 +181,16 @@ not add one. Rationale and what the report covers: [docs/TESTING.md](docs/TESTIN
           "commitment" for the recorded declaration, "enforcement" for the runtime
           check that aborts on a mismatch.
       warn-not-enforce               -> advisory (it warns and does not block)
+      seat (a role, screen or app)   -> rewrite the sentence
+      rides | rides on               -> rewrite the sentence
+      stands (a rule or value)       -> rewrite the sentence
+      earns | earns its place        -> rewrite the sentence
+      owes | owed                    -> rewrite the sentence
+      holds (a value or meaning)     -> rewrite the sentence
+      rotted | rots                  -> rewrite the sentence
+      accurate (as filler)           -> rewrite the sentence
+      ceremony                       -> rewrite the sentence
+      sealed                         -> rewrite the sentence
 
   These words are grounded in this repository and are NOT on the list: gate, mint, fan-out, round, ledger, canonical, attest, invariant, in flight, pin, drift, reconcile, sweep, harden, posture, hygiene, and the noun surface (attack surface, consent surface, `ConsentSurfaceName`). Neither are the terms of art -- honest-but-curious, semi-honest, honest party, the PSI round and round-trip, Promise settlement -- nor any identifier, filename, type name, fixture, or schema key.
 
