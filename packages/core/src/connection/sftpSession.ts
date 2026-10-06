@@ -113,10 +113,10 @@ export class SftpSession {
   // orchestrator to advertise this party's observed fingerprint in the
   // authenticated terms exchange for cross-party reconciliation. It
   // stays `undefined` on every path that observes no host key -- a file-drop
-  // mount, the browser/proxy SFTP path (neither runs ssh2's hostVerifier), and a
-  // refused connection (no-pin fail-closed or a mismatch) that never establishes
-  // a session -- so a party with nothing to advertise reconciles to no
-  // divergence. Identity/connection-scoped like handshakeRole; not reset per
+  // mount (which runs no ssh2 hostVerifier) and a refused connection (no-pin
+  // fail-closed or a mismatch) that never establishes a session -- so a party
+  // with nothing to advertise reconciles to no divergence.
+  // Scoped to the identity and connection like handshakeRole; not reset per
   // session.
   observedHostKey: PresentedHostKey | undefined;
 
@@ -284,8 +284,8 @@ export class SftpSession {
    * a handle exposing the human-readable failure it captures. Installed AFTER
    * providerOptions (which the allowlist already strips of hostVerifier/hostHash)
    * so a providerOptions entry can never win even if the allowlist were loosened.
-   * Applies to the CLI sftp channel only -- the browser/proxy SFTP path and
-   * filedrop do not run ssh2's hostVerifier.
+   * Applies to the CLI sftp channel only -- filedrop does not run ssh2's
+   * hostVerifier.
    *
    * The returned `refusal()` captures the failure from inside the async
    * hostVerifier callback so the caller's connect catch can re-throw with the

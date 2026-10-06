@@ -94,7 +94,7 @@ export function resolveAtSignRefs(obj: unknown): unknown {
  * those documented "`@`-file recommended" in docs/EXCHANGE_REFERENCE.md, all of which
  * live under `connection`: the SFTP `server.password`, `server.privateKey`, and
  * `server.privateKeyPassphrase`, the HTTP-auth `bearer` / `password` on the
- * `server.provision`, `proxy`, and `iceProvision` endpoints, each WebRTC
+ * `server.provision` and `iceProvision` endpoints, each WebRTC
  * `turn[].credential`, and the opaque `providerOptions` map. Every other field
  * is left verbatim, so a free-text value with a literal leading `@` (`linkageTerms.identity`,
  * `retentionDisposition`, ...) passes through unread rather than exfiltrating
@@ -138,7 +138,6 @@ function resolveConnectionAtSignRefs(
         resolved.server.hostKeyFingerprint,
       );
       resolveHttpAuthAtSignRefs(resolved.server.provision?.auth);
-      resolveHttpAuthAtSignRefs(resolved.proxy?.auth);
       resolveProviderOptionsAtSignRefs(resolved);
       break;
     case "webrtc":

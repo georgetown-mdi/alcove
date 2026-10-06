@@ -809,7 +809,6 @@ describe("a setting inside a block the composition writes", () => {
         { provision: { host: "wake.partner.example", port: 8080 } },
       ],
       ["connection.provider_options", { provider_options: {} }],
-      ["connection.proxy", { proxy: { host: "proxy.partner.example" } }],
     ];
 
   test.each(CONNECTION_SETTINGS)("%s refuses by name", (field, stated) => {
@@ -832,9 +831,12 @@ describe("a setting inside a block the composition writes", () => {
     const connection = document.connection as Record<string, unknown>;
     document.connection = {
       ...connection,
-      proxy: { host: "proxy.partner.example", port: 8080 },
+      server: {
+        ...(connection.server as object),
+        provision: { host: "wake.partner.example", port: 8080 },
+      },
     };
-    expect(refusal(document)).not.toContain("proxy.partner.example");
+    expect(refusal(document)).not.toContain("wake.partner.example");
   });
 
   test("a setting a composition writes key by key is adopted, not refused", () => {

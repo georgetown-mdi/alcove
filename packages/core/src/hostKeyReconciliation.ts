@@ -20,9 +20,8 @@ const fittedObservedValue = (value: string): string =>
  * advertised value.
  *
  * Returns `undefined` when either side observed no host key (a file-drop
- * mount, the browser/proxy SFTP path, or an unauthenticated exchange
- * advertises nothing, so a one-sided absence is not a divergence) or when
- * both fingerprints are equal. Otherwise returns a warning naming both
+ * mount or an unauthenticated exchange advertises nothing, so a one-sided
+ * absence is not a divergence) or when both fingerprints are equal. Otherwise returns a warning naming both
  * observed values and the two honest causes (a server rekey, or a one-sided
  * interception), noting the benign multiple-host-key case when the key
  * types also differ. The check never aborts the exchange -- the threat

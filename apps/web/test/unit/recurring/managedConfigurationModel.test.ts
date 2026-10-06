@@ -248,21 +248,20 @@ describe("the SFTP connection settings held without an editor", () => {
 
 describe("the settings naming a file by @path", () => {
   test("are warned about by name, and the path is not echoed", () => {
-    const record = sftpConfiguration(
-      { password: "@/secrets/sftp-password", hostKeyFingerprint: PIN },
-      {
-        proxy: {
-          host: "proxy.example.org",
-          auth: { bearer: "@/secrets/proxy.bearer" },
-        },
+    const record = sftpConfiguration({
+      password: "@/secrets/sftp-password",
+      hostKeyFingerprint: PIN,
+      provision: {
+        host: "wake.example.org",
+        auth: { bearer: "@/secrets/wake.bearer" },
       },
-    );
+    });
     const notice = fileReferenceNotice(record);
     const exportNote = fileReferenceExportNote(record);
 
     for (const text of [notice, exportNote]) {
       expect(text).toContain(
-        "connection.proxy.auth.bearer, connection.server.password",
+        "connection.server.password, connection.server.provision.auth.bearer",
       );
       expect(text).not.toContain("@/secrets");
     }

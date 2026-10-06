@@ -11,9 +11,9 @@ import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
 // --- HTTP service authentication ---------------------------------------------
 
 /**
- * Authentication credentials for an HTTP service (`server.provision`,
- * `iceProvision`, or `proxy`). Exactly one method may be specified; `username`
- * and `password` must appear together.
+ * Authentication credentials for an HTTP service (`server.provision` or
+ * `iceProvision`). Exactly one method may be specified; `username` and
+ * `password` must appear together.
  */
 export interface HttpAuth {
   /** Bearer token; @-file recommended. */
@@ -734,28 +734,6 @@ const IceProvisionSchema: z.ZodType<IceProvision> = z.object({
   auth: HttpAuthSchema.optional(),
 });
 
-// --- SFTP proxy --------------------------------------------------------------
-
-/**
- * A WebSocket-to-TCP proxy tunneling the SFTP connection through HTTPS.
- * Required for browser clients; CLI clients connect natively and omit this.
- * The two parties' configs may therefore differ here even when connecting to
- * the same server.
- */
-interface SFTPProxy {
-  host: string;
-  port?: number;
-  path?: string;
-  auth?: HttpAuth;
-}
-
-const SFTPProxySchema: z.ZodType<SFTPProxy> = z.object({
-  host: z.string().min(1),
-  port: z.int().min(0).max(65535).optional(),
-  path: z.string().optional(),
-  auth: HttpAuthSchema.optional(),
-});
-
 // --- Options -----------------------------------------------------------------
 
 /**
@@ -1366,11 +1344,6 @@ export interface WebRTCConnectionConfig {
 export interface SFTPConnectionConfig {
   channel: "sftp";
   server: SFTPServer;
-  /**
-   * WebSocket-to-TCP proxy for browser clients. CLI clients omit this and
-   * connect natively.
-   */
-  proxy?: SFTPProxy;
   options?: FileSyncOptions;
   /**
    * Opaque key-value map passed verbatim to the underlying transport library.
@@ -1507,7 +1480,6 @@ const WebRTCConnectionConfigSchema = z.strictObject(
 const SFTPConnectionConfigSchema = z.object({
   channel: z.literal("sftp"),
   server: SFTPServerSchema,
-  proxy: SFTPProxySchema.optional(),
   options: FileSyncOptionsSchema.optional(),
   providerOptions: z.record(z.string(), z.unknown()).optional(),
 });
