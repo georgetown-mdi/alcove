@@ -874,18 +874,24 @@ export function AcceptorScreen() {
   // hosted build, the mounted-file reference on the console (whose sweep is a fetch
   // there). Memoized so a standardization edit reuses the provider and
   // only a new file rebuilds it. The console reads no rows -- `acquired.rawRows` is a
-  // throwing getter there -- so this never touches it on that path.
+  // throwing getter there -- so this never touches it on that path. The console
+  // sweeps from "Use this file", before consent, by the live delimiter; once the
+  // file is accepted it sweeps by the committed one, as the run reads the file.
+  const coverageCsvDelimiter =
+    acquired !== undefined ? committedCsvDelimiter : csvDelimiter;
   const coverageInput = useMemo<CoverageInput>(() => {
     if (consoleSource !== undefined)
       return {
         kind: "workFile",
         reference: { name: consoleSource.name },
-        ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+        ...(coverageCsvDelimiter !== undefined
+          ? { csvDelimiter: coverageCsvDelimiter }
+          : {}),
       };
     if (!consoleBuild && acquired !== undefined)
       return { kind: "rows", rows: acquired.rawRows };
     return EMPTY_COVERAGE_INPUT;
-  }, [acquired, consoleSource, consoleBuild, csvDelimiter]);
+  }, [acquired, consoleSource, consoleBuild, coverageCsvDelimiter]);
 
   // The per-column preview samples the Cleaning tab reads: computed from the browser
   // rows on the hosted build, read from the server-side profile on the console. Kept

@@ -1377,3 +1377,53 @@ describe("console acceptor's own deduplicate", () => {
     expect(intent.expectedPartnerDeduplicate).toBe(false);
   });
 });
+
+describe("console acceptor's own delimiter", () => {
+  test("the coverage sweep keeps the delimiter the file was accepted with", async () => {
+    const api = stubServerJobAccept();
+    window.location.hash = await encodeToken(FILEDROP_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await page
+      .getByRole("button", { name: "Continue: consent & your file" })
+      .click();
+    await userEvent.fill(page.getByLabelText("Your name"), "Sam Alvarez");
+    await page.getByRole("checkbox").click();
+    const delimiterControl = page.getByRole("combobox", {
+      name: "How your file separates fields",
+    });
+    await userEvent.selectOptions(delimiterControl, "\t");
+    await page.getByRole("button", { name: "Select cohort.csv" }).click();
+    await page.getByRole("button", { name: "Use this file" }).click();
+    await page.getByRole("button", { name: "Accept and continue" }).click();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+    const coverageDelimiters = () =>
+      api.captured
+        .filter((request) => request.url === "/api/jobs/inputs/coverage")
+        .map(
+          (request) =>
+            (JSON.parse(String(request.body)) as { csvDelimiter?: string })
+              .csvDelimiter,
+        );
+    await vi.waitFor(() => expect(coverageDelimiters()).toContain("\t"));
+
+    // Back at consent, a choice the rule refuses leaves the accepted file in
+    // place, so the sweep must go on reading it by tab rather than by comma.
+    window.history.back();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    await userEvent.selectOptions(delimiterControl, "other");
+    window.history.forward();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+    // Past the sweep's 500 ms debounce, so a re-sweep a changed input
+    // started would have been sent.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    expect(coverageDelimiters().every((delimiter) => delimiter === "\t")).toBe(
+      true,
+    );
+  });
+});
