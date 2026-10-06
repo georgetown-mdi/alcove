@@ -32,6 +32,7 @@ import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import {
   git,
   leadingCdDestination,
+  peelCommandPrefix,
   splitSegments,
   tokenize,
 } from "./lib/shell.mjs";
@@ -64,19 +65,7 @@ const VALUE_GLOBALS = new Set([
 // word (after leading env assignments and simple wrappers) so `echo git push ...`
 // is not mistaken for one.
 function gitPushInvocation(tokens) {
-  let i = 0;
-  while (i < tokens.length) {
-    const t = tokens[i];
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(t)) {
-      i++; // leading env assignment: FOO=bar git ...
-      continue;
-    }
-    if (t === "sudo" || t === "command" || t === "env" || t === "nice") {
-      i++;
-      continue;
-    }
-    break;
-  }
+  let i = peelCommandPrefix(tokens).index;
   const cmd = tokens[i];
   if (!cmd) return null;
   if (cmd.replace(/^.*\//, "") !== "git") return null;

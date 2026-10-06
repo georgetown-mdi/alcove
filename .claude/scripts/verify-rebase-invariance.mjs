@@ -2,7 +2,7 @@
 // Rebase-invariance verifier, run by an agent re-attesting a review across a
 // rebase.
 //
-// `.claude/commands/assess-review.md` (Step 4) lets a round-attested head be
+// `.claude/commands/assess-review.md`, Step 4, lets a round-attested head be
 // re-attested with no fresh round when a rebase onto a moved base left the
 // branch's own effective diff unchanged: the same paths, holding the same
 // programs at both ends, once comments are removed and markdown is excluded.
@@ -263,7 +263,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const shape = rebaseShapeError(refs);
     if (shape !== null) {
       process.stderr.write(
-        `error: ${shape} -- this path is for a rebase; take the rules assess-review.md Step 4 states for the shape you have\n`,
+        `error: ${shape} -- this path is for a rebase; take the rules \`.claude/commands/assess-review.md\`, Step 4, states for the shape you have\n`,
       );
       process.exit(2);
     }

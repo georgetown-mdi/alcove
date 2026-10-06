@@ -136,9 +136,10 @@ function prNumbersFromResponse(toolResponse) {
 }
 
 const BODY_RULES =
-  "a prose body summarizing the whole change, under the Commit Messages rules " +
-  "in CONTRIBUTING.md (no subject line, since GitHub takes the subject from the " +
-  "PR title; no markdown, no board ids, no self-attribution)";
+  "a prose body summarizing the whole change, under the rules in " +
+  "`CONTRIBUTING.md`, Commit Messages (no subject line, since GitHub takes " +
+  "the subject from the PR title; no markdown, no board ids, no " +
+  "self-attribution)";
 
 // The script is quoted so that a checkout path holding a space still copies
 // out of the reminder as one argument.

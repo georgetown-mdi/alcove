@@ -3,11 +3,12 @@
 // is longer than the squash-merge subject budget, before it reaches GitHub.
 //
 // Why this exists: Alcove squash-merges, so a pull request's title becomes the
-// commit subject with GitHub's " (#NNNN)" appended, and CONTRIBUTING.md's
-// subject limit counts that suffix. The other reading of that budget comes
-// after the fact -- the PR Checklist workflow fails the open pull request -- so
-// a session reusing a board item's own title pays a red run and a retitle for
-// it. This is the same rule at the moment the title is written.
+// commit subject with GitHub's " (#NNNN)" appended, and the subject limit in
+// `CONTRIBUTING.md`, Commit Messages, counts that suffix. The other reading of
+// that budget comes after the fact -- the PR Checklist workflow fails the open
+// pull request -- so a session reusing a board item's own title pays a red
+// run and a retitle for it. This is the same rule at the moment the title is
+// written.
 //
 // THE BUDGET IS NOT A NUMBER HERE. `subjectBudget` in
 // ../../scripts/lib/squashSubjectBudget.mjs is the one source, so the suffix
@@ -157,7 +158,7 @@ function block(title, prNumber) {
     `Blocked by block-over-budget-pr-title hook: the title is ${title.length} characters ` +
       `and the budget is ${budget}: "${title}".\n` +
       `GitHub squash-merges, so this title becomes the commit subject with "${squashSuffix(prNumber)}" ` +
-      `appended, and CONTRIBUTING.md's Commit Messages limit of ${SUBJECT_LIMIT} counts that suffix.` +
+      `appended, and the limit in \`CONTRIBUTING.md\`, Commit Messages, of ${SUBJECT_LIMIT} counts that suffix.` +
       `${estimate}\n` +
       `Shorten the title to ${budget} characters or fewer; a board item's own title is usually longer ` +
       "than that, so write a shorter one for the pull request.\n",

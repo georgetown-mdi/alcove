@@ -480,7 +480,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const index = workflowJobIndex(root);
   if (index.literal.size === 0 && index.templated.length === 0) {
     console.error(
-      `${WORKFLOW_DIR}: no jobs matched in any workflow -- the extraction rotted; fix scripts/check-merge-gate-identities.mjs`,
+      `${WORKFLOW_DIR}: no job was found in any workflow. If you changed how workflows declare their jobs, update the reading in scripts/check-merge-gate-identities.mjs to match.`,
     );
     process.exit(1);
   }

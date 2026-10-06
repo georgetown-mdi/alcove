@@ -33,7 +33,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { registeredHooks } from "./check-enforcement-claims.mjs";
+import { registeredHooks } from "./lib/hookClaims.mjs";
 import { obligationRoot } from "./lib/deferredObligation.mjs";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

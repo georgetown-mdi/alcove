@@ -105,6 +105,17 @@ describe("block-protected-push hook", () => {
     }
   });
 
+  it("reads past prefix words and their flags", () => {
+    for (const command of [
+      "nohup git push origin staging",
+      "env -i git push origin main",
+      "sudo nice -n git push origin staging",
+      "FOO=bar time git push origin main",
+    ]) {
+      expect(verdict(command).status, command).toBe(2);
+    }
+  });
+
   it("strips every quote before reading the destination", () => {
     expect(verdict("git push origin HEAD:'staging'").status).toBe(2);
     expect(verdict('git push "origin" "HEAD:staging"').status).toBe(2);

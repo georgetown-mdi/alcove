@@ -200,6 +200,9 @@ describe("block-primary-checkout-writes hook", () => {
     const { status, stderr } = write(join(dir, "tracked.ts"), own);
     expect(status).toBe(2);
     expect(stderr).toContain("repository content of the main worktree");
+    // The remedy is the same path in the session's own tree, with no `cd`.
+    expect(stderr).toContain(join(realpathSync(own), "tracked.ts"));
+    expect(stderr).not.toMatch(/\bcd </);
   });
 
   it("allows a gitignored path in a sibling worktree", () => {
@@ -251,5 +254,9 @@ describe("block-primary-checkout-writes hook", () => {
     const { stderr } = write(join(dir, "tracked.ts"), dir);
     expect(stderr).toContain(".claude/allow-primary-checkout-writes.local");
     expect(stderr).toContain(".claude/worktrees/");
+    // block-worktree-cd.mjs refuses a leading `cd` into a worktree, so the
+    // refusal scopes commands with `env -C` and `git -C` instead.
+    expect(stderr).toContain("env -C <tree>");
+    expect(stderr).not.toMatch(/\bcd </);
   });
 });

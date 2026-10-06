@@ -121,6 +121,12 @@ export const CHECKS = [
       "CLAUDE.md and the orchestration ruleset share no enforcement claim and no heading, CLAUDE.md points at the ruleset once, and every front door loads it.",
   },
   {
+    script: "check:rule-citations",
+    expiresOn: "2027-06-30",
+    description:
+      "Every `<file>, <section>` citation in CLAUDE.md, CONTRIBUTING.md and .claude/ names a heading the cited instruction file has.",
+  },
+  {
     script: "check:egress-claims",
     expiresOn: "2026-12-31",
     description:

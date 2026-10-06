@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 // Non-executable-delta verifier, run by an agent re-attesting a review.
 //
-// CLAUDE.md lets a pull request head be re-attested without a fresh review round
-// when its diff against the already-reviewed sha changes no executable line --
-// comments and markdown only. The rule requires that property be verified
-// mechanically or not at all, and nothing in CI can catch a false claim:
+// `.claude/commands/assess-review.md`, Step 4, lets a pull request head be
+// re-attested without a fresh review round when its diff against the
+// already-reviewed sha changes no executable line -- comments and markdown
+// only. The rule requires that property be verified mechanically or not at
+// all, and nothing in CI can catch a false claim:
 // `npm run check:pr-checklist` compares the sha on the checklist line against
 // the head and has no view of whether the claimed property holds, so an
 // eyeballed "comment-only" lands an unreviewed head as reviewed.

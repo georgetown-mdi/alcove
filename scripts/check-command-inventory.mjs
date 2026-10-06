@@ -12,15 +12,11 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const PARSER = "apps/cli/src/cliParser.ts";
+import {
+  CLI_PARSER as PARSER,
+  registeredCommands,
+} from "./lib/cliCommands.mjs";
 const DOCS = ["docs/DESIGN.md", "docs/CLI.md"];
-
-/** Extract registered subcommand names from cliParser source (skips `$0`). */
-export function registeredCommands(parserSource) {
-  return [...parserSource.matchAll(/\.command\(\s*"([^"$][^"\s]*)/g)].map(
-    (m) => m[1],
-  );
-}
 
 /** Return `{doc, command}` pairs where a registered command is never mentioned. */
 export function missingMentions(commands, docTexts) {
@@ -42,7 +38,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (commands.length === 0) {
     console.error(
-      `${PARSER}: no .command("...") registrations matched -- the extraction pattern rotted; fix scripts/check-command-inventory.mjs`,
+      `${PARSER}: no .command("...") registration was found. If you changed how the CLI registers its commands, update the pattern in scripts/lib/cliCommands.mjs to read the new form.`,
     );
     process.exit(1);
   }

@@ -25,8 +25,19 @@ function compileScript() {
 
 const script = compileScript();
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
+// Every convening call names the clean checkout it was given; a deliberation
+// takes it from the first round's result instead.
+const BASE = "/tmp/tmp.panelBase";
+const withBase = (args) =>
+  args !== null &&
+  typeof args === "object" &&
+  !Array.isArray(args) &&
+  !Object.hasOwn(args, "deliberate") &&
+  !Object.hasOwn(args, "base")
+    ? { base: BASE, ...args }
+    : args;
 const runner = (deliver) => (args, respond) =>
-  script(deliver(args), respond, parallel);
+  script(deliver(withBase(args)), respond, parallel);
 
 // The harness may deliver the arguments as JSON text rather than as the object
 // the caller passed, so every case below runs under both shapes: a script that
@@ -143,7 +154,7 @@ describe.each(SHAPES)("panel ($shape args)", ({ deliver }) => {
     );
     for (const prompt of asked) {
       expect(prompt).toContain(
-        "Read these first for context: /tmp/panel-base/docs/spec/FILE_SYNC.md, /tmp/panel-base/docs/DESIGN.md",
+        `Read these first for context: ${BASE}/docs/spec/FILE_SYNC.md, ${BASE}/docs/DESIGN.md`,
       );
     }
   });
@@ -280,6 +291,9 @@ describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
       [{ seats: ["architecture", { name: "x" }] }, /both non-empty/],
       [{ seats: ["architecture", { name: " ", lens: "x" }] }, /both non-empty/],
       [{ docs: "docs/DESIGN.md" }, /docs is a list/],
+      [{ base: undefined }, /base is the absolute path/],
+      [{ base: "tmp/panel" }, /base is the absolute path/],
+      [{ base: "/tmp/panel/" }, /base is the absolute path/],
     ];
     for (const [extra, message] of refused) {
       await expect(
@@ -340,7 +354,7 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
     ]);
     for (const { prompt, options } of spawned) {
       expect(prompt).toContain(QUESTION);
-      expect(prompt).toContain("/tmp/panel-base/docs/DESIGN.md");
+      expect(prompt).toContain(`${BASE}/docs/DESIGN.md`);
       for (const seat of ["failure-modes", "design-ux", "pragmatics"]) {
         expect(prompt, options.label).toContain(`position of ${seat}`);
       }
@@ -410,6 +424,11 @@ describe.each(SHAPES)("panel deliberation ($shape args)", ({ deliver }) => {
       [{ deliberate: deliberation }, /exactly as the panel returned it/],
       [{ deliberate: true }, /exactly as the panel returned it/],
       [{ deliberate: first, question: QUESTION }, /deliberate alone/],
+      [{ deliberate: first, base: BASE }, /deliberate alone/],
+      [
+        { deliberate: { ...first, base: undefined } },
+        /exactly as the panel returned it/,
+      ],
       [
         { deliberate: { ...first, positions: first.positions.slice(0, 1) } },
         /at least two first positions/,

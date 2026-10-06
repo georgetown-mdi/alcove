@@ -1,6 +1,6 @@
 ---
 name: panel
-description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no consolidator, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in .claude/orchestration/ruleset.md (measure first; stakes gate); this command only runs a convened panel correctly.
+description: Convene a bounded expert panel on one settle-able design question -- independent schema-forced panelists seated to suit the question, reading a clean staging checkout, one Workflow, no consolidator, and an opt-in single deliberation round. Whether to convene at all, and what its outcome decides, is the deferred-decision rule in `.claude/orchestration/ruleset.md`, Decisions, briefs and reporting (measure first; stakes gate); this command only runs a convened panel correctly.
 ---
 
 You are CONVENING a panel, not sitting on it. You do not answer the question
@@ -49,7 +49,8 @@ Security review line.
 A question that touches screen copy, a user flow, CLI ergonomics, or a consent
 surface also takes a `ux-reviewer` spawn on the code it concerns, besides the
 `design-ux` seat; one that touches a security surface takes `security-reviewer`,
-run under the refutation contract in the ruleset's Review flow; one that
+run under the refutation contract in `.claude/orchestration/ruleset.md`,
+Review flow; one that
 touches both takes both. Their findings go beside the panel's positions to
 whoever decides.
 
@@ -57,14 +58,16 @@ whoever decides.
 
 Panelists read a clean mainline checkout, never your working tree: a candidate
 edit sitting in the tree is a leading answer. Commit any work in progress (the
-clean-tree hook blocks every Workflow call from a dirty tree), then run:
+clean-tree hook blocks every Workflow call from a dirty tree), then make a fresh
+directory with `mktemp -d` and check the mainline out into the path it printed,
+the panel's `<base>`:
 
-    git worktree remove --force /tmp/panel-base 2>/dev/null; rm -rf /tmp/panel-base
-    git worktree add --detach /tmp/panel-base origin/staging
+    git worktree add --detach <base> origin/staging
 
-The first line clears a stale base left by an interrupted run.
+A base is never shared between panels: a fixed name would let a second panel
+remove the first one's checkout while its panelists read it.
 
-`/tmp/panel-base` has no `node_modules`: a question that needs code RUN rather
+The base has no `node_modules`: a question that needs code RUN rather
 than read is out of this command's scope -- measure it yourself first instead.
 
 ## Step 2 -- Run the panel Workflow
@@ -73,14 +76,14 @@ Invoke the Workflow tool with `scriptPath` set to the ABSOLUTE path of
 `.claude/scripts/panel-workflow.mjs` in this repository (`git rev-parse --show-toplevel`
 gives the root) -- the bare relative spelling fails the call with "script file
 not found" -- and `args` set to
-`{"question": "<the question>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`,
+`{"question": "<the question>", "base": "<base>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`,
 leaving `seats` out for the default three. For example,
 `"seats": ["failure-modes", "design-ux", {"name": "accessibility", "lens": "..."}]`.
 
 The script is checked in and passed by path: do not paste its text into the call
 and do not copy it out to edit it -- it spawns one panelist per seat on the tier
 `.claude/scripts/panel-script.test.mjs` pins, the same tier for every seat. It
-returns the first round, `{round: "first", question, docs, seats, positions}`,
+returns the first round, `{round: "first", question, base, docs, seats, positions}`,
 where `positions` holds each panelist that answered as
 `{seat, position, rationale, keyRisk}`; every one was formed before any
 panelist saw another's.
@@ -100,7 +103,7 @@ panelist saw another's.
    invoke the Workflow once more, same `scriptPath`, with `args` set to
    `{"deliberate": <the first round's result, verbatim>}`. Each panelist that
    answered sees its own first answer and the others' and may revise once. The
-   result, `{round: "deliberation", note, question, docs, seats, panelists}`,
+   result, `{round: "deliberation", note, question, base, docs, seats, panelists}`,
    holds each panelist's `first` and `revised` positions side by side
    (`revised` is null where the revision failed). The script refuses anything
    but a first round's result, so a deliberation cannot be deliberated again;
@@ -111,7 +114,7 @@ panelist saw another's.
    from `positions`; its analysis is usually intact in the rejected attempts in
    its transcript -- salvage it. Two or more surviving panelists that all
    agree still converge; otherwise treat the round as split.
-4. Remove the worktree: `git worktree remove /tmp/panel-base --force`.
+4. Remove the worktree: `git worktree remove <base>`.
 
 The deliberation round is a decision taken, opt-in and bounded as above: a
 split panel may be missing a consideration only one panelist

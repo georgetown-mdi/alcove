@@ -2,10 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import {
-  missingMentions,
-  registeredCommands,
-} from "./check-command-inventory.mjs";
+import { missingMentions } from "./check-command-inventory.mjs";
+import { registeredCommands } from "./lib/cliCommands.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");

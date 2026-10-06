@@ -18,8 +18,8 @@ you produce is your final message to the caller.
   (three-dot), never `HEAD` and never a checkout -- your session's checkout is not
   reliably the branch under review.
 - Verify each finding in the code before you report it.
-- Wait on a long command as `CLAUDE.md`'s one-shot wait rule says (Agent
-  conventions, Spawns and reports).
+- Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
+  and reports, says.
 - Stay in your lane: do not flag what lint or format owns (style, formatting), nor
   what security-reviewer owns (confidentiality, key material, adversarial inputs).
 - You are read-only: you inspect, you do not edit.

@@ -34,9 +34,9 @@
 // outer catch around main() -- because a spawn let through on an error is one
 // whose model nothing verified, which is the leak this hook exists to stop.
 
-import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
+import { agentDefinitions } from "./lib/agentDefinitions.mjs";
 import { eventForTools } from "./lib/event.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
@@ -59,34 +59,11 @@ function block(reason) {
 // value is fixed. Throws on any read/parse failure; the bare-spawn caller turns
 // that throw into a fail-closed block.
 function pinnedDefinitions(agentsDir) {
-  const pinned = new Set();
-  for (const entry of readdirSync(agentsDir)) {
-    if (!entry.endsWith(".md")) continue;
-    const text = readFileSync(join(agentsDir, entry), "utf8");
-    const fm = leadingFrontmatter(text);
-    if (!fm) continue;
-    let name = null;
-    let modelPinned = false;
-    for (const line of fm.split("\n")) {
-      const nameMatch = line.match(/^name:\s*(.+?)\s*$/);
-      if (nameMatch) name = nameMatch[1];
-      const modelMatch = line.match(/^model:\s*(.+?)\s*$/);
-      if (modelMatch && TIERS.has(modelMatch[1])) modelPinned = true;
-    }
-    if (name && modelPinned) pinned.add(name);
-  }
-  return pinned;
-}
-
-// Return the body between the leading `---` fence and the next `---`, or null when
-// the file does not open with a frontmatter fence.
-function leadingFrontmatter(text) {
-  const lines = text.split("\n");
-  if (lines[0].trim() !== "---") return null;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") return lines.slice(1, i).join("\n");
-  }
-  return null;
+  return new Set(
+    agentDefinitions(agentsDir)
+      .filter(({ name, model }) => name !== null && TIERS.has(model))
+      .map(({ name }) => name),
+  );
 }
 
 function main() {

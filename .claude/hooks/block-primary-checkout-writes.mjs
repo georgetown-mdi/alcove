@@ -80,14 +80,32 @@ const OVERRIDE_SENTINEL = join(
   "allow-primary-checkout-writes.local",
 );
 
-function blockMainWorktreeWrite(target, mainRoot) {
+// The remedy depends on where the session stands. A session working in a
+// linked worktree is pointed at the same path in its own tree. One in the main
+// worktree is pointed at a branch's tree and told to scope commands with
+// `env -C` or `git -C`, since block-worktree-cd.mjs refuses a leading `cd`
+// into the tree.
+function mainWorktreeRemedy(path, mainRoot, sessionTree) {
+  if (sessionTree !== undefined && sessionTree !== mainRoot) {
+    return (
+      `Did you mean '${join(sessionTree, relative(mainRoot, path))}', in the ` +
+      "worktree this session is working in? "
+    );
+  }
+  return (
+    "Work on a branch belongs in that branch's own worktree -- write to the absolute path " +
+    "under .claude/worktrees/<tree>/ instead, and scope every command to it " +
+    "(`env -C <tree> <command>` or `git -C <tree> ...`). "
+  );
+}
+
+function blockMainWorktreeWrite(target, path, mainRoot, sessionTree) {
   process.stderr.write(
     `Blocked by block-primary-checkout-writes hook: '${target}' is repository content of the ` +
       `main worktree at '${mainRoot}', which no session writes -- only paths git ignores there ` +
       "(scratch/, briefs, round artifacts) are writable, whether the file exists yet or not. " +
-      "Work on a branch belongs in that branch's own worktree -- write to the absolute path " +
-      "under .claude/worktrees/<tree>/ instead, and scope every command to it " +
-      "(`cd <tree> && ...` or `git -C <tree> ...`). A file written here would land on whatever " +
+      mainWorktreeRemedy(path, mainRoot, sessionTree) +
+      "A file written here would land on whatever " +
       "branch the primary checkout holds, off the branch under review, where no review round " +
       "and no pull request will include it. For a deliberate, maintainer-directed edit of this " +
       `checkout, create '${OVERRIDE_SENTINEL}' in it and delete it when you are done.\n`,
@@ -186,7 +204,7 @@ function main() {
   if (isIgnored(owner, path) !== false) process.exit(0);
 
   if (owner === mainRoot) {
-    blockMainWorktreeWrite(target, mainRoot);
+    blockMainWorktreeWrite(target, path, mainRoot, sessionTree);
   } else {
     blockSiblingWorktreeWrite(target, path, owner, sessionTree);
   }

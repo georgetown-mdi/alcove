@@ -25,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { enforcementClaims } from "./check-enforcement-claims.mjs";
+import { enforcementClaims } from "./lib/hookClaims.mjs";
 
 /** The every-spawn ledger. */
 export const CLAUDE_MD = "CLAUDE.md";
@@ -46,7 +46,8 @@ export const FRONT_DOORS = [
 
 /**
  * The hook file names a ledger claims enforcement by, read through the
- * enforcement-claim check's own extraction so the two agree on what a claim is.
+ * extraction check-enforcement-claims.mjs uses, so the two agree on what a
+ * claim is.
  */
 export function claimedHooks(source) {
   return new Set(enforcementClaims(source).map((claim) => claim.hook));

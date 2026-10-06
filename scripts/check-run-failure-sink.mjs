@@ -95,6 +95,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   descendants,
+  exportsFunction,
   parseFile,
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
@@ -321,18 +322,6 @@ export function declaresType(sourceFile, name) {
     (node) =>
       (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) &&
       node.name.text === name,
-  );
-}
-
-/** True when `sourceFile` exports a function named `name`. */
-export function exportsFunction(sourceFile, name) {
-  return descendants(sourceFile).some(
-    (node) =>
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === name &&
-      node.modifiers?.some(
-        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-      ),
   );
 }
 

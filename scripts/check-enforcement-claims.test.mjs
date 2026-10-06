@@ -4,11 +4,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   RULE_LEDGERS,
-  enforcementClaims,
   enforcementViolations,
   hookInventory,
-  registeredHooks,
 } from "./check-enforcement-claims.mjs";
+import { enforcementClaims, registeredHooks } from "./lib/hookClaims.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");

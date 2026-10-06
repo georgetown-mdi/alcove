@@ -110,7 +110,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const { workflowReferences, actionReferences } = treeReferences(root);
   if (workflowReferences.length === 0) {
     console.error(
-      `${WORKFLOW_DIR}: no action references matched in any workflow -- the extraction rotted; fix scripts/lib/workflows.mjs`,
+      `${WORKFLOW_DIR}: no action reference was found in any workflow. If you changed how workflows write \`uses:\` lines, update the reading in scripts/lib/workflows.mjs to match.`,
     );
     process.exit(1);
   }

@@ -156,6 +156,8 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
+import { lineOf } from "./lib/text.mjs";
+
 /** Shipped-source trees the egress claims are made about. */
 export const SCANNED_ROOTS = [
   "apps/web/src",
@@ -348,13 +350,6 @@ export function isJavaScriptFamily(path) {
 }
 
 /** The 1-based line the character at `position` of `source` sits on. */
-function lineOf(source, position) {
-  let line = 1;
-  for (let index = 0; index < position; index += 1) {
-    if (source[index] === "\n") line += 1;
-  }
-  return line;
-}
 
 /**
  * One candidate: the text a matcher reads, assembled from the segments that

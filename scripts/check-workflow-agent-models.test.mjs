@@ -8,9 +8,8 @@ import {
   agentUses,
   modelViolations,
   pinnedModels,
-  sourceFiles,
-  workflowScriptFiles,
 } from "./check-workflow-agent-models.mjs";
+import { sourceFiles, workflowScriptFiles } from "./lib/workflowScripts.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");

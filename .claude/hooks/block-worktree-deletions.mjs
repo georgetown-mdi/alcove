@@ -109,7 +109,12 @@ import { readdirSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
 import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
-import { splitPipelines, splitStages, tokenize } from "./lib/shell.mjs";
+import {
+  peelCommandPrefix,
+  splitPipelines,
+  splitStages,
+  tokenize,
+} from "./lib/shell.mjs";
 import {
   isInside,
   isStrictlyInside,
@@ -215,22 +220,6 @@ function block(reason) {
   process.exit(2);
 }
 
-// Words that stand in front of the real command word without changing which
-// command runs. Each takes only option-shaped arguments of its own, so peeling it
-// needs no knowledge of its grammar -- which is why `timeout`, whose duration
-// stands as a bare positional, is absent by design.
-const COMMAND_PREFIX_WORDS = new Set([
-  "sudo",
-  "command",
-  "env",
-  "nice",
-  "time",
-  "nohup",
-  "setsid",
-  "doas",
-  "stdbuf",
-]);
-
 // The program a word names, as the shell resolves it: outside quotes the shell
 // removes a backslash and keeps the character behind it, so `\rm` and `r\m`
 // both run rm. A backslash that was inside quotes names a different
@@ -255,43 +244,20 @@ const INSPECTED_COMMANDS = new Set([
 // the command it invokes, that command's arguments, and the assignments it runs
 // under; null when the stage invokes nothing.
 function invocation(tokens) {
-  let index = 0;
-  let sawPrefixWord = false;
-  const environment = new Map();
-  while (index < tokens.length) {
-    const token = tokens[index];
-    const assignment = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(token);
-    if (assignment !== null) {
-      environment.set(assignment[1], assignment[2]);
-      index++;
-      continue;
-    }
-    if (COMMAND_PREFIX_WORDS.has(token)) {
-      sawPrefixWord = true;
-      index++;
-      continue;
-    }
-    // A flag belonging to a prefix word (`env -i rm ...`); before any prefix word
-    // a flag means this stage is not a command invocation at all.
-    if (sawPrefixWord && token.startsWith("-")) {
-      index++;
-      // That flag may take a value (`sudo -u NAME`, `nice -n 10`), which is not
-      // the command word. A word this hook reads is taken for the command; any
-      // other word is taken for the value, except the last word on the stage,
-      // which has nothing after it to be the value for.
-      const next = tokens[index];
-      if (
-        next !== undefined &&
-        index + 1 < tokens.length &&
-        !next.startsWith("-") &&
-        !INSPECTED_COMMANDS.has(commandName(next))
-      ) {
-        index++;
-      }
-      continue;
-    }
-    break;
-  }
+  // A prefix word's flag may take a value (`sudo -u NAME`, `nice -n 10`), which
+  // is not the command word. A word this hook reads is taken for the command;
+  // any other word is taken for the value, except the last word on the stage,
+  // which has nothing after it to be the value for.
+  const { assignments, index } = peelCommandPrefix(tokens, {
+    isFlagValue: (next, at) =>
+      at + 1 < tokens.length && !INSPECTED_COMMANDS.has(commandName(next)),
+  });
+  const environment = new Map(
+    assignments.map((assignment) => {
+      const split = assignment.indexOf("=");
+      return [assignment.slice(0, split), assignment.slice(split + 1)];
+    }),
+  );
   const word = tokens[index];
   if (word === undefined) return null;
   return {

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   git,
   leadingCdDestination,
+  peelCommandPrefix,
   splitPipelines,
   splitSegments,
   splitStages,
@@ -93,6 +94,41 @@ describe("splitSegments", () => {
     ]) {
       expect(splitSegments(command)).toEqual(flat(command));
     }
+  });
+});
+
+describe("peelCommandPrefix", () => {
+  const peel = (line, options) => {
+    const tokens = line.split(" ");
+    const { assignments, index } = peelCommandPrefix(tokens, options);
+    return { assignments, command: tokens.slice(index).join(" ") };
+  };
+
+  it("peels assignments, prefix words, and a prefix word's flags", () => {
+    expect(peel("FOO=1 sudo env -i BAR=2 nohup rm -rf x")).toEqual({
+      assignments: ["FOO=1", "BAR=2"],
+      command: "rm -rf x",
+    });
+  });
+
+  it("stops at a flag that no prefix word precedes", () => {
+    expect(peel("-x rm y").command).toBe("-x rm y");
+  });
+
+  it("reads a flag's value as the command unless told otherwise", () => {
+    expect(peel("sudo -u NAME rm y").command).toBe("NAME rm y");
+    expect(
+      peel("sudo -u NAME rm y", { isFlagValue: (token) => token === "NAME" })
+        .command,
+    ).toBe("rm y");
+  });
+
+  it("takes extra prefix words from the caller", () => {
+    expect(peel("export FOO=1").command).toBe("export FOO=1");
+    expect(peel("export FOO=1", { prefixWords: new Set(["export"]) })).toEqual({
+      assignments: ["FOO=1"],
+      command: "",
+    });
   });
 });
 

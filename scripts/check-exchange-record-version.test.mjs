@@ -471,7 +471,7 @@ describe("the check as CI runs it", () => {
 
     expect(status).toBe(1);
     expect(stderr).toContain("could not run");
-    expect(stderr).toContain("extraction pattern rotted");
+    expect(stderr).toContain("is not declared as a quoted string literal");
   });
 
   it("reports the missing recovery entry points beside a literal it cannot read", () => {
@@ -489,7 +489,7 @@ describe("the check as CI runs it", () => {
     );
 
     expect(status).toBe(1);
-    expect(stderr).toContain("extraction pattern rotted");
+    expect(stderr).toContain("is not declared as a quoted string literal");
     expect(stderr).toContain("nothing to defer to");
     for (const name of RECOVERY_ENTRY_POINTS[omitted])
       expect(stderr).toContain(`${omitted}: "${name}"`);

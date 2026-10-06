@@ -316,9 +316,13 @@ describe("the real repository", () => {
     try {
       // The entry reads its input from the directory above itself, so a copy
       // under a fixture lockfile is what puts the failing branch on a process.
-      mkdirSync(join(root, "scripts"));
+      mkdirSync(join(root, "scripts/lib"), { recursive: true });
       const script = join(root, "scripts/check-nested-root-package.mjs");
       copyFileSync(resolve(here, "check-nested-root-package.mjs"), script);
+      copyFileSync(
+        resolve(here, "lib/lockfile.mjs"),
+        join(root, "scripts/lib/lockfile.mjs"),
+      );
       writeFileSync(
         join(root, "package-lock.json"),
         JSON.stringify(committedLockWithViteSplit()),

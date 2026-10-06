@@ -139,7 +139,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
   if (pullRequestWorkflows === 0 || checkoutSteps === 0) {
     console.error(
-      `${WORKFLOW_DIR}: no ${CHECKOUT} step matched under any pull-request trigger -- the reading rotted; fix scripts/lib/workflows.mjs or this check.`,
+      `${WORKFLOW_DIR}: no ${CHECKOUT} step was found in any workflow a pull request triggers. If you changed how workflows declare their triggers or checkout steps, update the reading in scripts/lib/workflows.mjs or scripts/check-checkout-ref-override.mjs to match.`,
     );
     process.exit(1);
   }
