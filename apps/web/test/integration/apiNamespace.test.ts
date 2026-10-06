@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
+import { securityResponseHeaders } from "@utils/securityHeaders";
+
 import { startStaticHost } from "../staticHost/server.js";
 
 import {
@@ -474,6 +476,8 @@ describe.skipIf(!hasHostedBuild)("the hosted static site under /api", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toMatch(/^text\/html/);
       if (method === "GET") expect(body).toBe(rootDocument);
+      for (const [name, value] of Object.entries(securityResponseHeaders))
+        expect(response.headers.get(name)).toBe(value);
     },
   );
 
