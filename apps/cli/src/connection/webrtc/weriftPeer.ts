@@ -1235,6 +1235,8 @@ class Negotiation {
   private readonly pendingRemoteCandidates: Array<Record<string, unknown>> = [];
   /** Remote candidates handed to the ICE agent; see {@link MAX_APPLIED_REMOTE_CANDIDATES}. */
   private appliedRemoteCandidates = 0;
+  /** Remote candidates being handed to the ICE agent, counted against the cap. */
+  private inFlightRemoteCandidates = 0;
   private localDescriptionSent = false;
   private remoteDescriptionSet = false;
   private answered = false;
@@ -1650,18 +1652,26 @@ class Negotiation {
    * candidates may still complete, and a peer that sends only bad ones fails on
    * the connection-state or rendezvous deadline instead. Past
    * {@link MAX_APPLIED_REMOTE_CANDIDATES} a candidate is dropped, silently for
-   * the same reason a parse failure is.
+   * the same reason a parse failure is. A rejected candidate does not count
+   * toward the cap.
    */
   private async addRemoteCandidate(
     candidate: Record<string, unknown>,
   ): Promise<void> {
-    if (this.appliedRemoteCandidates >= MAX_APPLIED_REMOTE_CANDIDATES) return;
-    this.appliedRemoteCandidates++;
+    if (
+      this.appliedRemoteCandidates + this.inFlightRemoteCandidates >=
+      MAX_APPLIED_REMOTE_CANDIDATES
+    )
+      return;
+    this.inFlightRemoteCandidates++;
     try {
       await this.peer.addIceCandidate(candidate);
+      this.appliedRemoteCandidates++;
     } catch {
       // Silent by design: logging per candidate would let a peer that sprays
       // malformed candidates drive the operator's console.
+    } finally {
+      this.inFlightRemoteCandidates--;
     }
   }
 

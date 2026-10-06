@@ -1404,7 +1404,7 @@ describe("createFetchJobApiClient over an injected fetch", () => {
     ]);
     expect(received[0].message).toMatch(/^m+$/);
     expect(received[1].message).toMatch(
-      /^The console sent an event longer than the 4194304 characters this page reads, so it was skipped\./,
+      /^An event from the console was longer than the 4194304 characters this page reads, so it was skipped\./,
     );
   });
 
@@ -1449,7 +1449,7 @@ describe("createFetchJobApiClient over an injected fetch", () => {
       "result",
     ]);
     expect(received[0].event.message).toMatch(
-      /^The console sent an event longer/,
+      /^An event from the console was longer/,
     );
     expect(received[0].pulled).toBeLessThan(chunks.length - 2);
   });

@@ -140,9 +140,9 @@ async function fileResponse(
  * outside the `/api` namespace whose `Host` the job routes would refuse
  * answers their empty `403` ({@link rejectDisallowedClientHost}); otherwise
  * one for a regular file in it answers that file, and one for a client route
- * answers `index.html`. Every other request -- another method, a path under `/api` in
- * any spelling, a dotfile, a directory, a path leaving `root` lexically or
- * through a symlink -- answers the empty no-store `404`. Content-hashed assets
+ * answers `index.html`. Every other request -- another method, a path under
+ * `/api` in any spelling, a dotfile, a directory, a path leaving `root`
+ * lexically or through a symlink -- answers the empty no-store `404`. Content-hashed assets
  * are cacheable for a year; everything else is revalidated. `root` and its
  * index document are checked when the handler is created, so a missing
  * bundle throws at startup.

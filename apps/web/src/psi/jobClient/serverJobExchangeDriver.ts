@@ -786,8 +786,9 @@ export const MAX_EVENT_STREAM_FRAME_CHARS = 4 * 1024 * 1024;
 /** The warning yielded in place of a frame over
  * {@link MAX_EVENT_STREAM_FRAME_CHARS}. */
 const OVERSIZED_FRAME_NOTICE =
-  `The console sent an event longer than the ${MAX_EVENT_STREAM_FRAME_CHARS} ` +
-  "characters this page reads, so it was skipped. Reload the page to load the " +
+  `An event from the console was longer than the ${MAX_EVENT_STREAM_FRAME_CHARS} ` +
+  "characters this page reads, so it was skipped. The exchange's log file on " +
+  "disk still holds it. If this repeats, reload the page so it runs the " +
   "console's current version.";
 
 /** One connection's frames: the SSE id attached to each (null for a keepalive
