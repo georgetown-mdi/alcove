@@ -177,6 +177,10 @@ function hostedDevDocument(): Plugin {
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
   return {
+    // Under Vitest, no HTML fallback: it answers a component's unrouted
+    // `/api/` fetch with index.html, whose pre-transform pulls the whole route
+    // tree into the dependency optimizer mid-run and reloads every open test.
+    appType: underVitest ? "custom" : "spa",
     server: {
       host: "127.0.0.1",
       port: config.PORT,
