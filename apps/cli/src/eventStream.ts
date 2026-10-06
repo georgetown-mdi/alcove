@@ -1,7 +1,8 @@
 import fs from "node:fs";
 
 import {
-  ConnectionError,
+  classifyFailure,
+  isTrustBoundaryFailure,
   OperatorConfigError,
   UsageError,
   DEFAULT_MAX_DISPLAY_LENGTH,
@@ -76,7 +77,9 @@ export interface ResultTableDelivery {
  * - an {@link OperatorConfigError} in any earlier phase -> `config`. That exact
  *   base type only, not any {@link UsageError}: a sibling UsageError can be
  *   partner-influenced.
- * - a `security`-kind {@link ConnectionError} (any phase) -> `security`.
+ * - a trust-boundary failure ({@link isTrustBoundaryFailure} of
+ *   {@link classifyFailure}, which reads past `transport`-kind wraps as the
+ *   exit code does; any phase) -> `security`.
  * - everything else -> `exchange`.
  *
  * Unlike the web's `classifyExchangeFailure`, `config` here is not scoped to
@@ -90,7 +93,7 @@ export function classifyTerminalError(
 ): ExchangeErrorCategory {
   if (phase === "output") return "output";
   if (error instanceof OperatorConfigError) return "config";
-  return error instanceof ConnectionError && error.kind === "security"
+  return isTrustBoundaryFailure(classifyFailure(error))
     ? "security"
     : "exchange";
 }

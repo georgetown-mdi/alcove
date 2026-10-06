@@ -51,7 +51,11 @@
  *   could have started would disclose a second time.
  */
 
-import { ConnectionError, LinkageTermsUnsatisfiableError } from "@alcove/core";
+import {
+  LinkageTermsUnsatisfiableError,
+  classifyFailure,
+  isTrustBoundaryFailure,
+} from "@alcove/core";
 
 import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
@@ -641,8 +645,9 @@ interface ManagedScheduleWindowVerdict {
  * Whether a failed attempt establishes that the two runners met in this window
  * (docs/spec/MANAGED_EXCHANGE_RECORD.md, "Occupying a due window").
  *
- * A `security`-kind {@link ConnectionError} comes from the authenticated key
- * exchange, reachable only once the rendezvous has resolved
+ * A trust-boundary failure ({@link isTrustBoundaryFailure} of
+ * {@link classifyFailure}) comes from the authenticated key exchange,
+ * reachable only once the rendezvous has resolved
  * ({@link ./managedRunDriver.ts}); a partner who never arrives raises
  * {@link PartnerNoShowError} instead. A {@link RotationPersistError} is raised
  * only after that handshake has yielded the rotated secret
@@ -662,7 +667,7 @@ function attemptProvesContact(
   return (
     dataExchangeStarted ||
     error instanceof RotationPersistError ||
-    (error instanceof ConnectionError && error.kind === "security")
+    isTrustBoundaryFailure(classifyFailure(error))
   );
 }
 
@@ -718,7 +723,7 @@ function managedScheduleWindowVerdict(
       provesContact,
       standing: "storage",
     };
-  if (error instanceof ConnectionError && error.kind === "security")
+  if (isTrustBoundaryFailure(classifyFailure(error)))
     return {
       disposition: "failed",
       retryable: false,

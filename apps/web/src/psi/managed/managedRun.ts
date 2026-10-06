@@ -19,7 +19,6 @@
  */
 
 import {
-  ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
   PSI_SET_REFUSED_ABORT_REASON,
@@ -27,7 +26,9 @@ import {
   PeerAbortError,
   RoundCapacityError,
   TermsChangeRefusedError,
+  classifyFailure,
   isSetTooLargeError,
+  isTrustBoundaryFailure,
 } from "@alcove/core";
 
 import { PartnerNoShowError } from "../transport/waitForConnection";
@@ -370,8 +371,9 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * partner's abort in place of its first set refused for any other cause
  * records `partner-refused-set` with `refusedInRound` for the same reason. The
  * same partner input refuses identically at every window. `aborted` then
- * records `cancelled`. A `security`-kind
- * {@link ConnectionError} before the data exchange began records `auth`.
+ * records `cancelled`. A trust-boundary failure
+ * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
+ * exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
  *
@@ -425,11 +427,7 @@ export function rerunFailureLastRun(
       refusedInRound: true,
     };
   if (aborted) return failedRun(at, "failed", "cancelled");
-  if (
-    error instanceof ConnectionError &&
-    error.kind === "security" &&
-    !dataExchangeStarted
-  )
+  if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
   return failedRun(at, "failed", "transport");
 }

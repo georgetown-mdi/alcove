@@ -53,6 +53,12 @@ export type {
   PartnerMeetingChannel,
   RelayRegistrarUnreachableFailure,
 } from "./failureCause";
+export {
+  classifyFailure,
+  firstLinkBehindTransportWraps,
+  isTrustBoundaryFailure,
+} from "./failureClass";
+export type { FailureClass } from "./failureClass";
 export { PSIParticipant, ProcessState } from "./psi/participant";
 export type {
   PsiOperation,

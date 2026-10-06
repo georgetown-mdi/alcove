@@ -1,10 +1,11 @@
 import {
-  ConnectionError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
+  classifyFailure,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
   getLogger,
+  isTrustBoundaryFailure,
   runExchange,
 } from "@alcove/core";
 
@@ -116,7 +117,9 @@ export type ExchangeErrorCategory =
   "exchange" | "output" | "security" | "config";
 
 /** Maps a lifecycle failure to the {@link ExchangeErrorCategory} the UI
- * shows, for the given `phase`. A `security`-kind {@link ConnectionError} --
+ * shows, for the given `phase`. A trust-boundary failure
+ * ({@link isTrustBoundaryFailure} of {@link classifyFailure}: a
+ * `security`-kind `ConnectionError`, bare or behind `transport`-kind wraps) --
  * the authenticated key exchange failing closed on a wrong secret, tamper, or
  * replay -- routes on its `kind`, not the handshake step, so a future
  * `security` failure anywhere in the exchange classifies the same way; every
@@ -140,7 +143,7 @@ function classifyExchangeFailure(
       error instanceof LinkageTermsUnsatisfiableError)
   )
     return "config";
-  return error instanceof ConnectionError && error.kind === "security"
+  return isTrustBoundaryFailure(classifyFailure(error))
     ? "security"
     : "exchange";
 }
@@ -389,10 +392,10 @@ interface RunExchangeLifecycleOptions<
  *   raises no alert -- the results are available and there is nothing for the
  *   operator to act on.
  * - **The exchange-vs-output distinction survives** (F2). A failure from
- *   acquire/open/run is `"exchange"`, except a trust failure from the
- *   authenticated key exchange (a `security`-kind {@link ConnectionError}), which
- *   is `"security"` so the UI shows an authentication failure rather than a
- *   retryable transport drop; a `generateOutput` throw (the exchange already
+ *   acquire/open/run is `"exchange"`, except a failure the core
+ *   classifier reads as a trust-boundary failure, behind transport wraps or
+ *   bare, which is `"security"` so the UI shows an authentication failure
+ *   rather than a retryable transport drop; a `generateOutput` throw (the exchange already
  *   succeeded) is `"output"`; a teardown-only throw raises neither.
  * - **A failure after this party's payload send keeps the record.** Both a
  *   run failure core attached a record to and an `"output"` failure of a

@@ -1,4 +1,5 @@
 import {
+  AuthenticationError,
   ConnectionError,
   generateSharedSecret,
   getDefaultLinkageTerms,
@@ -705,6 +706,28 @@ describe("a window whose run raised a standing condition", () => {
             "could not verify the partner",
             "security",
           ),
+        },
+      ],
+    });
+
+    await tickManagedSchedules(runner.seams);
+
+    expect(runner.stored.get(record.id)?.standingCondition).toMatchObject({
+      kind: "auth",
+    });
+  });
+
+  test("a handshake refusal behind a transport wrap is recorded the same way", async () => {
+    const record = recordWith();
+    const runner = harness({
+      records: [record],
+      startAt: "2026-01-06T14:00:00.000Z",
+      script: [
+        {
+          kind: "fail",
+          error: new ConnectionError("the message send failed", "transport", {
+            cause: new AuthenticationError("could not verify the partner"),
+          }),
         },
       ],
     });

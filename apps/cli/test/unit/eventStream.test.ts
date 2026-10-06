@@ -534,6 +534,30 @@ test("classifies a security-kind ConnectionError as security in any phase", () =
   expect(buildErrorEvent(err, "run").category).toBe("security");
 });
 
+test("classifies a security failure behind transport wraps as the exit code does", () => {
+  const wrappedAuth = new ConnectionError(
+    "the message send failed",
+    "transport",
+    {
+      cause: new AuthenticationError("key exchange authentication failed"),
+    },
+  );
+  expect(classifyTerminalError(wrappedAuth, "run")).toBe("security");
+  expect(buildErrorEvent(wrappedAuth, "run").exitCode).toBe(77);
+  const wrappedReceipt = new ConnectionError(
+    "the message poll failed",
+    "transport",
+    {
+      cause: new ReceiptVerificationError("partner certificate is not trusted"),
+    },
+  );
+  expect(classifyTerminalError(wrappedReceipt, "run")).toBe("security");
+  const abortOverSecurity = new PeerAbortError({
+    cause: new ConnectionError("integrity check failed", "security"),
+  });
+  expect(classifyTerminalError(abortOverSecurity, "run")).toBe("exchange");
+});
+
 test("marks a terminal error that states its own next step", () => {
   // Two security failures the exit code cannot tell apart: a wrong secret,
   // whose message is non-oracular by design, and a refusal naming what to do.
