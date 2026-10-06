@@ -51,8 +51,9 @@ type CapturedChildOutcome =
 
 /**
  * Spawn `node argv` for a one-shot CLI child, capture its stdout under
- * {@link CAPTURED_STDOUT_CAP}, and settle once its stdio has closed or the
- * watchdog kills it.
+ * {@link CAPTURED_STDOUT_CAP}, and settle on the child's `close`: once it has
+ * exited and its stdio has closed, whether it ended on its own, the watchdog
+ * killed it, or it never spawned.
  *
  * The watchdog SIGTERMs at `sigtermMs`, escalating to SIGKILL after
  * `sigkillGraceMs` -- mirroring `jobManager.ts`'s cancel-escalation chain. Every
@@ -122,16 +123,23 @@ export function runCapturedCliChild(args: {
     toSigterm.unref();
     timers.push(toSigterm);
 
-    child.on("error", () => settle({ kind: "spawnFailed" }));
+    // Settled on `close` alone: Node emits `close` after a failed spawn too, and
+    // an `error` from a failed kill leaves the child running.
+    let spawnFailed = false;
+    child.on("error", () => {
+      if (child.pid === undefined) spawnFailed = true;
+    });
     child.on("close", (code) => {
       settle(
-        timedOut
-          ? { kind: "timedOut" }
-          : {
-              kind: "exited",
-              code,
-              stdout: stdoutOverflow ? undefined : stdout,
-            },
+        spawnFailed
+          ? { kind: "spawnFailed" }
+          : timedOut
+            ? { kind: "timedOut" }
+            : {
+                kind: "exited",
+                code,
+                stdout: stdoutOverflow ? undefined : stdout,
+              },
       );
     });
   });

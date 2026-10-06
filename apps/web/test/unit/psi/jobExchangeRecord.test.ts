@@ -24,8 +24,14 @@ const statusResponse =
       }),
     );
 
-function offerFor(body: unknown): Promise<JobExchangeRecordOffer> {
-  return fetchJobExchangeRecordOffer("job-1", statusResponse(body));
+/** The offer a settled run's status body gives. */
+async function offerFor(body: unknown): Promise<JobExchangeRecordOffer> {
+  const answer = await fetchJobExchangeRecordOffer(
+    "job-1",
+    statusResponse(body),
+  );
+  if (answer.kind === "not-settled") throw new Error("the run is not settled");
+  return answer;
 }
 
 describe("jobRecordDownloads", () => {
@@ -133,17 +139,21 @@ describe("fetchJobExchangeRecordOffer", () => {
     expect(untakenRecordConfirm(offer)).toBeUndefined();
   });
 
-  test("a run still going is not an answer about a record it may yet write", async () => {
-    // The pair is written near the end of a run, so the console's mid-run
-    // denial says nothing about what this run will owe. It renders as nothing,
-    // as the settled absence does.
-    await expect(
-      offerFor({
-        status: "running",
-        recordAvailable: false,
-        recordUnavailableReason: "not-settled",
-      }),
-    ).resolves.toEqual({ kind: "none" });
+  test("a run whose child has not exited is not an answer about its record", async () => {
+    // The pair is written near the end of a run, and a failing run reports its
+    // error before its child exits, so this denial says nothing about what the
+    // run will owe: it is kept apart from the definitive absence.
+    for (const status of ["running", "failed"])
+      await expect(
+        fetchJobExchangeRecordOffer(
+          "job-1",
+          statusResponse({
+            status,
+            recordAvailable: false,
+            recordUnavailableReason: "not-settled",
+          }),
+        ),
+      ).resolves.toEqual({ kind: "not-settled" });
   });
 
   test("a record the console holds and cannot describe is its own answer", async () => {
@@ -339,6 +349,41 @@ describe("the record ask's bound on a console that stops answering", () => {
     // The operator waits through the bound before the seat says anything, so it is
     // a handful of asks rather than a patient retry budget.
     expect(RECORD_AVAILABILITY_UNANSWERED_LIMIT).toBeLessThanOrEqual(10);
+  });
+
+  test("a run whose child has not exited is asked again until it has", async () => {
+    // The seat asks once it sees the terminal event, which a failing run emits
+    // before its child exits. The ask stays in flight meanwhile, which keeps the
+    // discard confirm in place, and it is not cut off by the unanswered bound.
+    const notSettled = () =>
+      new Response(
+        JSON.stringify({
+          status: "failed",
+          recordAvailable: false,
+          recordUnavailableReason: "not-settled",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    const waiting = Array.from(
+      { length: RECORD_AVAILABILITY_UNANSWERED_LIMIT },
+      () => [unanswerable, notSettled],
+    ).flat();
+    const { fetchImpl, asks } = scriptedFetch([...waiting, answered(true)]);
+    const waits: Array<number> = [];
+
+    await expect(
+      askJobExchangeRecordOffer("job-1", new AbortController().signal, {
+        fetchImpl,
+        delay: recordWaits(waits),
+      }),
+    ).resolves.toMatchObject({
+      kind: "available",
+      outcome: "receipt-swap-terminated",
+    });
+
+    expect(asks()).toBe(waiting.length + 1);
+    expect(waits).toHaveLength(waiting.length);
+    expect(waits.every((ms) => ms > 0)).toBe(true);
   });
 
   test("an answered run is asked once, with no re-asks at all", async () => {
