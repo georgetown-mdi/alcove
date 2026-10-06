@@ -45,11 +45,17 @@ const rows = [
   { first_name: "Henry" },
 ];
 
-// The PSI sender's engine, whose setup finishes only when the test says so: it
-// stands for a masking that takes minutes. `started` resolves when the setup
-// is asked for. A `stoppable` engine ends the held setup when asked to stop,
-// as the worker-backed engine does at its next chunk boundary.
-function heldSenderEngine({ stoppable = false } = {}) {
+// The PSI sender's engine, whose `held` step finishes only when the test says
+// so: it stands for a masking that takes minutes. `started` resolves when the
+// step is asked for. A `stoppable` engine ends the held step when asked to
+// stop, as the worker-backed engine does at its next chunk boundary.
+function heldSenderEngine({
+  stoppable = false,
+  held = "createServerSetup",
+}: {
+  stoppable?: boolean;
+  held?: "createServerSetup" | "processClientRequest";
+} = {}) {
   let markStarted!: () => void;
   const started = new Promise<void>((resolve) => {
     markStarted = resolve;
@@ -63,14 +69,18 @@ function heldSenderEngine({ stoppable = false } = {}) {
     "server",
     "identifier-revealing",
   );
+  const hold = <T>(run: () => Promise<T>): Promise<T> => {
+    markStarted();
+    return new Promise((resolve, reject) => {
+      finish = () => run().then(resolve, reject);
+      stop = () => reject(new PsiOperationStoppedError());
+    });
+  };
   const engine: PsiEngine = {
-    createServerSetup: (values) => {
-      markStarted();
-      return new Promise((resolve, reject) => {
-        finish = () => inner.createServerSetup(values).then(resolve, reject);
-        stop = () => reject(new PsiOperationStoppedError());
-      });
-    },
+    createServerSetup: (values) =>
+      held === "createServerSetup"
+        ? hold(() => inner.createServerSetup(values))
+        : inner.createServerSetup(values),
     ...(stoppable && {
       stopInFlight: () => {
         if (stop === undefined) return false;
@@ -79,7 +89,10 @@ function heldSenderEngine({ stoppable = false } = {}) {
         return true;
       },
     }),
-    processClientRequest: (bytes) => inner.processClientRequest(bytes),
+    processClientRequest: (bytes) =>
+      held === "processClientRequest"
+        ? hold(() => inner.processClientRequest(bytes))
+        : inner.processClientRequest(bytes),
     createClientRequest: (values) => inner.createClientRequest(values),
     receiveServerSetup: (bytes) => inner.receiveServerSetup(bytes),
     computeAssociationTable: (bytes) => inner.computeAssociationTable(bytes),
@@ -288,5 +301,31 @@ test("a partner lost during a stoppable sender's setup stops the step and fails 
   expect(String(lossNotices(warn)[0]![0])).toContain(
     "when the step's current chunk finishes",
   );
+  expect(held.isDisposed()).toBe(true);
+});
+
+test("a partner lost while the sender processes its request reports the lost connection, not a frame that failed to decode", async () => {
+  const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  const held = heldSenderEngine({
+    stoppable: true,
+    held: "processClientRequest",
+  });
+  const pipe = createMessagePipe();
+  const { conns, outcomes } = runPair(held.engine, undefined, pipe);
+
+  await held.started;
+  await conns.receiver.close();
+  const settled = await outcomes;
+  const senderOutcome = settled[conns.sender === pipe[0] ? 0 : 1]!;
+
+  expect(senderOutcome.status).toBe("rejected");
+  const reason = (senderOutcome as PromiseRejectedResult).reason as Error;
+  // The stop the lost connection raised is replaced by that connection's own
+  // error, rather than the partner's request being blamed.
+  expect(reason).toBeInstanceOf(ConnectionError);
+  expect((reason as ConnectionError).kind).toBe("transport");
+  expect(reason).not.toBeInstanceOf(PsiOperationStoppedError);
+  expect(reason.message).not.toMatch(/failed to decode/);
+  expect(lossNotices(warn)).toHaveLength(1);
   expect(held.isDisposed()).toBe(true);
 });

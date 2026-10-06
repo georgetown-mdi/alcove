@@ -20,7 +20,10 @@ import {
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
-import { InternalConsistencyError, isNamedDiagnosis } from "../../src/errors";
+import {
+  InternalConsistencyError,
+  isPsiLibraryFailure,
+} from "../../src/errors";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
@@ -440,7 +443,7 @@ test("a partner setup holding one value twice is refused before the joiner's mat
   expect((joinerOutcome as Error).message).toBe(
     "client protocol error: PSI server setup is not in strictly ascending element order",
   );
-  expect(isNamedDiagnosis(joinerOutcome)).toBe(true);
+  expect(isPsiLibraryFailure(joinerOutcome)).toBe(false);
   expect(starterOutcome).toBeInstanceOf(Error);
 });
 

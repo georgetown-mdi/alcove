@@ -1,4 +1,4 @@
-import { InternalConsistencyError, markNamedDiagnosis } from "../errors";
+import { InternalConsistencyError } from "../errors";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
   chunkRangesOfSize,
@@ -119,10 +119,8 @@ export function assertStrictlyAscending(
 ): void {
   for (let index = 1; index < elements.length; index += 1)
     if (compareElementBytes(elements[index - 1]!, elements[index]!) >= 0)
-      throw markNamedDiagnosis(
-        new Error(
-          `${id} protocol error: PSI server setup is not in strictly ascending element order`,
-        ),
+      throw new Error(
+        `${id} protocol error: PSI server setup is not in strictly ascending element order`,
       );
 }
 

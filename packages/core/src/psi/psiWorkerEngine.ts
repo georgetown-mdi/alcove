@@ -2,8 +2,8 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import {
   InternalConsistencyError,
-  isNamedDiagnosis,
-  markNamedDiagnosis,
+  isPsiLibraryFailure,
+  markPsiLibraryFailure,
 } from "../errors";
 import {
   InProcessPsiEngine,
@@ -95,15 +95,12 @@ export type PsiWorkerResponse =
       ok: false;
       error: string;
       /**
-       * Whether the engine raised this failure itself, its message stating
-       * the condition it refused on. Only the message crosses the boundary,
-       * so the host cannot read that off the error it rebuilds; carried here
-       * instead, it lets the rebuilt error keep the marker the PSI frame
-       * boundary reads before it re-labels a failure as a decode fault (see
-       * `markNamedDiagnosis`, `errors.ts`). Absent on a reply posted by a
-       * worker entry point that never reached the engine.
+       * Whether the PSI library raised this failure. Only the message crosses
+       * the boundary, so the host cannot read that off the error it rebuilds;
+       * carried here instead, it lets the rebuilt error keep the tag the PSI
+       * frame boundary reads (see `markPsiLibraryFailure`, `errors.ts`).
        */
-      namedDiagnosis?: boolean;
+      libraryFailure?: boolean;
       stopped?: boolean;
     };
 
@@ -135,17 +132,6 @@ export interface PsiWorkerHandle {
 }
 
 const DISPOSED_MESSAGE = "PSI worker engine is disposed";
-
-// Every failure the host side raises itself, as against one the worker's engine
-// raised: a disposed engine, a caller breaking the lockstep invariant, and the
-// crash cause a worker death fails the pending calls with. Each is a fault on
-// this party's own machine, so its own message stands as the top line rather
-// than the frame boundary above re-labeling it a decode failure
-// (decodePsiBinaryFrame, psi/psiBinaryFrame.ts). Routing every one through this
-// function keeps a raise site from being added untagged.
-function localWorkerFault(error: Error): Error {
-  return markNamedDiagnosis(error);
-}
 
 /**
  * A {@link PsiEngine} that runs the crypto in a worker reached through `handle`.
@@ -211,11 +197,10 @@ export class WorkerPsiEngine implements PsiEngine {
   // the type. It keeps the original as `cause` rather than letting String()
   // stand alone, which reduces most non-Error values to "[object Object]".
   private failAll(error: unknown): void {
-    const err = localWorkerFault(
+    const err =
       error instanceof Error
         ? error
-        : new Error(String(error), { cause: error }),
-    );
+        : new Error(String(error), { cause: error });
     this.terminalError ??= err;
     for (const entry of this.pending.values()) entry.reject(err);
     this.pending.clear();
@@ -223,9 +208,7 @@ export class WorkerPsiEngine implements PsiEngine {
 
   private call<T>(body: PsiWorkerRequestBody): Promise<T> {
     if (this.disposed)
-      return Promise.reject(
-        localWorkerFault(new InternalConsistencyError(DISPOSED_MESSAGE)),
-      );
+      return Promise.reject(new InternalConsistencyError(DISPOSED_MESSAGE));
     // A worker crash left the engine terminal: fail fast with the crash cause
     // rather than posting to a dead worker and hanging.
     if (this.terminalError) return Promise.reject(this.terminalError);
@@ -234,10 +217,8 @@ export class WorkerPsiEngine implements PsiEngine {
     // reject it rather than letting two replies race the single id map.
     if (this.pending.size > 0)
       return Promise.reject(
-        localWorkerFault(
-          new InternalConsistencyError(
-            "PSI worker engine received a concurrent request; the exchange must be strictly lockstep",
-          ),
+        new InternalConsistencyError(
+          "PSI worker engine received a concurrent request; the exchange must be strictly lockstep",
         ),
       );
     const id = this.nextId++;
@@ -376,7 +357,7 @@ export function servePsiWorker(
             id: request.id,
             ok: false,
             error: error instanceof Error ? error.message : String(error),
-            namedDiagnosis: isNamedDiagnosis(error),
+            libraryFailure: isPsiLibraryFailure(error),
             stopped: error instanceof PsiOperationStoppedError,
           }),
       );
@@ -384,19 +365,17 @@ export function servePsiWorker(
 }
 
 // Rebuilds a failed reply into the error the host raises. Only the message
-// crosses the boundary, so a refusal the engine named itself is re-marked
-// here from the reply's own flag -- otherwise the PSI frame boundary above
-// would re-label it as a decode fault on every worker-backed run.
+// crosses the boundary, so a library failure is re-tagged here from the
+// reply's own flag, and a stop is rebuilt as the stop it was.
 function rebuildWorkerFailure(response: {
   error: string;
-  namedDiagnosis?: boolean;
+  libraryFailure?: boolean;
   stopped?: boolean;
 }): Error {
   if (response.stopped === true) return new PsiOperationStoppedError();
   const failure = new Error(response.error);
-  return response.namedDiagnosis === true
-    ? markNamedDiagnosis(failure)
-    : failure;
+  if (response.libraryFailure === true) markPsiLibraryFailure(failure);
+  return failure;
 }
 
 // Worker-side sibling of relieveTransientMemory (link.ts): force a collection of the

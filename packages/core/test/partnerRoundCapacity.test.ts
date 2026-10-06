@@ -20,7 +20,7 @@ import {
 import {
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "../src/psi/psiBinaryFrame";
+} from "../src/partnerAbortFrame";
 
 import {
   buildKeyStrings,

@@ -4,10 +4,8 @@ import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { canonicalBytes } from "../utils/canonical.js";
 import { safeParseLinkageTerms } from "../config/linkageTermsSchema.js";
 import { hkdfDerive, hmacSha256, toBase64Url } from "../utils/crypto.js";
-import {
-  ConnectionError,
-  receiveParsed,
-} from "../connection/messageConnection.js";
+import { ConnectionError } from "../connection/messageConnection.js";
+import { receiveAfterTerms } from "../partnerAbortFrame.js";
 import {
   boundedWireCertificateSchema,
   computeCertificateFingerprint,
@@ -661,7 +659,7 @@ export async function exchangeSignedReceipt(
   let partnerParty: SignedReceiptParty;
   if (handshakeRole === "initiator") {
     await conn.send(localFrame);
-    const partnerWire = await receiveParsed(conn, receiptWireSchema);
+    const partnerWire = await receiveAfterTerms(conn, receiptWireSchema);
     partnerParty = await verifyPartnerReceipt(
       partnerWire,
       content,
@@ -674,7 +672,7 @@ export async function exchangeSignedReceipt(
     // terminal frame. verifyPartnerReceipt runs before this side's send, so a
     // fingerprint/signature failure terminates before the responder discloses its
     // own signature -- fail-closed, and the partner is left with no valid artifact.
-    const partnerWire = await receiveParsed(conn, receiptWireSchema);
+    const partnerWire = await receiveAfterTerms(conn, receiptWireSchema);
     partnerParty = await verifyPartnerReceipt(
       partnerWire,
       content,

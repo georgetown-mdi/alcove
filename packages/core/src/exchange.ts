@@ -50,7 +50,7 @@ import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "./psi/psiBinaryFrame.js";
+} from "./partnerAbortFrame.js";
 import type { PsiProgressReporter } from "./psi/participant.js";
 import type { PsiEngine, PsiEngineMode } from "./psi/psiEngine.js";
 import {
@@ -2660,10 +2660,10 @@ export async function runExchange(
     // declaration -- so without it the partner would wait out its full
     // peer-inactivity budget (a full poll budget on a file channel) for rounds
     // this party never runs. The reason is a fixed literal about values the
-    // partner itself declared, so the frame discloses nothing new. The partner
-    // reads the frame at its PSI binary boundary, where it is classified as a
-    // peer abort rather than decoded as binary (receivePsiBinaryFrame), so that
-    // run ends naming the termination rather than on a library decode message.
+    // partner itself declared, so the frame discloses nothing new. Whichever
+    // receive the partner is parked on, the bootstrap frame or its first PSI
+    // round, reads the frame as a peer abort before it parses what it awaited
+    // (partnerAbortFrame.ts), so that run ends naming the termination.
     await sendAbort(conn, [
       "partner presented a deduplicate its invitation did not declare",
     ]);

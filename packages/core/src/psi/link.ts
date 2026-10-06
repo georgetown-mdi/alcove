@@ -33,7 +33,6 @@ import type { AssociationTable } from "../types";
 import {
   ConnectionError,
   connectionEndReader,
-  receiveParsed,
   parseOrProtocolError,
   type MessageConnection,
 } from "../connection/messageConnection";
@@ -80,6 +79,7 @@ import {
   UsageError,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
+import { receiveAfterTerms } from "../partnerAbortFrame";
 import {
   arraySource,
   joinMatchedArrayParts,
@@ -2266,7 +2266,7 @@ export async function linkViaSinglePassPSI(
     // this party's own resolved label, not the table; the other half -- one
     // entry per record the many side matched -- is the anchor. Under a
     // both-sided one neither half is distinct and the bound is passed in.
-    const table = await receiveParsed(conn, associationTableMessage);
+    const table = await receiveAfterTerms(conn, associationTableMessage);
     const localHalf = {
       what: "the resolved association table's local half",
       indices: table[0],

@@ -22,10 +22,8 @@ import {
 } from "../connection/webrtcOutboundBound";
 import { ProtocolRefusalError, RoundCapacityError } from "../errors";
 import { sendAbort } from "../protocolSetup";
-import {
-  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
-  receivePsiBinaryFrame,
-} from "./psiBinaryFrame";
+import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "../partnerAbortFrame";
+import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 
 import type { MessageConnection } from "../connection/messageConnection";
 

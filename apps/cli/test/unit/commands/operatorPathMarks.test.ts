@@ -753,6 +753,23 @@ const COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
     },
   },
   {
+    name: "accept: a pre-existing config that cannot be read",
+    says: ["could not be read (EISDIR)"],
+    drive: async () => {
+      const filePath = backslashedPath("alcove.yaml");
+      fs.mkdirSync(filePath);
+      const invitation = await encodedInvitation();
+      const thrown = await raised(() =>
+        validateAccept({
+          resolved: { mode: "offline", invitation },
+          options: bootstrapOptions({ configFile: filePath }),
+          log: silentLogger("accept-marks-unreadable"),
+        }),
+      );
+      return { filePath, lines: [sanitizeErrorForDisplay(thrown)] };
+    },
+  },
+  {
     name: "accept: a pre-existing config that is not a valid exchange spec",
     says: ["could not be parsed to compare against"],
     drive: async () => {

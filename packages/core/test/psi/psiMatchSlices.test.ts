@@ -4,7 +4,7 @@ import { vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { isNamedDiagnosis } from "../../src/errors";
+import { isPsiLibraryFailure } from "../../src/errors";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
@@ -135,7 +135,7 @@ test.each([
   expect((caught as Error).message).toBe(
     "joiner protocol error: PSI server setup is not in strictly ascending element order",
   );
-  expect(isNamedDiagnosis(caught)).toBe(true);
+  expect(isPsiLibraryFailure(caught)).toBe(false);
 });
 
 test("a repeat straddling a slice boundary is refused", () => {

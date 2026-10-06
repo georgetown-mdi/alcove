@@ -7,11 +7,14 @@ import {
   ConnectionError,
   createMessagePipe,
 } from "../../src/connection/messageConnection";
-import { markNamedDiagnosis, PeerAbortError } from "../../src/errors";
 import {
-  decodePsiBinaryFrame,
-  PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "../../src/psi/psiBinaryFrame";
+  InternalConsistencyError,
+  markPsiLibraryFailure,
+  PeerAbortError,
+} from "../../src/errors";
+import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
+import { decodePsiBinaryFrame } from "../../src/psi/psiBinaryFrame";
+import { PsiOperationStoppedError } from "../../src/psi/psiWorkerEngine";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { sendAbort } from "../../src/protocolSetup";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -140,10 +143,12 @@ test("a frame delivered as an ArrayBuffer is read as the bytes it holds", async 
   );
 });
 
-test("a decode that fails unnamed is classified and keeps its cause", async () => {
+test("a library failure is classified and keeps its cause", async () => {
   // A failure raised inside the PSI library names no condition of its own, so
   // the boundary names itself and holds what failed as the cause.
-  const failure = new Error("Tried to read past the end of the data 5 > 4");
+  const failure = markPsiLibraryFailure(
+    new Error("Tried to read past the end of the data 5 > 4"),
+  );
   const ended = await decodePsiBinaryFrame("joiner", "serverSetup", () =>
     Promise.reject(failure),
   ).then(
@@ -159,16 +164,34 @@ test("a decode that fails unnamed is classified and keeps its cause", async () =
   expect(ended?.cause).toBe(failure);
 });
 
-test("a decode that fails with its own diagnosis is raised unchanged", async () => {
-  const failure = markNamedDiagnosis(new Error("the engine's own diagnosis"));
-  const ended = await decodePsiBinaryFrame("joiner", "serverSetup", () =>
-    Promise.reject(failure),
-  ).then(
-    () => undefined,
-    (err: unknown) => err as Error,
-  );
+test("a failure the library did not raise is raised unchanged", async () => {
+  for (const failure of [
+    new Error("the engine's own diagnosis"),
+    new PsiOperationStoppedError(),
+    new InternalConsistencyError("a local invariant broke"),
+  ]) {
+    const ended = await decodePsiBinaryFrame("joiner", "serverSetup", () =>
+      Promise.reject(failure),
+    ).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
 
-  expect(ended).toBe(failure);
+    expect(ended).toBe(failure);
+  }
+});
+
+test("a frame the library cannot read is reported as the frame failing to decode", async () => {
+  // Field number 0 passes the element scan, and the library's own decoder
+  // refuses it.
+  const ended = await endOfRoundAfter(new Uint8Array([0, 0]));
+
+  expect(ended).toBeInstanceOf(ConnectionError);
+  expect((ended as ConnectionError).kind).toBe("protocol");
+  expect(ended?.message).toBe(
+    "joiner protocol error: inbound PSI serverSetup failed to decode",
+  );
+  expect((ended?.cause as Error).message).toMatch(/field number/i);
 });
 
 test("a frame the engine diagnoses keeps its diagnosis as the top line", async () => {
