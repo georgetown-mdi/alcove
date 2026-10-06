@@ -25,7 +25,7 @@ import {
   composeKeyFileDocument,
   composeSftpConfigDocument,
 } from "@jobs/intentConfig";
-import { runArtifactNames } from "@jobs/runArtifactNames";
+import { runArtifactNames } from "@jobContract/runArtifactNames";
 
 import {
   MAX_CSV_DELIMITER_LENGTH,
@@ -38,7 +38,7 @@ import {
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
   jobZeroSetupIntentSchema,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 
 import {
   SAMPLE_INPUT_FILE_REF,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { inviterServerJobConfig } from "@exchange/useInviterExchange";
-import { jobExchangeIntentSchema } from "@jobs/intentSchemas";
+import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
 

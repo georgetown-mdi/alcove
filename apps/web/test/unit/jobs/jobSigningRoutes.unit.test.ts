@@ -12,8 +12,11 @@ import {
   MAX_IDENTITY_LENGTH,
   SIGNING_IDENTITY_FILE_NAME,
   jobZeroSetupIntentSchema,
-} from "@jobs/intentSchemas";
-import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
+} from "@jobContract/intentSchemas";
+import {
+  parseRunArtifactName,
+  runArtifactNames,
+} from "@jobContract/runArtifactNames";
 
 import { JobManager, SigningFingerprintBusyError } from "@jobs/jobManager";
 import { MAX_SIGNING_FINGERPRINT_BODY_BYTES } from "@jobs/routeSupport";
@@ -33,7 +36,7 @@ import {
 } from "../../utils/jobFixtures";
 import { waitFor } from "../../utils/waitFor";
 
-import type { JobCreateIntent } from "@jobs/intentSchemas";
+import type { JobCreateIntent } from "@jobContract/intentSchemas";
 
 // The HTTP boundary of the console's signing surface: what the fingerprint route
 // maps each condition to, what the receipt route will and will not serve, and

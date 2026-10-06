@@ -7,14 +7,14 @@ import { ZodError } from "zod";
 import {
   JOB_FILE_NAMES,
   PREVIOUS_CONFIGURATION_FILE_NAME,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
 
 import { formatFirstIssue } from "./schemaIssueMessage";
 import { handBackConfigDocument } from "./handoff";
 import { mountedUnconductedDocument } from "./configLoad";
 import { resolveWorkdirFile } from "./workdir";
 
-import type { JobConfigurationHandBack } from "./intentSchemas";
+import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 /**
  * Handing the configuration the operator opened back into their working folder,

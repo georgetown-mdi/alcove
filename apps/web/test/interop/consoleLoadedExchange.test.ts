@@ -24,8 +24,11 @@ import { stringify as stringifyYaml } from "yaml";
 
 import { JobManager, TERMS_PROPOSAL_REFUSAL } from "@jobs/jobManager";
 import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
-import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
-import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/intentSchemas";
+import {
+  parseRunArtifactName,
+  runArtifactNames,
+} from "@jobContract/runArtifactNames";
+import { TERMS_PROPOSAL_FILE_NAME } from "@jobContract/intentSchemas";
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
@@ -48,7 +51,7 @@ import {
 } from "./cliParty";
 
 import type { CliRun } from "./cliParty";
-import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
+import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 
 /**

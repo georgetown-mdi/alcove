@@ -17,13 +17,16 @@ import {
 import { PREVIEW_SAMPLE_SIZE } from "@psi/columnSamples";
 import { createFieldCoverageAccumulator } from "@psi/workers/nonEmptyAggregate";
 
-import { MAX_INPUT_NAME_LENGTH, isAdmissibleInputName } from "./workInputName";
+import {
+  MAX_INPUT_NAME_LENGTH,
+  isAdmissibleInputName,
+} from "@jobContract/workInputName";
 import {
   MAX_STANDARDIZATION_STEPS,
   MAX_STANDARDIZATION_TRANSFORMATIONS,
   jobCsvDelimiterSchema,
   stepPatternsWithinCap,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
 import { CONSOLE_WRITTEN_NAMES } from "./consoleOwnedFiles";
 import { JOB_DATA_ROOT_ENV } from "./gate";
 
@@ -41,7 +44,10 @@ import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
  */
 const JOB_INPUT_DIR_ENV = "JOB_INPUT_DIR";
 
-export { MAX_INPUT_NAME_LENGTH, isAdmissibleInputName } from "./workInputName";
+export {
+  MAX_INPUT_NAME_LENGTH,
+  isAdmissibleInputName,
+} from "@jobContract/workInputName";
 
 /**
  * The byte cap on a coverage request body: a generous bound on the streamed read

@@ -37,7 +37,7 @@ import {
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
-} from "@jobs/jobCreateRefusal";
+} from "@jobContract/jobCreateRefusal";
 import {
   discardServerJob,
   writeAttachment,
@@ -108,7 +108,7 @@ import type {
 } from "@psi/jobClient/serverJobExchangeDriver";
 import type { ExchangeDriver } from "@psi/exchangeDriver";
 import type { GeneratedInvitation } from "@psi/invitation";
-import type { JobExchangeOptions } from "@jobs/intentSchemas";
+import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";

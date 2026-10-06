@@ -8,7 +8,7 @@ import {
   JOB_FILE_NAMES,
   MAX_INPUT_CSV_LENGTH,
   SIGNING_IDENTITY_FILE_NAME,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import {
   MAX_JOB_BODY_BYTES,
   MAX_SFTP_AUTHOR_BODY_BYTES,
@@ -17,7 +17,7 @@ import {
 } from "@jobs/routeSupport";
 import { formatFirstIssue, formatIssues } from "@jobs/schemaIssueMessage";
 import { JobManager } from "@jobs/jobManager";
-import { runArtifactNames } from "@jobs/runArtifactNames";
+import { runArtifactNames } from "@jobContract/runArtifactNames";
 
 import { route as CancelRoute } from "../../../server/console/routes/$jobId/cancel";
 import { route as CreateRoute } from "../../../server/console/routes/index";
@@ -55,7 +55,7 @@ import { waitFor } from "../../utils/waitFor";
 import type {
   JobCreateIntent,
   JobInputFileReference,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import type { ExchangeRecordOutcome } from "@alcove/core";
 import type { JobManager as JobManagerType } from "@jobs/jobManager";
 

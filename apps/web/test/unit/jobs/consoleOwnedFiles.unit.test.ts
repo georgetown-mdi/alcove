@@ -16,7 +16,7 @@ import {
   isConsoleOwnedFolderName,
 } from "@jobs/consoleOwnedFiles";
 import { JobApiConfigError } from "@jobs/gate";
-import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/intentSchemas";
+import { SIGNING_IDENTITY_FILE_NAME } from "@jobContract/intentSchemas";
 import { validateAuthoredSftpServer } from "@jobs/sftpServer";
 
 import {

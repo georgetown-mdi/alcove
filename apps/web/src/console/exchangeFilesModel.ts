@@ -3,9 +3,12 @@ import {
   withRetainModeImplications,
 } from "@alcove/core";
 
-import { PEER_ID_SHAPE_MESSAGE, isAdmissiblePeerId } from "@jobs/intentSchemas";
+import {
+  PEER_ID_SHAPE_MESSAGE,
+  isAdmissiblePeerId,
+} from "@jobContract/intentSchemas";
 
-import type { JobExchangeOptions } from "@jobs/intentSchemas";
+import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 
 /**
  * The pure model behind the console's "Exchange files" authoring card: how the

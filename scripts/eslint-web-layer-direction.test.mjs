@@ -11,9 +11,9 @@ import {
 } from "./eslint-strip-type-aware-layer.mjs";
 
 // Coverage of the web app's layer-direction ban (productDirectorySpecifierBan and
-// productDirectoryBans in apps/web/eslint.config.js): src/components, src/jobs,
-// src/psi and src/utils sit below the three product directories and may not
-// import from them, plus the dynamic-import shape the ban depends on being able
+// productDirectoryBans in apps/web/eslint.config.js): src/components,
+// src/jobContract, src/jobs, src/psi and src/utils sit below the three product
+// directories and may not import from them, plus the dynamic-import shape the ban depends on being able
 // to read (dynamicImportLiteralBan, below the products only). A
 // specifier pattern that stops matching fails silently -- it keeps reporting zero
 // problems, which is indistinguishable from clean source -- and the ban is folded
@@ -59,12 +59,16 @@ async function directionHits(filePath, source) {
   );
 }
 
-// The four directories below the products, plus the chokepoint module that takes
+// The five directories below the products, plus the chokepoint module that takes
 // the ban from a block of its own (it is spared the ban on calling core's
 // comparison predicates, so it cannot share the block that carries that one).
 const PSI = resolve(repoRoot, "apps/web/src/psi/exchangeLifecycle.ts");
 const COMPONENTS = resolve(repoRoot, "apps/web/src/components/ColumnName.tsx");
-const JOBS = resolve(repoRoot, "apps/web/src/jobs/intentSchemas.ts");
+const JOB_CONTRACT = resolve(
+  repoRoot,
+  "apps/web/src/jobContract/intentSchemas.ts",
+);
+const JOBS = resolve(repoRoot, "apps/web/src/jobs/jobFolder.ts");
 const UTILS = resolve(repoRoot, "apps/web/src/utils/clientConfig.ts");
 const CHOKEPOINT = resolve(repoRoot, "apps/web/src/psi/linkageComparison.ts");
 
@@ -102,6 +106,7 @@ const CSV_PARSE_CONTROLLER = resolve(
 const BELOW = [
   ["src/psi", PSI],
   ["src/components", COMPONENTS],
+  ["src/jobContract", JOB_CONTRACT],
   ["src/jobs", JOBS],
   ["src/utils", UTILS],
   ["src/psi (the chokepoint)", CHOKEPOINT],
@@ -203,9 +208,12 @@ const ACCEPTED = [
   ["src/components", COMPONENTS, "@psi/authoring/advancedInvite"],
   ["src/jobs", JOBS, "@alcove/core"],
   ["src/jobs", JOBS, "@utils/clientConfig"],
-  ["src/jobs", JOBS, "./workInputName"],
+  ["src/jobs", JOBS, "./workdir"],
+  ["src/jobs", JOBS, "@jobContract/intentSchemas"],
+  ["src/jobContract", JOB_CONTRACT, "@alcove/core"],
+  ["src/jobContract", JOB_CONTRACT, "./workInputName"],
   ["src/utils", UTILS, "@alcove/core"],
-  ["src/utils", UTILS, "@jobs/intentSchemas"],
+  ["src/utils", UTILS, "@jobContract/intentSchemas"],
   ["src/exchange", PRODUCT, "@console/mountListing"],
   ["src/exchange", PRODUCT, "@recurring/SavedExchanges"],
   // Specifiers whose segment merely BEGINS with a product directory's name: what
@@ -228,6 +236,9 @@ describe("the web app's layer-direction ban", { timeout: 60_000 }, () => {
     for (const path of [
       PSI,
       COMPONENTS,
+      JOB_CONTRACT,
+      JOBS,
+      UTILS,
       CHOKEPOINT,
       PRODUCT,
       PSI_FIRST_PARSE,

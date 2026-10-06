@@ -4,7 +4,7 @@
  * browser guards that check a field as it is typed and the server validators
  * that check it again at the boundary. No Node import, so a browser guard can
  * read a contract here without pulling the server's own composition modules
- * ({@link ./intentConfig}, {@link ./intentArgv}) into its bundle.
+ * ({@link @jobs/intentConfig}, {@link @jobs/intentArgv}) into its bundle.
  */
 
 import { z } from "zod";
@@ -191,7 +191,7 @@ export const NOTE_CONTROL_CHAR_PATTERN =
  * Not every arm admits every field. `connectionPerPoll` is admitted on the
  * sftp arms alone, and `inactivityTimeoutMs`, which has no CLI flag, on the
  * configured arms alone. The zero-setup arms admit only what their argv can pass
- * (see `zeroSetupOptionsArgv` in `./intentArgv`); a field with no route to
+ * (see `zeroSetupOptionsArgv` in `@jobs/intentArgv`); a field with no route to
  * that run is
  * refused rather than accepted and dropped.
  */
@@ -313,7 +313,7 @@ function wholeSecondFlagMs(field: string) {
     .optional();
 }
 
-// The zero-setup arms admit only what `zeroSetupOptionsArgv` (./intentArgv) can pass
+// The zero-setup arms admit only what `zeroSetupOptionsArgv` (@jobs/intentArgv) can pass
 // to the child. `unexpectedFiles` and `inactivityTimeoutMs` are absent: neither
 // has a CLI flag, and a zero-setup run composes no configuration document, so
 // the strict parse refuses them rather than accepting a choice the run would
@@ -658,7 +658,7 @@ export interface JobExchangeIntentBase {
    * the recurring-run hand-off merges the held top-level keys of the document
    * the operator opened into its template, so a run authored here from scratch
    * exports nothing from an `alcove.yaml` the operator never opened (see
-   * `buildJobHandoff` in `./handoff`).
+   * `buildJobHandoff` in `@jobs/handoff`).
    */
   mountedConfigurationOpened?: boolean;
   /**
@@ -669,7 +669,7 @@ export interface JobExchangeIntentBase {
    * including each sftp credential `@path` for the sign-in method the run used
    * (an inline credential value never reaches the hand-off either way); and a
    * certificate-mode run of a document stating a signing path is refused (see
-   * `createJob` in `./jobManager`).
+   * `createJob` in `@jobs/jobManager`).
    */
   mountedConfigurationConverted?: boolean;
   options?: JobExchangeOptions;
@@ -799,7 +799,7 @@ export interface JobZeroSetupFiledropIntent extends JobZeroSetupIntentBase {
  * console runs one authored SFTP connection, so host, port, path, credential
  * references, and the host-key fingerprint all come from the server-side
  * entry (turned into a `sftp://` URL and `--server-*` flags by
- * `zeroSetupSftpArgv` in `./intentArgv`), never from the intent.
+ * `zeroSetupSftpArgv` in `@jobs/intentArgv`), never from the intent.
  */
 export interface JobZeroSetupSftpIntent extends JobZeroSetupIntentBase {
   channel: "sftp";
@@ -1244,7 +1244,7 @@ const jobZeroSetupIntentCommonFields = {
   linkageStrategy: z.enum(["cascade", "single-pass"]).optional(),
   deduplicate: z.boolean().optional(),
   // Free text, unlike the closed strategy enum, so it takes the shared label
-  // contract's four shape rules (`@jobs/intentSchemas`): no leading `-`, no
+  // contract's four shape rules (`@jobContract/intentSchemas`): no leading `-`, no
   // control character, no text-direction character, and no private key
   // material. The driver emits it as a single `--identity=<value>` token, which
   // parses a `-`-leading value verbatim regardless.

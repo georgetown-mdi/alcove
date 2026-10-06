@@ -25,7 +25,7 @@ import {
   composeConfigDocument,
   composeSftpConfigDocument,
 } from "@jobs/intentConfig";
-import { jobExchangeIntentSchema } from "@jobs/intentSchemas";
+import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchange";
 
 import {

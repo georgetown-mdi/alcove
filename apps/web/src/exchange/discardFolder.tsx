@@ -1,5 +1,5 @@
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
-import { RUN_ARTIFACT_NAME_PATTERNS } from "@jobs/runArtifactNames";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
+import { RUN_ARTIFACT_NAME_PATTERNS } from "@jobContract/runArtifactNames";
 
 import { folderHoldsKeepableFiles } from "@psi/jobClient/jobFolder";
 

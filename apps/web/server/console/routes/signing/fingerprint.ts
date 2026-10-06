@@ -11,7 +11,7 @@ import {
   MAX_IDENTITY_LENGTH,
   SIGNING_IDENTITY_FILE_NAME,
   jobSigningIdentityLocationSchema,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 
 import {
   ConsoleShuttingDownError,
@@ -40,7 +40,7 @@ import type { SigningFingerprintResult } from "@jobs/signingIdentity";
  * `identityLocation` is a mount id plus path segments the SERVER resolves
  * against `JOB_SECRETS_DIR`, so the request still cannot name a path to read
  * or write. The label is held to the shared label contract
- * (`@jobs/intentSchemas`): bounded by {@link MAX_IDENTITY_LENGTH}, refused a
+ * (`@jobContract/intentSchemas`): bounded by {@link MAX_IDENTITY_LENGTH}, refused a
  * leading `-`, and refused any control or text-direction character and any
  * private key material -- the last three are critical rather than defensive,
  * since the label binds into a long-lived certificate every partner pins and

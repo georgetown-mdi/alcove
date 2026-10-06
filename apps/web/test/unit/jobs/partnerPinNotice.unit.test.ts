@@ -11,7 +11,7 @@ import {
   recordedPartnerFingerprint,
 } from "@jobs/partnerPinNotice";
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 import { composeConfigDocument } from "@jobs/intentConfig";
 
@@ -24,7 +24,7 @@ import {
   validLinkageTerms,
 } from "../../utils/jobFixtures";
 
-import type { JobExchangeIntent } from "@jobs/intentSchemas";
+import type { JobExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 import type { RelayEvent } from "@jobs/cliDriver";
 

@@ -24,7 +24,7 @@
 
 import { MAX_TEXT_LENGTH, MAX_TOKEN_MAX_AGE_DAYS } from "@alcove/core";
 
-import { NOTE_CONTROL_CHAR_PATTERN } from "@jobs/intentSchemas";
+import { NOTE_CONTROL_CHAR_PATTERN } from "@jobContract/intentSchemas";
 import { RETENTION_NOTE_PROBLEM } from "@psi/receiptsModel";
 import { maxAgeDaysError } from "@psi/tokenMaxAge";
 

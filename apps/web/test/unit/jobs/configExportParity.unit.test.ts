@@ -34,7 +34,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
-import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
+import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobHandoff } from "@jobs/handoff";
 import type { JobSftpServerEntry } from "@jobs/sftpServer";
 

@@ -13,7 +13,7 @@ import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
 
 import { composeConfigDocument } from "@jobs/intentConfig";
 
-import { PEER_ID_SHAPE_MESSAGE } from "@jobs/intentSchemas";
+import { PEER_ID_SHAPE_MESSAGE } from "@jobContract/intentSchemas";
 
 import { validIntent } from "../../utils/jobFixtures";
 

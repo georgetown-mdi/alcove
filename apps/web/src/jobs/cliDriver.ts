@@ -394,7 +394,7 @@ export function spawnZeroSetupJob(args: {
  * trailing separator so the CLI takes it as a folder without a stat of its
  * own. The child also runs in that workdir, so the record, keys, terms file
  * and receipt the CLI places in its working directory land beside the result
- * under the same stamp ({@link ./runArtifactNames}).
+ * under the same stamp ({@link @jobContract/runArtifactNames}).
  */
 export function outputFolderArgument(workdir: string): string {
   return workdir.endsWith(path.sep) ? workdir : `${workdir}${path.sep}`;

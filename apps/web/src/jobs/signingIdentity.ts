@@ -9,6 +9,8 @@ import {
   recordedVersionMatches,
 } from "@alcove/core";
 
+import { SIGNING_IDENTITY_FILE_NAME } from "@jobContract/intentSchemas";
+
 import {
   WORKDIR_MODE,
   jobFileExists,
@@ -16,11 +18,10 @@ import {
   jobTargetPresent,
   resolveWorkdirFile,
 } from "./workdir";
-import { SIGNING_IDENTITY_FILE_NAME } from "./intentSchemas";
 import { resolveMountPath } from "./mountBrowse";
 import { runCapturedCliChild } from "./capturedCliChild";
 
-import type { JobSigningIdentityLocation } from "./intentSchemas";
+import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
 /**
  * The console's signing-identity driver. It spawns the CLI's `fingerprint`

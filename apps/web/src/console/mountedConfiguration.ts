@@ -1,7 +1,7 @@
 import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   isJobChannel,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import { retiredSettingNotice } from "@alcove/core";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
@@ -15,7 +15,10 @@ import type {
   ConfigurationHandBackAnswer,
   MountedConfigurationAnswer,
 } from "@psi/jobClient/mountedConfigClient";
-import type { JobChannel, JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type {
+  JobChannel,
+  JobConfigurationHandBack,
+} from "@jobContract/intentSchemas";
 import type { LoadedAuthoringState } from "./loadedConfig";
 import type { ReceiptsSigningMode } from "@psi/receiptsModel";
 

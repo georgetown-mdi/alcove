@@ -14,7 +14,7 @@ import {
 } from "@jobs/gate";
 import { ConfigurationLoadRefusedError } from "@jobs/configLoad";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
-import { jobConfigurationHandBackSchema } from "@jobs/intentSchemas";
+import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
 

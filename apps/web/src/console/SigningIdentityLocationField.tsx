@@ -3,13 +3,13 @@ import { useEffect, useRef } from "react";
 import { Button, Group, Stack, Text } from "@mantine/core";
 
 import { fingerprintCommand, identityLocationLabel } from "@psi/receiptsModel";
-import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 
 import styles from "@styles/app.module.css";
 
 import { SecretsFilePicker } from "./SecretsFilePicker";
 
-import type { JobSigningIdentityLocation } from "@jobs/intentSchemas";
+import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
 /**
  * Where this party's signing identity is kept, as an authoring control: the

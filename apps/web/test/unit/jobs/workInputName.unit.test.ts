@@ -4,7 +4,7 @@ import {
   MAX_INPUT_NAME_LENGTH,
   browseSegment,
   isAdmissibleInputName,
-} from "@jobs/workInputName";
+} from "@jobContract/workInputName";
 
 // The two name rules share ONE single-segment shape predicate and must differ
 // only on the leading dot: browseSegment admits a dot-prefixed segment (SSH key

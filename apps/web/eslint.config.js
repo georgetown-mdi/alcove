@@ -149,11 +149,12 @@ const seatWarningSinkBan = {
     "Fold an onWarning message through appendSanitizedRunWarning (src/psi/runWarnings.ts): it is the one display boundary the run surfaces share, and the manager composes its warnings raw because that boundary escapes them exactly once.",
 };
 
-// The dependency direction between the app's layers. Four directories sit BELOW
+// The dependency direction between the app's layers. Five directories sit BELOW
 // the three product directories -- src/exchange, src/recurring and src/console --
 // so none of them may import from a product: src/psi (the protocol and the run
 // models), src/components (the React pieces more than one product renders),
-// src/jobs (the console server's job intent, schemas and route support) and
+// src/jobContract (the job API's contract the console server and its client
+// share), src/jobs (the console server's job machinery and route support) and
 // src/utils (the helpers every layer shares). Direction is what keeps the headless
 // scheduled runner out of the screens' graph: the runner enters through src/psi,
 // and one import of a screen from there pulls the whole product tree in behind it.
@@ -163,14 +164,20 @@ const seatWarningSinkBan = {
 // neither protocol nor React.
 const productDirectories = ["console", "exchange", "recurring"];
 
-const belowProductDirectories = ["components", "jobs", "psi", "utils"];
+const belowProductDirectories = [
+  "components",
+  "jobContract",
+  "jobs",
+  "psi",
+  "utils",
+];
 
 const belowProductFiles = belowProductDirectories.map(
   (dir) => `src/${dir}/**/*.{ts,tsx}`,
 );
 
 const productDirectoryBanMessage = (target) =>
-  `src/components, src/jobs, src/psi and src/utils sit below the product directories; none may import from ${target}. ` +
+  `src/components, src/jobContract, src/jobs, src/psi and src/utils sit below the product directories; none may import from ${target}. ` +
   "Move what a lower layer needs into src/psi (React-free), src/components (React) or src/utils, and import it from there.";
 
 // A second, coarser statement of the same ban, kept beside the selector below.

@@ -5,7 +5,7 @@ import { BIDI_CONTROL_PATTERN, TEXT_CONTROL_CHAR_PATTERN } from "@alcove/core";
 import {
   IDENTITY_CONTROL_CHAR_PATTERN,
   IDENTITY_DIRECTION_CHAR_PATTERN,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 
 // The two character rules the identity label passes through, held equal here so
 // neither side can drift from the other under a cross-reference alone. An

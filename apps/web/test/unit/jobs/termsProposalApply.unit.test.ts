@@ -14,7 +14,7 @@ import {
   TERMS_CHANGE_REFUSAL,
   TERMS_PROPOSAL_REFUSAL,
 } from "@jobs/jobManager";
-import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/intentSchemas";
+import { TERMS_PROPOSAL_FILE_NAME } from "@jobContract/intentSchemas";
 import { termsApplyArgv } from "@jobs/termsProposal";
 import { validateAndSanitizeEvent } from "@jobs/cliDriver";
 
@@ -27,7 +27,7 @@ import {
 } from "../../utils/jobFixtures";
 import { waitFor } from "../../utils/waitFor";
 
-import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
+import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 
 const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();

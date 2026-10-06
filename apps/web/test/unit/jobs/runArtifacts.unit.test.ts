@@ -9,8 +9,8 @@ import {
   parseRunArtifactName,
   runArtifactNames,
   stampOfResultPath,
-} from "@jobs/runArtifactNames";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+} from "@jobContract/runArtifactNames";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 import { latestRunStampIn } from "@jobs/runArtifacts";
 import { outputFolderArgument } from "@jobs/cliDriver";
@@ -26,7 +26,7 @@ import {
 } from "../../utils/jobFixtures";
 import { waitFor } from "../../utils/waitFor";
 
-import type { JobCreateIntent } from "@jobs/intentSchemas";
+import type { JobCreateIntent } from "@jobContract/intentSchemas";
 
 // The console runs the CLI on the output-folder form: the job's workdir is the
 // OUTPUT positional and the folder the child runs in, no `--record-file` and no

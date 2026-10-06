@@ -1,9 +1,10 @@
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -19,42 +20,18 @@ import ts from "typescript";
 import { afterAll, describe, expect, test } from "vitest";
 
 /**
- * The job intent's schema module is what a browser guard reads a field contract
- * from, so nothing in its import graph may reach a Node builtin: one such import
- * makes the module unloadable in the browser, and the guard's constant gets
- * copied out into a module of its own instead. The composition modules beside it
- * are the server's, and `intentArgv` does import `node:url` -- this walk is what
- * keeps that import from creeping back across the boundary.
+ * src/jobContract holds the job API's contract, which the console server and the
+ * browser client both import, so nothing any of its modules reaches may be
+ * server-only. The walk refuses a Node builtin (`node:`-prefixed or not), the
+ * environment-schema loader (`env-schema`, and the `dotenv` behind it) and any
+ * module under src/jobs.
  *
- * The walk resolves what the app's own specifiers can reach: every path alias
- * apps/web/tsconfig.json declares, and relative paths. A bare package specifier
- * is left alone -- this asserts nothing about a dependency's own graph, which the
- * bundler resolves and which no source edit here changes.
+ * It parses each module's syntax tree for specifiers, and resolves the app's own
+ * path aliases (apps/web/tsconfig.json) and relative paths with the TypeScript
+ * resolver. A bare package specifier is left alone: a dependency's own graph is
+ * not asserted.
  *
- * Three ways the walk could pass while seeing nothing decide its shape.
- *
- * It reads specifiers off the parsed syntax tree rather than out of the text,
- * because a side-effect `import "node:fs";` and an `await import("node:fs")`
- * name no binding and so match no `from "..."` scan.
- *
- * A path under the app that resolves to no file fails the run by name rather
- * than counting as a bare package, because counting it that way drops its whole
- * subtree from the walk and leaves every claim below it unmade.
- *
- * And every specifier is placed by the TypeScript compiler's own resolver,
- * `ts.resolveModuleName` under apps/web/tsconfig.json's merged options, so each
- * alias the project declares resolves the way the project resolves it -- the
- * `@*` -> `./src/*` catch-all included, under which `@/jobs/intentSchemas` and
- * `@theme` name app sources -- and a specifier the resolver places in
- * node_modules is the bare package it leaves alone. A re-implementation of the
- * `paths` matching would answer for its own rules instead, walking neither
- * subtree behind an alias it got wrong while still reporting green.
- *
- * A builtin is any specifier Node resolves as one -- `node:`-prefixed or not --
- * since `import "fs"` loads the same module and is as unloadable in a browser.
- * It is answered ahead of the resolver, which places a builtin on an
- * `@types/node` declaration or nowhere at all depending on what is installed
- * beside the tree being walked.
+ * Run it with `npx vitest run apps/web/test/unit/jobContractBrowserSafe.test.ts`.
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -113,6 +90,38 @@ function treeAt(base: string): Tree {
 const appTree = treeAt(webRoot);
 
 const NODE_BUILTINS = new Set(builtinModules);
+
+/** The directory holding the contract, relative to src. */
+const CONTRACT_DIRECTORY = "jobContract";
+
+/** The packages that read the server's environment: the schema loader the
+ * server configuration uses, and the dotenv reader it loads files through. */
+const ENVIRONMENT_PACKAGES = ["env-schema", "dotenv"];
+
+/** Whether bare specifier `specifier` loads one of ENVIRONMENT_PACKAGES or a
+ * subpath of one. */
+function isEnvironmentPackage(specifier: string): boolean {
+  return ENVIRONMENT_PACKAGES.some(
+    (name) => specifier === name || specifier.startsWith(`${name}/`),
+  );
+}
+
+/** Whether `file`, relative to src, is a module of the server's job
+ * machinery. */
+function isServerJobModule(file: string): boolean {
+  return file.split(sep)[0] === "jobs";
+}
+
+/** Every TypeScript source under src/jobContract, relative to src. */
+function contractFiles(): Array<string> {
+  return readdirSync(join(appTree.src, CONTRACT_DIRECTORY), {
+    recursive: true,
+    encoding: "utf8",
+  })
+    .filter((entry) => /\.tsx?$/.test(entry))
+    .map((entry) => join(CONTRACT_DIRECTORY, entry))
+    .sort();
+}
 
 /** Whether `specifier` names a Node builtin, in either spelling: `node:fs` and
  * `fs` load the same module, and neither loads in a browser. */
@@ -247,32 +256,66 @@ afterAll(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-describe("the job intent's schema module stays loadable in the browser", () => {
-  test("nothing its imports reach names a Node builtin", () => {
-    const { files, bare, unresolved } = importGraph(
-      appTree,
-      "jobs/intentSchemas.ts",
+describe("the job API contract stays loadable in the browser", () => {
+  const files = contractFiles();
+
+  test("the directory holds the contract modules the walk is meant to cover", () => {
+    expect(files).toEqual(
+      expect.arrayContaining([
+        join(CONTRACT_DIRECTORY, "intentSchemas.ts"),
+        join(CONTRACT_DIRECTORY, "jobCreateRefusal.ts"),
+        join(CONTRACT_DIRECTORY, "mountBrowsePurpose.ts"),
+        join(CONTRACT_DIRECTORY, "runArtifactNames.ts"),
+        join(CONTRACT_DIRECTORY, "workInputName.ts"),
+      ]),
     );
+  });
+
+  test.each(files)("nothing %s reaches is server-only", (file) => {
+    const { files: reached, bare, unresolved } = importGraph(appTree, file);
     expect(
       unresolved,
       "a specifier under src resolved to no file, so its subtree went unwalked and this claim covers less than it names",
     ).toEqual([]);
     expect(
       bare.filter(isNodeBuiltin),
-      `reached from ${files.join(", ")}`,
+      `reached from ${reached.join(", ")}`,
     ).toEqual([]);
+    expect(
+      bare.filter(isEnvironmentPackage),
+      `reached from ${reached.join(", ")}`,
+    ).toEqual([]);
+    expect(reached.filter(isServerJobModule)).toEqual([]);
   });
 
   test("the walk reaches the app sources it is meant to, and resolves them", () => {
-    const { files } = importGraph(appTree, "jobs/intentSchemas.ts");
-    expect(files).toContain("jobs/workInputName.ts");
-    expect(files).toContain("components/csvIntake.ts");
-    expect(files.length).toBeGreaterThan(2);
+    const { files: reached } = importGraph(
+      appTree,
+      join(CONTRACT_DIRECTORY, "intentSchemas.ts"),
+    );
+    expect(reached).toContain(join(CONTRACT_DIRECTORY, "workInputName.ts"));
+    expect(reached).toContain(join("components", "csvIntake.ts"));
+    expect(reached.length).toBeGreaterThan(2);
   });
 
   test("it reports a Node builtin where one is reachable, so the walk discriminates", () => {
-    const { bare } = importGraph(appTree, "jobs/intentArgv.ts");
+    const { bare } = importGraph(appTree, join("jobs", "intentArgv.ts"));
     expect(bare).toContain("node:url");
+  });
+
+  test("it reports the environment-schema loader where it is reachable", () => {
+    const { bare } = importGraph(appTree, join("utils", "serverConfig.ts"));
+    expect(bare.filter(isEnvironmentPackage)).toContain("env-schema");
+  });
+
+  test("it reports a module of the server's job machinery where one is reachable", () => {
+    const { files: reached } = importGraph(
+      appTree,
+      join("jobs", "jobFolder.ts"),
+    );
+    expect(reached.filter(isServerJobModule)).toContain(
+      join("jobs", "workdir.ts"),
+    );
   });
 });
 
@@ -339,7 +382,10 @@ describe("the walk resolves every alias apps/web/tsconfig.json declares", () => 
   });
 
   test("a real package the catch-all also matches stays bare", () => {
-    const { bare, unresolved } = importGraph(appTree, "jobs/intentSchemas.ts");
+    const { bare, unresolved } = importGraph(
+      appTree,
+      join(CONTRACT_DIRECTORY, "intentSchemas.ts"),
+    );
     expect(unresolved).toEqual([]);
     expect(
       bare,

@@ -1,4 +1,4 @@
-import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 import { gateJobRoute } from "@jobs/routeSupport";
 import { isConsoleOwnedSecretsName } from "@jobs/consoleOwnedFiles";
 import { jobJsonResponse } from "@jobs/gate";

@@ -10,7 +10,7 @@ import {
   buildJobHandoff,
 } from "@jobs/handoff";
 import { composeSftpConfigDocument } from "@jobs/intentConfig";
-import { jobCreateIntentSchema } from "@jobs/intentSchemas";
+import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -23,7 +23,7 @@ import type {
   JobExchangeOptions,
   JobSftpExchangeIntent,
   JobZeroSetupSftpIntent,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import type { Metadata, Standardization } from "@alcove/core";
 
 /**

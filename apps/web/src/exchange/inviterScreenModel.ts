@@ -21,7 +21,7 @@ import {
 } from "@console/mountedConfiguration";
 
 import { availableTransports, transportOffered } from "@psi/transportChooser";
-import { isJobChannel } from "@jobs/intentSchemas";
+import { isJobChannel } from "@jobContract/intentSchemas";
 
 import {
   INITIAL_CSV_DELIMITER_CHOICE,

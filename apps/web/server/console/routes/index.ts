@@ -21,13 +21,13 @@ import {
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
-} from "@jobs/jobCreateRefusal";
+} from "@jobContract/jobCreateRefusal";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { MountedKeyFileRefusedError } from "@jobs/mountedKeyFile";
 import { SigningIdentityLocationError } from "@jobs/signingIdentity";
 import { ZeroSetupFingerprintListError } from "@jobs/intentArgv";
-import { jobCreateIntentSchema } from "@jobs/intentSchemas";
+import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
 

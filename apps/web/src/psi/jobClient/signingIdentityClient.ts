@@ -6,7 +6,7 @@ import {
   readJsonOrNull,
 } from "./jobApiBody";
 
-import type { JobSigningIdentityLocation } from "@jobs/intentSchemas";
+import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
 /**
  * The browser-side client for the console's signing-identity surface

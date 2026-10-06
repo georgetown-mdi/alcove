@@ -3,7 +3,10 @@ import { isDeepStrictEqual } from "node:util";
 
 import { parseSensitiveYaml, safeParseExchangeSpec } from "@alcove/core";
 
-import { JOB_FILE_NAMES, TERMS_PROPOSAL_FILE_NAME } from "./intentSchemas";
+import {
+  JOB_FILE_NAMES,
+  TERMS_PROPOSAL_FILE_NAME,
+} from "@jobContract/intentSchemas";
 import { resolveWorkdirFile } from "./workdir";
 import { runCapturedCliChild } from "./capturedCliChild";
 
