@@ -60,14 +60,13 @@ import { resolveIdentity, resolveInvitationIdentity } from "../partyIdentity";
 import { createProvisionedServer } from "../serverProvision";
 import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
-import { DURATION_VALUE_HELP, parseDuration } from "../util/duration";
+import { DURATION_VALUE_HELP } from "../util/duration";
 import { runOrExit } from "../util/exit";
 import {
   assertNoUnknownOptions,
   csvDelimiterFlag,
   durationFlagSeconds,
   MAX_TIMEOUT_SECONDS,
-  singleValue,
 } from "../util/flags";
 import {
   declarePositionals,
@@ -548,9 +547,9 @@ type InviteReady =
  * the shared secret at encode time, so the lifetime clock starts when the
  * shared secret exists, not at process entry.
  *
- * `expiresIn`, when given, overrides the default 1-hour lifetime and is parsed
- * (rejecting zero, negative, or malformed values) before any conflict gate,
- * input read, or token mint.
+ * `expiresInSeconds`, when given, overrides the default 1-hour lifetime and is
+ * checked (rejecting a non-positive, fractional or over-ceiling value) before
+ * any conflict gate, input read, or token mint.
  *
  * `linkageStrategy`, when given, applies only to terms this command authors
  * from the input (the online and infer-from-input paths); a pre-existing
@@ -568,7 +567,7 @@ export async function validateInvite(params: {
   resolved: ReturnType<typeof resolveInvitePositionals>;
   options: CommonBootstrapOptions;
   acceptTimeout: number;
-  expiresIn?: string;
+  expiresInSeconds?: number;
   linkageStrategy?: LinkageStrategy;
   /** The field delimiter this run reads its input by and, on the online path,
    * writes its result with; recorded in the configuration this command writes
@@ -582,28 +581,29 @@ export async function validateInvite(params: {
     resolved,
     options,
     acceptTimeout,
-    expiresIn,
+    expiresInSeconds,
     linkageStrategy,
     csvDelimiter,
     ownRelay,
     log,
   } = params;
   const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
-  // parseDuration yields whole milliseconds at second granularity (its smallest
-  // unit), so dividing by 1000 is exact: the lifetime is always a whole number
-  // of seconds, whether defaulted or overridden, and feeds invitationExpires below.
-  const lifetimeSeconds =
-    expiresIn !== undefined
-      ? parseDuration(expiresIn) / 1000
-      : INVITATION_LIFETIME_SECONDS;
-  // Reject an override past the ceiling before any side effect (mirrors the
-  // zero/negative rejection inside parseDuration). The default path cannot
-  // exceed it, so only an --expires-in override is ever bounded here.
-  if (lifetimeSeconds > MAX_INVITATION_LIFETIME_SECONDS)
+  // The handler reads --expires-in through durationFlagSeconds, which refuses a
+  // malformed, zero or over-ceiling value; this guard holds the same bounds for
+  // a caller that passes a number directly.
+  if (
+    expiresInSeconds !== undefined &&
+    !(
+      Number.isSafeInteger(expiresInSeconds) &&
+      expiresInSeconds > 0 &&
+      expiresInSeconds <= MAX_INVITATION_LIFETIME_SECONDS
+    )
+  )
     throw new UsageError(
-      `--expires-in must not exceed ${MAX_INVITATION_LIFETIME_SECONDS / 86400}d ` +
-        `(the maximum invitation lifetime); got ${expiresIn}`,
+      `expires-in must be a whole number of seconds from 1 to ` +
+        `${String(MAX_INVITATION_LIFETIME_SECONDS)}; got ${String(expiresInSeconds)}`,
     );
+  const lifetimeSeconds = expiresInSeconds ?? INVITATION_LIFETIME_SECONDS;
 
   // The input is read at most once per invocation. The online branch below and
   // the two offline branches (config-as-source, and infer-from-input) are
@@ -1172,14 +1172,18 @@ export async function handler(argv: Arguments): Promise<void> {
       // accept-timeout is parsed to seconds here (not in validateInvite) so a
       // malformed or bare-integer value is a clean usage error (exit 64) before any
       // side effect; durationFlagSeconds also rejects a repeat (via singleValue)
-      // before the array could reach validateInvite's numeric comparisons. expires-in
-      // is read as a string and parsed inside validateInvite; singleValue still
-      // rejects its repeat first, before the array would hit parseDuration's
-      // .trim() and appear as a confusing exit 69.
+      // before the array could reach validateInvite's numeric comparisons.
+      // expires-in is read the same way; its ceiling is the invitation
+      // lifetime, not a timer's.
       const acceptTimeout =
         durationFlagSeconds(argv, "accept-timeout", MAX_TIMEOUT_SECONDS) ??
         DEFAULT_ACCEPT_TIMEOUT_SECONDS;
-      const expiresIn = singleValue(argv, "expires-in") as string | undefined;
+      const expiresInSeconds = durationFlagSeconds(
+        argv,
+        "expires-in",
+        MAX_INVITATION_LIFETIME_SECONDS,
+        "the maximum invitation lifetime",
+      );
       // Validate the linkage-strategy enum here (not in validateInvite) so an
       // unknown value is a clean usage error (exit 64) before any side effect,
       // mirroring how accept-timeout is parsed above; singleValue rejects a
@@ -1207,7 +1211,7 @@ export async function handler(argv: Arguments): Promise<void> {
         resolved,
         options,
         acceptTimeout,
-        expiresIn,
+        expiresInSeconds,
         linkageStrategy,
         csvDelimiter,
         ownRelay,
@@ -1323,7 +1327,7 @@ export async function handler(argv: Arguments): Promise<void> {
             `wrote the key file to ${redactAndRenderOperatorSuppliedText(
               operatorSuppliedText(keyPath),
             )} (${invitationExpiryNotice(ready.expires, {
-              expiresInGiven: expiresIn !== undefined,
+              expiresInGiven: expiresInSeconds !== undefined,
             })}). Keep the key file private.`,
         );
         log.info(offlineAbandonNotice(keyPath));
@@ -1360,7 +1364,7 @@ export async function handler(argv: Arguments): Promise<void> {
         )} and key file to ${redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(keyPath),
         )} (${invitationExpiryNotice(ready.expires, {
-          expiresInGiven: expiresIn !== undefined,
+          expiresInGiven: expiresInSeconds !== undefined,
         })}). Keep the key file private.`,
       );
       log.info(offlineAbandonNotice(keyPath));

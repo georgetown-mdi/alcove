@@ -5,6 +5,7 @@ import { randomBytes, toBase64Url } from "../utils/crypto.js";
 import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { boundedArray } from "../utils/boundedArray.js";
+import { MAX_TIMER_MS } from "../utils/promise.js";
 import { SftpPortSchema } from "./sftpUrl.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
 
@@ -829,25 +830,30 @@ export const MAX_TIMEOUT_SECONDS = 7 * 24 * 60 * 60;
  */
 export const MAX_RECONNECT_ATTEMPTS = 7 * 24 * 60 * 60;
 
+/**
+ * Schema for a configured timer duration in milliseconds: a positive whole
+ * number no greater than `maxMs`, which defaults to and may not exceed
+ * {@link MAX_TIMER_MS}, so the value cannot arm a timer the runtime would clamp
+ * to 1 ms.
+ */
+function timerMs(maxMs: number = MAX_TIMER_MS): z.ZodInt {
+  if (maxMs > MAX_TIMER_MS)
+    throw new RangeError(
+      `timer ceiling ${String(maxMs)} ms exceeds ${String(MAX_TIMER_MS)} ms`,
+    );
+  return z.int().positive().max(maxMs);
+}
+
 const sharedOptionsFields = {
   // positive, not nonnegative: a zero arrival budget would end the rendezvous
   // before the partner could reach it (the CLI's --peer-timeout already rejects
   // zero; this closes the same hole on the config/programmatic path). Capped at
-  // the --peer-timeout flag's ceiling, which also keeps it inside the 2^31-1 ms
-  // a Node timer accepts before it clamps the delay to 1 ms.
-  peerTimeoutMs: z
-    .int()
-    .positive()
-    .max(MAX_TIMEOUT_SECONDS * 1000)
-    .optional(),
+  // the --peer-timeout flag's ceiling.
+  peerTimeoutMs: timerMs(MAX_TIMEOUT_SECONDS * 1000).optional(),
   // positive, not nonnegative: it arms every per-await liveness bound, so a
   // zero would fire each wait at once and disable the control. The same
-  // ceiling as peerTimeoutMs, for the same timer limit.
-  inactivityTimeoutMs: z
-    .int()
-    .positive()
-    .max(MAX_TIMEOUT_SECONDS * 1000)
-    .optional(),
+  // ceiling as peerTimeoutMs.
+  inactivityTimeoutMs: timerMs(MAX_TIMEOUT_SECONDS * 1000).optional(),
   // positive for the same reason: zero disables the filedrop connect probe and
   // ssh2's readyTimeout (armed only when > 0); --connection-timeout already
   // rejects zero. Defaulted (not just optional) so an unset value resolves to
@@ -855,10 +861,7 @@ const sharedOptionsFields = {
   // for sftp and filedrop. Fires only when the options object is present but
   // the field is absent; an omitted options block is covered by the same
   // constant at the connect sites in fileSyncConnection.
-  serverConnectTimeoutMs: z
-    .int()
-    .positive()
-    .default(DEFAULT_SERVER_CONNECT_TIMEOUT_MS),
+  serverConnectTimeoutMs: timerMs().default(DEFAULT_SERVER_CONNECT_TIMEOUT_MS),
   // nonnegative, not positive: zero is meaningful here -- "connect once, do not
   // reconnect" -- so it stays valid. Capped by MAX_RECONNECT_ATTEMPTS: the
   // connect-retry loop paces at a fixed 1s floor, so an unbounded count is a
@@ -1037,7 +1040,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     ...sharedOptionsFields,
     // positive, NOT nonnegative: 0 is a setTimeout(0) hot poll that busy-loops
     // directory listings (a self-inflicted flood), never a meaningful "no delay".
-    pollIntervalMs: z.int().positive().optional(),
+    pollIntervalMs: timerMs().optional(),
     timestampInFilename: z.boolean().optional(),
     locklessRendezvous: z.boolean().optional(),
     peerId: z.string().min(1).optional(),

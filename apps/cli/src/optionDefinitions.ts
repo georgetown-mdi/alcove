@@ -762,8 +762,7 @@ export function parseCommonBootstrapArgs(
     ),
     peerTimeout: durationFlagSeconds(argv, "peer-timeout", MAX_TIMEOUT_SECONDS),
     // Read in milliseconds (durationFlagMs, not durationFlagSeconds) so a
-    // sub-second demo value survives; no product ceiling -- a large poll interval
-    // is only slow, and the schema field imposes no maximum (see durationFlagMs).
+    // sub-second demo value survives.
     pollingFrequencyMs: durationFlagMs(argv, "polling-frequency"),
     maxReconnectAttempts: nonNegativeIntFlag(
       argv,

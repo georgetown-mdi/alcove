@@ -3060,7 +3060,7 @@ test("validateInvite: --expires-in sets the token's expiry to the override", asy
       keyFile: path.join(dir, ".alcove.key"),
     }),
     acceptTimeout: 900,
-    expiresIn: "2h",
+    expiresInSeconds: 7_200,
     log: silentLog,
   });
   const after = Date.now();
@@ -3099,35 +3099,66 @@ test("validateInvite: omitting --expires-in keeps the one-hour default", async (
   expect(expiresMs).toBeLessThanOrEqual(after + oneHour);
 });
 
-test("validateInvite: a zero --expires-in is rejected before any token is minted", async () => {
-  // A non-existent input would itself error once read; the duration is parsed at
-  // the very top of validateInvite, so the duration rejection -- not the missing
-  // input -- is what shows, proving no token is minted on a bad override.
-  const promise = validateInvite({
-    resolved: { mode: "offline", input: "/nonexistent/alcove-input.csv" },
-    options: testOptions(),
-    acceptTimeout: 900,
-    expiresIn: "0m",
-    log: silentLog,
-  });
-  await expect(promise).rejects.toBeInstanceOf(UsageError);
-  await expect(promise).rejects.toThrow(/duration/);
-});
+test.each([0, 1.5, 365 * 86_400 + 1])(
+  "validateInvite: an expiresInSeconds of %s is rejected before any token is minted",
+  async (expiresInSeconds) => {
+    // A non-existent input would itself error once read; the lifetime is checked
+    // at the very top of validateInvite, so the lifetime rejection -- not the
+    // missing input -- is what shows, proving no token is minted.
+    const promise = validateInvite({
+      resolved: { mode: "offline", input: "/nonexistent/alcove-input.csv" },
+      options: testOptions(),
+      acceptTimeout: 900,
+      expiresInSeconds,
+      log: silentLog,
+    });
+    await expect(promise).rejects.toBeInstanceOf(UsageError);
+    await expect(promise).rejects.toThrow(
+      `expires-in must be a whole number of seconds from 1 to 31536000; got ${String(expiresInSeconds)}`,
+    );
+  },
+);
 
-test("validateInvite: an --expires-in beyond the one-year maximum is rejected before any token is minted", async () => {
-  // Nonexistent input, as in the zero case: the override is bounded at the top
-  // of validateInvite, so the ceiling rejection -- not the missing input -- is
-  // what shows, proving no token is minted.
-  const promise = validateInvite({
-    resolved: { mode: "offline", input: "/nonexistent/alcove-input.csv" },
-    options: testOptions(),
-    acceptTimeout: 900,
-    expiresIn: "366d",
-    log: silentLog,
-  });
-  await expect(promise).rejects.toBeInstanceOf(UsageError);
-  await expect(promise).rejects.toThrow(/expires-in must not exceed/);
-});
+test.each([
+  [
+    "366d",
+    "--expires-in must not exceed 365d (the maximum invitation lifetime); got 366d",
+  ],
+  ["0m", "--expires-in"],
+  ["30", "30s"],
+])(
+  "handler: --expires-in %s is refused with exit 64 before any token is minted",
+  async (value, expected) => {
+    const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-expires-"));
+    tmpDirs.push(dir);
+    const input = writeCsv(dir, "first_name,last_name,dob,ssn");
+    const stdio = captureStdio();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "config-file": path.join(dir, "alcove.yaml"),
+        "key-file": path.join(dir, ".alcove.key"),
+        "log-level": "info",
+        "expires-in": value,
+        record: false,
+      } as unknown as Arguments);
+      expect(exit).toHaveBeenCalledWith(64);
+      expect(stdio.stderrWrites.join("")).toContain(expected);
+      expect(fs.existsSync(path.join(dir, ".alcove.key"))).toBe(false);
+    } finally {
+      stdio.restore();
+      logSpy.mockRestore();
+      exit.mockRestore();
+    }
+  },
+);
 
 test("validateInvite: an --expires-in at the one-year maximum is accepted", async () => {
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-max-"));
@@ -3141,7 +3172,7 @@ test("validateInvite: an --expires-in at the one-year maximum is accepted", asyn
       keyFile: path.join(dir, ".alcove.key"),
     }),
     acceptTimeout: 900,
-    expiresIn: "365d",
+    expiresInSeconds: 365 * 86_400,
     log: silentLog,
   });
   const after = Date.now();
@@ -3163,7 +3194,7 @@ test("validateInvite: --expires-in applies on the offlineFromConfig path", async
       resolved: { mode: "offline" },
       options: testOptions({ configFile: configPath, keyFile: keyPath }),
       acceptTimeout: 900,
-      expiresIn: "2h",
+      expiresInSeconds: 7_200,
       log: silentLog,
     });
     const after = Date.now();
@@ -3192,7 +3223,7 @@ test("validateInvite: online warns when --expires-in is shorter than --accept-ti
     resolved: { mode: "online", url: new URL("sftp://host/drop"), input },
     options,
     acceptTimeout: 900,
-    expiresIn: "5m",
+    expiresInSeconds: 300,
     log,
   });
   expect(

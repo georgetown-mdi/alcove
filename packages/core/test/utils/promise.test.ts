@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  MAX_TIMER_MS,
   TimeoutError,
   withTimeout,
   retryPromise,
@@ -63,6 +64,46 @@ describe("withTimeout", () => {
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  test.each([
+    ["above the timer ceiling", MAX_TIMER_MS + 1],
+    ["infinite", Number.POSITIVE_INFINITY],
+    ["NaN", Number.NaN],
+    ["negative", -1],
+  ])("refuses a deadline %s without arming a timer", async (_label, ms) => {
+    vi.useFakeTimers();
+    try {
+      const refused = withTimeout(new Promise(() => {}), ms, "probe");
+      expect(vi.getTimerCount()).toBe(0);
+      await expect(refused).rejects.toThrow(RangeError);
+      await expect(refused).rejects.toThrow(
+        `deadline for "probe" must be from 0 to 2147483647 ms; got ${String(ms)}`,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("accepts a deadline at the timer ceiling", async () => {
+    await expect(
+      withTimeout(Promise.resolve("ok"), MAX_TIMER_MS, "deadline"),
+    ).resolves.toBe("ok");
+  });
+
+  test("observes the raced promise when the deadline is refused", async () => {
+    const onUnhandled = vi.fn();
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const failing = Promise.reject(new Error("late failure"));
+      await expect(
+        withTimeout(failing, Number.POSITIVE_INFINITY, "probe"),
+      ).rejects.toThrow(RangeError);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(onUnhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
     }
   });
 });

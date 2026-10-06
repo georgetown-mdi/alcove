@@ -12,6 +12,7 @@ import {
   InternalConsistencyError,
   loadCSVFile,
   MAX_RECONNECT_ATTEMPTS,
+  MAX_TIMER_MS,
   PeerAbortError,
   StandardizedDataset,
   StandardizedField,
@@ -136,23 +137,34 @@ test("durationFlagSeconds: a valid duration is returned as whole seconds", () =>
   // flags' downstream consumers expect. The smallest unit is seconds, so the
   // conversion is exact for every unit.
   expect(
-    durationFlagSeconds(argv({ "peer-timeout": "30s" }), "peer-timeout"),
+    durationFlagSeconds(
+      argv({ "peer-timeout": "30s" }),
+      "peer-timeout",
+      MAX_TIMEOUT_SECONDS,
+    ),
   ).toBe(30);
   expect(
     durationFlagSeconds(
       argv({ "connection-timeout": "2m" }),
       "connection-timeout",
+      MAX_TIMEOUT_SECONDS,
     ),
   ).toBe(120);
 });
 
 test("durationFlagSeconds: an absent flag is undefined", () => {
-  expect(durationFlagSeconds(argv({}), "peer-timeout")).toBeUndefined();
+  expect(
+    durationFlagSeconds(argv({}), "peer-timeout", MAX_TIMEOUT_SECONDS),
+  ).toBeUndefined();
 });
 
 test("durationFlagSeconds: a malformed value is a flag-named usage error", () => {
   expect(() =>
-    durationFlagSeconds(argv({ "peer-timeout": "1w" }), "peer-timeout"),
+    durationFlagSeconds(
+      argv({ "peer-timeout": "1w" }),
+      "peer-timeout",
+      MAX_TIMEOUT_SECONDS,
+    ),
   ).toThrow("--peer-timeout");
 });
 
@@ -161,6 +173,7 @@ test("durationFlagSeconds: a repeated flag is rejected before parsing", () => {
     durationFlagSeconds(
       argv({ "peer-timeout": ["30s", "60s"] }),
       "peer-timeout",
+      MAX_TIMEOUT_SECONDS,
     ),
   ).toThrow("--peer-timeout may be given only once");
 });
@@ -171,10 +184,18 @@ test("durationFlagSeconds: a non-string value yields a UsageError, not a TypeErr
   // coerced so it still fails as a clean flag-named usage error rather than a raw
   // .trim() TypeError.
   expect(() =>
-    durationFlagSeconds(argv({ "peer-timeout": 30 }), "peer-timeout"),
+    durationFlagSeconds(
+      argv({ "peer-timeout": 30 }),
+      "peer-timeout",
+      MAX_TIMEOUT_SECONDS,
+    ),
   ).toThrow(UsageError);
   expect(() =>
-    durationFlagSeconds(argv({ "peer-timeout": 30 }), "peer-timeout"),
+    durationFlagSeconds(
+      argv({ "peer-timeout": 30 }),
+      "peer-timeout",
+      MAX_TIMEOUT_SECONDS,
+    ),
   ).toThrow("30s");
 });
 
@@ -221,13 +242,31 @@ test("durationFlagSeconds: a value just above the ceiling is rejected naming the
   expect(message).toContain(justOver);
 });
 
-test("durationFlagSeconds: the ceiling is opt-in; without a max a large value still parses", () => {
-  // The cap is a per-call ceiling, not a global one: a call that passes no
-  // maxSeconds is unbounded below the safe-integer overflow guard, exactly as
-  // before the cap existed, so a non-timeout duration flag is unaffected.
+test("durationFlagSeconds: the refusal states a ceiling that is not whole days in seconds", () => {
+  expect(() =>
+    durationFlagSeconds(argv({ "peer-timeout": "2h" }), "peer-timeout", 3_601),
+  ).toThrow("--peer-timeout must not exceed 3601s; got 2h");
+});
+
+test("durationFlagSeconds: the refusal names what the ceiling means when given", () => {
+  expect(() =>
+    durationFlagSeconds(
+      argv({ "expires-in": "366d" }),
+      "expires-in",
+      365 * 86_400,
+      "the maximum invitation lifetime",
+    ),
+  ).toThrow(
+    "--expires-in must not exceed 365d (the maximum invitation lifetime); got 366d",
+  );
   expect(
-    durationFlagSeconds(argv({ "peer-timeout": "30d" }), "peer-timeout"),
-  ).toBe(30 * 86_400);
+    durationFlagSeconds(
+      argv({ "expires-in": "365d" }),
+      "expires-in",
+      365 * 86_400,
+      "the maximum invitation lifetime",
+    ),
+  ).toBe(365 * 86_400);
 });
 
 test("durationFlagSeconds: the existing rejections precede the ceiling check", () => {
@@ -275,6 +314,24 @@ test("durationFlagMs: a repeated flag is rejected before parsing", () => {
       "polling-frequency",
     ),
   ).toThrow("--polling-frequency may be given only once");
+});
+
+test("durationFlagMs: a value at the timer ceiling is accepted", () => {
+  expect(
+    durationFlagMs(
+      argv({ "polling-frequency": `${String(MAX_TIMER_MS)}ms` }),
+      "polling-frequency",
+    ),
+  ).toBe(MAX_TIMER_MS);
+});
+
+test("durationFlagMs: a value above the timer ceiling is refused naming the flag and the maximum", () => {
+  for (const over of [`${String(MAX_TIMER_MS + 1)}ms`, "25d"])
+    expect(() =>
+      durationFlagMs(argv({ "polling-frequency": over }), "polling-frequency"),
+    ).toThrow(
+      `--polling-frequency must not exceed 2147483647ms (about 24 days); got ${over}`,
+    );
 });
 
 // --- nonNegativeIntFlag ------------------------------------------------------

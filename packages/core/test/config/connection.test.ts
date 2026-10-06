@@ -1,6 +1,8 @@
 import { ZodError, z } from "zod";
 import { expect, test } from "vitest";
 
+import { MAX_TIMER_MS } from "../../src/utils/promise";
+
 import {
   MAX_PEER_ID_BYTES,
   MAX_RECONNECT_ATTEMPTS,
@@ -465,6 +467,26 @@ test("server_connect_timeout_ms of zero is rejected", () => {
   });
   expect(result.success).toBe(false);
 });
+
+test.each(["poll_interval_ms", "server_connect_timeout_ms"])(
+  "%s is capped at the timer ceiling",
+  (field) => {
+    const at = safeParseConnectionConfig({
+      ...sftpBase,
+      options: { [field]: MAX_TIMER_MS },
+    });
+    expect(at.success).toBe(true);
+    for (const over of [MAX_TIMER_MS + 1, 30 * 86_400_000]) {
+      const result = safeParseConnectionConfig({
+        ...sftpBase,
+        options: { [field]: over },
+      });
+      expect(result.success).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues[0]?.message).toContain(String(MAX_TIMER_MS));
+    }
+  },
+);
 
 test("max_reconnect_attempts of zero is still accepted", () => {
   // Contrast with the two budgets above: zero is meaningful here ("connect once,
