@@ -338,15 +338,17 @@ function budgetRefusal(): Error {
   );
 }
 
-// A tag no mint of this build wrote, on a cause link of a plain failure. Core
-// reads a step label only where it is one this build renders, so this reaches
-// the screen as an untagged failure and takes the generic message.
-function spoofedRefusalChain(): Error {
+// A well-formed refusal held as a plain property on a cause link. Core reads a
+// refusal only from the annotation its own check writes, so this reaches the
+// screen as a generic failure; were the property read, it would render as the
+// too-many-steps refusal.
+function propertyRefusalChain(): Error {
   return new Error("mint failed", {
     cause: {
       alcoveTransformRefusal: {
-        reason: "uncompilable-step",
-        stepLabel: `${REFUSAL_MARKER} step`,
+        reason: "too-many-steps",
+        declaredSteps: 600,
+        maxSteps: 500,
       },
     },
   });
@@ -1662,16 +1664,16 @@ describe("inviter screen", () => {
 
   // The three mint failures that look like a refusal and are not: the check's
   // budget refusal, which judges the machine rather than the document; a config
-  // error the check never tagged; and a tag on a cause link no mint of this
-  // build wrote. Each has to take the fixed message, since none tells the author
-  // a term to change, and none may echo the text it holds.
+  // error the check never marked; and a refusal held as a plain property, which
+  // core does not read. Each has to take the fixed message, since none tells the
+  // author a term to change, and none may echo the text it holds.
   const untaggedFailures = (): Array<[string, Error]> => [
     ["the compile budget refusal", budgetRefusal()],
     [
       "an untagged config error",
       new OperatorConfigError(`config fault ${REFUSAL_MARKER}`),
     ],
-    ["a spoofed refusal tag", spoofedRefusalChain()],
+    ["a refusal held as a property", propertyRefusalChain()],
   ];
 
   test("a mint failure the check did not tag keeps the fixed message at the create click", async () => {
@@ -1704,6 +1706,9 @@ describe("inviter screen", () => {
         .toBeInTheDocument();
       await expect
         .element(page.getByText("A transform step cannot be built"))
+        .not.toBeInTheDocument();
+      await expect
+        .element(page.getByText("These terms declare too many transform steps"))
         .not.toBeInTheDocument();
       expect(document.body.textContent, what).not.toContain(REFUSAL_MARKER);
       expect(document.body.innerHTML, what).not.toContain(REFUSAL_MARKER);
@@ -1749,6 +1754,9 @@ describe("inviter screen", () => {
         .toBeInTheDocument();
       await expect
         .element(page.getByText("A transform step cannot be built"))
+        .not.toBeInTheDocument();
+      await expect
+        .element(page.getByText("These terms declare too many transform steps"))
         .not.toBeInTheDocument();
       expect(document.body.textContent, what).not.toContain(REFUSAL_MARKER);
       expect(document.body.innerHTML, what).not.toContain(REFUSAL_MARKER);

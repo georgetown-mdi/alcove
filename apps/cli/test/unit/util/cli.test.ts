@@ -26,6 +26,8 @@ import {
   INPUT_NOT_FOUND_EXIT_CODE,
   INTERNAL_FAULT_EXIT_CODE,
   PARTNER_REFUSED_EXIT_CODE,
+  PERSISTENCE_LOSS_EXIT_CODE,
+  UNAVAILABLE_EXIT_CODE,
 } from "@alcove/cli-contract";
 
 import {
@@ -39,6 +41,8 @@ import {
   exitCodeForError,
   InputNotFoundError,
   exitWithError,
+  withExitCode,
+  withPersistenceLossExitCode,
 } from "../../../src/util/exit";
 import {
   assertNoUnknownOptions,
@@ -607,6 +611,19 @@ test("exitCodeForError: an unrecognized standardization function is EX_USAGE", (
   expect((refusal as Error).message).toBe(
     "unknown standardization function: a function this build does not recognize",
   );
+});
+
+test("withPersistenceLossExitCode: a code on a cause does not outrank the loss", () => {
+  const cause = withExitCode(new Error("read failed"), UNAVAILABLE_EXIT_CODE);
+  const wrapped = new Error("the result was not written", { cause });
+  withPersistenceLossExitCode(wrapped);
+  expect(exitCodeForError(wrapped)).toBe(PERSISTENCE_LOSS_EXIT_CODE);
+});
+
+test("withPersistenceLossExitCode: a code on the error itself is kept", () => {
+  const own = withExitCode(new Error("refused"), UNAVAILABLE_EXIT_CODE);
+  withPersistenceLossExitCode(own);
+  expect(exitCodeForError(own)).toBe(UNAVAILABLE_EXIT_CODE);
 });
 
 // --- exitWithError -----------------------------------------------------------

@@ -3,12 +3,8 @@
 // cause chain that holds one.
 
 /**
- * Maximum number of links a walk down an error's `cause` chain follows past the
- * error itself: {@link annotationOf}, `classifyFailure`'s transport-wrap
- * unwrap, and `sanitizeErrorForDisplay`'s render. A defensive bound so a
- * pathologically deep (or adversarially constructed) chain cannot flood an
- * operator's terminal or stall the walk: the cycle guard already stops a chain
- * that revisits a link, and this caps a long acyclic one.
+ * The most links a walk down an error's `cause` chain follows past the error
+ * itself.
  */
 export const MAX_ERROR_CAUSE_DEPTH = 8;
 
@@ -66,15 +62,17 @@ export interface AnnotationReadOptions {
 }
 
 /**
- * The value `key` annotates on `error` or on the nearest link of its `cause`
- * chain that holds one, else `undefined`. The walk follows `cause` on any
+ * The first defined value `read` returns for `error` or a link of its `cause`
+ * chain, nearest first, else `undefined`. The walk follows `cause` on any
  * non-null object link, stops at a link it has already visited, and follows at
- * most {@link MAX_ERROR_CAUSE_DEPTH} links past `error`. A throwing `cause`
- * accessor propagates to the caller.
+ * most {@link MAX_ERROR_CAUSE_DEPTH} links past `error`: the bound every
+ * cause-chain read in core shares, so a deep or adversarially built chain
+ * cannot stall a read. `options.ownOnly` reads `error` itself only. A throwing
+ * `cause` accessor propagates to the caller.
  */
-export function annotationOf<T extends NonNullable<unknown>>(
+export function findInCauseChain<T>(
   error: unknown,
-  key: AnnotationKey<T>,
+  read: (link: object) => T | undefined,
   options: AnnotationReadOptions = {},
 ): T | undefined {
   const seen = new Set<object>();
@@ -85,11 +83,27 @@ export function annotationOf<T extends NonNullable<unknown>>(
     depth++
   ) {
     seen.add(link);
-    const value = annotations.get(link)?.get(key);
-    if (value !== undefined) return value as T;
+    const value = read(link);
+    if (value !== undefined) return value;
     if (options.ownOnly === true || depth >= MAX_ERROR_CAUSE_DEPTH)
       return undefined;
     link = (link as { cause?: unknown }).cause;
   }
   return undefined;
+}
+
+/**
+ * The value `key` annotates on `error` or on the nearest link of its `cause`
+ * chain that holds one, else `undefined`, read by {@link findInCauseChain}.
+ */
+export function annotationOf<T extends NonNullable<unknown>>(
+  error: unknown,
+  key: AnnotationKey<T>,
+  options: AnnotationReadOptions = {},
+): T | undefined {
+  return findInCauseChain(
+    error,
+    (link) => annotations.get(link)?.get(key) as T | undefined,
+    options,
+  );
 }

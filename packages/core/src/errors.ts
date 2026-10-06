@@ -1,4 +1,9 @@
-import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
+import {
+  annotate,
+  annotationKey,
+  annotationOf,
+  findInCauseChain,
+} from "./failureAnnotation";
 import type { AnnotationReadOptions } from "./failureAnnotation";
 
 /**
@@ -153,35 +158,24 @@ export class InvitationTermDivergenceError extends ConnectionError {
 }
 
 /**
- * Whether `error` or any link in its `cause` chain satisfies `predicate`.
+ * Whether `error` or any link in its `cause` chain satisfies `predicate`,
+ * read by {@link findInCauseChain}.
  *
  * The single shared rule for asking "is this failure, anywhere under
- * whatever wrapped it, an X?" -- a class, a property tag, or a message
- * fragment. Asking it of the chain rather than of the value handed over
- * keeps the answer right wherever the wrapping happens: a re-raise that
- * replaces the message and keeps the original as its `cause` stays matched.
- *
- * The walk follows `cause` on any non-null object link, not only an
- * `Error`, so a plain object interposed in the chain does not truncate it;
- * a predicate that cares narrows with its own `instanceof`. A seen-set
- * stops a `cause` cycle from being revisited; it does not bound a chain of
- * distinct links, and a throwing `cause` accessor propagates to the
- * caller. Rendering an arbitrary chain is
- * {@link sanitizeErrorForDisplay}'s job, which holds the depth bound and
- * the guarded read this helper does not.
+ * whatever wrapped it, an X?" -- a class or a message fragment. Asking it of
+ * the chain rather than of the value handed over keeps the answer right
+ * wherever the wrapping happens: a re-raise that replaces the message and
+ * keeps the original as its `cause` stays matched. A plain object interposed
+ * in the chain does not truncate it; a predicate that cares narrows with its
+ * own `instanceof`.
  */
 export function causeChainSome(
   error: unknown,
   predicate: (link: object) => boolean,
 ): boolean {
-  const seen = new Set<unknown>();
-  let cursor: unknown = error;
-  while (typeof cursor === "object" && cursor !== null && !seen.has(cursor)) {
-    seen.add(cursor);
-    if (predicate(cursor)) return true;
-    cursor = (cursor as { cause?: unknown }).cause;
-  }
-  return false;
+  return (
+    findInCauseChain(error, (link) => predicate(link) || undefined) === true
+  );
 }
 
 const STATES_OWN_NEXT_STEP = annotationKey<true>("states its own next step");
@@ -205,12 +199,13 @@ export function statesItsOwnNextStep(
   error: unknown,
   options: AnnotationReadOptions = {},
 ): boolean {
-  if (annotationOf(error, STATES_OWN_NEXT_STEP, options) === true) return true;
-  const holdsProperty = (link: object): boolean =>
+  const states = (link: object): true | undefined =>
+    annotationOf(link, STATES_OWN_NEXT_STEP, { ownOnly: true }) === true ||
     (link as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted === true;
-  if (options.ownOnly !== true) return causeChainSome(error, holdsProperty);
-  return typeof error === "object" && error !== null && holdsProperty(error);
+      .alcoveRecoveryHintEmitted === true
+      ? true
+      : undefined;
+  return findInCauseChain(error, states, options) === true;
 }
 
 /**

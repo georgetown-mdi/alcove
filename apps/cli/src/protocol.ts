@@ -68,7 +68,6 @@ import type {
 import {
   AUTHENTICATION_FAILED_EXIT_CODE,
   INTERRUPTED_EXIT_CODE,
-  PERSISTENCE_LOSS_EXIT_CODE,
   TERMINATED_EXIT_CODE,
   type ErrorPhase,
 } from "@alcove/cli-contract";
@@ -141,10 +140,10 @@ import {
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
 import {
-  annotatedExitCode,
   exitCodeForError,
   fixedNextStep,
   withExitCode,
+  withPersistenceLossExitCode,
 } from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
@@ -1375,9 +1374,7 @@ async function authenticateRun(params: {
     // succeeded, so "may" is intentionally conservative.
     //
     // The wrapped error already holds the full recovery hint specific
-    // to this failure mode. Mark it as stating its own next step, as
-    // authenticateConnection tags its own validation errors (see
-    // auth.ts), so the
+    // to this failure mode. Marked as stating its own next step, the
     // runProtocol catch below skips its generic authStarted advisory
     // and the user sees one coherent recovery message.
     //
@@ -1912,7 +1909,7 @@ async function checkRunLocalInputs(params: {
     // "peer abandoned the handshake" hint for what is really an expired or
     // malformed secret. authenticateConnection still runs the same check
     // as the authoritative boundary for library consumers that bypass
-    // runProtocol. The shared check sets alcoveRecoveryHintEmitted, so
+    // runProtocol. The shared check's errors state their own next step, so
     // runProtocol's catch block suppresses its generic advisory.
     assertSharedSecretReadyForHandshake(auth);
     // Validate and trim the key-file path before any credential is
@@ -2490,14 +2487,8 @@ async function writeExchangeOutputs(params: {
       // it instead of the 69 a transport fault gets; exitCodeForError
       // (util/exit.ts) reads the annotated code, measured (not asserted)
       // by exchange.test.ts and zeroSetup.test.ts driving each handler to
-      // a trapped process.exit. An error that already holds a code keeps
-      // it.
-      if (
-        typeof err === "object" &&
-        err !== null &&
-        annotatedExitCode(err) === undefined
-      )
-        withExitCode(err, PERSISTENCE_LOSS_EXIT_CODE);
+      // a trapped process.exit.
+      withPersistenceLossExitCode(err);
       // Raised below, after the record and the receipt: a disclosure that
       // occurred is owed its record whatever became of the result
       // (docs/notes/record-durability-point.md), and a result the reader of

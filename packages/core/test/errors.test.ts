@@ -22,6 +22,14 @@ import {
   RoundSetLimitError,
   ConnectionError,
 } from "../src/errors";
+import { MAX_ERROR_CAUSE_DEPTH } from "../src/failureAnnotation";
+
+function wrappedIn(count: number, inner: unknown): unknown {
+  let link = inner;
+  for (let i = 0; i < count; i++)
+    link = new Error(`wrap ${i}`, { cause: link });
+  return link;
+}
 
 // The recovery step each of the three classes chains behind its summary: the
 // first cause link, read off the error itself rather than restated here.
@@ -206,6 +214,17 @@ describe("causeChainSome", () => {
     expect(readCount()).toBe(2);
   });
 
+  test("walks at most MAX_ERROR_CAUSE_DEPTH links past the error", () => {
+    const isType = (e: object): boolean => e instanceof TypeError;
+    const inner = new TypeError("boom");
+    expect(
+      causeChainSome(wrappedIn(MAX_ERROR_CAUSE_DEPTH, inner), isType),
+    ).toBe(true);
+    expect(
+      causeChainSome(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, inner), isType),
+    ).toBe(false);
+  });
+
   test("propagates a throwing cause accessor to the caller", () => {
     const outer = new Error("outer");
     Object.defineProperty(outer, "cause", {
@@ -352,6 +371,21 @@ describe("statesItsOwnNextStep", () => {
     expect(statesItsOwnNextStep(wrapped, { ownOnly: true })).toBe(false);
     expect(statesItsOwnNextStep(new Error("plain"))).toBe(false);
     expect(statesItsOwnNextStep(undefined)).toBe(false);
+  });
+
+  test("reads both the mark and the property to the same depth", () => {
+    const marked = markStatesItsOwnNextStep(new Error("save failed"));
+    const tagged = Object.assign(new Error("expired"), {
+      alcoveRecoveryHintEmitted: true,
+    });
+    for (const inner of [marked, tagged]) {
+      expect(
+        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH, inner)),
+      ).toBe(true);
+      expect(
+        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, inner)),
+      ).toBe(false);
+    }
   });
 
   test("a PeerAbortError keeps the mark behind a transport wrap", () => {
