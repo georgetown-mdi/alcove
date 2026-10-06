@@ -135,13 +135,17 @@ const ACCEPT_OFFLINE_USAGE =
   "--identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]";
 const ACCEPT_ONLINE_USAGE =
   "--identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FOLDER]";
+const ACCEPT_USAGE = [
+  `${ACCEPT_OFFLINE_USAGE} (offline)`,
+  `${ACCEPT_ONLINE_USAGE} (online)`,
+];
 
 export function builder(cmd: Argv): Argv {
   return addCommonBootstrapOptions(
     addCsvDelimiterOption(
       declarePositionals(
         cmd,
-        { command: "accept", usage: ACCEPT_OFFLINE_USAGE, optional: ["args"] },
+        { command: "accept", usage: ACCEPT_USAGE, optional: ["args"] },
         {
           // Capture all positionals into `args` (rather than relying on the
           // global `_`) and treat an unknown `-`-leading token as a positional,
@@ -247,23 +251,13 @@ export function resolveAcceptPositionals(positionals: Array<unknown>):
         "online acceptance requires an invitation and an input file; usage: " +
           `alcove accept ${ACCEPT_ONLINE_USAGE}`,
       );
-    refuseSurplusPositionals(
-      positionals.length,
-      4,
-      "accept",
-      ACCEPT_ONLINE_USAGE,
-    );
+    refuseSurplusPositionals(positionals.length, 4, "accept", ACCEPT_USAGE);
     const output =
       positionals[3] !== undefined ? String(positionals[3]) : undefined;
     return { mode: "online", url: new URL(arg0), invitation, input, output };
   }
 
-  refuseSurplusPositionals(
-    positionals.length,
-    3,
-    "accept",
-    ACCEPT_OFFLINE_USAGE,
-  );
+  refuseSurplusPositionals(positionals.length, 3, "accept", ACCEPT_USAGE);
   return {
     mode: "offline",
     invitation: arg0,

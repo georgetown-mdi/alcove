@@ -25,9 +25,10 @@ export interface CommandPositionals {
   command: string;
   /**
    * The command's usage after `alcove COMMAND`, shown when it is given more
-   * positionals than it takes; empty for a command that takes none.
+   * positionals than it takes; empty for a command that takes none, and one
+   * entry per form for a command whose first positional selects its form.
    */
-  usage: string;
+  usage: string | readonly string[];
   /** The positionals the command cannot run without; declared first. */
   required?: readonly string[];
   /** The positionals after them; a variadic one is last. */
@@ -50,12 +51,15 @@ function assignPositional(argv: Arguments, name: string, value: unknown): void {
  */
 export function surplusPositionalsError(
   command: string,
-  usage: string,
+  usage: string | readonly string[],
 ): UsageError {
   const invocation = command === "" ? "alcove" : `alcove ${command}`;
+  const forms = typeof usage === "string" ? [usage] : usage;
+  const usageLines = forms.map(
+    (form) => `${invocation} ${form === "" ? "[options]" : form}`,
+  );
   return new UsageError(
-    `too many arguments for ${invocation}; usage: ${invocation} ` +
-      (usage === "" ? "[options]" : usage),
+    `too many arguments for ${invocation}; usage: ${usageLines.join(", or ")}`,
   );
 }
 
@@ -68,7 +72,7 @@ export function refuseSurplusPositionals(
   given: number,
   most: number,
   command: string,
-  usage: string,
+  usage: string | readonly string[],
 ): void {
   if (given > most) throw surplusPositionalsError(command, usage);
 }

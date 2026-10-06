@@ -143,9 +143,13 @@ import {
 // not how long the token stays valid; --expires-in overrides the default up to
 // the ceiling (see the builder option and validateInvite).
 
-const INVITE_OFFLINE_USAGE = "[options] [INPUT_FILE]";
+const INVITE_OFFLINE_USAGE = "--identity IDENTITY [INPUT_FILE]";
 const INVITE_ONLINE_USAGE =
   "--identity IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]";
+const INVITE_USAGE = [
+  `${INVITE_OFFLINE_USAGE} (offline)`,
+  `${INVITE_ONLINE_USAGE} (online)`,
+];
 
 export function builder(cmd: Argv): Argv {
   return addLinkageStrategyOption(
@@ -155,7 +159,7 @@ export function builder(cmd: Argv): Argv {
           cmd,
           {
             command: "invite",
-            usage: INVITE_OFFLINE_USAGE,
+            usage: INVITE_USAGE,
             optional: ["args"],
           },
           {
@@ -426,23 +430,13 @@ export function resolveInvitePositionals(
         "online invitation requires an input file; usage: alcove invite " +
           INVITE_ONLINE_USAGE,
       );
-    refuseSurplusPositionals(
-      positionals.length,
-      3,
-      "invite",
-      INVITE_ONLINE_USAGE,
-    );
+    refuseSurplusPositionals(positionals.length, 3, "invite", INVITE_USAGE);
     const output =
       positionals[2] !== undefined ? String(positionals[2]) : undefined;
     return { mode: "online", url: new URL(arg0), input, output };
   }
 
-  refuseSurplusPositionals(
-    positionals.length,
-    1,
-    "invite",
-    INVITE_OFFLINE_USAGE,
-  );
+  refuseSurplusPositionals(positionals.length, 1, "invite", INVITE_USAGE);
   return { mode: "offline", input: arg0 };
 }
 
@@ -1093,8 +1087,7 @@ export async function validateInvite(params: {
   if (resolved.input === undefined)
     throw new UsageError(
       "generating an invitation requires an input file or a pre-existing " +
-        "configuration file; usage: alcove invite --identity IDENTITY " +
-        "[INPUT_FILE]",
+        `configuration file; usage: alcove invite ${INVITE_OFFLINE_USAGE}`,
     );
   assertNoProvisionConflicts({
     configPath: options.configFile,

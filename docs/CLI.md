@@ -171,7 +171,7 @@ A flag value that is empty or blank -- what a scripted `--identity "$ORG"` sends
 A leading `~` (or `~/`) in a local filesystem path -- whether given on the command line or written into the configuration file -- is expanded to the current user's home directory. Which paths are expanded depends on the command:
 
 - The path inside an `@`-file reference (for example, `@~/secrets/id_rsa`) is expanded wherever a reference is resolved.
-- `--config-file` and `--key-file` are expanded on every command that takes them, after surrounding whitespace is removed.
+- `--config-file` and `--key-file` are read the same way on every command that takes them: surrounding whitespace is removed, a leading `~` is expanded, and a value left empty is refused with a usage error (exit 64).
 - `alcove exchange` also expands the input and output paths, and `signing.identity_file`.
 - The zero-setup form takes its input and output positionals literally.
 - `alcove fingerprint` also expands `--identity-file` and `--export-certificate`; `alcove verify-receipt` also expands `RECORD`, `--keys`, `--signed-record`, `--partner-terms`, `--identity-file`, and `signing.identity_file`.

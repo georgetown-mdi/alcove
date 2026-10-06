@@ -300,6 +300,47 @@ test.each([["apply", "update"], ["update"]])(
   },
 );
 
+test.each([["apply", "update"], ["init"]])(
+  "%s refuses an empty --config-file, exit 64",
+  async (...command) => {
+    const { exit, stderr } = await handlerRun([...command, "--config-file= "]);
+    expect(stderr).toContain("--config-file is empty");
+    expect(exit).toBe("exit:64");
+  },
+);
+
+test.each([
+  [
+    "accept",
+    ["accept", "INVITE", "in.csv", "out", "extra"],
+    ["accept", "sftp://h/drop", "INVITE", "in.csv", "out", "extra"],
+  ],
+  [
+    "invite",
+    ["invite", "in.csv", "extra"],
+    ["invite", "sftp://h/drop", "in.csv", "out", "extra"],
+  ],
+])(
+  "%s shows one usage for a surplus positional, offline or online",
+  async (command, offline, online) => {
+    const usage =
+      `too many arguments for alcove ${command}; usage: ` +
+      `alcove ${command} --identity IDENTITY`;
+    const messages: string[] = [];
+    for (const argv of [offline, online]) {
+      const { exit, stderr } = await handlerRun(argv);
+      expect(exit).toBe("exit:64");
+      const message = stderr.slice(stderr.indexOf("too many arguments"));
+      expect(message).toContain(usage);
+      expect(message).toContain("(offline), or ");
+      expect(message).not.toContain("extra");
+      messages.push(message);
+      vi.restoreAllMocks();
+    }
+    expect(messages[0]).toBe(messages[1]);
+  },
+);
+
 test("exchange --help still prints help and exits 0", async () => {
   const printed: string[] = [];
   vi.spyOn(console, "log").mockImplementation((...args: unknown[]) => {

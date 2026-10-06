@@ -45,39 +45,32 @@ function serverPortFlag(argv: Arguments): number | undefined {
   return raw;
 }
 
+const LOCAL_PATH_FLAG_FILES = {
+  "config-file": "configuration file",
+  "key-file": "key file",
+} as const;
+
 /**
  * Read a local file path flag, or `undefined` when it is absent. The value is
  * trimmed, so a trailing space or the CR a CRLF file leaves on
  * `KEY=$(cat path.txt)` does not name a second file, then a leading `~` is
  * expanded ({@link expandTilde}), since a `--flag=~/path` word reaches the CLI
  * unexpanded under zsh and in a quoted argument. Rejects a repeat (via
- * {@link singleValue}) and a value that is empty once trimmed.
+ * {@link singleValue}) and a value that is empty once trimmed, whose message
+ * ends with `whenOmitted`: what leaving the flag out does.
  */
 function localPathFlag(
   argv: Arguments,
-  name: "config-file" | "key-file",
-  fallback: string,
-): string;
-function localPathFlag(
-  argv: Arguments,
-  name: "config-file" | "key-file",
-  fallback: undefined,
-): string | undefined;
-function localPathFlag(
-  argv: Arguments,
-  name: "config-file" | "key-file",
-  fallback: string | undefined,
+  name: keyof typeof LOCAL_PATH_FLAG_FILES,
+  whenOmitted: string,
 ): string | undefined {
   const raw = singleValue(argv, name);
-  if (raw === undefined) return fallback;
+  if (raw === undefined) return undefined;
   const trimmed = String(raw).trim();
   if (trimmed.length === 0)
     throw new UsageError(
-      `--${name} is empty; name the ` +
-        (name === "key-file" ? "key file" : "configuration file") +
-        (fallback === undefined
-          ? ", or omit the flag."
-          : `, or omit the flag to use ${fallback}`),
+      `--${name} is empty; name the ${LOCAL_PATH_FLAG_FILES[name]}, or omit ` +
+        `the flag ${whenOmitted}.`,
     );
   return expandTilde(trimmed);
 }
@@ -88,7 +81,10 @@ function localPathFlag(
  * read from and the rotated key written to one path.
  */
 export function keyFileFlag(argv: Arguments): string {
-  return localPathFlag(argv, "key-file", DEFAULT_KEY_PATH);
+  return (
+    localPathFlag(argv, "key-file", `to use ${DEFAULT_KEY_PATH}`) ??
+    DEFAULT_KEY_PATH
+  );
 }
 
 /**
@@ -96,7 +92,10 @@ export function keyFileFlag(argv: Arguments): string {
  * {@link DEFAULT_CONFIG_PATH}.
  */
 export function configFileFlag(argv: Arguments): string {
-  return localPathFlag(argv, "config-file", DEFAULT_CONFIG_PATH);
+  return (
+    localPathFlag(argv, "config-file", `to use ${DEFAULT_CONFIG_PATH}`) ??
+    DEFAULT_CONFIG_PATH
+  );
 }
 
 /**
@@ -104,7 +103,7 @@ export function configFileFlag(argv: Arguments): string {
  * no configuration unless one is named: `undefined` when the flag is absent.
  */
 export function namedConfigFileFlag(argv: Arguments): string | undefined {
-  return localPathFlag(argv, "config-file", undefined);
+  return localPathFlag(argv, "config-file", "to load no configuration file");
 }
 
 /**

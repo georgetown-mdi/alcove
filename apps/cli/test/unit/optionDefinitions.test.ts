@@ -79,6 +79,23 @@ test.each([
   expect(() => read(argv({ [flag]: ["a", "b"] }))).toThrow(UsageError);
 });
 
+test.each([
+  [
+    configFileFlag,
+    "configuration file, or omit the flag to use ./alcove.yaml.",
+  ],
+  [keyFileFlag, "key file, or omit the flag to use ./.alcove.key."],
+  [
+    namedConfigFileFlag,
+    "configuration file, or omit the flag to load no configuration file.",
+  ],
+] as const)("an empty path flag says what omitting it does", (read, ending) => {
+  const flag = read === keyFileFlag ? "key-file" : "config-file";
+  expect(() => read(argv({ [flag]: "" }))).toThrow(
+    `--${flag} is empty; name the ${ending}`,
+  );
+});
+
 // --- hostKeyFingerprintFlag ---------------------------------------------------
 
 test("hostKeyFingerprintFlag: an absent flag is undefined", () => {

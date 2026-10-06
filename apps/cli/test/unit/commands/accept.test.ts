@@ -213,16 +213,18 @@ describe("offline vs online dispatch", () => {
 
   test("a positional past the form's last one is a usage error, not a drop", () => {
     // Each form is checked against its own count: the third positional is the
-    // OUTPUT_FOLDER offline and the INPUT_FILE online, so an operator who reached
-    // for the wrong form reads that form's usage rather than having the file they
-    // named silently ignored.
+    // OUTPUT_FOLDER offline and the INPUT_FILE online. The refusal shows both
+    // forms, so an operator who reached for the wrong one sees the other.
     const offline = (): void => {
       resolveAcceptPositionals(["INVITE", "input.csv", "out.csv", "extra.csv"]);
     };
     expect(offline).toThrow(UsageError);
-    expect(offline).toThrow(
-      "alcove accept --identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]",
-    );
+    const usage =
+      "too many arguments for alcove accept; usage: alcove accept --identity " +
+      "IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER] (offline), or alcove " +
+      "accept --identity IDENTITY URL INVITATION INPUT_FILE [OUTPUT_FOLDER] " +
+      "(online)";
+    expect(offline).toThrow(usage);
     const online = (): void => {
       resolveAcceptPositionals([
         "sftp://host/drop",
@@ -233,10 +235,7 @@ describe("offline vs online dispatch", () => {
       ]);
     };
     expect(online).toThrow(UsageError);
-    expect(online).toThrow(
-      "alcove accept --identity IDENTITY URL INVITATION INPUT_FILE " +
-        "[OUTPUT_FOLDER]",
-    );
+    expect(online).toThrow(usage);
     // The classification an unattended caller reads: a positional it typed is its
     // own to fix, so 64 rather than the transport's 69.
     let refusal: unknown;

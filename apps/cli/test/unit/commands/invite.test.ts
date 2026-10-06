@@ -141,16 +141,16 @@ test("no positionals dispatches offline with no input file", () => {
 });
 
 test("a positional past the last each form takes is a usage error", () => {
+  const usage =
+    "too many arguments for alcove invite; usage: alcove invite --identity " +
+    "IDENTITY [INPUT_FILE] (offline), or alcove invite --identity IDENTITY " +
+    "URL INPUT_FILE [OUTPUT_FOLDER] (online)";
   expect(() => resolveInvitePositionals(["input.csv", "results.csv"])).toThrow(
-    "too many arguments for alcove invite; usage: alcove invite [options] " +
-      "[INPUT_FILE]",
+    usage,
   );
   expect(() =>
     resolveInvitePositionals(["sftp://h/drop", "input.csv", "out", "extra"]),
-  ).toThrow(
-    "too many arguments for alcove invite; usage: alcove invite --identity " +
-      "IDENTITY URL INPUT_FILE [OUTPUT_FOLDER]",
-  );
+  ).toThrow(usage);
   expect(
     resolveInvitePositionals(["sftp://h/drop", "input.csv", "out"]).mode,
   ).toBe("online");
