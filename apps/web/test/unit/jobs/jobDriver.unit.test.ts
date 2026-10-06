@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { afterEach, describe, expect, test } from "vitest";
 
 import {
@@ -20,7 +18,7 @@ import {
 import {
   STUB_CLI_PATH,
   captureZeroSetupArgv,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 describe("classifyExit maps CLI exit codes to terminal states", () => {
@@ -239,19 +237,8 @@ describe("resolveCliBinaryPath", () => {
 });
 
 describe("spawnZeroSetupJob drives the literal $0 form", () => {
-  const dirs: Array<string> = [];
-  afterEach(() => {
-    for (const dir of dirs.splice(0))
-      fs.rmSync(dir, { recursive: true, force: true });
-  });
-
-  /** A scratch directory for one spawn, removed after the test. */
-  function scratchDir(label: string): string {
-    const dir = tempDataRoot(label);
-    fs.mkdirSync(dir, { recursive: true });
-    dirs.push(dir);
-    return dir;
-  }
+  const { scratchDir, cleanup } = trackScratchDirs();
+  afterEach(cleanup);
 
   test("sftp: URL first positional, --server-* flags, input, output folder", async () => {
     const workdir = scratchDir("zs-driver");

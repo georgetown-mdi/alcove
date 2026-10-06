@@ -19,6 +19,7 @@ import { MAX_RELAY_BUFFERED_BYTES } from "@alcove/peerjs-broker/messageHandler/h
 import { MessageType } from "@alcove/peerjs-broker/enums";
 
 import { KEY } from "../utils/signalingHarness";
+import { waitFor } from "../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { IConfig } from "@alcove/peerjs-broker/config/index";
@@ -154,17 +155,6 @@ async function registerThenStopReading(
   return socket;
 }
 
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 3_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not met in time");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
-
 function settlesWithin(
   promise: Promise<unknown>,
   ms: number,
@@ -227,7 +217,7 @@ describe("relay send-buffer bound", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
     }
-    await waitFor(recipientReleased, 5_000);
+    await waitFor(recipientReleased);
 
     // A send goes out while the buffer is at most the bound, so the buffer
     // can pass it by one relayed frame and its WebSocket header.
@@ -362,10 +352,7 @@ describe("relay send-buffer bound", () => {
         await new Promise((resolve) => setTimeout(resolve, 5));
       }
     }
-    await waitFor(
-      () => broker.realm.getClientById(RECIPIENT_ID) === undefined,
-      5_000,
-    );
+    await waitFor(() => broker.realm.getClientById(RECIPIENT_ID) === undefined);
 
     // Resuming reads lets the peer see its side end; a close handshake the
     // peer never answers would instead hold the socket for the `ws` close
@@ -425,11 +412,11 @@ describe("leaving the realm", () => {
     }
 
     expect(broker.realm.getClientsIds()).toEqual([]);
-    const deadline = Date.now() + 3_000;
-    while ((await openConnections(broker.server)) > 0) {
-      if (Date.now() >= deadline) throw new Error("connections still held");
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    await waitFor(async () => (await openConnections(broker.server)) === 0, {
+      timeoutMs: 3_000,
+      intervalMs: 20,
+      message: "connections still held",
+    });
   });
 
   test("a client that leaves no longer relays under its id", async () => {
@@ -560,10 +547,9 @@ describe("relay queue refusals", () => {
     }
 
     const refusedId = absentIds[absentIds.length - 1];
-    await waitFor(
-      () => expiredDestinations(sender).includes(refusedId),
-      PROMPT_ANSWER_MS,
-    );
+    await waitFor(() => expiredDestinations(sender).includes(refusedId), {
+      timeoutMs: PROMPT_ANSWER_MS,
+    });
     expect(expiredDestinations(sender)).toEqual([refusedId]);
     expect(broker.realm.getMessageQueueById(refusedId)).toBeUndefined();
     expect(broker.realm.getClientsIdsWithQueue()).toHaveLength(
@@ -587,10 +573,9 @@ describe("relay queue refusals", () => {
         }),
       );
     }
-    await waitFor(
-      () => expiredDestinations(busy).length === 1,
-      PROMPT_ANSWER_MS,
-    );
+    await waitFor(() => expiredDestinations(busy).length === 1, {
+      timeoutMs: PROMPT_ANSWER_MS,
+    });
 
     const sender = await connectCollecting(broker.port, SENDER_ID);
     sender.ws.send(
@@ -631,10 +616,9 @@ describe("relay queue refusals", () => {
     sender.ws.send(
       JSON.stringify({ type: "OFFER", dst: RECIPIENT_ID, payload: "offer" }),
     );
-    await waitFor(
-      () => expiredDestinations(sender).includes(RECIPIENT_ID),
-      PROMPT_ANSWER_MS,
-    );
+    await waitFor(() => expiredDestinations(sender).includes(RECIPIENT_ID), {
+      timeoutMs: PROMPT_ANSWER_MS,
+    });
     expect(broker.realm.getMessageQueueById(RECIPIENT_ID)).toBeUndefined();
     expect(sender.ws.readyState).toBe(WebSocket.OPEN);
   });

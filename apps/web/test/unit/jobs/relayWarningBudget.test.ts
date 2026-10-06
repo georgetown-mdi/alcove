@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, expect, test } from "vitest";
@@ -24,7 +23,7 @@ import { spawnExchangeJob } from "@jobs/cliDriver";
 import {
   STUB_CLI_PATH,
   awaitJobTerminalState,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 import type { PresentedHostKey } from "@alcove/core";
@@ -37,20 +36,11 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // end; the other drives a message composed at the shared budget, to catch the
 // two boundaries capping differently.
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A scratch working directory for one spawned child, removed after the test. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** The composition's final clause; it must survive every boundary's pass. */
 const CLOSING_CLAUSE = "re-pin it on both sides.";

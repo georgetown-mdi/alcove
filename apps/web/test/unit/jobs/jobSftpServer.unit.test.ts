@@ -8,7 +8,7 @@ import { validateAuthoredSftpServer } from "@jobs/sftpServer";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 // validateAuthoredSftpServer is the gate between an operator's in-console
@@ -17,20 +17,11 @@ import {
 // credential that resolves, only literal canonical fingerprints, core's
 // cross-field refines.
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A scratch directory holding referenced secrets. */
-function scratchDir(): string {
-  const dir = tempDataRoot("sftp-server");
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** Write a secret file the @path references can point at, returning its path. */
 function writeSecretFile(dir: string): string {
@@ -58,7 +49,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   }
 
   test("validates a file-reference credential through the shared chain", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     const dataRoot = path.join(dir, "data-root");
     const { entry, credentialWarnings } = validateAuthoredSftpServer(
@@ -81,7 +72,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("credType private_key maps the ref to the privateKey field", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const keyPath = writeSecretFile(dir);
     const dataRoot = path.join(dir, "data-root");
     const { entry } = validateAuthoredSftpServer(
@@ -97,7 +88,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a credential.kind other than ref is refused with a clear message", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     expect(() =>
       validateAuthoredSftpServer(
         authoredBody(
@@ -116,7 +107,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a host with userinfo, a scheme/path, or whitespace is rejected", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     const dataRoot = path.join(dir, "data-root");
     for (const host of ["sftp://user:pw@evil", "user:pw@evil", "sftp .evil"]) {
@@ -141,7 +132,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a bare hostname, an IPv4, and a bracketed IPv6 host are accepted", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     const dataRoot = path.join(dir, "data-root");
     for (const host of ["sftp.partner.example", "10.0.0.5", "[2001:db8::1]"]) {
@@ -158,7 +149,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("an unknown top-level field is rejected (strict body)", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     expect(() =>
       validateAuthoredSftpServer(
         authoredBody({ remote: "prod_east" }),
@@ -169,7 +160,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a missing fingerprint is rejected", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     expect(() =>
       validateAuthoredSftpServer(
@@ -188,7 +179,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("an @-file fingerprint is rejected (literal pin required)", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     expect(() =>
       validateAuthoredSftpServer(
@@ -208,7 +199,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a malformed fingerprint is rejected", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     expect(() =>
       validateAuthoredSftpServer(
@@ -223,7 +214,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a relative @path credential is rejected", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     expect(() =>
       validateAuthoredSftpServer(
         authoredBody(
@@ -242,7 +233,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a credential ref to a missing file is rejected without echoing it", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const missing = path.join(dir, "never-created", "pw");
     let caught: Error | null = null;
     try {
@@ -263,7 +254,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a credential ref under the data root warns without echoing it", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     const ref = path.join(dataRoot, "planted", "pw");
     fs.mkdirSync(path.dirname(ref), { recursive: true });
@@ -283,7 +274,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a credential ref under a distinct rendezvous dir warns", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     const rendezvousDir = path.join(dir, "rendezvous");
     fs.mkdirSync(path.join(rendezvousDir, "planted"), { recursive: true });
@@ -304,7 +295,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     // writes into it and the partner's sync tool reads it -- so a leg that reached
     // the exclusion list only through the first would leave a credential
     // referenced out of the second unremarked.
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     const inbound = path.join(dir, "from-partner");
     const outbound = path.join(dir, "to-partner");
@@ -325,7 +316,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     // The ref path is lexically OUTSIDE the data root, but a symlink in the chain
     // resolves back inside it -- the realpath arm must still catch it and warn, so
     // this pins that arm against a future refactor dropping it.
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     fs.mkdirSync(path.join(dataRoot, "planted"), { recursive: true });
     const real = path.join(dataRoot, "planted", "pw");
@@ -347,7 +338,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   test("an encrypted-key passphrase inside the data root warns, not blocks", () => {
     // The single-mount encrypted-key case: the private key lives outside, but its
     // passphrase file is in the one mounted folder. It warns, not rejects.
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const keyPath = writeSecretFile(dir);
     const dataRoot = path.join(dir, "data-root");
     const passphrase = path.join(dataRoot, "passphrase");
@@ -368,7 +359,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("an inline (non-@) credential ref is rejected", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     expect(() =>
       validateAuthoredSftpServer(
         authoredBody({}, { kind: "ref", ref: "hunter2", credType: "password" }),
@@ -379,7 +370,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("a split remote directory is admitted as the inbound/outbound pair", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     const { entry } = validateAuthoredSftpServer(
       authoredBody(
@@ -399,7 +390,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     // connection does not have and this endpoint cannot know. Enforcing it here
     // would make every split connection unauthorable; it is enforced where the
     // two meet (the console's form, the config compose, the CLI's own guard).
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     expect(() =>
       validateAuthoredSftpServer(
@@ -414,7 +405,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("core's directory-mode rules decide the pair, and reject each bad shape", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretPath = writeSecretFile(dir);
     const credential = {
       kind: "ref",
@@ -446,7 +437,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
   });
 
   test("core's cross-field refine (keyboard_interactive needs password) holds", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const keyPath = writeSecretFile(dir);
     expect(() =>
       validateAuthoredSftpServer(
@@ -464,7 +455,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
 describe("validateAuthoredSftpServer mountRef credential path", () => {
   /** A secrets mount holding a loose credential file and a nested dotfile key. */
   function secretsMount(): string {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     fs.writeFileSync(path.join(dir, "partner-password"), "s3cret\n");
     fs.mkdirSync(path.join(dir, ".ssh"));
     fs.writeFileSync(path.join(dir, ".ssh", "id_ed25519"), "PRIVATE\n");
@@ -483,7 +474,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   }
 
   test("resolves a picked file to an @path and validates it", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     const { entry } = validateAuthoredSftpServer(
       mountBody(["partner-password"]),
@@ -497,7 +488,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("resolves a nested dotfile key for a private_key credential", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     const { entry } = validateAuthoredSftpServer(
       mountBody([".ssh", "id_ed25519"], "private_key"),
@@ -512,7 +503,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("a subPath that escapes the mount is refused, no path echoed", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     let caught: Error | null = null;
     try {
@@ -531,7 +522,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("a subPath naming no regular file is refused", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     expect(() =>
       validateAuthoredSftpServer(
@@ -544,7 +535,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("a directory subPath is not a credential file", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     expect(() =>
       validateAuthoredSftpServer(
@@ -557,7 +548,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("an unset secrets mount refuses a mountRef, naming the field", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     let caught: Error | null = null;
     try {
       validateAuthoredSftpServer(
@@ -575,7 +566,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("an unknown mount id is rejected naming the field", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const secretsDir = secretsMount();
     let caught: Error | null = null;
     try {
@@ -605,7 +596,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
     // The secrets mount is (mis)configured INSIDE the data root: the resolved
     // @path lands under the data root, so the containment check warns -- the picker
     // path is held to the same advisory posture as a typed ref.
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     const secretsDir = path.join(dataRoot, "secrets");
     fs.mkdirSync(secretsDir, { recursive: true });
@@ -621,7 +612,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("a folder locator resolves in the working folder with no secrets mount, and warns", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     fs.mkdirSync(dataRoot, { recursive: true });
     fs.writeFileSync(path.join(dataRoot, "sftp-password.txt"), "x");
@@ -655,7 +646,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   ])(
     "a folder locator naming a console-owned file %j is refused, no path echoed",
     (subPath) => {
-      const dir = scratchDir();
+      const dir = scratchDir("sftp-server");
       const dataRoot = path.join(dir, "data-root");
       const jobDir = path.join(
         dataRoot,
@@ -691,7 +682,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   );
 
   test("a folder locator naming a symlink to the console's own key is refused, no path echoed", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     const subfolder = path.join(dataRoot, "links");
     fs.mkdirSync(subfolder, { recursive: true });
@@ -728,7 +719,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
   });
 
   test("a folder locator escaping the working folder is refused, no path echoed", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
     fs.mkdirSync(dataRoot, { recursive: true });
     fs.writeFileSync(path.join(dir, "outside.txt"), "x");
@@ -759,14 +750,6 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
 });
 
 describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
-  /** A created scratch directory the materialization writes into. */
-  function credentialScratchDir(): string {
-    const dir = tempDataRoot("sftp-scratch");
-    fs.mkdirSync(dir, { recursive: true });
-    dirs.push(dir);
-    return dir;
-  }
-
   function rawBody(
     value: unknown,
     credType: "password" | "private_key" = "password",
@@ -779,8 +762,8 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   }
 
   test("materializes a pasted value to a 0600 @path and validates it", () => {
-    const dir = scratchDir();
-    const scratch = credentialScratchDir();
+    const dir = scratchDir("sftp-server");
+    const scratch = scratchDir("sftp-scratch");
     const result = validateAuthoredSftpServer(
       rawBody("s3cret-password"),
       path.join(dir, "data-root"),
@@ -799,8 +782,8 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   });
 
   test("a pasted private_key maps to the privateKey field", () => {
-    const dir = scratchDir();
-    const scratch = credentialScratchDir();
+    const dir = scratchDir("sftp-server");
+    const scratch = scratchDir("sftp-scratch");
     const result = validateAuthoredSftpServer(
       rawBody("-----BEGIN KEY-----", "private_key"),
       path.join(dir, "data-root"),
@@ -815,7 +798,7 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   });
 
   test("a raw credential with no scratch dir configured is refused", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     let caught: Error | null = null;
     try {
       validateAuthoredSftpServer(
@@ -835,8 +818,8 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   });
 
   test("an empty pasted value is rejected without echoing it", () => {
-    const dir = scratchDir();
-    const scratch = credentialScratchDir();
+    const dir = scratchDir("sftp-server");
+    const scratch = scratchDir("sftp-scratch");
     let caught: Error | null = null;
     try {
       validateAuthoredSftpServer(
@@ -856,8 +839,8 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   });
 
   test("a non-string pasted value is rejected without echoing it", () => {
-    const dir = scratchDir();
-    const scratch = credentialScratchDir();
+    const dir = scratchDir("sftp-server");
+    const scratch = scratchDir("sftp-scratch");
     let caught: Error | null = null;
     try {
       validateAuthoredSftpServer(
@@ -878,8 +861,8 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   test("a validation failure after materialization deletes the scratch file", () => {
     // The value materializes, then the (bad) fingerprint fails validation;
     // the just-written secret must not linger at rest.
-    const dir = scratchDir();
-    const scratch = credentialScratchDir();
+    const dir = scratchDir("sftp-server");
+    const scratch = scratchDir("sftp-scratch");
     let caught: Error | null = null;
     try {
       validateAuthoredSftpServer(
@@ -901,9 +884,9 @@ describe("validateAuthoredSftpServer raw (pasted) credential path", () => {
   });
 
   test("a materialized value is never written under the data root", () => {
-    const dir = scratchDir();
+    const dir = scratchDir("sftp-server");
     const dataRoot = path.join(dir, "data-root");
-    const scratch = credentialScratchDir();
+    const scratch = scratchDir("sftp-scratch");
     const result = validateAuthoredSftpServer(
       rawBody("s3cret"),
       dataRoot,

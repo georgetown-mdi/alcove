@@ -10,7 +10,8 @@ import { JobManager } from "@jobs/jobManager";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -23,13 +24,12 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // redactor sits in front of the window instead, so what these runs measure is
 // the window's content for a key the window itself could never have held.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 const REDACTION = "[redacted private key]";
@@ -64,25 +64,12 @@ async function stderrLinkFromRun(stderr: string): Promise<string> {
   const record: JobRecord = manager.getJob(
     await manager.createJob(validIntent()),
   )!;
-  const deadline = Date.now() + 10000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record, 10_000);
   const events: Array<RelayEvent> = record.events.map((entry) => entry.event);
   const chain = events[events.length - 1][
     ERROR_MESSAGE_CHAIN_FIELD
   ] as Array<string>;
   return chain[chain.length - 1];
-}
-
-/** A scratch directory registered for cleanup. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
 }
 
 test("a key wider than the retained window reaches the tail as one replacement", async () => {

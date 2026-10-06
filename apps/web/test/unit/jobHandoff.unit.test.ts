@@ -43,6 +43,7 @@ import {
   tempDataRoot,
   testSftpServerEntry,
   testSplitSftpServerEntry,
+  trackScratchDirs,
   validInputFileIntent,
   validIntent,
   validLinkageTerms,
@@ -772,6 +773,7 @@ describe("parseHandoff and shellJoinCommand (browser reader)", () => {
 
 // The endpoint tests below drive the real route handler against a seeded manager.
 const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 beforeEach(() => {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
@@ -784,16 +786,10 @@ afterEach(() => {
   seeded?.shutdown();
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
-
-function rendezvousRoot(): string {
-  const dir = tempDataRoot("handoff-rvz");
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 /** Enable the API and seed a manager pointed at the stub CLI (a long delay keeps
  * the child running so the record -- and its hand-off -- exists to query). */
@@ -804,7 +800,7 @@ function seedManager(): JobManager {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: rendezvousRoot(),
+    jobRendezvousDir: scratchDir("handoff-rvz"),
     childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
   });
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =

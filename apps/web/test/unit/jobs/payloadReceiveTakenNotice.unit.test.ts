@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import {
@@ -30,7 +29,8 @@ import { route as EventsRoute } from "../../../server/console/routes/$jobId/even
 import {
   STUB_CLI_PATH,
   STUB_CONFIG_FILE_TOKEN,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
   validZeroSetupIntent,
 } from "../../utils/jobFixtures";
@@ -45,7 +45,7 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // promises later exchanges hold the partner to them, which only that per-run
 // file does; the relay rebuilds the notice from the event's column list.
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 beforeEach(() => {
@@ -54,19 +54,11 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
   vi.unstubAllEnvs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** The CLI's fill warning as it writes it on fd 3 for `columns`: its message
  * names the configuration (the token the stub replaces with its --config-file
@@ -117,12 +109,7 @@ async function runTakingJob(
     manager;
   const id = await manager.createJob(intent);
   const record = manager.getJob(id)!;
-  const deadline = Date.now() + 5000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record);
   return { dataRoot, record, id };
 }
 

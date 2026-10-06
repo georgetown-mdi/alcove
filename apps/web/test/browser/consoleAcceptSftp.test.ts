@@ -43,12 +43,11 @@ vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
 );
 
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 // The unsupported gate and the server-job accept never dial.
 vi.mock("@psi/transport/rendezvous", async () =>

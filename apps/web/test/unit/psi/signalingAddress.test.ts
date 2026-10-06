@@ -11,7 +11,6 @@ import { listenAsInviter } from "../../../src/psi/transport/rendezvous.js";
 import { resolveSignalingAddress } from "../../../src/psi/transport/signalingAddress.js";
 import { webrtcEndpointFromAddress } from "../../../src/psi/invitation.js";
 
-import type * as ClientConfigModule from "@utils/clientConfig";
 import type Peer from "peerjs";
 import type { PeerOptions } from "peerjs";
 import type { SignalingServerSetting } from "@utils/clientConfig";
@@ -20,10 +19,12 @@ const setting = vi.hoisted(() => ({
   current: undefined as SignalingServerSetting | undefined,
 }));
 
-vi.mock("@utils/clientConfig", async (importOriginal) => ({
-  ...(await importOriginal<typeof ClientConfigModule>()),
-  signalingServerSetting: () => setting.current,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../../utils/clientConfigMock")).clientConfigMock(
+    importOriginal,
+    { signalingServerSetting: () => setting.current },
+  ),
+);
 
 const httpsPage = { protocol: "https:", hostname: "app.example.org", port: "" };
 

@@ -26,8 +26,9 @@ import { stagesFor } from "@exchange/exchangeRun";
 
 import { createAppMount } from "./renderApp";
 
+import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
+
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
-import type { RunCompletion } from "@psi/exchangeLifecycle";
 
 // Saving a completed one-shot exchange as a recurring one hands it off to a
 // managed record. The record's secret is the one the completed run's handshake
@@ -44,26 +45,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
 
-interface CapturedRun {
-  sharedSecret: string;
-  onStages: (stages: Array<unknown>) => void;
-  onResult: (
-    outputs: {
-      kind: "matched";
-      resultsUrl: string;
-      matchedRecordCount: number;
-    },
-    completion: RunCompletion,
-  ) => void;
-}
-const runs = vi.hoisted(() => ({ calls: [] as Array<unknown> }));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    runs.calls.push(options);
-    return Promise.resolve();
-  },
-}));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 const app = createAppMount();
 
@@ -74,7 +58,7 @@ beforeEach(async () => {
 afterEach(async () => {
   app.unmount();
   window.location.hash = "";
-  runs.calls.length = 0;
+  lifecycleCalls.length = 0;
   await clearManagedExchanges();
 });
 
@@ -84,8 +68,8 @@ const saveButton = () =>
 /** Complete the screen's one run, rotating to `rotatedSecret`, and return the
  * secret the run was started with. */
 async function completeRun(rotatedSecret: string): Promise<string> {
-  await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
-  const run = runs.calls[0] as CapturedRun;
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
+  const run = lifecycleCall(0);
   run.onStages(
     stagesFor(
       minimalPreparedExchange({

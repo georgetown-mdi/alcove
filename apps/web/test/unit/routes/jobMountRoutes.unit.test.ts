@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -9,24 +8,17 @@ import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
 import { route as FolderEntriesRoute } from "../../../server/console/routes/mounts/folder/entries";
 import { route as SecretsEntriesRoute } from "../../../server/console/routes/mounts/secrets/entries";
 
-import { STUB_CLI_PATH } from "../../utils/jobFixtures";
+import { STUB_CLI_PATH, trackScratchDirs } from "../../utils/jobFixtures";
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 /** A name shaped like a job folder's, which only the working folder reserves. */
 const JOB_ID_SHAPED_NAME = "3f2b8c1e-4d5a-4b6c-8d7e-9f0a1b2c3d4e";
 
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
-
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobSecretsDirConfig?: unknown }).jobSecretsDirConfig =
     undefined;
 });
@@ -45,7 +37,7 @@ function handlersOf(route: { handlers: unknown }): Handlers {
 
 /** Enable the job API (console build + data root). Returns the data root. */
 function enable(secretsDir?: string): string {
-  const dataRoot = tempDir("mount-data");
+  const dataRoot = scratchDir("mount-data");
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
   vi.stubEnv("JOB_DATA_ROOT", dataRoot);
   vi.stubEnv("JOB_CLI_BINARY", STUB_CLI_PATH);
@@ -55,7 +47,7 @@ function enable(secretsDir?: string): string {
 
 /** A secrets mount holding a loose file and an .ssh dir with a key. */
 function secretsMount(): string {
-  const mount = tempDir("secrets");
+  const mount = scratchDir("secrets");
   fs.writeFileSync(path.join(mount, "partner-password"), "s3cret\n");
   fs.mkdirSync(path.join(mount, ".ssh"));
   fs.writeFileSync(path.join(mount, ".ssh", "id_ed25519"), "PRIVATE\n");

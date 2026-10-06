@@ -30,6 +30,8 @@ import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
 import { dockerRunArgv } from "@psi/dockerRunCommand";
 
+import { awaitJobSucceeded } from "../utils/jobFixtures";
+
 import {
   cliEntry,
   expectCliSucceeded,
@@ -194,25 +196,6 @@ function convertedIntentFromOpen(
   };
 }
 
-async function waitForSuccess(manager: JobManager, id: string): Promise<void> {
-  const deadline = Date.now() + JOB_DEADLINE_MS;
-  for (;;) {
-    const record = manager.getJob(id);
-    if (record === undefined) throw new Error("the job left the slot");
-    if (record.terminal !== null) {
-      if (record.terminal.outcome !== "succeeded")
-        throw new Error(
-          `the console run ended ${record.terminal.outcome}: ` +
-            JSON.stringify(record.events.slice(-3)),
-        );
-      return;
-    }
-    if (Date.now() > deadline)
-      throw new Error("the console run reached no terminal event");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
-
 /** Run `line` with `/bin/sh`, as cron hands a crontab command to it, less the
  * five schedule fields. */
 function runCrontabCommand(
@@ -252,7 +235,7 @@ describe("the console's recurring-run hand-off, run as given", () => {
       cwd: workspace.partnerDir,
       timeoutMs: CLI_DEADLINE_MS,
     });
-    await waitForSuccess(manager, id);
+    await awaitJobSucceeded(manager, id, JOB_DEADLINE_MS);
     expectCliSucceeded(await partnerFirst, "exchange");
 
     const handoff = manager.getJobHandoff(id);

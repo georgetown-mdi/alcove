@@ -35,6 +35,8 @@ import { ManagedInputError } from "@psi/managed/managedInputGuard";
 import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { getManagedLocalState } from "@psi/managed/managedLocalState";
 
+import { waitFor } from "../utils/waitFor";
+
 import type {
   NewManagedExchange,
   RunnableManagedExchangeRecord,
@@ -155,20 +157,6 @@ async function lockHeldByASecondContext(
   });
   await held.promise;
   return { closeContext: () => frame.remove() };
-}
-
-/** Wait for `condition` to hold, polling because Web Locks raises no change
- * event. Rejects rather than hanging the suite when it never does. */
-async function waitFor(
-  condition: () => Promise<boolean>,
-  description: string,
-): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    if (await condition()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`timed out waiting for ${description}`);
 }
 
 beforeEach(async () => {
@@ -1038,10 +1026,10 @@ describe("the lock spans the payload exchange", () => {
 
     secondTab.closeContext();
 
-    await waitFor(
-      () => attendedRunCouldStart(created.id),
-      "the closed tab's lock to be released",
-    );
+    // Polled because Web Locks raises no change event.
+    await waitFor(() => attendedRunCouldStart(created.id), {
+      message: "timed out waiting for the closed tab's lock to be released",
+    });
     // And the record runs again, which is the whole of what the release buys.
     const rotatedSecret = generateSharedSecret();
     await runManagedExchange({

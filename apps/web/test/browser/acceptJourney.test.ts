@@ -81,32 +81,26 @@ const journeyResultsUrl = URL.createObjectURL(new Blob(["a,b\nx,y\n"]));
 const settledRun = vi.hoisted(() => ({
   capturedSignal: undefined as AbortSignal | undefined,
 }));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: {
-    signal: AbortSignal;
-    onStages: (stages: Array<unknown>) => void;
-    onStage: (stageId: string) => void;
-    onResult: (outputs: {
-      kind: "matched";
-      resultsUrl: string;
-      matchedRecordCount: number;
-    }) => void;
-  }) => {
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => {
+  const mocks = await import("./moduleMocks");
+  return mocks.exchangeLifecycleMock(importOriginal, (options) => {
     settledRun.capturedSignal = options.signal;
     return Promise.resolve().then(() => {
       if (options.signal.aborted) return;
       options.onStages(stagesFor(preparedWith(2), "acceptor"));
       options.onStage(WAITING_STAGE_ID);
       options.onStage(CONFIRMING_PROTOCOL_STAGE_ID);
-      options.onResult({
-        kind: "matched" as const,
-        resultsUrl: journeyResultsUrl,
-        matchedRecordCount: 1847,
-      });
+      options.onResult(
+        {
+          kind: "matched" as const,
+          resultsUrl: journeyResultsUrl,
+          matchedRecordCount: 1847,
+        },
+        mocks.TEST_RUN_COMPLETION,
+      );
     });
-  },
-}));
+  });
+});
 
 const acceptorTerms: LinkageTerms = {
   version: "1.0.0",

@@ -54,10 +54,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
 
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: () => Promise.resolve(),
-}));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 async function acceptToken(): Promise<string> {
   const token: InvitationToken = {

@@ -27,10 +27,11 @@ import {
   STUB_CLI_PATH,
   multiChunkText,
   readBodyChunks,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
   validZeroSetupIntent,
 } from "../../utils/jobFixtures";
+import { waitFor } from "../../utils/waitFor";
 
 import type { JobCreateIntent } from "@jobs/intentSchemas";
 
@@ -41,7 +42,7 @@ import type { JobCreateIntent } from "@jobs/intentSchemas";
 // of the job-route suite drives them, so the mappings the static job-route gate
 // check cannot see are asserted here.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 beforeEach(() => {
   // The server-side job API runs only in a console build, so every enabled case
@@ -56,8 +57,7 @@ afterEach(() => {
   const seeded = (globalThis as { jobManagerInstance?: JobManager })
     .jobManagerInstance;
   seeded?.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
@@ -72,14 +72,6 @@ function handlersOf(route: { handlers: unknown }): Handlers {
   if (typeof handlers !== "object" || handlers === null)
     throw new Error("route exposes no plain handlers object");
   return handlers as Handlers;
-}
-
-/** A created directory registered for cleanup. */
-function madeDir(label: string): string {
-  const dir = tempDataRoot(label);
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
 }
 
 /**
@@ -101,8 +93,8 @@ function seedManager(stubEnv: NodeJS.ProcessEnv = {}): {
   manager: JobManager;
   dataRoot: string;
 } {
-  const rendezvousDir = madeDir("signing-rvz");
-  const dataRoot = madeDir("signing-data");
+  const rendezvousDir = scratchDir("signing-rvz");
+  const dataRoot = scratchDir("signing-data");
   vi.stubEnv("JOB_DATA_ROOT", dataRoot);
   vi.stubEnv("JOB_CLI_BINARY", STUB_CLI_PATH);
   const manager = new JobManager({
@@ -480,10 +472,12 @@ describe("POST /api/jobs/signing/fingerprint maps each condition", () => {
   });
 
   test("single-flight is the manager's, so a real concurrent pair is a 409", async () => {
-    seedManager({ STUB_DELAY_MS: "500" });
+    const { manager } = seedManager({ STUB_DELAY_MS: "500" });
+    const resolve = vi.spyOn(manager, "resolveSigningFingerprint");
     const first = postFingerprint({ identity: "Agency A" });
-    // Let the first request claim the in-flight flag (spawn its child).
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // The manager claims the slot with no await between entry and the claim,
+    // so once the route has called it the first request holds it.
+    await waitFor(() => resolve.mock.calls.length === 1);
     const second = await postFingerprint({ identity: "Agency A" });
     expect(second.status).toBe(409);
     expect((await first).status).toBe(200);
@@ -520,15 +514,10 @@ async function createSettledJob(
 ): Promise<{ manager: JobManager; id: string }> {
   const { manager } = seedManager({ STUB_OUTPUT_FILE: "id\n1\n", ...stubEnv });
   const id = await manager.createJob(intent);
-  const deadline = Date.now() + 5000;
-  for (;;) {
-    const record = manager.getJob(id);
-    if (record !== undefined && record.terminal !== null)
-      return { manager, id };
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for the job to settle");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await waitFor(() => (manager.getJob(id)?.terminal ?? null) !== null, {
+    message: "timed out waiting for the job to settle",
+  });
+  return { manager, id };
 }
 
 /** Write the receipt the CLI would have written for a certificate-mode run, at

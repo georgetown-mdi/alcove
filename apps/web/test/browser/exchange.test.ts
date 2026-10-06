@@ -42,6 +42,12 @@ import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
 import { tabTo } from "./keyboardOnly";
 
+import {
+  TEST_RUN_COMPLETION,
+  lifecycleCall,
+  lifecycleCalls,
+} from "./moduleMocks";
+
 import type {
   LinkageTerms,
   PreparedExchange,
@@ -126,53 +132,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 // invocation's options so a test can drive the captured onStages/onStage/
 // onResult/onError callbacks -- the same callbacks the real lifecycle fires --
 // and assert the post-create screens against them.
-interface CapturedLifecycle {
-  exchangeRole: "initiator" | "responder";
-  sharedSecret: string;
-  expires?: string;
-  signal: AbortSignal;
-  onStages: (stages: Array<unknown>) => void;
-  onStage: (stageId: string) => void;
-  onResult: (outputs: {
-    kind: "matched" | "withheld" | "counted";
-    resultsUrl?: string;
-    intersectionCount?: number;
-    countReportedByPartner?: boolean;
-    matchedRecordCount?: number;
-    matching?: {
-      localDeduplicate: boolean;
-      partnerDeduplicate: boolean;
-      cardinality:
-        "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
-    };
-    record?: {
-      recordUrl: string;
-      recordFileName: string;
-      keysUrl: string;
-      keysFileName: string;
-    };
-  }) => void;
-  onError: (failure: { category: string; error: unknown }) => void;
-  onResolvedMatching: (matching: {
-    localDeduplicate: boolean;
-    partnerDeduplicate: boolean;
-    cardinality: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
-  }) => void;
-}
-const lifecycleHarness = vi.hoisted(() => ({
-  calls: [] as Array<unknown>,
-}));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    lifecycleHarness.calls.push(options);
-    return Promise.resolve();
-  },
-}));
-
-function lifecycleCall(index: number): CapturedLifecycle {
-  return lifecycleHarness.calls[index] as CapturedLifecycle;
-}
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 const EM_DASH = "\u2014";
 
@@ -193,7 +155,7 @@ afterEach(async () => {
   csvLoadHarness.fail = undefined;
   csvLoadHarness.lastSignal = undefined;
   csvLoadHarness.resolve = undefined;
-  lifecycleHarness.calls.length = 0;
+  lifecycleCalls.length = 0;
   // The screen reads the viewport width to choose its wide vs narrow layout, so
   // a test that narrows the page must not leak that width into the next:
   // restore the browser project's configured wide default (vite.config.ts).
@@ -232,7 +194,7 @@ async function createSealedInvitation() {
     .toMatchTextContent("Your invitation is ready");
   // The run starts from an effect after the invitation lands; wait for it so
   // callers can drive the captured lifecycle callbacks right away.
-  await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 }
 
 // Walk the spine to Review & create WITHOUT creating: name, file, straight
@@ -1120,7 +1082,7 @@ describe("inviter screen", () => {
     // (test/browser/runUnloadGuard.test.ts). So the release shows once that
     // run is over: nothing re-arms over the loaded file (again polled past the
     // commit, for the detach effect).
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     lifecycleCall(0).onError({
       category: "security",
       error: new Error("kex failed"),
@@ -1194,7 +1156,7 @@ describe("inviter screen", () => {
       await expect
         .element(page.getByRole("heading", { level: 1 }))
         .toMatchTextContent("Your invitation is ready");
-      await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+      await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 
       // Post-mint the synthetic-data reminder persists (the live invitation
       // was minted from sample records), but the one-click Clear is withheld
@@ -1949,7 +1911,7 @@ describe("inviter screen", () => {
 
     // The run started as the responder on the minted secret the moment the
     // invitation existed, and the sealed ledger marks the frozen terms.
-    expect(lifecycleHarness.calls).toHaveLength(1);
+    expect(lifecycleCalls).toHaveLength(1);
     const call = lifecycleCall(0);
     expect(call.exchangeRole).toBe("responder");
     expect(call.sharedSecret.length).toBeGreaterThan(0);
@@ -2065,7 +2027,7 @@ describe("inviter screen", () => {
     const call = lifecycleCall(0);
     call.onStages(stagesFor(preparedWith("cascade", 2)));
     call.onStage("confirming protocol");
-    call.onResolvedMatching(matching);
+    call.onResolvedMatching!(matching);
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2076,12 +2038,15 @@ describe("inviter screen", () => {
       page.getByText("The exchange reported a warning").query(),
     ).toBeNull();
 
-    call.onResult({
-      kind: "matched" as const,
-      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-      matchedRecordCount: 12,
-      matching,
-    });
+    call.onResult(
+      {
+        kind: "matched" as const,
+        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+        matchedRecordCount: 12,
+        matching,
+      },
+      TEST_RUN_COMPLETION,
+    );
 
     // The completion panel takes the sentence over, so it still stands once.
     await expect
@@ -2099,22 +2064,25 @@ describe("inviter screen", () => {
     call.onStages(stagesFor(preparedWith("cascade", 2)));
     call.onStage("waiting for peer");
     call.onStage("confirming protocol");
-    call.onResult({
-      kind: "matched" as const,
-      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-      matchedRecordCount: 1847,
-      matching: {
-        localDeduplicate: false,
-        partnerDeduplicate: true,
-        cardinality: "one-to-many" as const,
+    call.onResult(
+      {
+        kind: "matched" as const,
+        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+        matchedRecordCount: 1847,
+        matching: {
+          localDeduplicate: false,
+          partnerDeduplicate: true,
+          cardinality: "one-to-many" as const,
+        },
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-2026-07-08T14-32.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
+        },
       },
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-2026-07-08T14-32.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
-      },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2193,15 +2161,18 @@ describe("inviter screen", () => {
     await createSealedInvitation();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "withheld" as const,
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-x.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-x.keys.json",
+    call.onResult(
+      {
+        kind: "withheld" as const,
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-x.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-x.keys.json",
+        },
       },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2232,17 +2203,20 @@ describe("inviter screen", () => {
     await createSealedInvitation();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "counted" as const,
-      intersectionCount: 1847,
-      countReportedByPartner: false,
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-x.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-x.keys.json",
+    call.onResult(
+      {
+        kind: "counted" as const,
+        intersectionCount: 1847,
+        countReportedByPartner: false,
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-x.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-x.keys.json",
+        },
       },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     // The count is the run's whole result, so it is stated -- once, where the
     // result download would be. The headline names the mode rather than repeating
@@ -2293,11 +2267,14 @@ describe("inviter screen", () => {
     await createSealedInvitation();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "counted" as const,
-      intersectionCount: 1847,
-      countReportedByPartner: true,
-    });
+    call.onResult(
+      {
+        kind: "counted" as const,
+        intersectionCount: 1847,
+        countReportedByPartner: true,
+      },
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByText(/1,847\s+records in common\. This exchange/))
@@ -2347,7 +2324,7 @@ describe("inviter screen", () => {
     expect(page.getByText("Keep this tab open.").query()).toBeNull();
 
     await page.getByRole("button", { name: "Try again" }).click();
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
     expect(lifecycleCall(1).sharedSecret).toBe(lifecycleCall(0).sharedSecret);
     expect(page.getByText("Exchange failed").query()).toBeNull();
     // The retry listens again, so the callout's claim is true once more.
@@ -2570,7 +2547,7 @@ describe("inviter screen", () => {
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Save your exchange file");
     expect(document.querySelectorAll(`.${styles.tagRoadmap}`)).toHaveLength(0);
-    expect(lifecycleHarness.calls).toHaveLength(0);
+    expect(lifecycleCalls).toHaveLength(0);
     // The save-flow top bar shows the four-step timeline with Save file
     // current.
     const rail = document.querySelector('nav[aria-label="Exchange progress"]');
@@ -2716,7 +2693,7 @@ describe("inviter screen", () => {
       await expect
         .element(page.getByRole("heading", { level: 1 }))
         .toMatchTextContent("Save your exchange file");
-      expect(lifecycleHarness.calls).toHaveLength(0);
+      expect(lifecycleCalls).toHaveLength(0);
 
       // The filedrop field requires an absolute path.
       const save = page.getByRole("button", { name: "Save exchange file" });

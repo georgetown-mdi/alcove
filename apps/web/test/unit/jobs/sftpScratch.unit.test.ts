@@ -16,27 +16,18 @@ import { JobApiConfigError } from "@jobs/gate";
 import { bootSftpCredentialScratchDir } from "@jobs/index";
 import { useJobRendezvousProvisioning } from "@jobs/jobRendezvous";
 
-import { tempDataRoot } from "../../utils/jobFixtures";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 // The pasted-credential scratch directory is the ONLY at-rest home a pasted SFTP
 // credential ever has: a server-owned 0600 file at a container-internal path that
 // is outside the data root and rendezvous mount, swept at boot, and delivered to
 // the CLI only as an @path. These pin its containment, modes, and sweep.
 
-const dirs: Array<string> = [];
+const { scratchDir: sandbox, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A created scratch/data/rendezvous sandbox, registered for cleanup. */
-function sandbox(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 describe("setupSftpCredentialScratchDir containment", () => {
   test("creates the scratch dir owner-only outside the data root", () => {

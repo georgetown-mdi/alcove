@@ -58,12 +58,11 @@ vi.mock("@tanstack/react-router", async () =>
 );
 
 // This suite exercises the CONSOLE build (the direct-exchange flow is console-only).
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 // The direct flow drives no browser transport, so the rendezvous functions are
 // never called.

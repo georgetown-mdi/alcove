@@ -53,21 +53,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 // The run settles itself with a matched result, the call order the real
 // lifecycle fires, so the journey reaches Done with no hand-fired callback.
 const journeyResultsUrl = URL.createObjectURL(new Blob(["a,b\nx,y\n"]));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: {
-    signal: AbortSignal;
-    onStages: (stages: Array<unknown>) => void;
-    onStage: (stageId: string) => void;
-    onResult: (
-      outputs: {
-        kind: "matched";
-        resultsUrl: string;
-        matchedRecordCount: number;
-      },
-      completion: { rotatedSecret: string },
-    ) => void;
-  }) =>
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) => {
+  const mocks = await import("./moduleMocks");
+  return mocks.exchangeLifecycleMock(importOriginal, (options) =>
     Promise.resolve().then(() => {
       if (options.signal.aborted) return;
       options.onStages(
@@ -84,10 +72,11 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
           resultsUrl: journeyResultsUrl,
           matchedRecordCount: 12,
         },
-        { rotatedSecret: `${"R".repeat(42)}A` },
+        mocks.TEST_RUN_COMPLETION,
       );
     }),
-}));
+  );
+});
 
 // The move to another device downloads a backup file the runner cannot save;
 // the dispatch is stubbed to the state it leaves the surface in, as

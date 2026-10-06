@@ -34,6 +34,9 @@ import { relayedTermsChangeOf } from "@psi/jobClient/serverJobExchangeDriver";
 
 import { route as ApplyTermsRoute } from "../../server/console/routes/$jobId/apply-terms";
 
+import { awaitJobSucceeded } from "../utils/jobFixtures";
+import { waitFor } from "../utils/waitFor";
+
 import {
   cliEntry,
   expectCliSucceeded,
@@ -202,29 +205,6 @@ function mountedDocumentOf(mount: string) {
   return document;
 }
 
-/** Resolve once the console's child has exited, or fail on the deadline. The
- * wait is on the terminal STATE rather than on the terminal event: the event is
- * the run's own last word, and the exit that follows it is what says the child
- * is done with the folder this test reads next. */
-async function waitForTerminal(manager: JobManager, id: string): Promise<void> {
-  const deadline = Date.now() + JOB_DEADLINE_MS;
-  for (;;) {
-    const record = manager.getJob(id);
-    if (record === undefined) throw new Error("the job left the slot");
-    if (record.terminal !== null) {
-      if (record.terminal.outcome !== "succeeded")
-        throw new Error(
-          `the console run ended ${record.terminal.outcome}: ` +
-            JSON.stringify(record.events.slice(-3)),
-        );
-      return;
-    }
-    if (Date.now() > deadline)
-      throw new Error("the console run reached no terminal event");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-}
-
 /**
  * The partnership the console's mount holds: the partner's `alcove invite`,
  * accepted on the command line into the mount -- an alcove.yaml, the key file
@@ -297,7 +277,7 @@ describe("a configuration Alcove wrote, opened in the console and run", () => {
       timeoutMs: CLI_DEADLINE_MS,
     });
 
-    await waitForTerminal(manager, id);
+    await awaitJobSucceeded(manager, id, JOB_DEADLINE_MS);
     expectCliSucceeded(await partner, "exchange");
 
     const record = manager.getJob(id);
@@ -456,12 +436,12 @@ describe("an opened configuration's maximum age, held by the real Alcove", () =>
       ...receipts,
     });
 
-    const deadline = Date.now() + JOB_DEADLINE_MS;
-    let record = manager.getJob(id);
-    while (record?.terminal === null && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      record = manager.getJob(id);
-    }
+    await waitFor(() => manager.getJob(id)?.terminal !== null, {
+      timeoutMs: JOB_DEADLINE_MS,
+      intervalMs: 25,
+      message: "the console run reached no terminal state",
+    });
+    const record = manager.getJob(id);
     if (record === undefined || record.terminal === null)
       throw new Error("the console run reached no terminal state");
     // The CLI's load-time refusal: a usage fault, before any exchange file.
@@ -535,14 +515,12 @@ async function runAgainstPartner(
     cwd: workspace.partnerDir,
     timeoutMs: CLI_DEADLINE_MS,
   });
-  const deadline = Date.now() + JOB_DEADLINE_MS;
-  let record = manager.getJob(id);
-  while (record !== undefined && record.terminal === null) {
-    if (Date.now() > deadline)
-      throw new Error("the console run reached no terminal state");
-    await new Promise((resolve) => setTimeout(resolve, 25));
-    record = manager.getJob(id);
-  }
+  await waitFor(() => manager.getJob(id)?.terminal !== null, {
+    timeoutMs: JOB_DEADLINE_MS,
+    intervalMs: 25,
+    message: "the console run reached no terminal state",
+  });
+  const record = manager.getJob(id);
   if (record === undefined) throw new Error("the job left the slot");
   return { record, partner: await partner };
 }

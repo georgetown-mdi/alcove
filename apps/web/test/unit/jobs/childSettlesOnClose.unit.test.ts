@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -10,7 +9,7 @@ import { runCapturedCliChild } from "@jobs/capturedCliChild";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -28,22 +27,14 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...original, spawn: spawnMock };
 });
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(async () => {
   spawnMock.mockClear();
   await Promise.all(managers.splice(0).map((manager) => manager.shutdown()));
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** A spawned child (it has a pid) that the test closes by hand. */
 function liveFakeChild(): ChildProcess & EventEmitter {

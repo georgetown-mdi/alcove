@@ -23,7 +23,10 @@ import {
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
 
-import { TEST_HOST_KEY_FINGERPRINT, tempDataRoot } from "../utils/jobFixtures";
+import {
+  TEST_HOST_KEY_FINGERPRINT,
+  trackScratchDirs,
+} from "../utils/jobFixtures";
 
 import { expectCliSucceeded, invitationFrom, startCli } from "./cliParty";
 
@@ -98,20 +101,11 @@ const FIXTURE_PEER_TIMEOUT_MS = 600_000;
  * value it already had, which is what the spec's round-trip statement names. */
 const FIXTURE_CONNECT_TIMEOUT_MS = 30_000;
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A scratch mount for one fixture, removed after the test. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** Run one `alcove` invocation, failing with everything it wrote. */
 async function runCli(args: Array<string>, cwd: string): Promise<CliRun> {

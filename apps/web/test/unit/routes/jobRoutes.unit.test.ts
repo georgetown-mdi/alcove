@@ -43,11 +43,14 @@ import {
   multiChunkText,
   readBodyChunks,
   tempDataRoot,
+  trackScratchDirs,
   validInputFileIntent,
   validIntent,
   validSftpIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
+
+import { waitFor } from "../../utils/waitFor";
 
 import type {
   JobCreateIntent,
@@ -61,6 +64,7 @@ import type { JobManager as JobManagerType } from "@jobs/jobManager";
 const RUN_NAMES = runArtifactNames(TEST_RUN_STAMP);
 
 const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 beforeEach(() => {
   // The server-side job API runs only in a console build, so every enabled case
@@ -69,14 +73,6 @@ beforeEach(() => {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
 });
 
-/** A created rendezvous directory a filedrop job needs, registered for cleanup. */
-function rvzRoot(): string {
-  const dir = tempDataRoot("routes-rvz");
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
 afterEach(() => {
   vi.unstubAllEnvs();
   const seeded = (globalThis as { jobManagerInstance?: JobManagerType })
@@ -84,6 +80,7 @@ afterEach(() => {
   seeded?.shutdown();
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   // Reset the memoized manager and sftp server so each test starts clean.
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
@@ -112,7 +109,7 @@ function handlersOf(route: { handlers: unknown }): Handlers {
 }
 
 function enableJobApi(): string {
-  const rvz = rvzRoot();
+  const rvz = scratchDir("routes-rvz");
   const root = tempDataRoot("routes");
   roots.push(root);
   vi.stubEnv("JOB_DATA_ROOT", root);
@@ -208,7 +205,7 @@ async function createFinishedJob(
 ): Promise<string> {
   // Create the rendezvous dir first so the data root stays the last-pushed cleanup
   // entry.
-  const rendezvousDir = rvzRoot();
+  const rendezvousDir = scratchDir("routes-rvz");
   const root = tempDataRoot(`routes-${target}`);
   roots.push(root);
   vi.stubEnv("JOB_DATA_ROOT", root);
@@ -221,14 +218,10 @@ async function createFinishedJob(
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
     manager;
   const id = await manager.createJob(intent);
-  const deadline = Date.now() + 5000;
-  for (;;) {
-    const record = manager.getJob(id);
-    if (record !== undefined && record.status === target) return id;
-    if (Date.now() > deadline)
-      throw new Error(`timed out waiting for the job to reach ${target}`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await waitFor(() => manager.getJob(id)?.status === target, {
+    message: `timed out waiting for the job to reach ${target}`,
+  });
+  return id;
 }
 
 async function createSucceededJob(
@@ -552,7 +545,7 @@ describe("GET /api/jobs/:id/events guards an already-aborted request", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
       // A delayed stub keeps the job non-terminal, so the route reaches the
       // live-subscribe path rather than closing on an already-terminal replay.
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
@@ -1178,7 +1171,7 @@ describe("status route reports record availability", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
     });
     (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -1201,7 +1194,7 @@ describe("status route reports record availability", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
       childEnv: {
         STUB_FD3_EVENTS: JSON.stringify([
           {
@@ -1220,15 +1213,7 @@ describe("status route reports record availability", () => {
       manager;
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    const until = async (done: () => boolean): Promise<void> => {
-      const deadline = Date.now() + 5000;
-      while (!done()) {
-        if (Date.now() > deadline) throw new Error("timed out");
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-    };
-
-    await until(() => record.terminalEmitted);
+    await waitFor(() => record.terminalEmitted);
     expect(record.terminal).toBeNull();
     const early = await recordStatusOf(id);
     expect(early.status).toBe("failed");
@@ -1240,7 +1225,7 @@ describe("status route reports record availability", () => {
     })) as Response;
     expect(earlyDownload.status).toBe(404);
 
-    await until(() => record.terminal !== null);
+    await waitFor(() => record.terminal !== null);
     const settled = await recordStatusOf(id);
     expect(settled.recordAvailable).toBe(true);
     expect(settled.recordOutcome).toBe("receipt-swap-terminated");
@@ -1492,7 +1477,7 @@ function enableJobApiWithSftpServer(stubEnv: NodeJS.ProcessEnv = {}): {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: rvzRoot(),
+    jobRendezvousDir: scratchDir("routes-rvz"),
     childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), ...stubEnv },
   });
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -1665,7 +1650,7 @@ describe("the spawning routes answer 503 once shutdown has started", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
     });
     (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
       manager;
@@ -1697,7 +1682,7 @@ describe("POST /api/jobs rejects a concurrent filedrop job", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
     });
     (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -1725,7 +1710,7 @@ describe("POST /api/jobs rejects a concurrent filedrop job", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
     });
     (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -1765,8 +1750,8 @@ describe("POST /api/jobs on a split-provisioned console", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rvzRoot(),
-      jobRendezvousOutboundDir: rvzRoot(),
+      jobRendezvousDir: scratchDir("routes-rvz"),
+      jobRendezvousOutboundDir: scratchDir("routes-rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
     });
     (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -2435,10 +2420,8 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
 
   /** Boot the pasted-credential scratch directory the enabled API materializes to,
    * registered for cleanup and reset by the suite afterEach. */
-  function scratchDir(): string {
-    const dir = tempDataRoot("routes-scratch");
-    roots.push(dir);
-    fs.mkdirSync(dir, { recursive: true });
+  function bootCredentialScratchDir(): string {
+    const dir = scratchDir("routes-scratch");
     (
       globalThis as { jobSftpCredentialScratchDir?: string }
     ).jobSftpCredentialScratchDir = dir;
@@ -2447,7 +2430,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
 
   test("a pasted credential materializes and projects credential-free", async () => {
     enableJobApi();
-    const scratch = scratchDir();
+    const scratch = bootCredentialScratchDir();
     const put = await putSftp({
       host: "authored.partner.example",
       hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
@@ -2477,7 +2460,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
 
   test("a malformed pasted credential is a 400 that never echoes the value", async () => {
     enableJobApi();
-    scratchDir();
+    bootCredentialScratchDir();
     const response = await putSftp({
       host: "authored.partner.example",
       hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
@@ -2490,7 +2473,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
 
   test("DELETE of the connection sweeps the materialized pasted credential", async () => {
     enableJobApi();
-    const scratch = scratchDir();
+    const scratch = bootCredentialScratchDir();
     expect(
       (
         await putSftp({
@@ -2530,7 +2513,7 @@ function seedManagerWithProbe(stubEnv: NodeJS.ProcessEnv): JobManager {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: rvzRoot(),
+    jobRendezvousDir: scratchDir("routes-rvz"),
     childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), ...stubEnv },
   });
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
@@ -2665,13 +2648,15 @@ describe("POST /api/jobs/sftp/probe reads a host key without authoring", () => {
 
   test("a concurrent probe is a 409 (single-flight)", async () => {
     // A slow first probe holds the single slot; the concurrent second is refused.
-    seedManagerWithProbe({
+    const manager = seedManagerWithProbe({
       STUB_PROBE_STDOUT: okProbeLine(),
       STUB_DELAY_MS: "500",
     });
+    const probe = vi.spyOn(manager, "probeSftpHostKey");
     const first = postProbe({ host: "sftp.example.org" });
-    // Give the first request time to claim the in-flight flag (spawn the child).
-    await new Promise((resolve) => setTimeout(resolve, 60));
+    // The manager claims the slot synchronously on entry, so once the route
+    // has called it the first probe holds it.
+    await waitFor(() => probe.mock.calls.length === 1);
     const second = await postProbe({ host: "sftp.example.org" });
     expect(second.status).toBe(409);
     expect(await second.text()).toBe("");
@@ -2757,7 +2742,7 @@ describe("create failure is a clean 500", () => {
     roots.push(root);
     fs.writeFileSync(root, "");
     vi.stubEnv("JOB_DATA_ROOT", root);
-    vi.stubEnv("JOB_RENDEZVOUS_DIR", rvzRoot());
+    vi.stubEnv("JOB_RENDEZVOUS_DIR", scratchDir("routes-rvz"));
     vi.stubEnv("JOB_CLI_BINARY", STUB_CLI_PATH);
     const response = (await handlersOf(CreateRoute).POST({
       request: createRequest(validIntent()),

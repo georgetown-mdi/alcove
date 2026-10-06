@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { afterEach, expect, test } from "vitest";
 
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
@@ -7,7 +5,8 @@ import { JobManager } from "@jobs/jobManager";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -31,13 +30,12 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // whole block. Each rides the tail, and none of them may cost the console's
 // sentence a byte.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 const BEGIN = "-----BEGIN OPENSSH PRIVATE KEY-----";
@@ -97,14 +95,6 @@ const PLANTS: Array<{
   },
 ];
 
-/** A scratch directory registered for cleanup. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
-
 /** The terminal event the manager synthesized for a stub run writing `stderr`. */
 async function terminalFromRun(
   stderr: string,
@@ -124,12 +114,7 @@ async function terminalFromRun(
   const record: JobRecord = manager.getJob(
     await manager.createJob(validIntent()),
   )!;
-  const deadline = Date.now() + 10000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record, 10_000);
   return record.events[record.events.length - 1].event;
 }
 

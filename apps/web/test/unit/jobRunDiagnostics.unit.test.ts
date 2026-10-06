@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -30,23 +29,15 @@ import { resolveWorkdirFile } from "@jobs/workdir";
 import {
   captureExchangeArgv,
   captureZeroSetupArgv,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../utils/jobFixtures";
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 // The two per-run controls are the whole channel from the console into a CLI
 // diagnostic or recovery run, so what they emit -- and what they refuse to emit

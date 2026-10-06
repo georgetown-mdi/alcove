@@ -9,7 +9,7 @@ import {
   shutdownTimeoutMs,
 } from "../../../server/console/shutdown";
 
-import { waitUntil } from "./serverHarness";
+import { waitFor } from "../../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 
@@ -84,7 +84,7 @@ describe("installGracefulShutdown", () => {
     const exit = vi.fn((code: number) => order.push(`exit ${code}`));
     installGracefulShutdown(server, hooks, { timeoutMs: 5000, exit });
     process.emit("SIGTERM", "SIGTERM");
-    await waitUntil(() => exit.mock.calls.length > 0);
+    await waitFor(() => exit.mock.calls.length > 0);
     expect(order).toEqual(["hook", "exit 0"]);
   });
 
@@ -107,7 +107,7 @@ describe("installGracefulShutdown", () => {
     installGracefulShutdown(server, hooks, { timeoutMs: 200, exit });
     const started = Date.now();
     process.emit("SIGINT", "SIGINT");
-    await waitUntil(() => exit.mock.calls.length > 0);
+    await waitFor(() => exit.mock.calls.length > 0);
     expect(Date.now() - started).toBeGreaterThanOrEqual(150);
     expect(exit).toHaveBeenCalledWith(0);
     await clientClosed;
@@ -125,7 +125,7 @@ describe("installGracefulShutdown", () => {
     const exit = vi.fn();
     installGracefulShutdown(server, hooks, { timeoutMs: 5000, exit });
     process.emit("SIGTERM", "SIGTERM");
-    await waitUntil(() => exit.mock.calls.length > 0);
+    await waitFor(() => exit.mock.calls.length > 0);
     expect(ran).toEqual(["second"]);
   });
 
@@ -142,7 +142,7 @@ describe("installGracefulShutdown", () => {
     process.emit("SIGTERM", "SIGTERM");
     process.emit("SIGINT", "SIGINT");
     process.emit("SIGTERM", "SIGTERM");
-    await waitUntil(() => exit.mock.calls.length > 0);
+    await waitFor(() => exit.mock.calls.length > 0);
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(hookRuns).toBe(1);
     expect(exit).toHaveBeenCalledTimes(1);

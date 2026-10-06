@@ -25,6 +25,14 @@ import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 import { expectNoAccessibilityViolations } from "./accessibilityRules";
 
+import {
+  TEST_RUN_COMPLETION,
+  lifecycleCall,
+  lifecycleCalls,
+} from "./moduleMocks";
+
+import type { CapturedLifecycle } from "./moduleMocks";
+
 // The invite flow driven from the keyboard alone (keyboardOnly.ts): the file
 // and the terms through to a created invitation, then the result and the
 // failure a run can end in. Each step is held to the rule scan
@@ -40,35 +48,20 @@ vi.mock("@psi/transport/rendezvous", async () =>
 
 // The run is recorded rather than run, so a test fires the callbacks the real
 // lifecycle fires to reach the result or the failure.
-interface CapturedRun {
-  onStages: (stages: Array<unknown>) => void;
-  onStage: (stageId: string) => void;
-  onResult: (outputs: {
-    kind: "matched";
-    resultsUrl: string;
-    matchedRecordCount: number;
-  }) => void;
-  onError: (failure: { category: string; error: unknown }) => void;
-}
-const runs = vi.hoisted(() => ({ calls: [] as Array<unknown> }));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    runs.calls.push(options);
-    return Promise.resolve();
-  },
-}));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 const app = createAppMount();
 
 afterEach(async () => {
   await flushPendingUpdates();
   app.unmount();
-  runs.calls.length = 0;
+  lifecycleCalls.length = 0;
 });
 
 /** Creates the invitation from the keyboard and returns the run it started. */
-async function inviteByKeyboard(): Promise<CapturedRun> {
+async function inviteByKeyboard(): Promise<CapturedLifecycle> {
   app.render(createElement(InviterScreen));
   await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
   expectNoAccessibilityViolations(app.container, { page: true });
@@ -105,8 +98,8 @@ async function inviteByKeyboard(): Promise<CapturedRun> {
   await expectHeadingFocused("Your invitation is ready");
   expectNoAccessibilityViolations(app.container, { page: true });
   await tabTo(control("button", "Copy invitation as a link"));
-  await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
-  return runs.calls[0] as CapturedRun;
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
+  return lifecycleCall(0);
 }
 
 test("invite: file, matching, review and the created invitation, then the result, from the keyboard", async () => {
@@ -120,11 +113,14 @@ test("invite: file, matching, review and the created invitation, then the result
   );
   run.onStage("waiting for peer");
   run.onStage("confirming protocol");
-  run.onResult({
-    kind: "matched",
-    resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-    matchedRecordCount: 12,
-  });
+  run.onResult(
+    {
+      kind: "matched",
+      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+      matchedRecordCount: 12,
+    },
+    TEST_RUN_COMPLETION,
+  );
 
   await expectHeadingFocused("Exchange complete");
   expectNoAccessibilityViolations(app.container, { page: true });
@@ -142,6 +138,6 @@ test("invite: a failed run takes focus and its retry is reachable from the keybo
     .toContain("Exchange failed");
   expectNoAccessibilityViolations(app.container, { page: true });
   await activate(control("button", "Try again"));
-  await vi.waitFor(() => expect(runs.calls).toHaveLength(2));
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
   await expectHeadingFocused("Your invitation is ready");
 });

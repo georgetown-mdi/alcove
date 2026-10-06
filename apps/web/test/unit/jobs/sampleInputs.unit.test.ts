@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -11,21 +10,11 @@ import {
   SAMPLE_INVITER_FILE_NAME,
   SAMPLE_PARTNER_FILE_NAME,
 } from "@psi/sampleData";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
-const dirs: Array<string> = [];
+const { scratchDir: tempDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
-
-afterEach(() => {
-  for (const dir of dirs.splice(0)) {
-    fs.chmodSync(dir, 0o700);
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
+afterEach(removeScratchDirs);
 
 describe("writeSampleInputs", () => {
   test("writes both samples, and leaves a file already at a sample's name as it was", () => {

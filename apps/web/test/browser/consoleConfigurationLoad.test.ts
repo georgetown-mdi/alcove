@@ -40,12 +40,11 @@ vi.mock("@tanstack/react-router", async () =>
   (await import("./moduleMocks")).reactRouterMock(),
 );
 
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),

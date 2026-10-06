@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -18,10 +16,12 @@ import { appendSanitizedRunWarning } from "@psi/runWarnings";
 import {
   STUB_CLI_PATH,
   VALID_SHARED_SECRET,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
+
+import { waitFor } from "../../utils/waitFor";
 
 import type {
   FinalRunStatus,
@@ -40,23 +40,14 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // states it for, and that the read puts the console's own copy in front of the
 // operator.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   vi.useRealTimers();
 });
-
-/** A created scratch directory, removed after the test. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
 
 /**
  * A manager on the stub CLI whose child writes `stderr`, emits `events` on fd 3,
@@ -88,12 +79,10 @@ async function runJob(
   manager: JobManager,
 ): Promise<{ manager: JobManager; record: JobRecord }> {
   const record = manager.getJob(await manager.createJob(validIntent()))!;
-  const deadline = Date.now() + 5000;
-  while (record.terminal === null) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for the exit");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await waitFor(() => record.terminal !== null, {
+    timeoutMs: 5000,
+    message: "timed out waiting for the exit",
+  });
   return { manager, record };
 }
 

@@ -19,6 +19,12 @@ import { InviterScreen } from "@exchange/InviterScreen";
 import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
+import {
+  TEST_RUN_COMPLETION,
+  lifecycleCall,
+  lifecycleCalls,
+} from "./moduleMocks";
+
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
 // A run seat hosts the live WebRTC exchange itself, so unloading mid-run
@@ -43,28 +49,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 // sites the real lifecycle fires, with the seat still mounted -- which is what
 // makes the disarm assertion meaningful rather than a by-product of unmounting
 // (the exchange.test.ts pattern).
-interface CapturedLifecycle {
-  onResult: (outputs: {
-    kind: "counted";
-    intersectionCount: number;
-    countReportedByPartner: boolean;
-  }) => void;
-  onError: (failure: { category: string; error: unknown }) => void;
-}
-const lifecycleHarness = vi.hoisted(() => ({
-  calls: [] as Array<unknown>,
-}));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    lifecycleHarness.calls.push(options);
-    return Promise.resolve();
-  },
-}));
-
-function lifecycleCall(index: number): CapturedLifecycle {
-  return lifecycleHarness.calls[index] as CapturedLifecycle;
-}
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 const acceptorTerms: LinkageTerms = {
   version: "1.0.0",
@@ -114,7 +101,7 @@ const app = createAppMount();
 
 afterEach(() => {
   app.unmount();
-  lifecycleHarness.calls.length = 0;
+  lifecycleCalls.length = 0;
   window.location.hash = "";
 });
 
@@ -153,14 +140,17 @@ describe("leaving the page during a live browser exchange", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Your invitation is ready");
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     expect(unloadWouldBeConfirmed()).toBe(true);
 
-    lifecycleCall(0).onResult({
-      kind: "counted",
-      intersectionCount: 1847,
-      countReportedByPartner: true,
-    });
+    lifecycleCall(0).onResult(
+      {
+        kind: "counted",
+        intersectionCount: 1847,
+        countReportedByPartner: true,
+      },
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -204,7 +194,7 @@ describe("leaving the page during a live browser exchange", () => {
 
     // The launch is where the unsaved-work guard disarms and this seat starts
     // dialing, so from here a confirmed unload is the live run's own guard.
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange in progress");

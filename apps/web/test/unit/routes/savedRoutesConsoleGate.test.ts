@@ -11,10 +11,12 @@ import { Route as SavedIndexRoute } from "../../../src/routes/saved.index.tsx";
 // varies; the rest of the module (the PeerJS debug level the psi rendezvous
 // module reads) stays real so importing the route modules does not fault.
 const clientConfig = vi.hoisted(() => ({ consoleBuild: false }));
-vi.mock("@utils/clientConfig", async (importOriginal) => {
-  const actual = await importOriginal<Record<string, unknown>>();
-  return { ...actual, isConsoleBuild: () => clientConfig.consoleBuild };
-});
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../../utils/clientConfigMock")).clientConfigMock(
+    importOriginal,
+    { isConsoleBuild: () => clientConfig.consoleBuild },
+  ),
+);
 
 function beforeLoadResult(route: {
   options: { beforeLoad?: (ctx: unknown) => unknown };

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import http from "node:http";
 import net from "node:net";
 
@@ -11,21 +10,16 @@ import {
 } from "../../../server/console/app";
 import { jobRoutes } from "../../../server/console/routeTable";
 
-import { tempDataRoot } from "../../utils/jobFixtures";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { JobManager } from "@jobs/jobManager";
 import type { JobRouteDefinition } from "../../../server/console/jobRoute";
 
 const servers: Array<http.Server> = [];
-const dirs: Array<string> = [];
+const scratchDirs = trackScratchDirs();
 
 /** A created scratch directory, removed by {@link resetConsoleServerTests}. */
-export function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
+export const scratchDir = scratchDirs.scratchDir;
 
 /** Enable the job API on the console profile, with a data root and a
  * rendezvous mount of its own. */
@@ -58,8 +52,7 @@ export async function resetConsoleServerTests(): Promise<void> {
   ])
     memo[key] = undefined;
   vi.unstubAllEnvs();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  scratchDirs.cleanup();
 }
 
 /** Start the console server on a loopback port, serving `routes` (every job
@@ -151,16 +144,4 @@ export function sendRaw(
 export function rawStatus(answer: string): number | null {
   const match = /^HTTP\/1\.1 (\d{3}) /.exec(answer);
   return match === null ? null : Number(match[1]);
-}
-
-/** Resolve once `condition` holds. */
-export async function waitUntil(
-  condition: () => boolean,
-  timeoutMs = 5000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!condition()) {
-    if (Date.now() > deadline) throw new Error("timed out waiting");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
 }

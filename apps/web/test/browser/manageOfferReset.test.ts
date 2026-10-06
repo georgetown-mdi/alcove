@@ -28,8 +28,9 @@ import { isolatedColumnName } from "@components/ColumnName";
 import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
+import { lifecycleCall, lifecycleCalls } from "./moduleMocks";
+
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
-import type { RunCompletion } from "@psi/exchangeLifecycle";
 
 // The recurring-save offer's refusal disables its own deposit, so it must not
 // outlive the exchange it was about. Each seat keeps one component instance
@@ -50,25 +51,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 
 // The run is recorded rather than run, so a test completes it by firing the
 // callbacks the real lifecycle fires: the offer appears only at completion.
-interface CapturedRun {
-  onStages: (stages: Array<unknown>) => void;
-  onResult: (
-    outputs: {
-      kind: "matched";
-      resultsUrl: string;
-      matchedRecordCount: number;
-    },
-    completion: RunCompletion,
-  ) => void;
-}
-const runs = vi.hoisted(() => ({ calls: [] as Array<unknown> }));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    runs.calls.push(options);
-    return Promise.resolve();
-  },
-}));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 /** A header past the wire ceiling: admitted at intake (core's inference bounds
  * only the empty name), refused by the stored record's schema, and left out of
@@ -80,7 +65,7 @@ const app = createAppMount();
 afterEach(() => {
   app.unmount();
   window.location.hash = "";
-  runs.calls.length = 0;
+  lifecycleCalls.length = 0;
 });
 
 const saveButton = () =>
@@ -88,8 +73,8 @@ const saveButton = () =>
 
 /** Complete the `count`th run the screen started with a matched result. */
 async function completeRun(count: number) {
-  await vi.waitFor(() => expect(runs.calls).toHaveLength(count));
-  const run = runs.calls[count - 1] as CapturedRun;
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(count));
+  const run = lifecycleCall(count - 1);
   run.onStages(
     stagesFor(
       minimalPreparedExchange({
@@ -291,7 +276,7 @@ describe("the acceptor's offer after a refused deposit", () => {
 describe("the recurring-save offer appears at completion", () => {
   test("the inviter is offered it once the exchange completes, not while sharing", async () => {
     await mintOverOverlongHeader();
-    await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     expect(saveButton().query()).toBeNull();
 
     await completeRun(1);
@@ -302,7 +287,7 @@ describe("the recurring-save offer appears at completion", () => {
 
   test("the acceptor is offered it once the exchange completes, not while it runs", async () => {
     await launchOverOverlongHeader();
-    await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     expect(saveButton().query()).toBeNull();
 
     await completeRun(1);

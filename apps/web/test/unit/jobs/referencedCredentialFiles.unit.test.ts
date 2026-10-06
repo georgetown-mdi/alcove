@@ -1,24 +1,17 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
 import { referencedCredentialPaths } from "@jobs/referencedCredentialFiles";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
 
-const dirs: Array<string> = [];
-
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 /** Only the fields the helper reads; the rest of a document is irrelevant to
@@ -47,7 +40,7 @@ function openedDocument(fields: {
 
 describe("referencedCredentialPaths", () => {
   test("collects the authored connection's and the opened configuration's credential files", () => {
-    const dataRoot = tempDir("data");
+    const dataRoot = scratchDir("data");
     for (const name of ["authored-pw", "opened-key", "identity.json"])
       fs.writeFileSync(path.join(dataRoot, name), "x");
     const paths = referencedCredentialPaths(
@@ -70,7 +63,7 @@ describe("referencedCredentialPaths", () => {
   });
 
   test("an inline value or a reference naming no file adds nothing", () => {
-    const dataRoot = tempDir("data");
+    const dataRoot = scratchDir("data");
     const paths = referencedCredentialPaths(
       dataRoot,
       undefined,

@@ -14,9 +14,10 @@ import {
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
+import { waitFor } from "../../utils/waitFor";
 
 import type { JobRecord } from "@jobs/jobManager";
 
@@ -24,31 +25,13 @@ import type { JobRecord } from "@jobs/jobManager";
 // exit: in the image the server is PID 1, so its exit kills the child
 // mid-cleanup, and elsewhere the child would outlive it.
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   globalThis.jobManagerInstance = undefined;
   vi.restoreAllMocks();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A created scratch directory, removed after the test. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
-
-async function waitForFile(filePath: string, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!fs.existsSync(filePath)) {
-    if (Date.now() > deadline)
-      throw new Error(`timed out waiting for ${filePath}`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
 
 /**
  * A manager running one stub exchange that stays up until signalled, with the
@@ -76,7 +59,7 @@ async function runningJob(
     },
   });
   const record = manager.getJob(await manager.createJob(validIntent()))!;
-  await waitForFile(readyFile);
+  await waitFor(() => fs.existsSync(readyFile));
   return { manager, record, cleanupFile };
 }
 

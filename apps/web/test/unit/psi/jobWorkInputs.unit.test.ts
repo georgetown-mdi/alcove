@@ -27,22 +27,16 @@ import {
 } from "@jobs/workInputs";
 import { PREVIEW_SAMPLE_SIZE, sampleInputValues } from "@psi/columnSamples";
 import { computeFieldCoverage } from "@psi/workers/nonEmptyAggregate";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { Standardization } from "@alcove/core";
 
-const dirs: Array<string> = [];
-
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir: tempDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobInputDirConfig?: unknown }).jobInputDirConfig = undefined;
 });
 

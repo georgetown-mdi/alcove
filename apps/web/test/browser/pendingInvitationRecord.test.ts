@@ -84,12 +84,15 @@ async function expectNothingOffered() {
 
 describe("the invitation kept for a resume is removed", () => {
   test("when its expiry passes while the screen is open", async () => {
-    const invitation = await mint(2);
+    const invitation = await mint(60);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
     app.render(createElement(Keeper, { invitation }));
     await vi.waitFor(() => expect(kept()).not.toBeNull());
 
-    await vi.waitFor(() => expect(kept()).toBeNull(), { timeout: 6000 });
-    expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(invitation.expires));
+    vi.advanceTimersByTime(Date.parse(invitation.expires) - Date.now() - 1000);
+    expect(kept()).not.toBeNull();
+    vi.advanceTimersByTime(1000);
+    expect(kept()).toBeNull();
     expect(await readPendingInvitation(new Date())).toBeUndefined();
   });
 
@@ -191,7 +194,8 @@ describe("the resume offer", () => {
     });
     const pending = await readPendingInvitation(new Date());
     if (pending === undefined) throw new Error("no pending invitation");
-    const expires = new Date(Date.now() + 300).toISOString();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    const expires = new Date(Date.now() + 60_000).toISOString();
 
     app.render(
       createElement(ResumeInvitationOffer, {
@@ -203,18 +207,23 @@ describe("the resume offer", () => {
     const offer = page.getByRole("heading", {
       name: "Your invitation is still open",
     });
-    await expect.element(offer).toBeInTheDocument();
+    // vi.waitFor, not expect.element: under the faked setTimeout the offer's
+    // effects run only as the clock advances, which vi.waitFor does per check.
+    await vi.waitFor(() => expect(offer.query()).not.toBeNull());
 
-    await expect
-      .element(
+    vi.advanceTimersByTime(Date.parse(expires) - Date.now() - 1000);
+    expect(kept()).not.toBeNull();
+    vi.advanceTimersByTime(1000);
+    expect(kept()).toBeNull();
+    await vi.waitFor(() =>
+      expect(
         page
           .getByRole("status")
-          .filter({ hasText: "Your earlier invitation has expired" }),
-      )
-      .toBeInTheDocument();
+          .filter({ hasText: "Your earlier invitation has expired" })
+          .query(),
+      ).not.toBeNull(),
+    );
     expect(offer.query()).toBeNull();
-    expect(kept()).toBeNull();
-    expect(Date.now()).toBeGreaterThanOrEqual(Date.parse(expires));
   });
 
   test("gives way when the page is shown after a 30-day invitation expired while hidden", async () => {

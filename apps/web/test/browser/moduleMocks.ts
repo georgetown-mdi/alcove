@@ -2,17 +2,22 @@ import { vi } from "vitest";
 
 import { createElement } from "react";
 
+import type * as ExchangeLifecycleModule from "@psi/exchangeLifecycle";
 import type { ReactNode } from "react";
+import type { RunCompletion } from "@psi/exchangeLifecycle";
+import type { RunOutputs } from "@psi/runOutputs";
 
 /**
- * Shared `vi.mock` factories for the two modules the browser suite stubs
+ * Shared `vi.mock` factories for the modules the browser suite stubs
  * everywhere.
  *
  * A factory is pulled in with a dynamic import from inside the mock body --
  * `vi.mock("...", async () => (await import("./moduleMocks")).xMock())` --
- * never a top-level import of this file: Vitest hoists `vi.mock` above the
- * imports, so a factory that closes over a top-level binding fails at mock
- * resolution ("make sure there are no top level variables inside").
+ * since Vitest hoists `vi.mock` above the imports, so a factory that closes
+ * over a top-level binding fails at mock resolution ("make sure there are no
+ * top level variables inside"). A suite may still import this file at the top
+ * to read what a stub captured ({@link lifecycleCalls}): that import and the
+ * factory's dynamic one load the same module instance.
  */
 
 /**
@@ -78,5 +83,59 @@ export function rendezvousMock() {
         `may be down.`
       );
     },
+  };
+}
+
+/** The exports of `@psi/exchangeLifecycle`, as the real module types them. */
+type ExchangeLifecycleExports = typeof ExchangeLifecycleModule;
+
+/** The options a screen's run handed `runExchangeLifecycle`, typed from the
+ * real function at the outputs the screens run it with. */
+export type CapturedLifecycle = Parameters<
+  typeof ExchangeLifecycleModule.runExchangeLifecycle<RunOutputs>
+>[0];
+
+/** What a completed run hands its owner beside the outputs, for a test that
+ * completes a captured run: a well-formed rotated secret. */
+export const TEST_RUN_COMPLETION: RunCompletion = {
+  rotatedSecret: `${"R".repeat(42)}A`,
+};
+
+/** Every run the {@link exchangeLifecycleMock} stub received in this test
+ * file, oldest first. A suite that reads it empties it after each test. */
+export const lifecycleCalls: Array<CapturedLifecycle> = [];
+
+/** The run at `index` in {@link lifecycleCalls}, failing by name when the
+ * stub received fewer runs than that. */
+export function lifecycleCall(index: number): CapturedLifecycle {
+  const call = lifecycleCalls.at(index);
+  if (call === undefined)
+    throw new Error(
+      `no run at index ${index}: the lifecycle was run ${lifecycleCalls.length} times`,
+    );
+  return call;
+}
+
+/**
+ * Stubs `@psi/exchangeLifecycle` over the real module so no run dials:
+ * `runExchangeLifecycle` records its options in {@link lifecycleCalls}, so a
+ * test can fire the same callbacks the real lifecycle fires. `settle`, when
+ * given, is what each run then does, for a suite whose run ends by itself.
+ */
+export async function exchangeLifecycleMock(
+  importOriginal: () => Promise<ExchangeLifecycleExports>,
+  settle: (options: CapturedLifecycle) => Promise<void> = () =>
+    Promise.resolve(),
+): Promise<ExchangeLifecycleExports> {
+  const runExchangeLifecycle = (options: CapturedLifecycle): Promise<void> => {
+    lifecycleCalls.push(options);
+    return settle(options);
+  };
+  return {
+    ...(await importOriginal()),
+    // The real function is generic over its outputs; the stub fixes them at
+    // the screens' type.
+    runExchangeLifecycle:
+      runExchangeLifecycle as ExchangeLifecycleExports["runExchangeLifecycle"],
   };
 }

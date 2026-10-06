@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -18,7 +17,7 @@ import { spawnExchangeJob } from "@jobs/cliDriver";
 import {
   STUB_CLI_PATH,
   awaitJobTerminalState,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
@@ -40,11 +39,10 @@ const TAGGED_STALL_MESSAGE =
   "the partner did not answer within 10m; confirm they started their half " +
   "and run the exchange again";
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 /** The events the relay delivered for a child that wrote `terminal` as its
@@ -53,9 +51,7 @@ async function relayFromChild(
   terminal: Record<string, unknown>,
   exitCode: number,
 ): Promise<Array<RelayEvent>> {
-  const workdir = tempDataRoot("internal-fault-relay");
-  fs.mkdirSync(workdir, { recursive: true });
-  dirs.push(workdir);
+  const workdir = scratchDir("internal-fault-relay");
   const relayed: Array<RelayEvent> = [];
   await awaitJobTerminalState((onTerminal) =>
     spawnExchangeJob({

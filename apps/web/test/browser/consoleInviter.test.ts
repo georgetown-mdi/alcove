@@ -55,12 +55,11 @@ vi.mock("@tanstack/react-router", async () =>
 
 // This suite exercises the CONSOLE build; the hosted-profile behaviors stay pinned
 // by exchange.test.ts, which runs on the real default profile.
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 // Nothing here drives the browser transport (it is disabled on the console), so
 // the rendezvous functions are never called.

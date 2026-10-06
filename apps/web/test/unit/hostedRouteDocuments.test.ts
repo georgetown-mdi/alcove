@@ -1,7 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -12,6 +11,7 @@ import {
 import { declaredRoutes } from "../../hosted/declaredRoutes";
 import { rootDocumentHead } from "../../src/utils/documentHead";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
+import { trackScratchDirs } from "../utils/jobFixtures";
 
 import type { HtmlTagDescriptor, Plugin, Rollup } from "vite";
 
@@ -127,12 +127,9 @@ function writtenDocuments(bundle = fabricatedBundle()): Map<string, string> {
   return written;
 }
 
-const scratchDirectories: Array<string> = [];
+const { scratchDir, cleanup } = trackScratchDirs();
 
-afterEach(() => {
-  for (const directory of scratchDirectories.splice(0))
-    rmSync(directory, { recursive: true, force: true });
-});
+afterEach(cleanup);
 
 describe("the hosted build's route documents", () => {
   test("are one per warmed route, the root's as index.html", () => {
@@ -197,8 +194,7 @@ describe("the hosted build's route documents", () => {
   test.each(["_redirects", "404.html"])(
     "fail the build when the output holds %s",
     (name) => {
-      const root = mkdtempSync(join(tmpdir(), "alcove-hosted-"));
-      scratchDirectories.push(root);
+      const root = scratchDir("hosted");
       const plugin = resolvedPlugin(root);
       const outDir = join(root, "dist/hosted");
       expect(() => plugin.closeBundle()).not.toThrow();

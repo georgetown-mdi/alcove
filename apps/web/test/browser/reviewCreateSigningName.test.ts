@@ -35,12 +35,11 @@ import type { ReceiptsDraft } from "@psi/receiptsModel";
 // terms state, which is the typed name NFC-normalized and trimmed, and the name
 // the certificate is bound to.
 
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 /** A canonical 43-character fingerprint: the last character comes from the
  * aligned set core's regex requires. */

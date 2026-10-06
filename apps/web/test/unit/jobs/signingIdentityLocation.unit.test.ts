@@ -26,7 +26,7 @@ import { route as JobsRoute } from "../../../server/console/routes/index";
 import {
   STUB_CLI_PATH,
   TEST_HOST_KEY_FINGERPRINT,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
   validSftpIntent,
 } from "../../utils/jobFixtures";
@@ -52,10 +52,8 @@ const PARTNER_FINGERPRINT = "C".repeat(42) + "A";
 /** The identity file name an operator keeps in a mount of their own. */
 const PICKED_IDENTITY_NAME = "alcove-signing-identity.json";
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
-/** Directories chmod-ed read-only, restored before removal so cleanup works. */
-const lockedDirs: Array<string> = [];
 
 beforeEach(() => {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
@@ -64,26 +62,11 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const dir of lockedDirs.splice(0))
-    try {
-      fs.chmodSync(dir, 0o700);
-    } catch {
-      // Already gone: the removal below is the only thing that needed the mode.
-    }
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
-
-/** A created directory registered for cleanup. */
-function directory(label: string): string {
-  const dir = tempDataRoot(label);
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 /** Put a signing identity document at a path. Only its presence and its
  * loadability by the stub CLI matter here, so these bytes stand in for the
@@ -92,11 +75,10 @@ function writeIdentity(filePath: string): void {
   fs.writeFileSync(filePath, "{}\n", "utf8");
 }
 
-/** Make a directory read-only (owner may still read and traverse), registered so
- * the cleanup can restore it. */
+/** Make a scratch directory read-only (owner may still read and traverse); the
+ * shared cleanup restores the mode before removal. */
 function makeReadOnly(dir: string): void {
   fs.chmodSync(dir, 0o500);
-  lockedDirs.push(dir);
 }
 
 /** Whether an already-read-only directory refuses this process a write. Root
@@ -180,19 +162,19 @@ function signedIntent(subPath: Array<string> | undefined): JobCreateIntent {
 
 describe("resolveSigningIdentityPath", () => {
   test("an absent location is the console's default in the data root", () => {
-    const root = directory("location-default");
+    const root = scratchDir("location-default");
     expect(
       resolveSigningIdentityPath({
         dataRoot: root,
-        secretsDir: directory("location-default-secrets"),
+        secretsDir: scratchDir("location-default-secrets"),
         location: undefined,
       }),
     ).toBe(path.join(root, SIGNING_IDENTITY_FILE_NAME));
   });
 
   test("a picked location resolves under the secrets mount", () => {
-    const root = directory("location-picked");
-    const secrets = directory("location-picked-secrets");
+    const root = scratchDir("location-picked");
+    const secrets = scratchDir("location-picked-secrets");
     fs.mkdirSync(path.join(secrets, "signing"));
     expect(
       resolveSigningIdentityPath({
@@ -212,10 +194,10 @@ describe("resolveSigningIdentityPath", () => {
     // The console reads a picked location rather than creating one, so
     // resolution cannot depend on the file existing: absence is an ANSWER, and
     // an answer needs the path resolved first.
-    const secrets = directory("location-missing-secrets");
+    const secrets = scratchDir("location-missing-secrets");
     expect(
       resolveSigningIdentityPath({
-        dataRoot: directory("location-missing"),
+        dataRoot: scratchDir("location-missing"),
         secretsDir: secrets,
         location: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
       }),
@@ -238,21 +220,21 @@ describe("resolveSigningIdentityPath", () => {
   ])("$label does not resolve", ({ subPath }) => {
     expect(() =>
       resolveSigningIdentityPath({
-        dataRoot: directory("location-escape"),
-        secretsDir: directory("location-escape-secrets"),
+        dataRoot: scratchDir("location-escape"),
+        secretsDir: scratchDir("location-escape-secrets"),
         location: { mount: "secrets", subPath },
       }),
     ).toThrow(SigningIdentityLocationError);
   });
 
   test("a symlink out of the mount does not resolve", () => {
-    const secrets = directory("location-symlink-secrets");
-    const outside = directory("location-symlink-outside");
+    const secrets = scratchDir("location-symlink-secrets");
+    const outside = scratchDir("location-symlink-outside");
     writeIdentity(path.join(outside, PICKED_IDENTITY_NAME));
     fs.symlinkSync(outside, path.join(secrets, "away"));
     expect(() =>
       resolveSigningIdentityPath({
-        dataRoot: directory("location-symlink"),
+        dataRoot: scratchDir("location-symlink"),
         secretsDir: secrets,
         location: { mount: "secrets", subPath: ["away", PICKED_IDENTITY_NAME] },
       }),
@@ -262,14 +244,14 @@ describe("resolveSigningIdentityPath", () => {
   test("a link AT the picked file to a key outside the mount does not resolve", () => {
     // The parent chain is entirely inside the mount here: the escape is the
     // picked name itself, so a check that re-confines only the parent admits it.
-    const secrets = directory("location-final-link-secrets");
-    const outside = directory("location-final-link-outside");
+    const secrets = scratchDir("location-final-link-secrets");
+    const outside = scratchDir("location-final-link-outside");
     const target = path.join(outside, "victim.json");
     writeIdentity(target);
     fs.symlinkSync(target, path.join(secrets, PICKED_IDENTITY_NAME));
     expect(() =>
       resolveSigningIdentityPath({
-        dataRoot: directory("location-final-link"),
+        dataRoot: scratchDir("location-final-link"),
         secretsDir: secrets,
         location: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
       }),
@@ -277,14 +259,14 @@ describe("resolveSigningIdentityPath", () => {
   });
 
   test("a link AT the picked file to a key inside the mount resolves to the key", () => {
-    const secrets = directory("location-inside-link-secrets");
+    const secrets = scratchDir("location-inside-link-secrets");
     fs.mkdirSync(path.join(secrets, "vault"));
     const target = path.join(secrets, "vault", "key.json");
     writeIdentity(target);
     fs.symlinkSync(target, path.join(secrets, PICKED_IDENTITY_NAME));
     expect(
       resolveSigningIdentityPath({
-        dataRoot: directory("location-inside-link"),
+        dataRoot: scratchDir("location-inside-link"),
         secretsDir: secrets,
         location: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
       }),
@@ -294,7 +276,7 @@ describe("resolveSigningIdentityPath", () => {
   test("a console with no secrets mount refuses a picked location", () => {
     expect(() =>
       resolveSigningIdentityPath({
-        dataRoot: directory("location-unmounted"),
+        dataRoot: scratchDir("location-unmounted"),
         secretsDir: undefined,
         location: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
       }),
@@ -304,13 +286,13 @@ describe("resolveSigningIdentityPath", () => {
 
 describe("the job resolves the identity through the option", () => {
   test("a picked location is what the composed signing block names", async () => {
-    const root = directory("job-picked");
-    const secrets = directory("job-picked-secrets");
+    const root = scratchDir("job-picked");
+    const secrets = scratchDir("job-picked-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({
       dataRoot: root,
       jobSecretsDir: secrets,
-      jobRendezvousDir: directory("job-picked-rvz"),
+      jobRendezvousDir: scratchDir("job-picked-rvz"),
     });
     const id = await manager.createJob(signedIntent([PICKED_IDENTITY_NAME]));
     expect(composedSigning(path.join(root, id))).toMatchObject({
@@ -319,11 +301,11 @@ describe("the job resolves the identity through the option", () => {
   });
 
   test("no location keeps the data root's default in the composed block", async () => {
-    const root = directory("job-default");
+    const root = scratchDir("job-default");
     writeIdentity(path.join(root, SIGNING_IDENTITY_FILE_NAME));
     const manager = makeManager({
       dataRoot: root,
-      jobRendezvousDir: directory("job-default-rvz"),
+      jobRendezvousDir: scratchDir("job-default-rvz"),
     });
     const id = await manager.createJob(signedIntent(undefined));
     expect(composedSigning(path.join(root, id))).toMatchObject({
@@ -332,11 +314,11 @@ describe("the job resolves the identity through the option", () => {
   });
 
   test("a location naming nothing in the mount is refused before a workdir exists", async () => {
-    const root = directory("job-unresolvable");
+    const root = scratchDir("job-unresolvable");
     const manager = makeManager({
       dataRoot: root,
-      jobSecretsDir: directory("job-unresolvable-secrets"),
-      jobRendezvousDir: directory("job-unresolvable-rvz"),
+      jobSecretsDir: scratchDir("job-unresolvable-secrets"),
+      jobRendezvousDir: scratchDir("job-unresolvable-rvz"),
     });
     await expect(
       manager.createJob(signedIntent(["missing-dir", PICKED_IDENTITY_NAME])),
@@ -345,8 +327,8 @@ describe("the job resolves the identity through the option", () => {
   });
 
   test("an sftp run whose saved credential is the picked identity is refused before a workdir exists", async () => {
-    const root = directory("job-credential-identity");
-    const secrets = directory("job-credential-identity-secrets");
+    const root = scratchDir("job-credential-identity");
+    const secrets = scratchDir("job-credential-identity-secrets");
     const identity = path.join(secrets, PICKED_IDENTITY_NAME);
     writeIdentity(identity);
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
@@ -369,8 +351,8 @@ describe("the job resolves the identity through the option", () => {
   });
 
   test("an unsigned sftp run whose saved credential file holds a signing identity is refused", async () => {
-    const root = directory("job-credential-identity-shape");
-    const secrets = directory("job-credential-identity-shape-secrets");
+    const root = scratchDir("job-credential-identity-shape");
+    const secrets = scratchDir("job-credential-identity-shape-secrets");
     const credential = path.join(secrets, "my-identity.json");
     fs.writeFileSync(credential, "pw");
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
@@ -394,8 +376,8 @@ describe("the job resolves the identity through the option", () => {
   });
 
   test("an sftp run on an ordinary credential file is not refused", async () => {
-    const root = directory("job-credential-ordinary");
-    const secrets = directory("job-credential-ordinary-secrets");
+    const root = scratchDir("job-credential-ordinary");
+    const secrets = scratchDir("job-credential-ordinary-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const password = path.join(secrets, "sftp-password");
     fs.writeFileSync(password, "pw");
@@ -425,11 +407,11 @@ describe("the job resolves the identity through the option", () => {
     // way back to a run whose page the operator lost. Deciding the location
     // first would answer the unresolvable one with a 400 and leave that run
     // unreachable from this create.
-    const root = directory("job-unresolvable-busy");
+    const root = scratchDir("job-unresolvable-busy");
     const manager = makeManager({
       dataRoot: root,
-      jobSecretsDir: directory("job-unresolvable-busy-secrets"),
-      jobRendezvousDir: directory("job-unresolvable-busy-rvz"),
+      jobSecretsDir: scratchDir("job-unresolvable-busy-secrets"),
+      jobRendezvousDir: scratchDir("job-unresolvable-busy-rvz"),
       delayMs: 800,
     });
     const running = await manager.createJob(validIntent());
@@ -446,8 +428,8 @@ describe("the file-sync refusal follows the configured identity", () => {
     // The comparison is against the directory the identity is IN, whichever
     // that is: pointing the option at a folder the partner syncs is the same
     // layout the default location's refusal is about.
-    const root = directory("refusal-picked");
-    const secrets = directory("refusal-picked-secrets");
+    const root = scratchDir("refusal-picked");
+    const secrets = scratchDir("refusal-picked-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({
       dataRoot: root,
@@ -462,8 +444,8 @@ describe("the file-sync refusal follows the configured identity", () => {
   test("a picked identity outside every leg admits the run the default would refuse", async () => {
     // The remedy the advisory names: the single-mount console still syncs the
     // data root, but the key is not in it.
-    const root = directory("refusal-moved");
-    const secrets = directory("refusal-moved-secrets");
+    const root = scratchDir("refusal-moved");
+    const secrets = scratchDir("refusal-moved-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
     await expect(
@@ -475,8 +457,8 @@ describe("the file-sync refusal follows the configured identity", () => {
     // Moving the option does not move the file: a key the operator left in the
     // synced folder is a key the partner reads, and the run that syncs it is
     // the one refused.
-    const root = directory("refusal-leftover");
-    const secrets = directory("refusal-leftover-secrets");
+    const root = scratchDir("refusal-leftover");
+    const secrets = scratchDir("refusal-leftover-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     writeIdentity(path.join(root, SIGNING_IDENTITY_FILE_NAME));
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
@@ -489,8 +471,8 @@ describe("the file-sync refusal follows the configured identity", () => {
     // The comparison is about where the KEY is, not where the name pointing at
     // it is: a link in the secrets mount to a key the partner syncs publishes
     // that key exactly as picking it directly would.
-    const root = directory("refusal-link");
-    const secrets = directory("refusal-link-secrets");
+    const root = scratchDir("refusal-link");
+    const secrets = scratchDir("refusal-link-secrets");
     const synced = path.join(secrets, "synced");
     fs.mkdirSync(synced);
     const key = path.join(synced, "signing-key.json");
@@ -507,8 +489,8 @@ describe("the file-sync refusal follows the configured identity", () => {
   });
 
   test("a link to a key in a folder no leg holds admits the run", async () => {
-    const root = directory("refusal-link-clear");
-    const secrets = directory("refusal-link-clear-secrets");
+    const root = scratchDir("refusal-link-clear");
+    const secrets = scratchDir("refusal-link-clear-secrets");
     fs.mkdirSync(path.join(secrets, "vault"));
     const key = path.join(secrets, "vault", "signing-key.json");
     writeIdentity(key);
@@ -528,9 +510,9 @@ describe("the file-sync refusal follows the configured identity", () => {
   test("a link to a key on a mount of its own does not resolve at all", async () => {
     // The rendezvous with a mount of its own is outside the secrets mount, so
     // the link is refused where every out-of-mount link is: at resolution.
-    const root = directory("refusal-link-outside");
-    const secrets = directory("refusal-link-outside-secrets");
-    const rendezvous = directory("refusal-link-outside-rvz");
+    const root = scratchDir("refusal-link-outside");
+    const secrets = scratchDir("refusal-link-outside-secrets");
+    const rendezvous = scratchDir("refusal-link-outside-rvz");
     const key = path.join(rendezvous, "signing-key.json");
     writeIdentity(key);
     fs.symlinkSync(key, path.join(secrets, PICKED_IDENTITY_NAME));
@@ -547,7 +529,7 @@ describe("the file-sync refusal follows the configured identity", () => {
   test("an unsigned run over the same mounts is unaffected by the option", async () => {
     // A run that signs nothing loads no identity, so only the default path is
     // in question -- and with nothing there, nothing is published.
-    const root = directory("refusal-unsigned");
+    const root = scratchDir("refusal-unsigned");
     const manager = makeManager({ dataRoot: root });
     await expect(manager.createJob(validIntent())).resolves.toEqual(
       expect.any(String),
@@ -557,10 +539,10 @@ describe("the file-sync refusal follows the configured identity", () => {
 
 describe("a picked location is read, never created", () => {
   test("nothing at the picked path is reported absent, and no child runs", async () => {
-    const root = directory("read-absent");
-    const secrets = directory("read-absent-secrets");
+    const root = scratchDir("read-absent");
+    const secrets = scratchDir("read-absent-secrets");
     const argvFile = path.join(
-      directory("read-absent-argv"),
+      scratchDir("read-absent-argv"),
       "child-argv.json",
     );
     const manager = makeManager({
@@ -585,9 +567,9 @@ describe("a picked location is read, never created", () => {
     // the child it would spawn is a create-or-reuse: it would write a fresh
     // private key at the picked name. What is asserted is the console's own
     // decision -- no child at all -- not that the child's write happened to fail.
-    const root = directory("read-dangling");
-    const secrets = directory("read-dangling-secrets");
-    const outside = directory("read-dangling-outside");
+    const root = scratchDir("read-dangling");
+    const secrets = scratchDir("read-dangling-secrets");
+    const outside = scratchDir("read-dangling-outside");
     fs.symlinkSync(
       path.join(outside, "key.json"),
       path.join(secrets, PICKED_IDENTITY_NAME),
@@ -612,8 +594,8 @@ describe("a picked location is read, never created", () => {
   });
 
   test("an identity already there is read and its fingerprint returned", async () => {
-    const root = directory("read-present");
-    const secrets = directory("read-present-secrets");
+    const root = scratchDir("read-present");
+    const secrets = scratchDir("read-present-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
     await expect(
@@ -633,8 +615,8 @@ describe("a picked location is read, never created", () => {
   test("a live shared-folder run does not withhold a read of a picked identity", async () => {
     // The syncing answer is about a CREATE landing in a synced folder, and a
     // picked location is never created -- so the gate has nothing to hold.
-    const root = directory("read-live-run");
-    const secrets = directory("read-live-run-secrets");
+    const root = scratchDir("read-live-run");
+    const secrets = scratchDir("read-live-run-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({
       dataRoot: root,
@@ -654,8 +636,8 @@ describe("a picked location is read, never created", () => {
 
 describe("the console creates nothing at a picked path on the paths these cases drive", () => {
   test("the fingerprint request, the export, and the run leave a read-only mount untouched", async () => {
-    const root = directory("readonly-mount");
-    const secrets = directory("readonly-mount-secrets");
+    const root = scratchDir("readonly-mount");
+    const secrets = scratchDir("readonly-mount-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const before = treeOf(secrets);
     makeReadOnly(secrets);
@@ -667,7 +649,7 @@ describe("the console creates nothing at a picked path on the paths these cases 
     const manager = makeManager({
       dataRoot: root,
       jobSecretsDir: secrets,
-      jobRendezvousDir: directory("readonly-mount-rvz"),
+      jobRendezvousDir: scratchDir("readonly-mount-rvz"),
     });
     const location = {
       mount: "secrets" as const,
@@ -702,8 +684,8 @@ describe("the console creates nothing at a picked path on the paths these cases 
   });
 
   test("the identity file itself is not rewritten by a read", async () => {
-    const root = directory("readonly-bytes");
-    const secrets = directory("readonly-bytes-secrets");
+    const root = scratchDir("readonly-bytes");
+    const secrets = scratchDir("readonly-bytes-secrets");
     const identityPath = path.join(secrets, PICKED_IDENTITY_NAME);
     writeIdentity(identityPath);
     const before = fs.statSync(identityPath).mtimeMs;
@@ -743,8 +725,8 @@ describe("the boundary shows no container path", () => {
     jobRendezvousDir?: string;
     identityIn?: "secrets" | "none";
   }): { root: string; secrets: string } {
-    const root = directory("route-location");
-    const secrets = directory("route-location-secrets");
+    const root = scratchDir("route-location");
+    const secrets = scratchDir("route-location-secrets");
     if (options.identityIn === "secrets")
       writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     vi.stubEnv("JOB_DATA_ROOT", root);
@@ -818,7 +800,7 @@ describe("the boundary shows no container path", () => {
   test("a job create with an unresolvable location is an empty-bodied 400", async () => {
     seed({
       identityIn: "none",
-      jobRendezvousDir: directory("route-location-rvz"),
+      jobRendezvousDir: scratchDir("route-location-rvz"),
     });
     const response = (await handlersOf(JobsRoute).POST({
       request: jobRequest(
@@ -896,11 +878,11 @@ describe("the boundary shows no container path", () => {
 
 describe("the intent schema bounds the location", () => {
   test("an sftp run resolves the option the same way", async () => {
-    const root = directory("sftp-location");
-    const secrets = directory("sftp-location-secrets");
+    const root = scratchDir("sftp-location");
+    const secrets = scratchDir("sftp-location-secrets");
     writeIdentity(path.join(secrets, PICKED_IDENTITY_NAME));
     const manager = makeManager({ dataRoot: root, jobSecretsDir: secrets });
-    const credentialDir = directory("sftp-location-cred");
+    const credentialDir = scratchDir("sftp-location-cred");
     const credentialPath = path.join(credentialDir, "password");
     fs.writeFileSync(credentialPath, "s3cret\n");
     manager.authorSftpServer({
