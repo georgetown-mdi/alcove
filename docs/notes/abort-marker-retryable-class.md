@@ -36,7 +36,7 @@ What a storage-side edit can and cannot do:
 | final | `PeerAbortError`, as today | 76 | `PARTNER_REFUSED_NEXT_STEP` |
 | retryable | `PeerAbortError` holding `retryable: true` | 69 | the partner's run failed on a fault a retry may clear; retry on schedule, and contact the partner if it repeats |
 
-`isPartnerRefusal` excludes the retryable form, so it reaches the 69 rung and gets no refusal step. The `error` event keeps `category: "exchange"` for both, and the exit code tells them apart, as it does for 70 and 76 today. The WebRTC partner-abort frame (`packages/core/src/psi/psiBinaryFrame.ts`) is not a marker and stays 76.
+The retryable form is outside the `partner-refused` class of `classifyFailure`, so it reaches the 69 rung and gets no refusal step. The `error` event keeps `category: "exchange"` for both, and the exit code tells them apart, as it does for 70 and 76 today. The WebRTC partner-abort frame (`packages/core/src/psi/psiBinaryFrame.ts`) is not a marker and stays 76.
 
 ## Which writer faults are retryable
 

@@ -54,13 +54,15 @@ export const PARTNER_REFUSED_NEXT_STEP =
 
 /**
  * {@link PARTNER_REFUSED_NEXT_STEP} when core's class for `err`
- * ({@link classifyFailure}) takes {@link PARTNER_REFUSED_EXIT_CODE} and
- * nothing in its cause chain holds core's `alcoveRecoveryHintEmitted` tag;
+ * ({@link classifyFailure}) is `partner-refused` or `receipt-not-verified`
+ * and nothing in its cause chain holds core's `alcoveRecoveryHintEmitted` tag;
  * otherwise `undefined`, for the reason {@link internalFaultNextStep} gives.
  */
 export function partnerRefusalNextStep(err: unknown): string | undefined {
+  const failureClass = classifyFailure(err);
   if (
-    exitCodeForFailureClass(classifyFailure(err)) !== PARTNER_REFUSED_EXIT_CODE
+    failureClass !== "partner-refused" &&
+    failureClass !== "receipt-not-verified"
   )
     return undefined;
   return holdsRecoveryHintTag(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
