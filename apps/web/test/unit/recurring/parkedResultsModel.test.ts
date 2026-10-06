@@ -151,7 +151,7 @@ describe("the row shown for a run written to the granted folder", () => {
     })[0];
     expect(row.summary).toBe(
       "Results were written to alcove-results-earlier.csv in the folder you " +
-        "granted (Riverbend results). Nothing of them is kept in this browser.",
+        "chose (Riverbend results). Nothing of them is kept in this browser.",
     );
   });
 
@@ -159,10 +159,12 @@ describe("the row shown for a run written to the granted folder", () => {
     const ungranted = parkedResultsRows(written("ungranted"))[0].summary;
     expect(ungranted).toContain("ready to download");
     expect(ungranted).toContain("without asking you");
-    expect(ungranted).toContain("Granting the folder again");
+    expect(ungranted).toContain(
+      "Choose the folder again on this exchange's page",
+    );
 
     const failed = parkedResultsRows(written("write-failed"))[0].summary;
-    expect(failed).toContain("Writing to the folder you granted failed");
+    expect(failed).toContain("Writing to the folder you chose failed");
     expect(failed).toContain("still exists");
   });
 
@@ -203,7 +205,7 @@ describe("the row shown for a run too large to keep", () => {
 
   test("states no folder chosen yet where the run held no grant", () => {
     const summary = parkedResultsRows(tooLarge())[0].summary;
-    expect(summary).toContain("No folder is granted");
+    expect(summary).toContain("No folder is chosen");
     expect(summary).toContain("Choose a folder");
   });
 
@@ -211,14 +213,14 @@ describe("the row shown for a run too large to keep", () => {
     const summary = parkedResultsRows(tooLarge(undefined, "ungranted"))[0]
       .summary;
     expect(summary).toContain("could not be written to without asking you");
-    expect(summary).toContain("Grant the folder again");
-    expect(summary).not.toContain("No folder is granted");
+    expect(summary).toContain("Choose the folder again");
+    expect(summary).not.toContain("No folder is chosen");
   });
 
   test("states a write that failed, and what to check about the folder", () => {
     const summary = parkedResultsRows(tooLarge(undefined, "write-failed"))[0]
       .summary;
-    expect(summary).toContain("Writing to the folder you granted failed");
+    expect(summary).toContain("Writing to the folder you chose failed");
     expect(summary).toContain("still exists and has room");
     expect(summary).not.toContain("Choose a folder");
   });
@@ -281,7 +283,7 @@ describe("the warning a projected result size raises", () => {
       "Choose a folder for this exchange's results",
     );
     const granted = projectedResultSizeWarning(declaring(over, over), true);
-    expect(granted).toContain("folder you granted");
+    expect(granted).toContain("folder you chose");
     expect(granted).not.toContain("Choose a folder");
   });
 
@@ -321,7 +323,7 @@ describe("what the operator is told about keeping results here", () => {
     // The folder is where a scheduled run writes; this statement is what
     // happens whenever the granted folder cannot be written to.
     expect(PARKED_RESULTS_SCHEDULE_NOTE).toContain(
-      "Whenever the folder you granted cannot be written to",
+      "Whenever the folder you chose cannot be written to",
     );
   });
 
@@ -414,7 +416,7 @@ describe("what the operator is told about keeping results here", () => {
     );
     // Both routes a run's results can take, so the empty state is read against
     // what a run would do rather than as a bare blank.
-    expect(NO_PARKED_RESULTS_NOTE).toContain("folder you granted");
+    expect(NO_PARKED_RESULTS_NOTE).toContain("folder you chose");
     expect(NO_PARKED_RESULTS_NOTE).toContain("leaves the results here");
   });
 });

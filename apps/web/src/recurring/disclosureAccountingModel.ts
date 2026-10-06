@@ -182,7 +182,7 @@ const OUTCOME_DISCLOSURE: Record<ExchangeRecordOutcome, Displayable> = {
  * read as a confirmation the exchange never made (see
  * docs/spec/EXCHANGE_RECORD.md, "When a record is owed").
  */
-const CERTIFICATE_MISMATCH_DISCLOSURE = displayText`Your partner presented a certificate that is not the one pinned for them, so the partner named in the Partner fact is who they claimed to be and not who this run confirmed`;
+const CERTIFICATE_MISMATCH_DISCLOSURE = displayText`Your partner presented a certificate other than the one pinned for them, so this run did not confirm who they are. The name under Partner is the one they gave`;
 
 /** The values the outcome fact holds: how the run ended, and -- on the one arm
  * that has it -- what the run observed about the partner's certificate. */
@@ -213,7 +213,7 @@ function outcomeValues(record: ExchangeRecord): ReadonlyArray<Displayable> {
  * is the only place the export states what those names are.
  */
 const TERMINATED_DISCLOSURE_NOTE =
-  "Your payload had been handed to the transport, so this entry records a disclosure; whether it reached your partner is not confirmed. The columns recorded as received are what had arrived when the run stopped, and the run wrote you no result file.";
+  "Your columns had already been sent, so this entry records a disclosure. Whether your partner received them is not confirmed. The columns recorded as received are what had arrived when the run stopped, and the run wrote you no result file.";
 
 /**
  * How a terminated entry names its received-columns fact on screen: what the

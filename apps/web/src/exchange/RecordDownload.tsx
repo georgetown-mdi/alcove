@@ -23,12 +23,12 @@ export const TERMINATED_RECORD_LEAD =
  * differently.
  */
 export const TERMINATED_RECORD_NOTICE =
-  "The record states what this run disclosed -- to whom, under which agreement, " +
-  "over what categories of data, and how many of your records went into it -- " +
-  "which is what a disclosure accounting is written from. Download it now: " +
-  "every way on from a stopped run, whether that is trying again, starting " +
-  "over, or discarding it, removes this run's files from this console and the " +
-  "record with them, while the disclosure it records still happened.";
+  "The record states what this run disclosed: to whom, under which agreement, " +
+  "over what categories of data, and how many of your records went into it. " +
+  "A disclosure accounting is written from it. Download it now. Trying " +
+  "again, starting over, or discarding the run all delete this run's files " +
+  "from this console, including the record. The disclosure it records has " +
+  "already happened.";
 
 /**
  * What the seat says about the keys beside a TERMINATED record, which is not what
@@ -126,8 +126,9 @@ export const UNDESCRIBABLE_RECORD_NOTICE =
   "does not know, or be missing the verification keys written beside it. No " +
   "download is offered here, because this page cannot say what the file " +
   "records. The file itself is untouched where it sits, and an Alcove build " +
-  "that recognizes it can read it. Keep this run until you have it -- every way " +
-  "on from here removes this run's files from this console, that one included.";
+  "that recognizes it can read it. Keep this run until you have copied the " +
+  "file. Trying again, starting over, or discarding the run all delete this " +
+  "run's files from this console, including that one.";
 
 /**
  * The lead the seat shows when the console stopped answering about a run's
@@ -147,8 +148,9 @@ export const RECORD_UNANSWERED_NOTICE =
   "This page asked several times whether this run wrote an exchange record and " +
   "got no answer back, so it has stopped asking. If this run got as far as " +
   "sending your data, the record of that disclosure is with the run's files on " +
-  "this console -- reload this page to ask again, and keep the run until you " +
-  "have the file, because every way on from here removes it.";
+  "this console. Reload this page to ask again, and keep the run until you " +
+  "have the file. Trying again, starting over, or discarding the run all " +
+  "delete it.";
 
 /** Where an offered record pair lives: in a console run's folder, or in this page
  * for a failed in-browser run. */

@@ -812,9 +812,10 @@ export const UNTAKEN_RECORD_CONFIRM_TITLE = "Leave the exchange record behind?";
  */
 export const UNTAKEN_RECORD_CONFIRM_BODY =
   "This run disclosed your data before it stopped, and this console holds its " +
-  "record of that disclosure. Going on removes the run and the record with it, " +
-  "and neither party can recreate it. Download it from the exchange-record " +
-  "panel on this page first if you need the accounting entry.";
+  "record of that disclosure. If you continue, this console deletes the run " +
+  "and the record, and neither party can recreate the record. Download it " +
+  "from the exchange-record panel on this page first if you need the " +
+  "accounting entry.";
 
 /** The title the confirm heads with over a record the console holds and
  * cannot read. It names the file rather than the record's contents, which
@@ -832,9 +833,9 @@ export const UNDESCRIBABLE_RECORD_CONFIRM_TITLE =
 export const UNDESCRIBABLE_RECORD_CONFIRM_BODY =
   "This console holds a file for this run that it cannot read as an exchange " +
   "record, so this page cannot say what it records or offer it for download. " +
-  "Going on removes the run and that file, and neither party can recreate it. " +
-  "Copy it out of this run's folder inside your working folder first " +
-  "if you need the accounting entry.";
+  "If you continue, this console deletes the run and that file, and neither " +
+  "party can recreate the file. Copy it out of this run's folder inside your " +
+  "working folder first if you need the accounting entry.";
 
 /** The title the confirm heads with when the ask never answered. It asks about a
  * record it cannot say is there, because that is all an unanswered ask
@@ -852,9 +853,9 @@ export const UNKNOWN_RECORD_CONFIRM_TITLE =
  */
 export const UNKNOWN_RECORD_CONFIRM_BODY =
   "This console stopped answering whether this run wrote a disclosure " +
-  "record. Going on removes the run and anything it wrote, and neither party " +
-  "can recreate it. Reload this page to check first if you need the " +
-  "accounting entry.";
+  "record. If you continue, this console deletes the run and anything it " +
+  "wrote, and neither party can recreate a record it wrote. Reload this page " +
+  "to check first if you need the accounting entry.";
 
 /**
  * What that confirm says while the ask is still running. Same unknown, different
@@ -864,15 +865,15 @@ export const UNKNOWN_RECORD_CONFIRM_BODY =
  */
 export const PENDING_RECORD_CONFIRM_BODY =
   "This console has not yet answered whether this run wrote a disclosure " +
-  "record. Going on removes the run and anything it wrote, and neither party " +
-  "can recreate it. Wait for the answer first if you need the accounting " +
-  "entry.";
+  "record. If you continue, this console deletes the run and anything it " +
+  "wrote, and neither party can recreate a record it wrote. Wait for the " +
+  "answer first if you need the accounting entry.";
 
 /** The title the confirm heads with once the ask has landed on the
  * console's own denial while the dialog is open. The record is settled and
  * there is none, so the question is only about the recovery the operator
  * already pressed. */
-const NO_RECORD_CONFIRM_TITLE = "Go on and remove this run?";
+const NO_RECORD_CONFIRM_TITLE = "Remove this run and its files?";
 
 /**
  * What that confirm says. It is the copy for a dialog the operator opened over an
@@ -881,9 +882,9 @@ const NO_RECORD_CONFIRM_TITLE = "Go on and remove this run?";
  * named for what it is.
  */
 export const NO_RECORD_CONFIRM_BODY =
-  "This console holds no exchange record for this run, so there is none to " +
-  "leave behind. Going on removes the run and its files from this console, " +
-  "which cannot be undone.";
+  "This console holds no exchange record for this run, so no record is lost. " +
+  "If you continue, this console deletes the run and its files, and this " +
+  "cannot be undone.";
 
 /** The heading and body of one untaken-record confirm. */
 interface UntakenRecordConfirm {

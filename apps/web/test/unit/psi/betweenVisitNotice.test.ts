@@ -141,7 +141,7 @@ describe("betweenVisitNotice: the missed window", () => {
     });
 
     expect(notice?.kind).toBe("missed");
-    expect(notice?.body).toContain("Nothing to do");
+    expect(notice?.body).toContain("No action is needed");
     expect(notice?.body).toContain("next window opens");
   });
 
@@ -218,7 +218,7 @@ describe("betweenVisitNotice: the window an answer held back", () => {
 
     expect(notice?.kind).toBe("skipped");
     expect(notice?.body).toContain("Riverbend quarterly");
-    expect(notice?.body).toContain("something did not add up");
+    expect(notice?.body).toContain("Something does not add up");
     expect(notice?.body).toContain("clear it");
   });
 
@@ -319,7 +319,7 @@ describe("betweenVisitNotice: the failures that need the operator", () => {
 
     expect(notice?.kind).toBe("terms-shortfall");
     expect(notice?.title).toBe(alertTitle("terms-shortfall"));
-    expect(notice?.body).toContain("read as a single column");
+    expect(notice?.body).toContain("was read as a single column");
     expect(notice?.body).toContain(SINGLE_COLUMN_DELIMITER_REMEDY);
     expect(notice?.body).not.toContain("covers every agreed key");
   });

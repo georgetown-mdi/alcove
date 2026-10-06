@@ -340,7 +340,7 @@ describe("a disclosure's facts", () => {
 
     expect(values).toHaveLength(2);
     expect(values[0]).toBe("Disclosed, then stopped before the run finished");
-    expect(values[1]).toContain("not the one pinned for them");
+    expect(values[1]).toContain("other than the one pinned for them");
 
     // A record observing none states nothing about the partner's certificate:
     // what every other entry shows for its partner is the self-asserted name the
@@ -653,11 +653,11 @@ describe("the exported accounting", () => {
     const cell = splitCsvRow(row)[columns.indexOf("How the exchange ended")];
 
     expect(cell).toContain("Disclosed, then stopped before the run finished");
-    expect(cell).toContain("not the one pinned for them");
+    expect(cell).toContain("other than the one pinned for them");
     // The note names the fact it qualifies rather than a position on screen:
     // in the export that fact is a column of this same row, and the screen's
     // vertical list shows the same label.
-    expect(cell).toContain("the partner named in the Partner fact");
+    expect(cell).toContain("The name under Partner");
     expect(columns).toContain("Partner");
     // The marker widens no entry's column set: the header a compliance reader
     // reads is the same one every other accounting exports.

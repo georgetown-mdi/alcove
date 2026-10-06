@@ -372,7 +372,7 @@ export const DELIVERY_NOT_RECORDED =
  * bookkeeping cannot prove whether data reached the partner. It asserts neither
  * way and points at the accounting of disclosures, where a run files its record
  * once it has sent. */
-const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; check the accounting of disclosures below, where a run that sent its payload files its record.`;
+const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; check the accounting of disclosures below, where a run that sent your columns files its record.`;
 
 /**
  * Whether a failed run's bookkeeping proves it stopped before the data exchange

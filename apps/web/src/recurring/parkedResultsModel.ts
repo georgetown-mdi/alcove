@@ -66,7 +66,7 @@ const RETENTION_PHRASE = `${String(PARKED_RESULTS_RETENTION_DAYS)} days`;
  * decision that starts producing them.
  */
 export const PARKED_RESULTS_SCHEDULE_NOTE =
-  `Whenever the folder you granted cannot be written to, a scheduled run keeps ` +
+  `Whenever the folder you chose cannot be written to, a scheduled run keeps ` +
   `its results in this browser and this exchange's page offers them at your ` +
   `next visit. Those results ` +
   `are the matched rows themselves -- the identifiers that matched and the ` +
@@ -82,7 +82,7 @@ export const PARKED_RESULTS_SCHEDULE_NOTE =
  * long they stay, and what removes them. */
 export const PARKED_RESULTS_RETENTION_NOTE =
   `Results from a run nobody was present for are written to the folder you ` +
-  `granted, and kept in this browser where there is no such folder or it could ` +
+  `chose, and kept in this browser where there is no such folder or it could ` +
   `not be written to. What is kept here is the matched rows, unencrypted in ` +
   `browser storage; after ${RETENTION_PHRASE} they are no longer offered, and ` +
   `your next visit to this page deletes them, as does a later run that leaves ` +
@@ -95,7 +95,7 @@ export const PARKED_RESULTS_RETENTION_NOTE =
  * producing results reads it as the fact it is. */
 export const NO_PARKED_RESULTS_NOTE =
   "No scheduled run has left anything here. A run that happens with nobody " +
-  "present writes its results to the folder you granted and says here where " +
+  "present writes its results to the folder you chose and says here where " +
   "they went, or, without such a folder, leaves the results here for you to " +
   "collect.";
 
@@ -146,7 +146,7 @@ function writtenSummary(entry: WrittenRunResults): string {
       ? "Results were written to"
       : `${matched}, written to`;
   return (
-    `${written} ${entry.fileName} in the folder you granted ` +
+    `${written} ${entry.fileName} in the folder you chose ` +
     `(${entry.directoryName}). Nothing of them is kept in this browser.`
   );
 }
@@ -162,12 +162,13 @@ function parkedSummary(entry: ParkedRunResults): string {
       : `${matched}, ready to download.`;
   if (entry.fallback === undefined) return ready;
   return entry.fallback === "ungranted"
-    ? `${ready} The folder you granted could not be written to without asking ` +
+    ? `${ready} The folder you chose could not be written to without asking ` +
         `you, and a run with nobody present cannot ask, so the results were ` +
-        `kept here instead. Granting the folder again restores it for later runs.`
-    : `${ready} Writing to the folder you granted failed, so the results were ` +
+        `kept here instead. Choose the folder again on this exchange's page ` +
+        `so later runs can write there.`
+    : `${ready} Writing to the folder you chose failed, so the results were ` +
         `kept here instead. Check that the folder still exists and has room, ` +
-        `or grant a different one.`;
+        `or choose a different one.`;
 }
 
 /** How large a result this browser keeps, as the surfaces state it. */
@@ -179,16 +180,16 @@ const PARKED_SIZE_PHRASE = byteSizeLabel(MAX_PARKED_RESULT_BYTES);
 const TOO_LARGE_FOLDER_REMEDY: Record<ParkedResultsFallback | "none", string> =
   {
     none:
-      "No folder is granted for this exchange's results. Choose a folder, and " +
+      "No folder is chosen for this exchange's results. Choose a folder, and " +
       "a run of any size writes them there instead.",
     ungranted:
-      "The folder you granted could not be written to without asking you, and " +
-      "a run with nobody present cannot ask. Grant the folder again, and a run " +
-      "of any size writes there instead.",
+      "The folder you chose could not be written to without asking you, and " +
+      "a run with nobody present cannot ask. Choose the folder again on this " +
+      "exchange's page, and a run of any size writes there instead.",
     "write-failed":
-      "Writing to the folder you granted failed. Check that the folder still " +
-      "exists and has room, or grant a different one; a run of any size writes " +
-      "there instead.",
+      "Writing to the folder you chose failed. Check that the folder still " +
+      "exists and has room, or choose a different one. A run of any size then " +
+      "writes there instead.",
   };
 
 /** What a row says about a run whose results were larger than this browser keeps:
@@ -272,7 +273,7 @@ export function projectedResultSizeWarning(
     `these terms allow rather than what the next run will match: a run that ` +
     `matches fewer records may leave a result that fits. ` +
     (folderGranted
-      ? `Results written to the folder you granted are not held to that size; ` +
+      ? `Results written to the folder you chose are not held to that size; ` +
         `a run that cannot write there leaves nothing.`
       : `Choose a folder for this exchange's results: results written there ` +
         `are not held to that size.`)
@@ -286,7 +287,7 @@ export const CLEAR_PARKED_RESULTS_NOTE =
   "Clearing removes everything this exchange's scheduled runs left here: the " +
   "results kept in this browser, the notes saying where results were written, " +
   "and the states recorded where results were not kept. The results already in " +
-  "a folder you granted stay there, and the runs themselves stay in the " +
+  "a folder you chose stay there, and the runs themselves stay in the " +
   "accounting of disclosures. It cannot be undone.";
 
 /**

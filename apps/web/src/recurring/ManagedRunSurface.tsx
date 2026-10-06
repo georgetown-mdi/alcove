@@ -1325,8 +1325,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <p className={styles.mono}>{commandLineHandoff}</p>
             <p className={styles.small}>
-              Those two files are this exchange&apos;s backup of record. Keep
-              them somewhere only you can read.
+              Those two files are the only copy of this exchange that can run.
+              Keep them somewhere only you can read.
             </p>
             <SavedExchangesFoot />
           </>
@@ -2270,8 +2270,8 @@ function SpentSurface({
       </p>
       {refused}
       <p className={styles.small}>
-        Those two files are this exchange&apos;s backup of record. Keep them
-        somewhere only you can read.
+        Those two files are the only copy of this exchange that can run. Keep
+        them somewhere only you can read.
       </p>
       <RetakeControl id={id} onRetaken={onRetaken} />
       {parked}

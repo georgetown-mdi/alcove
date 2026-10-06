@@ -611,10 +611,10 @@ type RunEntryDetails = Pick<
  * bound. */
 const TOO_LARGE_FOLDER_REMEDY: Record<ParkedResultsFallback | "none", string> =
   {
-    none: "granting a working folder is what takes a result this size",
+    none: "choose a working folder to keep a result this size",
     ungranted:
-      "the working folder could not be used with nobody present, and " +
-      "granting it again is what takes a result this size",
+      "the working folder could not be used with nobody present; choose " +
+      "it again to keep a result this size",
     "write-failed":
       "the write to the working folder failed; check that the folder " +
       "still exists and has room",

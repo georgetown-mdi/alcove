@@ -358,7 +358,7 @@ describe("an attended run whose results file the surface did not allocate", () =
         `the working folder`,
     );
     expect(stub.written).toBeUndefined();
-    expect(app.container.textContent).not.toContain("folder you granted");
+    expect(app.container.textContent).not.toContain("folder you chose");
   });
 });
 
@@ -382,7 +382,7 @@ describe("an attended run of an exchange holding no folder grant", () => {
     await expect
       .element(page.getByRole("link", { name: /Download result/ }))
       .toBeInTheDocument();
-    expect(app.container.textContent).not.toContain("folder you granted");
+    expect(app.container.textContent).not.toContain("folder you chose");
     expect(app.container.textContent).not.toContain("Not written");
   });
 });

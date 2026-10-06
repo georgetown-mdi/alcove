@@ -898,7 +898,7 @@ exchange then runs from the command line and not here.
 It downloads **two files rather than one archive**, because the two are handled
 differently once they land:
 
-- `alcove.yaml` -- the agreed terms and the rendezvous address. No secret.
+- `alcove.yaml` -- the agreed terms and the connection settings, with no secret.
 - `.alcove.key` -- this exchange's shared secret, in plain text, under the key
   file's own custody rules ([Key file
   security](SECURITY_DESIGN.md#key-file-security)).

@@ -159,7 +159,11 @@ describe("the command-line export hands over two files", () => {
       .element(page.getByText(CLI_BUILT_IN_STUN_URI, { exact: false }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("backup of record", { exact: false }))
+      .element(
+        page.getByText("the only copy of this exchange that can run", {
+          exact: false,
+        }),
+      )
       .toBeInTheDocument();
     // The ready-to-run invocation, run from the image over the folder, and the
     // schedule lines are on the panel.
@@ -328,7 +332,7 @@ describe("the export leaves the backup indicator exactly where it was", () => {
 
     await expect
       .element(
-        page.getByText("not a backup file this browser can restore from", {
+        page.getByText("this browser cannot restore the exchange from them", {
           exact: false,
         }),
       )
@@ -338,7 +342,7 @@ describe("the export leaves the backup indicator exactly where it was", () => {
     await expect
       .element(
         page.getByText(
-          "a backup taken before the hand-off will not bring it back",
+          "a backup taken before the hand-off cannot bring it back",
           { exact: false },
         ),
       )
@@ -399,7 +403,11 @@ describe("the durable spent surface names the hand-off that spent it", () => {
         )
         .toBeInTheDocument();
       await expect
-        .element(page.getByText("backup of record", { exact: false }))
+        .element(
+          page.getByText("the only copy of this exchange that can run", {
+            exact: false,
+          }),
+        )
         .toBeInTheDocument();
       // Neither half of the migration copy is true here: no other device holds
       // this exchange, and the two files it runs from are not the artifact the

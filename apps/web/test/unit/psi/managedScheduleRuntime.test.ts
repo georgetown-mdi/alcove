@@ -539,7 +539,7 @@ describe("a result larger than this browser keeps", () => {
     });
     expect(tooLarge.fallback).toBeUndefined();
     expect(warn.mock.calls.at(-1)?.[0]).toContain(
-      "granting a working folder is what takes a result this size",
+      "choose a working folder to keep a result this size",
     );
     warn.mockRestore();
   });
@@ -556,7 +556,7 @@ describe("a result larger than this browser keeps", () => {
     );
 
     expect(mockedTooLarge.mock.calls[0][1].fallback).toBe("ungranted");
-    expect(warn.mock.calls.at(-1)?.[0]).toContain("granting it again");
+    expect(warn.mock.calls.at(-1)?.[0]).toContain("choose it again");
     warn.mockRestore();
   });
 

@@ -27,7 +27,7 @@ export interface AttendedFolderWriteNote {
 export function attendedFolderWriteNote(
   write: AttendedFolderWrite,
 ): AttendedFolderWriteNote {
-  const folder = `the folder you granted (${write.directoryName})`;
+  const folder = `the folder you chose (${write.directoryName})`;
   const { delivery } = write;
   if (delivery === undefined)
     return { message: `Writing the results to ${folder}.`, failed: false };

@@ -566,14 +566,14 @@ export const DISCLOSURE_NOT_FILED_WARNING =
  * that then fails to build them raises it too. What is left to do is record the
  * disclosure outside this browser. */
 export const DISCLOSURE_RECORD_UNBUILT_WARNING =
-  "This run sent your payload, and no record of it could be built, so this exchange's accounting of disclosures has no entry for it. Note this run's time and partner if you keep an account of disclosures.";
+  "This run sent your columns, and no record of it could be built, so this exchange's accounting of disclosures has no entry for it. Note this run's time and partner if you keep an account of disclosures.";
 
 /** The notice a run that stopped after sending raises when its disclosure could
  * not be filed. It offers no download: the run has no results surface, so nothing
  * remains for the operator to take, and what is left to do is record the
  * disclosure outside this browser. */
 export const STOPPED_DISCLOSURE_NOT_FILED_WARNING =
-  "This run sent your payload and then stopped, and its record could not be saved to this exchange's accounting of disclosures. Note this run's time and partner if you keep an account of disclosures.";
+  "This run sent your columns and then stopped, and its record could not be saved to this exchange's accounting of disclosures. Note this run's time and partner if you keep an account of disclosures.";
 
 /** The notice a run that stopped after sending raises when the record of that
  * disclosure could not be built, so nothing reached the accounting to be saved.
@@ -581,7 +581,7 @@ export const STOPPED_DISCLOSURE_NOT_FILED_WARNING =
  * and nothing was written, and what is left to do is record the disclosure
  * outside this browser. */
 export const STOPPED_DISCLOSURE_RECORD_UNBUILT_WARNING =
-  "This run sent your payload and then stopped, and no record of it could be built, so this exchange's accounting of disclosures has no entry for it. Note this run's time and partner if you keep an account of disclosures.";
+  "This run sent your columns and then stopped, and no record of it could be built, so this exchange's accounting of disclosures has no entry for it. Note this run's time and partner if you keep an account of disclosures.";
 
 /**
  * Note the disclosure this run made and could not file, so the exchange's own

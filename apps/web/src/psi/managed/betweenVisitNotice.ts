@@ -181,11 +181,10 @@ export function betweenVisitNotice(
         kind: "skipped",
         title: NOTICE_TITLES.skipped,
         body:
-          `${name} had a run window pass with no run: you answered that ` +
-          `something did not add up about a failure on it, and its scheduled ` +
-          `runs stop while that answer stands. Open this app and clear it once ` +
-          `your partner confirms on a channel you trust, or delete the ` +
-          `exchange.`,
+          `${name} skipped a scheduled run. You answered "Something does not ` +
+          `add up" about a failed run, and scheduled runs stay stopped until ` +
+          `you clear that answer. Open this app and clear it once your partner ` +
+          `confirms on a channel you trust, or delete the exchange.`,
         tag: noticeTag(record.id, "skipped"),
       };
     case "missed":
@@ -259,7 +258,7 @@ function failureNotice(
       kind: "terms-shortfall",
       title: NOTICE_TITLES["terms-shortfall"],
       body: singleColumn
-        ? `${name} stopped before connecting because its input file read as ` +
+        ? `${name} stopped before connecting because its input file was read as ` +
           `a single column, which cannot supply every linkage key this ` +
           `exchange agreed to match on, and nothing left this device. ` +
           SINGLE_COLUMN_DELIMITER_REMEDY
@@ -365,9 +364,9 @@ function missNotice(
     kind: "missed",
     title: NOTICE_TITLES.missed,
     body:
-      `${name} had a run window pass with no run.` +
+      `${name} missed a scheduled run window.` +
       (next === undefined ? "" : ` The next window opens ${next}.`) +
-      ` Nothing to do: the next window is tried on its own.`,
+      ` No action is needed; the next window runs as scheduled.`,
     tag: noticeTag(record.id, `missed:${schedule.nextWindow}`),
   };
 }
