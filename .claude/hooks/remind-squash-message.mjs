@@ -1,79 +1,23 @@
 #!/usr/bin/env node
-// PostToolUse hook: after a `gh pr create` call, tell the session to POST the
-// body of a ready-to-paste squash-and-merge commit message as a fenced comment
-// on the new pull request, when the PR branch has more than one commit over its
-// base.
+// PostToolUse hook on Bash: after a `gh pr create` call whose branch has more
+// than one commit over origin/staging, tell the session to post a
+// ready-to-paste squash-and-merge commit body as a fenced comment on the new pull request.
+// Pull requests merge by squash, and GitHub's default message for a
+// multi-commit branch is a list of subjects; a one-commit branch gets no
+// reminder. Only the body is asked for, since GitHub fills the subject from the
+// PR title; its format comes from ../scripts/format-squash-message.mjs.
 //
-// Why this exists: Alcove merges pull requests with squash-and-merge, so GitHub
-// folds every commit on the branch into one commit whose default message is the PR
-// title plus a bullet list of commit subjects, not a coherent hand-written summary.
-// A maintainer squash-merging a multi-commit PR is better served by a ready-to-paste
-// body that follows the repo's Commit Messages rules; this hook raises that need
-// right after the PR is opened rather than leaving it for the maintainer to notice
-// is missing. Only the body is asked for: GitHub fills the merge box's subject
-// from the PR title, so a subject in the comment would be pasted twice. A branch
-// of one commit gets no reminder, since GitHub lands that commit's own message.
+// The count is taken over the branch `--head` names (the text after a colon for
+// `owner:branch`), else the cwd's HEAD. The PR number is parsed from the first
+// payload field holding a PR URL; with none, the reminder names the pull
+// request `gh` just created. A command holding several creates pairs `--head` values
+// with PR numbers by position, one reminder per multi-commit pair, emitted only
+// when the two lists are the same length; a `--head` no ref resolves is skipped
+// there.
 //
-// WHY A PR COMMENT RATHER THAN THE TRANSCRIPT OR A FILE. A message printed into
-// the reply is gone by merge time: the session keeps working, the message
-// scrolls out of reach, and the maintainer merging later has nowhere to look it
-// up. A comment on the pull request has a stable address on the page that holds
-// the merge button, so the maintainer sees it at the moment of merging, from any
-// machine, and it never becomes repository content. The fence keeps GitHub from
-// rendering the body as markdown, so what is copied is what was written.
-//
-// THE FORMAT RULES ARE NOT RESTATED HERE. The body wrap and the markdown the
-// body may not hold come from ../scripts/format-squash-message.mjs, which the
-// reminder names as the step that produces the comment text. Prose here would
-// be a second copy of its rules.
-//
-// THE COUNT IS TAKEN OVER THE BRANCH THE PULL REQUEST IS OPENED FOR, not over
-// the event cwd's HEAD. The repo's by-ref review flow opens pull requests from
-// the main checkout with `--head <branch>` while that checkout sits on staging,
-// where an origin/staging..HEAD count is 0 -- which would silence this reminder
-// on exactly the multi-commit branches it exists for. So when the command
-// contains `--head`, the count is origin/staging..<that ref>: linked worktrees
-// share one object database, so the branch resolves from whichever checkout the
-// command ran in, and no network call is added. A fork-style `owner:branch`
-// value counts what follows the colon. With no `--head`, or a value no ref
-// resolves for, the count falls back to the cwd's HEAD.
-//
-// A COMMAND CAN CHAIN SEVERAL `gh pr create` CALLS, and one reminder for the whole
-// command is then wrong at both ends: the count would come from the first `--head`
-// and the PR number from the last PR URL, so a long branch's count lands on a short
-// branch's pull request. Past one create, the `--head` values and the PR numbers
-// are read as lists in command and output order and paired by position, one
-// reminder per pair whose branch has more than one commit, joined into a single
-// message. Position is the only thing that pairs them, so the pairing is trusted
-// only when the two lists are the same length: a create that failed, or output
-// containing part of what ran, leaves lists that cannot be aligned, and the hook
-// emits nothing rather than address a message wrongly -- the session's retry of
-// the failed create fires the hook again. Within a pair, a `--head` no ref
-// resolves for is skipped rather than counted from the cwd's HEAD, which cannot
-// be the branch of more than one pull request.
-//
-// THE PULL-REQUEST NUMBER is parsed out of the `gh pr create` output's PR URL,
-// so the instruction names the one pull request to comment on. Where no URL is
-// there to parse, the reminder points at the pull request `gh` just created
-// rather than guessing a number.
-//
-// STATED LIMIT. What a PostToolUse payload holds for a Bash result is the
-// harness's business and is not asserted here: PR URLs are looked for in the
-// string-valued candidate fields in turn and taken from the first one containing
-// any -- a payload repeating one result under two field names would otherwise
-// list every URL twice and break the pairing -- and a payload holding none falls
-// back to the unnumbered reminder rather than being wrong. The command is likewise
-// treated as raw text rather than a parsed argv: a `--head` written inside another
-// flag's quoted value is treated as if it named the branch, which lands on the
-// unresolvable-ref path, and a literal `gh pr create` inside one (a PR body
-// quoting the command) counts as another create, routing a single create through
-// the pairing path -- where its reminder is unchanged while the lists still pair,
-// and dropped when they do not.
-//
-// PostToolUse hooks cannot block -- the command has already run -- so there is no
-// block()/exit(2) path here, only an additionalContext message or nothing. Fail
-// open on every error (unreadable event, missing git, unresolvable origin/staging):
-// a hook whose only job is a reminder must never disrupt the session over it.
+// The hook cannot block: it emits an additionalContext message or nothing, and
+// fails open on every error. Rationale and stated limits:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { fileURLToPath } from "node:url";
 

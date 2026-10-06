@@ -83,7 +83,7 @@ jobs:
       - uses: ./.github/actions/setup
       # Every repo-wide guard, driven from the one list in
       # scripts/run-checks.mjs: a line per check saying what it holds, with each
-      # check's reasoning left in its own script header. `npm run check:all` is
+      # check's reasoning reached from its script header. `npm run check:all` is
       # the same run locally, and the runner goes on past a failing check, so
       # one red result does not hide the state of the rest. The list is held
       # to the root package.json's `check:*` scripts -- and this job to this one

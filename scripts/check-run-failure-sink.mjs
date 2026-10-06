@@ -1,94 +1,23 @@
 #!/usr/bin/env node
-// Failure display-sink check, run by static_checks.yaml.
+// Failure display-sink check: `npm run check:run-failure-sink`, run by
+// static_checks.yaml. A failed run's `message` and `reportedCause` are cause
+// chains laid out line by line, and each renders through exactly one component
+// in apps/web/src/exchange/RunSurface.tsx; an inline render elsewhere collapses
+// the chain onto one line.
 //
-// WHAT IS HELD. A failed run holds two pieces of operator-facing text a relayed
-// cause chain can reach: the `message`, composed as a chain whose links are
-// separated by the error renderer's own newline (`sanitizedFailureMessage` in
-// apps/web/src/exchange/useInviterExchange.ts), and the `reportedCause`, which
-// is the chain itself where the category states copy of its own in front of it.
-// Two treatments lay either out: a `pre-line` white-space style for the
-// renderer's newlines, and a break in front of each escaped line-break marker
-// for the ones a value's own text holds (`layOutValueLineBreaks`). A render
-// that omits them collapses the whole chain onto one line -- readable enough to
-// pass a green suite, and useless to the operator trying to tell which link
-// failed. Each piece therefore renders through exactly one component in
-// apps/web/src/exchange/RunSurface.tsx, and an inline span rendering either
-// piece reddens here.
+// Fails when a `.message` or `.reportedCause` read off a binding annotated with
+// one of FAILURE_TYPES sits inside a JSX expression container anywhere but the
+// same-named attribute of that piece's sink. A read taken as a condition (an
+// equality operand, a `!` operand, a conditional's test, the left of `&&`) is
+// not a render; `??` and `||` are. Also fails when a tracked type or a sink is
+// not declared where this file names it, or no render goes through a sink.
 //
-// THE TYPES HELD TO IT are `FAILURE_TYPES` below: the exchange seats'
-// `RunFailure`, the recurring seat's `ManagedRunFailureAlert`, and the
-// `FailureText` shape both of those satisfy, which is what a component taking
-// a failure as operator-facing text alone annotates its prop with. Each holds
-// the two pieces and renders them through the same sinks, so each is held to
-// them; a type absent from that list binds nothing here.
-//
-// THE SCANNED SET IS EVERY SOURCE UNDER apps/web/src, walked whole rather than
-// listed, so a new file is covered the moment it exists and there is no list to
-// drift out of coverage. What narrows the scan to this claim is not the file
-// set but the BINDINGS: a file that never annotates a name as a tracked type
-// contributes none and is passed over.
-//
-// HOW A BINDING IS FOUND, without a type checker. Every reference to a tracked
-// type in the file is walked up to the declaration it annotates, and the LOCAL
-// name that declaration binds the annotated value under is taken as a
-// failure-valued binding for the rest of the file:
-//
-//   - a parameter or variable annotated whole -- `(failure: RunFailure)`,
-//     `const failure: RunFailure = ...`, and the `useState<RunFailure>()`
-//     shape, where the type rides the initializer's type argument and the state
-//     binding is the array pattern's first element;
-//   - a member of the type literal annotating one -- `{ failure: RunFailure }`
-//     on a destructured parameter -- read through the destructuring to the name
-//     the binding element introduces, which in `{ failure: renamedFailure }` is
-//     the renamed local and not the property key, and through a nested pattern
-//     the same way. A parameter bound whole (`props: { failure: RunFailure }`)
-//     keeps the key, the name the member is read by there;
-//   - a member of a named props interface, by the key alone: the interface and
-//     the component destructuring it are two declarations this single-file scan
-//     does not link, so the member is found under the key a component that
-//     destructures it unrenamed binds, and a component renaming it
-//     (`{ failure: renamed }: Props`) binds nothing here -- a stated limit.
-//
-// Matching by NAME within one file is what stands in for resolution. A file
-// that binds an unrelated value under a name it also annotates as a tracked
-// type would have that unrelated value's `.message` render read as this
-// claim's -- a false report, and one whose fix is to read the two names apart.
-//
-// WHAT A "RENDER" MATCHES, and what it cannot:
-//
-//   - Matched: a `.message` or `.reportedCause` read off a tracked binding
-//     sitting anywhere inside a JSX expression container -- the
-//     `{failure.message}` child of a hand-styled span, and the
-//     `message={failure.message}` attribute alike -- optional chaining included.
-//     The same-named attribute of that piece's own sink is the one allowed
-//     position; every other container, and the right prop on the wrong
-//     component, is a failure.
-//   - Not matched: a read taken as a condition rather than as a value -- an
-//     operand of an equality comparison, the operand of a `!`, a conditional
-//     expression's test, or the left side of a `&&`. Those are the guards in
-//     front of an optional piece, both the compared form
-//     (`{failure.reportedCause !== undefined && <Sink ... />}`) and the bare
-//     one (`{failure.reportedCause && <Sink ... />}`), and none of them puts
-//     the read's own text in front of the operator: a `&&` yields its left
-//     side only where that side is falsy, and the rest yield a boolean. The
-//     read that supplies the rendered text is matched where it stands, so a
-//     guard whose branch inlines the piece reddens on that branch. A `??` or a
-//     `||` is matched, each yielding the left side's own value to render.
-//   - Not matched, as a stated limit: a read that reaches JSX through a local
-//     (`const text = failure.message`, `const { message } = failure`), through
-//     a helper called with the failure, or through a container assembled
-//     outside JSX. Following those needs the taint analysis a syntactic scan
-//     cannot run. This catches the shape a contributor writes by habit -- an
-//     alert inlining its own span -- and is not a proof that no failure text
-//     can render outside its sink.
-//   - Not matched, by construction of an AST walk: the name inside a comment or
-//     a string literal.
-//
-// The vacuity guards keep a green result meaningful, since every half of the
-// claim is named by identifier here and a rename would otherwise leave this
-// scanning for something that no longer exists: each tracked type's declaration
-// and each sink's declaration must still stand where this check says, and each
-// sink must have been found with at least one render going through it.
+// Reads every source under apps/web/src with a TypeScript parse, no type
+// checker: a binding is a name annotated with a tracked type, matched by name
+// within one file. A read reaching JSX through a local, a helper, or a
+// container built outside JSX is not seen, so this catches the habitual inline
+// span and is not a proof. Exit 0 clean, 1 on a finding. Binding rules and limits:
+// docs/notes/repo-check-scripts.md.
 
 import ts from "typescript";
 import { fileURLToPath } from "node:url";

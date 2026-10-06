@@ -108,10 +108,32 @@ sentence about what an external tool changed between its versions, or about a
 change the code under test performs -- not for narration someone would rather
 keep.
 
+## How a comment line is read
+
+Comments are read out of the TypeScript parse rather than matched in the raw text,
+so a `//` inside a string or a regular expression is not a comment, and a comment inside a template literal is.
+The parse is walked down to its tokens and every token's trivia is read,
+so a comment sharing a line with code before it, after a comma, a brace or an operator, is read like a comment on a line of its own.
+Adjacent comment lines are joined into one block before matching, since a phrase written across a line break is one phrase to a reader and two lines to a scan.
+The override is scoped tighter than the block: to the one `//` line or block comment it is written in.
+
+Uncommitted work and untracked files are in the range because the rule is a pre-commit sweep:
+a contributor running `npm run check:all` before committing is the run the check is written for.
+
 ## What it does not reach
 
-The script header carries the full list; the load-bearing ones are Markdown,
-every file outside the JavaScript and TypeScript family, and narration written
-with none of the tells. The tells are the phrases that measured at an
-acceptable false-positive rate, not a model of the English of change: a
-reviewer still reads the comment.
+- Narration written with none of the tells.
+  "The parser accepts a bare number now" is narration to a reviewer and matches nothing.
+  The tells are the phrases that measured at an acceptable false-positive rate, not a model of the English of change: a reviewer still reads the comment.
+- Documentation.
+  Markdown has no comment syntax to scope a match to, so the same phrases over a document would report its legitimate history sections.
+- Any file outside `SCANNED_EXTENSIONS`.
+  A YAML, shell or Dockerfile comment narrating history is unreported, and so is a `.jsx` one: the parse selects JSX by the `.tsx` name, and this repository writes JSX there.
+- A comment already in the tree, by the scope decision above.
+  An untouched block is never read, while a touched block is read whole, so editing one line of a narrating comment reports the comment.
+- Whether the narration is true.
+  The check reports the shape of the sentence; a comment about what an external tool changed between its own versions is the case it cannot tell apart, and takes the override.
+- A path git prints quoted.
+  `core.quotePath` has git C-escape a non-ASCII path in the diff header, and that spelling names no file on disk, so the file is skipped.
+- A base branch it cannot find.
+  It fails rather than passing an empty range: a check that silently reads nothing is worse than no check.

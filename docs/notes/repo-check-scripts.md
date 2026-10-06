@@ -193,3 +193,203 @@ The producer value records which openssl signed the checked-in bytes, history a 
 - Formatting drift from a prettier upgrade.
   The generator's output is formatted through the repository's prettier before comparing, so a reflow moves both sides and shows up as a formatcheck failure instead.
 - Another process writing the same files concurrently, which can leave either copy in place.
+
+## Installed packages against the lockfile
+
+[`scripts/check-node-modules-drift.mjs`](../../scripts/check-node-modules-drift.mjs)
+
+### Why it is a check
+
+`worktree-init.sh` does not install: it shares the primary clone's installed packages by absolute symlink.
+A worktree therefore inherits whatever the primary holds, including an install that has fallen behind its own lockfile,
+and nothing in the provisioning path consulted a lockfile.
+That inheritance is silent and it bites:
+a worktree provisioned from a primary holding prettier 3.8.4 against a lockfile pinning 3.9.6 reformatted dozens of untouched files on `npm run format`.
+
+### Why npm decides
+
+Predicting which lockfile entries npm would install on this platform, or where it would dedupe them, would reimplement the tool's resolution,
+which [CLAUDE.md](../../CLAUDE.md) names a review finding.
+So the comparison is `npm install --dry-run --json`, which builds the ideal tree from package-lock.json and diffs it against what is on disk.
+
+Measured 2026-08-02 against npm 11.17.0 and node 26.4.0, in the repository's own drifted worktree and in synthetic trees the colocated test rebuilds on every run:
+
+- `--offline` against a complete lockfile needs neither network nor a warm cache.
+  Pointed at an empty `--cache`, the dry run still produced the full diff, naming the lockfile's versions, so cache state cannot change the verdict.
+- `--dry-run` writes nothing, neither node_modules nor the lockfile.
+- npm prints its human-readable `change <name> <from> => <to>` lines to stdout ahead of the `--json` summary even at `--loglevel=error`,
+  so the summary is parsed from the first line that is a bare `{`.
+- npm masks uuid-shaped path segments in everything it prints, reporting them as `***`.
+  Probing such a path as-is under a directory named for a session id reads every entry as absent and calls a provisioned worktree empty,
+  so each reported path is mapped back to the longest package-lock.json key it ends with before anything is opened.
+
+### Reading the diff over a symlink mirror
+
+npm compares an ideal tree of real directories against a mirror of links, so most of its diff is mirror shape rather than drift.
+The classes are told apart by version:
+
+- `change` with differing versions: the wrong version is installed. This is the class that bites, and it fails.
+- `change` with equal versions: npm plans to replace a link with a real directory holding the same version.
+  It is shape, not drift, and is ignored; in the drifted worktree, 549 of 603 change entries were this.
+- `add`: npm does not walk into a linked package's own node_modules, so a dependency nested under a shared package reads as absent.
+  It is ignored when the install path already holds the version npm names (all 71 add entries in the drifted worktree did),
+  failed as missing when the path holds nothing, and failed as a wrong version when it holds another.
+- `remove`: a package on disk the lockfile does not list. It is reported, never failed:
+  a primary shared across branches legitimately holds packages this branch's lockfile never mentions,
+  and an extra package cannot change what the lockfile does describe.
+
+### The `file:` tarball gap
+
+A `file:` tarball dependency keeps its version string across a re-vendor,
+so a mirror whose installed bytes lag the lockfile would pass on version identity while running stale code.
+Every other class asserts nothing below a version number; this one gap is closed by an integrity comparison.
+
+Measured 2026-08-24 against npm 11.19.0 and node 26.7.0 in throwaway trees:
+`npm install --package-lock-only` on a `file:` dependency whose tarball changed bytes but not version left the lockfile's integrity untouched,
+since npm treated the existing entry as up to date and never re-hashed.
+A real `npm install` against the new tarball updates package-lock.json's integrity and leaves node_modules/.package-lock.json, npm's record of what it extracted, holding the same value;
+an install not re-run since keeps the old value there.
+So installed staleness is read by comparing the two files' integrity for each `file:` path, rather than by asking npm to refresh the lockfile.
+
+### An unreadable install record
+
+The same session measured the two ways node_modules/.package-lock.json can be unreadable:
+
+- No node_modules at all: the dry run reports every package as an `add`, which already fails as missing.
+  Nothing is installed to be stale, so the integrity comparison stays out of that verdict.
+- node_modules populated, its record gone: the dry run goes quiet.
+  Against a real install it reported no entry, and against a mirror only the same-version `change` entries the mirror's shape produces,
+  both while the installed bytes were the pre-re-vendor ones.
+  The record's absence blinds the one class that could fail here, so the tree is reported unverified and exits 2,
+  after the other classes have reported.
+
+## Exchange-record version obligations
+
+[`scripts/check-exchange-record-version.mjs`](../../scripts/check-exchange-record-version.mjs)
+
+### Why it is a check
+
+Both obligations fall due long after the sentence stating them was written, and nothing fails when they are forgotten.
+They are one check so that one literal edit gets one verdict rather than two failures to be read together.
+The literal is read out of the source because this runs before any build, and a check that skipped on a missing `dist/` would be inert exactly when it is needed.
+
+### The bump
+
+A managed web exchange keeps an accounting of disclosures:
+one stored value per exchange, holding its runs' exchange records verbatim,
+and the source an operator draws a HIPAA 164.528 accounting or a FERPA 99.32 disclosure record from
+([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md), "The accounting of disclosures").
+The reader rejects an unrecognized version rather than migrating it,
+so moving `EXCHANGE_RECORD_VERSION` invalidates, on every device holding one, an accounting nothing else holds a copy of.
+The read refuses the whole value, and so does the append, which re-reads the accounting inside its own transaction:
+a still-scheduled exchange goes on disclosing and files nothing, unattended.
+
+The recovery is built: the stored-form export and the accounting-scoped reset, offered in that order from the unreadable state.
+It rests on an assumption only the current format has been driven against:
+that a move invalidates the entries and leaves the accounting envelope readable, so the entries come back whole.
+An assumption about a format that does not exist yet cannot be tested ahead of the bump, so the literal is pinned.
+The recovery entry points must also be declared, since a tree that lost that path would pass the pin while deferring to nothing.
+They are named functions rather than a surface description: a declaration is a fact the check can read.
+
+### The reset
+
+The counter has cycled freely, from the format's first `v1` under the earlier product name on up,
+because no published artifact contains any of its literals: `exchangeRecord.ts` does not exist at v0.1.0, the only tagged release.
+The reset is taken at first publication rather than earlier.
+Re-using a previously cycled value mid-development would let an artifact written under the old `v1` parse as the current version and fail on its field set,
+instead of taking the clean version refusal the reader is built to give.
+
+The release marker is `apps/cli/package.json`'s version, the same marker and publication floor `check-protocol-version-bump.mjs` arms on,
+so "first publication" has one definition.
+It is read from the tree rather than a git tag because the gate's checkout has no tags:
+`static_checks.yaml` pins neither `fetch-depth` nor `fetch-tags`, and a marker absent from the checkout would leave the check inert forever.
+
+Both rules record their discharge in the check itself (`RECORD_VERSION_PIN`, `RESET_TAKEN_AT_RELEASE`) rather than in a ledger beside it,
+so recording one is the diff a reviewer sees, at the moment the decision is taken.
+
+### What it does not cover
+
+- Whether the recovery still works. It reads declarations, not behaviour.
+  The behaviour is tested by `apps/web/test/unit/psi/disclosureAccounting.test.ts` (the envelope-parses, entries-reject split against the real parsers),
+  `apps/web/test/browser/managedExchangeStore.test.ts` (the read's classification and the reset against real IndexedDB),
+  and `apps/web/test/browser/managedExchangeDetail.test.ts` (both recovery arms reachable from the unreadable state, in order).
+- The artifact side of the reset.
+  A development artifact at rest, a browser-stored accounting or a record file on an operator's disk, is outside the tree.
+  A leftover entry numbered above the reset value is worse than unreadable: the accounting orders entry literals ordinally, so it classifies as a stale page,
+  whose remedy is a reload that cannot help and which withholds the export-then-reset arms
+  ([MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#what-an-exchange-record-version-bump-does-to-a-stored-accounting)).
+  The Release Checklist step the failures name lists that confirm-or-wipe obligation.
+- Whether the record vectors were regenerated. `npm run check:vectors` fails on its own once the literal moves.
+- Whether a recorded discharge was recorded after the decision was taken or instead of taking it.
+  Moving a constant is a one-line edit the check cannot tell from a correct one, the same limit the pull-request checklist's security-review sha has, so it is a reviewer's call.
+- The CLI's record files.
+  The CLI writes a standalone record file per run and keeps no accounting store,
+  so a version its build does not recognize is refused when the file is read, with the file still in the operator's hands.
+  The recovery obligation the bump rule defers is the web accounting's alone.
+
+## Failure display sinks
+
+[`scripts/check-run-failure-sink.mjs`](../../scripts/check-run-failure-sink.mjs)
+
+### Why it is a check
+
+A failed run holds two pieces of operator-facing text a relayed cause chain can reach.
+The `message` is composed as a chain whose links are separated by the error renderer's own newline (`sanitizedFailureMessage` in `apps/web/src/exchange/useInviterExchange.ts`).
+The `reportedCause` is the chain itself, where the category states copy of its own in front of it.
+Two treatments lay either out:
+a `pre-line` white-space style for the renderer's newlines,
+and a break in front of each escaped line-break marker a value's own text holds (`layOutValueLineBreaks`).
+A render that omits them collapses the chain onto one line, readable enough to pass a green suite and useless to an operator trying to tell which link failed.
+So each piece renders through one component in `apps/web/src/exchange/RunSurface.tsx`.
+
+### The types it checks
+
+`FAILURE_TYPES` names the exchange roles' `RunFailure`, the recurring exchange's `ManagedRunFailureAlert`,
+and the `FailureText` shape both satisfy, which a component taking a failure as operator-facing text alone annotates its prop with.
+Each holds the two pieces and renders them through the same sinks.
+A type absent from that list binds nothing.
+
+### The scanned set
+
+Every source under `apps/web/src` is walked whole rather than listed, so a new file is covered the moment it exists and no list drifts out of coverage.
+The bindings narrow the scan, not the file set: a file that never annotates a name as a tracked type contributes none.
+
+### How a binding is found
+
+There is no type checker.
+Every reference to a tracked type is walked up to the declaration it annotates, and the local name that declaration binds is a failure-valued binding for the rest of the file:
+
+- A parameter or variable annotated whole: `(failure: RunFailure)`, `const failure: RunFailure = ...`,
+  and `useState<RunFailure>()`, where the type is the initializer's type argument and the binding is the array pattern's first element.
+- A member of the type literal annotating one, `{ failure: RunFailure }` on a destructured parameter,
+  read through the destructuring to the name the binding element introduces:
+  the renamed local in `{ failure: renamedFailure }`, and through a nested pattern the same way.
+  A parameter bound whole (`props: { failure: RunFailure }`) keeps the key, the name the member is read by there.
+- A member of a named props interface, by the key alone.
+  The interface and the component destructuring it are two declarations a single-file scan does not link,
+  so a component renaming the member (`{ failure: renamed }: Props`) binds nothing.
+
+Matching by name within one file replaces type resolution.
+A file binding an unrelated value under a name it also annotates as a tracked type has that value's `.message` render reported,
+a false report whose fix is to read the two names apart.
+
+### What a render matches
+
+- Matched: a `.message` or `.reportedCause` read off a tracked binding anywhere inside a JSX expression container,
+  the `{failure.message}` child of a hand-styled span and the `message={failure.message}` attribute alike, optional chaining included.
+  The same-named attribute of that piece's own sink is the one allowed position; the right prop on the wrong component fails.
+- Not matched: a read taken as a condition.
+  Those are the guards in front of an optional piece, compared (`{failure.reportedCause !== undefined && <Sink ... />}`) or bare (`{failure.reportedCause && <Sink ... />}`),
+  and none puts the read's text in front of the operator: a `&&` yields its left side only where it is falsy, and the rest yield a boolean.
+  A guard whose branch inlines the piece fails on that branch.
+  A `??` or `||` is matched, since each yields the left side's value to render.
+- Not matched, a stated limit: a read reaching JSX through a local (`const text = failure.message`, `const { message } = failure`),
+  a helper called with the failure, or a container assembled outside JSX.
+  Following those needs taint analysis a syntactic scan cannot run.
+- Not matched, by construction of an AST walk: the name inside a comment or a string literal.
+
+### Vacuity guards
+
+Every half of the claim is named by identifier, so a rename would leave the check scanning for something that no longer exists.
+Each tracked type's and each sink's declaration must still be where the check says,
+and each sink must have at least one render going through it.
