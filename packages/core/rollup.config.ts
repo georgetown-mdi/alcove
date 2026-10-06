@@ -46,7 +46,8 @@ export default defineConfig([
     // resolve() lets rollup inline the ALWAYS_BUNDLED packages (currently
     // canonicalize) from node_modules; everything else is held external by the
     // `external` predicate above, so only the bundled set is pulled in.
-    plugins: [resolve(), typescript({ outputToFilesystem: true })],
+    // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
+    plugins: [resolve(), typescript({ tsconfig: "./tsconfig.rollup.json" })],
     // `[name]` is the input key above, so the entry names have to stay `core`,
     // `testing` and `untrusted-text`: package.json points main, module, and
     // every `exports` condition at dist/core.*, dist/testing.* and

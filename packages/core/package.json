@@ -26,9 +26,9 @@
     }
   },
   "scripts": {
-    "build": "rollup -c rollup.config.ts --configPlugin \"@rollup/plugin-typescript={outputToFilesystem:true}\"",
+    "build": "rollup -c rollup.config.ts --configPlugin \"@rollup/plugin-typescript={tsconfig:'tsconfig.rollup.json'}\"",
     "clean": "rimraf dist",
-    "dev": "rollup -c rollup.config.ts --configPlugin \"@rollup/plugin-typescript={outputToFilesystem:true}\" -w",
+    "dev": "rollup -c rollup.config.ts --configPlugin \"@rollup/plugin-typescript={tsconfig:'tsconfig.rollup.json'}\" -w",
     "pretest": "npm run build",
     "test": "vitest run --project unit",
     "test:unit": "vitest run --project unit",

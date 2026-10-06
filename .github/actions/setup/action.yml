@@ -118,7 +118,7 @@ runs:
         RUNNER_OS: ${{ runner.os }}
         RUNNER_ARCH: ${{ runner.arch }}
         INSTALL_HASH: ${{ hashFiles('package-lock.json', 'package.json', 'apps/*/package.json', 'packages/*/package.json', 'lib/*.tgz') }}
-        CORE_HASH: ${{ hashFiles('packages/core/src/**', 'packages/core/rollup.config.ts', 'packages/core/tsconfig.json', 'tsconfig.base.json') }}
+        CORE_HASH: ${{ hashFiles('packages/core/src/**', 'packages/core/rollup.config.ts', 'packages/core/tsconfig.json', 'packages/core/tsconfig.rollup.json', 'tsconfig.base.json') }}
       # hashFiles yields an empty string when a pattern set matches nothing, which
       # would silently drop the term it stands for out of the key, so fail here
       # instead of caching under a key that binds less than it reads.
@@ -179,39 +179,26 @@ runs:
       if: inputs.cache != 'false' && runner.os == 'Linux'
       uses: actions/cache/restore@v6
       with:
-        # Kept identical to the save step's list below: actions/cache derives
+        # Kept identical to the save step's path below: actions/cache derives
         # the cache version from the path list, so a restore list that
         # diverged from save's would never see what save wrote under this key.
-        path: |
-          packages/core/dist
-          !packages/core/dist/tsconfig.tsbuildinfo
+        path: packages/core/dist
         key: ${{ steps.cache-keys.outputs.core }}
     - name: Build core
       if: steps.core-cache.outputs.cache-hit != 'true'
       run: npm run build -w packages/core
       shell: bash
     # A restored dist keeps the build-time mtimes the apps' freshness guard
-    # reads as stale, so every file is re-stamped; the composite build's
-    # tsconfig.tsbuildinfo is removed because its counterpart, the gitignored
-    # packages/core/.rollup.cache/, never rides the cache, and a buildinfo
-    # without it makes the next --configPlugin build serve no transform for
-    # rollup.config.ts. See docs/notes/core-dist-cache-buildinfo.md.
+    # reads as stale, so every file is re-stamped.
     - name: Restamp the restored core build
       if: steps.core-cache.outputs.cache-hit == 'true'
-      run: |
-        rm -f packages/core/dist/tsconfig.tsbuildinfo
-        find packages/core/dist -type f -exec touch {} +
+      run: find packages/core/dist -type f -exec touch {} +
       shell: bash
     - name: Save the @alcove/core build
       if: inputs.cache != 'false' && runner.os == 'Linux' && steps.core-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v6
       with:
-        # Kept identical to the restore step's list above, for the same
-        # cache-version reason. The exclusion here is live -- it keeps future
-        # saves from writing the buildinfo -- while the restamp step's rm -f
-        # handles an entry already saved with it, whose content-derived key is
-        # immutable.
-        path: |
-          packages/core/dist
-          !packages/core/dist/tsconfig.tsbuildinfo
+        # Kept identical to the restore step's path above, for the same
+        # cache-version reason.
+        path: packages/core/dist
         key: ${{ steps.cache-keys.outputs.core }}

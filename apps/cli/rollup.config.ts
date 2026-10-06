@@ -25,9 +25,8 @@ const plugins = () => [
   }),
   commonjs(),
   json(),
-  typescript({
-    tsconfig: "./tsconfig.json",
-  }),
+  // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
+  typescript({ tsconfig: "./tsconfig.rollup.json" }),
 ];
 
 export default defineConfig([
