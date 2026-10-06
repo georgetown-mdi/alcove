@@ -24,6 +24,9 @@
 // than a judgment made here, so a row reclassified there and not here is a
 // divergence between a specification and the sentence an acceptor consents on.
 //
+// All copy here is fixed first-party text: no set name, version, column, or other
+// partner-controlled value reaches it, so a surface may render it verbatim.
+//
 // Rationale and the decisions taken: docs/notes/shared-consent-summary.md.
 
 import type { LinkageRuleSetCitationVerdict } from "../defaults/builtInLinkageTerms.js";
@@ -790,9 +793,6 @@ const CONTRADICTED_RULES_GOVERN =
  * reader wrote the citation reads {@link linkageRuleSetVerdictNote} instead,
  * which swaps in the remedy that reader can act on and withholds the sentences
  * that have none rather than attributing the citation to the wrong party.
- *
- * Fixed first-party copy throughout -- no set name, version, or other
- * partner-controlled value reaches any of it -- so a surface renders it verbatim.
  */
 export const LINKAGE_RULE_SET_VERDICT_COPY: Record<
   LinkageRuleSetCitationVerdict,
@@ -939,10 +939,8 @@ export function linkageRuleSetVerdictNote(
  * States what a check could and could not establish rather than summarizing an
  * outcome, because one sentence serves all three verdicts here: silence must
  * not be treated as verification, and a name this build cannot resolve must
- * not be treated as one it checked.
- *
- * Fixed first-party copy naming no set, version, or party, so a surface renders
- * it verbatim beside the escaped names it qualifies.
+ * not be treated as one it checked. A surface renders it beside the escaped
+ * names it qualifies.
  */
 export const RECORDED_LINKAGE_RULE_SET_CAVEAT =
   "This citation is the authoring party's own declaration, recorded as " +
@@ -970,9 +968,6 @@ export const RECORDED_LINKAGE_RULE_SET_CAVEAT =
  * mirrors the pair). Each surface resolves that fact for its own viewer and
  * renders this; a surface that composes its own sentence is a second account of
  * the fact -- the divergence risk that keeping the copy here removes.
- *
- * Fixed first-party copy, naming no column: no partner-controlled value reaches
- * it, so a surface may render it verbatim.
  */
 export const OUTBOUND_SEND_NO_PAYLOAD_SENTENCE =
   "Your partner receives no result from this exchange, so no columns are sent " +
@@ -994,8 +989,6 @@ export const OUTBOUND_SEND_NO_PAYLOAD_SENTENCE =
  * its matching-method headline, where the CLI accept prompt names the algorithm
  * there and prints this line beneath it. Both surfaces render it, and the
  * `countOnly*` facts with it, for exactly a `psi-c` invitation.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const COUNT_ONLY_DISCLOSURE_STATEMENT =
   "Only the number of records you have in common is revealed, not which " +
@@ -1036,8 +1029,7 @@ export const COUNT_ONLY_DISCLOSURE_STATEMENT =
  *
  * Written in party names rather than "you", like the headline it sits with, so
  * the one sentence reads correctly from either party's side and no surface needs
- * a viewer-relative variant of it. Fixed first-party copy naming no value, so a
- * surface may render it verbatim.
+ * a viewer-relative variant of it.
  */
 export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
   "Grouping is what a deduplicating match discloses: for each of the accepting " +
@@ -1091,8 +1083,7 @@ export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
  * {@link DEDUPLICATE_ACCEPTOR_SIDE_NOTE} holds, which is why that note renders
  * beside both statements rather than beside one.
  *
- * Written in party names rather than "you", and fixed first-party copy naming no
- * value, for the same reasons as its sibling.
+ * Written in party names rather than "you", for the same reason as its sibling.
  */
 export const DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT =
   "Grouping is what a deduplicating match discloses, and under this invitation " +
@@ -1154,8 +1145,6 @@ export const DEDUPLICATE_ACCEPTOR_WIDENING_NOTE =
  * Rendered at the same visibility level as the statement it follows, by the
  * placement rule both surfaces hold: a reader who meets what a deduplicating
  * match discloses meets, in the same place, which side pays it.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const DEDUPLICATE_ACCEPTOR_SIDE_NOTE =
   "This setting is the inviting party's own: the accepting party's records are " +
@@ -1176,8 +1165,6 @@ export const DEDUPLICATE_ACCEPTOR_SIDE_NOTE =
  * rather than on a configuration file -- the sentence
  * {@link DEDUPLICATE_ACCEPTOR_SIDE_NOTE} ends on, which is a dead end for an
  * operator accepting from a browser.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE =
   "This setting is the inviting party's own. " +
@@ -1202,8 +1189,6 @@ export const DEDUPLICATE_ACCEPTOR_SETTABLE_SIDE_NOTE =
  * limit it closes on included: the count is the declaring party's own
  * declaration rather than a fact Alcove checks against its data, so dropping
  * or softening that clause would state a guarantee no check makes.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT =
   "Grouping is what a deduplicating match discloses: for each of your " +
@@ -1219,8 +1204,6 @@ export const DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT =
  *
  * The same disclosure and the same direction: the party paying it is the one
  * that did not declare the setting, which on this seat is the reader's partner.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const DEDUPLICATE_PARTNER_DECLARED_WIDENING_NOTE =
   "It still widens what your partner discloses -- more of its records can " +
@@ -1244,8 +1227,6 @@ export const DEDUPLICATE_PARTNER_DECLARED_WIDENING_NOTE =
  * Written in the second person, like the statement it follows there, for the
  * reason {@link DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT} gives: no
  * invitation on this seat tells the reader which party role is theirs.
- *
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE =
   "This setting is your own. " +
@@ -1383,7 +1364,6 @@ export const PROPOSED_NOT_APPLIED_NOTES = {
  * Shared so the two consent surfaces state the same thing about the same
  * invitation: a rule this version cannot explain is stated as explicitly
  * unexplained on the CLI accept prompt and on the web consent screen alike.
- * Fixed first-party copy naming no value, so a surface may render it verbatim.
  */
 export const UNRECOGNIZED_TRANSFORM_NOTE =
   "Not recognized by this version; its effect on matching is not shown.";

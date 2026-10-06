@@ -2796,8 +2796,8 @@ export interface RunProtocolOptions {
 }
 
 /**
- * Runs the PSI protocol over an SFTP or file-drop connection and writes
- * results to output. Authentication is supplied on the separate
+ * Runs the PSI protocol over an SFTP, file-drop, or WebRTC connection and
+ * writes results to output. Authentication is supplied on the separate
  * {@link RunProtocolOptions.auth} field, not embedded in `connection`.
  *
  * When `auth` is an {@link AuthPersist}, `keyFilePath` must be a non-empty,

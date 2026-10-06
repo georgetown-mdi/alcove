@@ -1136,18 +1136,9 @@ export async function handler(argv: Arguments): Promise<void> {
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("invite", async () => {
-      // Parse and apply the log level before creating the logger, so the
-      // configured level actually takes effect (loglevel binds a logger's level
-      // at creation). Doing this inside runOrExit also routes an invalid option
-      // (e.g. an unrecognized --log-level) through the same error->exit path as
-      // everything else, rather than yargs's noisier top-level catch.
+      // Inside runOrExit, so an invalid option (e.g. an unrecognized
+      // --log-level) takes the same error->exit path as everything else.
       const options = parseCommonBootstrapArgs(argv);
-      // Install the sink, apply the level, and build getLogger("invite") through
-      // the shared configureLogging helper (in that order, so the logger inherits
-      // the sink): the file sink when --log-file is given, otherwise the default
-      // stderr sink so stdout contains only the invitation token. A missing parent
-      // directory is a UsageError -> exit 64, mapped here by the enclosing
-      // runOrExit.
       const { log, writePlainLine, close } = configureLogging({
         logLevel: options.logLevel,
         logFile: options.logFile,
@@ -1359,10 +1350,6 @@ export async function handler(argv: Arguments): Promise<void> {
       );
     });
   } finally {
-    // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path. Writes are synchronous and already
-    // durable, so the error path's process.exit (which bypasses this finally)
-    // loses nothing -- this is only factory/descriptor cleanup.
     closeLogging?.();
   }
 }

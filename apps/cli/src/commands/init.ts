@@ -125,17 +125,9 @@ export async function handler(argv: Arguments): Promise<void> {
   let closeLogging: (() => void) | undefined;
   try {
     await runOrExit("init", async () => {
-      // Resolve the log level before creating the logger (loglevel binds a
-      // logger's level at creation) and inside runOrExit, so an unrecognized
-      // value is a clean usage error (exit 64) on the same path as everything
-      // else.
+      // Inside runOrExit, so an unrecognized value is a clean usage error
+      // (exit 64) on the same path as everything else.
       const logLevel = logLevelFlag(argv);
-      // Install the sink, apply the level, and build getLogger("init") through the
-      // shared configureLogging helper (in that order, so the logger inherits the
-      // sink): the file sink when --log-file is given, otherwise the default stderr
-      // sink so stdout holds only result data. A missing parent directory
-      // (configureLogFile) or a repeated --log-file (singleValue) is a UsageError
-      // -> exit 64, mapped here by the enclosing runOrExit.
       const { log, close } = configureLogging({
         logLevel,
         logFile: singleValue(argv, "log-file") as string | undefined,
@@ -260,10 +252,6 @@ export async function handler(argv: Arguments): Promise<void> {
       );
     });
   } finally {
-    // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path. Writes are synchronous and already
-    // durable, so the error path's process.exit (which bypasses this finally)
-    // loses nothing -- this is only factory/descriptor cleanup.
     closeLogging?.();
   }
 }

@@ -993,10 +993,9 @@ const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
  *
  * A rule the exchange refuses outright is named as one ("not supported")
  * and outranks every marker below, since no matching of any breadth
- * happens under it. The fan-out family is that case under a strategy that
- * matches one value per record; under `single-pass`, which matches the
- * whole candidate set, the same element earns "multiple" instead --
- * `fanOutMatches` decides which.
+ * happens under it. The fan-out family is that case under a count-only
+ * (`psi-c`) exchange, which refuses a candidate set; otherwise the same
+ * element shows "multiple". `fanOutMatches` decides which.
  *
  * Undefined when the element matches exactly, only canonicalizes its value
  * (case, whitespace, accents, affixes, padding on its own, or a
@@ -1128,8 +1127,8 @@ function elementBreadthMarker(
  * non-default matching rule. `fieldByName` maps a field `name` to its
  * semantic type; an element or swap reference that does not resolve falls
  * back to the sanitized raw string. `fanOutMatches` is whether the agreed
- * strategy matches a record's whole candidate set, which decides both
- * fan-out markers below.
+ * algorithm and strategy match a candidate set, which decides both fan-out
+ * markers below.
  */
 function summarizeKey(
   key: LinkageKey,

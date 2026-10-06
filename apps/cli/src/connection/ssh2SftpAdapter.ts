@@ -502,7 +502,6 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * max-session/idle cap would drop is not held across an idle gap -- save a
    * boundary kept for an operation still outstanding (see {@link runTransition}).
    * Off by default.
-   * Internal-only -- the CLI/config surface and the flag name are a separate item.
    */
   constructor(
     options: {

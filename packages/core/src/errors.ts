@@ -905,17 +905,9 @@ export function isTransportPublishIndeterminate(error: unknown): boolean {
  * in-flight wait under a signal, where `signalReceived` owns the code
  * (130/143) and this rejection is logged and swallowed.
  *
- * It lives here in `errors.ts` -- and is therefore re-exported in the
- * package's public exports by main.ts's `export *` -- because this file
- * is the single home for the connection error taxonomy
- * ({@link UsageError}, {@link BilateralModeMismatchError}), and splitting
- * one error type out into a non-barrelled module to hide it would be the
- * more surprising inconsistency. (`cancellableDelay` is hidden in the
- * non-barrelled fileSyncConstants.ts for the opposite reason: it is an
- * internal helper with no taxonomy home.) Treat this class as an internal
- * teardown signal, not a stability contract -- the plain-`Error`/exit-69
- * classification above is the contract; consumers should not depend on
- * catching it by type.
+ * Treat this class as an internal teardown signal, not a stability contract
+ * -- the plain-`Error`/exit-69 classification above is the contract;
+ * consumers should not depend on catching it by type.
  *
  * It holds no `alcoveRecoveryHintEmitted` tag and no operator next
  * step. It is a local teardown signal that almost never reaches the

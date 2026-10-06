@@ -5,11 +5,6 @@
  * schedule's due-ness where one is agreed, the derived backup state, and the spent
  * (handed-off) state. No React, no IndexedDB: the store reads and the actions live
  * in the components, so the display derivation is unit-testable in Node.
- *
- * This is NOT the management list: it lists stored records with a run
- * action, the backup state, and (for a spent record) no run action. Add/remove and
- * per-exchange detail are separate items. The last-run status here is a plain
- * summary, so the operator can recognize a partnership and launch a re-run.
  */
 
 import {

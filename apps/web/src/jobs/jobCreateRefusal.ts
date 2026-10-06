@@ -2,10 +2,11 @@
  * The fixed tokens a `POST /api/jobs` refusal states in its body, so the browser
  * can show copy the operator can act on.
  *
- * Every other create rejection stays empty-bodied: the browser holds the intent
- * it sent and can say what is wrong with it. These are about CONSOLE state the
- * intent does not state -- its mounts, its saved connection -- so the server
- * names the refusal, and only the refusal. A token is an enumerated word, never
+ * Other create rejections hold no reason token: a busy slot answers with the
+ * running exchange's id, a refused composition with `{ error }`, and the rest
+ * with an empty body. These are about CONSOLE state the intent does not
+ * state -- its mounts, its saved connection -- so the server names the
+ * refusal, and only the refusal. A token is an enumerated word, never
  * a path, a mount name, or a message: the copy it selects lives in the console's
  * own copy layer (`failureFor` in `@exchange/useInviterExchange`).
  */

@@ -10,17 +10,8 @@
 // The host-key verification rationale -- why the fingerprint is pinned, the
 // fail-closed default, the first-use trust flow -- is owned by
 // docs/SECURITY_DESIGN.md and, at the implementation tier,
-// docs/spec/CHANNEL_SECURITY.md; this module implements pieces of that
-// control and does not restate it. The shared host-key primitives it builds
-// on live in utils/sshHostKey.ts, a module this one neither owns nor
-// extends.
-//
-// Not re-exported by the package barrel (main.ts barrels
-// fileSyncConnection.ts, not this file), so an `@internal` export here
-// stays out of the public runtime surface while fileSyncConnection.ts can
-// still import it -- the same pattern as fileSyncNames.ts and
-// fileSyncConstants.ts. PresentedHostKey keeps its public surface via
-// re-export from fileSyncConnection.ts (which IS barrelled).
+// docs/spec/CHANNEL_SECURITY.md. The shared host-key primitives it builds
+// on live in utils/sshHostKey.ts.
 
 /**
  * The host key a server presented on the SFTP channel, as observed by

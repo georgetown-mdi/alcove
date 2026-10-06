@@ -12,13 +12,6 @@
 // deps.emit, the connection's overridden emit. The protocol is specified in
 // docs/spec/FILE_SYNC.md and docs/spec/CHANNEL_SECURITY.md; this module
 // implements it.
-//
-// This module is not re-exported by the package barrel (main.ts barrels
-// fileSyncConnection.ts, not this file): its @internal exports stay out of the
-// public runtime surface while a unit test can still deep-import them, the
-// same pattern as fileSyncNames.ts, fileSyncFraming.ts, and
-// fileSyncRendezvous.ts. FileSyncConnection composes the coordinator behind
-// thin public delegators, so its public and test surface is unchanged.
 
 import { v4 as uuidv4 } from "uuid";
 

@@ -183,10 +183,8 @@ export function SavedExchangesHome() {
  * existed, so restore-from-backup lives here rather than only behind a detected loss
  * (see docs/MANAGED_EXCHANGE.md, "Eviction recovery is the import flow").
  *
- * NOT the management list: no add/remove, no per-exchange detail, no edit.
- * Those are separate items. Each row joins its record to the local sibling state (the
- * backup marker and any spent state): a spent record shows no Run action and names its
- * handoff date.
+ * Each row joins its record to the local sibling state (the backup marker and any
+ * spent state): a spent record shows no Run action and names its handoff date.
  */
 export function SavedExchanges() {
   const { load, reload } = useSavedExchangesLoad();
