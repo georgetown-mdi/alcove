@@ -524,12 +524,12 @@ export const CONSENT_FACTS = {
       "may be paired with several; with both set, it is paired with every " +
       "one of the other party's records any of its parts reached, and the " +
       "records joined that way are disclosed to both parties as one group. " +
-      "Each party also learns how the other's values group into records. " +
       "Under single-pass linkage, the party that receives the other's key " +
-      "structure learns how many parts each of the other's records produced " +
-      "for each key and which values came from the same record. Under " +
-      "cascade linkage, each party learns this for the other's matched " +
-      "values, round by round.",
+      "structure also learns how many parts each of the other's records " +
+      "produced for each key and which of those values came from the same " +
+      "record. Under cascade linkage, each party instead learns how the " +
+      "other's matched values group into records, round by round, for the " +
+      "records still in the running.",
   },
   fanOutRefused: {
     basis: "enforced",
@@ -539,10 +539,10 @@ export const CONSENT_FACTS = {
       "where the matching pairs each record at most once, so terms declaring " +
       "a candidate set under it are refused when they are authored or " +
       "minted, at the local prepare step, and again at the agreed-terms run " +
-      "boundary. The note names the count-only case alone because both " +
-      "linkage strategies match a candidate set " +
-      "(CANDIDATE_SET_IMPLEMENTED_BY_STRATEGY, pinned in " +
-      "packages/core/test/psi/link.test.ts). The exchange this invitation " +
+      "boundary. The note names the count-only case alone because a " +
+      "count-only exchange is the one that refuses split values: both " +
+      "linkage strategies match them (docs/spec/PROTOCOL.md, Fan-out runs " +
+      "under both linkage strategies). The exchange this invitation " +
       "proposes does not run at all, which is a fact of the run rather than " +
       "of the partner's conduct.",
     note:

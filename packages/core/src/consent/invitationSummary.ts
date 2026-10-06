@@ -151,7 +151,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   filter_regex:
     "Drops values that do not match a pattern, removing them from matching.",
   split_on:
-    "Splits the value into several candidates, each able to match " +
+    "Splits the value into several parts, each able to match " +
     "independently, so a record matches when any one of them does.",
   coalesce:
     "Substitutes a fallback value where an earlier rule left the value empty, " +
