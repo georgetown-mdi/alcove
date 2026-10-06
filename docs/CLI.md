@@ -187,6 +187,7 @@ The path of an `sftp://` or `ssh://` URL names the server directory:
 - A path names an absolute directory: `sftp://host/srv/drop` is `/srv/drop`.
 - A path under `/~/` names a directory relative to the login directory: `sftp://host/~/drop` is `drop`. Write `%7E` for a first directory literally named `~` (`sftp://host/%7E/drop` is `/~/drop`).
 - No path, `/`, or `/~` uses the login directory itself.
+- Each path segment is decoded on its own, and a segment holding an encoded slash (`%2F`) is refused (exit 64): separate directories with `/`.
 
 The host must be a server name or an IP address, an IPv6 literal written in brackets (`sftp://[2001:db8::1]/drop`); a port must be 1 to 65535. A URL holding a query or fragment is refused (exit 64), so a `?` or `#` in a directory name is written `%3F` or `%23`.
 

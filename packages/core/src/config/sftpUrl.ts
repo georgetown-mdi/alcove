@@ -6,9 +6,7 @@ import {
   redactUrlCredentials,
 } from "../utils/urlComponents.js";
 
-// The one reading of an SFTP server URL, host and port shared by the CLI and
-// the console. Accepted form and the login-directory prefix:
-// docs/CLI.md#configuration.
+// The URL form: docs/CLI.md#configuration.
 
 /** The URL schemes that name an SFTP server. */
 export const SFTP_URL_PROTOCOLS: ReadonlyArray<string> = ["sftp:", "ssh:"];
@@ -91,28 +89,37 @@ export interface SftpUrlFields {
 // an absolute directory literally called `~`.
 const LOGIN_DIRECTORY_SEGMENT = "~";
 
+function urlFromInput(input: string | URL): URL {
+  if (typeof input !== "string") return input;
+  try {
+    return new URL(input.trim());
+  } catch {
+    throw new UsageError(
+      "could not read the URL; expected sftp://[user@]host[:port][/path]",
+    );
+  }
+}
+
+/** The server address an `sftp://` or `ssh://` URL names. */
+export interface SftpServerAddress {
+  /** Decoded, with an IPv6 literal's brackets removed. */
+  host: string;
+  port?: number;
+}
+
 /**
- * Parse an `sftp://[user[:password]@]host[:port][/path]` URL (or the same with
- * `ssh://`) into its connection fields. Host, path, username and password are
- * percent-decoded; a malformed escape in any of them rejects the whole URL. A
- * path under `/~/` is relative to the login directory.
+ * Read only the host and port of an `sftp://` or `ssh://` URL, the same way
+ * {@link parseSftpUrl} reads them. The userinfo, path, query and fragment are
+ * neither decoded nor checked, so a URL whose credential is still a
+ * placeholder still names its server.
  *
  * @throws {UsageError} when the input is not a URL, not an sftp or ssh URL,
- *   names no host or a host that is not a bare address, names port 0, holds a
- *   query or fragment, or holds a malformed percent-escape. A message naming
- *   the URL names it without its credentials.
+ *   names no host or a host that is not a bare address, names port 0, or
+ *   holds a malformed percent-escape in the host. A message naming the URL
+ *   names it without its credentials.
  */
-export function parseSftpUrl(input: string | URL): SftpUrlFields {
-  let url: URL;
-  if (typeof input === "string") {
-    try {
-      url = new URL(input.trim());
-    } catch {
-      throw new UsageError(
-        "could not read the URL; expected sftp://[user@]host[:port][/path]",
-      );
-    }
-  } else url = input;
+export function parseSftpServerAddress(input: string | URL): SftpServerAddress {
+  const url = urlFromInput(input);
   if (!SFTP_URL_PROTOCOLS.includes(url.protocol))
     throw new UsageError(
       `expected an sftp:// or ssh:// URL; got: ${redactUrlCredentials(url)}`,
@@ -121,11 +128,6 @@ export function parseSftpUrl(input: string | URL): SftpUrlFields {
     throw new UsageError(
       `sftp URL must include a host (e.g. sftp://host/path); got: ` +
         redactUrlCredentials(url),
-    );
-  if (url.search !== "" || url.hash !== "")
-    throw new UsageError(
-      "sftp URL must not include a query (?) or fragment (#); write a ? or # " +
-        `in the directory as %3F or %23; got: ${redactUrlCredentials(url)}`,
     );
   const host = sftpDialHost(decodeUrlComponent(url.hostname, url));
   if (!isBareSftpHost(host))
@@ -138,10 +140,32 @@ export function parseSftpUrl(input: string | URL): SftpUrlFields {
     throw new UsageError(
       `sftp URL port must be from 1 to 65535; got: ${redactUrlCredentials(url)}`,
     );
+  return { host, ...(port !== undefined ? { port } : {}) };
+}
+
+/**
+ * Parse an `sftp://[user[:password]@]host[:port][/path]` URL (or the same with
+ * `ssh://`) into its connection fields. Host, path, username and password are
+ * percent-decoded, the path one segment at a time; a malformed escape in any
+ * of them rejects the whole URL. A path under `/~/` is relative to the login
+ * directory.
+ *
+ * @throws {UsageError} for anything {@link parseSftpServerAddress} refuses,
+ *   and when the URL holds a query or fragment, a malformed percent-escape, or
+ *   an encoded slash (`%2F`) in a path segment. A message naming the URL names
+ *   it without its credentials.
+ */
+export function parseSftpUrl(input: string | URL): SftpUrlFields {
+  const url = urlFromInput(input);
+  const address = parseSftpServerAddress(url);
+  if (url.search !== "" || url.hash !== "")
+    throw new UsageError(
+      "sftp URL must not include a query (?) or fragment (#); write a ? or # " +
+        `in the directory as %3F or %23; got: ${redactUrlCredentials(url)}`,
+    );
   const path = remoteDirectoryFromUrlPath(url);
   return {
-    host,
-    ...(port !== undefined ? { port } : {}),
+    ...address,
     ...(url.username !== ""
       ? { username: decodeUrlComponent(url.username, url) }
       : {}),
@@ -152,16 +176,27 @@ export function parseSftpUrl(input: string | URL): SftpUrlFields {
   };
 }
 
+// Each raw segment is decoded on its own and may not decode to a `/`, so an
+// encoded slash can never move the directory between relative and absolute or
+// add a level the raw path does not show.
 function remoteDirectoryFromUrlPath(url: URL): string | undefined {
   const raw = url.pathname;
-  const loginRelativePrefix = `/${LOGIN_DIRECTORY_SEGMENT}/`;
   if (raw === "" || raw === "/" || raw === `/${LOGIN_DIRECTORY_SEGMENT}`)
     return undefined;
-  if (raw.startsWith(loginRelativePrefix)) {
-    const relative = raw.slice(loginRelativePrefix.length);
-    return relative === "" ? undefined : decodeUrlComponent(relative, url);
-  }
-  return decodeUrlComponent(raw, url);
+  const [, first, ...rest] = raw.split("/");
+  const loginRelative = first === LOGIN_DIRECTORY_SEGMENT;
+  const decoded = (loginRelative ? rest : [first, ...rest]).map((segment) => {
+    const value = decodeUrlComponent(segment, url);
+    if (value.includes("/"))
+      throw new UsageError(
+        "sftp URL path must not contain an encoded slash (%2F); separate " +
+          `directories with / instead; got: ${redactUrlCredentials(url)}`,
+      );
+    return value;
+  });
+  const directory = decoded.join("/");
+  if (!loginRelative) return `/${directory}`;
+  return directory === "" ? undefined : directory;
 }
 
 /** The server locator {@link formatSftpUrl} writes as a URL. */

@@ -99,6 +99,17 @@ describe("buildProbeConfig parses the URL into a minimal connection", () => {
     expect(() => buildProbeConfig("file:///drop", 10)).toThrow(UsageError);
   });
 
+  test("reads the server from a URL whose userinfo and path do not decode", () => {
+    // Only the host and port are read, so an unresolved or stray-% credential
+    // does not stop the probe.
+    const config = buildProbeConfig(
+      "sftp://us%er:50%@sftp.example.org:2222/drop%zz",
+      10,
+    );
+    expect(config.server.host).toBe("sftp.example.org");
+    expect(config.server.port).toBe(2222);
+  });
+
   test("an unparseable URL is a UsageError", () => {
     expect(() => buildProbeConfig("not a url", 10)).toThrow(UsageError);
   });

@@ -45,7 +45,6 @@ import { platformAbsolutePath, platformFileUrl } from "../platformPaths";
 import { diffConnectionAgainstTarget } from "../../src/reconcile";
 import {
   connectionOverridesFrom,
-  MAX_PORT,
   parseCommonBootstrapArgs,
   warnLowPollingFrequency,
   warnOptionsOverridesIgnoredOffline,
@@ -279,27 +278,14 @@ describe("connectionFromURL", () => {
     ).toThrow(UsageError);
   });
 
-  test("an encoded slash in the path decodes to a separator", () => {
-    // decodeURIComponent turns %2F into "/"; for an SFTP remote path that is the
-    // intended literal separator (a POSIX filename cannot contain a slash), and it
-    // keeps the builder and the live connection seeing the same path.
-    const conn = connectionFromURL(new URL("sftp://host/drop%2Fsub"), {});
-    expect(conn.channel).toBe("sftp");
-    if (conn.channel !== "sftp") return;
-    expect(conn.server.path).toBe("/drop/sub");
-  });
-
-  test("a traversal-shaped path is decoded literally, not rejected here", () => {
-    // Encoded dot-dot segments joined by an encoded slash (%2e%2e%2f) survive the
-    // WHATWG parser's double-dot collapsing (only literal "/" triggers it) and
-    // decode to a literal "..". The builder decodes faithfully, with no
-    // traversal special case, matching a hand-authored alcove.yaml with the same
-    // path. Traversal defense belongs at the connection layer instead, which
-    // covers every config source, not just URLs; this test pins that scope.
-    const conn = connectionFromURL(new URL("sftp://host/%2e%2e%2fetc"), {});
-    expect(conn.channel).toBe("sftp");
-    if (conn.channel !== "sftp") return;
-    expect(conn.server.path).toBe("/../etc");
+  test("an encoded slash in the path is a usage error", () => {
+    // Each segment is decoded on its own and may not decode to "/", so an
+    // encoded slash cannot add a level or join dot-dot segments the WHATWG
+    // parser would otherwise have collapsed.
+    for (const url of ["sftp://host/drop%2Fsub", "sftp://host/%2e%2e%2fetc"])
+      expect(() => connectionFromURL(new URL(url), {})).toThrow(
+        /encoded slash/,
+      );
   });
 
   test("a malformed percent-escape is a redacted usage error", () => {
@@ -1042,10 +1028,9 @@ describe("parseCommonBootstrapArgs", () => {
   });
 
   test("an out-of-range server-port is a flag-named usage error", () => {
-    // The schema bound on server.port is z.int().min(0).max(65535); a negative or
-    // above-65535 value is rejected at parse rather than reaching the connection
-    // config unchecked.
-    for (const bad of [-5, MAX_PORT + 1]) {
+    // The flag refuses what core's server.port schema refuses, 0 included, so
+    // none of these reaches the connection config as a later validation error.
+    for (const bad of [-5, 0, 2.5, 65536]) {
       const parse = () =>
         parseCommonBootstrapArgs({
           _: [],
@@ -1053,27 +1038,19 @@ describe("parseCommonBootstrapArgs", () => {
           "server-port": bad,
         } as unknown as Arguments);
       expect(parse).toThrow(UsageError);
-      expect(parse).toThrow("--server-port");
+      expect(parse).toThrow("--server-port must be from 1 to 65535");
     }
   });
 
-  test("server-port at 0 and at the 65535 ceiling are accepted", () => {
-    // The bound is inclusive on both ends: port 0 (a valid, if unusual, port
-    // number) and the largest valid port both pass through unchanged.
-    expect(
-      parseCommonBootstrapArgs({
-        _: [],
-        $0: "alcove",
-        "server-port": 0,
-      } as unknown as Arguments).serverPort,
-    ).toBe(0);
-    expect(
-      parseCommonBootstrapArgs({
-        _: [],
-        $0: "alcove",
-        "server-port": MAX_PORT,
-      } as unknown as Arguments).serverPort,
-    ).toBe(MAX_PORT);
+  test("server-port at 1 and at 65535 is accepted", () => {
+    for (const port of [1, 65535])
+      expect(
+        parseCommonBootstrapArgs({
+          _: [],
+          $0: "alcove",
+          "server-port": port,
+        } as unknown as Arguments).serverPort,
+      ).toBe(port);
   });
 
   test("a connection-/peer-timeout at the 7d ceiling is accepted", () => {

@@ -1,12 +1,11 @@
 import type { HttpAuth } from "@alcove/core";
 import {
+  decodeUrlComponent,
   getLogger,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   UsageError,
 } from "@alcove/core";
-
-import { decodeUrlComponent } from "@alcove/core";
 
 /**
  * The credential fields a connection's `server` block and the matching

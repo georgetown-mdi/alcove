@@ -5,6 +5,7 @@ import {
   SftpPortSchema,
   formatSftpUrl,
   isBareSftpHost,
+  parseSftpServerAddress,
   parseSftpUrl,
   sftpDialHost,
 } from "../../src/config/sftpUrl";
@@ -40,6 +41,18 @@ describe("parseSftpUrl", () => {
 
   test("decodes a %-bearing path once", () => {
     expect(parseSftpUrl("sftp://host/50%2525/off").path).toBe("/50%25/off");
+  });
+
+  test("refuses an encoded slash in any path segment", () => {
+    for (const url of [
+      "sftp://host/~/%2Fetc",
+      "sftp://host/~/%2fetc/x",
+      "sftp://host/%2Fetc",
+      "sftp://host/%2F%2Fetc",
+      "sftp://host/srv/a%2Fb",
+      "sftp://host/~/drop/a%2F..%2Fb",
+    ])
+      expect(() => parseSftpUrl(url)).toThrow(/encoded slash/);
   });
 
   test("decodes the host, username and password", () => {
@@ -96,6 +109,22 @@ describe("parseSftpUrl", () => {
     expect(() => parseSftpUrl("sftp://host/drop#x")).toThrow(/fragment/);
     expect(() => parseSftpUrl("https://host/drop")).toThrow(/sftp:\/\//);
     expect(() => parseSftpUrl("not a url")).toThrow(UsageError);
+  });
+});
+
+describe("parseSftpServerAddress", () => {
+  test("reads the host and port without decoding the userinfo", () => {
+    expect(
+      parseSftpServerAddress("sftp://us%er:50%@[::1]:2222/x%zz?q#f"),
+    ).toEqual({ host: "::1", port: 2222 });
+    expect(parseSftpServerAddress("ssh://host")).toEqual({ host: "host" });
+  });
+
+  test("refuses what parseSftpUrl refuses about the host and port", () => {
+    expect(() => parseSftpServerAddress("sftp:///x")).toThrow(/host/);
+    expect(() => parseSftpServerAddress("sftp://h:0")).toThrow(/1 to 65535/);
+    expect(() => parseSftpServerAddress("sftp://a%2Fb")).toThrow(/server name/);
+    expect(() => parseSftpServerAddress("https://h")).toThrow(/sftp:\/\//);
   });
 });
 
@@ -190,6 +219,17 @@ describe("formatSftpUrl", () => {
   test("brackets an IPv6 literal and adopts its canonical form", () => {
     for (const host of ["2001:0db8::0001", "[2001:DB8::1]", "2001:db8::1"])
       expect(formatSftpUrl({ host, port: 22 })).toBe("sftp://[2001:db8::1]:22");
+  });
+
+  test("writes every / as a separator, never as an encoded slash", () => {
+    for (const path of ["/srv/a/b", "a/b", "/a%2Fb"]) {
+      const url = formatSftpUrl({ host: "h", path });
+      expect(url).not.toMatch(/%2F/i);
+      expect(parseSftpUrl(url).path).toBe(path);
+    }
+    expect(formatSftpUrl({ host: "h", path: "/a%2Fb" })).toBe(
+      "sftp://h/a%252Fb",
+    );
   });
 
   test("refuses a directory with no URL form that reads back unchanged", () => {

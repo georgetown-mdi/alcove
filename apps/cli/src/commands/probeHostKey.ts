@@ -5,7 +5,7 @@ import {
   HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
   UsageError,
-  parseSftpUrl,
+  parseSftpServerAddress,
   redactAndSanitizeForDisplay,
   redactUrlCredentials,
 } from "@alcove/core";
@@ -111,8 +111,9 @@ const PROBE_USERNAME = "alcove-host-key-probe";
  * `serverConnectTimeoutMs`, and a single dial attempt, so that timeout bounds
  * the whole read. It includes NO credential and no username FROM THE URL --
  * the host-key verifier refuses before authenticating, so none is ever sent,
- * and omitting it avoids parsing an unresolved one. A non-sftp scheme, an
- * unparseable URL, or any URL core's `parseSftpUrl` refuses is a
+ * and only the host and port are read (core's `parseSftpServerAddress`), so an
+ * unresolved credential or path does not block the probe. A non-sftp scheme,
+ * an unparseable URL, or a host or port that reader refuses is a
  * {@link UsageError} (exit 64), never a transport failure.
  *
  * @internal exported for testing
@@ -135,7 +136,7 @@ export function buildProbeConfig(
       `probe-host-key requires an sftp:// URL; got ` +
         `${redactUrlCredentials(url)}`,
     );
-  const { host, port } = parseSftpUrl(url);
+  const { host, port } = parseSftpServerAddress(url);
   return {
     channel: "sftp",
     server: {

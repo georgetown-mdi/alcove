@@ -5,6 +5,7 @@ import {
   CONNECTION_PER_POLL_SHORT_INTERVAL_WARN_MS,
   DEFAULT_POLLING_FREQUENCY_MS,
   HOST_KEY_FINGERPRINT_REGEX,
+  isSftpPort,
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   provisionRequest,
@@ -29,11 +30,19 @@ import {
 } from "./util/atSignRefs";
 
 /**
- * Upper bound for `--server-port`, matching the config schema's own upper
- * bound on `server.port` (see `packages/core/src/config/connection.ts`) so the
- * CLI parse boundary and the schema reject the same values above it.
+ * Read `--server-port` from parsed `Arguments`, refusing at the flag the same
+ * ports core's `server.port` schema refuses, so a bad port is a flag-named
+ * {@link UsageError} rather than a later config validation error.
  */
-export const MAX_PORT = 65535;
+function serverPortFlag(argv: Arguments): number | undefined {
+  const raw = singleValue(argv, "server-port");
+  if (raw === undefined) return undefined;
+  if (typeof raw !== "number" || !isSftpPort(raw))
+    throw new UsageError(
+      `--server-port must be from 1 to 65535; got ${String(raw)}`,
+    );
+  return raw;
+}
 
 /**
  * Read `--key-file` from parsed `Arguments`, defaulting to
@@ -602,7 +611,7 @@ export function parseCommonBootstrapArgs(
       DEFAULT_CONFIG_PATH,
     keyFile: keyFileFlag(argv),
     identity: singleValue(argv, "identity") as string | undefined,
-    serverPort: nonNegativeIntFlag(argv, "server-port", MAX_PORT),
+    serverPort: serverPortFlag(argv),
     serverUsername: singleValue(argv, "server-username") as string | undefined,
     // Credential values are kept verbatim; an `@path` ref is read only
     // at the live-use boundary (resolveConnectionCredentials in

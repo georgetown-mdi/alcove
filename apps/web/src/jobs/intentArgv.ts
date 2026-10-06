@@ -42,10 +42,7 @@ export class ZeroSetupFingerprintListError extends Error {
  * one -- with the optional passphrase (`@path`) and keyboard-interactive
  * toggle alongside.
  *
- * The `sftp://` URL is core's `formatSftpUrl`, which the CLI's own parse
- * reads back to the same host, port and remote directory (relative and
- * percent-bearing directories included); it refuses a directory with no
- * such form rather than letting the run use a different one.
+ * The `sftp://` URL is core's `formatSftpUrl`: docs/spec/SERVER_JOB_API.md.
  *
  * A split-directory entry adds `--outbound-path`, the CLI's own name for
  * the same split: the URL holds the inbound half and this flag the

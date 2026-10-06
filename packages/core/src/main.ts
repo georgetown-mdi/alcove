@@ -524,10 +524,15 @@ export {
   formatSftpUrl,
   isBareSftpHost,
   isSftpPort,
+  parseSftpServerAddress,
   parseSftpUrl,
   sftpDialHost,
 } from "./config/sftpUrl";
-export type { SftpUrlFields, SftpUrlLocator } from "./config/sftpUrl";
+export type {
+  SftpServerAddress,
+  SftpUrlFields,
+  SftpUrlLocator,
+} from "./config/sftpUrl";
 export {
   decodeUrlComponent,
   redactUrlCredentials,
