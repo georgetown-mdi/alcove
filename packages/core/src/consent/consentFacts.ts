@@ -267,7 +267,8 @@ export const CONSENT_FACTS = {
       "Even when the terms are honored, your partner learns which of its own " +
       "records are in your data, though not which of your records they are. " +
       "A match that reveals identifiers discloses this whenever your partner " +
-      "is sent its half of the matched-pair table.",
+      "is sent its half of the matched-pair table. That is inherent to the " +
+      "match, not a breach.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -393,8 +394,8 @@ export const CONSENT_FACTS = {
       "You are shown no group sizes, no row positions, and nothing about " +
       "which of your own records matched. This exchange withholds your half " +
       "of the matched-pair table: Alcove on your side never reads it, and a " +
-      "partner running Alcove never sends it. The exchange enforces this " +
-      "whatever software your partner runs.",
+      "partner running Alcove never sends it. Withholding them is a limit of " +
+      "the exchange rather than this software's choice.",
   },
   partnerReadsDuplicateGrouping: {
     basis: "trust-contingent",
