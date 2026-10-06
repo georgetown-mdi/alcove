@@ -77,8 +77,8 @@ export function startInstalledRuntimeRunner(
  * operator opened it for something and will close it, so firing an exchange
  * under it would start a live two-party session the operator is about to
  * navigate away from, and would do it without their asking. In an ordinary tab
- * a run stays operator-initiated (docs/MANAGED_EXCHANGE.md, "The automation
- * goal and its platform envelope").
+ * a run stays operator-initiated (docs/notes/managed-exchange-design.md,
+ * "The automation goal and its platform envelope").
  *
  * The console shares this app's code but not that capability: it is a
  * single-exchange, author-and-run surface for one operator, whose recurring

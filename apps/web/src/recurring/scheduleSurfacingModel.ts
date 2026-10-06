@@ -219,7 +219,8 @@ const SCHEDULE_ATTENDANCE_NOTE_TAB =
  * two readings are different facts rather than different wordings of one -- the
  * unattended runner starts in the installed app and in nothing else -- so the
  * surfaces branch on the runtime rather than holding one hedged line for both
- * (docs/MANAGED_EXCHANGE.md, "The automation goal and its platform envelope").
+ * (docs/notes/managed-exchange-design.md, "The automation goal and its platform
+ * envelope").
  */
 export function scheduleAttendanceNote(installedRuntime: boolean): string {
   return installedRuntime

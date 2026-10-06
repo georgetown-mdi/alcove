@@ -1,101 +1,44 @@
 ---
-title: "Managed (Recurring) Web Exchanges"
+title: "Recurring Web Exchanges"
 ---
 
-# Managed (recurring) web exchanges
+# Running a recurring exchange in the web app
 
-This document describes the **managed exchange** lifecycle for the hosted web
-application: how a two-party PPRL exchange, once set up, runs again on an agreed
-schedule from the browser -- unattended where the platform allows -- without
-re-authoring the terms or re-establishing a shared secret. Intended readers are
-program officers, security reviewers, IT staff operating the hosted app, and
-contributors.
+This guide is for the person who keeps a partnership running from the web app:
+an analyst or program staff member who has run one exchange with a partner (see
+[WEB_APP.md](WEB_APP.md)) and wants to run it again on an agreed schedule, in
+the browser, without a new invitation each time. It covers saving the exchange,
+installing the app so runs happen with nobody present, the schedule, what each
+run does, moving the exchange to another device or to the command line, what to
+do when a run fails, the accounting of disclosures, backups, and deleting the
+exchange.
 
-It is the operational and conceptual counterpart to two companion documents: the
-**managed exchange record** field-by-field shape in
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md), and the **browser
-at-rest threat model** and egress-hardening limits in
+If your organization has IT staff who can run installed software, the command
+line app with your system's scheduler is the stronger tool for a recurring
+exchange: see [Scheduling the run](CLI.md#scheduling-the-run). Why a recurring
+web exchange is designed the way it is, and the decisions taken, are in
+[managed-exchange-design.md](notes/managed-exchange-design.md). The stored
+record is specified in
+[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md), and the threat
+model for what the browser keeps is in
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges).
-It does not re-specify the record's byte-level shape, the KDF labels, or the CSP
-directive syntax; those live in the spec tier.
 
-> **Status.** The record, its rotating secret at rest, the recurring-exchange
-> surfaces, the attended one-action re-run, the installable offline app shell,
-> schedule entry, the scheduled window runner, and the between-visit OS
-> notification are built: an installed app runtime runs a due exchange
-> unattended at its agreed window, and tells the operator what it left behind
-> once they have turned notifications on. Every state reaches the next in-app
-> visit whether or not they have. Persisting a rotating secret at rest reverses
-> the one-shot exchange's discard (see
-> [SECURITY_DESIGN.md](SECURITY_DESIGN.md#recurring-web-exchanges-single-use-vs-managed)),
-> so work here stays gated on security review.
+## Saving an exchange as recurring
 
-## Who this is for
+Choose **Save as a recurring exchange** on the exchange screen once an exchange
+completes (see [Running it again](WEB_APP.md#running-it-again)). The saved
+exchange keeps, in this browser only:
 
-The managed exchange serves the **small or no-IT organization** -- the audience
-[DESIGN.md](DESIGN.md) names as often lacking the technical sophistication for
-regular data linking, for whom the project works browser-first without
-installed software. That organization cannot take the documented web-to-CLI
-handoff (download an exchange file, run the CLI on a schedule), because the
-handoff's destination is exactly the installed, IT-operated tooling it does not
-have. The managed exchange gives that operator a recurring partnership without
-leaving the browser.
+- the agreed terms and where the two of you connect;
+- the shared secret, which changes after every run;
+- the schedule you enter, the run history, and the [accounting of
+  disclosures](#the-accounting-of-disclosures);
+- a pointer to its working folder, never a copy of your input file;
+- the results of a scheduled run that could not be written to that folder (see
+  [Where a scheduled run's results go](#where-a-scheduled-runs-results-go)).
 
-The calibration is accurate in both directions. An organization **with** IT
-support should still graduate to the CLI plus host cron -- the CLI remains the
-stronger recurring tool: on-disk key-file durability instead of evictable
-browser storage, an OS scheduler instead of a browser runtime kept alive, and
-the hardened container deployment. The graduation point is when the
-organization can vet and operate installed software at all. Every posture
-choice in this document -- browser persistence with accurate eviction handling,
-automation inside the operator's own browser runtime, a plaintext export under
-operator custody -- is calibrated to the no-IT persona, not to the organization
-that has better options.
-
-## What "managed" adds, and what it does not
-
-A one-shot web exchange is single-use: the browser runs the authenticated
-exchange, derives the rotated secret, and **discards** it, so the exchange
-cannot run again and nothing sensitive persists. A managed exchange instead
-persists the rotated secret alongside this party's exchange-file document (the
-standing terms and rendezvous locator -- the browser's `alcove.yaml` plus
-`.alcove.key` analog) so the same partnership can run again later.
-
-What managed **adds**:
-
-- A **managed exchange record** in the browser (IndexedDB, origin-isolated) that
-  survives runs, crashes, and restarts.
-- A **rotating shared secret at rest** in that record, in place of the one-shot
-  discard.
-- **Scheduled, unattended runs** as the design goal: once an exchange is
-  managed and a schedule agreed, runs happen with nobody present, on the
-  platforms that can support it -- with an attended one-action re-run as the
-  named degradation (see [The automation
-  goal](#the-automation-goal-and-its-platform-envelope)).
-- **The results of those runs kept for the next visit**, since nobody is present
-  to download them -- which puts linkage results at rest in the browser, bounded
-  by a stated retention, by a size above which nothing is kept, by a control that
-  clears them now, and by deleting the exchange (see [Where a scheduled run's
-  results go](#where-a-scheduled-runs-results-go)).
-
-What managed does **not** add:
-
-- **No server-side execution.** Automation runs in the operator's own browser
-  runtime -- an installed app kept running on the operator's machine -- never
-  on a server acting for the party. The installed-software path for scheduled
-  runs remains the CLI plus a host scheduler such as cron (see [Scheduling the
-  run](CLI.md#scheduling-the-run)). The console is not a scheduling
-  path -- it facilitates a single exchange (see
-  [SECURITY_DESIGN.md](SECURITY_DESIGN.md#single-party-console-trust-boundary)).
-- **No second copy of the input data.** The record never holds the input file's
-  contents or any row value. Where the platform allows, it holds a folder
-  **handle** -- a pointer to the folder the operator's file stands in, not a
-  copy (see [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)). A scheduled
-  run's kept results are the one thing at rest that does hold row values, and
-  they are the run's OUTPUT rather than a copy of the input.
-- **No server-side persistence.** There is one persistence target: the browser,
-  origin-isolated, never a server. There is no profile-split persistence provider
-  to choose between.
+Nothing is kept on a server. [Deleting the
+exchange](#deleting-a-managed-exchange) removes all of it.
 
 ### When a column name stops the save
 
@@ -115,54 +58,30 @@ shows the name itself, and states which of those rules it broke, so the fix is
 the header row rather than a retry -- the same document is refused every time.
 The one-off exchange that just completed is unaffected; nothing was stored.
 
-## The automation goal and its platform envelope
+## How a scheduled run happens
 
-The design goal is a **fully automated recurring exchange**: once an exchange
-is managed and its schedule agreed with the partner, runs happen unattended.
-Browser automation is inherently a compromise against installed software, and
-the compromises are accepted -- what is not accepted is settling for an
-attended flow where the platform can support an unattended one.
+A run with nobody present needs the app installed and running on Chromium (see
+[Installing the app](#installing-the-app)). At each agreed window the app reads
+`input.csv` from the exchange's working folder and runs the exchange. Where that
+is not available, a run needs you:
 
-**The primary path is an installed PWA on Chromium.** The app is installed
-and launched at OS login (or otherwise kept running), and the exchange executes
-in the app's own window context: WebRTC is unavailable to service workers, and
-Periodic Background Sync's short opportunistic windows cannot support a live
-exchange, so an open app runtime -- not a service-worker wakeup -- is the
-mechanism. At the agreed window the runtime reads the input file, `input.csv`,
-from the exchange's working folder -- the record's persisted
-`FileSystemDirectoryHandle`, under its persistent permission (a pointer, never
-a copy; see [The input file each run](#the-input-file-each-run)) -- and the run
-executes, rotates, and persists per the durability contract below, with nobody
-present.
+- **In an ordinary Chromium tab**, you start each run, with one action that
+  reads from the working folder.
+- **In Safari or Firefox**, which cannot hold a folder, you start each run and
+  choose the input file for it.
 
-Degradations are named, not design floors:
+The exchange's page says which of these applies. In the installed app, a
+schedule says the app meets its windows itself. In an ordinary tab, the same
+schedule says the tab never runs it on its own and names installing as the way
+to get that. An exchange with no working folder in this browser says so in
+either, since nothing can read the input with nobody present.
 
-- **No installed PWA** (an ordinary Chromium tab): the run is
-  operator-initiated -- one action, reading from the working folder.
-- **No File System Access API** (Safari, Firefox): the run is attended and the
-  operator chooses the input file for it.
-
-The surfaces say which of these the operator is looking at rather than
-describing the capability in general. A schedule shown in the installed app
-says the app meets its windows itself; the same schedule shown in an ordinary
-tab says the tab never runs it on its own and names installing as the way to
-get that. A record this browser holds no working folder for says so in either
-runtime, since nothing can read the input with nobody present.
-
-**An unattended run takes two parties.** A WebRTC exchange is live: both
-parties' runners must be awake in an overlapping window, so the run schedule is
-partnership-level agreement, coordinated out-of-band exactly as the terms are.
-A partner whose runner does not arrive in the agreed window is a **benign
-retry-at-next-window outcome** (see [A missed window is neither desync nor
-attack](#a-missed-window-is-neither-desync-nor-attack)). The record persists
-the agreed schedule and the retry bookkeeping
-([MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md)).
-
-The run windows both runners meet in, the retry policy for a missed one, and
-the between-visit notification surface are designed under [The schedule and its
-run windows](#the-schedule-and-its-run-windows) below; the record's closed
-field layout for them is in
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object).
+**An unattended run takes two parties.** Both parties' apps must be awake in the
+same window, so you agree the schedule with your partner, the way you agreed the
+terms (see [The schedule and its run
+windows](#the-schedule-and-its-run-windows)). A partner who does not arrive in a
+window is retried at the next one (see [A missed window is neither desync nor
+attack](#a-missed-window-is-neither-desync-nor-attack)).
 
 ### Incognito and Guest windows on Chrome 153 through 155
 
@@ -215,9 +134,9 @@ needs:
 Chromium-based desktop browsers have a per-app "start at sign-in" setting for an
 installed app, offered from the installed app's own menu; it is the browser's
 setting, not the application's, so Alcove cannot turn it on and does not ask to.
-A browser that does not offer it cannot be made to, and nothing here claims
-otherwise -- that platform's degradation is the operator-initiated run named
-under [The automation goal](#the-automation-goal-and-its-platform-envelope).
+A browser that does not offer it cannot be made to: there, you open the app
+before each window or start each run yourself (see [How a scheduled run
+happens](#how-a-scheduled-run-happens)).
 
 ### Setting it up from an exchange's page
 
@@ -311,24 +230,16 @@ channel, and each enters it locally, under **Local settings** on the exchange's
 own page: the date and time of the first agreed window on their own clock, how
 often a window opens, and how long it stays open. Scheduling is off until
 someone enters one, and turning it off again returns the exchange to
-attended-only without touching anything else. The schedule is
-**not** minted into the exchange-file document and **not** part of the
-invitation wire: the document is the shared terms-and-locator config, whose
-terms change only through a terms change both parties review (see [What the
-setup consent covers across runs](#what-the-setup-consent-covers-across-runs)),
-and a reschedule is neither a terms change nor a credential,
-so the schedule is a local record field instead (the
-`schedule` object; see
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)).
-Nothing about the schedule is ever sent to a server or to the partner over the
-wire; there is no server-side coordination anywhere in the design.
+attended-only without touching anything else. The schedule stays in this
+browser: it is not part of the invitation or the exchange file, and nothing
+about it is sent to a server or to your partner. Changing it is not a change of
+terms (see [Why the schedule is a local
+field](notes/managed-exchange-design.md#why-the-schedule-is-a-local-field)).
 
-The cost of local-only entry is that each side types the same values by hand, so
-a mistyped cadence or window on one side produces windows that never overlap.
-That failure is benign and self-announcing: it shows up as mutual missed windows
-(below), which the operators resolve out-of-band where they agreed the schedule
-in the first place -- the same channel, the same reconciliation as any other
-schedule drift.
+Each side types the same values by hand, so a mistyped cadence or window on one
+side produces windows that never overlap. That shows up as missed windows on
+both sides (below); settle it with your partner over the channel where you
+agreed the schedule.
 
 To make matching entries easier, the Run schedule section of a page that holds
 a schedule offers it as plain text to send the partner, so both sides open the
@@ -378,18 +289,6 @@ and a two-sided absence are the same benign outcome from each present party's
 point of view. There is no "who retries" question to answer: neither party
 retries early, and both simply meet again at the next window.
 
-That bookkeeping is **one-sided by construction**: "whoever showed up records
-the miss" means the escalating surface below fires on the party that keeps
-showing up -- exactly the party positioned to reach out -- while a persistently
-absent party's runtime may never be awake to see anything. The asymmetry is
-accepted because reconciliation needs only one side to raise it, over the
-channel where the schedule was agreed. Nor is the absent side left permanently
-ignorant: a runtime that wakes to find windows fully elapsed counts each one as
-a miss and lands on the next live window (the catch-up rule; see
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)),
-so its own repeated-miss surface fires at that wake -- it learns late, but it
-does learn.
-
 A single miss is unremarkable and demands no action -- a laptop closed for the
 evening, a machine mid-reboot at the window. What matters is a **pattern** of
 misses, which means the partnership is no longer meeting: the partner has
@@ -402,71 +301,22 @@ success (see
 and once that count reaches the escalation threshold the next visit's surface
 and the between-visit notification escalate to the coordination prompt, which
 names **both** checks:
-check with your partner, and check this machine's own clock -- a wrong local
-time source produces exactly this pattern, and a no-IT operator pointed only at
-the partner would never look at their own machine.
+check with your partner, and check this machine's own clock, since a wrong
+clock here produces the same pattern.
 
-The threshold is a window count, not a wall-clock age, so it is
-**cadence-relative** by design: on a monthly partnership the escalated state is
-months away. That is accepted because each miss already fires its own
-moment-anchored notification at its window (see [The between-visit
-notification](#the-between-visit-notification)), so the operator is not in the
-dark in the interim -- the threshold gates only the escalated
-coordination-problem framing, not the operator's first knowledge of a miss.
+Each miss also gets its own notification at its window (see [The between-visit
+notification](#the-between-visit-notification)), so you hear about a miss before
+the pattern is reached.
 
-#### Repeated misses surface, they do not auto-pause
-
-A design question this raises: after enough consecutive misses, should the app
-**automatically pause** the schedule (stop attempting until the operator
-re-enables it), or only **report** the problem and keep attempting on cadence?
-
-This design chooses **report-only, no auto-pause**, because for the no-IT
-persona this feature serves the two failure modes are not symmetric:
-
-- **Auto-pausing is silent, and the persona visits rarely.** A paused schedule
-  stops trying with no visible signal, so a partnership that quietly stopped
-  attempting is indistinguishable from a healthy one until the next in-person
-  visit -- which may be weeks away. A silently paused schedule is a silently
-  dead partnership.
-- **Continuing to attempt is cheap, and what it costs is bounded.** A
-  window against a partner who has gone away is not one attempt but a bounded
-  series of them -- the window's width divided by the per-attempt wait for the
-  peer, up to a cap (see [Occupying a due
-  window](spec/MANAGED_EXCHANGE_RECORD.md#occupying-a-due-window)). Each attempt
-  re-reads and column-checks the input file from the working folder, since
-  the input guard runs ahead of the rendezvous rather than after it (see [The
-  second run](#the-second-run-end-to-end)), and registers a peer at the
-  peer-coordination server under the rendezvous id derived from the record's
-  current secret -- which a miss does not rotate, so a partnership that has
-  stopped meeting re-registers the *same* id at every attempt of every window.
-  The cost is therefore repeated local file reads plus a repeating registration
-  pattern at the server the partnership already rendezvouses through. No payload
-  leaves the device, nothing of the exchange is sent anywhere, and the secret is
-  neither exposed nor rotated.
-
-The full cost of not pausing is that the miss surface must itself be
-trustworthy: if it read as noise the operator learned to ignore, endless quiet
-retries would mask a dead partnership just as a silent pause would. That is why
-the miss surface is **moment-anchored and escalating** -- one informational
-note per miss at its window, the actionable coordination state only once the
-pattern is real -- rather than a standing warning the operator clicks through
-(the same discipline the backup surfaces follow; see [Moment-anchored backup
-surfaces](#moment-anchored-backup-surfaces)).
-
-One thing does stop the attempts, and it is not a heuristic: the operator's own
-"something does not add up" answer at a failure gate holds every window after it
-until they clear it (see [Telling a desync from an
-attack](#telling-a-desync-from-an-attack)). Those windows are recorded as skipped
-rather than missed, so they never build the pattern the coordination prompt reads.
-
-The operator retains an explicit, manual control either way: deleting the
-exchange stops all attempts (see [Deleting a managed
-exchange](#deleting-a-managed-exchange)). A pause control and in-place schedule
-editing arrive with the scheduling surface. What the design declines to do is make
-that pause decision *for* the operator on a heuristic, because the failure mode
-of a wrong automatic pause (a silently dead partnership) is worse for this
-persona than the failure mode of not pausing (cheap, visible, ignorable
-retries).
+Repeated misses do not pause the schedule: the app keeps trying at each window
+and tells you. Two things stop the attempts. Deleting the exchange stops them
+all (see [Deleting a managed exchange](#deleting-a-managed-exchange)). Answering
+"something does not add up" at a failure check holds every window after it until
+you clear it (see [Telling a desync from an
+attack](#telling-a-desync-from-an-attack)); those windows are recorded as
+skipped, not missed. Why the app does not pause on its own: [Repeated misses
+surface, they do not
+auto-pause](notes/managed-exchange-design.md#repeated-misses-surface-they-do-not-auto-pause).
 
 ### Where a scheduled run's results go
 
@@ -585,7 +435,7 @@ already defines:
 
 - **This ran, and your backup is now stale.** An unattended run rotates the
   secret with nobody present, which flips the derived backup state to "backup
-  needed" (see [Moment-anchored backup surfaces](#moment-anchored-backup-surfaces)).
+  needed" (see [The backup state](#the-backup-state)).
   Where the run wrote the backup into the working folder itself, the state is
   "backed up" again and this notification does not fire (see [The backup a
   scheduled run writes](#the-backup-a-scheduled-run-writes)); otherwise
@@ -649,7 +499,7 @@ already defines:
   retryable (see [A partner's run that refuses to send its
   set](#a-partners-run-that-refuses-to-send-its-set)).
 - **This needs you: a run failed with no benign explanation.** A handshake that
-  ran and failed closed with no recorded benign cause (the Tier-2 case; see
+  ran and failed closed with no recorded benign cause (see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)) is the
   one failure that needs the operator's out-of-band confirmation work, so it is
   worth reporting between visits rather than waiting for the next visit.
@@ -657,8 +507,7 @@ already defines:
 Everything else stays quiet, and nothing repeats: each notification fires once
 at its state's transition, and a condition already reported is held by the
 in-app state rather than re-announced at every subsequent wake (the in-app
-surfaces follow the same discipline; see [Moment-anchored backup
-surfaces](#moment-anchored-backup-surfaces)). What holds a condition to one
+surfaces follow the same discipline; see [The backup state](#the-backup-state)). What holds a condition to one
 notification is the runtime's own memory of what it last said about each
 exchange, so a runtime relaunched while a state stands can say it once more.
 
@@ -689,20 +538,21 @@ does not travel in an export and a second device decides for itself.
 
 ## The second run, end to end
 
-The managed exchange is judged by its second run -- the first thing the feature
-does that the one-shot flow cannot. On the primary path the second run is
-**scheduled**, and nobody is present:
+On the installed app, a run after the first one is **scheduled**, and nobody is
+present:
 
 1. **The window arrives.** The installed app runtime, running since OS login,
-   begins the run under the single-writer lock (see [Single-device
-   ownership](#single-device-ownership)).
+   begins the run, and no other run of the exchange can start until it ends
+   (see [When a run is already in
+   progress](#when-a-run-is-already-in-progress)).
 2. **The input file is re-read** from the working folder by its one name, no
    prompt, and rejected if its columns cannot satisfy the standing terms (see [The input
    file each run](#the-input-file-each-run)).
 3. **Rendezvous and handshake** with the partner's runner, awake in the same
    agreed window; a no-show partner is a recorded miss, retried next window.
-4. **Rotate-and-persist, then the data exchange** -- the durability contract
-   below, unchanged by nobody watching.
+4. **Rotate-and-persist, then the data exchange.** The run saves the changed
+   secret before it sends any data, as an attended run does (see
+   [Persist-before-success](notes/managed-exchange-design.md#persist-before-success)).
 5. **The outcome lands in the run bookkeeping**, the disclosure is filed to this
    exchange's accounting, and the **results are written into the working
    folder beside the input**, or kept in the browser for them to collect at
@@ -793,12 +643,6 @@ A refresh costs a run only when the run lands inside it rather than after it:
 between a delete and the new file's arrival there is nothing under the name, so
 that run fails its read as a missing file instead of running on last period's
 data. Overwriting the file or renaming over the name leaves no such moment.
-
-A `File` the platform hands back is the file as it stood at that instant:
-once the file underneath it changes, reading that `File` fails rather than
-returning either period's contents. The design therefore looks the name up at
-each run start and retains no `File` across runs -- a run reads the current file
-or fails, never last period's data.
 
 A folder holding no `input.csv` -- the file deleted, moved, or renamed away --
 fails the run's read with a clean not-found before any connection is attempted:
@@ -950,143 +794,42 @@ nor reported twice. An exchange with no successful run recorded has no instant
 to compare against and shows nothing, and an attended-only exchange, which has
 no schedule section at all, is never read for one.
 
-## The durability and crash-consistency contract
+## Running from one device
 
-The persisted secret is a **linear resource**: after each successful run both
-parties derive the same replacement secret and retire the old one, so there is
-exactly one live secret between the two parties at any moment. That property makes
-the ordering of persistence and success critical.
+A recurring exchange runs from one browser on one device. Two copies that both
+run split its shared secret: the first to run changes it, and the other copy can
+no longer connect to your partner (see [Desync detection and
+recovery](#desync-detection-and-recovery)). So moving the exchange hands it over
+and never copies it, and a backup is for restoring this copy, not for running a
+second one. The reasons: [Single-device
+ownership](notes/managed-exchange-design.md#single-device-ownership).
 
-### Persist-before-success
+### When a run is already in progress
 
-Within a run, the rotated secret is written durably to the browser store, and the
-write is awaited to completion, **before** this party begins the data exchange --
-the first peer-visible act after the handshake. The protocol has no discrete
-"success" signal to hold back: both sides rotate at handshake completion, and the
-exchange's terminal act is a fire-and-forget final send, so the data exchange
-itself is what the persist must precede. The order is: handshake completes ->
-rotated secret persisted and the write awaited -> data exchange proceeds -> local
-success recorded. This is the browser analog of the CLI's write-then-exchange
-ordering, where the key file is written through an atomic, fsync-durable path
-immediately after the handshake rotates the secret and before the data exchange
-runs (see [Key file security](SECURITY_DESIGN.md#key-file-security)). The exact
-step sequence and the store transaction it awaits are in
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering).
+Only one run of an exchange happens at a time in a browser profile: a second
+tab, or a run you start while a scheduled one is under way, waits or is told a
+run is already in progress. During a scheduled window that lasts as long as the
+window does, since the app keeps waiting for your partner across it. A run that
+connects just before the window closes holds on until its exchange finishes,
+which can be after the window is over.
 
-What the ordering buys is precisely scoped: it eliminates **this party's
-contribution** to the desync window. After the handshake, a crash on this side
-leaves this party either on the old secret (persist not committed; it retries
-from the old secret) or durably on the new one -- never advanced into the
-exchange with the new secret held only in volatile memory. It cannot eliminate
-the two-sided residual: the partner's own persist can fail independently, and
-neither side can know whether the other's save succeeded -- the CLI states the
-same one-sided limit when its key-file write fails after rotation. That residual
-is what the desync recovery below exists for.
+### Moving the exchange to another device
 
-### The durability limit
+The exchange's page offers two exports of the same file. A **backup** leaves the
+exchange running here (see [The durability backbone:
+export/import](#the-durability-backbone-exportimport)). **Move to another
+device** hands it over: it downloads the file and then asks you to confirm that
+you saved it. Nothing changes here until you confirm, so a cancelled or failed
+save leaves the exchange here and you can export again; declining keeps the
+exchange on this device.
 
-The browser cannot match the CLI's on-disk durability, and the contract says so
-plainly rather than implying parity:
-
-- **A committed browser write is not a flushed one.** The rotated-secret write
-  asks the store for the strongest durability the engine offers and still cannot
-  promise the bytes reached stable media: it survives a tab or renderer crash,
-  but not necessarily an OS crash or power loss, and nothing in the browser
-  matches the CLI's forced flush and directory flush (see
-  [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md)). The transaction
-  durability semantics this rests on are in
-  [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#persist-before-success-ordering).
-- The store can be **evicted wholesale** by the browser, silently, with no crash
-  and no operator action (see [Surviving storage
-  eviction](#surviving-storage-eviction)). The CLI's on-disk key file is not
-  removed out from under it.
-
-The ordering above therefore guarantees renderer-crash consistency; the OS-crash
-and power-loss residual -- like eviction -- is covered by [fast
-re-invite](#recovery-fast-re-invite) rather than by a stronger at-rest
-guarantee. Browser at-rest durability is best-effort, and the design says so
-rather than presenting the browser store as equivalent to a file on disk.
-
-## Single-device ownership
-
-Because the secret is a linear resource, a managed exchange is owned by **one
-device** -- on the scheduled path, the one machine whose installed app runtime
-executes the runs. Two devices (or two runners) that both hold the secret and
-both run fork it permanently: the first to run rotates, and the other's copy is
-instantly stale with no way to reconcile automatically (there is no grace
-window; see [Desync detection and
-recovery](#desync-detection-and-recovery)). Single-device ownership is stated
-as an invariant, not a recommendation.
-
-Two mechanisms uphold it:
-
-### Cross-tab single-writer locking (Web Locks)
-
-The **run+rotate** critical section is guarded by a single-writer lock (the Web
-Locks API, `navigator.locks`) keyed to the managed record's id, held for the whole
-window from "begin this run" through the success that run records -- the exchange
-with the partner included. Two tabs of the same origin cannot both enter it: the
-second waits or is refused, so a scheduled run and an operator-opened tab -- or
-two tabs -- on one device cannot fork the secret by racing a run, and no two of
-them exchange with the partner for one record at the same time.
-
-A hand-off's confirmation takes the same lock before it spends this device's copy,
-so a hand-off and a run exclude each other as two runs do. Whichever takes the lock
-first wins the ordering: a confirmation meeting a run is refused and told to wait,
-and a run meeting a confirmation waits for it and then finds the copy handed off.
-A re-invite's mint takes it on the same terms before it replaces the secret, so a
-run and a fresh invitation cannot each write a secret the other discards.
-
-On the scheduled path that refusal lasts as long as the run window does. Each
-attempt holds the lock across its whole wait for the partner, and the next
-attempt begins as soon as the last one's wait ends, so a runner occupying a
-window holds the lock essentially continuously from the window's open to its
-close -- hours, at the widths the design intends. An operator who opens the app
-during an occupied window and runs the exchange by hand is told a run is already
-in progress, and keeps being told for as long as an attempt holds the lock. That
-is the single-writer property working as intended rather than a fault. An
-attempt's wait for the partner is clamped to the window's close, but a handshake
-that completes just before the close holds the lock through the payload exchange
-that follows, so the operator's Run is available again once the exchange in
-flight settles -- which can be after the window is over.
-
-The lock is a same-profile **liveness guard**, not a persistent claim: it is
-auto-released when the holding tab or worker is destroyed, and it is taken
-without `steal: true` -- a steal would defeat the single-writer property it
-exists to provide. Web Locks
-is origin-scoped and same-profile, so it guards concurrency **within one browser
-profile on one device** -- exactly the scope where a racing second context is a
-realistic accident. It does **not** and cannot guard against a second physical
-device or a second browser profile holding a copy; the durable single-owner
-property rests on migration-not-sync (below), not on the lock.
-
-### Export/import is migration, not sync
-
-Moving a managed exchange to another device is **migration**: the source copy is
-spent when the handover completes, so the secret is handed over, not duplicated.
-There is no sync by design: syncing a linear secret across two live copies is
-the exact fork the invariant forbids. Importing the artifact on the target
-device installs the exchange there, and a spent source will not run again
-without a fresh import or a re-invite. Framing the operation as "take over on
-this device" rather than "copy to this device" is what keeps a single owner even
-across a device change.
-
-The two export intents are distinct in the UI even though the artifact is one
-format. A **backup export** leaves the source live (see [the durability
-backbone](#the-durability-backbone-exportimport)). A **migration export** is
-"take over on another device": it downloads the artifact and then asks the
-operator to attest that they saved it. The source is spent on that attestation
-rather than at the moment of export, so a cancelled or failed save leaves the
-source live and recoverable by exporting again; declining the attestation keeps
-the exchange on this device. On confirmation the source record visibly
-transitions to a spent, handed-off state -- no Run affordance, no scheduled
-runs, labeled with the handoff date -- so the cooperation-not-cryptography
-invalidation below is clear at the one moment it is violable. A record spent this
-way can be deleted, or revived only by importing the artifact back. What its
-earlier scheduled runs left in this browser is still collected on that page: the
-hand-off takes the exchange's future runs, not the results already at rest here
-(see [Where a scheduled run's results
-go](#where-a-scheduled-runs-results-go)).
+Once you confirm, the exchange here shows as handed off, with the date, and
+offers no Run and no scheduled runs. You can delete it, or bring it back only by
+importing that file here again. Import the file on the other device to run it
+there (see [Eviction recovery is the import
+flow](#eviction-recovery-is-the-import-flow)). Results its earlier scheduled
+runs kept in this browser are still collected on its page (see [Where a
+scheduled run's results go](#where-a-scheduled-runs-results-go)).
 
 **A hand-off refuses a copy a run has already superseded.** Confirming either
 hand-off -- the device migration here, or the command-line export below --
@@ -1126,52 +869,31 @@ note until it does.
 Ahead of that refusal, both hand-offs -- and the downloads that start them --
 are withheld while this tab is running the exchange, and while a run in any
 other context holds the [single-writer
-lock](#cross-tab-single-writer-locking-web-locks), which is how a second tab's
+lock](#when-a-run-is-already-in-progress), which is how a second tab's
 run or a scheduled one reaches them. The surface names the run as the reason;
 the hand-offs return when this tab's run ends or, for another context, when that
-run ends and releases its lock.
+run ends and releases its lock. If a run starts after the page last checked,
+confirming a hand-off is refused in the same words: confirm again once the run
+is over.
 
-That withholding is a reading of the lock taken every so often, so it can miss a
-run that starts between two readings. Nothing rests on it: confirming a hand-off
-takes the run's own lock before it spends anything, and a run holding that lock
-refuses the confirmation in the same words the withholding uses. Waiting is the
-whole remedy -- confirm again once the run is over, and the exchange hands over
-unless that run rotated the secret, which is the refusal above and its own
-remedy. A confirmation that spends and a run that rotates therefore exclude each
-other rather than racing, in either order.
-
-The artifact is a **plaintext credential file in the operator's custody**.
-Passphrase encryption is not done, by design: the record must be usable with
-nobody present to supply a passphrase at the moment of use. It is the browser
-analog of handing over `alcove.yaml` plus `.alcove.key`, and it adopts the key
-file's exact trust model: `.alcove.key` is a plaintext credential protected by
-custody and storage permissions, not a passphrase (see [Key file
-security](SECURITY_DESIGN.md#key-file-security)), and the export asks for the
-same handling -- owner-only storage, never an unencrypted transmission channel,
-an encrypted location or secrets manager if the operator wants encryption at
-rest. The artifact does not rotate -- it snapshots the secret current at export
--- so a stale artifact stays usable until the partnership rotates past it or any
-`expires` it holds (stamped when a max-age policy is set) lapses. Its shape
-and the no-anti-rollback caveat are in
-[MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#export-artifact).
-
-The invalidation is an **operator-cooperation property, not a cryptographic
-one**: nothing in the protocol prevents a copied artifact, a browser-profile
-backup, or a VM snapshot from resurrecting a copy the UI spent. A captured or
-duplicated export is therefore treated as a captured credential, live until the
-partnership rotates past it, under the standard [compromise
-response](SECURITY_DESIGN.md#compromise-response) (notify the partner
-out-of-band, re-invite). Why the protocol cannot detect that resurrection, and
-the deferred hardening that would, are in
-[SECURITY_DESIGN.md](SECURITY_DESIGN.md#rollback-at-rest-copies-can-silently-resurrect).
+**The file is a credential.** It holds the exchange's shared secret in plain
+text, like the command line's `.alcove.key` (see [Key file
+security](SECURITY_DESIGN.md#key-file-security)). Store it where only you can
+read it, never send it over an unencrypted channel, and use an encrypted
+location or a secrets manager if you want it encrypted at rest. The file does
+not change after you export it: it stays usable until a run changes the secret,
+or until any `expires` it holds lapses. A copy that leaks, or a copy kept after
+a move, is a live credential until then; treat it under the [compromise
+response](SECURITY_DESIGN.md#compromise-response): tell your partner over
+another channel and send a fresh invitation.
 
 ### Exporting to the command line
 
-The graduation the calibration in [Who this is for](#who-this-is-for) names has
-its own action on the exchange's detail surface: a collapsed **Run this from the
-command line instead** panel, beside the backup panel. It hands the exchange to
-`alcove exchange` under the host's own scheduler, and it is a migration by
-another route -- the single-owner rule applies to it unchanged.
+When your organization can run installed software, the exchange's page has a
+collapsed **Run this from the command line instead** panel, beside the backup
+panel. It hands the exchange to `alcove exchange` under the host's own
+scheduler. Like a move to another device, it hands the exchange over: the
+exchange then runs from the command line and not here.
 
 It downloads **two files rather than one archive**, because the two are handled
 differently once they land:
@@ -1310,7 +1032,7 @@ is no longer the one meeting it, so remove it there.
 
 ### When your relay runs a registrar
 
-A relay run from the reference deployment accepts only credentials minted from
+A relay run from the reference deployment accepts only credentials made from
 the relay key it holds for each exchange, and that key changes each time the
 shared secret rotates. When the relay in this browser's relay settings runs the
 Alcove relay registrar, enroll the exchange there once, under **Relay
@@ -1502,25 +1224,12 @@ one: the export panel says to add `private_key` or `password` (as an `@path`),
 
 ## Desync detection and recovery
 
-A rotation desync is the failure the contract above is built to avoid, but it
-cannot be driven to zero (a wholesale eviction between rotation and the next run,
-or a migration mishandled by the operator, can still strand the two parties on
-different secrets). The design must let a party tell a desync apart from an attack
-and recover quickly.
-
-### Detection: an implicit generic failure
-
-When the two parties hold different secrets, the authenticated handshake simply
-**fails closed** -- the same failure a wrong secret, a tampered frame, or an
-active impersonation attempt produces. That shows as one generic
-authentication failure with no way to distinguish "we rotated out of sync" from
-"someone is attacking this exchange": the web handshake wrapper re-tags every
-trust failure as a single `security`-kind error (on the one-shot and managed
-flows, see
-[SECURITY_DESIGN.md](SECURITY_DESIGN.md#recurring-web-exchanges-single-use-vs-managed)). A managed
-exchange makes this ambiguity operationally sharper than the one-shot flow does,
-because a desync is a recurring-partnership event an operator will hit in
-normal operation, not a one-time setup slip.
+After every run both sides change the shared secret. If only one side saves the
+change, or a browser loses its copy and restores an older one, the two sides hold
+different secrets: they are out of sync, and their next run fails. A failed
+handshake looks the same whether the cause is that or an attack, so this section
+says how the app tells them apart and how you recover. The design behind it:
+[Desync detection and recovery](notes/managed-exchange-design.md#desync-detection-and-recovery).
 
 ### A missed window is neither desync nor attack
 
@@ -1640,37 +1349,13 @@ A pattern of missed windows is a coordination problem, resolved out-of-band
 where the schedule itself was agreed -- reported, not auto-paused (see [Retry
 and repeated misses](#retry-and-repeated-misses)).
 
-### The grace window
-
-A grace-window mitigation for a rotation desync -- on a handshake failure,
-briefly also accept the **previous** rotated secret, so a one-sided persist
-failure self-heals on the next run instead of forcing a re-invite -- is a
-core-level change deferred to a later, separately-reviewed step, and is **not
-implemented anywhere** (neither the CLI nor core accepts a previous secret; the
-only current handling is the re-invite recovery procedure, with the
-rotation-in-flight marker that names a probable partial rotation; see [A missed
-window is neither desync nor attack](#a-missed-window-is-neither-desync-nor-attack)). The first managed
-release ships with implicit-only detection plus the explicit recovery
-affordance below.
-
-The grace window belongs in core rather than the web app, and later rather than
-first, because it is a threat-model change: it widens the active-impersonation
-window for a leaked secret (it accepts an extra, older secret), so both the CLI
-and the web app should inherit one reviewed implementation rather than diverge on
-a web-first version. Fast re-invite already closes the operational gap without
-it, so the first release is not blocked on it. The anticipated core shape is a
-brief **two-secret rotation window** -- retaining the previous secret during
-rotation -- which stays deferred and is not designed here.
-
 ### Telling a desync from an attack
 
-Without a grace window, the design cannot *cryptographically* distinguish a
-desync from an attack -- both are the same failed handshake. What the managed UX
-does is **tier the response by what the record already knows**, so the operator
-faces the full confirmation machinery only when nothing else explains the
-failure. The tiers read the record's evidence, not the operator's presence: a
-failure from an unattended run is reported through the same tiers at the
-operator's next visit.
+When a handshake fails, the app answers by what this exchange's record already
+knows, so you face the full confirmation only when nothing else explains the
+failure. A failure from a scheduled run is reported the same way at your next
+visit. Why it works this way: [Telling a desync from an
+attack](notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 
 **Tier 1: local evidence explains the failure.** When the record holds a benign
 explanation -- a recorded persist failure on the last run (the structured
@@ -1679,20 +1364,13 @@ last successful run, or a lapsed age bound (which never even reaches here; see
 [Expiry is its own state](#expiry-is-its-own-state-never-routed-through-attack-framing))
 -- the failure shows as that specific benign state with its specific
 recovery, which for each of them is re-invite, **without** the attack
-checklist. The record's
-run bookkeeping is structured enums precisely so this tier can be derived
-rather than guessed.
+checklist.
 
 **Tier 2: no local explanation.** A handshake failure with no recorded benign
-cause gets the full out-of-band confirmation. The managed record still supplies
-context -- an established partnership that has succeeded many times reads
-differently from one that never completed a run -- but the operator must now do
-real work, because naming benign causes first is exactly the reading an active
-impersonator wants the operator to reach, and "did you also see a failure" is a
-question an adversary who just caused the failure can predict will be answered
-yes. The confirmation is therefore delivered as a **forwardable, pre-filled
-out-of-band message** the operator sends to the partner -- not prose the
-operator synthesizes under stress -- asking the partner:
+cause gets the full out-of-band confirmation. The page still shows context: an
+established partnership that has succeeded many times reads differently from one
+that never completed a run. The confirmation is a **forwardable, pre-filled
+message** you send to your partner over another channel, asking them:
 
 - to confirm their identity on the out-of-band channel, not just reply;
 - what their own tool reported, and when -- establishing that a real failure
@@ -1700,27 +1378,26 @@ operator synthesizes under stress -- asking the partner:
   failure alone;
 - whether they ran the exchange from more than one place (a second browser or
   profile, another device, a restored backup): an accidental self-fork is
-  indistinguishable at the other party from an attack (see [Single-device
-  ownership](#single-device-ownership)), and this question is the only way to
+  indistinguishable at the other party from an attack (see [Running from one
+  device](#running-from-one-device)), and this question is the only way to
   expose it.
 
 The partner's reply feeds a **two-outcome gate**, not a free-form judgment:
 "the partner confirmed a real failure on their side" proceeds to re-invite;
 "something does not add up" is treated as compromise and routes to the
-[compromise response](SECURITY_DESIGN.md#compromise-response). The accurate
-framing is the CLI's posture: the tool reports the failure and structures the
-confirmation, but the operator, not the tool, makes the desync-versus-attack
-call out-of-band.
+[compromise response](SECURITY_DESIGN.md#compromise-response). The app reports
+the failure and structures the confirmation; you make the call, with your
+partner.
 
 Once given, a compromise response is kept with the exchange, wherever it was
 given: a later run that fails the same way does not put the question again, a
 reload and the next visit find it as the operator left it, and no control on the
-exchange's page offers a fresh invitation while it stands -- neither the
+exchange's page offers a fresh invitation while it stands, neither the
 failure's own recovery nor the configuration section's re-invite on the same
-terms -- since minting one on that channel is the act the response names as the
-wrong one. A page left open from before the answer was given is held by the same
+terms, since creating one on that channel is the act the response names as
+the wrong one. A page left open from before the answer was given is held by the same
 rule: the write that would rotate the secret reads the exchange itself and
-refuses, so a second tab cannot mint past an answer it never saw.
+refuses, so a second tab cannot create one past an answer it never saw.
 
 The schedule is held by it as well. A window that falls due while the response
 stands is **skipped**: the runner connects to nobody and rotates nothing, since a
@@ -1734,9 +1411,8 @@ The schedule resumes at the next due window the moment one of the three acts
 below clears the answer.
 
 Running the exchange from the page is left available under the response, with its
-warning standing over the control. The difference is who decides: an attended run
-is the operator's own act, taken with what the response says in front of them,
-while a scheduled one would be taken by a machine with nobody watching.
+warning standing over the control: you decide that run yourself, with the
+warning in front of you.
 
 It is kept where the standing condition is kept, so exactly the three acts that
 clear a standing condition clear it too, and nothing else does. The one the
@@ -1749,18 +1425,18 @@ what the response is for.
 The answer covers the failure it was given at. Where a run since then failed the
 same way, that later failure is one the operator has confirmed nothing about, so
 the acknowledgement puts its gate rather than the invitation: the two-outcome
-gate is asked once per failure, and no control mints while one of them is
-unanswered.
+gate is asked once per failure, and no control creates an invitation while one
+of them is unanswered.
 
 A run in flight withholds the same two controls for an unrelated reason and on
 its own schedule: while a run of this exchange is under way anywhere in the
 browser profile -- this tab, another tab, or its schedule -- a fresh invitation
-would replace the secret the run is connecting on, so neither control mints one
-until the run ends. Nothing here is answered away the way the compromise
+would replace the secret the run is connecting on, so neither control creates
+one until the run ends. Nothing here is answered away the way the compromise
 response is: the withhold lifts on its own once the run finishes, whatever it
-finished with. Nothing rests on the reading: the mint's own write takes the run's
-lock before it replaces the secret, so a run started since the page last read that
-state refuses the mint in the same words the withholding uses. The control
+finished with. Nothing rests on the reading: creating the invitation takes the
+run's lock before it replaces the secret, so a run started since the page last
+read that state refuses it in the same words the withholding uses. The control
 re-checks the reading at the click as well, which puts the reason on screen
 without waiting for that refusal.
 
@@ -1797,16 +1473,15 @@ The recovery path is **fast re-invite**, the same recovery the CLI uses for a lo
 or out-of-sync token (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#recurring-exchange-authentication)). Both
 parties discard the desynced secret and re-establish one from a fresh invitation.
-"Fast" means the managed exchange retains everything a re-invite needs that is
-**not** the secret -- the exchange-file document, with its terms and rendezvous
-locator -- so a re-invite reuses the standing definition and only re-mints and
-re-exchanges the setup secret, rather than re-authoring the exchange from
-scratch. This makes re-invite cheap enough to be the first-line recovery,
-which is what lets the first release ship without the grace window.
+It is fast because the saved exchange keeps everything a re-invite needs except
+the secret: its terms and where the two of you connect. A re-invite reuses them
+and only creates and sends a new setup secret, without setting the exchange up
+again.
 
 The two sides recover differently, and only one has cleanup to do. The inviter
-re-mints from its stored document, which rotates that record in place. The
-acceptor cannot mint an invitation in the inviter's namespace, so it recovers by
+creates the new invitation from its saved exchange, which replaces that
+exchange's secret in place. The acceptor cannot create an invitation for the
+inviter's exchange, so it recovers by
 accepting a fresh one -- and saving that accepted invitation adds a **new**
 recurring exchange rather than updating the superseded one: nothing links an
 accept to a stored partnership, and no duplicate is detected, merged, or retired.
@@ -1817,19 +1492,12 @@ superseded exchange once the fresh one is saved. It stays the operator's own act
 on their own record store -- nothing is deleted for them, and nothing blocks the
 second exchange from being saved.
 
-Cheap recovery has a cost that must be named. Every re-invite puts a fresh live
-setup secret on the out-of-band channel, so over a partnership's life the
-invitation-confidentiality requirement (see [Invitation contents and
-confidentiality](SECURITY_DESIGN.md#invitation-contents-and-confidentiality))
-is **ongoing, not one-time** -- each re-invite is a fresh invitation-in-transit
-exposure on a channel whose security must still hold. And an adversary who can
-provoke handshake failures, or who is exploiting the desync ambiguity itself,
-can farm an operator who re-invites on autopilot for fresh secrets over a
-channel the adversary may already have compromised. The confirmation checklist
-above is what breaks that loop -- it is why the confirmation must verify a real
-partner-side failure rather than rubber-stamp the benign reading. This trade --
-cheap recovery against repeated secret-in-transit exposure -- is accepted by
-design.
+Every re-invite puts a fresh setup secret on the channel you send invitations
+over, so that channel has to stay trusted for as long as the partnership lasts
+(see [Invitation contents and
+confidentiality](SECURITY_DESIGN.md#invitation-contents-and-confidentiality)).
+Send a re-invite only after the confirmation above, never as a reflex to a
+failure.
 
 ## What the setup consent covers across runs
 
@@ -1881,11 +1549,10 @@ A re-invite reopens **the secret, not the agreement**. On the inviter's side
 nothing is re-authored: the fresh invitation is composed from the stored
 document alone, reusing its linkage terms, with the columns it sends stated
 from its stored metadata as a first invitation states them, and the setup
-secret is the only part newly minted --
-alongside a rendezvous locator rebuilt from where the app is running and the
-invitation's own fresh setup lifetime (see [Recovery: fast
+setup secret is the only new part, alongside a rendezvous locator rebuilt from
+where the app is running and the invitation's own fresh setup lifetime (see [Recovery: fast
 re-invite](#recovery-fast-re-invite)). The accepting side is not a no-op,
-though. Only the inviter can re-mint from a stored document, so the partner's
+though. Only the inviter can create one from a saved exchange, so the partner's
 route is to accept a fresh invitation: it walks the accept flow again and
 re-enters its own local fields -- its name, its metadata, its standardization
 -- none of which are terms the two parties agreed. The columns it receives land
@@ -1894,21 +1561,11 @@ sends that set, not because anything checks the new invitation against the old;
 no such comparison exists, so an acceptor reviews a fresh invitation on its own merits,
 exactly as at setup.
 
-What a re-run is authenticated against is **continuity of the shared secret**,
-and nothing else. Each side proves it holds the current rotated secret, the
-handshake fails closed if either does not, and the rendezvous the two runners
-meet at is itself derived from that secret -- so a run's whole claim to be the
-agreed partnership is that the secret has descended unbroken from the one
-exchanged at setup (see [Key-agreement
-design](SECURITY_DESIGN.md#key-agreement-design)). What that does not include
-is a verified counterparty identity: the exchange authenticates
-possession of the secret, never who holds it, and no partner certificate or
-fingerprint is checked on this path. A leaked or copied secret therefore
-permits impersonation until the partnership rotates past it (see the
-[compromise response](SECURITY_DESIGN.md#compromise-response)), and a handshake
-that fails cannot by itself say whether the two sides drifted apart or someone
-is attacking the exchange (see [Telling a desync from an
-attack](#telling-a-desync-from-an-attack)).
+A later run proves only that both sides still hold the shared secret descended
+from the one exchanged at setup; it does not verify who your partner is. A
+leaked or copied secret lets someone else take your partner's place until a run
+replaces it (see [What a re-run is authenticated
+against](notes/managed-exchange-design.md#what-a-re-run-is-authenticated-against)).
 
 ### Changing the terms of a saved exchange
 
@@ -2178,8 +1835,9 @@ reads them.
 
 ## Surviving storage eviction
 
-Browser storage is not durable the way a file on disk is. The design must survive
-**silent** eviction, not just crashes.
+Browser storage is not durable the way a file on disk is. The browser can
+delete it **silently**, with no crash and no warning, so the backup you keep
+outside the browser is what restores the exchange.
 
 ### The eviction threat
 
@@ -2198,7 +1856,7 @@ The browser behaviors described here (Safari's seven-day cap on script-writable 
   prompts the user, Chromium grants or denies silently on engagement heuristics
   (installed PWA, bookmarked, high engagement), and a grant can later be revoked.
   On WebKit a granted `persisted()` flag must **not** let the backup state below
-  read as covered: the grant does not reliably exempt the ITP cap. The design
+  read as covered: the grant does not reliably exempt the ITP cap. The app
   requests persistence but never assumes it.
 - General **storage-pressure eviction** can clear non-persistent origins under
   disk pressure regardless of browser.
@@ -2214,31 +1872,25 @@ an export the operator holds outside the browser**, not the IndexedDB copy. The
 managed exchange can be exported to a file the operator keeps in their own
 secure storage and re-imported to reconstitute the exchange after an eviction.
 It is the same artifact, with the same custody model and the same
-migration-not-sync semantics, as a device move (see [Export/import is migration,
-not sync](#exportimport-is-migration-not-sync)): an import re-establishes the one
-owner. A backup export differs only in leaving the source live.
+handling, as a device move (see [Moving the exchange to another
+device](#moving-the-exchange-to-another-device)): an import re-establishes the
+one owner. A backup export differs only in leaving the source live.
 
 Re-export is prompted by the attended run's completion surface and by the backup
 state below. An unattended run rotates with nobody present: where the exchange's
 working folder can take the backup, the run writes it there itself, and
 otherwise its rotation flips the backup state to actionable at the next visit.
 
-### Moment-anchored backup surfaces
+### The backup state
 
-Eviction is silent, so the UI must not be -- but a warning that is always on
-trains the operator to click through the one that matters. The design therefore
-collapses persistence status into **one derived backup state**, shown at the
-moments it changes rather than as standing chrome:
+Each exchange shows one backup state, which changes only when a backup is taken
+or the secret changes. Why it is shown this way: [Moment-anchored backup
+surfaces](notes/managed-exchange-design.md#moment-anchored-backup-surfaces).
 
 - **Backed up.** A current export exists (taken since the last rotation): the
   exchange shows a quiet, green "backed up as of <date>", naming where that
   backup went -- downloaded as its file name, or written to the working folder
-  under it -- and nothing else. The
-  browser's storage grant (`navigator.storage.persisted()`) is never its own
-  displayed line -- the operator cannot act on it except by exporting, which
-  the backup state already covers -- and on WebKit a granted `persisted()` must
-  never suppress the actionable state below (the grant does not reliably exempt
-  the ITP cap). The export that counts is the artifact one, which this browser
+  under it -- and nothing else. The export that counts is the artifact one, which this browser
   imports back: the command-line hand-off's two files are not it, and taking them
   leaves this state exactly where it stands (see [Exporting to the command
   line](#exporting-to-the-command-line)).
@@ -2254,12 +1906,10 @@ so taking it there keeps that path green and quiet. An unattended scheduled run
 rotates the secret with nobody present. Where the exchange's working folder can
 take it, the run writes the backup there and the exchange stays green (see [The
 backup a scheduled run writes](#the-backup-a-scheduled-run-writes)). Otherwise a
-scheduled exchange's standing export goes stale between visits **by design**;
-the backup state states that accurately -- actionable at the next visit, a
-state, not a nag -- and an OS-level notification from the installed app prompts
+scheduled exchange's backup goes stale between visits. The backup state says so
+at your next visit, and an OS-level notification from the installed app prompts
 a re-export sooner (see [The between-visit
-notification](#the-between-visit-notification)). The frame throughout: every
-accurate statement appears at the moment it becomes true and actionable.
+notification](#the-between-visit-notification)).
 
 ### The backup a scheduled run writes
 
@@ -2318,10 +1968,6 @@ files, and keep
 the folder used for nothing else: anyone who can read it can read the current
 secret, as with the command line's `.alcove.key` in its working directory (see
 [SECURITY_DESIGN.md](SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges)).
-
-The in-browser copy is treated as convenience and the exported credential
-file as the durability of record, so an operator is never surprised by a silent
-eviction they were implicitly told could not happen.
 
 ### Eviction recovery is the import flow
 
@@ -2408,12 +2054,13 @@ re-invite -- and it is not secret expiry: an age bound (when set) caps how long
 the stored secret stays usable, while deletion removes this party's stored
 information entirely, whatever the secret's state. One custody note: deletion
 covers the browser's storage only; an exported backup file is under the
-operator's own custody and is disposed of by the operator (see [Export/import is
-migration, not sync](#exportimport-is-migration-not-sync) for what it remains
-until then).
+operator's own custody and is disposed of by the operator (see [Moving the
+exchange to another device](#moving-the-exchange-to-another-device) for what it
+remains until then).
 
 ## See also
 
+- [managed-exchange-design.md](notes/managed-exchange-design.md) - why a recurring web exchange is designed the way it is: who it serves, the automation goal, the durability contract, single-device ownership, and telling a desync from an attack
 - [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md) - the record's shape (the exchange-file document plus local fields), the persist-before-success step sequence, and the export artifact's custody model
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges) - the browser at-rest threat model, the discard-secret reversal, the rollback and metadata-at-rest analyses, and the egress-hardening limits
 - [SECURITY_DESIGN.md](SECURITY_DESIGN.md#recurring-exchange-authentication) - the shared-secret rotation, `token_max_age_days`, and re-invite recovery the managed lifecycle reuses

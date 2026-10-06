@@ -5,8 +5,8 @@
  * "backup needed" -- the previous backup went stale at that moment -- so the
  * completion surface offers "download updated backup" as the natural final step,
  * and with a fresh backup taken the exchange shows green and quiet, no standing
- * warnings (see docs/MANAGED_EXCHANGE.md, "The second run, end to end" and
- * "Moment-anchored backup surfaces").
+ * warnings (see docs/MANAGED_EXCHANGE.md, "The second run, end to end", and
+ * docs/notes/managed-exchange-design.md, "Moment-anchored backup surfaces").
  *
  * The backup export artifact -- its format and custody model -- is a later item's
  * scope, so the export itself is not built here: the surface takes an INJECTABLE

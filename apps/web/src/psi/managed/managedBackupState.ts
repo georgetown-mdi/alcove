@@ -1,7 +1,7 @@
 /**
  * The one derived backup state a managed exchange shows (see
- * docs/MANAGED_EXCHANGE.md, "Moment-anchored backup surfaces"): a quiet green
- * "backed up as of <date>" when a current export exists, or one actionable "Back up
+ * docs/notes/managed-exchange-design.md, "Moment-anchored backup surfaces"): a
+ * quiet green "backed up as of <date>" when a current export exists, or one actionable "Back up
  * this exchange" when none does. This module is the pure derivation; the local
  * marker it reads is stored beside the record (see {@link ./managedLocalState.ts}),
  * never in the record and never in the export artifact -- the record schema is

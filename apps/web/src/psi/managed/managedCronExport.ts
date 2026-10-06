@@ -3,7 +3,7 @@
  * composed into the two files `alcove exchange` opens -- `alcove.yaml` and
  * `.alcove.key` -- plus the command that runs them, letting an operator with
  * a host scheduler move a managed exchange onto the CLI
- * (docs/MANAGED_EXCHANGE.md, "Who this is for").
+ * (docs/notes/managed-exchange-design.md, "Who this is for").
  *
  * This module is the pure half -- no download, no store write, no spend; the
  * one thing it reads beyond the record is this browser's relay settings,

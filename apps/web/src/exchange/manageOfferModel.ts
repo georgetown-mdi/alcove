@@ -346,8 +346,8 @@ export function retentionNoteValue(note: string): string | undefined {
 
 /** What saving does and what it needs, stated on the offer: a saved exchange
  * runs on a schedule only in this browser, and only while the installed app is
- * open during a window (docs/MANAGED_EXCHANGE.md, "The automation goal and its
- * platform envelope"). */
+ * open during a window (docs/notes/managed-exchange-design.md, "The automation
+ * goal and its platform envelope"). */
 export const SAVE_OFFER_SCHEDULE_NOTE =
   "Once saved, it can run on a schedule you agree with your partner, in this " +
   "browser: the installed Alcove app must be open during each run window, or " +

@@ -217,9 +217,9 @@ pull request that arms a marker:
 
 - **The `--source-ref` recorded matches what the fork's default branch is
   called.** It is checked independently of `--source-digest`: an attestation
-  minted on a branch fails a `refs/heads/master` verification even when the
-  two refs point at the same commit -- a fast-forwarded branch run still
-  fails this way even though its commit already sits on `master` -- and the
+  issued on a branch fails a `refs/heads/master` verification even when the
+  two refs point at the same commit (a fast-forwarded branch run still
+  fails this way even though its commit already sits on `master`), and the
   failure looks like tampering.
 
 If either surprises, the correct response is to leave the marker disarmed and
