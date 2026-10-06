@@ -77,9 +77,7 @@ export { MAX_TIMEOUT_SECONDS };
  * repeat (via {@link singleValue}) and a malformed or bare-integer value (via
  * {@link parseDurationFlag}), naming the flag in either error. A value above
  * `maxSeconds` is rejected with a flag-named usage error stating the maximum,
- * followed by `ceilingMeaning` in parentheses when given. A flag that arms a
- * timer passes a ceiling no greater than {@link MAX_TIMER_MS}; a flag that does
- * not, such as an invitation lifetime, passes its own bound.
+ * followed by `ceilingMeaning` in parentheses when given.
  *
  * {@link parseDurationFlag} yields a positive millisecond offset whose smallest
  * unit is seconds, so the divide-by-1000 to seconds is always exact.
@@ -135,7 +133,8 @@ export function durationFlagMs(
   const ms = parseFineDurationFlag(`--${name}`, String(raw));
   if (ms > MAX_TIMER_MS)
     throw new UsageError(
-      `--${name} must not exceed ${String(MAX_TIMER_MS)}ms (about 24 days); ` +
+      `--${name} must not exceed ${String(MAX_TIMER_MS)}ms ` +
+        `(about ${String(Math.floor(MAX_TIMER_MS / 86_400_000))} days); ` +
         `got ${String(raw)}`,
     );
   return ms;

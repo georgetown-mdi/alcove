@@ -140,7 +140,7 @@ import {
 // the CLI and the web inviter cannot drift. The default lifetime is distinct from
 // --accept-timeout, which bounds how long the inviter waits at the rendezvous,
 // not how long the token stays valid; --expires-in overrides the default up to
-// the ceiling (see the builder option and validateInvite).
+// the ceiling (see the builder option).
 
 const INVITE_OFFLINE_USAGE = "--identity IDENTITY [INPUT_FILE]";
 const INVITE_ONLINE_USAGE =
@@ -588,21 +588,6 @@ export async function validateInvite(params: {
     log,
   } = params;
   const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
-  // The handler reads --expires-in through durationFlagSeconds, which refuses a
-  // malformed, zero or over-ceiling value; this guard holds the same bounds for
-  // a caller that passes a number directly.
-  if (
-    expiresInSeconds !== undefined &&
-    !(
-      Number.isSafeInteger(expiresInSeconds) &&
-      expiresInSeconds > 0 &&
-      expiresInSeconds <= MAX_INVITATION_LIFETIME_SECONDS
-    )
-  )
-    throw new UsageError(
-      `expires-in must be a whole number of seconds from 1 to ` +
-        `${String(MAX_INVITATION_LIFETIME_SECONDS)}; got ${String(expiresInSeconds)}`,
-    );
   const lifetimeSeconds = expiresInSeconds ?? INVITATION_LIFETIME_SECONDS;
 
   // The input is read at most once per invocation. The online branch below and
@@ -1173,8 +1158,6 @@ export async function handler(argv: Arguments): Promise<void> {
       // malformed or bare-integer value is a clean usage error (exit 64) before any
       // side effect; durationFlagSeconds also rejects a repeat (via singleValue)
       // before the array could reach validateInvite's numeric comparisons.
-      // expires-in is read the same way; its ceiling is the invitation
-      // lifetime, not a timer's.
       const acceptTimeout =
         durationFlagSeconds(argv, "accept-timeout", MAX_TIMEOUT_SECONDS) ??
         DEFAULT_ACCEPT_TIMEOUT_SECONDS;

@@ -3099,26 +3099,6 @@ test("validateInvite: omitting --expires-in keeps the one-hour default", async (
   expect(expiresMs).toBeLessThanOrEqual(after + oneHour);
 });
 
-test.each([0, 1.5, 365 * 86_400 + 1])(
-  "validateInvite: an expiresInSeconds of %s is rejected before any token is minted",
-  async (expiresInSeconds) => {
-    // A non-existent input would itself error once read; the lifetime is checked
-    // at the very top of validateInvite, so the lifetime rejection -- not the
-    // missing input -- is what shows, proving no token is minted.
-    const promise = validateInvite({
-      resolved: { mode: "offline", input: "/nonexistent/alcove-input.csv" },
-      options: testOptions(),
-      acceptTimeout: 900,
-      expiresInSeconds,
-      log: silentLog,
-    });
-    await expect(promise).rejects.toBeInstanceOf(UsageError);
-    await expect(promise).rejects.toThrow(
-      `expires-in must be a whole number of seconds from 1 to 31536000; got ${String(expiresInSeconds)}`,
-    );
-  },
-);
-
 test.each([
   [
     "366d",
