@@ -59,6 +59,8 @@ import {
 } from "../../../src/hostKeyTrust";
 import { answeringTtyStream, streamOf, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
+import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
+import { announceRetainMode } from "../../../src/config";
 import { captureStdio } from "../../loggingTestSupport";
 import {
   pathAsDisplayed,
@@ -107,6 +109,13 @@ vi.mock("@alcove/core", async (importActual) => {
       actual.assertFirstRoundWithinSetMaximum,
     ),
   };
+});
+
+// The retain-mode notice is spy-WRAPPED to plant an error at a step no catch of
+// its own surrounds.
+vi.mock("../../../src/config", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/config")>();
+  return { ...actual, announceRetainMode: vi.fn(actual.announceRetainMode) };
 });
 
 let existsSyncSpy: MockInstance;
@@ -2490,6 +2499,42 @@ test.each(["missing", "empty"])(
       stdio.restore();
       exitSpy.mockRestore();
       vi.unstubAllGlobals();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(ERROR_CLASS_EXIT_CODES)(
+  "handler: a step outside every named refusal exits $code on $planted",
+  async ({ plant, code }) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroexit-"));
+    const exitSpy = captureProcessExit();
+    try {
+      const input = path.join(dir, "input.csv");
+      fs.writeFileSync(
+        input,
+        "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+      );
+      vi.mocked(runProtocol).mockClear();
+      vi.mocked(announceRetainMode).mockClear();
+      vi.mocked(announceRetainMode).mockImplementationOnce(() => {
+        throw plant();
+      });
+      await expect(
+        handler({
+          _: ["sftp://userb@localhost:2222/drop", input],
+          $0: "alcove",
+          "config-file": path.join(dir, "alcove.yaml"),
+          "key-file": path.join(dir, ".alcove.key"),
+          record: false,
+          "log-level": "silent",
+        } as unknown as Arguments),
+      ).rejects.toThrow(`exit:${code}`);
+      expect(exitSpy).toHaveBeenCalledExactlyOnceWith(code);
+      expect(vi.mocked(announceRetainMode)).toHaveBeenCalledOnce();
+      expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+    } finally {
+      exitSpy.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   },

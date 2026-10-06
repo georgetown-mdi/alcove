@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { z } from "zod";
 
 import {
+  classifyFailure,
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
@@ -22,8 +23,6 @@ import type {
   FileSyncOptions,
   PreparedExchange,
 } from "@alcove/core";
-
-import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
   applyConnectionOverrides,
@@ -45,7 +44,7 @@ import {
   establishHostKeyTrust,
 } from "../hostKeyTrust";
 import { wakeProvisionedServer } from "../serverProvision";
-import { reportPersistenceLoss, type EventStreamEmitter } from "../eventStream";
+import { reportPersistenceLoss } from "../eventStream";
 import {
   relayRegistrarForRun,
   relayRegistrarLabel,
@@ -77,7 +76,7 @@ import {
 } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";
@@ -406,7 +405,10 @@ function readConfigDocument(configFile: string): unknown {
         configFile,
       )} does not exist; to create one, run 'alcove invite --identity IDENTITY URL INPUT_FILE' first`;
       throw Object.assign(
-        keepOperatorSuppliedText(new Error(message.text), message),
+        keepOperatorSuppliedText(
+          new OperatorConfigError(message.text),
+          message,
+        ),
         { code: "ENOENT" },
       );
     }
@@ -440,11 +442,38 @@ function refuseRetiredSettingBeforeProvisioning(configFile: string): void {
     throw invalidExchangeSpecError(configFile, new z.ZodError([retired]));
 }
 
-/** @internal exported for testing */
-export function loadConfig(options: ExchangeOptions): {
+/** The configuration and key file {@link loadConfig} reads, resolved. */
+type LoadedExchangeConfig = {
   connection: ProtocolConnectionConfig;
   authentication: AuthPersist;
-} & ExchangeDataSpec {
+} & ExchangeDataSpec;
+
+/**
+ * Read and validate the configuration and key file `options` name.
+ *
+ * @throws {UsageError} for any failure to load them (exit 64), since nothing
+ *   here touches a transport: a failure raised as some other class is wrapped
+ *   in one, keeping it as the `cause`. An `InternalConsistencyError` passes
+ *   through unwrapped (exit 70).
+ */
+export function loadConfig(options: ExchangeOptions): LoadedExchangeConfig {
+  try {
+    return readExchangeConfig(options);
+  } catch (err) {
+    const failureClass = classifyFailure(err);
+    if (failureClass === "usage-error" || failureClass === "internal-fault")
+      throw err;
+    const message = messageWithOperatorText`config file ${operatorSuppliedText(
+      options.configFile,
+    )} could not be loaded`;
+    throw keepOperatorSuppliedText(
+      new UsageError(message.text, { cause: err }),
+      message,
+    );
+  }
+}
+
+function readExchangeConfig(options: ExchangeOptions): LoadedExchangeConfig {
   const log = getLogger("exchange");
 
   const rawConfig = readConfigDocument(options.configFile);
@@ -1047,172 +1076,142 @@ export async function handler(argv: Arguments): Promise<void> {
   );
 
   try {
-    try {
+    await runOrExit(log, async () => {
       assertRetainSweepGuard(sweepExchangeFiles, forceRetainSweep);
-    } catch (err) {
-      exitWithError(log, err, 64);
-    }
-    warnIfCommandLineHoldsLiteralCredential(
-      commandLineLiteralCredentials(
-        argv,
-        undefined,
-        BOOTSTRAP_CREDENTIAL_FLAGS,
-      ),
-      log,
-    );
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(
+          argv,
+          undefined,
+          BOOTSTRAP_CREDENTIAL_FLAGS,
+        ),
+        log,
+      );
 
-    // Provision the key file from --invitation before loadConfig reads it: the
-    // party that composed the exchange in the web app has a config with no
-    // secret, so this decodes the invitation code (fail-closed on checksum,
-    // schema, or expiry) and writes its own key-file copy -- shared secret and
-    // expiry -- then the exchange proceeds as usual, injecting the secret from
-    // that key file. A malformed/expired code or a pre-existing key file is a
-    // usage error (exit 64), raised before anything is written or connected.
-    if (invitation !== undefined) {
-      try {
+      // Provision the key file from --invitation before loadConfig reads it: the
+      // party that composed the exchange in the web app has a config with no
+      // secret, so this decodes the invitation code (fail-closed on checksum,
+      // schema, or expiry) and writes its own key-file copy -- shared secret and
+      // expiry -- then the exchange proceeds as usual, injecting the secret from
+      // that key file. A malformed/expired code or a pre-existing key file is a
+      // usage error (exit 64), raised before anything is written or connected.
+      if (invitation !== undefined) {
         refuseRetiredSettingBeforeProvisioning(options.configFile);
         await provisionKeyFileFromInvitation(invitation, options.keyFile);
-      } catch (err) {
-        exitWithError(log, err, exitCodeForError(err));
       }
-    }
 
-    let configResult: ReturnType<typeof loadConfig>;
-    try {
-      configResult = loadConfig(options);
-    } catch (err) {
-      // A missing, unreadable, or malformed config or key file is a usage
-      // error whatever it was raised as: nothing here touches a transport.
-      const code = exitCodeForError(err);
-      exitWithError(log, err, code === INTERNAL_FAULT_EXIT_CODE ? code : 64);
-    }
-    const {
-      connection,
-      authentication: loadedAuthentication,
-      ...exchangeDataSpec
-    } = configResult;
+      const {
+        connection,
+        authentication: loadedAuthentication,
+        ...exchangeDataSpec
+      } = loadConfig(options);
 
-    // The registration signs with authentication.sharedSecret, the secret
-    // loaded before the run: the rotation rewrites the key file, not this object.
-    const relayRegistrar = relayRegistrarForRun(connection);
-    const unusedRegistrarNotice = relayRegistrarUnusedNotice(connection);
-    if (unusedRegistrarNotice !== undefined) log.info(unusedRegistrarNotice);
-    const authentication: AuthPersist =
-      relayRegistrar === undefined
-        ? loadedAuthentication
-        : { ...loadedAuthentication, relayRegistrationFollows: true };
-    const relayMaxAgeDays = authentication.tokenMaxAgeDays ?? null;
-    let relayRegistrationAttempted = false;
-    const registerRotatedKey = async (): Promise<boolean> => {
-      if (relayRegistrar === undefined || relayRegistrationAttempted)
-        return false;
-      relayRegistrationAttempted = true;
-      let result: RotatedRelayKeyResult;
-      try {
-        result = await registerRotatedRelayKey({
-          registrar: relayRegistrar,
-          preRotationSecret: authentication.sharedSecret,
-          keyFilePath: authentication.keyFilePath,
-          maxAgeDays: relayMaxAgeDays,
-        });
-      } catch (err) {
-        result = {
-          kind: "failed",
-          error: new Error(
-            "the relay key derived from the rotated shared secret could not " +
-              `be registered at ${relayRegistrarLabel(relayRegistrar)}; the ` +
-              "next run retries the registration before it dials",
-            { cause: err },
-          ),
-        };
-      }
-      return logRotatedRelayKey(result, relayRegistrar, log);
-    };
+      // The registration signs with authentication.sharedSecret, the secret
+      // loaded before the run: the rotation rewrites the key file, not this object.
+      const relayRegistrar = relayRegistrarForRun(connection);
+      const unusedRegistrarNotice = relayRegistrarUnusedNotice(connection);
+      if (unusedRegistrarNotice !== undefined) log.info(unusedRegistrarNotice);
+      const authentication: AuthPersist =
+        relayRegistrar === undefined
+          ? loadedAuthentication
+          : { ...loadedAuthentication, relayRegistrationFollows: true };
+      const relayMaxAgeDays = authentication.tokenMaxAgeDays ?? null;
+      let relayRegistrationAttempted = false;
+      const registerRotatedKey = async (): Promise<boolean> => {
+        if (relayRegistrar === undefined || relayRegistrationAttempted)
+          return false;
+        relayRegistrationAttempted = true;
+        let result: RotatedRelayKeyResult;
+        try {
+          result = await registerRotatedRelayKey({
+            registrar: relayRegistrar,
+            preRotationSecret: authentication.sharedSecret,
+            keyFilePath: authentication.keyFilePath,
+            maxAgeDays: relayMaxAgeDays,
+          });
+        } catch (err) {
+          result = {
+            kind: "failed",
+            error: new Error(
+              "the relay key derived from the rotated shared secret could not " +
+                `be registered at ${relayRegistrarLabel(relayRegistrar)}; the ` +
+                "next run retries the registration before it dials",
+              { cause: err },
+            ),
+          };
+        }
+        return logRotatedRelayKey(result, relayRegistrar, log);
+      };
 
-    // The field delimiter this run reads and writes by: --csv-delimiter for
-    // this one run, else the configuration's own csv_delimiter, else none --
-    // which reads and writes commas. Both values came through the same
-    // accepted-value rule, so neither can be a character the reader and the
-    // writer would disagree on.
-    const csvDelimiter = csvDelimiterForRun({
-      configured: exchangeDataSpec.csvDelimiter,
-      supplied: csvDelimiterArg,
-      configPath: options.configFile,
-      warn: (message) => log.warn(message),
-    });
+      // The field delimiter this run reads and writes by: --csv-delimiter for
+      // this one run, else the configuration's own csv_delimiter, else none --
+      // which reads and writes commas. Both values came through the same
+      // accepted-value rule, so neither can be a character the reader and the
+      // writer would disagree on.
+      const csvDelimiter = csvDelimiterForRun({
+        configured: exchangeDataSpec.csvDelimiter,
+        supplied: csvDelimiterArg,
+        configPath: options.configFile,
+        warn: (message) => log.warn(message),
+      });
 
-    // A certificate-mode run naming no signing identity is unrunnable from the
-    // parsed configuration alone, so it is refused here: ahead of the dataset
-    // preparation, and ahead of the first-use host-key step that opens a probe
-    // transport to the server and writes an accepted pin into alcove.yaml.
-    // Neither should happen on the way to telling an operator the run could
-    // never have finished.
+      // A certificate-mode run naming no signing identity is unrunnable from the
+      // parsed configuration alone, so it is refused here: ahead of the dataset
+      // preparation, and ahead of the first-use host-key step that opens a probe
+      // transport to the server and writes an accepted pin into alcove.yaml.
+      // Neither should happen on the way to telling an operator the run could
+      // never have finished.
 
-    // Beside it, the first contact whose configuration file cannot take the pin
-    // it would record: same inputs, same point, same exit code.
-    try {
+      // Beside it, the first contact whose configuration file cannot take the pin
+      // it would record: same inputs, same point, same exit code.
       assertSigningIdentityNamed(exchangeDataSpec.signing);
       assertPartnerFingerprintRecordable(
         exchangeDataSpec.signing,
         options.configFile,
       );
-    } catch (err) {
-      exitWithError(log, err, 64);
-    }
 
-    // Token expiry advisory baseline: was the token expiring soon at load time?
-    // This recheck uses a fresh clock just after loadConfig's hard stop, so in the
-    // (sub-millisecond) gap a token can tip from "expiring-soon" to "expired". That
-    // is handled, not guaranteed away: the advisory below is keyed on
-    // "expiring-soon" and self-skips on "expired", and runProtocol's pre-handshake
-    // assertSharedSecretReadyForHandshake aborts an expired token with the re-invite
-    // message before any handshake. The threshold comes from the max-age policy;
-    // without a policy it is undefined and the status is "ok" (never
-    // "expiring-soon"). Re-evaluated after the exchange to decide whether to warn
-    // (see shouldWarnTokenExpiring).
-    const warnThresholdDays = warnThresholdDaysForPolicy(
-      authentication.tokenMaxAgeDays,
-    );
-    const expiryBefore = checkKeyFileExpiry(
-      {
-        sharedSecret: authentication.sharedSecret,
-        expires: authentication.expires,
-      },
-      Date.now(),
-      { warnThresholdDays },
-    );
+      // Token expiry advisory baseline: was the token expiring soon at load time?
+      // This recheck uses a fresh clock just after loadConfig's hard stop, so in the
+      // (sub-millisecond) gap a token can tip from "expiring-soon" to "expired". That
+      // is handled, not guaranteed away: the advisory below is keyed on
+      // "expiring-soon" and self-skips on "expired", and runProtocol's pre-handshake
+      // assertSharedSecretReadyForHandshake aborts an expired token with the re-invite
+      // message before any handshake. The threshold comes from the max-age policy;
+      // without a policy it is undefined and the status is "ok" (never
+      // "expiring-soon"). Re-evaluated after the exchange to decide whether to warn
+      // (see shouldWarnTokenExpiring).
+      const warnThresholdDays = warnThresholdDaysForPolicy(
+        authentication.tokenMaxAgeDays,
+      );
+      const expiryBefore = checkKeyFileExpiry(
+        {
+          sharedSecret: authentication.sharedSecret,
+          expires: authentication.expires,
+        },
+        Date.now(),
+        { warnThresholdDays },
+      );
 
-    announceRetainMode(connection, log);
+      announceRetainMode(connection, log);
 
-    // termsIdentity is the identity this run PUTS IN THE AGREED TERMS, which is
-    // what a partner verifies a signed receipt's certificate against. It comes
-    // from --identity, else the loaded configuration's linkage_terms.identity,
-    // and is absent when neither names this party: the terms then hold no
-    // identity at all rather than a label the operator never chose. A blank flag
-    // value is what a scripted `--identity "$ORG"` sends with ORG unset, so it
-    // is treated as absent and leaves the configuration's own label standing.
-    let termsIdentity: string | undefined;
-    let flagIdentity: string | undefined;
-    try {
-      flagIdentity = optionalIdentity(options.identity);
-    } catch (err) {
-      // The one value the flag refuses rather than reads (the init template's
-      // identity placeholder) is a local usage fault decided before anything is
-      // sent, so it exits 64 here; the enclosing try has only a finally, so
-      // an escaping refusal would reach the top-level printer and exit 1.
-      exitWithError(log, err, 64);
-    }
-    if (flagIdentity !== undefined) {
-      termsIdentity = flagIdentity;
-      if (exchangeDataSpec.linkageTerms)
-        exchangeDataSpec.linkageTerms = {
-          ...exchangeDataSpec.linkageTerms,
-          identity: flagIdentity,
-        };
-    } else {
-      termsIdentity = exchangeDataSpec.linkageTerms?.identity;
-    }
-    try {
+      // termsIdentity is the identity this run PUTS IN THE AGREED TERMS, which is
+      // what a partner verifies a signed receipt's certificate against. It comes
+      // from --identity, else the loaded configuration's linkage_terms.identity,
+      // and is absent when neither names this party: the terms then hold no
+      // identity at all rather than a label the operator never chose. A blank flag
+      // value is what a scripted `--identity "$ORG"` sends with ORG unset, so it
+      // is treated as absent and leaves the configuration's own label standing.
+      let termsIdentity: string | undefined;
+      const flagIdentity = optionalIdentity(options.identity);
+      if (flagIdentity !== undefined) {
+        termsIdentity = flagIdentity;
+        if (exchangeDataSpec.linkageTerms)
+          exchangeDataSpec.linkageTerms = {
+            ...exchangeDataSpec.linkageTerms,
+            identity: flagIdentity,
+          };
+      } else {
+        termsIdentity = exchangeDataSpec.linkageTerms?.identity;
+      }
       assertNoConfigPlaceholder({
         value: exchangeDataSpec,
         path: [],
@@ -1223,13 +1222,8 @@ export async function handler(argv: Arguments): Promise<void> {
               "contact, or pass --identity, before running the exchange."
             : undefined,
       });
-    } catch (err) {
-      exitWithError(log, err, 64);
-    }
 
-    let prepared: PreparedExchange;
-    try {
-      prepared = await prepareDataset(
+      const prepared = await prepareDataset(
         exchangeDataSpec,
         termsIdentity,
         input,
@@ -1238,52 +1232,37 @@ export async function handler(argv: Arguments): Promise<void> {
         csvDelimiter,
         allowMemoryShortfall === true,
       );
-    } catch (err) {
-      // A usage error -- the `-`-at-an-interactive-terminal rejection
-      // openInputSource raises -- exits 64, and a missing input file 66.
-      exitWithError(log, err, exitCodeForError(err));
-    }
 
-    // Load the signing identity from the path the pre-flight above established
-    // the config names, before any credential, terms, or data are sent: a path
-    // holding no identity file fails here (exit 64) rather than after the
-    // handshake, and an identity bound to something other than this run's terms
-    // identity is refused while the run can still be stopped rather than after
-    // it has sent this party's data toward receipts the partner rejects. `null`
-    // when signing is not configured for certificate mode, which leaves the
-    // exchange unsigned.
-    let signing: SigningPersist | null;
-    try {
-      signing = await resolveSigningPersist(
+      // Load the signing identity from the path the pre-flight above established
+      // the config names, before any credential, terms, or data are sent: a path
+      // holding no identity file fails here (exit 64) rather than after the
+      // handshake, and an identity bound to something other than this run's terms
+      // identity is refused while the run can still be stopped rather than after
+      // it has sent this party's data toward receipts the partner rejects. `null`
+      // when signing is not configured for certificate mode, which leaves the
+      // exchange unsigned.
+      const signing: SigningPersist | null = await resolveSigningPersist(
         exchangeDataSpec.signing,
         termsIdentity,
         options.configFile,
       );
-    } catch (err) {
-      exitWithError(log, err, exitCodeForError(err));
-    }
 
-    // The config is already on disk and exchange does not re-write it, so a
-    // first-use host-key pin is written in place.
-    const hostKeyPersistence = {
-      mode: "write-now",
-      configPath: options.configFile,
-    } as const;
+      // The config is already on disk and exchange does not re-write it, so a
+      // first-use host-key pin is written in place.
+      const hostKeyPersistence = {
+        mode: "write-now",
+        configPath: options.configFile,
+      } as const;
 
-    // Every refusal above and here is decided from local inputs alone, so all
-    // of them come before the wake call and the host-key probe, the run's
-    // first network contact: runProtocol's own local checks (the
-    // --event-stream fd-3 preflight, the shared secret, the key-file path, the
-    // memory the round needs, the first round's size, and the webrtc
-    // rendezvous), which runProtocol runs again, then an unpinned SFTP host on
-    // a non-interactive run, refused with the stream open so the refusal is
-    // its terminal event.
-    let openedEventStream: EventStreamEmitter | undefined;
-    let signingWithoutRecordWarned = false;
-    let undeclaredColumnsWarned = false;
-    let memoryBudgetReported = false;
-    try {
-      ({
+      // Every refusal above and here is decided from local inputs alone, so all
+      // of them come before the wake call and the host-key probe, the run's
+      // first network contact: runProtocol's own local checks (the
+      // --event-stream fd-3 preflight, the shared secret, the key-file path, the
+      // memory the round needs, the first round's size, and the webrtc
+      // rendezvous), which runProtocol runs again, then an unpinned SFTP host on
+      // a non-interactive run, refused with the stream open so the refusal is
+      // its terminal event.
+      const {
         eventStream: openedEventStream,
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
@@ -1300,18 +1279,14 @@ export async function handler(argv: Arguments): Promise<void> {
         logFile,
         eventStream,
         allowMemoryShortfall,
-      }));
+      });
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
-    } catch (err) {
-      exitWithError(log, err, exitCodeForError(err));
-    }
 
-    // A rotation an earlier run made that the relay registrar did not confirm
-    // is retried here, after every local refusal and before the run's first
-    // contact with the partner: a relay that holds a key this run cannot mint
-    // under stops the run while the shared secret is still unchanged.
-    if (relayRegistrar !== undefined) {
-      try {
+      // A rotation an earlier run made that the relay registrar did not confirm
+      // is retried here, after every local refusal and before the run's first
+      // contact with the partner: a relay that holds a key this run cannot mint
+      // under stops the run while the shared secret is still unchanged.
+      if (relayRegistrar !== undefined) {
         const pendingSince = loadKeyFile(authentication.keyFilePath, {
           warnOnPermissive: false,
         })?.relayRegistrationPendingSince;
@@ -1329,136 +1304,125 @@ export async function handler(argv: Arguments): Promise<void> {
           });
           log.info(relayRegistrationNotice(relayRegistrar, confirmed));
         }
-      } catch (err) {
-        exitWithError(log, err, exitCodeForError(err));
       }
-    }
 
-    try {
       await wakeProvisionedServer(connection, log);
-    } catch (err) {
-      exitWithError(log, err, exitCodeForError(err));
-    }
 
-    // Establish SSH host-key trust: on an unpinned sftp config this prompts and
-    // pins on first interactive use. It is a no-op for a pinned config or a
-    // non-sftp channel, and its non-interactive refusal was made above.
-    try {
+      // Establish SSH host-key trust: on an unpinned sftp config this prompts and
+      // pins on first interactive use. It is a no-op for a pinned config or a
+      // non-sftp channel, and its non-interactive refusal was made above.
       await establishHostKeyTrust(connection, {
         verbosity,
         loggerName: "exchange",
         persistence: hostKeyPersistence,
       });
-    } catch (err) {
-      exitWithError(log, err, exitCodeForError(err));
-    }
 
-    const interactive = stdinAnswersPrompts(input);
-    let exchangeError: unknown;
-    try {
-      await runProtocol({
-        connection,
-        auth: authentication,
-        prepared,
-        output,
-        csvDelimiter,
-        verbosity,
-        loggerName: "exchange",
-        logFile,
-        writeRecord: options.record,
-        fileSyncRuntime: {
-          sweepExchangeFiles,
-          forceRetainSweep,
-          eventStream: openedEventStream,
-          ...(relayRegistrar !== undefined && {
-            onRemoteFollowUp: async () => {
-              if (await registerRotatedKey())
-                reportPersistenceLoss(
-                  "the relay registrar did not register the relay key " +
-                    "derived from the rotated shared secret; the exchange " +
-                    "and its results succeeded and must not be re-run, and " +
-                    "the error logged beside this notice names the registrar " +
-                    "and the next step",
-                  openedEventStream,
-                );
-            },
-          }),
-        },
-        signing,
-        recordPayloadReceiveFill: (columns) =>
-          persistFilledPayloadReceive(options.configFile, columns),
-        payloadReceiveFillNotice: (columns) =>
-          reportPayloadReceiveFill({
-            columns,
-            recordedIn: options.configFile,
-            unattendedWriter: interactive ? undefined : writePlainLine,
+      const interactive = stdinAnswersPrompts(input);
+      let exchangeError: unknown;
+      try {
+        await runProtocol({
+          connection,
+          auth: authentication,
+          prepared,
+          output,
+          csvDelimiter,
+          verbosity,
+          loggerName: "exchange",
+          logFile,
+          writeRecord: options.record,
+          fileSyncRuntime: {
+            sweepExchangeFiles,
+            forceRetainSweep,
             eventStream: openedEventStream,
+            ...(relayRegistrar !== undefined && {
+              onRemoteFollowUp: async () => {
+                if (await registerRotatedKey())
+                  reportPersistenceLoss(
+                    "the relay registrar did not register the relay key " +
+                      "derived from the rotated shared secret; the exchange " +
+                      "and its results succeeded and must not be re-run, and " +
+                      "the error logged beside this notice names the registrar " +
+                      "and the next step",
+                    openedEventStream,
+                  );
+              },
+            }),
+          },
+          signing,
+          recordPayloadReceiveFill: (columns) =>
+            persistFilledPayloadReceive(options.configFile, columns),
+          payloadReceiveFillNotice: (columns) =>
+            reportPayloadReceiveFill({
+              columns,
+              recordedIn: options.configFile,
+              unattendedWriter: interactive ? undefined : writePlainLine,
+              eventStream: openedEventStream,
+              log,
+            }),
+          onPayloadReceiveFill: payloadReceiveFillConfirmation({
+            configPath: options.configFile,
+            interactive,
             log,
+            logFile,
           }),
-        onPayloadReceiveFill: payloadReceiveFillConfirmation({
-          configPath: options.configFile,
-          interactive,
-          log,
-          logFile,
-        }),
-        onTermsChange: termsChangeHandler({
-          configPath: options.configFile,
-          keyPath: authentication.keyFilePath,
-          interactive,
-          log,
-          logFile,
-        }),
-        signingWithoutRecordWarned,
-        undeclaredColumnsWarned,
-        allowMemoryShortfall,
-        memoryBudgetReported,
-        writeOutcomeLine: outcomeLineWriter(log, writePlainLine),
-      });
-    } catch (err) {
-      // Capture rather than exit here so the expiry advisory below can run on the
-      // failure path too (the criterion is "expiring soon AND rotation did not
-      // refresh the token", which only a failed exchange leaves unsatisfied-by-
-      // refresh). The exit follows the advisory.
-      exchangeError = err;
-    }
+          onTermsChange: termsChangeHandler({
+            configPath: options.configFile,
+            keyPath: authentication.keyFilePath,
+            interactive,
+            log,
+            logFile,
+          }),
+          signingWithoutRecordWarned,
+          undeclaredColumnsWarned,
+          allowMemoryShortfall,
+          memoryBudgetReported,
+          writeOutcomeLine: outcomeLineWriter(log, writePlainLine),
+        });
+      } catch (err) {
+        // Capture rather than exit here so the expiry advisory below can run on the
+        // failure path too (the criterion is "expiring soon AND rotation did not
+        // refresh the token", which only a failed exchange leaves unsatisfied-by-
+        // refresh). The exit follows the advisory.
+        exchangeError = err;
+      }
 
-    // A run that failed after its key exchange rotated the shared secret still
-    // registers the rotated key while the pre-rotation key is in memory; its
-    // exit code stays the exchange's own.
-    if (exchangeError !== undefined) await registerRotatedKey();
+      // A run that failed after its key exchange rotated the shared secret still
+      // registers the rotated key while the pre-rotation key is in memory; its
+      // exit code stays the exchange's own.
+      if (exchangeError !== undefined) await registerRotatedKey();
 
-    // Emit the token-expiry advisory when the token was expiring soon at load and
-    // the exchange did not refresh it (a successful rotation stamps a fresh,
-    // farther-out expires, so the advisory would contradict runProtocol's "retry
-    // without re-inviting" guidance). The decision and message are built by
-    // tokenExpiringAdvisory, which re-reads the on-disk token.
-    let advisory: string | undefined;
-    try {
-      advisory = tokenExpiringAdvisory(
-        expiryBefore,
-        authentication.keyFilePath,
-        Date.now(),
-        warnThresholdDays,
-      );
-    } catch (err) {
-      // The advisory is best-effort. A re-read failure here (the file became
-      // unreadable or corrupt during the exchange; the load-time read had already
-      // validated it) is non-fatal -- record it at debug rather than let it mask
-      // the exchange's own outcome reported below.
-      log.debug(
-        "could not re-read the key file for the token-expiry advisory:",
-        sanitizeErrorForDisplay(err),
-      );
-    }
-    if (advisory !== undefined) log.warn(advisory);
+      // Emit the token-expiry advisory when the token was expiring soon at load and
+      // the exchange did not refresh it (a successful rotation stamps a fresh,
+      // farther-out expires, so the advisory would contradict runProtocol's "retry
+      // without re-inviting" guidance). The decision and message are built by
+      // tokenExpiringAdvisory, which re-reads the on-disk token.
+      let advisory: string | undefined;
+      try {
+        advisory = tokenExpiringAdvisory(
+          expiryBefore,
+          authentication.keyFilePath,
+          Date.now(),
+          warnThresholdDays,
+        );
+      } catch (err) {
+        // The advisory is best-effort. A re-read failure here (the file became
+        // unreadable or corrupt during the exchange; the load-time read had already
+        // validated it) is non-fatal -- record it at debug rather than let it mask
+        // the exchange's own outcome reported below.
+        log.debug(
+          "could not re-read the key file for the token-expiry advisory:",
+          sanitizeErrorForDisplay(err),
+        );
+      }
+      if (advisory !== undefined) log.warn(advisory);
 
-    if (exchangeError !== undefined)
-      exitWithError(log, exchangeError, exitCodeForError(exchangeError));
+      if (exchangeError !== undefined) throw exchangeError;
+    });
   } finally {
     // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path. Writes are synchronous and already
-    // durable, so exitWithError's process.exit (which bypasses this finally)
-    // loses nothing -- this is only factory/descriptor cleanup.
+    // file sink) on the normal exit path. runOrExit logs a failure before its
+    // process.exit, which bypasses this finally, so this is only
+    // factory/descriptor cleanup.
     closeLogging();
   }
 }

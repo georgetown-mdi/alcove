@@ -1,3 +1,5 @@
+import { UsageError } from "@alcove/core";
+
 import { positionalsBeforeDoubleDash } from "./util/positionals";
 
 /**
@@ -30,6 +32,18 @@ export const BARE_INVOCATION_SUMMARY =
   "  alcove doctor probe                         check a network file drop\n" +
   "Run 'alcove --help' for every command and option, or\n" +
   "'alcove COMMAND --help' for one command.";
+
+/**
+ * The refusal for a bare `alcove`, whose message is
+ * {@link BARE_INVOCATION_SUMMARY}: a fixed block of lines this build wrote,
+ * which `parseOrExit` prints as written rather than escaped.
+ */
+export class BareInvocationError extends UsageError {
+  constructor() {
+    super(BARE_INVOCATION_SUMMARY);
+    this.name = "BareInvocationError";
+  }
+}
 
 /** Levenshtein distance between two strings. */
 export function editDistance(a: string, b: string): number {

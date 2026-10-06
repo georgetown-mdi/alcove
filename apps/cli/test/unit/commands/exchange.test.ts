@@ -34,6 +34,7 @@ import type {
   PreparedExchange,
 } from "@alcove/core";
 import {
+  announceRetainMode,
   configWithNamedRuleSetRules,
   readConfigLinkageSource,
 } from "../../../src/config";
@@ -191,11 +192,13 @@ vi.mock("../../../src/signingIdentityFile", async (importActual) => {
 
 // The named-rule-set expansion is the first call in loadConfig outside a catch
 // that rewraps it, so it is spy-WRAPPED to plant an error the configuration
-// boundary has to classify on its own.
+// boundary has to classify on its own. The retain-mode notice is spy-WRAPPED
+// to plant an error at a step no catch of its own surrounds.
 vi.mock("../../../src/config", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/config")>();
   return {
     ...actual,
+    announceRetainMode: vi.fn(actual.announceRetainMode),
     configWithNamedRuleSetRules: vi.fn(actual.configWithNamedRuleSetRules),
   };
 });
@@ -1566,6 +1569,45 @@ test.each([
     }
   },
 );
+
+test.each(ERROR_CLASS_EXIT_CODES)(
+  "handler: a step outside every named refusal exits $code on $planted",
+  async ({ plant, code }) => {
+    fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+    saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+    vi.mocked(announceRetainMode).mockClear();
+    vi.mocked(announceRetainMode).mockImplementationOnce(() => {
+      throw plant();
+    });
+    await expectExchangeExit(
+      {
+        _: [],
+        $0: "alcove",
+        input: path.join(dir, "in.csv"),
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+      } as unknown as Arguments,
+      code,
+    );
+    expect(vi.mocked(announceRetainMode)).toHaveBeenCalledOnce();
+  },
+);
+
+test("handler: a configuration file that does not exist exits 64", async () => {
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  await expectExchangeExit(
+    {
+      _: [],
+      $0: "alcove",
+      input: path.join(dir, "in.csv"),
+      "config-file": path.join(dir, "absent.yaml"),
+      "key-file": keyFile,
+      "log-level": "silent",
+    } as unknown as Arguments,
+    64,
+  );
+});
 
 // --- handler: token-expiry advisory emission (wiring) ------------------------
 // These drive the handler through to the post-exchange advisory block, with
