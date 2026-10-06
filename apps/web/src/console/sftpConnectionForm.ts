@@ -185,7 +185,9 @@ export function applyHostInput(
   raw: string,
 ): SftpConnectionFormValues {
   const parsed = sftpUrlFieldsOf(raw);
-  if (parsed === null) return { ...values, host: raw };
+  if (parsed === null) {
+    return { ...values, host: raw.replace(/(\/\/)[^/@]*@/, "$1") };
+  }
   return {
     ...values,
     host: parsed.host,

@@ -101,6 +101,9 @@ describe("parseSftpUrl", () => {
   test("refuses a decoded host that is not a bare address", () => {
     for (const url of ["sftp://a%2Fb/", "sftp://a%40b/", "sftp://a%20b/"])
       expect(() => parseSftpUrl(url)).toThrow(/server name or IP address/);
+    expect(() => parseSftpUrl("sftp://a%C2%85b/x")).toThrow(
+      /server name or IP address/,
+    );
   });
 
   test("refuses a URL with no host, a query, a fragment, or another scheme", () => {
@@ -159,6 +162,9 @@ describe("isBareSftpHost", () => {
       "[::1]:22",
       "a\u0000b",
       "a\u007fb",
+      "a\u0085b",
+      "a\u202eb",
+      "a\u200bb",
     ])
       expect(isBareSftpHost(host)).toBe(false);
   });

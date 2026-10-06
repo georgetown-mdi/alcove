@@ -45,6 +45,12 @@ const authoringRequest = (values: SftpConnectionFormValues) =>
   buildAuthoringRequest(values, true);
 
 describe("applyHostInput", () => {
+  test("keeps a password out of the host field when the paste is not a valid URL", () => {
+    expect(
+      applyHostInput(EMPTY_SFTP_FORM, "sftp://u:secret@host/a?b").host,
+    ).not.toContain("secret");
+  });
+
   test("splits a pasted sftp URL across the fields", () => {
     const result = applyHostInput(
       EMPTY_SFTP_FORM,

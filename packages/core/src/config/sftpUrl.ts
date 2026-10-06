@@ -5,6 +5,7 @@ import {
   decodeUrlComponent,
   redactUrlCredentials,
 } from "../utils/urlComponents.js";
+import { NAME_CONTROL_CHAR_PATTERN } from "../utils/nameControls.js";
 
 // The URL form: docs/CLI.md#configuration.
 
@@ -40,7 +41,10 @@ export function isBareIpv6Address(host: string): boolean {
 // Userinfo (`@`), a scheme or path separator (`/`, which also rules out `://`),
 // the delimiters a WHATWG hostname setter truncates at or rejects (`#`, `?`,
 // `\`), the percent-encoding introducer, whitespace and control characters.
-const SFTP_HOST_DISALLOWED_CHAR = /[@/\\#?%\s\x00-\x1f\x7f]/;
+// The C1 controls and bidi formatting characters come from
+// NAME_CONTROL_CHAR_PATTERN; the zero-width characters are added here.
+const SFTP_HOST_DISALLOWED_CHAR =
+  /[@/\\#?%\s\x00-\x1f\x7f\u200b-\u200d\u2060\ufeff]/;
 
 const BRACKETED_HOST = /^\[([^[\]]*)\]$/;
 
@@ -52,7 +56,13 @@ const BRACKETED_HOST = /^\[([^[\]]*)\]$/;
  * invitation endpoint may state verbatim.
  */
 export function isBareSftpHost(host: string): boolean {
-  if (host === "" || SFTP_HOST_DISALLOWED_CHAR.test(host)) return false;
+  if (
+    host === "" ||
+    SFTP_HOST_DISALLOWED_CHAR.test(host) ||
+    NAME_CONTROL_CHAR_PATTERN.test(host)
+  ) {
+    return false;
+  }
   const bracketed = BRACKETED_HOST.exec(host);
   if (bracketed !== null) return isBareIpv6Address(bracketed[1]);
   if (host.includes("[") || host.includes("]")) return false;
