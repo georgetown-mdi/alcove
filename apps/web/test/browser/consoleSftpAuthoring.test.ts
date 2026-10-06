@@ -473,13 +473,35 @@ describe("console SFTP connection authoring", () => {
       .toBeDisabled();
   });
 
+  test("a typed sftp:// prefix stays in the host field", async () => {
+    stubJobApi();
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await page.getByRole("button", { name: "Add connection" }).click();
+    const host = page.getByLabelText("SFTP server address");
+    await userEvent.type(host, "sftp://");
+    await expect.element(host).toHaveValue("sftp://");
+    await expect
+      .element(page.getByText(UNREADABLE_HOST_PASTE))
+      .not.toBeInTheDocument();
+  });
+
   test("an unreadable pasted address empties the host field and says why at once", async () => {
     stubJobApi();
     app.render(createElement(InviterScreen));
     await reachReviewCreate();
     await page.getByRole("button", { name: "Add connection" }).click();
     const host = page.getByLabelText("SFTP server address");
-    await userEvent.fill(host, "sftp://u:se@cret@host/a?b");
+    await userEvent.click(host);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "sftp://u:se@cret@host/a?b");
+    host.element().dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
     await expect.element(host).toHaveValue("");
     await expect
       .element(page.getByText(UNREADABLE_HOST_PASTE))

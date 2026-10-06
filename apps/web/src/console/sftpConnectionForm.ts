@@ -180,24 +180,30 @@ function sftpUrlFieldsOf(input: string): SftpUrlFields | null {
   }
 }
 
-/** Apply a host-field input: when it is a full `sftp://` URL, split it across the
- * host, username, port, and remote-directory fields. An `sftp://` or `ssh://`
- * address core refuses, or any text holding login details (`@`), clears the
- * field and flags it, since the text may hold a password. Any other text is set
- * as the host so the operator can keep typing. A password in the URL is not
- * read: the credential is chosen as a file. */
-export function applyHostInput(
+/** Apply a typed change to the host field: the text is kept as typed, and a
+ * value that is not a bare host is reported by the form's bare-host check. */
+export function hostTyped(
   values: SftpConnectionFormValues,
   raw: string,
 ): SftpConnectionFormValues {
+  return { ...values, host: raw, hostPasteUnreadable: false };
+}
+
+/** Apply a paste into the host field: a full `sftp://` URL is split across the
+ * host, username, port, and remote-directory fields. An `sftp://` or `ssh://`
+ * address core refuses, or any text holding login details (`@`), clears the
+ * field and flags it, since the text may hold a password. Returns `undefined`
+ * for any other text, which the input then inserts as typed. A password in the
+ * URL is not read: the credential is chosen as a file. */
+export function hostPasted(
+  values: SftpConnectionFormValues,
+  raw: string,
+): SftpConnectionFormValues | undefined {
   const parsed = sftpUrlFieldsOf(raw);
   if (parsed === null) {
-    const unreadable = SFTP_URL_SCHEME.test(raw.trim()) || raw.includes("@");
-    return {
-      ...values,
-      host: unreadable ? "" : raw,
-      hostPasteUnreadable: unreadable,
-    };
+    if (!SFTP_URL_SCHEME.test(raw.trim()) && !raw.includes("@"))
+      return undefined;
+    return { ...values, host: "", hostPasteUnreadable: true };
   }
   return {
     ...values,

@@ -29,8 +29,9 @@ import {
 import styles from "@styles/app.module.css";
 
 import {
-  applyHostInput,
   buildAuthoringRequest,
+  hostPasted,
+  hostTyped,
   sftpFormError,
 } from "./sftpConnectionForm";
 import { SecretsFilePicker } from "./SecretsFilePicker";
@@ -186,11 +187,16 @@ export function SftpAuthoringForm({
           value={values.host}
           error={fieldError("host")}
           errorProps={{ role: "alert" }}
-          onChange={(event) =>
-            setValues((current) =>
-              applyHostInput(current, event.currentTarget.value),
-            )
-          }
+          onChange={(event) => {
+            const typed = event.currentTarget.value;
+            setValues((current) => hostTyped(current, typed));
+          }}
+          onPaste={(event) => {
+            const pasted = event.clipboardData.getData("text");
+            if (hostPasted(values, pasted) === undefined) return;
+            event.preventDefault();
+            setValues((current) => hostPasted(current, pasted) ?? current);
+          }}
         />
       )}
       <TextInput
