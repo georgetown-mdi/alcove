@@ -250,7 +250,17 @@ export async function runDevLoop({
   if (signalingPort !== undefined) {
     watchers.push(
       startWatcher(
-        ["run", "start", "-w", BROKER_WORKSPACE, "--", "--port", signalingPort],
+        [
+          "run",
+          "start",
+          "-w",
+          BROKER_WORKSPACE,
+          "--",
+          "--port",
+          signalingPort,
+          "--host",
+          "127.0.0.1",
+        ],
         {},
       ),
     );

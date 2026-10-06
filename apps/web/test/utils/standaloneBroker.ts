@@ -109,7 +109,16 @@ export async function startStandaloneBroker(
   const mountPath = "/api";
   const child = spawn(
     process.execPath,
-    [tsxCli, runner, "--path", mountPath, "--key", "peerjs"],
+    [
+      tsxCli,
+      runner,
+      "--path",
+      mountPath,
+      "--key",
+      "peerjs",
+      "--host",
+      "127.0.0.1",
+    ],
     { cwd: brokerRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
   const stop = trackChild(child);

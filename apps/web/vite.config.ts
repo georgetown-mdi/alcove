@@ -166,8 +166,13 @@ export function requireHostedSignalingServer({
     );
 }
 
-// This server mounts no broker, so its /api/ forwards to the standalone one.
-function devSignalingProxy(): Record<string, ProxyOptions> {
+// The dev server mounts no broker, so its /api/ forwards to the standalone one.
+// Dev only: `vite preview` and builds never install the proxy.
+export function devSignalingProxy({
+  command,
+  isPreview,
+}: Pick<ConfigEnv, "command" | "isPreview">): Record<string, ProxyOptions> {
+  if (command !== "serve" || isPreview === true) return {};
   const raw = process.env[DEV_SIGNALING_PORT_ENV];
   if (raw === undefined || raw === "") return {};
   const port = /^\d{1,5}$/.test(raw) ? Number(raw) : Number.NaN;
@@ -184,7 +189,7 @@ export default defineConfig((configEnv) => {
     server: {
       host: "127.0.0.1",
       port: config.PORT,
-      proxy: devSignalingProxy(),
+      proxy: devSignalingProxy(configEnv),
     },
     test: {
       // Run-level, not per-project: vitest reads these once for the run rather

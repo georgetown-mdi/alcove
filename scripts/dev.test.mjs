@@ -179,6 +179,8 @@ describe("the root dev loop", () => {
           "--",
           "--port",
           String(PICKED_PORT),
+          "--host",
+          "127.0.0.1",
         ],
         {},
       ],
