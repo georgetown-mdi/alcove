@@ -151,7 +151,7 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   filter_regex:
     "Drops values that do not match a pattern, removing them from matching.",
   split_on:
-    "Splits the value into several candidates, each able to match " +
+    "Splits the value into several parts, each able to match " +
     "independently, so a record matches when any one of them does.",
   coalesce:
     "Substitutes a fallback value where an earlier rule left the value empty, " +
@@ -557,8 +557,8 @@ export interface InvitationSummary {
    *
    * True for a combination that resolves a candidate set -- either linkage
    * strategy under the identifier-revealing algorithm (docs/spec/PROTOCOL.md,
-   * Fan-out runs under both linkage strategies); under one that does not,
-   * terms declaring a fan-out are refused before the exchange runs.
+   * Fan-out runs under both linkage strategies); under a count-only (`psi-c`)
+   * exchange, terms declaring a fan-out are refused before the exchange runs.
    * Meaningful only alongside {@link fansOut}, selecting which of the two
    * fan-out consent facts a surface renders.
    */

@@ -106,10 +106,12 @@ describe("the fan-out note's account of pairing", () => {
   // count against the pair rather than for one combination.
   test("scopes the at-most-once pairing to the pair that pairs once", () => {
     const note = CONSENT_FACTS.fanOutCandidates.note!;
-    expect(note).toContain("with neither set it is paired at most once");
     expect(note).toContain(
-      "with both set it is paired with every one of the other party's " +
-        "records any of its candidates reached",
+      "With neither party's duplicate matching set, it is paired at most once",
+    );
+    expect(note).toContain(
+      "with both set, it is paired with every one of the other party's " +
+        "records any of its parts reached",
     );
   });
 
@@ -122,14 +124,13 @@ describe("the fan-out note's account of pairing", () => {
     // rules, and the two cases a deduplicating cardinality adds).
     const note = CONSENT_FACTS.fanOutCandidates.note!;
     expect(note).toContain(
-      "with one party's set, a record of the party that set it is paired at " +
-        "most once while a record of the other party may be paired with " +
-        "several",
+      "with one party's set, a record of that party is paired at most once " +
+        "while a record of the other party may be paired with several",
     );
     // Not the both-set count: that pairing is total, and stating it for a
     // one-sided run would promise pairs the sweep discards.
     expect(note).not.toContain(
-      "with one party's set it is paired with every one",
+      "with one party's set, it is paired with every one",
     );
   });
 });
@@ -238,7 +239,7 @@ describe("the pair where the inviting party receives no result", () => {
       "Your partner's process is sent the group sizes and row positions",
     );
     expect(CONSENT_FACTS.partnerDuplicateGroupingWithheld.note).toContain(
-      "withholds your partner's half of the matched-pair table",
+      "this exchange withholds its half of the matched-pair table",
     );
   });
 

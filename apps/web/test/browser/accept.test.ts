@@ -1766,7 +1766,7 @@ describe("acceptor columns step: the send summary is gated on the inviting party
   // consent screen instead of moving both assertions at once.
   const noPayloadSentence =
     "Your partner receives no result from this exchange, so no columns are " +
-    "sent to them -- whatever your file contains.";
+    "sent to them, whatever your file contains.";
 
   // A file whose columns cover both keys and disclose one payload column, so the
   // send summary renders (not the mapper) with a non-empty set to suppress.

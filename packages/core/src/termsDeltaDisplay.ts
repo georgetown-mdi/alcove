@@ -38,7 +38,7 @@ const SENT_SECTIONS = [
   {
     field: "added",
     label:
-      "columns you no longer send your partner (your partner decides on this)",
+      "columns you no longer send your partner (your partner decides on these)",
   },
 ] as const;
 

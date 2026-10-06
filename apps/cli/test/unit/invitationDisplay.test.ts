@@ -894,8 +894,8 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     });
     expect(rendered).toContain("several values per record (enforced):");
     expect(rendered).toContain(
-      "with both set it is paired with every one of the other party's " +
-        "records any of its candidates reached",
+      "with both set, it is paired with every one of the other party's " +
+        "records any of its parts reached",
     );
     expect(rendered).not.toContain("paired at most once and is then left out");
   });
@@ -1634,10 +1634,12 @@ const COUNT_ONLY_STATEMENT =
   "Only the number of records you have in common is revealed, not which " +
   "records match.";
 const COUNT_ONLY_INPUT_CHOICE_BOUND =
-  "Not enforced against your partner's choice of input: a count-only exchange " +
-  "bounds what Alcove hands your partner, not what they can learn by choosing " +
-  "which records to ask about. A crafted list, or a second run differing by one " +
-  "record, turns a count into an answer about one person.";
+  "Your partner can learn whether one person is in your data by choosing " +
+  "which records to ask about. A count-only exchange bounds what Alcove " +
+  "hands your partner, not what its choice of records reveals. A crafted " +
+  "list, or a second run differing by one record, turns a count into an " +
+  "answer about one person, and Alcove does not check what your partner " +
+  "contributes.";
 
 /**
  * The five tier sentences, read from the shared table by this surface and by the

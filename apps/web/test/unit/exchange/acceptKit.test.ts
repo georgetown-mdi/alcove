@@ -202,7 +202,8 @@ describe("accept kit, per-channel shape", () => {
       const text = sheet(endpoint);
       // The sheet points at the accept display and says the terms live there.
       expect(text).toContain("WHAT YOU ARE AGREEING TO");
-      expect(text).toContain("Accepting prints your partner's linkage");
+      expect(text).toContain("This sheet does not list the terms");
+      expect(text).toContain("Accepting prints your partner's");
       expect(text).toContain("this sheet");
     }
   });
@@ -661,11 +662,11 @@ describe("accept kit, retain mode", () => {
     }
   });
 
-  test("says the agreement is bilateral and non-negotiated", () => {
+  test("says both sides must run retain mode", () => {
     for (const endpoint of ENDPOINTS) {
       const text = retainSheet(endpoint);
-      expect(text).toContain("an agreement, not a negotiation");
-      expect(text).toContain("your side must run it");
+      expect(text).toContain("Your side must run in retain mode too");
+      expect(text).not.toContain("an agreement, not a negotiation");
     }
   });
 
@@ -793,7 +794,7 @@ describe("accept kit, lockless rendezvous", () => {
       // And the flag is explained where the reader meets it, so a partner
       // trimming the command keeps the half of the agreement that is theirs.
       expect(text).toContain("is your half of a setting your partner turned");
-      expect(text).toContain("an agreement, not a negotiation");
+      expect(text).toContain("Both sides must use this setting");
     }
   });
 

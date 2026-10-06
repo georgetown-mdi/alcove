@@ -63,9 +63,9 @@ describe("linkageRuleSetVerdictNote", () => {
     // The finding is one sentence for both readers -- what this build checked
     // cannot depend on who is reading it -- while the remedy is the one the
     // reader in front of it can act on.
-    expect(author).toContain("are NOT drawn from that set");
-    expect(recipient).toContain("settle it with the other party");
-    expect(author).not.toContain("settle it with the other party");
+    expect(author).toContain("are not drawn from that set");
+    expect(recipient).toContain("raise it with the other party");
+    expect(author).not.toContain("raise it with the other party");
     expect(author).toContain("yours to correct");
   });
 

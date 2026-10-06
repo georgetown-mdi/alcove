@@ -145,7 +145,7 @@ const COUNT_ONLY_TIER_NOTES = [
 // it read for only one viewer reddens the other side's block.
 const NO_PAYLOAD_SENTENCE =
   "Your partner receives no result from this exchange, so no columns are " +
-  "sent to them -- whatever your file contains.";
+  "sent to them, whatever your file contains.";
 
 const app = createAppMount();
 
@@ -452,7 +452,7 @@ describe("InvitationTerms: per-key matching disclosures", () => {
     // them); the caveat that a PARTNER cites them does not. The disproved half's
     // warning is not attribution -- it is this build's finding about the document
     // on screen -- so it renders here too, in the reading that fits this reader:
-    // the remedy is the one they can act on, not the recipient's "settle it with
+    // the remedy is the one they can act on, not the recipient's "raise it with
     // the other party" over a document they cannot edit.
     await renderTerms(citingTerms, { perspective: "proposing" });
     await expect.element(toggle("Matching strategies")).toBeInTheDocument();
@@ -839,16 +839,14 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     );
     // The acceptor's OWN non-receipt is a hard fact -- enforced by this tool, not a
     // matter of trusting the partner -- so its "No" has the enforced caveat.
-    expect(app.container.textContent).toContain(
-      "Enforced: you are sent no result",
-    );
+    expect(app.container.textContent).toContain("You are sent no result");
     // The partner receives here (Yes): no cooperative caveat, but the partner "Yes"
     // is the accountable disclosure, so it has the brief governance pointer.
     expect(app.container.textContent).not.toContain(
-      "By agreement, not enforced",
+      "Alcove cannot stop your partner from receiving the result",
     );
     expect(app.container.textContent).toContain(
-      "Once received, its use is governed by your agreement, not by Alcove.",
+      "Your agreement governs how your partner uses the result; Alcove does not control it.",
     );
     // The partner receives the result here, so the honest-helper membership line
     // does not apply -- it is scoped to the "partner does not receive" case.
@@ -869,10 +867,10 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     // The PARTNER's non-receipt is cooperative -- it rests on the terms being
     // honored, not a guarantee this side imposes -- so its "No" is marked distinctly
     // from an enforced one, and the acceptor's own "Yes" has no enforced caveat.
-    expect(app.container.textContent).toContain("By agreement, not enforced");
-    expect(app.container.textContent).not.toContain(
-      "Enforced: you are sent no",
+    expect(app.container.textContent).toContain(
+      "Alcove cannot stop your partner from receiving the result",
     );
+    expect(app.container.textContent).not.toContain("You are sent no result");
     // Partner does not receive: the honest-helper membership line appears, DISTINCT
     // from the cooperative caveat above (it is about what an honest partner learns,
     // not about a dishonest one keeping the table), and lands in the "What the
@@ -907,7 +905,9 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     );
     // Not the whole branch going missing: the cooperative caveat the membership line
     // sits beneath is still rendered.
-    expect(app.container.textContent).toContain("By agreement, not enforced");
+    expect(app.container.textContent).toContain(
+      "Alcove cannot stop your partner from receiving the result",
+    );
   });
 
   test("the inviter's own preview frames the outcome for the proposer", async () => {
@@ -927,10 +927,10 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     );
     // The proposer's partner does not receive: a cooperative "No", so it has the
     // by-agreement caveat and the proposer's own "Yes" has none.
-    expect(app.container.textContent).toContain("By agreement, not enforced");
-    expect(app.container.textContent).not.toContain(
-      "Enforced: you are sent no",
+    expect(app.container.textContent).toContain(
+      "Alcove cannot stop your partner from receiving the result",
     );
+    expect(app.container.textContent).not.toContain("You are sent no result");
     // The honest-helper membership line is viewer-relative like the rest of Result
     // sharing: under "proposing" it reads against the inviter's own data, so the
     // proposer sees that its (non-receiving) partner still learns which of its own
@@ -953,17 +953,15 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
     expect(app.container.textContent).toContain(
       "Your partner (the inviter) will receive the result: Yes",
     );
+    expect(app.container.textContent).not.toContain("You are sent no result");
     expect(app.container.textContent).not.toContain(
-      "Enforced: you are sent no",
-    );
-    expect(app.container.textContent).not.toContain(
-      "By agreement, not enforced",
+      "Alcove cannot stop your partner from receiving the result",
     );
     // Exactly one governance pointer -- on the partner's "Yes", not the viewer's own.
     expect(
       (
         app.container.textContent.match(
-          /its use is governed by your agreement/g,
+          /Your agreement governs how your partner uses the result/g,
         ) ?? []
       ).length,
     ).toBe(1);
