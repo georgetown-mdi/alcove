@@ -685,6 +685,42 @@ export const INVITATION_LIFETIME_SECONDS = 60 * 60;
  */
 export const MAX_INVITATION_LIFETIME_SECONDS = 365 * 24 * 60 * 60;
 
+/**
+ * Refuse an invitation lifetime that is not a finite, positive number of
+ * seconds within {@link MAX_INVITATION_LIFETIME_SECONDS}. An inviter calls it
+ * before anything is minted; {@link invitationExpires} applies it again at the
+ * mint.
+ *
+ * @throws {RangeError} naming which bound `lifetimeSeconds` breaks.
+ */
+export function assertInvitationLifetimeSeconds(lifetimeSeconds: number): void {
+  if (!Number.isFinite(lifetimeSeconds) || lifetimeSeconds <= 0)
+    throw new RangeError(
+      "invitation lifetimeSeconds must be a finite, positive number of seconds",
+    );
+  if (lifetimeSeconds > MAX_INVITATION_LIFETIME_SECONDS)
+    throw new RangeError(
+      "invitation lifetimeSeconds must not exceed " +
+        `${MAX_INVITATION_LIFETIME_SECONDS} seconds (one year)`,
+    );
+}
+
+/**
+ * An invitation's `expires`: `now` plus `lifetimeSeconds`, as an ISO 8601 UTC
+ * instant. The caller passes the moment the shared secret is minted, so the
+ * lifetime runs from when the secret exists.
+ *
+ * @throws {RangeError} if `lifetimeSeconds` fails
+ *   {@link assertInvitationLifetimeSeconds}.
+ */
+export function invitationExpires(
+  lifetimeSeconds: number,
+  now: number,
+): string {
+  assertInvitationLifetimeSeconds(lifetimeSeconds);
+  return new Date(now + lifetimeSeconds * 1000).toISOString();
+}
+
 // --- Base64url helpers -------------------------------------------------------
 
 function toBase64Url(bytes: Uint8Array): string {

@@ -7,6 +7,7 @@
 import {
   authoredLinkageFields,
   disclosedColumnNames,
+  formatCount,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -419,7 +420,7 @@ export function answersRows(
     },
     {
       label: "Your file",
-      value: `${sanitizeForDisplay(csv.fileName)} - ${new Intl.NumberFormat("en-US").format(csv.rowCount)} rows`,
+      value: `${sanitizeForDisplay(csv.fileName)} - ${formatCount(csv.rowCount)} rows`,
       mono: true,
       changeTarget: "file",
     },

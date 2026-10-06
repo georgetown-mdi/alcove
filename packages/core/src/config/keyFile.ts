@@ -5,6 +5,7 @@
 
 import { z } from "zod";
 
+import { MS_PER_DAY } from "../utils/msPerDay";
 import { SHARED_SECRET_REGEX } from "./connection";
 
 /** Contents of a `.alcove.key` file. */
@@ -96,4 +97,36 @@ export function serializeKeyFile(data: KeyFile): string {
     Object.entries(data).filter(([name]) => KEY_FILE_FIELD_NAMES.has(name)),
   );
   return JSON.stringify(known, null, 2) + "\n";
+}
+
+/**
+ * The `expires` a rotated shared secret takes under a `tokenMaxAgeDays` policy:
+ * `now` plus that many days, as an ISO 8601 UTC instant, so the rotated secret
+ * cannot outlive the policy. `now` is a parameter so the stamp is the moment
+ * of rotation the caller observed.
+ *
+ * The config schemas bound `tokenMaxAgeDays` at parse; this refuses a caller
+ * that bypassed them, before a broken expiry reaches storage.
+ *
+ * @throws {RangeError} if `tokenMaxAgeDays` is not a positive integer (a zero
+ *   or negative age would stamp an already-expired secret, a fraction a
+ *   sub-day bound), or if the computed expiry is outside the range an ISO
+ *   8601 string with a four-digit year can state.
+ */
+export function rotatedKeyExpires(
+  tokenMaxAgeDays: number,
+  now: number,
+): string {
+  if (!Number.isInteger(tokenMaxAgeDays) || tokenMaxAgeDays <= 0)
+    throw new RangeError(
+      "tokenMaxAgeDays must be a positive integer; got " +
+        String(tokenMaxAgeDays),
+    );
+  const expires = new Date(now + tokenMaxAgeDays * MS_PER_DAY);
+  if (Number.isNaN(expires.getTime()) || expires.getUTCFullYear() > 9999)
+    throw new RangeError(
+      "tokenMaxAgeDays is too large; the computed expiry is outside the " +
+        "supported date range",
+    );
+  return expires.toISOString();
 }

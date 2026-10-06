@@ -27,12 +27,12 @@ import {
   RECORDED_LINKAGE_RULE_SET_CAVEAT,
   displayPartyIdentity,
   displayText,
+  recordFileStamp,
   ruleSetCitation,
   sanitizeForDisplay,
 } from "@alcove/core";
 
 import { dateTimeLabel } from "@psi/formatting";
-import { recordFileStamp } from "@psi/runOutputs";
 
 import type {
   Algorithm,

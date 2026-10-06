@@ -1,6 +1,7 @@
 import { hkdfDerive, fromBase64Url, toHex } from "./utils/crypto.js";
 import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
+import type { HandshakeRole } from "./types.js";
 
 /**
  * The two roles in a WebRTC rendezvous. Each party derives a deterministic
@@ -17,6 +18,30 @@ export const RENDEZVOUS_ROLES = Object.freeze(["inviter", "acceptor"] as const);
 
 /** A rendezvous role; one of the fixed {@link RENDEZVOUS_ROLES}. */
 export type RendezvousRole = (typeof RENDEZVOUS_ROLES)[number];
+
+/**
+ * The key-exchange handshake role a rendezvous side takes: the acceptor dials
+ * the data channel and sends the first handshake message, so it is the
+ * initiator; the inviter listens and answers, so it is the responder.
+ *
+ * Every party, CLI or browser, resolves its side through this one rule. Two
+ * peers that resolve the same side to different roles never complete a
+ * handshake: two initiators reject each other's second message, and two
+ * responders wait on each other. The interop conformance vectors
+ * (packages/core/test/vectors/webrtc-interop-vectors.json) pin the values.
+ *
+ * @throws {InternalConsistencyError} if `role` is not a known rendezvous role.
+ */
+export function handshakeRoleForRendezvousRole(
+  role: RendezvousRole,
+): HandshakeRole {
+  if (role === "acceptor") return "initiator";
+  if (role === "inviter") return "responder";
+  throw new InternalConsistencyError(
+    `handshakeRoleForRendezvousRole: unknown role ${JSON.stringify(role)}; ` +
+      `expected one of ${RENDEZVOUS_ROLES.map((r) => JSON.stringify(r)).join(", ")}`,
+  );
+}
 
 /**
  * Length, in bytes, of the derived peer id before hex encoding. 16 bytes -> 32

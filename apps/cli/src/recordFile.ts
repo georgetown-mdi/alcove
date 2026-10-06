@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   getLogger,
   operatorSuppliedText,
+  recordFileStamp,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
   serializeAgreedTerms,
@@ -21,17 +22,8 @@ import { writeFileOwnerOnly } from "./fileUtils";
 export const DEFAULT_RECORD_BASENAME = "alcove-record";
 
 /**
- * The stamp a run's file names share: the record's own `createdAt` timestamp
- * made filesystem-safe (colons and the fractional-second dot replaced with
- * hyphens).
- */
-export function recordFileStamp(createdAt: string): string {
-  return createdAt.replace(/[:.]/g, "-");
-}
-
-/**
  * The self-attested record's path in a run's folder:
- * `alcove-record-<time>.json`, with the stamp {@link recordFileStamp} derives.
+ * `alcove-record-<time>.json`, with core's {@link recordFileStamp}.
  */
 export function recordFilePathIn(folder: string, createdAt: string): string {
   return path.join(

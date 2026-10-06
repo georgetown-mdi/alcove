@@ -10,10 +10,8 @@ import {
   jobApiRequestTimeoutMs,
 } from "@jobs/routeSupport";
 
-import {
-  SIGNALING_REQUEST_TIMEOUT_MS,
-  hardenUpgradeSurface,
-} from "../../server/upgradeHardening";
+import { SIGNALING_REQUEST_TIMEOUT_MS } from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+import { hardenUpgradeSurface } from "../../server/upgradeHardening";
 
 import type { AddressInfo } from "node:net";
 

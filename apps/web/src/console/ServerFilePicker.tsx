@@ -13,7 +13,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-import { sanitizeForDisplay } from "@alcove/core";
+import { formatCount, sanitizeForDisplay } from "@alcove/core";
 
 import {
   fetchJobInputProfile,
@@ -461,9 +461,7 @@ export function FileProfileSummary({ profile }: { profile: ProfiledJobInput }) {
           </Table.Tr>
           <Table.Tr>
             <Table.Th scope="row">Rows</Table.Th>
-            <Table.Td>
-              {new Intl.NumberFormat("en-US").format(profile.rowCount)}
-            </Table.Td>
+            <Table.Td>{formatCount(profile.rowCount)}</Table.Td>
           </Table.Tr>
           <Table.Tr>
             <Table.Th scope="row">Size</Table.Th>

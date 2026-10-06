@@ -1,6 +1,7 @@
 import logLibrary from "loglevel";
 
 import {
+  formatCount,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
 } from "@alcove/core";
@@ -33,7 +34,7 @@ const renderPath = (path: string): string =>
   redactAndRenderOperatorSuppliedText(operatorSuppliedText(path));
 
 const records = (count: number): string =>
-  `${count.toLocaleString("en-US")} ${count === 1 ? "record" : "records"}`;
+  `${formatCount(count)} ${count === 1 ? "record" : "records"}`;
 
 function resultClause(result: ResultDelivery): string {
   switch (result.kind) {

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { getHeapStatistics } from "node:v8";
 
-import { getLogger, UsageError } from "@alcove/core";
+import { formatCount, getLogger, UsageError } from "@alcove/core";
 
 import { PSI_HEAP_CEILING_MIB } from "./psiMemoryBudget";
 
@@ -86,7 +86,7 @@ function inputHeapShortfallSentence(params: InputHeapShortfall): string {
       ? "the CSV input holds"
       : `the ${params.fileCount} CSV files hold`;
   return (
-    `${subject} ${params.records.toLocaleString("en-US")} records ` +
+    `${subject} ${formatCount(params.records)} records ` +
     `(${(params.fileBytes / 1e6).toFixed(1)} MB), and reading and preparing them needs ` +
     `about ${gigabytes(needBytes)} of heap, more than this process's limit ` +
     `of ${gigabytes(params.heapLimitBytes)}`

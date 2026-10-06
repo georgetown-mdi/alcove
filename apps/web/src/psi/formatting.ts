@@ -6,6 +6,7 @@
 
 import {
   MAX_INVITATION_LIFETIME_SECONDS,
+  formatCount,
   hasExpiryInstantPassed,
 } from "@alcove/core";
 
@@ -24,7 +25,7 @@ export function byteSizeLabel(sizeBytes: number): string {
 
 /** The file card's metadata line, e.g. `12,408 rows - 8.4 MB`. */
 export function fileCardMeta(rowCount: number, sizeBytes: number): string {
-  const rows = new Intl.NumberFormat("en-US").format(rowCount);
+  const rows = formatCount(rowCount);
   return `${rows} rows - ${byteSizeLabel(sizeBytes)}`;
 }
 

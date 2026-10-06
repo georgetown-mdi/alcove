@@ -1,6 +1,7 @@
 import {
   buildOutputTable,
   countIsPartnerReported,
+  recordFileStamp,
   resultCsvDelimiter,
   serializeExchangeRecord,
   serializeVerificationKeys,
@@ -40,18 +41,6 @@ export type NoResultFileOutputs = Extract<
 export interface ObjectUrls {
   create: (blob: Blob) => string;
   revoke: (url: string) => void;
-}
-
-/**
- * The filesystem-safe stamp for a record's download filenames, derived from the
- * record's own `createdAt` (colons and the fractional-second dot replaced with
- * hyphens). Matches the CLI's default record path (`keysPathFor` /
- * `defaultRecordPath` in apps/cli) byte-for-byte; a unit test pins the parity.
- * The web app cannot import apps/cli, so the rule is replicated here as the
- * single source both browser drivers share.
- */
-export function recordFileStamp(createdAt: string): string {
-  return createdAt.replace(/[:.]/g, "-");
 }
 
 /**

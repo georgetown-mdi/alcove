@@ -10,7 +10,7 @@ import {
 import type { DualSignedRecord } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
-import { recordFileStamp } from "./recordFile";
+import { recordFileStamp } from "@alcove/core";
 
 // File custody for the dual-signed exchange record (the signed-receipt step's
 // output). Mirrors recordFile.ts: a timestamped default path in the run's

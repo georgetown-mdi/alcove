@@ -12,6 +12,7 @@ import {
   RoundCapacityError,
   assertFirstRoundWithinSetMaximum,
   getLogger,
+  handshakeRoleForRendezvousRole,
   isSetTooLargeError,
   joinErrorCauseChain,
   loadPsiBackend,
@@ -42,7 +43,6 @@ import {
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
-import { HANDSHAKE_ROLE_FOR_SIDE } from "@psi/handshakeRole";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
@@ -1077,7 +1077,7 @@ export function useInviterExchange({
     const browserDriver = (): ExchangeDriver<RunOutputs> =>
       createBrowserExchangeDriver<RunOutputs>({
         acquire,
-        exchangeRole: HANDSHAKE_ROLE_FOR_SIDE.inviter,
+        exchangeRole: handshakeRoleForRendezvousRole("inviter"),
         sharedSecret: minted.sharedSecret,
         expires: minted.expires,
         generateOutput,

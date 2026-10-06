@@ -4,8 +4,10 @@ import {
   KeyFileSchema,
   keepOperatorSuppliedText,
   messageWithOperatorText,
+  MS_PER_DAY,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
+  rotatedKeyExpires,
   SHARED_SECRET_REGEX,
   serializeKeyFile,
   UsageError,
@@ -66,18 +68,14 @@ export function loadKeyFile(
   return result;
 }
 
-/** Milliseconds in a day, for computing a rotated token's `expires`. */
-const MS_PER_DAY = 86_400_000;
-
 /**
  * Build the `.alcove.key` contents to persist after a successful key exchange.
- * When `tokenMaxAgeDays` is set, stamp `expires` = `now` + `tokenMaxAgeDays` days
- * (ISO 8601) so a rotated token cannot outlive the operator's max-age policy;
- * when omitted, the rotated token holds no `expires`.
+ * When `tokenMaxAgeDays` is set, `expires` is stamped by core's
+ * {@link rotatedKeyExpires}; when omitted, the rotated token holds no
+ * `expires`.
  *
- * `now` is a parameter rather than read internally so the stamp reflects the
- * actual moment of rotation (where the caller invokes it) and the helper stays
- * pure for testing.
+ * @throws {UsageError} (exit 64, bad input) when `tokenMaxAgeDays` is one
+ *   {@link rotatedKeyExpires} refuses, so a broken expiry never reaches disk.
  */
 export function buildRotatedKeyFile(
   rotatedSecret: string,
@@ -85,33 +83,15 @@ export function buildRotatedKeyFile(
   now: number,
 ): KeyFile {
   if (tokenMaxAgeDays === undefined) return { sharedSecret: rotatedSecret };
-  // Belt-and-suspenders, mirroring saveKeyFile's runtime check below: the config
-  // schema already enforces a positive integer (z.int().positive()), but a
-  // library caller that bypasses parse could pass 0, a negative, or a float,
-  // stamping an expiry that is immediately expired or on a sub-day boundary.
-  // Reject it here so a broken expiry never reaches disk. UsageError -> CLI exit
-  // 64, classified as bad input.
-  if (!Number.isInteger(tokenMaxAgeDays) || tokenMaxAgeDays <= 0)
-    throw new UsageError(
-      "buildRotatedKeyFile: tokenMaxAgeDays must be a positive integer; got " +
-        String(tokenMaxAgeDays),
-    );
-  // Guard the date-range overflow too: a value large enough that now + N days
-  // leaves the representable Date range (or a 4-digit ISO year) would
-  // otherwise make toISOString() throw an opaque RangeError. The config
-  // schema bounds this at the front door (MAX_TOKEN_MAX_AGE_DAYS); this is
-  // the safety check for a caller that bypasses parse, failing as bad input
-  // (UsageError -> exit 64) before the broken expiry reaches disk.
-  const expires = new Date(now + tokenMaxAgeDays * MS_PER_DAY);
-  if (Number.isNaN(expires.getTime()) || expires.getUTCFullYear() > 9999)
-    throw new UsageError(
-      "buildRotatedKeyFile: tokenMaxAgeDays is too large; the computed expiry " +
-        "is outside the supported date range",
-    );
-  return {
-    sharedSecret: rotatedSecret,
-    expires: expires.toISOString(),
-  };
+  let expires: string;
+  try {
+    expires = rotatedKeyExpires(tokenMaxAgeDays, now);
+  } catch (err: unknown) {
+    if (err instanceof RangeError)
+      throw new UsageError(`buildRotatedKeyFile: ${err.message}`);
+    throw err;
+  }
+  return { sharedSecret: rotatedSecret, expires };
 }
 
 /** Result of {@link checkKeyFileExpiry}. */

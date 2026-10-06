@@ -1,3 +1,9 @@
+import {
+  SIGNALING_HEADERS_TIMEOUT_MS,
+  SIGNALING_PREHANDSHAKE_IDLE_MS,
+  SIGNALING_REQUEST_TIMEOUT_MS,
+} from "@alcove/peerjs-broker/standaloneUpgradeBounds";
+
 import type {
   Server as HttpServer,
   IncomingMessage,
@@ -6,41 +12,6 @@ import type {
 import type { Duplex } from "node:stream";
 import type { Server as HttpsServer } from "node:https";
 import type { Socket } from "node:net";
-
-/**
- * Default bound (ms) for receiving the complete request headers before the
- * connection is reaped. A real signaling handshake sends its (small) headers in
- * one segment, so this sits far above any legitimate upgrade while closing a
- * slowloris that dribbles -- or never finishes -- its headers. Node enforces it
- * on its periodic connections-checking sweep, so the effective bound is this
- * plus up to one sweep interval.
- */
-export const SIGNALING_HEADERS_TIMEOUT_MS = 10_000;
-
-/**
- * Default backstop (ms) for receiving the entire request. Must exceed
- * {@link SIGNALING_HEADERS_TIMEOUT_MS} (Node wants requestTimeout greater than
- * headersTimeout, or 0 to disable); it bounds a client that completes headers
- * but then stalls the rest of the request.
- */
-export const SIGNALING_REQUEST_TIMEOUT_MS = 15_000;
-
-/**
- * Default bound (ms) for a connected socket that has not begun -- or has paused
- * before finishing -- its request. {@link SIGNALING_HEADERS_TIMEOUT_MS} and
- * {@link SIGNALING_REQUEST_TIMEOUT_MS} only arm once HTTP request parsing has
- * begun, so a peer that completes the TCP handshake and then sends nothing has
- * no request for them to bound and would sit held open until the OS reaps it.
- * This per-socket idle timeout closes that hold. It binds only while the socket
- * owes the server a request, and stops reaching it once one has wholly arrived,
- * so what the server does with the connection thereafter -- however long the
- * handler takes, however quiet a long-lived response goes -- is outside its
- * reach, as is how fast the client takes it. `ws` takes the upgrade path out
- * from under it outright, resetting the socket timeout to 0 the moment a socket
- * completes the 101, so an established WebSocket is governed by the liveness
- * reaper rather than by this.
- */
-export const SIGNALING_PREHANDSHAKE_IDLE_MS = 10_000;
 
 // Per-server idle hooks, tracked so a repeated harden (a test re-hardening, a
 // hot reload) replaces rather than stacks them. Unlike closeStalledHandshake,

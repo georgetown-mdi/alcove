@@ -15,6 +15,7 @@ import {
   DEFAULT_PEER_TIMEOUT_MS,
   describeEntityClusters,
   describeResolvedMatching,
+  formatCount,
   replaceControlCharactersForDisplay,
 } from "@alcove/core";
 
@@ -369,7 +370,7 @@ export function DonePanel({
             {outcome.count !== undefined && (
               <>
                 <span className={styles.mono}>
-                  {new Intl.NumberFormat("en-US").format(outcome.count)}
+                  {formatCount(outcome.count)}
                 </span>{" "}
               </>
             )}
@@ -444,12 +445,10 @@ function CountOnlyResultInset({
     <div className={styles.stateInset}>
       <p className={styles.stateLabel}>Count only</p>
       <p className={styles.small} style={{ margin: 0 }}>
-        <span className={styles.mono}>
-          {new Intl.NumberFormat("en-US").format(count)}
-        </span>{" "}
-        records in common. This exchange reported the size of the overlap and
-        nothing else -- no records were matched to each other and no columns
-        were shared -- so there is no result table to download.
+        <span className={styles.mono}>{formatCount(count)}</span> records in
+        common. This exchange reported the size of the overlap and nothing else
+        -- no records were matched to each other and no columns were shared --
+        so there is no result table to download.
       </p>
       {countReportedByPartner && (
         <p className={styles.small} style={{ marginBottom: 0 }}>

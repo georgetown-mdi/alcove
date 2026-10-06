@@ -34,6 +34,7 @@ import {
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
   getLogger,
+  handshakeRoleForRendezvousRole,
   loadPsiBackend,
   payloadReceiveFilledNotice,
   projectPairTable,
@@ -45,7 +46,6 @@ import { buildRunOutputs } from "../runOutputs";
 import { undeclaredColumnsRunNotice } from "../runWarnings";
 
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
-import { HANDSHAKE_ROLE_FOR_SIDE } from "../handshakeRole";
 import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
 import { authenticateExchange } from "../authenticateExchange";
 import { createBrowserPsiEngineFactory } from "../workers/psiCryptoController";
@@ -298,7 +298,7 @@ export function runManagedExchangeInBrowser(
       // Inside the lock: open the side-dispatched rendezvous, authenticate the
       // partner, and yield the rotated secret plus the held exchange resources.
       handshake: async (input, markRotationInFlight, current) => {
-        const exchangeRole = HANDSHAKE_ROLE_FOR_SIDE[current.side];
+        const exchangeRole = handshakeRoleForRendezvousRole(current.side);
         assertManagedRendezvousPossible(current);
         // A registration the registrar did not confirm is retried after every
         // local refusal and before any contact with the partner, so a relay

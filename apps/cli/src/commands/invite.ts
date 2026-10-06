@@ -12,6 +12,7 @@ import {
   inferMetadata,
   INVITATION_LIFETIME_SECONDS,
   MAX_INVITATION_LIFETIME_SECONDS,
+  invitationExpires,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
@@ -116,7 +117,6 @@ import {
   describeInputSource,
   endpointFromConnection,
   DEFAULT_ACCEPT_TIMEOUT_SECONDS,
-  expiresFromNow,
   generateSharedSecret,
   loadInputRows,
   logOnlineBootstrapOutcome,
@@ -585,7 +585,7 @@ export async function validateInvite(params: {
   const delimiterSection = csvDelimiter !== undefined ? { csvDelimiter } : {};
   // parseDuration yields whole milliseconds at second granularity (its smallest
   // unit), so dividing by 1000 is exact: the lifetime is always a whole number
-  // of seconds, whether defaulted or overridden, and feeds expiresFromNow below.
+  // of seconds, whether defaulted or overridden, and feeds invitationExpires below.
   const lifetimeSeconds =
     expiresIn !== undefined
       ? parseDuration(expiresIn) / 1000
@@ -807,7 +807,7 @@ export async function validateInvite(params: {
       ),
     };
 
-    const expires = expiresFromNow(lifetimeSeconds);
+    const expires = invitationExpires(lifetimeSeconds, Date.now());
     const sharedSecret = generateSharedSecret();
     const invitation = await encodeInvitation({
       version: "1",
@@ -1041,7 +1041,7 @@ export async function validateInvite(params: {
         ),
       );
 
-    const expires = expiresFromNow(lifetimeSeconds);
+    const expires = invitationExpires(lifetimeSeconds, Date.now());
     const sharedSecret = generateSharedSecret();
     const invitation = await encodeInvitation({
       version: "1",
@@ -1119,7 +1119,7 @@ export async function validateInvite(params: {
     ),
   };
 
-  const expires = expiresFromNow(lifetimeSeconds);
+  const expires = invitationExpires(lifetimeSeconds, Date.now());
   const sharedSecret = generateSharedSecret();
   // No retain declaration on this path, by design: the config it writes is a
   // placeholder scaffold whose connection block the operator still has to fill in

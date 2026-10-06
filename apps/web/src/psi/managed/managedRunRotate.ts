@@ -19,14 +19,12 @@
  * discipline.
  */
 
+import { rotatedKeyExpires } from "@alcove/core";
+
 import type {
   ManagedExchangeFailureKind,
   ManagedExchangeLastRun,
 } from "./managedExchangeRecord";
-
-/** Milliseconds in a day, for restamping a rotated secret's `expires` from the
- * max-age policy. Mirrors the CLI key file's `MS_PER_DAY`. */
-const MS_PER_DAY = 86_400_000;
 
 /**
  * The rotation write-back: the fields a successful handshake advances on the
@@ -51,15 +49,9 @@ export interface RotationWriteBack {
 
 /**
  * Compute the rotation write-back for a run: the rotated secret always, plus the
- * `expires` decision. When `tokenMaxAgeDays` is set, `expires` is restamped to
- * `now + tokenMaxAgeDays` days (ISO 8601 UTC) so the rotated secret cannot outlive
- * the operator's max-age policy; when it is absent, `expires` is `null` so any
- * standing bound is cleared. This mirrors the CLI's `buildRotatedKeyFile`,
- * including its guards against a non-positive-integer age (a caller bypassing the
- * config schema) and a computed expiry outside the representable date range.
- *
- * `now` is a parameter, not read internally, so the stamp reflects the actual
- * moment of rotation and the function stays pure for testing.
+ * `expires` decision. When `tokenMaxAgeDays` is set, `expires` is restamped by
+ * core's {@link rotatedKeyExpires}, the rule the CLI key file uses; when it is
+ * absent, `expires` is `null` so any standing bound is cleared.
  *
  * @throws {RangeError} if `tokenMaxAgeDays` is not a positive integer, or if
  *   `now + tokenMaxAgeDays` days falls outside the supported date range.
@@ -71,22 +63,10 @@ export function rotationWriteBack(
 ): RotationWriteBack {
   if (tokenMaxAgeDays === undefined)
     return { sharedSecret: rotatedSecret, expires: null };
-  // Belt-and-suspenders, mirroring the CLI key file's guard: the record schema
-  // already enforces a positive integer, but a caller bypassing it could pass 0,
-  // a negative, or a float, stamping an expiry that is immediately expired or on a
-  // sub-day boundary. Reject it before it reaches the store.
-  if (!Number.isInteger(tokenMaxAgeDays) || tokenMaxAgeDays <= 0)
-    throw new RangeError(
-      "rotationWriteBack: tokenMaxAgeDays must be a positive integer; got " +
-        String(tokenMaxAgeDays),
-    );
-  const expires = new Date(now + tokenMaxAgeDays * MS_PER_DAY);
-  if (Number.isNaN(expires.getTime()) || expires.getUTCFullYear() > 9999)
-    throw new RangeError(
-      "rotationWriteBack: tokenMaxAgeDays is too large; the computed expiry is " +
-        "outside the supported date range",
-    );
-  return { sharedSecret: rotatedSecret, expires: expires.toISOString() };
+  return {
+    sharedSecret: rotatedSecret,
+    expires: rotatedKeyExpires(tokenMaxAgeDays, now),
+  };
 }
 
 /** Record a run that completed the data exchange. The `lastRun` the tiered
