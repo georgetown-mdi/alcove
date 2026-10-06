@@ -4,8 +4,8 @@
 //
 // A branch's rounds ledger (`scratch/review-rounds/<key>.jsonl`, row shape in
 // `.claude/commands/light-review.md`, Step 3) records how each finding was
-// disposed of. Two of those dispositions assert something outside the ledger,
-// and this check tests both against the PR head:
+// disposed of. Three of those dispositions assert something outside the
+// ledger, and this check tests each against the PR head:
 //
 // - A `fixed` entry names its fix commit as `"commit": "<sha>"`. It is refused
 //   when that fix is not contained in the head. Contained means the commit is
@@ -19,6 +19,16 @@
 //   or when the limits file does not exist at the head. A quoted phrase must
 //   appear in that file at the head; an anchor is not resolved, and a board
 //   item is checked for shape only, since the boards are not reachable offline.
+// - A `limit` entry states whether a user or partner can reach what it limits,
+//   as `"surface": "reachable"` or `"surface": "internal"`. A reachable limit is
+//   promoted to a spec limits line at merge-ready
+//   (`.claude/orchestration/ruleset.md`, Review flow), so it is refused unless
+//   it names a `limitsLine` that passes the `deferred` rules above. An internal
+//   one stays in the ledger alone and passes. An entry with no `surface` is
+//   held as reachable, so leaving the field off cannot pass a reachable limit;
+//   any other value is refused. Reachability is a field the disposing session
+//   writes, not something read off the finding's file, because one file can
+//   hold both a partner-facing message and an internal helper.
 //
 // A conflict resolution that edits a fix's hunk changes its patch identity, so
 // patch identity alone would refuse a correct fix after such a rebase. The
@@ -31,9 +41,10 @@
 // Legacy rows. Rows written before these fields existed name no commit and no
 // home, so the check skips a row, reporting it as skipped, when all three
 // hold: its `date` is before LEGACY_CUTOFF_DATE; no `fixed` entry in it has a
-// `commit` and no `deferred` entry has a `board` or `limitsLine`; and no
-// earlier row in the same ledger has any of those fields. A row that fails any
-// of the three is held to the rules above.
+// `commit`, no `deferred` entry has a `board` or `limitsLine`, and no `limit`
+// entry has a `surface` or `limitsLine`; and no earlier row in the same ledger
+// has any of those fields. A row that fails any of the three is held to the
+// rules above.
 //
 // Which tree the verdict is about: git runs in the worktree the process was
 // invoked from, never the one holding this file. Name full shas -- a
@@ -83,7 +94,9 @@ export function rowUsesDispositionFields(row) {
     (entry) =>
       (entry.disposition === "fixed" && entry.commit !== undefined) ||
       (entry.disposition === "deferred" &&
-        (entry.board !== undefined || entry.limitsLine !== undefined)),
+        (entry.board !== undefined || entry.limitsLine !== undefined)) ||
+      (entry.disposition === "limit" &&
+        (entry.surface !== undefined || entry.limitsLine !== undefined)),
   );
 }
 
@@ -145,7 +158,26 @@ export function deferralHomeReason({ entry, head, git }) {
   }
   if (entry.limitsLine === undefined)
     return 'a deferred entry names neither a "board" item nor a "limitsLine"';
-  const limitsLine = String(entry.limitsLine);
+  return limitsLineReason({ limitsLine: entry.limitsLine, head, git });
+}
+
+/**
+ * Why a limit entry is refused, or null where it passes: an internal limit
+ * passes, and a reachable one, the default, needs a limits line the head holds.
+ */
+export function limitHomeReason({ entry, head, git }) {
+  const surface = entry.surface ?? "reachable";
+  if (surface === "internal") return null;
+  if (surface !== "reachable")
+    return `"surface" is ${JSON.stringify(entry.surface)}, not "reachable" or "internal"`;
+  if (entry.limitsLine === undefined)
+    return 'a limit on a reachable surface names no "limitsLine"; write the spec line, or mark the entry "surface": "internal"';
+  return limitsLineReason({ limitsLine: entry.limitsLine, head, git });
+}
+
+/** Why a `limitsLine` value does not name a spec line at `head`, or null. */
+function limitsLineReason({ limitsLine: value, head, git }) {
+  const limitsLine = String(value);
   const hash = limitsLine.indexOf("#");
   const path = hash === -1 ? limitsLine : limitsLine.slice(0, hash);
   const locator = hash === -1 ? "" : limitsLine.slice(hash + 1);
@@ -164,26 +196,30 @@ export function deferralHomeReason({ entry, head, git }) {
 }
 
 /**
- * One result per `fixed` or `deferred` entry: `{round, item, disposition,
- * status, reason}`, where status is `ok`, `refused`, or `skipped` (a legacy
- * row). Entries of every other disposition are not this check's subject.
+ * One result per `fixed`, `deferred`, or `limit` entry: `{round, item,
+ * disposition, status, reason}`, where status is `ok`, `refused`, or
+ * `skipped` (a legacy row). Entries of every other disposition are not this
+ * check's subject.
  */
 export function checkLedger({ rows, head, git }) {
   const legacy = legacyRows(rows);
+  const reasonFor = {
+    fixed: (entry) =>
+      fixNotContainedReason({ commit: entry.commit, head, git }),
+    deferred: (entry) => deferralHomeReason({ entry, head, git }),
+    limit: (entry) => limitHomeReason({ entry, head, git }),
+  };
   const results = [];
   for (const { row } of rows) {
     for (const entry of dispositionsOf(row)) {
       const { disposition, item } = entry;
-      if (disposition !== "fixed" && disposition !== "deferred") continue;
+      if (!Object.hasOwn(reasonFor, disposition)) continue;
       const base = { round: row.round, item, disposition };
       if (legacy.has(row)) {
         results.push({ ...base, status: "skipped", reason: "legacy row" });
         continue;
       }
-      const reason =
-        disposition === "fixed"
-          ? fixNotContainedReason({ commit: entry.commit, head, git })
-          : deferralHomeReason({ entry, head, git });
+      const reason = reasonFor[disposition](entry);
       results.push({
         ...base,
         status: reason === null ? "ok" : "refused",
@@ -267,7 +303,7 @@ export function remapFixCommits({
 const USAGE =
   "Usage: node .claude/scripts/check-review-ledger-dispositions.mjs <ledger.jsonl> <head-sha>\n" +
   "       node .claude/scripts/check-review-ledger-dispositions.mjs --remap <ledger.jsonl> <pre-rebase-base> <pre-rebase-head> <post-rebase-base> <post-rebase-head>\n" +
-  "The first form checks every fixed and deferred entry against the PR head. The second,\n" +
+  "The first form checks every fixed, deferred and limit entry against the PR head. The second,\n" +
   "run at a rebase re-attestation with the four shas given to verify-rebase-invariance.mjs,\n" +
   "rewrites each fixed entry's commit in the ledger to the commit the rebase made from it.\n" +
   "Refs resolve in the git worktree this is run from; name full shas.\n";
@@ -356,7 +392,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.stdout.write(
       refused === 0
         ? `\ndispositions: PASS -- ${results.length - skipped} checked, ${skipped} skipped as legacy\n`
-        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head, or give the deferral a board item or limits line, or record it as limit with a note\n`,
+        : `\ndispositions: REFUSED -- ${refused} entr${refused === 1 ? "y" : "ies"} fail; record the fix commit that reached the head; give a deferral a board item or limits line, or record it as a limit; write a reachable limit's spec limits line, or mark it "surface": "internal"\n`,
     );
     process.exit(refused === 0 ? 0 : 1);
   } catch (error) {

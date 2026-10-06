@@ -220,8 +220,12 @@ Common to both:
    `limit`, or `deferred` as it disposes of each, and a row still holding `open` after
    triage is a finding nobody decided. Triage adds fields as it disposes: a `fixed`
    entry gains `"commit": "<sha>"`, and a `deferred` entry gains `"board":
-   "<board>/<itemId>"` or `"limitsLine": "docs/spec/<path>#<anchor or phrase>"`, which
-   `.claude/scripts/check-review-ledger-dispositions.mjs` checks at merge-ready.
+   "<board>/<itemId>"` or `"limitsLine": "docs/spec/<path>#<anchor or phrase>"`. A
+   `limit` entry gains `"surface": "internal"` when no user or partner can reach what
+   it limits (an internal surface or a test guard); an entry without `surface` is
+   taken as reachable and gains a `limitsLine` at merge-ready.
+   `.claude/scripts/check-review-ledger-dispositions.mjs` checks these fields at
+   merge-ready.
 
 ### Lens mode -- the Workflow returned `{reviewerCount, simplerShapeVotes, clusters}`
 

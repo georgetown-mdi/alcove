@@ -23,7 +23,8 @@ push:
   which decides it for a head that only added lines to test files.
   `check-review-ledger-dispositions.mjs` checks, at merge-ready, that a
   branch's review ledger names a fix commit the PR head contains for every
-  `fixed` finding and a home for every `deferred` one.
+  `fixed` finding, a home for every `deferred` one, and a spec limits line for
+  every `limit` on a reachable surface.
   `lib/gitFixture.mjs` holds the throwaway repositories the suites drive real git
   through
 - `measure-pr-checks.mjs`, which measures the wall clock a pull request pays for
