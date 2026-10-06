@@ -6,12 +6,13 @@ import { JOB_RESPONSE_HEADERS } from "@jobs/gate";
 
 import { defineJobRoute } from "../../../server/console/jobRoute";
 
+import { waitFor } from "../../utils/waitFor";
+
 import {
   enableJobApi,
   resetConsoleServerTests,
   send,
   startServer,
-  waitUntil,
 } from "./serverHarness";
 
 import type { JobRouteHandlers } from "../../../server/console/jobRoute";
@@ -94,7 +95,7 @@ describe("the node-to-web request bridge", () => {
     const { request } = await openStream(port);
     expect(signal?.aborted).toBe(false);
     request.destroy();
-    await waitUntil(() => signal?.aborted === true);
+    await waitFor(() => signal?.aborted === true);
   });
 
   test("a response that completes leaves the signal unaborted", async () => {
@@ -139,9 +140,9 @@ describe("the web-to-node response bridge", () => {
       headers: { host: "localhost" },
     });
     request.on("error", () => undefined);
-    await waitUntil(() => requestArrived);
+    await waitFor(() => requestArrived);
     request.destroy();
-    await waitUntil(() => cancelled, 1000);
+    await waitFor(() => cancelled, { timeoutMs: 1000 });
   });
 
   test("status and headers reach the client before the body's first chunk", async () => {
@@ -202,6 +203,6 @@ describe("the web-to-node response bridge", () => {
     expect(pulledBytes).toBeLessThan(64 * 1024 * 1024);
     expect(cancelled).toBe(false);
     request.destroy();
-    await waitUntil(() => cancelled);
+    await waitFor(() => cancelled);
   });
 });

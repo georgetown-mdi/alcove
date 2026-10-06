@@ -12,7 +12,11 @@ import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
 import { route as EventsRoute } from "../../server/console/routes/$jobId/events";
 
-import { STUB_CLI_PATH, tempDataRoot, validIntent } from "../utils/jobFixtures";
+import {
+  STUB_CLI_PATH,
+  trackScratchDirs,
+  validIntent,
+} from "../utils/jobFixtures";
 
 // A manager-composed warning skips the relay's re-sanitization: the rendezvous
 // preflight names partner-chosen directory entries raw, so `JSON.stringify`
@@ -21,7 +25,7 @@ import { STUB_CLI_PATH, tempDataRoot, validIntent } from "../utils/jobFixtures";
 // that name through a real mount, SSE route, and browser client, and fails
 // unless the forged line is still one JSON string when it lands.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 beforeEach(() => {
@@ -30,20 +34,11 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   vi.unstubAllEnvs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
-
-/** A registered temp directory, created. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
 
 /** The frame a forged entry name tries to pass off as its own event: a terminal
  * error, which would end an operator's run on a fabricated security failure. */

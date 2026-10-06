@@ -18,7 +18,8 @@ import { composeConfigDocument } from "@jobs/intentConfig";
 import {
   STUB_CLI_PATH,
   STUB_CONFIG_FILE_TOKEN,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
@@ -37,21 +38,13 @@ import type { RelayEvent } from "@jobs/cliDriver";
  * aligned set the config schema requires). */
 const ADOPTED_FINGERPRINT = "E".repeat(42) + "A";
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** The buffered record of a job driven to its terminal event. */
 async function awaitTerminal(
@@ -59,12 +52,7 @@ async function awaitTerminal(
   id: string,
 ): Promise<JobRecord> {
   const record = manager.getJob(id)!;
-  const deadline = Date.now() + 5000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record);
   return record;
 }
 

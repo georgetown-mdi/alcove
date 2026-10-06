@@ -21,7 +21,7 @@ import { validateAuthoredSftpServer } from "@jobs/sftpServer";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 const webRoot = path.resolve(
@@ -200,11 +200,10 @@ describe("the console-owned name set", () => {
   );
 });
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 /** A data root and a secrets mount, each holding a signing identity at its
@@ -215,8 +214,7 @@ function layout(): {
   secretsDir: string;
   outside: string;
 } {
-  const dir = tempDataRoot("console-owned");
-  dirs.push(dir);
+  const dir = scratchDir("console-owned");
   const dataRoot = path.join(dir, "data-root");
   const secretsDir = path.join(dir, "secrets");
   fs.mkdirSync(dataRoot, { recursive: true });

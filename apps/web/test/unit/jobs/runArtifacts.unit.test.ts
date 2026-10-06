@@ -20,10 +20,11 @@ import {
   STUB_CLI_PATH,
   TEST_RUN_CREATED_AT,
   TEST_RUN_STAMP,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
   validZeroSetupIntent,
 } from "../../utils/jobFixtures";
+import { waitFor } from "../../utils/waitFor";
 
 import type { JobCreateIntent } from "@jobs/intentSchemas";
 
@@ -37,7 +38,7 @@ const PARTNER_FINGERPRINT = "C".repeat(42) + "A";
 const EARLIER_STAMP = "2026-07-08T09-00-00-000Z";
 const LATER_STAMP = "2026-07-08T20-15-30-500Z";
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 beforeEach(() => {
@@ -47,16 +48,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllEnvs();
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function directory(label: string): string {
-  const dir = tempDataRoot(label);
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 function recordJson(createdAt: string): string {
   return JSON.stringify({
@@ -77,23 +70,20 @@ async function runJob(
   workdir: string;
   argv: Array<string>;
 }> {
-  const dataRoot = directory("run-artifacts");
-  const argvFile = path.join(directory("run-artifacts-argv"), "argv.json");
+  const dataRoot = scratchDir("run-artifacts");
+  const argvFile = path.join(scratchDir("run-artifacts-argv"), "argv.json");
   const manager = new JobManager({
     dataRoot,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: directory("run-artifacts-rvz"),
+    jobRendezvousDir: scratchDir("run-artifacts-rvz"),
     childEnv: { STUB_ARGV_FILE: argvFile, ...stubEnv },
   });
   managers.push(manager);
   const id = await manager.createJob(intent);
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    const record = manager.getJob(id);
-    if (record !== undefined && record.terminal !== null) break;
-    if (Date.now() > deadline) throw new Error("the job did not settle");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await waitFor(() => (manager.getJob(id)?.terminal ?? null) !== null, {
+    timeoutMs: 10_000,
+    message: "the job did not settle",
+  });
   const argv = (
     JSON.parse(fs.readFileSync(argvFile, "utf8")) as Array<string>
   ).slice(2);
@@ -282,7 +272,7 @@ describe("a job folder holding several runs' artifacts", () => {
   });
 
   test("the folder answer counts each kind of artifact whichever run wrote it", () => {
-    const workdir = directory("run-artifacts-folder");
+    const workdir = scratchDir("run-artifacts-folder");
     fs.writeFileSync(
       path.join(workdir, runArtifactNames(EARLIER_STAMP).receipt),
       "{}",

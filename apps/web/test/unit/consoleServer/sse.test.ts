@@ -7,12 +7,13 @@ import { SSE_KEEPALIVE_FRAME } from "@jobs/sse";
 
 import { STUB_CLI_PATH, validIntent } from "../../utils/jobFixtures";
 
+import { waitFor } from "../../utils/waitFor";
+
 import {
   enableJobApi,
   resetConsoleServerTests,
   scratchDir,
   startServer,
-  waitUntil,
 } from "./serverHarness";
 
 import type { JobRecord } from "@jobs/jobManager";
@@ -94,7 +95,7 @@ function frameIds(body: string): Array<number> {
 describe("the job event stream through the console server", () => {
   test("replays the whole history and closes after the terminal event", async () => {
     const { id, record } = await startJob(RUN_EVENTS);
-    await waitUntil(() => record.terminalEmitted, 30_000);
+    await waitFor(() => record.terminalEmitted, { timeoutMs: 30_000 });
     const port = await startServer();
     const stream = await openEvents(port, id);
     expect(stream.response.statusCode).toBe(200);
@@ -109,7 +110,7 @@ describe("the job event stream through the console server", () => {
 
   test("Last-Event-ID resumes after the given event", async () => {
     const { id, record } = await startJob(RUN_EVENTS);
-    await waitUntil(() => record.terminalEmitted, 30_000);
+    await waitFor(() => record.terminalEmitted, { timeoutMs: 30_000 });
     const port = await startServer();
     const first = record.events[0].id;
     const stream = await openEvents(port, id, {
@@ -127,9 +128,9 @@ describe("the job event stream through the console server", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     const stream = await openEvents(port, id);
     expect(stream.response.statusCode).toBe(200);
-    await waitUntil(() => record.listeners.size === 1);
+    await waitFor(() => record.listeners.size === 1);
     vi.advanceTimersByTime(15_000);
-    await waitUntil(() => stream.body().includes(SSE_KEEPALIVE_FRAME));
+    await waitFor(() => stream.body().includes(SSE_KEEPALIVE_FRAME));
     stream.request.destroy();
   });
 
@@ -137,8 +138,8 @@ describe("the job event stream through the console server", () => {
     const { id, record } = await startJob([], 30_000);
     const port = await startServer();
     const stream = await openEvents(port, id);
-    await waitUntil(() => record.listeners.size === 1);
+    await waitFor(() => record.listeners.size === 1);
     stream.request.destroy();
-    await waitUntil(() => record.listeners.size === 0);
+    await waitFor(() => record.listeners.size === 0);
   });
 });

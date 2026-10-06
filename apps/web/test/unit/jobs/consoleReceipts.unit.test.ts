@@ -86,8 +86,8 @@ import { runArtifactPaths } from "@jobs/runArtifacts";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
   testSftpServerEntry,
+  trackScratchDirs,
   validIntent,
   validLinkageTerms,
   validSftpIntent,
@@ -141,18 +141,10 @@ const SEPARATE_RENDEZVOUS: JobRendezvousConfig = {
   sharesDataRootUncertain: false,
 };
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(): string {
-  const dir = tempDataRoot("receipts");
-  dirs.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 const signingPaths = (): JobSigningPaths => ({
   identityFile: "/data/.alcove-signing-identity.json",
@@ -677,7 +669,7 @@ describe("the certificate export never overwrites the identity file", () => {
   });
 
   test("the driver refuses synchronously, before any child is spawned", () => {
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     expect(() =>
       runSigningFingerprint({
         binaryPath: STUB_CLI_PATH,
@@ -784,7 +776,7 @@ describe("the fingerprint driver", () => {
   });
 
   test("drives the CLI subcommand, reporting a first run as created and a second as loaded", async () => {
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     const identityPath = signingIdentityPath(root);
     const first = await runSigningFingerprint({
       binaryPath: STUB_CLI_PATH,
@@ -824,8 +816,8 @@ describe("the fingerprint driver", () => {
     // this endpoint reports as a condition in the operator's folder. What keeps a
     // document the operator never mounted out of that decision is the explicit
     // cwd, so the check is on the directory the child actually ran in.
-    const root = scratchDir();
-    const serverCwd = scratchDir();
+    const root = scratchDir("receipts");
+    const serverCwd = scratchDir("receipts");
     fs.writeFileSync(
       path.join(serverCwd, "alcove.yaml"),
       "signing: [ unclosed",
@@ -856,7 +848,7 @@ describe("the fingerprint driver", () => {
   test("creates the mount when it does not exist yet, rather than failing to start", async () => {
     // The identity is the first thing an operator asks for, which can precede
     // any job -- and a spawn cannot start in a directory that is not there.
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     const unmade = path.join(root, "not-yet");
     const result = await runSigningFingerprint({
       binaryPath: STUB_CLI_PATH,
@@ -873,7 +865,7 @@ describe("the fingerprint driver", () => {
     // The cap belongs to the spawn boundary this driver shares with the host-key
     // probe, so it is exercised from this side too rather than assumed from the
     // probe's own case.
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     const result = await runSigningFingerprint({
       binaryPath: STUB_CLI_PATH,
       dataRoot: root,
@@ -887,7 +879,7 @@ describe("the fingerprint driver", () => {
   test("the watchdog kills a hung child and reports a timeout", async () => {
     // A child that ignores SIGTERM and would otherwise run for 5s; the watchdog
     // SIGTERMs at 50ms and SIGKILLs 50ms later, bounding the wait as a timeout.
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     const result = await runSigningFingerprint({
       binaryPath: STUB_CLI_PATH,
       dataRoot: root,
@@ -904,7 +896,7 @@ describe("the fingerprint driver", () => {
     // The name a reused identity holds, which the label a later request sends
     // does not rebind. Read from a real identity document rather than a stand-in,
     // so the certificate's own validation is part of what is asserted.
-    const dir = scratchDir();
+    const dir = scratchDir("receipts");
     const identityPath = path.join(dir, SIGNING_IDENTITY_FILE_NAME);
     fs.writeFileSync(
       identityPath,
@@ -922,7 +914,7 @@ describe("the fingerprint driver", () => {
     // document that is not an identity of a recognized format, and one whose
     // certificate does not validate. None of them may report a name the console
     // would then compare a run against.
-    const dir = scratchDir();
+    const dir = scratchDir("receipts");
     const absent = path.join(dir, "no-such-identity.json");
     await expect(readBoundIdentity(absent)).resolves.toBeUndefined();
     const unparseable = path.join(dir, "unparseable.json");
@@ -948,7 +940,7 @@ describe("the fingerprint driver", () => {
     // operator left occupied by a regular file has to settle as a result kind:
     // the endpoint only reconciles kinds. The one documented rejection is the
     // export-path caller bug; this is not it.
-    const root = scratchDir();
+    const root = scratchDir("receipts");
     const occupied = path.join(root, "not-a-directory");
     fs.writeFileSync(occupied, "");
     await expect(

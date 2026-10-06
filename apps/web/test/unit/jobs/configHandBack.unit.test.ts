@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -25,6 +24,7 @@ import {
   jobConfigurationHandBackSchema,
 } from "@jobs/intentSchemas";
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobs/handoff";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
 import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
@@ -86,16 +86,14 @@ function webrtcDocument(
   };
 }
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 function mountHolding(document: Record<string, unknown>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-handback-"));
-  dirs.push(dir);
+  const dir = scratchDir("handback");
   fs.writeFileSync(path.join(dir, "alcove.yaml"), stringifyYaml(document), {
     mode: 0o640,
   });

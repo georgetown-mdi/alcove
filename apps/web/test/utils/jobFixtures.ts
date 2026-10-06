@@ -7,6 +7,8 @@ import { parse as parseYaml } from "yaml";
 
 import { spawnExchangeJob, spawnZeroSetupJob } from "@jobs/cliDriver";
 
+import { waitFor } from "./waitFor";
+
 import type { CliRunControls, JobTerminalState } from "@jobs/cliDriver";
 import type {
   JobFiledropExchangeIntent,
@@ -15,6 +17,7 @@ import type {
   JobZeroSetupFiledropIntent,
   JobZeroSetupSftpIntent,
 } from "@jobs/intentSchemas";
+import type { JobManager } from "@jobs/jobManager";
 import type { JobSftpServerEntry } from "@jobs/sftpServer";
 import type { LinkageTerms } from "@alcove/core";
 
@@ -259,8 +262,11 @@ export function trackScratchDirs(): {
       return dir;
     },
     cleanup(): void {
-      for (const dir of dirs.splice(0))
+      for (const dir of dirs.splice(0)) {
+        // A test may leave its directory read-only, which would block removal.
+        if (fs.existsSync(dir)) fs.chmodSync(dir, 0o700);
         fs.rmSync(dir, { recursive: true, force: true });
+      }
     },
   };
 }
@@ -283,12 +289,49 @@ export async function awaitJobTerminalState(
   spawn((state) => {
     terminalRef.current = state;
   });
-  const deadline = Date.now() + timeoutMs;
-  while (terminalRef.current === null) {
-    if (Date.now() > deadline) throw new Error("the child did not exit");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return terminalRef.current;
+  await waitFor(() => terminalRef.current !== null, {
+    timeoutMs,
+    message: "the child did not exit",
+  });
+  return terminalRef.current!;
+}
+
+/**
+ * Resolve once job `id` has exited with a success. A run that ended otherwise
+ * fails naming its outcome and last events, so does a record that left the
+ * manager, and so does a run still going after `timeoutMs`.
+ */
+export async function awaitJobSucceeded(
+  manager: Pick<JobManager, "getJob">,
+  id: string,
+  timeoutMs: number,
+): Promise<void> {
+  await waitFor(() => manager.getJob(id)?.terminal !== null, {
+    timeoutMs,
+    intervalMs: 25,
+    message: "the console run reached no terminal event",
+  });
+  const record = manager.getJob(id);
+  if (record?.terminal == null) throw new Error("the job left the slot");
+  if (record.terminal.outcome !== "succeeded")
+    throw new Error(
+      `the console run ended ${record.terminal.outcome}: ` +
+        JSON.stringify(record.events.slice(-3)),
+    );
+}
+
+/**
+ * Resolve once a manager-held job record has emitted its terminal event. Past
+ * `timeoutMs` the wait fails rather than hanging the suite.
+ */
+export async function awaitTerminalEmitted(
+  record: { readonly terminalEmitted: boolean },
+  timeoutMs: number = DEFAULT_TERMINAL_TIMEOUT_MS,
+): Promise<void> {
+  await waitFor(() => record.terminalEmitted, {
+    timeoutMs,
+    message: "timed out waiting for terminal",
+  });
 }
 
 /**

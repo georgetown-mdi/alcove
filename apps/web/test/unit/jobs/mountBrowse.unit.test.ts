@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -9,24 +8,18 @@ import {
   resolveMountFile,
   resolveMountPath,
 } from "@jobs/mountBrowse";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 // The browse contract lists and resolves paths under a server-anchored mount
 // root, admitting dot-prefixed segments (SSH key material) but confining every
 // resolution to the mount by realpath so a symlink cannot escape. It never reads
 // file bytes.
 
-const dirs: Array<string> = [];
-
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir: tempDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 function mountWithKeys(): string {

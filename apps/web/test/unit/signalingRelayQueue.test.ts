@@ -16,6 +16,7 @@ import { MessageType } from "@alcove/peerjs-broker/enums";
 import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
 
 import { KEY } from "../utils/signalingHarness";
+import { waitFor } from "../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { DiagnosticSink } from "@alcove/core";
@@ -144,20 +145,6 @@ function connectCollecting(port: number, id: string): Promise<PeerSocket> {
     });
     ws.on("error", reject);
   });
-}
-
-/** Poll a loopback condition to a deadline inside the suite's own test timeout,
- * so a condition that never holds fails naming itself rather than as an
- * uninformative test timeout. */
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 3_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not met in time");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
 }
 
 describe("relay hold-for-reconnect round trip", () => {

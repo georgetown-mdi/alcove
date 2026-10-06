@@ -21,29 +21,22 @@ import { validateAndSanitizeEvent } from "@jobs/cliDriver";
 import {
   STUB_CLI_PATH,
   VALID_SHARED_SECRET,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
   validLinkageTerms,
 } from "../../utils/jobFixtures";
+import { waitFor } from "../../utils/waitFor";
 
 import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratch(label: string): string {
-  const dir = tempDataRoot(label);
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 /** The terminal event the CLI emits for a partner terms change it wrote as a
  * proposal, naming the job's own configuration path as the real one does. */
@@ -63,7 +56,7 @@ const REFUSAL_EVENT = {
 
 /** A mounted working folder holding a configuration and the key beside it. */
 function mountedRoot(): string {
-  const root = scratch("apply-terms");
+  const root = scratchDir("apply-terms");
   fs.writeFileSync(
     path.join(root, "alcove.yaml"),
     stringifyYaml(
@@ -89,7 +82,7 @@ function managerFor(
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: scratch("rvz"),
+    jobRendezvousDir: scratchDir("rvz"),
     childEnv: {
       STUB_FD3_EVENTS: JSON.stringify(events),
       STUB_EXIT_CODE: "64",
@@ -108,18 +101,17 @@ function openedIntent(): JobFiledropExchangeIntent {
 
 async function settledRun(manager: JobManager, id: string): Promise<JobRecord> {
   const record = manager.getJob(id)!;
-  const deadline = Date.now() + 5000;
-  while (record.terminal === null) {
-    if (Date.now() > deadline) throw new Error("the child did not exit");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await waitFor(() => record.terminal !== null, {
+    timeoutMs: 5000,
+    message: "the child did not exit",
+  });
   return record;
 }
 
 describe("applying the terms proposal a run of the opened configuration stopped on", () => {
   test("runs alcove apply with --consent-to-terms against the mounted files, writing nothing to its stdin", async () => {
     const root = mountedRoot();
-    const answerFile = path.join(scratch("answer"), "stdin");
+    const answerFile = path.join(scratchDir("answer"), "stdin");
     const manager = managerFor(root, {
       STUB_APPLY_STDIN_FILE: answerFile,
     });
@@ -223,7 +215,7 @@ describe("applying the terms proposal a run of the opened configuration stopped 
 
   test("refuses where the run's terms are not the mounted configuration's, running nothing", async () => {
     const root = mountedRoot();
-    const answerFile = path.join(scratch("answer"), "stdin");
+    const answerFile = path.join(scratchDir("answer"), "stdin");
     const manager = managerFor(root, { STUB_APPLY_STDIN_FILE: answerFile });
     manager.openMountedConfiguration();
     const intent = openedIntent();

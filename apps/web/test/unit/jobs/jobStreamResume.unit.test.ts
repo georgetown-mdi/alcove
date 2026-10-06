@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import http from "node:http";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -11,7 +10,7 @@ import { route as EventsRoute } from "../../../server/console/routes/$jobId/even
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -25,7 +24,7 @@ import type { RelayEvent } from "@jobs/cliDriver";
 // delivering the manager's whole history exactly once and never re-creating
 // the job.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 const servers: Array<http.Server> = [];
 
@@ -37,20 +36,11 @@ afterEach(async () => {
   for (const server of servers.splice(0))
     await new Promise<void>((resolve) => server.close(() => resolve()));
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   vi.unstubAllEnvs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
-
-/** A registered temp directory, created. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
 
 /** A job whose stub CLI has emitted a three-event run, awaited to its terminal
  * so the manager's buffer holds the complete history the stream must deliver. */

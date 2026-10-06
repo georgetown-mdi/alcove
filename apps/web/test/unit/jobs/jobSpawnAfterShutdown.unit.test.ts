@@ -7,7 +7,7 @@ import { ConsoleShuttingDownError, JobManager } from "@jobs/jobManager";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -29,20 +29,12 @@ vi.mock("@jobs/workdir", async (importOriginal) => {
   };
 });
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   removal.fail = false;
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 function manager(argvFile: string): { manager: JobManager; dataRoot: string } {
   const dataRoot = scratchDir("spawn-refusal-root");

@@ -1,4 +1,3 @@
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -11,7 +10,7 @@ import { useJobManager } from "@jobs/index";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -23,15 +22,7 @@ import type { JobManager } from "@jobs/jobManager";
 // resolved correctly and then never reached the manager would leave every filedrop
 // create running against a layout the console already knows is incoherent.
 
-const dirs: Array<string> = [];
-
-/** A created directory registered for cleanup. */
-function madeDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 /** The retain trio a split rendezvous requires, as the console's file-handling card
  * resolves it. */
@@ -48,7 +39,7 @@ const RETAIN_OPTIONS = {
  */
 function managerForSplit(outboundDir: string, inboundDir: string): JobManager {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
-  vi.stubEnv("JOB_DATA_ROOT", madeDir("wiring-data"));
+  vi.stubEnv("JOB_DATA_ROOT", scratchDir("wiring-data"));
   vi.stubEnv("JOB_RENDEZVOUS_DIR", inboundDir);
   vi.stubEnv("JOB_RENDEZVOUS_OUTBOUND_DIR", outboundDir);
   vi.stubEnv("JOB_CLI_BINARY", STUB_CLI_PATH);
@@ -70,8 +61,7 @@ afterEach(() => {
   globals.jobInputDirConfig = undefined;
   globals.jobSecretsDirConfig = undefined;
   vi.unstubAllEnvs();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 describe("the manager the environment builds", () => {
@@ -79,7 +69,7 @@ describe("the manager the environment builds", () => {
     // An outbound leg inside the inbound one: the provisioning refuses the pair,
     // and the intent holds the retain trio, so the refusal that lands can only be
     // the problem the manager was constructed with.
-    const inbound = madeDir("wiring-inbound");
+    const inbound = scratchDir("wiring-inbound");
     const manager = managerForSplit(path.join(inbound, "outgoing"), inbound);
     await expect(
       manager.createJob(validIntent({ options: RETAIN_OPTIONS })),
@@ -92,8 +82,8 @@ describe("the manager the environment builds", () => {
     // reachable only PAST the problem gate, so it is what says the coherent
     // provisioning reached the manager as one.
     const manager = managerForSplit(
-      madeDir("wiring-outbound"),
-      madeDir("wiring-inbound"),
+      scratchDir("wiring-outbound"),
+      scratchDir("wiring-inbound"),
     );
     await expect(manager.createJob(validIntent())).rejects.toBeInstanceOf(
       JobRendezvousRetainRequiredError,

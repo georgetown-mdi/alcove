@@ -27,12 +27,11 @@ vi.mock("@tanstack/react-router", async () =>
 );
 
 // This suite exercises the CONSOLE build, where the recovery panel mounts.
-vi.mock("@utils/clientConfig", () => ({
-  deploymentProfile: () => "console" as const,
-  isConsoleBuild: () => true,
-  signalingServerSetting: () => undefined,
-  alcoveVersion: () => undefined,
-}));
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../utils/clientConfigMock")).consoleClientConfigMock(
+    importOriginal,
+  ),
+);
 
 // The console disables the browser transport; nothing here drives it.
 vi.mock("@psi/transport/rendezvous", async () =>

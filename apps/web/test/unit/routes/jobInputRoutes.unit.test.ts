@@ -14,17 +14,11 @@ import { route as InputsRoute } from "../../../server/console/routes/inputs/inde
 import { route as ProfileRoute } from "../../../server/console/routes/inputs/profile";
 import { route as SamplesRoute } from "../../../server/console/routes/inputs/samples";
 
-import { STUB_CLI_PATH } from "../../utils/jobFixtures";
+import { STUB_CLI_PATH, trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { Standardization } from "@alcove/core";
 
-const dirs: Array<string> = [];
-
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 const FIXTURE_CSV =
   "ssn,last_name,date_of_birth\n111223333,Public,1990-01-02\n222,Cole,1985-11-30\n";
@@ -35,7 +29,7 @@ function inputDirWithTabFixture(name = "tabbed.csv"): {
   dir: string;
   name: string;
 } {
-  const dir = tempDir("inputs");
+  const dir = scratchDir("inputs");
   fs.writeFileSync(path.join(dir, name), TAB_FIXTURE_CSV);
   return { dir, name };
 }
@@ -44,7 +38,7 @@ function inputDirWithFixture(name = "input.csv"): {
   dir: string;
   name: string;
 } {
-  const dir = tempDir("inputs");
+  const dir = scratchDir("inputs");
   fs.writeFileSync(path.join(dir, name), FIXTURE_CSV);
   return { dir, name };
 }
@@ -60,8 +54,7 @@ const STANDARDIZATION: Standardization = [
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobInputDirConfig?: unknown }).jobInputDirConfig = undefined;
 });
 
@@ -81,7 +74,7 @@ function handlersOf(route: { handlers: unknown }): Handlers {
  * directory. Returns the data root so a test can exercise the flat single-folder
  * layout by placing inputs directly under it. */
 function enable(options: { inputDir?: string } = {}): string {
-  const dataRoot = tempDir("data");
+  const dataRoot = scratchDir("data");
   // The job API is enabled only in a console build, so the input routes gate on
   // the console profile alongside the data root.
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
@@ -263,7 +256,7 @@ describe("GET /api/jobs/inputs/profile", () => {
   });
 
   test("400 with the not_a_csv code for a file with no columns", async () => {
-    const dir = tempDir("inputs");
+    const dir = scratchDir("inputs");
     fs.writeFileSync(path.join(dir, "empty.csv"), "");
     enable({ inputDir: dir });
     const response = await profile("empty.csv");
@@ -474,7 +467,7 @@ describe("POST /api/jobs/inputs/samples", () => {
   test.skipIf(process.getuid?.() === 0)(
     "a folder the console cannot write into is a 409 naming no path",
     async () => {
-      const inputDir = tempDir("readonly-inputs");
+      const inputDir = scratchDir("readonly-inputs");
       fs.chmodSync(inputDir, 0o500);
       enable({ inputDir });
       try {

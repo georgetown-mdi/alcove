@@ -1,6 +1,5 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import fs from "node:fs";
 
 import {
   DISPLAY_TRUNCATION_MARKER,
@@ -19,7 +18,8 @@ import { route as EventsRoute } from "../../../server/console/routes/$jobId/even
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -53,23 +53,15 @@ const ESCAPED_TWICE_TELLS = ["\\\\\\\\", "\\\\xe9"];
 
 const PRINTABLE_ASCII = /^[\x20-\x7e]*$/;
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   spawnMock.mockClear();
   vi.unstubAllEnvs();
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
 
 /** A child whose spawn fails with `message`, as Node reports it: an `error`
  * event, then `close` with a negative errno and no pid. */
@@ -112,12 +104,7 @@ async function runFailingJob(
   spawnMock.mockImplementationOnce(() => failingChild(message));
   const id = await manager.createJob(validIntent());
   const record = manager.getJob(id)!;
-  const deadline = Date.now() + 5000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record);
   return { record, id };
 }
 

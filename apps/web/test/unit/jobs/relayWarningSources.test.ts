@@ -1,5 +1,4 @@
 import { PassThrough } from "node:stream";
-import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -16,7 +15,9 @@ import { JobManager } from "@jobs/jobManager";
 import {
   STUB_CLI_PATH,
   awaitJobTerminalState,
+  awaitTerminalEmitted,
   tempDataRoot,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -34,22 +35,13 @@ import type { JobRecord } from "@jobs/jobManager";
 // new degradation cannot inherit another site's value by being added without one
 // of its own.
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-/** A created scratch directory, removed after the test. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 /** The value and text of one degradation notice the driver raised. */
 interface Degradation {
@@ -323,12 +315,7 @@ describe("the stamped source reaches the job's event stream", () => {
 
   /** The warning events a finished job buffered, in order. */
   async function warningsOf(record: JobRecord): Promise<Array<RelayEvent>> {
-    const deadline = Date.now() + 5000;
-    while (!record.terminalEmitted) {
-      if (Date.now() > deadline)
-        throw new Error("timed out waiting for terminal");
-      await settle();
-    }
+    await awaitTerminalEmitted(record);
     return record.events
       .map((entry) => entry.event)
       .filter((event) => event.type === "warning");

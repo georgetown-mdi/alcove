@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -21,7 +20,11 @@ import {
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { composeSftpConfigSpec } from "@jobs/intentConfig";
 
-import { testSftpServerEntry, validSftpIntent } from "../../utils/jobFixtures";
+import {
+  testSftpServerEntry,
+  trackScratchDirs,
+  validSftpIntent,
+} from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
 
@@ -247,18 +250,14 @@ describe("what the load discloses", () => {
 });
 
 describe("a mounted file the load cannot open", () => {
-  const dirs: Array<string> = [];
+  const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
   afterEach(() => {
-    for (const dir of dirs.splice(0)) {
-      fs.chmodSync(dir, 0o700);
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    removeScratchDirs();
   });
 
   function mountDir(): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-configload-"));
-    dirs.push(dir);
+    const dir = scratchDir("configload");
     return dir;
   }
 
@@ -414,16 +413,14 @@ describe("a configuration on a channel the console does not conduct", () => {
     };
   }
 
-  const dirs: Array<string> = [];
+  const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
   afterEach(() => {
-    for (const dir of dirs.splice(0))
-      fs.rmSync(dir, { recursive: true, force: true });
+    removeScratchDirs();
   });
 
   function mountHolding(document: Record<string, unknown>): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-configload-"));
-    dirs.push(dir);
+    const dir = scratchDir("configload");
     fs.writeFileSync(path.join(dir, "alcove.yaml"), stringifyYaml(document));
     return dir;
   }
@@ -518,16 +515,14 @@ describe("a configuration on a channel the console does not conduct", () => {
 });
 
 describe("the key file beside an opened configuration", () => {
-  const dirs: Array<string> = [];
+  const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
   afterEach(() => {
-    for (const dir of dirs.splice(0))
-      fs.rmSync(dir, { recursive: true, force: true });
+    removeScratchDirs();
   });
 
   function mountHolding(document: Record<string, unknown>): string {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-configload-"));
-    dirs.push(dir);
+    const dir = scratchDir("configload");
     fs.writeFileSync(path.join(dir, "alcove.yaml"), stringifyYaml(document));
     return dir;
   }

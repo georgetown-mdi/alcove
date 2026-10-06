@@ -20,7 +20,7 @@ import {
 import {
   STUB_CLI_PATH,
   TEST_HOST_KEY_FINGERPRINT,
-  tempDataRoot,
+  trackScratchDirs,
 } from "../../utils/jobFixtures";
 
 import type { SftpProbeResult } from "@jobs/sftpProbe";
@@ -28,18 +28,10 @@ import type { SftpProbeResult } from "@jobs/sftpProbe";
 /** The repository root, from this file's place at apps/web/test/unit/. */
 const REPO_ROOT = fileURLToPath(new URL("../../../../..", import.meta.url));
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
-
-function scratchDir(): string {
-  const dir = tempDataRoot("probe");
-  dirs.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
 
 const okLine = (
   fingerprint = TEST_HOST_KEY_FINGERPRINT,
@@ -117,7 +109,7 @@ describe("parseProbeStdout re-validates every field at the trust boundary", () =
 
 describe("probeSftpHostKey drives the CLI probe subcommand", () => {
   test("spawns the exact argv template and returns ok on a valid line", async () => {
-    const argvFile = path.join(scratchDir(), "argv.json");
+    const argvFile = path.join(scratchDir("probe"), "argv.json");
     const result = await probeSftpHostKey({
       host: "sftp.example.org",
       port: 2222,

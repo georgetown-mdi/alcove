@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -34,7 +32,8 @@ import { route as EventsRoute } from "../../../server/console/routes/$jobId/even
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -172,15 +171,8 @@ function renderedOnce(text: string): string {
   });
 }
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
-
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  dirs.push(dir);
-  return dir;
-}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -188,8 +180,7 @@ afterEach(() => {
 
 afterAll(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
 });
@@ -220,12 +211,7 @@ async function runJob(
     manager;
   const id = await manager.createJob(validIntent());
   const record = manager.getJob(id)!;
-  const deadline = Date.now() + 5000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record);
   return { record, id };
 }
 

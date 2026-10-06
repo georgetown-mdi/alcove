@@ -21,6 +21,7 @@ import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
 import { Realm } from "@alcove/peerjs-broker/models/realm";
 
 import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
+import { waitFor } from "../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { DiagnosticSink } from "@alcove/core";
@@ -252,17 +253,6 @@ function connectCollecting(port: number, id: string): Promise<RegisteredPeer> {
 /** The socket alone, for a test that only sends on it. */
 async function connectRegistered(port: number, id: string): Promise<WebSocket> {
   return (await connectCollecting(port, id)).ws;
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 5_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not met in time");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
 }
 
 describe("signaling diagnostics sink", () => {

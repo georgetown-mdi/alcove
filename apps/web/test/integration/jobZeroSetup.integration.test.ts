@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
+import { waitFor } from "../utils/waitFor";
+
 import {
   getFreePort,
   hasConsoleBuild,
@@ -38,20 +40,26 @@ async function waitForJobStatus(
   id: string,
   deadlineMs = 15_000,
 ): Promise<string> {
-  const deadline = Date.now() + deadlineMs;
-  for (;;) {
-    const response = await fetch(`http://127.0.0.1:${port}/api/jobs/${id}`);
-    if (response.ok) {
+  let status: string | undefined;
+  await waitFor(
+    async () => {
+      const response = await fetch(`http://127.0.0.1:${port}/api/jobs/${id}`);
+      if (!response.ok) {
+        await response.body?.cancel();
+        return false;
+      }
       const body = (await response.json()) as { status?: string };
-      if (body.status !== undefined && body.status !== "running")
-        return body.status;
-    } else {
-      await response.body?.cancel();
-    }
-    if (Date.now() >= deadline)
-      throw new Error("job did not reach a terminal status in time");
-    await new Promise((r) => setTimeout(r, 100));
-  }
+      if (body.status === undefined || body.status === "running") return false;
+      status = body.status;
+      return true;
+    },
+    {
+      timeoutMs: deadlineMs,
+      intervalMs: 100,
+      message: "job did not reach a terminal status in time",
+    },
+  );
+  return status!;
 }
 
 describe.skipIf(!hasConsoleBuild)(

@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -9,18 +8,12 @@ import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
 import { route as ConfigRoute } from "../../../server/console/routes/config";
 
-import { STUB_CLI_PATH } from "../../utils/jobFixtures";
+import { STUB_CLI_PATH, trackScratchDirs } from "../../utils/jobFixtures";
 
 // The mount load's route: the shared gate, the absent-file answer, the refusal
 // status, and that nothing it answers with holds a credential.
 
-const dirs: Array<string> = [];
-
-function tempDir(label: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `alcove-${label}-`));
-  dirs.push(dir);
-  return dir;
-}
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -32,8 +25,7 @@ afterEach(() => {
   ).jobManagerInstance?.shutdown();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 type Handlers = Record<
@@ -50,7 +42,7 @@ function handlersOf(route: { handlers: unknown }): Handlers {
 
 /** Enable the job API (console build + data root). Returns the data root. */
 function enable(): string {
-  const dataRoot = tempDir("config-data");
+  const dataRoot = scratchDir("config-data");
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
   vi.stubEnv("JOB_DATA_ROOT", dataRoot);
   vi.stubEnv("JOB_CLI_BINARY", STUB_CLI_PATH);

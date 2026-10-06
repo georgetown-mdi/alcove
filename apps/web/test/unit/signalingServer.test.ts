@@ -19,6 +19,7 @@ import {
   requireLoopbackTlsCert,
 } from "@alcove/testkit/loopbackTlsCert";
 import { hardenUpgradeSurface } from "../../server/upgradeHardening";
+import { waitFor } from "../utils/waitFor";
 
 import type { AddressInfo } from "node:net";
 import type { Duplex } from "node:stream";
@@ -393,17 +394,6 @@ function settlesWithin(
       timer = setTimeout(() => resolve(false), ms);
     }),
   ]).finally(() => clearTimeout(timer));
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 3_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not met in time");
-    await new Promise((r) => setTimeout(r, 20));
-  }
 }
 
 describe("signaling socket guards", () => {

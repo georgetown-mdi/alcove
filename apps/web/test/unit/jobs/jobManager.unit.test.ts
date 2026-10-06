@@ -54,9 +54,11 @@ import {
   TEST_HOST_KEY_FINGERPRINT,
   TEST_RUN_STAMP,
   VALID_SHARED_SECRET,
+  awaitTerminalEmitted,
   composedConnection,
   composedServer,
   tempDataRoot,
+  trackScratchDirs,
   validInputFileIntent,
   validIntent,
   validLinkageTerms,
@@ -64,6 +66,8 @@ import {
   validZeroSetupIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
+
+import { waitFor } from "../../utils/waitFor";
 
 import type * as workdirModule from "@jobs/workdir";
 import type { BufferedEvent, JobRecord } from "@jobs/jobManager";
@@ -83,11 +87,13 @@ vi.mock("@jobs/workdir", { spy: true });
 
 const roots: Array<string> = [];
 const managers: Array<JobManager> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
   for (const root of roots.splice(0))
     fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
   vi.unstubAllEnvs();
   // Clear the spy call history and any per-test `*Once` overrides so a test can
   // never observe a prior test's calls (a cumulative `toHaveBeenCalled` is a
@@ -165,15 +171,6 @@ function makeManager(options: {
   return manager;
 }
 
-/** A created, writable rendezvous directory a filedrop job needs, registered for
- * cleanup and disjoint from the data root so it raises no preflight warning. */
-function rendezvousRoot(): string {
-  const dir = tempDataRoot("rvz");
-  roots.push(dir);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-
 /** Author a real file-reference SFTP connection on the manager so an sftp job can
  * run, returning the credential's `@path`. The secret lives outside the data and
  * rendezvous roots, so it composes cleanly. */
@@ -217,34 +214,13 @@ function makeStubSpawnManager(): {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    jobRendezvousDir: rendezvousRoot(),
+    jobRendezvousDir: scratchDir("rvz"),
   });
   managers.push(manager);
   return { manager, handlersRef };
 }
 
 /** Resolve once the job has emitted its terminal event or the timeout elapses. */
-async function waitForTerminal(
-  record: JobRecord,
-  timeoutMs = 5000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
-
-/** Resolve once the stub child has written its readiness marker. */
-async function waitForFile(filePath: string, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!fs.existsSync(filePath)) {
-    if (Date.now() > deadline)
-      throw new Error(`timed out waiting for ${filePath}`);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}
 
 /** What a hand-driven terminal delivers for a run with no stderr of its own. */
 const NO_DIAGNOSTICS: CliRunDiagnostics = {
@@ -265,7 +241,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.status).toBe("succeeded");
     const terminal = record.events[record.events.length - 1].event;
@@ -276,7 +252,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const manager = makeManager({ exitCode: 130 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("cancelled");
     expect(record.terminal?.outcome).toBe("cancelled");
     expect(record.terminal?.exitCode).toBe(130);
@@ -286,7 +262,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const manager = makeManager({ exitCode: 143 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.terminal?.exitCode).toBe(143);
     expect(record.status).toBe("cancelled");
   });
@@ -297,7 +273,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const manager = makeManager({ exitCode: 69 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("failed");
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.type).toBe("error");
@@ -314,7 +290,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const terminal = record.events[record.events.length - 1].event;
     expect(String(terminal.message)).toContain("stream broke");
     expect(String(terminal.message)).not.toContain("no linkage key");
@@ -344,7 +320,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     const terminal = record.events[record.events.length - 1].event;
     expect(String(terminal.message)).toBe("the partner aborted the exchange");
@@ -369,7 +345,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const terminal = record.events[record.events.length - 1].event;
     const chain = terminal[ERROR_MESSAGE_CHAIN_FIELD] as Array<string>;
     expect(chain[1]).toBe(
@@ -390,7 +366,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const terminal = record.events[record.events.length - 1].event;
     const link = (terminal[ERROR_MESSAGE_CHAIN_FIELD] as Array<string>)[1];
     expect(link.endsWith("TAILMARKER")).toBe(true);
@@ -419,7 +395,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.terminal).toEqual({
       outcome: "completedWithPersistenceLoss",
@@ -459,7 +435,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.terminal?.outcome).toBe("completedWithPersistenceLoss");
     expect(record.status).toBe("failed");
@@ -475,7 +451,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.terminal?.outcome).toBe("completedWithPersistenceLoss");
     expect(record.status).toBe("failed");
@@ -499,7 +475,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     const manager = makeManager({ exitCode: 130 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.type).toBe("error");
     expect(terminal.cancelled).toBe(true);
@@ -513,7 +489,7 @@ describe("JobManager end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const degraded = record.events.some(
       (entry) => entry.event.degraded === true,
     );
@@ -587,7 +563,7 @@ describe("a synthesized persistence-loss terminal reaches the operator's alert",
     const manager = makeManager({ exitCode: 73 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
 
     const alert = await alertForRelayedRun(id, record);
     expect(alert.category).toBe("output");
@@ -614,7 +590,7 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.status).toBe("failed");
 
@@ -645,7 +621,7 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     const manager = makeManager({ exitCode: 70 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.internalFault).toBe(true);
     expect(terminal[ERROR_MESSAGE_CHAIN_FIELD]).toBeUndefined();
@@ -677,7 +653,7 @@ describe("a run that exits with no terminal event, by the CLI's exit-code table"
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(record.status).toBe("failed");
 
@@ -700,7 +676,7 @@ describe("SSE replay", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const { replay } = manager.subscribe(record, 0, () => undefined);
     expect(replay.map((entry) => entry.id)).toEqual([1, 2]);
     expect(replay[replay.length - 1].event.type).toBe("result");
@@ -717,7 +693,7 @@ describe("SSE replay", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const { replay } = manager.subscribe(record, 1, () => undefined);
     expect(replay.map((entry) => entry.id)).toEqual([2, 3]);
   });
@@ -728,7 +704,7 @@ describe("SSE replay", () => {
     const record = manager.getJob(id)!;
     const seen: Array<BufferedEvent> = [];
     manager.subscribe(record, 0, (entry) => seen.push(entry));
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(seen.some((entry) => entry.event.type === "result")).toBe(true);
   });
 
@@ -749,7 +725,7 @@ describe("SSE replay", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rendezvousRoot(),
+      jobRendezvousDir: scratchDir("rvz"),
     });
     managers.push(manager);
 
@@ -784,7 +760,7 @@ describe("event cap fails the job", () => {
     const manager = makeManager({ events, exitCode: 0, eventBufferCap: 3 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("failed");
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.type).toBe("error");
@@ -810,7 +786,7 @@ describe("event cap fails the job", () => {
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
       eventBufferCap: 3,
-      jobRendezvousDir: rendezvousRoot(),
+      jobRendezvousDir: scratchDir("rvz"),
     });
     managers.push(manager);
 
@@ -846,7 +822,7 @@ describe("cancellation and deletion", () => {
     // Let the child come up, then cancel.
     await new Promise((resolve) => setTimeout(resolve, 50));
     manager.cancelJob(record);
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("cancelled");
   });
 
@@ -868,9 +844,9 @@ describe("cancellation and deletion", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForFile(readyFile);
+    await waitFor(() => fs.existsSync(readyFile));
     manager.cancelJob(record);
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("cancelled");
     expect(record.terminal?.exitCode).toBe(143);
   });
@@ -879,7 +855,7 @@ describe("cancellation and deletion", () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const workdir = record.workdir;
     expect(fs.existsSync(workdir)).toBe(true);
     expect(await manager.deleteJob(id)).toBe(true);
@@ -895,7 +871,7 @@ describe("cancellation and deletion", () => {
     });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const outputPath = manager.getJobView(id)!.outputPath!;
     expect(path.dirname(outputPath)).toBe(record.workdir);
@@ -908,7 +884,7 @@ test("the security error terminal is classified and closes the stream", async ()
   const manager = makeManager({ events: [ERROR_EVENT], exitCode: 69 });
   const id = await manager.createJob(validIntent());
   const record = manager.getJob(id)!;
-  await waitForTerminal(record);
+  await awaitTerminalEmitted(record);
   const terminal = record.events[record.events.length - 1].event;
   expect(terminal.type).toBe("error");
   expect(terminal.category).toBe("security");
@@ -925,7 +901,7 @@ describe("createJob failure cleanup", () => {
     // The slot did not leak: a fresh job is immediately acceptable and runs.
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
   });
 
@@ -944,7 +920,7 @@ describe("createJob failure cleanup", () => {
     // The slot did not leak: a subsequent job is accepted and runs.
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
   });
 });
@@ -1005,7 +981,7 @@ describe("mounted work input read in place at create", () => {
     });
     const id = await manager.createJob(validInputFileIntent(ref));
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
   });
 
@@ -1050,7 +1026,7 @@ describe("sftp server resolution", () => {
     const { credentialRef } = armSftpConnection(manager);
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const configYaml = fs.readFileSync(`${record.workdir}/alcove.yaml`, "utf8");
     const server = composedServer(configYaml);
@@ -1066,7 +1042,7 @@ describe("sftp server resolution", () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
   });
 });
@@ -1137,7 +1113,7 @@ describe("the in-app authored sftp connection", () => {
     });
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const configYaml = fs.readFileSync(`${record.workdir}/alcove.yaml`, "utf8");
     const server = composedServer(configYaml);
@@ -1176,7 +1152,7 @@ describe("the in-app authored sftp connection", () => {
       }),
     );
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const server = composedServer(
       fs.readFileSync(`${record.workdir}/alcove.yaml`, "utf8"),
@@ -1256,7 +1232,7 @@ describe("the in-app authored sftp connection", () => {
     manager.authorSftpServer(authoredBody());
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(await manager.deleteJob(id)).toBe(true);
     // Scoped to the single exchange: deleting it clears the authored connection.
@@ -1281,14 +1257,6 @@ describe("the in-app authored sftp connection", () => {
     expect(manager.sftpProjection()?.host).toBe("first.example");
   });
 
-  /** A created scratch directory the manager materializes pasted credentials to. */
-  function scratchDir(): string {
-    const dir = tempDataRoot("cred-scratch");
-    roots.push(dir);
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-
   /** A raw-paste authoring body holding a pasted credential value. */
   function rawBody(value = "s3cret-password") {
     return {
@@ -1299,7 +1267,7 @@ describe("the in-app authored sftp connection", () => {
   }
 
   test("a pasted credential materializes to the scratch dir, projected credential-free", () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({ credentialScratchDir: scratch });
     const projection = manager.authorSftpServer(rawBody());
     // The projection holds only the locator -- never the value.
@@ -1316,7 +1284,7 @@ describe("the in-app authored sftp connection", () => {
   });
 
   test("clearing deletes the materialized pasted credential", () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({ credentialScratchDir: scratch });
     manager.authorSftpServer(rawBody());
     expect(fs.readdirSync(scratch)).toHaveLength(1);
@@ -1326,7 +1294,7 @@ describe("the in-app authored sftp connection", () => {
   });
 
   test("re-authoring deletes the prior pasted credential", () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({ credentialScratchDir: scratch });
     manager.authorSftpServer(rawBody("first-secret"));
     manager.authorSftpServer(rawBody("second-secret"));
@@ -1339,7 +1307,7 @@ describe("the in-app authored sftp connection", () => {
   });
 
   test("re-authoring with a file reference drops the prior pasted credential", () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({ credentialScratchDir: scratch });
     manager.authorSftpServer(rawBody());
     expect(fs.readdirSync(scratch)).toHaveLength(1);
@@ -1350,7 +1318,7 @@ describe("the in-app authored sftp connection", () => {
   });
 
   test("deleting the exchange deletes the materialized pasted credential", async () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({
       events: [RESULT_EVENT],
       exitCode: 0,
@@ -1360,7 +1328,7 @@ describe("the in-app authored sftp connection", () => {
     expect(fs.readdirSync(scratch)).toHaveLength(1);
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(await manager.deleteJob(id)).toBe(true);
     expect(fs.readdirSync(scratch)).toEqual([]);
@@ -1368,7 +1336,7 @@ describe("the in-app authored sftp connection", () => {
   });
 
   test("a pasted credential composes into the sftp config as an @path, not a value", async () => {
-    const scratch = scratchDir();
+    const scratch = scratchDir("cred-scratch");
     const manager = makeManager({
       events: [RESULT_EVENT],
       exitCode: 0,
@@ -1377,7 +1345,7 @@ describe("the in-app authored sftp connection", () => {
     manager.authorSftpServer(rawBody("s3cret-in-config"));
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const configYaml = fs.readFileSync(`${record.workdir}/alcove.yaml`, "utf8");
     // The composed config holds the @path reference, never the pasted value.
@@ -1418,7 +1386,7 @@ describe("sftp job driven by a mounted work input", () => {
     // The slot did not leak: a subsequent valid job is accepted and runs.
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
   });
 
@@ -1436,7 +1404,7 @@ describe("sftp job driven by a mounted work input", () => {
     const record = manager.getJob(id)!;
     // Read in place: nothing is copied into the workdir.
     expect(fs.existsSync(path.join(record.workdir, "input.csv"))).toBe(false);
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     const configYaml = fs.readFileSync(`${record.workdir}/alcove.yaml`, "utf8");
     expect(configYaml).toContain("channel: sftp");
@@ -1522,7 +1490,7 @@ describe("filedrop rendezvous facilitation", () => {
   async function notEmptyLeadFor(
     intent: JobFiledropExchangeIntent,
   ): Promise<string | undefined> {
-    const rvz = rendezvousRoot();
+    const rvz = scratchDir("rvz");
     fs.writeFileSync(path.join(rvz, "console-hello.json"), "");
     const manager = makeManager({
       events: [RESULT_EVENT],
@@ -1569,8 +1537,8 @@ describe("a split-provisioned filedrop console", () => {
     inbound: string;
     outbound: string;
   } {
-    const inbound = rendezvousRoot();
-    const outbound = rendezvousRoot();
+    const inbound = scratchDir("rvz");
+    const outbound = scratchDir("rvz");
     return {
       manager: makeManager({
         ...options,
@@ -1629,7 +1597,7 @@ describe("a split-provisioned filedrop console", () => {
   });
 
   test("preflights each leg by name, so a fault names the folder it is in", async () => {
-    const inbound = rendezvousRoot();
+    const inbound = scratchDir("rvz");
     const outbound = path.join(tempDataRoot("rvz-out-missing"), "not-created");
     const manager = makeManager({
       events: [RESULT_EVENT],
@@ -1699,7 +1667,7 @@ describe("a split-provisioned filedrop console", () => {
     // independently, so a mount that resolves at all is a partner-synced folder a
     // credential must not be referenced out of, whether or not an exchange could
     // run over the pair it belongs to.
-    const outbound = rendezvousRoot();
+    const outbound = scratchDir("rvz");
     const root = tempDataRoot("outbound-only");
     roots.push(root);
     const manager = new JobManager({
@@ -1734,7 +1702,7 @@ describe("zero-setup mode end-to-end via the stub CLI", () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const id = await manager.createJob(validZeroSetupIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     // The zero-setup workdir holds only input (inline), output, and the record
     // pair -- never a composed config document or a key file.
@@ -1751,7 +1719,7 @@ describe("zero-setup mode end-to-end via the stub CLI", () => {
     armSftpConnection(manager);
     const id = await manager.createJob(validZeroSetupSftpIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("succeeded");
     expect(fs.existsSync(path.join(record.workdir, "alcove.yaml"))).toBe(false);
     expect(fs.existsSync(path.join(record.workdir, ".alcove.key"))).toBe(false);
@@ -1816,7 +1784,7 @@ describe("zero-setup mode end-to-end via the stub CLI", () => {
     });
     const id = await manager.createJob(validZeroSetupIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     expect(record.status).toBe("failed");
     const terminal = record.events[record.events.length - 1].event;
     expect(terminal.type).toBe("error");
@@ -1846,7 +1814,7 @@ describe("zero-setup mode end-to-end via the stub CLI", () => {
       ExchangeBusyError,
     );
     manager.cancelJob(first);
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
   });
 });
 
@@ -1865,7 +1833,7 @@ describe("the single exchange slot", () => {
     expect((error as ExchangeBusyError).activeJobId).toBe(firstId);
 
     manager.cancelJob(first);
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
   });
 
   test("a running filedrop job rejects a second create of either channel", async () => {
@@ -1884,7 +1852,7 @@ describe("the single exchange slot", () => {
     );
 
     manager.cancelJob(first);
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
   });
 
   test("a running sftp job rejects a second create of either channel", async () => {
@@ -1903,7 +1871,7 @@ describe("the single exchange slot", () => {
     );
 
     manager.cancelJob(first);
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
   });
 
   test("overflow-SIGKILL keeps the slot occupied until the exchange is deleted", async () => {
@@ -1923,7 +1891,7 @@ describe("the single exchange slot", () => {
 
     // Even after the killed child's close is observed, the slot is held: only a
     // DELETE frees a terminal exchange.
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
     await vi.waitFor(() => expect(first.terminal).not.toBeNull());
     await expect(manager.createJob(validIntent())).rejects.toThrow(
       ExchangeBusyError,
@@ -1954,7 +1922,7 @@ describe("the single exchange slot", () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
     const firstId = await manager.createJob(validIntent());
     const first = manager.getJob(firstId)!;
-    await waitForTerminal(first);
+    await awaitTerminalEmitted(first);
     await vi.waitFor(() => expect(first.terminal).not.toBeNull());
 
     // Reject-until-DELETE: the settled exchange keeps the slot until it is deleted.
@@ -1992,7 +1960,7 @@ describe("occupiedSlotId reports the slot occupant", () => {
     // would 409 -- and it stays occupied through the settled-but-undeleted state.
     expect(manager.occupiedSlotId()).toBe(id);
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(manager.occupiedSlotId()).toBe(id);
     // DELETE frees the slot once the child's exit is observed.
@@ -2116,14 +2084,6 @@ describe("a filedrop run that would publish the signing identity", () => {
     return manager;
   }
 
-  /** A created directory registered for cleanup. */
-  function directory(label: string): string {
-    const dir = tempDataRoot(label);
-    roots.push(dir);
-    fs.mkdirSync(dir, { recursive: true });
-    return dir;
-  }
-
   /** Put a signing identity in the data root, as the console's own fingerprint
    * request does. Only its presence is read by the check under test, so these
    * bytes stand in for the document the CLI writes. */
@@ -2138,7 +2098,7 @@ describe("a filedrop run that would publish the signing identity", () => {
   test("refuses when the rendezvous mount IS the folder holding the identity", async () => {
     // The single-mount console: JOB_RENDEZVOUS_DIR falls back to the data root,
     // so the folder the partner writes into is the folder the key sits in.
-    const root = directory("signing-shared");
+    const root = scratchDir("signing-shared");
     writeIdentity(root);
     const manager = makeSigningManager({ dataRoot: root });
     await expect(manager.createJob(validIntent())).rejects.toBeInstanceOf(
@@ -2163,7 +2123,7 @@ describe("a filedrop run that would publish the signing identity", () => {
       // another account in the field -- is a key the partner's sync copies all the
       // same, so a readability test would admit exactly the run this refusal is
       // for.
-      const root = directory("signing-unreadable");
+      const root = scratchDir("signing-unreadable");
       writeIdentity(root);
       fs.chmodSync(path.join(root, SIGNING_IDENTITY_FILE_NAME), 0o000);
       const manager = makeSigningManager({ dataRoot: root });
@@ -2174,7 +2134,7 @@ describe("a filedrop run that would publish the signing identity", () => {
   );
 
   test("refuses when the rendezvous mount HOLDS the folder holding the identity", async () => {
-    const rendezvous = directory("signing-holder");
+    const rendezvous = scratchDir("signing-holder");
     const root = path.join(rendezvous, "work");
     fs.mkdirSync(root, { recursive: true });
     writeIdentity(root);
@@ -2190,11 +2150,11 @@ describe("a filedrop run that would publish the signing identity", () => {
   test("refuses when the OUTBOUND leg of a split console holds it", async () => {
     // Both legs are partner-synced, so which leg the collision is on does not
     // change what the run would publish.
-    const root = directory("signing-split");
+    const root = scratchDir("signing-split");
     writeIdentity(root);
     const manager = makeSigningManager({
       dataRoot: root,
-      jobRendezvousDir: directory("signing-split-inbound"),
+      jobRendezvousDir: scratchDir("signing-split-inbound"),
       jobRendezvousOutboundDir: root,
     });
     const intent = validIntent();
@@ -2207,11 +2167,11 @@ describe("a filedrop run that would publish the signing identity", () => {
   });
 
   test("admits a rendezvous mount beside the identity's folder", async () => {
-    const root = directory("signing-sibling");
+    const root = scratchDir("signing-sibling");
     writeIdentity(root);
     const manager = makeSigningManager({
       dataRoot: root,
-      jobRendezvousDir: directory("signing-sibling-rvz"),
+      jobRendezvousDir: scratchDir("signing-sibling-rvz"),
     });
     await expect(manager.createJob(validIntent())).resolves.toBeTypeOf(
       "string",
@@ -2221,7 +2181,7 @@ describe("a filedrop run that would publish the signing identity", () => {
   test("admits a rendezvous mount INSIDE the identity's folder", async () => {
     // Directional: the partner writes into a folder below the one the key sits
     // in, so the key is not among the files that run publishes.
-    const root = directory("signing-nested");
+    const root = scratchDir("signing-nested");
     writeIdentity(root);
     const rendezvous = path.join(root, "rendezvous");
     fs.mkdirSync(rendezvous, { recursive: true });
@@ -2237,7 +2197,7 @@ describe("a filedrop run that would publish the signing identity", () => {
   test("admits the shared layout for an unsigned run with no identity", async () => {
     // Nothing to publish: no key on disk, and a run signing nothing creates
     // none.
-    const root = directory("signing-absent");
+    const root = scratchDir("signing-absent");
     const manager = makeSigningManager({ dataRoot: root });
     await expect(
       manager.createJob(validIntent({ signing: { mode: "none" } })),
@@ -2249,7 +2209,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     // the path the console names and refuses the run when nothing is there
     // (`resolveSigningPersist`), so a signed run never creates the key it would
     // go on to sync. The run fails at the child, with the CLI's own guidance.
-    const root = directory("signing-first-run");
+    const root = scratchDir("signing-first-run");
     const manager = makeSigningManager({ dataRoot: root });
     await expect(
       manager.createJob(
@@ -2268,9 +2228,9 @@ describe("a filedrop run that would publish the signing identity", () => {
     // identity's folder, and a refusal is owed a positive finding: the run goes
     // ahead and the receipts card's advisory is what the operator gets. The key
     // is on disk, so the other half of the refusal holds.
-    const root = directory("signing-unresolved");
+    const root = scratchDir("signing-unresolved");
     writeIdentity(root);
-    const rendezvous = directory("signing-unresolved-rvz");
+    const rendezvous = scratchDir("signing-unresolved-rvz");
     const manager = makeSigningManager({
       dataRoot: root,
       jobRendezvousDir: rendezvous,
@@ -2302,7 +2262,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     // exchange on the busy rejection alone, so the refusal is raised after it: a
     // browser that lost its attachment while the identity appeared mid-run would
     // otherwise meet this refusal and have no way back to its own exchange.
-    const root = directory("signing-busy");
+    const root = scratchDir("signing-busy");
     const manager = makeSigningManager({ dataRoot: root, delayMs: 5000 });
     const running = await manager.createJob(validIntent());
     writeIdentity(root);
@@ -2316,7 +2276,7 @@ describe("a filedrop run that would publish the signing identity", () => {
   test("admits an sftp run out of the shared layout", async () => {
     // Nobody syncs the mount on an sftp exchange, so the layout costs nothing
     // there and the run stays the operator's to make.
-    const root = directory("signing-sftp");
+    const root = scratchDir("signing-sftp");
     writeIdentity(root);
     const manager = makeSigningManager({ dataRoot: root });
     armSftpConnection(manager);
@@ -2451,7 +2411,7 @@ describe("a filedrop run that would publish the signing identity", () => {
       // away from every channel on a one-mount console, since the rendezvous
       // falls back to the data root: an SFTP or WebRTC exchange out of that
       // mount publishes nothing, and only a shared-folder run is refused.
-      const root = directory("fingerprint-mint");
+      const root = scratchDir("fingerprint-mint");
       const manager = makeSigningManager({ dataRoot: root });
       await expect(
         manager.resolveSigningFingerprint({
@@ -2462,7 +2422,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     });
 
     test("reads an identity already in that folder", async () => {
-      const root = directory("fingerprint-read");
+      const root = scratchDir("fingerprint-read");
       writeIdentity(root);
       const manager = makeSigningManager({ dataRoot: root });
       await expect(
@@ -2477,7 +2437,7 @@ describe("a filedrop run that would publish the signing identity", () => {
       // The run's own create-time check ran before this key existed, so nothing
       // else stops the console dropping a private key into the folder that run
       // is syncing as it goes. No child spawns, so no key is written.
-      const root = directory("fingerprint-live-filedrop");
+      const root = scratchDir("fingerprint-live-filedrop");
       const manager = makeSigningManager({ dataRoot: root, delayMs: 5000 });
       await manager.createJob(validIntent());
       await expect(
@@ -2494,7 +2454,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     test("creates while an sftp run holds the slot", async () => {
       // Nobody syncs the mount on an sftp exchange, so the run in the slot says
       // nothing about where the key may be written.
-      const root = directory("fingerprint-live-sftp");
+      const root = scratchDir("fingerprint-live-sftp");
       // The stub honors one delay for every child it is spawned as, so the
       // exchange child's hold on the slot is bounded by what the fingerprint
       // child below can wait out. The gate is read before that child spawns.
@@ -2512,7 +2472,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     test("creates on the same layout with no run in the slot", async () => {
       // The gate is the live run, not the layout: on the default one-mount
       // console with nothing running, the key is created on demand.
-      const root = directory("fingerprint-idle-slot");
+      const root = scratchDir("fingerprint-idle-slot");
       const manager = makeSigningManager({ dataRoot: root });
       await expect(
         manager.resolveSigningFingerprint({
@@ -2527,7 +2487,7 @@ describe("a filedrop run that would publish the signing identity", () => {
       // started -- the only way both hold at once -- and it is on disk whatever
       // this request does, so withholding the fingerprint would leave the
       // operator unable to read the one they have.
-      const root = directory("fingerprint-live-read");
+      const root = scratchDir("fingerprint-live-read");
       const manager = makeSigningManager({ dataRoot: root, delayMs: 800 });
       await manager.createJob(validIntent());
       writeIdentity(root);
@@ -2551,7 +2511,7 @@ describe("the mounted configuration as the hand-off's merge base", () => {
     manager: JobManager;
     root: string;
   } {
-    const rendezvousDir = rendezvousRoot();
+    const rendezvousDir = scratchDir("rvz");
     const root = tempDataRoot("mounted-config");
     roots.push(root);
     fs.mkdirSync(root, { recursive: true });
@@ -2738,7 +2698,7 @@ describe("an opened configuration's own signing paths", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rendezvousRoot(),
+      jobRendezvousDir: scratchDir("rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([RESULT_EVENT]) },
     });
     managers.push(manager);
@@ -2848,7 +2808,7 @@ describe("the key file beside the opened configuration", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rendezvousRoot(),
+      jobRendezvousDir: scratchDir("rvz"),
     });
     managers.push(manager);
     return { manager, spawned };
@@ -3059,7 +3019,7 @@ describe("the key file beside the opened configuration", () => {
     const manager = new JobManager({
       dataRoot: root,
       binaryPath: STUB_CLI_PATH,
-      jobRendezvousDir: rendezvousRoot(),
+      jobRendezvousDir: scratchDir("rvz"),
       childEnv: { STUB_FD3_EVENTS: JSON.stringify([RESULT_EVENT]) },
     });
     managers.push(manager);
@@ -3067,7 +3027,7 @@ describe("the key file beside the opened configuration", () => {
     fs.appendFileSync(path.join(root, "alcove.yaml"), "# edited\n");
     const id = await manager.createJob(openedIntent());
     const record = manager.getJob(id)!;
-    await waitForTerminal(record);
+    await awaitTerminalEmitted(record);
     const answers = JSON.stringify([
       opened,
       manager.getJobView(id),

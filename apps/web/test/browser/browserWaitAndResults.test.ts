@@ -25,6 +25,12 @@ import { timeOfDayLabel } from "@exchange/exchangeRun";
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
+import {
+  TEST_RUN_COMPLETION,
+  lifecycleCall,
+  lifecycleCalls,
+} from "./moduleMocks";
+
 import type * as WaitForConnectionModule from "@psi/transport/waitForConnection";
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
 
@@ -53,32 +59,9 @@ vi.mock("@psi/transport/waitForConnection", async (importOriginal) => {
 // Stub the run lifecycle so a run never dials: each invocation's options are
 // captured so a test can drive the same callbacks the real lifecycle fires, and
 // call the seat's own acquire to reach the listening wait.
-interface CapturedLifecycle {
-  sharedSecret: string;
-  acquire: (context: {
-    signal: AbortSignal;
-    onStage: (stageId: string) => void;
-    onStages: (stages: Array<unknown>) => void;
-    onPsiProgress: (progress: unknown) => void;
-    onRunNotice: (message: string) => void;
-  }) => Promise<unknown>;
-  onResult: (outputs: unknown) => void;
-  onError: (failure: { category: string; error: unknown }) => void;
-}
-const lifecycleHarness = vi.hoisted(() => ({
-  calls: [] as Array<unknown>,
-}));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    lifecycleHarness.calls.push(options);
-    return Promise.resolve();
-  },
-}));
-
-function lifecycleCall(index: number): CapturedLifecycle {
-  return lifecycleHarness.calls[index] as CapturedLifecycle;
-}
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 const INVITER_CSV =
   "client_id,first_name,last_name,dob,program_code\n" +
@@ -169,7 +152,7 @@ const app = createAppMount();
 
 afterEach(() => {
   app.unmount();
-  lifecycleHarness.calls.length = 0;
+  lifecycleCalls.length = 0;
   vi.mocked(listenAsInviter).mockReset();
   window.sessionStorage.clear();
   window.location.hash = "";
@@ -196,7 +179,7 @@ async function createInvitation() {
   await expect
     .element(page.getByRole("heading", { level: 1 }))
     .toMatchTextContent("Your invitation is ready");
-  await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 }
 
 /** Walk the accepting seat from its invitation link to a launched run. */
@@ -228,7 +211,7 @@ async function launchAccept() {
   await userEvent.click(
     page.getByRole("button", { name: "Start the exchange" }),
   );
-  await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+  await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 }
 
 describe("the inviting seat's wait for its partner", () => {
@@ -301,7 +284,7 @@ describe("the inviting seat's wait for its partner", () => {
       .toBeInTheDocument();
 
     await page.getByRole("button", { name: "Keep waiting" }).click();
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
     expect(lifecycleCall(1).sharedSecret).toBe(lifecycleCall(0).sharedSecret);
     expect(page.getByRole("alert").query()).toBeNull();
   });
@@ -332,7 +315,7 @@ describe("the accepting seat's wait for its partner", () => {
     );
 
     await page.getByRole("button", { name: "Keep waiting" }).click();
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
     expect(lifecycleCall(1).sharedSecret).toBe(lifecycleCall(0).sharedSecret);
   });
 
@@ -361,7 +344,7 @@ describe("waiting again on an invitation after a reload", () => {
 
     // A reload drops the page and keeps this tab's session storage.
     app.unmount();
-    lifecycleHarness.calls.length = 0;
+    lifecycleCalls.length = 0;
     app.render(createElement(InviterScreen));
 
     await expect
@@ -377,16 +360,19 @@ describe("waiting again on an invitation after a reload", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Waiting for your partner");
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     expect(lifecycleCall(0).sharedSecret).toBe(original);
     expect(unloadWouldBeConfirmed()).toBe(true);
 
     // Completing the run removes the kept invitation.
-    lifecycleCall(0).onResult({
-      kind: "counted",
-      intersectionCount: 4,
-      countReportedByPartner: true,
-    });
+    lifecycleCall(0).onResult(
+      {
+        kind: "counted",
+        intersectionCount: 4,
+        countReportedByPartner: true,
+      },
+      TEST_RUN_COMPLETION,
+    );
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange complete");
@@ -471,7 +457,7 @@ describe("waiting again on an invitation after a reload", () => {
 describe("leaving a completed browser run", () => {
   test("the inviter is asked first while a download is untaken, naming what is left", async () => {
     await createInvitation();
-    lifecycleCall(0).onResult(matchedOutputs());
+    lifecycleCall(0).onResult(matchedOutputs(), TEST_RUN_COMPLETION);
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange complete");
@@ -509,7 +495,7 @@ describe("leaving a completed browser run", () => {
 
   test("the acceptor is asked first while a download is untaken", async () => {
     await launchAccept();
-    lifecycleCall(0).onResult(matchedOutputs());
+    lifecycleCall(0).onResult(matchedOutputs(), TEST_RUN_COMPLETION);
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Exchange complete");

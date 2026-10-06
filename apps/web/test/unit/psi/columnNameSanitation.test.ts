@@ -1,6 +1,5 @@
 import { Readable } from "node:stream";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
@@ -18,6 +17,7 @@ import {
   CONTROLS_ONLY_HEADER_CSV,
   CONTROLS_ONLY_HEADER_PROFILE,
 } from "../../utils/unnamedColumnProfiles";
+import { trackScratchDirs } from "../../utils/jobFixtures";
 
 /**
  * Every web intake seat reads its CSV through core's parse boundary, which
@@ -61,11 +61,10 @@ function csvStream(content: string = CSV): Readable {
   return Readable.from(content);
 }
 
-const dirs: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
 afterEach(() => {
-  for (const dir of dirs.splice(0))
-    fs.rmSync(dir, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 describe("the browser file entry the inviter and acceptor seats share", () => {
@@ -124,8 +123,7 @@ describe("the invitation mint's own re-parse", () => {
 
 describe("the console's profile behind the direct-exchange and picker seats", () => {
   test("reports the stripped names and the positions over the wire", async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bidi-"));
-    dirs.push(dir);
+    const dir = scratchDir("bidi");
     fs.writeFileSync(path.join(dir, "input.csv"), CSV, "utf8");
 
     const profile = await profileJobInput(dir, "input.csv");
@@ -142,8 +140,7 @@ describe("a header that leaves a column unnamed", () => {
   /** Profile `content` as a mounted input, returning the fields the console
    * seats' stubs fix. */
   async function profileOf(content: string) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bidi-"));
-    dirs.push(dir);
+    const dir = scratchDir("bidi");
     fs.writeFileSync(path.join(dir, "input.csv"), content, "utf8");
     const profile = await profileJobInput(dir, "input.csv");
     return {

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-
 import { afterEach, expect, test } from "vitest";
 
 import {
@@ -20,7 +18,8 @@ import { renderSseFrame } from "@jobs/sse";
 
 import {
   STUB_CLI_PATH,
-  tempDataRoot,
+  awaitTerminalEmitted,
+  trackScratchDirs,
   validIntent,
 } from "../../utils/jobFixtures";
 
@@ -40,13 +39,12 @@ import type { RunFailure } from "@exchange/useInviterExchange";
 // `<hh>` marker rather than as the escape's `\xhh` token, which is what keeps
 // the child from spelling the renderer's own framing.
 
-const roots: Array<string> = [];
+const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
 
 afterEach(() => {
   for (const manager of managers.splice(0)) manager.shutdown();
-  for (const root of roots.splice(0))
-    fs.rmSync(root, { recursive: true, force: true });
+  removeScratchDirs();
 });
 
 /** A hostile tail: an ANSI screen clear, a bell, a bidi override, a CR LF, a
@@ -61,14 +59,6 @@ const PERSISTENCE_LOSS_EXIT = 73;
 
 /** The exit code of an ordinary failure whose fd-3 stream said nothing. */
 const STREAM_BROKE_EXIT = 64;
-
-/** A scratch directory registered for cleanup. */
-function scratchDir(label: string): string {
-  const dir = tempDataRoot(label);
-  fs.mkdirSync(dir, { recursive: true });
-  roots.push(dir);
-  return dir;
-}
 
 /**
  * The events the manager buffered for a stub CLI run that wrote `stderr` and
@@ -93,12 +83,7 @@ async function eventsFromRun(
   const record: JobRecord = manager.getJob(
     await manager.createJob(validIntent()),
   )!;
-  const deadline = Date.now() + 5000;
-  while (!record.terminalEmitted) {
-    if (Date.now() > deadline)
-      throw new Error("timed out waiting for terminal");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
+  await awaitTerminalEmitted(record);
   return record.events.map((entry) => entry.event);
 }
 

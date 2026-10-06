@@ -61,6 +61,12 @@ import { expectConsole } from "./expectedConsole";
 import { openDisclosure } from "./collapsePanels";
 import { visualOrderWithin } from "./visualOrder";
 
+import {
+  TEST_RUN_COMPLETION,
+  lifecycleCall,
+  lifecycleCalls,
+} from "./moduleMocks";
+
 import type {
   InvitationToken,
   LinkageTerms,
@@ -146,49 +152,9 @@ vi.mock("@psi/transport/rendezvous", async () =>
 // onResult/onError callbacks -- the same callbacks the real lifecycle fires --
 // and assert the acceptor's run/completion screens against them (the
 // exchange.test.ts pattern).
-interface CapturedLifecycle {
-  exchangeRole: "initiator" | "responder";
-  sharedSecret: string;
-  expires?: string;
-  signal: AbortSignal;
-  onStages: (stages: Array<unknown>) => void;
-  onStage: (stageId: string) => void;
-  onResult: (outputs: {
-    kind: "matched" | "withheld" | "counted";
-    resultsUrl?: string;
-    intersectionCount?: number;
-    countReportedByPartner?: boolean;
-    matchedRecordCount?: number;
-    matching?: {
-      localDeduplicate: boolean;
-      partnerDeduplicate: boolean;
-      cardinality:
-        "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
-    };
-    record?: {
-      recordUrl: string;
-      recordFileName: string;
-      keysUrl: string;
-      keysFileName: string;
-    };
-  }) => void;
-  onError: (failure: { category: string; error: unknown }) => void;
-  onResolvedMatching: (matching: {
-    localDeduplicate: boolean;
-    partnerDeduplicate: boolean;
-    cardinality: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
-  }) => void;
-}
-const lifecycleHarness = vi.hoisted(() => ({
-  calls: [] as Array<unknown>,
-}));
-vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  runExchangeLifecycle: (options: unknown) => {
-    lifecycleHarness.calls.push(options);
-    return Promise.resolve();
-  },
-}));
+vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
+  (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
+);
 
 // The launch the run hook last received, so a test can read the delimiter the
 // run writes its result with. The real hook still runs.
@@ -210,10 +176,6 @@ vi.mock("@exchange/useAcceptorExchange", async (importOriginal) => {
     },
   };
 });
-
-function lifecycleCall(index: number): CapturedLifecycle {
-  return lifecycleHarness.calls[index] as CapturedLifecycle;
-}
 
 // stagesFor reads only the linkage terms off the prepared exchange, so a
 // terms-only stand-in exercises the real acceptor stage-tree derivation.
@@ -345,7 +307,7 @@ afterEach(() => {
   csvLoadHarness.called = 0;
   csvLoadHarness.lastSignal = undefined;
   csvLoadHarness.resolve = undefined;
-  lifecycleHarness.calls.length = 0;
+  lifecycleCalls.length = 0;
   launchHarness.last = undefined;
   window.location.hash = "";
 });
@@ -1481,7 +1443,7 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await userEvent.click(
       page.getByRole("button", { name: "Start the exchange" }),
     );
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
     expect(csvLoadHarness.called).toBe(1);
     expect(launchHarness.last?.csvDelimiter).toBe(",");
   });
@@ -2037,7 +1999,7 @@ describe("acceptor screen: run and completion", () => {
     await userEvent.click(
       page.getByRole("button", { name: "Start the exchange" }),
     );
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
   }
 
   test("launch auto-starts as the PSI initiator on the token's secret and expiry", async () => {
@@ -2045,7 +2007,7 @@ describe("acceptor screen: run and completion", () => {
 
     // The run started as the initiator (the acceptor dials) the moment the launch
     // appeared -- no second press -- on the token's secret and expiry.
-    expect(lifecycleHarness.calls).toHaveLength(1);
+    expect(lifecycleCalls).toHaveLength(1);
     const call = lifecycleCall(0);
     expect(call.exchangeRole).toBe("initiator");
     expect(call.sharedSecret.length).toBeGreaterThan(0);
@@ -2118,7 +2080,7 @@ describe("acceptor screen: run and completion", () => {
     const call = lifecycleCall(0);
     call.onStages(stagesFor(preparedWith("cascade", 2), "acceptor"));
     call.onStage("confirming protocol");
-    call.onResolvedMatching(matching);
+    call.onResolvedMatching!(matching);
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2129,12 +2091,15 @@ describe("acceptor screen: run and completion", () => {
       page.getByText("The exchange reported a warning").query(),
     ).toBeNull();
 
-    call.onResult({
-      kind: "matched" as const,
-      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-      matchedRecordCount: 12,
-      matching,
-    });
+    call.onResult(
+      {
+        kind: "matched" as const,
+        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+        matchedRecordCount: 12,
+        matching,
+      },
+      TEST_RUN_COMPLETION,
+    );
 
     // The completion panel takes the sentence over, so it still stands once.
     await expect
@@ -2152,22 +2117,25 @@ describe("acceptor screen: run and completion", () => {
     call.onStages(stagesFor(preparedWith("cascade", 2), "acceptor"));
     call.onStage("waiting for peer");
     call.onStage("confirming protocol");
-    call.onResult({
-      kind: "matched" as const,
-      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-      matchedRecordCount: 1847,
-      matching: {
-        localDeduplicate: true,
-        partnerDeduplicate: false,
-        cardinality: "many-to-one" as const,
+    call.onResult(
+      {
+        kind: "matched" as const,
+        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+        matchedRecordCount: 1847,
+        matching: {
+          localDeduplicate: true,
+          partnerDeduplicate: false,
+          cardinality: "many-to-one" as const,
+        },
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-2026-07-08T14-32.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
+        },
       },
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-2026-07-08T14-32.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
-      },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2245,17 +2213,20 @@ describe("acceptor screen: run and completion", () => {
       call.onStages(stagesFor(preparedWith("cascade", 2), "acceptor"));
       call.onStage("waiting for peer");
       call.onStage("confirming protocol");
-      call.onResult({
-        kind: "matched" as const,
-        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-        matchedRecordCount: 1847,
-        record: {
-          recordUrl: URL.createObjectURL(new Blob(["{}"])),
-          recordFileName: "alcove-record-2026-07-08T14-32.json",
-          keysUrl: URL.createObjectURL(new Blob(["{}"])),
-          keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
+      call.onResult(
+        {
+          kind: "matched" as const,
+          resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+          matchedRecordCount: 1847,
+          record: {
+            recordUrl: URL.createObjectURL(new Blob(["{}"])),
+            recordFileName: "alcove-record-2026-07-08T14-32.json",
+            keysUrl: URL.createObjectURL(new Blob(["{}"])),
+            keysFileName: "alcove-record-2026-07-08T14-32.keys.json",
+          },
         },
-      });
+        TEST_RUN_COMPLETION,
+      );
       await expect
         .element(page.getByRole("heading", { level: 1 }))
         .toMatchTextContent("Exchange complete");
@@ -2321,19 +2292,22 @@ describe("acceptor screen: run and completion", () => {
     await userEvent.click(
       page.getByRole("button", { name: "Start the exchange" }),
     );
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
 
-    lifecycleCall(0).onResult({
-      kind: "matched" as const,
-      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-      matchedRecordCount: 12,
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record.keys.json",
+    lifecycleCall(0).onResult(
+      {
+        kind: "matched" as const,
+        resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+        matchedRecordCount: 12,
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record.keys.json",
+        },
       },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2355,15 +2329,18 @@ describe("acceptor screen: run and completion", () => {
     await reachRun();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "withheld" as const,
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-x.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-x.keys.json",
+    call.onResult(
+      {
+        kind: "withheld" as const,
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-x.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-x.keys.json",
+        },
       },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByRole("heading", { level: 1 }))
@@ -2393,17 +2370,20 @@ describe("acceptor screen: run and completion", () => {
     await reachRun();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "counted" as const,
-      intersectionCount: 1847,
-      countReportedByPartner: false,
-      record: {
-        recordUrl: URL.createObjectURL(new Blob(["{}"])),
-        recordFileName: "alcove-record-x.json",
-        keysUrl: URL.createObjectURL(new Blob(["{}"])),
-        keysFileName: "alcove-record-x.keys.json",
+    call.onResult(
+      {
+        kind: "counted" as const,
+        intersectionCount: 1847,
+        countReportedByPartner: false,
+        record: {
+          recordUrl: URL.createObjectURL(new Blob(["{}"])),
+          recordFileName: "alcove-record-x.json",
+          keysUrl: URL.createObjectURL(new Blob(["{}"])),
+          keysFileName: "alcove-record-x.keys.json",
+        },
       },
-    });
+      TEST_RUN_COMPLETION,
+    );
 
     // The count is the run's whole result, stated once where the download would
     // be; the headline names the mode rather than repeating the figure.
@@ -2451,11 +2431,14 @@ describe("acceptor screen: run and completion", () => {
     await reachRun();
     const call = lifecycleCall(0);
     call.onStage("waiting for peer");
-    call.onResult({
-      kind: "counted" as const,
-      intersectionCount: 1847,
-      countReportedByPartner: true,
-    });
+    call.onResult(
+      {
+        kind: "counted" as const,
+        intersectionCount: 1847,
+        countReportedByPartner: true,
+      },
+      TEST_RUN_COMPLETION,
+    );
 
     await expect
       .element(page.getByText(/1,847\s+records in common\. This exchange/))
@@ -2497,7 +2480,7 @@ describe("acceptor screen: run and completion", () => {
     });
 
     await page.getByRole("button", { name: "Try again" }).click();
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(2));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(2));
     expect(lifecycleCall(1).sharedSecret).toBe(lifecycleCall(0).sharedSecret);
     expect(page.getByText("Exchange failed").query()).toBeNull();
   });
@@ -2810,7 +2793,7 @@ describe("acceptor screen: run and completion", () => {
       page.getByRole("heading", { name: "Exchange in progress" }).query(),
     ).toBeNull();
     // The discarded launch never restarted the run.
-    expect(lifecycleHarness.calls).toHaveLength(1);
+    expect(lifecycleCalls).toHaveLength(1);
   });
 
   test("an output failure offers no re-run, only a fresh setup", async () => {
@@ -2876,7 +2859,7 @@ describe("acceptor screen: run and completion", () => {
     await expect
       .element(page.getByRole("button", { name: "Start the exchange" }))
       .toBeDisabled();
-    expect(lifecycleHarness.calls).toHaveLength(0);
+    expect(lifecycleCalls).toHaveLength(0);
   });
 });
 
@@ -3145,7 +3128,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
         ),
       )
       .toBeInTheDocument();
-    expect(lifecycleHarness.calls).toHaveLength(0);
+    expect(lifecycleCalls).toHaveLength(0);
 
     // Restoring the accepted value runs: what the operator consented to is what
     // the exchange presents.
@@ -3154,7 +3137,7 @@ describe("AcceptorScreen: this party's own deduplicate", () => {
     await forwardToColumns();
     await expect.element(start).toBeEnabled();
     await userEvent.click(start);
-    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    await vi.waitFor(() => expect(lifecycleCalls).toHaveLength(1));
   });
 
   test("blocks the accept when the invitation mirrors to terms no acceptance can run", async () => {
