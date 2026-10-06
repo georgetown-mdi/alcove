@@ -306,7 +306,11 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
       const configFile = backslashedPath("alcove.yaml");
       const keyFile = backslashedPath(".alcove.key");
       const { log, lines } = stubLog();
-      logOnlineBootstrapOutcome(log, { configFile, keyFile });
+      logOnlineBootstrapOutcome(log, {
+        outcome: "completed",
+        configFile,
+        keyFile,
+      });
       return { filePaths: [configFile, keyFile], lines };
     },
   },
@@ -318,6 +322,7 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
       const keyFile = backslashedPath(".alcove.key");
       const { log, lines } = stubLog();
       logOnlineBootstrapOutcome(log, {
+        outcome: "completed",
         configFile,
         keyFile,
         reuseExistingConfig: true,
@@ -333,6 +338,7 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
       const keyFile = backslashedPath(".alcove.key");
       const { log, lines } = stubLog();
       logOnlineBootstrapOutcome(log, {
+        outcome: "completed",
         configFile,
         keyFile,
         configWriteError: new Error("permission denied"),
@@ -354,6 +360,7 @@ test("a log sink renders an operator path rather than interpolating it raw", asy
   // byte would reach the operator as it stands.
   const { log, lines } = stubLog();
   logOnlineBootstrapOutcome(log, {
+    outcome: "completed",
     configFile: "/srv/\x1b[31mdrop/alcove.yaml",
     keyFile: ".alcove.key",
   });

@@ -481,6 +481,16 @@ function summarizeLogFileLoss(
 }
 
 /**
+ * Whether a {@link configureLogFile} sink is installed and not yet closed, so
+ * diagnostic lines are going to a `--log-file` rather than the terminal. A
+ * line the operator must see whatever the routing goes to the prompt stream,
+ * and a caller asks this to decide whether the log also needs its copy.
+ */
+export function logFileInUse(): boolean {
+  return activeLogFileLoss !== undefined;
+}
+
+/**
  * Route ALL loglevel diagnostic output to stderr, returning a {@link LogSink}
  * the caller closes when the command ends. This is the CLI's default logging
  * sink, installed whenever `--log-file` is NOT given, and it reserves stdout

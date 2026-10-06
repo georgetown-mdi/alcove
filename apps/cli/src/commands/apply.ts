@@ -67,9 +67,19 @@ import {
   refuseSurplusPositionals,
 } from "../util/positionals";
 import { configureLogging, logLevelFlag } from "../util/logging";
-import { promptConfirm } from "../util/prompt";
+import { promptConfirmOrClosed } from "../util/prompt";
 
 const APPLY_USAGE = "[options] UPDATE";
+
+/**
+ * The refusal an apply gets when it would ask for consent to an update's
+ * terms and standard input is not a terminal to ask at.
+ */
+export const APPLY_NEEDS_TERMINAL =
+  "apply asks you to confirm the update's terms, and standard input is not " +
+  "a terminal to ask at, so nothing was changed. Run it at a terminal (with " +
+  "docker, add -it) to review the terms and answer, or pass " +
+  "--consent-to-terms to consent to them in advance for an unattended run.";
 
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
@@ -465,6 +475,10 @@ export async function handler(argv: Arguments): Promise<void> {
         return;
       }
 
+      // Refused, not read as a decline, so an unattended apply fails visibly.
+      if (!consentToTerms && process.stdin.isTTY !== true)
+        throw new UsageError(APPLY_NEEDS_TERMINAL);
+
       const consentSurface = consentSurfaceSink({
         log,
         logFile,
@@ -487,12 +501,19 @@ export async function handler(argv: Arguments): Promise<void> {
             "without the confirmation prompt.",
         );
       } else {
-        const confirmed = await promptConfirm(
+        const answer = await promptConfirmOrClosed(
           `Apply this update to ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configPath),
           )}?`,
         );
-        if (!confirmed) {
+        if (answer === "closed")
+          throw new UsageError(
+            "standard input closed before you answered, so the update was " +
+              "not applied and the configuration was not changed. Run it " +
+              "again at a terminal (with docker, add -it) and answer, or " +
+              "pass --consent-to-terms to consent to the terms in advance.",
+          );
+        if (answer === "no") {
           consentSurface("update declined; the configuration was not changed");
           return;
         }

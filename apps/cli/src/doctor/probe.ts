@@ -218,11 +218,11 @@ export function countEntries(listing: string): number {
 }
 
 /**
- * The subdirectory check over the folder the exchange will run in, including
- * the advisory a folder earns when it already holds more entries than the
- * transport will list. A listing the output cap cut short of that bound leaves
- * the count unknown rather than over it: lines longer than the cap allows for
- * fill it with fewer entries.
+ * The subdirectory check over the folder the exchange will run in, which fails
+ * a folder already holding more entries than the transport will list. A
+ * listing the output cap cut short of that bound leaves the count unknown
+ * rather than over it: lines longer than the cap allows for fill it with fewer
+ * entries.
  */
 function entryCountCheck(
   where: string,
@@ -232,7 +232,7 @@ function entryCountCheck(
   const cut = listing.truncated === true;
   const summary = `${where} ${cut ? "at least " : ""}${entries} file(s) in it.`;
   if (entries > MAX_DIRECTORY_ENTRIES)
-    return warn(
+    return fail(
       "subdirectory",
       summary,
       `Alcove will not read a rendezvous folder holding more than ` +

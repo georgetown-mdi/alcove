@@ -630,6 +630,13 @@ export interface OutputCompleteContext {
 /** The value {@link runProtocol} resolves with. */
 export interface RunProtocolResult {
   /**
+   * `interrupted` when a SIGINT or SIGTERM cut the run short: the signal
+   * handler owns the exit and nothing past the point the signal arrived is
+   * known to have happened, so a caller writes no summary of its own.
+   * `completed` when the exchange ran through its output stage.
+   */
+  outcome: "completed" | "interrupted";
+  /**
    * The error thrown or rejected by `onAuthenticated`, when the post-handshake
    * hook failed but the run otherwise resolved. The hook is non-fatal, so its
    * failure does not stop the exchange; this field reports it so the caller
@@ -3338,7 +3345,10 @@ export async function runProtocol(
             : undefined,
       }),
     );
-    return { onAuthenticatedError: run.onAuthenticatedError };
+    return {
+      outcome: "completed",
+      onAuthenticatedError: run.onAuthenticatedError,
+    };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
     // tokenRotated=true means this party's saveKeyFile succeeded; the
@@ -3606,7 +3616,10 @@ export async function runProtocol(
       // test/unit/protocolInterruptEvents.test.ts drives a real interrupt
       // against a live fd-3 capture, holding that as a check rather than
       // prose.
-      return { onAuthenticatedError: run.onAuthenticatedError };
+      return {
+        outcome: "interrupted",
+        onAuthenticatedError: run.onAuthenticatedError,
+      };
     }
     // The single failure terminal event for an organic (non-signal) fault,
     // classified against the phase the run reached: "output" once the exchange

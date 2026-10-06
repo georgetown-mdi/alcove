@@ -48,7 +48,11 @@ import {
   parseOrExit,
   singleValue,
 } from "../../../src/util/flags";
-import { promptConfirm, promptFreeText } from "../../../src/util/prompt";
+import {
+  promptConfirm,
+  promptConfirmOrClosed,
+  promptFreeText,
+} from "../../../src/util/prompt";
 import { captureStdio } from "../../loggingTestSupport";
 import {
   answeringTtyStream,
@@ -1398,6 +1402,31 @@ test("promptFreeText then promptConfirm: two questions, one open stdin", async (
       stream.push(Buffer.from("y\n", "utf8"));
       expect(await promptConfirm("Accept this invitation?")).toBe(true);
     });
+  } finally {
+    restore();
+  }
+});
+
+test("promptConfirmOrClosed: a stdin that ends before an answer is closed, not a decline", async () => {
+  const { restore } = captureStdio();
+  try {
+    await expect(
+      withStdin(ttyStream(), () => promptConfirmOrClosed("Apply?")),
+    ).resolves.toBe("closed");
+    await expect(
+      withStdin(streamOf(""), () => promptConfirmOrClosed("Apply?")),
+    ).resolves.toBe("closed");
+    await expect(
+      withStdin(answeringTtyStream("n"), () => promptConfirmOrClosed("Apply?")),
+    ).resolves.toBe("no");
+    await expect(
+      withStdin(answeringTtyStream(""), () => promptConfirmOrClosed("Apply?")),
+    ).resolves.toBe("no");
+    await expect(
+      withStdin(answeringTtyStream(" Yes "), () =>
+        promptConfirmOrClosed("Apply?"),
+      ),
+    ).resolves.toBe("yes");
   } finally {
     restore();
   }

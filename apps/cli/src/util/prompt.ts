@@ -49,6 +49,17 @@ export function writePromptLine(line: string): void {
  * input CSV is `-` must not reach either of them.
  */
 export async function promptFreeText(question: string): Promise<string> {
+  return (await promptLineOrClosed(question)) ?? "";
+}
+
+/**
+ * {@link promptFreeText}, except that standard input closing before a line
+ * was typed resolves to `undefined` rather than the empty string, for a
+ * caller that must not treat no answer as a decline.
+ */
+async function promptLineOrClosed(
+  question: string,
+): Promise<string | undefined> {
   const rl = readline.createInterface({
     input: process.stdin,
     output: promptStream,
@@ -57,11 +68,11 @@ export async function promptFreeText(question: string): Promise<string> {
     // `rl.question()` never settles when stdin reaches EOF (a closed or
     // piped-empty stdin) -- a long-standing readline/promises behavior
     // (nodejs/node#53497). Race it against the interface's "close" event
-    // (which does fire on EOF) so a closed stdin resolves to the empty
-    // answer instead of leaving the promise pending forever.
-    return await new Promise<string>((resolve) => {
-      rl.once("close", () => resolve(""));
-      void rl.question(`${question} `).then(resolve, () => resolve(""));
+    // (which does fire on EOF) so a closed stdin resolves instead of leaving
+    // the promise pending forever.
+    return await new Promise<string | undefined>((resolve) => {
+      rl.once("close", () => resolve(undefined));
+      void rl.question(`${question} `).then(resolve, () => resolve(undefined));
     });
   } finally {
     rl.close();
@@ -117,10 +128,22 @@ export async function promptHiddenText(
  * results.
  */
 export async function promptConfirm(question: string): Promise<boolean> {
-  const normalized = (await promptFreeText(`${question} [y/N]`))
-    .trim()
-    .toLowerCase();
-  return normalized === "y" || normalized === "yes";
+  return (await promptConfirmOrClosed(question)) === "yes";
+}
+
+/**
+ * {@link promptConfirm}, reporting `"closed"` where standard input ended
+ * before a line was typed, so a caller can refuse a run nothing answered
+ * rather than read it as a decline. Any typed line other than y or yes,
+ * a blank one included, is `"no"`.
+ */
+export async function promptConfirmOrClosed(
+  question: string,
+): Promise<"yes" | "no" | "closed"> {
+  const answer = await promptLineOrClosed(`${question} [y/N]`);
+  if (answer === undefined) return "closed";
+  const normalized = answer.trim().toLowerCase();
+  return normalized === "y" || normalized === "yes" ? "yes" : "no";
 }
 
 /**

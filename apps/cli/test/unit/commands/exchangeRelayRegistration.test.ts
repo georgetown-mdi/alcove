@@ -208,7 +208,7 @@ test("an unconfirmed registration the registrar confirms is cleared, and the run
   let keyFileAtDial: unknown;
   vi.mocked(runProtocol).mockImplementationOnce(async () => {
     keyFileAtDial = loadKeyFile(keyFile);
-    return {};
+    return { outcome: "completed" };
   });
   await runHandler();
   expect(keyFileAtDial).toEqual({ sharedSecret: PRE_ROTATION });
@@ -226,7 +226,7 @@ test("after the run, the rotated key is registered signed with the pre-rotation 
     expect(options.auth?.relayRegistrationFollows).toBe(true);
     rotateLikeTheKeyExchange(options);
     await options.fileSyncRuntime?.onRemoteFollowUp?.();
-    return {};
+    return { outcome: "completed" };
   });
   await runHandler();
   expect(requests).toHaveLength(1);
@@ -242,7 +242,7 @@ test("a refused registration after a completed run reports 73, keeps the rotated
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     rotateLikeTheKeyExchange(options);
     await options.fileSyncRuntime?.onRemoteFollowUp?.();
-    return {};
+    return { outcome: "completed" };
   });
   await runHandler();
   expect(process.exitCode).toBe(PERSISTENCE_LOSS_EXIT_CODE);
@@ -284,7 +284,7 @@ test("a run relaying through the invitation's relay registers nothing", async ()
     expect(options.fileSyncRuntime?.onOutputComplete).toBeUndefined();
     expect(options.fileSyncRuntime?.onRemoteFollowUp).toBeUndefined();
     rotateLikeTheKeyExchange(options);
-    return {};
+    return { outcome: "completed" };
   });
   await runHandler();
   expect(requests).toHaveLength(0);

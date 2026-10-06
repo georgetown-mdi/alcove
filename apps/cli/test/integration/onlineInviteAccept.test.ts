@@ -44,6 +44,7 @@ import { loadKeyFile } from "../../src/keyFile";
 import { keysPathFor } from "../../src/recordFile";
 import { exitCodeForError } from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
+import { captureStdio } from "../loggingTestSupport";
 import { localPath, remotePath, sftpServer } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
 
@@ -967,14 +968,14 @@ describe("sftp", () => {
       // by default) is set to confirm for this run only -- both restored in the
       // finally. Everything else -- the probe that reads the server's real key, the
       // in-place mutation, the clone for the live connect, the handshake, and the
-      // post-handshake saveConfig -- runs live. Each side emits one "authenticity
-      // of host ... cannot be established" WARN containing the presented fingerprint;
-      // capture WARNs so they are asserted rather than leaked to the suite console
-      // (capture binds regardless of when these loggers were first materialized,
-      // because the integration setup installs the interceptor eagerly). The isTTY
-      // and stub mutations are set inside the try so the finally rolls both back
-      // even if a setup step throws.
+      // post-handshake saveConfig -- runs live. Each side writes one "authenticity
+      // of host ... cannot be established" line containing the presented
+      // fingerprint to the prompt stream (stderr), captured so it is asserted
+      // rather than leaked; WARNs are captured as before so none reach the suite
+      // console. The isTTY and stub mutations are set inside the try so the
+      // finally rolls both back even if a setup step throws.
       const originalIsTTY = process.stdin.isTTY;
+      const stdio = captureStdio();
       try {
         process.stdin.isTTY = true;
         vi.mocked(promptConfirm).mockClear();
@@ -1026,16 +1027,16 @@ describe("sftp", () => {
 
         // Two first-use authenticity notices, one per side, each containing the live
         // server's real fingerprint -- the captured pin observed before it reaches
-        // disk. Filter to the notices rather than asserting the total captured
-        // count: withCapturedLogs intercepts every WARN process-wide for the
-        // window, so an unrelated WARN from elsewhere would inflate a bare length
-        // check and fail this spuriously.
-        const firstUseWarnings = capturedLogs.filter((l) =>
-          l.message.includes("authenticity of host"),
+        // disk. They are prompt lines, not log records, so no WARN holds them.
+        const firstUseNotices = stdio.stderrWrites.filter((chunk) =>
+          chunk.includes("authenticity of host"),
         );
-        expect(firstUseWarnings).toHaveLength(2);
-        for (const { message } of firstUseWarnings)
-          expect(message).toContain(srv.hostKeyFingerprint);
+        expect(firstUseNotices).toHaveLength(2);
+        for (const notice of firstUseNotices)
+          expect(notice).toContain(srv.hostKeyFingerprint);
+        expect(
+          capturedLogs.some((l) => l.message.includes("authenticity of host")),
+        ).toBe(false);
 
         // The captured pin reached the saved config on BOTH sides and is the live
         // server's real fingerprint: the mutation flowed original -> clone ->
@@ -1074,6 +1075,7 @@ describe("sftp", () => {
           ])
             expect(fs.statSync(f).mode & 0o077).toBe(0);
       } finally {
+        stdio.restore();
         process.stdin.isTTY = originalIsTTY;
         // Restore the decline default so no later test inherits an auto-confirm.
         vi.mocked(promptConfirm).mockResolvedValue(false);

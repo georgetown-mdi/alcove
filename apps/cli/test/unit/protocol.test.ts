@@ -6129,6 +6129,9 @@ test("runProtocol resolves (does not reject) when interrupted by SIGINT mid-runE
     // racing the signal handler's 130.
     expect(resultA.status).toBe("fulfilled");
     expect(resultB.status).toBe("fulfilled");
+    for (const result of [resultA, resultB])
+      if (result.status === "fulfilled")
+        expect(result.value.outcome).toBe("interrupted");
   } finally {
     exitSpy.mockRestore();
   }
@@ -6197,6 +6200,9 @@ test("runProtocol resolves (does not reject) when interrupted by SIGTERM mid-run
     const [resultA, resultB] = await Promise.allSettled([pA, pB]);
     expect(resultA.status).toBe("fulfilled");
     expect(resultB.status).toBe("fulfilled");
+    for (const result of [resultA, resultB])
+      if (result.status === "fulfilled")
+        expect(result.value.outcome).toBe("interrupted");
   } finally {
     exitSpy.mockRestore();
   }
