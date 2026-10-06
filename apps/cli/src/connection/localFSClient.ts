@@ -325,7 +325,8 @@ export class LocalFSClient implements FileTransportClient {
         return withTimeout(
           checkFiledropDirectory(dirPath),
           connectTimeoutMs,
-          `timed out opening ${dirPath}`,
+          `timed out opening ${dirPath} after ${connectTimeoutMs} ms (the ` +
+            `limit server_connect_timeout_ms sets)`,
         );
       },
       maxReconnects,

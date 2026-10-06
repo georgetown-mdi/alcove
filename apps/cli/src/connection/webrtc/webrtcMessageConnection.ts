@@ -401,6 +401,7 @@ export function webRtcMessageConnection(
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
       inactivityHint: INACTIVITY_TIMEOUT_GUIDANCE,
+      inactivityTimeoutSetting: "inactivity_timeout_ms",
     },
   );
 }

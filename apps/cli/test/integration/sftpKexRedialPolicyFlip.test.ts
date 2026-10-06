@@ -283,7 +283,9 @@ inProcessOnly(
       // What ended it was the re-dial and not the peer-inactivity ceiling, which
       // terminates a run with a typed stall error and text of its own.
       expect(failure).not.toBeInstanceOf(TransportOperationStalledError);
-      expect(chain.join("\n")).not.toContain("peer-inactivity budget");
+      expect(chain.join("\n")).not.toContain(
+        "(the limit inactivity_timeout_ms sets)",
+      );
       expect(outcome.endedAfterMs).toBeLessThan(PEER_TIMEOUT_MS / 2);
       // One dial met the flipped policy and the exchange was over: it was not
       // retried tick after tick, and nothing was dialed after the end.

@@ -591,7 +591,7 @@ describe("session transitions", () => {
       // value that could mean "no session was established" -- rejects.
       expect(settled).toEqual({
         connect: expect.stringContaining(
-          `waited ${ACQUIRE_BOUND_MS} ms for the session transition ahead of it`,
+          `waited ${ACQUIRE_BOUND_MS} ms for the step ahead of it to finish`,
         ),
         ensureConnected: "resolved false",
         redialForRecovery: "resolved noSession",
@@ -681,7 +681,7 @@ describe("session transitions", () => {
 
       const warned = adapterLog(adapter).warn.mock.calls.flat() as string[];
       const declinedRedials = warned.filter((line) =>
-        line.includes("ephemeral SFTP re-dial declined:"),
+        line.includes("SFTP re-dial skipped:"),
       );
       const declinedReleases = warned.filter((line) =>
         line.includes(
@@ -863,7 +863,7 @@ describe("session transitions", () => {
       expect(adapterLog(adapter).error).not.toHaveBeenCalled();
       expect(adapterLog(adapter).info.mock.calls.flat()).toEqual([
         expect.stringContaining(
-          `did not complete within the ${ACQUIRE_BOUND_MS} ms teardown wait`,
+          `did not finish within the ${ACQUIRE_BOUND_MS} ms allowed at shutdown`,
         ),
       ]);
       // And nothing counted the deliberate close as a mid-exchange drop.

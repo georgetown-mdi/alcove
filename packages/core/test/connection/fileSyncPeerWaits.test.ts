@@ -129,7 +129,9 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
     await vi.advanceTimersByTimeAsync(BOUND_MS - 1);
     expect(failure()).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
-    expect(String(failure())).toContain(`${BOUND_MS} ms peer-inactivity`);
+    expect(String(failure())).toContain(
+      `${BOUND_MS} ms (the limit inactivity_timeout_ms sets)`,
+    );
   });
 });
 
@@ -201,7 +203,7 @@ describe("each timeout failure ends with the guidance the caller supplied", () =
     const failure = track(conn.send({ first: true }));
     await vi.advanceTimersByTimeAsync(BOUND_MS);
     expect(String(failure())).toContain(
-      `waiting on it further. ${INACTIVITY_TIMEOUT_GUIDANCE}`,
+      `stopped waiting for it. ${INACTIVITY_TIMEOUT_GUIDANCE}`,
     );
   });
 
@@ -219,7 +221,7 @@ describe("each timeout failure ends with the guidance the caller supplied", () =
     const failure = track(conn.send({ next: true }));
     await vi.advanceTimersByTimeAsync(BOUND_MS + 2_000);
     expect(String(failure())).toContain(
-      `to be consumed. ${INACTIVITY_TIMEOUT_GUIDANCE}`,
+      `to be consumed (the limit inactivity_timeout_ms sets). ${INACTIVITY_TIMEOUT_GUIDANCE}`,
     );
     files.delete(`${DIRECTORY}/${sentName}`);
     await conn.close();

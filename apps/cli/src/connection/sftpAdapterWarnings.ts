@@ -48,13 +48,19 @@ export function transitionWaitExpiredError(
   acquireTimeoutMs: number,
 ): Error {
   return new Error(
-    `this SFTP connection's ${kind} waited ` +
-      `${acquireTimeoutMs} ms for the session transition ahead ` +
-      `of it and gave up: a dial cannot run alongside another transition on ` +
-      `the one shared client, so nothing was dialed. Open a new connection ` +
-      `to retry.`,
+    `this SFTP connection's ${SESSION_STEP_LABELS[kind]} waited ` +
+      `${acquireTimeoutMs} ms for the step ahead of it to finish and gave ` +
+      `up, so nothing was dialed. Open a new connection to retry.`,
   );
 }
+
+const SESSION_STEP_LABELS: Record<SessionTransitionKind, string> = {
+  connect: "connect",
+  ensureConnected: "reconnect",
+  redialForRecovery: "recovery re-dial",
+  releaseForIdle: "idle disconnect",
+  teardown: "close",
+};
 
 /**
  * The refusal a server-driven operation gets once a fatal SFTP-protocol error
@@ -115,11 +121,11 @@ export function midExchangeReconnectBudgetExhaustedError(
     max === 0
       ? `max_reconnect_attempts=0 permits no mid-exchange reconnection, so ` +
         `this first drop is terminal and the exchange cannot continue`
-      : `the mid-exchange reconnection budget is exhausted: ` +
-        `${lost} ${lost === 1 ? "session" : "sessions"} lost over the whole ` +
-        `exchange against a max_reconnect_attempts=${max} budget, and every ` +
-        `session lost spent one whether its re-dial succeeded, failed, or ` +
-        `was refused, so the exchange cannot continue`;
+      : `no reconnections are left: ` +
+        `${lost} ${lost === 1 ? "session was" : "sessions were"} lost over ` +
+        `the whole exchange and max_reconnect_attempts=${max} allows ` +
+        `${max}. Every lost session counts, whether its re-dial succeeded, ` +
+        `failed, or was refused, so the exchange cannot continue`;
   return new UsageError(
     `The SFTP session dropped mid-exchange and ${budgetClause}. The partner's ` +
       `SFTP server is dropping the held session -- typically a server-enforced ` +
@@ -321,10 +327,9 @@ export function idleReleaseDeclinedWarning(
   const count = boundaryCount;
   return (
     `The connection-per-poll idle release did not close the SFTP session: ` +
-    `another session transition on this connection -- typically a dial ` +
-    `against an unresponsive server -- did not complete within the ` +
-    `release's ${acquireTimeoutMs} ms wait, and closing the ` +
-    `session alongside it would corrupt the one shared client. The session ` +
+    `another step on this connection, typically a dial to an unresponsive ` +
+    `server, did not finish within ${acquireTimeoutMs} ms, and closing the ` +
+    `session while it runs would break the connection. The session ` +
     `may still be live and held across this idle gap; the next poll cycle ` +
     `releases again and the exchange continues (${count} idle ` +
     `${count === 1 ? "boundary" : "boundaries"} released nothing this way ` +
@@ -408,11 +413,10 @@ export function cycleRedialDeclinedWarning(
 ): string {
   const count = cycleCount;
   return (
-    `ephemeral SFTP re-dial declined: another session transition on this ` +
-    `connection did not complete within the re-dial's ` +
-    `${acquireTimeoutMs} ms wait, and dialing alongside it ` +
-    `would corrupt the one shared client; skipping this poll cycle and ` +
-    `retrying on the next tick (${count} ` +
+    `SFTP re-dial skipped: another step on this connection did not finish ` +
+    `within ${acquireTimeoutMs} ms, and dialing while it runs would break ` +
+    `the connection. Skipping this poll cycle and retrying on the next ` +
+    `(${count} ` +
     `${count === 1 ? "cycle" : "cycles"} skipped this way so far this ` +
     `exchange)`
   );

@@ -97,6 +97,7 @@ test("exceeding capacity fails the connection as a protocol violation", async ()
 function makeQueued(options?: {
   capacity?: number;
   inactivityTimeoutMs?: number;
+  inactivityTimeoutSetting?: string;
 }): {
   conn: QueuedMessageConnection;
   controls: TransportControls;
@@ -543,7 +544,7 @@ test("send: an orphaned hand-off with no parked receive fails terminally, not si
   const { conn, send } = makeQueued({ inactivityTimeoutMs: 20 });
   send.mockReturnValue(new Promise(() => {}));
   const err = await expectRejectionKind(conn.send("x"), "transport");
-  expect(err.message).toContain("lost during the exchange");
+  expect(err.message).toContain("appears to have been lost");
   // The failure latches terminal: later calls fail fast on the same state.
   await expect(conn.receive()).rejects.toBeInstanceOf(ConnectionError);
   await expect(conn.send("y")).rejects.toBeInstanceOf(ConnectionError);
@@ -655,7 +656,7 @@ test("receive(timeoutMs) shorter than the connection default fires and latches",
   const connB = fromEventConnection(eventB, { inactivityTimeoutMs: 10_000 });
   const err = await expectRejectionKind(connB.receive(20), "transport");
   // min(10000, 20) = 20: the override won.
-  expect(err.message).toContain("20ms");
+  expect(err.message).toContain("20 ms");
   // Latched terminal: later calls fail fast on the same error.
   await expect(connB.receive()).rejects.toBeInstanceOf(ConnectionError);
   await expect(connB.send("x")).rejects.toBeInstanceOf(ConnectionError);
@@ -666,7 +667,40 @@ test("receive(timeoutMs) longer than the connection default is capped by the def
   const connB = fromEventConnection(eventB, { inactivityTimeoutMs: 20 });
   // Override is 10 s, but the 20 ms connection default is the ceiling.
   const err = await expectRejectionKind(connB.receive(10_000), "transport");
-  expect(err.message).toContain("20ms");
+  expect(err.message).toContain("20 ms");
+});
+
+test("the inactivity timeout messages name the setting when one is supplied", async () => {
+  const [, eventB] = makeEventConnections();
+  const connB = fromEventConnection(eventB, {
+    inactivityTimeoutMs: 20,
+    inactivityTimeoutSetting: "inactivity_timeout_ms",
+  });
+  const err = await expectRejectionKind(connB.receive(), "transport");
+  expect(err.message).toContain(
+    "within 20 ms (the limit inactivity_timeout_ms sets)",
+  );
+
+  const { conn, send } = makeQueued({
+    inactivityTimeoutMs: 20,
+    inactivityTimeoutSetting: "inactivity_timeout_ms",
+  });
+  send.mockReturnValue(new Promise(() => {}));
+  const sendErr = await expectRejectionKind(conn.send("x"), "transport");
+  expect(sendErr.message).toContain(
+    "within 20 ms (the limit inactivity_timeout_ms sets)",
+  );
+});
+
+test("a shorter per-receive override does not attribute its wait to the setting", async () => {
+  const [, eventB] = makeEventConnections();
+  const connB = fromEventConnection(eventB, {
+    inactivityTimeoutMs: 10_000,
+    inactivityTimeoutSetting: "inactivity_timeout_ms",
+  });
+  const err = await expectRejectionKind(connB.receive(20), "transport");
+  expect(err.message).toContain("20 ms");
+  expect(err.message).not.toContain("inactivity_timeout_ms");
 });
 
 test("receive(timeoutMs) bounds a connection that has no inactivity default", async () => {
@@ -674,7 +708,7 @@ test("receive(timeoutMs) bounds a connection that has no inactivity default", as
   // exercising armIdle's undefined-connection-default branch.
   const [, b] = createMessagePipe();
   const err = await expectRejectionKind(b.receive(20), "transport");
-  expect(err.message).toContain("20ms");
+  expect(err.message).toContain("20 ms");
 });
 
 // --- receiveParsed -----------------------------------------------------------

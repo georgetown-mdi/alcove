@@ -189,7 +189,7 @@ export const PEER_SILENCE_GUIDANCE =
  * asserted here.
  */
 export const entryHelloResidueGuidance = (helloName: string): string =>
-  "No peer was confirmed; the hello present at start may be residue. " +
+  "No partner was confirmed; the hello found at start may be left over. " +
   "Re-run; remove only if it persists: " +
   helloName;
 
@@ -1718,8 +1718,8 @@ function logTransportCounters(
       line: (count) =>
         `the connection-per-poll release did not close the session at ` +
         `${count} idle ${count === 1 ? "boundary" : "boundaries"} during ` +
-        `this exchange (not a dropped session): another session transition ` +
-        `on this connection did not complete within the release's wait, so ` +
+        `this exchange (not a dropped session): another step on this ` +
+        `connection did not finish in the time the release waits, so ` +
         `the session stayed live across ` +
         `${count === 1 ? "that idle gap" : "those idle gaps"}`,
     },
@@ -1728,8 +1728,8 @@ function logTransportCounters(
       line: (count) =>
         `the connection-per-poll re-dial skipped ${count} poll ` +
         `${count === 1 ? "cycle" : "cycles"} during this exchange (not a ` +
-        `dropped session): another session transition on this connection ` +
-        `did not complete within the re-dial's wait, so ` +
+        `dropped session): another step on this connection did not finish ` +
+        `in the time the re-dial waits, so ` +
         `${count === 1 ? "that cycle" : "those cycles"} had no session`,
     },
     {
@@ -2305,6 +2305,7 @@ async function prepareTransport(
     // from the connection when the deadline fires.
     build.transport = fromEventConnection(fileSyncConn, {
       inactivityTimeoutMs: fileSyncInactivityTimeoutMs(connection),
+      inactivityTimeoutSetting: "inactivity_timeout_ms",
       inactivityHint: () => {
         const leftover = fileSyncConn.unconfirmedEntryPeerHello;
         return leftover === undefined

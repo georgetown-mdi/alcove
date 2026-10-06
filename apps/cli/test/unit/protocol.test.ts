@@ -2592,7 +2592,7 @@ test("a run against an unconfirmed entry-present hello blames the leftover, not 
   // Replaced by the fact the run does hold, the leftover named, and the local
   // recovery step -- asserted through the rendering path, where each cause-chain
   // link is truncated, not on the raw message.
-  expect(rendered).toContain("No peer was confirmed");
+  expect(rendered).toContain("No partner was confirmed");
   expect(rendered).toContain(`${LEFTOVER_HELLO_ID}-hello.json`);
   // The re-run leads and the removal is conditioned on surviving it: from here
   // a leftover and a partner that arrived first and then stalled are the same
@@ -2614,7 +2614,7 @@ test("a run whose partner completed the rendezvous keeps the peer-side guidance"
 
   const rendered = sanitizeErrorForDisplay(err);
   expect(rendered).toContain("The peer completed the rendezvous");
-  expect(rendered).not.toContain("No peer was confirmed");
+  expect(rendered).not.toContain("No partner was confirmed");
 }, 20_000);
 
 test("entryHelloResidueGuidance leads with the diagnosis and recovery, filename last", () => {
@@ -2622,7 +2622,7 @@ test("entryHelloResidueGuidance leads with the diagnosis and recovery, filename 
   expect(line.indexOf("Re-run")).toBeLessThan(line.indexOf(LEFTOVER_HELLO_ID));
   const long = entryHelloResidueGuidance(`${"x".repeat(400)}-hello.json`);
   const rendered = sanitizeErrorForDisplay(new Error(long));
-  expect(rendered).toContain("No peer was confirmed");
+  expect(rendered).toContain("No partner was confirmed");
   expect(rendered).toContain("remove only if it persists");
 });
 

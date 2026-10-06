@@ -264,6 +264,8 @@ export interface MessageLoopOptions {
   inactivityTimeoutGuidance?: string;
 }
 
+const INACTIVITY_LIMIT_CLAUSE = " (the limit inactivity_timeout_ms sets)";
+
 const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
   options.inactivityTimeoutGuidance === undefined
     ? ""
@@ -497,7 +499,7 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for ack ${expectedAck} from ` +
-                  `${deps.peerId()!}` +
+                  `${deps.peerId()!}${INACTIVITY_LIMIT_CLAUSE}` +
                   inactivityGuidanceSuffix(deps.options()),
               );
             }
@@ -515,7 +517,7 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for message from ${deps.id()} to be ` +
-                  "consumed" +
+                  `consumed${INACTIVITY_LIMIT_CLAUSE}` +
                   inactivityGuidanceSuffix(deps.options()),
               );
             }

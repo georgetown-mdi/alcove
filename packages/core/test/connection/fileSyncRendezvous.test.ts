@@ -378,7 +378,7 @@ describe("readControlFileWithGate", () => {
     // retain-uncertain, so promoting this throw would turn its bounded read
     // into a hard refusal.
     expect(thrown).not.toBeInstanceOf(UsageError);
-    expect((thrown as Error).message).toContain("residue");
+    expect((thrown as Error).message).toContain("left over");
     // The re-run comes first and the removal is conditioned: the window is
     // wall-clock, so a partner slower than it is alive and mid-answer, and an
     // unconditional "remove it" would point the operator at that partner's file.
@@ -408,14 +408,14 @@ describe("readControlFileWithGate", () => {
     expect(thrown).not.toBeInstanceOf(UsageError);
     // A peer that published after this run's entry scan may simply still be
     // landing, so the message must not send the operator to delete its file.
-    expect((thrown as Error).message).not.toContain("residue");
+    expect((thrown as Error).message).not.toContain("left over");
     expect((thrown as Error).message).toContain("appeared during this run");
     expect((thrown as Error).message).toContain("Re-run");
     expect((thrown as Error).message).toContain("in/peer-hello.json");
   });
 
   test.each([
-    ["presentAtEntry", "remove only if it persists and no session shares"],
+    ["presentAtEntry", "remove only if it persists and no other exchange uses"],
     ["appearedAfterEntry", "Re-run; remove only if it persists"],
   ] as const)(
     "the whole %s terminal message survives the display boundary for a realistic path",
@@ -923,7 +923,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     const rejection = p.rdv.run(p.scope);
     await expect(rejection).rejects.toBeInstanceOf(UsageError);
     await expect(rejection).rejects.toMatchObject({
-      message: expect.stringContaining("share a prefix at a '-' boundary"),
+      message: expect.stringContaining("are too alike"),
     });
     expectResetToPreSync(p.state);
     expect(p.state.resetCount).toBe(1);
@@ -942,7 +942,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     const p = makeParty("aaa", flags, files);
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("share a prefix at a '-' boundary"),
+      message: expect.stringContaining("are too alike"),
     });
     expectResetToPreSync(p.state);
     expect([...files.keys()].some((k) => k.includes("-ack.json"))).toBe(false);
@@ -972,7 +972,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     });
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("share a prefix at a '-' boundary"),
+      message: expect.stringContaining("are too alike"),
     });
     // waitForPeer committed identity; the final prefix guard rolls it back.
     expectResetToPreSync(p.state);
@@ -1001,7 +1001,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
 describe("FileSyncRendezvous id-pair refusal ahead of each write", () => {
   const lockFlags = { locklessRendezvous: false, retainFiles: false };
   const prefixRefusal = {
-    message: expect.stringContaining("share a prefix at a '-' boundary"),
+    message: expect.stringContaining("are too alike"),
   };
 
   test("the two-hellos branch refuses before racing for the lock", async () => {
@@ -1351,7 +1351,7 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       name: "UsageError",
-      message: expect.stringContaining("retain-mode signal"),
+      message: expect.stringContaining("may hold a retain-mode transcript"),
     });
     expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
   });
@@ -2678,7 +2678,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
     );
     const elapsed = Date.now() - started;
 
-    expect((err as Error).message).toContain("residue");
+    expect((err as Error).message).toContain("left over");
     expect((err as Error).message).toContain(helloName("zzz"));
     // Well inside the 5 s budget the pre-bound read would have consumed.
     expect(elapsed).toBeLessThan(2000);
@@ -2702,7 +2702,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
     );
     const elapsed = Date.now() - started;
 
-    expect((err as Error).message).toContain("residue");
+    expect((err as Error).message).toContain("left over");
     expect(elapsed).toBeLessThan(2000);
     expect(files.has(`${DIR}/${helloName("zzz")}`)).toBe(true);
     // This party's own artifacts are still rolled back by the terminal path.
@@ -2734,7 +2734,7 @@ describe("FileSyncRendezvous bounded hello read", () => {
         (e: unknown) => e,
       );
 
-      expect((err as Error).message).not.toContain("residue");
+      expect((err as Error).message).not.toContain("left over");
       expect((err as Error).message).toContain("appeared during this run");
       expect((err as Error).message).toContain(helloName("zzz"));
       // Still bounded by the read window, not the peer budget.
@@ -2864,7 +2864,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     // window is wall-clock, so a partner slower than it is alive and mid-answer.
     expect(rendered).toContain("Re-run");
     expect(rendered).toContain(
-      "remove only if it persists and no session shares",
+      "remove only if it persists and no other exchange uses",
     );
     expect(rendered).toContain(helloName(LEFTOVER_ID));
   });
@@ -3044,7 +3044,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
     }
 
     expect(isPeerWaitTimeout(err)).toBe(true);
-    expect((err as Error).message).not.toContain("residue");
+    expect((err as Error).message).not.toContain("left over");
     // The operator's own budget is what ended this run: no window expired
     // inside it, and the floor extended nothing past it either.
     expect(ended).toBeGreaterThanOrEqual(timeToLive.getTime());
@@ -3102,7 +3102,7 @@ describe("FileSyncRendezvous entry-present peer hello window", () => {
 
     expect(isPeerWaitTimeout(err)).toBe(true);
     expect((err as Error).message).toContain("Your partner did not arrive");
-    expect((err as Error).message).not.toContain("residue");
+    expect((err as Error).message).not.toContain("left over");
     // Ended within the listing that crossed the budget: the poll a deadline
     // capped at the budget would have failed on instead.
     expect(ended).toBeGreaterThan(timeToLive.getTime());

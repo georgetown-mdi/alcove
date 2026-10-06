@@ -225,8 +225,8 @@ export async function readControlFileWithGate(
   throw new Error(
     provenance === "presentAtEntry"
       ? "peer hello never became readable; it predates this run and may be " +
-          "residue. Re-run; remove only if it persists and no session shares " +
-          `this path: ${filePath}`
+          "left over. Re-run; remove only if it persists and no other " +
+          `exchange uses this path: ${filePath}`
       : "peer hello never became readable; it appeared during this run, so a " +
           "peer may still be publishing. Re-run; remove only if it persists: " +
           `${filePath}`,
@@ -344,9 +344,10 @@ export function peerIdPrefixRefusal(
   if (!peerId.startsWith(selfId + "-") && !selfId.startsWith(peerId + "-"))
     return undefined;
   return new PeerIdsPrefixError(
-    `peer id '${redactPrivateKeyMaterial(peerId)}' and this party's id ` +
-      `'${selfId}' share a prefix at a '-' boundary; ids must not be ` +
-      "prefix-extensions of each other (e.g. 'site' / 'site-2')",
+    `the partner's id '${redactPrivateKeyMaterial(peerId)}' and this ` +
+      `party's id '${selfId}' are too alike: one is the other followed by ` +
+      "'-' and more text (as 'site' and 'site-2' are), so the two parties' " +
+      "file names would be confused. Set a different peer_id on one side.",
   );
 }
 
@@ -878,15 +879,15 @@ export class FileSyncRendezvous {
       const reason =
         signals.length > 0
           ? signals.join("; ")
-          : "a peer hello body that did not resolve within the inspection " +
-            "budget (retain-uncertain)";
+          : "a peer hello could not be read in the time allowed, so retain " +
+            "mode cannot be ruled out";
       throw new UsageError(
-        `path ${redactPrivateKeyMaterial(dirsDisplay)} shows a retain-mode ` +
-          `signal (${redactPrivateKeyMaterial(reason)}), so ` +
-          "--sweep-exchange-files refuses to delete what may be a durable audit " +
-          "transcript. Re-run with --force-retain-sweep to wipe the prior " +
-          "transcript and start a fresh exchange, after confirming no concurrent " +
-          "session is using this path.",
+        `path ${redactPrivateKeyMaterial(dirsDisplay)} may hold a retain-mode ` +
+          `transcript (${redactPrivateKeyMaterial(reason)}), so ` +
+          "--sweep-exchange-files will not delete it: it may be an audit " +
+          "record. Confirm no other exchange is using this path, then re-run " +
+          "with --force-retain-sweep to delete the earlier transcript and " +
+          "start a fresh exchange.",
       );
     }
 
@@ -1073,7 +1074,7 @@ export class FileSyncRendezvous {
         .info(
           `[${deps.id()}] tolerating ${helloTempFiles.length} in-flight hello ` +
             "publish(es) left in place (a concurrently starting peer's write, " +
-            "or residue from a prior crashed publish): " +
+            "or a file left over from an earlier run that crashed): " +
             `${helloTempFiles
               .map((f) => redactAndSanitizeForDisplay(f.name))
               .join(", ")}`,
@@ -1694,8 +1695,8 @@ export class FileSyncRendezvous {
             )
               throw new UsageError(
                 "peer hello present at start never answered; it may be " +
-                  "residue, not a live peer. Re-run; remove only if it " +
-                  "persists and no session shares this path: " +
+                  "left over, not a live peer. Re-run; remove only if it " +
+                  "persists and no other exchange uses this path: " +
                   `${peerHello.name}`,
               );
             deps

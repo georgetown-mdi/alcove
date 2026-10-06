@@ -2209,8 +2209,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     const seam = resolveTerminalCloseSeam(internals);
     if ("missing" in seam) {
       this.log.warn(
-        `An SFTP session transition did not complete within the ` +
-          `${TRANSITION_ACQUIRE_TIMEOUT_MS} ms teardown wait, and this build ` +
+        `A step on this SFTP connection did not finish within the ` +
+          `${TRANSITION_ACQUIRE_TIMEOUT_MS} ms allowed at shutdown, and this build ` +
           `could not close the connection from this side: the connection is ` +
           `left to the operating system, may stay half-open, and a half-open ` +
           `connection can keep this process from exiting. This build of ` +
@@ -2258,10 +2258,9 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // severity and same closing sentence, for the same reason -- teardown's close
     // runs last, so nothing it reports changes what the run produced.
     this.log.info(
-      `A session transition on this SFTP connection did not complete within the ` +
-        `${TRANSITION_ACQUIRE_TIMEOUT_MS} ms teardown wait -- typically a dial ` +
-        `against an unresponsive server -- so this side closed the connection ` +
-        `itself rather than closing it alongside that transition. This close is ` +
+      `A step on this SFTP connection, typically a dial to an unresponsive ` +
+        `server, did not finish within the ${TRANSITION_ACQUIRE_TIMEOUT_MS} ms ` +
+        `allowed at shutdown, so this side closed the connection itself. This close is ` +
         `the last step of teardown, so it changes neither the run's results nor ` +
         `its exit code.`,
     );

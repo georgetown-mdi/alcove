@@ -353,7 +353,7 @@ test("a send held by a window that never drains fails at inactivity_timeout_ms",
     await sending;
     expect(failure?.kind).toBe("transport");
     expect(failure?.message).toContain(
-      "did not accept an outbound message within 10000ms",
+      "was not accepted for sending within 10000 ms (the limit inactivity_timeout_ms sets)",
     );
     await expect(connection.receive()).rejects.toBe(failure);
     await vi.advanceTimersByTimeAsync(1_000);

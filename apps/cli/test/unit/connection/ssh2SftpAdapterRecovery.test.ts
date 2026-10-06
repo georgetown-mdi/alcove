@@ -251,7 +251,7 @@ describe("session recovery", () => {
       const refused = outcomes.filter((o) => o instanceof UsageError);
       expect(refused).toHaveLength(1);
       expect((refused[0] as Error).message).toContain(
-        "the mid-exchange reconnection budget is exhausted",
+        "no reconnections are left",
       );
       // The arm that charged fails with its dial, not with the budget: it spent
       // the unit and got the re-dial the unit bought.
@@ -300,7 +300,7 @@ describe("session recovery", () => {
       const nextError = await next;
       expect(nextError).toBeInstanceOf(UsageError);
       expect((nextError as Error).message).toContain(
-        "the mid-exchange reconnection budget is exhausted",
+        "no reconnections are left",
       );
       // The same lost session, charged once and no more, and no dial past the
       // budget: the operation that hears the refusal buys nothing either.
@@ -1328,7 +1328,7 @@ describe("session recovery", () => {
     state.live = false;
     const err = await adapter.list("/remote/dir").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toContain("reconnection budget");
+    expect((err as Error).message).toContain("no reconnections are left");
     // Two recovered and the third refused, all three counted as the sessions the
     // partner took.
     expect(adapter.midExchangeReconnectCount).toBe(3);
