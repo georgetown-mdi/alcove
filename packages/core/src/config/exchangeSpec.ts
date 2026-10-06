@@ -25,7 +25,10 @@ import {
 import { AuthenticationSchema, ConnectionConfigSchema } from "./connection.js";
 import { StandardizationSchema } from "./standardizationSchema.js";
 import { MetadataSchema, OwnColumnSelectionSchema } from "./metadata.js";
-import { SigningConfigSchema } from "./signing.js";
+import {
+  SigningConfigSchema,
+  withoutRetiredSigningSetting,
+} from "./signing.js";
 
 // --- Exchange spec -----------------------------------------------------------
 
@@ -65,9 +68,8 @@ export const ExchangeSpecSchema = z
     // EXCHANGE_REFERENCE.md.
     authentication: AuthenticationSchema.optional(),
     // Optional signing block (receipt signing mode, this party's signing identity
-    // file path, the pinned partner fingerprint, and the receipt output
-    // location). Absent in exchanges that do not sign receipts; see signing.ts and
-    // EXCHANGE_REFERENCE.md.
+    // file path, and the pinned partner fingerprint). Absent in exchanges that
+    // do not sign receipts; see signing.ts and EXCHANGE_REFERENCE.md.
     signing: SigningConfigSchema.optional(),
     // Optional self-facing retention/disposition note for the self-attested
     // exchange record: free text describing where this party files its copy
@@ -203,12 +205,15 @@ export function retiredSettingIssue(
  * ({@link keyFoldCollisionIssue}). Every refusal names its keys as the raw
  * document spells them ({@link unrecognizedKeysAsWritten}), the schema's own
  * included. A retired top-level setting is refused first, by name
- * ({@link retiredSettingIssue}).
+ * ({@link retiredSettingIssue}); the retired `signing.receipt_output` is
+ * removed instead ({@link withoutRetiredSigningSetting}), so a file holding it
+ * still opens.
  *
  * @throws {ZodError} if validation fails, if the document holds a key the
  *   schema does not read, or if it writes one key in two spellings.
  */
-export function parseExchangeSpec(raw: unknown): ExchangeSpec {
+export function parseExchangeSpec(document: unknown): ExchangeSpec {
+  const raw = withoutRetiredSigningSetting(document);
   const retired = retiredSettingIssue(raw);
   if (retired !== undefined) throw new z.ZodError([retired]);
   let camelized: unknown;
@@ -234,8 +239,9 @@ export function parseExchangeSpec(raw: unknown): ExchangeSpec {
  * {@link safeParseCamelized}.
  */
 export function safeParseExchangeSpec(
-  raw: unknown,
+  document: unknown,
 ): z.ZodSafeParseResult<ExchangeSpec> {
+  const raw = withoutRetiredSigningSetting(document);
   const retired = retiredSettingIssue(raw);
   if (retired !== undefined)
     return {

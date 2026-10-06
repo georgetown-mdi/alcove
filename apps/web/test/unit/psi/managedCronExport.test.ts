@@ -644,14 +644,12 @@ describe("an authentication block on the stored document", () => {
 
 describe("a signing block on the stored document", () => {
   // Every field here is live on the operator's scheduled CLI run: identityFile
-  // is opened as this party's private signing identity, receiptOutput is a
-  // verbatim local write path, and partnerFingerprint is the pin a presented
-  // partner certificate is trusted against.
+  // is opened as this party's private signing identity, and partnerFingerprint
+  // is the pin a presented partner certificate is trusted against.
   const signing = {
     mode: "certificate",
     identityFile: "@/home/other/alcove-signing.identity",
     partnerFingerprint: "0123456789012345678901234567890123456789abA",
-    receiptOutput: "/home/other/receipts/planted-receipt.json",
   } as const;
 
   const documentWithSigning = assembleExchangeSpec({

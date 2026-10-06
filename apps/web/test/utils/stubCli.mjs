@@ -55,10 +55,9 @@
 //                     directory, the real CLI's default. The keys path
 //                     is the record path with .json replaced by .keys.json,
 //                     matching the CLI's keysPathFor.
-//   STUB_RECEIPT_JSON When set, the receipt is written with this content: at the
-//                     configuration's signing.receipt_output when it names one,
-//                     and otherwise as alcove-receipt-<time>.json in the
-//                     working directory, the real CLI's default.
+//   STUB_RECEIPT_JSON When set, the receipt is written with this content as
+//                     alcove-receipt-<time>.json in the working directory,
+//                     where the real CLI writes it.
 //   STUB_DELAY_MS     Milliseconds to wait before exiting (default 0). During
 //                     the wait the process is interruptible.
 //   STUB_IGNORE_SIGINT  When "1", SIGINT is ignored (to test SIGTERM escalation).
@@ -311,7 +310,7 @@ function runExchangeStub() {
 
   if (process.env.STUB_RECEIPT_JSON !== undefined)
     fs.writeFileSync(
-      configuredReceiptOutput() ?? `./alcove-receipt-${stamp}.json`,
+      `./alcove-receipt-${stamp}.json`,
       process.env.STUB_RECEIPT_JSON,
     );
 
@@ -456,20 +455,6 @@ function withResultPath(event, writtenResultPath) {
   )
     return event;
   return { ...event, resultPath: path.resolve(writtenResultPath) };
-}
-
-/** The configuration's signing.receipt_output, or undefined where it names
- * none or no configuration was passed. */
-function configuredReceiptOutput() {
-  const configPath = separatedFlagValue(process.argv, "--config-file");
-  if (configPath === undefined) return undefined;
-  try {
-    const value = YAML.parse(fs.readFileSync(configPath, "utf8"))?.signing
-      ?.receipt_output;
-    return typeof value === "string" ? value : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /** The value of a flag the exchange argv passes as two tokens, tolerating the

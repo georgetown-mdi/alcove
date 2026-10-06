@@ -226,7 +226,6 @@ function documentSettings(variant: Variant) {
       mode: pick(variant, "certificate", "session-derived"),
       identityFile: text(variant, "/home/county/identity.json"),
       partnerFingerprint: `${pick(variant, "C", "D").repeat(42)}A`,
-      receiptOutput: text(variant, "/home/county/receipts"),
     },
     retentionDisposition: text(variant, "Filed for seven years."),
     expectedPartnerDeduplicate: flipped(variant, true),

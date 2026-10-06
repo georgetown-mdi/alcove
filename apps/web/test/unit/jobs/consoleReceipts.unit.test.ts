@@ -154,9 +154,8 @@ function scratchDir(): string {
   return dir;
 }
 
-const signingPaths = (workdir = "/srv/job"): JobSigningPaths => ({
+const signingPaths = (): JobSigningPaths => ({
   identityFile: "/data/.alcove-signing-identity.json",
-  receiptOutput: path.join(workdir, "receipt.json"),
 });
 
 /** The composed document parsed as data, and re-validated through core's own
@@ -429,14 +428,13 @@ describe("the composed signing block, per mode", () => {
         }),
         "/rendezvous",
         undefined,
-        signingPaths("/srv/job-a"),
+        signingPaths(),
       ),
     );
     expect(composed["signing"]).toEqual({
       mode: "certificate",
       identity_file: "/data/.alcove-signing-identity.json",
       partner_fingerprint: PARTNER_FINGERPRINT,
-      receipt_output: "/srv/job-a/receipt.json",
     });
   });
 
@@ -450,14 +448,13 @@ describe("the composed signing block, per mode", () => {
           },
         }),
         testSftpServerEntry(),
-        signingPaths("/srv/job-b"),
+        signingPaths(),
       ),
     );
     expect(composed["signing"]).toEqual({
       mode: "certificate",
       identity_file: "/data/.alcove-signing-identity.json",
       partner_fingerprint: PARTNER_FINGERPRINT,
-      receipt_output: "/srv/job-b/receipt.json",
     });
   });
 
@@ -549,7 +546,7 @@ describe("the graduation hand-off handles the identity path accurately", () => {
     expect(JSON.stringify(spec)).not.toContain(SIGNING_IDENTITY_FILE_NAME);
   });
 
-  test("the receipt output is OMITTED, so a schedule accumulates a trail", () => {
+  test("the signing block names no receipt path and keeps the pin", () => {
     const { spec } = handoffYaml();
     const signing = spec["signing"] as Record<string, unknown>;
     expect(signing["receipt_output"]).toBeUndefined();

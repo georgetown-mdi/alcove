@@ -2,10 +2,14 @@ import { describe, expect, test } from "vitest";
 
 import {
   parseSigningConfig,
+  retiredSigningSetting,
   retiredSigningSettingNotice,
   safeParseSigningConfig,
 } from "../../src/config/signing";
-import { parseExchangeSpec } from "../../src/config/exchangeSpec";
+import {
+  parseExchangeSpec,
+  safeParseExchangeSpec,
+} from "../../src/config/exchangeSpec";
 
 // A valid 43-character base64url SHA-256 fingerprint (from the checked-in
 // signing-cert vectors).
@@ -23,13 +27,11 @@ describe("parseSigningConfig", () => {
       mode: "certificate",
       identity_file: "/keys/id.json",
       partner_fingerprint: FINGERPRINT,
-      receipt_output: "./receipts",
     });
     expect(cfg).toEqual({
       mode: "certificate",
       identityFile: "/keys/id.json",
       partnerFingerprint: FINGERPRINT,
-      receiptOutput: "./receipts",
     });
   });
 
@@ -84,24 +86,23 @@ describe("parseSigningConfig", () => {
   });
 });
 
+const baseSpec = {
+  connection: {
+    channel: "filedrop",
+    path: "/tmp/drop",
+  },
+  linkage_terms: {
+    version: "1.0.0",
+    identity: "Party A",
+    date: "2025-01-01",
+    algorithm: "psi",
+    output: { expects_output: true, share_with_partner: true },
+    deduplicate: false,
+    linkage_fields: [{ name: "ssn", type: "ssn" }],
+    linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
+  },
+};
 describe("ExchangeSpec signing block", () => {
-  const baseSpec = {
-    connection: {
-      channel: "filedrop",
-      path: "/tmp/drop",
-    },
-    linkage_terms: {
-      version: "1.0.0",
-      identity: "Party A",
-      date: "2025-01-01",
-      algorithm: "psi",
-      output: { expects_output: true, share_with_partner: true },
-      deduplicate: false,
-      linkage_fields: [{ name: "ssn", type: "ssn" }],
-      linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
-    },
-  };
-
   test("parses a spec without a signing block", () => {
     const spec = parseExchangeSpec(baseSpec);
     expect(spec.signing).toBeUndefined();
@@ -121,6 +122,34 @@ describe("ExchangeSpec signing block", () => {
       identityFile: "/run/secrets/alcove-signing-identity.json",
       partnerFingerprint: FINGERPRINT,
     });
+  });
+});
+
+describe("retired signing.receipt_output", () => {
+  test("a spec holding the key parses, drops it, and draws the notice", () => {
+    const raw = {
+      ...baseSpec,
+      signing: { mode: "certificate", receipt_output: "./r.json" },
+    };
+    const spec = parseExchangeSpec(raw);
+    expect(spec.signing).toEqual({ mode: "certificate" });
+    expect(spec.signing).not.toHaveProperty("receiptOutput");
+    expect(safeParseExchangeSpec(raw).data?.signing).toEqual({
+      mode: "certificate",
+    });
+    expect(raw.signing).toHaveProperty("receipt_output");
+    expect(retiredSigningSetting(raw)).toBe("signing.receipt_output");
+    expect(retiredSigningSettingNotice(raw)).toContain(
+      '"signing.receipt_output" is ignored',
+    );
+  });
+
+  test("the camelCase spelling parses and is dropped too", () => {
+    const spec = parseExchangeSpec({
+      ...baseSpec,
+      signing: { mode: "none", receiptOutput: "./r.json" },
+    });
+    expect(spec.signing).toEqual({ mode: "none" });
   });
 });
 

@@ -2,6 +2,7 @@ import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   isJobChannel,
 } from "@jobs/intentSchemas";
+import { retiredSettingNotice } from "@alcove/core";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import {
@@ -79,9 +80,10 @@ export type MountedConfigurationState =
    * ({@link unconvertedSigningWithheldReason}). `relayEnrollment` is a file
    * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}).
    * `keyFileFault` is why the `.alcove.key` beside the file would refuse its
-   * run ({@link keyFileNotice}), and `newInvitation` the operator's choice to
-   * create a new invitation from the file's settings instead
-   * ({@link withNewInvitation}). */
+   * run ({@link keyFileNotice}), `retiredSettings` the settings the file
+   * states that Alcove no longer reads ({@link retiredSettingsNotices}), and
+   * `newInvitation` the operator's choice to create a new invitation from the
+   * file's settings instead ({@link withNewInvitation}). */
   | {
       status: "opened";
       carriedThrough: Array<string>;
@@ -91,6 +93,7 @@ export type MountedConfigurationState =
       converted?: true;
       relayEnrollment?: true;
       keyFileFault?: "absent" | "invalid";
+      retiredSettings?: Array<string>;
       newInvitation?: true;
       notConducted?: UnconductedChannel;
       transportUnavailable?: UnofferedChannel;
@@ -374,10 +377,7 @@ export function conversionStatement(
   if (replaced.length === 0) return undefined;
   const signs = (state.signingPaths ?? []).length > 0;
   const folders = (state.folderPaths ?? []).length > 0;
-  const receipt = replaced.includes("signing.receipt_output");
-  const placeholders = nameList(
-    replaced.filter((setting) => setting !== "signing.receipt_output"),
-  );
+  const placeholders = nameList(replaced);
   const sentences = [
     replaced.length === 1
       ? `Your alcove.yaml sets its own path in ${nameList(replaced)}.`
@@ -386,7 +386,7 @@ export function conversionStatement(
   if (signs)
     sentences.push(
       "A run with a signed receipt waits until you convert, and then uses " +
-        "the console's own signing identity and receipt file.",
+        "the console's own signing identity.",
       "With the signed receipt off, this exchange runs unsigned, and the " +
         "configuration for scheduled runs keeps your file's signing settings.",
     );
@@ -396,19 +396,10 @@ export function conversionStatement(
       ? "Converting also changes the configuration for scheduled runs."
       : "Converting changes only the configuration for scheduled runs.",
   );
-  if (placeholders === "")
-    sentences.push("That configuration then names no receipt file.");
-  else if (receipt)
-    sentences.push(
-      "That configuration then names no receipt file and states a " +
-        `placeholder for ${placeholders}, to set on the machine you ` +
-        "schedule from.",
-    );
-  else
-    sentences.push(
-      `That configuration then states a placeholder for ${placeholders}, ` +
-        "to set on the machine you schedule from.",
-    );
+  sentences.push(
+    `That configuration then states a placeholder for ${placeholders}, ` +
+      "to set on the machine you schedule from.",
+  );
   return sentences.join(" ");
 }
 
@@ -429,7 +420,7 @@ export function convertedStatement(
     signs
       ? "The configuration for scheduled runs states the console's own " +
         `paths in place of ${replaced}, and a run with a signed receipt ` +
-        "uses the console's signing identity and receipt file."
+        "uses the console's signing identity."
       : "The configuration for scheduled runs states the console's own " +
         `paths in place of ${replaced}.`,
   ];
@@ -459,8 +450,8 @@ export function withConversion(
  * Why a signed run of the open configuration is withheld, or undefined where it
  * is not: the operator chose a signed receipt, and the file names signing paths
  * of its own they have not converted. The console signs only with its own
- * identity and writes the receipt only where it serves it, so the run waits for
- * the conversion rather than replacing the file's paths without a word.
+ * identity, so the run waits for the conversion rather than replacing the
+ * file's paths without a word.
  */
 export function unconvertedSigningWithheldReason(
   state: MountedConfigurationState,
@@ -765,12 +756,24 @@ export function mountedConfigurationOfferable(
   return state.status === "unread" || state.status === "unavailable";
 }
 
+/** What the operator is told about each retired setting the opened file
+ * states: core's own warning, the one the command line prints, so both name
+ * the setting and where the receipt goes in the same words. */
+export function retiredSettingsNotices(
+  settings: ReadonlyArray<string>,
+): Array<string> {
+  return settings.map(
+    (setting) => `In your alcove.yaml, ${retiredSettingNotice(setting)}`,
+  );
+}
+
 /** The whole of what an opened configuration puts beside the control, in the
  * order it renders: what this console cannot run at all, then the carry-through
  * notice, since it is about the run itself, then the credential the operator
- * has to supply, then the relay enrollment step, and last what their input
- * file could not supply. `run` is what the carry-through notice is narrowed by,
- * absent until a file is read. A configuration the console does not conduct
+ * has to supply, then the relay enrollment step, then what their input file
+ * could not supply, and last the retired settings the file states to delete.
+ * `run` is what the carry-through notice is narrowed by, absent until a file
+ * is read. A configuration the console does not conduct
  * puts the notice naming its channel in place of every one about a run here. */
 export function mountedConfigurationNotices(
   state: MountedConfigurationState,
@@ -792,6 +795,7 @@ export function mountedConfigurationNotices(
     state.relayEnrollment === true ? RELAY_ENROLLMENT_NOTICE : undefined,
     termsNotAppliedNotice(state.notApplied ?? []),
     columnsNotCoveredNotice(state.notCovered ?? []),
+    ...retiredSettingsNotices(state.retiredSettings ?? []),
   ].filter((notice): notice is string => notice !== undefined);
 }
 
@@ -861,6 +865,10 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(answer.folderPathSettings !== undefined &&
           answer.folderPathSettings.length > 0
             ? { folderPaths: answer.folderPathSettings }
+            : {}),
+          ...(answer.retiredSettings !== undefined &&
+          answer.retiredSettings.length > 0
+            ? { retiredSettings: answer.retiredSettings }
             : {}),
           ...(answer.relayRegistrarNamed === true
             ? { relayEnrollment: true as const }

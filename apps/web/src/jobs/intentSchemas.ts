@@ -397,10 +397,9 @@ export const jobSigningIdentityLocationSchema: z.ZodType<JobSigningIdentityLocat
  * the partner fingerprint to pin under `certificate`, and where this party's
  * signing identity is kept.
  *
- * The two PATH fields of core's {@link SigningConfig} -- `identity_file` and
- * `receipt_output` -- are not representable here: the server owns every path
- * a job's CLI child is pointed at. They are supplied at composition from
- * {@link JobSigningPaths}. `identityLocation` is not an exception: it is a
+ * The PATH field of core's {@link SigningConfig}, `identity_file`, is not
+ * representable here: the server owns every path a job's CLI child is pointed
+ * at. It is supplied at composition from {@link JobSigningPaths}. `identityLocation` is not an exception: it is a
  * mount id and path segments the server resolves, never a path.
  *
  * `partnerFingerprint` is the one free-text field: core's
@@ -465,7 +464,7 @@ const jobSigningChoiceSchema: z.ZodType<JobSigningChoice> = z
   );
 
 /**
- * The paths a composed `signing` block names, supplied by the caller rather
+ * The path a composed `signing` block names, supplied by the caller rather
  * than the client. Split from {@link JobSigningChoice}: the choice is the
  * operator's, while the paths belong to whichever machine the composed
  * document is for -- the console's own mount and workdir for a live run, or
@@ -476,13 +475,6 @@ export interface JobSigningPaths {
   /** Absolute path of the signing identity file the run loads its private key
    * and certificate from (`signing.identity_file`). */
   identityFile: string;
-  /**
-   * Absolute path the dual-signed receipt is written to
-   * (`signing.receipt_output`), or undefined to omit the key -- the CLI then
-   * writes a timestamped receipt into the run's working directory, so repeated
-   * runs of one config accumulate an audit trail instead of overwriting one file.
-   */
-  receiptOutput?: string;
 }
 
 /**
@@ -515,9 +507,6 @@ export function composedSigning(
     identityFile: paths.identityFile,
     ...(intent.signing.partnerFingerprint !== undefined
       ? { partnerFingerprint: intent.signing.partnerFingerprint }
-      : {}),
-    ...(paths.receiptOutput !== undefined
-      ? { receiptOutput: paths.receiptOutput }
       : {}),
   };
 }
@@ -588,9 +577,8 @@ export type JobExchangeSide = "inviter" | "acceptor";
  *   flag and hold no value of their own.
  * - `signing` is the receipt-signing choice ({@link JobSigningChoice}): a
  *   closed two-value mode plus, under `certificate`, a required fingerprint
- *   held to core's canonical 43-character digest shape. Neither the identity
- *   file nor the receipt output is representable -- the server supplies both
- *   paths. Under `certificate`, this intent's own `linkageTerms.identity` is
+ *   held to core's canonical 43-character digest shape. The identity file is
+ *   not representable -- the server supplies the path. Under `certificate`, this intent's own `linkageTerms.identity` is
  *   required too (see {@link jobExchangeIntentSchema}).
  * - `tokenMaxAgeDays` is this party's maximum-age policy for the shared
  *   secret: a bounded positive integer ({@link tokenMaxAgeDaysSchema}) composed
@@ -675,7 +663,7 @@ export interface JobExchangeIntentBase {
    * Whether the operator converted the opened configuration to the console's
    * own resources. Read only beside `mountedConfigurationOpened`. Converted,
    * the hand-off states the console's shared folder and signing identity (as
-   * placeholders) and no receipt file; unconverted, it states the paths the
+   * placeholders); unconverted, it states the paths the
    * document read, including each sftp credential `@path` for the sign-in
    * method the run used (an inline credential value never reaches the
    * hand-off either way); and a certificate-mode run of a document stating a

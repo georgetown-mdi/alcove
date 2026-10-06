@@ -138,13 +138,10 @@ describe("each answer lands the control in one state", () => {
 });
 
 describe("an opened configuration's own paths, until converted", () => {
-  /** An opened filedrop configuration stating both signing paths and its
+  /** An opened filedrop configuration stating its signing identity and its
    * shared folder, as the load names them. */
   function openedWithPaths(
-    signingPathSettings: Array<string> = [
-      "signing.identity_file",
-      "signing.receipt_output",
-    ],
+    signingPathSettings: Array<string> = ["signing.identity_file"],
   ) {
     return mountedConfigurationRead({
       kind: "opened",
@@ -163,7 +160,7 @@ describe("an opened configuration's own paths, until converted", () => {
     const state = openedWithPaths();
     expect(state).toMatchObject({
       status: "opened",
-      signingPaths: ["signing.identity_file", "signing.receipt_output"],
+      signingPaths: ["signing.identity_file"],
       folderPaths: ["connection.path"],
     });
     if (state.status !== "opened") throw new Error("expected an open state");
@@ -175,7 +172,9 @@ describe("an opened configuration's own paths, until converted", () => {
       openedWithPaths(),
       "certificate",
     );
-    expect(reason).toContain("signing.identity_file, signing.receipt_output");
+    expect(reason).toContain(
+      "sets its own signing path in signing.identity_file",
+    );
     expect(reason).toContain(CONVERT_CONFIGURATION_LABEL);
     expect(reason).toContain("turn the signed receipt off");
     expect(reason).toContain(
@@ -202,7 +201,7 @@ describe("an opened configuration's own paths, until converted", () => {
     expect(conversionOffered(state, true)).toBe(false);
     const statement = conversionStatement(state);
     expect(statement).toContain(
-      "signing.identity_file, signing.receipt_output, connection.path",
+      "sets its own paths in signing.identity_file, connection.path.",
     );
     expect(statement).toContain(
       "A run with a signed receipt waits until you convert",
@@ -216,10 +215,11 @@ describe("an opened configuration's own paths, until converted", () => {
       "Converting also changes the configuration for scheduled runs.",
     );
     expect(statement).toContain(
-      "That configuration then names no receipt file and states a " +
-        "placeholder for signing.identity_file, connection.path, to set on " +
-        "the machine you schedule from.",
+      "That configuration then states a placeholder for " +
+        "signing.identity_file, connection.path, to set on the machine you " +
+        "schedule from.",
     );
+    expect(statement).not.toContain("receipt file");
   });
 
   test("converting only a folder path changes only the scheduled configuration", () => {
@@ -247,7 +247,7 @@ describe("an opened configuration's own paths, until converted", () => {
     expect(conversionOffered(state, false)).toBe(false);
     expect(conversionStatement(state)).toBeUndefined();
     expect(convertedStatement(state)).toContain(
-      "in place of signing.identity_file, signing.receipt_output, connection.path",
+      "in place of signing.identity_file, connection.path",
     );
   });
 
@@ -560,7 +560,7 @@ describe("the notices name the settings and say what happens to them", () => {
     const read = mountedConfigurationRead(
       opened(
         { channel: "filedrop" },
-        ["signing.receipt_output"],
+        [UNCOMPOSED_SETTING],
         ["connection.server.password"],
       ),
     );
@@ -572,9 +572,29 @@ describe("the notices name the settings and say what happens to them", () => {
     );
     expect(notices).toHaveLength(4);
     expect(notices[0]).toContain("shared folder");
-    expect(notices[1]).toContain("signing.receipt_output");
+    expect(notices[1]).toContain(UNCOMPOSED_SETTING);
     expect(notices[2]).toContain("connection.server.password");
     expect(notices[3]).toContain("metadata");
+  });
+
+  test("a retired setting the file states is warned about last, in core's words", () => {
+    const read = mountedConfigurationRead({
+      kind: "opened",
+      document: document(),
+      carriedThrough: [],
+      warnings: [],
+      retiredSettings: ["signing.receipt_output"],
+    });
+    const notices = mountedConfigurationNotices(read.state);
+    expect(notices).toEqual([
+      'In your alcove.yaml, the setting "signing.receipt_output" is ignored: ' +
+        "a signed run writes its receipt into the output folder as " +
+        "alcove-receipt-<time>.json, with the same time stamp as the run's " +
+        "result and record. Delete the setting from the file.",
+    ]);
+    expect(
+      mountedConfigurationNotices(mountedConfigurationRead(opened()).state),
+    ).toEqual([]);
   });
 
   test("a load that opened nothing takes neither added notice", () => {
