@@ -422,7 +422,6 @@ describe("reading a configuration with its key file", () => {
           mode: "certificate",
           identityFile: "./identity.json",
           partnerFingerprint: "0123456789012345678901234567890123456789abA",
-          receiptOutput: "./receipt.json",
         },
       }),
     );

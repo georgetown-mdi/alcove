@@ -175,7 +175,7 @@ describe("what the load discloses", () => {
     });
   });
 
-  test("the signing paths the file states are named, never sent", () => {
+  test("the signing paths the file states are named, never sent, and the retired receipt path is named apart", () => {
     const response = loadDocument(
       savedSftpDocument({
         signing: {
@@ -185,16 +185,16 @@ describe("what the load discloses", () => {
         },
       }),
     );
-    expect(response.signingPathSettings).toEqual([
-      "signing.identity_file",
-      "signing.receipt_output",
-    ]);
+    expect(response.signingPathSettings).toEqual(["signing.identity_file"]);
+    expect(response.retiredSettings).toEqual(["signing.receipt_output"]);
     expect(response.folderPathSettings).toEqual([]);
     expect(JSON.stringify(response)).not.toContain("/home/operator");
   });
 
   test("a file stating no signing path names none", () => {
-    expect(loadDocument(savedSftpDocument()).signingPathSettings).toEqual([]);
+    const response = loadDocument(savedSftpDocument());
+    expect(response.signingPathSettings).toEqual([]);
+    expect(response.retiredSettings).toBeUndefined();
   });
 
   test("no credential value and no @ reference appears anywhere in the body", () => {

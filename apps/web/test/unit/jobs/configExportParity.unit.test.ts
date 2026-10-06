@@ -68,13 +68,12 @@ const RETAIN_OPTIONS = {
   locklessRendezvous: true,
 };
 
-/** A signing block naming both paths of the machine the document was written
- * on. */
+/** A signing block naming the identity path of the machine the document was
+ * written on. */
 const MOUNTED_SIGNING = {
   mode: "certificate" as const,
   partnerFingerprint: PARTNER_FINGERPRINT,
   identityFile: "/home/operator/.alcove/identity.json",
-  receiptOutput: "/home/operator/receipt.json",
 };
 
 /** A distinct partner fingerprint, standing in for the console run's own
@@ -216,7 +215,6 @@ describe("the settings a loaded configuration keeps in the export", () => {
       mode: "certificate",
       partner_fingerprint: PARTNER_FINGERPRINT,
       identity_file: MOUNTED_SIGNING.identityFile,
-      receipt_output: MOUNTED_SIGNING.receiptOutput,
     });
     expect(carriedThroughFields(document)).toEqual([]);
   });
@@ -274,7 +272,6 @@ describe("the settings a loaded configuration keeps in the export", () => {
       mode: "certificate",
       partner_fingerprint: PARTNER_FINGERPRINT,
       identity_file: MOUNTED_SIGNING.identityFile,
-      receipt_output: MOUNTED_SIGNING.receiptOutput,
     });
     expect(
       handoffOver(mountedDocument({ tokenMaxAgeDays: 30 }), {
@@ -415,15 +412,23 @@ describe("the settings a loaded configuration keeps in the export", () => {
     expect(handoff.pathsAsRead.sharedDirectory).toBe(true);
   });
 
-  test("a receipt path alone is a signing path as read", () => {
-    const { identityFile: _unset, ...receiptOnly } = MOUNTED_SIGNING;
+  test("a retired receipt path alone is no signing path as read", () => {
+    const { identityFile: _unset, ...signingWithoutIdentityFile } =
+      MOUNTED_SIGNING;
     const document = mountedDocument(
       { tokenMaxAgeDays: 30 },
-      { signing: receiptOnly },
+      {
+        signing: {
+          ...signingWithoutIdentityFile,
+          receipt_output: "/home/operator/receipt.json",
+        },
+      },
     );
-    expect(
-      handoffOver(document, { signing: { mode: "none" } }).pathsAsRead.signing,
-    ).toBe(true);
+    const handoff = handoffOver(document, { signing: { mode: "none" } });
+    expect(handoff.pathsAsRead.signing).toBe(false);
+    if (handoff.template.kind !== "config")
+      throw new Error("an exchange hand-off composed no template");
+    expect(handoff.template.yaml).not.toContain("receipt_output");
   });
 
   test("a folder the file names as the placeholder is not a folder as read", () => {

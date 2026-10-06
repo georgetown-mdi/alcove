@@ -390,8 +390,8 @@ function failureContentFor(
       title: "This configuration names its own signing paths",
       message:
         "The console did not start this exchange. Your alcove.yaml names " +
-        "its own signing identity or receipt file, and the console signs only " +
-        "with its own. Convert the configuration on the first step to sign " +
+        "its own signing identity, and the console signs only with its own. " +
+        "Convert the configuration on the first step to sign " +
         "with the console's identity, or turn the signed receipt off to run " +
         "this exchange unsigned, then start the run again. With the signed " +
         "receipt off, the configuration the console gives you to run on a " +

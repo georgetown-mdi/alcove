@@ -199,10 +199,9 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
     );
   if (pathsAsRead.signing)
     caveats.push(
-      "The signing paths are the ones in the configuration you opened -- " +
-        "check that signing.identity_file and signing.receipt_output, " +
-        "where set, name the right locations on the machine that runs the " +
-        "schedule.",
+      "The signing identity path is the one in the configuration you " +
+        "opened -- check that signing.identity_file names the right location " +
+        "on the machine that runs the schedule.",
     );
   if (credentialPasted)
     caveats.push(

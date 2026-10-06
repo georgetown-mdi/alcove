@@ -124,10 +124,10 @@ export interface JobHandoff {
   pathsAsRead: HandoffPathsAsRead;
   /**
    * The absolute paths outside the exchange folder the template names -- a
-   * credential file, a shared folder, the signing identity, the folder a
-   * receipt file is written into -- which a run of the published image reads
-   * only where each is mounted at the same path inside the container. A
-   * relative path resolves under the exchange folder and is not listed.
+   * credential file, a shared folder, the signing identity -- which a run of
+   * the published image reads only where each is mounted at the same path
+   * inside the container. A relative path resolves under the exchange folder
+   * and is not listed.
    */
   bindPaths: Array<HandoffBindPath>;
   /** The portable template itself: the exchange config document and the command
@@ -148,8 +148,8 @@ export interface HandoffPathsAsRead {
   /** The filedrop shared folder, or both folders of a split pair, is the
    * file's own. False on sftp. */
   sharedDirectory: boolean;
-  /** The template's `signing` block states a signing identity or receipt path
-   * of the file's own. */
+  /** The template's `signing` block states a signing identity of the file's
+   * own. */
   signing: boolean;
 }
 
@@ -282,19 +282,10 @@ function placeholderServerEntry(entry: JobSftpServerEntry): JobSftpServerEntry {
 }
 
 /**
- * The signing paths the TEMPLATE names, as against the ones the live run
- * used.
- *
- * The identity is placeholdered: the console loads it by a container path
- * the operator's host does not have (see
+ * The signing path the TEMPLATE names, as against the one the live run
+ * used: a placeholder, since the console loads the identity by a container
+ * path the operator's host does not have (see
  * {@link HANDOFF_SIGNING_IDENTITY_PLACEHOLDER}).
- *
- * The receipt output is OMITTED rather than placeholdered: with the key
- * absent, the CLI writes a timestamped receipt into the run's own working
- * directory, so a schedule accumulates one receipt per run. Reusing the
- * console's single fixed name would have each scheduled run overwrite the
- * last run's receipt. The live run pins the name because it serves that one
- * file once; a schedule wants the trail.
  */
 const HANDOFF_SIGNING_PATHS: JobSigningPaths = {
   identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
@@ -397,9 +388,8 @@ function pathsAsReadIn(handoffSpec: ExchangeSpec): HandoffPathsAsRead {
       HANDOFF_OUTBOUND_DIRECTORY_PLACEHOLDER,
     ]),
     signing:
-      signing?.receiptOutput !== undefined ||
-      (signing?.identityFile !== undefined &&
-        signing.identityFile !== HANDOFF_SIGNING_IDENTITY_PLACEHOLDER),
+      signing?.identityFile !== undefined &&
+      signing.identityFile !== HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
   };
 }
 
@@ -690,9 +680,9 @@ export function handBackConfigDocument(
 
 /**
  * The `signing` block a hand-back writes. A mode the file already states keeps
- * its block unchanged; `certificate` keeps the file's identity and receipt
- * paths, which are the operator's own, and names the placeholder identity where
- * the file names none; `none` writes no block, the CLI's "sign nothing".
+ * its block unchanged; `certificate` keeps the file's identity path, which is
+ * the operator's own, and names the placeholder identity where the file names
+ * none; `none` writes no block, the CLI's "sign nothing".
  */
 function handBackSigning(
   choice: JobHandBackSigning,
@@ -705,9 +695,6 @@ function handBackSigning(
         mounted?.identityFile ?? HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       ...(choice.partnerFingerprint !== undefined
         ? { partnerFingerprint: choice.partnerFingerprint }
-        : {}),
-      ...(mounted?.receiptOutput !== undefined
-        ? { receiptOutput: mounted.receiptOutput }
         : {}),
     };
   if (mounted !== undefined && mounted.mode === choice.mode) return mounted;

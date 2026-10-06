@@ -72,12 +72,6 @@ export interface SigningConfig {
    * identity.
    */
   partnerFingerprint?: string;
-  /**
-   * Retired: still parsed so a file holding it opens, but no consumer reads
-   * it. A signed run writes its receipt into the output folder; see
-   * {@link retiredSigningSettingNotice}.
-   */
-  receiptOutput?: string;
 }
 
 const SigningConfigSchema: z.ZodType<SigningConfig> = z.object({
@@ -92,7 +86,6 @@ const SigningConfigSchema: z.ZodType<SigningConfig> = z.object({
         "a trusted out-of-band channel",
     )
     .optional(),
-  receiptOutput: z.string().min(1).optional(),
 });
 
 /**
@@ -133,12 +126,11 @@ export function partnerPinIsPresent(
 const RETIRED_RECEIPT_OUTPUT_FORMS = ["receipt_output", "receiptOutput"];
 
 /**
- * The warning for a raw exchange document whose `signing` block still names a
- * receipt path, or `undefined` when it names none. The setting is accepted and
- * ignored: a signed run writes its receipt into the output folder under the
- * run's time stamp. Names the key as the file writes it.
+ * The retired receipt-path setting a raw exchange document's `signing` block
+ * still states, as the file writes it (`signing.receipt_output`), or
+ * `undefined` when it states none.
  */
-export function retiredSigningSettingNotice(raw: unknown): string | undefined {
+export function retiredSigningSetting(raw: unknown): string | undefined {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw))
     return undefined;
   const signing = (raw as Record<string, unknown>)["signing"];
@@ -147,13 +139,48 @@ export function retiredSigningSettingNotice(raw: unknown): string | undefined {
   const key = RETIRED_RECEIPT_OUTPUT_FORMS.find((form) =>
     Object.hasOwn(signing, form),
   );
-  if (key === undefined) return undefined;
+  return key === undefined ? undefined : `signing.${key}`;
+}
+
+/**
+ * The warning for a file stating the retired receipt-path `setting`, named as
+ * the file writes it. The setting is accepted and ignored: a signed run writes
+ * its receipt into the output folder under the run's time stamp.
+ */
+export function retiredSettingNotice(setting: string): string {
   return (
-    `the setting "signing.${key}" is ignored: a signed run writes its ` +
+    `the setting "${setting}" is ignored: a signed run writes its ` +
     "receipt into the output folder as alcove-receipt-<time>.json, with the " +
     "same time stamp as the run's result and record. Delete the setting " +
     "from the file."
   );
+}
+
+/**
+ * The warning for a raw exchange document whose `signing` block still names a
+ * receipt path ({@link retiredSettingNotice}), or `undefined` when it names
+ * none.
+ */
+export function retiredSigningSettingNotice(raw: unknown): string | undefined {
+  const setting = retiredSigningSetting(raw);
+  return setting === undefined ? undefined : retiredSettingNotice(setting);
+}
+
+/**
+ * A raw exchange document with the retired receipt-path setting removed from
+ * its `signing` block, so the whole-file parse accepts a file still holding it
+ * instead of refusing it as an unread key; {@link retiredSigningSettingNotice}
+ * is the warning that goes with it. Any other value is returned unchanged.
+ */
+export function withoutRetiredSigningSetting(raw: unknown): unknown {
+  if (retiredSigningSetting(raw) === undefined) return raw;
+  const document = raw as Record<string, unknown>;
+  const signing = Object.fromEntries(
+    Object.entries(document["signing"] as Record<string, unknown>).filter(
+      ([key]) => !RETIRED_RECEIPT_OUTPUT_FORMS.includes(key),
+    ),
+  );
+  return { ...document, signing };
 }
 
 /**

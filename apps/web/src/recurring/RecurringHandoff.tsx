@@ -289,9 +289,9 @@ function ConfigSteps({
         <CopyableCode code={command} ariaLabel="recurring exchange command" />
         {usedSigningIdentity && (
           <p className={styles.small}>
-            The configuration names no receipt file, so each scheduled run
-            writes its own timestamped receipt into the folder it runs in, and
-            the schedule accumulates a trail rather than overwriting one file.
+            Each scheduled run writes its own timestamped receipt into the
+            folder it runs in, beside its result, so the schedule accumulates a
+            trail rather than overwriting one file.
           </p>
         )}
       </li>

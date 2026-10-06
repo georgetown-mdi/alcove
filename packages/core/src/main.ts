@@ -626,6 +626,8 @@ export type {
 export {
   FINGERPRINT_REGEX,
   partnerPinIsPresent,
+  retiredSettingNotice,
+  retiredSigningSetting,
   retiredSigningSettingNotice,
 } from "./config/signing";
 export type { SigningConfig } from "./config/signing";

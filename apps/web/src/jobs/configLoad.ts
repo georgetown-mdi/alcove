@@ -47,6 +47,7 @@ import {
   getDefaultLinkageTerms,
   parseExchangeSpec,
   parseSensitiveYaml,
+  retiredSigningSetting,
   safeParseExchangeSpec,
   snakeizeKey,
 } from "@alcove/core";
@@ -147,9 +148,9 @@ export interface DisclosedSftpServer {
   credentialMethod?: "password" | "private_key";
 }
 
-/** The `signing` settings the receipts card edits. The identity file and the
- * receipt output are paths, so neither is disclosed: the response names which
- * of them the file states ({@link signingPathSettings}). */
+/** The `signing` settings the receipts card edits. The identity file is a
+ * path, so it is not disclosed: the response names it where the file states it
+ * ({@link signingPathSettings}). */
 export interface DisclosedSigning {
   mode: SigningConfig["mode"];
   partnerFingerprint?: string;
@@ -212,6 +213,9 @@ export interface LoadedConfigurationResponse {
   /** The shared-folder paths the file states, as it spells them
    * ({@link folderPathSettings}). Absent where no file was opened. */
   folderPathSettings?: Array<string>;
+  /** The retired settings the file states, as it spells them: the load drops
+   * each and the console warns about it. Absent where the file states none. */
+  retiredSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
   /** Why the `.alcove.key` beside a configuration on a conducted channel
@@ -266,13 +270,12 @@ function probeIntentFields(): JobExchangeIntentBase {
   };
 }
 
-/** The paths a certificate-mode composition names. Server-chosen for every run,
- * so a loaded document's own two are not held: a run uses the console's, and
+/** The path a certificate-mode composition names. Server-chosen for every run,
+ * so a loaded document's own is not held: a run uses the console's, and
  * the hand-off states the document's own unless the operator converted it
  * ({@link signingPathSettings}). */
 const PROBE_SIGNING_PATHS = {
   identityFile: "/probe/identity.json",
-  receiptOutput: "/probe/receipt",
 };
 
 /**
@@ -693,20 +696,17 @@ export function credentialFieldsNotAdopted(
 }
 
 /**
- * The signing paths a document on a conducted channel states, as the file
- * spells them: the settings a conversion replaces with the console's own
- * identity file and receipt path. A run of the document unconverted is withheld
- * while it signs, since the console signs only with its own identity and
- * serves only its own receipt; the hand-off states them as read.
+ * The signing path a document on a conducted channel states, as the file
+ * spells it: the setting a conversion replaces with the console's own
+ * identity file. A run of the document unconverted is withheld while it signs,
+ * since the console signs only with its own identity; the hand-off states it
+ * as read.
  */
 export function signingPathSettings(document: ExchangeSpec): Array<string> {
   const { signing } = document;
   if (signing === undefined || !isJobChannel(document.connection.channel))
     return [];
-  return [
-    ...(signing.identityFile !== undefined ? ["signing.identity_file"] : []),
-    ...(signing.receiptOutput !== undefined ? ["signing.receipt_output"] : []),
-  ];
+  return signing.identityFile !== undefined ? ["signing.identity_file"] : [];
 }
 
 /**
@@ -869,12 +869,23 @@ export function disclosedDocument(
  *   the console can open.
  */
 export function mountedConfigurationDocument(source: string): ExchangeSpec {
-  const document = parsedDocument(parsedYaml(source));
+  return openedConfiguration(source).document;
+}
+
+/** {@link mountedConfigurationDocument}, with the retired settings the source
+ * states that the parse dropped. */
+function openedConfiguration(source: string): {
+  document: ExchangeSpec;
+  retiredSettings: Array<string>;
+} {
+  const raw = parsedYaml(source);
+  const document = parsedDocument(raw);
   openedChannel(document);
   assertNoStatedSecret(document);
   assertRecordsSurvive(document);
   assertHeldSettingsSurvive(document);
-  return document;
+  const retired = retiredSigningSetting(raw);
+  return { document, retiredSettings: retired === undefined ? [] : [retired] };
 }
 
 /**
@@ -888,11 +899,17 @@ export function mountedConfigurationDocument(source: string): ExchangeSpec {
 export function readMountedConfiguration(
   source: string,
 ): LoadedConfigurationResponse {
-  return responseFor(mountedConfigurationDocument(source));
+  return responseFor(openedConfiguration(source));
 }
 
 /** The response body stating an opened document. */
-function responseFor(document: ExchangeSpec): LoadedConfigurationResponse {
+function responseFor({
+  document,
+  retiredSettings,
+}: {
+  document: ExchangeSpec;
+  retiredSettings: Array<string>;
+}): LoadedConfigurationResponse {
   return {
     configured: true,
     present: true,
@@ -901,6 +918,7 @@ function responseFor(document: ExchangeSpec): LoadedConfigurationResponse {
     warnings: credentialFieldsNotAdopted(document),
     signingPathSettings: signingPathSettings(document),
     folderPathSettings: folderPathSettings(document),
+    ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
     ...(namesRelayRegistrar(document)
       ? { relayRegistrarNamed: true as const }
       : {}),
@@ -947,13 +965,14 @@ export function openMountedConfiguration(dataRoot: string): {
       },
       opened: undefined,
     };
-  const document = mountedConfigurationDocument(source);
+  const opened = openedConfiguration(source);
+  const { document } = opened;
   const keyFileFault = isJobChannel(document.connection.channel)
     ? mountedKeyFileFault(dataRoot)
     : undefined;
   return {
     response: {
-      ...responseFor(document),
+      ...responseFor(opened),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
     },
     opened: {

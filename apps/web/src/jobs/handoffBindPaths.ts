@@ -22,10 +22,8 @@ export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 
 /**
  * The absolute paths `handoffSpec` names outside the folder the run starts in
- * (`JobHandoff.bindPaths` in `./handoff`): each sftp credential `@path`, each filedrop
- * folder, the signing identity, and the folder a receipt file is written into
- * (the file itself does not exist before the run, and a mount of a missing file
- * is made a folder).
+ * (`JobHandoff.bindPaths` in `./handoff`): each sftp credential `@path`, each
+ * filedrop folder, and the signing identity.
  */
 export function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
   const { connection, signing } = handoffSpec;
@@ -39,7 +37,6 @@ export function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
       : []),
     ...folders.map((path) => ({ path, readOnly: false })),
     { path: signing?.identityFile, readOnly: true },
-    { path: parentFolder(signing?.receiptOutput), readOnly: false },
   ]);
 }
 
@@ -59,14 +56,6 @@ export function credentialBindPaths(
       ? [{ path: value.slice(1), readOnly: true }]
       : [],
   );
-}
-
-/** The folder holding `file`: `/` for a root-level file, undefined for no file
- * or a bare name. */
-function parentFolder(file: string | undefined): string | undefined {
-  const cut = file?.lastIndexOf("/") ?? -1;
-  if (file === undefined || cut < 0) return undefined;
-  return cut === 0 ? "/" : file.slice(0, cut);
 }
 
 /** The stated absolute paths, each once, read-write where any use writes it. */

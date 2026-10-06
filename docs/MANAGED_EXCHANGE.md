@@ -1446,11 +1446,13 @@ What the import accepts is what this app can hold:
   -- host, port, username, folders, `options`, `host_key_fingerprint`,
   `keyboard_interactive`, `provision`, and `provider_options` -- since
   nothing here runs it and each setting goes back into the file Alcove runs.
-- **A `signing` block, held unchanged.** The mode, `identity_file`,
-  `partner_fingerprint`, and `receipt_output` are kept exactly as the file
-  writes them -- an `@` in a path is text, and this browser opens no file it
-  names -- with no editor here, and the exported configuration states the block
-  as the imported one did. The exchange runs with Alcove.
+- **A `signing` block, held unchanged.** The mode, `identity_file`, and
+  `partner_fingerprint` are kept exactly as the file writes them -- an `@` in
+  a path is text, and this browser opens no file it names -- with no editor
+  here, and the exported configuration states the block as the imported one
+  did. A `receipt_output`, which Alcove no longer reads, is dropped: a signed
+  run writes its receipt into the output folder. The exchange runs with
+  Alcove.
 - **Credentials as `@path` references, never as values.** An sftp `password`,
   `private_key`, or `private_key_passphrase`, the `bearer` or `password` of a
   `provision` block's `auth`, and a `password`, `passphrase`,

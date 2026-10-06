@@ -436,23 +436,20 @@ test("resolveExchangeSpecRefs does not read a free-text leading-@ value even whe
   expect(resolved.retentionDisposition).not.toBe("EXFILTRATED");
 });
 
-test("resolveExchangeSpecRefs leaves signing path fields with a literal leading @ unchanged", () => {
-  // signing.identity_file / receipt_output are local paths their consumer opens,
-  // not credential values; resolving them to file contents would corrupt them,
-  // so they are excluded from the allowlist even when the path exists on disk.
+test("resolveExchangeSpecRefs leaves the signing identity path with a literal leading @ unchanged", () => {
+  // signing.identity_file is a local path its consumer opens, not a credential
+  // value; resolving it to file contents would corrupt it, so it is excluded
+  // from the allowlist even when the path exists on disk.
   const idRef = atFile("signing.pem", "PEMDATA");
-  const outRef = atFile("receipts", "RECEIPTS");
   const spec = parseSpec({
     connection: { channel: "sftp", server: { host: "h" } },
     signing: {
       mode: "certificate",
       identity_file: idRef,
-      receipt_output: outRef,
     },
   });
   const resolved = resolveExchangeSpecRefs(spec);
   expect(resolved.signing?.identityFile).toBe(idRef);
-  expect(resolved.signing?.receiptOutput).toBe(outRef);
 });
 
 test("resolveExchangeSpecRefs does not mutate its input (the @path survives)", () => {

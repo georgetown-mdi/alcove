@@ -411,7 +411,7 @@ function exportedExchangeArgv(
  * machine that runs it and which has no key half to compose.
  *
  * The emitted command is `alcove exchange`'s real invocation --
- * `[options] INPUT_FILE [OUTPUT_FILE]`, with the config and key read at their
+ * `[options] INPUT_FILE [OUTPUT_FOLDER]`, with the config and key read at their
  * defaults (`apps/cli/src/commands/exchange.ts`) and the options
  * {@link exportedExchangeArgv} adds.
  *

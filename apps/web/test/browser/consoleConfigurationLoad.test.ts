@@ -239,6 +239,25 @@ describe("the load offer on the file step", () => {
       .toBeInTheDocument();
   });
 
+  test("a retired setting the file states is warned about beside the control", async () => {
+    stubConfigRoute({
+      status: 200,
+      body: {
+        ...(openedBody(CONFIG_DOCUMENT) as Record<string, unknown>),
+        retiredSettings: ["signing.receipt_output"],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await openConfiguration();
+    await expect
+      .element(
+        page.getByText(
+          /In your alcove\.yaml, the setting "signing\.receipt_output" is ignored: a signed run writes its receipt into the output folder/,
+        ),
+      )
+      .toBeInTheDocument();
+  });
+
   test("a channel this console cannot run is named beside the control", async () => {
     stubConfigRoute({
       status: 200,

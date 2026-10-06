@@ -145,7 +145,6 @@ const DISTINCT_SECRET = "b".repeat(42) + "A";
 /** The container-internal paths the LIVE run composes, none of which may appear
  * in a template the operator sends to another machine. */
 const CONTAINER_SIGNING_IDENTITY = "/data/jobs/job-7/signing-identity.json";
-const CONTAINER_RECEIPT_OUTPUT = "/data/jobs/job-7/receipt.json";
 /** The container-internal credential reference the authored server entry holds. */
 const CONTAINER_CREDENTIAL_PATH = "@/etc/alcove/prod-east-password";
 
@@ -530,10 +529,7 @@ describe("the placeholder invariants hold over every authorable option", () => {
     const live = composeSftpConfigDocument(
       maximalExchangeIntent(),
       testSftpServerEntry(),
-      {
-        identityFile: CONTAINER_SIGNING_IDENTITY,
-        receiptOutput: CONTAINER_RECEIPT_OUTPUT,
-      },
+      { identityFile: CONTAINER_SIGNING_IDENTITY },
     );
     expect(live).toContain(CONTAINER_SIGNING_IDENTITY);
     expect(live).toContain(CONTAINER_CREDENTIAL_PATH);
@@ -542,7 +538,6 @@ describe("the placeholder invariants hold over every authorable option", () => {
     expect(yaml.toLowerCase()).not.toContain("secret");
     expect(yaml).not.toContain(CONTAINER_CREDENTIAL_PATH);
     expect(yaml).not.toContain(CONTAINER_SIGNING_IDENTITY);
-    expect(yaml).not.toContain(CONTAINER_RECEIPT_OUTPUT);
     expect(yaml).toContain(HANDOFF_CREDENTIAL_PATH_PLACEHOLDER);
     expect(yaml).toContain(HANDOFF_SIGNING_IDENTITY_PLACEHOLDER);
   });

@@ -181,10 +181,7 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     const mountedDocument = parseExchangeSpec({
       connection: { channel: "filedrop", path: "/srv/exchange/drop" },
       linkageTerms: validLinkageTerms(),
-      signing: {
-        mode: "session-derived",
-        receiptOutput: "/srv/exchange/receipts/receipt.json",
-      },
+      signing: { mode: "session-derived", identityFile: "/srv/keys/id.json" },
     });
     const handoff = buildJobHandoff(validIntent(), undefined, {
       credentialPasted: false,
@@ -193,14 +190,14 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     });
     expect(handoff.bindPaths).toEqual([
       { path: "/srv/exchange/drop", readOnly: false },
-      { path: "/srv/exchange/receipts", readOnly: false },
+      { path: "/srv/keys/id.json", readOnly: true },
     ]);
     const relative = buildJobHandoff(validIntent(), undefined, {
       credentialPasted: false,
       filedropSplit: false,
       mountedDocument: {
         ...mountedDocument,
-        signing: { mode: "session-derived", receiptOutput: "receipt.json" },
+        signing: { mode: "session-derived", identityFile: "identity.json" },
       },
     });
     expect(relative.bindPaths).toEqual([
@@ -211,13 +208,11 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
       filedropSplit: false,
       mountedDocument: {
         ...mountedDocument,
-        signing: { mode: "session-derived", receiptOutput: "/receipt.json" },
+        connection: { channel: "filedrop", path: "/" },
+        signing: { mode: "session-derived" },
       },
     });
-    expect(rootLevel.bindPaths).toEqual([
-      { path: "/srv/exchange/drop", readOnly: false },
-      { path: "/", readOnly: false },
-    ]);
+    expect(rootLevel.bindPaths).toEqual([{ path: "/", readOnly: false }]);
     const rootSource = {
       argv: ["alcove", "exchange", "in.csv", "out.csv"],
       bindPaths: rootLevel.bindPaths,
@@ -1015,9 +1010,9 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
     expect(
       handoffCaveats(handoffWith("filedrop", { signing: true })),
     ).toContain(
-      "The signing paths are the ones in the configuration you opened -- " +
-        "check that signing.identity_file and signing.receipt_output, where " +
-        "set, name the right locations on the machine that runs the schedule.",
+      "The signing identity path is the one in the configuration you " +
+        "opened -- check that signing.identity_file names the right location " +
+        "on the machine that runs the schedule.",
     );
     expect(handoffCaveats(handoffWith("filedrop", {})).join(" ")).not.toContain(
       "signing",

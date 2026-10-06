@@ -991,14 +991,12 @@ describe("a signing block this app cannot run", () => {
     mode: "certificate",
     identityFile: "@/run/signing/alcove-signing-identity.json",
     partnerFingerprint: "0123456789012345678901234567890123456789abA",
-    receiptOutput: "~/receipts/@quarterly",
   } as const;
 
   const signingInFile = {
     mode: "certificate",
     identity_file: signing.identityFile,
     partner_fingerprint: signing.partnerFingerprint,
-    receipt_output: signing.receiptOutput,
   };
 
   test("imports as a configuration only, holding the block unchanged", () => {
@@ -1067,7 +1065,7 @@ describe("a signing block this app cannot run", () => {
 describe("a signing block whose mode is none", () => {
   // `none` asks for no receipt, which this app meets by signing nothing, so
   // the block is held unchanged and the exchange runs here.
-  const signing = { mode: "none", receiptOutput: "~/receipts/@quarterly" };
+  const signing = { mode: "none", identityFile: "~/keys/@quarterly.json" };
   const keyText = (): string =>
     JSON.stringify({ sharedSecret: generateSharedSecret() });
 
@@ -1093,7 +1091,7 @@ describe("a signing block whose mode is none", () => {
 
     const text = composeManagedCronExport(record).config.text;
     expect(parseSensitiveYaml(text, "re-export")).toMatchObject({
-      signing: { mode: "none", receipt_output: signing.receiptOutput },
+      signing: { mode: "none", identity_file: signing.identityFile },
     });
     expect(
       parseExchangeSpec(parseSensitiveYaml(text, "re-export")).signing,

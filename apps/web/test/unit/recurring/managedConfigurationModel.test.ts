@@ -84,7 +84,6 @@ describe("a signing block this app cannot run", () => {
     mode: "certificate",
     identityFile: "@/run/signing/alcove-signing-identity.json",
     partnerFingerprint: "0123456789012345678901234567890123456789abA",
-    receiptOutput: "/srv/receipts",
   } as const;
 
   test("on webrtc, the lead names the block and why, not the key file", () => {

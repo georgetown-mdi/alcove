@@ -34,6 +34,8 @@ export type MountedConfigurationAnswer =
       warnings: Array<string>;
       signingPathSettings?: Array<string>;
       folderPathSettings?: Array<string>;
+      /** The retired settings the file states, which the console ignores. */
+      retiredSettings?: Array<string>;
       relayRegistrarNamed?: true;
       /** The `.alcove.key` beside the configuration would refuse its run: none
        * is there, or the file is not a key file. */
@@ -115,6 +117,8 @@ export async function fetchMountedConfiguration(
     const warnings = namesOf(body.warnings);
     const signingPathSettings = namesOf(body.signingPathSettings);
     const folderPathSettings = namesOf(body.folderPathSettings);
+    const retiredSettings =
+      body.retiredSettings === undefined ? [] : namesOf(body.retiredSettings);
     const { relayRegistrarNamed, keyFileFault } = body;
     if (
       document === null ||
@@ -122,6 +126,7 @@ export async function fetchMountedConfiguration(
       warnings === null ||
       signingPathSettings === null ||
       folderPathSettings === null ||
+      retiredSettings === null ||
       (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
       (keyFileFault !== undefined &&
         keyFileFault !== "absent" &&
@@ -135,6 +140,7 @@ export async function fetchMountedConfiguration(
       warnings,
       signingPathSettings,
       folderPathSettings,
+      ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
         : {}),

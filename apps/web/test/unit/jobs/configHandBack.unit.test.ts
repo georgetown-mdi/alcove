@@ -80,7 +80,6 @@ function webrtcDocument(
       mode: "certificate",
       identity_file: "/home/county/.alcove/identity.json",
       partner_fingerprint: PARTNER_FINGERPRINT,
-      receipt_output: "/home/county/receipts/latest.json",
     },
     authentication: { token_max_age_days: 30 },
     ...overrides,
@@ -409,6 +408,25 @@ describe("the signing block a hand-back writes", () => {
       mode: "certificate",
       identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       partnerFingerprint: PARTNER_FINGERPRINT,
+    });
+  });
+
+  test("a retired receipt path the file states is not written back", () => {
+    const dir = mountHolding(
+      webrtcDocument({
+        signing: {
+          mode: "certificate",
+          identity_file: "/home/county/.alcove/identity.json",
+          receipt_output: "/home/county/receipts/latest.json",
+        },
+      }),
+    );
+    const opened = readBack(dir);
+    handBackMountedConfiguration(dir, unchangedHandBack(opened));
+    expect(mountedText(dir)).not.toContain("receipt_output");
+    expect(readBack(dir).signing).toEqual({
+      mode: "certificate",
+      identityFile: "/home/county/.alcove/identity.json",
     });
   });
 
