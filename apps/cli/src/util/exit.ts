@@ -11,63 +11,58 @@ import {
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
 } from "@alcove/cli-contract";
 import {
-  AuthenticationError,
-  ConnectionError,
+  classifyFailure,
+  firstLinkBehindTransportWraps,
   getLogger,
-  InternalConsistencyError,
-  MAX_ERROR_CAUSE_DEPTH,
-  PeerAbortError,
-  ProtocolRefusalError,
-  ReceiptVerificationError,
   sanitizeErrorForDisplay,
-  UsageError,
 } from "@alcove/core";
+import type { FailureClass } from "@alcove/core";
 
 import { failureRemedy } from "../failureRemedy";
 import { holdsRecoveryHintTag } from "./recoveryHint";
 
 /**
- * The next step shown beneath an {@link InternalConsistencyError} whose message
- * states none of its own: the same step for every internal fault, since no
- * input the operator controls moves one and a retry reaches the same refusal.
+ * The next step shown beneath an `internal-fault` failure
+ * ({@link classifyFailure}) whose message states none of its own: the same
+ * step for every internal fault, since no input the operator controls moves
+ * one and a retry reaches the same refusal.
  */
 export const INTERNAL_FAULT_NEXT_STEP =
   "This is a fault in Alcove itself: report it with this message; retrying " +
   "will not help.";
 
 /**
- * {@link INTERNAL_FAULT_NEXT_STEP} when `err` is an
- * {@link InternalConsistencyError}, bare or behind `transport`-kind wraps as
- * {@link exitCodeForError} reads it, and nothing in its cause chain holds
- * core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`. A tagged
- * fault's message already states its step, so adding this one would give the
- * operator two.
+ * {@link INTERNAL_FAULT_NEXT_STEP} when core classifies `err` as an
+ * `internal-fault` ({@link classifyFailure}) and nothing in its cause chain
+ * holds core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`. A
+ * tagged fault's message already states its step, so adding this one would
+ * give the operator two.
  */
 export function internalFaultNextStep(err: unknown): string | undefined {
-  if (!(firstLinkBehindTransportWraps(err) instanceof InternalConsistencyError))
-    return undefined;
+  if (classifyFailure(err) !== "internal-fault") return undefined;
   return holdsRecoveryHintTag(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
 }
 
 /**
- * The next step shown beneath a partner or terms refusal
- * ({@link isPartnerRefusal}) whose message states none of its own: the same
- * step for every such refusal, since a retry meets the same partner and the
- * same terms.
+ * The next step shown beneath a partner or terms refusal whose message states
+ * none of its own: the same step for every such refusal, since a retry meets
+ * the same partner and the same terms.
  */
 export const PARTNER_REFUSED_NEXT_STEP =
   "Contact your partner before running again: the partner or the agreed " +
   "terms refused this exchange, and retrying unchanged will fail the same way.";
 
 /**
- * {@link PARTNER_REFUSED_NEXT_STEP} when `err` is a partner or terms refusal
- * ({@link isPartnerRefusal}), bare or behind `transport`-kind wraps as
- * {@link exitCodeForError} reads it, and nothing in its cause chain holds
- * core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`, for the
- * reason {@link internalFaultNextStep} gives.
+ * {@link PARTNER_REFUSED_NEXT_STEP} when core's class for `err`
+ * ({@link classifyFailure}) takes {@link PARTNER_REFUSED_EXIT_CODE} and
+ * nothing in its cause chain holds core's `alcoveRecoveryHintEmitted` tag;
+ * otherwise `undefined`, for the reason {@link internalFaultNextStep} gives.
  */
 export function partnerRefusalNextStep(err: unknown): string | undefined {
-  if (!isPartnerRefusal(firstLinkBehindTransportWraps(err))) return undefined;
+  if (
+    exitCodeForFailureClass(classifyFailure(err)) !== PARTNER_REFUSED_EXIT_CODE
+  )
+    return undefined;
   return holdsRecoveryHintTag(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
 }
 
@@ -122,26 +117,42 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
 }
 
 /**
- * The process exit code a caught command error reports: EX_USAGE (64) for a
- * {@link UsageError} or a {@link ConnectionError} of kind `usage`, bare or
- * behind `transport`-kind wraps ({@link firstLinkBehindTransportWraps}),
- * {@link INTERNAL_FAULT_EXIT_CODE} (70) for an {@link InternalConsistencyError},
- * {@link PARTNER_REFUSED_EXIT_CODE} (76) for a partner or terms refusal
- * ({@link isPartnerRefusal}), and {@link AUTHENTICATION_FAILED_EXIT_CODE} (77)
- * for an {@link AuthenticationError}, each bare or behind the same wraps,
+ * The exit code each core {@link FailureClass} reports, or `undefined` for a
+ * class with no code of its own, which {@link exitCodeForError} resolves from
+ * the error's own `exitCode` or EX_UNAVAILABLE (69).
+ */
+function exitCodeForFailureClass(
+  failureClass: FailureClass,
+): number | undefined {
+  switch (failureClass) {
+    case "usage-error":
+      return 64;
+    case "internal-fault":
+      return INTERNAL_FAULT_EXIT_CODE;
+    case "partner-refused":
+    case "receipt-not-verified":
+      return PARTNER_REFUSED_EXIT_CODE;
+    case "authentication-failed":
+      return AUTHENTICATION_FAILED_EXIT_CODE;
+    case "trust-check-failed":
+    case "cancelled":
+    case "unavailable":
+      return undefined;
+  }
+}
+
+/**
+ * The process exit code a caught command error reports:
  * {@link INPUT_NOT_FOUND_EXIT_CODE} (66) for an {@link InputNotFoundError},
+ * bare or behind `transport`-kind wraps ({@link firstLinkBehindTransportWraps});
+ * else the code of core's class for it ({@link classifyFailure}): EX_USAGE (64)
+ * for `usage-error`, {@link INTERNAL_FAULT_EXIT_CODE} (70) for
+ * `internal-fault`, {@link PARTNER_REFUSED_EXIT_CODE} (76) for
+ * `partner-refused` and `receipt-not-verified`, and
+ * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for `authentication-failed`;
  * otherwise the error's own numeric `exitCode` when it has one, else
- * EX_UNAVAILABLE (69). The classification a boundary
- * reads when its errors vary; a boundary whose errors are all usage faults
- * exits 64 outright.
- *
- * A {@link ConnectionError}'s taxonomy is a FIELD (`kind`) rather than a
- * subclass, so it is read here rather than left to the 69 default: a `usage`
- * kind names a caller, protocol, or terms correction that a re-run cannot
- * supply, and a `protocol` kind names a partner that broke the message
- * contract. The `security`-kind subclasses read here are
- * {@link AuthenticationError} and {@link ReceiptVerificationError}; every
- * other `security`-kind failure, and `transport` and `closed`, stay 69.
+ * EX_UNAVAILABLE (69). The classification a boundary reads when its errors
+ * vary; a boundary whose errors are all usage faults exits 64 outright.
  *
  * The own-`exitCode` rung is what gives a run whose exchange completed while
  * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
@@ -149,67 +160,12 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
  * other object cannot reach `process.exit`.
  */
 export function exitCodeForError(err: unknown): number {
-  const unwrapped = firstLinkBehindTransportWraps(err);
-  if (isUsageFault(unwrapped)) return 64;
-  if (unwrapped instanceof InternalConsistencyError)
-    return INTERNAL_FAULT_EXIT_CODE;
-  if (isPartnerRefusal(unwrapped)) return PARTNER_REFUSED_EXIT_CODE;
-  if (unwrapped instanceof AuthenticationError)
-    return AUTHENTICATION_FAILED_EXIT_CODE;
-  if (unwrapped instanceof InputNotFoundError) return INPUT_NOT_FOUND_EXIT_CODE;
+  if (firstLinkBehindTransportWraps(err) instanceof InputNotFoundError)
+    return INPUT_NOT_FOUND_EXIT_CODE;
+  const classCode = exitCodeForFailureClass(classifyFailure(err));
+  if (classCode !== undefined) return classCode;
   const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
   return typeof own === "number" ? own : 69;
-}
-
-function isUsageFault(err: unknown): boolean {
-  return (
-    err instanceof UsageError ||
-    (err instanceof ConnectionError && err.kind === "usage")
-  );
-}
-
-/**
- * Whether `err` is a partner or terms refusal, the class
- * {@link exitCodeForError} maps to {@link PARTNER_REFUSED_EXIT_CODE}: a
- * {@link ProtocolRefusalError}, a {@link PeerAbortError}, a
- * {@link ReceiptVerificationError}, or a `protocol`-kind
- * {@link ConnectionError}. Reads `err` itself; a caller holding a possibly
- * wrapped error passes {@link firstLinkBehindTransportWraps} of it.
- */
-export function isPartnerRefusal(err: unknown): boolean {
-  return (
-    err instanceof ProtocolRefusalError ||
-    err instanceof PeerAbortError ||
-    err instanceof ReceiptVerificationError ||
-    (err instanceof ConnectionError && err.kind === "protocol")
-  );
-}
-
-/**
- * The first link of `err`'s cause chain that is not a `transport`-kind
- * {@link ConnectionError}, walking at most {@link MAX_ERROR_CAUSE_DEPTH}
- * links; `err` itself when it is not one. The message bridge
- * (`fromEventConnection`) wraps every send and poll failure that way, so a
- * {@link UsageError} the file-sync transport raised, an
- * {@link InternalConsistencyError}, a partner refusal, an
- * {@link AuthenticationError}, or an {@link InputNotFoundError} reaches a
- * command boundary behind it. Any other kind ends the walk, so a `security`
- * failure keeps its own code whatever it wraps. A {@link PeerAbortError} is
- * `transport`-kind but ends the walk too: it is the failure itself, not a
- * wrap.
- */
-export function firstLinkBehindTransportWraps(err: unknown): unknown {
-  let link: unknown = err;
-  for (
-    let depth = 0;
-    depth < MAX_ERROR_CAUSE_DEPTH &&
-    link instanceof ConnectionError &&
-    link.kind === "transport" &&
-    !(link instanceof PeerAbortError);
-    depth++
-  )
-    link = link.cause;
-  return link;
 }
 
 /**

@@ -1,7 +1,9 @@
 import {
+  AuthenticationError,
   ConnectionError,
   InternalConsistencyError,
   LinkageTermsUnsatisfiableError,
+  PeerAbortError,
   generateSharedSecret,
   getDefaultLinkageTerms,
   getLogger,
@@ -724,6 +726,38 @@ describe("rerunFailureLastRun: the runner's failure bookkeeping", () => {
       at: new Date(AT).toISOString(),
       outcome: "failed",
       failureKind: "auth",
+    });
+  });
+
+  test("a security-kind failure behind a transport wrap records auth the same way", () => {
+    const lastRun = rerunFailureLastRun(
+      new ConnectionError("the message send failed", "transport", {
+        cause: new AuthenticationError("key exchange authentication failed"),
+      }),
+      AT,
+      false,
+      false,
+    );
+    expect(lastRun).toEqual({
+      at: new Date(AT).toISOString(),
+      outcome: "failed",
+      failureKind: "auth",
+    });
+  });
+
+  test("a peer abort holding a security-kind cause is not unwrapped to auth", () => {
+    const lastRun = rerunFailureLastRun(
+      new PeerAbortError({
+        cause: new ConnectionError("integrity check failed", "security"),
+      }),
+      AT,
+      false,
+      false,
+    );
+    expect(lastRun).toEqual({
+      at: new Date(AT).toISOString(),
+      outcome: "failed",
+      failureKind: "transport",
     });
   });
 
