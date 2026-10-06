@@ -1562,9 +1562,7 @@ describe("ephemeral session mode (connection-per-poll)", () => {
     state.live = false;
     const error = await adapter.list("/remote/dir").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toContain(
-      "reconnection budget is exhausted",
-    );
+    expect((error as Error).message).toContain("no reconnections are left");
     // Two sessions lost, one of them recovered: the budget bounds the losses.
     expect(adapter.midExchangeReconnectCount).toBe(2);
 

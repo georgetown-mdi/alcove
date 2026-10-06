@@ -738,6 +738,12 @@ const IceProvisionSchema: z.ZodType<IceProvision> = z.object({
 // --- Options -----------------------------------------------------------------
 
 /**
+ * The config key the operator sets {@link SharedOptions.inactivityTimeoutMs}
+ * by, as written in the configuration file.
+ */
+export const INACTIVITY_TIMEOUT_KEY = "inactivity_timeout_ms";
+
+/**
  * Channel-agnostic tuning parameters shared by all connection types.
  */
 interface SharedOptions {

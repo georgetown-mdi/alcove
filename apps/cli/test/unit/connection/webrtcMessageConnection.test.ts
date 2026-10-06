@@ -353,7 +353,7 @@ test("a send held by a window that never drains fails at inactivity_timeout_ms",
     await sending;
     expect(failure?.kind).toBe("transport");
     expect(failure?.message).toContain(
-      "did not accept an outbound message within 10000ms",
+      "was not accepted for sending within 10000 ms (the limit inactivity_timeout_ms sets)",
     );
     await expect(connection.receive()).rejects.toBe(failure);
     await vi.advanceTimersByTimeAsync(1_000);
@@ -512,9 +512,10 @@ test("a silent partner's failure names inactivity_timeout_ms", async () => {
     });
     await vi.advanceTimersByTimeAsync(1_000);
     await parked;
-    expect(sanitizeErrorForDisplay(failure)).toContain(
-      "inactivity_timeout_ms under connection.options",
-    );
+    const message = sanitizeErrorForDisplay(failure);
+    expect(message).toContain("(the limit inactivity_timeout_ms sets)");
+    expect(message).toContain("raise that limit under connection.options");
+    expect(message.split("inactivity_timeout_ms")).toHaveLength(2);
   } finally {
     vi.useRealTimers();
   }

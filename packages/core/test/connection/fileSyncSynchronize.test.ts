@@ -1919,7 +1919,7 @@ test("synchronize() joiner branch rejects a prefix-at-dash id pair", async () =>
 
   const err = await conn.synchronize().catch((e: unknown) => e);
   expect(err).toBeInstanceOf(Error);
-  expect((err as Error).message).toContain("'-' boundary");
+  expect((err as Error).message).toContain("are too alike");
   // Connection must stay unsynchronized so a retry is not blocked.
   expect(conn.peerId).toBeUndefined();
   // Refused before the joiner deletes anything: the partner's hello stays,
@@ -1958,7 +1958,7 @@ test("synchronize() lock-detection branch rejects a prefix-at-dash id pair", asy
     ];
   };
 
-  await expect(conn.synchronize()).rejects.toThrow("'-' boundary");
+  await expect(conn.synchronize()).rejects.toThrow("are too alike");
   // peerId must be reset so a retry is not blocked by "already synchronized".
   expect(conn.peerId).toBeUndefined();
 });
@@ -3092,7 +3092,7 @@ test("synchronize() --sweep-exchange-files: a non-resolving peer hello is retain
   );
   const elapsed = Date.now() - start;
   expect(err).toBeInstanceOf(UsageError);
-  expect((err as Error).message).toMatch(/retain-uncertain|did not resolve/i);
+  expect((err as Error).message).toContain("retain mode cannot be ruled out");
   expect(deleted).toHaveLength(0);
   // Bounded: it refused within a couple of poll cycles, not the peer timeout.
   expect(elapsed).toBeLessThan(2_000);
@@ -3125,7 +3125,7 @@ test("synchronize() --sweep-exchange-files: the retain inspection stops at the f
     (e: unknown) => e,
   );
   expect(err).toBeInstanceOf(UsageError);
-  expect((err as Error).message).toMatch(/retain-uncertain|did not resolve/i);
+  expect((err as Error).message).toContain("retain mode cannot be ruled out");
   expect(bodyReads.some((p) => p.endsWith(firstHello))).toBe(true);
   expect(bodyReads.some((p) => p.endsWith(secondHello))).toBe(false);
 });

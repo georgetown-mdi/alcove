@@ -269,7 +269,7 @@ inProcessOnly(
       // The operator hears it once, at the CLI's default log level, as information
       // rather than a failure.
       expect(out).toContain(
-        "did not complete within the 10000 ms teardown wait",
+        "did not finish within the 10000 ms allowed at shutdown",
       );
       expect(out).not.toContain("[ERROR]");
       // And hears nothing that attributes this adapter's own close to the partner:
@@ -413,7 +413,7 @@ inProcessOnly(
       expect(declined).toHaveLength(1);
       expect(declined[0].level).toBe("WARN");
       const declinedRedials = logs.filter((entry) =>
-        entry.message.includes("ephemeral SFTP re-dial declined:"),
+        entry.message.includes("SFTP re-dial skipped:"),
       );
       expect(declinedRedials).toHaveLength(1);
       expect(declinedRedials[0].level).toBe("WARN");

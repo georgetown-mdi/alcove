@@ -404,7 +404,7 @@ import type {
 import {
   runProtocol,
   preflightRun,
-  PEER_SILENCE_GUIDANCE,
+  peerSilenceGuidance,
   BOTH_SWEPT_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
   TERMINATED_RECORD_UNBUILT_WARNING,
@@ -594,17 +594,21 @@ afterEach(async () => {
 // the core layer appends to the peer-silence error (the append mechanism is
 // pinned in packages/core/test/connection/messageConnection.test.ts). This pins the wording
 // itself.
-test("PEER_SILENCE_GUIDANCE names likely receiver-side causes without overclaiming", () => {
+test("peerSilenceGuidance names likely receiver-side causes without overclaiming", () => {
+  const guidance = peerSilenceGuidance(false);
   // Names the two probable receiver-side faults.
-  expect(PEER_SILENCE_GUIDANCE).toContain("exited");
-  expect(PEER_SILENCE_GUIDANCE).toContain("unwritable");
+  expect(guidance).toContain("exited");
+  expect(guidance).toContain("unwritable");
   // Directs the operator to where the real cause was recorded.
-  expect(PEER_SILENCE_GUIDANCE).toContain("logs");
+  expect(guidance).toContain("logs");
   // Hedges rather than asserting a single definite cause (no overclaim).
-  expect(PEER_SILENCE_GUIDANCE).toContain("may have");
+  expect(guidance).toContain("may have");
   // Notes the slow-large-dataset case so the timeout is not misread as a death.
-  expect(PEER_SILENCE_GUIDANCE).toContain("inactivity_timeout_ms");
-  expect(PEER_SILENCE_GUIDANCE).not.toContain("--peer-timeout");
+  expect(guidance).toContain("inactivity_timeout_ms");
+  expect(guidance).not.toContain("--peer-timeout");
+  // An error that already names the setting gets it referred to, not repeated.
+  expect(peerSilenceGuidance(true)).not.toContain("inactivity_timeout_ms");
+  expect(peerSilenceGuidance(true)).toContain("raise that limit");
 });
 
 test.each([
@@ -2592,7 +2596,7 @@ test("a run against an unconfirmed entry-present hello blames the leftover, not 
   // Replaced by the fact the run does hold, the leftover named, and the local
   // recovery step -- asserted through the rendering path, where each cause-chain
   // link is truncated, not on the raw message.
-  expect(rendered).toContain("No peer was confirmed");
+  expect(rendered).toContain("No partner was confirmed");
   expect(rendered).toContain(`${LEFTOVER_HELLO_ID}-hello.json`);
   // The re-run leads and the removal is conditioned on surviving it: from here
   // a leftover and a partner that arrived first and then stalled are the same
@@ -2614,7 +2618,7 @@ test("a run whose partner completed the rendezvous keeps the peer-side guidance"
 
   const rendered = sanitizeErrorForDisplay(err);
   expect(rendered).toContain("The peer completed the rendezvous");
-  expect(rendered).not.toContain("No peer was confirmed");
+  expect(rendered).not.toContain("No partner was confirmed");
 }, 20_000);
 
 test("entryHelloResidueGuidance leads with the diagnosis and recovery, filename last", () => {
@@ -2622,7 +2626,7 @@ test("entryHelloResidueGuidance leads with the diagnosis and recovery, filename 
   expect(line.indexOf("Re-run")).toBeLessThan(line.indexOf(LEFTOVER_HELLO_ID));
   const long = entryHelloResidueGuidance(`${"x".repeat(400)}-hello.json`);
   const rendered = sanitizeErrorForDisplay(new Error(long));
-  expect(rendered).toContain("No peer was confirmed");
+  expect(rendered).toContain("No partner was confirmed");
   expect(rendered).toContain("remove only if it persists");
 });
 
@@ -2851,7 +2855,7 @@ test("a file-sync run whose partner never arrives names --peer-timeout alone, wi
   );
 });
 
-test("a file-sync run hands its connection the guidance naming the inactivity setting", async () => {
+test("a file-sync run hands its connection the guidance on raising the inactivity limit", async () => {
   // Core appends it to its per-operation and send-wait timeout failures
   // (pinned in core's fileSyncPeerWaits.test.ts).
   let guidance: { inactivityTimeoutGuidance?: string } | undefined;
@@ -2877,7 +2881,7 @@ test("a file-sync run hands its connection the guidance naming the inactivity se
   }
   expect(guidance).not.toHaveProperty("peerTimeoutGuidance");
   expect(guidance?.inactivityTimeoutGuidance).toContain(
-    "inactivity_timeout_ms under connection.options",
+    "raise that limit under connection.options",
   );
 });
 

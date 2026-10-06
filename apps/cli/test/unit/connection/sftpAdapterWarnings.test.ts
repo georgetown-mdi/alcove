@@ -101,16 +101,27 @@ describe("the closed-session refusal", () => {
 describe("the abandoned transition's rejection", () => {
   test("names the kind that gave up, the bound, and that nothing was dialed", () => {
     expect(transitionWaitExpiredError("connect", 10_000).message).toBe(
-      "this SFTP connection's connect waited 10000 ms for the session " +
-        "transition ahead of it and gave up: a dial cannot run alongside " +
-        "another transition on the one shared client, so nothing was dialed. " +
-        "Open a new connection to retry.",
+      "this SFTP connection's connect waited 10000 ms for the step ahead " +
+        "of it to finish and gave up, so nothing was dialed. Open a new " +
+        "connection to retry.",
     );
   });
 
   test("takes the bound as an input rather than reading one", () => {
     expect(transitionWaitExpiredError("teardown", 250).message).toContain(
-      "this SFTP connection's teardown waited 250 ms",
+      "this SFTP connection's close waited 250 ms",
+    );
+  });
+
+  test("names each step in plain words, never the adapter's own name for it", () => {
+    expect(transitionWaitExpiredError("ensureConnected", 10).message).toContain(
+      "this SFTP connection's reconnect waited",
+    );
+    expect(
+      transitionWaitExpiredError("redialForRecovery", 10).message,
+    ).toContain("this SFTP connection's recovery re-dial waited");
+    expect(transitionWaitExpiredError("releaseForIdle", 10).message).toContain(
+      "this SFTP connection's idle disconnect waited",
     );
   });
 });
@@ -163,15 +174,15 @@ describe("the dead-session refusal", () => {
 describe("the exhausted mid-exchange reconnection budget", () => {
   test("states the exhaustion in sessions lost, singular at one", () => {
     expect(midExchangeReconnectBudgetExhaustedError(1, 1).message).toContain(
-      "the mid-exchange reconnection budget is exhausted: 1 session lost over " +
-        "the whole exchange against a max_reconnect_attempts=1 budget",
+      "no reconnections are left: 1 session was lost over the whole " +
+        "exchange and max_reconnect_attempts=1 allows 1.",
     );
   });
 
   test("pluralizes the sessions lost past one", () => {
     expect(midExchangeReconnectBudgetExhaustedError(3, 3).message).toContain(
-      "the mid-exchange reconnection budget is exhausted: 3 sessions lost over " +
-        "the whole exchange against a max_reconnect_attempts=3 budget",
+      "no reconnections are left: 3 sessions were lost over the whole " +
+        "exchange and max_reconnect_attempts=3 allows 3.",
     );
   });
 
@@ -183,8 +194,8 @@ describe("the exhausted mid-exchange reconnection budget", () => {
       "max_reconnect_attempts=0 permits no mid-exchange reconnection, so this " +
         "first drop is terminal and the exchange cannot continue",
     );
-    expect(message).not.toContain("budget is exhausted");
-    expect(message).not.toContain("1 session lost");
+    expect(message).not.toContain("no reconnections are left");
+    expect(message).not.toContain("1 session was lost");
   });
 
   test("is terminal, and names both remedies by their operator-reachable names", () => {
@@ -315,8 +326,8 @@ describe("the unreadable transport lifecycle", () => {
 describe("the idle boundary that closed nothing", () => {
   test("the declined release names the bound and counts the boundaries, singular at one", () => {
     expect(idleReleaseDeclinedWarning(1, 10_000)).toContain(
-      "did not complete within the release's 10000 ms wait, and closing the " +
-        "session alongside it would corrupt the one shared client.",
+      "did not finish within 10000 ms, and closing the session while it " +
+        "runs would break the connection.",
     );
     expect(idleReleaseDeclinedWarning(1, 10_000)).toContain(
       "(1 idle boundary released nothing this way so far this exchange).",
@@ -382,8 +393,8 @@ describe("the forced idle release", () => {
 describe("the declined cycle-start re-dial", () => {
   test("names the bound and counts the cycles skipped, singular at one", () => {
     expect(cycleRedialDeclinedWarning(1, 10_000)).toContain(
-      "did not complete within the re-dial's 10000 ms wait, and dialing " +
-        "alongside it would corrupt the one shared client",
+      "did not finish within 10000 ms, and dialing while it runs would " +
+        "break the connection",
     );
     expect(cycleRedialDeclinedWarning(1, 10_000)).toContain(
       "(1 cycle skipped this way so far this exchange)",

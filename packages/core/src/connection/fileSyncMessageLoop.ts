@@ -61,6 +61,7 @@ import {
   isExpectedAbortName,
 } from "./fileSyncNames";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
+import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
 // The single remedy for a message publish the transport could not settle,
 // shared by the two places send() prescribes it: the publish's own rejection,
@@ -263,6 +264,8 @@ export interface MessageLoopOptions {
   unexpectedFiles?: "error" | "warn" | "ignore";
   inactivityTimeoutGuidance?: string;
 }
+
+const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
 
 const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
   options.inactivityTimeoutGuidance === undefined
@@ -497,7 +500,7 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for ack ${expectedAck} from ` +
-                  `${deps.peerId()!}` +
+                  `${deps.peerId()!}${INACTIVITY_LIMIT_CLAUSE}` +
                   inactivityGuidanceSuffix(deps.options()),
               );
             }
@@ -515,7 +518,7 @@ export class FileSyncMessageLoop {
             if (Date.now() > waitDeadlineMs) {
               throw new UsageError(
                 `timed out waiting for message from ${deps.id()} to be ` +
-                  "consumed" +
+                  `consumed${INACTIVITY_LIMIT_CLAUSE}` +
                   inactivityGuidanceSuffix(deps.options()),
               );
             }

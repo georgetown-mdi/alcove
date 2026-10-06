@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  INACTIVITY_TIMEOUT_KEY,
 } from "../config/connection";
 import type {
   SFTPConnectionConfig,
@@ -87,11 +88,12 @@ const transportBudgetExceededError = (
   budgetMs: number,
   targets: readonly string[] = [],
   guidance?: string,
+  setting?: string,
 ): TransportOperationStalledError =>
   new TransportOperationStalledError(
-    `a transport operation exceeded the ${budgetMs} ms peer-inactivity ` +
-      `budget; the peer or server has not responded within the budget, so the ` +
-      `exchange is failing rather than waiting on it further` +
+    `a file operation got no answer within ${budgetMs} ms` +
+      (setting === undefined ? "" : ` (the limit ${setting} sets)`) +
+      `, so the exchange stopped waiting for it` +
       (guidance === undefined ? "" : `. ${guidance}`),
     {
       details: [
@@ -910,6 +912,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           ms,
           targets,
           this.options.inactivityTimeoutGuidance,
+          INACTIVITY_TIMEOUT_KEY,
         ),
       );
     };
@@ -929,9 +932,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           ms,
           () =>
             new TransportOperationStalledError(
-              `transport connection close did not complete within the ${ms} ms ` +
-                `teardown budget; the transport has not finished closing, so ` +
-                `teardown is proceeding without waiting on it further`,
+              `closing the connection did not finish within ${ms} ms, so ` +
+                `shutdown went ahead without waiting for it`,
             ),
         );
       },

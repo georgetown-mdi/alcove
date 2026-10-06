@@ -153,7 +153,7 @@ test("a spent SFTP reconnect budget exits 64 through the bridge", async () => {
   const { client, bridge } = await rendezvous();
   client.listFault = () => midExchangeReconnectBudgetExhaustedError(2, 1);
   const err = await rejection(bridge.receive());
-  expectBridgedUsageExit(err, /reconnection budget is exhausted/);
+  expectBridgedUsageExit(err, /no reconnections are left/);
 });
 
 test("an unexpected file mid-exchange exits 64 through the bridge", async () => {

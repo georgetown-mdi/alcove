@@ -2097,7 +2097,7 @@ test("a private-key-shaped rename source does not take the destination with it",
   // The destination and the first-party label introducing it, both composed on
   // the link behind the marker.
   expect(rendered).toContain("rename destination: /rv/dest.json");
-  expect(rendered).toContain("peer-inactivity budget");
+  expect(rendered).toContain("(the limit inactivity_timeout_ms sets)");
 });
 
 test("poll() fails within the peer budget when the server withholds (slow-drips) the get callback", async () => {

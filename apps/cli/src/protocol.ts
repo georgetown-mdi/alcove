@@ -5,6 +5,7 @@ import {
   fromEventConnection,
   EncryptedMessageConnection,
   DEFAULT_PEER_INACTIVITY_TIMEOUT_MS,
+  INACTIVITY_TIMEOUT_KEY,
   getLogger,
   describeExchangeStages,
   InternalConsistencyError,
@@ -74,7 +75,10 @@ import { LocalFSClient } from "./connection/localFSClient";
 import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { assertFirstRoundFits } from "./firstRoundFits";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
-import { INACTIVITY_TIMEOUT_GUIDANCE } from "./connection/timeoutGuidance";
+import {
+  INACTIVITY_TIMEOUT_GUIDANCE,
+  raiseInactivityLimit,
+} from "./connection/timeoutGuidance";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
 import {
@@ -161,20 +165,20 @@ import type { WebRtcPeerOptions } from "./connection/webrtc/weriftPeer";
  * stops it writing the marker) or that was hard-killed, so this text states
  * the likely receiver-side causes without naming one as certain, and hedges
  * ("may have") to cover the slow-peer case too. See docs/spec/FILE_SYNC.md
- * ("Sender-side peer-silence attribution").
+ * ("Sender-side peer-silence attribution"). `limitNamed` is whether the error
+ * already names inactivity_timeout_ms.
  */
-export const PEER_SILENCE_GUIDANCE =
+export const peerSilenceGuidance = (limitNamed: boolean): string =>
   "The peer completed the rendezvous but has sent nothing since. The likely " +
   "cause is on the peer's side: its process may have exited, or its exchange " +
   "directory may have become unwritable (for example a read-only or full " +
   "filesystem, or revoked permissions) -- and a peer that cannot write its " +
   "next message also cannot record why, so this side cannot name the cause. " +
   "Check the peer's own logs for the underlying error. If the peer is instead " +
-  "still working on a large dataset, raise inactivity_timeout_ms under " +
-  "connection.options in the configuration.";
+  `still working on a large dataset, ${raiseInactivityLimit(limitNamed)}.`;
 
 /**
- * Operator guidance replacing {@link PEER_SILENCE_GUIDANCE} when the peer hello
+ * Operator guidance replacing {@link peerSilenceGuidance} when the peer hello
  * this run rendezvoused against was already in the folder at entry and nothing
  * has confirmed a live peer behind it since (`unconfirmedEntryPeerHello`).
  *
@@ -191,7 +195,7 @@ export const PEER_SILENCE_GUIDANCE =
  * asserted here.
  */
 export const entryHelloResidueGuidance = (helloName: string): string =>
-  "No peer was confirmed; the hello present at start may be residue. " +
+  "No partner was confirmed; the hello found at start may be left over. " +
   "Re-run; remove only if it persists: " +
   helloName;
 
@@ -1720,8 +1724,8 @@ function logTransportCounters(
       line: (count) =>
         `the connection-per-poll release did not close the session at ` +
         `${count} idle ${count === 1 ? "boundary" : "boundaries"} during ` +
-        `this exchange (not a dropped session): another session transition ` +
-        `on this connection did not complete within the release's wait, so ` +
+        `this exchange (not a dropped session): another step on this ` +
+        `connection did not finish in the time the release waits, so ` +
         `the session stayed live across ` +
         `${count === 1 ? "that idle gap" : "those idle gaps"}`,
     },
@@ -1730,8 +1734,8 @@ function logTransportCounters(
       line: (count) =>
         `the connection-per-poll re-dial skipped ${count} poll ` +
         `${count === 1 ? "cycle" : "cycles"} during this exchange (not a ` +
-        `dropped session): another session transition on this connection ` +
-        `did not complete within the re-dial's wait, so ` +
+        `dropped session): another step on this connection did not finish ` +
+        `in the time the re-dial waits, so ` +
         `${count === 1 ? "that cycle" : "those cycles"} had no session`,
     },
     {
@@ -2301,16 +2305,17 @@ async function prepareTransport(
     // inactivityHint enriches the generic peer-silence error with
     // file-sync operator guidance: the receiver names its own cause
     // locally, but the sender only sees the inactivity timeout, so this
-    // points at the likely receiver-side causes (PEER_SILENCE_GUIDANCE).
+    // points at the likely receiver-side causes (peerSilenceGuidance).
     // Supplied as a function because which guidance applies depends on the
     // rendezvous outcome, known only after this bridge is built and read
     // from the connection when the deadline fires.
     build.transport = fromEventConnection(fileSyncConn, {
       inactivityTimeoutMs: fileSyncInactivityTimeoutMs(connection),
-      inactivityHint: () => {
+      inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
+      inactivityHint: (limitNamed) => {
         const leftover = fileSyncConn.unconfirmedEntryPeerHello;
         return leftover === undefined
-          ? PEER_SILENCE_GUIDANCE
+          ? peerSilenceGuidance(limitNamed)
           : entryHelloResidueGuidance(leftover);
       },
     });

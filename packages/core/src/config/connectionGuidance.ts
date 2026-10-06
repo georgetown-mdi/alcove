@@ -9,6 +9,7 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_WEBRTC_PEER_TIMEOUT_MS,
+  INACTIVITY_TIMEOUT_KEY,
 } from "./connection.js";
 import { commentBlock, commentKey } from "./yamlComments.js";
 
@@ -67,13 +68,13 @@ function tuningDefaults(channel: unknown): Array<[string, number]> {
   if (channel === "webrtc")
     return [
       ["peer_timeout_ms", DEFAULT_WEBRTC_PEER_TIMEOUT_MS],
-      ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
+      [INACTIVITY_TIMEOUT_KEY, DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
     ];
   return [
     [POLL_INTERVAL_KEY, DEFAULT_POLLING_FREQUENCY_MS],
     ["server_connect_timeout_ms", DEFAULT_SERVER_CONNECT_TIMEOUT_MS],
     ["peer_timeout_ms", DEFAULT_PEER_TIMEOUT_MS],
-    ["inactivity_timeout_ms", DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
+    [INACTIVITY_TIMEOUT_KEY, DEFAULT_PEER_INACTIVITY_TIMEOUT_MS],
     ["max_reconnect_attempts", DEFAULT_MAX_RECONNECT_ATTEMPTS],
   ];
 }

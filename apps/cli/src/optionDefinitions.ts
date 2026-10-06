@@ -319,7 +319,8 @@ export function addSweepOptions(cmd: Argv): Argv {
         "never deleted. Use to recover a directory after a crashed or " +
         "mismatched prior run, once you have confirmed no other session is " +
         "using it. CLI-only and invocation-scoped: it is never persisted to " +
-        "alcove.yaml. Refuses on a retain-mode signal unless " +
+        "alcove.yaml. Refuses where the directory may hold a retain-mode " +
+        "transcript unless " +
         "--force-retain-sweep is also set",
     })
     .option("force-retain-sweep", {
