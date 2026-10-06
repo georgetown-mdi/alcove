@@ -73,15 +73,11 @@ test("loads the identity and pin for certificate mode", async () => {
     mode: "certificate",
     identityFile: identityPath,
     partnerFingerprint: fingerprint,
-    receiptOutput: path.join(dir, "receipt.json"),
   };
   const resolved = await resolveSigningPersist(config, "Party A", configPath());
   expect(resolved).not.toBeNull();
   expect(resolved!.identity).toEqual(identity);
   expect(resolved!.partnerFingerprint).toBe(fingerprint);
-  expect(resolved!.receiptOutput).toEqual({
-    receiptFile: path.join(dir, "receipt.json"),
-  });
 });
 
 test("certificate mode with no identity file at the named path is a usage error", async () => {

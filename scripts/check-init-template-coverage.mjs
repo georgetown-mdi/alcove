@@ -35,6 +35,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "Read from the key file at run time; alcove.yaml never holds it.",
   ],
   [
+    "signing.receipt_output",
+    "Ignored with a warning when set: a signed run writes its receipt into the output folder.",
+  ],
+  [
     "connection.server.certificate",
     "Refused when the configuration loads: SSH client certificates are not supported.",
   ],

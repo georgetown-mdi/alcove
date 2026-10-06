@@ -123,7 +123,7 @@ import {
   resultFilePath,
   runArtifactFolder,
 } from "./resultFile";
-import { writeDualSignedRecord, type ReceiptOutput } from "./receiptFile";
+import { writeDualSignedRecord } from "./receiptFile";
 import {
   closeWithinCeiling,
   teardownCeilingNotice,
@@ -403,9 +403,6 @@ export interface SigningPersist {
   /** The configuration file this exchange was given, and the only file a
    * freshly adopted partner fingerprint is written into. */
   configPath: string;
-  /** Where the dual-signed record is written (an explicit path, or `undefined`
-   * for the default timestamped location). */
-  receiptOutput: ReceiptOutput;
 }
 
 /**
@@ -2547,7 +2544,6 @@ async function writeExchangeOutputs(params: {
   // stamp is the run's shared one above. Non-fatal, like the record write.
   if (signing !== null && signedReceipt !== undefined) {
     const failure = writeDualSignedRecord(
-      signing.receiptOutput,
       signedReceipt,
       artifactFolder,
       runCreatedAt,

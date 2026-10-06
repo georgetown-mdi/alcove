@@ -956,6 +956,35 @@ test("expires set in the top-level authentication block does not override the ke
   ).toBe(true);
 });
 
+test("signing.receipt_output is accepted and warned about, naming where the receipt goes", () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      ...minimalSFTPConfig,
+      signing: { mode: "none", receipt_output: "./receipts/r.json" },
+    }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  const result = loadConfig(baseOptions());
+  expect(result.signing?.mode).toBe("none");
+  expect(mockState.warnings).toEqual([
+    `${pathAsDisplayed(configFile)}: the setting "signing.receipt_output" is ` +
+      "ignored: a signed run writes its receipt into the output folder as " +
+      "alcove-receipt-<time>.json, with the same time stamp as the run's " +
+      "result and record. Delete the setting from the file.",
+  ]);
+});
+
+test("a signing block without receipt_output draws no warning", () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({ ...minimalSFTPConfig, signing: { mode: "none" } }),
+  );
+  saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+  loadConfig(baseOptions());
+  expect(mockState.warnings).toEqual([]);
+});
+
 test("warnAndStripInjectedAuthFields admits an operator-policy field and warns on nothing", () => {
   // An operator-policy field (token_max_age_days) is NOT an injected field, so the
   // loader must leave it untouched -- no strip, no warning -- and let schema

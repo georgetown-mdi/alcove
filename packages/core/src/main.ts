@@ -616,7 +616,11 @@ export type {
   Metadata,
   OwnColumnSelection,
 } from "./config/metadata";
-export { FINGERPRINT_REGEX, partnerPinIsPresent } from "./config/signing";
+export {
+  FINGERPRINT_REGEX,
+  partnerPinIsPresent,
+  retiredSigningSettingNotice,
+} from "./config/signing";
 export type { SigningConfig } from "./config/signing";
 export {
   SIGNING_CERTIFICATE_VERSION,

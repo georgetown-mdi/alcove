@@ -1261,7 +1261,6 @@ signing:
   mode: certificate
   identity_file: /run/signing/alcove-signing-identity.json
   partner_fingerprint: iWD-ZB69Oz6gOpaX_OoC7sD8ohIZj2lETC9qbl-IbPg
-  receipt_output: ./receipts/agency-a-receipt.json
 ```
 
 ### `signing.receipt_output`
@@ -1269,7 +1268,7 @@ signing:
 *Type:* string (path)  
 *Required:* no
 
-Where the dual-signed receipt is written under `certificate` mode. Optional; when omitted the CLI writes it to a timestamped `alcove-receipt-<time>.json` in the run's output folder, or the working directory when the result goes to stdout (the stamp matching the exchange record's), so repeated exchanges accumulate an audit trail. A path set here names one file that every run replaces ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). The file is written owner-only. It holds no payload contents and no private keys -- only public certificates, signatures, the terms and data-flow attestation, and a copy of the partner's linkage terms, which verification re-derives the agreed-terms hash from -- so it does not reveal the matched data or leak whether either direction included a payload. It does bind both parties' identities and the agreed terms (that is its purpose, a mutually non-repudiable attestation), so it is not anonymous; share it by copying the file when handing it to a partner or auditor. What a holder does and does not learn is enumerated in [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md#receipt-privacy-properties).
+Ignored by the CLI, which warns when a configuration sets it and names where the receipt goes; delete it from the file. Under `certificate` mode the CLI writes the dual-signed receipt to a timestamped `alcove-receipt-<time>.json` in the run's output folder, or the working directory when the result goes to stdout (the stamp matching the exchange record's), so repeated exchanges accumulate an audit trail ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). The file is written owner-only. It holds no payload contents and no private keys -- only public certificates, signatures, the terms and data-flow attestation, and a copy of the partner's linkage terms, which verification re-derives the agreed-terms hash from -- so it does not reveal the matched data or leak whether either direction included a payload. It does bind both parties' identities and the agreed terms (that is its purpose, a mutually non-repudiable attestation), so it is not anonymous; share it by copying the file when handing it to a partner or auditor. What a holder does and does not learn is enumerated in [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md#receipt-privacy-properties).
 
 Under `certificate` mode a receipt is accepted only if the identity the partner used in its agreed terms is the one the presenting certificate authorizes -- an exact match of the full identity over the same canonical bytes the record commits to and the receipt signs, checked against the agreed-terms identity rather than the certificate's own held value. A party that uses a different identity string than the one bound into its certificate needs a new certificate (a regeneration); see [PROTOCOL.md](spec/PROTOCOL.md#signing-identity-and-certificate-pinning).
 

@@ -34,43 +34,6 @@ export function receiptFilePathIn(folder: string, createdAt: string): string {
 }
 
 /**
- * Where the dual-signed record should go, resolved from the `signing` config
- * before the exchange runs. Holds only the operator's choice -- an explicit
- * `signing.receipt_output` path, or `undefined` for the default timestamped path
- * -- because the default's timestamp is not known until the exchange completes.
- */
-export interface ReceiptOutput {
-  /** Explicit `signing.receipt_output` path; `undefined` selects the default. */
-  receiptFile?: string;
-}
-
-/**
- * Resolve the receipt-output choice from the signing config's `receiptOutput`.
- * A trimmed non-empty path is used verbatim; an absent or whitespace-only value
- * selects the default timestamped path.
- */
-export function resolveReceiptOutput(receiptOutput?: string): ReceiptOutput {
-  const trimmed = receiptOutput?.trim();
-  return {
-    receiptFile:
-      trimmed !== undefined && trimmed.length > 0 ? trimmed : undefined,
-  };
-}
-
-/**
- * Resolve the concrete receipt path from the output choice, the run's folder
- * and the exchange timestamp. An explicit path is used verbatim; otherwise the
- * receipt goes in the run's folder ({@link receiptFilePathIn}).
- */
-export function receiptPathFor(
-  output: ReceiptOutput,
-  folder: string,
-  createdAt: string,
-): string {
-  return output.receiptFile ?? receiptFilePathIn(folder, createdAt);
-}
-
-/**
  * Write the dual-signed record to disk atomically and owner-only via
  * {@link writeFileOwnerOnly}, so a mid-write abort leaves it complete or
  * absent. Non-fatal by design, like the self-attested record
@@ -79,14 +42,13 @@ export function receiptPathFor(
  * (docs/spec/CLI_EVENTS.md, `warning`).
  */
 export function writeDualSignedRecord(
-  output: ReceiptOutput,
   record: DualSignedRecord,
   folder: string,
   createdAt: string,
   loggerName: string,
 ): string | undefined {
   const log = getLogger(loggerName);
-  const receiptFilePath = receiptPathFor(output, folder, createdAt);
+  const receiptFilePath = receiptFilePathIn(folder, createdAt);
   try {
     writeFileOwnerOnly(receiptFilePath, serializeDualSignedRecord(record));
     log.info(

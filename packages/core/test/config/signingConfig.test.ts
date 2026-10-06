@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import {
   parseSigningConfig,
+  retiredSigningSettingNotice,
   safeParseSigningConfig,
 } from "../../src/config/signing";
 import { parseExchangeSpec } from "../../src/config/exchangeSpec";
@@ -120,5 +121,40 @@ describe("ExchangeSpec signing block", () => {
       identityFile: "/run/secrets/alcove-signing-identity.json",
       partnerFingerprint: FINGERPRINT,
     });
+  });
+});
+
+describe("retiredSigningSettingNotice", () => {
+  test("names the receipt path setting and where the receipt goes", () => {
+    expect(
+      retiredSigningSettingNotice({
+        signing: { mode: "certificate", receipt_output: "./r.json" },
+      }),
+    ).toBe(
+      'the setting "signing.receipt_output" is ignored: a signed run writes ' +
+        "its receipt into the output folder as alcove-receipt-<time>.json, " +
+        "with the same time stamp as the run's result and record. Delete the " +
+        "setting from the file.",
+    );
+  });
+
+  test("names the key as the file spells it", () => {
+    expect(
+      retiredSigningSettingNotice({
+        signing: { mode: "none", receiptOutput: "./r.json" },
+      }),
+    ).toContain('"signing.receiptOutput"');
+  });
+
+  test("is undefined for a file without the setting", () => {
+    expect(
+      retiredSigningSettingNotice({ signing: { mode: "certificate" } }),
+    ).toBeUndefined();
+    expect(retiredSigningSettingNotice({})).toBeUndefined();
+    expect(retiredSigningSettingNotice({ signing: null })).toBeUndefined();
+    expect(retiredSigningSettingNotice(null)).toBeUndefined();
+    expect(
+      retiredSigningSettingNotice({ receipt_output: "./r.json" }),
+    ).toBeUndefined();
   });
 });

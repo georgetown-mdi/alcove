@@ -4,10 +4,9 @@ import { safeParseCamelized } from "./safeParseCamelized.js";
 
 // Signing configuration for exchange receipts: the optional `signing` block
 // on the ExchangeSpec (alcove.yaml); see EXCHANGE_REFERENCE.md. Carries only
-// non-secret references -- signing identity file path, receipt mode, pinned
-// partner certificate fingerprint, and receipt output location. The signing
-// private key stays out of the config and the rotating key file; see
-// docs/SECURITY_DESIGN.md.
+// non-secret references -- signing identity file path, receipt mode, and pinned
+// partner certificate fingerprint. The signing private key stays out of the
+// config and the rotating key file; see docs/SECURITY_DESIGN.md.
 
 /**
  * Canonical form of a certificate fingerprint: an unpadded base64url
@@ -74,8 +73,9 @@ export interface SigningConfig {
    */
   partnerFingerprint?: string;
   /**
-   * Where signed receipts / evidence are written. Optional; the CLI falls back
-   * to a documented default when omitted.
+   * Retired: still parsed so a file holding it opens, but no consumer reads
+   * it. A signed run writes its receipt into the output folder; see
+   * {@link retiredSigningSettingNotice}.
    */
   receiptOutput?: string;
 }
@@ -127,6 +127,33 @@ export function partnerPinIsPresent(
   pinnedFingerprint: string | undefined,
 ): pinnedFingerprint is string {
   return pinnedFingerprint !== undefined && pinnedFingerprint.length > 0;
+}
+
+/** The spellings of the retired receipt-path setting under `signing`. */
+const RETIRED_RECEIPT_OUTPUT_FORMS = ["receipt_output", "receiptOutput"];
+
+/**
+ * The warning for a raw exchange document whose `signing` block still names a
+ * receipt path, or `undefined` when it names none. The setting is accepted and
+ * ignored: a signed run writes its receipt into the output folder under the
+ * run's time stamp. Names the key as the file writes it.
+ */
+export function retiredSigningSettingNotice(raw: unknown): string | undefined {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw))
+    return undefined;
+  const signing = (raw as Record<string, unknown>)["signing"];
+  if (signing === null || typeof signing !== "object" || Array.isArray(signing))
+    return undefined;
+  const key = RETIRED_RECEIPT_OUTPUT_FORMS.find((form) =>
+    Object.hasOwn(signing, form),
+  );
+  if (key === undefined) return undefined;
+  return (
+    `the setting "signing.${key}" is ignored: a signed run writes its ` +
+    "receipt into the output folder as alcove-receipt-<time>.json, with the " +
+    "same time stamp as the run's result and record. Delete the setting " +
+    "from the file."
+  );
 }
 
 /**
