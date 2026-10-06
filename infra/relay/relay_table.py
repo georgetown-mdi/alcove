@@ -56,6 +56,10 @@ VERIFY_ID_REFUSAL = (
 )
 KEY_REFUSAL = "key must be 64 lowercase hex characters [0-9a-f]"
 MAX_AGE_REFUSAL = "max-age-days must be a whole number of days from 1 to %d, or none" % MAX_AGE_DAYS_CEILING
+REALM_REFUSAL = (
+    "ALCOVE_RELAY_REALM is unset; run this with relay.env's variables in the environment, which set it "
+    "to the relay's realm"
+)
 DAY_SECONDS = 86400
 BUSY_TIMEOUT_SECONDS = 10
 
@@ -79,6 +83,10 @@ class Refused(Exception):
 
 class TableError(Exception):
     """The table could not be read or written; the message never holds a key."""
+
+
+class UsageError(Exception):
+    """A command run without what it needs to name its target; exit 2."""
 
 
 class ProofRefused(Refused):
@@ -120,24 +128,28 @@ def check_registration(exchange_id, key, max_age_days, allow_verify_id=False):
         raise Refused(MAX_AGE_REFUSAL)
 
 
-def open_table(path=None):
-    """Opens coturn's existing turndb for writing, never creating it, and adds the
-    mapping table when absent."""
-    path = path or TURNDB
+def _connect(path, mode):
     if not os.path.exists(path):
         raise TableError(
             "no secrets table at %s; alcove-relay.service creates it at its first start, so start it and run again"
             % path
         )
     try:
-        conn = sqlite3.connect(
-            "file:%s?mode=rw" % urllib.parse.quote(path),
+        return sqlite3.connect(
+            "file:%s?mode=%s" % (urllib.parse.quote(path), mode),
             uri=True,
             timeout=BUSY_TIMEOUT_SECONDS,
             isolation_level=None,
         )
     except sqlite3.Error as error:
         raise TableError("could not open the secrets table %s: %s; nothing changed" % (path, error))
+
+
+def open_table(path=None):
+    """Opens coturn's existing turndb for writing, never creating it, and adds the
+    mapping table when absent."""
+    path = path or TURNDB
+    conn = _connect(path, "rw")
     try:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(turn_secret)")}
         if not set(TURN_SECRET_COLUMNS) <= columns:
@@ -260,11 +272,7 @@ def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=Fal
     return _transaction(conn, body)
 
 
-def _held_key_proven(conn, exchange_id, proves_possession):
-    """The exchange's mapped (realm, key) once `proves_possession` accepts that
-    key. Called inside the write transaction, so the key it checks is the key
-    the write replaces or deletes."""
-    mapped = _mapped(conn, exchange_id)
+def _proven(exchange_id, mapped, proves_possession):
     if mapped is None:
         raise Refused("exchange-id %s is not enrolled on this relay; enroll it with the relay-owner token" % exchange_id)
     if proves_possession(mapped[1]) is not True:
@@ -272,6 +280,31 @@ def _held_key_proven(conn, exchange_id, proves_possession):
             "the request's proof does not verify against the key exchange %s holds on this relay" % exchange_id
         )
     return mapped
+
+
+def _held_key_proven(conn, exchange_id, proves_possession):
+    """The exchange's mapped (realm, key) once `proves_possession` accepts that
+    key. Called inside the write transaction, so the key it checks is the key
+    the write replaces or deletes."""
+    return _proven(exchange_id, _mapped(conn, exchange_id), proves_possession)
+
+
+def check_proof(exchange_id, proves_possession, path=None):
+    """_held_key_proven() on a read-only connection, which takes no write lock
+    and adds no table. Not a substitute for the check rotate() and
+    revoke_with_proof() make under the lock."""
+    path = path or TURNDB
+    conn = _connect(path, "ro")
+    try:
+        has_mapping = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'alcove_exchange'"
+        ).fetchone()
+        mapped = _mapped(conn, exchange_id) if has_mapping else None
+    except sqlite3.Error as error:
+        raise TableError("could not read the secrets table %s: %s; nothing changed" % (path, error))
+    finally:
+        conn.close()
+    return _proven(exchange_id, mapped, proves_possession)
 
 
 def rotate(conn, realm, exchange_id, key, max_age_days, now, proves_possession, allow_verify_id=False):
@@ -370,6 +403,8 @@ def sweep(conn, now):
 def status(conn, realm, exchange_id, key):
     """"both" when the mapping points the exchange at the key and the table lists
     it, "neither" when neither holds it, and "disagree" otherwise."""
+    if not realm:
+        raise UsageError(REALM_REFUSAL)
     mapped = conn.execute(
         "SELECT 1 FROM alcove_exchange WHERE exchange_id = ? AND realm = ? AND key = ?",
         (exchange_id, realm, key),
@@ -383,14 +418,16 @@ def status(conn, realm, exchange_id, key):
 
 
 def forget_key(conn, realm, key):
-    """Deletes the key's row and any mapping holding it. Returns whether a row
-    was deleted."""
+    """Deletes the key's row in `realm` and any mapping of the key in `realm`,
+    in one transaction. Returns whether a row was deleted."""
+    if not realm:
+        raise UsageError(REALM_REFUSAL)
     if not valid_key(key):
         raise Refused(KEY_REFUSAL)
 
     def body():
         deleted = conn.execute("DELETE FROM turn_secret WHERE realm = ? AND value = ?", (realm, key)).rowcount
-        conn.execute("DELETE FROM alcove_exchange WHERE key = ?", (key,))
+        conn.execute("DELETE FROM alcove_exchange WHERE realm = ? AND key = ?", (realm, key))
         return deleted > 0
 
     return _transaction(conn, body)
@@ -574,6 +611,8 @@ def run_command(command, args):
         print("swept %d lapsed exchange(s)" % len(revoked))
         return 0
     if command == "status":
+        if not realm:
+            raise UsageError(REALM_REFUSAL)
         key = read_key()
         if not valid_exchange_id(args[0]):
             raise Refused(ID_REFUSAL)
@@ -582,6 +621,8 @@ def run_command(command, args):
         run_as_table_owner(TURNDB)
         return {"both": 0, "neither": 3, "disagree": 4}[status(open_table(), realm, args[0], key)]
     if command == "forget-key":
+        if not realm:
+            raise UsageError(REALM_REFUSAL)
         key = read_key()
         if not valid_key(key):
             raise Refused(KEY_REFUSAL)
@@ -632,6 +673,9 @@ def main(argv):
         return 2
     try:
         return run_command(argv[0], argv[1:])
+    except UsageError as error:
+        sys.stderr.write("ABORTING: %s\n" % error)
+        return 2
     except Refused as error:
         sys.stderr.write("ABORTING: %s\n" % error)
         return 3

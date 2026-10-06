@@ -260,13 +260,13 @@ fi
 RUNTIME_FLAGS=()
 [ "$RUNTIME" != podman ] || RUNTIME_FLAGS=(--events-backend=none)
 uclient() {
-  local peer="$1" user="${2:-$TURN_USER}" cred="${3:-$TURN_CRED}"
+  local peer="$1" user="${2:-$TURN_USER}" cred="${3:-$TURN_CRED}" extra="${4:-}"
   # The trailing argument is the TCP connect target; coturn's own 401 challenge
   # carries the realm it authenticates against (turnserver.conf's REALM), so
   # swapping this address does not change what realm the exchange below
   # authenticates under.
   bounded 60 "$RUNTIME" ${RUNTIME_FLAGS[@]+"${RUNTIME_FLAGS[@]}"} run --rm --network host --entrypoint turnutils_uclient "$IMAGE" \
-    -t -S -p 443 -u "$user" -w "$cred" -e "$peer" -n 2 -c -v "$CONNECT" 2>&1
+    ${extra:+"$extra"} -t -S -p 443 -u "$user" -w "$cred" -e "$peer" -n 2 -c -v "$CONNECT" 2>&1
 }
 
 # Measured 2026-09-03 against coturn 4.17.2: a successful run through this
@@ -309,6 +309,21 @@ if [ -n "$TURN_USER" ] && [ -n "$TURN_CRED" ]; then
         "$(printf '%s' "$OUT" | tr '\n' ' ' | cut -c1-200)"
     fi
   done
+
+  # A TCP relay allocation (RFC 6062, the client's -T) is refused. Passes only on
+  # the transport refusal (coturn's 442, Unsupported Transport Protocol); any
+  # other failure shape is unclear.
+  # Measured: not yet on the host; the pattern follows coturn's 442 error.
+  OUT="$(uclient 203.0.113.9 "$TURN_USER" "$TURN_CRED" -T)"
+  if allocated "$OUT"; then
+    report fail "a TCP relay allocation was NOT refused" \
+      "no-tcp-relay in turnserver.conf is not doing its job"
+  elif printf '%s' "$OUT" | grep -qi '442\|unsupported transport protocol'; then
+    report pass "a TCP relay allocation was refused"
+  else
+    report unclear "could not tell whether a TCP relay allocation was refused" \
+      "$(printf '%s' "$OUT" | tr '\n' ' ' | cut -c1-200)"
+  fi
 else
   report unclear "no credential, so no allocation and no refusal was probed"
 fi
@@ -406,24 +421,29 @@ if [ ! -f "$REGISTRAR_TOKEN_FILE" ]; then
 else
   REGISTRAR_TOKEN="$(tr -d '[:space:]' < "$REGISTRAR_TOKEN_FILE")"
   REGISTER_BODY="{\"key\": \"$KEY_R\", \"maxAgeDays\": 1}"
-  expect_status "a registration with no token" 401 "$(registrar_status PUT "" "$REGISTER_BODY")"
-  expect_status "a registration with a wrong token" 401 "$(registrar_status PUT "$(openssl rand -hex 32)" "$REGISTER_BODY")"
-  expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
-  READ_BACK=0; registrar_read_back || READ_BACK=$?
-  if [ "$READ_BACK" -eq 3 ]; then
-    report pass "the refused registration left no row"
-  else
-    report fail "a refused registration left the mapping or the table holding its key"
-  fi
   STATUS="$(registrar_status PUT "$REGISTRAR_TOKEN" "$REGISTER_BODY")"
   expect_status "a registration with the token" 200 "$STATUS"
+  REGISTERED=0; registrar_read_back || REGISTERED=$?
   if [ "$STATUS" = 200 ]; then
-    READ_BACK=0; registrar_read_back || READ_BACK=$?
-    if [ "$READ_BACK" -eq 0 ]; then
+    if [ "$REGISTERED" -eq 0 ]; then
       report pass "the registration is in the mapping and the secrets table"
     else
       report fail "the registrar answered 200, but the mapping and the secrets table do not both hold the key"
     fi
+  fi
+  # The refused calls name another key, so one that wrote would move the
+  # mapping off this run's key.
+  OTHER_BODY="{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": 1}"
+  expect_status "a registration with no token" 401 "$(registrar_status PUT "" "$OTHER_BODY")"
+  expect_status "a registration with a wrong token" 401 "$(registrar_status PUT "$(openssl rand -hex 32)" "$OTHER_BODY")"
+  expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
+  READ_BACK=0; registrar_read_back || READ_BACK=$?
+  if [ "$READ_BACK" -eq "$REGISTERED" ]; then
+    report pass "the refused calls left the mapping and the secrets table unchanged"
+  else
+    report fail "a refused call changed the mapping or the secrets table"
+  fi
+  if [ "$REGISTERED" -eq 0 ]; then
     STATUS="$(registrar_status DELETE "$REGISTRAR_TOKEN" "")"
     expect_status "a revocation with the token" 200 "$STATUS"
     READ_BACK=0; registrar_read_back || READ_BACK=$?

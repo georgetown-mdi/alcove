@@ -784,6 +784,84 @@ except relay_table.TableError as error:
     expect(status("exchange-9", KEY_A)).toBe(4);
   });
 
+  it.each(["status exchange-1", "forget-key"])(
+    "refuses %s with no realm, naming the variable, and changes nothing",
+    (command) => {
+      const host = fixtureHost();
+      host.register("exchange-1", KEY_A);
+      const before = { rows: host.rows(), mapping: host.mapping() };
+      const result = spawnSync(
+        "python3",
+        [join(relay, "relay_table.py"), ...command.split(" ")],
+        {
+          encoding: "utf8",
+          env: { ...host.env, ALCOVE_RELAY_REALM: "" },
+          input: `${KEY_A}\n`,
+        },
+      );
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("ALCOVE_RELAY_REALM is unset");
+      expect({ rows: host.rows(), mapping: host.mapping() }).toEqual(before);
+    },
+  );
+
+  it.each(["status exchange-1", "forget-key"])(
+    "refuses %s with no realm before opening a missing table, and leaves an existing one's bytes alone",
+    (command) => {
+      const host = fixtureHost();
+      const run = (turndb) =>
+        spawnSync(
+          "python3",
+          [join(relay, "relay_table.py"), ...command.split(" ")],
+          {
+            encoding: "utf8",
+            env: {
+              ...host.env,
+              ALCOVE_RELAY_TURNDB: turndb,
+              ALCOVE_RELAY_REALM: "",
+            },
+            input: `${KEY_A}\n`,
+          },
+        );
+      const missing = join(host.root, "no-such-table");
+      const result = run(missing);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("ALCOVE_RELAY_REALM is unset");
+      expect(existsSync(missing)).toBe(false);
+      const existing = host.env.ALCOVE_RELAY_TURNDB;
+      const before = readFileSync(existing);
+      expect(run(existing).status).toBe(2);
+      expect(readFileSync(existing).equals(before)).toBe(true);
+    },
+  );
+
+  it("forgets a mapped key's mapping and row together, and leaves another realm's alone", () => {
+    const host = fixtureHost();
+    host.register("exchange-1", KEY_A);
+    python(
+      `${MODULE}
+relay_table.register(conn, "other.example", "exchange-2", "${KEY_B}", None, 0)`,
+      [host.turndb],
+    );
+    const forget = (key) =>
+      spawnSync("python3", [join(relay, "relay_table.py"), "forget-key"], {
+        encoding: "utf8",
+        env: { ...host.env, ALCOVE_RELAY_REALM: REALM },
+        input: `${key}\n`,
+      });
+    const forgotten = forget(KEY_A);
+    expect(forgotten.status, forgotten.stderr).toBe(0);
+    const untouched = forget(KEY_B);
+    expect(untouched.status, untouched.stderr).toBe(0);
+    expect(untouched.stdout).toBe(`no row in realm ${REALM} held the key\n`);
+    expect(host.mapping().map(({ id, realm }) => [id, realm])).toEqual([
+      ["exchange-2", "other.example"],
+    ]);
+    expect(host.rows()).toEqual(
+      [listed(KEY_LISTED), `${KEY_B}[other.example]`].sort(),
+    );
+  });
+
   it("forgets a row no exchange maps, by the key on stdin", () => {
     const host = fixtureHost();
     const result = spawnSync(
@@ -1309,7 +1387,8 @@ const REGISTRAR_START_SECONDS = 15;
 let registrarStartTimedOut = false;
 
 // Starts the registrar on a free port and resolves once it is listening.
-const startRegistrarWith = (env) =>
+// `bounds` replaces module constants, by name, before it starts.
+const startRegistrarWith = (env, bounds = {}) =>
   new Promise((resolvePort, reject) => {
     if (registrarStartTimedOut) {
       reject(
@@ -1319,9 +1398,16 @@ const startRegistrarWith = (env) =>
       );
       return;
     }
-    const child = spawn("python3", [join(relay, "registrar.py")], {
-      env: { ...env, ALCOVE_RELAY_REGISTRAR_PORT: "0" },
-    });
+    const assignments = Object.entries(bounds)
+      .map(([name, value]) => `registrar.${name} = ${JSON.stringify(value)}\n`)
+      .join("");
+    const child = spawn(
+      "python3",
+      Object.keys(bounds).length === 0
+        ? [join(relay, "registrar.py")]
+        : ["-B", "-c", `import registrar\n${assignments}registrar.main()`],
+      { env: { ...env, PYTHONPATH: relay, ALCOVE_RELAY_REGISTRAR_PORT: "0" } },
+    );
     registrars.push(child);
     const log = { stderr: "" };
     const deadline = setTimeout(() => {
@@ -1349,7 +1435,8 @@ const startRegistrarWith = (env) =>
     });
   });
 
-const startRegistrar = (host) => startRegistrarWith(registrarEnv(host));
+const startRegistrar = (host, bounds = {}) =>
+  startRegistrarWith(registrarEnv(host), bounds);
 
 // Every response header block the registrar sent in this test file, for the
 // check that none of them allows credentials.
@@ -1434,6 +1521,10 @@ const ID_REFUSAL =
 const KEY_REFUSAL = "key must be 64 lowercase hex characters [0-9a-f]";
 const MAX_AGE_REFUSAL =
   "maxAgeDays must be a whole number of days from 1 to 36500, or null for no lapse";
+const TABLE_FAILURE =
+  "the registrar could not read or write the relay's secrets table, and nothing changed; try again later, and if it persists ask the relay's operator, whose registrar log names the cause";
+const BUSY_REFUSAL =
+  "the registrar is answering as many requests as it can; try again in a few seconds";
 const BODY_REFUSAL =
   'the request body must be {"key": "<key-hex64>", "maxAgeDays": <days> | null}; maxAgeDays is required';
 
@@ -1605,7 +1696,7 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
     }
   });
 
-  it("answers 500 naming the cause when the table cannot be written", async () => {
+  it("answers a fixed 500 when the table cannot be written, and logs the cause", async () => {
     const host = fixtureHost();
     const { port, log } = await startRegistrar(host);
     host.makeTableReadOnly();
@@ -1614,10 +1705,191 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
       body: keyBody(KEY_A),
     });
     expect(response.status).toBe(500);
-    expect(JSON.parse(response.text).error).toContain("nothing changed");
-    expect(response.text).not.toContain(KEY_A);
-    await vi.waitFor(() => expect(log.stderr).toContain("nothing changed"));
+    expect(JSON.parse(response.text)).toEqual({ error: TABLE_FAILURE });
+    await vi.waitFor(() =>
+      expect(log.stderr).toMatch(
+        /could not \S+ the secrets table .*readonly database; nothing changed/,
+      ),
+    );
     expect(log.stderr).not.toContain(KEY_A);
+  });
+
+  it("answers the same fixed 500 to any caller when the table is missing, naming no path", async () => {
+    const host = fixtureHost();
+    const { port, log } = await startRegistrar(host);
+    host.removeTable();
+    const responses = [
+      await call(port, "PUT", "/exchanges/exchange-1", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_A),
+      }),
+      await call(port, "PUT", "/exchanges/exchange-1", {
+        body: keyBody(KEY_A),
+        headers: {
+          Authorization: `Alcove-Relay-Proof ts=${nowSeconds()},mac=${"0".repeat(64)}`,
+        },
+      }),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(500);
+      expect(JSON.parse(response.text)).toEqual({ error: TABLE_FAILURE });
+      expect(response.text).not.toContain(host.root);
+    }
+    await vi.waitFor(() =>
+      expect(log.stderr).toContain(`no secrets table at ${host.turndb}`),
+    );
+  });
+
+  it("checks a proof before opening the table for writing", async () => {
+    const host = fixtureHost();
+    host.register("exchange-1", KEY_A);
+    const { port } = await startRegistrar(host);
+    host.makeTableReadOnly();
+    const refused = await call(port, "DELETE", "/exchanges/exchange-1", {
+      headers: {
+        Authorization: `Alcove-Relay-Proof ts=${nowSeconds()},mac=${"0".repeat(64)}`,
+      },
+    });
+    expect(refused.status, refused.text).toBe(409);
+    expect(JSON.parse(refused.text).error).toBe(
+      "the request's proof does not verify against the key exchange exchange-1 holds on this relay",
+    );
+  });
+
+  it("closes a connection whose request trickles in past the deadline, and keeps answering others", async () => {
+    const host = fixtureHost();
+    const { port, log } = await startRegistrar(host, {
+      REQUEST_DEADLINE_SECONDS: 2,
+    });
+    const started = Date.now();
+    const closedAfter = await new Promise((resolveClosed, reject) => {
+      const socket = connect(
+        {
+          host: "127.0.0.1",
+          port,
+          servername: "relay.example",
+          ca: readFileSync(join(certDir, "fullchain.pem")),
+        },
+        () => {
+          const line = "DELETE /exchanges/exchange-1 HTTP/1.1\r\n";
+          let sent = 0;
+          const trickle = setInterval(() => {
+            if (sent < line.length && !socket.destroyed) {
+              socket.write(line[sent]);
+              sent += 1;
+            }
+          }, 250);
+          socket.on("close", () => {
+            clearInterval(trickle);
+            resolveClosed(Date.now() - started);
+          });
+        },
+      );
+      socket.on("error", () => {});
+      setTimeout(() => {
+        socket.destroy();
+        reject(new Error("the registrar did not close a trickling connection"));
+      }, 8000);
+    });
+    expect(closedAfter).toBeGreaterThanOrEqual(1500);
+    expect(closedAfter).toBeLessThan(5000);
+    await vi.waitFor(() =>
+      expect(log.stderr).toContain(
+        "request timed out: it did not arrive whole within 2 s",
+      ),
+    );
+    const fresh = await call(port, "DELETE", "/exchanges/exchange-1");
+    expect(fresh.status).toBe(401);
+  });
+
+  it("answers a write 200 after its read deadline lapsed, and a request whose table wait outlasts the deadline 503 with no write", async () => {
+    const host = fixtureHost();
+    const { port } = await startRegistrar(host, {
+      REQUEST_DEADLINE_SECONDS: 2,
+      RESPONSE_DEADLINE_SECONDS: 5,
+      "relay_table.BUSY_TIMEOUT_SECONDS": 8,
+    });
+    const holder = spawn("python3", [
+      "-B",
+      "-c",
+      `import sqlite3, sys, time
+conn = sqlite3.connect(sys.argv[1], isolation_level=None)
+conn.execute("BEGIN IMMEDIATE")
+print("held", flush=True)
+time.sleep(4)
+conn.execute("ROLLBACK")`,
+      host.turndb,
+    ]);
+    try {
+      await new Promise((resolveHeld) =>
+        holder.stdout.once("data", resolveHeld),
+      );
+      const slow = call(port, "PUT", "/exchanges/exchange-1", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_A),
+      });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+      const starved = await call(port, "PUT", "/exchanges/exchange-2", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_B),
+      });
+      expect(starved.status).toBe(503);
+      expect(starved.headers["retry-after"]).toBe("5");
+      const answered = await slow;
+      expect(answered.status, answered.text).toBe(200);
+      expect(host.mapping().map((row) => row.id)).toEqual(["exchange-1"]);
+    } finally {
+      holder.kill();
+    }
+  });
+
+  it("answers 503 past the handler cap, closes past the busy cap, and serves again once a slot frees", async () => {
+    const host = fixtureHost();
+    const { port } = await startRegistrar(host, {
+      MAX_HANDLERS: 2,
+      MAX_BUSY_ANSWERS: 1,
+    });
+    const silent = () =>
+      new Promise((resolveSocket, reject) => {
+        const socket = connect(
+          {
+            host: "127.0.0.1",
+            port,
+            servername: "relay.example",
+            ca: readFileSync(join(certDir, "fullchain.pem")),
+          },
+          () => resolveSocket(socket),
+        );
+        socket.on("error", reject);
+      });
+    const held = [await silent(), await silent()];
+    try {
+      const busy = await call(port, "DELETE", "/exchanges/exchange-1");
+      expect(busy.status).toBe(503);
+      expect(JSON.parse(busy.text)).toEqual({ error: BUSY_REFUSAL });
+      expect(busy.headers["retry-after"]).toBe("5");
+      held.push(await silent());
+      await expect(
+        call(port, "DELETE", "/exchanges/exchange-1"),
+      ).rejects.toThrow();
+    } finally {
+      for (const socket of held) socket.destroy();
+    }
+    await vi.waitFor(async () => {
+      const served = await call(port, "DELETE", "/exchanges/exchange-1");
+      expect(served.status).toBe(401);
+    });
+  });
+
+  it("refuses a request whose headers exceed the bound", async () => {
+    const host = fixtureHost();
+    const { port } = await startRegistrar(host);
+    const response = await call(port, "DELETE", "/exchanges/exchange-1", {
+      token: REGISTRAR_TOKEN,
+      headers: { "X-Padding": "p".repeat(9000) },
+    });
+    expect(response.status).toBe(431);
+    expect(host.mapping()).toEqual([]);
   });
 
   it("accepts the managed-exchange record's largest max age", async () => {
@@ -2815,20 +3087,27 @@ describe.skipIf(runningAsRoot)(
         },
       });
       const registrarLines = result.stdout.slice(
-        result.stdout.indexOf("a registration with no token"),
+        result.stdout.lastIndexOf(
+          "\n",
+          result.stdout.indexOf("a registration with the token"),
+        ) + 1,
       );
-      for (const line of [
+      const expected = [
+        "PASS     a registration with the token was answered 200",
+        "PASS     the registration is in the mapping and the secrets table",
         "PASS     a registration with no token was answered 401",
         "PASS     a registration with a wrong token was answered 401",
         "PASS     a revocation with no token was answered 401",
-        "PASS     the refused registration left no row",
-        "PASS     a registration with the token was answered 200",
-        "PASS     the registration is in the mapping and the secrets table",
+        "PASS     the refused calls left the mapping and the secrets table unchanged",
         "PASS     a revocation with the token was answered 200",
         "PASS     the revocation removed the key from the mapping and the secrets table",
-      ]) {
-        expect(result.stdout).toContain(line);
-      }
+      ];
+      expect(
+        registrarLines
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line.startsWith("PASS")),
+      ).toEqual(expected);
       expect(registrarLines).not.toMatch(/FAIL|UNCLEAR/);
       for (const stream of [result.stdout, result.stderr]) {
         expect(stream).not.toMatch(HEX64);
@@ -2851,7 +3130,7 @@ describe.skipIf(runningAsRoot)(
       });
       expect(result.status).toBe(1);
       expect(result.stdout).toContain(
-        "UNCLEAR  a registration with no token got no answer",
+        "UNCLEAR  a registration with the token got no answer",
       );
       expect(result.stdout).not.toContain("SKIP     the registrar");
     });
