@@ -984,7 +984,7 @@ this browser restores from exists, and these files are not that file. The panel 
 so where it offers them, so the two kinds of export are told apart before either is
 downloaded. An operator who declines the hand-off and keeps running here still needs
 an ordinary backup; one who confirms it has handed the exchange over, and the two
-files are its backup of record from then on.
+files are the only copy of this exchange that can run from then on.
 
 ### Taking it back from the command line
 
@@ -1024,7 +1024,7 @@ recovery instead of sending you to check with your partner out of band ([Telling
 desync from an attack](#telling-a-desync-from-an-attack)).
 
 Declining the confirmation writes nothing: the exchange stays handed off, and the
-files on the other machine stay its backup of record. The exchange comes back as
+files on the other machine stay the only copy that can run. The exchange comes back as
 it was -- same terms, same label, same schedule, same accounting of disclosures --
 because none of that ever left this browser. The schedule is the one thing to
 settle by hand: the cron entry or scheduled task that was meeting the agreed window

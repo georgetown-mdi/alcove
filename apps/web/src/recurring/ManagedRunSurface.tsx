@@ -2188,7 +2188,7 @@ function BackupPanel({
  * later visit -- so it must say what THAT hand-off left the operator with. A
  * migration copy is somewhere an import can bring back; a command-line hand-off
  * produced the CLI's two files, which bring back no secret, so the exchange runs
- * from those files and they are its backup of record.
+ * from those files and they are the only copy of this exchange that can run.
  *
  * `spent` is undefined when the run-refusal transition reached this state without
  * the stored entry in hand: the reload behind it reads the record and the sibling

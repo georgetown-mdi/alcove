@@ -854,7 +854,8 @@ export const UNKNOWN_RECORD_CONFIRM_TITLE =
 export const UNKNOWN_RECORD_CONFIRM_BODY =
   "This console stopped answering whether this run wrote a disclosure " +
   "record. If you continue, this console deletes the run and anything it " +
-  "wrote, and neither party can recreate a record it wrote. Reload this page " +
+  "wrote, including the signed receipt and the exchange record, which " +
+  "neither party can recreate once the files are removed. Reload this page " +
   "to check first if you need the accounting entry.";
 
 /**
@@ -866,7 +867,8 @@ export const UNKNOWN_RECORD_CONFIRM_BODY =
 export const PENDING_RECORD_CONFIRM_BODY =
   "This console has not yet answered whether this run wrote a disclosure " +
   "record. If you continue, this console deletes the run and anything it " +
-  "wrote, and neither party can recreate a record it wrote. Wait for the " +
+  "wrote, including the signed receipt and the exchange record, which " +
+  "neither party can recreate once the files are removed. Wait for the " +
   "answer first if you need the accounting entry.";
 
 /** The title the confirm heads with once the ask has landed on the
