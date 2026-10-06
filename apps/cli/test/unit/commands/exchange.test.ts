@@ -476,7 +476,7 @@ test("a key file still marked from an interrupted key exchange is reported at th
   );
   expect(notices).toHaveLength(1);
   expect(notices[0]).toContain("2026-03-01T12:00:00.000Z");
-  expect(notices[0]).toContain("re-invite");
+  expect(notices[0]).toContain("new invitation");
 });
 
 test("a key file with no marker loads without the interrupted-rotation notice", () => {
@@ -1430,7 +1430,7 @@ test("tokenExpiringAdvisory reports a lapsed token as expired, directing to re-i
   });
   const msg = tokenExpiringAdvisory("expiring-soon", keyFile, ADVISORY_NOW, 10);
   expect(msg).toContain("expired at 2025-12-31T00:00:00.000Z");
-  expect(msg).toContain("re-invite");
+  expect(msg).toContain("Ask your partner for a new invitation");
   expect(msg).not.toContain("Run a successful");
 });
 
@@ -2064,7 +2064,7 @@ test("handler exits 64 on a divergent signing identity, before runProtocol", asy
     const reported = mockState.errors.join("\n");
     expect(reported).toContain('"Someone Else"');
     expect(reported).toContain('"Test Party"');
-    expect(reported).toContain("cannot finish");
+    expect(reported).toContain("so your partner would refuse the certificate");
   } finally {
     exitSpy.mockRestore();
   }

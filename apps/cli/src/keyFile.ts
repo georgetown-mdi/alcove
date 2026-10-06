@@ -5,6 +5,7 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   MS_PER_DAY,
+  NEW_INVITATION_REMEDY,
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   rotatedKeyExpires,
@@ -246,10 +247,11 @@ export function rotationInFlightNotice(
     "rotated shared secret: a run stopped or failed partway through the key " +
     "exchange, and your partner may have saved a secret this key file does " +
     "not hold. If this run fails authentication or never meets your partner, " +
-    "the two of you probably hold different secrets: re-invite, as described " +
-    'under "Out-of-sync tokens" in docs/CLI.md. If neither of you had a run ' +
-    "stop partway, confirm with your partner over a channel you trust before " +
-    "re-inviting."
+    "the two of you probably hold different secrets. " +
+    `${NEW_INVITATION_REMEDY} It is described under "Out-of-sync tokens" in ` +
+    "docs/CLI.md. If neither of you had a run stop partway, confirm with " +
+    "your partner over a channel you trust before asking for a new " +
+    "invitation."
   );
 }
 
@@ -269,8 +271,8 @@ function alreadyProvisionedError(keyFilePath: string): UsageError {
 const ALREADY_PROVISIONED_REMEDY =
   "because one already exists: it is already provisioned. After the first " +
   "exchange the shared secret rotates, so the original invitation code " +
-  "can no longer establish a valid key. Remove the file to re-provision " +
-  "(both parties must re-invite), or drop --invitation to run with the " +
+  "can no longer establish a valid key. To re-provision, remove the file. " +
+  `${NEW_INVITATION_REMEDY} Or drop --invitation to run with the ` +
   "existing key.";
 
 /**

@@ -797,10 +797,8 @@ export class ConnectionClosedError extends Error {
  * display text, the message is fixed, and `partnerReason` is one of this
  * build's own fixed abort reasons, set only where the abort frame states
  * exactly that one reason, so the display-boundary sanitizer is only
- * belt-and-suspenders here. `alcoveRecoveryHintEmitted` is set so the CLI's hint-walker
- * suppresses its generic "retry without re-inviting" advisory, which would
- * otherwise contradict the definitive peer-abort message. (This reuses the
- * CLI-recovery convention that `auth.ts` already sets on core errors.)
+ * belt-and-suspenders here. Its message says the partner stopped the
+ * exchange and that the partner's run shows the reason.
  */
 export class PeerAbortError extends ConnectionError {
   readonly alcoveRecoveryHintEmitted = true;
@@ -814,10 +812,8 @@ export class PeerAbortError extends ConnectionError {
 
   constructor(options?: ErrorOptions, partnerReason?: string) {
     super(
-      "the peer authentically signaled that it aborted the exchange; this is " +
-        "a definitive peer-side termination, not an inactivity timeout or a " +
-        "slow dataset. Contact your partner, who holds the specific error " +
-        "locally.",
+      "Your partner stopped the exchange. Their run shows the reason; " +
+        "contact them.",
       "transport",
       options,
     );

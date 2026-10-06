@@ -40,6 +40,7 @@ import {
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  NEW_INVITATION_REMEDY,
   termsStatingDeclaredPayloadSend,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -1237,9 +1238,7 @@ const ROTATED_TOKEN_SAVE_PREAMBLE =
   "updated token could not be saved to ";
 
 /** What {@link authenticateRun} states behind that key file and the failure. */
-const ROTATED_TOKEN_SAVE_REMEDY =
-  " Your partner may already hold the rotated token. To recover, both " +
-  "parties must re-invite to establish a new shared secret.";
+const ROTATED_TOKEN_SAVE_REMEDY = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
 
 /**
  * The run's authentication stage: run the key exchange, persist the rotated
@@ -3071,8 +3070,8 @@ export async function runProtocol(
     if (run.tokenRotated) {
       log.warn(
         `The shared secret was already rotated and saved before ${reason}. ` +
-          "Retry without re-inviting; if authentication fails on retry, " +
-          "both parties must re-invite.",
+          "Retry with the same key file; if authentication fails on " +
+          "retry, ask your partner for a new invitation.",
       );
     } else if (run.authStarted) {
       log.warn(
@@ -3080,8 +3079,8 @@ export async function runProtocol(
           "how far the handshake had progressed, the partner may have " +
           "already completed it and saved the rotated token even though " +
           "this side did not. Retry the exchange with the existing key " +
-          "file; if authentication fails on retry, both parties must " +
-          "re-invite.",
+          "file; if authentication fails on retry, ask your partner for a " +
+          "new invitation.",
       );
     }
   }
@@ -3503,8 +3502,8 @@ export async function runProtocol(
       } else if (run.onAuthenticatedError === undefined) {
         log.error(
           "The shared secret was already rotated and saved before this error. " +
-            "Retry the exchange without re-inviting; if authentication " +
-            "fails on retry, both parties must re-invite.",
+            "Retry the exchange with the same key file; if authentication " +
+            "fails on retry, ask your partner for a new invitation.",
         );
       } else {
         // The rotated key is on disk, but the post-handshake persistence hook
@@ -3525,9 +3524,10 @@ export async function runProtocol(
       log.error(
         authenticationFailed
           ? "Authentication failed, and a retry with this key file fails " +
-              "the same way: do not retry. Both parties must re-invite; for " +
-              "an SFTP host key other than the pinned one, verify the " +
-              "server's key out-of-band and re-pin it instead."
+              `the same way. ${NEW_INVITATION_REMEDY} ` +
+              "If the SFTP server's host key is not the pinned one, " +
+              "confirm the server's key with its administrator and pin " +
+              "that key instead."
           : retryRuledOut
             ? "Authentication started but the rotated token was not saved: " +
               "your partner may already hold a rotated token, so the next " +
@@ -3538,7 +3538,7 @@ export async function runProtocol(
               "partner may have already completed it and saved the rotated " +
               "token even though this side did not. Retry the exchange " +
               "with the existing key file; if authentication fails on " +
-              "retry, both parties must re-invite.",
+              "retry, ask your partner for a new invitation.",
       );
     }
     // If a signal handler is mid-cleanup, it owns the exit code (130/143).

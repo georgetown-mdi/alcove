@@ -132,7 +132,7 @@ describe("prepareAcceptedInvitation", () => {
     expect(raised).toBeInstanceOf(ZodError);
     const messages = (raised as ZodError).issues.map((issue) => issue.message);
     expect(messages.join("\n")).toContain(
-      "expands one value into several match candidates",
+      "turns one value into several match candidates",
     );
     for (const authored of [
       "Partner Authored Identity",
@@ -591,7 +591,7 @@ describe("the accepting party's own deduplicate at the seat", () => {
         deduplicate,
       );
       expect(refusal?.scope).toBe("terms");
-      expect(refusal?.message).toContain("must set the linkage strategy to");
+      expect(refusal?.message).toContain("must set linkage_strategy to");
     }
   });
 });
@@ -634,7 +634,7 @@ describe("an invitation whose mirror admits no deduplicate from this party", () 
     const ownSide = acceptorDeduplicateRefusal(soleReceiver, true);
     expect(ownSide?.scope).toBe("terms");
     expect(ownSide?.message).toContain(
-      "expectsOutput must be true when deduplicate is true",
+      "expects_output must be true when deduplicate is true",
     );
     const payloadToNonReceiver = acceptorDeduplicateRefusal(
       { ...soleReceiver, payload: { send: [{ name: "dose" }] } },
@@ -642,7 +642,7 @@ describe("an invitation whose mirror admits no deduplicate from this party", () 
     );
     expect(payloadToNonReceiver?.scope).toBe("terms");
     expect(payloadToNonReceiver?.message).toContain(
-      "payload.receive must be empty when expectsOutput is false",
+      "payload.receive must be empty when expects_output is false",
     );
   });
 

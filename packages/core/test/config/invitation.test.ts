@@ -311,7 +311,7 @@ test("the author's mint and the acceptor's decode give one verdict on the transf
 
   const pastCap = tokenWith("a{999}");
   const sizeRefusal =
-    /linkageKeys\[0\]\.elements\[0\]\.transform\[0\]\.params\.pattern is too large: its size is 1001 \(.*\), over the limit of 1000\./;
+    /linkage_keys\[0\]\.elements\[0\]\.transform\[0\]\.params\.pattern is too large: its size is 1001 \(.*\), over the limit of 1000\./;
   await expect(encodeInvitation(pastCap)).rejects.toThrow(sizeRefusal);
   await expect(decodeInvitation(await encodeRaw(pastCap))).rejects.toThrow(
     sizeRefusal,
@@ -1433,7 +1433,7 @@ test("a long rejected endpoint key renders within one value's budget", async () 
   const shownKeys = rendered.slice(rendered.indexOf(listed) + listed.length);
   expect(shownKeys).toContain(DISPLAY_TRUNCATION_MARKER);
   expect(shownKeys.length).toBeLessThanOrEqual(DEFAULT_MAX_DISPLAY_LENGTH);
-  expect(rendered).toContain("a connection endpoint may carry only a");
+  expect(rendered).toContain("a connection endpoint may hold only a");
 });
 
 test("the locator rejection's guidance survives the display boundary whole", async () => {
@@ -1461,9 +1461,9 @@ test("the locator rejection's guidance survives the display boundary whole", asy
     new Error(`invalid invitation string: ${rawDecodeErrorDescription(err)}`),
   );
   expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
-  expect(rendered).toContain("a connection endpoint may carry only a");
+  expect(rendered).toContain("a connection endpoint may hold only a");
   expect(rendered).toContain(
-    `can ride along. Remove unexpected field(s): ${HOSTILE_ENDPOINT_KEY_ESCAPED_ONCE}`,
+    `is sent in an invitation. Remove unexpected field(s): ${HOSTILE_ENDPOINT_KEY_ESCAPED_ONCE}`,
   );
 });
 

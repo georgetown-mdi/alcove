@@ -5559,7 +5559,9 @@ test("terms an acceptance stands behind are not addressed to their author", () =
   expect(warnings[0]).toContain("its linkage_keys are not drawn from");
   expect(warnings[0]).not.toContain("rules you author yourself");
   expect(warnings[0]).not.toContain("restore the rules the cited set declares");
-  expect(warnings[0]).toContain("not yours alone to correct");
+  expect(warnings[0]).toContain(
+    "You accepted these terms from the inviting party",
+  );
   expect(warnings[0]).toContain("decline to reuse these terms");
 });
 
@@ -5582,7 +5584,9 @@ test("a mint from accepted terms is offered the remedy a mint has", () => {
   expect(warnings[0]).not.toContain("decline to reuse these terms");
   // The clauses before the remedy are one source, so the mint reading has
   // the same account of why the terms are not the operator's alone.
-  expect(warnings[0]).toContain("not yours alone to correct");
+  expect(warnings[0]).toContain(
+    "You accepted these terms from the inviting party",
+  );
   expect(warnings[0]).toContain("its linkage_keys are not drawn from");
 });
 

@@ -3243,10 +3243,9 @@ export function warnOnLinkageRuleSetCitationDrift(
   const consequence =
     standing === "accepted-with-partner"
       ? "The citation is recorded in both parties' exchange records, so it " +
-        "credits a source these rules did not come from. An acceptance stands " +
-        "behind these terms, so they are not yours alone to correct: editing " +
-        "the rules to match the citation would take them out of agreement " +
-        "with the inviting party, and the exchange would refuse them. " +
+        "credits a source these rules did not come from. You accepted these " +
+        "terms from the inviting party, so editing the rules here would make " +
+        "them differ from that party's and the exchange would refuse them. " +
         (alternative === "author-fresh-terms"
           ? "Agree the citation with that party, or author fresh terms for " +
             "this invitation."

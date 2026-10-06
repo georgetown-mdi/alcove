@@ -483,8 +483,8 @@ test("an algorithm divergence is refused at the agreed-terms run boundary", () =
     // misconfiguration: the kind is what a consumer branches on.
     expect((refusal as ConnectionError).kind).toBe("protocol");
     expect((refusal as Error).message).toContain(
-      `this party runs "${localTerms.algorithm}" and the partner runs ` +
-        `"${partnerTerms.algorithm}"`,
+      `your linkage terms use algorithm "${localTerms.algorithm}" and your ` +
+        `partner's use "${partnerTerms.algorithm}"`,
     );
   }
 
@@ -536,7 +536,7 @@ test("an unimplemented algorithm is refused whichever party's terms name it", ()
       refusal = error;
     }
     expect(refusal).toBeInstanceOf(UsageError);
-    expect((refusal as Error).message).toContain("not yet implemented");
+    expect((refusal as Error).message).toContain("does not run");
     // The refusal names the implemented literals, never the value it was handed,
     // which on the partner's side is its content rather than this operator's.
     expect((refusal as Error).message).not.toContain(unimplementedAlgorithm);
@@ -585,7 +585,7 @@ test("a count-only exchange whose input metadata would transmit a column is refu
       [{ first_name: "Carol", note: "c-c" }],
       ["first_name", "note"],
     ),
-  ).toThrow(/transmits no data columns/);
+  ).toThrow(/sends no data columns/);
 });
 
 test("a count-only run refuses an inbound payload column from a non-conforming partner", async () => {

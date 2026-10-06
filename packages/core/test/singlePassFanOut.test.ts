@@ -823,19 +823,21 @@ test("an over-ceiling fan-out exchange aborts on both sides before any frame mov
       -1,
     );
     await expect(run).rejects.toThrow(UsageError);
-    await expect(run).rejects.toThrow(/single-pass cannot carry this exchange/);
+    await expect(run).rejects.toThrow(
+      /this exchange is too large for single-pass linkage/,
+    );
     // The fan-out that overflows the budget is the PARTNER's declaration in this
     // fixture, so both the cause and the fan-out remedy are attributed there, and
     // the value slot product the gate weighed is the one stated.
     await expect(run).rejects.toThrow(
       new RegExp(
-        `the partner declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective ` +
+        `your partner declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective ` +
           `linkage key\\(s\\) across ${overWithFanOut} record\\(s\\), which is ` +
           `${FAN_OUT_CANDIDATES_PER_ELEMENT * overWithFanOut} value slot\\(s\\)`,
       ),
     );
     await expect(run).rejects.toThrow(
-      /counts its whole declared width toward that ceiling, so removing the partner's fan-out/,
+      /Your partner can also remove a step that splits values or expands a key/,
     );
     await expect(run).rejects.not.toThrow(/cascade/);
   }
@@ -890,7 +892,7 @@ test("a party over the ceiling on its own cleaning alone is offered the fan-out 
   );
   await expect(run).rejects.toThrow(UsageError);
   await expect(run).rejects.toThrow(
-    /cleaning that fans out declares the records it stands for, so removing a fan-out/,
+    /Removing a step that splits values or expands a key also lowers the count/,
   );
   // The breach is this party's alone, so the partner is offered nothing.
   await expect(run).rejects.not.toThrow(/the partner's fan-out/);
@@ -951,7 +953,7 @@ test("a cell wider than the normative width bound is refused as the table is bui
     -1,
   );
   await expect(run).rejects.toThrow(
-    /contributes 21 candidate value\(s\) to linkage key 0/,
+    /gives 21 candidate value\(s\) to linkage key 0/,
   );
   await expect(run).rejects.toThrow(UsageError);
 });
@@ -999,7 +1001,7 @@ test("a row over the width its own key declares is refused, not the key beside i
     -1,
   );
   await expect(run).rejects.toThrow(
-    /contributes 20 candidate value\(s\) to linkage key 1, more than the 1/,
+    /gives 20 candidate value\(s\) to linkage key 1, more than the 1/,
   );
   await expect(run).rejects.toThrow(UsageError);
 });

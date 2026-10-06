@@ -1221,11 +1221,9 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   expect(replyBytes).toBeGreaterThan(replyCap);
   expect(message).toBe(
     `server: single-pass built a reply of ${replyBytes} byte(s), above the ` +
-      `${replyCap} byte(s) both parties derive from their declared sizes. Both ` +
-      "parties' declared widths and record counts are within the single-pass " +
-      "ceiling, so this is an inconsistency between this party's reply builder " +
-      "and the shared cap derivation rather than a dataset that is too large. " +
-      "The exchange cannot proceed; report it with this message.",
+      `${replyCap} byte(s) both parties derive from their declared sizes, ` +
+      "though both datasets are within the single-pass limit. Report it " +
+      "with this message.",
   );
   // The over-ceiling diagnosis and its dataset remedies stay out: neither operator
   // can move this by shrinking a dataset.
@@ -1337,13 +1335,15 @@ test("single-pass aborts symmetrically when the exchange exceeds the ceiling", a
     -1,
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/single-pass cannot carry this exchange/);
+  await expect(run).rejects.toThrow(
+    /this exchange is too large for single-pass linkage/,
+  );
   await expect(run).rejects.toThrow(
     new RegExp(
-      `the partner declared 1 effective linkage key\\(s\\) across ` +
+      `your partner declared 1 effective linkage key\\(s\\) across ` +
         `${MAX_SINGLE_PASS_CELLS + 1} record\\(s\\), which is ` +
         `${MAX_SINGLE_PASS_CELLS + 1} value slot\\(s\\), above the ` +
-        `single-pass ceiling of ${MAX_SINGLE_PASS_CELLS}`,
+        `single-pass limit of ${MAX_SINGLE_PASS_CELLS}`,
     ),
   );
   // This party's own size is named as being within the ceiling, and it is not
@@ -1352,7 +1352,7 @@ test("single-pass aborts symmetrically when the exchange exceeds the ceiling", a
   // the linkage keys are an agreed term, so a re-agreed narrower set is a change
   // this message does not speak to.
   await expect(run).rejects.toThrow(
-    /This party's own 2 value slot\(s\) are within the ceiling, so within the agreed terms neither its linkage keys nor its record count can lift this: the partner reduces its record count or splits its dataset\./,
+    /Your own 2 value slot\(s\) are within the limit\. Ask your partner to reduce their record count or split their dataset\./,
   );
   await expect(run).rejects.not.toThrow(/Reduce the record count/);
   await expect(run).rejects.not.toThrow(/cascade/);
@@ -1385,10 +1385,12 @@ test("single-pass aborts symmetrically from the starter side too", async () => {
     -1,
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/single-pass cannot carry this exchange/);
+  await expect(run).rejects.toThrow(
+    /this exchange is too large for single-pass linkage/,
+  );
   await expect(run).rejects.toThrow(
     new RegExp(
-      `the partner declared 1 effective linkage key\\(s\\) across ` +
+      `your partner declared 1 effective linkage key\\(s\\) across ` +
         `${MAX_SINGLE_PASS_CELLS + 1} record\\(s\\)`,
     ),
   );
@@ -1429,10 +1431,12 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
     -1,
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/single-pass cannot carry this dataset/);
+  await expect(run).rejects.toThrow(
+    /this dataset is too large for single-pass linkage/,
+  );
   await expect(run).rejects.toThrow(
     new RegExp(
-      `this party declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective linkage ` +
+      `you declared ${FAN_OUT_CANDIDATES_PER_ELEMENT} effective linkage ` +
         `key\\(s\\) across ${localRecords} record\\(s\\), which is ` +
         `${FAN_OUT_CANDIDATES_PER_ELEMENT * localRecords} value slot\\(s\\)`,
     ),
@@ -1442,13 +1446,9 @@ test("a run whose own declared size is over the ceiling keeps the local diagnosi
   // renegotiation rather than as an edit this operator could make alone.
   await expect(run).rejects.not.toThrow(/Reduce the number of linkage keys/);
   await expect(run).rejects.toThrow(
-    new RegExp(
-      "counts its whole declared width toward that ceiling, and cleaning " +
-        "that fans out declares the records it stands for, so removing a " +
-        "fan-out is another remedy",
-    ),
+    /Removing a step that splits values or expands a key also lowers the count/,
   );
-  await expect(run).rejects.not.toThrow(/the partner declared/);
+  await expect(run).rejects.not.toThrow(/your partner declared/);
   await expect(run).rejects.not.toThrow(/cascade/);
   void peer;
 });
@@ -1482,12 +1482,14 @@ test("an exchange over the ceiling on both sides names both declarations", async
     -1,
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/single-pass cannot carry this exchange/);
+  await expect(run).rejects.toThrow(
+    /this exchange is too large for single-pass linkage/,
+  );
   await expect(run).rejects.toThrow(
     new RegExp(
-      `this party declared ${MAX_SINGLE_PASS_CELLS} effective linkage ` +
+      `you declared ${MAX_SINGLE_PASS_CELLS} effective linkage ` +
         `key\\(s\\) across 2 record\\(s\\), which is ` +
-        `${MAX_SINGLE_PASS_CELLS * 2} value slot\\(s\\), and the partner ` +
+        `${MAX_SINGLE_PASS_CELLS * 2} value slot\\(s\\), and your partner ` +
         `declared ${MAX_SINGLE_PASS_CELLS} effective linkage key\\(s\\) ` +
         `across ${localRecords} record\\(s\\), which is ` +
         `${MAX_SINGLE_PASS_CELLS * localRecords} value slot\\(s\\)`,
@@ -1496,7 +1498,7 @@ test("an exchange over the ceiling on both sides names both declarations", async
   await expect(run).rejects.toThrow(SINGLE_PASS_LOCAL_REMEDY);
   await expect(run).rejects.not.toThrow(/Reduce the number of linkage keys/);
   await expect(run).rejects.toThrow(
-    /The partner reduces its record count or splits its dataset on its side too\./,
+    /Ask your partner to reduce their record count or split their dataset too\./,
   );
   await expect(run).rejects.not.toThrow(/cascade/);
   void peer;

@@ -133,7 +133,7 @@ test("run boundary: an algorithm with no run path is refused before anything goe
     },
   );
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/not yet implemented/);
+  await expect(run).rejects.toThrow(/does not run/);
 });
 
 test("run boundary: a psi-c run whose metadata transmits a column is refused before anything goes on the wire", async () => {
@@ -152,7 +152,7 @@ test("run boundary: a psi-c run whose metadata transmits a column is refused bef
   const [conn] = createMessagePipe();
   const run = runExchange(conn, "initiator", psiCPrepared, { psiLibrary });
   await expect(run).rejects.toThrow(UsageError);
-  await expect(run).rejects.toThrow(/transmits no data columns/);
+  await expect(run).rejects.toThrow(/sends no data columns/);
 });
 
 test("terms exchange: an out-of-shape psi-c document is refused on receipt, rejecting both parties' runs with no linkage and no record", async () => {
@@ -856,7 +856,7 @@ test("the refusal names the shortfall and the out-of-band remedy", () => {
   expect(raised).toBeInstanceOf(UsageError);
   const rendered = sanitizeErrorForDisplay(raised);
   expect(rendered).toContain("1 of the 2 agreed linkage keys");
-  expect(rendered).toContain("out of band");
+  expect(rendered).toContain("Agree new terms with your partner");
   // The names ride cause links of their own, so both the unsatisfied field and
   // the key it collapses are reachable in the rendered chain.
   expect(rendered).toContain("lastName (last_name)");

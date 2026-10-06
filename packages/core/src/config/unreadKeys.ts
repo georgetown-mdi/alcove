@@ -95,7 +95,7 @@ function collapsedEntryIssue(
     message:
       `Entry ${index} names the column "${name}", which entry ` +
       `${survivorIndex} already names. Only the first entry naming a column ` +
-      `is kept, so what entry ${index} states beyond it would be lost. Fold ` +
+      `is kept, so what entry ${index} states beyond it would be lost. Merge ` +
       `it into entry ${survivorIndex}, or remove it.`,
   };
 }

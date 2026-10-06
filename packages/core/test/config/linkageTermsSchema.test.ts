@@ -1225,7 +1225,7 @@ test("the step editor and the terms gate refuse the same oversized pattern", () 
   );
   expect(editorOver.error.issues.map((i) => i.message)).toEqual([sizeMessage]);
   expect(termsOver.error.issues.map((i) => i.message)).toEqual([
-    `the regular expression in linkageKeys[0].elements[0].transform[0].params.pattern ${sizeMessage}`,
+    `the regular expression in linkage_keys[0].elements[0].transform[0].params.pattern ${sizeMessage}`,
   ]);
 });
 
@@ -3625,7 +3625,7 @@ test("an over-count linkageKeys of raw non-object entries aborts to a clean coun
   if (!result.success) {
     expect(
       result.error.issues.some((i) =>
-        /linkageKeys must not exceed/.test(i.message),
+        /linkage_keys must not exceed/.test(i.message),
       ),
     ).toBe(true);
   }

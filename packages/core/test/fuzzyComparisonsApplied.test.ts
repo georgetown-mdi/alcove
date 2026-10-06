@@ -361,7 +361,7 @@ describe("buildKeyStrings: fuzzy fan-out guardrails", () => {
     });
     expect(() => buildKeyStrings(key, dataset, 0)).toThrow(UsageError);
     expect(() => buildKeyStrings(key, dataset, 0)).toThrow(
-      /declares a width of more than the 1024 candidate values/,
+      /gives one record more than the 1024 candidate values/,
     );
     // The refusal reads the terms alone, so it echoes neither this row's values
     // nor the partner's free text.
@@ -810,7 +810,7 @@ describe("buildKeyStrings: the accumulating bound over an expanded element", () 
     }
     expect(raised).toBeInstanceOf(UsageError);
     expect((raised as UsageError).message).toMatch(
-      /accumulated \d+ characters of candidate values from row 0 of this party's data \(linkageKeys\[1\]\.elements\[0\]\)/,
+      /accumulated \d+ characters of candidate values from row 0 of your data \(linkage_keys\[1\]\.elements\[0\]\)/,
     );
     expect((raised as UsageError).message).toMatch(
       /declare fuzzy comparisons on fewer of the key's elements/,

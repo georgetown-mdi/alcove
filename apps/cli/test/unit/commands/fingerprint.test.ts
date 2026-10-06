@@ -736,9 +736,9 @@ test("a bound label the terms cannot state warns with the re-key exit", async ()
     const message = warn.mock.calls[0]?.[0] as string;
     expect(message).toContain("the linkage terms cannot state");
     expect(message).toContain("alcove fingerprint --force --identity");
-    expect(message).toContain("re-pin the new fingerprint");
+    expect(message).toContain("pin the new fingerprint");
     // The config edit the terms make impossible is not among the remedies.
-    expect(message).not.toContain("set linkage_terms.identity to the bound");
+    expect(message).not.toContain("Set linkage_terms.identity to the name");
     // No byte of the label reaches the operator, raw or escaped; the config
     // value it diverges from is still named, since that is the one to act on.
     expect(message).not.toContain("Records");

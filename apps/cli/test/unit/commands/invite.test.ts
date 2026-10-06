@@ -2053,7 +2053,9 @@ test("validateInvite: a drifted citation on accepted terms offers the mint's own
       .map((call) => String(call[0]))
       .filter((message) => message.includes("linkage_rule_set"));
     expect(drifted).toHaveLength(1);
-    expect(drifted[0]).toContain("not yours alone to correct");
+    expect(drifted[0]).toContain(
+      "You accepted these terms from the inviting party",
+    );
     expect(drifted[0]).toContain("author fresh terms for this invitation");
     expect(drifted[0]).not.toContain("decline to reuse these terms");
     expect(drifted[0]).not.toContain("accept again");
@@ -2444,7 +2446,7 @@ test("validateInvite: offline config-source refuses an algorithm with no run pat
     // Named by what this build runs, not by the value handed to it: the algorithm
     // can be adopted from a partner's document, so the message states only the
     // fixed enum literals.
-    expect(String(thrown)).toMatch(/not yet implemented/);
+    expect(String(thrown)).toMatch(/does not run/);
     expect(String(thrown)).not.toMatch(/psi-x/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
@@ -2471,7 +2473,7 @@ test.each([
       ...terms,
       linkageStrategy: "single-pass",
     }),
-    expected: /linkage strategy to "cascade"/,
+    expected: /linkage_strategy to "cascade"/,
   },
   {
     rule: "deduplicate: true",
@@ -2487,7 +2489,7 @@ test.each([
       ...terms,
       payload: { send: [{ name: "notes" }] },
     }),
-    expected: /no payload columns in either direction/,
+    expected: /must declare no payload columns/,
   },
 ])(
   "validateInvite: offline config-source refuses a count-only config declaring $rule",
@@ -2533,7 +2535,7 @@ test("validateInvite: offline config-source refuses a count-only config whose me
         log: silentLog,
       });
     await expect(invite()).rejects.toBeInstanceOf(UsageError);
-    await expect(invite()).rejects.toThrow(/transmits no data columns/);
+    await expect(invite()).rejects.toThrow(/sends no data columns/);
     // Named by the rule, not by the column: the same refusal is composed on the
     // accept side beside a partner's document.
     await expect(invite()).rejects.not.toThrow(/notes/);
@@ -2562,7 +2564,7 @@ test("validateInvite: an explicit empty payload pair still names the count-only 
         log: silentLog,
       });
     await expect(invite()).rejects.toBeInstanceOf(UsageError);
-    await expect(invite()).rejects.toThrow(/transmits no data columns/);
+    await expect(invite()).rejects.toThrow(/sends no data columns/);
     await expect(invite()).rejects.not.toThrow(
       /payload\.send must name exactly/,
     );

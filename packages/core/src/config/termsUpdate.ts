@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 import { UsageError } from "../errors.js";
-import { parseBoundedJson } from "../utils/boundedJson.js";
+import {
+  JsonStructureBoundError,
+  parseBoundedJson,
+} from "../utils/boundedJson.js";
 import {
   bytesEqual,
   enc,
@@ -271,11 +274,25 @@ export async function decodeTermsUpdate(
     );
   }
 
+  let json: unknown;
+  try {
+    json = parseBoundedJson(body);
+  } catch (err) {
+    if (
+      err instanceof SyntaxError ||
+      err instanceof TypeError ||
+      err instanceof JsonStructureBoundError
+    )
+      throw refusedFormat("its content is not valid JSON");
+    throw err;
+  }
   let parsed: z.infer<typeof TermsUpdateBodySchema>;
   try {
-    parsed = TermsUpdateBodySchema.parse(parseBoundedJson(body));
-  } catch {
-    throw refusedFormat("its content does not match the terms update format");
+    parsed = TermsUpdateBodySchema.parse(json);
+  } catch (err) {
+    if (err instanceof z.ZodError)
+      throw refusedFormat("its content does not match the terms update format");
+    throw err;
   }
   if (parsed.partnership !== partnership)
     throw new TermsUpdateRefusedError(

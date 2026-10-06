@@ -605,7 +605,7 @@ test("an asserted disclosure against terms stating no send set is refused", asyn
   const reason = (receiver as PromiseRejectedResult).reason as Error;
   expect(reason).toBeInstanceOf(PayloadDisclosureDivergenceError);
   expect(reason.message).toContain("empty payload.receive");
-  expect(reason.message).toContain("asserts it discloses one");
+  expect(reason.message).toContain("is set to send payload columns");
   expect(helperInbound.some((f) => Array.isArray(f))).toBe(false);
 });
 
@@ -697,7 +697,7 @@ test("a one-sided divergence refusal aborts the party still waiting", async () =
   // on a decode message, and holds none of the reason the refusing side has.
   const helperReason = (helper as PromiseRejectedResult).reason as Error;
   expect(helperReason).toBeInstanceOf(PeerAbortError);
-  expect(helperReason.message).toMatch(/Contact your partner/);
+  expect(helperReason.message).toMatch(/contact them/);
   expect(helperReason.message).not.toContain("payload disclosure");
   // Neither the association table (the only Array-shaped frame) nor a payload
   // frame moved in either direction before the refusal.

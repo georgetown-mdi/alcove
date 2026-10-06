@@ -936,6 +936,7 @@ export type { PartnerPayload } from "./payloadExchange";
 export {
   authenticateConnection,
   assertSharedSecretReadyForHandshake,
+  NEW_INVITATION_REMEDY,
   deriveAbortToken,
 } from "./auth";
 export type { AuthResult } from "./auth";

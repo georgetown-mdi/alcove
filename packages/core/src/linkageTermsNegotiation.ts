@@ -6,6 +6,7 @@
 
 import { AcceptedTermsShapeError, UsageError } from "./errors.js";
 import { canonicalString, CanonicalEncodingError } from "./utils/canonical.js";
+import { snakeizeKey } from "./utils/camelizeKeys.js";
 import { redactAndSanitizeForDisplay } from "./utils/sanitizeErrorForDisplay.js";
 import {
   bareTermsValue,
@@ -216,18 +217,25 @@ export function deriveAcceptedLinkageTerms(
   if (!recheck.success) {
     throw new AcceptedTermsShapeError(
       "the invitation's linkage terms cannot be accepted unchanged: the terms " +
-        "derived for the accepting party -- the invitation's output direction " +
-        "and payload mirrored, this party's own deduplicate applied -- are not " +
-        "a valid linkage terms document: " +
+        "derived for you (the invitation's output direction and payload " +
+        "mirrored, with your own deduplicate) are not valid linkage terms: " +
         quoteTermsValueList(
           recheck.error.issues.map((issue) =>
             issue.path.length > 0
-              ? `${issue.path.join(".")}: ${issue.message}`
+              ? `${issue.path
+                  .map((segment) =>
+                    typeof segment !== "string"
+                      ? String(segment)
+                      : holdsPrivateKeyMaterial(segment)
+                        ? segment
+                        : snakeizeKey(segment),
+                  )
+                  .join(".")}: ${issue.message}`
               : issue.message,
           ),
         ) +
-        ". Ask the inviting party for terms the accepting party can run, or " +
-        "clear the deduplicate this party declares for its own side.",
+        ". Ask the inviting party for terms you can run, or clear your own " +
+        "deduplicate setting.",
     );
   }
   return derived;

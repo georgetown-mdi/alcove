@@ -638,7 +638,7 @@ describe("failureFor", () => {
     const failure = failureFor("config", refusal, WORK_FILE);
     expect(failure.category).toBe("config");
     expect(failure.title).toBe("Could not prepare the exchange");
-    expect(failure.message).toContain("exceed the single-pass ceiling");
+    expect(failure.message).toContain("exceed the single-pass limit");
     expect(failure.message).toContain("split the dataset into smaller batches");
   });
 

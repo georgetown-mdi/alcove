@@ -210,10 +210,6 @@ test("the run boundary keeps the agreed seat's words for the same grading", asyn
     "this input cannot satisfy every linkage key the agreed terms declare",
   );
   expect(rendered).toContain("agreed linkage keys");
-  expect(rendered).toContain(
-    "Settle the shortfall with your partner out of band",
-  );
-  expect(rendered).toContain(
-    "an input file that satisfies the terms already agreed",
-  );
+  expect(rendered).toContain("Agree new terms with your partner");
+  expect(rendered).toContain("an input file that satisfies the current terms");
 });

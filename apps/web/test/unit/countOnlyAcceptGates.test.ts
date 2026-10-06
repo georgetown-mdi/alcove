@@ -122,7 +122,7 @@ describe("the import door refuses a count-only document outside the shape", () =
     {
       rule: "single-pass",
       terms: { ...countOnlyTerms, linkageStrategy: "single-pass" },
-      expected: /linkage strategy to "cascade"/,
+      expected: /linkage_strategy to "cascade"/,
     },
     {
       rule: "deduplicate",
@@ -132,7 +132,7 @@ describe("the import door refuses a count-only document outside the shape", () =
     {
       rule: "payload",
       terms: { ...countOnlyTerms, payload: { send: [{ name: "notes" }] } },
-      expected: /no payload columns in either direction/,
+      expected: /must declare no payload columns/,
     },
   ])("refuses an imported document declaring $rule", ({ terms, expected }) => {
     const result = importLinkageTerms(JSON.stringify(terms));

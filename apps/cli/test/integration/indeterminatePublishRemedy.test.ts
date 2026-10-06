@@ -53,7 +53,7 @@ const PEER_TIMEOUT_MS = 45_000;
 // The advisory runProtocol emits for an untagged post-handshake failure. It
 // prescribes a plain retry, which the retry attempt below measures against this
 // condition, so the failing attempt must not print it.
-const GENERIC_RETRY_ADVISORY = "Retry the exchange without re-inviting";
+const GENERIC_RETRY_ADVISORY = "Retry the exchange with the same key file";
 
 // The recovery the failing attempt does prescribe, and the one the retry
 // attempt's outcome vindicates.

@@ -21,8 +21,8 @@ import { layOutValueLineBreaks } from "@exchange/RunSurface";
 
 /** The first-party sentence and label the abort composes, as
  * `packages/core/src/protocolSetup.ts` writes them. */
-const ABORT_MESSAGE = "partner aborted linkage terms exchange";
-const ABORT_LABEL = "reason the partner gave: ";
+const ABORT_MESSAGE = "Your partner stopped the exchange at the linkage terms";
+const ABORT_LABEL = "reason your partner gave: ";
 
 /** The seat's rendering of an abort holding `reasons`, laid out as the operator
  * reads it: the display escape the category's block applies, then the break in

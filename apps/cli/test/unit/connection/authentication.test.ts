@@ -180,7 +180,7 @@ test("authentication throws for a token that is not 43 base64url characters", as
   await expect(
     authenticateConnection(mc, { sharedSecret: "tooshort" }, "initiator", true),
   ).rejects.toThrow(
-    "authentication.sharedSecret must be a base64url-encoded 32-byte value",
+    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
 });
 
@@ -191,7 +191,7 @@ test("authentication throws for a token containing non-base64url characters", as
   await expect(
     authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true),
   ).rejects.toThrow(
-    "authentication.sharedSecret must be a base64url-encoded 32-byte value",
+    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
 });
 
@@ -204,7 +204,7 @@ test("authentication throws for a token with valid base64url characters but wron
   await expect(
     authenticateConnection(mc, { sharedSecret: badToken }, "initiator", true),
   ).rejects.toThrow(
-    "authentication.sharedSecret must be a base64url-encoded 32-byte value",
+    "the key file's sharedSecret must be a base64url-encoded 32-byte value",
   );
 });
 
@@ -325,9 +325,7 @@ test("authentication tags post-handshake-expiry errors with alcoveRecoveryHintEm
   // Tagged so the CLI shows a re-invite hint instead of the generic
   // transport-failure advisory.
   for (const result of [resultA, resultB] as PromiseRejectedResult[]) {
-    expect(result.reason.message).toContain(
-      "during the key-exchange round-trip",
-    );
+    expect(result.reason.message).toContain("during the key exchange");
     expect(result.reason.alcoveRecoveryHintEmitted).toBe(true);
   }
 });

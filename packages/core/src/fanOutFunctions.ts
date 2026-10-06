@@ -159,7 +159,8 @@ export const QUOTED_FAN_OUT_FUNCTION_NAMES = FAN_OUT_FUNCTION_NAMES.map(
 // candidate set, or no candidate set at all. Named separately because the
 // refusal's surfaces share it while differing in error class.
 const CANDIDATE_SET_STRATEGY_RECOVERY =
-  "Agree linkage terms whose linkage_strategy matches a candidate set, or " +
+  "Agree linkage terms whose linkage_strategy matches " +
+  "several candidates per record, or " +
   `remove the ${QUOTED_FAN_OUT_FUNCTION_NAMES} step, the fuzzy comparison and ` +
   "the swapped key order from the standardization and from every linkage " +
   "key.";
@@ -176,12 +177,9 @@ const CANDIDATE_SET_STRATEGY_RECOVERY =
  */
 export function fanOutDeclaredMessage(functionName: string): string {
   return (
-    "these linkage terms name a linkage strategy that matches a single value " +
-    `per record, and these transforms declare a "${functionName}" step: it ` +
-    "expands one value into several match candidates. A record whose value " +
-    "actually splits would abort the run the moment it reached a matching " +
-    "round rather than match one key per candidate, so the exchange is " +
-    `refused up front instead. ${CANDIDATE_SET_STRATEGY_RECOVERY}`
+    "these linkage terms name a linkage_strategy that matches one value " +
+    `per record, but these transforms declare a "${functionName}" step, ` +
+    `which turns one value into several. ${CANDIDATE_SET_STRATEGY_RECOVERY}`
   );
 }
 
@@ -200,12 +198,9 @@ export function fanOutDeclaredMessage(functionName: string): string {
  */
 export function candidateSetUnderStrategyMessage(): string {
   return (
-    "these linkage terms name a linkage strategy that matches a single value " +
-    "per record, and one of their linkage keys expands one value into several " +
-    "match candidates. A record realizing several candidates would abort the " +
-    "run the moment it reached a matching round rather than match one key per " +
-    "candidate, so the exchange is refused up front instead. " +
-    CANDIDATE_SET_STRATEGY_RECOVERY
+    "these linkage terms name a linkage_strategy that matches one value " +
+    "per record, but one of their linkage keys turns one value into " +
+    `several. ${CANDIDATE_SET_STRATEGY_RECOVERY}`
   );
 }
 
@@ -240,7 +235,7 @@ export function declaredFanOutFunction(
 function keySite(keyIndex: number | undefined): string {
   return keyIndex === undefined
     ? "a linkage key"
-    : `the linkage key at linkageKeys[${keyIndex}]`;
+    : `the linkage key at linkage_keys[${keyIndex}]`;
 }
 
 /**
@@ -309,12 +304,11 @@ function keyWidthOrRefusal(
     if (width > MAX_KEY_CANDIDATE_WIDTH)
       return {
         refusal:
-          `${keySite(keyIndex)} declares a width of more than the ` +
-          `${MAX_KEY_CANDIDATE_WIDTH} candidate values one record may ` +
-          "contribute to one key: every element's candidates multiply across " +
-          "the key, so expanding steps on several of its elements compound. " +
-          "The exchange is refused instead. Declare the expansion on fewer of " +
-          "the key's elements, or split the key into keys of fewer elements.",
+          `${keySite(keyIndex)} gives one record more than the ` +
+          `${MAX_KEY_CANDIDATE_WIDTH} candidate values one key may hold, ` +
+          "because the candidates of its expanding elements multiply. " +
+          "Declare the expansion on fewer of the key's elements, or split " +
+          "the key into keys of fewer elements.",
       };
   }
   return { width };
@@ -406,10 +400,9 @@ function effectiveKeyCountOrRefusal(
       refusal: {
         message:
           `these linkage terms declare ${effectiveKeyCount} candidate value slots ` +
-          `per record, above the ${MAX_EFFECTIVE_KEY_COUNT} an exchange derives ` +
-          "its frame and element bounds from. The exchange is refused instead. " +
-          "Declare fewer linkage keys, or declare the expanding steps on fewer " +
-          "of their elements.",
+          `per record, more than the ${MAX_EFFECTIVE_KEY_COUNT} an exchange ` +
+          "allows. Declare fewer linkage keys, or declare the expanding steps " +
+          "on fewer of their elements.",
         path: ["linkageKeys"],
       },
     };

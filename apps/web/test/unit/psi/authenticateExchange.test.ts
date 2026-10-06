@@ -282,7 +282,7 @@ describe("authenticateExchange", () => {
       // The original cause's message (holding the round-trip wording) survives
       // the re-wrap, as does its recovery-hint tag.
       expect((reason as ConnectionError).message).toContain(
-        "during the key-exchange round-trip",
+        "during the key exchange",
       );
       expect(
         (reason as { alcoveRecoveryHintEmitted?: unknown })

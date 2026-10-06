@@ -873,7 +873,7 @@ describe("a first round over the per-set maximum", () => {
   // classifier as the same error, and the state it lands on names splitting
   // the input rather than a retry that sends the same set again.
   const FIRST_ROUND_REFUSAL = new RoundSetLimitError(
-    "Too large to send: the first linkage key gives this party at least " +
+    "Too large to send: the first linkage key gives you at least " +
       "17000000 values to send, over the 16777216 one PSI set can hold. " +
       "Nothing was sent.",
     "over-set-maximum",

@@ -120,12 +120,11 @@ const endpointKeyError: z.core.$ZodErrorMap = (issue) => {
     // error, describeDecodeError on the web accept screen, which renders the
     // description itself (CONTRIBUTING.md, Operator-facing escaping).
     return (
-      "a connection endpoint may carry only a credential-free locator (channel " +
+      "a connection endpoint may hold only a credential-free locator (channel " +
       "plus host/port/path and, on webrtc, a relay of turn and stun urls, or " +
       "an inbound_path/outbound_path pair for a split " +
-      "file-sync directory); every other field is rejected so that no " +
-      "credential or server-identity material (such as a password, private " +
-      "key, or host-key fingerprint) can ride along. Remove unexpected " +
+      "file-sync directory), so that no password, private key, or host-key " +
+      "fingerprint is sent in an invitation. Remove unexpected " +
       "field(s): " +
       issue.keys.map(fittedEndpointKeyName).join(", ")
     );
@@ -609,8 +608,8 @@ const InvitationTokenSchema: z.ZodType<InvitationToken> =
         token.inviterRetainsFiles !== false,
       {
         message:
-          "inviterRetainsFiles cannot be false for a connection endpoint " +
-          "carrying the inbound_path/outbound_path pair; a split directory " +
+          "inviterRetainsFiles cannot be false for a connection endpoint with " +
+          "the inbound_path/outbound_path pair; a split directory " +
           "requires retain mode of every connection built from it",
         path: ["inviterRetainsFiles"],
       },
@@ -646,10 +645,9 @@ const MintedInvitationTokenSchema: z.ZodType<InvitationToken> =
       token.inviterRetainsFiles === true,
     {
       message:
-        "inviterRetainsFiles must be true on an invitation carrying a " +
-        "connection endpoint with the inbound_path/outbound_path pair; a " +
-        "split directory puts every connection built from it in retain mode, " +
-        "so the invitation must declare the retention it hands the acceptor",
+        "inviterRetainsFiles must be true on an invitation whose connection " +
+        "endpoint has the inbound_path/outbound_path pair, because a split " +
+        "directory keeps every exchange file",
       path: ["inviterRetainsFiles"],
     },
   );

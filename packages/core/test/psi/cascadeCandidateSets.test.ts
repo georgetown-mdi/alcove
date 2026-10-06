@@ -635,7 +635,7 @@ for (const manySide of ["starter", "joiner"] as const) {
     expect(outcome).toBeInstanceOf(ConnectionError);
     expect((outcome as ConnectionError).kind).toBe("protocol");
     expect((outcome as Error).message).toMatch(
-      /names a position other than the canonical one of the record it matched/,
+      /names a position other than the one the record was matched at/,
     );
   });
 }

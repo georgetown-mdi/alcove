@@ -298,7 +298,7 @@ describe("PeerAbortError exemplar (unchanged)", () => {
     expect(err.name).toBe("PeerAbortError");
     expect(err.alcoveRecoveryHintEmitted).toBe(true);
     expect(err.message).toContain(
-      "Contact your partner, who holds the specific error locally.",
+      "Your partner stopped the exchange. Their run shows the reason; contact them.",
     );
   });
 });

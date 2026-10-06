@@ -1084,7 +1084,7 @@ describe("the count-only shape, at the accept boundary", () => {
     });
     expect(ready).toBeUndefined();
     expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/transmits no data columns/);
+    expect((error as Error).message).toMatch(/sends no data columns/);
     // Named by the rule rather than by the column, matching every other refusal
     // composed beside a partner's document.
     expect((error as Error).message).not.toContain("ID");
@@ -1100,7 +1100,7 @@ describe("the count-only shape, at the accept boundary", () => {
       options,
     });
     expect(error).toBeInstanceOf(UsageError);
-    expect((error as Error).message).toMatch(/transmits no data columns/);
+    expect((error as Error).message).toMatch(/sends no data columns/);
     expect(fs.existsSync(options.configFile)).toBe(false);
     expect(fs.existsSync(options.keyFile)).toBe(false);
   });
@@ -1134,7 +1134,7 @@ describe("the count-only shape, at the accept boundary", () => {
       (e: unknown) => e,
     );
     expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toMatch(/linkage strategy to "cascade"/);
+    expect((err as Error).message).toMatch(/linkage_strategy to "cascade"/);
   });
 
   test("validateAccept: warns when the input discloses columns the invitation accepts none of", async () => {

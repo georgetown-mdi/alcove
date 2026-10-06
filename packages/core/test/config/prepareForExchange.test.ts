@@ -363,7 +363,7 @@ describe("assertAlgorithmImplemented", () => {
     // The refusal names the fixed enum literals it does admit, never the value it
     // was handed (which can be partner-controlled free text).
     expect(() => assertAlgorithmImplemented(unimplementedAlgorithm)).toThrow(
-      /not yet implemented/,
+      /does not run/,
     );
     expect(() =>
       assertAlgorithmImplemented(unimplementedAlgorithm),
@@ -389,7 +389,7 @@ describe("prepareForExchange: an unimplemented algorithm is refused", () => {
       UsageError,
     );
     expect(() => prepareWithAlgorithm(unimplementedAlgorithm)).toThrow(
-      /not yet implemented/,
+      /does not run/,
     );
   });
 });
@@ -728,8 +728,8 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
     // the one the CLI maps to EX_USAGE rather than to a transport failure -- and,
     // within it, the member both front ends render to the operator.
     expect(prepare).toThrow(OperatorConfigError);
-    expect(prepare).toThrow(/exceed the single-pass ceiling/);
-    expect(prepare).not.toThrow(/removing a fan-out/);
+    expect(prepare).toThrow(/exceed the single-pass limit/);
+    expect(prepare).not.toThrow(/Removing a step that splits values/);
     // The pre-flight and the authoritative two-party gate state one remedy, so an
     // acceptor is not told here to narrow keys it did not choose and told the
     // opposite mid-run.
@@ -767,8 +767,8 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
         columns,
       );
     expect(prepare).toThrow(OperatorConfigError);
-    expect(prepare).toThrow(/exceed the single-pass ceiling/);
-    expect(prepare).toThrow(/removing a fan-out/);
+    expect(prepare).toThrow(/exceed the single-pass limit/);
+    expect(prepare).toThrow(/Removing a step that splits values/);
   });
 
   test("a fan-out config inside the ceiling prepares", () => {
@@ -818,7 +818,7 @@ describe("prepareForExchange: the single-pass ceiling pre-flight", () => {
       );
     expect(prepare).toThrow(StandardizationTermsError);
     expect(prepare).toThrow(/not_a_field/);
-    expect(prepare).not.toThrow(/single-pass ceiling/);
+    expect(prepare).not.toThrow(/single-pass limit/);
   });
 });
 
@@ -968,7 +968,7 @@ describe("assertCertificateModePinsPartner", () => {
     const refuse = () =>
       assertCertificateModePinsPartner({ mode: "certificate" }, false);
     expect(refuse).toThrow(/at most the exchange record of that disclosure/);
-    expect(refuse).toThrow(/where record writing is off, nothing at all/);
+    expect(refuse).toThrow(/or nothing where record writing is off/);
     expect(refuse).not.toThrow(/keeping only the exchange record/);
   });
 
@@ -1176,10 +1176,10 @@ describe("assertSignedReceiptNamesBothParties", () => {
       ReceiptVerificationError,
     );
     expect((raised(terms, unnamedTerms) as Error).message).toContain(
-      "the partner's agreed terms name none",
+      "your partner's agreed terms name none",
     );
     expect((raised(unnamedTerms, partnerTerms) as Error).message).toContain(
-      "this party's agreed terms name none",
+      "your agreed terms name none",
     );
     expect((raised(unnamedTerms, unnamedTerms) as Error).message).toContain(
       "neither party's agreed terms name an identity",
@@ -1248,7 +1248,7 @@ const refusalCases: Array<{
 }> = [
   {
     what: "an algorithm with no run path",
-    says: /linkage-terms algorithm is not yet implemented/,
+    says: /name an algorithm this version of Alcove does not run/,
     spec: {
       linkageTerms: { ...terms, algorithm: unimplementedAlgorithm },
       metadata,
@@ -1275,7 +1275,7 @@ const refusalCases: Array<{
   },
   {
     what: "a count-only exchange whose metadata transmits a column",
-    says: /transmits no data columns/,
+    says: /sends no data columns/,
     spec: {
       linkageTerms: { ...terms, algorithm: "psi-c" },
       metadata: [
@@ -1289,7 +1289,7 @@ const refusalCases: Array<{
   },
   {
     what: "a signing mode with no run path",
-    says: /receipt signing mode is not yet implemented/,
+    says: /this signing.mode is not supported/,
     spec: {
       linkageTerms: terms,
       metadata,
@@ -1300,7 +1300,7 @@ const refusalCases: Array<{
   },
   {
     what: "certificate mode naming no local party",
-    says: /names no party/,
+    says: /linkage terms name no identity/,
     spec: {
       linkageTerms: termsWithoutIdentity,
       metadata,
@@ -1393,7 +1393,7 @@ const refusalCases: Array<{
   },
   {
     what: "a dataset over the single-pass ceiling",
-    says: /exceed the single-pass ceiling/,
+    says: /exceed the single-pass limit/,
     spec: {
       linkageTerms: { ...terms, linkageStrategy: "single-pass" },
       metadata,
