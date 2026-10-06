@@ -6,10 +6,9 @@
  * per-run notice without parsing `message` -- which an unattended supervisor
  * otherwise has to, to decide whether to alert.
  *
- * `persistenceLoss` is the one value tied to an exit code: it is stamped by
- * `reportPersistenceLoss` (apps/cli/src/eventStream.ts), the single call
- * site that also sets `PERSISTENCE_LOSS_EXIT_CODE`, so the source and the
- * code cannot part.
+ * `persistenceLoss` is the one value tied to an exit code: the CLI stamps it
+ * at the single call site that also sets `PERSISTENCE_LOSS_EXIT_CODE`, so the
+ * source and the code cannot part.
  *
  * docs/spec/CLI_EVENTS.md (Warning sources) is the registry every value is
  * described in, and where a new warning source claims one;

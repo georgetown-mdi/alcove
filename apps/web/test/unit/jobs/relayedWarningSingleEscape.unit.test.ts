@@ -60,8 +60,9 @@ const ESCAPED_ONCE = "a\\\\b caf\\xe9";
 const ESCAPED_TWICE_TELLS = ["\\\\\\\\", "\\\\xe9"];
 
 /**
- * The CLI's warning sources (`WARNING_SOURCES` in apps/cli/src/eventStream.ts,
- * published in docs/spec/CLI_EVENTS.md), each with a stand-in for its notice
+ * The CLI's warning sources (`WARNING_SOURCES` in
+ * packages/cli-contract/src/warningSources.ts, published in
+ * docs/spec/CLI_EVENTS.md), each with a stand-in for its notice
  * holding the value and its own `[source]` tag, since the relay and the seat
  * treat every source's text alike. The divergence notice is core's real
  * composition; the fill warning's partner text rides its `columns` instead and

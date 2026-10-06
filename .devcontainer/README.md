@@ -209,10 +209,11 @@ Open the repository in an editor with dev-container support and reopen in the
 container, or use the `devcontainer` CLI. On first creation `post-create.sh` runs
 `npm ci` into an isolated `node_modules` volume (kept separate from the
 bind-mounted host tree so Linux-built native modules do not collide with the
-host's macOS build), builds `@alcove/core` so the apps resolve it, and fetches
-the Chromium build the web app's browser suite drives. This runs *before* the
-egress firewall and the proxy lane (both start steps), so the initial install
-has full network access; they constrain subsequent sessions.
+host's macOS build), builds `@alcove/core` so the apps resolve it and then
+`@alcove/cli-contract` so the CLI does, and fetches the Chromium build the web
+app's browser suite drives. This runs *before* the egress firewall and the proxy
+lane (both start steps), so the initial install has full network access; they
+constrain subsequent sessions.
 
 Re-fetching that browser later -- after a `playwright` bump, say -- happens with
 the firewall up, which holds no allowlist entry for Playwright's download hosts.
@@ -230,6 +231,7 @@ Inside the container:
 
 ```sh
 npm run build -w packages/core
+npm run build -w packages/cli-contract
 npm run test                       # unit tests (core, cli, web)
 npm run lint
 npm run typecheck

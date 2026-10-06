@@ -202,9 +202,7 @@ runs:
         # cache-version reason.
         path: packages/core/dist
         key: ${{ steps.cache-keys.outputs.core }}
-    # The CLI reads @alcove/cli-contract from its built dist/, as the apps read
-    # core's, and the contract's build reads core's types, so it builds after
-    # core. A tsc build of a few files, so it takes no cache of its own.
+    # A tsc build of a few files, so it takes no cache of its own.
     - name: Build the CLI contract
       run: npm run build -w packages/cli-contract
       shell: bash

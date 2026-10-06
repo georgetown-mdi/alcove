@@ -54,7 +54,7 @@
 # packages/core -- the worktree builds and tests its own core while sharing every
 # external dep. npm does not hoist everything (apps/web keeps its own @mantine), so
 # each workspace's own node_modules is mirrored too. Build caches are skipped so the
-# worktree starts cold. Idempotent: safe to re-run (it refreshes the core build).
+# worktree starts cold. Idempotent: safe to re-run (it refreshes the core and cli-contract builds).
 #
 # Sharing an install means inheriting its state, so what is mirrored is checked
 # against the worktree's own package-lock.json before anything is built: a primary
@@ -236,4 +236,8 @@ fi
 
 echo "worktree-init: building @alcove/core ..."
 npm run build -w packages/core >/dev/null
-echo "worktree-init: done. @alcove/core resolves to $WORKTREE/packages/core."
+# The CLI imports @alcove/cli-contract from its built dist/, as the apps do core,
+# and that build reads core's declarations, so it follows core.
+echo "worktree-init: building @alcove/cli-contract ..."
+npm run build -w packages/cli-contract >/dev/null
+echo "worktree-init: done. @alcove/core and @alcove/cli-contract resolve to $WORKTREE/packages."

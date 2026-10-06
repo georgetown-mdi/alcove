@@ -1,7 +1,6 @@
 // The schema of the CLI's fd-3 event stream: the event types, their fields,
-// and the stream's constants. The CLI builds and writes these events
-// (apps/cli/src/eventStream.ts); docs/spec/CLI_EVENTS.md is the contract a
-// supervisor reads.
+// and the stream's constants. The CLI builds and writes these events;
+// docs/spec/CLI_EVENTS.md is the contract a supervisor reads.
 
 import type {
   EntityClusterSummary,
@@ -37,8 +36,7 @@ export const EVENT_STREAM_VERSION = 1;
  *
  * That list is the one variable-length field of this stream, and a run whose
  * clusters take thousands of distinct shapes would push the terminal event past
- * a consumer's per-line bound -- the console relay's is 1 MiB
- * (`apps/web/src/jobs/cliDriver.ts`) -- costing the run the outcome the event
+ * a consumer's per-line bound -- the console relay's is 1 MiB -- costing the run the outcome the event
  * exists to report. A wider distribution drops the field rather than truncating
  * the list, since a short list would misstate how many shapes the summary's own
  * sentence leaves unnamed. Sized well above any distribution an operator reads
@@ -61,9 +59,9 @@ export type EventType =
   "stages" | "stage" | "stageEnd" | "warning" | "metrics" | "result" | "error";
 
 /**
- * The four terminal-error categories, lifted verbatim from the web's
- * `ExchangeErrorCategory` (apps/web/src/psi/exchangeLifecycle.ts) so a consumer
- * classifies a CLI failure exactly as it would a web one:
+ * The four terminal-error categories, lifted verbatim from the web
+ * application's `ExchangeErrorCategory` so a consumer classifies a CLI failure
+ * exactly as it would a web one:
  * - `config`: a PREPARE-phase `OperatorConfigError` -- a fault composed
  *   solely of this party's own configuration, actionable and safe to show.
  * - `security`: a trust-boundary failure -- a `security`-kind

@@ -36,8 +36,6 @@ COPY apps/cli/tsconfig.json apps/cli/tsconfig.rollup.json apps/cli/*.ts apps/cli
 COPY apps/cli/src apps/cli/src/
 # @alcove/core must be built before the web build: apps/web consumes it from its
 # built dist/ (a file: workspace dependency), so build core and the CLI first.
-# The CLI build reads @alcove/cli-contract from its built dist/, as it reads
-# core, and the contract's own build reads core's types, so it builds between.
 RUN npm run build -w packages/core \
   && npm run build -w packages/cli-contract \
   && npm run build -w apps/cli
