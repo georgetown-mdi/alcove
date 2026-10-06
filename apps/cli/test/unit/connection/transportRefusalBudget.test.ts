@@ -18,7 +18,7 @@ import {
   listingStalledByBatchCountError,
   listingStalledByTimeoutError,
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   MAX_LISTING_READDIR_BATCHES,
 } from "../../../src/connection/listingGuard";
 import {
@@ -120,8 +120,8 @@ const CLI_SITES: Array<{
     raise: () =>
       filenameTooLongError(
         RENDEZVOUS_PATH,
-        "x".repeat(MAX_FILENAME_LENGTH + 1),
-        MAX_FILENAME_LENGTH,
+        "x".repeat(MAX_FILENAME_BYTES + 1),
+        MAX_FILENAME_BYTES,
       ),
   },
   {
@@ -207,7 +207,7 @@ for (const site of CLI_SITES) {
     // which a composition-site clip (256 characters) never reaches, so a link
     // ending with the marker is checked here too -- except the entry-name
     // preview (filenameTooLongError), which has the marker BY CONSTRUCTION at
-    // any length over MAX_FILENAME_LENGTH, this site's own trigger, rather
+    // any length over MAX_FILENAME_BYTES, this site's own trigger, rather
     // than from filling its budget.
     expect(truncatedLinks(rendered)).toEqual([]);
     expect(linksOf(rendered).length).toBeLessThan(MAX_ERROR_CAUSE_DEPTH);
@@ -252,7 +252,7 @@ const COMPOSITION_CLIPPED_SITES: Array<{
       filenameTooLongError(
         "/rv/" + "p".repeat(100_000),
         "n".repeat(100_000),
-        MAX_FILENAME_LENGTH,
+        MAX_FILENAME_BYTES,
       ),
     recoveryStep: LISTING_RECOVERY_STEP,
     clipped: "directory: ",
@@ -308,7 +308,7 @@ for (const site of COMPOSITION_CLIPPED_SITES) {
 // choosers folded onto one link would truncate away the second and leave the
 // first free to forge the label that introduced it.
 const DIRECTORY_LINK = `directory: ${RENDEZVOUS_PATH}`;
-const REFUSED_WIDTH_NAME = "n".repeat(MAX_FILENAME_LENGTH + 1);
+const REFUSED_WIDTH_NAME = "n".repeat(MAX_FILENAME_BYTES + 1);
 // The entry-name link the guard composes for it: the leading slice it relays,
 // holding the marker the slicing itself earns.
 const REFUSED_WIDTH_NAME_LINK = `entry name: ${REFUSED_WIDTH_NAME.slice(0, 64)}${DISPLAY_TRUNCATION_MARKER}`;
@@ -320,7 +320,7 @@ const TWO_CHOOSER_DELIVERIES: Array<[string, () => Error, string]> = [
       filenameTooLongError(
         RENDEZVOUS_PATH,
         REFUSED_WIDTH_NAME,
-        MAX_FILENAME_LENGTH,
+        MAX_FILENAME_BYTES,
       ),
     DIRECTORY_LINK,
   ],
@@ -330,7 +330,7 @@ const TWO_CHOOSER_DELIVERIES: Array<[string, () => Error, string]> = [
       filenameTooLongError(
         RENDEZVOUS_PATH,
         "n".repeat(100_000),
-        MAX_FILENAME_LENGTH,
+        MAX_FILENAME_BYTES,
       ),
     DIRECTORY_LINK,
   ],
@@ -340,7 +340,7 @@ const TWO_CHOOSER_DELIVERIES: Array<[string, () => Error, string]> = [
       filenameTooLongError(
         "/rv/" + "p".repeat(100_000),
         REFUSED_WIDTH_NAME,
-        MAX_FILENAME_LENGTH,
+        MAX_FILENAME_BYTES,
       ),
     REFUSED_WIDTH_NAME_LINK,
   ],

@@ -78,7 +78,7 @@ const ACK_FILENAME = `${PEER_ID}-${MESSAGE_FILENAME.replace(/\.json$/, "")}-ack.
 
 // The widest name a listed entry can have on the shipped path: the bound
 // the CLI's directory-listing guard enforces on every entry it enumerates
-// (MAX_FILENAME_LENGTH, apps/cli/src/connection/listingGuard.ts, set from
+// (MAX_FILENAME_BYTES, apps/cli/src/connection/listingGuard.ts, set from
 // this constant). It is the tightest bound there is, since the SFTP protocol
 // imposes none of its own.
 const MAX_LISTED_FILENAME_LENGTH = MAX_FILE_NAME_BYTES;
@@ -207,7 +207,9 @@ const CORE_SITES: Array<{
     recoveryStep: STALLED_RECOVERY_STEP,
     raise: async () => {
       const bound = await boundTransportOf(withholdingClient());
-      return rejection(bound.get(`${RENDEZVOUS_PATH}/${MESSAGE_FILENAME}`));
+      return rejection(
+        bound.get(`${RENDEZVOUS_PATH}/${MESSAGE_FILENAME}`, { maxBytes: 1 }),
+      );
     },
   },
   {

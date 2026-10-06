@@ -6,6 +6,7 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import {
   DirectoryListingBoundsError,
   FrameSizeExceededError,
+  InternalConsistencyError,
   TransportOperationStalledError,
   UsageError,
   sanitizeErrorForDisplay,
@@ -14,7 +15,7 @@ import {
 import { SSH2SFTPClientAdapter } from "../../../src/connection/ssh2SftpAdapter";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   MAX_LISTING_READDIR_BATCHES,
 } from "../../../src/connection/listingGuard";
 import {
@@ -1225,6 +1226,19 @@ describe("capped get", () => {
     ).rejects.toBeInstanceOf(FrameSizeExceededError);
   });
 
+  test("refuses a cap that is not a positive finite number before reading", async () => {
+    const adapter = new SSH2SFTPClientAdapter();
+    const get = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = { get };
+    for (const maxBytes of [undefined, 0, -1, Number.NaN, Infinity]) {
+      await expect(
+        adapter.get("/remote/any.bin", { maxBytes: maxBytes as number }),
+      ).rejects.toBeInstanceOf(InternalConsistencyError);
+    }
+    expect(get).not.toHaveBeenCalled();
+  });
+
   test("returns the buffer for an under-cap file", async () => {
     const adapter = new SSH2SFTPClientAdapter();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1290,30 +1304,6 @@ describe("capped get", () => {
       const reading = adapter.get("/remote/slow.bin", { maxBytes: 32 });
       await vi.advanceTimersByTimeAsync(SFTP_STALL_DEADLINE_MS * 1.2 + 1);
       expect((await reading).toString()).toBe("ab");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("bounds an uncapped read whose transfer never settles via the operation deadline", async () => {
-    // The uncapped path returns the library's get() promise directly and has no
-    // counting sink (hence no per-chunk progress signal), so it is bounded by a
-    // coarse whole-operation deadline. The transport always passes maxBytes, so
-    // this path is the defensive safety check.
-    vi.useFakeTimers();
-    try {
-      const adapter = new SSH2SFTPClientAdapter();
-      stubAdapterLog(adapter);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).client = {
-        get: vi.fn().mockImplementation(() => new Promise(() => {})),
-      };
-      const reading = adapter.get("/remote/silent.bin"); // no maxBytes: uncapped
-      const assertion = expect(reading).rejects.toBeInstanceOf(
-        TransportOperationStalledError,
-      );
-      await vi.advanceTimersByTimeAsync(SFTP_STALL_DEADLINE_MS + 1);
-      await assertion;
     } finally {
       vi.useRealTimers();
     }
@@ -1572,7 +1562,9 @@ describe("bounded put (idle window)", () => {
           calls += 1;
           if (calls < 3) {
             // Consume nothing and reject: the retryable transient failure.
-            return Promise.reject(new Error("transient write failure"));
+            return Promise.reject(
+              Object.assign(new Error("Failure"), { code: 4 }),
+            );
           }
           const received: Buffer[] = [];
           return new Promise<string>((resolve) => {
@@ -1618,7 +1610,7 @@ describe("bounded put (idle window)", () => {
         // with the retryable transient failure the server already returned.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (adapter as any).fatalSftpError = new Error("Malformed DATA packet");
-        return Promise.reject(new Error("transient write failure"));
+        return Promise.reject(Object.assign(new Error("Failure"), { code: 4 }));
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (adapter as any).client = { put };
@@ -1661,69 +1653,26 @@ describe("bounded put (idle window)", () => {
     expect(calls).toBe(1);
   });
 
-  test("retries a string-path put (re-runnable source) on transient failure", async () => {
-    // A string src is re-runnable -- ssh2-sftp-client opens a fresh read stream per
-    // attempt -- so the retry is preserved for it (only the one-shot stream loses it).
-    vi.useFakeTimers();
-    try {
-      const adapter = new SSH2SFTPClientAdapter();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).options = { retries: 2 };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
-      let calls = 0;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).client = {
-        put: vi.fn().mockImplementation(() => {
-          calls += 1;
-          if (calls < 3) return Promise.reject(new Error("transient"));
-          return Promise.resolve("uploaded");
-        }),
-      };
-      const writing = adapter.put("/local/file.bin", "/remote/out.json");
-      // Advance past the two 100 ms retry delays; the third attempt succeeds.
-      await vi.advanceTimersByTimeAsync(250);
-      await expect(writing).resolves.toBe("uploaded");
-      expect(calls).toBe(3);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("stops retrying a string-path put when a fatal session error lands between attempts", async () => {
-    // The non-Buffer (string) branch re-checks the dead-session guard before each
-    // attempt, mirroring the Buffer branch: a fatal error in the inter-attempt
-    // window short-circuits the next attempt with the terminal stalled error
-    // instead of issuing put() on the dead channel.
-    vi.useFakeTimers();
-    try {
-      const adapter = new SSH2SFTPClientAdapter();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).options = {};
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
-      let calls = 0;
-      const put = vi.fn().mockImplementation(() => {
-        calls += 1;
-        // A fatal protocol error lands in the inter-attempt window; this attempt
-        // still rejects with the retryable transient failure the server returned.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (adapter as any).fatalSftpError = new Error("Malformed DATA packet");
-        return Promise.reject(new Error("transient write failure"));
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (adapter as any).client = { put };
-      const writing = adapter.put("/local/file.bin", "/remote/out.json");
-      const captured = writing.catch((e: unknown) => e);
-      await vi.advanceTimersByTimeAsync(200);
-      const err = await captured;
-      expect(err).toBeInstanceOf(TransportOperationStalledError);
-      expect(sanitizeErrorForDisplay(err)).toContain("Malformed DATA packet");
-      // Only the first attempt reached the server; the second short-circuited.
-      expect(calls).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
+  test.each([
+    ["a missing directory (SSH_FX_NO_SUCH_FILE)", 2, "No such file"],
+    ["a refused permission (SSH_FX_PERMISSION_DENIED)", 3, "Permission denied"],
+    ["a lost session", "ERR_GENERIC_CLIENT", "Unexpected close event"],
+  ])("does not retry a put refused for %s", async (_label, code, message) => {
+    // Only SSH_FX_FAILURE is re-issued in place: these answer the same request
+    // the same way again, and a lost session is the recovery round's to re-dial.
+    const adapter = new SSH2SFTPClientAdapter();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).options = {}; // retries falls back to the default of 5
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
+    const refusal = Object.assign(new Error(message), { code });
+    const put = vi.fn().mockImplementation(() => Promise.reject(refusal));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = { put };
+    await expect(
+      adapter.put(Buffer.from("x"), "/remote/out.json"),
+    ).rejects.toBe(refusal);
+    expect(put).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1849,7 +1798,7 @@ describe("bounded list", () => {
 
   test("rejects an entry whose filename exceeds the maximum length", async () => {
     const adapter = new SSH2SFTPClientAdapter();
-    const longName = `${"x".repeat(MAX_FILENAME_LENGTH + 1)}.json`;
+    const longName = `${"x".repeat(MAX_FILENAME_BYTES + 1)}.json`;
     const mock = makeBatchedSftp({
       totalEntries: 1,
       batchSize: 1,
@@ -1862,6 +1811,30 @@ describe("bounded list", () => {
       DirectoryListingBoundsError,
     );
     expect(mock.closeCalls).toBe(1);
+  });
+
+  test("measures the filename bound in UTF-8 bytes, not string length", async () => {
+    // 128 two-byte characters: 128 code units, 256 bytes -- one past the cap.
+    const overByBytes = "\u00e9".repeat(128);
+    const atCapInBytes = `${"\u00e9".repeat(127)}x`;
+    const outcomeFor = async (name: string) => {
+      const adapter = new SSH2SFTPClientAdapter();
+      const mock = makeBatchedSftp({
+        totalEntries: 1,
+        batchSize: 1,
+        makeName: () => name,
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).client = { sftp: mock.sftp };
+      return adapter.list("/remote/hostile").then(
+        (listed) => listed.map((entry) => entry.name),
+        (error: unknown) => error,
+      );
+    };
+    expect(await outcomeFor(overByBytes)).toBeInstanceOf(
+      DirectoryListingBoundsError,
+    );
+    expect(await outcomeFor(atCapInBytes)).toEqual([atCapInBytes]);
   });
 
   test("accepts a directory at exactly the entry cap", async () => {
@@ -2383,11 +2356,10 @@ describe("fatal wrapper-error guard", () => {
     expect(existsErr).toBeInstanceOf(TransportOperationStalledError);
     expect(exists).not.toHaveBeenCalled();
 
-    // The uncapped get() path (maxBytes === undefined) is guarded at get()'s
-    // entry alongside the capped path; assert it rejects terminally and never
+    // get() is guarded at its entry; assert it rejects terminally and never
     // drives the dead stream.
     const getErr = await adapter
-      .get("/remote/out.json")
+      .get("/remote/out.json", { maxBytes: 32 })
       .catch((e: unknown) => e);
     expect(getErr).toBeInstanceOf(TransportOperationStalledError);
     expect(get).not.toHaveBeenCalled();

@@ -1341,7 +1341,11 @@ describe("ephemeral session mode (connection-per-poll)", () => {
   >;
   const dataPlaneOps = [
     { op: "list", run: (a: SSH2SFTPClientAdapter) => a.list("/remote/dir") },
-    { op: "get", run: (a: SSH2SFTPClientAdapter) => a.get("/remote/in.json") },
+    {
+      op: "get",
+      run: (a: SSH2SFTPClientAdapter) =>
+        a.get("/remote/in.json", { maxBytes: 64 }),
+    },
     {
       op: "put",
       run: (a: SSH2SFTPClientAdapter) =>

@@ -335,14 +335,13 @@ export interface PutOptions {
  * `Uint8Array` chunks written back-to-back as one file WITHOUT concatenating
  * them in memory -- the message send path hands `put` its `[header, payload]`
  * pair this way so a binary frame holds ~1x its size live rather than ~2x (see
- * {@link FileSyncConnection.send}). A `string` (an SFTP local-file path to copy
- * from) and a one-shot `NodeJS.ReadableStream` remain in the transport-agnostic
- * surface but are not produced by this codebase. A `Uint8Array[]` src is
- * re-iterable, so an adapter that retries a failed upload can rebuild its source
- * from it per attempt, exactly as it can from a `Buffer` (a one-shot stream
- * cannot, which is why a stream gets a single attempt).
+ * {@link FileSyncConnection.send}). A one-shot `NodeJS.ReadableStream` remains
+ * in the transport-agnostic surface but is not produced by this codebase. A
+ * `Uint8Array[]` src is re-iterable, so an adapter that retries a failed upload
+ * can rebuild its source from it per attempt, exactly as it can from a `Buffer`
+ * (a one-shot stream cannot, which is why a stream gets a single attempt).
  */
-export type PutSource = string | Buffer | Uint8Array[] | NodeJS.ReadableStream;
+export type PutSource = Buffer | Uint8Array[] | NodeJS.ReadableStream;
 
 export interface GetOptions {
   mode?: number | string;
@@ -357,14 +356,14 @@ export interface GetOptions {
    * than the (possibly attacker-chosen) file size. This is the hard safety
    * check behind the poll loop's pre-`get()` size check; it is what still
    * bounds the read when a server under-reports a file's size in its
-   * directory listing. Omit for an uncapped read.
+   * directory listing. Required: no transport read is uncapped.
    *
    * A capped read always resolves to a raw Buffer; `encoding` is not applied
    * (the streaming adapter drops it so the running byte count stays exact).
    * Callers that need a string decode the result with `.toString()`, as they
    * already do for the always-raw-Buffer {@link LocalFSClient}.
    */
-  maxBytes?: number;
+  maxBytes: number;
 }
 
 /**
@@ -385,11 +384,13 @@ export interface FileTransportClient {
    * a later one, which is what lets {@link FileSyncConnection.open} probe a
    * split filedrop's second directory with a second call.
    * {@link SSH2SFTPClientAdapter} memoizes the connection's terminal close and
-   * never clears it, so it throws on a dial once `end()` has latched; a repeat
-   * `connect()` over a session still live is legal there and replaces that
-   * session. A caller wanting the portable behavior builds a new client rather
-   * than re-dialing an ended one. Why the rule stays per-transport rather than
-   * binding here: D10 in docs/notes/sftp-adapter-state-machine.md.
+   * never clears it, so it throws on a dial once `end()` has latched, and it
+   * refuses a repeat `connect()` over a session still live, leaving that
+   * session in place (apps/cli/test/integration/sftpStackPremises.test.ts). A
+   * caller wanting the portable behavior builds a new client rather than
+   * calling `connect()` again on one it has dialed. Why the rule stays
+   * per-transport rather than binding here: D10 in
+   * docs/notes/sftp-adapter-state-machine.md.
    */
   connect: (options: Record<string, unknown>) => Promise<void>;
   /**
@@ -408,7 +409,7 @@ export interface FileTransportClient {
    */
   end: () => Promise<void>;
   list: (path: string) => Promise<Array<FileInfo>>;
-  get: (path: string, options?: GetOptions) => Promise<Buffer<ArrayBufferLike>>;
+  get: (path: string, options: GetOptions) => Promise<Buffer<ArrayBufferLike>>;
   put: (src: PutSource, dest: string, options?: PutOptions) => Promise<unknown>;
   delete: (path: string) => Promise<void>;
   /**

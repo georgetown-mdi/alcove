@@ -17,7 +17,7 @@ import {
 } from "@alcove/core";
 
 import { SSH2SFTPClientAdapter } from "../../../src/connection/ssh2SftpAdapter";
-import { MAX_FILENAME_LENGTH } from "../../../src/connection/listingGuard";
+import { MAX_FILENAME_BYTES } from "../../../src/connection/listingGuard";
 import { startInProcessSftpServer } from "../../sftpServer/inProcessServer";
 import { serverAuth } from "../../sftpServer/testContext";
 import type { InProcessSftpServer } from "../../sftpServer/types";
@@ -160,14 +160,14 @@ describe("malformed in-flight SFTP reply", () => {
   test("rejects a valid NAME batch whose filename exceeds the length bound", async () => {
     // The filename-length directory-listing bound, real-exercised: a real ssh2
     // Server returns a WELL-FORMED NAME packet whose filename exceeds
-    // MAX_FILENAME_LENGTH, and list() must refuse it with the typed
+    // MAX_FILENAME_BYTES, and list() must refuse it with the typed
     // DirectoryListingBoundsError over real wire bytes, not the mocked readdir in
     // ssh2SftpAdapter.test.ts. (The entry-count bound stays on that mock test --
     // crossing its 8,192-entry cap needs multi-packet batching, not worth it here.)
     const adapter = await connectAdapter(srv);
     adapters.push(adapter);
 
-    srv.inject.oversizeNameOnNextReaddir = "x".repeat(MAX_FILENAME_LENGTH + 1);
+    srv.inject.oversizeNameOnNextReaddir = "x".repeat(MAX_FILENAME_BYTES + 1);
     const err = await adapter.list(remote()).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(DirectoryListingBoundsError);
   });

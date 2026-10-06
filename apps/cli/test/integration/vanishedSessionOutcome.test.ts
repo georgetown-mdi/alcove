@@ -697,10 +697,9 @@ interface WithheldReplyCase {
   drive: (adapter: SSH2SFTPClientAdapter, remote: string) => Promise<unknown>;
 }
 
-// The metadata round trips whose bound is a flat whole-operation deadline, plus
-// the uncapped read, whose own deadline is the only bound it has (the capped read
-// the transport actually issues bounds the idle GAP between chunks instead, and is
-// driven by the exchange cases elsewhere in this suite). The opcode each names is
+// The metadata round trips whose bound is a flat whole-operation deadline (the
+// capped read bounds the idle GAP between chunks instead, and is driven by the
+// exchange cases elsewhere in this suite). The opcode each names is
 // the request the server sees, so a library that reached the same operation over a
 // different one fails here rather than passing on a stall nothing withheld.
 const WITHHELD_REPLY_CASES: WithheldReplyCase[] = [
@@ -738,15 +737,6 @@ const WITHHELD_REPLY_CASES: WithheldReplyCase[] = [
     operation: "exclusive create",
     detail: "the server withheld the open, existence-check, or close response",
     drive: (adapter, remote) => adapter.createExclusive(`${remote}/lock.json`),
-  },
-  {
-    what: "an uncapped read",
-    opcode: "READ",
-    operation: "file read",
-    detail: "the server withheld the transfer",
-    plant: (dir) =>
-      fsp.writeFile(path.join(dir, "payload.bin"), Buffer.alloc(4096, 7)),
-    drive: (adapter, remote) => adapter.get(`${remote}/payload.bin`),
   },
 ];
 

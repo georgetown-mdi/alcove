@@ -14,7 +14,7 @@ import { transportOperationStalledError } from "./sftpLivenessGuard";
  * ({@link ../connection/localFSClient.LocalFSClient | LocalFSClient} and
  * {@link ../connection/ssh2SftpAdapter.SSH2SFTPClientAdapter}): a directory
  * over {@link MAX_DIRECTORY_ENTRIES} entries, or an entry name over
- * {@link MAX_FILENAME_LENGTH}, is refused with a
+ * {@link MAX_FILENAME_BYTES}, is refused with a
  * {@link DirectoryListingBoundsError} before the listing is materialized.
  * Rationale: docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound".
  */
@@ -29,13 +29,26 @@ import { transportOperationStalledError } from "./sftpLivenessGuard";
 export const MAX_DIRECTORY_ENTRIES = 8192;
 
 /**
- * Maximum length, in characters, of a single directory entry's filename;
- * enforced per entry at the transport `list()` layer in both adapters.
- * Fixed, for the same reason as {@link MAX_DIRECTORY_ENTRIES}. Value is
- * core's `MAX_FILE_NAME_BYTES`, the POSIX `NAME_MAX`; derivation:
- * docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound".
+ * Maximum length, in UTF-8 bytes, of a single directory entry's filename;
+ * enforced per entry at the transport `list()` layer in both adapters,
+ * measured by {@link filenameByteLength}. Fixed, for the same reason as
+ * {@link MAX_DIRECTORY_ENTRIES}. Value is core's `MAX_FILE_NAME_BYTES`, the
+ * POSIX `NAME_MAX`; derivation: docs/spec/CHANNEL_SECURITY.md,
+ * "Directory-listing bound".
  */
-export const MAX_FILENAME_LENGTH = MAX_FILE_NAME_BYTES;
+export const MAX_FILENAME_BYTES = MAX_FILE_NAME_BYTES;
+
+/**
+ * The length {@link MAX_FILENAME_BYTES} bounds: the name's UTF-8 encoding in
+ * bytes, not its JavaScript string length, which counts UTF-16 code units and
+ * reads a name of multi-byte characters as shorter than the filesystem limit
+ * it is measured against. For a name that arrives as a decoded string this is
+ * the length of its re-encoding, which over-counts bytes that were not valid
+ * UTF-8; `LocalFSClient` measures the raw on-disk bytes instead.
+ */
+export function filenameByteLength(name: string): number {
+  return Buffer.byteLength(name, "utf8");
+}
 
 const DIRECTORY_LINK_LABEL = "directory: ";
 
@@ -73,12 +86,13 @@ export function directoryTooLargeError(
 
 /**
  * Construct the typed, terminal error for a directory entry whose filename
- * exceeds {@link MAX_FILENAME_LENGTH}. Only a leading 64-character slice
+ * exceeds {@link MAX_FILENAME_BYTES}. Only a leading 64-character slice
  * of the offending name is interpolated -- a memory bound, not the display
  * budget {@link directoryLink} fits to -- raw and unescaped (escaping is
  * the display boundary's job; a split surrogate pair still renders as a
  * visible escape, not mojibake). The true length is reported separately,
- * as a number, never partner text.
+ * as a number, never partner text: `nameBytes` where the caller measured the
+ * raw bytes, otherwise the length of `name` re-encoded.
  *
  * `dirPath` and `name` are chosen by different parties (operator/partner
  * endpoint vs. server), so each takes a labelled cause link of its own: a
@@ -89,8 +103,9 @@ export function filenameTooLongError(
   dirPath: string,
   name: string,
   max: number,
+  nameBytes: number = filenameByteLength(name),
 ): DirectoryListingBoundsError {
-  // A name reaching here is longer than MAX_FILENAME_LENGTH and so longer than
+  // A name reaching here is longer than MAX_FILENAME_BYTES and so longer than
   // this preview, which is why the marker is unconditional. Redaction runs after
   // slicing, so the slice still bounds what an attacker-sized name can relay
   // into memory, and before the marker is appended, so a planted BEGIN marker in
@@ -100,8 +115,8 @@ export function filenameTooLongError(
   )}${DISPLAY_TRUNCATION_MARKER}`;
   return new DirectoryListingBoundsError(
     `the rendezvous directory contains an entry whose filename is ` +
-      `${name.length} characters, exceeding the maximum of ${max}; refusing ` +
-      `to process it`,
+      `${nameBytes} bytes, exceeding the maximum of ${max}; ` +
+      `refusing to process it`,
     {
       details: [directoryLink(dirPath), `entry name: ${shown}`],
     },

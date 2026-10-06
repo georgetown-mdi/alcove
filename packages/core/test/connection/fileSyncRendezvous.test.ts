@@ -1639,7 +1639,7 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     // A lock file under a long configured peer_id, listed FIRST -- the order a
     // directory listing can hand it over, and the order a partner planting one
     // would choose. Sized inside the transport's per-name listing bound
-    // (MAX_FILENAME_LENGTH, apps/cli/src/connection/listingGuard.ts), asserted
+    // (MAX_FILENAME_BYTES, apps/cli/src/connection/listingGuard.ts), asserted
     // below, so it is a name that really reaches this guard, and still far past
     // what the enumeration's budget holds.
     const longPeerId = `${"acme-health-2026-partner-exchange-north-region-".repeat(4)}01`;

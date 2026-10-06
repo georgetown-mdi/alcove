@@ -26,7 +26,7 @@ import { InputNotFoundError } from "../util/exit";
 import { frameSizeExceededError } from "./frameSizeGuard";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   directoryTooLargeError,
   filenameTooLongError,
 } from "./listingGuard";
@@ -45,6 +45,24 @@ const OPEN_FLAGS = {
   a: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_APPEND,
   wx: fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
 } as const;
+
+interface RawNamedDirent {
+  readonly name: Buffer;
+  isFile(): boolean;
+}
+
+// The directory's entries with their names as the raw on-disk bytes, so a
+// name that is not valid UTF-8 is measured as stored rather than after each
+// invalid byte decodes to a 3-byte U+FFFD. @types/node types opendir's
+// encoding as a string encoding only; "buffer" is what Node accepts for this.
+async function opendirRawNames(
+  dir: string,
+): Promise<AsyncIterable<RawNamedDirent>> {
+  const handle = await fs.opendir(dir, {
+    encoding: "buffer" as BufferEncoding,
+  });
+  return handle as unknown as AsyncIterable<RawNamedDirent>;
+}
 
 /**
  * The refusal for a shared folder that is not usable as one, holding core's
@@ -346,18 +364,24 @@ export class LocalFSClient implements FileTransportClient {
    * returned set is files only.
    */
   async list(dir: string): Promise<FileInfo[]> {
-    const fileNames: string[] = [];
+    const fileNames: Buffer[] = [];
     let scanned = 0;
     // The for-await loop closes the directory handle automatically on normal
     // completion, on break, and on throw (the async iterator's return() runs),
     // so an over-bound directory does not leak the handle.
-    for await (const entry of await fs.opendir(dir)) {
+    for await (const entry of await opendirRawNames(dir)) {
       if (++scanned > MAX_DIRECTORY_ENTRIES)
         throw directoryTooLargeError(dir, MAX_DIRECTORY_ENTRIES);
-      if (entry.name.length > MAX_FILENAME_LENGTH)
-        throw filenameTooLongError(dir, entry.name, MAX_FILENAME_LENGTH);
+      if (entry.name.length > MAX_FILENAME_BYTES)
+        throw filenameTooLongError(
+          dir,
+          entry.name.toString("utf8"),
+          MAX_FILENAME_BYTES,
+          entry.name.length,
+        );
       if (entry.isFile()) fileNames.push(entry.name);
     }
+    const dirPrefix = Buffer.from(path.join(dir, path.sep));
     // opendir provides the file type but not mtimeMs; a stat per file is
     // unavoidable. lstat (not stat) keeps this metadata read from following a
     // symlink swapped in after the isFile() walk committed the name -- it would
@@ -366,11 +390,11 @@ export class LocalFSClient implements FileTransportClient {
     // between the walk and stat (e.g. by the peer's cleanup); omit it rather
     // than failing the whole listing.
     const results = await Promise.all(
-      fileNames.map(async (name) => {
+      fileNames.map(async (rawName) => {
         try {
-          const stat = await fs.lstat(path.join(dir, name));
+          const stat = await fs.lstat(Buffer.concat([dirPrefix, rawName]));
           return {
-            name,
+            name: rawName.toString("utf8"),
             modifyTime: Math.floor(stat.mtimeMs),
             size: stat.size,
           } as FileInfo;
@@ -388,34 +412,25 @@ export class LocalFSClient implements FileTransportClient {
    * that need a decoded string should use `.toString(encoding)` on the
    * result.
    *
-   * When `options.maxBytes` is set, the read is bounded to that many bytes:
-   * the handle is `fstat`ed and a file larger than the cap is refused (see
-   * {@link frameSizeExceededError}) before any content buffer is allocated.
-   * The stat and read share one handle, so a writer that appends after the
-   * stat cannot drive an allocation past the cap -- a TOCTOU race a plain
-   * `stat` + `readFile` would lose. Omitting `maxBytes` keeps the unbounded
-   * fast path.
+   * The read is bounded to `options.maxBytes`: the handle is `fstat`ed and a
+   * file larger than the cap is refused (see {@link frameSizeExceededError})
+   * before any content buffer is allocated. The stat and read share one
+   * handle, so a writer that appends after the stat cannot drive an
+   * allocation past the cap -- a TOCTOU race a plain `stat` + `readFile`
+   * would lose.
    *
-   * Both paths open through {@link openNoFollow}, so a symlink at
-   * `filePath` is refused rather than followed.
+   * The open goes through {@link openNoFollow}, so a symlink at `filePath` is
+   * refused rather than followed.
    */
   async get(
     filePath: string,
-    options?: GetOptions,
+    options: GetOptions,
   ): Promise<Buffer<ArrayBufferLike>> {
-    const maxBytes = options?.maxBytes;
-    if (maxBytes === undefined) {
-      const handle = await openNoFollow(filePath, "r");
-      try {
-        return (await handle.readFile()) as Buffer<ArrayBufferLike>;
-      } finally {
-        // Read-only handle: a failed close has no data-integrity meaning and
-        // must not replace the returned buffer, the same reason the bounded path
-        // below swallows its close error.
-        await handle.close().catch(() => {});
-      }
-    }
-
+    const { maxBytes } = options;
+    if (!(Number.isFinite(maxBytes) && maxBytes > 0))
+      throw new InternalConsistencyError(
+        `LocalFSClient.get: maxBytes must be a positive finite number, got ${String(maxBytes)}`,
+      );
     const handle = await openNoFollow(filePath, "r");
     try {
       const { size } = await handle.stat();
@@ -451,14 +466,6 @@ export class LocalFSClient implements FileTransportClient {
   }
 
   async put(src: PutSource, dest: string, options?: PutOptions): Promise<void> {
-    if (typeof src === "string") {
-      // ssh2-sftp-client interprets a string src as a local file path to copy
-      // from; LocalFSClient does not support that usage.
-      throw new InternalConsistencyError(
-        "LocalFSClient.put: string src is not supported; pass a Buffer or " +
-          "stream",
-      );
-    }
     const flag = options?.flags ?? "w";
     const encoding = options?.encoding as BufferEncoding | null | undefined;
     // Drain a plain stream source to a Buffer BEFORE opening dest. The open

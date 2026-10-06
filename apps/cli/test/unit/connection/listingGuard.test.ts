@@ -10,8 +10,9 @@ import {
 
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   directoryTooLargeError,
+  filenameByteLength,
   filenameTooLongError,
 } from "../../../src/connection/listingGuard";
 
@@ -54,7 +55,18 @@ describe("listing bound constants", () => {
   });
 
   test("the filename cap is NAME_MAX", () => {
-    expect(MAX_FILENAME_LENGTH).toBe(255);
+    expect(MAX_FILENAME_BYTES).toBe(255);
+  });
+});
+
+describe("filenameByteLength", () => {
+  test("measures UTF-8 bytes, not UTF-16 code units", () => {
+    expect(filenameByteLength("a".repeat(255))).toBe(255);
+    // 128 two-byte characters: under the cap as a string length, over it in
+    // bytes.
+    expect(filenameByteLength("\u00e9".repeat(128))).toBe(256);
+    // One astral character is two code units and four bytes.
+    expect(filenameByteLength("\u{1f600}")).toBe(4);
   });
 });
 
@@ -107,7 +119,7 @@ describe("filenameTooLongError", () => {
 
   test("reports the offending length and the cap", () => {
     const err = filenameTooLongError("/drop", "x".repeat(300), 255);
-    expect(err.message).toContain("300 characters");
+    expect(err.message).toContain("300 bytes");
     expect(err.message).toContain("255");
   });
 
@@ -134,7 +146,7 @@ describe("filenameTooLongError", () => {
     expect(rendered).not.toContain("\x1b");
     expect(rendered).toContain("\\x1b");
     // The true length is still reported.
-    expect(rendered).toContain(`${hostile.length} characters`);
+    expect(rendered).toContain(`${hostile.length} bytes`);
   });
 
   test("stays bounded even when the name is all non-ASCII (escapes expand each char)", () => {

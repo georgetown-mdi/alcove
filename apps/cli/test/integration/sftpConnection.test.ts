@@ -593,8 +593,8 @@ inProcessOnly(
       expect(getErr).toBeInstanceOf(TransportOperationStalledError);
 
       // The remaining server-driven methods short-circuit too. Against the real
-      // still-alive server socket, an unguarded put/delete/rename/exists/uncapped
-      // get would buffer on the destroyed SFTP channel and HANG until the default
+      // still-alive server socket, an unguarded put/delete/rename/exists would
+      // buffer on the destroyed SFTP channel and HANG until the default
       // test timeout (the original residual this change closes); each must instead
       // reject promptly with the typed terminal error.
       const putErr = await crashSFTP
@@ -616,11 +616,6 @@ inProcessOnly(
         .exists(`${SFTP_PATH}/never.json`)
         .catch((e: unknown) => e);
       expect(existsErr).toBeInstanceOf(TransportOperationStalledError);
-
-      const uncappedGetErr = await crashSFTP
-        .get(`${SFTP_PATH}/never.json`)
-        .catch((e: unknown) => e);
-      expect(uncappedGetErr).toBeInstanceOf(TransportOperationStalledError);
 
       // safeDelete must never reject (callers use it in catch blocks): on a dead
       // session it RESOLVES promptly as a best-effort no-op. This is the realistic

@@ -369,7 +369,7 @@ describe("an operation outstanding across a session transition", () => {
   test.each([
     {
       op: "get" as const,
-      run: (a: SSH2SFTPClientAdapter) => a.get("/r/x.json"),
+      run: (a: SSH2SFTPClientAdapter) => a.get("/r/x.json", { maxBytes: 64 }),
     },
     {
       op: "put" as const,
@@ -1341,9 +1341,9 @@ describe("an operation outstanding across a session transition", () => {
     // operations ISSUED and unsettled, and nothing on this side settles an
     // operation the server never answers -- core's whole-exchange budget races and
     // abandons rather than cancelling -- so the hold lasts as long as the operation
-    // does. A put from a string source is the shape with no adapter-side deadline
-    // at all (no flat bound, no idle window), so its hold has no end short of the
-    // exchange's.
+    // does. A put from a one-shot stream source is the shape with no adapter-side
+    // deadline at all (no flat bound, no idle window), so its hold has no end
+    // short of the exchange's.
     const { client, rawClient, state } = ephemeralClient(wrapperMethods());
     const adapter = new SSH2SFTPClientAdapter({ ephemeralSessions: true });
     captureAdapterLog(adapter);
@@ -1353,7 +1353,7 @@ describe("an operation outstanding across a session transition", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (client as any).put = vi.fn(() => new Promise<string>(() => {}));
 
-    void adapter.put("/local/out.bin", "/remote/out.bin");
+    void adapter.put(Readable.from([Buffer.from("x")]), "/remote/out.bin");
     expect(outstandingOperations(adapter)).toBe(1);
 
     for (let boundary = 0; boundary < 3; boundary += 1)

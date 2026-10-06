@@ -11,7 +11,7 @@ import { withCapturedLogs } from "@alcove/core/testing";
 
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   MAX_LISTING_READDIR_BATCHES,
 } from "../../src/connection/listingGuard";
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
@@ -202,7 +202,7 @@ inProcessOnly(
 
       // The width this suite's own uses sit at is nowhere near the budget, and
       // is taken unchanged.
-      const overLengthName = "x".repeat(MAX_FILENAME_LENGTH + 1);
+      const overLengthName = "x".repeat(MAX_FILENAME_BYTES + 1);
       srv.inject.oversizeNameOnNextReaddir = overLengthName;
       expect(srv.inject.oversizeNameOnNextReaddir).toBe(overLengthName);
     } finally {
@@ -213,7 +213,7 @@ inProcessOnly(
 );
 
 inProcessOnly(
-  `a full listing of ${MAX_FILENAME_LENGTH}-character names arrives whole`,
+  `a full listing of ${MAX_FILENAME_BYTES}-byte names arrives whole`,
   async () => {
     // The widest entries the adapter accepts at the widest listing it accepts:
     // several times the bytes per entry of the case above, at the same entry
@@ -221,7 +221,7 @@ inProcessOnly(
     // packet carries passes that one and loses this.
     const run = await driveListing({
       count: MAX_DIRECTORY_ENTRIES,
-      nameLength: MAX_FILENAME_LENGTH,
+      nameLength: MAX_FILENAME_BYTES,
       batchCap: 0,
     });
 
@@ -259,14 +259,14 @@ inProcessOnly(
 );
 
 inProcessOnly(
-  `a served name one character past ${MAX_FILENAME_LENGTH} is refused`,
+  `a served name one byte past ${MAX_FILENAME_BYTES} is refused`,
   async () => {
     // The name bound is the one a real filesystem cannot cross -- every
     // mainstream one caps a component at 255 -- so it is reached through the
     // backend's oversize-name injection rather than by planting a file: a
     // synthesized READDIR name is the only way a real server produces one, and
     // it is what the guard exists for.
-    const overLength = "x".repeat(MAX_FILENAME_LENGTH + 1);
+    const overLength = "x".repeat(MAX_FILENAME_BYTES + 1);
     const run = await driveListing({
       count: 0,
       nameLength: 24,
@@ -277,12 +277,34 @@ inProcessOnly(
     expect(run.error).toBeInstanceOf(DirectoryListingBoundsError);
     const rendered = sanitizeErrorForDisplay(run.error);
     expect(rendered).toContain(
-      `filename is ${overLength.length} characters, exceeding the maximum of ` +
-        `${MAX_FILENAME_LENGTH}`,
+      `filename is ${overLength.length} bytes, exceeding the maximum of ` +
+        `${MAX_FILENAME_BYTES}`,
     );
     // Only a leading slice of the server's name is relayed, so the refusal
     // cannot carry an attacker-sized string onward.
     expect(rendered).not.toContain(overLength);
+    expect(run.listed).toEqual([]);
+  },
+  TEST_TIMEOUT_MS,
+);
+
+inProcessOnly(
+  `a served name of multi-byte characters past ${MAX_FILENAME_BYTES} bytes is ` +
+    `refused though its string length is not`,
+  async () => {
+    // 128 two-byte characters: 128 UTF-16 code units, 256 bytes on the wire.
+    const overInBytes = "\u00e9".repeat(128);
+    const run = await driveListing({
+      count: 0,
+      nameLength: 24,
+      batchCap: 0,
+      oversizeName: overInBytes,
+    });
+
+    expect(run.error).toBeInstanceOf(DirectoryListingBoundsError);
+    expect(sanitizeErrorForDisplay(run.error)).toContain(
+      `filename is 256 bytes, exceeding the maximum of ${MAX_FILENAME_BYTES}`,
+    );
     expect(run.listed).toEqual([]);
   },
   TEST_TIMEOUT_MS,

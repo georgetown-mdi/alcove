@@ -4,7 +4,10 @@
 import { expect, test, vi } from "vitest";
 
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
-import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
+import type {
+  FileTransportClient,
+  GetOptions,
+} from "../../src/connection/fileSyncConnection";
 import {
   UsageError,
   ConnectionClosedError,
@@ -301,14 +304,14 @@ test("synchronize() reports an over-cap peer hello as a terminal FrameSizeExceed
   // retry at the polling cadence.
   let peerHelloReads = 0;
   const originalGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === peerHelloPath) {
       peerHelloReads++;
       throw new FrameSizeExceededError(
         `inbound file ${path} exceeds the maximum inbound frame size`,
       );
     }
-    return originalGet(path);
+    return originalGet(path, options);
   };
 
   await expect(conn.synchronize()).rejects.toBeInstanceOf(
@@ -355,7 +358,7 @@ test("synchronize() reports a stalled peer-hello read as a terminal TransportOpe
   // prove the gate does not retry at the polling cadence.
   let peerHelloReads = 0;
   const originalGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === peerHelloPath) {
       peerHelloReads++;
       throw new TransportOperationStalledError(
@@ -364,7 +367,7 @@ test("synchronize() reports a stalled peer-hello read as a terminal TransportOpe
           `further`,
       );
     }
-    return originalGet(path);
+    return originalGet(path, options);
   };
 
   await expect(conn.synchronize()).rejects.toBeInstanceOf(
@@ -411,12 +414,12 @@ test("synchronize() propagates a base UsageError from a transport read as the te
   // the first pass instead of retrying at the polling cadence until the TTL.
   let peerHelloReads = 0;
   const originalGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === peerHelloPath) {
       peerHelloReads++;
       throw new UsageError(`usage fault reading ${path}`);
     }
-    return originalGet(path);
+    return originalGet(path, options);
   };
 
   const rejection = await conn.synchronize().then(
@@ -2128,12 +2131,12 @@ test("synchronize() joiner: mid-sync hello body retried, not reported malformed"
   // first two and succeed on the third.
   let getCalls = 0;
   const origGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === `${conn.path}/${peerHelloName}`) {
       getCalls++;
       if (getCalls <= 2) return Buffer.from("{") as Buffer<ArrayBufferLike>;
     }
-    return origGet(path);
+    return origGet(path, options);
   };
 
   files.set(`${conn.path}/${peerHelloName}`, LOCK_HELLO_BODY);
@@ -2219,12 +2222,12 @@ test("synchronize() lock-detection: mid-sync peer hello body retried, not malfor
 
   let getCalls = 0;
   const origGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === `${conn.path}/${peerHelloName}`) {
       getCalls++;
       if (getCalls <= 2) return Buffer.from("{") as Buffer<ArrayBufferLike>;
     }
-    return origGet(path);
+    return origGet(path, options);
   };
 
   const mtime = Date.now();
@@ -2294,12 +2297,12 @@ test("synchronize() lock starter: mid-sync joiner hello body retried, not malfor
 
   let getCalls = 0;
   const origGet = client.get;
-  client.get = async (path: string) => {
+  client.get = async (path: string, options: GetOptions) => {
     if (path === `${conn.path}/${peerHelloName}`) {
       getCalls++;
       if (getCalls <= 2) return Buffer.from("{") as Buffer<ArrayBufferLike>;
     }
-    return origGet(path);
+    return origGet(path, options);
   };
 
   // First list(): empty (initial preexisting check passes). Second+: only the
@@ -3068,9 +3071,9 @@ test("synchronize() --sweep-exchange-files: a non-resolving peer hello is retain
   // ...but its body never finishes syncing: every get() for it throws, so the
   // bounded gate exhausts its budget and the read is treated as retain-uncertain.
   const origGet = client.get.bind(client);
-  client.get = async (p: string) => {
+  client.get = async (p: string, options: GetOptions) => {
     if (p.endsWith(peerHelloName)) throw new Error("partial sync");
-    return origGet(p);
+    return origGet(p, options);
   };
 
   const deleted: string[] = [];
@@ -3109,10 +3112,10 @@ test("synchronize() --sweep-exchange-files: the retain inspection stops at the f
 
   const bodyReads: string[] = [];
   const origGet = client.get.bind(client);
-  client.get = async (p: string) => {
+  client.get = async (p: string, options: GetOptions) => {
     bodyReads.push(p);
     if (p.endsWith(firstHello)) throw new Error("partial sync");
-    return origGet(p);
+    return origGet(p, options);
   };
 
   const err = await conn.synchronize().then(
@@ -3142,9 +3145,9 @@ test("synchronize() --sweep-exchange-files --force-retain-sweep: an earlier unre
     files.set(`/test/${peerB}`, Buffer.from("{}")); // missing required flags
 
     const origGet = client.get.bind(client);
-    client.get = async (p: string) => {
+    client.get = async (p: string, options: GetOptions) => {
       if (p.endsWith(peerA)) throw new Error("partial sync");
-      return origGet(p);
+      return origGet(p, options);
     };
     const origDelete = client.delete.bind(client);
     client.delete = async (p: string) => {

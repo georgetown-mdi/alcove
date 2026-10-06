@@ -49,7 +49,7 @@ export interface CommandRunner {
 
 /**
  * Room allowed per line of an smbclient listing. Its longest entry line -- a
- * 255-character name, the attributes, a 20-digit size, and the date -- is
+ * 255-byte name, the attributes, a 20-digit size, and the date -- is
  * about 310 characters.
  */
 const LISTING_LINE_ALLOWANCE = 512;
