@@ -2,11 +2,9 @@ import fs from "node:fs";
 
 import { vi } from "vitest";
 
-import {
-  EVENT_STREAM_FD,
-  openEventStream,
-  type EventStreamEmitter,
-} from "../src/eventStream";
+import { EVENT_STREAM_FD } from "@alcove/cli-contract";
+
+import { openEventStream, type EventStreamEmitter } from "../src/eventStream";
 
 /**
  * Acquire the machine-interface emitter the way every caller does, through

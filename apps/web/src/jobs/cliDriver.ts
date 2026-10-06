@@ -27,11 +27,11 @@ import type { Readable } from "node:stream";
 
 /**
  * The CLI's fd-3 event vocabulary (schema v1), re-validated at the trust
- * boundary. Mirrors docs/spec/CLI_EVENTS.md and apps/cli/src/eventStream.ts. The
- * server does not import the CLI's own event types (the CLI is a separate
- * workspace it drives as a subprocess), so it validates each parsed line against
- * this shape independently -- a malformed or unknown line is fail-safe, never a
- * crash.
+ * boundary. Mirrors docs/spec/CLI_EVENTS.md and
+ * packages/cli-contract/src/events.ts. The server does not import the CLI's own
+ * event types (the CLI is a separate workspace it drives as a subprocess), so it
+ * validates each parsed line against this shape independently -- a malformed or
+ * unknown line is fail-safe, never a crash.
  */
 export type RelayEventType =
   "stages" | "stage" | "stageEnd" | "warning" | "metrics" | "result" | "error";
@@ -46,8 +46,8 @@ export interface RelayEvent {
 /**
  * The closed vocabulary of `source` values on the `warning` events the console
  * relay composes itself, as opposed to the CLI values it passes through from fd
- * 3 (`WARNING_SOURCES` in apps/cli/src/eventStream.ts, published in
- * docs/spec/CLI_EVENTS.md). Every value here is disjoint from that set, so a
+ * 3 (`WARNING_SOURCES` in packages/cli-contract/src/warningSources.ts,
+ * published in docs/spec/CLI_EVENTS.md). Every value here is disjoint from that set, so a
  * supervisor reading one job stream tells a relay degradation from a CLI notice
  * by the field alone.
  *
@@ -110,11 +110,12 @@ export const PERSISTENCE_LOSS_EXIT_CODE = 73;
 /**
  * The exit code the CLI reports for an internal fault in Alcove itself
  * (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The internal-fault code),
- * mirrored from `INTERNAL_FAULT_EXIT_CODE` in `apps/cli/src/util/exit.ts` for
- * the same reason as {@link PERSISTENCE_LOSS_EXIT_CODE} and held to it by the
- * same check, `scripts/mirrored-exit-codes.test.mjs`. A run exiting with it is
- * `failed`; what it changes is the terminal synthesized when the run emitted
- * none, which withholds the retry a run exiting 70 cannot use.
+ * mirrored from `INTERNAL_FAULT_EXIT_CODE` in
+ * `packages/cli-contract/src/exitCodes.ts` for the same reason as
+ * {@link PERSISTENCE_LOSS_EXIT_CODE} and held to it by the same check,
+ * `scripts/mirrored-exit-codes.test.mjs`. A run exiting with it is `failed`;
+ * what it changes is the terminal synthesized when the run emitted none, which
+ * withholds the retry a run exiting 70 cannot use.
  */
 export const INTERNAL_FAULT_EXIT_CODE = 70;
 

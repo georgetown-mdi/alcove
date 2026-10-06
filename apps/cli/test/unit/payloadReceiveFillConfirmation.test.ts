@@ -30,13 +30,14 @@ vi.mock("../../src/util/prompt", async () => {
   return { ...actual, promptConfirm: vi.fn() };
 });
 
+import type { WarningEvent } from "@alcove/cli-contract";
+
 import { persistFilledPayloadReceive, saveConfig } from "../../src/config";
 import {
   buildErrorEvent,
   buildPayloadReceiveTakenEvent,
   classifyTerminalError,
   type EventStreamEmitter,
-  type WarningEvent,
 } from "../../src/eventStream";
 import {
   payloadReceiveFillConfirmation,

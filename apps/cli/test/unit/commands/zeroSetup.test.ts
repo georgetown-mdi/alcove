@@ -28,6 +28,8 @@ import type {
   PreparedExchange,
   SFTPConnectionConfig,
 } from "@alcove/core";
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   builder,
   channelFromURL,
@@ -50,7 +52,6 @@ import {
   warnUndeclaredColumns,
 } from "../../../src/protocol";
 import type { RunProtocolOptions } from "../../../src/protocol";
-import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import {
   assertHostKeyTrustCanBeEstablished,

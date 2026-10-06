@@ -7,8 +7,9 @@ import YAML from "yaml";
 import { deriveRelayKey, relayRegistrarAuthorization } from "@alcove/core";
 import type { PreparedExchange } from "@alcove/core";
 
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import { handler } from "../../../src/commands/exchange";
-import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import { runProtocol, type RunProtocolOptions } from "../../../src/protocol";
 import { captureProcessExit } from "../../exitCapture";

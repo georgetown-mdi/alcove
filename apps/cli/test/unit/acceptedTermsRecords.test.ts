@@ -12,6 +12,8 @@ import {
 } from "@alcove/core";
 import type { ExchangeSpec, InvitationToken, LinkageTerms } from "@alcove/core";
 
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   deriveAcceptedInvitationTerms,
   diffKeptLinkageTerms,
@@ -23,10 +25,7 @@ import {
   persistTermsUpdate,
   saveConfig,
 } from "../../src/config";
-import {
-  PERSISTENCE_LOSS_EXIT_CODE,
-  type EventStreamEmitter,
-} from "../../src/eventStream";
+import { type EventStreamEmitter } from "../../src/eventStream";
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
 

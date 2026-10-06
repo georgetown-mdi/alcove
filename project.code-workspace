@@ -6,6 +6,7 @@
     { "path": "packages/core" },
     { "path": "packages/peerjs-broker" },
     { "path": "packages/testkit" },
+    { "path": "packages/cli-contract" },
   ],
   "settings": {
     "js/ts.tsdk.path": "node_modules/typescript/lib",

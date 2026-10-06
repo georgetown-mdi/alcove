@@ -7,7 +7,9 @@
 // whole is the parent's assertion.
 import fs from "node:fs";
 
-import { EVENT_STREAM_FD, openEventStream } from "../../../src/eventStream";
+import { EVENT_STREAM_FD } from "@alcove/cli-contract";
+
+import { openEventStream } from "../../../src/eventStream";
 
 const BLOCKED_WRITE_MS = 5;
 let shortWrites = 0;

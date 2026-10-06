@@ -40,6 +40,11 @@ import type {
 } from "@alcove/core";
 
 import {
+  RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
+  RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
+} from "@alcove/cli-contract";
+
+import {
   builder,
   deriveOurIdColumn,
   firstIssue,
@@ -58,11 +63,7 @@ import {
   SEND_SET_UNKNOWN_WARNING,
   toRetainedResult,
 } from "../../../src/commands/verifyReceipt";
-import {
-  RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
-  RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
-  worseReceiptVerdictExitCode,
-} from "../../../src/util/exit";
+import { worseReceiptVerdictExitCode } from "../../../src/util/exit";
 import { mainThreadHeapNeedBytes } from "../../../src/inputHeapCheck";
 import {
   argv,

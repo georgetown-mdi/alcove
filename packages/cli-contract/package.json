@@ -1,0 +1,26 @@
+{
+  "name": "@alcove/cli-contract",
+  "version": "0.1.0",
+  "description": "Alcove CLI machine interface: the fd-3 event schema, warning sources, exit codes and failure-cause field",
+  "license": "Apache-2.0",
+  "author": "Vincent Dorie <vdorie@gmail.com>",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit"
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@alcove/core": "file:../../packages/core"
+  }
+}

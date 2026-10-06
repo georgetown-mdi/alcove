@@ -24,7 +24,7 @@
 # in order and a failed step ends the action, so an install or a build that
 # failed never reaches its save.
 name: "Setup"
-description: "Set up Node, install dependencies, and build @alcove/core"
+description: "Set up Node, install dependencies, and build @alcove/core and @alcove/cli-contract"
 
 inputs:
   cache:
@@ -202,3 +202,7 @@ runs:
         # cache-version reason.
         path: packages/core/dist
         key: ${{ steps.cache-keys.outputs.core }}
+    # A tsc build of a few files, so it takes no cache of its own.
+    - name: Build the CLI contract
+      run: npm run build -w packages/cli-contract
+      shell: bash

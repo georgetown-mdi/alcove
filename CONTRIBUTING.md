@@ -22,6 +22,7 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `packages/core/` | Shared library: PSI primitive, exchange orchestration, file-sync transport, config schemas |
 | `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker: vendored server source plus a standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app's dev loop and tests run it beside the dev server |
+| `packages/cli-contract/` | The CLI's machine interface (`@alcove/cli-contract`): the fd-3 event schema, warning sources, named exit codes and failure-cause field the CLI emits, specified in [docs/spec/CLI_EVENTS.md](docs/spec/CLI_EVENTS.md). Built to `dist/` by `tsc`, after core and before the CLI |
 | `packages/testkit/` | Test-only material shared by more than one workspace's test tree (`@alcove/testkit`), consumed as raw TypeScript with no build step; what qualifies and why: [docs/TESTING.md](docs/TESTING.md#shared-test-material) and [docs/notes/cross-workspace-test-material.md](docs/notes/cross-workspace-test-material.md) |
 | `apps/cli/`      | Node.js CLI (`alcove`), built with Rollup, distributed as a Docker image                  |
 | `apps/web/`      | React web app, built for hosting as a static site (`dist/hosted/`) and for the console; mounts no broker, and its browser parties dial the one above |
@@ -50,6 +51,7 @@ git clone git@github.com:georgetown-mdi/alcove.git alcove
 cd alcove
 npm install
 npm run build -w packages/core   # core must be built before the apps and the broker
+npm run build -w packages/cli-contract   # then the CLI contract, before the CLI
 ```
 
 For work that spans `packages/core` and the web app, run the dev loop from the repository root:
@@ -67,6 +69,7 @@ No additional environment variables are required for local development or the te
 
 ```sh
 npm run build -w packages/core   # must build before the apps and the broker; rebuild after any core change
+npm run build -w packages/cli-contract   # after core, before the CLI; rebuild after any change to it
 npm run build -w apps/cli        # -> apps/cli/dist/; Docker image built separately (docs/RELEASES.md)
 VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web  # -> apps/web/dist/hosted/, a static site; names the broker (docs/DEPLOYMENT.md)
 ```
@@ -75,6 +78,7 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 
 ```sh
 npm test -w packages/core
+npm test -w packages/cli-contract
 npm run test:unit -w apps/cli
 npm run test:unit -w apps/web
 npx vitest run path/to/file.test.ts   # single file

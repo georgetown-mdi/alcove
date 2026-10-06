@@ -283,6 +283,18 @@ beforeAll(() => {
       },
     }),
   );
+  mkdirSync(join(seed, "packages", "cli-contract"), { recursive: true });
+  writeFileSync(
+    join(seed, "packages", "cli-contract", "package.json"),
+    JSON.stringify({
+      name: "@fixture/cli-contract",
+      version: "0.0.0",
+      private: true,
+      scripts: {
+        build: `node -e "const fs=require('node:fs');fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/built.txt','built')"`,
+      },
+    }),
+  );
   writeFileSync(join(seed, ".gitignore"), "node_modules\ndist\n");
   writeFileSync(join(seed, "README.md"), "fixture\n");
   npm(["install"], seed);
@@ -366,6 +378,9 @@ describe("the base a worktree starts on", () => {
     expect(head(tree)).toBe(staging);
     expect(
       existsSync(join(tree, "packages", "core", "dist", "built.txt")),
+    ).toBe(true);
+    expect(
+      existsSync(join(tree, "packages", "cli-contract", "dist", "built.txt")),
     ).toBe(true);
   }, 180_000);
 

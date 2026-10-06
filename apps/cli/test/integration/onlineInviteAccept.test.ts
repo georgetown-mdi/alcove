@@ -28,6 +28,8 @@ import type {
 } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
+import { AUTHENTICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   resolveInvitePositionals,
   validateInvite,
@@ -40,10 +42,7 @@ import { runOnlineBootstrap } from "../../src/onlineBootstrap";
 import type { CommonBootstrapOptions } from "../../src/optionDefinitions";
 import { loadKeyFile } from "../../src/keyFile";
 import { keysPathFor } from "../../src/recordFile";
-import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
-  exitCodeForError,
-} from "../../src/util/exit";
+import { exitCodeForError } from "../../src/util/exit";
 import { promptConfirm } from "../../src/util/prompt";
 import { localPath, remotePath, sftpServer } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";

@@ -714,8 +714,8 @@ jobs:
       #
       # One direction: a package in the image and not in the resolution fails.
       # The two trees are resolved from the same lockfile but seeded from
-      # different manifest sets -- the builder copies four workspace manifests,
-      # a checkout has all five -- so the runner's tree carries workspace links
+      # different manifest sets -- the builder copies five workspace manifests,
+      # a checkout has all six -- so the runner's tree carries workspace links
       # the image has no manifest for, and only the image's own extras are a
       # scope violation. The lister refuses an empty tree, and a runtime
       # dependency that failed to arrive fails the exchange smokes above.

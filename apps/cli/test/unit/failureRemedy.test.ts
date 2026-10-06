@@ -9,6 +9,7 @@ import {
 
 import {
   CLI_FAILURE_REMEDIES,
+  failureRemedy,
   markArrivalWait,
   remedyForCause,
   type ArrivalWait,
@@ -184,6 +185,13 @@ test("an error with no catalog cause gets no remedy line", () => {
   expect(renderFailureForOperator(new Error("something else"))).toBe(
     "something else",
   );
+});
+
+test("a tagged cause of a kind with no row gets no remedy rather than a throw", () => {
+  const unknown = { kind: "partner-went-away" } as unknown as FailureCause;
+  const err = markFailureCause(new Error("the partner went away"), unknown);
+  expect(failureRemedy(err)).toBeUndefined();
+  expect(renderFailureForOperator(err)).toBe("the partner went away");
 });
 
 test("an error without the partner-never-arrived cause is not tagged", () => {

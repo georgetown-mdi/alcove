@@ -61,6 +61,15 @@ test("a failure the catalog does not name has no cause field", () => {
   expect(event.recoveryHint).toBeUndefined();
 });
 
+test("a tagged cause of a kind with no row is dropped rather than thrown on", () => {
+  const unknown = { kind: "partner-went-away" } as unknown as FailureCause;
+  const err = markFailureCause(new Error("the partner went away"), unknown);
+  const event = buildErrorEvent(err, "run");
+  expect("cause" in event).toBe(false);
+  expect(event.recoveryHint).toBeUndefined();
+  expect(event.message).toBe("the partner went away");
+});
+
 test("a folder path is escaped and every fact off the kind is left behind", () => {
   const path = "/data/\u001b[2Jdrop\u202e";
   const tagged = Object.assign(

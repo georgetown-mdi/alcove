@@ -8,7 +8,8 @@ import {
   UsageError,
 } from "@alcove/core";
 
-import { PERSISTENCE_LOSS_EXIT_CODE } from "../src/eventStream";
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import { InputNotFoundError } from "../src/util/exit";
 
 /**

@@ -8,13 +8,16 @@ import type { ConnectionConfig } from "@alcove/core";
 import {
   EVENT_STREAM_FD,
   PERSISTENCE_LOSS_EXIT_CODE,
+  INTERNAL_FAULT_EXIT_CODE,
+} from "@alcove/cli-contract";
+
+import {
   buildErrorEvent,
   openEventStream,
   type EventStreamEmitter,
 } from "../../src/eventStream";
 import { assertHostKeyTrustCanBeEstablished } from "../../src/hostKeyTrust";
 import {
-  INTERNAL_FAULT_EXIT_CODE,
   exitCodeForError,
   exitOnUncaughtError,
   exitWithError,

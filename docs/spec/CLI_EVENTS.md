@@ -8,6 +8,10 @@ This document specifies the opt-in machine-readable event stream the `alcove` CL
 
 The stream is a machine interface for a supervising process (an orchestrator, a job runner, a test harness) that spawns `alcove` and reads structured progress and outcome events without parsing the human log. It is off by default; passing `--event-stream` turns it on for every exchange-running command (the zero-setup exchange, `alcove exchange`, and the online `alcove invite`/`accept`). It has no effect on an offline `invite`/`accept`, which runs no exchange, except an [acceptance that runs the exchange itself](../CLI.md#accepting-and-running-a-webrtc-exchange): given an `INPUT_FILE`, that offline-form accept emits the stream exactly as the online form does.
 
+## Where the contract is declared
+
+The stream's schema is declared in code once, in the `@alcove/cli-contract` workspace package (`packages/cli-contract/src/`): the event types and their fields, the [warning sources](#warning-sources), the CLI's named exit codes, and the [`cause`](#the-failure-cause) field of the `error` event. The CLI builds every line from those declarations. The package imports nothing from an application.
+
 ## File descriptor
 
 The event stream is written to **file descriptor 3**, a fixed constant, never configurable. `stdout` (fd 1) and `stderr` (fd 2) are untouched by `--event-stream`: the CSV result still goes to stdout (byte-stable), and every human log line still goes to stderr. A supervisor wires fd 3 to a pipe it reads (for example, in Node, `spawn(cmd, args, { stdio: ["inherit", "pipe", "pipe", "pipe"] })` exposes it as `child.stdio[3]`), so structured events arrive on a third channel that cannot corrupt the result or interleave with the log.
@@ -99,7 +103,7 @@ A partner payload whose columns differ from the partner's agreed `payload.send` 
 
 #### Warning sources
 
-The closed set of `source` values. `WARNING_SOURCES` in `apps/cli/src/eventStream.ts` is the same set in code, and `npm run check:warning-sources` fails when the two disagree. A new warning source claims its value in this table.
+The closed set of `source` values. `WARNING_SOURCES` in `packages/cli-contract/src/warningSources.ts` is the same set in code, and `npm run check:warning-sources` fails when the two disagree. A new warning source claims its value in this table.
 
 | `source` | The notice it names |
 | -------- | ------------------- |
@@ -246,7 +250,7 @@ The object holds a `kind`, one of the allowlist below (`FAILURE_CAUSE_KINDS`), a
 | `folder-missing` | `path` (string), `code` (one of `ENOENT`, `ENOTDIR`) | The shared folder a file-drop exchange names is not usable: nothing is at `path` (`ENOENT`), or something other than a folder is (`ENOTDIR`). |
 | `relay-registrar-unreachable` | `host` (non-empty string), `port` (integer 1-65535), `failure` (one of `no-connection`, `name-not-resolved`, `no-answer`), and the facts of that class: `code` (one of `ECONNREFUSED`, `EHOSTUNREACH`, `ENETUNREACH`, `ETIMEDOUT`, `UND_ERR_CONNECT_TIMEOUT`) for `no-connection`; `code` (one of `ENOTFOUND`, `EAI_AGAIN`) for `name-not-resolved`; for `no-answer`, either `code` (`ECONNRESET`) or `timedOutMs` (non-negative integer), never both | The relay registrar at `host` and `port` did not answer: no connection was made, its host name did not resolve, or the connection was reset or the request timed out before it answered. |
 
-The field is read off the tag core's `markFailureCause` sets, walked over the `cause` chain as the remedy the `message` ends with is, and the event's `message` states the same cause and the CLI's remedy for it, with the [self-explaining marker](#the-self-explaining-marker). The validator refuses a `no-answer` cause holding both `code` and `timedOutMs`, but drops a fact belonging to another class rather than refusing the cause, as it rebuilds every kind from its own facts. A kind added to the allowlist is additive under `v: 1`: a consumer drops a `cause` whose `kind` it does not recognize, or whose facts are not of the types above, and reads the `message` as it would on an event with no `cause`. The console relay does exactly that ([SERVER_JOB_API.md](SERVER_JOB_API.md#relay-validation-at-the-trust-boundary)).
+The field is read off the tag core's `markFailureCause` sets, walked over the `cause` chain as the remedy the `message` ends with is, and the event's `message` states the same cause and the CLI's remedy for it, with the [self-explaining marker](#the-self-explaining-marker). The CLI builds the field from one row per kind (`FAILURE_CAUSE_STREAM_FIELDS`, `packages/cli-contract/src/failureCauses.ts`), whose keys are the kinds the stream states; a tagged cause whose kind has no row is left off the event, and the `message` then holds no remedy for it. The validator refuses a `no-answer` cause holding both `code` and `timedOutMs`, but drops a fact belonging to another class rather than refusing the cause, as it rebuilds every kind from its own facts. A kind added to the allowlist is additive under `v: 1`: a consumer drops a `cause` whose `kind` it does not recognize, or whose facts are not of the types above, and reads the `message` as it would on an event with no `cause`. The console relay does exactly that ([SERVER_JOB_API.md](SERVER_JOB_API.md#relay-validation-at-the-trust-boundary)).
 
 Two limits of the causes the CLI tags: a read-only file at the folder path is not a `folder-missing` cause -- its access failure is retried as a transport failure until the connection times out, and exits 69 rather than 64 -- and the remedy for a `partner-never-arrived` cause on an error object that cannot take a property (a frozen one) names `--peer-timeout` even on an online invitation, whose wait `--accept-timeout` sets.
 

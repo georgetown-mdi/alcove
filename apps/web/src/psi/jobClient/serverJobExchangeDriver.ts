@@ -412,7 +412,7 @@ export class RelayedSelfExplainingError extends RelayedTerminalError {
  * The exit code the CLI reports for a run the partner or the agreed terms
  * refused (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The
  * partner-refusal code), mirrored from `PARTNER_REFUSED_EXIT_CODE` in
- * `apps/cli/src/util/exit.ts` and held to it by
+ * `packages/cli-contract/src/exitCodes.ts` and held to it by
  * `scripts/mirrored-exit-codes.test.mjs`.
  */
 export const PARTNER_REFUSED_EXIT_CODE = 76;

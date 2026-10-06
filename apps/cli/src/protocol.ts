@@ -61,6 +61,12 @@ import type {
   WebRTCConnectionConfig,
 } from "@alcove/core";
 
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  PERSISTENCE_LOSS_EXIT_CODE,
+  type ErrorPhase,
+} from "@alcove/cli-contract";
+
 import { LocalFSClient } from "./connection/localFSClient";
 import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
 import { assertFirstRoundFits } from "./firstRoundFits";
@@ -125,21 +131,15 @@ import {
   type TeardownOutcome,
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
-import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
-  exitCodeForError,
-  fixedNextStep,
-} from "./util/exit";
+import { exitCodeForError, fixedNextStep } from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
 import { holdsRecoveryHintTag, withRecoveryHintTag } from "./util/recoveryHint";
 import { logRuntimeEnv } from "./util/runtimeEnv";
 import {
-  PERSISTENCE_LOSS_EXIT_CODE,
   openEventStream,
   reportLogFileLoss,
   reportPersistenceLoss,
-  type ErrorPhase,
   type EventStreamEmitter,
 } from "./eventStream";
 

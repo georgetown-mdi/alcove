@@ -634,7 +634,7 @@ mode under `/app/node_modules` decides what is measured or refuses the step.
 The comparison runs one way: a package in the image and not in the resolution
 fails, and one in the resolution and not in the image does not. The two trees
 resolve from the same lockfile but are seeded from different manifest sets --
-the builder copies four workspace manifests, a checkout has all five -- so the
+the builder copies five workspace manifests, a checkout has all six -- so the
 runner's tree carries a workspace link the image has no manifest for. What the
 opposite direction would catch is covered by the exchange smokes, which do not
 complete without the runtime dependencies, and by the symlink containment

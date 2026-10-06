@@ -3,6 +3,8 @@ import type { Argv, Arguments } from "yargs";
 import { ConnectionError, UsageError } from "@alcove/core";
 import type { RelayRegistrar } from "@alcove/core";
 
+import { AUTHENTICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
+
 import { clearRelayRegistrationPending } from "../keyFile";
 import {
   addLoggingOptions,
@@ -21,11 +23,7 @@ import {
   type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
 } from "../relayRegistrar";
-import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
-  exitCodeForError,
-  exitWithError,
-} from "../util/exit";
+import { exitCodeForError, exitWithError } from "../util/exit";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptHiddenText } from "../util/prompt";

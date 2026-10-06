@@ -22,6 +22,8 @@ import type {
   PreparedExchange,
 } from "@alcove/core";
 
+import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   applyConnectionOverrides,
   announceRetainMode,
@@ -75,11 +77,7 @@ import {
 } from "../termsChange";
 import { parseSensitiveYaml } from "../sensitiveFile";
 import { resolveAtSignRefs, resolveExchangeSpecRefs } from "../util/atSignRefs";
-import {
-  exitCodeForError,
-  exitWithError,
-  INTERNAL_FAULT_EXIT_CODE,
-} from "../util/exit";
+import { exitCodeForError, exitWithError } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
 import { csvDelimiterFlag, parseOrExit, singleValue } from "../util/flags";
 import { configureLogging } from "../util/logging";

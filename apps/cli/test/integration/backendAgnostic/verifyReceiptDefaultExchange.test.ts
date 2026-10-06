@@ -7,6 +7,8 @@ import yargs from "yargs";
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
+import { RECEIPT_VERIFICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   builder as exchangeBuilder,
   handler as exchangeHandler,
@@ -23,7 +25,6 @@ import {
   DEFAULT_RECORD_BASENAME,
 } from "../../../src/recordFile";
 import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
-import { RECEIPT_VERIFICATION_FAILED_EXIT_CODE } from "../../../src/util/exit";
 
 // A default (unsigned) exchange verified the way its operator would: the
 // record, the input, and the result, with no other file. Two runs of the

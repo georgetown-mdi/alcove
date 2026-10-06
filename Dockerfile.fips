@@ -92,6 +92,7 @@ WORKDIR /build
 COPY .npmrc package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
 COPY packages/peerjs-broker/package.json packages/peerjs-broker/
+COPY packages/cli-contract/package.json packages/cli-contract/
 COPY apps/cli/package.json apps/cli/
 COPY apps/web/package.json apps/web/
 COPY lib lib
@@ -102,16 +103,20 @@ COPY lib lib
 # and in CI; what that does and does not reach is in
 # docs/spec/DEPENDENCY_PINS.md.
 RUN --mount=type=cache,target=/root/.npm \
-  npm ci -w packages/core -w packages/peerjs-broker -w apps/cli -w apps/web
+  npm ci -w packages/core -w packages/peerjs-broker -w packages/cli-contract -w apps/cli -w apps/web
 
 COPY tsconfig.base.json tsconfig.json ./
 COPY packages/core/*.ts packages/core/tsconfig.json packages/core/tsconfig.rollup.json packages/core/
 COPY packages/core/src packages/core/src/
+COPY packages/cli-contract/tsconfig.json packages/cli-contract/tsconfig.build.json packages/cli-contract/
+COPY packages/cli-contract/src packages/cli-contract/src/
 COPY apps/cli/tsconfig.json apps/cli/tsconfig.rollup.json apps/cli/*.ts apps/cli/
 COPY apps/cli/src apps/cli/src/
 # @alcove/core must be built before the web build: apps/web consumes it from its
 # built dist/ (a file: workspace dependency), so build core and the CLI first.
-RUN npm run build -w packages/core -w apps/cli
+RUN npm run build -w packages/core \
+  && npm run build -w packages/cli-contract \
+  && npm run build -w apps/cli
 
 COPY packages/peerjs-broker/tsconfig.json packages/peerjs-broker/
 COPY packages/peerjs-broker/src packages/peerjs-broker/src/
@@ -248,14 +253,17 @@ RUN rm -rf \
 COPY openssl-fips-only.cnf /etc/alcove/fips-only.cnf
 
 WORKDIR /app
-# npm links the workspaces its install names, so the tree copied here carries
-# links to packages/core and apps/cli alone and both link targets are copied
-# below. A link to a workspace this image does not ship would dangle, and
+# npm links the workspaces its install names and the workspaces they depend
+# on, so the tree copied here carries links to packages/core, apps/cli and
+# packages/cli-contract alone, and all three link targets are copied below.
+# A link to a workspace this image does not ship would dangle, and
 # image_smoke.yaml's symlink containment measurement refuses a dangling link
 # under /app.
 COPY --from=builder /build/node_modules node_modules
 COPY --from=builder /build/packages/core/package.json packages/core/
 COPY --from=builder /build/packages/core/dist packages/core/dist/
+COPY --from=builder /build/packages/cli-contract/package.json packages/cli-contract/
+COPY --from=builder /build/packages/cli-contract/dist packages/cli-contract/dist/
 COPY --from=builder /build/apps/cli/package.json apps/cli/
 COPY --from=builder /build/apps/cli/dist/index.js apps/cli/dist/index.js
 # The PSI crypto worker entry must sit beside the CLI entry: psiWorkerHost.ts

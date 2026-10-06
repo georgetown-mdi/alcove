@@ -9,6 +9,8 @@ import yargs from "yargs";
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   builder as exchangeBuilder,
   handler as exchangeHandler,
@@ -18,7 +20,6 @@ import {
   handler as zeroSetupHandler,
 } from "../../../src/commands/zeroSetup";
 import { saveConfig } from "../../../src/config";
-import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { saveKeyFile } from "../../../src/keyFile";
 import {
   denyDirectoryWrites,

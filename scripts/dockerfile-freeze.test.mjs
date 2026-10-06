@@ -572,11 +572,15 @@ for (const {
       expect(copy.dests).toEqual(["/app/node_modules"]);
     });
 
-    it("copies both workspace link targets so the node_modules links resolve", () => {
-      // node_modules/@alcove/core -> ../../packages/core and
+    it("copies every workspace link target so the node_modules links resolve", () => {
+      // node_modules/@alcove/core -> ../../packages/core,
+      // node_modules/@alcove/cli-contract -> ../../packages/cli-contract and
       // node_modules/alcove -> ../apps/cli must not dangle.
       expect(image.allRuntimeDests).toContain(
         "/app/packages/core/package.json",
+      );
+      expect(image.allRuntimeDests).toContain(
+        "/app/packages/cli-contract/package.json",
       );
       expect(image.allRuntimeDests).toContain("/app/apps/cli/package.json");
     });
