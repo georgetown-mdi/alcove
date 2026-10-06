@@ -54,8 +54,6 @@ const PICKED_IDENTITY_NAME = "alcove-signing-identity.json";
 
 const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 const managers: Array<JobManager> = [];
-/** Directories chmod-ed read-only, restored before removal so cleanup works. */
-const lockedDirs: Array<string> = [];
 
 beforeEach(() => {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
@@ -64,12 +62,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  for (const dir of lockedDirs.splice(0))
-    try {
-      fs.chmodSync(dir, 0o700);
-    } catch {
-      // Already gone: the removal below is the only thing that needed the mode.
-    }
   for (const manager of managers.splice(0)) manager.shutdown();
   removeScratchDirs();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
@@ -83,11 +75,10 @@ function writeIdentity(filePath: string): void {
   fs.writeFileSync(filePath, "{}\n", "utf8");
 }
 
-/** Make a directory read-only (owner may still read and traverse), registered so
- * the cleanup can restore it. */
+/** Make a scratch directory read-only (owner may still read and traverse); the
+ * shared cleanup restores the mode before removal. */
 function makeReadOnly(dir: string): void {
   fs.chmodSync(dir, 0o500);
-  lockedDirs.push(dir);
 }
 
 /** Whether an already-read-only directory refuses this process a write. Root

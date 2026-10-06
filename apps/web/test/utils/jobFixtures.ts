@@ -264,7 +264,11 @@ export function trackScratchDirs(): {
     cleanup(): void {
       for (const dir of dirs.splice(0)) {
         // A test may leave its directory read-only, which would block removal.
-        if (fs.existsSync(dir)) fs.chmodSync(dir, 0o700);
+        try {
+          fs.chmodSync(dir, 0o700);
+        } catch {
+          // Best effort: the directory may be gone, and the removal below is forced.
+        }
         fs.rmSync(dir, { recursive: true, force: true });
       }
     },
@@ -306,11 +310,17 @@ export async function awaitJobSucceeded(
   id: string,
   timeoutMs: number,
 ): Promise<void> {
-  await waitFor(() => manager.getJob(id)?.terminal !== null, {
-    timeoutMs,
-    intervalMs: 25,
-    message: "the console run reached no terminal event",
-  });
+  await waitFor(
+    () => {
+      const terminal = manager.getJob(id)?.terminal;
+      return terminal !== undefined && terminal !== null;
+    },
+    {
+      timeoutMs,
+      intervalMs: 25,
+      message: "the console run reached no terminal event",
+    },
+  );
   const record = manager.getJob(id);
   if (record?.terminal == null) throw new Error("the job left the slot");
   if (record.terminal.outcome !== "succeeded")
