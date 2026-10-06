@@ -422,13 +422,13 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 
 ### Why each rule
 
-- Rule 2 refuses a regular-expression metacharacter in the path segment, so a pattern loosened by unescaping a `.` fails rather than being treated as a rename.
-- Rule 4 exists because a second image's push between the first one's push and its signing leaves the first published under `latest` and unsigned for as long as that build runs,
+- The identity's workflow-path segment may hold no regular-expression metacharacter, so a pattern loosened by unescaping a `.` fails rather than being treated as a rename.
+- Every image push is followed by its own sign, verify and attest steps before the next image build, because a second image's push between the first one's push and its signing leaves the first published under `latest` and unsigned for as long as that build runs,
   and permanently if the build fails.
-- Rule 5 exists because rule 1 reads the whole workflow file at once and rule 4 credits a step by the digest it names,
-  so one step's copy of the certificate arguments would satisfy rule 1 for every other step.
+- Each verify step carries both certificate arguments in its own run text, because the one-identity comparison reads the whole workflow file at once and the step-order rule credits a step by the digest it names,
+  so one step's copy of the certificate arguments would satisfy the comparison for every other step.
   A verify step stripped of the pair, or pointed at another identity, would pass both while running a command no partner runs.
-- Rule 6 requires at least one `--signer-workflow`, since without it the attestation command's `--repo` is satisfied by an attestation any workflow in this repository produced.
+- The document publishes at least one `--signer-workflow`, since without it the attestation command's `--repo` is satisfied by an attestation any workflow in this repository produced.
 
 ### What it does not cover
 
@@ -438,7 +438,7 @@ The decision to sign keylessly, and the probe runs behind the issuer and identit
 - The `<owner>/<repo>` segment of either command, which nothing in the tree derives.
   A fork publishing the document unchanged passes, and the two commands' copies of that segment are not compared with each other.
 - GitHub's filter-pattern semantics.
-  Rule 3 compares text under a stated correspondence rather than modelling them:
+  The tag-pattern comparison compares text under a stated correspondence rather than modelling them:
   over the accepted character class a filter and a regular expression agree character for character, except that `.` is literal in a filter.
   Any other character, `*` and `?` above all, fails rather than being translated on a guess.
 - Whether any of it verifies.
@@ -472,10 +472,7 @@ and the change that should have taken the version decision ships past it.
 ### What it does not cover
 
 - A wire-format delta no vectors file pins.
-  The pinned files cover the PSI engine's bytes, the resolved association mapping, the terms-exchange envelope, single-pass message 2's frame layout,
-  and the parts a PSI set and a matched-record list are sent in.
-  The cascade's mapped-element list bodies, its per-round association-table frames, the count-only reply ([PROTOCOL.md](../spec/PROTOCOL.md)),
-  and the save-bootstrap secret frame ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md)) are pinned by no file, so a delta confined to one of them moves no digest.
+  Several frames [Matching Algorithms](../spec/PROTOCOL.md#matching-algorithms) defines are pinned by no file, so a delta confined to one of them moves no digest.
 - A frame shape the pinned scenarios do not drive.
   The terms-envelope vectors capture what `exchangeTerms` and `sendAbort` emit on the scenarios they run.
   The vectors suite closes that gap on its side: it reads the field set each slot's schema admits from the source and fails until the pinned frames cover it,
@@ -516,49 +513,11 @@ since neither writes the name in a shape the scan reads.
 
 ## Single-pass measurement harness
 
-[`scripts/single-pass-bench.mjs`](../../scripts/single-pass-bench.mjs) is a bench rather than a check;
-the figures it produced, and the ceiling derived from them, are in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
+[`scripts/single-pass-bench.mjs`](../../scripts/single-pass-bench.mjs) is a bench rather than a check:
+it measures the receiver memory and masking compute that bound a single-pass exchange,
+and its figures, with the ceiling derived from them, are in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
 
-### What it measures
-
-The single-pass dataset ceiling is bound by two costs, not by the wire size:
-
-- ECDH masking compute: one elliptic-curve scalar multiplication per distinct linkage-key value, single-threaded through `@openmined/psi.js`.
-  Across the exchange the curve work is `c_enc*(D_send + D_recv)` for each party's first encryption plus `c_re*(2*D_recv)` for the sender's re-encryption and the receiver's match,
-  where `D` is the count of distinct values a party pools across all keys.
-- The receiver's peak resident memory.
-  It keeps the reply, decodes it, builds its own and the sender's distinct-value index tables, and runs the cascade replay, all resident at once,
-  so the receiver is the heavier side.
-
-### Three memory quantities
-
-They differ by more than an order of magnitude:
-
-- the lifetime peak RSS, which includes transient allocation churn and is the practical ceiling;
-- the live V8 heap after a forced GC, the retained JS;
-- the WebAssembly linear heap.
-
-The WASM heap is the emmalloc linear memory the OpenMined module exports, grow-only and never returned to the OS.
-`process.memoryUsage().arrayBuffers` does not include it, since it counts only the V8 wire-buffer copies,
-so the harness wraps `WebAssembly.instantiate` before the module instantiates and reads the exported memory's byte length.
-
-### Mode choices
-
-- `rates` establishes that masking is linear in the distinct-value count, so the spec's table can extrapolate from its slopes.
-- `sweep` runs each side in its own forked process so `process.resourceUsage().maxRSS` is isolated per side,
-  with the receiver's decode, index-table build and cascade replay exercised as in a live exchange.
-  `maxRSS` is a whole-process lifetime high-water mark, so it includes churn across all phases, and most of the per-value slope is collectable garbage.
-  Under `--gc` the children run `@alcove/core`'s `relieveTransientMemory` at the single-pass phase boundaries, so the receiver RSS reported is the shipped relief rather than a bench-only collection.
-- `both-sided` is the quadratic case.
-  At the default group size the resolved table reaches `N * N` pairs, exactly the pair-count bound the sender applies to the returned table (own rows times the partner's declared record count).
-  The later keys keep near-unique values, so `D` stays `keys * rows` and the masking workload matches the sweep's;
-  the receiver's post-replay time is where the closure check over the table's blocks lands.
-- The masking ops need one PSI client key shared between the receiver's request and its match step,
-  so the two sides cannot run as independent processes each generating its own key, and the sweep relays a live exchange instead of building a reply offline.
-
-### Datasets
-
-Every cell is a distinct value within a party, so `D = keys * rows`, the worst case the ceiling must cover.
-The first `overlap * rows` rows are shared across parties so the match path runs and the result can be checked.
-Both parties are sized equally, the symmetric case the role rule targets:
-the sender's row count drives the index table, and the larger distinct-value counts drive everything else.
+Across both parties the curve work is `c_enc*(D_send + D_recv) + c_re*(2*D_recv)`,
+each party's first encryption plus the sender's re-encryption and the receiver's match, where `D` is the count of distinct values a party pools across all keys.
+The masking steps share one PSI client key between the receiver's request and its match,
+so the sweep relays a live exchange rather than building a reply offline in an independent process.
