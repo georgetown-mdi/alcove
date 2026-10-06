@@ -314,6 +314,12 @@ describe("assertPayloadMatchesAgreedSend", () => {
     ).toThrow(ConnectionError);
   });
 
+  test("refuses a repeated agreed name beside every agreed one", () => {
+    expect(() =>
+      assertPayloadMatchesAgreedSend(received(["a", "a", "b"]), agreed, 1),
+    ).toThrow(ConnectionError);
+  });
+
   test("refuses any column against an absent send set", () => {
     expect(() =>
       assertPayloadMatchesAgreedSend(received(["a"]), undefined, 1),

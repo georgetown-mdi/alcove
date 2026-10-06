@@ -158,16 +158,25 @@ describe("termsDeltaSections against adopting the partner's terms", () => {
     expectLabelsMatchAdoption(local, partner);
   });
 
-  test("a partner stating a send list and no receive list shows the send list adopting drops", () => {
+  test("a partner stating a send list and no receive list shows no send section", () => {
     const local = withPayload({
       send: columns("a", "b"),
       receive: columns("x"),
     });
     const partner = withPayload({ send: columns("x") });
-    expect(sectionsFor(local, partner)).toEqual([
-      { kind: "columns", label: NO_LONGER_SEND, columns: ["a", "b"] },
-    ]);
+    expect(sectionsFor(local, partner)).toEqual([]);
     expectLabelsMatchAdoption(local, partner);
+  });
+
+  test("adopting a partner stating no receive list keeps this party's send list", () => {
+    const local = withPayload({
+      send: columns("a", "b"),
+      receive: columns("x"),
+    });
+    const partner = withPayload({ send: columns("x") });
+    expect(
+      namesOf(termsAdoptingPartnerTerms(local, partner)?.payload?.send),
+    ).toEqual(["a", "b"]);
   });
 
   test("a partner stating no receive list against no send list shows no send section", () => {

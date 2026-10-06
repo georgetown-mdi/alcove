@@ -402,10 +402,8 @@ export interface PartnerDeduplicateChange {
  * partner's `deduplicate` against the value this party holds it to, and
  * `otherTerms` a diagnostic for each other term the two copies disagree on. A
  * direction is undefined where the two agree or the receiving party states no
- * list, except that `sent` names every column this party's send list holds
- * where the partner states no receive list, since adopting the partner's
- * terms leaves that list out; `partnerDeduplicate` is undefined where the two
- * agree or this party holds the partner to no value.
+ * list; `partnerDeduplicate` is undefined where the two agree or this party
+ * holds the partner to no value.
  */
 export interface TermsDelta {
   received: PayloadColumnsChange | undefined;
@@ -800,14 +798,9 @@ export function compareTerms(
   const namesOf = (columns: ReadonlyArray<PayloadColumn>): string[] =>
     columns.map((column) => column.name);
 
-  // Adopting the partner's terms drops this party's send list when the
-  // partner states no receive list, so those columns are shown as sent.
-  const localSendNames = namesOf(local.payload?.send ?? []);
   const sent =
     partner.payload?.receive === undefined
-      ? localSendNames.length === 0
-        ? undefined
-        : { change: columnsChange([], localSendNames), message: undefined }
+      ? undefined
       : checkPayloadDirection(
           namesOf(partner.payload.receive),
           local.payload?.send ?? [],
@@ -869,7 +862,9 @@ export function compareTerms(
  * This party's terms with the partner's adopted, as `alcove apply` adopts
  * them from a terms update: every agreed field is the partner's, `output` and
  * `payload` are mirrored, and `identity` and `deduplicate` stay this party's
- * own. Undefined where the result is not a valid terms document.
+ * own. A partner stating no receive list leaves this party's send list as it
+ * was, except under count-only terms, which hold no payload. Undefined where
+ * the result is not a valid terms document.
  */
 export function termsAdoptingPartnerTerms(
   local: LinkageTerms,
@@ -893,10 +888,16 @@ export function termsAdoptingPartnerTerms(
   // receive list here would accept whatever columns it sends.
   const partnerSend: PayloadColumn[] | undefined =
     partnerPayload?.send ?? (partner.output.shareWithPartner ? [] : undefined);
-  if (partnerPayload !== undefined || partnerSend !== undefined) {
+  const send =
+    partnerPayload?.receive ??
+    (adopted.algorithm === "psi-c" ? undefined : local.payload?.send);
+  if (
+    partnerPayload !== undefined ||
+    send !== undefined ||
+    partnerSend !== undefined
+  ) {
     const mirrored: Payload = {};
-    if (partnerPayload?.receive !== undefined)
-      mirrored.send = partnerPayload.receive;
+    if (send !== undefined) mirrored.send = send;
     if (partnerSend !== undefined) mirrored.receive = partnerSend;
     adopted.payload = mirrored;
   }

@@ -593,13 +593,14 @@ export function assertNoPayloadReceived(received: PartnerPayload): void {
 /**
  * Refuse a received payload whose column set differs from the partner's
  * agreed `payload.send`, for a party that receives payload: a column the
- * terms do not list, or a listed column left out. Compared as a set, by
- * exact name. A run in which no partner row matched receives no payload
- * frame data, so an empty received set passes there.
+ * terms do not list, or a listed column left out. Compared as a sorted list
+ * by exact name, so a repeated name is refused even beside every agreed one.
+ * A run in which no partner row matched receives no payload frame data, so
+ * an empty received set passes there.
  *
- * @throws {ConnectionError} of kind `"protocol"` when the sets differ. The
- *   message names no column and no value: a name the terms do not list is
- *   one this party never agreed to see.
+ * @throws {ConnectionError} of kind `"protocol"` when the two differ. The
+ *   message names no column and no value; the terminated record still
+ *   commits the payload as received, column names included.
  */
 export function assertPayloadMatchesAgreedSend(
   received: PartnerPayload,
