@@ -8,6 +8,7 @@ import { ProcessState } from "@alcove/core";
 
 import {
   JobApiRequestError,
+  MAX_EVENT_STREAM_FRAME_CHARS,
   RelayedSelfExplainingError,
   RelayedTerminalError,
   createFetchJobApiClient,
@@ -18,6 +19,7 @@ import {
   fetchSlotOccupancy,
   unknownFrameNotice,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import { FD3_LINE_CAP } from "@jobs/cliDriver";
 import { buildRunOutputs } from "@psi/runOutputs";
 
 import {
@@ -1340,6 +1342,116 @@ describe("createFetchJobApiClient over an injected fetch", () => {
       "metrics",
       "result",
     ]);
+  });
+
+  /** A Response whose body streams `chunks` one read at a time. */
+  function chunkedSseResponse(chunks: Array<string>): Response {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }
+
+  /** An event frame of exactly `length` characters, its blank line excluded. */
+  function frameOfLength(id: number, length: number): string {
+    const start = `id: ${id}\ndata: {"v":1,"type":"warning","message":"`;
+    const end = '"}';
+    return start + "m".repeat(length - start.length - end.length) + end;
+  }
+
+  async function eventsFrom(chunks: Array<string>): Promise<Array<RelayEvent>> {
+    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
+      void input;
+      return Promise.resolve(chunkedSseResponse(chunks));
+    }) as typeof fetch;
+    const client = createFetchJobApiClient(fetchImpl);
+    const received: Array<RelayEvent> = [];
+    for await (const event of client.openEventStream(
+      "job-7",
+      new AbortController().signal,
+    ))
+      received.push(event);
+    return received;
+  }
+
+  const RESULT_FRAME =
+    'id: 3\ndata: {"v":1,"type":"result","resultWritten":true}\n\n';
+
+  test("the frame cap sits above the longest event line the console relays", () => {
+    expect(MAX_EVENT_STREAM_FRAME_CHARS).toBe(4_194_304);
+    expect(MAX_EVENT_STREAM_FRAME_CHARS).toBe(4 * FD3_LINE_CAP);
+  });
+
+  test("a frame at the cap is read, and one past it is skipped with a warning", async () => {
+    const atCap = frameOfLength(1, MAX_EVENT_STREAM_FRAME_CHARS);
+    const pastCap = frameOfLength(2, MAX_EVENT_STREAM_FRAME_CHARS + 1);
+    const received = await eventsFrom([
+      atCap + "\n\n",
+      pastCap + "\n\n",
+      RESULT_FRAME,
+    ]);
+    expect(received.map((event) => event.type)).toEqual([
+      "warning",
+      "warning",
+      "result",
+    ]);
+    expect(received[0].message).toMatch(/^m+$/);
+    expect(received[1].message).toMatch(
+      /^The console sent an event longer than the 4194304 characters this page reads, so it was skipped\./,
+    );
+  });
+
+  test("an unterminated frame past the cap is dropped as it arrives, up to its blank line", async () => {
+    // Streamed one piece per read with no blank line until well past the cap,
+    // so the warning must arrive before the reader has read the frame's end.
+    const piece = "m".repeat(1024 * 1024);
+    const chunks = [
+      'id: 2\ndata: {"v":1,"type":"warning","message":"',
+      ...Array.from({ length: 6 }, () => piece),
+      '"}\n',
+      "\n" + RESULT_FRAME,
+    ];
+    const encoder = new TextEncoder();
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          if (pulled === chunks.length) controller.close();
+          else controller.enqueue(encoder.encode(chunks[pulled++]));
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
+      void input;
+      return Promise.resolve(
+        new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        }),
+      );
+    }) as typeof fetch;
+    const received: Array<{ event: RelayEvent; pulled: number }> = [];
+    for await (const event of createFetchJobApiClient(
+      fetchImpl,
+    ).openEventStream("job-7", new AbortController().signal))
+      received.push({ event, pulled });
+
+    expect(received.map(({ event }) => event.type)).toEqual([
+      "warning",
+      "result",
+    ]);
+    expect(received[0].event.message).toMatch(
+      /^The console sent an event longer/,
+    );
+    expect(received[0].pulled).toBeLessThan(chunks.length - 2);
   });
 
   test("a frame outside the schema arrives as a warning naming it, and the stream continues", async () => {

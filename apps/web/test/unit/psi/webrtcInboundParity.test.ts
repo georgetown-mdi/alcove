@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import {
   WEBRTC_CHUNK_ENVELOPE_FIXTURES,
   WEBRTC_INBOUND_FRAME_FIXTURES,
+  WEBRTC_MALFORMED_DATAGRAM_FIXTURES,
   comparableVerdict,
   packValue,
   preScanVerdict,
@@ -259,5 +260,26 @@ describe("the web PeerJS wrap against the shared chunk envelopes", () => {
     expect(
       new Set(WEBRTC_CHUNK_ENVELOPE_FIXTURES.map(({ refused }) => refused)),
     ).toEqual(new Set([true, false]));
+  });
+});
+
+describe("the web PeerJS wrap against the shared malformed datagrams", () => {
+  test("refuses each one in the words the CLI uses, delivering nothing", () => {
+    for (const fixture of WEBRTC_MALFORMED_DATAGRAM_FIXTURES) {
+      const conn = new FakePeerJsConnection();
+      const failures: Array<ConnectionError> = [];
+      boundChunkReassembly(conn as unknown as DataConnection, (error) =>
+        failures.push(error),
+      );
+      conn._handleDataMessage({
+        data: fixture.datagram as unknown as Uint8Array,
+      });
+
+      expect(
+        failures.map(({ kind, message }) => ({ kind, message })),
+        fixture.label,
+      ).toEqual([{ kind: "protocol", message: fixture.message }]);
+      expect(conn.delivered, fixture.label).toEqual([]);
+    }
   });
 });

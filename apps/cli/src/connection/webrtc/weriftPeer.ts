@@ -107,6 +107,16 @@ export const MAX_CONNECTION_ID_LENGTH = 64;
 export const MAX_PENDING_REMOTE_CANDIDATES = 128;
 
 /**
+ * How many remote candidates one attempt hands to the ICE agent, whether held
+ * first or applied on arrival. Each applied candidate adds the pairs ICE checks
+ * against every local candidate, so a peer -- or a hostile broker registered
+ * under the derived id -- streaming CANDIDATE frames after its description
+ * would otherwise grow that set for the whole attempt. The same ceiling as
+ * {@link MAX_PENDING_REMOTE_CANDIDATES}; past it a candidate is dropped.
+ */
+export const MAX_APPLIED_REMOTE_CANDIDATES = 128;
+
+/**
  * How long the acceptor waits after sending its offer for an answer or the
  * broker's `EXPIRE` before sending it again anyway. The vendored broker answers
  * a frame it holds for an absent peer with `EXPIRE` within about 6 s, and one
@@ -1223,6 +1233,8 @@ class Negotiation {
   private readonly sentLocalCandidates: Array<Record<string, unknown>> = [];
   /** Remote candidates that arrived before a remote description could apply them. */
   private readonly pendingRemoteCandidates: Array<Record<string, unknown>> = [];
+  /** Remote candidates handed to the ICE agent; see {@link MAX_APPLIED_REMOTE_CANDIDATES}. */
+  private appliedRemoteCandidates = 0;
   private localDescriptionSent = false;
   private remoteDescriptionSet = false;
   private answered = false;
@@ -1636,11 +1648,15 @@ class Negotiation {
    * `DOMException` on a candidate string it cannot parse; one unusable
    * candidate out of a set is not a reason to fail a rendezvous the remaining
    * candidates may still complete, and a peer that sends only bad ones fails on
-   * the connection-state or rendezvous deadline instead.
+   * the connection-state or rendezvous deadline instead. Past
+   * {@link MAX_APPLIED_REMOTE_CANDIDATES} a candidate is dropped, silently for
+   * the same reason a parse failure is.
    */
   private async addRemoteCandidate(
     candidate: Record<string, unknown>,
   ): Promise<void> {
+    if (this.appliedRemoteCandidates >= MAX_APPLIED_REMOTE_CANDIDATES) return;
+    this.appliedRemoteCandidates++;
     try {
       await this.peer.addIceCandidate(candidate);
     } catch {

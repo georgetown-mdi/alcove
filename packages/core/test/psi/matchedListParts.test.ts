@@ -8,11 +8,11 @@ import {
 import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
 import { PeerAbortError } from "../../src/errors";
 import {
+  arrayPart,
   arraySource,
   joinMatchedArrayParts,
   MATCHED_LIST_PART_HEADER_BYTES,
   matchedListParts,
-  parseMatchedListParts,
   receiveMatchedArray,
   receiveMatchedListParts,
   sendMatchedList,
@@ -21,8 +21,8 @@ import {
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 
 // The parts a matched-record list is sent in, and every part sequence a
-// receiver refuses before any part's body is parsed (docs/spec/PROTOCOL.md, A
-// list of matched records is sent in parts).
+// receiver refuses, each at the part that draws the refusal
+// (docs/spec/PROTOCOL.md, A list of matched records is sent in parts).
 
 const entries = Array.from({ length: 40 }, (_, i) => ({
   theirIndex: i * 7,
@@ -138,16 +138,15 @@ describe("sending", () => {
       "client",
       "mapped-element list",
       entries.length,
+      arrayPart(asArray),
     );
     await sending;
-    expect(received.bodies.length).toBeGreaterThan(1);
-    expect(
-      joinMatchedArrayParts(received, "client", "mapped-element list", asArray),
-    ).toEqual(entries);
+    expect(received.length).toBeGreaterThan(1);
+    expect(joinMatchedArrayParts(received)).toEqual(entries);
   });
 });
 
-describe("what a receiver refuses before parsing any part", () => {
+describe("what a receiver refuses from a part's header", () => {
   const [first, second, third] = [
     ...matchedListParts(arraySource(entries), 1 << 20, 16),
   ];
@@ -155,7 +154,7 @@ describe("what a receiver refuses before parsing any part", () => {
   test.each([
     ["a missing part", [first, third], "is missing part 1"],
     ["a repeated part", [first, first], "repeats part 0"],
-    ["a part out of order", [second, first], "is missing part 0"],
+    ["a part out of order", [second], "is missing part 0"],
     [
       "a list declaring more entries than this party admits",
       [first],
@@ -205,7 +204,9 @@ describe("what a receiver refuses before parsing any part", () => {
       expect((outcome as Error).message).toBe(
         `client protocol error: inbound mapped-element list ${detail}`,
       );
-      expect(parsed).toBe(0);
+      // Every part before the refused one is parsed on arrival; the refused
+      // part's body never is.
+      expect(parsed).toBe(frames.length - 1);
     },
   );
 
@@ -215,27 +216,75 @@ describe("what a receiver refuses before parsing any part", () => {
       { decision: "abort", abortReasons: ["any text"] },
     ])) as { outcome: unknown; parsed: number };
     expect(outcome).toBeInstanceOf(PeerAbortError);
-    expect(parsed).toBe(0);
-  });
-
-  test("a part sequence that never ends is not parsed while it waits", async () => {
-    const parsePart = vi.fn(asArray);
-    const conn = await deliver([first, second]);
-    const receive = receiveMatchedArray(conn, "client", "list", 100, parsePart);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(parsePart).not.toHaveBeenCalled();
-    await conn.close();
-    await expect(receive).rejects.toBeInstanceOf(ConnectionError);
+    expect(parsed).toBe(1);
   });
 });
 
-describe("what a receiver refuses once the headers hold", () => {
+describe("each part is parsed as it arrives", () => {
+  test("a part whose body is refused ends the receive before the next part is read", async () => {
+    const [sender, receiver] = createMessagePipe();
+    const unparseable = partFrame([1], { count: 3, entries: 3 });
+    unparseable[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
+    await sender.send(unparseable);
+    const outcome = await receiveMatchedArray(
+      receiver,
+      "client",
+      "list",
+      100,
+      asArray,
+    ).catch((error: unknown) => error);
+    expect(outcome).toBeInstanceOf(ConnectionError);
+    expect((outcome as Error).message).toBe(
+      "client protocol error: inbound list part 0 is not a JSON message",
+    );
+  });
+
+  test("a part running past the declared entries ends the receive at that part", async () => {
+    const [sender, receiver] = createMessagePipe();
+    await sender.send(partFrame([1, 2, 3], { count: 2, entries: 2 }));
+    const outcome = await receiveMatchedArray(
+      receiver,
+      "client",
+      "list",
+      100,
+      asArray,
+    ).catch((error: unknown) => error);
+    expect((outcome as Error).message).toBe(
+      "client protocol error: inbound list part 0 runs past the list's declared entries",
+    );
+  });
+
+  test("a part is parsed before the next one arrives, and nothing returns before the last", async () => {
+    const [first, second] = [
+      ...matchedListParts(arraySource(entries), 1 << 20, 20),
+    ];
+    const parsePart = vi.fn(asArray);
+    const [sender, receiver] = createMessagePipe();
+    await sender.send(first);
+    let settled = false;
+    const receive = receiveMatchedArray(
+      receiver,
+      "client",
+      "list",
+      100,
+      parsePart,
+    ).finally(() => {
+      settled = true;
+    });
+    await vi.waitFor(() => expect(parsePart).toHaveBeenCalledTimes(1));
+    expect(settled).toBe(false);
+    await sender.send(second);
+    await expect(receive).resolves.toEqual(entries);
+    expect(parsePart).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("what a receiver refuses parsing a part's body", () => {
   async function joined(frames: Array<unknown>): Promise<unknown> {
     const conn = await deliver(frames);
-    const received = await receiveMatchedListParts(conn, "client", "list", 100);
-    return Promise.resolve()
-      .then(() => joinMatchedArrayParts(received, "client", "list", asArray))
-      .catch((error: unknown) => error);
+    return receiveMatchedArray(conn, "client", "list", 100, asArray).catch(
+      (error: unknown) => error,
+    );
   }
 
   test.each([
@@ -290,13 +339,12 @@ describe("what a receiver refuses once the headers hold", () => {
 
   test("each part is validated by the caller's parse", async () => {
     const conn = await deliver([partFrame([1, "two"])]);
-    const received = await receiveMatchedListParts(conn, "client", "list", 100);
-    expect(() =>
-      parseMatchedListParts(received, "client", "list", (value) => {
+    await expect(
+      receiveMatchedListParts(conn, "client", "list", 100, (value) => {
         const part = asArray(value);
         if (!part.every(Number.isFinite)) throw new Error("not a number list");
         return { part, entries: part.length };
       }),
-    ).toThrow("not a number list");
+    ).rejects.toThrow("not a number list");
   });
 });

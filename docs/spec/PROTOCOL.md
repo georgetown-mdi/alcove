@@ -241,7 +241,7 @@ An abort frame in place of any part ends the round as a peer termination, and an
 
 #### A list of matched records is sent in parts
 
-A cascade sends each list naming matched records -- each party's mapped-element list, the list it returns with the partner's rows ([Deriving one table from the exchanged association maps](#deriving-one-table-from-the-exchanged-association-maps)), and its payload rows ([Output](#output)) -- as one or more parts, each its own binary frame whose body is a JSON message of its own (`sendMatchedList`, `receiveMatchedListParts` and `parseMatchedListParts`, `packages/core/src/psi/matchedListParts.ts`). The receiver parses each part and joins the parts in order; a list of one part holds the message the list is.
+A cascade sends each list naming matched records -- each party's mapped-element list, the list it returns with the partner's rows ([Deriving one table from the exchanged association maps](#deriving-one-table-from-the-exchanged-association-maps)), and its payload rows ([Output](#output)) -- as one or more parts, each its own binary frame whose body is a JSON message of its own (`sendMatchedList` and `receiveMatchedListParts`, `packages/core/src/psi/matchedListParts.ts`). The receiver parses each part as it arrives and joins the parts in order; a list of one part holds the message the list is.
 
 **The part header.** Every part, the only part of a list included, begins with a 16-byte header, big-endian, laid out as a PSI set part's is ([A PSI set is sent in parts](#a-psi-set-is-sent-in-parts)) but counting entries rather than bytes:
 
@@ -263,16 +263,16 @@ The rest of the part is its body, UTF-8 JSON. Known-answer vectors: `packages/co
 - the returned list: the count this party already holds for it ([Deriving one table from the exchanged association maps](#deriving-one-table-from-the-exchanged-association-maps)), one entry per record it matched, or the rows its own list named where the partner keeps its duplicates;
 - the partner's payload: the pairs in this party's matched table, the partner sending one row per distinct record of its own the table pairs; 0 for a party holding no table, a count-only run's.
 
-**What the receiver refuses, from the headers.** Each refusal is a `protocol` `ConnectionError` naming the list and the condition, raised before any part's body is parsed:
+**What the receiver refuses, from the headers.** Each refusal is a `protocol` `ConnectionError` naming the list and the condition, raised before the refused part's body is parsed:
 
 - On the first part, a declared entry count over the bound above; and a part count of 0, or above the entry count (above 1 for an empty list).
 - A part shorter than its header, or with no body.
 - A part whose index is below the one expected (a repeated part) or above it (a missing part).
 - On a later part, a part count or entry count that differs from the first part's.
 
-**What the receiver refuses, parsing the parts.** Once every part has arrived, each body is parsed through `parseBoundedJson` and the list's own schema, and refused as a `protocol` `ConnectionError`: a body that is not JSON, the refusal naming no byte of it; a body the list's schema refuses; a part holding no entries in a list that is not empty; a part running past the declared entry count, and parts ending short of it; and, for a payload, a part naming other columns than the first part, or a row index repeated across parts. Parsing happens only after the last part arrives, so no part reaches the matching path before the whole sequence has passed the header checks.
+**What the receiver refuses, parsing the parts.** Each body is parsed as its part arrives, through `parseBoundedJson` and the list's own schema, before the next part is read, and refused as a `protocol` `ConnectionError`: a body that is not JSON, the refusal naming no byte of it; a body the list's schema refuses; a part holding no entries in a list that is not empty; and a part running past the declared entry count. Once the last part has arrived, parts ending short of the declared entry count are refused, and, for a payload, a part naming other columns than the first part, or a row index repeated across parts. No part reaches the matching path before every part of the list has passed these checks.
 
-An abort frame in place of any part ends the exchange as a peer termination, and any other non-binary frame is a `protocol` error, as [above](#an-abort-arriving-where-a-round-awaits-binary). The party that answers a mapped-element list -- the joiner -- receives every part of the partner's list and sends its own before it parses, and sends its own also when the partner's headers are refused, so a refusal on its side does not leave the partner waiting for a list.
+An abort frame in place of any part ends the exchange as a peer termination, and any other non-binary frame is a `protocol` error, as [above](#an-abort-arriving-where-a-round-awaits-binary). The party that answers a mapped-element list -- the joiner -- receives the partner's list and then sends its own, and sends its own also when a part of the partner's list is refused, on its header or its body, before it reports the refusal, so a refusal on its side does not leave the partner waiting for a list.
 
 **A payload part is a disclosure.** A payload is disclosed from the first part the transport takes, so a payload send refused on a later part is owed the same record as one that completed ([EXCHANGE_RECORD.md, When a record is owed](EXCHANGE_RECORD.md#when-a-record-is-owed)).
 

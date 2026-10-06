@@ -227,8 +227,10 @@ const STDERR_TAIL_CAP = 8192;
  * The maximum length of one fd-3 line, in UTF-16 code units. A longer line is
  * discarded as oversized, and the reader never buffers more than this of an
  * unterminated one.
+ *
+ * @internal exported for testing
  */
-const FD3_LINE_CAP = 1_048_576;
+export const FD3_LINE_CAP = 1_048_576;
 
 /** The CLI log level a diagnostic run asks for. */
 const DIAGNOSTIC_LOG_LEVEL = "debug";

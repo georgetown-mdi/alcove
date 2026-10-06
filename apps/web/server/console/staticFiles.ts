@@ -5,6 +5,7 @@ import path from "node:path";
 import { isApiNamespacePath } from "@utils/apiNamespace";
 import { isPathWithin } from "@jobs/pathContainment";
 import { jobEmptyResponse } from "@jobs/gate";
+import { rejectDisallowedClientHost } from "@jobs/routeSupport";
 
 /** The document every client route is answered with. */
 const INDEX_FILE = "index.html";
@@ -135,9 +136,11 @@ async function fileResponse(
 }
 
 /**
- * The handler serving the built client under `root`: a `GET` or `HEAD` for a
- * regular file in it answers that file, and one for a client route answers
- * `index.html`. Every other request -- another method, a path under `/api` in
+ * The handler serving the built client under `root`: a `GET` or `HEAD`
+ * outside the `/api` namespace whose `Host` the job routes would refuse
+ * answers their empty `403` ({@link rejectDisallowedClientHost}); otherwise
+ * one for a regular file in it answers that file, and one for a client route
+ * answers `index.html`. Every other request -- another method, a path under `/api` in
  * any spelling, a dotfile, a directory, a path leaving `root` lexically or
  * through a symlink -- answers the empty no-store `404`. Content-hashed assets
  * are cacheable for a year; everything else is revalidated. `root` and its
@@ -156,6 +159,8 @@ export function createStaticFileHandler(
       return jobEmptyResponse(404);
     const pathname = new URL(request.url).pathname;
     if (isApiNamespacePath(pathname)) return jobEmptyResponse(404);
+    const hostRefusal = rejectDisallowedClientHost(request);
+    if (hostRefusal !== null) return hostRefusal;
     const segments = decodedSegments(pathname);
     if (segments === null) return jobEmptyResponse(404);
 

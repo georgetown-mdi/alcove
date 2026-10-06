@@ -445,3 +445,43 @@ export const WEBRTC_CHUNK_ENVELOPE_FIXTURES: Array<WebrtcChunkEnvelopeFixture> =
     datagram: chunkEnvelope(fields),
     refused,
   }));
+
+/** One labelled datagram no PeerJS binary sender emits, as the data channel hands
+ * it to a transport, and the refusal both transports must raise for it. A data
+ * channel types each message on its own, so a text or zero-length message can
+ * arrive on a binary channel; the real unpacker decodes a text message and an
+ * empty one to the number `0` (measured in Chromium) rather than refusing. */
+export interface WebrtcMalformedDatagramFixture {
+  readonly label: string;
+  readonly datagram: string | Uint8Array;
+  readonly message: string;
+}
+
+const MALFORMED_DATAGRAM_PREFIX = "the peer sent a malformed WebRTC frame: ";
+
+/** The malformed datagrams both transports are held to: a text message, an empty
+ * text message, an empty binary message, and a binary message whose string
+ * declares more bytes than the message holds, which the real unpacker throws on. */
+export const WEBRTC_MALFORMED_DATAGRAM_FIXTURES: Array<WebrtcMalformedDatagramFixture> =
+  [
+    {
+      label: "a text datagram",
+      datagram: "hello",
+      message: `${MALFORMED_DATAGRAM_PREFIX}it is not a binary datagram`,
+    },
+    {
+      label: "an empty text datagram",
+      datagram: "",
+      message: `${MALFORMED_DATAGRAM_PREFIX}it is not a binary datagram`,
+    },
+    {
+      label: "an empty binary datagram",
+      datagram: new Uint8Array(0),
+      message: `${MALFORMED_DATAGRAM_PREFIX}it is an empty datagram`,
+    },
+    {
+      label: "a string declaring more bytes than the datagram holds",
+      datagram: new Uint8Array([0xd9, 0, 0, 0, 100, 0x61]),
+      message: `${MALFORMED_DATAGRAM_PREFIX}its BinaryPack body could not be decoded`,
+    },
+  ];
