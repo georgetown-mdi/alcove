@@ -36,10 +36,11 @@ interface PeerChunk {
 }
 
 /** A message handed to PeerJS's `_handleDataMessage`, the sole point at which an
- * inbound (or reassembled) frame is `unpack`ed. `data` is the raw bytes about to
- * be deserialized. */
+ * inbound (or reassembled) frame is `unpack`ed. `data` is what the data channel
+ * delivered: binary for a PeerJS sender, but a data channel types each message on
+ * its own, so a peer can send text on it too. */
 interface PeerDataMessage {
-  data: ArrayBufferView | ArrayBuffer | string | undefined;
+  data: unknown;
 }
 
 /**
@@ -116,14 +117,23 @@ function readChunkEnvelope(
   return { chunk: received as PeerChunk, byteLength };
 }
 
-/** Coerce a frame's bytes to a `Uint8Array` view for the structural scan, without
- * copying. Binary-mode channels always supply a view/buffer; a string (never
- * expected on this path) yields an empty view, which the scan treats as a
- * harmless empty frame. */
-function toUint8(data: PeerDataMessage["data"]): Uint8Array {
-  if (data === undefined || typeof data === "string") return new Uint8Array(0);
-  if (data instanceof ArrayBuffer) return new Uint8Array(data);
-  return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+/** A `Uint8Array` view over a frame's bytes for the structural scan, without
+ * copying, or `undefined` for a frame that is not a genuine view or buffer. */
+function toUint8(data: unknown): Uint8Array | undefined {
+  if (ArrayBuffer.isView(data))
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  if (binaryByteLength(data) === undefined) return undefined;
+  return new Uint8Array(data as ArrayBuffer);
+}
+
+/** A datagram no PeerJS binary sender emits, or one whose BinaryPack body the
+ * unpacker throws on: the same refusal, in the same words, as the CLI's receive
+ * path (`malformedFrameError`, apps/cli/src/connection/webrtc/peerjsWire.ts). */
+function malformedDatagramError(detail: string): ConnectionError {
+  return new ConnectionError(
+    `the peer sent a malformed WebRTC frame: ${detail}`,
+    "protocol",
+  );
 }
 
 /** A terminal refusal, shared by every enforcement point: `predicate` says what
@@ -215,6 +225,9 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  *   the frame's BinaryPack bytes enforces the nesting depth, the per-string
  *   cap, the byte-backed-elements check, the cumulative element rule and the
  *   map-key rule before PeerJS unpacks it.
+ * - The datagram itself, in `_handleDataMessage` before the scan: a text or
+ *   empty datagram is refused, and so is a frame PeerJS's unpack throws on,
+ *   each in the words the CLI's receive path uses.
  *
  * @param conn   The PeerJS data connection (open or not yet open).
  * @param fail   Latches a terminal failure (the connection's `controls.fail`).
@@ -363,17 +376,32 @@ export function boundChunkReassembly(
   // unchunked frame (direct call) and a completed reassembly (recursive call from
   // `_handleChunk`) flow through. Scanning here, before the original unpacks,
   // covers a tiny unchunked frame that never reaches `_handleChunk` at all.
+  // A text or empty datagram is refused before the scan: BinaryPack decodes
+  // either to the number 0, which would reach the application as a frame.
   internals._handleDataMessage = (message: PeerDataMessage): void => {
     if (failed) return;
-    const refusal = scanFrameStructure(
-      toUint8(message.data),
-      maxDepth,
-      maxStringBytes,
-    );
+    const bytes = toUint8(message.data);
+    if (bytes === undefined) {
+      failClosed(malformedDatagramError("it is not a binary datagram"));
+      return;
+    }
+    if (bytes.byteLength === 0) {
+      failClosed(malformedDatagramError("it is an empty datagram"));
+      return;
+    }
+    const refusal = scanFrameStructure(bytes, maxDepth, maxStringBytes);
     if (refusal !== undefined) {
       failClosed(frameRefusalError(describeFrameStructureRefusal(refusal)));
       return;
     }
-    originalHandleDataMessage(message);
+    // PeerJS calls this from the data channel's message handler, where a throw
+    // from `unpack` would be dropped and leave the connection waiting.
+    try {
+      originalHandleDataMessage(message);
+    } catch {
+      failClosed(
+        malformedDatagramError("its BinaryPack body could not be decoded"),
+      );
+    }
   };
 }

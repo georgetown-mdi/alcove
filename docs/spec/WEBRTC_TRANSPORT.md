@@ -955,18 +955,23 @@ it granted ends, about 600 s, since no teardown releases it: one or two at a
 time while attempts run their budget, and otherwise one for each attempt
 started within that lifetime.
 
-Two CLI bounds are memory rather than time, both on inbound signaling: a
-signaling frame is refused above 256 KiB of UTF-8 before it is parsed, and at
+Three CLI bounds are memory rather than time, all on inbound signaling: a
+signaling frame is refused above 256 KiB of UTF-8 before it is parsed; at
 most 128 remote candidates are held per connection while that connection's
-remote description is not yet applied.
+remote description is not yet applied; and at most 128 remote candidates are
+applied per connection attempt, the held ones included. A candidate past
+either candidate cap is dropped silently. A candidate counts against the
+applied cap from the moment it is handed to the ICE agent until the agent
+settles it, so a burst of candidates the agent will reject, arriving in
+one tick, can hold the budget until they settle.
 
-The browser peer holds its own signaling intake to the same two bounds: a
+The browser peer holds its own signaling intake to the first two bounds: a
 frame over 256 KiB of UTF-8 is refused unparsed, the peer reporting a
 `server-error` naming the limit and leaving the signaling server; and at most
 128 messages held for a connection not yet set up are kept, surplus dropped
 silently, counted across every pending connection id together where the
-CLI's candidate cap above is per connection. The two apps define both values
-separately.
+CLI's held-candidate cap above is per connection. The two apps define both
+values separately.
 
 ## See also
 

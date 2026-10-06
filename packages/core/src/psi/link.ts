@@ -81,12 +81,12 @@ import {
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { receiveAfterTerms } from "../partnerAbortFrame";
 import {
+  arrayPart,
   arraySource,
   joinMatchedArrayParts,
   receiveMatchedArray,
   receiveMatchedListParts,
   sendMatchedList,
-  type ReceivedMatchedList,
 } from "./matchedListParts";
 import { DistinctValues } from "../utils/distinctValues";
 import {
@@ -3324,23 +3324,28 @@ export async function exchangeMappedElements<T>(
     log.debug(`${id}: received other mapped elements`);
     return result;
   } else {
-    // Send-before-parse: receive the partner's parts, send ours, then parse.
-    // Sending before parsing ensures a malformed final part does not strand
-    // the partner waiting for our response, and a part sequence refused on its
-    // headers is refused after ours is sent for the same reason.
-    let received: ReceivedMatchedList | undefined;
-    let headerRefusal: ConnectionError | undefined;
+    // Send-before-refusal: a partner list refused at any part, on its header
+    // or its body, is refused only after ours is sent, so the refusal does
+    // not strand the partner waiting for our response.
+    let received: Array<Array<T>> | undefined;
+    let partRefusal: ConnectionError | undefined;
     try {
-      received = await receiveMatchedListParts(conn, id, what, maxEntries);
+      received = await receiveMatchedListParts(
+        conn,
+        id,
+        what,
+        maxEntries,
+        arrayPart(parsePart),
+      );
     } catch (error) {
       if (!(error instanceof ConnectionError) || error.kind !== "protocol")
         throw error;
-      headerRefusal = error;
+      partRefusal = error;
     }
     log.debug(`${id}: received other mapped elements`);
     log.debug(`${id}: sending own mapped elements`);
     await sendMatchedList(conn, arraySource(values));
-    if (received === undefined) throw headerRefusal;
-    return joinMatchedArrayParts(received, id, what, parsePart);
+    if (received === undefined) throw partRefusal;
+    return joinMatchedArrayParts(received);
   }
 }

@@ -772,6 +772,25 @@ const EVENT_STREAM_RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
 const EVENT_STREAM_LOST_MESSAGE =
   "the connection to the exchange event stream was lost; the run may still be in progress on the console -- reload to re-attach";
 
+/**
+ * The longest event-stream frame this page reads, in UTF-16 code units, and so
+ * the most of an unterminated frame it buffers. A longer frame is skipped with a
+ * warning. Four times the console's cap on one CLI event line (`FD3_LINE_CAP`,
+ * apps/web/src/jobs/cliDriver.ts), the line each event it relays is read from;
+ * serverJobExchangeDriver.test.ts holds the two together.
+ *
+ * @internal exported for testing
+ */
+export const MAX_EVENT_STREAM_FRAME_CHARS = 4 * 1024 * 1024;
+
+/** The warning yielded in place of a frame over
+ * {@link MAX_EVENT_STREAM_FRAME_CHARS}. */
+const OVERSIZED_FRAME_NOTICE =
+  `An event from the console was longer than the ${MAX_EVENT_STREAM_FRAME_CHARS} ` +
+  "characters this page reads, so it was skipped. The exchange's log file on " +
+  "disk still holds it. If this repeats, reload the page so it runs the " +
+  "console's current version.";
+
 /** One connection's frames: the SSE id attached to each (null for a keepalive
  * or any frame without an `id:` line) alongside the parsed event (null for a
  * frame with no `data:` line). */
@@ -868,9 +887,23 @@ async function requestEventStream(
   return response;
 }
 
+/** The frame yielded in place of one over {@link MAX_EVENT_STREAM_FRAME_CHARS}:
+ * its id, read off its leading `id:` line so a reconnect resumes past it rather
+ * than replaying it, and the oversized-frame warning. */
+function oversizedFrame(frameStart: string): SseFrame {
+  const head = frameStart.slice(0, 64);
+  const headEnd = head.indexOf("\n");
+  return {
+    id: headEnd === -1 ? null : sseFrameId(head.slice(0, headEnd)),
+    event: { v: 1, type: "warning", message: OVERSIZED_FRAME_NOTICE },
+  };
+}
+
 /** Split one response body into SSE frames, yielding each frame's id and parsed
  * event. Returns when the body ends -- whether that is the server closing after
- * the terminal event or the connection being cut. */
+ * the terminal event or the connection being cut. A frame over
+ * {@link MAX_EVENT_STREAM_FRAME_CHARS} is skipped as it arrives, yielding
+ * {@link oversizedFrame} in its place. */
 async function* readEventStreamFrames(
   response: Response,
 ): AsyncGenerator<SseFrame> {
@@ -879,6 +912,9 @@ async function* readEventStreamFrames(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  // Set once an oversized frame has been reported while still unterminated, so
+  // the rest of it is dropped up to its blank line rather than read as a frame.
+  let discardingOversizedFrame = false;
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -888,8 +924,17 @@ async function* readEventStreamFrames(
       while (boundary !== -1) {
         const frame = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
-        yield { id: sseFrameId(frame), event: parseSseFrame(frame) };
+        if (discardingOversizedFrame) discardingOversizedFrame = false;
+        else if (frame.length > MAX_EVENT_STREAM_FRAME_CHARS)
+          yield oversizedFrame(frame);
+        else yield { id: sseFrameId(frame), event: parseSseFrame(frame) };
         boundary = buffer.indexOf("\n\n");
+      }
+      if (buffer.length > MAX_EVENT_STREAM_FRAME_CHARS) {
+        if (!discardingOversizedFrame) yield oversizedFrame(buffer);
+        discardingOversizedFrame = true;
+        // The last character may be the first half of the frame's blank line.
+        buffer = buffer.slice(-1);
       }
     }
   } finally {

@@ -4,13 +4,17 @@ import { ConnectionError } from "@alcove/core";
 import {
   WEBRTC_CHUNK_ENVELOPE_FIXTURES,
   WEBRTC_INBOUND_FRAME_FIXTURES,
+  WEBRTC_MALFORMED_DATAGRAM_FIXTURES,
   comparableVerdict,
   frameScanRefusal,
   preScanVerdict,
 } from "@alcove/testkit/webrtcInboundFrames";
 
 import { BoundedInboundFrames } from "../../../src/connection/webrtc/inboundBounds";
-import { chunkPacked } from "../../../src/connection/webrtc/peerjsWire";
+import {
+  chunkPacked,
+  toFrameBytes,
+} from "../../../src/connection/webrtc/peerjsWire";
 
 import type {
   FrameVerdict,
@@ -162,6 +166,28 @@ describe("the CLI reassembler against the shared chunk envelopes", () => {
       expect(outcome, fixture.label).toEqual(
         fixture.refused ? { refused: "protocol" } : { kind: "pending" },
       );
+    }
+  });
+});
+
+describe("the CLI receive path against the shared malformed datagrams", () => {
+  test("refuses each one in the words the web PeerJS wrap uses", () => {
+    // The channel's message handler feeds every datagram through
+    // `toFrameBytes` and then the reassembler, so both are driven here.
+    for (const fixture of WEBRTC_MALFORMED_DATAGRAM_FIXTURES) {
+      let outcome: unknown;
+      try {
+        outcome = new BoundedInboundFrames().accept(
+          toFrameBytes(fixture.datagram),
+        );
+      } catch (err) {
+        if (!(err instanceof ConnectionError)) throw err;
+        outcome = { kind: err.kind, message: err.message };
+      }
+      expect(outcome, fixture.label).toEqual({
+        kind: "protocol",
+        message: fixture.message,
+      });
     }
   });
 });

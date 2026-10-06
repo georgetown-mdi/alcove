@@ -1000,3 +1000,29 @@ describe("a non-string map key over a cursor underrun", () => {
     ).toBeGreaterThan(15);
   });
 });
+
+describe("a string declaring more bytes than the frame holds", () => {
+  // The scan admits a string whose declared length runs past the frame, as it
+  // admits any read past the end, and leaves it to the real unpacker. That is
+  // safe only while the unpacker throws on it rather than building a string of
+  // the declared length from bytes the frame does not hold, which this holds for
+  // every string marker, at a short and at the largest admitted length.
+  const declaredLengths = [16, MAX_WEBRTC_STRING_BYTES];
+  const underBacked: Array<{ label: string; frame: Uint8Array }> = [
+    { label: "fixstr", frame: new Uint8Array([0xbf, 0x61]) },
+    { label: "str16", frame: new Uint8Array([0xd8, 0xff, 0xff, 0x61]) },
+    ...declaredLengths.map((length) => ({
+      label: `str32 of ${length} bytes`,
+      frame: new Uint8Array([0xd9, ...u32Bytes(length), 0x61]),
+    })),
+    {
+      label: "str32 inside an array",
+      frame: new Uint8Array([0x91, 0xd9, ...u32Bytes(100), 0x61]),
+    },
+  ];
+
+  test.each(underBacked)("the real unpacker throws on $label", ({ frame }) => {
+    expect(scanAdmits(frame)).toBe(true);
+    expect(() => unpackFrame(frame)).toThrow(/BinaryPackFailure/);
+  });
+});

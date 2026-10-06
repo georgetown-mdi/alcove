@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { securityResponseHeaders } from "@utils/securityHeaders";
 
@@ -200,6 +200,37 @@ describe("the static file handler", () => {
         await send(port, { method, path: "/assets/index-abc123.js" }),
       );
     }
+  });
+
+  test("refuses a foreign Host with the job routes' empty 403, and admits an allowed one", async () => {
+    for (const target of [
+      "/",
+      "/assets/index-abc123.js",
+      "/some/client/route",
+    ]) {
+      const answer = await send(port, {
+        path: target,
+        headers: { host: "attacker.example" },
+      });
+      expect(answer.status, target).toBe(403);
+      expect(answer.body, target).toBe("");
+      expect(answer.headers["cache-control"], target).toBe("no-store");
+      expectSecurityHeaders(answer);
+    }
+    expectIndex(await send(port, { path: "/", headers: { host: "[::1]" } }));
+    vi.stubEnv("JOB_ALLOWED_HOSTS", "console.lan");
+    expectIndex(
+      await send(port, { path: "/", headers: { host: "console.lan:8080" } }),
+    );
+  });
+
+  test("refuses a foreign Host whether or not the job API is enabled", async () => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "");
+    const answer = await send(port, {
+      path: "/",
+      headers: { host: "attacker.example" },
+    });
+    expect(answer.status).toBe(403);
   });
 });
 

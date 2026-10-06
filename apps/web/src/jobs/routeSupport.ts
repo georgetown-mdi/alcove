@@ -161,12 +161,13 @@ function hostnameOfHostHeader(host: string | null): string | null {
  * {@link rejectCrossOriginBrowserRequest}. `Host` must be a loopback hostname
  * or a configured {@link JobApiConfig.allowedHosts} entry, matched on
  * hostname only (a remapped port still passes); an absent, unparseable, or
- * disallowed `Host` is refused and logged. Returns a `403` {@link Response}
- * to short-circuit, or null to proceed.
+ * disallowed `Host` is refused and logged, `what` naming the request refused.
+ * Returns a `403` {@link Response} to short-circuit, or null to proceed.
  */
 function rejectDisallowedHost(
   request: Request,
   config: JobApiConfig,
+  what: string,
 ): Response | null {
   const host = request.headers.get("host");
   const hostname = hostnameOfHostHeader(host);
@@ -179,7 +180,7 @@ function rejectDisallowedHost(
   // remedy that follows it, so it crosses the display boundary here rather than
   // reaching the console's log as raw bytes.
   log.warn(
-    `Refused a job-API request with Host ` +
+    `Refused ${what} with Host ` +
       `"${redactAndSanitizeForDisplay(host ?? "(absent)")}": not a ` +
       "loopback address. If you deliberately front the console behind a proxy " +
       `or a LAN name, add that hostname to ${JOB_ALLOWED_HOSTS_ENV}.`,
@@ -205,7 +206,7 @@ export function gateJobRoute(request: Request): GateOutcome {
   if (manager === null)
     return { kind: "response", response: jobEmptyResponse(404) };
   const rejection =
-    rejectDisallowedHost(request, config) ??
+    rejectDisallowedHost(request, config, "a job-API request") ??
     rejectCrossOriginBrowserRequest(request);
   if (rejection !== null) return { kind: "response", response: rejection };
   return { kind: "manager", manager };
@@ -314,4 +315,19 @@ export function readJobRequestBody(
 export function validateJobIdParam(jobId: unknown): string | null {
   if (typeof jobId !== "string" || !isValidJobId(jobId)) return null;
   return jobId;
+}
+
+/**
+ * The loopback Host-allowlist the job routes apply ({@link gateJobRoute}),
+ * applied to a request for the console's own client files, so a page reached
+ * by a rebound name is not served the console at all. Read whether or not the
+ * job API is enabled. Returns a `403` {@link Response} to short-circuit, or
+ * null to proceed.
+ */
+export function rejectDisallowedClientHost(request: Request): Response | null {
+  return rejectDisallowedHost(
+    request,
+    readJobApiConfig(),
+    "a console page request",
+  );
 }

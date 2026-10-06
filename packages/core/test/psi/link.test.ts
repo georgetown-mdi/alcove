@@ -8,6 +8,7 @@ import {
   linkViaSinglePassPSI,
   withholdsSenderAssociationTable,
   associationAndIterationArray,
+  exchangeMappedElements,
   mappedElementArray,
   encodeInt32LE,
   decodeInt32LE,
@@ -58,6 +59,8 @@ import {
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
+import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
+import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
 
 const psiLibrary = await PSI();
 
@@ -716,6 +719,52 @@ test("single-pass withholding does not leak the match count by frame presence or
   expect(empty.senderResult).toStrictEqual([[], []]);
 });
 
+// --- exchangeMappedElements: the joiner sends its list before any refusal ---
+// A partner list refused at a part, on its header or on its body, is refused
+// only after the joiner's own list is sent, so the partner is not left
+// waiting for it.
+test.each([
+  [
+    "a part whose body is not JSON",
+    (() => {
+      const frame = partFrame([{ theirIndex: 0, iteration: 0 }], {
+        count: 2,
+        entries: 2,
+      });
+      frame[MATCHED_LIST_PART_HEADER_BYTES] = 0x7b;
+      return frame;
+    })(),
+    "part 0 is not a JSON message",
+  ],
+  [
+    "a part declaring more entries than admitted",
+    partFrame([{ theirIndex: 0, iteration: 0 }], { entries: 5 }),
+    "declares 5 entries, over the 4 this party admits",
+  ],
+])(
+  "the joiner sends its own list before refusing %s",
+  async (_label, frame, detail) => {
+    const [joinerConn, partnerConn] = createMessagePipe();
+    await partnerConn.send(frame);
+    const own = [{ theirIndex: 1, iteration: 0 }];
+    const outcome = await exchangeMappedElements(
+      "client",
+      joinerConn,
+      { info: () => {}, debug: () => {} },
+      false,
+      own,
+      "mapped-element list",
+      4,
+      associationAndIterationArray,
+    ).catch((error: unknown) => error);
+    expect(outcome).toBeInstanceOf(ConnectionError);
+    expect((outcome as Error).message).toBe(
+      `client protocol error: inbound mapped-element list ${detail}`,
+    );
+    expect(readPartFrame(await partnerConn.receive(1000))?.body).toEqual(own);
+  },
+);
+
 // --- associationAndIterationArray: pathological-count bound -------------------
 // The mapped-elements frame exchanged in exchangeMappedElements is partner-controlled;
 // its matched-record count is legitimately in the millions. A flat array of ~4M
@@ -723,7 +772,7 @@ test("single-pass withholding does not leak the match count by frame presence or
 // error string from one issue per element (a ~4.5s CPU burn); the single-issue
 // validator caps that at one clean issue. The frame is read two ways -- via
 // receiveParsed (sendFirst) and via a direct `parseOrProtocolError` (the !sendFirst
-// send-before-parse path) -- and both must raise a clean ConnectionError("protocol").
+// send-before-refusal path) -- and both must raise a clean ConnectionError("protocol").
 const pathologicalPairs = () => Array.from({ length: 4_000_000 }, () => 1);
 
 test("receiveParsed: a pathological-count mapped-elements frame fails cleanly", async () => {

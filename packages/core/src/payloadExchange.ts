@@ -31,7 +31,6 @@ import {
   parseOrProtocolError,
 } from "./connection/messageConnection.js";
 import {
-  parseMatchedListParts,
   receiveMatchedListParts,
   sendMatchedList,
   utf8Length,
@@ -754,15 +753,11 @@ async function receivePayload(
   maxPartnerRows: number,
 ): Promise<PartnerPayload> {
   const participantId = "";
-  const parts = parseMatchedListParts(
-    await receiveMatchedListParts(
-      conn,
-      participantId,
-      PAYLOAD_WHAT,
-      maxPartnerRows,
-    ),
+  const parts = await receiveMatchedListParts(
+    conn,
     participantId,
     PAYLOAD_WHAT,
+    maxPartnerRows,
     (value) => {
       const part = parseOrProtocolError(payloadWireSchema, value);
       return { part, entries: part.hasData ? part.rows.length : 0 };

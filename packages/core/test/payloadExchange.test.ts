@@ -1873,7 +1873,7 @@ test("exchangePayloads: parts naming different columns are refused", async () =>
 });
 
 test("joinPayloadParts: a part of several holding no rows is refused", () => {
-  // parseMatchedListParts refuses this list before the join, so the join is
+  // receiveMatchedListParts refuses this list before the join, so the join is
   // reached here with the parsed parts directly.
   let caught: unknown;
   try {

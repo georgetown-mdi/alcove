@@ -5,8 +5,9 @@
 // the header a PSI set part begins with, its third field counting the list's
 // entries rather than bytes, so a missing, repeated, or inconsistent part, and
 // a list declaring more entries than the receiver admits, is refused from the
-// headers alone before any part's body is parsed (docs/spec/PROTOCOL.md, "A
-// list of matched records is sent in parts").
+// header of the part that draws it. Each part's body is parsed as the part
+// arrives, so the receiver holds one unparsed part at a time
+// (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
 import { ConnectionError } from "../connection/messageConnection";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
@@ -164,15 +165,6 @@ export async function sendMatchedList(
   }
 }
 
-/**
- * A list's parts as received: every header checked, every body still
- * unparsed. Read by {@link parseMatchedListParts}.
- */
-export interface ReceivedMatchedList {
-  readonly entries: number;
-  readonly bodies: Array<Uint8Array>;
-}
-
 function entryCount(count: number | bigint): string {
   return `${count} ${count === 1 || count === 1n ? "entry" : "entries"}`;
 }
@@ -190,32 +182,43 @@ function refusal(
 }
 
 /**
- * Receives the parts of one list sent by {@link sendMatchedList} and returns
- * their bodies unparsed, once every header has been checked: the list's
- * declared entry count against `maxEntries` at the first part, and each
- * part's index and declared count and entries against the part expected next
- * and against the first part's. A part with no body bytes, or shorter than its
- * header, is refused. Any deviation is a `protocol` {@link ConnectionError},
- * raised before any part's body is parsed. An abort frame in place of any part
- * ends the receive as a peer abort.
+ * Receives the parts of one list sent by {@link sendMatchedList}, parsing each
+ * as it arrives, and returns the parsed parts in order once their entries add
+ * up to the declared count.
+ *
+ * Each part's header is checked first: the list's declared entry count
+ * against `maxEntries` at the first part, and each part's index and declared
+ * count and entries against the part expected next and against the first
+ * part's; a part with no body bytes, or shorter than its header, is refused.
+ * Its body is then parsed through {@link parseBoundedJson} and `parsePart`,
+ * which validates it and states how many entries it holds, before the next
+ * part is read. A body that is not JSON, a part holding no entries in a list
+ * that is not empty, a part running past the declared count, and parts ending
+ * short of it are refused. Every refusal is a `protocol`
+ * {@link ConnectionError}, raised at the part that draws it. An abort frame in
+ * place of any part ends the receive as a peer abort.
  *
  * @param participantId - This party's participant id, prefixed on every
  *   refusal, or "" for none.
  * @param what - The list awaited, named in every refusal.
  * @param maxEntries - The most entries the list may hold, derived from the
  *   agreed terms and this party's own result.
+ * @param parsePart - Validates one part's parsed body and returns it with its
+ *   entry count; it throws on a body of the wrong shape.
  */
-export async function receiveMatchedListParts(
+export async function receiveMatchedListParts<T>(
   conn: MessageConnection,
   participantId: string,
   what: string,
   maxEntries: number,
-): Promise<ReceivedMatchedList> {
+  parsePart: (value: unknown) => { readonly part: T; readonly entries: number },
+): Promise<Array<T>> {
   const refuse = (detail: string): ConnectionError =>
     refusal(participantId, what, detail);
-  const bodies: Array<Uint8Array> = [];
+  const parts: Array<T> = [];
   let count = 1;
   let entries = 0;
+  let filled = 0;
   for (let expected = 0; expected < count; expected++) {
     const part = await receiveBinaryFrame(conn, participantId, what);
     if (part.byteLength < MATCHED_LIST_PART_HEADER_BYTES)
@@ -247,60 +250,42 @@ export async function receiveMatchedListParts(
     }
     const body = part.subarray(MATCHED_LIST_PART_HEADER_BYTES);
     if (body.byteLength === 0) throw refuse(`part ${index} has no body`);
-    bodies.push(body);
-  }
-  return { entries, bodies };
-}
-
-/**
- * Parses each part {@link receiveMatchedListParts} returned and returns the
- * parsed parts, in order, once their entries add up to the declared count.
- * Each body is parsed through {@link parseBoundedJson} and then `parsePart`,
- * which validates it and states how many entries it holds. A body that is not
- * JSON, a part holding no entries in a list that is not empty, a part running
- * past the declared count, and parts ending short of it are each a
- * `protocol` {@link ConnectionError}; a body is released once parsed.
- *
- * @param what - The list awaited, named in every refusal.
- * @param parsePart - Validates one part's parsed body and returns it with its
- *   entry count; it throws on a body of the wrong shape.
- */
-export function parseMatchedListParts<T>(
-  received: ReceivedMatchedList,
-  participantId: string,
-  what: string,
-  parsePart: (value: unknown) => { readonly part: T; readonly entries: number },
-): Array<T> {
-  const refuse = (detail: string): ConnectionError =>
-    refusal(participantId, what, detail);
-  const parts: Array<T> = [];
-  let filled = 0;
-  for (let index = 0; index < received.bodies.length; index++) {
     let value: unknown;
     try {
-      value = parseBoundedJson(received.bodies[index]);
+      value = parseBoundedJson(body);
     } catch {
       throw refuse(`part ${index} is not a JSON message`);
     }
-    received.bodies[index] = new Uint8Array(0);
-    const { part, entries } = parsePart(value);
-    if (entries === 0 && received.entries > 0)
+    const parsed = parsePart(value);
+    if (parsed.entries === 0 && entries > 0)
       throw refuse(`part ${index} holds no entries`);
-    if (entries > received.entries - filled)
+    if (parsed.entries > entries - filled)
       throw refuse(`part ${index} runs past the list's declared entries`);
-    filled += entries;
-    parts.push(part);
+    filled += parsed.entries;
+    parts.push(parsed.part);
   }
-  if (filled !== received.entries)
+  if (filled !== entries)
     throw refuse("ends short of the list's declared entries");
   return parts;
 }
 
 /**
+ * `parsePart` as the part parse {@link receiveMatchedListParts} takes, for a
+ * list whose parts are plain JSON arrays.
+ */
+export function arrayPart<T>(
+  parsePart: (value: unknown) => Array<T>,
+): (value: unknown) => { readonly part: Array<T>; readonly entries: number } {
+  return (value) => {
+    const part = parsePart(value);
+    return { part, entries: part.length };
+  };
+}
+
+/**
  * Receives a list sent as a plain JSON array by {@link sendMatchedList} over
- * {@link arraySource}: {@link receiveMatchedListParts} and then
- * {@link parseMatchedListParts}, each part validated by `parsePart`, the parts
- * joined in order.
+ * {@link arraySource}: {@link receiveMatchedListParts}, each part validated by
+ * `parsePart`, the parts joined in order.
  */
 export async function receiveMatchedArray<T>(
   conn: MessageConnection,
@@ -310,32 +295,20 @@ export async function receiveMatchedArray<T>(
   parsePart: (value: unknown) => Array<T>,
 ): Promise<Array<T>> {
   return joinMatchedArrayParts(
-    await receiveMatchedListParts(conn, participantId, what, maxEntries),
-    participantId,
-    what,
-    parsePart,
+    await receiveMatchedListParts(
+      conn,
+      participantId,
+      what,
+      maxEntries,
+      arrayPart(parsePart),
+    ),
   );
 }
 
-/**
- * Parses and joins a plain JSON array's parts, as {@link receiveMatchedArray}
- * does, from parts already received.
- */
+/** Joins a plain JSON array's parsed parts, in order. */
 export function joinMatchedArrayParts<T>(
-  received: ReceivedMatchedList,
-  participantId: string,
-  what: string,
-  parsePart: (value: unknown) => Array<T>,
+  parts: ReadonlyArray<Array<T>>,
 ): Array<T> {
-  const parts = parseMatchedListParts(
-    received,
-    participantId,
-    what,
-    (value) => {
-      const part = parsePart(value);
-      return { part, entries: part.length };
-    },
-  );
   if (parts.length === 1) return parts[0];
   const joined: Array<T> = [];
   for (const part of parts) for (const entry of part) joined.push(entry);

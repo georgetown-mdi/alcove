@@ -24,6 +24,7 @@ import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
   DEFAULT_UNREPORTED_OFFER_RESEND_MS,
   MAX_CONNECTION_ID_LENGTH,
+  MAX_APPLIED_REMOTE_CANDIDATES,
   MAX_PENDING_REMOTE_CANDIDATES,
   ID_TAKEN_RETRY_FIRST_DELAY_MS,
   ID_TAKEN_RETRY_MAX_DELAY_MS,
@@ -203,7 +204,11 @@ class ScriptedPeer {
     return Promise.resolve();
   }
 
+  rejectCandidates = false;
+
   addIceCandidate(candidate: unknown): Promise<void> {
+    if (this.rejectCandidates)
+      return Promise.reject(new Error("unparseable candidate"));
     this.remoteCandidates.push(candidate);
     return Promise.resolve();
   }
@@ -1077,6 +1082,73 @@ test("a flood of remote candidates before the description is capped, and a late 
   // Exactly the cap was retained; the surplus was dropped, not queued -- and the
   // late description still completed the rendezvous.
   expect(peer.remoteCandidates).toHaveLength(MAX_PENDING_REMOTE_CANDIDATES);
+  peer.channels[0].open();
+  await session;
+});
+
+test("remote candidates applied after the description are capped, held ones counted with them", async () => {
+  const { socket, peer, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+  });
+  expect(MAX_APPLIED_REMOTE_CANDIDATES).toBe(128);
+  const deliverCandidates = (count: number): void => {
+    for (let i = 0; i < count; i += 1) {
+      socket.deliver({
+        type: BROKER_MESSAGE.candidate,
+        src: inviterId,
+        payload: { candidate: CANDIDATE_A },
+      });
+    }
+  };
+  deliverCandidates(10);
+  socket.deliver({
+    type: BROKER_MESSAGE.answer,
+    src: inviterId,
+    payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(peer.remoteCandidates).toHaveLength(10);
+
+  // Up to the cap every candidate is applied; past it each is dropped, and the
+  // rendezvous still completes.
+  deliverCandidates(MAX_APPLIED_REMOTE_CANDIDATES - 10);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(peer.remoteCandidates).toHaveLength(MAX_APPLIED_REMOTE_CANDIDATES);
+  deliverCandidates(25);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(peer.remoteCandidates).toHaveLength(MAX_APPLIED_REMOTE_CANDIDATES);
+  peer.channels[0].open();
+  await session;
+});
+
+test("a rejected remote candidate does not consume the applied budget", async () => {
+  const { socket, peer, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+  });
+  socket.deliver({
+    type: BROKER_MESSAGE.answer,
+    src: inviterId,
+    payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const deliverCandidates = (count: number): void => {
+    for (let i = 0; i < count; i += 1) {
+      socket.deliver({
+        type: BROKER_MESSAGE.candidate,
+        src: inviterId,
+        payload: { candidate: CANDIDATE_A },
+      });
+    }
+  };
+  peer.rejectCandidates = true;
+  deliverCandidates(MAX_APPLIED_REMOTE_CANDIDATES + 10);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(peer.remoteCandidates).toHaveLength(0);
+
+  peer.rejectCandidates = false;
+  deliverCandidates(MAX_APPLIED_REMOTE_CANDIDATES + 10);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(peer.remoteCandidates).toHaveLength(MAX_APPLIED_REMOTE_CANDIDATES);
   peer.channels[0].open();
   await session;
 });
