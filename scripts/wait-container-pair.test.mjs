@@ -18,11 +18,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // containing `-waitfail` makes `docker wait` itself fail (exit 1, no output).
 // A name containing `-neverdies` makes the container ignore `docker kill` and
 // run for a bounded 60s, standing in for a half that never reports an exit.
-// A `-lead` and a `-follow` half exit in that order: the lead exits with its
-// status once the follower is running, and the follower exits with its status
-// once the lead process is gone. An exited lead's pid stays live until the
-// script reaps it, so the follower exits only after the script has collected the
-// lead's exit. A bounded wait that runs out reports status 98 or 99.
+// A `-lead` half exits once its `-follow` half runs; the follower waits for the
+// lead pid to go away, so the case orders the exits without timing.
+// A bounded wait that runs out reports status 98 or 99.
 
 const SCRIPT = resolve(
   dirname(fileURLToPath(import.meta.url)),
