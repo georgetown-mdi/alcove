@@ -69,6 +69,8 @@ import {
   serializeKeyFile,
 } from "@alcove/core";
 
+import { HANDOFF_LOG_FILE_NAME, bindPathsIn } from "@jobs/handoffBindPaths";
+
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
 import {
@@ -81,6 +83,7 @@ import { keyFileFieldsFromRecord } from "./managedExchangeArtifact";
 import { managedExchangeRelaysThroughPartner } from "./managedExchangeRecord";
 
 import { MANAGED_INPUT_FILE_NAME } from "./managedInputHandle";
+import { shellJoinCommand } from "./recurringHandoff";
 
 import type {
   ConnectionConfig,
@@ -90,8 +93,10 @@ import type {
 } from "@alcove/core";
 import type {
   ManagedExchangeRecord,
+  ManagedExchangeSchedule,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
+import type { HandoffBindPath } from "@jobs/handoffBindPaths";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The config file name `alcove exchange` reads at its default config path
@@ -149,8 +154,13 @@ export interface ManagedCommandLineConfig {
    * and any max-age policy held, and no secret. */
   config: ManagedCronExportFile;
   /** The command to run in the folder holding that file, and the key file where
-   * the exchange has one. */
+   * the exchange has one: {@link argv} quoted for a POSIX shell. */
   command: string;
+  /** The `alcove exchange` invocation the command runs, as its arguments. */
+  argv: Array<string>;
+  /** The absolute paths outside the folder the configuration names, which a
+   * container run mounts at their own path. */
+  bindPaths: Array<HandoffBindPath>;
 }
 
 /**
@@ -356,6 +366,44 @@ function composeCronExportDocument(
   return document;
 }
 
+/** The units above seconds a `--peer-timeout` value is written in, largest
+ * first. */
+const PEER_TIMEOUT_UNITS: ReadonlyArray<[string, number]> = [
+  ["h", 3600],
+  ["m", 60],
+];
+
+/** `seconds`, a whole number, as the CLI's `<int><unit>` duration in the
+ * largest unit that states it exactly. */
+function durationFlagValue(seconds: number): string {
+  if (!Number.isInteger(seconds))
+    throw new Error("a --peer-timeout value must be a whole number of seconds");
+  for (const [unit, size] of PEER_TIMEOUT_UNITS)
+    if (seconds % size === 0) return `${seconds / size}${unit}`;
+  return `${seconds}s`;
+}
+
+/**
+ * The `alcove exchange` invocation the export runs: a log appended in the
+ * folder, and on a record with an agreed schedule, a wait for the partner as
+ * long as the agreed window, so a run started at the window's open gives up
+ * when it closes.
+ */
+function exportedExchangeArgv(
+  schedule: ManagedExchangeSchedule | undefined,
+): Array<string> {
+  return [
+    "alcove",
+    "exchange",
+    `--log-file=${HANDOFF_LOG_FILE_NAME}`,
+    ...(schedule !== undefined
+      ? [`--peer-timeout=${durationFlagValue(schedule.windowSeconds)}`]
+      : []),
+    CRON_EXPORT_INPUT_FILE_NAME,
+    CRON_EXPORT_OUTPUT_FOLDER,
+  ];
+}
+
 /**
  * Compose a managed record's configuration half: the `alcove.yaml` file and
  * the command that runs it. Writes nothing, and is available to every stored
@@ -364,7 +412,8 @@ function composeCronExportDocument(
  *
  * The emitted command is `alcove exchange`'s real invocation --
  * `[options] INPUT_FILE [OUTPUT_FILE]`, with the config and key read at their
- * defaults (`apps/cli/src/commands/exchange.ts`).
+ * defaults (`apps/cli/src/commands/exchange.ts`) and the options
+ * {@link exportedExchangeArgv} adds.
  *
  * @throws {Error} if the record's stored connection holds a field or a
  *   literal credential the app does not hold, its stored document holds an
@@ -376,17 +425,17 @@ export function composeManagedCronExportConfig(
   record: ManagedExchangeRecord,
   readOwn: () => OwnRelayRead = readOwnRelaySetting,
 ): ManagedCommandLineConfig {
+  const document = composeCronExportDocument(record, readOwn);
+  const argv = exportedExchangeArgv(record.schedule);
   return {
     config: {
       fileName: CRON_EXPORT_CONFIG_FILE_NAME,
-      text: serializeExchangeDocument(
-        composeCronExportDocument(record, readOwn),
-      ),
+      text: serializeExchangeDocument(document),
       mimeType: CRON_EXPORT_CONFIG_MIME,
     },
-    command:
-      `alcove exchange ${CRON_EXPORT_INPUT_FILE_NAME} ` +
-      CRON_EXPORT_OUTPUT_FOLDER,
+    command: shellJoinCommand(argv),
+    argv,
+    bindPaths: bindPathsIn(document),
   };
 }
 
@@ -410,16 +459,15 @@ export function composeManagedCronExport(
 ): ManagedCronExport {
   const relaysThroughPartner = managedExchangeRelaysThroughPartner(record);
   if (!relaysThroughPartner) assertNoReinviteRegistrationPending(record);
-  const { config, command } = composeManagedCronExportConfig(record, readOwn);
+  const commandLine = composeManagedCronExportConfig(record, readOwn);
   const keyFields = keyFileFieldsFromRecord(record);
   if (relaysThroughPartner) delete keyFields.relayRegistrationPendingSince;
   return {
-    config,
+    ...commandLine,
     key: {
       fileName: CRON_EXPORT_KEY_FILE_NAME,
       text: serializeKeyFile(keyFields),
       mimeType: CRON_EXPORT_KEY_MIME,
     },
-    command,
   };
 }

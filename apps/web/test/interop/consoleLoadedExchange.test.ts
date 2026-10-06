@@ -25,7 +25,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { JobManager, TERMS_PROPOSAL_REFUSAL } from "@jobs/jobManager";
 import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
 import { parseRunArtifactName, runArtifactNames } from "@jobs/runArtifactNames";
-import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/termsProposal";
+import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/intentSchemas";
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";

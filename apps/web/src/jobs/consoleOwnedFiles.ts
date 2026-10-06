@@ -6,11 +6,9 @@ import { parseSensitiveJson } from "@alcove/core";
 import {
   JOB_FILE_NAMES,
   PREVIOUS_CONFIGURATION_FILE_NAME,
-} from "./intentSchemas";
-import {
-  SIGNING_CERTIFICATE_FILE_NAME,
   SIGNING_IDENTITY_FILE_NAME,
-} from "./signingIdentity";
+} from "./intentSchemas";
+import { SIGNING_CERTIFICATE_FILE_NAME } from "./signingIdentity";
 import { isPathWithin } from "./pathContainment";
 import { isValidJobId } from "./workdir";
 import { readBoundedMountedFile } from "./boundedMountedFile";

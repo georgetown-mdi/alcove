@@ -7,7 +7,14 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import { NOTE_CONTROL_CHAR_PATTERN } from "@jobs/intentSchemas";
+import {
+  NOTE_CONTROL_CHAR_PATTERN,
+  SIGNING_IDENTITY_FILE_NAME,
+} from "@jobs/intentSchemas";
+import {
+  SECRETS_FOLDER_PLACEHOLDER,
+  workingFolderCommand,
+} from "@psi/dockerRunCommand";
 
 import { OPT_IN_TOKEN_MAX_AGE_DAYS, maxAgeDaysError } from "./tokenMaxAge";
 
@@ -30,7 +37,7 @@ import type { JobRendezvousConfig } from "./jobClient/workInputClient";
  * same module as the server schema that enforces it.
  *
  * Regenerating the signing identity is a command-line action, not offered
- * here ({@link IDENTITY_REGENERATION_NOTICE}); the identity's location
+ * here ({@link identityRegenerationNotice}); the identity's location
  * defaults to the console's one mounted working directory
  * ({@link IDENTITY_AT_REST_NOTICE}) and the operator may point it at a file in
  * the secrets mount instead ({@link IDENTITY_PICKED_LOCATION_NOTICE}). What the
@@ -293,31 +300,98 @@ const DIVERGENCE_CONSEQUENCE =
   "rejects one signed under any other, so this run is refused before it " +
   "connects.";
 
+/** The placeholder a command names for the identity file the operator picked
+ * in their secrets folder. */
+const PICKED_IDENTITY_FILE_PLACEHOLDER = `${SECRETS_FOLDER_PLACEHOLDER}/FILE`;
+
+/**
+ * `alcove fingerprint` with `args`, as the command over the operator's working
+ * folder, on the identity this card uses: the console's default file in that
+ * folder, or, where `picked`, the file they picked in their secrets folder,
+ * that folder mounted at its own path: read-write for a command that creates
+ * or replaces the identity (one naming `--identity` or `--force`), read-only
+ * otherwise. The sentence naming a picked command says FILE is the file they
+ * picked.
+ */
+export function fingerprintCommand(
+  picked: boolean,
+  args: ReadonlyArray<string> = [],
+): string {
+  return picked
+    ? workingFolderCommand(
+        [
+          "fingerprint",
+          "--identity-file",
+          PICKED_IDENTITY_FILE_PLACEHOLDER,
+          ...args,
+        ],
+        {
+          bindPaths: [
+            {
+              path: SECRETS_FOLDER_PLACEHOLDER,
+              readOnly: !args.some(
+                (arg) => arg === "--identity" || arg === "--force",
+              ),
+            },
+          ],
+        },
+      )
+    : workingFolderCommand([
+        "fingerprint",
+        "--identity-file",
+        SIGNING_IDENTITY_FILE_NAME,
+        ...args,
+      ]);
+}
+
+/** The arguments that make a new identity under the name NAME stands for. */
+const NEW_IDENTITY_ARGS = ["--identity", "NAME"];
+
+/** What the placeholders in a command creating an identity stand for. */
+function newIdentityPlaceholders(picked: boolean): string {
+  return picked
+    ? "with NAME that name and FILE the file you picked"
+    : "with NAME that name";
+}
+
+/**
+ * The command replacing the signing identity under a new name, and what its
+ * placeholders stand for.
+ */
+function rekeyCommand(picked: boolean): string {
+  return (
+    fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]) +
+    `, ${newIdentityPlaceholders(picked)}`
+  );
+}
+
 /**
  * The two ways out of an ordinary divergence, in the order the CLI offers them:
  * the local edit first, because it is the cheaper of the two and a new key
  * invalidates every fingerprint a partner has pinned. Re-keying stays a
  * command-line action here as it does everywhere else on this card
- * ({@link IDENTITY_REGENERATION_NOTICE}).
+ * ({@link identityRegenerationNotice}).
  */
-const DIVERGENCE_RECONCILE_GUIDANCE =
-  "Make the two match: set 'Your name' for this exchange to the name the " +
-  "identity is bound to, or create a new signing identity under the name " +
-  "these terms state at the command line -- 'alcove fingerprint --force " +
-  "--identity' -- which gives you a new fingerprint every partner who pinned " +
-  "the old one must be sent before their verification works again.";
+function divergenceReconcileGuidance(picked: boolean): string {
+  return (
+    "Make the two match: set 'Your name' for this exchange to the name the " +
+    "identity is bound to, or create a new signing identity under the name " +
+    `these terms state at the command line -- ${rekeyCommand(picked)} -- ` +
+    "which gives you a new fingerprint every partner who pinned the old one " +
+    "must be sent before their verification works again."
+  );
+}
 
 /**
  * The re-key remedy, for the two divergences the 'Your name' edit cannot
  * reconcile. `boundTo` names what to bind the new identity to, the whole
  * difference between them; the rest is one action with one consequence.
  */
-function rekeyGuidance(boundTo: string): string {
+function rekeyGuidance(boundTo: string, picked: boolean): string {
   return (
     `Create a new signing identity ${boundTo} at the command line -- ` +
-    "'alcove fingerprint --force --identity' -- then send every partner who " +
-    "pinned the old fingerprint the new one before their verification works " +
-    "again."
+    `${rekeyCommand(picked)} -- then send every partner who pinned the old ` +
+    "fingerprint the new one before their verification works again."
   );
 }
 
@@ -328,16 +402,14 @@ function rekeyGuidance(boundTo: string): string {
  * answer decides which names those are, read rather than restated so this
  * boundary and the run's cannot disagree.
  */
-const DIVERGENCE_REKEY_GUIDANCE = rekeyGuidance("under a name the terms admit");
+const DIVERGENCE_REKEY_UNDER_ADMITTED_NAME = "under a name the terms admit";
 
 /**
  * The exit where the bound name is one 'Your name' cannot be set to
  * ({@link reasonNameFieldCannotStateIdentity}). The new identity binds to the
  * name the terms state, the form of it this exchange runs under.
  */
-const DIVERGENCE_REKEY_UNDER_TERMS_NAME = rekeyGuidance(
-  "under the name these terms state",
-);
+const DIVERGENCE_REKEY_UNDER_TERMS_NAME = "under the name these terms state";
 
 /**
  * Why 'Your name' cannot be set to `bound`, phrased as a clause the statement
@@ -418,13 +490,15 @@ export function signingIdentityDivergence(
   if (bound === undefined || identity.length === 0 || bound === identity)
     return undefined;
   const termsName = redactAndDisplayPartyIdentity(identity);
+  const picked = draft.identityLocation !== undefined;
   const unstatable = reasonTermsCannotStateIdentity(bound);
   if (unstatable !== undefined)
     return (
       "Your signing identity is bound to a name the agreed terms cannot " +
       `state -- ${unstatable} -- so it differs from the "${termsName}" this ` +
       "exchange names you by, and no change to 'Your name' can bring the two " +
-      `into agreement. ${DIVERGENCE_CONSEQUENCE} ${DIVERGENCE_REKEY_GUIDANCE}`
+      `into agreement. ${DIVERGENCE_CONSEQUENCE} ` +
+      rekeyGuidance(DIVERGENCE_REKEY_UNDER_ADMITTED_NAME, picked)
     );
   const fieldCannotState = reasonNameFieldCannotStateIdentity(bound);
   if (fieldCannotState !== undefined)
@@ -432,13 +506,13 @@ export function signingIdentityDivergence(
       "Your signing identity is bound to a name 'Your name' cannot be set " +
       `to -- ${fieldCannotState} -- so it differs from the "${termsName}" ` +
       `this exchange names you by. ${DIVERGENCE_CONSEQUENCE} ` +
-      DIVERGENCE_REKEY_UNDER_TERMS_NAME
+      rekeyGuidance(DIVERGENCE_REKEY_UNDER_TERMS_NAME, picked)
     );
   return (
     `Your signing identity is bound to "${redactAndDisplayPartyIdentity(
       bound,
     )}", and this exchange names you "${termsName}". ` +
-    `${DIVERGENCE_CONSEQUENCE} ${DIVERGENCE_RECONCILE_GUIDANCE}`
+    `${DIVERGENCE_CONSEQUENCE} ${divergenceReconcileGuidance(picked)}`
   );
 }
 
@@ -606,9 +680,11 @@ const IDENTITY_PICKED_LOCATION_READ_NOTICE =
   "and the console creates no key there, with one exception: showing your " +
   "fingerprint checks that the file is there and then reads it, so a file " +
   "removed between those two steps is created again at that path. Create it " +
-  "once at the command line -- 'alcove fingerprint --identity-file' pointed " +
-  "at that path -- and mount the folder read-only afterwards, which closes " +
-  "that case too. Keep it out of every folder your partner syncs.";
+  "once at the command line -- " +
+  fingerprintCommand(true, NEW_IDENTITY_ARGS) +
+  ", with NAME your name and FILE the file you picked -- and mount the " +
+  "folder read-only afterwards, which closes that case too. Keep it out of " +
+  "every folder your partner syncs.";
 
 /**
  * What the console says about a key created earlier at the console's default
@@ -699,14 +775,22 @@ export const IDENTITY_SHARED_MOUNT_REFUSAL_ADVISORY =
  * partner's verification starts failing. Named, not offered: the console
  * has no one-click way to invalidate every pin a partner holds, and the
  * command line -- where the flag is explicit and the run is the operator's
- * own -- stays open.
+ * own -- stays open. `picked` names the identity at the location the operator
+ * picked rather than the console's default.
  */
-export const IDENTITY_REGENERATION_NOTICE =
-  "Your signing identity is long-lived: the same key signs every exchange with " +
-  "every partner, which is what lets a fingerprint stay pinned. Replacing it is " +
-  "a command-line action -- alcove fingerprint --force -- because the new key " +
-  "has a new fingerprint, and every partner who pinned the old one must be sent " +
-  "the new one before their verification works again.";
+export function identityRegenerationNotice(picked: boolean): string {
+  return (
+    "Your signing identity is long-lived: the same key signs every exchange " +
+    "with every partner, which is what lets a fingerprint stay pinned. " +
+    "Replacing it is a command-line action -- " +
+    fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]) +
+    ", with NAME your name" +
+    (picked ? " and FILE the file you picked" : "") +
+    " -- because the new key has a new fingerprint, and every partner who " +
+    "pinned the old one must be sent the new one before their verification " +
+    "works again."
+  );
+}
 
 /**
  * Where the signed receipt lands, and what removes it. Written with this

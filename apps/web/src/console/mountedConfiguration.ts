@@ -2,6 +2,7 @@ import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   isJobChannel,
 } from "@jobs/intentSchemas";
+import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import {
   HELD_TERMS_SETTINGS,
@@ -278,6 +279,11 @@ export function runWithheldReason(
  * ({@link editedTermsWarning}). */
 export const EDITED_TERMS_TITLE = "Your partner holds the terms you opened";
 
+/** The command making a terms update from the alcove.yaml in the operator's
+ * working folder. Their partner's own command is named bare, since how the
+ * partner runs Alcove is theirs. */
+const TERMS_UPDATE_COMMAND = workingFolderCommand(["update"]);
+
 /**
  * What the review step says when the terms the draft builds are not the terms
  * the opened configuration built (`termsEditedSinceOpened`): the partner holds
@@ -305,16 +311,17 @@ export function editedTermsWarning(
     return (
       changed +
       "An exchange run from the file you save is refused until they apply " +
-      "yours: after you save, run alcove update and send what it prints to " +
-      "your partner to apply with alcove apply."
+      `yours: after you save, run ${TERMS_UPDATE_COMMAND} and send what it ` +
+      "prints to your partner to apply with alcove apply."
     );
   if (!continuesOpenedExchange) return undefined;
   return (
     changed +
     "This run is refused wherever the two differ. To run the terms your " +
     "partner holds, undo the change, or close the configuration and open it " +
-    "again. To change the terms, edit alcove.yaml, run alcove update, and " +
-    "send what it prints to your partner to apply with alcove apply."
+    "again. To change the terms, edit alcove.yaml, run " +
+    `${TERMS_UPDATE_COMMAND}, and send what it prints to your partner to ` +
+    "apply with alcove apply."
   );
 }
 

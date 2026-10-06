@@ -327,16 +327,25 @@ describe("the surface of a configuration on a channel this app does not run", ()
     await expect
       .element(page.getByText("Files Alcove reads when it runs"))
       .toBeInTheDocument();
+    const note = page.getByText(
+      "The file keeps connection.server.password as an @",
+      { exact: false },
+    );
+    await expect.element(note).toBeInTheDocument();
+    expect(note.element().textContent).not.toContain("/secrets/sftp-password");
+    // The image's command mounts the file the reference names, at its own
+    // path, so the run finds it there.
     await expect
       .element(
-        page.getByText("The file keeps connection.server.password as an @", {
-          exact: false,
-        }),
+        page
+          .getByText(
+            "--mount type=bind,src=/secrets/sftp-password," +
+              "dst=/secrets/sftp-password,readonly",
+            { exact: false },
+          )
+          .first(),
       )
       .toBeInTheDocument();
-    expect(
-      page.getByText("/secrets/sftp-password", { exact: false }).query(),
-    ).toBe(null);
   });
 });
 

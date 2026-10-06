@@ -16,6 +16,7 @@ import {
   jobTargetPresent,
   resolveWorkdirFile,
 } from "./workdir";
+import { SIGNING_IDENTITY_FILE_NAME } from "./intentSchemas";
 import { resolveMountPath } from "./mountBrowse";
 import { runCapturedCliChild } from "./capturedCliChild";
 
@@ -34,16 +35,6 @@ import type { JobSigningIdentityLocation } from "./intentSchemas";
  * regex; stderr is discarded (it can name filesystem paths), and the child
  * is watchdog-bounded.
  */
-
-/**
- * The signing identity file's name inside the console's mounted data root.
- *
- * Dot-prefixed so the input listing's admissibility rule
- * ({@link isAdmissibleInputName}) excludes it from the operator's input
- * picker. Lives in the mount, not a job workdir, since the identity
- * outlives any one job.
- */
-export const SIGNING_IDENTITY_FILE_NAME = ".alcove-signing-identity.json";
 
 /**
  * The exported certificate's name in the same mount. The PUBLIC half only: the

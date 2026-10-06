@@ -9,6 +9,7 @@ import {
   IDENTITY_DIRECTION_CHAR_PATTERN,
   IDENTITY_PRIVATE_KEY_MESSAGE,
   MAX_IDENTITY_LENGTH,
+  SIGNING_IDENTITY_FILE_NAME,
   jobSigningIdentityLocationSchema,
 } from "@jobs/intentSchemas";
 
@@ -23,7 +24,6 @@ import {
 } from "@jobs/routeSupport";
 import {
   SIGNING_CERTIFICATE_FILE_NAME,
-  SIGNING_IDENTITY_FILE_NAME,
   SigningIdentityLocationError,
 } from "@jobs/signingIdentity";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";

@@ -11,12 +11,14 @@ import {
   JobSigningIdentityExposedError,
 } from "@jobs/jobManager";
 import {
-  SIGNING_CERTIFICATE_FILE_NAME,
+  JOB_FILE_NAMES,
   SIGNING_IDENTITY_FILE_NAME,
+} from "@jobs/intentSchemas";
+import {
+  SIGNING_CERTIFICATE_FILE_NAME,
   SigningIdentityLocationError,
   resolveSigningIdentityPath,
 } from "@jobs/signingIdentity";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
 
 import { route as FingerprintRoute } from "../../../server/console/routes/signing/fingerprint";
 import { route as JobsRoute } from "../../../server/console/routes/index";

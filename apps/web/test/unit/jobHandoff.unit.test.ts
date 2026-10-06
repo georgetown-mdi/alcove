@@ -23,7 +23,6 @@ import {
   dockerTaskSchedulerLine,
   installedCronLine,
   installedRunCommand,
-  unmountableBindPaths,
 } from "@recurring/scheduledRunCommand";
 import {
   handoffCaveats,
@@ -33,6 +32,7 @@ import {
   windowsJoinCommand,
 } from "@psi/managed/recurringHandoff";
 import { JobManager } from "@jobs/jobManager";
+import { unmountableBindPaths } from "@psi/dockerRunCommand";
 
 import { route as CreateRoute } from "../../server/console/routes/index";
 import { route as HandoffRoute } from "../../server/console/routes/$jobId/handoff";

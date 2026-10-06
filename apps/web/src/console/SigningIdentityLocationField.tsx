@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 
 import { Button, Group, Stack, Text } from "@mantine/core";
 
+import { fingerprintCommand, identityLocationLabel } from "@psi/receiptsModel";
 import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
-import { identityLocationLabel } from "@psi/receiptsModel";
 
 import styles from "@styles/app.module.css";
 
@@ -87,8 +87,10 @@ export function SigningIdentityLocationField({
                   This console has no separate secrets folder to browse, so your
                   signing identity stays in your folder. To keep it somewhere
                   else, mount a separate folder as JOB_SECRETS_DIR, create your
-                  identity file there with &apos;alcove fingerprint
-                  --identity-file&apos;, and restart the console.
+                  identity file there with{" "}
+                  {fingerprintCommand(true, ["--identity", "NAME"])}, with NAME
+                  your name and FILE the file&apos;s name, and restart the
+                  console.
                 </>
               }
               onSelect={(subPath) => {

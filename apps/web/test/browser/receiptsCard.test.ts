@@ -529,6 +529,59 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
       .toBeInTheDocument();
     expect(app.container.textContent).toContain("No separate secrets folder");
     expect(app.container.textContent).not.toContain("type a file reference");
+    expect(app.container.textContent).toContain(
+      "create your identity file there with docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+        "type=bind,src=/path/to/your/secrets-folder," +
+        "dst=/path/to/your/secrets-folder ",
+    );
+    expect(app.container.textContent).not.toContain(" -it ");
+  });
+
+  test("names re-keying as a docker run without a terminal, at either location", async () => {
+    stubSigningApi({
+      secretsEntries: [{ name: PICKED_IDENTITY, kind: "file" }],
+    });
+    await renderCard();
+    await chooseCertificateMode();
+
+    await expect
+      .element(
+        page.getByText("Replacing it is a command-line action", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      "Replacing it is a command-line action -- docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work ",
+    );
+    expect(app.container.textContent).toContain(
+      " fingerprint --identity-file .alcove-signing-identity.json --force " +
+        "--identity NAME, with NAME your name -- ",
+    );
+
+    await pickIdentityLocation(PICKED_IDENTITY);
+
+    await expect
+      .element(
+        page.getByText("and FILE the file you picked -- because", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      "Replacing it is a command-line action -- docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+        "type=bind,src=/path/to/your/secrets-folder," +
+        "dst=/path/to/your/secrets-folder ",
+    );
+    expect(app.container.textContent).toContain(
+      " fingerprint --identity-file /path/to/your/secrets-folder/FILE " +
+        "--force --identity NAME, with NAME your name and FILE the file you " +
+        "picked -- because",
+    );
+    expect(app.container.textContent).not.toContain(" -it ");
   });
 
   test("withholds the request while this exchange states no identity", async () => {
@@ -654,7 +707,12 @@ describe("ReceiptsCard: a failed request", () => {
       .element(page.getByText(REFUSED_DEFAULT, { exact: false }))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "running 'alcove fingerprint' against the same folder",
+      "-- running docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work ",
+    );
+    expect(app.container.textContent).not.toContain(" -it ");
+    expect(app.container.textContent).toContain(
+      " fingerprint --identity-file .alcove-signing-identity.json prints the reason",
     );
 
     await createButton().click();
@@ -705,7 +763,14 @@ describe("ReceiptsCard: a failed request", () => {
       "Check that file at the location you picked, or pick another one.",
     );
     expect(app.container.textContent).toContain(
-      "'alcove fingerprint --identity-file' pointed at that file",
+      "-- running docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+        "type=bind,src=/path/to/your/secrets-folder," +
+        "dst=/path/to/your/secrets-folder,readonly ",
+    );
+    expect(app.container.textContent).toContain(
+      " fingerprint --identity-file /path/to/your/secrets-folder/FILE, with " +
+        "FILE the file you picked, prints the reason",
     );
     expect(app.container.textContent).not.toContain("writable");
     // The alcove.yaml half stays: the child's working directory is the data

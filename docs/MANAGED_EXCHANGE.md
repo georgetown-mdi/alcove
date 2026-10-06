@@ -1182,9 +1182,19 @@ differently once they land:
   security](SECURITY_DESIGN.md#key-file-security)).
 
 Saved into one folder, the two are what the emitted invocation opens: the CLI
-reads both at its default paths, so the command includes no path from any
-machine and needs no flag. The panel shows that invocation beside the cron and
-Task Scheduler lines that run it daily.
+reads both at its default paths, so the command names no path from any
+machine. It reads `input.csv`, appends to `exchange.log`, and writes each run's
+result into the folder under that run's time stamp; on an exchange with an
+agreed schedule it also waits for the partner (`--peer-timeout`) as long as
+the agreed window.
+
+The panel shows that invocation the way the console's hand-off does
+([CONSOLE.md](CONSOLE.md)): run from Alcove's published image over the folder
+by default, with each path the configuration names outside it mounted at its
+own path, and beside it the cron and Task Scheduler lines that run it on the
+agreed schedule, or daily at 2am for an exchange with none ([how the lines
+state the schedule](spec/MANAGED_EXCHANGE_RECORD.md#the-command-line-exports-scheduled-lines)).
+A cron line for an installed `alcove` is shown too.
 
 The spend is **operator-attested**, exactly as a device migration's is: two
 downloads are two chances for a save to fail, and a click gives no landing

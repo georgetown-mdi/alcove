@@ -41,6 +41,7 @@ import {
 } from "@console/mountedConfiguration";
 
 import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobs/intentSchemas";
+import { buildImageReference } from "@psi/dockerRunCommand";
 
 import type { DisclosedExchangeDocument } from "@jobs/configLoad";
 import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
@@ -58,6 +59,12 @@ const HAND_BACK: JobConfigurationHandBack = {
   csvDelimiter: "|",
   signing: { mode: "none" },
 };
+
+/** The terms update the operator runs: the image over their working folder. */
+const UPDATE_COMMAND =
+  "docker run --rm --mount " +
+  "type=bind,src=/path/to/your/working-folder,dst=/work " +
+  `${buildImageReference()} update`;
 
 const FINGERPRINT = "SHA256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA";
 
@@ -691,8 +698,8 @@ describe("the terms of an opened configuration changed here", () => {
     });
     expect(warning).toMatch(/still holds its terms as they were/);
     expect(warning).toMatch(/This run is refused/);
-    expect(warning).toContain("alcove update");
-    expect(warning).toContain("alcove apply");
+    expect(warning).toContain(`run ${UPDATE_COMMAND}, and send`);
+    expect(warning).toContain("to apply with alcove apply.");
   });
 
   test("a configuration saved back names update and apply after the save", () => {
@@ -700,8 +707,8 @@ describe("the terms of an opened configuration changed here", () => {
       termsEdited: true,
       continuesOpenedExchange: false,
     });
-    expect(warning).toMatch(/after you save, run alcove update/);
-    expect(warning).toContain("alcove apply");
+    expect(warning).toContain(`after you save, run ${UPDATE_COMMAND} and`);
+    expect(warning).toContain("to apply with alcove apply.");
     expect(warning).not.toMatch(/This run is refused/);
   });
 

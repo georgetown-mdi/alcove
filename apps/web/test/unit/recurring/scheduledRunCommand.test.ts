@@ -9,12 +9,16 @@ import {
   handoffInputName,
   installedCronLine,
   installedRunCommand,
-  unmountableBindPaths,
   unmountableBindPathsNotice,
 } from "@recurring/scheduledRunCommand";
+import {
+  dockerRunArgv,
+  unmountableBindPaths,
+  workingFolderCommand,
+} from "@psi/dockerRunCommand";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
 
-import type { ScheduledRunSource } from "@recurring/scheduledRunCommand";
+import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
 // The lines the console's hand-off shows, as the operator pastes them. The
 // installed-program cron line is run for real in the console interop suite
@@ -190,6 +194,56 @@ describe("the console hand-off's command lines", () => {
     ).toContain("without . or .. segments");
   });
 
+  test.each([
+    ["a newline", "/srv/a\nb"],
+    ["a carriage return", "/srv/a\rb"],
+    ["a tab", "/srv/a\tb"],
+    ["a direction override", "/srv/a\u202eb"],
+    ["a direction isolate", "/srv/a\u2066b"],
+    ["a delete", "/srv/a\u007fb"],
+  ])("a path with %s is refused", (_name, path) => {
+    const source = sourceBinding(path);
+    expect(unmountableBindPaths(source.bindPaths)).toEqual([
+      { path, reason: "control" },
+    ]);
+    expect(dockerRunCommand(source)).toBeUndefined();
+    expect(dockerCronLine(source)).toBeUndefined();
+    expect(dockerTaskSchedulerLine(source)).toBeUndefined();
+    const notice = unmountableBindPathsNotice(
+      unmountableBindPaths(source.bindPaths),
+    );
+    expect(notice).toContain("Move that folder to a path without");
+    // eslint-disable-next-line no-control-regex
+    expect(notice).not.toMatch(/[\u0000-\u001f\u202a-\u202e\u2066-\u2069]/);
+  });
+
+  test("a path whose second line is a crontab entry yields no cron line", () => {
+    const path = "/x\n* * * * * touch /tmp/pwned #";
+    const source = sourceBinding(path);
+    expect(unmountableBindPaths(source.bindPaths)).toEqual([
+      { path, reason: "control" },
+    ]);
+    expect(dockerCronLine(source)).toBeUndefined();
+    expect(installedCronLine(source)).not.toContain("pwned");
+    expect(
+      unmountableBindPathsNotice(unmountableBindPaths(source.bindPaths)),
+    ).toBe(
+      "The Docker commands are not shown because /x\\x0a* * * * * touch " +
+        "/tmp/pwned # contains a line break, another control character, or " +
+        "a text-direction character, which a scheduled command cannot hold. " +
+        "Move that folder to a path without such a character, and set the " +
+        "new path in the configuration.",
+    );
+  });
+
+  test("a path with a space and a single quote is still mounted", () => {
+    const source = sourceBinding("/srv/it's a folder");
+    expect(unmountableBindPaths(source.bindPaths)).toEqual([]);
+    expect(dockerCronLine(source)).toContain(
+      "'type=bind,src=/srv/it'\\''s a folder,dst=/srv/it'\\''s a folder'",
+    );
+  });
+
   test("a plain path is mounted at the path as written", () => {
     const source = sourceBinding("/srv/b");
     expect(unmountableBindPaths(source.bindPaths)).toEqual([]);
@@ -222,4 +276,64 @@ describe("a hand-off whose argv is not an alcove command line", () => {
       ).toBeNull();
     },
   );
+});
+
+describe("a command-line step the console's copy names", () => {
+  test("runs the image once over the operator's working folder", () => {
+    expect(workingFolderCommand(["update"], { image: IMAGE })).toBe(
+      "docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work " +
+        `${IMAGE} update`,
+    );
+  });
+
+  test("one that asks before it writes gets a terminal", () => {
+    expect(
+      workingFolderCommand(["apply", "@run/alcove.proposed-terms"], {
+        image: IMAGE,
+        interactive: true,
+      }),
+    ).toBe(
+      "docker run --rm -it --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work " +
+        `${IMAGE} apply @run/alcove.proposed-terms`,
+    );
+  });
+
+  test("a folder outside the working folder is mounted at its own path", () => {
+    expect(
+      workingFolderCommand(["fingerprint"], {
+        image: IMAGE,
+        bindPaths: [{ path: "/path/to/your/secrets-folder", readOnly: false }],
+      }),
+    ).toContain(
+      "--mount type=bind,src=/path/to/your/secrets-folder," +
+        "dst=/path/to/your/secrets-folder ",
+    );
+  });
+});
+
+describe("the docker run argv", () => {
+  test("places the terminal flag before the mounts only when asked", () => {
+    const source: ScheduledRunSource = {
+      argv: ["alcove", "update"],
+      bindPaths: [],
+      image: IMAGE,
+    };
+    const tail = [
+      "--mount",
+      "type=bind,src=/folder,dst=/work",
+      IMAGE,
+      "update",
+    ];
+    expect(dockerRunArgv(source, "docker", "/folder")).toEqual([
+      "docker",
+      "run",
+      "--rm",
+      ...tail,
+    ]);
+    expect(
+      dockerRunArgv(source, "docker", "/folder", { interactive: true }),
+    ).toEqual(["docker", "run", "--rm", "-it", ...tail]);
+  });
 });

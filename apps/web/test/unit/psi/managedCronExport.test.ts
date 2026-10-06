@@ -137,9 +137,11 @@ describe("the two files the CLI opens", () => {
 
   test("the emitted command is the CLI's own invocation, run beside the two files", () => {
     // `alcove exchange [options] INPUT_FILE [OUTPUT_FILE]` with the config and
-    // key read at their defaults: no flag the CLI does not have, and no path.
+    // key read at their defaults, and a log in the folder it runs in: no flag
+    // the CLI does not have, and no path.
     expect(composeManagedCronExport(managedRecord()).command).toBe(
-      `alcove exchange ${CRON_EXPORT_INPUT_FILE_NAME} ${CRON_EXPORT_OUTPUT_FOLDER}`,
+      "alcove exchange --log-file=exchange.log " +
+        `${CRON_EXPORT_INPUT_FILE_NAME} ${CRON_EXPORT_OUTPUT_FOLDER}`,
     );
   });
 });

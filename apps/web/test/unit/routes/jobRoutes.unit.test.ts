@@ -4,7 +4,11 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { JOB_FILE_NAMES, MAX_INPUT_CSV_LENGTH } from "@jobs/intentSchemas";
+import {
+  JOB_FILE_NAMES,
+  MAX_INPUT_CSV_LENGTH,
+  SIGNING_IDENTITY_FILE_NAME,
+} from "@jobs/intentSchemas";
 import {
   MAX_JOB_BODY_BYTES,
   MAX_SFTP_AUTHOR_BODY_BYTES,
@@ -13,7 +17,6 @@ import {
 } from "@jobs/routeSupport";
 import { formatFirstIssue, formatIssues } from "@jobs/schemaIssueMessage";
 import { JobManager } from "@jobs/jobManager";
-import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/signingIdentity";
 import { runArtifactNames } from "@jobs/runArtifactNames";
 
 import { route as CancelRoute } from "../../../server/console/routes/$jobId/cancel";

@@ -3,19 +3,11 @@ import { isDeepStrictEqual } from "node:util";
 
 import { parseSensitiveYaml, safeParseExchangeSpec } from "@alcove/core";
 
-import { JOB_FILE_NAMES } from "./intentSchemas";
+import { JOB_FILE_NAMES, TERMS_PROPOSAL_FILE_NAME } from "./intentSchemas";
 import { resolveWorkdirFile } from "./workdir";
 import { runCapturedCliChild } from "./capturedCliChild";
 
 import type { LinkageTerms } from "@alcove/core";
-
-/**
- * The proposal a run refused on a partner terms change writes beside its
- * configuration: the CLI names it after the configuration file
- * (`termsProposalPath`, `apps/cli/src/termsChange.ts`), so a job's composed
- * `alcove.yaml` puts it at this name in the job's workdir.
- */
-export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
 
 /**
  * How applying a run's terms proposal to the mounted configuration ended:

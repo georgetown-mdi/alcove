@@ -33,8 +33,10 @@ import {
   SESSION_DERIVED_PROBLEM,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
   UNNAMED_PARTY_PROBLEM,
+  fingerprintCommand,
   fingerprintRequestProblem,
   identityLocationLabel,
+  identityRegenerationNotice,
   maxAgeCadenceNote,
   partnerPinStatement,
   receiptsAdvisories,
@@ -54,10 +56,10 @@ import {
   composeConfigDocument,
   composeSftpConfigDocument,
 } from "@jobs/intentConfig";
+import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
   SIGNING_CERTIFICATE_FILE_NAME,
-  SIGNING_IDENTITY_FILE_NAME,
   assertExportPathDistinct,
   fingerprintArgv,
   parseFingerprintStdout,
@@ -68,13 +70,14 @@ import {
   signingIdentityPath,
 } from "@jobs/signingIdentity";
 import {
-  buildAdvancedTerms,
-  seedAdvancedInvite,
-} from "@psi/authoring/advancedInvite";
-import {
+  SIGNING_IDENTITY_FILE_NAME,
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
 } from "@jobs/intentSchemas";
+import {
+  buildAdvancedTerms,
+  seedAdvancedInvite,
+} from "@psi/authoring/advancedInvite";
 import { browseSegment } from "@jobs/workInputName";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { resolveWorkdirFile } from "@jobs/workdir";
@@ -182,6 +185,24 @@ const TERMS_COLUMNS = ["first_name", "last_name", "dob"];
  * that are about the name call the model directly with their own value. */
 const problemsFor = (authored: ReceiptsDraft): Array<string> =>
   receiptsProblems(authored, THIS_PARTY);
+
+/** `alcove fingerprint` on the console's default identity, as the image's
+ * command over the operator's working folder. */
+const DEFAULT_IDENTITY_COMMAND =
+  "docker run --rm --mount " +
+  "type=bind,src=/path/to/your/working-folder,dst=/work " +
+  `${buildImageReference()} fingerprint --identity-file ` +
+  ".alcove-signing-identity.json";
+
+/** The same on the file picked in the secrets folder, mounted at its own
+ * path. */
+const PICKED_IDENTITY_COMMAND =
+  "docker run --rm --mount " +
+  "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
+  "type=bind,src=/path/to/your/secrets-folder," +
+  "dst=/path/to/your/secrets-folder " +
+  `${buildImageReference()} fingerprint --identity-file ` +
+  "/path/to/your/secrets-folder/FILE";
 
 describe("the intent boundary admits only a mode an exchange honors", () => {
   test("certificate mode with a canonical pin parses", () => {
@@ -1545,8 +1566,41 @@ describe("the receipts card's model", () => {
     expect(IDENTITY_SHARED_MOUNT_REFUSAL_ADVISORY).toMatch(/secrets folder/);
     expect(IDENTITY_AT_REST_NOTICE).toMatch(/secrets folder/);
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/creates no key there/);
-    expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/alcove fingerprint/);
+    expect(IDENTITY_PICKED_LOCATION_NOTICE).toContain(
+      `${PICKED_IDENTITY_COMMAND} --identity NAME, with NAME your name and ` +
+        "FILE the file you picked",
+    );
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/your partner syncs/);
+  });
+
+  test("a picked-identity command mounts the secrets folder writable only to create or replace", () => {
+    const readOnlyMount =
+      "type=bind,src=/path/to/your/secrets-folder," +
+      "dst=/path/to/your/secrets-folder,readonly ";
+    expect(fingerprintCommand(true)).toBe(
+      PICKED_IDENTITY_COMMAND.replace(
+        "dst=/path/to/your/secrets-folder ",
+        "dst=/path/to/your/secrets-folder,readonly ",
+      ),
+    );
+    expect(fingerprintCommand(true)).toContain(readOnlyMount);
+    expect(fingerprintCommand(true, ["--identity", "NAME"])).toBe(
+      `${PICKED_IDENTITY_COMMAND} --identity NAME`,
+    );
+    expect(fingerprintCommand(true, ["--force", "--identity", "NAME"])).toBe(
+      `${PICKED_IDENTITY_COMMAND} --force --identity NAME`,
+    );
+  });
+
+  test("re-keying is named as the image's command over the operator's folders", () => {
+    expect(identityRegenerationNotice(false)).toContain(
+      `-- ${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
+        "your name -- because",
+    );
+    expect(identityRegenerationNotice(true)).toContain(
+      `-- ${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
+        "your name and FILE the file you picked -- because",
+    );
   });
 
   test("the picked-location notice attributes the write the spec accepts", () => {
@@ -1653,11 +1707,28 @@ describe("the signing identity's bound name against the agreed terms", () => {
     // key invalidates every fingerprint a partner has pinned.
     expect(statement).toMatch(/this run is refused before it connects/);
     expect(statement).toMatch(/set 'Your name' for this exchange/);
-    expect(statement).toMatch(/alcove fingerprint --force --identity/);
+    expect(statement).toContain(
+      `${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME that name`,
+    );
     expect(statement).toMatch(/new fingerprint/);
     // The console's own words, not the configuration keys the CLI states them in.
     expect(statement).not.toContain("linkage_terms.identity");
     expect(statement).not.toContain("signing.mode");
+  });
+
+  test("a diverging identity at a picked location names the re-key on that file", () => {
+    const statement = signingIdentityDivergence(
+      {
+        ...resolved("County Registrar"),
+        identityLocation: { mount: "secrets", subPath: ["identity.json"] },
+      },
+      THIS_PARTY,
+    );
+    expect(statement).toContain(
+      `${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME that ` +
+        "name and FILE the file you picked",
+    );
+    expect(statement).not.toContain("identity.json");
   });
 
   test("signing with no identity resolved yet states no divergence", () => {

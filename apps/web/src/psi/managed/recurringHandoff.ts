@@ -4,12 +4,12 @@ import {
 } from "@psi/jobClient/jobApiBody";
 
 import type {
-  HandoffBindPath,
   HandoffPathsAsRead,
   HandoffSigningSetting,
   JobHandoff,
   JobHandoffTemplate,
 } from "@jobs/handoff";
+import type { HandoffBindPath } from "@jobs/handoffBindPaths";
 
 /**
  * The browser-side reader for `GET /api/jobs/:jobId/handoff`: the recurring-run
