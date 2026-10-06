@@ -1220,7 +1220,7 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   );
   expect(replyBytes).toBeGreaterThan(replyCap);
   expect(message).toBe(
-    `single-pass built a reply of ${replyBytes} byte(s), above the ` +
+    `server: single-pass built a reply of ${replyBytes} byte(s), above the ` +
       `${replyCap} byte(s) both parties derive from their declared sizes, ` +
       "though both datasets are within the single-pass limit. Report it " +
       "with this message.",

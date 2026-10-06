@@ -473,7 +473,7 @@ test("loadKeyFile rejects a marker that is not an ISO 8601 datetime", () => {
   expect(() => loadKeyFile(keyPath)).toThrow();
 });
 
-test("rotationInFlightNotice names the instant, the re-invite remedy, and the confirm-first step", () => {
+test("rotationInFlightNotice names the instant, the new-invitation remedy, and the confirm-first step", () => {
   const notice = rotationInFlightNotice(
     "/srv/alcove/.alcove.key",
     "2026-03-01T12:00:00.000Z",
@@ -481,10 +481,10 @@ test("rotationInFlightNotice names the instant, the re-invite remedy, and the co
   expect(notice).toContain("/srv/alcove/.alcove.key");
   expect(notice).toContain("2026-03-01T12:00:00.000Z");
   expect(notice).toContain("probably hold different secrets");
-  expect(notice).toContain("re-invite");
+  expect(notice).toContain("Ask your partner for a new invitation");
   expect(notice).toContain('"Out-of-sync tokens"');
   expect(notice).toContain(
-    "confirm with your partner over a channel you trust before re-inviting",
+    "confirm with your partner over a channel you trust before asking for a new invitation",
   );
 });
 

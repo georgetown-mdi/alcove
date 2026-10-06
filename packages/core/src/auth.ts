@@ -7,6 +7,11 @@ import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import type { Authentication } from "./config/connection.js";
 import { InternalConsistencyError } from "./errors.js";
 
+/** The remedy sentence every refusal of an unusable shared secret ends with. */
+export const NEW_INVITATION_REMEDY =
+  "Ask your partner for a new invitation, or create one with 'alcove " +
+  "invite' and have your partner accept it.";
+
 // --- Public API --------------------------------------------------------------
 
 /**
@@ -179,8 +184,7 @@ export function assertSharedSecretReadyForHandshake(
       new Error(
         "the key file's sharedSecret must be a base64url-encoded 32-byte " +
           "value (43 base64url characters; the final character must be in " +
-          "[AEIMQUYcgkosw048]). Ask your partner for a new invitation, or " +
-          "create one with 'alcove invite' and have your partner accept it.",
+          `[AEIMQUYcgkosw048]). ${NEW_INVITATION_REMEDY}`,
       ),
       { alcoveRecoveryHintEmitted: true },
     );
@@ -189,9 +193,7 @@ export function assertSharedSecretReadyForHandshake(
   if (expires !== undefined && isExpired(expires, Date.now())) {
     throw Object.assign(
       new Error(
-        `the shared secret expired at ${expires}. Ask your partner for a ` +
-          "new invitation, or create one with 'alcove invite' and have your " +
-          "partner accept it.",
+        `the shared secret expired at ${expires}. ${NEW_INVITATION_REMEDY}`,
       ),
       { alcoveRecoveryHintEmitted: true },
     );
@@ -277,8 +279,7 @@ export async function authenticateConnection(
     throw Object.assign(
       new Error(
         `the shared secret expired at ${expires}, during the key exchange. ` +
-          "Ask your partner for a new invitation, or create one with " +
-          "'alcove invite' and have your partner accept it.",
+          NEW_INVITATION_REMEDY,
       ),
       { alcoveRecoveryHintEmitted: true },
     );

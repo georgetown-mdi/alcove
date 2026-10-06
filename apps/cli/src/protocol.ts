@@ -40,6 +40,7 @@ import {
   redactPrivateKeyMaterial,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
+  NEW_INVITATION_REMEDY,
   termsStatingDeclaredPayloadSend,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -1230,10 +1231,7 @@ const ROTATED_TOKEN_SAVE_PREAMBLE =
   "updated token could not be saved to ";
 
 /** What {@link authenticateRun} states behind that key file and the failure. */
-const ROTATED_TOKEN_SAVE_REMEDY =
-  " Your partner may already hold the rotated token. Ask your partner for " +
-  "a new invitation, or create one with 'alcove invite' and have your " +
-  "partner accept it.";
+const ROTATED_TOKEN_SAVE_REMEDY = ` Your partner may already hold the rotated token. ${NEW_INVITATION_REMEDY}`;
 
 /**
  * The run's authentication stage: run the key exchange, persist the rotated
@@ -3516,9 +3514,8 @@ export async function runProtocol(
       log.error(
         authenticationFailed
           ? "Authentication failed, and a retry with this key file fails " +
-              "the same way. Ask your partner for a new invitation, or " +
-              "create one with 'alcove invite' and have your partner accept " +
-              "it. If the SFTP server's host key is not the pinned one, " +
+              `the same way. ${NEW_INVITATION_REMEDY} ` +
+              "If the SFTP server's host key is not the pinned one, " +
               "confirm the server's key with its administrator and pin " +
               "that key instead."
           : retryRuledOut

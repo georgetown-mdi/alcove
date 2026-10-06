@@ -6,6 +6,7 @@
 import { z } from "zod";
 
 import { MS_PER_DAY } from "../utils/msPerDay";
+import { NEW_INVITATION_REMEDY } from "../auth";
 import { SHARED_SECRET_REGEX } from "./connection";
 
 /** Contents of a `.alcove.key` file. */
@@ -45,9 +46,7 @@ export const KEY_FILE_FIELD_SCHEMAS = {
     .string()
     .regex(
       SHARED_SECRET_REGEX,
-      KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE +
-        ". Ask your partner for a new invitation, or create one with " +
-        "'alcove invite' and have your partner accept it",
+      KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE + `. ${NEW_INVITATION_REMEDY}`,
     ),
   expires: z.iso.datetime().optional(),
   rotationInFlightSince: z.iso.datetime().optional(),

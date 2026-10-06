@@ -476,7 +476,7 @@ test("a key file still marked from an interrupted key exchange is reported at th
   );
   expect(notices).toHaveLength(1);
   expect(notices[0]).toContain("2026-03-01T12:00:00.000Z");
-  expect(notices[0]).toContain("re-invite");
+  expect(notices[0]).toContain("new invitation");
 });
 
 test("a key file with no marker loads without the interrupted-rotation notice", () => {

@@ -1776,6 +1776,7 @@ export async function linkViaCountOnlyPSI(
 // state -- the two parties' declared effective key counts, record counts,
 // and value slot products -- and no partner-authored text.
 function singlePassOverCapMessage(
+  id: string,
   numLinkageKeys: number,
   breach: SinglePassCeilingBreach,
   local: SinglePassPartySize,
@@ -1817,7 +1818,7 @@ function singlePassOverCapMessage(
     );
 
   return (
-    `this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
+    `${id}: this ${breach === "local" ? "dataset" : "exchange"} is too large for ` +
     `single-pass linkage: ${cause}, above the single-pass limit of ` +
     `${MAX_SINGLE_PASS_CELLS} value slot(s) per party. ` +
     remedies.join(" ")
@@ -1835,11 +1836,12 @@ function singlePassOverCapMessage(
 // classification denotes the remedy: report it, rather than fix an input or
 // retry a transport. The message states that step, so its instance is tagged.
 function singlePassReplyOverCapMessage(
+  id: string,
   replyBytes: number,
   replyCap: number,
 ): string {
   return (
-    `single-pass built a reply of ${replyBytes} byte(s), above the ` +
+    `${id}: single-pass built a reply of ${replyBytes} byte(s), above the ` +
     `${replyCap} byte(s) both parties derive from their declared sizes, ` +
     "though both datasets are within the single-pass limit. Report it " +
     "with this message."
@@ -2125,7 +2127,7 @@ export async function linkViaSinglePassPSI(
   const localSlotBound = effectiveKeyCount * localRecordCount;
   if (slotCount > localSlotBound) {
     throw new UsageError(
-      `single-pass built ${slotCount} candidate value slot(s) across ` +
+      `${participant.id}: single-pass built ${slotCount} candidate value slot(s) across ` +
         `${numLinkageKeys} linkage key(s) and ${numRecords} record(s), more ` +
         `than the ${localSlotBound} your agreed linkage terms and declared ` +
         "record count allow. Drop the transform that expands one value " +
@@ -2147,6 +2149,7 @@ export async function linkViaSinglePassPSI(
   if (ceilingBreach !== undefined) {
     throw new UsageError(
       singlePassOverCapMessage(
+        participant.id,
         numLinkageKeys,
         ceilingBreach,
         localSize,
@@ -2204,7 +2207,11 @@ export async function linkViaSinglePassPSI(
     if (reply.byteLength > replyCap) {
       throw Object.assign(
         new InternalConsistencyError(
-          singlePassReplyOverCapMessage(reply.byteLength, replyCap),
+          singlePassReplyOverCapMessage(
+            participant.id,
+            reply.byteLength,
+            replyCap,
+          ),
         ),
         { alcoveRecoveryHintEmitted: true },
       );
