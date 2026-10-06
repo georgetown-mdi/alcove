@@ -7,10 +7,13 @@ import {
   joinErrorCauseChain,
   parseBoundedJson,
   recordFileStamp,
-  redactAndFitUnescaped,
   sanitizeForDisplay,
 } from "@alcove/core";
-import { isEventType } from "@alcove/cli-contract";
+import {
+  UNREADABLE_EVENT,
+  isEventType,
+  unknownEventNotice,
+} from "@alcove/cli-contract";
 
 import {
   MAX_JOB_STATUS_RESPONSE_BYTES,
@@ -931,44 +934,20 @@ function sseFrameId(frame: string): number | null {
   return null;
 }
 
-/** The budget of each value an {@link unknownFrameNotice} quotes. */
-const UNKNOWN_FRAME_VALUE_MAX_LENGTH = 64;
-
-/** What {@link unknownFrameNotice} is handed for data that is not JSON. */
-const UNPARSABLE_FRAME = Symbol("unparsable frame");
-
 /**
  * The operator's notice for an event-stream frame whose data is not an event
- * of the fd-3 schema (`@alcove/cli-contract`): what arrived and what to do.
- * The console relays only events it validated, so such a frame means this page
- * and the console disagree on the schema -- most likely a page loaded before
- * the console was upgraded. A quoted value is redacted and fitted but not
- * escaped, since the warning sink escapes the notice once as it renders it.
+ * of the fd-3 schema. The console relays only events it validated, so such a
+ * frame means this page and the console disagree on the schema -- most likely
+ * a page loaded before the console was upgraded.
  *
  * @internal exported for testing
  */
 export function unknownFrameNotice(value: unknown): string {
-  const quoted = (field: unknown): string =>
-    typeof field === "string"
-      ? `"${redactAndFitUnescaped(field, UNKNOWN_FRAME_VALUE_MAX_LENGTH)}"`
-      : typeof field === "number"
-        ? String(field)
-        : "(none)";
-  let what: string;
-  if (value === UNPARSABLE_FRAME) what = "an event that is not readable JSON";
-  else if (value === null || typeof value !== "object" || Array.isArray(value))
-    what = "an event that is not a JSON object";
-  else {
-    const record = value as Record<string, unknown>;
-    what =
-      record.v !== 1
-        ? `an event of schema version ${quoted(record.v)}`
-        : `an event of type ${quoted(record.type)}`;
-  }
-  return (
-    `The console sent ${what}, which this page does not read, so it was ` +
-    "skipped. Reload the page to load the console's current version."
-  );
+  return unknownEventNotice(value, {
+    sender: "The console",
+    reader: "this page",
+    remedy: "Reload the page to load the console's current version.",
+  });
 }
 
 /** Extract the JSON event from one SSE frame's `data:` line and confirm it has
@@ -985,7 +964,7 @@ function parseSseFrame(frame: string): RelayEvent | null {
   try {
     parsed = parseBoundedJson(dataLines.join("\n"));
   } catch {
-    parsed = UNPARSABLE_FRAME;
+    parsed = UNREADABLE_EVENT;
   }
   if (
     parsed !== null &&

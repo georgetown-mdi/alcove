@@ -20,6 +20,7 @@ import {
   PERSISTENCE_LOSS_EXIT_CODE,
   failureCauseStreamField,
   isEventType,
+  unknownEventNotice,
 } from "@alcove/cli-contract";
 
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
@@ -542,43 +543,24 @@ function handleFd3Line(line: string, handlers: CliDriverHandlers): void {
   }
   const event = validateAndSanitizeEvent(parsed);
   if (event === null) {
-    handlers.onDegraded("relayUnknownEvent", unknownEventNotice(parsed));
+    handlers.onDegraded("relayUnknownEvent", unknownCliEventNotice(parsed));
     return;
   }
   handlers.onEvent(event);
 }
 
-/** The budget of each value an {@link unknownEventNotice} quotes. */
-const UNKNOWN_EVENT_VALUE_MAX_LENGTH = 64;
-
 /**
  * The operator's notice for a parsed fd-3 value {@link validateAndSanitizeEvent}
- * refused: what arrived, by the field that put it outside the schema, and what
- * to do. A quoted value is redacted and fitted but not escaped, since the run
- * view's warning sink escapes the notice once as it renders it.
+ * refused: what arrived and what to do.
  */
-export function unknownEventNotice(value: unknown): string {
-  const quoted = (field: unknown): string =>
-    typeof field === "string"
-      ? `"${redactAndFitUnescaped(field, UNKNOWN_EVENT_VALUE_MAX_LENGTH)}"`
-      : typeof field === "number"
-        ? String(field)
-        : "(none)";
-  let what: string;
-  if (value === null || typeof value !== "object" || Array.isArray(value))
-    what = "an event that is not a JSON object";
-  else {
-    const record = value as Record<string, unknown>;
-    what =
-      record.v !== 1
-        ? `an event of schema version ${quoted(record.v)}`
-        : `an event of type ${quoted(record.type)}`;
-  }
-  return (
-    `The command-line tool sent ${what}, which this console does not read, ` +
-    "so it was skipped. Check that the console and the alcove command-line " +
-    "tool it runs come from the same release."
-  );
+function unknownCliEventNotice(value: unknown): string {
+  return unknownEventNotice(value, {
+    sender: "The command-line tool",
+    reader: "this console",
+    remedy:
+      "Check that the console and the alcove command-line tool it runs " +
+      "come from the same release.",
+  });
 }
 
 /**
@@ -586,7 +568,8 @@ export function unknownEventNotice(value: unknown): string {
  * its `type` -- and sanitize every string field (recursively, through arrays
  * and nested objects) before it is buffered or relayed -- defense in depth on
  * top of the CLI's own construction-time sanitizing -- save the two warning
- * fields below, which the seat escapes once. Returns null for anything that does not match the schema.
+ * fields below, which the seat escapes once. Returns null for anything that
+ * does not match the schema.
  *
  * A `warning` event's own `message` keeps the wider
  * {@link WARNING_MESSAGE_MAX_DISPLAY_LENGTH} budget the CLI composed it to,
