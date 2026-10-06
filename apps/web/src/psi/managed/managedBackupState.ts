@@ -1,12 +1,13 @@
 /**
  * The one derived backup state a managed exchange shows (see
  * docs/notes/managed-exchange-design.md, "Moment-anchored backup surfaces"): a
- * quiet green "backed up as of <date>" when a current export exists, or one actionable "Back up
- * this exchange" when none does. This module is the pure derivation; the local
- * marker it reads is stored beside the record (see {@link ./managedLocalState.ts}),
- * never in the record and never in the export artifact -- the record schema is
- * reader-rejects-unknown and the export strips only the handle, so a marker field
- * would force a schema bump or leak into the export.
+ * quiet green "backed up as of <date>" when a current export exists, or one
+ * actionable "Back up this exchange" when none does. This module is the pure
+ * derivation; the local marker it reads is stored beside the record (see
+ * {@link ./managedLocalState.ts}), never in the record and never in the
+ * export artifact -- the record schema is reader-rejects-unknown and the export
+ * strips only the handle, so a marker field would force a schema bump or leak
+ * into the export.
  *
  * Currency is "taken since the last rotation," held structurally rather than
  * derived: every download export binds its serialized bytes to the marker write

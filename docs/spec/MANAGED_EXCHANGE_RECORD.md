@@ -2775,7 +2775,8 @@ service-worker registration shows the notice through the page's own
 
 ## See also
 
-- [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md) - the managed exchange lifecycle: who it serves, the automation goal and platform envelope, durability contract, single-owner invariant, desync story, eviction survival, and the moment-anchored backup surfaces
+- [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md) - the guide to running a recurring exchange in the web app: saving, scheduled runs, installing, the input file, moving between devices, recovery, and deleting
+- [managed-exchange-design.md](../notes/managed-exchange-design.md) - the design rationale: who it serves, the automation goal and platform envelope, the durability contract, the single-owner invariant, the desync story, and the moment-anchored backup surfaces
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges) - the browser at-rest threat model for the persisted secret: the primary controls, the rollback and metadata-at-rest analyses, and the egress-hardening limits
 - [EXCHANGE_FILE.md](EXCHANGE_FILE.md) - the exchange-file artifact and the credential-free endpoint locator the record composes from
 - [PROTOCOL.md](PROTOCOL.md#shared-secret-rotation) - the shared-secret rotation and rendezvous-peer-id derivation constructions

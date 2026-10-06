@@ -2,11 +2,12 @@
  * The pure composition of the Tier-2 (unexplained handshake failure) out-of-band
  * confirmation: the forwardable, pre-filled message the operator sends the partner,
  * and the two-outcome gate the partner's reply feeds (see
- * docs/notes/managed-exchange-design.md, "Telling a desync from an attack"). Without a grace window the tool cannot
- * cryptographically distinguish a desync from an attack, so the operator -- not the
- * tool -- makes the call out-of-band; this module structures the confirmation so the
- * operator sends a precise message rather than synthesizing prose under stress, and
- * routes the reply through a two-outcome gate rather than a free-form judgment.
+ * docs/notes/managed-exchange-design.md, "Telling a desync from an attack").
+ * Without a grace window the tool cannot cryptographically distinguish a desync
+ * from an attack, so the operator -- not the tool -- makes the call out-of-band;
+ * this module structures the confirmation so the operator sends a precise message
+ * rather than synthesizing prose under stress, and routes the reply through a
+ * two-outcome gate rather than a free-form judgment.
  *
  * The message is PLAIN TEXT the operator copies -- no auto-sending -- and it
  * interpolates only THIS record's own local fields (the label and the failure time),

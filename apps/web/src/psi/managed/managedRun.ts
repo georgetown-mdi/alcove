@@ -8,14 +8,14 @@
  * rerunFailureLastRun}, written best-effort). No broker, no WASM: both are wired
  * for real in {@link ./managedRunDriver.ts}.
  *
- * The normative shape is docs/spec/MANAGED_EXCHANGE_RECORD.md and
- * docs/MANAGED_EXCHANGE.md. This module holds three constraints from it: the
- * record's local `side` dispatches the run, never `connection.role`; the input
- * is acquired per run through `acquireInput`, never read from the record; and
- * the pre-connection checks run in order inside the run+rotate lock -- hand-off
- * refusal, expiry of the record as stored, input -- before any connection.
- * Persist-before-success is {@link runManagedExchange}'s; this module only
- * supplies the phases it gates.
+ * The normative shape is docs/spec/MANAGED_EXCHANGE_RECORD.md; the rationale is
+ * in docs/notes/managed-exchange-design.md. This module holds three constraints
+ * from it: the record's local `side` dispatches the run, never `connection.role`;
+ * the input is acquired per run through `acquireInput`, never read from the
+ * record; and the pre-connection checks run in order inside the run+rotate lock
+ * -- hand-off refusal, expiry of the record as stored, input -- before any
+ * connection. Persist-before-success is {@link runManagedExchange}'s; this module
+ * only supplies the phases it gates.
  */
 
 import {

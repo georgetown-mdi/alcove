@@ -11,14 +11,14 @@
  *   keeping it a sibling makes its non-inclusion structural (see
  *   {@link ./managedBackupState.ts}).
  * - The spent state is this device's own status after a hand-off export, and an
- *   imported copy is a fresh live owner -- so the spent flag must not travel in the
- *   artifact either. It is a plain timestamp (the handoff date), no secret material
- *   and no rotation epoch (source invalidation is operator cooperation, not
- *   cryptography; see docs/notes/managed-exchange-design.md, "Export/import is
- *   migration, not sync"). It is the one sibling marker this module does not write: a spend is
- *   only ever taken together with the record read that finds the hand-off still
- *   current, and a re-take together with the record it hands the exchange back to,
- *   so its writers are the cross-store steps in
+ *   imported copy is a fresh live owner -- so the spent flag must not travel in
+ *   the artifact either. It is a plain timestamp (the handoff date), no secret
+ *   material and no rotation epoch (source invalidation is operator cooperation,
+ *   not cryptography; see docs/notes/managed-exchange-design.md, "Export/import
+ *   is migration, not sync"). It is the one sibling marker this module does not
+ *   write: a spend is only ever taken together with the record read that finds
+ *   the hand-off still current, and a re-take together with the record it hands
+ *   the exchange back to, so its writers are the cross-store steps in
  *   {@link ./managedExchangeStore.ts} (`spendManagedExchangeIfCurrent` and
  *   `retakeHandedOffManagedExchange`).
  * - The terms proposal is a partner terms change an unattended run refused,

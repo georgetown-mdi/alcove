@@ -2,11 +2,10 @@ import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
 
 /**
  * The pure model behind the keep-running section of a scheduled exchange's
- * page: how the page offers installing, the checklist of what an unattended
- * run needs (docs/notes/managed-exchange-design.md, "The automation goal and
- * its platform envelope", and docs/MANAGED_EXCHANGE.md, "Installing the app"),
- * and the copy for the readiness check's
- * result. No React, no I/O.
+ * page: how the page offers installing, the checklist of what an unattended run
+ * needs (docs/notes/managed-exchange-design.md, "The automation goal and its
+ * platform envelope", and docs/MANAGED_EXCHANGE.md, "Installing the app"), and
+ * the copy for the readiness check's result. No React, no I/O.
  */
 
 /** How the page offers installing: `installedRuntime` where this page already

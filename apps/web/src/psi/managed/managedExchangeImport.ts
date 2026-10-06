@@ -19,10 +19,11 @@
  *   and side is offered to take the pair instead.
  *
  * What follows is the backup leg: a take-over that installs the artifact as the
- * one owner on this device (see docs/MANAGED_EXCHANGE.md, "Eviction recovery is the
- * import flow" and "Export/import is migration, not sync"). Restoring after eviction
- * and migrating to a new device are the same operation: an import re-establishes the
- * one owner wherever it runs.
+ * one owner on this device (see docs/MANAGED_EXCHANGE.md, "Eviction recovery is
+ * the import flow", and docs/notes/managed-exchange-design.md, "Export/import is
+ * migration, not sync"). Restoring after eviction and migrating to a new device
+ * are the same operation: an import re-establishes the one owner wherever it
+ * runs.
  *
  * The file is untrusted structured input, so the whole parse-and-reconstruct is the
  * artifact module's trust boundary ({@link importManagedExchangeArtifact}: bounded
