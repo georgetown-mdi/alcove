@@ -30,7 +30,7 @@ import {
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
-import { redactUrlCredentials } from "./util/connectionUrl";
+import { redactUrlCredentials } from "@alcove/core";
 import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";

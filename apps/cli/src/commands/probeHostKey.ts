@@ -5,7 +5,9 @@ import {
   HOST_KEY_FINGERPRINT_REGEX,
   InternalConsistencyError,
   UsageError,
+  parseSftpUrl,
   redactAndSanitizeForDisplay,
+  redactUrlCredentials,
 } from "@alcove/core";
 import type { PresentedHostKey, SFTPConnectionConfig } from "@alcove/core";
 import type { PeerIdentificationDiagnosis } from "../connection/sftpPeerIdentification";
@@ -14,10 +16,6 @@ import { channelFromURL } from "../connectionFromUrl";
 import { SSH2SFTPClientAdapter } from "../connection/ssh2SftpAdapter";
 import { HOST_KEY_PROBE_DIALS_ONCE } from "../hostKeyTrust";
 import { peerIdentificationDiagnosisOf } from "../connection/sftpPeerIdentification";
-import {
-  decodeUrlComponent,
-  redactUrlCredentials,
-} from "../util/connectionUrl";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { acceptPositionalsAfterDoubleDash } from "../util/doubleDash";
 import { durationFlagSeconds, parseOrExit, singleValue } from "../util/flags";
@@ -114,9 +112,8 @@ const PROBE_USERNAME = "alcove-host-key-probe";
  * the whole read. It includes NO credential and no username FROM THE URL --
  * the host-key verifier refuses before authenticating, so none is ever sent,
  * and omitting it avoids parsing an unresolved one. A non-sftp scheme, an
- * unparseable URL, or a host-less URL is a {@link UsageError} (exit 64), never a
- * transport failure, reusing the URL-handling primitives the connection
- * builders share so the scheme/host rules cannot drift.
+ * unparseable URL, or any URL core's `parseSftpUrl` refuses is a
+ * {@link UsageError} (exit 64), never a transport failure.
  *
  * @internal exported for testing
  */
@@ -138,16 +135,11 @@ export function buildProbeConfig(
       `probe-host-key requires an sftp:// URL; got ` +
         `${redactUrlCredentials(url)}`,
     );
-  if (!url.hostname)
-    throw new UsageError(
-      `sftp URL must include a host (e.g. sftp://host); got ` +
-        `${redactUrlCredentials(url)}`,
-    );
-  const port = url.port ? Number(url.port) : undefined;
+  const { host, port } = parseSftpUrl(url);
   return {
     channel: "sftp",
     server: {
-      host: decodeUrlComponent(url.hostname, url),
+      host,
       ...(port !== undefined ? { port } : {}),
       username: PROBE_USERNAME,
     },

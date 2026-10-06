@@ -740,7 +740,7 @@ describe("console SFTP connection authoring", () => {
     await page.getByRole("button", { name: "Save connection" }).click();
     // Save reopens Advanced so the blocking port error is visible.
     await expect
-      .element(page.getByText("Enter a port number between 0 and 65535"))
+      .element(page.getByText("Enter a port number between 1 and 65535"))
       .toBeVisible();
   });
 

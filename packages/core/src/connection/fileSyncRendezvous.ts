@@ -51,6 +51,7 @@ import {
   cancellableDelay,
 } from "./fileSyncConstants";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { joinFileSyncPath } from "./fileSyncPath";
 import {
   HELLO_SUFFIX,
   LOCK_SUFFIX,
@@ -673,7 +674,10 @@ export class FileSyncRendezvous {
     // shared mode outboundPath === inboundPath. The lock-mode branches that also
     // reference helloPath only run in shared mode (split requires retain, which
     // requires lockless), so routing it through outbound is correct there too.
-    const helloPath = `${scope.outboundPath}/${deps.id()}${HELLO_SUFFIX}`;
+    const helloPath = joinFileSyncPath(
+      scope.outboundPath,
+      `${deps.id()}${HELLO_SUFFIX}`,
+    );
 
     // The at-most-one peer hello that PREDATED this run. It is the only hello
     // whose writer has already demonstrated a propagation leg, and equally the
@@ -706,7 +710,7 @@ export class FileSyncRendezvous {
   // throwable statement between it and the rename (I4a).
   private async publishHello(dir: string, helloPath: string): Promise<void> {
     const { deps } = this;
-    const tempPath = `${dir}/${helloTempName()}`;
+    const tempPath = joinFileSyncPath(dir, helloTempName());
     try {
       await deps
         .client()
@@ -798,7 +802,7 @@ export class FileSyncRendezvous {
         try {
           const envelope = await readControlFileWithGate(
             deps.client(),
-            `${inboundPath}/${hello.name}`,
+            joinFileSyncPath(inboundPath, hello.name),
             hello.size,
             inspectionDeadline,
             deps.options().pollingFrequency,
@@ -904,7 +908,7 @@ export class FileSyncRendezvous {
     // could write between the listing and these deletes.
     const results = await Promise.allSettled(
       toDelete.map((entry) =>
-        deps.client().delete(`${entry.dir}/${entry.name}`),
+        deps.client().delete(joinFileSyncPath(entry.dir, entry.name)),
       ),
     );
     // Name and transport error are partner- or server-controlled and sit ahead
@@ -1224,7 +1228,7 @@ export class FileSyncRendezvous {
           );
         await Promise.all(
           leftoverAbortFiles.map((file) =>
-            deps.client().safeDelete(`${inboundPath}/${file.name}`),
+            deps.client().safeDelete(joinFileSyncPath(inboundPath, file.name)),
           ),
         );
       }
@@ -1260,7 +1264,9 @@ export class FileSyncRendezvous {
           `${orphans.map((f) => redactAndSanitizeForDisplay(f.name)).join(", ")}`,
       );
     await Promise.all(
-      orphans.map((file) => deps.client().safeDelete(`${dir}/${file.name}`)),
+      orphans.map((file) =>
+        deps.client().safeDelete(joinFileSyncPath(dir, file.name)),
+      ),
     );
   }
 
@@ -1343,7 +1349,7 @@ export class FileSyncRendezvous {
   ): Promise<void> {
     const { deps } = this;
     const otherFile = peerHello;
-    const otherPath = `${scope.inboundPath}/${otherFile.name}`;
+    const otherPath = joinFileSyncPath(scope.inboundPath, otherFile.name);
     const peerId = otherFile.name.slice(0, -HELLO_SUFFIX.length);
 
     deps
@@ -1401,7 +1407,7 @@ export class FileSyncRendezvous {
     // the peer's hello on failure: that races the peer's next list() and
     // can trip the two-hello collision check (I1).
     const joiningName = `${deps.id()}${JOINING_SUFFIX}`;
-    const joiningPath = `${scope.inboundPath}/${joiningName}`;
+    const joiningPath = joinFileSyncPath(scope.inboundPath, joiningName);
     const helloName = `${deps.id()}${HELLO_SUFFIX}`;
     try {
       // The `!options.retainFiles` guards below match the file-wide
@@ -1583,7 +1589,7 @@ export class FileSyncRendezvous {
             // read below.
             const peerEnvelope = await readControlFileWithGate(
               deps.client(),
-              `${scope.inboundPath}/${peerHello.name}`,
+              joinFileSyncPath(scope.inboundPath, peerHello.name),
               peerHello.size,
               helloReadDeadline(deps.options()),
               deps.options().pollingFrequency,
@@ -1620,7 +1626,7 @@ export class FileSyncRendezvous {
                   `${redactAndSanitizeForDisplay(peerHello.name)}`,
               );
             const ackName = await deps.writeAck(outboundPath, peerHelloStem);
-            ackPath = `${outboundPath}/${ackName}`;
+            ackPath = joinFileSyncPath(outboundPath, ackName);
             // Track after the durable rename (delete mode only) so
             // cleanup() removes it at close(), exactly as the message write
             // in send() does: the final name appears only at the atomic
@@ -1954,7 +1960,7 @@ export class FileSyncRendezvous {
           // check.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
-            `${scope.inboundPath}/${otherFile.name}`,
+            joinFileSyncPath(scope.inboundPath, otherFile.name),
             otherFile.size,
             helloReadDeadline(deps.options()),
             deps.options().pollingFrequency,
@@ -1979,7 +1985,7 @@ export class FileSyncRendezvous {
           if (refusal) {
             await deps
               .client()
-              .safeDelete(`${scope.inboundPath}/${lockFile.name}`);
+              .safeDelete(joinFileSyncPath(scope.inboundPath, lockFile.name));
             throw refusal;
           }
 
@@ -1998,10 +2004,10 @@ export class FileSyncRendezvous {
 
           await deps
             .client()
-            .safeDelete(`${scope.inboundPath}/${lockFile.name}`);
+            .safeDelete(joinFileSyncPath(scope.inboundPath, lockFile.name));
           await deps
             .client()
-            .safeDelete(`${scope.inboundPath}/${otherFile.name}`);
+            .safeDelete(joinFileSyncPath(scope.inboundPath, otherFile.name));
           await deps.client().safeDelete(helloPath);
 
           if (!deps.options().retainFiles) deps.responsibleFiles.clear();
@@ -2029,7 +2035,7 @@ export class FileSyncRendezvous {
            *
            * This is A
            */
-          const otherPath = `${scope.inboundPath}/${otherFile.name}`;
+          const otherPath = joinFileSyncPath(scope.inboundPath, otherFile.name);
 
           // I5: read the joiner's hello body through the partial-sync gate
           // before deleting it. The joiner's hello has no byte-count
@@ -2111,7 +2117,7 @@ export class FileSyncRendezvous {
           // fails too.
           const peerEnvelope = await readControlFileWithGate(
             deps.client(),
-            `${scope.inboundPath}/${otherFile.name}`,
+            joinFileSyncPath(scope.inboundPath, otherFile.name),
             otherFile.size,
             helloReadDeadline(deps.options()),
             deps.options().pollingFrequency,
@@ -2127,7 +2133,7 @@ export class FileSyncRendezvous {
           const lockName =
             `${arrivedFirst ? deps.id() : deps.peerId()}-` +
             `${arrivedFirst ? deps.peerId() : deps.id()}${LOCK_SUFFIX}`;
-          lockPath = `${scope.inboundPath}/${lockName}`;
+          lockPath = joinFileSyncPath(scope.inboundPath, lockName);
 
           deps
             .log()
@@ -2195,7 +2201,9 @@ export class FileSyncRendezvous {
               // directory is left clean for a retry.
               await deps
                 .client()
-                .safeDelete(`${scope.inboundPath}/${otherFile.name}`);
+                .safeDelete(
+                  joinFileSyncPath(scope.inboundPath, otherFile.name),
+                );
               await deps.client().safeDelete(helloPath);
               if (!deps.options().retainFiles) deps.responsibleFiles.clear();
               throw new UsageError(
@@ -2214,7 +2222,9 @@ export class FileSyncRendezvous {
               await deps.client().safeDelete(lockPath);
               await deps
                 .client()
-                .safeDelete(`${scope.inboundPath}/${otherFile.name}`);
+                .safeDelete(
+                  joinFileSyncPath(scope.inboundPath, otherFile.name),
+                );
               await deps.client().safeDelete(helloPath);
 
               if (!deps.options().retainFiles) deps.responsibleFiles.clear();

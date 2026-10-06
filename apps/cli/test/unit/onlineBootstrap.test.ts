@@ -67,7 +67,7 @@ import {
   singlePassDisclosureNotice,
   warnSanitizedColumns,
 } from "../../src/onlineBootstrap";
-import { redactUrlCredentials } from "../../src/util/connectionUrl";
+import { redactUrlCredentials } from "@alcove/core";
 import { openInputSource } from "../../src/util/dataIo";
 import { exitCodeForError, runOrExit } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
@@ -267,10 +267,16 @@ describe("connectionFromURL", () => {
     // sftp:// is a non-special scheme, so the WHATWG parser keeps the host opaque
     // and percent-encoded (an internationalized domain becomes UTF-8 escapes);
     // ssh2 needs the literal host, so it is decoded like the other components.
-    const conn = connectionFromURL(new URL("sftp://my%20server/drop"), {});
+    const conn = connectionFromURL(new URL("sftp://h%C3%A9st/drop"), {});
     expect(conn.channel).toBe("sftp");
     if (conn.channel !== "sftp") return;
-    expect(conn.server.host).toBe("my server");
+    expect(conn.server.host).toBe("h\u00e9st");
+  });
+
+  test("refuses a host that decodes to something other than a bare address", () => {
+    expect(() =>
+      connectionFromURL(new URL("sftp://my%20server/drop"), {}),
+    ).toThrow(UsageError);
   });
 
   test("an encoded slash in the path decodes to a separator", () => {
@@ -321,13 +327,13 @@ describe("connectionFromURL", () => {
     // decoded-vs-decoded and reports a clean match -- no false conflict, and
     // nothing the one-time live exchange (which uses this same target) contradicts.
     const target = connectionFromURL(
-      new URL("sftp://us%20er:p%20w@my%20server/my%20drop"),
+      new URL("sftp://us%20er:p%20w@h%C3%A9st/my%20drop"),
       {},
     );
     const existing: SFTPConnectionConfig = {
       channel: "sftp",
       server: {
-        host: "my server",
+        host: "h\u00e9st",
         path: "/my drop",
         username: "us er",
         password: "p w",
@@ -2003,12 +2009,16 @@ describe("endpointFromConnection", () => {
   });
 
   test("a port the endpoint schema rejects (0) is dropped", () => {
-    // The connection schema permits port 0 (OS-assigned ephemeral); the endpoint
-    // schema rejects it as an unreachable connect target, so it is omitted rather
-    // than emitted as a locator the partner could not dial.
-    const connection = connectionFromURL(new URL("sftp://host:0/drop"), {});
-    if (connection.channel !== "sftp") throw new Error("expected sftp");
-    expect(connection.server.port).toBe(0);
+    // The URL parse refuses port 0; a connection built some other way that still
+    // holds it gets no port in its endpoint rather than a locator the partner
+    // could not dial.
+    expect(() => connectionFromURL(new URL("sftp://host:0/drop"), {})).toThrow(
+      /port must be from 1 to 65535/,
+    );
+    const connection: SFTPConnectionConfig = {
+      channel: "sftp",
+      server: { host: "host", port: 0, path: "/drop" },
+    };
     const endpoint = endpointFromConnection(connection);
     if (endpoint.channel !== "sftp") throw new Error("expected sftp endpoint");
     expect(endpoint.port).toBeUndefined();

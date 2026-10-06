@@ -17,7 +17,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-import { sanitizeForDisplay } from "@alcove/core";
+import { isBareSftpHost, isSftpPort, sanitizeForDisplay } from "@alcove/core";
 
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
@@ -25,7 +25,6 @@ import {
   probeSftpHostKey,
   putSftpConnection,
 } from "@psi/jobClient/sftpAuthoringClient";
-import { isBareSftpHost } from "@psi/sftpHost";
 
 import styles from "@styles/app.module.css";
 
@@ -664,8 +663,7 @@ function probeTargetOf(
   const portText = values.port.trim();
   if (portText === "") return { host };
   const port = Number(portText);
-  if (!Number.isInteger(port) || port < 0 || port > 65535)
-    return { disabledReason: "Enter a valid port first." };
+  if (!isSftpPort(port)) return { disabledReason: "Enter a valid port first." };
   return { host, port };
 }
 

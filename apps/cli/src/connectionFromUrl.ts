@@ -1,6 +1,11 @@
 import { fileURLToPath } from "node:url";
 
-import { UsageError } from "@alcove/core";
+import {
+  UsageError,
+  decodeUrlComponent,
+  parseSftpUrl,
+  redactUrlCredentials,
+} from "@alcove/core";
 import type {
   ConnectionConfig,
   FileDropConnectionConfig,
@@ -10,7 +15,6 @@ import type {
 
 import { applyConnectionOverrides, type ConnectionOverrides } from "./config";
 import { brokerLocationFromConnection } from "./connection/webrtc/weriftPeer";
-import { decodeUrlComponent, redactUrlCredentials } from "./util/connectionUrl";
 
 // The channels connectionFromURL turns a URL into: file-sync only.
 // `runProtocol` also runs webrtc, but a webrtc connection needs a `role`
@@ -221,37 +225,10 @@ export function connectionFromURL(
 
   if (channel !== "sftp") throw new UsageError(WEBRTC_URL_REFUSED);
 
-  // Reject a credential-only or schemeless URL with no host (e.g. sftp:///path)
-  // here, with a clear message, rather than passing host: "" through to a
-  // connection attempt that fails obscurely later. Mirrors the filedrop branch's
-  // host validation above. (redactUrlCredentials is defensive consistency: a
-  // host-less URL cannot actually hold credentials -- the parser rejects
-  // userinfo without a host -- but URLs are always echoed through the redactor.)
-  if (!url.hostname)
-    throw new UsageError(
-      `sftp URL must include a host (e.g. sftp://host/path); got: ` +
-        redactUrlCredentials(url),
-    );
-
+  const { host, port, username, password, path } = parseSftpUrl(url);
   const base: SFTPConnectionConfig = {
     channel: "sftp",
-    server: {
-      host: decodeUrlComponent(url.hostname, url),
-      port: url.port ? Number(url.port) : undefined,
-      username: url.username
-        ? decodeUrlComponent(url.username, url)
-        : undefined,
-      password: url.password
-        ? decodeUrlComponent(url.password, url)
-        : undefined,
-      // A bare-host URL (sftp://host or sftp://host/) leaves the remote path
-      // unset so the server's default working directory is used, rather than
-      // pinning it to the filesystem root.
-      path:
-        url.pathname && url.pathname !== "/"
-          ? decodeUrlComponent(url.pathname, url)
-          : undefined,
-    },
+    server: { host, port, username, password, path },
   };
   return applyConnectionOverrides(base, overrides) as RunnableConnectionConfig;
 }

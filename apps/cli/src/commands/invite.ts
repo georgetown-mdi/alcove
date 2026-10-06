@@ -74,7 +74,7 @@ import {
 } from "../util/doubleDash";
 import { configureLogging } from "../util/logging";
 import { stdinAnswersPrompts } from "../util/prompt";
-import { redactUrlCredentials } from "../util/connectionUrl";
+import { redactUrlCredentials } from "@alcove/core";
 import {
   checkLinkageSatisfiability,
   COVER_REQUIRED_FIELD_TYPES,

@@ -8,6 +8,7 @@ import {
   MAX_TIMEOUT_SECONDS,
   MAX_TOKEN_MAX_AGE_DAYS,
   disclosedColumnNames,
+  parseSftpUrl,
   safeParseExchangeSpec,
   safeParseMetadata,
 } from "@alcove/core";
@@ -1637,6 +1638,34 @@ describe("zeroSetupSftpArgv maps the effective connection to argv", () => {
     expect(argv[0]).toBe("sftp://sftp.example.org:2222/exchange");
   });
 
+  // The CLI's sftp:// branch is core's parseSftpUrl, so reading the URL back
+  // through it is reading it the way the zero-setup child does.
+  test.each([
+    ["unset", undefined],
+    ["relative", "exchange/in"],
+    ["%-bearing", "50%25 off/in"],
+  ])(
+    "an %s remote directory reads back unchanged in the CLI",
+    (_label, path) => {
+      const argv = zeroSetupSftpArgv({
+        host: "sftp.example.org",
+        ...(path !== undefined ? { path } : {}),
+        hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      });
+      expect(parseSftpUrl(argv[0]).path).toBe(path);
+    },
+  );
+
+  test("refuses a remote directory the URL would change", () => {
+    expect(() =>
+      zeroSetupSftpArgv({
+        host: "sftp.example.org",
+        path: "exchange/../in",
+        hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+      }),
+    ).toThrow(/reads back/);
+  });
+
   test("a split entry puts the inbound half on the URL and flags the outbound", () => {
     const argv = zeroSetupSftpArgv(testSplitSftpServerEntry());
     expect(argv[0]).toBe("sftp://sftp.example.org:2222/exchange/in");
@@ -1756,7 +1785,7 @@ describe("zeroSetupSftpArgv maps the effective connection to argv", () => {
           password: "@/etc/alcove/pw",
           hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
         }),
-      ).toThrow(/could not encode/);
+      ).toThrow(/could not write the sftp host/);
     }
   });
 

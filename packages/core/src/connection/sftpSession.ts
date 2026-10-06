@@ -40,6 +40,7 @@ import {
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
 } from "../config/connection";
 import type { SFTPConnectionConfig } from "../config/connection";
+import { sftpDialHost } from "../config/sftpUrl";
 import {
   hostKeyBlob,
   settleVerify,
@@ -148,7 +149,7 @@ export class SftpSession {
     const connectOptions: Record<string, unknown> = {};
     this.applyProviderOptions(connectOptions, config.providerOptions);
 
-    connectOptions["host"] = config.server.host;
+    connectOptions["host"] = sftpDialHost(config.server.host);
     connectOptions["maxReconnectAttempts"] =
       config.options?.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
     if (config.server.port !== undefined)

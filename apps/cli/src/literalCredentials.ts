@@ -6,7 +6,7 @@ import {
   UsageError,
 } from "@alcove/core";
 
-import { decodeUrlComponent } from "./util/connectionUrl";
+import { decodeUrlComponent } from "@alcove/core";
 
 /**
  * The credential fields a connection's `server` block and the matching

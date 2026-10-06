@@ -30,6 +30,7 @@ import { ackMarkerName } from "./fileSyncNames";
 export { isAbortMarkerName, isExpectedAbortName } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { joinFileSyncPath } from "./fileSyncPath";
 import type { PresentedHostKey } from "./sftpConnect";
 import { AbortMarkerSubsystem } from "./abortMarker";
 import { SftpSession } from "./sftpSession";
@@ -1082,7 +1083,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         config.server.inboundPath !== undefined &&
         config.server.outboundPath !== undefined;
       const stripTrailingSlash = (p: string): string =>
-        p.endsWith("/") ? p.slice(0, -1) : p;
+        p.endsWith("/") && p !== "/" ? p.slice(0, -1) : p;
       const inboundDir = stripTrailingSlash(
         split ? config.server.inboundPath! : (config.server.path ?? ""),
       );
@@ -1237,7 +1238,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     // split outbound without retain mode from orphaning files in the wrong place.
     return Promise.all(
       Array.from(this.responsibleFiles).map((filename) =>
-        this.client.safeDelete(`${this.outboundPath}/${filename}`),
+        this.client.safeDelete(
+          joinFileSyncPath(this.outboundPath ?? "", filename),
+        ),
       ),
     );
   }
@@ -1678,13 +1681,13 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private async writeAck(dir: string, originalName: string): Promise<string> {
     const name = ackMarkerName(this.id, originalName);
     const tempFile = `temp-${uuidv4()}.tmp`;
-    const tempPath = `${dir}/${tempFile}`;
+    const tempPath = joinFileSyncPath(dir, tempFile);
     try {
       await this.client.put(Buffer.alloc(0), tempPath, {
         flags: "w",
         encoding: null,
       });
-      await this.client.rename(tempPath, `${dir}/${name}`);
+      await this.client.rename(tempPath, joinFileSyncPath(dir, name));
     } catch (err) {
       await this.client.safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));

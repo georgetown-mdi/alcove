@@ -1,5 +1,7 @@
 import { pathToFileURL } from "node:url";
 
+import { formatSftpUrl } from "@alcove/core";
+
 import { isAdmissiblePeerId } from "@jobs/intentSchemas";
 
 import { composeSftpConfigDocument } from "./intentConfig";
@@ -7,56 +9,6 @@ import { composeSftpConfigDocument } from "./intentConfig";
 import type { JobSftpServerEntry } from "./sftpServer";
 
 import type { JobExchangeOptions } from "./intentSchemas";
-
-// The placeholder host the URL is seeded with, distinguished from a real host so a
-// setter no-op (which leaves this value in place) is detectable. `.invalid` is a
-// reserved TLD (RFC 6761), so it is never a legitimately authored server.
-const ZERO_SETUP_URL_SENTINEL_HOST = "host.invalid";
-
-/**
- * Build the `sftp://` URL a zero-setup job's CLI drives, from the authored
- * server entry's host, port, and remote directory. The host, port, and path go
- * through the WHATWG {@link URL} object (never string concatenation) so each
- * component is encoded correctly; a bare IPv6 literal is bracketed first, since
- * the hostname setter silently rejects an unbracketed one.
- *
- * A split-directory entry puts its INBOUND half on the URL: `--outbound-path`
- * (emitted alongside by {@link zeroSetupSftpArgv}) takes the URL's path as
- * the inbound directory and supplies the outbound one.
- *
- * The composed `url.hostname` -- the WHATWG-canonical form -- is adopted as
- * the host, rather than requiring it to equal the input verbatim: the
- * setter safely canonicalizes a non-canonical or uppercase-hex IPv6 literal
- * (`2001:0db8::0001` -> `[2001:db8::1]`) or an IDN host it percent-encodes.
- * It also silently TRUNCATES at a URL-significant delimiter (`foo#bar` ->
- * `foo`) and NO-OPS on a host it cannot parse (leaving the sentinel) --
- * either could point the exchange at the wrong server. Truncation is closed
- * off upstream: `isBareSftpHost` (`@psi/sftpHost`) rejects every truncating
- * character (`#`, `?`, `\`, `%`) plus userinfo, path, and whitespace, so a
- * host reaching here can differ from the input only by safe
- * canonicalization. A total drop -- an empty hostname or the untouched
- * sentinel -- is the one alteration still possible here, and is a
- * compose-time error. Credentials never ride the URL -- they are
- * `--server-*` flags built by {@link zeroSetupSftpArgv} -- so no secret
- * byte is ever URL-encoded here.
- */
-function buildZeroSetupSftpUrl(serverEntry: JobSftpServerEntry): string {
-  const hostForUrl =
-    serverEntry.host.includes(":") && !serverEntry.host.startsWith("[")
-      ? `[${serverEntry.host}]`
-      : serverEntry.host;
-  const url = new URL(`sftp://${ZERO_SETUP_URL_SENTINEL_HOST}`);
-  url.hostname = hostForUrl;
-  if (url.hostname === "" || url.hostname === ZERO_SETUP_URL_SENTINEL_HOST)
-    throw new Error(
-      "could not encode the authored sftp host into a URL for a zero-setup " +
-        "exchange",
-    );
-  if (serverEntry.port !== undefined) url.port = String(serverEntry.port);
-  const urlPath = serverEntry.inboundPath ?? serverEntry.path;
-  if (urlPath !== undefined) url.pathname = urlPath;
-  return url.href;
-}
 
 /**
  * Thrown by {@link zeroSetupSftpArgv} when the authored connection pins more
@@ -90,9 +42,14 @@ export class ZeroSetupFingerprintListError extends Error {
  * one -- with the optional passphrase (`@path`) and keyboard-interactive
  * toggle alongside.
  *
+ * The `sftp://` URL is core's `formatSftpUrl`, which the CLI's own parse
+ * reads back to the same host, port and remote directory (relative and
+ * percent-bearing directories included); it refuses a directory with no
+ * such form rather than letting the run use a different one.
+ *
  * A split-directory entry adds `--outbound-path`, the CLI's own name for
- * the same split: the URL holds the inbound half (see
- * {@link buildZeroSetupSftpUrl}) and this flag the outbound one. The CLI's
+ * the same split: the URL holds the inbound half and this flag the
+ * outbound one. The CLI's
  * guard on that flag holds the run to retain mode, which
  * {@link zeroSetupOptionsArgv} emits from the operator's own file-handling
  * choice.
@@ -106,7 +63,14 @@ export class ZeroSetupFingerprintListError extends Error {
 export function zeroSetupSftpArgv(
   serverEntry: JobSftpServerEntry,
 ): Array<string> {
-  const argv: Array<string> = [buildZeroSetupSftpUrl(serverEntry)];
+  const urlPath = serverEntry.inboundPath ?? serverEntry.path;
+  const argv: Array<string> = [
+    formatSftpUrl({
+      host: serverEntry.host,
+      ...(serverEntry.port !== undefined ? { port: serverEntry.port } : {}),
+      ...(urlPath !== undefined ? { path: urlPath } : {}),
+    }),
+  ];
   if (serverEntry.outboundPath !== undefined)
     argv.push(`--outbound-path=${serverEntry.outboundPath}`);
   if (serverEntry.username !== undefined)

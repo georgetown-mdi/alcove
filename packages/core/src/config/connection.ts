@@ -5,6 +5,7 @@ import { randomBytes, toBase64Url } from "../utils/crypto.js";
 import { pathsResolveToSameDir } from "../utils/pathCompare.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { boundedArray } from "../utils/boundedArray.js";
+import { SftpPortSchema } from "./sftpUrl.js";
 import { isRelayRegistrarExchangeId } from "../relayRegistrarProof.js";
 
 // --- HTTP service authentication ---------------------------------------------
@@ -235,7 +236,7 @@ const SIGNING_FINGERPRINT_SHAPE = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 const SFTPServerSchema: z.ZodType<ServerAwaitingAddress<SFTPServer>> = z
   .object({
     host: z.string().min(1).optional(),
-    port: z.int().min(0).max(65535).optional(),
+    port: SftpPortSchema.optional(),
     path: z.string().optional(),
     inboundPath: z.string().min(1).optional(),
     outboundPath: z.string().min(1).optional(),

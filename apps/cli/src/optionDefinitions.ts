@@ -29,10 +29,9 @@ import {
 } from "./util/atSignRefs";
 
 /**
- * Upper bound for `--server-port`, matching the config schema's own
- * `z.int().min(0).max(65535)` bound on `server.port` (see
- * `packages/core/src/config/connection.ts`) so the CLI parse boundary and the
- * schema reject the same range.
+ * Upper bound for `--server-port`, matching the config schema's own upper
+ * bound on `server.port` (see `packages/core/src/config/connection.ts`) so the
+ * CLI parse boundary and the schema reject the same values above it.
  */
 export const MAX_PORT = 65535;
 

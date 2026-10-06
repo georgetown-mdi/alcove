@@ -14,7 +14,7 @@ import {
 
 import { createOwnerOnlyWriteStream } from "../fileUtils";
 import { settleWithinCeiling, type CeilingOutcome } from "./ceiling";
-import { redactUrlCredentials } from "./connectionUrl";
+import { redactUrlCredentials } from "@alcove/core";
 import { InputNotFoundError } from "./exit";
 
 /**

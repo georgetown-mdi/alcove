@@ -6,10 +6,10 @@ import { z } from "zod";
 import {
   ConnectionConfigSchema,
   HOST_KEY_FINGERPRINT_REGEX,
+  SftpPortSchema,
+  isBareSftpHost,
   withRetainModeImplications,
 } from "@alcove/core";
-
-import { isBareSftpHost } from "@psi/sftpHost";
 
 import {
   CREDENTIAL_FILE_FIELDS,
@@ -71,7 +71,7 @@ export interface JobSftpServerEntry {
  */
 const jobSftpServerEntrySchema: z.ZodType<JobSftpServerEntry> = z.strictObject({
   host: z.string().min(1),
-  port: z.int().min(0).max(65535).optional(),
+  port: SftpPortSchema.optional(),
   username: z.string().min(1).optional(),
   path: z.string().min(1).optional(),
   inboundPath: z.string().min(1).optional(),
@@ -203,7 +203,7 @@ const rawCredentialSchema = z.strictObject({
 // reaches a dedicated rejection rather than a generic union error.
 const authoredConnectionFieldsSchema = z.strictObject({
   host: z.string().min(1),
-  port: z.int().min(0).max(65535).optional(),
+  port: SftpPortSchema.optional(),
   username: z.string().min(1).optional(),
   path: z.string().min(1).optional(),
   inboundPath: z.string().min(1).optional(),

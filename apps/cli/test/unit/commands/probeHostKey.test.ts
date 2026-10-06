@@ -1,7 +1,5 @@
 import { describe, expect, test } from "vitest";
-import logLibrary from "loglevel";
 import {
-  getLogger,
   keyTypeFromBlob,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
@@ -16,11 +14,7 @@ import {
   type ProbeHostKeyDeps,
 } from "../../../src/commands/probeHostKey";
 import { explainPeerIdentificationFailure } from "../../../src/connection/sftpPeerIdentification";
-import { configureStderrLogging } from "../../../src/util/logging";
-import {
-  captureStdio,
-  snapshotDiagnosticSinkAndLevel,
-} from "../../loggingTestSupport";
+import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 
 snapshotDiagnosticSinkAndLevel();
 
@@ -230,41 +224,22 @@ describe("probeHostKeyLines formats and validates the presented key", () => {
     );
   });
 
-  test("a private-key marker in the probed host cannot delete the verify step", async () => {
-    // The host is the one fragment here that can still hold a real marker: a
-    // percent-encoded --sftp-url decodes back to literal spaces, so URL parsing
-    // does not strip it (the charset bound covers the other fields). The log sink
-    // redacts the whole rendered line ahead of the out-of-band verification step,
-    // so the marker is redacted where it is interpolated. Asserted on the bytes
-    // stderr wrote, not the returned string.
+  test("a private-key marker cannot be the probed host", async () => {
+    // A percent-encoded marker would decode back to its spaces; a host holding
+    // whitespace is not a bare address, so the URL is refused before any dial
+    // or summary line.
     const marker = "-----BEGIN OPENSSH PRIVATE KEY-----";
-    const human = await probeHostKeyLines(
-      {
-        sftpUrl: `sftp://${encodeURIComponent(marker)}`,
-        connectTimeoutSeconds: 10,
-        json: false,
-        verbosity: 0,
-      },
-      makeDeps({ fingerprint: FP, keyType: "ssh-ed25519" }),
-    );
-
-    const captured = captureStdio();
-    const sink = configureStderrLogging();
-    logLibrary.setDefaultLevel(logLibrary.levels.INFO);
-    try {
-      getLogger("probe-host-key-redaction").info(human.summary!);
-    } finally {
-      sink.close();
-      captured.restore();
-    }
-
-    const rendered = captured.stderrWrites.join("");
-    expect(rendered).toContain("[redacted private key]");
-    expect(rendered).toContain(
-      "Verify it matches the server's published fingerprint out-of-band " +
-        "before pinning it.",
-    );
-    expect(rendered).toContain(FP);
+    await expect(
+      probeHostKeyLines(
+        {
+          sftpUrl: `sftp://${encodeURIComponent(marker)}`,
+          connectTimeoutSeconds: 10,
+          json: false,
+          verbosity: 0,
+        },
+        makeDeps({ fingerprint: FP, keyType: "ssh-ed25519" }),
+      ),
+    ).rejects.toBeInstanceOf(UsageError);
   });
 
   test("a non-canonical fingerprint is rejected before any line is produced", async () => {

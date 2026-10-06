@@ -41,7 +41,7 @@ import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
 import { channelForScheme } from "../../../src/connectionFromUrl";
 import type { ConnectionOverrideOptions } from "../../../src/optionDefinitions";
 import { resolveConnectionCredentials } from "../../../src/util/atSignRefs";
-import { redactUrlCredentials } from "../../../src/util/connectionUrl";
+import { redactUrlCredentials } from "@alcove/core";
 import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import {
   checkRunMemoryBudget,

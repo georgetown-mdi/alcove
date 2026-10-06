@@ -519,6 +519,20 @@ export {
 } from "./config/endpointProducer";
 export type { EndpointSourceConnectionConfig } from "./config/endpointProducer";
 export {
+  SFTP_URL_PROTOCOLS,
+  SftpPortSchema,
+  formatSftpUrl,
+  isBareSftpHost,
+  isSftpPort,
+  parseSftpUrl,
+  sftpDialHost,
+} from "./config/sftpUrl";
+export type { SftpUrlFields, SftpUrlLocator } from "./config/sftpUrl";
+export {
+  decodeUrlComponent,
+  redactUrlCredentials,
+} from "./utils/urlComponents";
+export {
   DEFAULT_PROVISION_PORT,
   MAX_PROVISION_RESPONSE_BYTES,
   PROVISION_REQUEST_TIMEOUT_MS,
