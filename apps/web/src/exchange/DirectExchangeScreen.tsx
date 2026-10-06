@@ -79,7 +79,7 @@ import type { SftpConnectionProjection } from "@jobs/jobManager";
 
 const TRANSPORT_NOTES: Record<DirectTransport, string> = {
   sftp: "SFTP",
-  filedrop: "Shared directory",
+  filedrop: "Shared folder",
 };
 
 /**

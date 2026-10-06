@@ -10,7 +10,6 @@ import {
   acceptUnsupported,
   acceptorConsentName,
   acceptorConsentReady,
-  acceptorDoneLedgerFooter,
   acceptorDoneLedgerRows,
   acceptorDoneLedgerTag,
   acceptorHowItRunsLabel,
@@ -794,7 +793,7 @@ describe("acceptUnsupported (runnability by endpoint shape)", () => {
 describe("acceptorHowItRunsLabel", () => {
   test("a console single-directory filedrop accept runs against the shared directory", () => {
     expect(acceptorHowItRunsLabel(SINGLE_DIR_FILEDROP, true)).toContain(
-      "Shared directory",
+      "Shared folder",
     );
   });
 
@@ -813,7 +812,7 @@ describe("acceptorTransportNote", () => {
   test("a console SFTP accept notes SFTP; a filedrop accept notes the shared directory", () => {
     expect(acceptorTransportNote(SINGLE_DIR_SFTP, true)).toBe("SFTP");
     expect(acceptorTransportNote(SINGLE_DIR_FILEDROP, true)).toBe(
-      "Shared directory",
+      "Shared folder",
     );
   });
 
@@ -834,25 +833,5 @@ describe("acceptorRunsAsServerJob", () => {
     expect(acceptorRunsAsServerJob(WEBRTC_ENDPOINT, true)).toBe(false);
     expect(acceptorRunsAsServerJob(SINGLE_DIR_SFTP, false)).toBe(false);
     expect(acceptorRunsAsServerJob(SINGLE_DIR_FILEDROP, false)).toBe(false);
-  });
-});
-
-describe("acceptorDoneLedgerFooter", () => {
-  test("a server-job (console file-drop) accept drops the this-browser claim", () => {
-    // The CLI reads the mounted CSV on the console, never the browser, so the
-    // "never left this browser" claim would be false and must be omitted.
-    const footer = acceptorDoneLedgerFooter(true);
-    expect(footer).not.toContain("this browser");
-    expect(footer).toContain(
-      "The results above are all your partner received about your data.",
-    );
-  });
-
-  test("a browser-run accept keeps the this-browser claim", () => {
-    const footer = acceptorDoneLedgerFooter(false);
-    expect(footer).toContain("never left this browser");
-    expect(footer).toContain(
-      "The results above are all your partner received about your data.",
-    );
   });
 });

@@ -1652,14 +1652,14 @@ describe("a split-provisioned filedrop console", () => {
     expect(
       warnings.some(
         (message) =>
-          message.includes("the inbound rendezvous directory") &&
+          message.includes("the inbound shared folder") &&
           message.includes("holds an earlier exchange's files"),
       ),
     ).toBe(true);
     expect(
       warnings.some(
         (message) =>
-          message.includes("the outbound rendezvous directory") &&
+          message.includes("the outbound shared folder") &&
           message.includes("does not exist yet"),
       ),
     ).toBe(true);
@@ -2405,7 +2405,7 @@ describe("a filedrop run that would publish the signing identity", () => {
     );
     expect(alert.message).toContain("either the location you picked");
     expect(alert.message).toContain(
-      "the console's default in your mounted working directory",
+      "the console's default in your working folder",
     );
     expect(alert.message).toContain(
       "Move the file at the location you picked out of every folder you " +

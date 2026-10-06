@@ -185,7 +185,7 @@ export class SigningFingerprintBusyError extends Error {
  */
 export class JobRendezvousUnavailableError extends Error {
   constructor() {
-    super("no rendezvous directory is configured for a filedrop exchange");
+    super("no shared folder is configured for a shared-folder exchange");
     this.name = "JobRendezvousUnavailableError";
   }
 }
@@ -200,9 +200,7 @@ export class JobRendezvousUnavailableError extends Error {
  */
 export class JobRendezvousRetainRequiredError extends Error {
   constructor() {
-    super(
-      "a split rendezvous (inbound and outbound directories) requires retain mode",
-    );
+    super("separate inbound and outbound shared folders require retain mode");
     this.name = "JobRendezvousRetainRequiredError";
   }
 }
@@ -221,7 +219,7 @@ export class JobRendezvousRetainRequiredError extends Error {
 export class JobSigningIdentityExposedError extends Error {
   constructor() {
     super(
-      "a rendezvous directory holds this party's signing identity, so the run would publish the private key",
+      "a shared folder holds this party's signing identity, so the run would publish the private key",
     );
     this.name = "JobSigningIdentityExposedError";
   }

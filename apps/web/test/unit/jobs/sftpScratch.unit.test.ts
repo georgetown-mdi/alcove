@@ -84,7 +84,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("rendezvous") as string,
+        message: expect.stringContaining("shared folder") as string,
       }) as Error,
     );
   });
@@ -104,7 +104,7 @@ describe("setupSftpCredentialScratchDir containment", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("rendezvous") as string,
+        message: expect.stringContaining("shared folder") as string,
       }) as Error,
     );
   });
@@ -481,7 +481,7 @@ describe("bootSftpCredentialScratchDir", () => {
     ).toThrowError(
       expect.objectContaining({
         name: "JobApiConfigError",
-        message: expect.stringContaining("rendezvous") as string,
+        message: expect.stringContaining("shared folder") as string,
       }) as Error,
     );
   });

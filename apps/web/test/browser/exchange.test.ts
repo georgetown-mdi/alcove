@@ -712,7 +712,7 @@ describe("inviter screen", () => {
     await expect
       .element(
         page.getByText(
-          "This browser runs live exchanges only; SFTP and shared-directory",
+          "This browser runs live exchanges only; SFTP and shared-folder",
           { exact: false },
         ),
       )
@@ -2700,7 +2700,7 @@ describe("inviter screen", () => {
     try {
       await reachReviewCreate();
       await page
-        .getByLabelText("Over a shared directory, run by the command-line tool")
+        .getByLabelText("Over a shared folder, run by the command-line tool")
         .click();
       await page.getByRole("button", { name: "Create the invitation" }).click();
       await expect
@@ -2711,7 +2711,7 @@ describe("inviter screen", () => {
       // The filedrop field requires an absolute path.
       const save = page.getByRole("button", { name: "Save exchange file" });
       await userEvent.fill(
-        page.getByLabelText("Shared directory"),
+        page.getByLabelText("Shared folder"),
         "/exchanges/alcove",
       );
       await expect.element(save).toBeEnabled();

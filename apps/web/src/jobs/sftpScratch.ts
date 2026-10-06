@@ -164,7 +164,7 @@ function scratchExclusions(
   };
   add(dataRoot, "the job data root");
   for (const rendezvousDir of rendezvousDirs)
-    add(rendezvousDir, "the rendezvous directory");
+    add(rendezvousDir, "the shared folder");
   if (secretsDir !== undefined) add(secretsDir, "the secrets mount");
   if (inputDir !== undefined) add(inputDir, "the work-input directory");
   return exclusions;

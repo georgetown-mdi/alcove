@@ -314,7 +314,7 @@ describe("the exchange-record copy", () => {
     // claim its presence and nothing else -- and since no download stands under
     // this copy, it has to say where the file is and that going on removes it.
     expect(UNDESCRIBABLE_RECORD_LEAD).toContain("cannot read as an exchange");
-    expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("working directory");
+    expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("your working folder");
     expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("No download is offered");
     expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("removes this run's files");
     // What it must not do is assert the run's disclosure the way the offered
@@ -361,7 +361,7 @@ describe("the exchange-record copy", () => {
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain(
       "neither party can recreate it",
     );
-    expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain("working directory");
+    expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain("your working folder");
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).not.toContain("Download it");
   });
 

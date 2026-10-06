@@ -1,3 +1,5 @@
+import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
+
 import type {
   ConnectionEndpointRequest,
   GeneratedInvitation,
@@ -50,7 +52,7 @@ export const EMPTY_SAVE_FIELDS: SaveExchangeFields = {
 /** The lead paragraph naming the chosen transport; the terms are identical to a
  * browser exchange, only the transport differs. */
 export function saveLeadCopy(transport: CliTransport): string {
-  const over = transport === "sftp" ? "over SFTP" : "over a shared directory";
+  const over = transport === "sftp" ? "over SFTP" : "over a shared folder";
   return (
     `You chose to run this exchange ${over} with the Alcove command-line ` +
     "tool. The linkage terms inside the exchange file are identical to a " +
@@ -70,53 +72,28 @@ export function credentialAlertCopy(transport: CliTransport): string {
         "username and point the config at your key or password (an @file " +
         "reference) before running - the Alcove key file holds only the " +
         "exchange secret, provisioned by the command below."
-    : "A shared-directory exchange has no credentials at all. The file " +
-        "names only the directory both parties can reach.";
+    : "A shared-folder exchange has no credentials at all. The file " +
+        "names only the folder both parties can reach.";
 }
 
-/** The shared pre-run trust footer: the linkage PII -- the PSI match keys --
- * is encrypted locally before leaving the machine on every transport, while
- * payload columns are only transport-encrypted; that assurance and the
- * disclosure statement hold for every way an exchange runs (browser, SFTP,
- * shared directory, or a server-driven run -- the machine running the
- * exchange is the operator's local machine, even reached over a VPN), so
- * every pre-run surface states it identically. */
-export const PRE_RUN_TRUST_FOOTER =
-  "PII for linkage is encrypted locally before leaving your machine. Your partner " +
-  "receives only the fields listed under 'you will send' (step 2 above) " +
-  "and only for clients who are in common.";
-
-/** The ledger trust-footer copy for a live run: the shared pre-run assurance
- * until a result lands. The settled copy differs only in the literal
- * "this browser" claim, which a server-driven run cannot make. */
+/** The ledger footer on the inviter screen: the pre-run statement until a
+ * result lands, then the settled one. */
 export function liveRunLedgerFooter(
   serverJob: boolean,
   hasResult: boolean,
 ): string {
-  if (hasResult)
-    return serverJob
-      ? "The results above are all your partner received about your data."
-      : "Your file never left this browser. The results above are all your " +
-          "partner received about your data.";
-  return PRE_RUN_TRUST_FOOTER;
-}
-
-/** The trust-footer copy for the ledger on the save surface: the same
- * pre-run assurance as a browser run -- the statement holds for the SFTP and
- * shared-directory transports too. */
-export function saveTrustFooter(): string {
-  return PRE_RUN_TRUST_FOOTER;
+  return hasResult ? settledTrustFooter(serverJob) : preRunTrustFooter(2);
 }
 
 /** The top bar's transport note on the save surface. */
 export function saveRailNote(transport: CliTransport): string {
-  return transport === "sftp" ? "SFTP" : "Shared directory";
+  return transport === "sftp" ? "SFTP" : "Shared folder";
 }
 
 /** The explicit channel-capability statement: the browser does not run this
  * transport's exchanges; the file runs in the command-line tool. */
 export function saveCapabilityCopy(transport: CliTransport): string {
-  const noun = transport === "sftp" ? "SFTP" : "shared-directory";
+  const noun = transport === "sftp" ? "SFTP" : "shared-folder";
   return (
     `This browser does not run ${noun} exchanges; this file runs in the ` +
     "Alcove command-line tool."
@@ -132,7 +109,7 @@ export function saveClosingCopy(
   const where =
     transport === "sftp"
       ? "on the machine that reaches your SFTP server"
-      : "on a machine that reaches the shared directory";
+      : "on a machine that reaches the shared folder";
   const through =
     transport === "sftp" ? fields.remoteDirectory : fields.sharedDirectory;
   // The SFTP remote directory is optional; fall back to a generic phrase when
@@ -172,7 +149,7 @@ export function saveExchangeError(
   if (dir === "")
     return {
       field: "sharedDirectory",
-      message: "Enter the shared directory both parties can reach.",
+      message: "Enter the shared folder both parties can reach.",
     };
   if (!isAbsolutePath(dir))
     return {

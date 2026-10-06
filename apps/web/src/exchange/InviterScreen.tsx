@@ -163,8 +163,10 @@ import {
   liveRunLedgerFooter,
   saveExchangeError,
   saveRailNote,
-  saveTrustFooter,
 } from "./saveExchangeModel";
+
+import { preRunTrustFooter } from "./trustFooter";
+
 import { useBeforeUnloadPrompt, useUnloadGuard } from "./useUnloadGuard";
 import { AgreementTab } from "./AgreementTab";
 import { WorkShell } from "./WorkShell";
@@ -1560,7 +1562,7 @@ export function InviterScreen() {
           }))}
           footer={
             section === "save" && isCliTransport(transport)
-              ? saveTrustFooter()
+              ? preRunTrustFooter(2)
               : liveRunLedgerFooter(
                   chosenRunMode === "server-job",
                   outputs !== undefined,

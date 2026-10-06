@@ -599,10 +599,10 @@ describe("console inviter transports and sample data", () => {
     await reachReviewCreate();
     const browser = page.getByLabelText("Live, in this browser");
     await expect.element(browser).toBeDisabled();
-    // The disabled card names its in-tab exchange as out of scope on the console
+    // The disabled card states the console does not run in-browser exchanges
     // (this phrasing is unique to the Browser card's description).
     await expect
-      .element(page.getByText("the public Alcove web app's domain"))
+      .element(page.getByText("This console does not run in-browser exchanges"))
       .toBeInTheDocument();
   });
 
@@ -639,7 +639,7 @@ describe("console inviter transports and sample data", () => {
     app.render(createElement(InviterScreen));
     await reachReviewCreate();
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
   });
 
@@ -693,7 +693,7 @@ describe("console inviter transports and sample data", () => {
     app.render(createElement(InviterScreen));
     await reachReviewCreate();
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
     expect(
       page.getByText("The shared folder holds your own files").query(),
@@ -710,7 +710,7 @@ describe("console inviter transports and sample data", () => {
     await expect
       .element(
         page.getByLabelText(
-          "Over a shared directory, run by the command-line tool",
+          "Over a shared folder, run by the command-line tool",
         ),
       )
       .toBeDisabled();
@@ -881,7 +881,7 @@ describe("console inviter split-rendezvous retain gate", () => {
     // off -- the state the console's provisioning and the operator's own choice
     // disagree in, which the create gate holds.
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
@@ -1077,7 +1077,7 @@ describe("console inviter mint and run", () => {
     await reachReviewCreate();
     // Filedrop is the default (a rendezvous mount, no sftp server) and runs here.
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
 
     await page.getByRole("button", { name: "Create the invitation" }).click();

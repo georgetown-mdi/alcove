@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
   EMPTY_SAVE_FIELDS,
-  PRE_RUN_TRUST_FOOTER,
   credentialAlertCopy,
   endpointRequestFor,
   exchangeFileInputFor,
@@ -12,8 +11,8 @@ import {
   saveCapabilityCopy,
   saveExchangeError,
   saveLeadCopy,
-  saveTrustFooter,
 } from "@exchange/saveExchangeModel";
+import { preRunTrustFooter, settledTrustFooter } from "@exchange/trustFooter";
 
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type { GeneratedInvitation } from "@psi/invitation";
@@ -105,11 +104,11 @@ describe("filename derivation", () => {
 describe("copy is transport-specific", () => {
   test("lead names the transport and the capability statement is explicit", () => {
     expect(saveLeadCopy("sftp")).toContain("over SFTP");
-    expect(saveLeadCopy("filedrop")).toContain("over a shared directory");
+    expect(saveLeadCopy("filedrop")).toContain("over a shared folder");
     expect(saveCapabilityCopy("sftp")).toContain("Alcove command-line tool");
     expect(saveCapabilityCopy("sftp")).toContain("does not run SFTP");
     expect(saveCapabilityCopy("filedrop")).toContain(
-      "does not run shared-directory",
+      "does not run shared-folder",
     );
   });
 
@@ -124,35 +123,21 @@ describe("copy is transport-specific", () => {
 
   test("the filedrop credential alert is untouched: no credentials at all", () => {
     expect(credentialAlertCopy("filedrop")).toBe(
-      "A shared-directory exchange has no credentials at all. The file " +
-        "names only the directory both parties can reach.",
+      "A shared-folder exchange has no credentials at all. The file " +
+        "names only the folder both parties can reach.",
     );
   });
 });
 
 describe("live-run ledger footer by driver", () => {
-  test("every pre-run surface states the shared assurance verbatim", () => {
-    expect(PRE_RUN_TRUST_FOOTER).toBe(
-      "PII for linkage is encrypted locally before leaving your machine. Your partner " +
-        "receives only the fields listed under 'you will send' (step 2 " +
-        "above) and only for clients who are in common.",
-    );
-    // Browser run, server-driven run, and the SFTP/shared-directory save
-    // surface all state the same assurance -- it holds for every way an
-    // exchange runs, so the surfaces cannot drift.
-    expect(liveRunLedgerFooter(false, false)).toBe(PRE_RUN_TRUST_FOOTER);
-    expect(liveRunLedgerFooter(true, false)).toBe(PRE_RUN_TRUST_FOOTER);
-    expect(saveTrustFooter()).toBe(PRE_RUN_TRUST_FOOTER);
+  test("states the pre-run footer until a result lands, whatever the driver", () => {
+    expect(liveRunLedgerFooter(false, false)).toBe(preRunTrustFooter(2));
+    expect(liveRunLedgerFooter(true, false)).toBe(preRunTrustFooter(2));
   });
 
-  test("the settled copy differs only in the literal this-browser claim", () => {
-    expect(liveRunLedgerFooter(false, true)).toBe(
-      "Your file never left this browser. The results above are all your " +
-        "partner received about your data.",
-    );
-    expect(liveRunLedgerFooter(true, true)).toBe(
-      "The results above are all your partner received about your data.",
-    );
+  test("states the settled footer for the driver once a result lands", () => {
+    expect(liveRunLedgerFooter(false, true)).toBe(settledTrustFooter(false));
+    expect(liveRunLedgerFooter(true, true)).toBe(settledTrustFooter(true));
   });
 });
 

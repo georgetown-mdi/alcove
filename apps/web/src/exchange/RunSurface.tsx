@@ -833,7 +833,7 @@ export const UNDESCRIBABLE_RECORD_CONFIRM_BODY =
   "This console holds a file for this run that it cannot read as an exchange " +
   "record, so this page cannot say what it records or offer it for download. " +
   "Going on removes the run and that file, and neither party can recreate it. " +
-  "Copy it out of this run's folder in the console's working directory first " +
+  "Copy it out of this run's folder inside your working folder first " +
   "if you need the accounting entry.";
 
 /** The title the confirm heads with when the ask never answered. It asks about a

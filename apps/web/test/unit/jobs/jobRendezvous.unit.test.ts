@@ -594,7 +594,7 @@ describe("the split rendezvous a second mount provisions", () => {
       "JOB_RENDEZVOUS_DIR",
     );
     expect(provisioning.unresolvedLegWarning).toContain(
-      "outbound rendezvous directory was compared only as configured",
+      "outbound shared folder was compared only as configured",
     );
     expect(provisioning.unresolvedLegWarning).toContain(
       "the inbound leg's real path still applied",
@@ -619,7 +619,7 @@ describe("the split rendezvous a second mount provisions", () => {
       "JOB_RENDEZVOUS_DIR and JOB_RENDEZVOUS_OUTBOUND_DIR",
     );
     expect(provisioning.unresolvedLegWarning).toContain(
-      "inbound and outbound rendezvous directories were compared as configured",
+      "inbound and outbound shared folders were compared as configured",
     );
   });
 
@@ -668,7 +668,7 @@ describe("the split rendezvous a second mount provisions", () => {
       { dir: "/mnt/in", outboundDir: "/mnt/out", locator: "in" },
       true,
     );
-    expect(problem).toContain("cannot name both rendezvous folders");
+    expect(problem).toContain("cannot name both shared folders");
     expect(problem).toContain("JOB_RENDEZVOUS_OUTBOUND_NAME");
   });
 
@@ -1006,7 +1006,7 @@ describe("each leg's preflight names the mount it is about", () => {
     );
     expect(
       inboundWarnings.some((warning) =>
-        warning.startsWith("the inbound rendezvous directory"),
+        warning.startsWith("the inbound shared folder"),
       ),
     ).toBe(true);
     const missingOutbound = path.join(tempDir("outbound"), "not-created");
@@ -1020,7 +1020,7 @@ describe("each leg's preflight names the mount it is about", () => {
     );
     expect(
       outboundWarnings.some((warning) =>
-        warning.startsWith("the outbound rendezvous directory"),
+        warning.startsWith("the outbound shared folder"),
       ),
     ).toBe(true);
   });
@@ -1037,7 +1037,7 @@ describe("each leg's preflight names the mount it is about", () => {
         path.join(dataRoot, "current-job"),
         SWEEP_OFF,
       )[0],
-    ).toContain("the rendezvous directory");
+    ).toContain("the shared folder");
   });
 });
 
@@ -1065,7 +1065,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("is inside the job data root");
+    expect(warnings[0]).toContain("is inside your working folder");
   });
 
   test("names what leaves when the data root is nested inside the rendezvous", () => {
@@ -1117,7 +1117,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("is inside the work-input directory");
+    expect(warnings[0]).toContain("is inside your input folder");
   });
 
   test("adds the nesting when a mount holds the work input and sits inside the data root", () => {
@@ -1136,7 +1136,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("holds your input files, so");
-    expect(warnings[0]).toContain("also inside the job data root");
+    expect(warnings[0]).toContain("also inside your working folder");
   });
 
   test("names both directories when the rendezvous is nested inside both", () => {
@@ -1155,7 +1155,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(
-      "is inside the job data root and the work-input directory",
+      "is inside your working folder and your input folder",
     );
   });
 
@@ -1324,7 +1324,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("the job data root");
+    expect(warnings[0]).toContain("your working folder");
     expect(warnings[0]).toContain("could not be resolved to its real path");
     expect(warnings[0]).toContain(
       "Give the console read access to every folder on the way to it",
@@ -1345,7 +1345,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
       ),
     );
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("the work-input directory");
+    expect(warnings[0]).toContain("your input folder");
     expect(warnings[0]).toContain("could not be resolved to its real path");
   });
 
@@ -1369,7 +1369,7 @@ describe("rendezvousStartupWarnings overlap branch", () => {
     );
     expect(overlapWarnings(warnings)).toEqual([]);
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("the job data root");
+    expect(warnings[0]).toContain("your working folder");
     expect(warnings[0]).toContain("could not be resolved to its real path");
   });
 
@@ -1494,7 +1494,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     // so a check reading only a fragment would pass while the operator who has to
     // act on this one reads a sentence half-reworded by the other.
     expect(notEmptyLead("/data", "shared", SWEEP_OFF)).toBe(
-      "the rendezvous directory /data holds an earlier exchange's files, " +
+      "the shared folder /data holds an earlier exchange's files, " +
         'which an exchange refuses to start on. Turn on "Clear leftover ' +
         'exchange files" and re-run. Your own input and results are not what ' +
         "it refuses over.",
@@ -1509,7 +1509,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     // clause reworded into a promise would be read by the operator whose run is
     // about to refuse it, and a fragment check would not see the rewording.
     expect(notEmptyLead("/data", "shared", SWEEP_ON)).toBe(
-      "the rendezvous directory /data holds an earlier exchange's files, " +
+      "the shared folder /data holds an earlier exchange's files, " +
         "which an exchange refuses to start on. " +
         '"Clear leftover exchange files" is on and runs first; your own ' +
         "input and results are not what it sweeps.",
@@ -1562,7 +1562,7 @@ describe("rendezvousStartupWarnings emptiness branch", () => {
     const lead = notEmptyLead(deepMount, "shared", SWEEP_OFF);
     expect(lead).not.toContain(deepMount);
     expect(lead).toContain(
-      "the rendezvous directory holds an earlier exchange's files",
+      "the shared folder holds an earlier exchange's files",
     );
     expect(lead).toContain(
       "Your own input and results are not what it refuses over",
@@ -1852,7 +1852,7 @@ const NOTICE_LEGS: ReadonlyArray<RendezvousLeg> = [
  * folders has to tell them apart by. Distinct per leg: the shared wording is not a
  * substring of either qualified one. */
 function legPhrase(leg: RendezvousLeg): string {
-  return leg === "shared" ? "the rendezvous " : `the ${leg} rendezvous `;
+  return leg === "shared" ? "the shared folder " : `the ${leg} shared folder `;
 }
 
 /** The bound the module holds itself to, asserted against the constant it exports
@@ -1937,8 +1937,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     label: "a mount that does not exist yet",
     arrange: (mount, leg) => ({ args: isolatedArgs(mount, leg) }),
     match: /does not exist yet/,
-    tail: () =>
-      "the exchange cannot rendezvous until both parties can reach it",
+    tail: () => "the exchange cannot start until both parties can reach it",
     namesMount: true,
   },
   {
@@ -1948,8 +1947,8 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
       fs.writeFileSync(mount, "");
       return { args: isolatedArgs(mount, leg) };
     },
-    match: /is not a directory/,
-    tail: () => "is not a directory",
+    match: /is not a folder/,
+    tail: () => "is not a folder",
     namesMount: true,
   },
   {
@@ -1969,8 +1968,8 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
     // exchange's own connect probe rather than its half of the rendezvous.
     tail: (leg) =>
       leg === "inbound"
-        ? "the exchange checks write access on both rendezvous folders before it starts"
-        : "the exchange writes its half of the rendezvous there",
+        ? "the exchange checks write access on both shared folders before it starts"
+        : "the exchange writes its messages there",
     namesMount: true,
   },
   {
@@ -2020,7 +2019,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
       fs.writeFileSync(path.join(mount, "console-hello.json"), "");
       return { args: isolatedArgs(mount, leg) };
     },
-    match: /directory holds (?!an earlier)/,
+    match: /shared folder holds (?!an earlier)/,
     tail: () => "console-hello.json",
     namesMount: false,
   },
@@ -2062,7 +2061,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
       };
     },
     match: /whoever syncs it/,
-    tail: () => "It is also inside the job data root.",
+    tail: () => "It is also inside your working folder.",
     namesMount: true,
   },
   {
@@ -2084,7 +2083,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
       };
     },
     match: /whoever syncs it/,
-    tail: () => "It is also inside the work-input directory.",
+    tail: () => "It is also inside your input folder.",
     // Its first-party copy alone leaves less room than an ordinary mount costs,
     // so the fit drops the path here by design; the budget check still covers it.
     namesMount: false,
@@ -2144,7 +2143,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
         restore: blockRealpath(dataRoot),
       };
     },
-    match: /^the job data root/,
+    match: /^your working folder/,
     tail: () =>
       "Give the console read access to every folder on the way to it.",
     namesMount: false,
@@ -2167,7 +2166,7 @@ const NOTICE_SHAPES: Array<NoticeShape> = [
         restore: blockRealpath(jobInput),
       };
     },
-    match: /^the work-input directory/,
+    match: /^your input folder/,
     tail: () =>
       "Give the console read access to every folder on the way to it.",
     namesMount: false,
@@ -2389,7 +2388,7 @@ describe("every preflight notice fits its budget once rendered", () => {
       ),
     );
     const notice = warnings.find((warning) =>
-      warning.startsWith("the job data root"),
+      warning.startsWith("your working folder"),
     );
     expect(notice).toBeDefined();
     expect(renderedDisplayCost(dataRoot)).toBeGreaterThan(

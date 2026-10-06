@@ -183,14 +183,6 @@ function acceptorSendRow(
   };
 }
 
-/** The trust line under the acceptor's ledger: the same pre-run assurance the
- * inviter's surfaces state, with the step pointer at the acceptor's own
- * confirm-columns step (step 3), where its send set is decided. */
-export const ACCEPTOR_LEDGER_FOOTER =
-  "PII for linkage is encrypted locally before leaving your machine. Your partner " +
-  "receives only the fields listed under 'you will send' (step 3 above) " +
-  "and only for clients who are in common.";
-
 /** The step-3 ledger footer, swapped in on the columns step: local-only column
  * typing and cleaning, stated exactly as the mockup. */
 export const ACCEPTOR_COLUMNS_LEDGER_FOOTER =
@@ -270,28 +262,6 @@ export function acceptorLedgerRows(
  * the inviter named nobody, which is a fact the acceptor is consenting under. */
 export function invitingPartyName(token: InvitationToken): string {
   return displayPartyIdentity(token.linkageTerms.identity);
-}
-
-/** The completion trust line under the settled ledger for a browser-run accept: the
- * file never left this browser, and the ledger names all the partner received. */
-const ACCEPTOR_DONE_LEDGER_FOOTER =
-  "Your file never left this browser. The results above are all your partner " +
-  "received about your data.";
-
-/** The completion trust line for a console file-drop accept: the CLI reads the
- * mounted CSV, never the browser, so the "never left this browser" claim would
- * be false and is dropped, leaving only the accurate statement about what the
- * partner received. */
-const ACCEPTOR_DONE_SERVER_JOB_LEDGER_FOOTER =
-  "The results above are all your partner received about your data.";
-
-/** The completion trust line under the settled ledger, chosen by how the accept ran:
- * a server-job (console file-drop) accept drops the "never left this browser" claim
- * the console cannot make, mirroring the inviter's server-job footer. */
-export function acceptorDoneLedgerFooter(serverJob: boolean): string {
-  return serverJob
-    ? ACCEPTOR_DONE_SERVER_JOB_LEDGER_FOOTER
-    : ACCEPTOR_DONE_LEDGER_FOOTER;
 }
 
 /** The settled ledger tag once the exchange completes, naming the partner it was
@@ -587,27 +557,27 @@ export function acceptUnsupported(
         rendezvous.problem ??
         (split
           ? "This invitation runs over separate inbound and outbound folders, but " +
-            "this console has no rendezvous directories configured. Set " +
+            "this console has no shared folders configured. Set " +
             "JOB_RENDEZVOUS_DIR to the folder your partner writes into and " +
             "JOB_RENDEZVOUS_OUTBOUND_DIR to the one you write into, then reload."
-          : "This invitation runs over a shared directory, but this console has no " +
-            "rendezvous directory configured. Set JOB_RENDEZVOUS_DIR to a directory " +
-            "both parties can reach and reload."),
+          : "This invitation runs over a shared folder, but this console has no " +
+            "shared folder configured. Set JOB_RENDEZVOUS_DIR to a folder both " +
+            "parties can reach and reload."),
     };
   if (split && rendezvous.split !== true)
     return {
       title: ACCEPT_UNSUPPORTED_TITLE,
       message:
         "This invitation runs over separate inbound and outbound folders, but this " +
-        "console is mounted with a single shared directory. Mount the second " +
-        "folder and set JOB_RENDEZVOUS_OUTBOUND_DIR to it, then reload -- or ask " +
-        "your partner for an invitation over one shared directory instead.",
+        "console is mounted with a single shared folder. Mount the second " +
+        "folder and set JOB_RENDEZVOUS_OUTBOUND_DIR to it, then reload, or ask " +
+        "your partner for an invitation over one shared folder instead.",
     };
   if (!split && rendezvous.split === true)
     return {
       title: ACCEPT_UNSUPPORTED_TITLE,
       message:
-        "This invitation runs over one shared directory, but this console is " +
+        "This invitation runs over one shared folder, but this console is " +
         "mounted with separate inbound and outbound folders and has no single " +
         "folder to meet in. Ask your partner for an invitation over separate " +
         "inbound and outbound folders instead.",
@@ -652,7 +622,7 @@ export function acceptorHowItRunsLabel(
  * The launched run's top-bar transport note for an accepted endpoint: the short
  * label naming where the exchange runs, reusing the inviter's share/save top-bar
  * terminology so the two seats read alike. A console server-job accept names its
- * transport through {@link saveRailNote} ("SFTP" or "Shared directory"); every
+ * transport through {@link saveRailNote} ("SFTP" or "Shared folder"); every
  * browser-run accept reads "Browser".
  */
 export function acceptorTransportNote(

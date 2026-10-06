@@ -121,7 +121,7 @@ export const UNDESCRIBABLE_RECORD_LEAD =
  * with.
  */
 export const UNDESCRIBABLE_RECORD_NOTICE =
-  "A record file sits in this run's folder in this console's working directory, " +
+  "A record file sits in this run's folder inside your working folder, " +
   "and this Alcove build cannot read it: it may state an outcome this build " +
   "does not know, or be missing the verification keys written beside it. No " +
   "download is offered here, because this page cannot say what the file " +

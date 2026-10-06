@@ -95,7 +95,7 @@ export function SaveExchangeSection({
         </>
       ) : (
         <TextInput
-          label="Shared directory"
+          label="Shared folder"
           required
           classNames={{ input: styles.mono }}
           value={fields.sharedDirectory}
