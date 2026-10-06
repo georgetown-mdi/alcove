@@ -68,7 +68,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ROUTE_TREE } from "./check-web-route-render.mjs";
+import { ROUTE_TREE, webBuildEnv } from "./check-web-route-render.mjs";
 import { withRestoreOnSignal } from "./lib/regenerationChecks.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
@@ -323,7 +323,7 @@ function runBuild(repoRoot, recordPath) {
       execFileSync(command, args, {
         cwd: repoRoot,
         stdio: "inherit",
-        env: { ...process.env, [RECORD_ENV]: recordPath },
+        env: { ...webBuildEnv(), [RECORD_ENV]: recordPath },
       }),
   );
 }

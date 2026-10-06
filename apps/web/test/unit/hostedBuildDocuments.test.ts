@@ -9,6 +9,7 @@ import {
   matchesRoutePattern,
 } from "../../hosted/declaredRoutes";
 import hostedConfig from "../../vite.hosted.config";
+import { requireHostedSignalingServer } from "../../vite.config";
 import { routeDocumentFileName } from "../../hosted/routeDocuments";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
@@ -98,5 +99,33 @@ describe("the hosted build's signaling control", () => {
   test("builds when the variable holds a value", () => {
     vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
     expect(resolve()).toHaveProperty("build.outDir", "dist/hosted");
+  });
+});
+
+describe("the Start build's signaling control", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const check = (command: "build" | "serve") => () =>
+    requireHostedSignalingServer({ command, mode: "production" });
+
+  test.each([undefined, "hosted"])(
+    "refuses a build for the profile %j without the variable",
+    (profile) => {
+      vi.stubEnv("VITE_DEPLOYMENT_PROFILE", profile);
+      vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+      expect(check("build")).toThrow(/VITE_SIGNALING_SERVER_URL/);
+    },
+  );
+
+  test("leaves the console build to its own origin", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+    expect(check("build")).not.toThrow();
+  });
+
+  test("leaves the dev server to its own origin", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", undefined);
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+    expect(check("serve")).not.toThrow();
   });
 });

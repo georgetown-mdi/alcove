@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import logLibrary from "loglevel";
 import { nitroV2Plugin } from "@tanstack/nitro-v2-vite-plugin";
 import { playwright } from "@vitest/browser-playwright";
@@ -11,10 +11,11 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
 import { ConfigManager } from "./src/utils/serverConfig.ts";
+import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
-import type { Plugin, ProxyOptions } from "vite";
+import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 
 const configManager = new ConfigManager();
 const config = await configManager.load({ dotenv: true });
@@ -144,15 +145,28 @@ function deployGraphRecorder(recordPath: string): Plugin {
   };
 }
 
-/** Environment variable naming the loopback port of the standalone signaling
- * broker (packages/peerjs-broker) that scripts/dev.mjs and the test dev-server
- * setup start beside this server. */
-const DEV_SIGNALING_PORT_ENV = "ALCOVE_DEV_SIGNALING_PORT";
+/**
+ * Refuses a `vite build` for the hosted profile (`VITE_DEPLOYMENT_PROFILE`
+ * unset or `hosted`) when `VITE_SIGNALING_SERVER_URL` is unset or blank: the
+ * app's own origin serves no signaling. `vite dev` and the console profile
+ * fall back to the origin's `/api/`.
+ */
+export function requireHostedSignalingServer({
+  command,
+  mode,
+}: Pick<ConfigEnv, "command" | "mode">): void {
+  if (command !== "build") return;
+  const env = loadEnv(mode, import.meta.dirname, "VITE_");
+  if (env["VITE_DEPLOYMENT_PROFILE"] === "console") return;
+  const signalingServerUrl = env["VITE_SIGNALING_SERVER_URL"] as
+    string | undefined;
+  if (signalingServerUrl === undefined || signalingServerUrl.trim() === "")
+    throw new Error(
+      "VITE_SIGNALING_SERVER_URL is not set. A hosted build needs the address of the standalone peer-coordination broker, because the app's own origin serves no signaling. Set it to the broker's ws: or wss: URL and rebuild.",
+    );
+}
 
-// The app dials signaling at its own origin's /api/ unless the deployment names
-// another server, and this server mounts no broker, so the dev server forwards
-// /api/ -- WebSocket upgrades included -- to the standalone one when it is told
-// where that is.
+// This server mounts no broker, so its /api/ forwards to the standalone one.
 function devSignalingProxy(): Record<string, ProxyOptions> {
   const raw = process.env[DEV_SIGNALING_PORT_ENV];
   if (raw === undefined || raw === "") return {};
@@ -164,7 +178,8 @@ function devSignalingProxy(): Record<string, ProxyOptions> {
   return { "/api/": { target: `http://127.0.0.1:${port}`, ws: true } };
 }
 
-export default defineConfig((_configEnv) => {
+export default defineConfig((configEnv) => {
+  requireHostedSignalingServer(configEnv);
   return {
     server: {
       host: "127.0.0.1",
@@ -282,11 +297,8 @@ export default defineConfig((_configEnv) => {
               "test/**/*.browser.{test,spec}.{ts,tsx}",
             ],
             name: "browser",
-            // Stand up the standalone signaling broker and the dev server the
-            // same way the integration project does, so a cold `test:browser`
-            // is green: the live-exchange suites dial the broker at the port
-            // the setup provides, and the setup reuses a developer's running
-            // `npm run dev` rather than starting a second one.
+            // The same broker and dev-server setup as the integration project,
+            // so a cold `test:browser` is green.
             globalSetup: ["./test/devServer/globalSetup.ts"],
             // A suite's tests share one page, whose session storage would otherwise
             // carry an invitation one test minted into the next test's file step.

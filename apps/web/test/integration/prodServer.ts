@@ -25,7 +25,8 @@ export const prodEntry = resolve(webRoot, ".output/server/index.mjs");
 
 /** The command that produces {@link prodEntry}, quoted in the guard's message so
  * a failing run says how to fix itself. */
-export const BUILD_COMMAND = "npm run build -w apps/web";
+export const BUILD_COMMAND =
+  "VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web";
 
 /** The console server entry `npm run build:console-server -w apps/web` emits. */
 export const consoleEntry = resolve(webRoot, "dist/console-server/main.mjs");

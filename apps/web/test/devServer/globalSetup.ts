@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+import { DEV_SIGNALING_PORT_ENV } from "../../src/utils/devSignalingPort.ts";
 import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
 import { waitForColdSignaling } from "./signalingProbe.ts";
@@ -9,40 +10,17 @@ import { waitForColdSignaling } from "./signalingProbe.ts";
 import type { TestProject } from "vitest/node";
 
 // Vitest globalSetup shared by the `integration` and `browser` projects: it
-// brings the standalone signaling broker (packages/peerjs-broker) and the
-// Vite/TanStack dev server up before the suite and tears them down after, so
-// `npm run test:integration` and `npm run test:browser` are each
-// self-contained rather than requiring the operator to start `npm run dev`
-// first. The unit project does not reference this file, so `npm run test` never
-// touches either.
-//
-// The broker listens on an ephemeral loopback port, published via `provide()`
-// for the browser suites to `inject()` and dial directly. The dev server is
-// started with that port in DEV_SIGNALING_PORT_ENV, so it forwards its own
-// /api/ to the broker as `npm run dev` does, and it is ready only once a
-// signaling dial through it opens.
-//
-// The dev server runs on 127.0.0.1 (the Vite bind host -- not `localhost`,
-// which may resolve to ::1 and miss the IPv4 bind), on the port resolved as
-// `process.env.PORT ?? "3000"`, matching vite.config.ts. The integration
-// tests read the same expression. A PORT set only in `.env`, not the
-// environment, is unsupported.
-//
-// If a server is already listening on 127.0.0.1:PORT when the suite starts,
-// it is reused and left running on teardown, so a developer's long-lived
-// `npm run dev` is not killed mid-session -- matching the CLI integration
-// suite's warm-container reuse behavior. Its /api/ forwards to whatever broker
-// started it, so it is not probed for signaling.
+// starts the standalone signaling broker and the dev server, which forwards its
+// /api/ to that broker, and stops both on teardown (docs/TESTING.md). The broker
+// port is published via `provide()`. A server already listening on
+// 127.0.0.1:PORT (`process.env.PORT ?? "3000"`; a PORT set only in `.env` is
+// unsupported) is reused, left running, and not probed for signaling.
 
 declare module "vitest" {
   interface ProvidedContext {
     signalingBrokerPort?: number;
   }
 }
-
-/** Environment variable vite.config.ts reads for the broker its /api/ proxy
- * forwards to. */
-const DEV_SIGNALING_PORT_ENV = "ALCOVE_DEV_SIGNALING_PORT";
 
 /** What marks a failure this setup reports as the test environment's. */
 const SETUP_FAILURE = "dev-server setup failure:";

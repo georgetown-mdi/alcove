@@ -23,12 +23,10 @@
 // would resolve whatever dist happened to be on disk at startup -- the stale
 // build this exists to prevent.
 //
-// The web app mounts no signaling broker of its own, and the page dials its own
-// origin's /api/ unless the deployment names another server. So for an app
-// script in SIGNALING_APP_SCRIPTS the loop also starts the standalone broker
-// (packages/peerjs-broker) on a free loopback port and hands that port to the
-// dev server, which forwards /api/ there (apps/web/vite.config.ts). The broker
-// is a watcher like the others: its exit ends the loop.
+// For an app script in SIGNALING_APP_SCRIPTS the loop also starts the
+// standalone broker on a free loopback port, waits for its readiness endpoint,
+// and only then starts the dev server, whose /api/ proxy forwards there. The
+// broker is a watcher like the others: its exit ends the loop.
 //
 // Usage: node scripts/dev.mjs [web-script]   (default: dev)
 
@@ -38,6 +36,13 @@ import { createServer } from "node:net";
 import { constants } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+
+import {
+  DEFAULT_MOUNT_PATH,
+  READINESS_SEGMENT,
+} from "@alcove/peerjs-broker/standaloneOptions";
+
+import { DEV_SIGNALING_PORT_ENV } from "../apps/web/src/utils/devSignalingPort.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -58,9 +63,8 @@ export const BROKER_WORKSPACE = "packages/peerjs-broker";
  * dev server's own /api/. The console serves no signaling. */
 export const SIGNALING_APP_SCRIPTS = ["dev"];
 
-/** The environment variable apps/web/vite.config.ts reads for the loopback port
- * its /api/ proxy forwards to. */
-export const DEV_SIGNALING_PORT_ENV = "ALCOVE_DEV_SIGNALING_PORT";
+/** Longest the loop waits for the broker's readiness endpoint to answer. */
+export const SIGNALING_READY_TIMEOUT_MS = 30_000;
 
 /**
  * The signals this loop forwards to its children. SIGHUP is here because the
@@ -180,6 +184,26 @@ export function freeLoopbackPort() {
 }
 
 /**
+ * Whether the broker on loopback `port` answers its readiness endpoint within
+ * SIGNALING_READY_TIMEOUT_MS.
+ */
+export async function signalingBrokerAnswers(port) {
+  const url = `http://127.0.0.1:${port}${DEFAULT_MOUNT_PATH}/${READINESS_SEGMENT}`;
+  const deadline = Date.now() + SIGNALING_READY_TIMEOUT_MS;
+  for (;;) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(1_000) });
+      await response.body?.cancel();
+      if (response.ok) return true;
+    } catch {
+      // Not listening yet.
+    }
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+  }
+}
+
+/**
  * Bring core's dist up to date, then run its watcher, the signaling broker when
  * the app script needs one, and the app's dev server until one of them exits,
  * and resolve to the loop's exit code.
@@ -187,7 +211,8 @@ export function freeLoopbackPort() {
  * `runToCompletion` runs one npm invocation and resolves to its exit code;
  * `startWatcher` starts a long-running one, with extra environment variables,
  * and returns `{ kill, exited }`; `pickSignalingPort` resolves to the port the
- * broker binds; `teardownSignal` reports the teardown signal that has arrived,
+ * broker binds; `waitForSignaling` resolves to whether the broker on that port
+ * answered; `teardownSignal` reports the teardown signal that has arrived,
  * or null. They and the currency check are injected so the ordering and the
  * teardown this function owns are exercisable without spawning a dev server.
  */
@@ -197,6 +222,7 @@ export async function runDevLoop({
   runToCompletion,
   startWatcher,
   pickSignalingPort = freeLoopbackPort,
+  waitForSignaling = signalingBrokerAnswers,
   teardownSignal = () => null,
 }) {
   if (!isCoreBuildCurrent()) {
@@ -216,13 +242,40 @@ export async function runDevLoop({
     : undefined;
 
   const watchers = [startWatcher(["run", "dev", "-w", CORE_WORKSPACE], {})];
-  if (signalingPort !== undefined)
+  const stopAll = async () => {
+    for (const watcher of watchers) watcher.kill("SIGTERM");
+    await Promise.allSettled(watchers.map((watcher) => watcher.exited));
+  };
+
+  if (signalingPort !== undefined) {
     watchers.push(
       startWatcher(
         ["run", "start", "-w", BROKER_WORKSPACE, "--", "--port", signalingPort],
         {},
       ),
     );
+    const outcome = await Promise.race([
+      waitForSignaling(signalingPort).then((ready) => ({ ready })),
+      ...watchers.map((watcher) =>
+        watcher.exited.then((code) => ({ exited: code })),
+      ),
+    ]);
+    const interruptedWhileWaiting = teardownSignal();
+    if ("exited" in outcome || interruptedWhileWaiting !== null) {
+      await stopAll();
+      return interruptedWhileWaiting !== null
+        ? signalExitCode(interruptedWhileWaiting)
+        : outcome.exited;
+    }
+    if (!outcome.ready) {
+      await stopAll();
+      process.stderr.write(
+        `The signaling broker on port ${signalingPort} did not answer within ${SIGNALING_READY_TIMEOUT_MS / 1000}s, so the dev server was not started. Check the broker's output above.\n`,
+      );
+      return 1;
+    }
+  }
+
   watchers.push(
     startWatcher(
       ["run", appScript, "-w", APP_WORKSPACE],
@@ -233,8 +286,7 @@ export async function runDevLoop({
   );
 
   const first = await Promise.race(watchers.map((watcher) => watcher.exited));
-  for (const watcher of watchers) watcher.kill("SIGTERM");
-  await Promise.allSettled(watchers.map((watcher) => watcher.exited));
+  await stopAll();
   return first;
 }
 

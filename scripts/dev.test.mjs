@@ -15,7 +15,6 @@ import {
   BROKER_WORKSPACE,
   CORE_WORKSPACE,
   DEFAULT_APP_SCRIPT,
-  DEV_SIGNALING_PORT_ENV,
   SIGNALING_APP_SCRIPTS,
   TEARDOWN_SIGNALS,
   appScriptNames,
@@ -26,6 +25,7 @@ import {
   runDevLoop,
   startProcess,
 } from "./dev.mjs";
+import { DEV_SIGNALING_PORT_ENV } from "../apps/web/src/utils/devSignalingPort.ts";
 
 // Coverage of the root dev loop's two critical properties, neither of which
 // a passing dev session would report: core's dist is current BEFORE the dev
@@ -46,6 +46,7 @@ function harness({
   buildCode = 0,
   buildIsCurrent = false,
   watcherCount = 3,
+  signalingAnswers = Promise.resolve(true),
 } = {}) {
   const order = [];
   const watchers = [];
@@ -90,6 +91,10 @@ function harness({
     runToCompletion,
     startWatcher,
     pickSignalingPort: async () => PICKED_PORT,
+    waitForSignaling: (port) => {
+      order.push(["wait-for-signaling", port]);
+      return signalingAnswers;
+    },
   };
 }
 
@@ -103,6 +108,7 @@ async function startedLoop(harnessState, appScript = "dev") {
     runToCompletion: harnessState.runToCompletion,
     startWatcher: harnessState.startWatcher,
     pickSignalingPort: harnessState.pickSignalingPort,
+    waitForSignaling: harnessState.waitForSignaling,
   });
   await harnessState.started;
   return { loop };
@@ -134,6 +140,7 @@ describe("the root dev loop", () => {
       "run-to-completion",
       "watcher",
       "watcher",
+      "wait-for-signaling",
       "watcher",
     ]);
     expect(h.order[0][1]).toEqual(["run", "build", "-w", CORE_WORKSPACE]);
@@ -148,6 +155,7 @@ describe("the root dev loop", () => {
     expect(h.order.map(([kind]) => kind)).toEqual([
       "watcher",
       "watcher",
+      "wait-for-signaling",
       "watcher",
     ]);
   });
@@ -159,6 +167,7 @@ describe("the root dev loop", () => {
     await loop;
 
     expect(SIGNALING_APP_SCRIPTS).toContain(DEFAULT_APP_SCRIPT);
+    expect(h.order).toContainEqual(["wait-for-signaling", String(PICKED_PORT)]);
     expect(h.watchers.map((w) => [w.args, w.env])).toEqual([
       [["run", "dev", "-w", CORE_WORKSPACE], {}],
       [
@@ -251,6 +260,41 @@ describe("the root dev loop", () => {
     expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
     expect(h.watchers[1].killed).toEqual(["SIGTERM"]);
   });
+
+  it("starts no app server and stops the rest when the broker never answers", async () => {
+    const h = harness({ signalingAnswers: Promise.resolve(false) });
+    const loop = runDevLoop({
+      appScript: "dev",
+      isCoreBuildCurrent: h.isCoreBuildCurrent,
+      runToCompletion: h.runToCompletion,
+      startWatcher: h.startWatcher,
+      pickSignalingPort: h.pickSignalingPort,
+      waitForSignaling: h.waitForSignaling,
+    });
+
+    expect(await loop).toBe(1);
+    expect(h.watchers).toHaveLength(2);
+    expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+    expect(h.watchers[1].killed).toEqual(["SIGTERM"]);
+  });
+
+  it("starts no app server when the broker exits before it answers", async () => {
+    const h = harness({ signalingAnswers: new Promise(() => {}) });
+    const loop = runDevLoop({
+      appScript: "dev",
+      isCoreBuildCurrent: h.isCoreBuildCurrent,
+      runToCompletion: h.runToCompletion,
+      startWatcher: h.startWatcher,
+      pickSignalingPort: h.pickSignalingPort,
+      waitForSignaling: h.waitForSignaling,
+    });
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    h.watchers[1].exit(69);
+
+    expect(await loop).toBe(69);
+    expect(h.watchers).toHaveLength(2);
+    expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+  });
 });
 
 describe("the signaling port the dev loop hands the dev server", () => {
@@ -263,17 +307,6 @@ describe("the signaling port the dev loop hands the dev server", () => {
       server.listen(port, "127.0.0.1", resolveListen);
     });
     await new Promise((resolveClose) => server.close(resolveClose));
-  });
-
-  it("is read under the same variable by the dev server's config and the test setup", () => {
-    for (const file of [
-      "apps/web/vite.config.ts",
-      "apps/web/test/devServer/globalSetup.ts",
-    ])
-      expect(
-        readFileSync(join(import.meta.dirname, "..", file), "utf8"),
-        `${file} does not name ${DEV_SIGNALING_PORT_ENV}`,
-      ).toContain(`"${DEV_SIGNALING_PORT_ENV}"`);
   });
 });
 

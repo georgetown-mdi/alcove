@@ -321,7 +321,8 @@ npm run test:integration -w apps/web    # auto-starts, waits for, and stops the 
 Some of these specs drive the built production servers: the hosted build at
 `apps/web/.output/server/index.mjs`, and the console server at
 `apps/web/dist/console-server/main.mjs` with the client it serves from
-`apps/web/dist/console/`. Run `npm run build -w apps/web`,
+`apps/web/dist/console/`. Run
+`VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web`,
 `npm run build:console -w apps/web` and `npm run build:console-server -w apps/web`
 first. Without those builds the project fails at setup, naming the missing paths
 and the build commands, rather than reporting a pass with those specs quietly

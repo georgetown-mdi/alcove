@@ -128,8 +128,11 @@ jobs:
         uses: ./.github/actions/setup
       # The production web build this job packages below. The deploy-trigger
       # coverage check (check:deploy-trigger-graph) runs in the repo-wide
-      # static checks, not here.
+      # static checks, not here. The build refuses to run without the
+      # signaling broker's address, a repository variable.
       - name: Build web app
+        env:
+          VITE_SIGNALING_SERVER_URL: ${{vars.VITE_SIGNALING_SERVER_URL}}
         run: npm run build -w apps/web
       # Renders every page route from the build the step above left in
       # apps/web/.output, the one packaged below, and fails on a 5xx or on
@@ -266,10 +269,12 @@ jobs:
       # this leg builds the hosted app and the console for itself. Taking the
       # `package` job's build through the deploy artifact instead would serialize
       # the slowest leg behind that job for a build of about half a minute.
+      # The suites serve the build over http and need no reachable broker, so
+      # it names a loopback ws: address.
       - name: Build the web app for the integration suites
         if: matrix.build-web == 'true'
         run: |
-          npm run build -w apps/web
+          VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web
           npm run build:console -w apps/web
           npm run build:console-server -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that

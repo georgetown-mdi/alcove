@@ -36,7 +36,6 @@
     "@mantine/hooks": "^9.5.0",
     "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.3.tgz",
     "@alcove/core": "file:../../packages/core",
-    "@alcove/peerjs-broker": "file:../../packages/peerjs-broker",
     "@tabler/icons-react": "^3.47.0",
     "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.103.2",
@@ -54,6 +53,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@alcove/peerjs-broker": "file:../../packages/peerjs-broker",
     "@alcove/testkit": "file:../../packages/testkit",
     "@tanstack/eslint-config": "^0.4.0",
     "@tanstack/eslint-plugin-router": "^1.162.0",

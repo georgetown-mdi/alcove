@@ -1,9 +1,7 @@
 import WebSocket from "ws";
 
-// A dial of the PeerJS signaling WebSocket at a server's own /api/, exactly as
-// the real client dials it with an explicit, pre-derived id. Pointed at the dev
-// server, it observes whether that server forwards the upgrade to the
-// standalone broker behind it (vite.config.ts, devSignalingProxy).
+// A dial of the PeerJS signaling WebSocket at a server's own /api/, as the real
+// client dials it with an explicit, pre-derived id.
 
 // Process-wide so every attempt registers under a distinct broker id: a retry
 // that lands before the server has reaped a prior probe's socket would otherwise
@@ -38,9 +36,6 @@ function coldSignalingAttempt(
       }
       resolvePromise(ok);
     };
-    // `finish` closes over `timer` but is only ever invoked asynchronously (from a
-    // ws event or this timeout), so the reference is resolved well after this
-    // line; a `const` here keeps prefer-const happy without a TDZ in practice.
     const timer = setTimeout(() => finish(false), perAttemptMs);
     ws.on("message", (data: WebSocket.RawData) => {
       // Resolve only on the OPEN frame; ignore any other frame rather than
