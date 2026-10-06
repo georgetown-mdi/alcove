@@ -394,7 +394,7 @@ declaring `payload.receive` columns; it is left neither to the data dictionary
 nor to operator discipline.
 
 A party that receives payload holds what arrives to the partner's agreed
-`payload.send`, compared as a set by exact name: a column the list does not
+`payload.send`, compared as a sorted list by exact name, so a repeated name is refused even beside every agreed one: a column the list does not
 name, or a listed column left out, aborts the run the same way, at the same
 point and with the same record. The refusal message names no column; the
 terminated record still commits the payload as received, so its

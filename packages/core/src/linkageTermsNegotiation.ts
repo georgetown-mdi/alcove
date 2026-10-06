@@ -863,7 +863,8 @@ export function compareTerms(
  * them from a terms update: every agreed field is the partner's, `output` and
  * `payload` are mirrored, and `identity` and `deduplicate` stay this party's
  * own. A partner stating no receive list leaves this party's send list as it
- * was, except under count-only terms, which hold no payload. Undefined where
+ * was, except under count-only terms and where the partner expects no output,
+ * which send nothing. Undefined where
  * the result is not a valid terms document.
  */
 export function termsAdoptingPartnerTerms(
@@ -888,9 +889,10 @@ export function termsAdoptingPartnerTerms(
   // receive list here would accept whatever columns it sends.
   const partnerSend: PayloadColumn[] | undefined =
     partnerPayload?.send ?? (partner.output.shareWithPartner ? [] : undefined);
+  const sendsNothing =
+    adopted.algorithm === "psi-c" || !adopted.output.shareWithPartner;
   const send =
-    partnerPayload?.receive ??
-    (adopted.algorithm === "psi-c" ? undefined : local.payload?.send);
+    partnerPayload?.receive ?? (sendsNothing ? undefined : local.payload?.send);
   if (
     partnerPayload !== undefined ||
     send !== undefined ||
