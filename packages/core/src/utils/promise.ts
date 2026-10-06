@@ -21,10 +21,22 @@ export class TimeoutError extends Error {
 }
 
 /**
+ * The longest delay, in milliseconds, a Node or browser timer honors: 2^31-1.
+ * A longer or non-finite delay is not refused by `setTimeout`; it is clamped to
+ * 1 ms with only a warning, so the timer fires at once.
+ */
+export const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
  * Races `promise` against a `ms`-millisecond deadline. Rejects with a
  * {@link TimeoutError} holding `message` if the deadline fires first;
  * otherwise settles with `promise`'s own result. The timer is cleared when
  * `promise` settles.
+ *
+ * A deadline that is not a finite number from 0 to {@link MAX_TIMER_MS} is
+ * refused: the returned promise rejects with a `RangeError` and no timer is
+ * armed. `promise` is still observed, so its own later rejection is not
+ * reported as unhandled.
  *
  * @example
  * // Probe a host up to 3 times, enforcing a 5-second deadline per attempt. A
@@ -44,6 +56,14 @@ export const withTimeout = <T>(
   ms: number,
   message: string,
 ): Promise<T> => {
+  if (!Number.isFinite(ms) || ms < 0 || ms > MAX_TIMER_MS) {
+    promise.catch(() => undefined);
+    return Promise.reject(
+      new RangeError(
+        `deadline for "${message}" must be from 0 to ${String(MAX_TIMER_MS)} ms; got ${String(ms)}`,
+      ),
+    );
+  }
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
     promise.finally(() => clearTimeout(timer)),

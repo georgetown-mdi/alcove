@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+import type { Arguments } from "yargs";
 import {
   keyTypeFromBlob,
   sanitizeErrorForDisplay,
@@ -9,12 +10,16 @@ import type { PresentedHostKey, SFTPConnectionConfig } from "@alcove/core";
 
 import {
   buildProbeConfig,
+  handler as probeHostKeyHandler,
   probeDiagnosisJsonLine,
   probeHostKeyLines,
   type ProbeHostKeyDeps,
 } from "../../../src/commands/probeHostKey";
 import { explainPeerIdentificationFailure } from "../../../src/connection/sftpPeerIdentification";
-import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
+import {
+  captureStdio,
+  snapshotDiagnosticSinkAndLevel,
+} from "../../loggingTestSupport";
 
 snapshotDiagnosticSinkAndLevel();
 
@@ -449,5 +454,30 @@ describe("both routes hold the producer's excerpt as it stands", () => {
     expect(rendered).toContain(
       `first bytes the peer sent; PEM private-key blocks replaced: ${sanitizeForDisplay(PRODUCED_EXCERPT)}`,
     );
+  });
+});
+
+describe("--connect-timeout is capped", () => {
+  test("a value above 7d is refused with exit 64 naming the flag and the maximum", async () => {
+    const stdio = captureStdio();
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    try {
+      await probeHostKeyHandler({
+        _: [],
+        $0: "alcove",
+        "sftp-url": "sftp://sftp.example.org",
+        "connect-timeout": "8d",
+        "log-level": "info",
+      } as unknown as Arguments);
+      expect(exit).toHaveBeenCalledWith(64);
+      expect(stdio.stderrWrites.join("")).toContain(
+        "--connect-timeout must not exceed 7d; got 8d",
+      );
+    } finally {
+      stdio.restore();
+      exit.mockRestore();
+    }
   });
 });

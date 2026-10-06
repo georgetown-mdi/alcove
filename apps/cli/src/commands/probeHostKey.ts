@@ -18,7 +18,12 @@ import { HOST_KEY_PROBE_DIALS_ONCE } from "../hostKeyTrust";
 import { peerIdentificationDiagnosisOf } from "../connection/sftpPeerIdentification";
 import { exitCodeForError, exitWithError } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
-import { durationFlagSeconds, parseOrExit, singleValue } from "../util/flags";
+import {
+  durationFlagSeconds,
+  MAX_TIMEOUT_SECONDS,
+  parseOrExit,
+  singleValue,
+} from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { asciiSafeJsonLine } from "../util/jsonLine";
 import { addLoggingOptions, addVerboseOption } from "../optionDefinitions";
@@ -277,7 +282,11 @@ export async function handler(argv: Arguments): Promise<void> {
     // on a repeated or malformed flag; buildProbeConfig raises one on a bad URL.
     const result = await probeHostKeyLines({
       sftpUrl: singleValue(argv, "sftp-url") as string,
-      connectTimeoutSeconds: durationFlagSeconds(argv, "connect-timeout"),
+      connectTimeoutSeconds: durationFlagSeconds(
+        argv,
+        "connect-timeout",
+        MAX_TIMEOUT_SECONDS,
+      ),
       json,
       verbosity: (argv["verbose"] as number | undefined) ?? 0,
     });

@@ -4,7 +4,11 @@ import { spawnSync } from "node:child_process";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { MAX_RECONNECT_ATTEMPTS, MAX_TIMEOUT_SECONDS } from "@alcove/core";
+import {
+  MAX_RECONNECT_ATTEMPTS,
+  MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
+} from "@alcove/core";
 
 import {
   CONNECTION_TUNING_DEFAULT,
@@ -386,8 +390,8 @@ describe(
     test.each([
       ["a poll interval of 1ms, the schema's floor", "--polling-frequency=1ms"],
       [
-        "a poll interval at Number.MAX_SAFE_INTEGER ms, the schema's ceiling",
-        `--polling-frequency=${Number.MAX_SAFE_INTEGER}ms`,
+        "a poll interval at MAX_TIMER_MS, the schema's ceiling",
+        `--polling-frequency=${MAX_TIMER_MS}ms`,
       ],
       ["a retry budget of 0, the schema's floor", "--max-reconnect-attempts=0"],
       [
@@ -414,6 +418,23 @@ describe(
         expect(parsed.stderr).toContain("input.csv does not exist");
       },
     );
+
+    test("a poll interval one millisecond past MAX_TIMER_MS is a usage error", async () => {
+      const { dir, connectionArgs } = splitSftpConnection();
+      const argv = await captureZeroSetupArgv({
+        workdir: dir,
+        connectionArgs,
+        optionArgs: [
+          ...retainModeFileSyncArgs(),
+          `--polling-frequency=${MAX_TIMER_MS + 1}ms`,
+        ],
+        eventStream: true,
+        timeoutMs: CHILD_EXIT_TIMEOUT_MS,
+      });
+      const parsed = parseWithRealCli(argv, dir);
+      expect(parsed.status).toBe(EXIT_USAGE);
+      expect(parsed.stderr).toContain("--polling-frequency");
+    });
 
     test("an hour past that ceiling is a usage error, which is why the card refuses it", async () => {
       // The refusal the console makes at authoring time, driven at the boundary

@@ -8,6 +8,7 @@ import {
   csvDelimiterRefusal,
   isCsvDelimiterChoice,
   MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
   normalizeCsvDelimiter,
   sanitizeErrorForDisplay,
   UsageError,
@@ -61,9 +62,10 @@ export function assertNoUnknownOptions(positionals: Array<unknown>): void {
 
 /**
  * The sanity ceiling the duration-valued timeout flags (`--connection-timeout`,
- * `--peer-timeout`, `--accept-timeout`) are capped at, re-exported from core --
- * the console's zero-setup authoring surface holds its timeout fields to the same
- * value, and core is the only module both apps can import. Its rationale lives
+ * `--connect-timeout`, `--peer-timeout`, `--accept-timeout`) are capped at,
+ * re-exported from core -- the console's zero-setup authoring surface holds its
+ * timeout fields to the same value, and core is the only module both apps can
+ * import. Its rationale lives
  * with the option fields it qualifies, in
  * `packages/core/src/config/connection.ts`.
  */
@@ -73,10 +75,9 @@ export { MAX_TIMEOUT_SECONDS };
  * Read a duration-valued CLI option from parsed `Arguments` and return it as a
  * whole number of seconds (or `undefined` when the flag is absent). Rejects a
  * repeat (via {@link singleValue}) and a malformed or bare-integer value (via
- * {@link parseDurationFlag}), naming the flag in either error. When `maxSeconds`
- * is given, a value above it is rejected with a flag-named usage error stating
- * the maximum, checked after parsing so it layers on top of the malformed,
- * zero, and overflow rejections rather than replacing them.
+ * {@link parseDurationFlag}), naming the flag in either error. A value above
+ * `maxSeconds` is rejected with a flag-named usage error stating the maximum,
+ * followed by `ceilingMeaning` in parentheses when given.
  *
  * {@link parseDurationFlag} yields a positive millisecond offset whose smallest
  * unit is seconds, so the divide-by-1000 to seconds is always exact.
@@ -84,7 +85,8 @@ export { MAX_TIMEOUT_SECONDS };
 export function durationFlagSeconds(
   argv: Arguments,
   name: string,
-  maxSeconds?: number,
+  maxSeconds: number,
+  ceilingMeaning?: string,
 ): number | undefined {
   const raw = singleValue(argv, name);
   if (raw === undefined) return undefined;
@@ -92,14 +94,16 @@ export function durationFlagSeconds(
   // violation is reported as parseDurationFlag's flag-named UsageError rather
   // than a raw TypeError from .trim() on a non-string.
   const seconds = parseDurationFlag(`--${name}`, String(raw)) / 1000;
-  // The sanity cap is the last check: parseDurationFlag has already rejected a
-  // zero, malformed, bare-integer, or overflowing value, so only a well-formed
-  // value past the product ceiling remains to reject here. The ceiling is
-  // stated in whole days; callers pass a whole-day cap (MAX_TIMEOUT_SECONDS).
-  if (maxSeconds !== undefined && seconds > maxSeconds)
+  if (seconds > maxSeconds) {
+    const maximum =
+      maxSeconds % 86_400 === 0
+        ? `${String(maxSeconds / 86_400)}d`
+        : `${String(maxSeconds)}s`;
+    const meaning = ceilingMeaning === undefined ? "" : ` (${ceilingMeaning})`;
     throw new UsageError(
-      `--${name} must not exceed ${maxSeconds / 86_400}d; got ${String(raw)}`,
+      `--${name} must not exceed ${maximum}${meaning}; got ${String(raw)}`,
     );
+  }
   return seconds;
 }
 
@@ -112,14 +116,12 @@ export function durationFlagSeconds(
  * returns the parser's millisecond offset directly instead of dividing to
  * seconds, which would floor a sub-second value to zero.
  *
- * The sole caller, `--polling-frequency`, takes no product ceiling: a large
- * poll interval is merely slow, unlike a timeout flag's coordination window.
- * {@link parseFineDurationFlag} still rejects a value large enough to overflow
- * a safe integer.
+ * The value arms a timer, so it is capped at {@link MAX_TIMER_MS}, the longest
+ * delay a timer honors.
  *
- * A repeat (via {@link singleValue}) and a malformed or bare-integer value (via
- * {@link parseFineDurationFlag}) are rejected with a flag-named {@link UsageError}
- * (exit 64).
+ * A repeat (via {@link singleValue}), a malformed or bare-integer value (via
+ * {@link parseFineDurationFlag}), and a value above the ceiling are rejected
+ * with a flag-named {@link UsageError} (exit 64).
  */
 export function durationFlagMs(
   argv: Arguments,
@@ -128,7 +130,14 @@ export function durationFlagMs(
   const raw = singleValue(argv, name);
   if (raw === undefined) return undefined;
   // Coerce to a string defensively, as durationFlagSeconds does.
-  return parseFineDurationFlag(`--${name}`, String(raw));
+  const ms = parseFineDurationFlag(`--${name}`, String(raw));
+  if (ms > MAX_TIMER_MS)
+    throw new UsageError(
+      `--${name} must not exceed ${String(MAX_TIMER_MS)}ms ` +
+        `(about ${String(Math.floor(MAX_TIMER_MS / 86_400_000))} days); ` +
+        `got ${String(raw)}`,
+    );
+  return ms;
 }
 
 /**

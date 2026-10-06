@@ -550,7 +550,7 @@ test("filedrop: an expired invitation aborts the accept and the inviter's handsh
     // the peerless rendezvous, this bounds the stall to a fast, clean failure (a
     // non-/expired/ rejection well within the test timeout) rather than racing it.
     acceptTimeout: 5,
-    expiresIn: "1s",
+    expiresInSeconds: 1,
     log,
   });
   expect(inviteReady.mode).toBe("online");

@@ -173,7 +173,12 @@ export {
   getDiagnosticSink,
 } from "./utils/logger";
 export type { DiagnosticSink } from "./utils/logger";
-export { retryPromise, withTimeout, TimeoutError } from "./utils/promise";
+export {
+  MAX_TIMER_MS,
+  retryPromise,
+  withTimeout,
+  TimeoutError,
+} from "./utils/promise";
 // The untrusted-JSON chokepoint. Barrelled because a partner wire frame is
 // parsed outside this package too -- the CLI's WebRTC broker signaling client
 // reads JSON text off a socket the signaling server and the remote peer both
