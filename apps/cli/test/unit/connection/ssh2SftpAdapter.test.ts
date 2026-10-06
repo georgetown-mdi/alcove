@@ -14,7 +14,7 @@ import {
 import { SSH2SFTPClientAdapter } from "../../../src/connection/ssh2SftpAdapter";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   MAX_LISTING_READDIR_BATCHES,
 } from "../../../src/connection/listingGuard";
 import {
@@ -1784,7 +1784,7 @@ describe("bounded list", () => {
 
   test("rejects an entry whose filename exceeds the maximum length", async () => {
     const adapter = new SSH2SFTPClientAdapter();
-    const longName = `${"x".repeat(MAX_FILENAME_LENGTH + 1)}.json`;
+    const longName = `${"x".repeat(MAX_FILENAME_BYTES + 1)}.json`;
     const mock = makeBatchedSftp({
       totalEntries: 1,
       batchSize: 1,

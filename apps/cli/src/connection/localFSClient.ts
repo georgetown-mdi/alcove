@@ -26,7 +26,7 @@ import { InputNotFoundError } from "../util/exit";
 import { frameSizeExceededError } from "./frameSizeGuard";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   directoryTooLargeError,
   filenameByteLength,
   filenameTooLongError,
@@ -355,8 +355,8 @@ export class LocalFSClient implements FileTransportClient {
     for await (const entry of await fs.opendir(dir)) {
       if (++scanned > MAX_DIRECTORY_ENTRIES)
         throw directoryTooLargeError(dir, MAX_DIRECTORY_ENTRIES);
-      if (filenameByteLength(entry.name) > MAX_FILENAME_LENGTH)
-        throw filenameTooLongError(dir, entry.name, MAX_FILENAME_LENGTH);
+      if (filenameByteLength(entry.name) > MAX_FILENAME_BYTES)
+        throw filenameTooLongError(dir, entry.name, MAX_FILENAME_BYTES);
       if (entry.isFile()) fileNames.push(entry.name);
     }
     // opendir provides the file type but not mtimeMs; a stat per file is

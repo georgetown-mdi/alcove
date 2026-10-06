@@ -34,7 +34,7 @@ import type {
 } from "./sftpAdapterLedger";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   MAX_LISTING_READDIR_BATCHES,
   directoryTooLargeError,
   filenameByteLength,
@@ -123,12 +123,10 @@ const sshWireTraceLog = getLogger(SSH_WIRE_TRACE_LOGGER_NAME);
 // handling relies on).
 const SSH_FX_FAILURE = 4;
 
-// Whether a failed put attempt is re-issued on the same session: only for
-// SSH_FX_FAILURE, SFTPv3's generic status and the only one that can report a
-// condition that clears. A missing directory (2) or a refused permission (3)
-// answers a re-issue the same way, a lost session is the recovery round's to
-// re-dial, and the idle-window stall and dead-session errors are terminal. The
-// statuses are driven in test/integration/sftpStackPremises.test.ts.
+// A failed put is re-issued on the same session only for SSH_FX_FAILURE: the
+// only status that can report a condition that clears; the others answer a
+// re-issue the same way or belong to the recovery round. The statuses are
+// driven in test/integration/sftpStackPremises.test.ts.
 function isRetryableWriteStatus(error: unknown): boolean {
   return (error as Ssh2SftpError | null | undefined)?.code === SSH_FX_FAILURE;
 }
@@ -2871,15 +2869,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
                     );
                     return;
                   }
-                  if (
-                    filenameByteLength(entry.filename) > MAX_FILENAME_LENGTH
-                  ) {
+                  if (filenameByteLength(entry.filename) > MAX_FILENAME_BYTES) {
                     settle(() =>
                       reject(
                         filenameTooLongError(
                           path,
                           entry.filename,
-                          MAX_FILENAME_LENGTH,
+                          MAX_FILENAME_BYTES,
                         ),
                       ),
                     );
@@ -2925,15 +2921,15 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     if (dead) return Promise.reject(dead);
     const { maxBytes } = options;
 
-    // Stream into the shared counting sink rather than letting
-    // ssh2-sftp-client buffer the whole transfer. The sink retains only the
-    // under-cap prefix and, the instant the running total crosses the cap,
-    // settles its own `result` with the typed terminal error AND fails the
-    // write callback so the library aborts and destroys the read stream at the
-    // server. A server that under-reports the file's size in its directory
-    // listing (and thus slips past the poll loop's pre-get() check) still
-    // cannot drive an unbounded allocation here -- allocation stays bounded to
-    // roughly maxBytes however the transfer ends.
+    // Stream into the shared counting sink rather than letting ssh2-sftp-client
+    // buffer the whole transfer. The sink retains only the under-cap prefix
+    // and, the instant the running total crosses the cap, settles its own
+    // `result` with the typed terminal error AND fails the write callback so
+    // the library aborts and destroys the read stream at the server. A server
+    // that under-reports the file's size in its directory listing (and thus
+    // slips past the poll loop's pre-get() check) still cannot drive an
+    // unbounded allocation here -- allocation stays bounded to roughly maxBytes
+    // however the transfer ends.
     //
     // The over-cap outcome is owned by the sink, decided at the point of
     // detection; this get()'s own settle only feeds the non-over-cap cases via

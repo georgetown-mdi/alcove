@@ -17,7 +17,7 @@ import { LocalFSClient } from "../../../src/connection/localFSClient";
 import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
 } from "../../../src/connection/listingGuard";
 
 // A lazily-generated stand-in for fs.opendir's Dir: yields `total` synthetic
@@ -253,7 +253,7 @@ test("list rejects an entry whose filename exceeds the maximum length", async ()
   // driven through a mocked directory: it is the SFTP-server case (a hostile
   // server can synthesize an over-length name in a READDIR response) exercised
   // against the shared bound.
-  const longName = `${"x".repeat(MAX_FILENAME_LENGTH + 1)}.json`;
+  const longName = `${"x".repeat(MAX_FILENAME_BYTES + 1)}.json`;
   const hostile = countingDir(1, () => ({
     name: longName,
     isFile: () => true,

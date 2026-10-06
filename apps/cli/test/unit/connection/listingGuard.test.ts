@@ -10,7 +10,7 @@ import {
 
 import {
   MAX_DIRECTORY_ENTRIES,
-  MAX_FILENAME_LENGTH,
+  MAX_FILENAME_BYTES,
   directoryTooLargeError,
   filenameByteLength,
   filenameTooLongError,
@@ -55,7 +55,7 @@ describe("listing bound constants", () => {
   });
 
   test("the filename cap is NAME_MAX", () => {
-    expect(MAX_FILENAME_LENGTH).toBe(255);
+    expect(MAX_FILENAME_BYTES).toBe(255);
   });
 });
 

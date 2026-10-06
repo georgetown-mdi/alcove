@@ -14,7 +14,7 @@ import { transportOperationStalledError } from "./sftpLivenessGuard";
  * ({@link ../connection/localFSClient.LocalFSClient | LocalFSClient} and
  * {@link ../connection/ssh2SftpAdapter.SSH2SFTPClientAdapter}): a directory
  * over {@link MAX_DIRECTORY_ENTRIES} entries, or an entry name over
- * {@link MAX_FILENAME_LENGTH}, is refused with a
+ * {@link MAX_FILENAME_BYTES}, is refused with a
  * {@link DirectoryListingBoundsError} before the listing is materialized.
  * Rationale: docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound".
  */
@@ -36,10 +36,10 @@ export const MAX_DIRECTORY_ENTRIES = 8192;
  * POSIX `NAME_MAX`; derivation: docs/spec/CHANNEL_SECURITY.md,
  * "Directory-listing bound".
  */
-export const MAX_FILENAME_LENGTH = MAX_FILE_NAME_BYTES;
+export const MAX_FILENAME_BYTES = MAX_FILE_NAME_BYTES;
 
 /**
- * The length {@link MAX_FILENAME_LENGTH} bounds: the name's UTF-8 encoding in
+ * The length {@link MAX_FILENAME_BYTES} bounds: the name's UTF-8 encoding in
  * bytes, not its JavaScript string length, which counts UTF-16 code units and
  * reads a name of multi-byte characters as shorter than the filesystem limit
  * it is measured against. Both transports hand over the name already decoded
@@ -85,7 +85,7 @@ export function directoryTooLargeError(
 
 /**
  * Construct the typed, terminal error for a directory entry whose filename
- * exceeds {@link MAX_FILENAME_LENGTH}. Only a leading 64-character slice
+ * exceeds {@link MAX_FILENAME_BYTES}. Only a leading 64-character slice
  * of the offending name is interpolated -- a memory bound, not the display
  * budget {@link directoryLink} fits to -- raw and unescaped (escaping is
  * the display boundary's job; a split surrogate pair still renders as a
@@ -102,7 +102,7 @@ export function filenameTooLongError(
   name: string,
   max: number,
 ): DirectoryListingBoundsError {
-  // A name reaching here is longer than MAX_FILENAME_LENGTH and so longer than
+  // A name reaching here is longer than MAX_FILENAME_BYTES and so longer than
   // this preview, which is why the marker is unconditional. Redaction runs after
   // slicing, so the slice still bounds what an attacker-sized name can relay
   // into memory, and before the marker is appended, so a planted BEGIN marker in
