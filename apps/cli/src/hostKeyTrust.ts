@@ -13,7 +13,7 @@ import type { ConnectionConfig, PresentedHostKey } from "@alcove/core";
 
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { persistHostKeyFingerprint } from "./config";
-import { exitCodeForError } from "./util/exit";
+import { exitCodeForError, withExitCode } from "./util/exit";
 import { logFileInUse } from "./util/logging";
 import { promptConfirm, writePromptLine } from "./util/prompt";
 
@@ -106,7 +106,7 @@ function probeFailureRefusal(failure: unknown): Error {
     configurable: true,
     enumerable: false,
   });
-  return Object.assign(refusal, { exitCode: exitCodeForError(failure) });
+  return withExitCode(refusal, exitCodeForError(failure));
 }
 
 const REAL_DEPS: HostKeyTrustDeps = {

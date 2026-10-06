@@ -280,7 +280,7 @@ export interface ErrorEvent extends EventBase {
   message: string;
   /**
    * Present and `true` when {@link message} holds its own next step: read off
-   * core's `alcoveRecoveryHintEmitted` tag (`errorStatesItsOwnNextStep`),
+   * core's `statesItsOwnNextStep` (`errorStatesItsOwnNextStep`),
    * or set where the CLI appended `fixedNextStep`'s step to an internal
    * fault's or a partner refusal's message, or its remedy for a {@link cause}
    * (`failureRemedy`). A supervisor showing fixed copy

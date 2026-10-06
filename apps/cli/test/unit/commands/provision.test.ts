@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getDefaultLinkageTerms, UsageError } from "@alcove/core";
+import {
+  ConnectionError,
+  getDefaultLinkageTerms,
+  UsageError,
+} from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 import {
   assertNoProvisionConflicts,
@@ -257,6 +261,16 @@ test("provisionConfigAndKey marks the error when the config rollback also fails"
     // it, never substituted for it.
     expect((thrown as Error).message).toContain("base64url-encoded 32-byte");
     expect(provisionLeftConfigOnDisk(thrown)).toBe(true);
+    expect(
+      provisionLeftConfigOnDisk(new Error("setup failed", { cause: thrown })),
+    ).toBe(true);
+    expect(
+      provisionLeftConfigOnDisk(
+        new ConnectionError("the message send failed", "transport", {
+          cause: thrown,
+        }),
+      ),
+    ).toBe(true);
     expect(fs.existsSync(configPath)).toBe(true);
     expect(fs.existsSync(keyPath)).toBe(false);
   } finally {

@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { ConnectionError, runKex } from "@alcove/core";
 import { createMessagePipe } from "@alcove/core/testing";
 
-import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
+import {
+  authenticateExchange,
+  hasRecoveryHint,
+} from "../../../src/psi/authenticateExchange.js";
 
 import type { MessageConnection } from "@alcove/core";
 
@@ -284,10 +287,7 @@ describe("authenticateExchange", () => {
       expect((reason as ConnectionError).message).toContain(
         "during the key exchange",
       );
-      expect(
-        (reason as { alcoveRecoveryHintEmitted?: unknown })
-          .alcoveRecoveryHintEmitted,
-      ).toBe(true);
+      expect(hasRecoveryHint(reason)).toBe(true);
     }
   });
 

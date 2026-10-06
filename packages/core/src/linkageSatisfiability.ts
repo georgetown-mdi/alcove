@@ -9,7 +9,6 @@
 // input file holds, is valueConstraints.ts.
 
 import {
-  causeChainSome,
   chainDetailCauses,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
@@ -17,6 +16,7 @@ import {
   UsageError,
 } from "./errors.js";
 import { singleColumnDelimiterClause } from "./csvDelimiter.js";
+import { annotate, annotationKey, annotationOf } from "./failureAnnotation.js";
 import type { Standardization } from "./config/standardizationSchema.js";
 import type {
   LinkageField,
@@ -287,11 +287,9 @@ export type TransformRefusal =
       readonly maxSteps: number;
     };
 
-/** The property {@link markTransformRefusal} sets and {@link transformRefusalIn}
- * reads. */
-const TRANSFORM_REFUSAL_TAG = "alcoveTransformRefusal";
+const TRANSFORM_REFUSAL = annotationKey<TransformRefusal>("transform refusal");
 
-// A property tag rather than a subclass, the shape markPeerWaitTimeout keeps:
+// An annotation rather than a subclass, the shape markPeerWaitTimeout keeps:
 // each refusal's class already follows whose content the fault is (the
 // OperatorConfigError/UsageError split above), which the CLI's 64-vs-69 exit
 // code and the web's config alert both read, so a second axis of meaning cannot
@@ -300,18 +298,18 @@ function markTransformRefusal<E extends object>(
   error: E,
   refusal: TransformRefusal,
 ): E {
-  return Object.assign(error, { [TRANSFORM_REFUSAL_TAG]: refusal });
+  return annotate(error, TRANSFORM_REFUSAL, refusal);
 }
 
 function isStepCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-// The tag is read off any object in the cause chain, so each field a caller can
-// render is checked against the values the two tagging sites produce, not just
-// against its type: a step label is one transformFunctionLabel returns, and a
-// count is a non-negative safe integer. A tag holding anything else is no tag,
-// and the caller falls back to its own generic message.
+// Each field a caller can render is checked against the values the two marking
+// sites produce, not just against its type: a step label is one
+// transformFunctionLabel returns, and a count is a non-negative safe integer. A
+// refusal holding anything else is no refusal, and the caller falls back to its
+// own generic message.
 function asTransformRefusal(value: unknown): TransformRefusal | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const candidate = value as Partial<Record<string, unknown>>;
@@ -348,14 +346,7 @@ function asTransformRefusal(value: unknown): TransformRefusal | undefined {
 export function transformRefusalIn(
   error: unknown,
 ): TransformRefusal | undefined {
-  let refusal: TransformRefusal | undefined;
-  causeChainSome(error, (link) => {
-    refusal = asTransformRefusal(
-      (link as Record<string, unknown>)[TRANSFORM_REFUSAL_TAG],
-    );
-    return refusal !== undefined;
-  });
-  return refusal;
+  return asTransformRefusal(annotationOf(error, TRANSFORM_REFUSAL));
 }
 
 /**

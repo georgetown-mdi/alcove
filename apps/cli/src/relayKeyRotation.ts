@@ -9,6 +9,7 @@ import {
   registerRelayKey,
   sanitizeErrorForDisplay,
   UsageError,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -30,8 +31,7 @@ import {
   relayRegistrationNotice,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
-import { renderFailureForOperator } from "./util/exit";
-import { withRecoveryHintTag } from "./util/recoveryHint";
+import { renderFailureForOperator, withExitCode } from "./util/exit";
 
 export {
   registerRelayKey,
@@ -104,15 +104,15 @@ export function relayRegistrationError(
       : "The rotated shared secret is kept.";
   switch (outcome.kind) {
     case "refused":
-      return withRecoveryHintTag(
-        Object.assign(
+      return markStatesItsOwnNextStep(
+        withExitCode(
           new Error(
             `${what} (${detail}): the registrar does not hold the key this ` +
               `run signed with. ${sent} Until the registrar holds this ` +
               `exchange's current key, the relay refuses this party's runs; ` +
               `${RELAY_REENROLLMENT_STEP}.`,
           ),
-          { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
+          AUTHENTICATION_FAILED_EXIT_CODE,
         ),
       );
     case "unavailable": {

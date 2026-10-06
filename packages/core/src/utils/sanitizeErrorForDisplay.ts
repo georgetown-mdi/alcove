@@ -1,4 +1,5 @@
 import { errorMessage } from "../errors";
+import { MAX_ERROR_CAUSE_DEPTH } from "../failureAnnotation";
 import {
   operatorSuppliedSpans,
   operatorSuppliedValue,
@@ -24,14 +25,7 @@ import type {
   SanitizeForDisplayOptions,
 } from "./sanitizeForDisplay";
 
-/**
- * Maximum number of links {@link sanitizeErrorForDisplay} walks down an error's
- * `cause` chain before stopping. A defensive bound so a pathologically deep (or
- * adversarially constructed) chain cannot flood an operator's terminal or stall
- * the render: the cycle guard already stops a chain that revisits a link, and
- * this caps a long acyclic one.
- */
-export const MAX_ERROR_CAUSE_DEPTH = 8;
+export { MAX_ERROR_CAUSE_DEPTH };
 
 /**
  * Marker {@link sanitizeErrorForDisplay} appends to the last link it

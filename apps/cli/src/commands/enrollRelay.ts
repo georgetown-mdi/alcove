@@ -23,7 +23,7 @@ import {
   type RelayRegistrarTransport,
   type RelayRegistrationOutcome,
 } from "../relayRegistrar";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { exitCodeForError, exitWithError, withExitCode } from "../util/exit";
 import { parseOrExit, singleValue } from "../util/flags";
 import { configureLogging, logLevelFlag } from "../util/logging";
 import { promptHiddenText } from "../util/prompt";
@@ -107,12 +107,12 @@ function enrollmentError(
       "transport",
     );
   if (outcome.kind === "refused" && outcome.status === 401)
-    return Object.assign(
+    return withExitCode(
       new Error(
         `${label} refused the relay-owner token (HTTP 401${reason}). Check ` +
           "the token with the relay's operator and run the command again.",
       ),
-      { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
+      AUTHENTICATION_FAILED_EXIT_CODE,
     );
   if (outcome.kind === "refused" && !replace)
     return new UsageError(

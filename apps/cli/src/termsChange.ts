@@ -24,6 +24,7 @@ import {
   sanitizeForDisplay,
   termsDeltaSections,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import type {
   Displayable,
@@ -50,7 +51,6 @@ import { DEFAULT_KEY_PATH } from "./keyFile";
 import { recordTermsChangeNotTaken } from "./termsChangeNotTaken";
 import { readPartnershipSecret } from "./termsUpdateFiles";
 import { promptConfirm } from "./util/prompt";
-import { withRecoveryHintTag } from "./util/recoveryHint";
 
 /**
  * Where a run that does not take on its partner's changed terms writes them:
@@ -181,7 +181,7 @@ function notTaken<E extends Error>(
   delta: TermsDelta,
   proposalWritten = false,
 ): E {
-  const tagged = withRecoveryHintTag(refusal);
+  const tagged = markStatesItsOwnNextStep(refusal);
   recordTermsChangeNotTaken(tagged, { delta, proposalWritten });
   return tagged;
 }

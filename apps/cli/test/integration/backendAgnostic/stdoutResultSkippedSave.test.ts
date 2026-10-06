@@ -12,6 +12,7 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
+import { annotatedExitCode } from "../../../src/util/exit";
 import { captureFd3 } from "../../eventStreamTestSupport";
 
 /**
@@ -148,9 +149,7 @@ test("an undelivered stdout result names the save it skipped", async () => {
 
   expect(resB.status).toBe("fulfilled");
   expect(resA.status).toBe("rejected");
-  expect((resA as PromiseRejectedResult).reason).toMatchObject({
-    exitCode: 73,
-  });
+  expect(annotatedExitCode((resA as PromiseRejectedResult).reason)).toBe(73);
 
   // The save did not run, which is the state the notice below has to report:
   // the partner completed a bootstrap this party kept nothing from.

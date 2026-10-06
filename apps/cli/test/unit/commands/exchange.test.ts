@@ -71,6 +71,7 @@ import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import { renderConfigTemplate } from "../../../src/configTemplate";
 import { streamOf, ttyStream, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
+import { withExitCode } from "../../../src/util/exit";
 import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
 
 const TEST_CONNECTION: ProtocolConnectionConfig = {
@@ -1668,9 +1669,10 @@ test("handler: a result file the exchange could not write exits 73, not 69", asy
 
   vi.mocked(runProtocol).mockReset();
   vi.mocked(runProtocol).mockRejectedValueOnce(
-    Object.assign(new Error("EACCES: permission denied, open 'results.csv'"), {
-      exitCode: PERSISTENCE_LOSS_EXIT_CODE,
-    }),
+    withExitCode(
+      new Error("EACCES: permission denied, open 'results.csv'"),
+      PERSISTENCE_LOSS_EXIT_CODE,
+    ),
   );
   const exitSpy = captureProcessExit();
   try {

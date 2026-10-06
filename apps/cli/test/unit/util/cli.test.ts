@@ -35,6 +35,7 @@ import {
   writeOutput,
 } from "../../../src/util/dataIo";
 import {
+  annotatedExitCode,
   exitCodeForError,
   InputNotFoundError,
   exitWithError,
@@ -730,7 +731,7 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       expect(caught).not.toBeInstanceOf(InputNotFoundError);
       expect(caught).toBeInstanceOf(Error);
       expect((caught as Error).message).toBe(`${file} cannot be read (EACCES)`);
-      expect((caught as { exitCode?: number }).exitCode).toBe(69);
+      expect(annotatedExitCode(caught)).toBe(69);
       expect(exitCodeForError(caught)).toBe(69);
     } finally {
       fs.chmodSync(locked, 0o700);

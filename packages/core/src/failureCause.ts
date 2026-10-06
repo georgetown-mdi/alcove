@@ -5,6 +5,7 @@
 // that has no remedy for it. No flag, control or command name belongs here; a
 // remedy every app states alike, naming none, is here for the apps to share.
 
+import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import { formatCount } from "./utils/formatCount";
 
 /** Every {@link PartnerMeetingChannel}. */
@@ -112,17 +113,17 @@ export const FAILURE_CAUSE_KINDS = [
   "relay-registrar-unreachable",
 ] as const satisfies ReadonlyArray<FailureCauseKind>;
 
-const FAILURE_CAUSE_TAG = "alcoveFailureCause";
+const FAILURE_CAUSE = annotationKey<FailureCause>("failure cause");
 
 /**
- * Attach `cause` to `error` as a property tag, leaving its message and class
- * alone, so the exit-code classification that reads the class is unchanged.
+ * Annotate `error` with `cause`, leaving its message and class alone, so the
+ * exit-code classification that reads the class is unchanged.
  */
 export function markFailureCause<E extends object>(
   error: E,
   cause: FailureCause,
 ): E {
-  return Object.assign(error, { [FAILURE_CAUSE_TAG]: cause });
+  return annotate(error, FAILURE_CAUSE, cause);
 }
 
 /**
@@ -130,16 +131,7 @@ export function markFailureCause<E extends object>(
  * of its `cause` chain that has one, else `undefined`.
  */
 export function failureCauseOf(error: unknown): FailureCause | undefined {
-  const seen = new Set<unknown>();
-  let cursor: unknown = error;
-  while (typeof cursor === "object" && cursor !== null && !seen.has(cursor)) {
-    seen.add(cursor);
-    const tagged = (cursor as Record<string, unknown>)[FAILURE_CAUSE_TAG];
-    if (typeof tagged === "object" && tagged !== null)
-      return tagged as FailureCause;
-    cursor = (cursor as { cause?: unknown }).cause;
-  }
-  return undefined;
+  return annotationOf(error, FAILURE_CAUSE);
 }
 
 const oneOf = <T extends string>(

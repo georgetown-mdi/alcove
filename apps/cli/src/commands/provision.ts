@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  causeChainSome,
+  annotate,
+  annotationKey,
+  annotationOf,
   getLogger,
   keepOperatorSuppliedText,
   messageWithOperatorText,
@@ -134,13 +136,10 @@ export interface ProvisionOptions {
 }
 
 /**
- * The {@link provisionConfigAndKey} failures whose rollback left an
- * already-written config on disk. Keyed on the propagating error object
- * rather than a property on it: that error comes from the key writer or the
- * filesystem, not this module, and a non-extensible object would turn the
- * marking itself into the failure reported.
+ * Marks a {@link provisionConfigAndKey} failure whose rollback left an
+ * already-written config on disk.
  */
-const failuresLeavingConfigOnDisk = new WeakSet<object>();
+const LEFT_CONFIG_ON_DISK = annotationKey<true>("left config on disk");
 
 /**
  * Whether `error`, or any link in its `cause` chain, is a
@@ -150,7 +149,7 @@ const failuresLeavingConfigOnDisk = new WeakSet<object>();
  * a file is equally likely to be one this call never wrote.
  */
 export function provisionLeftConfigOnDisk(error: unknown): boolean {
-  return causeChainSome(error, (link) => failuresLeavingConfigOnDisk.has(link));
+  return annotationOf(error, LEFT_CONFIG_ON_DISK) === true;
 }
 
 /** What {@link provisionConfigAndKey} states behind a reused config's path. */
@@ -243,7 +242,7 @@ export function provisionConfigAndKey(
         // config as unsaved would misstate what the operator has to clean up
         // before re-provisioning.
         if (typeof err === "object" && err !== null)
-          failuresLeavingConfigOnDisk.add(err);
+          annotate(err, LEFT_CONFIG_ON_DISK, true);
       }
     }
     throw err;

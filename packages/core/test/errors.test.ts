@@ -12,9 +12,13 @@ import {
   TransportPublishIndeterminateError,
   causeChainSome,
   isPeerWaitTimeout,
+  isPsiLibraryFailure,
   isSetTooLargeError,
   isTransportPublishIndeterminate,
   markPeerWaitTimeout,
+  markPsiLibraryFailure,
+  markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
   RoundSetLimitError,
   ConnectionError,
 } from "../src/errors";
@@ -229,12 +233,10 @@ describe("isPeerWaitTimeout cause-chain walk", () => {
     const outer = new Error("Alcove exited", { cause: middle });
 
     expect(isPeerWaitTimeout(outer)).toBe(true);
-    // The tag is the only own enumerable property markPeerWaitTimeout adds, and
-    // it sits on the innermost error alone: neither wrapper holds one, so a
-    // top-level read of the outer error finds nothing to answer with.
-    expect(Object.keys(tagged)).toHaveLength(1);
-    expect(Object.keys(outer)).toEqual([]);
-    expect(Object.keys(middle)).toEqual([]);
+    expect(isPeerWaitTimeout(middle)).toBe(true);
+    // The mark is held beside the error, not as a property on it, so nothing
+    // that enumerates or serializes the error sees it.
+    expect(Object.keys(tagged)).toEqual([]);
   });
 
   test("returns false on a cause cycle rather than walking it forever", () => {
@@ -296,7 +298,7 @@ describe("PeerAbortError exemplar (unchanged)", () => {
     // to meet.
     const err = new PeerAbortError();
     expect(err.name).toBe("PeerAbortError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err)).toBe(true);
     expect(err.message).toContain(
       "Your partner stopped the exchange. Their run shows the reason; contact them.",
     );
@@ -315,4 +317,73 @@ test("a set-limit refusal for each reason is a set too large to send, and nothin
   }
   expect(isSetTooLargeError(new Error("other"))).toBe(false);
   expect(isSetTooLargeError(undefined)).toBe(false);
+});
+
+describe("statesItsOwnNextStep", () => {
+  test("reads the mark on the error and on each wrap of it", () => {
+    const marked = markStatesItsOwnNextStep(new Error("save failed"));
+    const behindError = new Error("the run failed", { cause: marked });
+    const behindTransport = new ConnectionError("send failed", "transport", {
+      cause: behindError,
+    });
+    expect(statesItsOwnNextStep(marked)).toBe(true);
+    expect(statesItsOwnNextStep(behindError)).toBe(true);
+    expect(statesItsOwnNextStep(behindTransport)).toBe(true);
+    expect(Object.keys(marked)).toEqual([]);
+  });
+
+  test("reads only the error itself when asked to", () => {
+    const marked = markStatesItsOwnNextStep(new Error("save failed"));
+    const wrapped = new Error("the run failed", { cause: marked });
+    expect(statesItsOwnNextStep(marked, { ownOnly: true })).toBe(true);
+    expect(statesItsOwnNextStep(wrapped, { ownOnly: true })).toBe(false);
+    expect(statesItsOwnNextStep(new PeerAbortError(), { ownOnly: true })).toBe(
+      true,
+    );
+  });
+
+  test("reads the alcoveRecoveryHintEmitted property alongside the mark", () => {
+    const tagged = Object.assign(new Error("expired"), {
+      alcoveRecoveryHintEmitted: true,
+    });
+    const wrapped = new Error("the run failed", { cause: tagged });
+    expect(statesItsOwnNextStep(tagged)).toBe(true);
+    expect(statesItsOwnNextStep(wrapped)).toBe(true);
+    expect(statesItsOwnNextStep(wrapped, { ownOnly: true })).toBe(false);
+    expect(statesItsOwnNextStep(new Error("plain"))).toBe(false);
+    expect(statesItsOwnNextStep(undefined)).toBe(false);
+  });
+
+  test("a PeerAbortError keeps the mark behind a transport wrap", () => {
+    const wrapped = new ConnectionError("receive failed", "transport", {
+      cause: new PeerAbortError(),
+    });
+    expect(statesItsOwnNextStep(wrapped)).toBe(true);
+  });
+});
+
+describe("markPsiLibraryFailure", () => {
+  test("is read off the error itself, never a wrap of it", () => {
+    const marked = markPsiLibraryFailure(new TypeError("bad point"));
+    const wrapped = new Error("the round failed", { cause: marked });
+    const behindTransport = new ConnectionError("send failed", "transport", {
+      cause: marked,
+    });
+    expect(isPsiLibraryFailure(marked)).toBe(true);
+    expect(isPsiLibraryFailure(wrapped)).toBe(false);
+    expect(isPsiLibraryFailure(behindTransport)).toBe(false);
+  });
+
+  test("wraps a thrown value that is not an object", () => {
+    const marked = markPsiLibraryFailure("bad point");
+    expect(marked).toBeInstanceOf(Error);
+    expect((marked as Error).cause).toBe("bad point");
+    expect(isPsiLibraryFailure(marked)).toBe(true);
+  });
+
+  test("marks a frozen error in place", () => {
+    const frozen = Object.freeze(new TypeError("bad point"));
+    expect(markPsiLibraryFailure(frozen)).toBe(frozen);
+    expect(isPsiLibraryFailure(frozen)).toBe(true);
+  });
 });

@@ -3,6 +3,10 @@
 // an operator reads. The two are built from one record set so a check cannot be
 // reported one way to a script and another way to a person.
 
+import {
+  DOCTOR_FINDINGS_EXIT_CODE,
+  UNAVAILABLE_EXIT_CODE,
+} from "@alcove/cli-contract";
 import { redactPrivateKeyMaterial } from "@alcove/core";
 
 import { asciiSafeJsonLine } from "../util/jsonLine";
@@ -143,8 +147,8 @@ export const SKIPPED_BY_FAILURE_MEANING =
  */
 export const DOCTOR_EXIT_CODE: Record<DoctorOverall, number> = {
   ok: 0,
-  fix_and_retry: 78,
-  fatal: 69,
+  fix_and_retry: DOCTOR_FINDINGS_EXIT_CODE,
+  fatal: UNAVAILABLE_EXIT_CODE,
 };
 
 /**

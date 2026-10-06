@@ -6,7 +6,11 @@ import type {
   FileInfo,
 } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
-import { PeerAbortError, ConnectionError } from "../../src/errors";
+import {
+  PeerAbortError,
+  ConnectionError,
+  statesItsOwnNextStep,
+} from "../../src/errors";
 import {
   serializeFileSyncMessage,
   MESSAGE_TYPE_OBJECT,
@@ -588,11 +592,8 @@ test("a foreign <other>-abort.json is not exempted and still hits the unexpected
 
 // --- message suppression hook ------------------------------------------------
 
-test("PeerAbortError has the recovery-hint tag so the CLI suppresses the generic advisory", () => {
-  // runProtocol's isHintTagged walker reads this property to skip the generic
-  // "retry without re-inviting" advisory, leaving only the definitive message.
-  expect(
-    (new PeerAbortError() as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted,
-  ).toBe(true);
+test("PeerAbortError states its own next step so the CLI suppresses the generic advisory", () => {
+  // runProtocol reads this to skip the generic "retry without re-inviting"
+  // advisory, leaving only the definitive message.
+  expect(statesItsOwnNextStep(new PeerAbortError())).toBe(true);
 });

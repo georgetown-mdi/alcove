@@ -430,6 +430,7 @@ import { resultFilePath } from "../../src/resultFile";
 import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
+  annotatedExitCode,
   exitCodeForError,
   fixedNextStep,
   INTERNAL_FAULT_NEXT_STEP,
@@ -1804,10 +1805,8 @@ test("a result file that could not be written fails with the persistence-loss ex
   }
 
   expect(outcome.status).toBe("rejected");
-  const reason = (outcome as PromiseRejectedResult).reason as {
-    exitCode?: number;
-  };
-  expect(reason.exitCode).toBe(73);
+  const reason: unknown = (outcome as PromiseRejectedResult).reason;
+  expect(annotatedExitCode(reason)).toBe(73);
   // What a command boundary would actually report for it. The stamped property
   // is only half the contract: exchange.test.ts and zeroSetup.test.ts drive the
   // handlers to a real process exit, and this is the rule they share.
@@ -1888,7 +1887,7 @@ test("a partner-shaped output-phase fault exits 76, not the local write-loss cod
   expect(reason.message).toContain(
     "missing rows for association table indices",
   );
-  expect(reason.exitCode).toBeUndefined();
+  expect(annotatedExitCode(reason)).toBeUndefined();
   expect(exitCodeForError(reason)).toBe(76);
 
   const lines = takeFd3Lines();

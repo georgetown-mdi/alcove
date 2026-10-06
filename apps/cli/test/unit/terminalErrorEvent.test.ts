@@ -23,6 +23,7 @@ import {
   exitWithError,
   installTerminalFailureReporter,
   runOrExit,
+  withExitCode,
 } from "../../src/util/exit";
 import { captureFd3 } from "../eventStreamTestSupport";
 import { ERROR_CLASS_EXIT_CODES } from "../exitCodeCases";
@@ -158,9 +159,10 @@ test("the boundary's own code is the event's exitCode, and decides internalFault
 });
 
 test("a result file that did not reach disk reports exitCode 73", async () => {
-  const err = Object.assign(new Error("the result file did not reach disk"), {
-    exitCode: PERSISTENCE_LOSS_EXIT_CODE,
-  });
+  const err = withExitCode(
+    new Error("the result file did not reach disk"),
+    PERSISTENCE_LOSS_EXIT_CODE,
+  );
   const lines = await linesAfterExit(
     () => exitWithError(silentLog, err, exitCodeForError(err)),
     PERSISTENCE_LOSS_EXIT_CODE,
