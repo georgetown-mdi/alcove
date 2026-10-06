@@ -1,8 +1,7 @@
 // The helpers the core suites share: PSI participants and a two-party cascade
 // run over an in-memory pipe, a prepared exchange over first-name terms, the
 // in-memory file transport, and the invitation token encoding below its schema
-// check. A suite imports these rather than defining its own copy, so a change
-// to a protocol or terms shape is made once.
+// check.
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
@@ -467,10 +466,9 @@ export function makeMockClient(opts: MockClientOptions = {}): {
 // --- Invitation tokens ----------------------------------------------------------
 
 /**
- * The invitation token encoding (base64url body, then the base64url of the
- * body's first four SHA-256 bytes) over `payload` as given, with no schema
- * check: a decode test hands decodeInvitation a token encodeInvitation would
- * refuse to produce, including one whose body is not JSON.
+ * Builds a raw invitation token for tests without the production encoder
+ * (`encodeInvitation` in `src/config/invitation.ts`), so a decode test can
+ * pass a payload that encoder would refuse.
  */
 export async function encodeRawInvitationPayload(
   payload: string,
