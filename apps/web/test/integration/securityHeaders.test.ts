@@ -15,10 +15,9 @@ import type { StaticHost } from "../staticHost/server.js";
 // These assert at the HTTP boundary that the defense-in-depth response headers
 // reach the wire from the hosted static site's `_headers` behind the
 // static-host harness, on documents and assets alike. Values are pinned here as
-// the observable contract, not imported from the source that sets them, since
-// the integration project resolves no `@utils` alias and a black-box check
-// should not read the value it verifies. The console server's headers are held
-// with its /api refusal (apiNamespace.test.ts, REFUSAL).
+// the observable contract, not imported from the source that sets them: a
+// black-box check should not read the value it verifies. The console server's
+// headers are held with its /api refusal (apiNamespace.test.ts, REFUSAL).
 
 const expectedHeaders: Record<string, string> = {
   "referrer-policy": "no-referrer",
