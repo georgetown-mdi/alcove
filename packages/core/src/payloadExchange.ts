@@ -13,6 +13,7 @@ import type {
   LinkageTerms,
   Output,
   Payload,
+  PayloadColumn,
 } from "./config/linkageTermsSchema.js";
 import { MAX_NAME_LENGTH } from "./config/linkageTermsSchema.js";
 import type { CompatibilityMessageFragment } from "./config/compatibilityMessage.js";
@@ -585,6 +586,40 @@ export function assertNoPayloadReceived(received: PartnerPayload): void {
       `[${gotShown}] but this party expected to receive no payload at all. ` +
       `The exchange is aborted because the payload received does not match what ` +
       `was consented to.`,
+    "protocol",
+  );
+}
+
+/**
+ * Refuse a received payload whose column set differs from the partner's
+ * agreed `payload.send`, for a party that receives payload: a column the
+ * terms do not list, or a listed column left out. Compared as a sorted list
+ * by exact name, so a repeated name is refused even beside every agreed one.
+ * A run in which no partner row matched receives no payload frame data, so
+ * an empty received set passes there.
+ *
+ * @throws {ConnectionError} of kind `"protocol"` when the two differ. The
+ *   message names no column and no value; the terminated record still
+ *   commits the payload as received, column names included.
+ */
+export function assertPayloadMatchesAgreedSend(
+  received: PartnerPayload,
+  agreedSend: ReadonlyArray<PayloadColumn> | undefined,
+  partnerRowsMatched: number,
+): void {
+  if (received.columns.length === 0 && partnerRowsMatched === 0) return;
+  const receivedNames = [...received.columns].sort();
+  const agreedNames = (agreedSend ?? []).map(({ name }) => name).sort();
+  if (
+    receivedNames.length === agreedNames.length &&
+    receivedNames.every((name, i) => name === agreedNames[i])
+  )
+    return;
+  throw new ConnectionError(
+    "payload disclosure mismatch: the columns the partner sent differ from " +
+      "the columns the agreed linkage terms state it sends. The exchange is " +
+      "aborted because the payload received does not match what was " +
+      "consented to.",
     "protocol",
   );
 }

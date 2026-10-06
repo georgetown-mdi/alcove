@@ -862,7 +862,10 @@ export function compareTerms(
  * This party's terms with the partner's adopted, as `alcove apply` adopts
  * them from a terms update: every agreed field is the partner's, `output` and
  * `payload` are mirrored, and `identity` and `deduplicate` stay this party's
- * own. Undefined where the result is not a valid terms document.
+ * own. A partner stating no receive list leaves this party's send list as it
+ * was, except under count-only terms and where the partner expects no output,
+ * which send nothing. Undefined where
+ * the result is not a valid terms document.
  */
 export function termsAdoptingPartnerTerms(
   local: LinkageTerms,
@@ -886,10 +889,17 @@ export function termsAdoptingPartnerTerms(
   // receive list here would accept whatever columns it sends.
   const partnerSend: PayloadColumn[] | undefined =
     partnerPayload?.send ?? (partner.output.shareWithPartner ? [] : undefined);
-  if (partnerPayload !== undefined || partnerSend !== undefined) {
+  const sendsNothing =
+    adopted.algorithm === "psi-c" || !adopted.output.shareWithPartner;
+  const send =
+    partnerPayload?.receive ?? (sendsNothing ? undefined : local.payload?.send);
+  if (
+    partnerPayload !== undefined ||
+    send !== undefined ||
+    partnerSend !== undefined
+  ) {
     const mirrored: Payload = {};
-    if (partnerPayload?.receive !== undefined)
-      mirrored.send = partnerPayload.receive;
+    if (send !== undefined) mirrored.send = send;
     if (partnerSend !== undefined) mirrored.receive = partnerSend;
     adopted.payload = mirrored;
   }

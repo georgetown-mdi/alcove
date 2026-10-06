@@ -158,6 +158,57 @@ describe("termsDeltaSections against adopting the partner's terms", () => {
     expectLabelsMatchAdoption(local, partner);
   });
 
+  test("a partner stating a send list and no receive list shows no send section", () => {
+    const local = withPayload({
+      send: columns("a", "b"),
+      receive: columns("x"),
+    });
+    const partner = withPayload({ send: columns("x") });
+    expect(sectionsFor(local, partner)).toEqual([]);
+    expectLabelsMatchAdoption(local, partner);
+  });
+
+  test("adopting a partner stating no receive list keeps this party's send list", () => {
+    const local = withPayload({
+      send: columns("a", "b"),
+      receive: columns("x"),
+    });
+    const partner = withPayload({ send: columns("x") });
+    expect(
+      namesOf(termsAdoptingPartnerTerms(local, partner)?.payload?.send),
+    ).toEqual(["a", "b"]);
+  });
+
+  test("adopting a partner that expects no output drops this party's send list", () => {
+    const local = withPayload({
+      send: columns("a", "b"),
+      receive: columns("x"),
+    });
+    const partner: LinkageTerms = {
+      ...withPayload({ send: columns("x") }),
+      output: { expectsOutput: false, shareWithPartner: true },
+    };
+    const adopted = termsAdoptingPartnerTerms(local, partner);
+    expect(adopted?.output.shareWithPartner).toBe(false);
+    expect(namesOf(adopted?.payload?.send)).toEqual([]);
+    expect(sectionsFor(local, partner)).toEqual([
+      {
+        kind: "otherTerms",
+        label: "other terms that differ",
+        differences: [
+          "output mismatch: local will share with partner, but partner does not expect output",
+        ],
+      },
+    ]);
+  });
+
+  test("a partner stating no receive list against no send list shows no send section", () => {
+    const local = withPayload({ receive: columns("x") });
+    const partner = withPayload({ send: columns("x") });
+    expect(sectionsFor(local, partner)).toEqual([]);
+    expectLabelsMatchAdoption(local, partner);
+  });
+
   test("a column the partner's terms now send is one the partner now sends this party", () => {
     const local = withPayload({ receive: columns("a") });
     const partner = withPayload({ send: columns("a", "x") });

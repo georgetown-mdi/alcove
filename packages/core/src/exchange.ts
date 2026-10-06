@@ -87,6 +87,7 @@ import {
   toCommittedPayload,
   assertDisclosedNamesCarriable,
   assertNoPayloadReceived,
+  assertPayloadMatchesAgreedSend,
   termsStatingDeclaredPayloadSend,
 } from "./payloadExchange.js";
 import type { PayloadWireMessage } from "./payloadExchange.js";
@@ -3106,8 +3107,8 @@ export async function runExchange(
   // is returned: a count-only run, whose record's payload commitments are fixed
   // present-and-empty (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c)
   // records), and a no-output party, which the send gate above keeps a
-  // conforming partner from sending any. The columns an output party receives
-  // were compared at the terms exchange and are not compared again here.
+  // conforming partner from sending any. A party that receives payload holds
+  // the received columns to the partner's agreed `payload.send`.
   //
   // The refusal is caught by the region's guard below rather than thrown straight
   // through: this party's own payload has left it through the transport whatever
@@ -3115,6 +3116,10 @@ export async function runExchange(
   // throw also leaves the rest of the guarded region unrun, so no further frame
   // goes to a partner that broke the disclosure contract.
   const receivesNoPayload = countOnly || !linkageTerms.output.expectsOutput;
+  // The partner sends one payload row per distinct record of its own this
+  // party's table pairs, so at most one per pair.
+  const partnerRowsMatched =
+    associationTable === undefined ? 0 : associationTable[1].length;
 
   // resultSize (the intersection size) is bound only when both parties are
   // entitled to output; heldResult gates both the record's committed table and what
@@ -3166,9 +3171,7 @@ export async function runExchange(
       conn,
       handshakeRole,
       localPayload,
-      // The partner sends one payload row per distinct record of its own this
-      // party's table pairs, so at most one per pair.
-      associationTable === undefined ? 0 : associationTable[1].length,
+      partnerRowsMatched,
       (reportedPartnerPayload) => {
         localPayloadSent = true;
         // The responder's own send is the last frame of its exchange, so an
@@ -3184,6 +3187,12 @@ export async function runExchange(
     );
     partnerPayloadReceived = true;
     if (receivesNoPayload) assertNoPayloadReceived(partnerPayload);
+    else
+      assertPayloadMatchesAgreedSend(
+        partnerPayload,
+        partnerTerms.payload?.send,
+        partnerRowsMatched,
+      );
     // Signed-receipt step: at the conclusion of a disclosing exchange, both
     // parties sign the SAME canonical receipt content (the agreed-terms hash and
     // the two directional payload MACs, plus a session-derived binder) and swap
