@@ -1061,10 +1061,8 @@ export class JobManager {
 
   /**
    * The absolute path a `certificate`-mode job's composed `signing` block
-   * names: the long-lived identity at the location this run resolved
-   * ({@link identityPathFor}). The CLI writes the receipt under the run's
-   * stamp into the folder the run writes its other artifacts to
-   * ({@link runArtifactsOf}).
+   * names: the long-lived identity file at the location this run resolved
+   * ({@link identityPathFor}).
    */
   private signingPathsFor(identityPath: string): JobSigningPaths {
     return { identityFile: identityPath };

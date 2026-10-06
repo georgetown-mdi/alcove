@@ -399,8 +399,9 @@ export const jobSigningIdentityLocationSchema: z.ZodType<JobSigningIdentityLocat
  *
  * The PATH field of core's {@link SigningConfig}, `identity_file`, is not
  * representable here: the server owns every path a job's CLI child is pointed
- * at. It is supplied at composition from {@link JobSigningPaths}. `identityLocation` is not an exception: it is a
- * mount id and path segments the server resolves, never a path.
+ * at. It is supplied at composition from {@link JobSigningPaths}.
+ * `identityLocation` is not an exception: it is a mount id and path segments
+ * the server resolves, never a path.
  *
  * `partnerFingerprint` is the one free-text field: core's
  * {@link FINGERPRINT_REGEX} admits exactly a canonical 43-character unpadded
@@ -578,8 +579,9 @@ export type JobExchangeSide = "inviter" | "acceptor";
  * - `signing` is the receipt-signing choice ({@link JobSigningChoice}): a
  *   closed two-value mode plus, under `certificate`, a required fingerprint
  *   held to core's canonical 43-character digest shape. The identity file is
- *   not representable -- the server supplies the path. Under `certificate`, this intent's own `linkageTerms.identity` is
- *   required too (see {@link jobExchangeIntentSchema}).
+ *   not representable -- the server supplies the path. Under `certificate`,
+ *   this intent's own `linkageTerms.identity` is required too (see
+ *   {@link jobExchangeIntentSchema}).
  * - `tokenMaxAgeDays` is this party's maximum-age policy for the shared
  *   secret: a bounded positive integer ({@link tokenMaxAgeDaysSchema}) composed
  *   as `authentication.token_max_age_days`, the one `authentication` key a
@@ -663,11 +665,11 @@ export interface JobExchangeIntentBase {
    * Whether the operator converted the opened configuration to the console's
    * own resources. Read only beside `mountedConfigurationOpened`. Converted,
    * the hand-off states the console's shared folder and signing identity (as
-   * placeholders); unconverted, it states the paths the
-   * document read, including each sftp credential `@path` for the sign-in
-   * method the run used (an inline credential value never reaches the
-   * hand-off either way); and a certificate-mode run of a document stating a
-   * signing path is refused (see `createJob` in `./jobManager`).
+   * placeholders); unconverted, it states the paths the document read,
+   * including each sftp credential `@path` for the sign-in method the run used
+   * (an inline credential value never reaches the hand-off either way); and a
+   * certificate-mode run of a document stating a signing path is refused (see
+   * `createJob` in `./jobManager`).
    */
   mountedConfigurationConverted?: boolean;
   options?: JobExchangeOptions;
