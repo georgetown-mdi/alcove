@@ -122,7 +122,7 @@ Every release image is scanned for vulnerable packages before it is published. T
 
 ## A security update opened against main
 
-Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`, and `main`'s copy of that file says the same, yet a Dependabot _security_ update can still arrive based on `main`. Observed once, on 2026-09-14: the alert for the js-yaml advisory was evaluated against `main`, which lags `staging`, and the bump opened as PR #1475 on `main` while `staging` had already taken the same bump by the ordinary route (PR #1416). One alert and one pull request are the whole of the evidence for reading this as security updates ignoring the configured target branch, so treat it as observed behavior rather than as a settled rule -- and expect a repeat, since the condition that produced it is the routine one.
+Every ecosystem block in `.github/dependabot.yml` sets `target-branch: staging`, and `main`'s copy of that file says the same, yet a Dependabot _security_ update can still arrive based on `main`. Observed once: the alert for the js-yaml advisory was evaluated against `main`, which lags `staging`, and the bump opened as PR #1475 on `main` while `staging` had already taken the same bump by the ordinary route (PR #1416). One alert and one pull request are the whole of the evidence for reading this as security updates ignoring the configured target branch, so treat it as observed behavior rather than as a settled rule -- and expect a repeat, since the condition that produced it is the routine one.
 
 **Why it is not simply merged.** A merge puts a commit on `main` that `staging` does not have, so the next release promotion is no longer a fast-forward from `staging`. Repairing that costs either a merge of `main` back into `staging` or taking `main` back onto a `staging` commit, discarding the merge; the observed case took the second.
 
@@ -214,7 +214,7 @@ git push origin vX.Y.Z
 
 The `vX.Y.Z` tag push in step 7 triggers `.github/workflows/release.yaml`, which builds both multi-platform images and pushes them to the GitHub Container Registry, signs each with Cosign, attests each one's build provenance (see [Build provenance](#build-provenance)), and then stamps and attaches the launchers (see [Stamped launchers](#stamped-launchers)). The FIPS variant's three tags are the default image's three with `-fips` appended, derived from the pushed tag in the workflow itself. The push authenticates with the workflow's own `GITHUB_TOKEN` under `packages: write`, so no registry secret is configured; the package's settings on ghcr.io must grant this repository the Write role under "Manage Actions access", which the maintainer sets once.
 
-The Dockerfile's `org.opencontainers.image.source` label does not do this: for an organization package it is metadata the package page shows, and it neither links the package to the repository nor grants the repository any access (a hand push carrying the label, 2026-09-24, left the package unlinked).
+The Dockerfile's `org.opencontainers.image.source` label does not do this: for an organization package it is metadata the package page shows, and it neither links the package to the repository nor grants the repository any access.
 
 **What has to pass before anything is pushed.** Each gate below runs before the workflow authenticates to the registry, so a release that fails one publishes nothing at all:
 
