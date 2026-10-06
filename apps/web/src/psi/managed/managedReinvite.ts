@@ -187,7 +187,13 @@ export async function composeManagedReinvite(
         "accepts a fresh invitation from the partner",
     );
   const lifetimeSeconds = seams.lifetimeSeconds ?? INVITATION_LIFETIME_SECONDS;
-  assertInvitationLifetimeSeconds(lifetimeSeconds);
+  try {
+    assertInvitationLifetimeSeconds(lifetimeSeconds);
+  } catch (err: unknown) {
+    if (err instanceof RangeError)
+      throw new RangeError(`re-invite: ${err.message}`, { cause: err });
+    throw err;
+  }
 
   const now = seams.now();
   const freshSecret = seams.generateSecret();

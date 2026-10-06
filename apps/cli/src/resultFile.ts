@@ -7,11 +7,10 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
+  recordFileStamp,
   redactAndRenderOperatorSuppliedText,
   UsageError,
 } from "@alcove/core";
-
-import { recordFileStamp } from "@alcove/core";
 
 /** Basename stem of the result file a run names itself. */
 export const DEFAULT_RESULT_BASENAME = "alcove-results";

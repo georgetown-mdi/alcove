@@ -53,8 +53,8 @@ export interface RotationWriteBack {
  * core's {@link rotatedKeyExpires}, the rule the CLI key file uses; when it is
  * absent, `expires` is `null` so any standing bound is cleared.
  *
- * @throws {RangeError} if `tokenMaxAgeDays` is not a positive integer, or if
- *   `now + tokenMaxAgeDays` days falls outside the supported date range.
+ * @throws {RangeError} as {@link rotatedKeyExpires} does, prefixed with
+ *   `rotationWriteBack: `.
  */
 export function rotationWriteBack(
   rotatedSecret: string,
@@ -63,10 +63,16 @@ export function rotationWriteBack(
 ): RotationWriteBack {
   if (tokenMaxAgeDays === undefined)
     return { sharedSecret: rotatedSecret, expires: null };
-  return {
-    sharedSecret: rotatedSecret,
-    expires: rotatedKeyExpires(tokenMaxAgeDays, now),
-  };
+  try {
+    return {
+      sharedSecret: rotatedSecret,
+      expires: rotatedKeyExpires(tokenMaxAgeDays, now),
+    };
+  } catch (err: unknown) {
+    if (err instanceof RangeError)
+      throw new RangeError(`rotationWriteBack: ${err.message}`, { cause: err });
+    throw err;
+  }
 }
 
 /** Record a run that completed the data exchange. The `lastRun` the tiered
