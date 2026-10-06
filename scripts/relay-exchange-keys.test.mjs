@@ -1802,6 +1802,47 @@ describe.skipIf(runningAsRoot)("registrar.py", { timeout: 60000 }, () => {
     expect(fresh.status).toBe(401);
   });
 
+  it("answers a write 200 after its read deadline lapsed, and a request whose table wait outlasts the deadline 503 with no write", async () => {
+    const host = fixtureHost();
+    const { port } = await startRegistrar(host, {
+      REQUEST_DEADLINE_SECONDS: 2,
+      RESPONSE_DEADLINE_SECONDS: 5,
+      "relay_table.BUSY_TIMEOUT_SECONDS": 8,
+    });
+    const holder = spawn("python3", [
+      "-B",
+      "-c",
+      `import sqlite3, sys, time
+conn = sqlite3.connect(sys.argv[1], isolation_level=None)
+conn.execute("BEGIN IMMEDIATE")
+print("held", flush=True)
+time.sleep(4)
+conn.execute("ROLLBACK")`,
+      host.turndb,
+    ]);
+    try {
+      await new Promise((resolveHeld) =>
+        holder.stdout.once("data", resolveHeld),
+      );
+      const slow = call(port, "PUT", "/exchanges/exchange-1", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_A),
+      });
+      await new Promise((resolveWait) => setTimeout(resolveWait, 500));
+      const starved = await call(port, "PUT", "/exchanges/exchange-2", {
+        token: REGISTRAR_TOKEN,
+        body: keyBody(KEY_B),
+      });
+      expect(starved.status).toBe(503);
+      expect(starved.headers["retry-after"]).toBe("5");
+      const answered = await slow;
+      expect(answered.status, answered.text).toBe(200);
+      expect(host.mapping().map((row) => row.id)).toEqual(["exchange-1"]);
+    } finally {
+      holder.kill();
+    }
+  });
+
   it("answers 503 past the handler cap, closes past the busy cap, and serves again once a slot frees", async () => {
     const host = fixtureHost();
     const { port } = await startRegistrar(host, {

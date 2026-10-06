@@ -311,12 +311,14 @@ if [ -n "$TURN_USER" ] && [ -n "$TURN_CRED" ]; then
   done
 
   # A TCP relay allocation (RFC 6062, the client's -T) is refused. Passes only on
-  # an observed refusal; the refusal's wording is not required.
+  # the transport refusal (coturn's 442, Unsupported Transport Protocol); any
+  # other failure shape is unclear.
+  # Measured: not yet on the host; the pattern follows coturn's 442 error.
   OUT="$(uclient 203.0.113.9 "$TURN_USER" "$TURN_CRED" -T)"
   if allocated "$OUT"; then
     report fail "a TCP relay allocation was NOT refused" \
       "no-tcp-relay in turnserver.conf is not doing its job"
-  elif printf '%s' "$OUT" | grep -qi 'forbidden\|403\|denied\|not allowed\|unsupported\|cannot complete allocation'; then
+  elif printf '%s' "$OUT" | grep -qi '442\|unsupported transport protocol'; then
     report pass "a TCP relay allocation was refused"
   else
     report unclear "could not tell whether a TCP relay allocation was refused" \

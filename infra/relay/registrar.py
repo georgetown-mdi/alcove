@@ -60,6 +60,9 @@ MAX_HEAD_BYTES = 8192
 # A connection's TLS handshake and first request, and each later request on it,
 # must arrive whole within this long, however the bytes are spaced.
 REQUEST_DEADLINE_SECONDS = 15
+# Sending a response, once its request was read whole, has its own bound rather
+# than the request's remaining time: a write that committed is always answered.
+RESPONSE_DEADLINE_SECONDS = REQUEST_DEADLINE_SECONDS
 MAX_HANDLERS = 32
 # Past MAX_HANDLERS, up to this many connections are answered 503 under the
 # shorter deadline below; any more are closed unanswered.
@@ -160,6 +163,7 @@ class DeadlineSocket(ssl.SSLSocket):
     time.monotonic() value, rather than after a per-read idle timeout."""
 
     deadline = None
+    send_seconds = None
     received = 0
 
     def until_deadline(self):
@@ -187,8 +191,13 @@ class DeadlineSocket(ssl.SSLSocket):
         return count
 
     def sendall(self, *args, **kwargs):
-        self.until_deadline()
+        if self.send_seconds is not None:
+            self.settimeout(self.send_seconds)
         return super().sendall(*args, **kwargs)
+
+
+class TableBusy(Exception):
+    pass
 
 
 class HeadTooLarge(http.client.LineTooLong):
@@ -230,8 +239,12 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
     def deadline_seconds(self):
         return REQUEST_DEADLINE_SECONDS
 
+    def response_seconds(self):
+        return RESPONSE_DEADLINE_SECONDS
+
     def arm_deadline(self):
         self.connection.deadline = time.monotonic() + self.deadline_seconds()
+        self.connection.send_seconds = self.response_seconds()
         self.connection.received = 0
 
     def setup(self):
@@ -402,14 +415,29 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         def locked():
             # One write at a time from this process; SQLite's lock orders it
             # against the scripts and the sweep.
-            with self.server.table_lock:
+            # The wait is bounded by the request's deadline, and a request that
+            # cannot take the lock in time writes nothing.
+            wait = max(0, self.connection.deadline - time.monotonic())
+            if not self.server.table_lock.acquire(timeout=wait):
+                raise TableBusy()
+            try:
                 conn = relay_table.open_table()
                 try:
                     return operation(conn)
                 finally:
                     conn.close()
+            finally:
+                self.server.table_lock.release()
 
-        return self.table_call(locked, extra_headers)
+        try:
+            return self.table_call(locked, extra_headers)
+        except TableBusy:
+            self.send_json(
+                503,
+                {"error": BUSY_REFUSAL},
+                tuple(extra_headers) + (("Retry-After", str(RETRY_AFTER_SECONDS)),),
+            )
+            return None
 
     def proof_holds(self, exchange_id, proves_possession):
         """Whether the proof verifies against the exchange's key, read without
@@ -588,6 +616,9 @@ class BusyHandler(RegistrarHandler):
     sends one, so the connection closes with the body unread."""
 
     def deadline_seconds(self):
+        return BUSY_DEADLINE_SECONDS
+
+    def response_seconds(self):
         return BUSY_DEADLINE_SECONDS
 
     def dispatch(self):
