@@ -3,7 +3,8 @@
  * app's server entry -- every rendered document and API route. (Static public
  * assets, served by Nitro's own asset handler, bypass that entry and are neither
  * a frameable document nor a referrer-bearing surface, so they need none of
- * these.)
+ * these.) The hosted static build sends the same values from the static host's
+ * `_headers` file, which `apps/web/hosted/headersFile.ts` writes from this one.
  *
  * The confidential invitation token rides in the URL fragment, which browsers
  * already withhold from `Referer`; `Referrer-Policy: no-referrer` extends that

@@ -5,6 +5,8 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
 import { requireHostedSignalingServer, srcAliases } from "./vite.config.ts";
+import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
+import { hostedHeadersFile } from "./hosted/headersFile.ts";
 import { hostedRouteDocuments } from "./hosted/routeDocuments.ts";
 
 const appRoot = import.meta.dirname;
@@ -30,7 +32,10 @@ const hostedConfig = {
     }),
     viteReact(),
     hostedRouteDocuments(template),
+    hostedHeadersFile(),
+    clientModuleGraphGuard(),
   ],
+  worker: { plugins: () => [clientModuleGraphGuard()] },
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: hostedRouteTree },
@@ -51,7 +56,9 @@ const hostedConfig = {
 /**
  * The hosted app as a static site: `vite build --config vite.hosted.config.ts`
  * writes a single-page client to `dist/hosted/`, with one document per route
- * the app-shell worker warms (hosted/routeDocuments.ts) and no server.
+ * the app-shell worker warms (hosted/routeDocuments.ts), the host's `_headers`
+ * (hosted/headersFile.ts) and no server. The build fails if the page's or a
+ * worker's module graph reaches a server-only module (hosted/moduleGraphGuard.ts).
  */
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
