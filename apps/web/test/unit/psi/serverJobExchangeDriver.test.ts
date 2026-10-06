@@ -16,6 +16,7 @@ import {
   createServerJobZeroSetupDriver,
   fetchSftpConnection,
   fetchSlotOccupancy,
+  unknownFrameNotice,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { buildRunOutputs } from "@psi/runOutputs";
 
@@ -1332,13 +1333,70 @@ describe("createFetchJobApiClient over an injected fetch", () => {
     ))
       received.push(event);
 
-    // A recognized frame is yielded; an unknown one is silently dropped by
-    // parseSseFrame, so all three surviving means the allowlist accepts them.
+    // An unknown frame would arrive as a warning, so all three arriving as
+    // themselves means the schema accepts them.
     expect(received.map((event) => event.type)).toEqual([
       "stageEnd",
       "metrics",
       "result",
     ]);
+  });
+
+  test("a frame outside the schema arrives as a warning naming it, and the stream continues", async () => {
+    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
+      void input;
+      return Promise.resolve(
+        sseResponse(
+          'id: 1\ndata: {"v":1,"type":"invented"}\n\n' +
+            'id: 2\ndata: {"v":2,"type":"stage","id":"one"}\n\n' +
+            "id: 3\ndata: not json\n\n" +
+            "id: 4\ndata: [1]\n\n" +
+            ": keepalive\n\n" +
+            'id: 5\ndata: {"v":1,"type":"result","resultWritten":true}\n\n',
+        ),
+      );
+    }) as typeof fetch;
+    const client = createFetchJobApiClient(fetchImpl);
+    const received: Array<RelayEvent> = [];
+    for await (const event of client.openEventStream(
+      "job-7",
+      new AbortController().signal,
+    ))
+      received.push(event);
+
+    const remedy =
+      "which this page does not read, so it was skipped. Reload the page " +
+      "to load the console's current version.";
+    expect(received).toEqual([
+      {
+        v: 1,
+        type: "warning",
+        message: `The console sent an event of type "invented", ${remedy}`,
+      },
+      {
+        v: 1,
+        type: "warning",
+        message: `The console sent an event of schema version 2, ${remedy}`,
+      },
+      {
+        v: 1,
+        type: "warning",
+        message: `The console sent an event that is not readable JSON, ${remedy}`,
+      },
+      {
+        v: 1,
+        type: "warning",
+        message: `The console sent an event that is not a JSON object, ${remedy}`,
+      },
+      { v: 1, type: "result", resultWritten: true },
+    ]);
+  });
+
+  test("an unknown frame's notice quotes its type fitted, and states a missing one", () => {
+    const notice = unknownFrameNotice({ v: 1, type: "t".repeat(500) });
+    expect(notice).toContain(`"${"t".repeat(40)}`);
+    expect(notice).not.toContain("t".repeat(65));
+    expect(unknownFrameNotice({ v: 1 })).toContain("an event of type (none),");
   });
 
   test("a streamed security error frame maps to category 'security'", async () => {

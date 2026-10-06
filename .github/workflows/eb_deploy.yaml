@@ -29,6 +29,10 @@ on:
       - "packages/core/rollup.config.ts"
       - "packages/core/tsconfig.json"
       - "packages/core/tsconfig.rollup.json"
+      - "packages/cli-contract/src/**"
+      - "packages/cli-contract/package.json"
+      - "packages/cli-contract/tsconfig.json"
+      - "packages/cli-contract/tsconfig.build.json"
       # Only the broker sources the deployed server bundles: the web app reaches
       # this workspace through `@alcove/peerjs-broker`, whose "." export is
       # src/contrib/index.ts. Its sibling src/standalone.ts is the local

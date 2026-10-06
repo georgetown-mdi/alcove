@@ -10,7 +10,7 @@ The stream is a machine interface for a supervising process (an orchestrator, a 
 
 ## Where the contract is declared
 
-The stream's schema is declared in code once, in the `@alcove/cli-contract` workspace package (`packages/cli-contract/src/`): the event types and their fields, the [warning sources](#warning-sources), the CLI's named exit codes, and the [`cause`](#the-failure-cause) field of the `error` event. The CLI builds every line from those declarations. The package imports nothing from an application.
+The stream's schema is declared in code once, in the `@alcove/cli-contract` workspace package (`packages/cli-contract/src/`): the event types and their fields, the [warning sources](#warning-sources), the CLI's named exit codes, and the [`cause`](#the-failure-cause) field of the `error` event. The CLI builds every line from those declarations, and the console validates every line it relays against them. The package imports nothing from an application.
 
 ## File descriptor
 
@@ -103,7 +103,7 @@ A partner payload whose columns differ from the partner's agreed `payload.send` 
 
 #### Warning sources
 
-The closed set of `source` values. `WARNING_SOURCES` in `packages/cli-contract/src/warningSources.ts` is the same set in code, and `npm run check:warning-sources` fails when the two disagree. A new warning source claims its value in this table.
+The closed set of `source` values. `WARNING_SOURCES` in `packages/cli-contract/src/warningSources.ts` is the same set in code. A new warning source claims its value in this table.
 
 | `source` | The notice it names |
 | -------- | ------------------- |

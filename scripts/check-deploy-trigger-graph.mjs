@@ -131,6 +131,12 @@ export const BUILD_PRODUCTS = [
       "the apps consume @alcove/core from its built dist/ (CONTRIBUTING.md, Building), so the bundlers read the bundle and never the sources it was built from",
   },
   {
+    product: "packages/cli-contract/dist/",
+    sources: "packages/cli-contract/src/",
+    reason:
+      "the console's job client consumes @alcove/cli-contract from its built dist/, as the apps do core",
+  },
+  {
     product: "apps/web/.tanstack/hosted/",
     sources: "apps/web/src/routes/",
     reason:

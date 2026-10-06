@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
 
 import { PeerAbortError, failureCauseSentence } from "@alcove/core";
+import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
   CONNECTION_TUNING_HEADING,
   PEER_TIMEOUT_LABEL,
 } from "@console/connectionTuningModel";
 import {
-  PARTNER_REFUSED_EXIT_CODE,
   RelayedSelfExplainingError,
   RelayedTerminalError,
 } from "@psi/jobClient/serverJobExchangeDriver";

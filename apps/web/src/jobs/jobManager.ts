@@ -9,6 +9,7 @@ import {
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
 } from "@alcove/core";
+import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
@@ -53,7 +54,6 @@ import {
 } from "./jobRendezvous";
 
 import {
-  INTERNAL_FAULT_EXIT_CODE,
   buildSynthesizedWarningEvent,
   resolveCliBinaryPath,
   spawnExchangeJob,

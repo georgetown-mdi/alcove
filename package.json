@@ -45,7 +45,6 @@
     "check:web-config-native-load": "node scripts/check-web-config-native-load.mjs",
     "check:web-config-image-load": "node scripts/check-web-config-image-load.mjs",
     "check:core-barrel-wildcards": "node scripts/check-core-barrel-wildcards.mjs",
-    "check:warning-sources": "node scripts/check-warning-sources.mjs",
     "check:internal-fault-throws": "node scripts/check-internal-fault-throws.mjs",
     "check:vectors": "node scripts/check-vectors-generators.mjs",
     "check:protocol-version-bump": "node scripts/check-protocol-version-bump.mjs",

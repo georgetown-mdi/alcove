@@ -7,10 +7,10 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
 } from "@alcove/core";
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
   JOB_CLI_BINARY_ENV,
-  PERSISTENCE_LOSS_EXIT_CODE,
   classifyExit,
   outputFolderArgument,
   resolveCliBinaryPath,

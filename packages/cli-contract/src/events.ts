@@ -55,8 +55,26 @@ export const EVENT_RESULT_CLUSTER_SHAPES_MAX = 256;
  * terminal event; `result` and `error` are the two terminal events (exactly one
  * fires per run).
  */
-export type EventType =
-  "stages" | "stage" | "stageEnd" | "warning" | "metrics" | "result" | "error";
+export const EVENT_TYPES = [
+  "stages",
+  "stage",
+  "stageEnd",
+  "warning",
+  "metrics",
+  "result",
+  "error",
+] as const;
+
+/** One {@link EVENT_TYPES} value; see that list. */
+export type EventType = (typeof EVENT_TYPES)[number];
+
+/** Whether `type` is one of {@link EVENT_TYPES}. */
+export function isEventType(type: unknown): type is EventType {
+  return (
+    typeof type === "string" &&
+    (EVENT_TYPES as ReadonlyArray<string>).includes(type)
+  );
+}
 
 /**
  * The four terminal-error categories, lifted verbatim from the web

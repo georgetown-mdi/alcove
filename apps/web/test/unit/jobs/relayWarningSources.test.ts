@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
+import { WARNING_SOURCES } from "@alcove/cli-contract";
+
 import {
   RELAY_WARNING_SOURCES,
   attachFd3Reader,
@@ -198,6 +200,105 @@ describe("the relay stamps its own source on each degradation", () => {
     expect(
       [...pinned, PREFLIGHT_SOURCE, OPENED_CONFIGURATION_SOURCE].sort(),
     ).toEqual([...RELAY_WARNING_SOURCES].sort());
+  });
+
+  test("no relay source is also a CLI one, so the field names which process raised it", () => {
+    const cliSources: ReadonlyArray<string> = WARNING_SOURCES;
+    expect(
+      RELAY_WARNING_SOURCES.filter((source) => cliSources.includes(source)),
+    ).toEqual([]);
+  });
+});
+
+describe("an fd-3 event outside the schema", () => {
+  /** The notices the driver raised for a stub run writing `events` on fd 3. */
+  async function noticesFor(events: Array<unknown>): Promise<Array<string>> {
+    const degradations = await degradationsFromChild({
+      env: { STUB_FD3_EVENTS: JSON.stringify(events) },
+    });
+    return degradations
+      .filter((entry) => entry.source === "relayUnknownEvent")
+      .map((entry) => entry.message);
+  }
+
+  const REMEDY =
+    "which this console does not read, so it was skipped. Check that the " +
+    "console and the alcove command-line tool it runs come from the same " +
+    "release.";
+
+  test.each([
+    {
+      arrived: "an unknown type",
+      event: { v: 1, type: "invented" },
+      named: 'an event of type "invented"',
+    },
+    {
+      arrived: "another schema version",
+      event: { v: 2, type: "stage", id: "a", label: "A" },
+      named: "an event of schema version 2",
+    },
+  ])(
+    "states what arrived and what to do for $arrived",
+    async ({ event, named }) => {
+      expect(await noticesFor([event])).toEqual([
+        `The command-line tool sent ${named}, ${REMEDY}`,
+      ]);
+    },
+  );
+
+  test("is skipped while the events around it still relay", async () => {
+    const workdir = scratchDir("relay-unknown-around");
+    const relayed: Array<RelayEvent> = [];
+    const degradations: Array<Degradation> = [];
+    await awaitJobTerminalState((onTerminal) =>
+      spawnExchangeJob({
+        binaryPath: STUB_CLI_PATH,
+        configPath: path.join(workdir, "alcove.yaml"),
+        keyPath: path.join(workdir, ".alcove.key"),
+        inputPath: path.join(workdir, "input.csv"),
+        workdir,
+        eventStream: true,
+        runControls: { sweepExchangeFiles: false, logFilePath: undefined },
+        extraEnv: {
+          STUB_EXIT_CODE: "0",
+          STUB_FD3_EVENTS: JSON.stringify([
+            { v: 1, type: "stage", id: "a", label: "A" },
+            { v: 1, type: "invented" },
+            { v: 1, type: "warning", source: "invented", message: "m" },
+            { v: 1, type: "result", resultWritten: false },
+          ]),
+        },
+        handlers: {
+          onEvent: (event) => relayed.push(event),
+          onDegraded: (source, message) =>
+            degradations.push({ source, message }),
+          onTerminal,
+        },
+      }),
+    );
+    // A source this build does not know is an additive change, not a
+    // malformed line, so that warning is relayed.
+    expect(relayed.map((event) => event.type)).toEqual([
+      "stage",
+      "warning",
+      "result",
+    ]);
+    expect(degradations.map((entry) => entry.source)).toEqual([
+      "relayUnknownEvent",
+    ]);
+  });
+
+  test("quotes a long or key-bearing type fitted and redacted", async () => {
+    const [notice] = await noticesFor([
+      {
+        v: 1,
+        type:
+          "-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----" +
+          "x".repeat(200),
+      },
+    ]);
+    expect(notice).not.toContain("MIIB");
+    expect(notice).not.toContain("x".repeat(65));
   });
 });
 

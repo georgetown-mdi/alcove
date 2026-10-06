@@ -1,7 +1,5 @@
 // The CLI's named process exit codes, rungs of the sysexits table docs/CLI.md
 // (Exit codes) lists; 64 and 69 stay literals at the CLI's exit boundaries.
-// Each is an exported numeric literal, the shape
-// scripts/mirrored-exit-codes.test.mjs reads.
 
 /**
  * The process exit code for a failure in this implementation rather than in

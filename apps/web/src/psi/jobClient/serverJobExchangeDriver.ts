@@ -9,6 +9,11 @@ import {
   recordFileStamp,
   sanitizeForDisplay,
 } from "@alcove/core";
+import {
+  UNREADABLE_EVENT,
+  isEventType,
+  unknownEventNotice,
+} from "@alcove/cli-contract";
 
 import {
   MAX_JOB_STATUS_RESPONSE_BYTES,
@@ -50,10 +55,10 @@ import type {
   JobZeroSetupIntent,
   JobZeroSetupLinkageStrategy,
 } from "@jobs/intentSchemas";
-import type { RelayEvent, RelayEventType } from "@jobs/cliDriver";
 import type { JobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import type { ReceiptsIntentFields } from "../receiptsModel";
 import type { RefusedColumnName } from "@psi/columnNames";
+import type { RelayEvent } from "@jobs/cliDriver";
 import type { RunDiagnosticsIntentFields } from "../runDiagnosticsModel";
 import type { RunOutputs } from "@psi/runOutputs";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
@@ -407,15 +412,6 @@ export class RelayedSelfExplainingError extends RelayedTerminalError {
     this.name = "RelayedSelfExplainingError";
   }
 }
-
-/**
- * The exit code the CLI reports for a run the partner or the agreed terms
- * refused (docs/CLI.md, Exit codes; docs/spec/CLI_EVENTS.md, The
- * partner-refusal code), mirrored from `PARTNER_REFUSED_EXIT_CODE` in
- * `packages/cli-contract/src/exitCodes.ts` and held to it by
- * `scripts/mirrored-exit-codes.test.mjs`.
- */
-export const PARTNER_REFUSED_EXIT_CODE = 76;
 
 /** The result CSV of a server-driven job lives on the console, retrievable
  * through this endpoint rather than as a browser object URL. */
@@ -778,15 +774,15 @@ const EVENT_STREAM_LOST_MESSAGE =
 
 /** One connection's frames: the SSE id attached to each (null for a keepalive
  * or any frame without an `id:` line) alongside the parsed event (null for a
- * frame that is not a relay event). */
+ * frame with no `data:` line). */
 interface SseFrame {
   id: number | null;
   event: RelayEvent | null;
 }
 
 /** Open the SSE event stream and yield each parsed frame as a {@link RelayEvent}.
- * A frame that is not a JSON object with the relay-event shape is skipped rather
- * than yielded, mirroring the server's own fail-safe validation.
+ * A frame whose data is not a relay event is yielded as a `warning` stating
+ * what arrived ({@link unknownFrameNotice}), so the operator sees it skipped.
  *
  * A stream that ends before its terminal event is a drop, not a completion:
  * the connection re-opens from the last id delivered so the run continues
@@ -938,19 +934,26 @@ function sseFrameId(frame: string): number | null {
   return null;
 }
 
-const RELAY_EVENT_TYPES = new Set<RelayEventType>([
-  "stages",
-  "stage",
-  "stageEnd",
-  "warning",
-  "metrics",
-  "result",
-  "error",
-]);
+/**
+ * The operator's notice for an event-stream frame whose data is not an event
+ * of the fd-3 schema. The console relays only events it validated, so such a
+ * frame means this page and the console disagree on the schema -- most likely
+ * a page loaded before the console was upgraded.
+ *
+ * @internal exported for testing
+ */
+export function unknownFrameNotice(value: unknown): string {
+  return unknownEventNotice(value, {
+    sender: "The console",
+    reader: "this page",
+    remedy: "Reload the page to load the console's current version.",
+  });
+}
 
 /** Extract the JSON event from one SSE frame's `data:` line and confirm it has
- * the relay-event shape (`v === 1`, a known `type`). Returns null for a comment,
- * a keep-alive, or a malformed frame. */
+ * the relay-event shape (`v === 1`, a `type` of the fd-3 schema). Returns null
+ * for a comment or a keep-alive, and a `warning` holding
+ * {@link unknownFrameNotice} for data that is not such an event. */
 function parseSseFrame(frame: string): RelayEvent | null {
   const dataLines: Array<string> = [];
   for (const line of frame.split("\n")) {
@@ -961,19 +964,17 @@ function parseSseFrame(frame: string): RelayEvent | null {
   try {
     parsed = parseBoundedJson(dataLines.join("\n"));
   } catch {
-    return null;
+    parsed = UNREADABLE_EVENT;
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
-    return null;
-  const record = parsed as Record<string, unknown>;
-  if (record.v !== 1) return null;
-  const type = record.type;
   if (
-    typeof type !== "string" ||
-    !RELAY_EVENT_TYPES.has(type as RelayEventType)
+    parsed !== null &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    (parsed as Record<string, unknown>).v === 1 &&
+    isEventType((parsed as Record<string, unknown>).type)
   )
-    return null;
-  return record as RelayEvent;
+    return parsed as RelayEvent;
+  return { v: 1, type: "warning", message: unknownFrameNotice(parsed) };
 }
 
 /** Read a stage tree off a `stages` relay event, defaulting to an empty tree so
@@ -1606,7 +1607,7 @@ async function consumeJobStream(
         }
         default:
           // `stageEnd` and `metrics` are recognized progress/summary events
-          // (in RELAY_EVENT_TYPES so the relay does not degrade them) that the
+          // (in the contract's EVENT_TYPES, so neither side degrades them) that the
           // console does not yet expose; they have no lifecycle mapping, so
           // consume and ignore them rather than treating them as an error.
           break;
