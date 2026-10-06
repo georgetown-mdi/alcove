@@ -1240,6 +1240,18 @@ The command-line export's cron and Task Scheduler lines state the record's
 - **No schedule.** Both lines run daily at 02:00 and the command has no
   `--peer-timeout`.
 
+A path the configuration names outside the folder is mounted at its own path
+only when it holds no control character (U+0000-U+001F, U+007F) and no
+bidirectional override or isolate character (U+202A-U+202E,
+U+2066-U+2069). For such a path no docker command, cron line or Task
+Scheduler line is composed and the panel tells the operator to move the
+folder; the installed-alcove cron line is still shown, since that line names
+no path. The characters it does not refuse are the direction marks U+200E,
+U+200F and U+061C, the C1 controls U+0080-U+009F, and U+2028 and U+2029.
+None of them is a line break to cron, so none can split a crontab entry; the
+limit is that such a character can still appear in the mount text the
+operator copies.
+
 ### Re-supplied each run
 
 These are never persisted in the record. They are supplied at each run -- by
