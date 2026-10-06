@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
@@ -20,7 +20,19 @@ const template = "hosted/index.html";
  * writes a single-page client to `dist/hosted/`, with one document per route
  * the app-shell worker warms (hosted/routeDocuments.ts) and no server.
  */
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const signalingServerUrl = loadEnv(mode, appRoot, "VITE_")[
+    "VITE_SIGNALING_SERVER_URL"
+  ] as string | undefined;
+  if (signalingServerUrl === undefined || signalingServerUrl.trim() === "") {
+    throw new Error(
+      "VITE_SIGNALING_SERVER_URL is not set. The hosted app needs the address of the standalone peer-coordination broker, because its own origin serves no signaling.",
+    );
+  }
+  return hostedConfig;
+});
+
+const hostedConfig = {
   root: appRoot,
   // Read by the root route, whose document this client renders itself.
   define: { "import.meta.env.CLIENT_RENDERED_DOCUMENT": "true" },
@@ -51,4 +63,4 @@ export default defineConfig({
     manifest: true,
     rollupOptions: { input: path.join(appRoot, template) },
   },
-});
+};

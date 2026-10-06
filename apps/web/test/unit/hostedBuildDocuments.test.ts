@@ -2,12 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { relative } from "node:path";
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   declaredRoutes,
   matchesRoutePattern,
 } from "../../hosted/declaredRoutes";
+import hostedConfig from "../../vite.hosted.config";
 import { routeDocumentFileName } from "../../hosted/routeDocuments";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
@@ -76,4 +77,26 @@ describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
       expect(missing).toEqual([]);
     },
   );
+});
+
+describe("the hosted build's signaling control", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const resolve = () =>
+    (
+      hostedConfig as (env: {
+        mode: string;
+        command: "build";
+      }) => Record<string, unknown>
+    )({ mode: "production", command: "build" });
+
+  test.each(["", "   "])("refuses a build with the variable %j", (value) => {
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", value);
+    expect(resolve).toThrow(/VITE_SIGNALING_SERVER_URL/);
+  });
+
+  test("builds when the variable holds a value", () => {
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
+    expect(resolve()).toHaveProperty("build.outDir", "dist/hosted");
+  });
 });
