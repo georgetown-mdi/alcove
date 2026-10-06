@@ -10,7 +10,7 @@ import {
 
 import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
 
-import { InputNotFoundError } from "../src/util/exit";
+import { InputNotFoundError, withExitCode } from "../src/util/exit";
 
 /**
  * One error per class `exitCodeForError` (src/util/exit.ts) distinguishes, with
@@ -159,11 +159,35 @@ export const ERROR_CLASS_EXIT_CODES: ReadonlyArray<{
       }),
   },
   {
-    planted: "an Error with its own exitCode",
+    planted: "an Error annotated with its own exit code",
     code: PERSISTENCE_LOSS_EXIT_CODE,
     plant: () =>
-      Object.assign(new Error("the result file did not reach disk"), {
-        exitCode: PERSISTENCE_LOSS_EXIT_CODE,
+      withExitCode(
+        new Error("the result file did not reach disk"),
+        PERSISTENCE_LOSS_EXIT_CODE,
+      ),
+  },
+  {
+    planted: "a wrap of an Error annotated with its own exit code",
+    code: PERSISTENCE_LOSS_EXIT_CODE,
+    plant: () =>
+      new Error("the run failed", {
+        cause: withExitCode(
+          new Error("the result file did not reach disk"),
+          PERSISTENCE_LOSS_EXIT_CODE,
+        ),
+      }),
+  },
+  {
+    planted:
+      "an Error annotated with its own exit code, behind a transport wrap",
+    code: PERSISTENCE_LOSS_EXIT_CODE,
+    plant: () =>
+      new ConnectionError("the message send failed", "transport", {
+        cause: withExitCode(
+          new Error("the result file did not reach disk"),
+          PERSISTENCE_LOSS_EXIT_CODE,
+        ),
       }),
   },
   {

@@ -13,6 +13,7 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
+import { annotatedExitCode } from "../../../src/util/exit";
 import { captureFd3 } from "../../eventStreamTestSupport";
 
 /**
@@ -160,10 +161,9 @@ test("a reader that stops mid-result fails the run at 73 rather than reporting o
   expect(resB.status).toBe("fulfilled");
   expect(resA.status).toBe("rejected");
   const reason = (resA as PromiseRejectedResult).reason as {
-    exitCode?: number;
     message?: string;
   };
-  expect(reason.exitCode).toBe(73);
+  expect(annotatedExitCode(reason)).toBe(73);
   expect(reason.message).toContain(
     "nothing more of the result left the process",
   );

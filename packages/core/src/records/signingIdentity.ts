@@ -2,7 +2,7 @@ import { z } from "zod";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
 import { camelizeKeys } from "../utils/camelizeKeys.js";
-import { causeChainSome } from "../errors.js";
+import { annotate, annotationKey, annotationOf } from "../failureAnnotation.js";
 import { partnerPinIsPresent } from "../config/signing.js";
 import { MAX_TEXT_LENGTH } from "../config/linkageTermsSchema.js";
 import { canonicalBytes } from "../utils/canonical.js";
@@ -526,12 +526,11 @@ export const PARTNER_CERTIFICATE_MISMATCH_OBSERVED = {
 export type PartnerCertificateCondition =
   keyof typeof PARTNER_CERTIFICATE_MISMATCH_OBSERVED;
 
-// The property a refusal holds its condition in, tagged per instance on the
-// convention `TransportPublishIndeterminateError` (../errors.ts) states. A tag
-// rather than a field on one error class: the same condition is raised as a
-// SigningError here and re-raised as a ReceiptVerificationError by the receipt
-// step, and one reader answers for both.
-const PARTNER_CERTIFICATE_CONDITION_TAG = "alcovePartnerCertificateCondition";
+// An annotation rather than a field on one error class: the same condition is
+// raised as a SigningError here and re-raised as a ReceiptVerificationError by
+// the receipt step, and one reader answers for both.
+const PARTNER_CERTIFICATE_CONDITION =
+  annotationKey<PartnerCertificateCondition>("partner certificate condition");
 
 /**
  * `error` tagged with the partner-certificate condition it refused on, so a
@@ -542,9 +541,7 @@ export function withPartnerCertificateCondition<E extends Error>(
   error: E,
   condition: PartnerCertificateCondition,
 ): E {
-  return Object.assign(error, {
-    [PARTNER_CERTIFICATE_CONDITION_TAG]: condition,
-  });
+  return annotate(error, PARTNER_CERTIFICATE_CONDITION, condition);
 }
 
 /**
@@ -556,23 +553,15 @@ export function withPartnerCertificateCondition<E extends Error>(
 export function partnerCertificateCondition(
   error: unknown,
 ): PartnerCertificateCondition | undefined {
-  let found: PartnerCertificateCondition | undefined;
-  causeChainSome(error, (link) => {
-    const tagged = (link as Record<string, unknown>)[
-      PARTNER_CERTIFICATE_CONDITION_TAG
-    ];
-    // Own-key rather than `in`: a tag naming an inherited member -- `toString`,
-    // `constructor`, `__proto__` -- passes a prototype-chain membership test,
-    // and the lookup over it then yields that member in place of the boolean
-    // observedPartnerCertificateMismatch is declared to return.
-    if (
-      typeof tagged === "string" &&
-      Object.hasOwn(PARTNER_CERTIFICATE_MISMATCH_OBSERVED, tagged)
-    )
-      found = tagged as PartnerCertificateCondition;
-    return found !== undefined;
-  });
-  return found;
+  const condition: unknown = annotationOf(error, PARTNER_CERTIFICATE_CONDITION);
+  // Own-key rather than `in`: a condition naming an inherited member --
+  // `toString`, `constructor`, `__proto__` -- passes a prototype-chain
+  // membership test, and the lookup over it then yields that member in place of
+  // the boolean observedPartnerCertificateMismatch is declared to return.
+  return typeof condition === "string" &&
+    Object.hasOwn(PARTNER_CERTIFICATE_MISMATCH_OBSERVED, condition)
+    ? (condition as PartnerCertificateCondition)
+    : undefined;
 }
 
 /**

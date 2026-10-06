@@ -23,7 +23,6 @@ import {
   describeUndeclaredColumns,
   authenticateConnection,
   assertSharedSecretReadyForHandshake,
-  ConnectionError,
   deriveAbortToken,
   handshakeRoleForRendezvousRole,
   OperatorConfigError,
@@ -45,6 +44,10 @@ import {
   termsStatingDeclaredPayloadSend,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
+  markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
+  classifyFailure,
+  isTrustBoundaryFailure,
 } from "@alcove/core";
 import type {
   Authentication,
@@ -66,7 +69,6 @@ import type {
 import {
   AUTHENTICATION_FAILED_EXIT_CODE,
   INTERRUPTED_EXIT_CODE,
-  PERSISTENCE_LOSS_EXIT_CODE,
   TERMINATED_EXIT_CODE,
   type ErrorPhase,
 } from "@alcove/cli-contract";
@@ -141,10 +143,14 @@ import {
   type TeardownOutcome,
 } from "./transportTeardown";
 import { writeOutput } from "./util/dataIo";
-import { exitCodeForError, fixedNextStep } from "./util/exit";
+import {
+  exitCodeForError,
+  fixedNextStep,
+  withExitCode,
+  withPersistenceLossExitCode,
+} from "./util/exit";
 import { noteSignalOwnsExit } from "./util/exitGate";
 import { runBeforeEachLogLine } from "./util/logging";
-import { holdsRecoveryHintTag, withRecoveryHintTag } from "./util/recoveryHint";
 import { logRuntimeEnv } from "./util/runtimeEnv";
 import {
   openEventStream,
@@ -1301,7 +1307,7 @@ async function authenticateRun(params: {
     const message = messageWithOperatorText`${ROTATION_MARK_PREAMBLE}${operatorSuppliedText(
       keyFilePath,
     )}: ${err instanceof Error ? err.message : String(err)}${ROTATION_MARK_REMEDY}`;
-    throw withRecoveryHintTag(
+    throw markStatesItsOwnNextStep(
       keepOperatorSuppliedText(new Error(message.text), message),
     );
   }
@@ -1327,7 +1333,7 @@ async function authenticateRun(params: {
   const { rotatedSecret, sessionKey, applyEncryption } =
     await authenticateConnection(mc, authParams, role, requestEncryption).catch(
       (err: unknown) => {
-        if (err instanceof ConnectionError && err.kind === "security")
+        if (isTrustBoundaryFailure(classifyFailure(err)))
           clearRotationInFlightAfterFailedHandshake(
             keyFilePath,
             auth.sharedSecret,
@@ -1372,9 +1378,7 @@ async function authenticateRun(params: {
     // succeeded, so "may" is intentionally conservative.
     //
     // The wrapped error already holds the full recovery hint specific
-    // to this failure mode. Tag it with the same
-    // `alcoveRecoveryHintEmitted` convention authenticateConnection
-    // uses on its own validation errors (see auth.ts), so the
+    // to this failure mode. Marked as stating its own next step, the
     // runProtocol catch below skips its generic authStarted advisory
     // and the user sees one coherent recovery message.
     //
@@ -1384,10 +1388,10 @@ async function authenticateRun(params: {
     const message = messageWithOperatorText`${ROTATED_TOKEN_SAVE_PREAMBLE}${operatorSuppliedText(
       keyFilePath,
     )}: ${err instanceof Error ? err.message : String(err)}${ROTATED_TOKEN_SAVE_REMEDY}`;
-    throw withRecoveryHintTag(
-      Object.assign(
+    throw markStatesItsOwnNextStep(
+      withExitCode(
         keepOperatorSuppliedText(new Error(message.text), message),
-        { exitCode: AUTHENTICATION_FAILED_EXIT_CODE },
+        AUTHENTICATION_FAILED_EXIT_CODE,
       ),
     );
   }
@@ -1909,7 +1913,7 @@ async function checkRunLocalInputs(params: {
     // "peer abandoned the handshake" hint for what is really an expired or
     // malformed secret. authenticateConnection still runs the same check
     // as the authoritative boundary for library consumers that bypass
-    // runProtocol. The shared check sets alcoveRecoveryHintEmitted, so
+    // runProtocol. The shared check's errors state their own next step, so
     // runProtocol's catch block suppresses its generic advisory.
     assertSharedSecretReadyForHandshake(auth);
     // Validate and trim the key-file path before any credential is
@@ -2486,16 +2490,10 @@ async function writeExchangeOutputs(params: {
       // data for an exchange that already happened. Set the
       // persistence-loss code on the error so a command boundary reports
       // it instead of the 69 a transport fault gets; exitCodeForError
-      // (util/exit.ts) prefers an error's own code, measured (not
-      // asserted) by exchange.test.ts and zeroSetup.test.ts driving each
-      // handler to a trapped process.exit. An error that already holds a
-      // code keeps it.
-      if (
-        typeof err === "object" &&
-        err !== null &&
-        (err as { exitCode?: number }).exitCode === undefined
-      )
-        Object.assign(err, { exitCode: PERSISTENCE_LOSS_EXIT_CODE });
+      // (util/exit.ts) reads the annotated code, measured (not asserted)
+      // by exchange.test.ts and zeroSetup.test.ts driving each handler to
+      // a trapped process.exit.
+      withPersistenceLossExitCode(err);
       // Raised below, after the record and the receipt: a disclosure that
       // occurred is owed its record whatever became of the result
       // (docs/notes/record-durability-point.md), and a result the reader of
@@ -3373,10 +3371,10 @@ export async function runProtocol(
     // exchange may have completed on the partner side even though our own
     // save did not run. Raised at error level (rather than warn) because
     // the user's exchange is failing and needs the recovery hint shown
-    // prominently. The `alcoveRecoveryHintEmitted` tag marks an error
-    // whose own message already states the next step for its fault, so
+    // prominently. An error marked as stating its own next step
+    // (statesItsOwnNextStep) already states the step for its fault, so
     // the generic advisory is skipped rather than printed beneath a step
-    // it contradicts. Set wherever that holds: the saveKeyFile-failure
+    // it contradicts. Marked wherever that holds: the saveKeyFile-failure
     // path below, authenticateConnection's own validation errors (token
     // format, pre- and post-handshake expiry -- see auth.ts), and core's
     // terminal transport refusals. For an untagged internal fault or
@@ -3499,7 +3497,7 @@ export async function runProtocol(
     )
       log.error(BOTH_SWEPT_GUIDANCE);
 
-    const hintAlreadyEmitted = holdsRecoveryHintTag(err);
+    const hintAlreadyEmitted = statesItsOwnNextStep(err);
     const authenticationFailed =
       exitCodeForError(err) === AUTHENTICATION_FAILED_EXIT_CODE;
     const retryRuledOut =

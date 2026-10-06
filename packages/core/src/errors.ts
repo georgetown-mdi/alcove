@@ -1,3 +1,11 @@
+import {
+  annotate,
+  annotationKey,
+  annotationOf,
+  findInCauseChain,
+} from "./failureAnnotation";
+import type { AnnotationReadOptions } from "./failureAnnotation";
+
 /**
  * Classifies a terminal {@link ConnectionError} so a consumer can decide how to
  * respond:
@@ -150,35 +158,54 @@ export class InvitationTermDivergenceError extends ConnectionError {
 }
 
 /**
- * Whether `error` or any link in its `cause` chain satisfies `predicate`.
+ * Whether `error` or any link in its `cause` chain satisfies `predicate`,
+ * read by {@link findInCauseChain}.
  *
  * The single shared rule for asking "is this failure, anywhere under
- * whatever wrapped it, an X?" -- a class, a property tag, or a message
- * fragment. Asking it of the chain rather than of the value handed over
- * keeps the answer right wherever the wrapping happens: a re-raise that
- * replaces the message and keeps the original as its `cause` stays matched.
- *
- * The walk follows `cause` on any non-null object link, not only an
- * `Error`, so a plain object interposed in the chain does not truncate it;
- * a predicate that cares narrows with its own `instanceof`. A seen-set
- * stops a `cause` cycle from being revisited; it does not bound a chain of
- * distinct links, and a throwing `cause` accessor propagates to the
- * caller. Rendering an arbitrary chain is
- * {@link sanitizeErrorForDisplay}'s job, which holds the depth bound and
- * the guarded read this helper does not.
+ * whatever wrapped it, an X?" -- a class or a message fragment. Asking it of
+ * the chain rather than of the value handed over keeps the answer right
+ * wherever the wrapping happens: a re-raise that replaces the message and
+ * keeps the original as its `cause` stays matched. A plain object interposed
+ * in the chain does not truncate it; a predicate that cares narrows with its
+ * own `instanceof`.
  */
 export function causeChainSome(
   error: unknown,
   predicate: (link: object) => boolean,
 ): boolean {
-  const seen = new Set<unknown>();
-  let cursor: unknown = error;
-  while (typeof cursor === "object" && cursor !== null && !seen.has(cursor)) {
-    seen.add(cursor);
-    if (predicate(cursor)) return true;
-    cursor = (cursor as { cause?: unknown }).cause;
-  }
-  return false;
+  return (
+    findInCauseChain(error, (link) => predicate(link) || undefined) === true
+  );
+}
+
+const STATES_OWN_NEXT_STEP = annotationKey<true>("states its own next step");
+
+/**
+ * `error`, annotated as stating its own next step, so a front end adds no
+ * generic advisory or fixed next step beneath it ({@link statesItsOwnNextStep}).
+ */
+export function markStatesItsOwnNextStep<E extends object>(error: E): E {
+  return annotate(error, STATES_OWN_NEXT_STEP, true);
+}
+
+/**
+ * Whether `error` states its own next step: annotated by
+ * {@link markStatesItsOwnNextStep}, or holding the `alcoveRecoveryHintEmitted:
+ * true` property the error classes and raise sites in this package set. Read
+ * along the `cause` chain, so a wrap of such an error still states the step,
+ * unless `options.ownOnly` asks for `error` itself.
+ */
+export function statesItsOwnNextStep(
+  error: unknown,
+  options: AnnotationReadOptions = {},
+): boolean {
+  const states = (link: object): true | undefined =>
+    annotationOf(link, STATES_OWN_NEXT_STEP, { ownOnly: true }) === true ||
+    (link as { alcoveRecoveryHintEmitted?: unknown })
+      .alcoveRecoveryHintEmitted === true
+      ? true
+      : undefined;
+  return findInCauseChain(error, states, options) === true;
 }
 
 /**
@@ -943,7 +970,6 @@ export class ConnectionClosedError extends Error {
  * exchange and that the partner's run shows the reason.
  */
 export class PeerAbortError extends ConnectionError {
-  readonly alcoveRecoveryHintEmitted = true;
   /**
    * The fixed reason a PSI round's abort stated
    * (`PSI_SET_TOO_LARGE_ABORT_REASON` and its siblings in
@@ -961,6 +987,7 @@ export class PeerAbortError extends ConnectionError {
     );
     this.name = "PeerAbortError";
     this.partnerReason = partnerReason;
+    annotate(this, STATES_OWN_NEXT_STEP, true);
   }
 }
 
@@ -984,19 +1011,18 @@ export class AuthenticationError extends ConnectionError {
   }
 }
 
-/** The property {@link markPeerWaitTimeout} sets and {@link isPeerWaitTimeout} reads. */
-const PEER_WAIT_TIMEOUT_TAG = "alcovePeerWaitTimedOut";
+const PEER_WAIT_TIMED_OUT = annotationKey<true>("peer wait timed out");
 
 /**
  * Tags an error as "this party waited its full budget for the partner and
  * the partner never came": the rendezvous peer-wait timeouts and the
- * key-exchange handshake timeout. It is a property tag rather than a
+ * key-exchange handshake timeout. It is an annotation rather than a
  * subclass so it adds a machine-readable identity without changing
  * either error's message (both are pinned exactly by existing tests) or
  * its `instanceof` classification, which the CLI's 64-vs-69 exit-code
  * split reads.
  *
- * It is not {@link PeerAbortError}'s `alcoveRecoveryHintEmitted`, whose
+ * It is not {@link PeerAbortError}'s {@link statesItsOwnNextStep}, whose
  * meaning is the unrelated "suppress the CLI's generic advisory". A
  * tagged error asserts only the local fact that the wait expired, never
  * a reason for the partner's absence. A consumer that knows more about
@@ -1009,7 +1035,7 @@ const PEER_WAIT_TIMEOUT_TAG = "alcovePeerWaitTimedOut";
  * already holding its own specific diagnosis and next step.
  */
 export function markPeerWaitTimeout<E extends object>(error: E): E {
-  return Object.assign(error, { [PEER_WAIT_TIMEOUT_TAG]: true });
+  return annotate(error, PEER_WAIT_TIMED_OUT, true);
 }
 
 /**
@@ -1017,14 +1043,10 @@ export function markPeerWaitTimeout<E extends object>(error: E): E {
  * {@link markPeerWaitTimeout} tag.
  */
 export function isPeerWaitTimeout(error: unknown): boolean {
-  return causeChainSome(
-    error,
-    (link) => (link as Record<string, unknown>)[PEER_WAIT_TIMEOUT_TAG] === true,
-  );
+  return annotationOf(error, PEER_WAIT_TIMED_OUT) === true;
 }
 
-/** The property {@link markPsiLibraryFailure} sets and {@link isPsiLibraryFailure} reads. */
-const PSI_LIBRARY_FAILURE_TAG = "alcovePsiLibraryFailure";
+const PSI_LIBRARY_FAILURE = annotationKey<true>("PSI library failure");
 
 /**
  * Tags a failure the PSI library raised while it handled a frame, the one
@@ -1034,10 +1056,10 @@ const PSI_LIBRARY_FAILURE_TAG = "alcovePsiLibraryFailure";
  * a step stopped on connection loss, or a refusal the engine names keeps its
  * own message.
  *
- * A property tag rather than a subclass, on {@link markPeerWaitTimeout}'s
+ * An annotation rather than a subclass, on {@link markPeerWaitTimeout}'s
  * reasoning, and because the library throws errors of its own classes.
  * Returns what to throw: `error` itself, tagged, or, for a thrown value that
- * cannot hold the tag, an `Error` holding it as its `cause`.
+ * is not an object, an `Error` holding it as its `cause`.
  *
  * The PSI worker boundary carries an error as its message alone, so the tag
  * rides its reply as a field of its own and is re-applied to the rebuilt
@@ -1045,10 +1067,10 @@ const PSI_LIBRARY_FAILURE_TAG = "alcovePsiLibraryFailure";
  */
 export function markPsiLibraryFailure(error: unknown): object {
   const failure =
-    typeof error === "object" && error !== null && Object.isExtensible(error)
+    typeof error === "object" && error !== null
       ? error
       : new Error("the PSI library failed", { cause: error });
-  return Object.assign(failure, { [PSI_LIBRARY_FAILURE_TAG]: true });
+  return annotate(failure, PSI_LIBRARY_FAILURE, true);
 }
 
 /**
@@ -1058,9 +1080,5 @@ export function markPsiLibraryFailure(error: unknown): object {
  * its own.
  */
 export function isPsiLibraryFailure(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as Record<string, unknown>)[PSI_LIBRARY_FAILURE_TAG] === true
-  );
+  return annotationOf(error, PSI_LIBRARY_FAILURE, { ownOnly: true }) === true;
 }

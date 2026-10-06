@@ -13,6 +13,7 @@ import { handler } from "../../../src/commands/exchange";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
 import { runProtocol, type RunProtocolOptions } from "../../../src/protocol";
 import { captureProcessExit } from "../../exitCapture";
+import { withExitCode } from "../../../src/util/exit";
 import {
   fakeRegistrar,
   jsonResponse,
@@ -262,7 +263,7 @@ test("a run that fails after rotating still registers the rotated key", async ()
   const requests = useRegistrar([registrationAnswer()]);
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     rotateLikeTheKeyExchange(options);
-    throw Object.assign(new Error("partner went away"), { exitCode: 69 });
+    throw withExitCode(new Error("partner went away"), 69);
   });
   await expect(runHandler()).rejects.toThrow("exit:69");
   expect(requests).toHaveLength(1);

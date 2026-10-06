@@ -112,11 +112,11 @@ import {
   RoundCapacityError,
   RoundSetLimitError,
   UsageError,
-  causeChainSome,
   AlgorithmDivergenceError,
   PayloadDisclosureDivergenceError,
   InvitationTermDivergenceError,
 } from "./errors.js";
+import { annotate, annotationKey, annotationOf } from "./failureAnnotation.js";
 import { SPLIT_INPUT_REMEDY } from "./connection/fileSyncOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
 import type { Standardization } from "./config/standardizationSchema.js";
@@ -1932,24 +1932,25 @@ export interface ExchangeResult {
 }
 
 // Where a terminated run's self-attested record waits for the caller that catches
-// the throw. A WeakMap rather than a property on the error: the error is raised by
-// a post-disclosure step or by the transport under it, and none of those is this
-// module's to mutate -- a frozen or proxied error would refuse the write, and an
-// own property would show up in whatever enumerates or serializes the error later.
-// The entry lives exactly as long as the error object does.
-const recordsByTerminatedRun = new WeakMap<object, BuiltExchangeRecord>();
+// the throw.
+const TERMINATED_RUN_RECORD = annotationKey<BuiltExchangeRecord>(
+  "terminated run record",
+);
 
 // The other half of the same answer: the terminated runs that owed a record and
-// whose build of it threw. Kept beside the map rather than as a sentinel inside
-// it so the record-bearing accessor's return type stays exactly what a caller
-// already handles, and so "nothing was owed" and "what was owed could not be
-// built" stop sharing one undefined.
-const unbuiltRecordsByTerminatedRun = new WeakSet<object>();
+// whose build of it threw. A key of its own rather than a sentinel record so the
+// record-bearing accessor's return type stays exactly what a caller already
+// handles, and so "nothing was owed" and "what was owed could not be built" stop
+// sharing one undefined.
+const TERMINATED_RUN_RECORD_UNBUILT = annotationKey<true>(
+  "terminated run record unbuilt",
+);
 
 // The terminated runs whose payload crossed and whose partner's never arrived,
-// so the record beside them commits to no received payload. Kept as a mark on
-// the error for the same reason the two above are.
-const oneDirectionalDisclosuresByTerminatedRun = new WeakSet<object>();
+// so the record beside them commits to no received payload.
+const TERMINATED_RUN_ONE_DIRECTIONAL = annotationKey<true>(
+  "terminated run disclosed one direction",
+);
 
 /**
  * The self-attested record of the disclosure a terminated run had ALREADY made,
@@ -1974,12 +1975,7 @@ const oneDirectionalDisclosuresByTerminatedRun = new WeakSet<object>();
 export function exchangeRecordFromFailure(
   error: unknown,
 ): BuiltExchangeRecord | undefined {
-  let found: BuiltExchangeRecord | undefined;
-  causeChainSome(error, (link) => {
-    found = recordsByTerminatedRun.get(link);
-    return found !== undefined;
-  });
-  return found;
+  return annotationOf(error, TERMINATED_RUN_RECORD);
 }
 
 /**
@@ -1999,9 +1995,7 @@ export function exchangeRecordFromFailure(
  * The lookup walks the `cause` chain, as its record-bearing sibling does.
  */
 export function exchangeRecordOwedButUnbuilt(error: unknown): boolean {
-  return causeChainSome(error, (link) =>
-    unbuiltRecordsByTerminatedRun.has(link),
-  );
+  return annotationOf(error, TERMINATED_RUN_RECORD_UNBUILT) === true;
 }
 
 /**
@@ -2021,9 +2015,7 @@ export function exchangeRecordOwedButUnbuilt(error: unknown): boolean {
 export function exchangeDisclosedWithoutPartnerPayload(
   error: unknown,
 ): boolean {
-  return causeChainSome(error, (link) =>
-    oneDirectionalDisclosuresByTerminatedRun.has(link),
-  );
+  return annotationOf(error, TERMINATED_RUN_ONE_DIRECTIONAL) === true;
 }
 
 /**
@@ -2051,13 +2043,10 @@ function carryingExchangeRecord(
     return error;
   }
   if (!partnerPayloadReceived)
-    oneDirectionalDisclosuresByTerminatedRun.add(error);
-  if (audit === undefined) {
-    unbuiltRecordsByTerminatedRun.add(error);
-    return error;
-  }
-  recordsByTerminatedRun.set(error, audit);
-  return error;
+    annotate(error, TERMINATED_RUN_ONE_DIRECTIONAL, true);
+  if (audit === undefined)
+    return annotate(error, TERMINATED_RUN_RECORD_UNBUILT, true);
+  return annotate(error, TERMINATED_RUN_RECORD, audit);
 }
 
 /**

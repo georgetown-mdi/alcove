@@ -194,21 +194,41 @@ test("a tagged cause of a kind with no row gets no remedy rather than a throw", 
   expect(renderFailureForOperator(err)).toBe("the partner went away");
 });
 
-test("an error without the partner-never-arrived cause is not tagged", () => {
-  const plain = new Error("something else");
-  expect(markArrivalWait(plain, "online-invitation")).toBe(plain);
-  expect(Object.keys(plain)).toEqual([]);
+const EXCHANGE_WAIT_REMEDY =
+  "Check that your partner has started their side, then run again; " +
+  "--peer-timeout sets how long to wait.";
+const INVITATION_WAIT_REMEDY =
+  "Run alcove invite again and have your partner accept the new " +
+  "invitation while it waits; --accept-timeout sets how long to wait.";
 
-  const folder = markFailureCause(
-    new Error("missing"),
-    SAMPLES["folder-missing"][0],
-  );
-  const keysBefore = Object.keys(folder);
-  markArrivalWait(folder, "online-invitation");
-  expect(Object.keys(folder)).toEqual(keysBefore);
+test("an error without the partner-never-arrived cause is not marked", () => {
+  // A mark on the inner error would reach the outer one through the cause
+  // chain, so the outer remedy shows whether the inner one was marked.
+  const cause = SAMPLES["partner-never-arrived"][2];
+  for (const inner of [
+    new Error("something else"),
+    markFailureCause(new Error("missing"), SAMPLES["folder-missing"][0]),
+  ]) {
+    expect(markArrivalWait(inner, "online-invitation")).toBe(inner);
+    const outer = markFailureCause(
+      new Error(failureCauseSentence(cause), { cause: inner }),
+      cause,
+    );
+    expect(failureRemedy(outer)).toBe(EXCHANGE_WAIT_REMEDY);
+  }
 });
 
-test("a frozen error is returned unchanged rather than throwing", () => {
+test("the arrival wait follows the error through a wrap", () => {
+  const cause = SAMPLES["partner-never-arrived"][2];
+  const inner = markArrivalWait(
+    markFailureCause(new Error(failureCauseSentence(cause)), cause),
+    "online-invitation",
+  );
+  const outer = new Error("the invitation was not accepted", { cause: inner });
+  expect(failureRemedy(outer)).toBe(INVITATION_WAIT_REMEDY);
+});
+
+test("a frozen error is marked like any other", () => {
   const cause = SAMPLES["partner-never-arrived"][2];
   const err = Object.freeze(
     markFailureCause(new Error(failureCauseSentence(cause)), cause),
@@ -216,7 +236,6 @@ test("a frozen error is returned unchanged rather than throwing", () => {
   expect(markArrivalWait(err, "online-invitation")).toBe(err);
   expect(renderFailureForOperator(err)).toBe(
     "Your partner did not connect within 10 minutes.\n" +
-      "Check that your partner has started their side, then run again; " +
-      "--peer-timeout sets how long to wait.",
+      INVITATION_WAIT_REMEDY,
   );
 });

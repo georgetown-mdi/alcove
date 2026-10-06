@@ -60,6 +60,7 @@ import {
 import { answeringTtyStream, streamOf, withStdin } from "../../stdinStream";
 import { captureProcessExit } from "../../exitCapture";
 import { ERROR_CLASS_EXIT_CODES } from "../../exitCodeCases";
+import { withExitCode } from "../../../src/util/exit";
 import { announceRetainMode } from "../../../src/config";
 import { captureStdio } from "../../loggingTestSupport";
 import {
@@ -711,11 +712,9 @@ test("handler: a result file the exchange could not write exits 73, not 69", asy
       "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
     );
     vi.mocked(runProtocol).mockRejectedValueOnce(
-      Object.assign(
+      withExitCode(
         new Error("EACCES: permission denied, open 'results.csv'"),
-        {
-          exitCode: PERSISTENCE_LOSS_EXIT_CODE,
-        },
+        PERSISTENCE_LOSS_EXIT_CODE,
       ),
     );
 

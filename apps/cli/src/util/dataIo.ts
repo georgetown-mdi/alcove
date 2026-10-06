@@ -15,7 +15,8 @@ import {
 import { createOwnerOnlyWriteStream } from "../fileUtils";
 import { settleWithinCeiling, type CeilingOutcome } from "./ceiling";
 import { redactUrlCredentials } from "@alcove/core";
-import { InputNotFoundError } from "./exit";
+import { InputNotFoundError, withExitCode } from "./exit";
+import { UNAVAILABLE_EXIT_CODE } from "@alcove/cli-contract";
 
 /**
  * Resolve a CSV input positional to the readable stream core's `loadCSVFile`
@@ -31,7 +32,7 @@ import { InputNotFoundError } from "./exit";
  * component, or a symbolic link whose target is missing -- throws an
  * {@link InputNotFoundError} (exit 66), since a scheduled run can wait for it
  * to land. Any other stat failure, such as a parent directory the process
- * cannot search, throws an `Error` holding `exitCode: 69` and naming the OS
+ * cannot search, throws an `Error` annotated with exit 69 and naming the OS
  * error code, since waiting will not fix it.
  *
  * `allowStdin` gates the `-` case. Every input command supports stdin;
@@ -91,9 +92,9 @@ function inputStatError(rawInput: string, err: unknown): Error {
     );
   }
   const message = messageWithOperatorText`${operatorSuppliedText(input)} cannot be read (${code ?? "unknown error"})`;
-  return Object.assign(
+  return withExitCode(
     keepOperatorSuppliedText(new Error(message.text, { cause: err }), message),
-    { exitCode: 69 },
+    UNAVAILABLE_EXIT_CODE,
   );
 }
 

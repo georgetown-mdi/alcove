@@ -68,7 +68,7 @@ import {
 } from "../../src/onlineBootstrap";
 import { redactUrlCredentials } from "@alcove/core";
 import { openInputSource } from "../../src/util/dataIo";
-import { exitCodeForError, runOrExit } from "../../src/util/exit";
+import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";
 import { openEventStream } from "../../src/eventStream";
 import { assertFirstRoundFits } from "../../src/firstRoundFits";
@@ -746,14 +746,14 @@ describe("runOrExit", () => {
     exit.mockRestore();
   });
 
-  test("a non-UsageError preserves its own exitCode (not collapsed to 69)", async () => {
+  test("a non-UsageError keeps its annotated exit code (not collapsed to 69)", async () => {
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
     await runOrExit("bootstrap-test", async () => {
-      // A distinctive code (not 69) proves the `?? exitCode` rung is preserved,
-      // so a missing input file keeps its own exit code instead of becoming 69.
-      throw Object.assign(new Error("input file not found"), { exitCode: 66 });
+      // A distinctive code (not 69) proves the annotated rung is preserved, so
+      // a missing input file keeps its own exit code instead of becoming 69.
+      throw withExitCode(new Error("input file not found"), 66);
     });
     expect(exit).toHaveBeenCalledWith(66);
     exit.mockRestore();

@@ -4,7 +4,13 @@
  * (`buildErrorEvent`, `./eventStream`).
  */
 
-import { causeChainSome, TermsChangeRefusedError } from "@alcove/core";
+import {
+  annotate,
+  annotationKey,
+  annotationOf,
+  causeChainSome,
+  TermsChangeRefusedError,
+} from "@alcove/core";
 import type { TermsDelta } from "@alcove/core";
 
 /**
@@ -16,14 +22,16 @@ export interface TermsChangeNotTaken {
   proposalWritten: boolean;
 }
 
-const termsChangesNotTaken = new WeakMap<object, TermsChangeNotTaken>();
+const TERMS_CHANGE_NOT_TAKEN = annotationKey<TermsChangeNotTaken>(
+  "terms change not taken",
+);
 
 /** Record on `error` the terms change its run ended on without taking it on. */
 export function recordTermsChangeNotTaken(
   error: object,
   notTaken: TermsChangeNotTaken,
 ): void {
-  termsChangesNotTaken.set(error, notTaken);
+  annotate(error, TERMS_CHANGE_NOT_TAKEN, notTaken);
 }
 
 /**
@@ -38,7 +46,7 @@ export function termsChangeNotTakenOf(
   let found: TermsChangeNotTaken | undefined;
   causeChainSome(error, (link) => {
     found =
-      termsChangesNotTaken.get(link) ??
+      annotationOf(link, TERMS_CHANGE_NOT_TAKEN, { ownOnly: true }) ??
       (link instanceof TermsChangeRefusedError
         ? { delta: link.delta, proposalWritten: false }
         : undefined);

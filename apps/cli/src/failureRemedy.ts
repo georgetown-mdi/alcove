@@ -9,6 +9,9 @@ import {
   type FailureCause,
   type FailureCauseKind,
   type FailureCauseOfKind,
+  annotate,
+  annotationKey,
+  annotationOf,
 } from "@alcove/core";
 
 /**
@@ -90,13 +93,13 @@ export function remedyForCause(
   )(cause, context);
 }
 
-const ARRIVAL_WAIT_TAG = "alcoveArrivalWait";
+const ARRIVAL_WAIT = annotationKey<ArrivalWait>("arrival wait");
 
 /**
  * Record on `err` which flag bounded this run's wait for the partner, so the
  * command boundary that renders it names that flag. Only an error carrying the
- * partner-never-arrived cause is tagged; any other error, and one that cannot
- * take the property (frozen, sealed), is returned unchanged.
+ * partner-never-arrived cause is annotated; any other error is returned
+ * unchanged.
  */
 export function markArrivalWait<E>(err: E, arrivalWait: ArrivalWait): E {
   if (
@@ -104,21 +107,12 @@ export function markArrivalWait<E>(err: E, arrivalWait: ArrivalWait): E {
     err !== null &&
     failureCauseOf(err)?.kind === "partner-never-arrived"
   )
-    Reflect.defineProperty(err, ARRIVAL_WAIT_TAG, {
-      value: arrivalWait,
-      configurable: true,
-      enumerable: true,
-      writable: true,
-    });
+    annotate(err, ARRIVAL_WAIT, arrivalWait);
   return err;
 }
 
 function arrivalWaitOf(err: unknown): ArrivalWait {
-  const tagged =
-    typeof err === "object" && err !== null
-      ? (err as Record<string, unknown>)[ARRIVAL_WAIT_TAG]
-      : undefined;
-  return tagged === "online-invitation" ? tagged : "exchange";
+  return annotationOf(err, ARRIVAL_WAIT) ?? "exchange";
 }
 
 /**

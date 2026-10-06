@@ -7,6 +7,7 @@ import {
   INPUT_NOT_FOUND_EXIT_CODE,
   INTERNAL_FAULT_EXIT_CODE,
   PARTNER_REFUSED_EXIT_CODE,
+  PERSISTENCE_LOSS_EXIT_CODE,
   RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
   UNAVAILABLE_EXIT_CODE,
@@ -14,15 +15,18 @@ import {
   USAGE_EXIT_CODE,
 } from "@alcove/cli-contract";
 import {
+  annotate,
+  annotationKey,
+  annotationOf,
   classifyFailure,
   firstLinkBehindTransportWraps,
   getLogger,
   sanitizeErrorForDisplay,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import type { FailureClass } from "@alcove/core";
 
 import { failureRemedy } from "../failureRemedy";
-import { holdsRecoveryHintTag } from "./recoveryHint";
 
 /**
  * The next step shown beneath an `internal-fault` failure
@@ -37,13 +41,13 @@ export const INTERNAL_FAULT_NEXT_STEP =
 /**
  * {@link INTERNAL_FAULT_NEXT_STEP} when core classifies `err` as an
  * `internal-fault` ({@link classifyFailure}) and nothing in its cause chain
- * holds core's `alcoveRecoveryHintEmitted` tag; otherwise `undefined`. A
- * tagged fault's message already states its step, so adding this one would
- * give the operator two.
+ * states its own next step (core's `statesItsOwnNextStep`); otherwise
+ * `undefined`. Such a fault's message already states its step, so adding
+ * this one would give the operator two.
  */
 export function internalFaultNextStep(err: unknown): string | undefined {
   if (classifyFailure(err) !== "internal-fault") return undefined;
-  return holdsRecoveryHintTag(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
+  return statesItsOwnNextStep(err) ? undefined : INTERNAL_FAULT_NEXT_STEP;
 }
 
 /**
@@ -58,7 +62,7 @@ export const PARTNER_REFUSED_NEXT_STEP =
 /**
  * {@link PARTNER_REFUSED_NEXT_STEP} when core's class for `err`
  * ({@link classifyFailure}) is `partner-refused` or `receipt-not-verified`
- * and nothing in its cause chain holds core's `alcoveRecoveryHintEmitted` tag;
+ * and nothing in its cause chain states its own next step;
  * otherwise `undefined`, for the reason {@link internalFaultNextStep} gives.
  */
 export function partnerRefusalNextStep(err: unknown): string | undefined {
@@ -68,7 +72,7 @@ export function partnerRefusalNextStep(err: unknown): string | undefined {
     failureClass !== "receipt-not-verified"
   )
     return undefined;
-  return holdsRecoveryHintTag(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
+  return statesItsOwnNextStep(err) ? undefined : PARTNER_REFUSED_NEXT_STEP;
 }
 
 /**
@@ -121,10 +125,47 @@ export function worseReceiptVerdictExitCode(a: number, b: number): number {
   return rank(a) >= rank(b) ? a : b;
 }
 
+const EXIT_CODE = annotationKey<number>("exit code");
+
+/**
+ * `err`, annotated with the exit code {@link exitCodeForError} reports for it
+ * when core's class for it has no code of its own.
+ */
+export function withExitCode<E extends object>(err: E, exitCode: number): E {
+  return annotate(err, EXIT_CODE, exitCode);
+}
+
+/**
+ * The code {@link withExitCode} annotated on `err` or on the nearest link of
+ * its cause chain holding one, so a wrap keeps the code; `options.ownOnly`
+ * reads `err` itself only.
+ */
+export function annotatedExitCode(
+  err: unknown,
+  options: { readonly ownOnly?: boolean } = {},
+): number | undefined {
+  return annotationOf(err, EXIT_CODE, options);
+}
+
+/**
+ * `err`, annotated with `PERSISTENCE_LOSS_EXIT_CODE` (73) unless it holds a
+ * code itself: a code inherited from a cause does not outrank the loss of a
+ * result an exchange that completed was owed.
+ */
+export function withPersistenceLossExitCode(err: unknown): unknown {
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    annotatedExitCode(err, { ownOnly: true }) === undefined
+  )
+    withExitCode(err, PERSISTENCE_LOSS_EXIT_CODE);
+  return err;
+}
+
 /**
  * The exit code each core {@link FailureClass} reports, or `undefined` for a
  * class with no code of its own, which {@link exitCodeForError} resolves from
- * the error's own `exitCode` or EX_UNAVAILABLE (69).
+ * {@link annotatedExitCode} or EX_UNAVAILABLE (69).
  */
 function exitCodeForFailureClass(
   failureClass: FailureClass,
@@ -155,22 +196,19 @@ function exitCodeForFailureClass(
  * `internal-fault`, {@link PARTNER_REFUSED_EXIT_CODE} (76) for
  * `partner-refused` and `receipt-not-verified`, and
  * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for `authentication-failed`;
- * otherwise the error's own numeric `exitCode` when it has one, else
- * EX_UNAVAILABLE (69). A usage failure (a `UsageError` or an
- * `OperatorConfigError`) is classified `usage-error` and so maps to 64.
+ * otherwise {@link annotatedExitCode}, else EX_UNAVAILABLE (69). A usage
+ * failure (a `UsageError` or an `OperatorConfigError`) is classified
+ * `usage-error` and so maps to 64.
  *
- * The own-`exitCode` rung is what gives a run whose exchange completed while
- * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
- * rung is typed rather than `??`-defaulted so a non-numeric `exitCode` on some
- * other object cannot reach `process.exit`.
+ * The annotated rung is what gives a run whose exchange completed while its
+ * result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73).
  */
 export function exitCodeForError(err: unknown): number {
   if (firstLinkBehindTransportWraps(err) instanceof InputNotFoundError)
     return INPUT_NOT_FOUND_EXIT_CODE;
   const classCode = exitCodeForFailureClass(classifyFailure(err));
   if (classCode !== undefined) return classCode;
-  const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
-  return typeof own === "number" ? own : UNAVAILABLE_EXIT_CODE;
+  return annotatedExitCode(err) ?? UNAVAILABLE_EXIT_CODE;
 }
 
 /**

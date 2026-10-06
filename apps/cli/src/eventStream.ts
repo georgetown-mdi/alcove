@@ -12,6 +12,7 @@ import {
   getLogger,
   redactAndSanitizeForDisplay,
   redactAndFitUnescaped,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import type {
   Displayable,
@@ -54,7 +55,6 @@ import {
 import { failureRemedy } from "./failureRemedy";
 import { asciiSafeJsonText } from "./util/jsonLine";
 import { takeLogFileLossReport } from "./util/logging";
-import { holdsRecoveryHintTag } from "./util/recoveryHint";
 import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
 
 const log = getLogger("event-stream");
@@ -303,15 +303,15 @@ function copyClusterSummary(
 }
 
 /**
- * Whether a failure holds core's `alcoveRecoveryHintEmitted` tag anywhere in
- * its cause chain. The chain is walked for the reason the stderr path walks it
- * (`apps/cli/src/protocol.ts`): a wrap of a tagged failure still states the
- * next step the tag promises.
+ * Whether a failure states its own next step anywhere in its cause chain
+ * (core's `statesItsOwnNextStep`). The chain is walked for the reason the
+ * stderr path walks it (`apps/cli/src/protocol.ts`): a wrap of such a failure
+ * still states the next step it promises.
  *
  * @internal exported for testing
  */
 export function errorStatesItsOwnNextStep(error: unknown): boolean {
-  return holdsRecoveryHintTag(error);
+  return statesItsOwnNextStep(error);
 }
 
 /**

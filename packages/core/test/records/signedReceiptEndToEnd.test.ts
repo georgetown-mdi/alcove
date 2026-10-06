@@ -129,6 +129,17 @@ async function runBoth(
   ]);
 }
 
+// A terminated run's failure behind an Error that holds it as its cause and
+// behind the message bridge's transport-kind wrap.
+function wrapsOf(failure: unknown): unknown[] {
+  return [
+    new Error("the run failed", { cause: failure }),
+    new ConnectionError("the message send failed", "transport", {
+      cause: failure,
+    }),
+  ];
+}
+
 test("both parties produce one dual-signed record with mutual verification", async () => {
   const [resInit, resResp] = await runBoth(
     {
@@ -1259,6 +1270,8 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     expect((responderFailure as Error).message).toMatch(/not trusted/);
     const responderKept = exchangeRecordFromFailure(responderFailure);
     expect(responderKept?.record.outcome).toBe("receipt-swap-terminated");
+    for (const wrapped of wrapsOf(responderFailure))
+      expect(exchangeRecordFromFailure(wrapped)).toBe(responderKept);
     // The responder held the presented certificate and found it was not the
     // pinned identity, so its record states that the recipient of its
     // disclosure is in doubt (docs/spec/EXCHANGE_RECORD.md, When a record is
@@ -1564,6 +1577,8 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     // The one-directional disclosure the record itself does not distinguish, for
     // the caller accounting for what left this machine.
     expect(exchangeDisclosedWithoutPartnerPayload(failure)).toBe(true);
+    for (const wrapped of wrapsOf(failure))
+      expect(exchangeDisclosedWithoutPartnerPayload(wrapped)).toBe(true);
 
     // The partner, which received a payload before its own send, completed.
     expect(responderSettled.status).toBe("fulfilled");
@@ -1929,6 +1944,8 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     expect(responderFailure).toBeInstanceOf(ReceiptVerificationError);
     expect(exchangeRecordFromFailure(responderFailure)).toBeUndefined();
     expect(exchangeRecordOwedButUnbuilt(responderFailure)).toBe(true);
+    for (const wrapped of wrapsOf(responderFailure))
+      expect(exchangeRecordOwedButUnbuilt(wrapped)).toBe(true);
 
     await rawInitiator.close();
     await connResponder.close();

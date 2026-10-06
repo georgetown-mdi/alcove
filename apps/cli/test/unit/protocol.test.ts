@@ -430,6 +430,7 @@ import { resultFilePath } from "../../src/resultFile";
 import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
 import {
+  annotatedExitCode,
   exitCodeForError,
   fixedNextStep,
   INTERNAL_FAULT_NEXT_STEP,
@@ -1808,10 +1809,8 @@ test("a result file that could not be written fails with the persistence-loss ex
   }
 
   expect(outcome.status).toBe("rejected");
-  const reason = (outcome as PromiseRejectedResult).reason as {
-    exitCode?: number;
-  };
-  expect(reason.exitCode).toBe(73);
+  const reason: unknown = (outcome as PromiseRejectedResult).reason;
+  expect(annotatedExitCode(reason)).toBe(73);
   // What a command boundary would actually report for it. The stamped property
   // is only half the contract: exchange.test.ts and zeroSetup.test.ts drive the
   // handlers to a real process exit, and this is the rule they share.
@@ -1892,7 +1891,7 @@ test("a partner-shaped output-phase fault exits 76, not the local write-loss cod
   expect(reason.message).toContain(
     "missing rows for association table indices",
   );
-  expect(reason.exitCode).toBeUndefined();
+  expect(annotatedExitCode(reason)).toBeUndefined();
   expect(exitCodeForError(reason)).toBe(76);
 
   const lines = takeFd3Lines();
@@ -3365,6 +3364,49 @@ test("a key exchange that fails closed removes both markers and leaves both secr
   }
   expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
   expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_B });
+}, 20_000);
+
+test("a security failure wrapped in a transport failure removes the marker and leaves the secret", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  let started = 0;
+  let bothStarted: () => void = () => {};
+  const bothInKeyExchange = new Promise<void>((resolve) => {
+    bothStarted = resolve;
+  });
+  vi.mocked(authenticateConnection).mockImplementation(async () => {
+    started += 1;
+    if (started === 2) bothStarted();
+    await bothInKeyExchange;
+    throw new ConnectionError("the message send failed", "transport", {
+      cause: new ConnectionError(
+        "a frame failed its integrity check",
+        "security",
+      ),
+    });
+  });
+
+  const results = await Promise.allSettled(
+    [keyFileA, keyFileB].map((keyFilePath, index) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: `test-${index}`,
+      }),
+    ),
+  );
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
 }, 20_000);
 
 test("a key exchange the partner never answers leaves the marker set", async () => {

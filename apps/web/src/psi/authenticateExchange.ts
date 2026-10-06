@@ -3,6 +3,8 @@ import {
   authenticateConnection,
   causeChainSome,
   errorMessage,
+  markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 
 import type {
@@ -103,16 +105,12 @@ export async function authenticateExchange(
     const wrapped = new ConnectionError(errorMessage(error), "security", {
       cause: error,
     });
-    // Preserve authenticateConnection's alcoveRecoveryHintEmitted tag across
-    // the re-wrap: a tagged credential error already holds specific recovery
-    // guidance, and the tag tells a higher-level handler not to add a second,
-    // generic advisory. The web path threads the invitation's `expires`, so the
-    // expiry-tagged pre- and post-handshake errors (alongside the
-    // malformed-secret one) reach here and need the same preservation.
-    if (hasRecoveryHint(error))
-      (
-        wrapped as { alcoveRecoveryHintEmitted?: boolean }
-      ).alcoveRecoveryHintEmitted = true;
+    // A credential error that states its own next step already holds
+    // specific recovery guidance, so the wrap states it too and a
+    // higher-level handler adds no second, generic advisory. The web path
+    // threads the invitation's `expires`, so the expiry errors before and
+    // after the handshake (alongside the malformed-secret one) reach here.
+    if (hasRecoveryHint(error)) markStatesItsOwnNextStep(wrapped);
     throw wrapped;
   }
 
@@ -148,16 +146,12 @@ function hasNonTrustConnectionError(error: unknown): boolean {
   );
 }
 
-/** Whether `error` holds authenticateConnection's `alcoveRecoveryHintEmitted`
- * tag, set on its credential-validation and expiry errors. Per core's contract
- * a tagged message is composed only from local values and already includes
- * its recovery instructions, so a display layer may show it (sanitized)
- * instead of fixed copy, and must not add a second, generic advisory. */
+/** Whether `error` itself states its own next step (core's
+ * `statesItsOwnNextStep`), as authenticateConnection's credential-validation
+ * and expiry errors do. Per core's contract such a message is composed only
+ * from local values and already includes its recovery instructions, so a
+ * display layer may show it (sanitized) instead of fixed copy, and must not
+ * add a second, generic advisory. */
 export function hasRecoveryHint(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted === true
-  );
+  return statesItsOwnNextStep(error, { ownOnly: true });
 }

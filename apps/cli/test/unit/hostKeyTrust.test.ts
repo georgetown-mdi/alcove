@@ -27,7 +27,7 @@ import {
 } from "../../src/hostKeyTrust";
 import { applyConnectionOverrides } from "../../src/config";
 import { connectionOverridesFrom } from "../../src/optionDefinitions";
-import { exitCodeForError } from "../../src/util/exit";
+import { exitCodeForError, withExitCode } from "../../src/util/exit";
 import { configureLogging } from "../../src/util/logging";
 import {
   captureStdio,
@@ -241,7 +241,7 @@ test("a probe failure keeps the exit status its cause maps to", async () => {
   // would have without the refusal around it.
   const failures: Array<[unknown, number]> = [
     [new UsageError("bad endpoint"), 64],
-    [Object.assign(new Error("declared"), { exitCode: 70 }), 70],
+    [withExitCode(new Error("declared"), 70), 70],
   ];
   process.stdin.isTTY = true;
   for (const [failure, exitCode] of failures) {

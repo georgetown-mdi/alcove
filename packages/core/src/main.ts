@@ -36,8 +36,12 @@ export {
   errorMessage,
   isPeerWaitTimeout,
   isSetTooLargeError,
+  markStatesItsOwnNextStep,
+  statesItsOwnNextStep,
 } from "./errors";
 export type { ConnectionErrorKind, RoundSetLimitReason } from "./errors";
+export { annotate, annotationKey, annotationOf } from "./failureAnnotation";
+export type { AnnotationKey, AnnotationReadOptions } from "./failureAnnotation";
 export {
   FAILURE_CAUSE_KINDS,
   FAILURE_CAUSE_PATH_MAX_LENGTH,
