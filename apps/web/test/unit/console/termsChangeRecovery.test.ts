@@ -5,11 +5,15 @@ import {
   relayedTermsChangeOf,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
+import { buildImageReference } from "@psi/dockerRunCommand";
 import { failureFor } from "@exchange/useInviterExchange";
 import { termsApplyOutcomeText } from "@console/termsChangeRecoveryModel";
 import { termsChangeView } from "@psi/termsChangeView";
 
 import type { RelayEvent } from "@jobs/cliDriver";
+
+/** A run id, the name of its folder in the working folder. */
+const JOB_ID = "3f2b8c1e-0d4a-4c6e-9a51-7e2f0b9c4d13";
 
 const RELAYED_EVENT: RelayEvent = {
   v: 1,
@@ -142,15 +146,22 @@ describe("applying the proposal from the run step", () => {
       "unavailable",
       "error",
     ] as const)
-      expect(termsApplyOutcomeText(outcome)).toMatch(/\.$/);
-    expect(termsApplyOutcomeText("configuration-changed")).toContain(
+      expect(termsApplyOutcomeText(outcome, JOB_ID)).toMatch(/\.$/);
+    expect(termsApplyOutcomeText("configuration-changed", JOB_ID)).toContain(
       "nothing was applied",
     );
-    expect(termsApplyOutcomeText("run-terms-differ")).toContain(
-      "from the command line with alcove apply",
-    );
-    expect(termsApplyOutcomeText("run-terms-differ")).toContain(
+    expect(termsApplyOutcomeText("run-terms-differ", JOB_ID)).toContain(
       "open the configuration again",
     );
+  });
+
+  test("names the apply as the docker command over the working folder, on this run's proposal", () => {
+    const command =
+      "docker run --rm -it --mount " +
+      "type=bind,src=/path/to/your/working-folder,dst=/work " +
+      `${buildImageReference()} apply @${JOB_ID}/alcove.proposed-terms`;
+    for (const outcome of ["run-terms-differ", "unavailable", "error"] as const)
+      expect(termsApplyOutcomeText(outcome, JOB_ID)).toContain(command);
+    expect(termsApplyOutcomeText("refused", JOB_ID)).not.toContain("docker");
   });
 });

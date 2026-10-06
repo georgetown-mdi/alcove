@@ -1412,6 +1412,24 @@ export const jobConfigurationHandBackSchema: z.ZodType<JobConfigurationHandBack>
     .refine(certificateModeNamesThisParty, UNNAMED_CERTIFICATE_PARTY_ISSUE);
 
 /**
+ * The signing identity file's name inside the console's mounted data root.
+ *
+ * Dot-prefixed so the input listing's admissibility rule
+ * ({@link isAdmissibleInputName}) excludes it from the operator's input
+ * picker. Lives in the mount, not a job workdir, since the identity
+ * outlives any one job.
+ */
+export const SIGNING_IDENTITY_FILE_NAME = ".alcove-signing-identity.json";
+
+/**
+ * The proposal a run refused on a partner terms change writes beside its
+ * configuration: the CLI names it after the configuration file
+ * (`termsProposalPath`, `apps/cli/src/termsChange.ts`), so a job's composed
+ * `alcove.yaml` puts it at this name in the job's workdir.
+ */
+export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
+
+/**
  * The copy of the mounted `alcove.yaml` a save of an opened configuration keeps
  * beside it, holding the file as it was before that save (`PUT
  * /api/jobs/config`). Each save replaces the one before.

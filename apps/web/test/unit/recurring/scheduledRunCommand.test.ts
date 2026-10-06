@@ -11,6 +11,7 @@ import {
   installedRunCommand,
   unmountableBindPaths,
   unmountableBindPathsNotice,
+  workingFolderCommand,
 } from "@recurring/scheduledRunCommand";
 import { parseHandoff } from "@psi/managed/recurringHandoff";
 
@@ -222,4 +223,39 @@ describe("a hand-off whose argv is not an alcove command line", () => {
       ).toBeNull();
     },
   );
+});
+
+describe("a command-line step the console's copy names", () => {
+  test("runs the image once over the operator's working folder", () => {
+    expect(workingFolderCommand(["update"], { image: IMAGE })).toBe(
+      "docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work " +
+        `${IMAGE} update`,
+    );
+  });
+
+  test("one that asks before it writes gets a terminal", () => {
+    expect(
+      workingFolderCommand(["apply", "@run/alcove.proposed-terms"], {
+        image: IMAGE,
+        interactive: true,
+      }),
+    ).toBe(
+      "docker run --rm -it --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work " +
+        `${IMAGE} apply @run/alcove.proposed-terms`,
+    );
+  });
+
+  test("a folder outside the working folder is mounted at its own path", () => {
+    expect(
+      workingFolderCommand(["fingerprint"], {
+        image: IMAGE,
+        bindPaths: [{ path: "/path/to/your/secrets-folder", readOnly: false }],
+      }),
+    ).toContain(
+      "--mount type=bind,src=/path/to/your/secrets-folder," +
+        "dst=/path/to/your/secrets-folder ",
+    );
+  });
 });

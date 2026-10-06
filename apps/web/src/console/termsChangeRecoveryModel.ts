@@ -1,3 +1,6 @@
+import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/intentSchemas";
+import { workingFolderCommand } from "@psi/dockerRunCommand";
+
 import type { TermsProposalApplyOutcome } from "@psi/jobClient/termsProposalClient";
 
 /** The label of the control that applies the partner's changed terms. */
@@ -12,11 +15,24 @@ export const TERMS_APPLIED_TEXT =
   "folder. Review the updated terms, then start the exchange again.";
 
 /**
- * What the run step says after an apply that did not write the file, by
- * outcome. Each states what happened and what to do.
+ * The command applying the proposal run `jobId` left in its folder to the
+ * alcove.yaml in the operator's working folder. It asks before it writes, so
+ * it runs with a terminal.
+ */
+function termsApplyCommand(jobId: string): string {
+  return workingFolderCommand(
+    ["apply", `@${jobId}/${TERMS_PROPOSAL_FILE_NAME}`],
+    { interactive: true },
+  );
+}
+
+/**
+ * What the run step says after an apply of run `jobId`'s proposal that did
+ * not write the file, by outcome. Each states what happened and what to do.
  */
 export function termsApplyOutcomeText(
   outcome: Exclude<TermsProposalApplyOutcome, "applied">,
+  jobId: string,
 ): string {
   switch (outcome) {
     case "busy":
@@ -30,8 +46,9 @@ export function termsApplyOutcomeText(
       return (
         "This run used terms you changed in the console, not the ones in " +
         "the alcove.yaml in your working folder, so nothing was applied. " +
-        "Apply the change from the command line with alcove apply, or start " +
-        "over to open the configuration again and run it."
+        "Apply the change from the command line with " +
+        `${termsApplyCommand(jobId)}, or start over to open the ` +
+        "configuration again and run it."
       );
     case "refused":
       return (
@@ -42,7 +59,8 @@ export function termsApplyOutcomeText(
     case "error":
       return (
         "The change could not be applied and alcove.yaml was not changed. " +
-        "Start over, or apply it from the command line with alcove apply."
+        "Start over, or apply it from the command line with " +
+        `${termsApplyCommand(jobId)}.`
       );
   }
 }

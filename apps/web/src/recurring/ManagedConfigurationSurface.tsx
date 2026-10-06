@@ -36,6 +36,7 @@ import {
 import { ConfigRowItem } from "./ManagedExchangeDetail";
 import { DeleteExchangeButton } from "./SavedExchanges";
 import { LocalDocumentFields } from "./LocalDocumentFields";
+import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 import { useLocalFieldsDraft } from "./useLocalFieldsDraft";
 
 import type {
@@ -188,7 +189,7 @@ function ConfigurationExportPanel({
         {state.reason}
       </Alert>
     );
-  const { composed, cronLine, taskSchedulerLine } = state;
+  const { composed } = state;
   const configFile = composed.config;
   const credentialNote = sftpCredentialNote(record);
   const referenceNote = fileReferenceExportNote(record);
@@ -225,26 +226,21 @@ function ConfigurationExportPanel({
         with the same time as that run&apos;s exchange record. Name your file to
         match, or change the name in the command.
       </p>
-      <CopyableCode code={composed.command} ariaLabel="exchange command" />
+      {state.unmountableNotice !== undefined && (
+        <p className={styles.small}>{state.unmountableNotice}</p>
+      )}
+      <CopyableCode code={state.runCommand} ariaLabel="exchange command" />
       <DisclosureSection
-        label="Schedule it (adjust the times and the folder)"
+        label={
+          state.fromAgreedSchedule
+            ? "Schedule it (set the folder)"
+            : "Schedule it (adjust the times and the folder)"
+        }
         open={scheduleLinesOpen}
         onToggle={setScheduleLinesOpen}
         headingOrder={3}
       >
-        <p className={styles.small}>cron (Linux/macOS), daily at 2am:</p>
-        <CopyableCode code={cronLine} ariaLabel="cron schedule line" />
-        <p className={styles.small}>Windows Task Scheduler, daily at 2am:</p>
-        <CopyableCode
-          code={taskSchedulerLine}
-          ariaLabel="Windows Task Scheduler command"
-        />
-        <p className={styles.small}>
-          Both lines call Alcove by name. Under cron&apos;s minimal PATH or a
-          Task Scheduler service account it may not resolve, and fails quietly
-          -- use the full path to the Alcove binary, or put it on the scheduling
-          account&apos;s PATH.
-        </p>
+        <ScheduledRunLinesView lines={state} />
       </DisclosureSection>
       {record.exchangeFile.connection.channel === "webrtc" && (
         <p className={`${styles.small} ${styles.sub}`}>

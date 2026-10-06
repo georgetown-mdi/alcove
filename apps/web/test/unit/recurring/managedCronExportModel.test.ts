@@ -19,6 +19,7 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
+  exportRunCommand,
   managedConfigurationExportState,
   managedCronExportPanelState,
 } from "@recurring/managedCronExportModel";
@@ -50,6 +51,18 @@ const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
 const noOwnRelay = (): OwnRelayRead => ({ kind: "none" });
 
+const IMAGE = "ghcr.io/georgetown-mdi/alcove:1.2.3";
+
+/** A daily schedule whose first window opened 2026-10-06 at 14:30 UTC, an
+ * hour wide. */
+const SCHEDULE = {
+  anchor: "2026-10-06T14:30:00.000Z",
+  intervalDays: 1,
+  windowSeconds: 3600,
+  nextWindow: "2026-10-07T14:30:00.000Z",
+  consecutiveMisses: 0,
+};
+
 const webrtcLocator: WebRTCExchangeLocator = {
   channel: "webrtc",
   host: "signaling.example.org",
@@ -75,7 +88,7 @@ function managedRecord(
 /** The state for an exportable record, failing the test if the composer refused
  * one it was expected to compose. */
 function exportableState(record: RunnableManagedExchangeRecord) {
-  const state = managedCronExportPanelState(record, noOwnRelay);
+  const state = managedCronExportPanelState(record, noOwnRelay, IMAGE);
   if (state.kind !== "exportable")
     throw new Error(`the model refused an exportable record: ${state.reason}`);
   return state;
@@ -95,19 +108,107 @@ describe("what the panel gets to render", () => {
     expect(composed.config.text).not.toContain(record.sharedSecret);
   });
 
-  test("the schedule lines run the composed invocation from the export folder", () => {
-    const {
-      composed,
-      cronLine,
-      taskSchedulerLine: windowsLine,
-    } = exportableState(managedRecord());
-    expect(cronLine).toBe(
-      `0 2 * * * cd /path/to/your/exchange-folder && ${composed.command}`,
+  test("with no agreed schedule, the lines run the image daily at 2am from the export folder", () => {
+    const state = exportableState(managedRecord());
+    expect(state.composed.argv).toEqual([
+      "alcove",
+      "exchange",
+      "--log-file=exchange.log",
+      "input.csv",
+      "./",
+    ]);
+    expect(state.composed.command).toBe(
+      "alcove exchange --log-file=exchange.log input.csv ./",
     );
-    expect(windowsLine).toContain("schtasks /Create");
-    expect(windowsLine).toContain(
-      `cmd /c cd /d C:\\path\\to\\your\\exchange-folder && ${composed.command}`,
+    expect(state.runCommand).toBe(
+      "docker run --rm --mount " +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
+    expect(state.dockerCronLine).toBe(
+      "0 2 * * * /usr/bin/docker run --rm --mount " +
+        "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
+        `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
+    );
+    expect(state.installedCronLine).toBe(
+      "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
+        "exchange --log-file=exchange.log input.csv ./",
+    );
+    expect(state.dockerTaskSchedulerLine).toContain("/SC DAILY /ST 02:00 ");
+    expect(state.dockerTaskSchedulerLine).toContain(
+      "cmd /c cd /d C:\\path\\to\\your\\exchange-folder && docker run --rm " +
+        "--mount type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work " +
+        `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
+    );
+    expect(state.fromAgreedSchedule).toBe(false);
+    expect(state.schedule).toBe("daily at 2am");
+    expect(state.scheduleNote).toBeUndefined();
+    expect(state.unmountableNotice).toBeUndefined();
+    expect(state.bindPathsCaveat).toBeUndefined();
+  });
+
+  test("the lines run on the agreed schedule and wait the agreed window", () => {
+    const state = exportableState(
+      managedRecord({
+        schedule: { ...SCHEDULE, intervalDays: 7, windowSeconds: 7200 },
+      }),
+    );
+    expect(state.composed.argv).toEqual([
+      "alcove",
+      "exchange",
+      "--log-file=exchange.log",
+      "--peer-timeout=2h",
+      "input.csv",
+      "./",
+    ]);
+    // 2026-10-06T14:30Z is a Tuesday.
+    expect(state.dockerCronLine).toMatch(
+      /^30 14 \* \* 2 \/usr\/bin\/docker run --rm /,
+    );
+    expect(state.installedCronLine).toMatch(
+      /^30 14 \* \* 2 cd \/path\/to\/your\/exchange-folder && \/path\/to\/alcove /,
+    );
+    expect(state.dockerTaskSchedulerLine).toContain(
+      "/SC WEEKLY /D TUE /ST 14:30 ",
+    );
+    expect(state.fromAgreedSchedule).toBe(true);
+    expect(state.schedule).toBe("every Tuesday at 14:30 UTC");
+    expect(state.scheduleNote).toMatch(/UTC/);
+  });
+
+  test.each([
+    [60, "1m"],
+    [5400, "90m"],
+    [3600, "1h"],
+    [43_200, "12h"],
+    [45, "45s"],
+  ])("a %i-second window waits %s for the partner", (windowSeconds, flag) => {
+    const { composed } = exportableState(
+      managedRecord({ schedule: { ...SCHEDULE, windowSeconds } }),
+    );
+    expect(composed.argv).toContain(`--peer-timeout=${flag}`);
+  });
+
+  test("an interval cron cannot state runs daily behind a day count from the first window", () => {
+    const state = exportableState(
+      managedRecord({ schedule: { ...SCHEDULE, intervalDays: 3 } }),
+    );
+    const anchorDay = Math.floor(Date.parse(SCHEDULE.anchor) / 86_400_000);
+    expect(state.installedCronLine).toBe(
+      "30 14 * * * [ $(( ($(date +\\%s) / 86400 - " +
+        `${anchorDay}) \\% 3 )) -eq 0 ] && cd /path/to/your/exchange-folder ` +
+        "&& /path/to/alcove exchange --log-file=exchange.log " +
+        "--peer-timeout=1h input.csv ./",
+    );
+    expect(state.dockerTaskSchedulerLine).toContain(
+      "/SC DAILY /MO 3 /SD 10/06/2026 /ST 14:30 ",
+    );
+  });
+
+  test("the handed-off command is the image's one-off run", () => {
+    const record = managedRecord();
+    const state = exportableState(record);
+    expect(exportRunCommand(state.composed, IMAGE)).toBe(state.runCommand);
   });
 
   test("the exported connection names no ICE server, as the panel's copy says", () => {
@@ -157,6 +258,67 @@ describe("a configuration on a channel this app does not run", () => {
       expect(state.composed.config.text).toContain(`channel: ${channel}`);
     },
   );
+});
+
+describe("a configuration naming paths outside the export folder", () => {
+  function sftpConfiguration(privateKey: string) {
+    const exchangeFile = assembleExchangeSpec({
+      connection: connectionFromLocator({
+        channel: "sftp",
+        host: "sftp.example.org",
+        path: "/exchange",
+      }),
+      linkageTerms,
+    });
+    if (exchangeFile.connection.channel !== "sftp")
+      throw new Error("the locator composed no sftp connection");
+    return buildManagedExchangeRecord({
+      label: "Riverbend quarterly",
+      exchangeFile: {
+        ...exchangeFile,
+        connection: {
+          ...exchangeFile.connection,
+          server: {
+            ...exchangeFile.connection.server,
+            username: "county",
+            privateKey: `@${privateKey}`,
+          },
+        },
+      },
+    });
+  }
+
+  test("the image lines mount each at its own path, read-only for a credential", () => {
+    const state = managedConfigurationExportState(
+      sftpConfiguration("/home/county/.ssh/id_ed25519"),
+      IMAGE,
+    );
+    if (state.kind !== "exportable") throw new Error(state.reason);
+    expect(state.composed.bindPaths).toEqual([
+      { path: "/home/county/.ssh/id_ed25519", readOnly: true },
+    ]);
+    expect(state.runCommand).toContain(
+      "--mount type=bind,src=/home/county/.ssh/id_ed25519," +
+        "dst=/home/county/.ssh/id_ed25519,readonly",
+    );
+    expect(state.bindPathsCaveat).toContain("/home/county/.ssh/id_ed25519");
+    expect(state.unmountableNotice).toBeUndefined();
+  });
+
+  test("a path a mount cannot state drops the image lines and says why", () => {
+    const state = managedConfigurationExportState(
+      sftpConfiguration("/home/county/keys,old/id_ed25519"),
+      IMAGE,
+    );
+    if (state.kind !== "exportable") throw new Error(state.reason);
+    expect(state.dockerCronLine).toBeUndefined();
+    expect(state.dockerTaskSchedulerLine).toBeUndefined();
+    expect(state.runCommand).toBe(
+      "alcove exchange --log-file=exchange.log input.csv ./",
+    );
+    expect(state.unmountableNotice).toContain("contains a comma");
+    expect(state.bindPathsCaveat).toBeUndefined();
+  });
 });
 
 describe("a record the composer refuses", () => {

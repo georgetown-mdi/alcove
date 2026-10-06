@@ -161,16 +161,30 @@ describe("the command-line export hands over two files", () => {
     await expect
       .element(page.getByText("backup of record", { exact: false }))
       .toBeInTheDocument();
-    // The ready-to-run invocation and both schedule lines are on the panel.
+    // The ready-to-run invocation, run from the image over the folder, and the
+    // schedule lines are on the panel.
     await expect
       .element(
-        page.getByText("alcove exchange input.csv ./", {
-          exact: true,
-        }),
+        page
+          .getByText(
+            "docker run --rm --mount " +
+              "type=bind,src=/path/to/your/exchange-folder,dst=/work",
+            { exact: false },
+          )
+          .first(),
       )
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("0 2 * * *", { exact: false }))
+      .element(
+        page
+          .getByText("exchange --log-file=exchange.log input.csv ./", {
+            exact: false,
+          })
+          .first(),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("0 2 * * * /usr/bin/docker", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("schtasks /Create", { exact: false }))

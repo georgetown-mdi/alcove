@@ -20,6 +20,7 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
+  exportRunCommand,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
 import {
@@ -30,6 +31,7 @@ import {
   SUPERSEDED_HANDOFF_TITLE,
   supersededHandoffReason,
 } from "./managedHandoffGate";
+import { ScheduledRunLinesView } from "./ScheduledRunLinesView";
 
 import type {
   ManagedCronExportDispatch,
@@ -149,7 +151,7 @@ export function ManagedCronExportPanel({
         if (await recheckRunInFlight()) return;
         await dispatch.confirm(new Date());
         setDispatch(undefined);
-        onHandedOff(composed.command);
+        onHandedOff(exportRunCommand(composed));
       } catch (error) {
         if (error instanceof ManagedHandoffRefusedError)
           setRefusal(error.refusal);
@@ -276,35 +278,21 @@ export function ManagedCronExportPanel({
               </li>
               <li>
                 <p className={styles.handoffStepLabel}>Run it there</p>
+                {state.unmountableNotice !== undefined && (
+                  <p className={styles.small}>{state.unmountableNotice}</p>
+                )}
                 <CopyableCode
-                  code={state.composed.command}
+                  code={state.runCommand}
                   ariaLabel="exchange command"
                 />
               </li>
               <li>
                 <p className={styles.handoffStepLabel}>
-                  Schedule it (adjust the times and the folder)
+                  {state.fromAgreedSchedule
+                    ? "Schedule it (set the folder)"
+                    : "Schedule it (adjust the times and the folder)"}
                 </p>
-                <p className={styles.small}>
-                  cron (Linux/macOS), daily at 2am:
-                </p>
-                <CopyableCode
-                  code={state.cronLine}
-                  ariaLabel="cron schedule line"
-                />
-                <p className={styles.small}>
-                  Windows Task Scheduler, daily at 2am:
-                </p>
-                <CopyableCode
-                  code={state.taskSchedulerLine}
-                  ariaLabel="Windows Task Scheduler command"
-                />
-                <p className={styles.small}>
-                  Both lines call Alcove by name. Under cron&apos;s minimal PATH
-                  or a Task Scheduler service account it may not resolve, and
-                  fails quietly -- use the full path to the Alcove binary, or
-                  put it on the scheduling account&apos;s PATH.
-                </p>
+                <ScheduledRunLinesView lines={state} />
               </li>
             </ol>
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
@@ -319,10 +307,16 @@ export function ManagedCronExportPanel({
                 server instead.
               </li>
               <li>
-                The schedule you agreed with your partner does not travel in
-                these files -- the cron entry or scheduled task is the schedule
-                on the command line, so set it to the window your partner
-                expects.
+                {state.fromAgreedSchedule
+                  ? "The schedule you agreed with your partner does not " +
+                    "travel in these files: the cron entry or scheduled task " +
+                    "is the schedule on the command line, and the lines above " +
+                    "are set to it. Each run waits for your partner until the " +
+                    "agreed window closes, then stops."
+                  : "The schedule you agreed with your partner does not " +
+                    "travel in these files -- the cron entry or scheduled " +
+                    "task is the schedule on the command line, so set it to " +
+                    "the window your partner expects."}
               </li>
               <li>
                 Once you confirm the hand-off, these two files are this

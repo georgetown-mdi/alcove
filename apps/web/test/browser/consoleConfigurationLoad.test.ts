@@ -582,7 +582,7 @@ describe("the review step of an opened configuration's run", () => {
       opened === "inviter" ? "partner" : "inviter",
     );
     await expect
-      .element(page.getByText(/alcove update/).first())
+      .element(page.getByText(/dst=\/work \S+ update/).first())
       .toBeInTheDocument();
     await expect
       .element(page.getByText(EDITED_TERMS_TITLE).first())

@@ -654,7 +654,11 @@ describe("ReceiptsCard: a failed request", () => {
       .element(page.getByText(REFUSED_DEFAULT, { exact: false }))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "running 'alcove fingerprint' against the same folder",
+      "-- running docker run --rm --mount " +
+        "type=bind,src=/path/to/your/working-folder,dst=/work ",
+    );
+    expect(app.container.textContent).toContain(
+      " fingerprint --identity-file .alcove-signing-identity.json prints the reason",
     );
 
     await createButton().click();
@@ -705,7 +709,8 @@ describe("ReceiptsCard: a failed request", () => {
       "Check that file at the location you picked, or pick another one.",
     );
     expect(app.container.textContent).toContain(
-      "'alcove fingerprint --identity-file' pointed at that file",
+      " fingerprint --identity-file /path/to/your/secrets-folder/FILE, with " +
+        "FILE the file you picked, prints the reason",
     );
     expect(app.container.textContent).not.toContain("writable");
     // The alcove.yaml half stays: the child's working directory is the data

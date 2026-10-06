@@ -18,6 +18,13 @@ import {
 
 import { isJobChannel } from "./intentSchemas";
 
+import {
+  HANDOFF_LOG_FILE_NAME,
+  bindPathsIn,
+  credentialBindPaths,
+  uniqueAbsoluteBindPaths,
+} from "./handoffBindPaths";
+
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
 import type {
   JobConfigurationHandBack,
@@ -27,7 +34,11 @@ import type {
   JobSigningPaths,
   JobZeroSetupIntent,
 } from "./intentSchemas";
+import type { HandoffBindPath } from "./handoffBindPaths";
 import type { JobSftpServerEntry } from "./sftpServer";
+
+export type { HandoffBindPath } from "./handoffBindPaths";
+export { HANDOFF_LOG_FILE_NAME } from "./handoffBindPaths";
 
 /**
  * The recurring-run hand-off: the portable, secret-free material an operator
@@ -145,13 +156,6 @@ export interface HandoffPathsAsRead {
   signing: boolean;
 }
 
-/** A host path the scheduled container run mounts at the same path. */
-export interface HandoffBindPath {
-  path: string;
-  /** Whether the run only reads it: a credential or signing identity file. */
-  readOnly: boolean;
-}
-
 /** A setting a `certificate`-mode signing block requires, as the file spells
  * it. */
 export type HandoffSigningSetting =
@@ -226,10 +230,6 @@ const HANDOFF_UPLOADED_INPUT_NAME = "input.csv";
 /** The output positional both templates end on: the folder the run starts in
  * (docs/spec/EXCHANGE_RECORD.md, Result file name). */
 export const HANDOFF_OUTPUT_FOLDER = "./";
-
-/** The log a scheduled run appends to in the folder it runs in, so an
- * unattended failure leaves its cause on disk. */
-export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 
 /** The flags and positionals both templates end on. */
 function handoffRunArgs(intent: JobCreateIntent): Array<string> {
@@ -320,67 +320,6 @@ function buildExchangeHandoffTemplate(
     yaml: handoffConfigDocument(handoffSpec, mountedDocument),
     argv: ["alcove", "exchange", ...handoffRunArgs(intent)],
   };
-}
-
-/**
- * The absolute paths `handoffSpec` names outside the folder the run starts in
- * ({@link JobHandoff.bindPaths}): each sftp credential `@path`, each filedrop
- * folder, the signing identity, and the folder a receipt file is written into
- * (the file itself does not exist before the run, and a mount of a missing file
- * is made a folder).
- */
-function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {
-  const { connection, signing } = handoffSpec;
-  const folders =
-    connection.channel === "filedrop"
-      ? [connection.path, connection.inboundPath, connection.outboundPath]
-      : [];
-  return uniqueAbsoluteBindPaths([
-    ...(connection.channel === "sftp"
-      ? credentialBindPaths(connection.server)
-      : []),
-    ...folders.map((path) => ({ path, readOnly: false })),
-    { path: signing?.identityFile, readOnly: true },
-    { path: parentFolder(signing?.receiptOutput), readOnly: false },
-  ]);
-}
-
-/** The files a server's credential `@path` references name, read-only. */
-function credentialBindPaths(
-  server: Pick<
-    JobSftpServerEntry,
-    "password" | "privateKey" | "privateKeyPassphrase"
-  >,
-): Array<{ path: string; readOnly: boolean }> {
-  return [
-    server.password,
-    server.privateKey,
-    server.privateKeyPassphrase,
-  ].flatMap((value) =>
-    value?.startsWith("@") === true
-      ? [{ path: value.slice(1), readOnly: true }]
-      : [],
-  );
-}
-
-/** The folder holding `file`: `/` for a root-level file, undefined for no file
- * or a bare name. */
-function parentFolder(file: string | undefined): string | undefined {
-  const cut = file?.lastIndexOf("/") ?? -1;
-  if (file === undefined || cut < 0) return undefined;
-  return cut === 0 ? "/" : file.slice(0, cut);
-}
-
-/** The stated absolute paths, each once, read-write where any use writes it. */
-function uniqueAbsoluteBindPaths(
-  candidates: ReadonlyArray<{ path: string | undefined; readOnly: boolean }>,
-): Array<HandoffBindPath> {
-  const byPath = new Map<string, boolean>();
-  for (const { path, readOnly } of candidates) {
-    if (path === undefined || !path.startsWith("/")) continue;
-    byPath.set(path, (byPath.get(path) ?? true) && readOnly);
-  }
-  return [...byPath].map(([path, readOnly]) => ({ path, readOnly }));
 }
 
 /**

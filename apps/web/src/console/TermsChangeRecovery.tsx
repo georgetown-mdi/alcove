@@ -73,9 +73,9 @@ export function TermsChangeRecovery({
           </Button>
         </Group>
       )}
-      {state.status === "failed" && (
+      {state.status === "failed" && jobId !== undefined && (
         <Text size="sm" mt="xs" role="status">
-          {termsApplyOutcomeText(state.outcome)}
+          {termsApplyOutcomeText(state.outcome, jobId)}
         </Text>
       )}
       {state.status === "applied" && (

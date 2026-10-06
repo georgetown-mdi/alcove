@@ -2,9 +2,6 @@ import { useEffect, useState } from "react";
 
 import { Anchor } from "@mantine/core";
 
-import { imageReference, releaseVersion } from "@utils/alcoveImage";
-import { alcoveVersion } from "@utils/clientConfig";
-
 import {
   fetchRecurringHandoff,
   handoffCaveats,
@@ -18,6 +15,7 @@ import { DisclosureSection } from "../components/DisclosureSection";
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   bindPathsCaveat,
+  buildImageReference,
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
@@ -112,7 +110,7 @@ function HandoffBody({
   const source: ScheduledRunSource = {
     argv: handoff.template.argv,
     bindPaths: handoff.bindPaths,
-    image: imageReference(releaseVersion(alcoveVersion())),
+    image: buildImageReference(),
   };
   const dockerCommand = dockerRunCommand(source);
   const runCommand = dockerCommand ?? installedRunCommand(source);

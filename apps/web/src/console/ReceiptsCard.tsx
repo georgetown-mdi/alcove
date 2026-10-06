@@ -22,14 +22,15 @@ import { useRequestGeneration } from "@utils/requestGeneration";
 
 import {
   CERTIFICATE_EXPORT_NOTICE,
-  IDENTITY_REGENERATION_NOTICE,
   MAX_AGE_DESCRIPTION,
   MAX_AGE_LABEL,
   RETENTION_NOTE_LABEL,
   RETENTION_NOTE_NOTICE,
   RETENTION_NOTE_PLACEHOLDER,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
+  fingerprintCommand,
   fingerprintRequestProblem,
+  identityRegenerationNotice,
   maxAgeCadenceNote,
   partnerPinStatement,
   receiptsAdvisories,
@@ -95,8 +96,9 @@ function fingerprintFailureMessage(
         "reads that location and creates no key there, except a file removed " +
         "between this check and the read that follows it. So create the " +
         "identity yourself at the command line -- " +
-        "'alcove fingerprint --identity-file' pointed at that path -- then " +
-        "show the fingerprint again. Or pick the file that already holds your " +
+        fingerprintCommand(true, ["--identity", "NAME"]) +
+        ", with NAME your name and FILE the file you picked -- then show the " +
+        "fingerprint again. Or pick the file that already holds your " +
         "identity."
       );
     case "refused":
@@ -110,8 +112,8 @@ function fingerprintFailureMessage(
             "alcove.yaml your partner wrote cannot move where your key is read " +
             "from or change whose name it binds, because both are passed " +
             "explicitly here. Fix what you find and try again -- running " +
-            "'alcove fingerprint --identity-file' pointed at that file prints " +
-            "the reason."
+            fingerprintCommand(true) +
+            ", with FILE the file you picked, prints the reason."
         : "Your signing identity could not be created or read in your " +
             "working folder. Check that the folder is writable, that any signing " +
             "identity already in it is intact, and that any alcove.yaml there " +
@@ -120,8 +122,7 @@ function fingerprintFailureMessage(
             "your own setup. An alcove.yaml your partner wrote cannot move " +
             "where your key is written or change whose name it binds, because " +
             "both are passed explicitly here. Fix what you find and try again " +
-            "-- running 'alcove fingerprint' against the same folder prints " +
-            "the reason.";
+            `-- running ${fingerprintCommand(false)} prints the reason.`;
     case "syncing":
       return (
         "A shared-folder exchange is still open on this console, and it syncs " +
@@ -439,7 +440,7 @@ export function ReceiptsCard({
               icon={<IconInfoCircle aria-hidden />}
               title="About your signing identity"
             >
-              {IDENTITY_REGENERATION_NOTICE}
+              {identityRegenerationNotice(draft.identityLocation !== undefined)}
             </Alert>
           </>
         )}

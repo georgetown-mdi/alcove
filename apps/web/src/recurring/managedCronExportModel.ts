@@ -1,8 +1,8 @@
 /**
  * The pure model behind the managed exchange's command-line export panel: whether
- * a stored record can be exported at all, and the two schedule lines that run the
- * composed invocation unattended. No React, no store, no download -- the panel
- * stays thin over this.
+ * a stored record can be exported at all, and the command and schedule lines
+ * that run the composed invocation unattended. No React, no store, no download
+ * -- the panel stays thin over this.
  *
  * The exportability decision is NOT re-derived here. The composer
  * ({@link composeManagedCronExport}) is the one place that decides which stored
@@ -10,10 +10,12 @@
  * calls it and presents the refusal, so a second copy of the rule cannot drift
  * from the one the export actually enforces.
  *
- * The schedule lines are examples, not the export: the browser record's own
- * schedule does not travel to the CLI (a cron entry or a Task Scheduler trigger is
- * how a command-line run repeats), so what the panel shows is a daily line the
- * operator edits for their own times and folder.
+ * The schedule lines are composed from the record's agreed schedule, which does
+ * not travel in the files: a cron entry or a Task Scheduler trigger is how a
+ * command-line run repeats. A record with no schedule gets a daily example the
+ * operator edits. The lines run Alcove's published image over the folder by
+ * default, with an installed `alcove` as the alternative, as the console's
+ * hand-off does ({@link ./scheduledRunCommand.ts}).
  */
 
 import { sanitizeErrorForDisplay } from "@alcove/core";
@@ -23,7 +25,22 @@ import {
   composeManagedCronExportConfig,
 } from "@psi/managed/managedCronExport";
 
-import { cronScheduleLine, taskSchedulerLine } from "./scheduleTemplates";
+import {
+  bindPathsCaveat,
+  buildImageReference,
+  dockerCronLine,
+  dockerRunCommand,
+  dockerTaskSchedulerLine,
+  installedCronLine,
+  installedRunCommand,
+  unmountableBindPaths,
+  unmountableBindPathsNotice,
+} from "./scheduledRunCommand";
+import {
+  runScheduleFor,
+  scheduleDescription,
+  scheduleNote,
+} from "./scheduleTemplates";
 
 import type {
   ManagedCommandLineConfig,
@@ -48,22 +65,46 @@ import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
  */
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
+/** The command and schedule lines running a composed export. */
+export interface ScheduledRunLines {
+  /** The command running the export once: the image over the folder, or an
+   * installed `alcove` where a path cannot be mounted. */
+  runCommand: string;
+  /** The cron line running the image, undefined where a path cannot be
+   * mounted. */
+  dockerCronLine: string | undefined;
+  /** The Task Scheduler command running the image, undefined where a path
+   * cannot be mounted. */
+  dockerTaskSchedulerLine: string | undefined;
+  /** The cron line running an installed `alcove` from the folder. */
+  installedCronLine: string;
+  /** When the lines run, as a phrase ("daily at 2am"). */
+  schedule: string;
+  /** Whether the lines run on the record's agreed schedule, rather than a
+   * daily example. */
+  fromAgreedSchedule: boolean;
+  /** What to check about the schedule's times, where the record has one. */
+  scheduleNote: string | undefined;
+  /** Why the image lines are not shown, where a path cannot be mounted. */
+  unmountableNotice: string | undefined;
+  /** The paths the image lines mount besides the folder, where there are
+   * any and the lines are shown. */
+  bindPathsCaveat: string | undefined;
+}
+
 /**
- * What a panel renders for a record: the composed export and its schedule lines,
- * or the composer's own reason for refusing it. `composed` holds the two files
- * on the hand-off panel and the configuration file alone for a record that holds
- * no secret, which is what each panel's own composer decides.
+ * What a panel renders for a record: the composed export and the lines that
+ * run it, or the composer's own reason for refusing it. `composed` holds the
+ * two files on the hand-off panel and the configuration file alone for a
+ * record that holds no secret, which is what each panel's own composer
+ * decides.
  */
 type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
-  | {
+  | ({
       kind: "exportable";
       /** What the composer produced. */
       composed: TComposed;
-      /** The daily cron line running {@link composed}'s command. */
-      cronLine: string;
-      /** The daily Windows Task Scheduler command running the same. */
-      taskSchedulerLine: string;
-    }
+    } & ScheduledRunLines)
   | {
       kind: "refused";
       /** The composer's reason, escaped for display: it names the stored fields
@@ -72,10 +113,55 @@ type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
       reason: string;
     };
 
+/** The command running `composed` once: `image` over the folder, or an
+ * installed `alcove` where a path it names cannot be mounted. */
+export function exportRunCommand(
+  composed: ManagedCommandLineConfig,
+  image: string = buildImageReference(),
+): string {
+  const source = { argv: composed.argv, bindPaths: composed.bindPaths, image };
+  return dockerRunCommand(source) ?? installedRunCommand(source);
+}
+
+/** The lines running `composed` on `record`'s agreed schedule, from `image`. */
+function scheduledRunLines(
+  composed: ManagedCommandLineConfig,
+  record: ManagedExchangeRecord,
+  image: string,
+): ScheduledRunLines {
+  const source = {
+    argv: composed.argv,
+    bindPaths: composed.bindPaths,
+    image,
+  };
+  const schedule =
+    record.schedule === undefined ? undefined : runScheduleFor(record.schedule);
+  const unmountable = unmountableBindPaths(composed.bindPaths);
+  return {
+    runCommand: exportRunCommand(composed, image),
+    dockerCronLine: dockerCronLine(source, schedule),
+    dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
+    installedCronLine: installedCronLine(source, schedule),
+    schedule: scheduleDescription(schedule),
+    fromAgreedSchedule: schedule !== undefined,
+    scheduleNote: scheduleNote(schedule),
+    unmountableNotice:
+      unmountable.length > 0
+        ? unmountableBindPathsNotice(unmountable)
+        : undefined,
+    bindPathsCaveat:
+      unmountable.length === 0 && composed.bindPaths.length > 0
+        ? bindPathsCaveat(composed.bindPaths)
+        : undefined,
+  };
+}
+
 /** Compose through `compose`, presenting its refusal rather than re-deriving the
- * rule, and add the two schedule lines the composed command runs under. */
+ * rule, and add the lines the composed command runs under. */
 function exportPanelState<TComposed extends ManagedCommandLineConfig>(
+  record: ManagedExchangeRecord,
   compose: () => TComposed,
+  image: string,
 ): ManagedCronExportPanelState<TComposed> {
   let composed: TComposed;
   try {
@@ -86,8 +172,7 @@ function exportPanelState<TComposed extends ManagedCommandLineConfig>(
   return {
     kind: "exportable",
     composed,
-    cronLine: cronScheduleLine(composed.command),
-    taskSchedulerLine: taskSchedulerLine(composed.command),
+    ...scheduledRunLines(composed, record, image),
   };
 }
 
@@ -97,13 +182,18 @@ function exportPanelState<TComposed extends ManagedCommandLineConfig>(
  * the composer refuses -- a stored connection on another channel, or a
  * document holding anything the app could not have composed -- yields the
  * refusal and its reason; anything else yields the composed export and the
- * two schedule lines.
+ * lines that run it, naming `image`.
  */
 export function managedCronExportPanelState(
   record: RunnableManagedExchangeRecord,
   readOwn: () => OwnRelayRead,
+  image: string = buildImageReference(),
 ): ManagedCronExportPanelState<ManagedCronExport> {
-  return exportPanelState(() => composeManagedCronExport(record, readOwn));
+  return exportPanelState(
+    record,
+    () => composeManagedCronExport(record, readOwn),
+    image,
+  );
 }
 
 /**
@@ -112,6 +202,11 @@ export function managedCronExportPanelState(
  */
 export function managedConfigurationExportState(
   record: ManagedExchangeRecord,
+  image: string = buildImageReference(),
 ): ManagedCronExportPanelState<ManagedCommandLineConfig> {
-  return exportPanelState(() => composeManagedCronExportConfig(record));
+  return exportPanelState(
+    record,
+    () => composeManagedCronExportConfig(record),
+    image,
+  );
 }
