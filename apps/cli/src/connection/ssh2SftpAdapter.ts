@@ -37,6 +37,7 @@ import {
   MAX_FILENAME_LENGTH,
   MAX_LISTING_READDIR_BATCHES,
   directoryTooLargeError,
+  filenameByteLength,
   filenameTooLongError,
   listingStalledByBatchCountError,
   listingStalledByTimeoutError,
@@ -121,6 +122,16 @@ const sshWireTraceLog = getLogger(SSH_WIRE_TRACE_LOGGER_NAME);
 // through fmtError onto err.code (the same assumption createExclusive's code-4
 // handling relies on).
 const SSH_FX_FAILURE = 4;
+
+// Whether a failed put attempt is re-issued on the same session: only for
+// SSH_FX_FAILURE, SFTPv3's generic status and the only one that can report a
+// condition that clears. A missing directory (2) or a refused permission (3)
+// answers a re-issue the same way, a lost session is the recovery round's to
+// re-dial, and the idle-window stall and dead-session errors are terminal. The
+// statuses are driven in test/integration/sftpStackPremises.test.ts.
+function isRetryableWriteStatus(error: unknown): boolean {
+  return (error as Ssh2SftpError | null | undefined)?.code === SSH_FX_FAILURE;
+}
 
 // Upper bound (ms) on how long a close of this adapter's SFTP connection waits
 // for the partner server before ending the wait itself: the connection-per-poll
@@ -2860,7 +2871,9 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
                     );
                     return;
                   }
-                  if (entry.filename.length > MAX_FILENAME_LENGTH) {
+                  if (
+                    filenameByteLength(entry.filename) > MAX_FILENAME_LENGTH
+                  ) {
                     settle(() =>
                       reject(
                         filenameTooLongError(
@@ -2895,7 +2908,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     );
   }
 
-  get(path: string, options?: GetOptions): Promise<Buffer<ArrayBufferLike>> {
+  get(path: string, options: GetOptions): Promise<Buffer<ArrayBufferLike>> {
     return this.runOperation({ recovery: "verbatim" }, () =>
       this.getOnce(path, options),
     );
@@ -2906,41 +2919,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // re-awaiting the dead-session promise) is what makes the re-issue clean.
   private getOnce(
     path: string,
-    options?: GetOptions,
+    options: GetOptions,
   ): Promise<Buffer<ArrayBufferLike>> {
     const dead = this.deadSessionError("file read", path);
     if (dead) return Promise.reject(dead);
-    const maxBytes = options?.maxBytes;
-    if (maxBytes === undefined) {
-      // Uncapped reads have no counting sink, so they have no per-chunk progress
-      // signal to drive the idle bound the capped path below uses. The transport
-      // always passes maxBytes, so this branch is effectively unused; bound it
-      // with a coarse whole-operation deadline anyway so a withheld or
-      // never-ending transfer fails rather than hanging.
-      // Elapsed-only warning: an uncapped read has no counting sink, so there is
-      // no cheap bytes-so-far signal to report.
-      return this.tracked(
-        this.warnIfSlow(
-          withSftpOperationDeadline(
-            this.client.get(path, undefined, {
-              readStreamOptions: options,
-            }) as Promise<Buffer<ArrayBufferLike>>,
-            this.stallDeadlineMs,
-            () =>
-              transportOperationStalledError(
-                "file read",
-                path,
-                `did not complete within ${this.stallDeadlineMs} ms (the server ` +
-                  `withheld the transfer)`,
-              ),
-          ),
-          "file read",
-          path,
-        ),
-      );
-    }
+    const { maxBytes } = options;
 
-    // Capped read. Stream into the shared counting sink rather than letting
+    // Stream into the shared counting sink rather than letting
     // ssh2-sftp-client buffer the whole transfer. The sink retains only the
     // under-cap prefix and, the instant the running total crosses the cap,
     // settles its own `result` with the typed terminal error AND fails the
@@ -2956,7 +2941,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // ssh2-sftp-client's stream-destination handling (it resolves via the read
     // stream's 'end' event but rejects via the sink's 'error' event) -- see
     // createCappedSink. No encoding is forwarded (raw Buffer chunks), matching
-    // the buffer that the uncapped path and LocalFSClient return.
+    // the buffer LocalFSClient returns.
     const { sink, result, complete, fail, bytesReceived } = createCappedSink(
       path,
       maxBytes,
@@ -2977,14 +2962,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   }
 
   put(src: PutSource, dest: string, options?: PutOptions): Promise<unknown> {
-    // A Buffer, a chunk list, or a string source is re-runnable (rebuilt from the
-    // retained bytes, or a fresh fs.createReadStream, on each attempt), so a
-    // recovery re-issue re-streams the identical payload. A provided
-    // ReadableStream is one-shot: a first attempt half-drains it, so re-issuing
-    // would re-pipe an already-consumed stream and silently upload nothing. Do NOT
-    // wrap that case in recovery; a dropped session fails it terminally rather
-    // than half-re-issuing it. The peer never observes a partial because every
-    // write targets a temp-*.tmp then atomic-renames.
+    // A Buffer or a chunk list is re-runnable (rebuilt from the retained bytes on
+    // each attempt), so a recovery re-issue re-streams the identical payload. A
+    // provided ReadableStream is one-shot: a first attempt half-drains it, so
+    // re-issuing would re-pipe an already-consumed stream and silently upload
+    // nothing. Do NOT wrap that case in recovery; a dropped session fails it
+    // terminally rather than half-re-issuing it. The peer never observes a
+    // partial because every write targets a temp-*.tmp then atomic-renames.
     //
     // Only a truncate-overwrite put is re-issue-idempotent: append mode ("a")
     // would double-write the payload on a recovery re-issue, so it is never
@@ -2993,8 +2977,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // not a live guard against an existing append caller.
     const truncateOverwrite = options?.flags !== "a";
     const reRunnable =
-      truncateOverwrite &&
-      (Buffer.isBuffer(src) || Array.isArray(src) || typeof src === "string");
+      truncateOverwrite && (Buffer.isBuffer(src) || Array.isArray(src));
     if (!reRunnable)
       return this.runOperation({ recovery: "none" }, () =>
         this.putOnce(src, dest, options),
@@ -3034,11 +3017,11 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
               // error ended the retry.
               const dead = this.deadSessionError("file write", dest);
               if (dead) return Promise.reject(dead);
-              // Fresh source + idle window per attempt: the source is single-use, but
-              // it is rebuilt from the retained Buffer/chunk list on each retry, so
-              // the broad retry behavior is preserved. The over-window stall is owned
-              // by the source, decided at the point of detection; this attempt's
-              // settle only feeds the non-stall outcomes via complete()/fail().
+              // Fresh source + idle window per attempt: the source is single-use,
+              // so it is rebuilt from the retained Buffer/chunk list on each retry.
+              // The over-window stall is owned by the source, decided at the point
+              // of detection; this attempt's settle only feeds the non-stall
+              // outcomes via complete()/fail().
               const { source, result, complete, fail } = createBoundedPutSource(
                 dest,
                 payload,
@@ -3054,12 +3037,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
             // being coerced to the default of 5.
             this.options!.retries ?? 5,
             100,
-            // Do not retry the idle-window stall: a TransportOperationStalledError is
-            // terminal (a server withholding acks will keep withholding), so retrying
-            // would stack the 60 s bound. Mirrors rename(), which likewise excludes
-            // the typed stall from its retry predicate; the dead-session short-circuit
-            // (also a TransportOperationStalledError) is excluded for the same reason.
-            (error) => !(error instanceof TransportOperationStalledError),
+            isRetryableWriteStatus,
           ),
           "file write",
           dest,
@@ -3068,38 +3046,16 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       );
     }
 
-    // string (a local file path) or a one-shot ReadableStream: permitted by the
-    // transport-agnostic FileTransportClient.put signature but never produced by
-    // this app. They have no per-op idle window -- it needs a re-runnable source,
-    // which a one-shot stream cannot give. A string is re-runnable
-    // (ssh2-sftp-client opens a fresh fs.createReadStream per attempt) and gets
-    // retried; a ReadableStream is one-shot -- a failed attempt half-drains it,
-    // so it gets a single attempt instead. Both stay bounded only by the
-    // whole-exchange budget, and both fall back to an elapsed-only slow-op
-    // warning (no cheap size).
-    const retries = typeof src === "string" ? (this.options!.retries ?? 5) : 0;
+    // A one-shot ReadableStream: permitted by the transport-agnostic
+    // FileTransportClient.put signature but never produced by this app. A failed
+    // attempt half-drains it, so it gets a single attempt and no per-op idle
+    // window (which needs a re-runnable source); it stays bounded only by the
+    // whole-exchange budget, with an elapsed-only slow-op warning.
+    const dead = this.deadSessionError("file write", dest);
+    if (dead) return Promise.reject(dead);
     return this.tracked(
       this.warnIfSlow(
-        this.countedOperationRetry(
-          () => {
-            // Re-check the dead-session guard before every attempt, as the Buffer
-            // branch does: a fatal SFTP error landing between string-src retries
-            // would otherwise issue put() on the dead channel, whose buffered
-            // request never calls back, and ride the whole-exchange budget. (For a
-            // single-attempt stream this is just the method-entry check.)
-            const dead = this.deadSessionError("file write", dest);
-            if (dead) return Promise.reject(dead);
-            return this.client.put(src, dest, { writeStreamOptions: options });
-          },
-          // `??` not `||` (in the string case) so an explicit retries: 0 disables
-          // the retry rather than being coerced to the default of 5.
-          retries,
-          100,
-          // Terminate on the dead-session typed error rather than retrying it --
-          // the only TransportOperationStalledError this branch can see, since it
-          // has no idle window; mirrors the Buffer branch's predicate.
-          (error) => !(error instanceof TransportOperationStalledError),
-        ),
+        this.client.put(src, dest, { writeStreamOptions: options }),
         "file write",
         dest,
       ),

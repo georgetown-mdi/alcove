@@ -269,6 +269,23 @@ test("list rejects an entry whose filename exceeds the maximum length", async ()
   }
 });
 
+test("list measures the filename bound in UTF-8 bytes, not string length", async () => {
+  // 128 two-byte characters: 128 code units, 256 bytes -- one past the cap.
+  const overByBytes = countingDir(1, () => ({
+    name: "\u00e9".repeat(128),
+    isFile: () => true,
+  }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spy = vi.spyOn(fs, "opendir").mockResolvedValue(overByBytes as any);
+  try {
+    await expect(client.list(dir)).rejects.toBeInstanceOf(
+      DirectoryListingBoundsError,
+    );
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("list accepts a directory at exactly the entry cap", async () => {
   // Off-by-one guard: cap entries must list, only cap+1 trips. stat is mocked so
   // the synthetic names need not exist on disk.
@@ -296,12 +313,14 @@ test("list accepts a directory at exactly the entry cap", async () => {
 test("get reads an existing file as a Buffer", async () => {
   const filePath = path.join(dir, "test.txt");
   await fs.writeFile(filePath, "contents");
-  const buf = await client.get(filePath);
+  const buf = await client.get(filePath, { maxBytes: 1024 });
   expect(buf.toString()).toBe("contents");
 });
 
 test("get rejects when file does not exist", async () => {
-  await expect(client.get(path.join(dir, "missing.txt"))).rejects.toThrow();
+  await expect(
+    client.get(path.join(dir, "missing.txt"), { maxBytes: 1024 }),
+  ).rejects.toThrow();
 });
 
 test("get refuses a file larger than maxBytes without allocating it", async () => {
@@ -362,13 +381,6 @@ test("get reads a file under maxBytes", async () => {
 });
 
 // --- put ---------------------------------------------------------------------
-
-test("put rejects a string src", async () => {
-  const dest = path.join(dir, "out.txt");
-  await expect(client.put("hello string", dest)).rejects.toThrow(
-    "string src is not supported",
-  );
-});
 
 test("put writes a Buffer", async () => {
   const dest = path.join(dir, "out.bin");
@@ -677,9 +689,8 @@ describe("symlink refusal in the rendezvous directory", () => {
       await fs.writeFile(target, "secret-target-contents");
       const link = path.join(dir, "link-to-target");
       await fs.symlink(target, link);
-      // Both the unbounded fast path and the bounded path must refuse at the open,
-      // never resolving to the link target's contents.
-      await expect(client.get(link)).rejects.toMatchObject({ code: "ELOOP" });
+      // The read must refuse at the open, never resolving to the link target's
+      // contents.
       await expect(client.get(link, { maxBytes: 1024 })).rejects.toMatchObject({
         code: "ELOOP",
       });
@@ -692,7 +703,9 @@ describe("symlink refusal in the rendezvous directory", () => {
       const link = path.join(dir, "dangling-get");
       await fs.symlink(path.join(dir, "missing-target"), link);
       // ELOOP (refused at the link), not ENOENT (which a followed dead link gives).
-      await expect(client.get(link)).rejects.toMatchObject({ code: "ELOOP" });
+      await expect(client.get(link, { maxBytes: 1024 })).rejects.toMatchObject({
+        code: "ELOOP",
+      });
     },
   );
 
@@ -731,7 +744,6 @@ describe("symlink refusal in the rendezvous directory", () => {
     async () => {
       const file = path.join(dir, "plain.bin");
       await client.put(Buffer.from([1, 2, 3]), file);
-      expect(await client.get(file)).toEqual(Buffer.from([1, 2, 3]));
       expect(await client.get(file, { maxBytes: 16 })).toEqual(
         Buffer.from([1, 2, 3]),
       );
@@ -767,20 +779,18 @@ describe("non-regular entries in the rendezvous directory", () => {
   };
 
   test.skipIf(process.platform === "win32")(
-    "get refuses a FIFO promptly, on both read paths",
+    "get refuses a FIFO promptly",
     async () => {
       const fifo = path.join(dir, "peer-10.json");
       execFileSync("mkfifo", [fifo]);
-      for (const options of [undefined, { maxBytes: 1024 }]) {
-        const { outcome, elapsedMs } = await withRelease(`: > '${fifo}'`, () =>
-          client.get(fifo, options),
-        );
-        expect(outcome.status).toBe("rejected");
-        expect((outcome as PromiseRejectedResult).reason).toBeInstanceOf(
-          UsageError,
-        );
-        expect(elapsedMs).toBeLessThan(RELEASE_MS);
-      }
+      const { outcome, elapsedMs } = await withRelease(`: > '${fifo}'`, () =>
+        client.get(fifo, { maxBytes: 1024 }),
+      );
+      expect(outcome.status).toBe("rejected");
+      expect((outcome as PromiseRejectedResult).reason).toBeInstanceOf(
+        UsageError,
+      );
+      expect(elapsedMs).toBeLessThan(RELEASE_MS);
     },
   );
 
@@ -802,7 +812,9 @@ describe("non-regular entries in the rendezvous directory", () => {
   test("get refuses a directory as not a regular file", async () => {
     const sub = path.join(dir, "sub");
     await fs.mkdir(sub);
-    await expect(client.get(sub)).rejects.toBeInstanceOf(UsageError);
+    await expect(client.get(sub, { maxBytes: 1024 })).rejects.toBeInstanceOf(
+      UsageError,
+    );
   });
 });
 

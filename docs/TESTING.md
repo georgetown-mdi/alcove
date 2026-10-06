@@ -147,11 +147,11 @@ has to keep the model for them rather than promise to retire it:
   resolves through its own existence check. Reaching the status-11 normalization
   means fabricating a status no server here sends, so it would take a new
   fault injection rather than a new case.
-- **`put`/`putOnce`'s string-path and one-shot `ReadableStream` sources.**
-  Nothing server-side distinguishes either from the `Buffer` path, and no call
+- **`put`/`putOnce`'s one-shot `ReadableStream` source.**
+  Nothing server-side distinguishes it from the `Buffer` path, and no call
   site in this app hands one: every `FileSyncConnection` put passes a `Buffer` or
-  a chunk list. A real-server case would have to call the adapter directly with a
-  string or a stream to reach them, which is what the unit suite already does.
+  a chunk list. A real-server case would have to call the adapter directly with
+  a stream to reach it, which is what the unit suite already does.
 - **The inter-attempt dead-session window.** `renameOnce`'s guarded outcome is
   driven at method entry against a real server socket whose SFTP channel has
   been destroyed (`sftpConnection.test.ts`'s "a fatal 'error' on the raw SFTP

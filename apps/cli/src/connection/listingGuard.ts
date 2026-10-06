@@ -29,13 +29,25 @@ import { transportOperationStalledError } from "./sftpLivenessGuard";
 export const MAX_DIRECTORY_ENTRIES = 8192;
 
 /**
- * Maximum length, in characters, of a single directory entry's filename;
- * enforced per entry at the transport `list()` layer in both adapters.
- * Fixed, for the same reason as {@link MAX_DIRECTORY_ENTRIES}. Value is
- * core's `MAX_FILE_NAME_BYTES`, the POSIX `NAME_MAX`; derivation:
- * docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound".
+ * Maximum length, in UTF-8 bytes, of a single directory entry's filename;
+ * enforced per entry at the transport `list()` layer in both adapters,
+ * measured by {@link filenameByteLength}. Fixed, for the same reason as
+ * {@link MAX_DIRECTORY_ENTRIES}. Value is core's `MAX_FILE_NAME_BYTES`, the
+ * POSIX `NAME_MAX`; derivation: docs/spec/CHANNEL_SECURITY.md,
+ * "Directory-listing bound".
  */
 export const MAX_FILENAME_LENGTH = MAX_FILE_NAME_BYTES;
+
+/**
+ * The length {@link MAX_FILENAME_LENGTH} bounds: the name's UTF-8 encoding in
+ * bytes, not its JavaScript string length, which counts UTF-16 code units and
+ * reads a name of multi-byte characters as shorter than the filesystem limit
+ * it is measured against. Both transports hand over the name already decoded
+ * from UTF-8, so this is the byte length of its re-encoding.
+ */
+export function filenameByteLength(name: string): number {
+  return Buffer.byteLength(name, "utf8");
+}
 
 const DIRECTORY_LINK_LABEL = "directory: ";
 
@@ -100,8 +112,8 @@ export function filenameTooLongError(
   )}${DISPLAY_TRUNCATION_MARKER}`;
   return new DirectoryListingBoundsError(
     `the rendezvous directory contains an entry whose filename is ` +
-      `${name.length} characters, exceeding the maximum of ${max}; refusing ` +
-      `to process it`,
+      `${filenameByteLength(name)} bytes, exceeding the maximum of ${max}; ` +
+      `refusing to process it`,
     {
       details: [directoryLink(dirPath), `entry name: ${shown}`],
     },

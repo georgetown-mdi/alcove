@@ -207,7 +207,9 @@ const CORE_SITES: Array<{
     recoveryStep: STALLED_RECOVERY_STEP,
     raise: async () => {
       const bound = await boundTransportOf(withholdingClient());
-      return rejection(bound.get(`${RENDEZVOUS_PATH}/${MESSAGE_FILENAME}`));
+      return rejection(
+        bound.get(`${RENDEZVOUS_PATH}/${MESSAGE_FILENAME}`, { maxBytes: 1 }),
+      );
     },
   },
   {

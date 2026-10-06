@@ -110,35 +110,28 @@ export class HarnessFileDropClient implements FileTransportClient {
 
   async get(
     filePath: string,
-    options?: GetOptions,
+    options: GetOptions,
   ): Promise<Buffer<ArrayBufferLike>> {
     const handle = await openNoFollow(filePath, "r");
     try {
-      const maxBytes = options?.maxBytes;
-      if (maxBytes !== undefined) {
-        // Stat the OPEN handle and read exactly the statted size, so a writer
-        // appending after the check cannot drive the read past the cap the
-        // poll loop set; readFile() would read to live EOF instead.
-        const { size } = await handle.stat();
-        if (size > maxBytes)
-          throw new Error(
-            `${filePath} is ${size} bytes, past the ${maxBytes}-byte frame cap`,
-          );
-        const bounded = Buffer.alloc(size);
-        const { bytesRead } = await handle.read(bounded, 0, size, 0);
-        return bounded.subarray(0, bytesRead);
-      }
-      return await handle.readFile();
+      const { maxBytes } = options;
+      // Stat the OPEN handle and read exactly the statted size, so a writer
+      // appending after the check cannot drive the read past the cap the poll
+      // loop set; readFile() would read to live EOF instead.
+      const { size } = await handle.stat();
+      if (size > maxBytes)
+        throw new Error(
+          `${filePath} is ${size} bytes, past the ${maxBytes}-byte frame cap`,
+        );
+      const bounded = Buffer.alloc(size);
+      const { bytesRead } = await handle.read(bounded, 0, size, 0);
+      return bounded.subarray(0, bytesRead);
     } finally {
       await handle.close().catch(() => {});
     }
   }
 
   async put(src: PutSource, dest: string, options?: PutOptions): Promise<void> {
-    if (typeof src === "string")
-      throw new Error(
-        "put: a string src (a local path to copy) is unsupported",
-      );
     const payload =
       Buffer.isBuffer(src) || Array.isArray(src) ? src : await drainStream(src);
     const handle = await openNoFollow(dest, options?.flags ?? "w");

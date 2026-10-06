@@ -1,4 +1,6 @@
+import fsp from "node:fs/promises";
 import net from "node:net";
+import path from "node:path";
 import type { AddressInfo, Socket } from "node:net";
 
 import { expect, test } from "vitest";
@@ -871,6 +873,121 @@ test(
     expect(peerProbeTargetFromConnectOptions({ host: LOOPBACK_HOST })).toEqual(
       dialed,
     );
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// The assumption behind the SFTP adapter's rule on dialing twice
+// (FileTransportClient.connect in packages/core): a connect() over a session
+// that is still live does not replace it. The pinned client refuses the call
+// before reaching the server, and the session it already holds stays in place
+// and keeps answering.
+inProcessOnly(
+  "a connect() over a live session is refused and leaves that session in place",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const internals = internalsOf(client);
+    try {
+      await client.connect(dialOptions(srv));
+      const liveWrapper = internals.sftp;
+      const liveSocket = internals.client?._sock;
+      expect(liveWrapper).toBeDefined();
+      expect(liveSocket).toBeDefined();
+      srv.sessionControls.resetHandshakeCount();
+
+      const repeat = trackDial(client.connect(dialOptions(srv)));
+      await Promise.race([repeat.settlement, delay(DESTROY_SETTLE_CEILING_MS)]);
+
+      expect({
+        outcome: repeat.outcome(),
+        rejection: rejectionShape(repeat.rejection()),
+        handshakesStarted: srv.sessionControls.handshakeCount(),
+        sameWrapper: internals.sftp === liveWrapper,
+        sameSocket: internals.client?._sock === liveSocket,
+        liveSocketDestroyed: liveSocket?.destroyed,
+        liveSessionAnswers: await realpathOutcome(
+          liveWrapper as SFTPWrapper,
+          FRESH_WRAPPER_ANSWER_CEILING_MS,
+        ),
+      }).toEqual({
+        outcome: "rejected",
+        rejection: {
+          name: "Error",
+          code: "ERR_NOT_CONNECTED",
+          message: "connect: An existing SFTP connection is already defined",
+        },
+        handshakesStarted: 0,
+        sameWrapper: true,
+        sameSocket: true,
+        liveSocketDestroyed: false,
+        liveSessionAnswers: "answered",
+      });
+    } finally {
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// Big enough that the upload is still on the wire when the socket beneath it is
+// destroyed a few milliseconds in.
+const LOST_SESSION_PUT_BYTES = 64 * 1024 * 1024;
+const LOST_SESSION_DESTROY_AFTER_MS = 30;
+
+// The error code a put rejected with, or "resolved".
+async function putOutcome(attempt: Promise<unknown>): Promise<unknown> {
+  return attempt.then(
+    () => "resolved",
+    (err: unknown) => (err as { code?: unknown })?.code,
+  );
+}
+
+// The assumption the SFTP adapter's put retry is built on: the pinned client
+// rejects a refused write with the server's raw SFTP status as `err.code`, so
+// the status can be read to tell a condition that may clear (SSH_FX_FAILURE, 4)
+// from one that answers the same request the same way again, and a session lost
+// mid-upload rejects with no SFTP status at all.
+inProcessOnly(
+  "a refused put rejects with the server's SFTP status as its code",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const internals = internalsOf(client);
+    const namespace = `put-status-${process.pid}`;
+    try {
+      await fsp.mkdir(path.join(srv.handle.backingDir, namespace, "subdir"), {
+        recursive: true,
+      });
+      const remote = `${srv.handle.remoteRoot}/${namespace}`;
+      await client.connect(dialOptions(srv));
+
+      const missingDirectory = await putOutcome(
+        client.put(Buffer.from("x"), `${remote}/absent/out.bin`),
+      );
+      const targetIsDirectory = await putOutcome(
+        client.put(Buffer.from("x"), `${remote}/subdir`),
+      );
+      const upload = putOutcome(
+        client.put(
+          Buffer.alloc(LOST_SESSION_PUT_BYTES, 1),
+          `${remote}/large.bin`,
+        ),
+      );
+      await delay(LOST_SESSION_DESTROY_AFTER_MS);
+      internals.client?._sock?.destroy();
+      const lostSession = await upload;
+
+      expect({ missingDirectory, targetIsDirectory, lostSession }).toEqual({
+        missingDirectory: 2,
+        targetIsDirectory: 4,
+        lostSession: "ERR_GENERIC_CLIENT",
+      });
+    } finally {
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
   },
   TEST_TIMEOUT_MS,
 );

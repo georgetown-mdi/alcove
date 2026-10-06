@@ -259,7 +259,7 @@ inProcessOnly(
 );
 
 inProcessOnly(
-  `a served name one character past ${MAX_FILENAME_LENGTH} is refused`,
+  `a served name one byte past ${MAX_FILENAME_LENGTH} is refused`,
   async () => {
     // The name bound is the one a real filesystem cannot cross -- every
     // mainstream one caps a component at 255 -- so it is reached through the
@@ -277,12 +277,34 @@ inProcessOnly(
     expect(run.error).toBeInstanceOf(DirectoryListingBoundsError);
     const rendered = sanitizeErrorForDisplay(run.error);
     expect(rendered).toContain(
-      `filename is ${overLength.length} characters, exceeding the maximum of ` +
+      `filename is ${overLength.length} bytes, exceeding the maximum of ` +
         `${MAX_FILENAME_LENGTH}`,
     );
     // Only a leading slice of the server's name is relayed, so the refusal
     // cannot carry an attacker-sized string onward.
     expect(rendered).not.toContain(overLength);
+    expect(run.listed).toEqual([]);
+  },
+  TEST_TIMEOUT_MS,
+);
+
+inProcessOnly(
+  `a served name of multi-byte characters past ${MAX_FILENAME_LENGTH} bytes is ` +
+    `refused though its string length is not`,
+  async () => {
+    // 128 two-byte characters: 128 UTF-16 code units, 256 bytes on the wire.
+    const overInBytes = "\u00e9".repeat(128);
+    const run = await driveListing({
+      count: 0,
+      nameLength: 24,
+      batchCap: 0,
+      oversizeName: overInBytes,
+    });
+
+    expect(run.error).toBeInstanceOf(DirectoryListingBoundsError);
+    expect(sanitizeErrorForDisplay(run.error)).toContain(
+      `filename is 256 bytes, exceeding the maximum of ${MAX_FILENAME_LENGTH}`,
+    );
     expect(run.listed).toEqual([]);
   },
   TEST_TIMEOUT_MS,
