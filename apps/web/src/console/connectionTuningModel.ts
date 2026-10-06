@@ -8,6 +8,7 @@ import {
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
 } from "@alcove/core";
 
 import type { JobExchangeOptions } from "@jobs/intentSchemas";
@@ -220,10 +221,21 @@ function durationMs(field: DurationField): number | undefined | null {
  * fields ride the CLI's `--peer-timeout` / `--connection-timeout` on a
  * zero-setup run, where the same ceiling is a usage error (exit 64); a
  * larger value here would create a job whose child exits immediately. The
- * silence wait's schema holds the same ceiling. The poll interval takes no
- * ceiling, matching `--polling-frequency`.
+ * silence wait's schema holds the same ceiling.
  */
 const MAX_TIMEOUT_MS = MAX_TIMEOUT_SECONDS * 1000;
+
+/**
+ * The poll interval's value in milliseconds, held to core's
+ * {@link MAX_TIMER_MS}: the CLI refuses a longer `--polling-frequency` with a
+ * usage error (exit 64), so a job holding one would exit at once. `null` for
+ * either refusal, distinguished by {@link connectionTuningProblems}.
+ */
+function pollIntervalMsOf(field: DurationField): number | undefined | null {
+  const ms = durationMs(field);
+  if (typeof ms !== "number") return ms;
+  return ms > MAX_TIMER_MS ? null : ms;
+}
 
 /**
  * A timeout field's value in milliseconds, held to {@link MAX_TIMEOUT_MS} on top
@@ -262,7 +274,7 @@ export function connectionTuningOptions(
   draft: ConnectionTuningDraft,
   capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): JobExchangeOptions | undefined {
-  const pollIntervalMs = durationMs(draft.pollInterval);
+  const pollIntervalMs = pollIntervalMsOf(draft.pollInterval);
   const peerTimeoutMs = timeoutMs(draft.peerTimeout);
   const inactivityTimeoutMs = capabilities.inactivityTimeout
     ? timeoutMs(draft.inactivityTimeout)
@@ -340,10 +352,11 @@ function timeoutProblem(
  * so a value the intent schema would refuse is caught here, at authoring
  * time.
  *
- * These are shape rules on what the operator typed, plus the two ceilings
+ * These are shape rules on what the operator typed, plus the ceilings
  * the run itself refuses ({@link MAX_RECONNECT_ATTEMPTS}, the seven-day
- * {@link MAX_TIMEOUT_MS}) -- never a judgement about a value both accept:
- * that draws an advisory ({@link connectionTuningAdvisories}) instead.
+ * {@link MAX_TIMEOUT_MS}, {@link MAX_TIMER_MS} on the poll interval) --
+ * never a judgement about a value both accept: that draws an advisory
+ * ({@link connectionTuningAdvisories}) instead.
  */
 export function connectionTuningProblems(
   draft: ConnectionTuningDraft,
@@ -352,6 +365,12 @@ export function connectionTuningProblems(
   const problems: Array<string> = [];
   if (durationMs(draft.pollInterval) === null)
     problems.push(durationProblem("The check interval"));
+  else if (pollIntervalMsOf(draft.pollInterval) === null)
+    problems.push(
+      `The check interval cannot be longer than ${MAX_TIMER_MS} ms ` +
+        `(about ${Math.floor(MAX_TIMER_MS / 86_400_000)} days), ` +
+        "the longest interval an exchange accepts.",
+    );
   const peerProblem = timeoutProblem(
     draft.peerTimeout,
     "The wait for your partner",

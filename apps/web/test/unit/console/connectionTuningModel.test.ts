@@ -10,6 +10,7 @@ import {
   LOW_POLLING_FREQUENCY_WARN_MS,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
 } from "@alcove/core";
 
 import {
@@ -350,20 +351,35 @@ describe("a malformed value is a form problem, not a failed job", () => {
     });
   });
 
-  test("the connection attempt wait has the same ceiling; the check interval has none", () => {
+  test("the connection attempt wait has the same ceiling", () => {
     const pastHours = String(MAX_TIMEOUT_SECONDS / 3600 + 1);
     expect(
       connectionTuningProblems(
         draft({ serverConnectTimeout: { magnitude: pastHours, unit: "h" } }),
       ).length,
     ).toBe(1);
-    // `--polling-frequency` takes no ceiling -- a long interval is merely slow --
-    // so neither does the field that becomes it.
+  });
+
+  test("the check interval is held to the longest timer delay, as --polling-frequency is", () => {
+    const atCeiling = draft({
+      pollInterval: { magnitude: String(MAX_TIMER_MS), unit: "ms" },
+    });
+    expect(connectionTuningProblems(atCeiling)).toEqual([]);
+    expect(connectionTuningOptions(atCeiling)).toEqual({
+      pollIntervalMs: MAX_TIMER_MS,
+    });
+    const past = draft({
+      pollInterval: { magnitude: String(MAX_TIMER_MS + 1), unit: "ms" },
+    });
+    const problems = connectionTuningProblems(past);
+    expect(problems.length).toBe(1);
+    expect(problems[0]).toContain("24 days");
+    expect(connectionTuningOptions(past)).toBeUndefined();
     expect(
       connectionTuningProblems(
         draft({ pollInterval: { magnitude: "999999999", unit: "m" } }),
       ),
-    ).toEqual([]);
+    ).toEqual(problems);
   });
 
   test("each malformed field reports once, and a sound draft reports nothing", () => {

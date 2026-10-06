@@ -8,6 +8,16 @@ import { preRunTrustFooter, settledTrustFooter } from "@exchange/trustFooter";
 
 const srcRoot = fileURLToPath(new URL("../../../src", import.meta.url));
 
+// The directories holding the app's screens, where a copy of the footer text
+// would be written; the protocol, job and utility code renders no screen.
+const screenDirectories = [
+  "components",
+  "console",
+  "exchange",
+  "recurring",
+  "routes",
+];
+
 function sourceFiles(dir: string): Array<string> {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -16,10 +26,20 @@ function sourceFiles(dir: string): Array<string> {
   });
 }
 
-function filesContaining(fragment: string): Array<string> {
-  return sourceFiles(srcRoot)
-    .filter((path) => readFileSync(path, "utf8").includes(fragment))
-    .map((path) => relative(srcRoot, path));
+function filesContainingEach(
+  fragments: ReadonlyArray<string>,
+): Array<Array<string>> {
+  const sources = screenDirectories
+    .flatMap((directory) => sourceFiles(join(srcRoot, directory)))
+    .map((path) => ({
+      path: relative(srcRoot, path),
+      text: readFileSync(path, "utf8"),
+    }));
+  return fragments.map((fragment) =>
+    sources
+      .filter((source) => source.text.includes(fragment))
+      .map((source) => source.path),
+  );
 }
 
 describe("the privacy footer", () => {
@@ -43,11 +63,12 @@ describe("the privacy footer", () => {
   });
 
   test("its text is written in one source file", () => {
-    for (const fragment of [
+    const fragments = [
       "PII for linkage is encrypted locally",
       "never left this browser.",
       "all your partner received about your data",
-    ])
-      expect(filesContaining(fragment)).toEqual(["exchange/trustFooter.ts"]);
+    ];
+    for (const files of filesContainingEach(fragments))
+      expect(files).toEqual(["exchange/trustFooter.ts"]);
   });
 });
