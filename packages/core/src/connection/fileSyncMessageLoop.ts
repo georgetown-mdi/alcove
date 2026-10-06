@@ -893,8 +893,8 @@ export class FileSyncMessageLoop {
             {
               details: [
                 `message file: ${redactPrivateKeyMaterial(messageFile.name)}`,
-                `writing peer: ${redactPrivateKeyMaterial(peerId)}`,
-                `rendezvous directory: ${redactPrivateKeyMaterial(path)}`,
+                `writing party: ${redactPrivateKeyMaterial(peerId)}`,
+                `shared folder: ${redactPrivateKeyMaterial(path)}`,
               ],
             },
           );

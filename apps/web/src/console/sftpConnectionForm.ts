@@ -244,7 +244,7 @@ export const SPLIT_DIRECTORY_RETAIN_REQUIREMENT =
   "Separate inbound and outbound directories need retain mode: nothing is " +
   "deleted after it is read, so each side keeps its own folder. Turn on " +
   '"Keep every exchange file" under "How files are handled", or clear the ' +
-  "outbound directory to use one shared directory.";
+  "outbound directory to use one shared folder.";
 
 /**
  * The one-line form of {@link SPLIT_DIRECTORY_RETAIN_REQUIREMENT}, for a
@@ -264,7 +264,7 @@ export const SPLIT_DIRECTORY_RETAIN_SUMMARY =
  */
 export const SPLIT_DIRECTORY_BOTH_HALVES_REQUIREMENT =
   "Separate directories need both halves: enter the inbound directory, or " +
-  "clear the outbound directory to use one shared directory.";
+  "clear the outbound directory to use one shared folder.";
 
 /**
  * What the console says when the two halves name one directory. Worded as
@@ -568,7 +568,7 @@ function fingerprintErrorFor(
   if (entries.length === 0) return "Enter the server's identity fingerprint.";
   if (singleFingerprint && entries.length > 1)
     return (
-      "A direct exchange accepts one server identity fingerprint. Enter the " +
+      "A quick exchange accepts one server identity fingerprint. Enter the " +
       "one the server presents now."
     );
   for (const [index, entry] of entries.entries()) {

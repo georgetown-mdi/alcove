@@ -72,9 +72,9 @@ export function rendezvousMock() {
     brokerRegistrationTimedOutMessage: (timeoutMs: number) => {
       const seconds = Math.max(1, Math.round(timeoutMs / 1000));
       return (
-        `The signaling server did not accept the connection within ` +
+        `The coordination server did not accept the connection within ` +
         `${seconds} second${seconds === 1 ? "" : "s"}. Check the network ` +
-        `connection and try again; if it keeps happening, the signaling server ` +
+        `connection and try again; if it keeps happening, the coordination server ` +
         `may be down.`
       );
     },

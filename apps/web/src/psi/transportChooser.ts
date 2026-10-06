@@ -249,7 +249,7 @@ export function transportChooserCopy(
     browserLabel: "Live, in this browser",
     browserDescription: consoleBuild
       ? "This console does not run in-browser exchanges; the public Alcove web app runs those. Run the exchange over SFTP or a shared folder instead."
-      : "Your browsers connect directly. You get an invitation link and code to share; keep this tab open while your partner accepts.",
+      : "Your browsers connect directly. You get an invitation to share, as a link or as text; keep this tab open while your partner accepts.",
     filedropLabel: filedropRunsHere
       ? "Over a shared folder, run here"
       : "Over a shared folder, run by the command-line tool",
@@ -270,9 +270,9 @@ export function transportChooserCopy(
       : "Over SFTP, run by the Alcove command-line tool",
     sftpDescription: sftpRunsHere
       ? sftpAuthoringRequired
-        ? "Runs the exchange here over an SFTP connection you set up below. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code."
-        : "Runs the exchange here through the SFTP connection set up on this machine. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code."
-      : "Saves an exchange file that runs the command-line tool over your SFTP server. Your partner accepts with the same invitation code.",
+        ? "Runs the exchange here over an SFTP connection you set up below. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation."
+        : "Runs the exchange here through the SFTP connection set up on this machine. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation."
+      : "Saves an exchange file that runs the command-line tool over your SFTP server. Your partner accepts with the same invitation.",
     capabilityNote: capabilityNoteFor(consoleBuild, available),
   };
 }

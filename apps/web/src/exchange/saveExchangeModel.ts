@@ -117,7 +117,7 @@ export function saveClosingCopy(
   const throughClause = through.trim() === "" ? "the shared location" : through;
   return (
     `Run it with the Alcove command-line tool ${where}. Your partner ` +
-    "accepts with the same invitation code and their own exchange file; the " +
+    "accepts with the same invitation and their own exchange file; the " +
     `tool exchanges protocol messages through ${throughClause} and writes ` +
     "the same three result files you would download here."
   );

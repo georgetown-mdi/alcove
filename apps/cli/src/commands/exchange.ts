@@ -189,9 +189,9 @@ export function builder(cmd: Argv): Argv {
   ).option("invitation", {
     type: "string",
     describe:
-      "provision the key file from an invitation code (use @path -- " +
-      "`--invitation @code.txt` -- to keep the code out of shell history), the " +
-      "same code `alcove accept` takes. For the party that composed the " +
+      "provision the key file from an invitation, the same one `alcove " +
+      "accept` takes (use @path, as in `--invitation @invitation.txt`, to " +
+      "keep it out of shell history). For the party that composed the " +
       "exchange in the web app and downloaded a config that has no secret: " +
       "this completes local provisioning from the invitation and runs the " +
       "exchange in one command. The code is decoded and validated (checksum, " +

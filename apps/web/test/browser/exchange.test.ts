@@ -1874,10 +1874,10 @@ describe("inviter screen", () => {
       .element(page.getByText("A message to send", { exact: true }))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: "Copy invitation link" }))
+      .element(page.getByRole("button", { name: "Copy invitation as a link" }))
       .toBeInTheDocument();
     expect(
-      page.getByRole("button", { name: "Copy invitation code" }).query(),
+      page.getByRole("button", { name: "Copy invitation as text" }).query(),
     ).toBeNull();
 
     // The reveal expands in place to a readonly textarea holding the full
@@ -1908,7 +1908,9 @@ describe("inviter screen", () => {
     );
 
     // Copying announces through the row's polite status region.
-    await page.getByRole("button", { name: "Copy invitation link" }).click();
+    await page
+      .getByRole("button", { name: "Copy invitation as a link" })
+      .click();
     await vi.waitFor(() => {
       expect(document.querySelector(`.${styles.copyStatus}`)?.textContent).toBe(
         "Copied to clipboard",
@@ -2013,17 +2015,17 @@ describe("inviter screen", () => {
     const currentStepLabel = () =>
       rail().querySelector('[aria-current="step"] .mantine-Stepper-stepLabel')
         ?.textContent;
-    expect(currentStepLabel()).toBe("Confirm protocol");
+    expect(currentStepLabel()).toBe("Check settings");
 
-    // Per-key stages sit under Link keys; the history keeps the completed
+    // Per-key stages sit under Match records; the history keeps the completed
     // stages with their times, and the progress bar tracks the position.
     call.onStage("stage 2 / 2");
     await vi.waitFor(() => {
       expect(document.querySelector(`.${styles.stageLabel}`)?.textContent).toBe(
-        "Linking key 2 / 2",
+        "Matching records (key 2 of 2)",
       );
     });
-    expect(currentStepLabel()).toBe("Link keys");
+    expect(currentStepLabel()).toBe("Match records");
     await expect
       .element(page.getByText(/Waiting for your partner - done/))
       .toBeInTheDocument();
@@ -2579,7 +2581,7 @@ describe("inviter screen", () => {
       )
       .toBeInTheDocument();
     expect(ledger.textContent).toContain(
-      "PII for linkage is encrypted locally before leaving your machine. Your partner receives only the fields listed under 'you will send' (step 2 above) and only for clients who are in common.",
+      "The fields you match on are encrypted on your machine before they leave it. Your partner receives only the fields listed under 'you will send' (step 2 above) and only for clients who are in common.",
     );
   });
 
@@ -2631,7 +2633,7 @@ describe("inviter screen", () => {
       )?.textContent;
       expect(fileName).toMatch(/^alcove-exchange-\d{4}-\d{2}-\d{2}\.yaml$/);
       await expect
-        .element(page.getByRole("button", { name: "Copy invitation code" }))
+        .element(page.getByRole("button", { name: "Copy invitation as text" }))
         .toBeInTheDocument();
       // The one copyable run command names the just-minted file with
       // --config-file (the default `./alcove.yaml` would not match it) and
@@ -2668,7 +2670,7 @@ describe("inviter screen", () => {
       // endpoint the file names -- the code and the config point at one
       // rendezvous. The full code lives behind the reveal, not in the row's
       // preview.
-      await page.getByRole("button", { name: "Show full code" }).click();
+      await page.getByRole("button", { name: "Show full invitation" }).click();
       const encoded = (
         document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
       ).value;
@@ -2734,7 +2736,7 @@ describe("inviter screen", () => {
       expect(yaml).not.toMatch(/password/i);
       expect(yaml).not.toMatch(/authentication/i);
 
-      await page.getByRole("button", { name: "Show full code" }).click();
+      await page.getByRole("button", { name: "Show full invitation" }).click();
       const encoded = (
         document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
       ).value;
@@ -2792,7 +2794,7 @@ describe("inviter screen", () => {
       await expect
         .element(page.getByText("Saved to your downloads"))
         .toBeInTheDocument();
-      await page.getByRole("button", { name: "Show full code" }).click();
+      await page.getByRole("button", { name: "Show full invitation" }).click();
       const codeValue = () =>
         document.querySelector<HTMLTextAreaElement>(`.${styles.revealArea}`)
           ?.value;

@@ -157,7 +157,7 @@ A scheduled exchange's page has a **Keep it running** section:
   The section marks the items the page can see (installed, folder chosen).
 - **Check readiness for the next window** reports whether this page is the
   installed app, whether the folder can be read without a prompt and holds
-  `input.csv`, and whether this browser can connect to the signaling server.
+  `input.csv`, and whether this browser can connect to the coordination server.
   It starts no run, does not contact the partner or test the relay, and changes
   nothing the next window depends on.
 
@@ -712,7 +712,7 @@ It is a state of its own, held apart from a connection problem: reconnecting
 sends the same set, so no surface offers a retry. The remedy is to split the
 input into smaller files and set up one exchange for each, or, for the first
 round's set, to run the exchange with the command-line application over SFTP
-or a synced folder, which allow larger messages.
+or a shared folder, which allow larger messages.
 
 - **On the run screen**, an attended run shows the refusal's own message: the
   set's size, the bound, and what to do.
@@ -1584,7 +1584,7 @@ holds its shared secret. It does for a saved exchange what `alcove update` and
   `alcove update` prints for a configuration holding these terms: your linkage
   terms and the names of the columns you send, authenticated under the
   exchange's shared secret, with no secret, credential, or connection detail in
-  it. Copy it, as you copy an invitation code, and send it to your partner
+  it. Copy it, as you copy an invitation, and send it to your partner
   over any channel that delivers it unchanged; they apply it on this
   exchange's page, or with `alcove apply` on the command line. Every run
   between you replaces the secret it was made under, so an update not applied

@@ -149,7 +149,9 @@ export function YourFileSection({
       <p className={styles.eyebrow}>Step 1 of 3</p>
       <h1 tabIndex={-1}>Your file</h1>
       <TextInput
-        label="Your name"
+        withAsterisk
+        required
+        label="Your name or agency"
         description="Recorded in the invitation's linkage terms so your partner can identify you"
         value={name}
         maxLength={200}
@@ -201,7 +203,7 @@ export function YourFileSection({
             mt="md"
           >
             <p>
-              <strong>Drag your CSV here or click to select</strong>
+              <strong>Drag your CSV here, or select to browse</strong>
             </p>
             <p className={styles.dropzoneMax}>(Max file size: {maxMb} MB)</p>
           </Dropzone>
@@ -289,9 +291,9 @@ export function YourFileSection({
         <div className={styles.callout}>
           <p className={styles.calloutLead}>Using defaults</p>
           <p className={styles.small}>
-            Customize data cleaning steps, matching keys, or attach an
-            associated agreement before you create the invitation (bottom of
-            right toolbar).
+            To change the data cleaning steps or matching keys, or to attach an
+            agreement, use the Customize list in the This exchange panel before
+            you create the invitation.
           </p>
         </div>
       )}

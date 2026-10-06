@@ -374,7 +374,7 @@ function rekeyCommand(picked: boolean): string {
  */
 function divergenceReconcileGuidance(picked: boolean): string {
   return (
-    "Make the two match: set 'Your name' for this exchange to the name the " +
+    "Make the two match: set 'Your name or agency' for this exchange to the name the " +
     "identity is bound to, or create a new signing identity under the name " +
     `these terms state at the command line -- ${rekeyCommand(picked)} -- ` +
     "which gives you a new fingerprint every partner who pinned the old one " +
@@ -383,7 +383,7 @@ function divergenceReconcileGuidance(picked: boolean): string {
 }
 
 /**
- * The re-key remedy, for the two divergences the 'Your name' edit cannot
+ * The re-key remedy, for the two divergences the 'Your name or agency' edit cannot
  * reconcile. `boundTo` names what to bind the new identity to, the whole
  * difference between them; the rest is one action with one consequence.
  */
@@ -405,14 +405,14 @@ function rekeyGuidance(boundTo: string, picked: boolean): string {
 const DIVERGENCE_REKEY_UNDER_ADMITTED_NAME = "under a name the terms admit";
 
 /**
- * The exit where the bound name is one 'Your name' cannot be set to
+ * The exit where the bound name is one 'Your name or agency' cannot be set to
  * ({@link reasonNameFieldCannotStateIdentity}). The new identity binds to the
  * name the terms state, the form of it this exchange runs under.
  */
 const DIVERGENCE_REKEY_UNDER_TERMS_NAME = "under the name these terms state";
 
 /**
- * Why 'Your name' cannot be set to `bound`, phrased as a clause the statement
+ * Why 'Your name or agency' cannot be set to `bound`, phrased as a clause the statement
  * reads inside, or undefined when it can. What is typed there reaches the terms
  * trimmed and NFC-normalized (`normalizeLinkageTermsText`,
  * `@psi/linkageTermsText`), so the terms state another form of a bound name
@@ -470,7 +470,7 @@ export const SIGNING_IDENTITY_DIVERGENCE_POINTER =
  * the bound one comes out of a file the operator's own command line may have
  * written, so it is display-escaped like any other value read from the mount. A
  * bound name no terms document may state is never named at all, for the reason
- * core's own answer gives, and neither is one 'Your name' cannot be set to
+ * core's own answer gives, and neither is one 'Your name or agency' cannot be set to
  * ({@link reasonNameFieldCannotStateIdentity}).
  *
  * The remedy is the local name edit and a re-key together, except where the
@@ -496,14 +496,14 @@ export function signingIdentityDivergence(
     return (
       "Your signing identity is bound to a name the agreed terms cannot " +
       `state -- ${unstatable} -- so it differs from the "${termsName}" this ` +
-      "exchange names you by, and no change to 'Your name' can bring the two " +
+      "exchange names you by, and no change to 'Your name or agency' can bring the two " +
       `into agreement. ${DIVERGENCE_CONSEQUENCE} ` +
       rekeyGuidance(DIVERGENCE_REKEY_UNDER_ADMITTED_NAME, picked)
     );
   const fieldCannotState = reasonNameFieldCannotStateIdentity(bound);
   if (fieldCannotState !== undefined)
     return (
-      "Your signing identity is bound to a name 'Your name' cannot be set " +
+      "Your signing identity is bound to a name 'Your name or agency' cannot be set " +
       `to -- ${fieldCannotState} -- so it differs from the "${termsName}" ` +
       `this exchange names you by. ${DIVERGENCE_CONSEQUENCE} ` +
       rekeyGuidance(DIVERGENCE_REKEY_UNDER_TERMS_NAME, picked)
@@ -524,7 +524,7 @@ export function signingIdentityDivergence(
  */
 export const IDENTITY_LABEL_REQUIRED_REASON =
   "Your signing identity is bound to who you are, and this exchange states no " +
-  "name yet. Fill in 'Your name' for this exchange first: it is written into " +
+  "name yet. Fill in 'Your name or agency' for this exchange first: it is written into " +
   "the certificate your partner checks, and a later change does not rebind the " +
   "key.";
 
@@ -553,7 +553,7 @@ export function fingerprintRequestProblem(
  * for no receipt needs no name.
  */
 export const UNNAMED_PARTY_PROBLEM =
-  "Fill in 'Your name' for this exchange before signing receipts. A receipt " +
+  "Fill in 'Your name or agency' for this exchange before signing receipts. A receipt " +
   "names both parties, and the certificate you present is trusted by the name " +
   "you used in the agreed terms -- with none there, your partner has nothing " +
   "to check it against, and the exchange refuses to start. Name this party in " +
@@ -738,7 +738,7 @@ export const IDENTITY_SHARED_MOUNT_LIMIT_ADVISORY =
   "does: your long-lived private key there lets whoever reads it sign receipts " +
   "in your name -- for every exchange, with every partner. That check compares " +
   "folder locations and identity, so one folder mounted twice under two names " +
-  "passes it. Keep the synced folder (JOB_RENDEZVOUS_DIR) separate from the " +
+  "passes it. Keep the shared folder (JOB_RENDEZVOUS_DIR) separate from the " +
   "folder holding your key, input, and results, and check that the two are not " +
   "one folder under two names. You can also move the key out of the way here: " +
   "change where your signing identity is kept above and pick a file in your " +
@@ -765,8 +765,8 @@ export const IDENTITY_SHARED_MOUNT_REFUSAL_ADVISORY =
   "copy of your key under another name, and this folder mounted a second time " +
   "under another path, are not seen -- and whoever reads your signing key can " +
   "sign receipts in your name, for every exchange, with every partner. Give " +
-  "the synced folder a mount of its own (JOB_RENDEZVOUS_DIR), separate from " +
-  "the folder holding your key, input, and results -- or change where your " +
+  "the shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate from " +
+  "the folder holding your key, input, and results, or change where your " +
   "signing identity is kept above and pick a file in your secrets folder, " +
   "outside every folder your partner syncs.";
 

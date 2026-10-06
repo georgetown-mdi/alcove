@@ -522,7 +522,7 @@ liveTest(
     // generous enough for the ICE gathering that runs within the same wait.
     const waitedMs = loggedSpanMs(
       acceptRun.stderr,
-      "rendezvousing through the signaling server",
+      "connecting through the coordination server",
       "Your partner did not connect within",
     );
     expect(waitedMs).toBeGreaterThanOrEqual(NO_SHOW_PEER_TIMEOUT_MS);

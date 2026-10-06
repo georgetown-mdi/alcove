@@ -295,8 +295,8 @@ test("the writing peer keeps a link of its own at the widest message filename a 
 
   // Each chooser on a labelled link of its own, and at the widest name the
   // shipped path admits all three arrive whole -- the name included.
-  expect(links).toContain(`writing peer: ${PEER_ID}`);
-  expect(links).toContain(`rendezvous directory: ${RENDEZVOUS_PATH}`);
+  expect(links).toContain(`writing party: ${PEER_ID}`);
+  expect(links).toContain(`shared folder: ${RENDEZVOUS_PATH}`);
   expect(links).toContain(`message file: ${WIDEST_MESSAGE_FILENAME}`);
   expect(links).toContain(FRAME_SIZE_RECOVERY_STEP);
   expect(truncatedLinks(rendered)).toEqual([]);
@@ -314,8 +314,8 @@ test("a message filename past the link budget spends only its own link", async (
   const rendered = sanitizeErrorForDisplay(await frameGateRefusal(flooded));
   const links = linksOf(rendered);
 
-  expect(links).toContain(`writing peer: ${PEER_ID}`);
-  expect(links).toContain(`rendezvous directory: ${RENDEZVOUS_PATH}`);
+  expect(links).toContain(`writing party: ${PEER_ID}`);
+  expect(links).toContain(`shared folder: ${RENDEZVOUS_PATH}`);
   expect(links).toContain(FRAME_SIZE_RECOVERY_STEP);
   const [truncated] = truncatedLinks(rendered);
   expect(truncatedLinks(rendered)).toHaveLength(1);

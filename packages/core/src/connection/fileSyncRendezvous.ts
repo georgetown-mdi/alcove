@@ -1239,9 +1239,9 @@ export class FileSyncRendezvous {
 
       if (peerHellos.length > 1)
         throw entryGuardRefusal(
-          "only one peer may share a rendezvous directory, but multiple peer " +
-            "hello files are present -- are there other sessions using this " +
-            "path?",
+          "a shared folder serves one partner, but several partner " +
+            "hello files are present. Check whether another session is using " +
+            "this path.",
           "peer hello files",
           scope.inboundPath,
           peerHellos.map((f) => f.name),

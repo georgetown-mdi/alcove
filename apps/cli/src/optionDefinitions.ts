@@ -314,7 +314,7 @@ export function addSweepOptions(cmd: Argv): Argv {
       type: "boolean",
       describe:
         "before rendezvous, delete every protocol file left in the directory " +
-        "(this party's and the peer's: hellos, acks, locks, joining sentinels, " +
+        "(yours and your partner's: hellos, acks, locks, joining sentinels, " +
         "messages) and start a fresh exchange. Foreign (non-protocol) files are " +
         "never deleted. Use to recover a directory after a crashed or " +
         "mismatched prior run, once you have confirmed no other session is " +
@@ -327,7 +327,7 @@ export function addSweepOptions(cmd: Argv): Argv {
       type: "boolean",
       describe:
         "DANGEROUS. Permit --sweep-exchange-files to delete a retain-mode audit " +
-        "transcript (a directory that is, or whose peer is, in retain mode); the " +
+        "transcript (a directory that you or your partner run in retain mode); the " +
         "prior transcript is permanently lost. Requires --sweep-exchange-files; " +
         "on its own it is rejected. Only use when you intend to discard the " +
         "transcript",
@@ -535,14 +535,14 @@ export function addCommonBootstrapOptions(
       alias: "t",
       type: "string",
       describe:
-        "how long to wait for the peer to arrive before giving up " +
+        "how long to wait for your partner to arrive before giving up " +
         `(maximum: ${MAX_TIMEOUT_SECONDS / 86_400}d). ` +
         DURATION_VALUE_HELP,
     })
     .option("polling-frequency", {
       type: "string",
       describe:
-        "how often to poll the shared directory for the partner's files on " +
+        "how often to poll the shared folder for the partner's files on " +
         "the sftp/filedrop channels (default: 5s); overrides " +
         "connection.options.poll_interval_ms. A conservative default keeps " +
         "within SFTP servers' anti-flood limits; a sub-second value is " +
@@ -562,7 +562,7 @@ export function addCommonBootstrapOptions(
       type: "boolean",
       default: true,
       describe:
-        "after a successful exchange, write a self-attested audit record (a " +
+        "after a successful exchange, write a self-attested exchange record (a " +
         "local artifact, not a signed receipt) and its private verification " +
         "keys in the output folder (the working directory when the result " +
         "goes to stdout); use --no-record to skip",
@@ -616,8 +616,8 @@ export function addCommonBootstrapOptions(
       describe:
         "keep all exchange files as a permanent transcript instead of " +
         "deleting them after consumption. They persist in the shared " +
-        "directory (a directory on the remote SFTP host, or the shared " +
-        "folder both parties reach), along with the plaintext rendezvous " +
+        "folder (a directory on the remote SFTP host, or a folder both " +
+        "parties reach), along with the plaintext rendezvous " +
         "metadata that accompanies them. Intended for sync-mediated " +
         "transports that do not propagate deletions and for audit use " +
         "cases. Turns on --timestamp-in-filename and --lockless-rendezvous, " +
@@ -640,12 +640,12 @@ export function addCommonBootstrapOptions(
       type: "string",
       describe:
         describe["outbound-path"] ??
-        "use a separate outbound directory: the URL/positional path becomes " +
-          "the inbound (peer-written) directory and this is the outbound " +
-          "(self-written) directory, for managed shares and SFTP servers with " +
+        "use a separate outbound folder: the URL/positional path becomes " +
+          "the inbound folder your partner writes and this is the outbound " +
+          "folder you write, for managed shares and SFTP servers with " +
           "distinct drop and pickup folders. Requires --retain-files; the two " +
-          "directories must differ. Leave unset for a single shared directory. " +
-          "Each party sets its own directories",
+          "folders must differ. Leave unset for a single shared folder. " +
+          "Each party sets its own folders",
     });
   return addVerboseOption(withoutVerbose);
 }
@@ -1231,10 +1231,10 @@ export function warnServerOverridesIgnoredOffline(
     `${ignored.join(", ")} ${ignored.length === 1 ? "has" : "have"} no effect ` +
       "on an offline invite/accept: the connection block is written for you to " +
       "edit (a placeholder, or seeded from the invitation endpoint), not built " +
-      "from a URL. Set the connection details directly in that block -- the " +
-      "server host/port/credentials, or the inbound_path/outbound_path split " +
-      "directory -- before running 'alcove exchange', or pass these flags on " +
-      "an online invite/accept, the zero-setup exchange, or 'alcove exchange'.",
+      "from a URL. Set the connection details (the server host, port and " +
+      "credentials, or the inbound_path/outbound_path split) in that block " +
+      "before running 'alcove exchange', or pass these flags on an online " +
+      "invite/accept, a quick exchange, or 'alcove exchange'.",
   );
 }
 
@@ -1334,7 +1334,7 @@ export function warnOptionsOverridesIgnoredOffline(
       "edit (a placeholder, or seeded from the invitation endpoint), and these " +
       "tuning options are not applied to it. Set them under connection.options " +
       "in the written config before running 'alcove exchange', or pass these " +
-      "flags on an online invite/accept, the zero-setup exchange, or 'alcove " +
+      "flags on an online invite/accept, a quick exchange, or 'alcove " +
       "exchange'.",
   );
 }

@@ -414,7 +414,7 @@ export function answersRows(
   const sent = disclosedColumnNames(editor.draft.metadata);
   return [
     {
-      label: "Your name",
+      label: "Your name or agency",
       value: editor.draft.identity,
       changeTarget: "file",
     },

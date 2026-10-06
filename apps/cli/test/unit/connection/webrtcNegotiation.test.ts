@@ -1177,7 +1177,7 @@ test("the partner leaving the broker fails the rendezvous", async () => {
     role: "acceptor",
   });
   socket.deliver({ type: BROKER_MESSAGE.leave, src: inviterId, payload: {} });
-  await expect(session).rejects.toThrow(/left the signaling server/);
+  await expect(session).rejects.toThrow(/left the coordination server/);
 });
 
 // --- broker traffic after the session is established ------------------------
@@ -1306,7 +1306,9 @@ test("a broker failure inside the acceptor's offer rejects rather than going unh
     };
     socket.register();
 
-    await expect(session).rejects.toThrow(/signaling server reported an error/);
+    await expect(session).rejects.toThrow(
+      /coordination server reported an error/,
+    );
     // The teardown the classified path owes, which an unhandled rejection skips.
     expect(peer.closeCalls).toBe(1);
     // A turn for the rejection to be reported if it was never handled.
@@ -1331,7 +1333,7 @@ test("an abort before registration tears down the same, having sent nothing", as
 
   controller.abort();
   await expect(session).rejects.toThrow(
-    /connecting to the signaling server was cancelled/,
+    /connecting to the coordination server was cancelled/,
   );
   expect(socket.sent).toHaveLength(0);
   expect(socket.closeCalls).toBe(1);
@@ -1927,7 +1929,7 @@ test("an interrupt during an ID-TAKEN retry ends the wait at once", async () => 
   await expect(session).rejects.toThrow(/rendezvous was cancelled/);
 });
 
-test("a re-registration the signaling server drops is retried within the wait", async () => {
+test("a re-registration the coordination server drops is retried within the wait", async () => {
   const lines = captureDiagnostics();
   holdAttemptClock();
   const { sockets, peers, session, acceptorId } = await startRendezvous({
@@ -1944,7 +1946,7 @@ test("a re-registration the signaling server drops is retried within the wait", 
   expect(await settlementOf(session)).toBe("waiting");
   expect(
     lines.find((line) =>
-      line.includes("the signaling server closed the connection"),
+      line.includes("the coordination server closed the connection"),
     ),
   ).toContain("trying again until the wait for the partner ends");
   await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
@@ -2031,12 +2033,12 @@ test("a re-registration the server never confirms ends at the deadline, not its 
   expect(failure).toBeInstanceOf(ConnectionError);
   expect((failure as ConnectionError).kind).toBe("transport");
   expect((failure as ConnectionError).message).toMatch(
-    /^the signaling server did not confirm registration within/,
+    /^the coordination server did not confirm registration within/,
   );
   expect(sockets).toHaveLength(3);
 });
 
-test("a re-registration still failing at the deadline fails with the signaling server's failure", async () => {
+test("a re-registration still failing at the deadline fails with the coordination server's failure", async () => {
   captureDiagnostics();
   holdAttemptClock();
   const waitMs = 200_000;
@@ -2056,20 +2058,20 @@ test("a re-registration still failing at the deadline fails with the signaling s
   expect(failure).toBeInstanceOf(ConnectionError);
   expect((failure as ConnectionError).kind).toBe("transport");
   expect((failure as ConnectionError).message).toBe(
-    "the signaling server closed the connection",
+    "the coordination server closed the connection",
   );
   expect(sockets.length).toBeGreaterThan(3);
   expect(sockets.every((socket) => socket.closeCalls === 1)).toBe(true);
 });
 
-test("a first registration the signaling server drops fails at once", async () => {
+test("a first registration the coordination server drops fails at once", async () => {
   const { socket, sockets, session } = await startRendezvous({
     role: "acceptor",
     confirmRegistration: false,
   });
   socket.drop();
   await expect(session).rejects.toThrow(
-    "the signaling server closed the connection",
+    "the coordination server closed the connection",
   );
   expect(sockets).toHaveLength(1);
 });
@@ -2093,7 +2095,7 @@ test("a broker socket dropped before the partner arrives starts the next attempt
   expect(peers[0].closeCalls).toBe(1);
   expect(
     lines.find((line) =>
-      line.includes("the signaling server closed the connection"),
+      line.includes("the coordination server closed the connection"),
     ),
   ).toContain("starting a new connection attempt");
 
@@ -2146,7 +2148,7 @@ test("a broker socket error before the partner arrives starts the next attempt",
   expect(peers[0].closeCalls).toBe(1);
   expect(
     lines.find((line) =>
-      line.includes("the connection to the signaling server failed"),
+      line.includes("the connection to the coordination server failed"),
     ),
   ).toContain("starting a new connection attempt");
 
@@ -2186,7 +2188,7 @@ test("a broker socket dropped once the partner has answered fails the wait", asy
   await until(() => peer.remoteDescriptions.length === 1);
   socket.drop();
   await expect(session).rejects.toThrow(
-    /the signaling server closed the connection/,
+    /the coordination server closed the connection/,
   );
   expect(sockets).toHaveLength(1);
 });

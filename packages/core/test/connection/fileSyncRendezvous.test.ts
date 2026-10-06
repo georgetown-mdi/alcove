@@ -1247,7 +1247,7 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
       name: "UsageError",
-      message: expect.stringContaining("peer hello files"),
+      message: expect.stringContaining("partner hello files"),
     });
   });
 
@@ -1552,10 +1552,10 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     expect(err).toBeInstanceOf(UsageError);
     const rendered = sanitizeErrorForDisplay(err);
     expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(rendered).toContain("a shared folder serves one partner");
     expect(rendered).toContain(
-      "only one peer may share a rendezvous directory",
+      "Check whether another session is using this path.",
     );
-    expect(rendered).toContain("are there other sessions using this path?");
     expect((err as Error).message.length).toBeLessThanOrEqual(
       DEFAULT_MAX_DISPLAY_LENGTH,
     );

@@ -168,7 +168,7 @@ export function builder(cmd: Argv): Argv {
         "Usage:\n" +
           "  $0 accept [options] INVITATION [INPUT_FILE] [OUTPUT_FOLDER]    (offline)\n" +
           "  $0 accept [options] URL INVITATION INPUT_FILE [OUTPUT_FOLDER]  (online)\n\n" +
-          "INVITATION is the invitation string your partner sent, or an @path\n" +
+          "INVITATION is the invitation your partner sent, or an @path\n" +
           "reference to a file containing it. Offline: show its terms, ask you\n" +
           "to confirm, and write config and key files; an invitation naming a\n" +
           "webrtc coordination server, given an INPUT_FILE, also runs the\n" +

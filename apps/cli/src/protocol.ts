@@ -324,7 +324,7 @@ export function payloadSendBeyondConfigurationNotice(
  * tells a supervisor not to re-run.
  */
 export const TERMINATED_RECORD_UNBUILT_WARNING =
-  "no audit record could be built for this exchange, so none was written; " +
+  "no exchange record could be built for this exchange, so none was written; " +
   "the exchange had already disclosed when it failed, so that disclosure has " +
   "no local record";
 
@@ -453,7 +453,7 @@ export const WEBRTC_RENDEZVOUS_SECRET_REQUIRED =
  */
 export const WEBRTC_ROLE_REQUIRED =
   "this webrtc connection has no `role`: each party registers with the " +
-  "signaling server under the id its own role derives, and dials the id the " +
+  "coordination server under the id its own role derives, and dials the id the " +
   "other's does. Set `role: inviter` or `role: acceptor` on the connection " +
   "block.";
 
@@ -1038,7 +1038,7 @@ async function openRunTransport(params: {
         "the webrtc rendezvous was not resolved",
       );
     log.info(
-      "rendezvousing through the signaling server at",
+      "connecting through the coordination server at",
       // dialedBrokerAuthority (see its doc) is what the socket actually
       // dials, not the configured `host` text.
       //
@@ -2536,7 +2536,7 @@ async function writeExchangeOutputs(params: {
   if (!writeRecord) record = { kind: "disabled" };
   else if (audit === undefined) {
     missingArtifacts.push(
-      "no audit record could be built for this exchange, so none was " +
+      "no exchange record could be built for this exchange, so none was " +
         "written; the exchange and its results succeeded and need not be " +
         "re-run",
     );

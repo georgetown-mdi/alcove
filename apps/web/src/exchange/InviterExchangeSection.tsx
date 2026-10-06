@@ -364,7 +364,7 @@ export function InviterExchangeSection({
                 while your partner accepts.
               </p>
             )}
-            <CopyRow label="Invitation link" value={invitation.deepLink} />
+            <CopyRow label="Invitation as a link" value={invitation.deepLink} />
             {!partnerAcceptsByCli && (
               <CopyRow
                 label="A message to send"
@@ -381,18 +381,19 @@ export function InviterExchangeSection({
             )}
             {partnerAcceptsByCli && (
               <CopyRow
-                label="Invitation code"
-                hint="Your partner accepts with this same code, whichever transport they run"
+                label="Invitation as text"
+                noun="invitation"
+                hint="Your partner accepts with this same text, whichever transport they run"
                 value={invitation.encoded}
               />
             )}
             {onDownloadAcceptKit !== undefined && (
               <>
                 <p className={styles.small}>
-                  Your partner accepts from the command line -- send them the
-                  code, with these instructions alongside it. The sheet takes
-                  them from nothing to accepting and carries no secret, so it
-                  can travel any way that suits them.
+                  Your partner accepts from the command line. Send them the
+                  invitation as text, with these instructions alongside it. The
+                  sheet takes them from nothing to accepting and carries no
+                  secret, so it can travel any way that suits them.
                 </p>
                 <Button variant="default" onClick={onDownloadAcceptKit}>
                   Download instructions for your partner
@@ -501,14 +502,14 @@ function LimitedReachAlert({
       icon={<IconAlertTriangle aria-hidden />}
       title={
         partnerAcceptsByCli
-          ? `The invitation link only works on ${where}`
+          ? `The link only works on ${where}`
           : `This invitation only works on ${where}`
       }
       role="status"
       mb="md"
     >
       {partnerAcceptsByCli
-        ? "Send your partner the invitation code instead of the link."
+        ? "Send your partner the invitation as text instead of the link."
         : reach === "thisComputer"
           ? "This page runs on your own computer, so a partner on another computer cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."
           : "This page runs on an address only your network reaches, so a partner outside it cannot accept. To exchange with them, create the invitation on an Alcove site both of you can reach."}

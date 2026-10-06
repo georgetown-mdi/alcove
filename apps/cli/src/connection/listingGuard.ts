@@ -78,7 +78,7 @@ export function directoryTooLargeError(
   max: number,
 ): DirectoryListingBoundsError {
   return new DirectoryListingBoundsError(
-    `the rendezvous directory contains more than ${max} entries; refusing to ` +
+    `the shared folder contains more than ${max} entries; refusing to ` +
       `enumerate it to avoid an unbounded memory allocation`,
     { details: [directoryLink(dirPath)] },
   );
@@ -114,7 +114,7 @@ export function filenameTooLongError(
     name.slice(0, 64),
   )}${DISPLAY_TRUNCATION_MARKER}`;
   return new DirectoryListingBoundsError(
-    `the rendezvous directory contains an entry whose filename is ` +
+    `the shared folder contains an entry whose filename is ` +
       `${nameBytes} bytes, exceeding the maximum of ${max}; ` +
       `refusing to process it`,
     {

@@ -53,6 +53,7 @@ import {
 } from "./directExchangeModel";
 import { WorkShell } from "./WorkShell";
 
+import { CONSOLE_GUIDE_URL } from "./userGuide";
 import { DirectConfirmSection } from "./DirectConfirmSection";
 import { DirectRunSection } from "./DirectRunSection";
 import { DirectServerSection } from "./DirectServerSection";
@@ -293,12 +294,21 @@ export function DirectExchangeScreen() {
     return (
       <AppPage>
         <main className={styles.lobby}>
-          <h1>Direct exchange</h1>
+          <h1>Quick exchange</h1>
           <p>
-            Running an exchange you have already arranged is a console feature.
-            It is not available in this browser-only deployment.{" "}
+            Quick exchanges run in the self-hosted Alcove console or the
+            command-line tool. See the{" "}
+            <Anchor
+              href={CONSOLE_GUIDE_URL}
+              target="_blank"
+              rel="noreferrer"
+              inherit
+            >
+              console guide
+            </Anchor>
+            , or go{" "}
             <Anchor component={Link} to="/" inherit>
-              Back to the start
+              back to the start
             </Anchor>
             .
           </p>
@@ -325,7 +335,7 @@ export function DirectExchangeScreen() {
     <WorkShell
       topBar={
         <TopBar
-          navLabel="Direct exchange"
+          navLabel="Quick exchange"
           steps={steps}
           transportNote={
             step === "confirm" || step === "run"

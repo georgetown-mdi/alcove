@@ -1703,7 +1703,7 @@ describe("the signing identity's bound name against the agreed terms", () => {
     // the CLI offers in the same order -- the local name edit first, since a new
     // key invalidates every fingerprint a partner has pinned.
     expect(statement).toMatch(/this run is refused before it connects/);
-    expect(statement).toMatch(/set 'Your name' for this exchange/);
+    expect(statement).toMatch(/set 'Your name or agency' for this exchange/);
     expect(statement).toContain(
       `${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME that name`,
     );
@@ -1779,7 +1779,9 @@ describe("the signing identity's bound name against the agreed terms", () => {
     expect(statement).toBeDefined();
     expect(statement).toContain("control or text-direction character");
     expect(statement).toMatch(/Create a new signing identity/);
-    expect(statement).not.toMatch(/set 'Your name' for this exchange to/);
+    expect(statement).not.toMatch(
+      /set 'Your name or agency' for this exchange to/,
+    );
     expect(statement).not.toContain("Registrar");
     expect(statement).toContain(`"${THIS_PARTY}"`);
   });
@@ -1923,7 +1925,9 @@ describe("the signing identity's bound name against the agreed terms", () => {
       );
       expect(statement).toBeDefined();
       expect(statement).toContain(reason);
-      expect(statement).not.toMatch(/set 'Your name' for this exchange to/);
+      expect(statement).not.toMatch(
+        /set 'Your name or agency' for this exchange to/,
+      );
       expect(statement).toMatch(/Create a new signing identity under the name/);
       expect(statement).toMatch(/this run is refused before it connects/);
       // The two names differ invisibly, so only the one the run states is
@@ -1940,7 +1944,7 @@ describe("the signing identity's bound name against the agreed terms", () => {
       resolved("County Registrar"),
       termsName("Agency A"),
     );
-    expect(statement).toMatch(/set 'Your name' for this exchange to/);
+    expect(statement).toMatch(/set 'Your name or agency' for this exchange to/);
   });
 });
 

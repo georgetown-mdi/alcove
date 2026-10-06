@@ -27,7 +27,7 @@ On the start page, choose **Create an invitation**. Three steps follow.
 2. **Matching & sharing.** For each column, confirm its type and how it is used: **Used to match - not sent**, **Unique record identifier - not sent**, **Sent to your partner**, or **Ignored**. A column sent to your partner is sent only for rows that match; your partner never receives the values in rows that do not match.
 3. **Review & create.** Choose how long the invitation can be accepted (one hour by default, up to one year) and who receives the matched results: you and your partner, only you, or only your partner. Leave **How will this exchange run?** at **Live, in this browser**. Check every term in the exchange proposal, then choose **Create the invitation**. The terms cannot be changed after this.
 
-The next screen, **Your invitation is ready**, shows the invitation link and a message you can copy that explains it to your partner. Send them the link over your trusted channel.
+The next screen, **Your invitation is ready**, shows the invitation as a link, and a message you can copy that explains it to your partner. Send them the link over your trusted channel.
 
 If the page you created it on runs on your own computer or inside your network, the screen warns that the link works only there. It recognizes loopback and private-range addresses and the common internal name endings, such as `.local`, `.lan` and `.corp`. A name only your network resolves under some other ending gets no warning, so before you send the link, check that your partner can open that address.
 

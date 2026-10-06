@@ -42,13 +42,29 @@ const WAITING_STAGE_LABEL: Record<ExchangeSeat, string> = {
   acceptor: "Connecting to your partner",
 };
 
+const GETTING_READY_LABEL = "Getting ready";
+const CHECKING_SETTINGS_LABEL = "Checking settings match";
+
+/** Core's per-key stage id, `stage N / K`, for a cascade run. */
+const KEY_STAGE_ID = /^stage (\d+) \/ (\d+)$/;
+
+/** The label the run screen shows for a stage core describes, so the protocol
+ * names core and the CLI event stream use stay out of the browser's copy. */
+function displayStage(stage: StageDefinition): StageDefinition {
+  if (stage.id === CONFIRMING_PROTOCOL_STAGE_ID)
+    return { ...stage, label: CHECKING_SETTINGS_LABEL };
+  const key = KEY_STAGE_ID.exec(stage.id);
+  if (key === null) return stage;
+  return { ...stage, label: `Matching records (key ${key[1]} of ${key[2]})` };
+}
+
 /** The pre-stages for a seat: the terminal-before-start stage every run opens
  * with, and the waiting stage whose label is the seat's. */
 function preStagesFor(seat: ExchangeSeat): Array<StageDefinition> {
   return [
     {
       id: BEFORE_START_STAGE_ID,
-      label: "Before start",
+      label: GETTING_READY_LABEL,
       state: ProcessState.BeforeStart,
     },
     {
@@ -76,7 +92,7 @@ function initialStages(seat: ExchangeSeat = "inviter"): Array<StageDefinition> {
     ...preStagesFor(seat),
     {
       id: CONFIRMING_PROTOCOL_STAGE_ID,
-      label: "Confirming protocol",
+      label: CHECKING_SETTINGS_LABEL,
       state: ProcessState.Working,
     },
     doneStage,
@@ -92,10 +108,9 @@ export function stagesFor(
 ): Array<StageDefinition> {
   return [
     ...preStagesFor(seat),
-    ...describeExchangeStages(prepared).map((stage) => ({
-      ...stage,
-      state: ProcessState.Working as const,
-    })),
+    ...describeExchangeStages(prepared).map((stage) =>
+      displayStage({ ...stage, state: ProcessState.Working }),
+    ),
     doneStage,
   ];
 }
@@ -147,7 +162,7 @@ export function initialRun(seat: ExchangeSeat = "inviter"): ExchangeRun {
   return {
     stages: initialStages(seat),
     stageId: BEFORE_START_STAGE_ID,
-    visits: [{ id: BEFORE_START_STAGE_ID, label: "Before start" }],
+    visits: [{ id: BEFORE_START_STAGE_ID, label: GETTING_READY_LABEL }],
     failed: false,
   };
 }
@@ -157,7 +172,7 @@ export function runWithStages(
   run: ExchangeRun,
   stages: Array<StageDefinition>,
 ): ExchangeRun {
-  return { ...run, stages };
+  return { ...run, stages: stages.map(displayStage) };
 }
 
 function closedVisits(visits: Array<StageVisit>, at: Date): Array<StageVisit> {
@@ -323,15 +338,15 @@ interface TimelineStep {
 const TIMELINE_LABELS = [
   "Share",
   "Partner accepts",
-  "Confirm protocol",
-  "Link keys",
+  "Check settings",
+  "Match records",
   "Done",
 ] as const;
 
 /**
  * The top bar's protocol timeline, derived from the run's stage: Share while the
- * exchange waits for the partner, Confirm protocol during the protocol
- * handshake, Link keys through the per-key rounds, everything done at
+ * exchange waits for the partner, Check settings during the protocol
+ * handshake, Match records through the per-key rounds, everything done at
  * completion. "Partner accepts" is a moment rather than a duration, so it is
  * never current -- it flips to done the instant a protocol stage begins.
  */
@@ -352,8 +367,8 @@ export function timelineSteps(run: ExchangeRun): Array<TimelineStep> {
 
 const ACCEPTOR_TIMELINE_LABELS = [
   "Connect",
-  "Confirm protocol",
-  "Link keys",
+  "Check settings",
+  "Match records",
   "Done",
 ] as const;
 
@@ -362,7 +377,7 @@ const ACCEPTOR_TIMELINE_LABELS = [
  * has no Share or Partner-accepts step -- the acceptor dials, so its timeline never
  * shows a stage it cannot act on. Connect stays current through the pre-stages
  * (before-start and the "Connecting to your partner" wait); a protocol stage
- * flips it to Confirm protocol; the per-key rounds sit under Link keys; and
+ * flips it to Check settings; the per-key rounds sit under Match records; and
  * everything is done at completion.
  */
 export function acceptorTimelineSteps(run: ExchangeRun): Array<TimelineStep> {

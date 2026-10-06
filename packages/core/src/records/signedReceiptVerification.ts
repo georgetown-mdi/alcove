@@ -199,7 +199,7 @@ export interface DualSignedRecordVerificationReport {
   binder: string;
 }
 
-/** What a caller supplies to check a dual-signed record against the world outside
+/** What a caller supplies to check a signed receipt against the world outside
  * it. Every field is optional: with none, the record is checked for internal
  * consistency only (each signature against the certificate beside it) and the
  * report is `incomplete`. */
@@ -865,7 +865,7 @@ function refuseAnchorOutsideTheUnion(party: SignedReceiptPartyReport): void {
     party.certificateAnchor !== "unanchored"
   )
     throw new InternalConsistencyError(
-      `a dual-signed record reports the ${party.role}'s certificate anchor ` +
+      `a signed receipt reports the ${party.role}'s certificate anchor ` +
         `as ${party.certificateAnchor}: the verdict would have a status no ` +
         "surface has words for",
     );
@@ -881,7 +881,7 @@ function anchoredSlot(
   // for all of them.
   if (party.certificateAnchor === "unanchored")
     throw new InternalConsistencyError(
-      `a verified dual-signed record leaves the ${party.role}'s certificate ` +
+      `a verified signed receipt leaves the ${party.role}'s certificate ` +
         "unanchored: the verdict would claim both certificates were anchored " +
         "when one was not",
     );
@@ -938,7 +938,7 @@ function decideGuidance(
     // pinned, so the verdict refuses the report instead.
     if (report.pinnedFingerprints !== "not-supplied")
       throw new InternalConsistencyError(
-        "a dual-signed record anchors neither certificate while a pinned " +
+        "a signed receipt anchors neither certificate while a pinned " +
           `fingerprint is reported as ${report.pinnedFingerprints}: the ` +
           "guidance would ask for a pinned value that was already supplied",
       );
@@ -1061,7 +1061,7 @@ export function decideSignedReceiptVerdict(
     );
     if (failed !== undefined)
       throw new InternalConsistencyError(
-        `a verified dual-signed record reports ${failed[0]} as ` +
+        `a verified signed receipt reports ${failed[0]} as ` +
           `${failed[1].status}: the verdict would read verified over a row ` +
           "that failed",
       );

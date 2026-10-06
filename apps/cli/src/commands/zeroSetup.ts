@@ -824,7 +824,7 @@ export async function handler(argv: Arguments): Promise<void> {
           const noun = existing.length === 1 ? "file" : "files";
           log.warn(
             `existing ${noun} ${existing.join(", ")} will be ignored by this ` +
-              "zero-setup exchange; to use saved configuration and key material, " +
+              "quick exchange; to use saved configuration and key material, " +
               "run 'alcove exchange' instead",
           );
         }

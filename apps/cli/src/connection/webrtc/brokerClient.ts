@@ -189,7 +189,7 @@ export interface BrokerConnectOptions {
  * acts on, and only at the terminal.
  */
 export const ID_TAKEN_MESSAGE =
-  "the signaling server reports this peer id is already registered. The " +
+  "the coordination server reports this peer id is already registered. The " +
   "usual cause is both parties running the same connection role: check the " +
   "`role` field on each party's webrtc connection, one inviter and one " +
   "acceptor.";
@@ -233,7 +233,7 @@ export class BrokerUnreachableError extends ConnectionError {
 
 /** What a failed signaling socket reports when the certificate verified. */
 export const SIGNALING_SOCKET_FAILED_MESSAGE =
-  "the connection to the signaling server failed";
+  "the connection to the coordination server failed";
 
 /**
  * What a failed signaling socket reports when the certificate did not verify.
@@ -242,10 +242,10 @@ export const SIGNALING_SOCKET_FAILED_MESSAGE =
  * certificate authority is what fixes it.
  */
 export const SIGNALING_CERTIFICATE_FAILED_MESSAGE =
-  "the connection to the signaling server failed because its TLS certificate " +
+  "the connection to the coordination server failed because its TLS certificate " +
   "did not verify on this machine. If this network intercepts TLS, add its " +
   "certificate authority to this machine's trust store, or name a file " +
-  "holding it in NODE_EXTRA_CA_CERTS; otherwise check that the signaling " +
+  "holding it in NODE_EXTRA_CA_CERTS; otherwise check that the coordination " +
   "server's own certificate is current and issued for the configured `host`.";
 
 /**
@@ -258,10 +258,10 @@ export const SIGNALING_CERTIFICATE_FAILED_MESSAGE =
  * at least as likely the cause here.
  */
 export const SIGNALING_PROXIED_FAILED_MESSAGE =
-  "the connection to the signaling server failed, and its TLS certificate " +
+  "the connection to the coordination server failed, and its TLS certificate " +
   "was not checked: this run has Node's environment proxying turned on " +
   "(NODE_USE_ENV_PROXY or --use-env-proxy, with a proxy address in the " +
-  "environment), and the check dials the signaling server directly, so it " +
+  "environment), and the check dials the coordination server directly, so it " +
   "cannot tell whether this connection went through a proxy. If a proxy " +
   "intercepts TLS, add its certificate authority to this machine's trust " +
   "store, or name a file holding it in NODE_EXTRA_CA_CERTS; otherwise check " +
@@ -298,7 +298,7 @@ function signalingSocketError(
  * derived peer id, and a `path` reaching this module can be kilobytes long.
  */
 export const BROKER_ADDRESS_REFUSED =
-  "the signaling server address is not a valid WebSocket URL; check the " +
+  "the coordination server address is not a valid WebSocket URL; check the " +
   "webrtc connection's `host`, `port`, and `path`";
 
 /**
@@ -314,7 +314,7 @@ export const INVITATION_BROKER_ADDRESS_REFUSED =
 
 /** The refusal a registration URL naming some other authority gets. */
 export const BROKER_AUTHORITY_REFUSED =
-  "the signaling server address does not name the configured host, so nothing " +
+  "the coordination server address does not name the configured host, so nothing " +
   "was dialed; check the webrtc connection's `host` and `path`";
 
 /**
@@ -513,7 +513,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
   if (text === undefined) return undefined;
   if (Buffer.byteLength(text, "utf8") > MAX_SIGNALING_FRAME_BYTES) {
     throw new ConnectionError(
-      `the signaling server sent a frame larger than the ` +
+      `the coordination server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
       "transport",
     );
@@ -525,7 +525,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
     // The parser's own error can echo a span of the body, which is server- and
     // peer-controlled; replace it rather than wrap it.
     throw new ConnectionError(
-      "the signaling server sent a frame that is not valid JSON",
+      "the coordination server sent a frame that is not valid JSON",
       "transport",
     );
   }
@@ -544,7 +544,7 @@ function parseSignalingFrame(raw: unknown): BrokerMessage | undefined {
 /** The error a rejected API key produces, whichever way the broker signals it. */
 function invalidKeyError(): ConnectionError {
   return new ConnectionError(
-    "the signaling server rejected the configured API key; check the `key` " +
+    "the coordination server rejected the configured API key; check the `key` " +
       "field on the webrtc connection's server block",
     "usage",
   );
@@ -587,7 +587,7 @@ function terminalErrorFor(message: BrokerMessage): ConnectionError | undefined {
       return isInvalidKeyPayload(message.payload)
         ? invalidKeyError()
         : new ConnectionError(
-            "the signaling server reported an error and closed the connection",
+            "the coordination server reported an error and closed the connection",
             "transport",
           );
     default:
@@ -693,7 +693,7 @@ export function connectToBroker(
         reject(
           error ??
             new BrokerUnreachableError(
-              "the connection to the signaling server ended before it was " +
+              "the connection to the coordination server ended before it was " +
                 "registered",
             ),
         );
@@ -727,7 +727,7 @@ export function connectToBroker(
       claimTerminal();
       settle(
         new ConnectionError(
-          "connecting to the signaling server was cancelled",
+          "connecting to the coordination server was cancelled",
           "closed",
         ),
       );
@@ -824,7 +824,7 @@ export function connectToBroker(
     const onSocketClose = (): void =>
       end(
         new BrokerSocketDroppedError(
-          "the signaling server closed the connection",
+          "the coordination server closed the connection",
         ),
       );
 
@@ -846,7 +846,7 @@ export function connectToBroker(
       () =>
         end(
           new BrokerUnreachableError(
-            `the signaling server did not confirm registration within ` +
+            `the coordination server did not confirm registration within ` +
               `${openTimeoutMs}ms`,
           ),
         ),

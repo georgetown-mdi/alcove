@@ -177,7 +177,7 @@ export function connectionRows(exchangeFile: ExchangeSpec): Array<ConfigRow> {
     const host = sanitizeForDisplay(server.host);
     const path = sanitizeForDisplay(server.path ?? "");
     rows.push({
-      label: "Rendezvous server",
+      label: "Coordination server",
       value:
         server.port !== undefined
           ? displayText`${host}:${server.port}${path}`

@@ -330,7 +330,7 @@ export const FILEDROP_FIELD_DOCS: Array<{
   {
     path: ["connection", "path"],
     lines: [
-      "Absolute path of the shared directory both parties mount, for example a",
+      "Absolute path of the shared folder both parties mount, for example a",
       "network share. Each party writes its own mount point here.",
     ],
   },

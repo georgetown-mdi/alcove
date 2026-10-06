@@ -11,7 +11,7 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 | I am a... | Start with... | Then read... |
 |-----------|--------------|--------------|
 | Analyst running one exchange in the browser | [WEB_APP.md](WEB_APP.md) | [MANAGED_EXCHANGE.md](MANAGED_EXCHANGE.md), for running it again on a schedule |
-| Partner who received an invitation link | [WEB_APP.md](WEB_APP.md#accepting-an-invitation) | [PRIVACY.md](../PRIVACY.md) |
+| Partner who received an invitation | [WEB_APP.md](WEB_APP.md#accepting-an-invitation) | [PRIVACY.md](../PRIVACY.md) |
 | Program officer evaluating the software | [DESIGN.md](DESIGN.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [COMPLIANCE.md](COMPLIANCE.md) |
 | Security reviewer or auditor | [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md) | [SECURITY_DESIGN.md](SECURITY_DESIGN.md), [PROTOCOL.md](spec/PROTOCOL.md), [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md), [COMPLIANCE.md](COMPLIANCE.md) |
 | Compliance officer | [COMPLIANCE.md](COMPLIANCE.md) | [PRIVACY.md](../PRIVACY.md), [SECURITY_DESIGN.md](SECURITY_DESIGN.md) |
@@ -22,6 +22,22 @@ Alcove is a privacy-preserving record linkage (PPRL) tool that enables partner a
 | Developer contributing to the project | [DESIGN.md](DESIGN.md) | [PROTOCOL.md](spec/PROTOCOL.md), [COMMUNICATION.md](COMMUNICATION.md), [FILE_SYNC.md](spec/FILE_SYNC.md), [CONTRIBUTING.md](../CONTRIBUTING.md), [TESTING.md](TESTING.md) |
 | Maintainer upgrading a pinned dependency | [CONTRIBUTING.md](../CONTRIBUTING.md#dependency-policy) | [DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md), [PREBUILD_REVENDOR.md](PREBUILD_REVENDOR.md) |
 | Partner agency whose IT staff run the command line app | [CLI.md](CLI.md#your-first-recurring-exchange) | [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md) |
+
+## Glossary
+
+Each concept has one official word, listed below, and the screens, messages and guides use it. A sentence may use another wording where the context makes clear what it means, and comes back to the official word where a reader may have lost track; not every mention has to match. Configuration keys, command-line flags, environment variable names and code keep their own names.
+
+| Word | What it names | Where it is set |
+|------|---------------|-----------------|
+| Alcove | This software, on either side of an exchange | - |
+| partner | The other party to an exchange; "you" and "your" are this party | - |
+| invitation | What one party sends the other to set up an exchange: the proposed terms, a short-lived secret, and optionally where to meet. It is sent as a link to the web app or as text to paste | `alcove invite`, `alcove accept`, `alcove exchange --invitation` ([CLI.md](CLI.md#invitations)) |
+| quick exchange | An exchange with no invitation and no shared secret, run against a server or shared folder both parties already agreed on | `alcove URL INPUT_FILE`, or the console's quick exchange; `--save` keeps its settings ([CLI.md](CLI.md#quick-exchange)) |
+| shared folder | The folder both parties read and write when an exchange runs through files: a network share or a synced folder | `connection.channel: filedrop` with [`connection.path`](EXCHANGE_REFERENCE.md#connectionpath), or `inbound_path` and `outbound_path`; on the console, `JOB_RENDEZVOUS_DIR` |
+| coordination server | The server two parties connect through to start a WebRTC exchange; it passes setup messages and never sees exchange data | `connection.channel: webrtc` with `connection.server`; for the web app, `VITE_SIGNALING_SERVER_URL` ([DEPLOYMENT.md](DEPLOYMENT.md#coordination-server)). Code and the package name call it the broker |
+| working folder | The one folder the console mounts, holding an exchange's configuration, key file, input and results. Console screens call it "your folder" | `JOB_DATA_ROOT` ([CONSOLE.md](CONSOLE.md)) |
+| exchange record | The file each party keeps of what its exchange disclosed, `alcove-record-<time>.json`, with its verification keys | Written by default; `--no-record` turns it off |
+| signed receipt | The file both parties sign at the end of an exchange, `alcove-receipt-<time>.json`: the evidence of the terms both agreed and the data that flowed | [`signing.mode: certificate`](EXCHANGE_REFERENCE.md#signingmode) |
 
 ## Document inventory
 

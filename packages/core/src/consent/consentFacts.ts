@@ -226,7 +226,7 @@ export const CONSENT_FACTS = {
       "terms entitle to it. What the partner does with the result once it holds " +
       "it is governed by the agreement, not by Alcove -- a limit on its use, " +
       "which the note carries, not on whether the disclosure happens.",
-    note: "Once received, its use is governed by your agreement, not this tool.",
+    note: "Once received, its use is governed by your agreement, not by Alcove.",
   },
   partnerReceivesNoResult: {
     basis: "trust-contingent",
@@ -235,7 +235,7 @@ export const CONSENT_FACTS = {
       "honored; one-sided PSI gives this side nothing to impose it with.",
     note:
       "By agreement, not enforced: keeping the result from your partner rests " +
-      "on the agreed terms being honored, not on anything this tool can enforce.",
+      "on the agreed terms being honored, not on anything Alcove can enforce.",
   },
   partnerLearnsOwnMembership: {
     basis: "enforced",
@@ -671,7 +671,7 @@ export const CONSENT_FACTS = {
       "the settings each side announced. Your side must run retain mode too, " +
       "or the two of you stop with an error when you meet. What becomes of " +
       "that transcript afterwards is your partner's decision, not something " +
-      "this tool controls.",
+      "Alcove controls.",
   },
   invitationRelay: {
     basis: "enforced",

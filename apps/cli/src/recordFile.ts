@@ -186,9 +186,9 @@ export function writeExchangeRecord(
   } catch (err) {
     log.warn(
       (terminated
-        ? "the exchange disclosed before it failed, but the audit record of " +
+        ? "the exchange disclosed before it failed, but the exchange record of " +
           "that disclosure could not be written"
-        : "the exchange and results succeeded but the audit record could not " +
+        : "the exchange and results succeeded but the exchange record could not " +
           "be written") +
         ` (${sanitizeErrorForDisplay(err)}); ` +
         (terminated
@@ -212,10 +212,10 @@ export function writeExchangeRecord(
     return {
       kind: "failed",
       message: terminated
-        ? `the audit record could not be written to ${recordFilePath}; the ` +
+        ? `the exchange record could not be written to ${recordFilePath}; the ` +
           "exchange disclosed before it failed, so that disclosure has no " +
           "record"
-        : `the audit record could not be written to ${recordFilePath}; the ` +
+        : `the exchange record could not be written to ${recordFilePath}; the ` +
           "exchange and its results succeeded and need not be re-run, so " +
           "this exchange has no record",
     };

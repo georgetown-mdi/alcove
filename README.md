@@ -30,7 +30,7 @@ To run the web app from source instead, see [apps/web/README.md](apps/web/README
 - **Match without disclosure.** Each party keeps its full dataset private; the protocol reveals only which records the two parties have in common.
 - **Optional data exchange for matched records.** Beyond identifying matches, parties can share selected columns (for example, program enrollment dates or contact information).
 - **Configurable matching.** Records are matched on linkage keys built from identifier fields such as name, date of birth, or SSN, with built-in data cleaning and standardization so both parties' data is compared consistently.
-- **No third party holds your data.** The web app exchanges data directly between the two parties' browsers; the command line app uses an SFTP server or file drop that you control, or exchanges directly with a partner's browser.
+- **No third party holds your data.** The web app exchanges data directly between the two parties' browsers; the command line app uses an SFTP server or shared folder that you control, or exchanges directly with a partner's browser.
 - **A record of every exchange.** Each completed exchange produces a local record of what was shared, which you can retain for disclosure documentation.
 
 ## Example use cases
@@ -44,7 +44,7 @@ To run the web app from source instead, see [apps/web/README.md](apps/web/README
 This repository includes two synthetic datasets you can use to try the tool without touching real records: [`test_data/fake_data_1.csv`](test_data/fake_data_1.csv) and [`test_data/fake_data_2.csv`](test_data/fake_data_2.csv). Each contains fabricated names, SSNs, and dates of birth, with partial overlap between the two files, so you can run a complete practice exchange. One party uses each file. What the partner needs depends on how you run it:
 
 - **Web app**: a browser and the other file. You create the invitation at the web app's address and send your partner the link (for example, by secure email); they open it and pick their file.
-- **Console**: the other file, and the same SFTP server or shared folder you chose. Your partner runs the command line app or a console of their own, and accepts with the invitation code you send them.
+- **Console**: the other file, and the same SFTP server or shared folder you chose. Your partner runs the command line app or a console of their own, and accepts with the invitation you send them.
 - **Command line app**: the other file, and the same SFTP server or shared folder. For an exchange with a browser partner, they need only a browser and the invitation you send them (see [Exchanging with a browser partner](#exchanging-with-a-browser-partner)).
 
 ## Web app
@@ -132,7 +132,7 @@ The command line app also exchanges over WebRTC with a partner who uses the web 
 docker run -it --rm --mount type=bind,src="$PWD",dst=/work ghcr.io/georgetown-mdi/alcove:latest invite --identity "Agency A" https://psi.data-bridge.org/ clients.csv matches/
 ```
 
-It prints an invitation code and waits. Send the code to your partner over a trusted channel; they paste it under **Accept an invitation you were sent** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
+It prints an invitation and waits. Send it to your partner over a trusted channel; they paste it under **Accept an invitation you were sent** at [https://psi.data-bridge.org](https://psi.data-bridge.org). See [Inviting over WebRTC](docs/CLI.md#inviting-over-webrtc).
 
 ### Running it on a schedule
 
@@ -146,7 +146,7 @@ For a first recurring exchange step by step, every command, and what each exit c
 
 ## Web Console Quickstart
 
-The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP or a shared directory) on that machine rather than browser-to-browser. It serves one party and is never shared beyond that host. For a partner who has only a browser, create the invitation in the [web app](#web-app) instead: the console does not run browser-to-browser exchanges.
+The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP or a shared folder) on that machine rather than browser-to-browser. It serves one party and is never shared beyond that host. For a partner who has only a browser, create the invitation in the [web app](#web-app) instead: the console does not run browser-to-browser exchanges.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 2. From a directory holding your input CSV, for Mac / Linux, run the command below. Replace `/path/to/shared-folder` with the folder your sync tool shares with your partner, and `shared-folder` on the line above it with the name you and your partner know that folder by:
@@ -164,9 +164,9 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
 ```
 3. Visit [http://127.0.0.1:3000](http://127.0.0.1:3000) on that machine; press Ctrl-C when done.
 
-Your directory holds your input, the exchange's working files, and its results; the console reads your CSV in place. The shared folder is the one a shared-directory exchange runs through, and the name you give it is the name an invitation tells your partner to look for.
+Your directory holds your input, the exchange's working files, and its results; the console reads your CSV in place. The shared folder is the one a shared-folder exchange runs through, and the name you give it is the name an invitation tells your partner to look for.
 
-For an SFTP exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. For a shared-directory exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
+For an SFTP exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. For a shared-folder exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
 
 Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP exchanges and the other settings, see [CONSOLE.md](docs/CONSOLE.md).
 

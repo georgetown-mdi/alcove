@@ -17,7 +17,7 @@ import { fail, ok, skipped, SKIPPED_BY_FAILURE_MEANING, warn } from "./verdict";
 // The userspace half of the file-drop checks: what the exchange needs, asked of
 // the server over TCP with smbclient, with nothing mounted. `doctor mount` is
 // the other half, against the same folder as the kernel sees it once mounted.
-// See docs/CLI.md, "Checking a network file drop".
+// See docs/CLI.md, "Checking a network shared folder".
 
 /** Ceiling on one smbclient invocation. */
 const SMBCLIENT_TIMEOUT_MS = 30_000;
@@ -235,7 +235,7 @@ function entryCountCheck(
     return fail(
       "subdirectory",
       summary,
-      `Alcove will not read a rendezvous folder holding more than ` +
+      `Alcove will not read a shared folder holding more than ` +
         `${MAX_DIRECTORY_ENTRIES} entries, so an exchange here will ` +
         "fail however the permissions come out.",
       "use a folder dedicated to the exchange.",
@@ -246,7 +246,7 @@ function entryCountCheck(
       summary,
       "the folder's listing was too long to capture in full, so how many " +
         "entries it holds was not established. Alcove will not read a " +
-        `rendezvous folder holding more than ${MAX_DIRECTORY_ENTRIES} entries.`,
+        `shared folder holding more than ${MAX_DIRECTORY_ENTRIES} entries.`,
       `confirm the folder holds no more than ${MAX_DIRECTORY_ENTRIES} ` +
         "entries, or use a folder dedicated to the exchange.",
     );

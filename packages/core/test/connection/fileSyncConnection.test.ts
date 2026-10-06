@@ -3620,7 +3620,7 @@ test("(e) leftover hellos after a mismatch make a rerun rejected by the entry gu
     rerunErr = e;
   });
   expect(rerunErr).toBeInstanceOf(UsageError);
-  expect((rerunErr as Error).message).toMatch(/peer hello|must be empty/);
+  expect((rerunErr as Error).message).toMatch(/partner hello|must be empty/);
 });
 
 // --- close() resets session counters -----------------------------------------

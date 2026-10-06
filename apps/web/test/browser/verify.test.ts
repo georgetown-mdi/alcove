@@ -86,7 +86,7 @@ const associationTable: AssociationTable = [
 const INPUT_CSV = "pid,dose\nP0,10mg\nP1,20mg\n";
 const RESULT_CSV = "pid,their_row_id,clinic\nP0,1,south\nP1,0,north\n";
 
-// The run binder this fixture's record and the dual-signed record below both have,
+// The run binder this fixture's record and the signed receipt below both have,
 // so the two artifacts pair as one run. A caller passes another value to stand in
 // for a different run of the same exchange.
 const RECEIPT_BINDER = "YmluZGVy";
@@ -144,7 +144,7 @@ async function buildSemicolonFixture(): Promise<{
   });
 }
 
-// A dual-signed record over the same exchange the fixture above describes: this
+// A signed receipt over the same exchange the fixture above describes: this
 // party holds the initiator's slot, the partner the responder's, and the receipt
 // content has that record's agreed-terms hash. `partnerTerms` fills the unsigned
 // envelope, which a holder may equally have stripped -- the default here.
@@ -295,11 +295,11 @@ async function verifyRecordAndSignedRecord(): Promise<{
   await uploadAt(1, jsonFile("rec.keys.json", serializeVerificationKeys(keys)));
   await userEvent.click(
     page.getByRole("button", {
-      name: "Check the partner's signatures with the dual-signed record",
+      name: "Check the partner's signatures with the signed receipt",
     }),
   );
   await uploadTo(
-    "Dual-signed record",
+    "Signed receipt",
     jsonFile("alcove-receipt-x.json", serializeDualSignedRecord(signed)),
   );
   await userEvent.fill(
@@ -960,7 +960,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .not.toBeInTheDocument();
   });
 
-  test("a dual-signed record with both certificates anchored reaches the signed verified verdict", async () => {
+  test("a signed receipt with both certificates anchored reaches the signed verified verdict", async () => {
     const { record, keys } = await buildFixture();
     const { signed, ourCertificate, partnerFingerprint } =
       await buildSignedFixture(record);
@@ -975,11 +975,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     );
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("alcove-receipt-x.json", serializeDualSignedRecord(signed)),
     );
     await userEvent.fill(
@@ -1042,11 +1042,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     );
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("alcove-receipt-x.json", serializeDualSignedRecord(signed)),
     );
     await userEvent.fill(
@@ -1112,11 +1112,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     );
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("receipt.json", serializeDualSignedRecord(signed)),
     );
     await uploadTo(
@@ -1147,7 +1147,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
 
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
@@ -1182,7 +1182,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
 
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await userEvent.fill(
@@ -1227,12 +1227,12 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await expectBothVerdictsGone();
   });
 
-  test("swapping the dual-signed record after a joint verify clears both verdicts", async () => {
+  test("swapping the signed receipt after a joint verify clears both verdicts", async () => {
     const { record } = await verifyRecordAndSignedRecord();
     const { signed: otherSigned } = await buildSignedFixture(record);
 
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("other-receipt.json", serializeDualSignedRecord(otherSigned)),
     );
 
@@ -1297,11 +1297,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await uploadAt(2, csvFile("input.csv", INPUT_CSV));
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("receipt.json", serializeDualSignedRecord(signed)),
     );
     await userEvent.fill(
@@ -1350,11 +1350,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await uploadAt(2, csvFile("input.csv", INPUT_CSV));
     await userEvent.click(
       page.getByRole("button", {
-        name: "Check the partner's signatures with the dual-signed record",
+        name: "Check the partner's signatures with the signed receipt",
       }),
     );
     await uploadTo(
-      "Dual-signed record",
+      "Signed receipt",
       jsonFile("receipt.json", serializeDualSignedRecord(signed)),
     );
     await userEvent.fill(

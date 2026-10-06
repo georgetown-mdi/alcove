@@ -160,7 +160,7 @@ export function Lobby() {
               ref={invitationFieldRef}
               aria-label="Invitation"
               description="Paste the invitation your partner sent to you"
-              placeholder="https://...#... or the bare code"
+              placeholder="https://...#... or the invitation text"
               autosize
               minRows={2}
               value={invitation}
@@ -196,7 +196,7 @@ export function Lobby() {
               </p>
               <p>
                 <Button component={Link} to="/direct" variant="outline">
-                  Run a direct exchange
+                  Run a quick exchange
                 </Button>
               </p>
             </div>
@@ -271,11 +271,11 @@ export function Lobby() {
             </p>
           ))}
         <p className={`${styles.sub} ${styles.small}`}>
-          Network blocks direct connections?{" "}
+          Can&apos;t connect to your partner? Your IT team can set a{" "}
           <Anchor inherit component={Link} to="/relay">
-            Relay server
+            relay server
           </Anchor>{" "}
-          sets a TURN relay your side connects through.
+          for this browser to connect through.
         </p>
         <div className={styles.howItWorks}>
           <p>

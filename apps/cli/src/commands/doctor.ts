@@ -24,7 +24,7 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 // `doctor mount` through the kernel as a mounted folder. Connection inputs come
 // from the SMB_* environment, never flags, so a password never becomes an argv
 // value. Full behavior and the `--json` verdict contract: docs/CLI.md,
-// "Checking a network file drop", and docs/spec/CLI_DOCTOR.md.
+// "Checking a network shared folder", and docs/spec/CLI_DOCTOR.md.
 
 function commonOptions(cmd: Argv): Argv {
   return addLoggingOptions(
@@ -52,12 +52,12 @@ export function builder(cmd: Argv): Argv {
   return cmd
     .usage(
       "Usage: $0 doctor <probe | mount DIRECTORY> [options]\n\n" +
-        "Check a network file drop before an exchange: doctor probe over the\n" +
-        "network, doctor mount through the mounted folder. Run both.",
+        "Check a network shared folder before an exchange: doctor probe over\n" +
+        "the network, doctor mount through the mount. Run both.",
     )
     .command(
       "probe",
-      "Check the file drop over the network, without mounting it",
+      "Check the shared folder over the network, without mounting it",
       (probe) =>
         commonOptions(
           declarePositionals(probe, { command: "doctor probe", usage: "" }),
@@ -67,13 +67,13 @@ export function builder(cmd: Argv): Argv {
             "Reads the connection from the environment, not from flags: " +
               "SMB_SERVER, SMB_SHARE and SMB_USER are required; SMB_PASS, " +
               "SMB_PATH, SMB_DOMAIN, SMB_DIALECT, SMB_MARKER and SMB_TOKEN " +
-              "are optional. See docs/CLI.md, Checking a network file drop.",
+              "are optional. See docs/CLI.md, Checking a network shared folder.",
           ),
       probeHandler,
     )
     .command(
       "mount [directory]",
-      "Check an already-mounted file-drop directory",
+      "Check an already-mounted shared folder",
       (mount) =>
         commonOptions(
           declarePositionals(mount, {
@@ -86,11 +86,11 @@ export function builder(cmd: Argv): Argv {
           .epilog(
             "Reads SMB_MARKER and SMB_TOKEN from the environment to find the " +
               "marker a doctor probe left; without them the cross-check is " +
-              "skipped. See docs/CLI.md, Checking a network file drop.",
+              "skipped. See docs/CLI.md, Checking a network shared folder.",
           )
           .positional("directory", {
             type: "string",
-            describe: "the mounted file-drop directory to check",
+            describe: "the mounted shared folder to check",
             demandOption: true,
           }),
       mountHandler,

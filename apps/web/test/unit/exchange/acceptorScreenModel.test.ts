@@ -271,10 +271,10 @@ describe("whether the launch may proceed", () => {
   test("a submit past the disabled gate names the fields it failed on", () => {
     const state = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
       type: "consent-refused",
-      errors: { name: "Your name is required", file: true },
+      errors: { name: "Enter your name or agency.", file: true },
     });
     expect(state.fieldErrors).toEqual({
-      name: "Your name is required",
+      name: "Enter your name or agency.",
       file: true,
     });
     expect(state.acquired).toBeUndefined();
@@ -283,7 +283,7 @@ describe("whether the launch may proceed", () => {
   test("typing a name clears the refusal the last submit left on it", () => {
     const refused = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
       type: "consent-refused",
-      errors: { name: "Your name is required" },
+      errors: { name: "Enter your name or agency." },
     });
     const state = acceptorScreenReducer(refused, {
       type: "name-changed",

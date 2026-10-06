@@ -73,7 +73,7 @@ const log = getLogger("VerifyReceiptScreen");
  * check of the artifacts an exchange leaves behind. The user loads the exchange
  * record and its keys, and optionally re-supplies their retained input, result, and
  * both parties' linkage terms to open the commitments and re-derive the
- * agreed-terms hash. When the exchange was signed, the dual-signed record is
+ * agreed-terms hash. When the exchange was signed, the signed receipt is
  * checked in the same run, anchored by the partner's pinned fingerprint and by this
  * party's own EXPORTED certificate -- no private signing key is accepted, required,
  * or used here. The verdicts are accurate -- a mismatch is stated as "altered or
@@ -212,7 +212,7 @@ function JsonDropzone({
         aria-label={label}
       >
         <p>
-          <strong>Drag the file here or click to select</strong>
+          <strong>Drag the file here, or select to browse</strong>
         </p>
         <p className={styles.dropzoneMax}>(Max file size: {JSON_MAX_MB} MB)</p>
       </Dropzone>
@@ -352,7 +352,7 @@ export function VerifyReceiptScreen() {
   const [localTerms, setLocalTerms] = useState<PastedTerms>();
   const [partnerTerms, setPartnerTerms] = useState<PastedTerms>();
 
-  // The signed leg (optional): the dual-signed record, and the two anchoring
+  // The signed leg (optional): the signed receipt, and the two anchoring
   // values -- the partner's pinned fingerprint, typed, and this party's own
   // exported certificate (never its signing identity, which holds the key).
   const [signedOpen, setSignedOpen] = useState(false);
@@ -408,7 +408,7 @@ export function VerifyReceiptScreen() {
   // A newly loaded record or keys file starts a possibly different exchange, so
   // every input belonging to the previous one is cleared: the re-supplied files
   // and pasted terms (which open that record's commitments), and the
-  // dual-signed record -- its verification consults values that repeat across
+  // signed receipt -- its verification consults values that repeat across
   // every run of the same partnership and are reported rather than compared,
   // so a stale receipt would otherwise be consumed beside the wrong record
   // without saying so. The two anchoring values stay: the operator reuses them
@@ -538,7 +538,7 @@ export function VerifyReceiptScreen() {
             },
       );
       const localTermsForRun = stated.localTerms;
-      // The dual-signed record holds the partner's terms, so a run with one
+      // The signed receipt holds the partner's terms, so a run with one
       // loaded checks the agreed-terms hash without them being pasted; what is
       // pasted wins over that copy.
       const partnerTermsForRun = partnerTermsForVerification(
@@ -689,8 +689,8 @@ export function VerifyReceiptScreen() {
           {recordReady
             ? "Ready to verify."
             : signedReady
-              ? "Ready to verify the dual-signed record."
-              : "Load the record and its keys, or a dual-signed record, to verify."}
+              ? "Ready to verify the signed receipt."
+              : "Load the record and its keys, or a signed receipt, to verify."}
         </p>
         {oneCsvStarvesRun && <OneCsvWarning />}
       </div>
@@ -853,7 +853,7 @@ export function VerifyReceiptScreen() {
 
       <div style={{ marginTop: "2rem" }}>
         <DisclosureSection
-          label="Check the partner's signatures with the dual-signed record"
+          label="Check the partner's signatures with the signed receipt"
           open={signedOpen}
           onToggle={setSignedOpen}
           headingOrder={2}
@@ -861,7 +861,7 @@ export function VerifyReceiptScreen() {
         >
           <Stack gap="lg" mt="sm">
             <Text size="sm" c="dimmed">
-              A dual-signed record is the evidence against your partner: both
+              A signed receipt is the evidence against your partner: both
               parties signed the same receipt content. Only an exchange run with
               the command-line tool or the console writes one; an exchange run
               in this browser app does not. Signatures alone prove only that the
@@ -872,14 +872,14 @@ export function VerifyReceiptScreen() {
               exported certificate for the slot that is yours.
             </Text>
             <JsonDropzone
-              label="Dual-signed record"
+              label="Signed receipt"
               hint="The record both parties signed: alcove-receipt-<time>.json"
               chosen={signedRecord?.file}
               onFile={(file) => void onSignedRecordFile(file)}
             />
             {signedRecord?.alert !== undefined && (
               <ParseAlert
-                title="This dual-signed record could not be used"
+                title="This signed receipt could not be used"
                 message={signedRecord.alert}
               />
             )}
@@ -1024,7 +1024,7 @@ function JsonOrCsvDropzone({
         aria-label={label}
       >
         <p>
-          <strong>Drag the file here or click to select</strong>
+          <strong>Drag the file here, or select to browse</strong>
         </p>
         <p className={styles.dropzoneMax}>(Max file size: {CSV_MAX_MB} MB)</p>
       </Dropzone>

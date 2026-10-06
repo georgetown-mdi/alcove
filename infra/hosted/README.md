@@ -1,6 +1,6 @@
 # The project's hosted environment, as OpenTofu
 
-This root describes the project's own hosted deployment of the web application -- the staging and production Elastic Beanstalk environments and the Cloudflare zone in front of them -- so the inbound rules and the edge settings are code a reviewer reads, and a drift is a plan that is not empty. It is about that deployment alone; an agency hosting the web application itself starts from [the reference payload](../../apps/web/deploy/aws_eb/) and [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#peer-coordination-server) instead.
+This root describes the project's own hosted deployment of the web application -- the staging and production Elastic Beanstalk environments and the Cloudflare zone in front of them -- so the inbound rules and the edge settings are code a reviewer reads, and a drift is a plan that is not empty. It is about that deployment alone; an agency hosting the web application itself starts from [the reference payload](../../apps/web/deploy/aws_eb/) and [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#coordination-server) instead.
 
 Nothing in the repository runs it: no workflow, script or package manifest invokes `tofu`. The maintainer applies it from a machine holding credentials for the AWS account and the Cloudflare zone.
 

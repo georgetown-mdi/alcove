@@ -56,7 +56,7 @@ Reproduce before deciding anything. If the report is not reproducible, say so in
 - **Moderate** -- a documented control that fails open without being fully bypassed, or an exposure that needs an unlikely configuration.
 - **Low** -- disclosure of non-record metadata, or a denial of service against a party's own run.
 
-Two design facts settle a recurring class of report before it consumes a week. Zero-setup exchanges have no application-layer AEAD by design and rely on transport encryption alone ([SECURITY_DESIGN.md#channel-security](SECURITY_DESIGN.md#channel-security)), and an adversary who has already compromised the host running Alcove is out of scope. A report resting on either is a documented limitation; say which one, explicitly, when declining on that basis.
+Two design facts settle a recurring class of report before it consumes a week. Quick exchanges have no application-layer AEAD by design and rely on transport encryption alone ([SECURITY_DESIGN.md#channel-security](SECURITY_DESIGN.md#channel-security)), and an adversary who has already compromised the host running Alcove is out of scope. A report resting on either is a documented limitation; say which one, explicitly, when declining on that basis.
 
 Score the severity with CVSS in the draft advisory (step 5) rather than in the thread, so the number the reporter is told and the number that publishes are the same one.
 

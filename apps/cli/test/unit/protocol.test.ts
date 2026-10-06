@@ -1685,7 +1685,7 @@ test("a record the run was asked for and could not write warns on fd 3 and exits
   ]);
   expect(lines[1].source).toBe("persistenceLoss");
   expect(String(lines[1].message)).toContain(
-    "the audit record could not be written to",
+    "the exchange record could not be written to",
   );
   // The successful party is untouched: its record landed and its exit is clean.
   expect(fs.existsSync(recordFilePathIn(folderB, sampleRecord.createdAt))).toBe(
@@ -1697,7 +1697,7 @@ test("a record the run was asked for and could not write warns on fd 3 and exits
 // returned no audit. It names no destination -- none was ever resolved -- so it
 // says instead that nothing was written and that the run must not be re-run.
 const NO_RECORD_BUILT_WARNING =
-  "no audit record could be built for this exchange, so none was written; " +
+  "no exchange record could be built for this exchange, so none was written; " +
   "the exchange and its results succeeded and need not be re-run";
 
 test(
@@ -2051,7 +2051,7 @@ test("a result-delivery failure on a relay-registering run does not report a loc
 }, 20_000);
 
 test("a partner payload missing a matched row still leaves the record and the receipt", async () => {
-  // runExchange completed and returned its audit and the dual-signed receipt,
+  // runExchange completed and returned its audit and the signed receipt,
   // so the disclosure happened; the partner payload then fails the real core
   // table build. The failure is raised only after both artifacts are on disk.
   const { buildOutputTable: coreBuildOutputTable } =
@@ -3811,7 +3811,7 @@ test("a completed signed run does not warn about a missing receipt", async () =>
   ).toBe(false);
 }, 20_000);
 
-// A minimal schema-valid dual-signed record: the receipt an exchange that
+// A minimal schema-valid signed receipt: the receipt an exchange that
 // completed its signature swap returns. Its certificates are the checked-in
 // signing-cert vectors' identities, reused here for a valid shape -- nothing
 // verifies them on the write path.
@@ -3846,11 +3846,11 @@ const signedReceiptFixture: DualSignedRecord = {
   },
 };
 
-test("writes the dual-signed receipt when no audit record was built", async () => {
+test("writes the signed receipt when no exchange record was built", async () => {
   // The two artifacts are independent: core signs the receipt from the
   // mutually-verifiable facts whether or not this party's local record built, so
   // a record-build failure (which leaves audit undefined, warned and swallowed
-  // inside runExchange) must not discard a completed dual-signed receipt -- the
+  // inside runExchange) must not discard a completed signed receipt -- the
   // one artifact a partner and an auditor can check. This models that return
   // shape exactly: a signed receipt with no audit beside it.
   const keyFileA = path.join(tmpDir, "a.key");
@@ -4077,7 +4077,7 @@ test(
         ),
       ).toEqual(terminatedAudit.agreedTerms);
     }
-    // No dual-signed receipt accompanies it: a terminated swap persists no
+    // No signed receipt accompanies it: a terminated swap persists no
     // partial artifact.
     for (const folder of [folderA, folderB])
       expect(
@@ -4160,7 +4160,7 @@ test(
     const warnings = takeFd3Lines().filter((l) => l.type === "warning");
     expect(warnings.map((l) => l.source)).toEqual(["terminatedRunRecord"]);
     expect(String(warnings[0].message)).toContain(
-      "the audit record could not be written to",
+      "the exchange record could not be written to",
     );
     expect(process.exitCode).not.toBe(73);
   },

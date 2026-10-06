@@ -273,7 +273,7 @@ describe("the readiness check", () => {
       .toMatchTextContent(/^Ready for the next window/);
     await expect
       .element(
-        page.getByText("This browser connected to the signaling server."),
+        page.getByText("This browser connected to the coordination server."),
       )
       .toBeInTheDocument();
     await expect
@@ -312,7 +312,7 @@ describe("the readiness check", () => {
     await expect
       .element(
         page.getByText(
-          "This browser could not connect to the signaling server",
+          "This browser could not connect to the coordination server",
           {
             exact: false,
           },

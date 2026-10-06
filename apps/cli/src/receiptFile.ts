@@ -12,16 +12,16 @@ import type { DualSignedRecord } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
 
-// File custody for the dual-signed exchange record (the signed-receipt step's
+// File custody for the signed receipt (the signed-receipt step's
 // output). Mirrors recordFile.ts: a timestamped default path in the run's
 // folder, atomic owner-only writes. See docs/spec/EXCHANGE_RECORD.md,
-// Dual-signed record file.
+// Signed receipt file.
 
-/** Basename stem for the default dual-signed record file. */
+/** Basename stem for the default signed receipt file. */
 export const DEFAULT_RECEIPT_BASENAME = "alcove-receipt";
 
 /**
- * The dual-signed record's default path in a run's folder:
+ * The signed receipt's default path in a run's folder:
  * `alcove-receipt-<time>.json`, with the stamp of the run's self-attested
  * record ({@link recordFileStamp}), so the receipt and record files for one
  * exchange share it.
@@ -34,7 +34,7 @@ export function receiptFilePathIn(folder: string, createdAt: string): string {
 }
 
 /**
- * Write the dual-signed record to disk atomically and owner-only via
+ * Write the signed receipt to disk atomically and owner-only via
  * {@link writeFileOwnerOnly}, so a mid-write abort leaves it complete or
  * absent. Non-fatal by design, like the self-attested record
  * (`recordFile.ts`): a write failure is logged as a warning and returned as
@@ -52,7 +52,7 @@ export function writeDualSignedRecord(
   try {
     writeFileOwnerOnly(receiptFilePath, serializeDualSignedRecord(record));
     log.info(
-      "wrote dual-signed exchange record (both parties' signatures and " +
+      "wrote signed receipt (both parties' signatures and " +
         `certificates over the agreed terms and data commitments) to ` +
         redactAndRenderOperatorSuppliedText(
           operatorSuppliedText(receiptFilePath),
@@ -61,12 +61,12 @@ export function writeDualSignedRecord(
     return undefined;
   } catch (err) {
     log.warn(
-      "the exchange and signature swap succeeded but the dual-signed record " +
+      "the exchange and signature swap succeeded but the signed receipt " +
         `could not be written (${sanitizeErrorForDisplay(err)}); ` +
         "the results above are unaffected and the exchange need not be re-run",
     );
     return (
-      `the dual-signed record could not be written to ${receiptFilePath}; the ` +
+      `the signed receipt could not be written to ${receiptFilePath}; the ` +
       "exchange and its signature swap succeeded and need not be re-run, so " +
       "this exchange has no receipt file"
     );

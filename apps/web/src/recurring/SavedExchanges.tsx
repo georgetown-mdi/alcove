@@ -308,11 +308,11 @@ function SavedExchangesList({
         without saving it here.
       </p>
       <p className={`${styles.sub} ${styles.small}`}>
-        Network blocks direct connections?{" "}
+        Can&apos;t connect to your partner? Your IT team can set a{" "}
         <Anchor inherit component={Link} to="/relay">
-          Relay server
+          relay server
         </Anchor>{" "}
-        sets a TURN relay your side connects through.
+        for this browser to connect through.
       </p>
       <ImportExchangeFile />
     </>
