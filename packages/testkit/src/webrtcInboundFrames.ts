@@ -23,8 +23,8 @@
 //
 // Every frame is the real packer's output. The three shapes that packer never emits
 // -- a container declaring more elements than the bytes behind it, nested containers
-// declaring the same trailing bytes at every level, and a map key that is not a
-// string -- are assembled around real-packed parts, the same concession core's
+// declaring as many elements between them as the frame's bytes or more, and a map
+// key that is not a string -- are assembled around real-packed parts, the same concession core's
 // differential suite makes for the markers the packer cannot reach.
 
 import { pack, unpack } from "peerjs-js-binarypack";
@@ -48,14 +48,20 @@ export interface FrameScanLimits {
   readonly maxStringBytes: number;
 }
 
+/** The pre-scan rules that measure a frame against a number, and so have a frame
+ * exactly at that number and one just past it. */
+export type CappedRule = Exclude<FrameStructureRefusal["rule"], "map-key">;
+
 /** One labelled frame: the wire bytes, the limits they are measured under, and the
  * pre-scan rule they must draw -- `undefined` where the frame is admitted and must
- * reach the application whole. */
+ * reach the application whole. `cap` marks a frame placed on one side of a rule's
+ * cap: `at` is the most the rule admits, `past` is one unit more. */
 export interface WebrtcFrameFixture {
   readonly label: string;
   readonly frame: Uint8Array;
   readonly limits: FrameScanLimits;
   readonly refusedBy: FrameStructureRefusal["rule"] | undefined;
+  readonly cap?: { readonly rule: CappedRule; readonly side: "at" | "past" };
 }
 
 /** What one side made of a fixture: the refusal it raised, the value it delivered,
@@ -77,6 +83,14 @@ const REDUCED_DEPTH = 4;
 
 /** The reduced per-string cap the string pair is measured against. */
 const REDUCED_STRING_BYTES = 1024;
+
+/** The element count of the declared-elements pair: an array of this many one-byte
+ * values declares exactly as many elements as the bytes behind its header. */
+const BACKED_ELEMENTS = 1000;
+
+/** The trailing bytes of the total-elements pair, which its inner level declares one
+ * element per byte of. */
+const TOTAL_ELEMENTS_TRAILER = 1024;
 
 /** BinaryPack-encode one value with the real packer. `pack` returns a promise only
  * for a `Blob` input, which no fixture is, so the synchronous branch is the only
@@ -135,6 +149,26 @@ function array32Header(count: number): Uint8Array {
   ]);
 }
 
+/** `n` copies of the value `1`, which the real packer encodes in one byte each. */
+function oneByteValues(n: number): Array<number> {
+  return Array.from({ length: n }, () => 1);
+}
+
+/** Two `array32` levels over {@link TOTAL_ELEMENTS_TRAILER} trailing bytes: the inner
+ * level declares one element per trailing byte, the outer `outerCount`. The two
+ * headers are ten bytes, so an outer count of ten declares exactly the frame's
+ * length between the levels. A real-packed frame never reaches that sum (every
+ * declared element is a value of at least one byte, and the root's header is a byte
+ * more), so both sides of this cap are assembled, and the at-cap frame is one the
+ * outer level's later elements run off the end of. */
+function totalElementsFrame(outerCount: number): Uint8Array {
+  return concatBytes([
+    array32Header(outerCount),
+    array32Header(TOTAL_ELEMENTS_TRAILER),
+    new Uint8Array(TOTAL_ELEMENTS_TRAILER).fill(0x01),
+  ]);
+}
+
 /** A BinaryPack `fixmap` header declaring one key/value pair, the wrapper the
  * non-string key is assembled under. */
 const FIXMAP_ONE_PAIR = new Uint8Array([0x81]);
@@ -159,28 +193,33 @@ const refusedFrames: Record<
   Omit<WebrtcFrameFixture, "refusedBy">
 > = {
   "nesting-depth": {
-    label: "arrays nested past the depth cap",
-    frame: packValue(nestedArrays(12)),
+    label: "arrays nested one level past the depth cap",
+    frame: packValue(nestedArrays(REDUCED_DEPTH)),
     limits: { ...PRODUCTION_LIMITS, maxDepth: REDUCED_DEPTH },
+    cap: { rule: "nesting-depth", side: "past" },
   },
   "string-bytes": {
-    label: "a string over the per-string cap",
-    frame: packValue("x".repeat(REDUCED_STRING_BYTES * 4)),
+    label: "a string one byte over the per-string cap",
+    frame: packValue("x".repeat(REDUCED_STRING_BYTES + 1)),
     limits: { ...PRODUCTION_LIMITS, maxStringBytes: REDUCED_STRING_BYTES },
+    cap: { rule: "string-bytes", side: "past" },
   },
   "unbacked-elements": {
-    label: "an array32 declaring a million elements over one packed value",
-    frame: concatBytes([array32Header(1_000_000), packValue("alcove")]),
-    limits: PRODUCTION_LIMITS,
-  },
-  "total-elements": {
-    label: "two array32 levels declaring the same trailing bytes each",
+    label:
+      "an array32 declaring one element more than the one-byte values behind it",
     frame: concatBytes([
-      array32Header(1024),
-      array32Header(1024),
-      new Uint8Array(1024).fill(0x01),
+      array32Header(BACKED_ELEMENTS + 1),
+      ...oneByteValues(BACKED_ELEMENTS).map(packValue),
     ]),
     limits: PRODUCTION_LIMITS,
+    cap: { rule: "unbacked-elements", side: "past" },
+  },
+  "total-elements": {
+    label:
+      "two array32 levels declaring one element more between them than the frame's bytes",
+    frame: totalElementsFrame(11),
+    limits: PRODUCTION_LIMITS,
+    cap: { rule: "total-elements", side: "past" },
   },
   "map-key": {
     label: "a fixmap keyed by a packed integer",
@@ -206,16 +245,26 @@ const admittedValues: Array<{
   label: string;
   value: unknown;
   limits: FrameScanLimits;
+  cap?: WebrtcFrameFixture["cap"];
 }> = [
   {
-    label: "arrays nested to the same depth cap",
+    label: "arrays nested to the deepest level the same depth cap admits",
     value: nestedArrays(REDUCED_DEPTH - 1),
     limits: { ...PRODUCTION_LIMITS, maxDepth: REDUCED_DEPTH },
+    cap: { rule: "nesting-depth", side: "at" },
   },
   {
     label: "a string exactly at the same per-string cap",
     value: "x".repeat(REDUCED_STRING_BYTES),
     limits: { ...PRODUCTION_LIMITS, maxStringBytes: REDUCED_STRING_BYTES },
+    cap: { rule: "string-bytes", side: "at" },
+  },
+  {
+    label:
+      "an array declaring exactly as many elements as the one-byte values behind it",
+    value: oneByteValues(BACKED_ELEMENTS),
+    limits: PRODUCTION_LIMITS,
+    cap: { rule: "unbacked-elements", side: "at" },
   },
   {
     label: "an array whose declared elements are all on the wire",
@@ -275,19 +324,42 @@ const admittedValues: Array<{
   },
 ];
 
+/** The admitted frame exactly at the total-elements cap, which the real packer
+ * cannot emit (see {@link totalElementsFrame}). */
+const totalElementsAtCap: WebrtcFrameFixture = {
+  label: "two array32 levels declaring exactly the frame's bytes between them",
+  frame: totalElementsFrame(10),
+  limits: PRODUCTION_LIMITS,
+  refusedBy: undefined,
+  cap: { rule: "total-elements", side: "at" },
+};
+
+/** A refused frame far past the declared-elements cap, kept beside its boundary
+ * pair: its decode is a million-element array, past the pinned packer's own
+ * recursion ceiling, which the CLI's outbound suite holds the send path to. */
+const unbackedFarPastCap: WebrtcFrameFixture = {
+  label: "an array32 declaring a million elements over one packed value",
+  frame: concatBytes([array32Header(1_000_000), packValue("alcove")]),
+  limits: PRODUCTION_LIMITS,
+  refusedBy: "unbacked-elements",
+};
+
 /** The labelled set every side is driven against: the refused frames, one per
- * pre-scan rule, then the admitted ones. */
+ * pre-scan rule plus the far-past one, then the admitted ones. */
 export const WEBRTC_INBOUND_FRAME_FIXTURES: Array<WebrtcFrameFixture> = [
   ...Object.entries(refusedFrames).map(([rule, fixture]) => ({
     ...fixture,
     refusedBy: rule as FrameStructureRefusal["rule"],
   })),
-  ...admittedValues.map(({ label, value, limits }) => ({
+  unbackedFarPastCap,
+  ...admittedValues.map(({ label, value, limits, cap }) => ({
     label,
     frame: packValue(value),
     limits,
     refusedBy: undefined,
+    ...(cap === undefined ? {} : { cap }),
   })),
+  totalElementsAtCap,
 ];
 
 /** The pre-scan's verdict on a fixture's bytes, unmediated by any transport. */
@@ -428,17 +500,27 @@ const chunkEnvelopes: Array<{
   },
   { label: "a zero chunk count", fields: { total: 0 }, refused: true },
   { label: "a fractional chunk count", fields: { total: 1.5 }, refused: true },
+  {
+    label: "an index one below the declared count",
+    fields: { n: 1 },
+    refused: false,
+  },
   { label: "an index at the declared count", fields: { n: 2 }, refused: true },
   {
-    label: "a declared count past the reassembly limit",
+    label: "a declared count exactly at the reassembly limit",
+    fields: { total: MAX_CHUNKS_PER_REASSEMBLY },
+    refused: false,
+  },
+  {
+    label: "a declared count one past the reassembly limit",
     fields: { total: MAX_CHUNKS_PER_REASSEMBLY + 1 },
     refused: true,
   },
 ];
 
 /** The chunk envelopes both transports are held to: each malformed shape the CLI's
- * receive dispatch refuses, a declared count past the reassembly limit, and a
- * well-formed first chunk both must hold pending. */
+ * receive dispatch refuses, an index and a declared count on each side of their
+ * limits, and a well-formed first chunk both must hold pending. */
 export const WEBRTC_CHUNK_ENVELOPE_FIXTURES: Array<WebrtcChunkEnvelopeFixture> =
   chunkEnvelopes.map(({ label, fields, refused }) => ({
     label,

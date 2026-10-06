@@ -17,6 +17,7 @@ import {
 } from "../../../src/connection/webrtc/peerjsWire";
 
 import type {
+  CappedRule,
   FrameVerdict,
   WebrtcFrameFixture,
 } from "@alcove/testkit/webrtcInboundFrames";
@@ -90,6 +91,33 @@ describe("the WebRTC inbound frame fixtures", () => {
       expect(frameScanRefusal(fixture)?.rule, fixture.label).toBe(
         fixture.refusedBy,
       );
+    }
+  });
+
+  test("place an admitted frame at each cap and a refused one just past it", () => {
+    // A refused frame far past its cap passes a rule loosened by one; the pair on
+    // either side is what pins where the cap sits.
+    // Keyed by rule so a new capped rule fails this file's typecheck until listed.
+    const cappedRules: Record<CappedRule, true> = {
+      "nesting-depth": true,
+      "string-bytes": true,
+      "unbacked-elements": true,
+      "total-elements": true,
+    };
+    for (const rule of Object.keys(cappedRules) as Array<CappedRule>) {
+      const sides = WEBRTC_INBOUND_FRAME_FIXTURES.filter(
+        (fixture) => fixture.cap?.rule === rule,
+      ).map((fixture) => ({
+        side: fixture.cap?.side,
+        refusedBy: fixture.refusedBy,
+      }));
+      expect(sides, rule).toEqual(
+        expect.arrayContaining([
+          { side: "at", refusedBy: undefined },
+          { side: "past", refusedBy: rule },
+        ]),
+      );
+      expect(sides, rule).toHaveLength(2);
     }
   });
 
