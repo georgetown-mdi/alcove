@@ -20,7 +20,7 @@ import type { PeerOptions } from "peerjs";
 
 /**
  * A browser exchange whose only relay cannot be reached, in real Chromium over
- * the app's own broker: both seats fail naming the relay url and the error the
+ * the standalone broker: both seats fail naming the relay url and the error the
  * browser reported for it, rather than a bare open timeout.
  *
  * Both peers run on one machine, where a host candidate would connect them
@@ -28,7 +28,9 @@ import type { PeerOptions } from "peerjs";
  * position of a party whose network leaves the relay as the only path.
  */
 
-const brokerPort = inject("webDevServerPort") ?? 3000;
+// Published by the browser project's globalSetup; absent, the probe below
+// skips the suite.
+const brokerPort = inject("signalingBrokerPort") ?? 0;
 const brokerHost = "127.0.0.1";
 const hostString = `http://${brokerHost}:${String(brokerPort)}`;
 

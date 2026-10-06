@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Root dev loop: keep packages/core's dist in step with its sources for the
-// duration of a web dev session.
+// duration of a web dev session, and run the signaling broker the hosted dev
+// server forwards its /api/ to.
 //
 // The apps consume @alcove/core from its built dist/, never from its TypeScript
 // sources, so an edit to core is invisible to a running dev server until someone
@@ -22,10 +23,18 @@
 // would resolve whatever dist happened to be on disk at startup -- the stale
 // build this exists to prevent.
 //
+// The web app mounts no signaling broker of its own, and the page dials its own
+// origin's /api/ unless the deployment names another server. So for an app
+// script in SIGNALING_APP_SCRIPTS the loop also starts the standalone broker
+// (packages/peerjs-broker) on a free loopback port and hands that port to the
+// dev server, which forwards /api/ there (apps/web/vite.config.ts). The broker
+// is a watcher like the others: its exit ends the loop.
+//
 // Usage: node scripts/dev.mjs [web-script]   (default: dev)
 
 import { spawn } from "node:child_process";
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { createServer } from "node:net";
 import { constants } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -40,6 +49,18 @@ export const CORE_WORKSPACE = "packages/core";
 
 /** The app script run when none is named. */
 export const DEFAULT_APP_SCRIPT = "dev";
+
+/** The workspace whose standalone signaling broker the hosted dev server
+ * forwards to. */
+export const BROKER_WORKSPACE = "packages/peerjs-broker";
+
+/** The app scripts that serve the hosted app, whose page dials signaling at the
+ * dev server's own /api/. The console serves no signaling. */
+export const SIGNALING_APP_SCRIPTS = ["dev"];
+
+/** The environment variable apps/web/vite.config.ts reads for the loopback port
+ * its /api/ proxy forwards to. */
+export const DEV_SIGNALING_PORT_ENV = "ALCOVE_DEV_SIGNALING_PORT";
 
 /**
  * The signals this loop forwards to its children. SIGHUP is here because the
@@ -146,21 +167,36 @@ export function coreBuildIsCurrent(root = repoRoot) {
   return oldestBuilt >= newestMtime(sources);
 }
 
+/** A port the operating system reports free on the loopback interface. */
+export function freeLoopbackPort() {
+  return new Promise((resolvePort, reject) => {
+    const probe = createServer();
+    probe.once("error", reject);
+    probe.listen(0, "127.0.0.1", () => {
+      const { port } = probe.address();
+      probe.close(() => resolvePort(port));
+    });
+  });
+}
+
 /**
- * Bring core's dist up to date, then run its watcher and the app's dev server
- * until one of them exits, and resolve to the loop's exit code.
+ * Bring core's dist up to date, then run its watcher, the signaling broker when
+ * the app script needs one, and the app's dev server until one of them exits,
+ * and resolve to the loop's exit code.
  *
  * `runToCompletion` runs one npm invocation and resolves to its exit code;
- * `startWatcher` starts a long-running one and returns `{ kill, exited }`;
- * `teardownSignal` reports the teardown signal that has arrived, or null. They
- * and the currency check are injected so the ordering and the teardown this
- * function owns are exercisable without spawning a dev server.
+ * `startWatcher` starts a long-running one, with extra environment variables,
+ * and returns `{ kill, exited }`; `pickSignalingPort` resolves to the port the
+ * broker binds; `teardownSignal` reports the teardown signal that has arrived,
+ * or null. They and the currency check are injected so the ordering and the
+ * teardown this function owns are exercisable without spawning a dev server.
  */
 export async function runDevLoop({
   appScript,
   isCoreBuildCurrent,
   runToCompletion,
   startWatcher,
+  pickSignalingPort = freeLoopbackPort,
   teardownSignal = () => null,
 }) {
   if (!isCoreBuildCurrent()) {
@@ -175,10 +211,26 @@ export async function runDevLoop({
   const interrupted = teardownSignal();
   if (interrupted !== null) return signalExitCode(interrupted);
 
-  const watchers = [
-    startWatcher(["run", "dev", "-w", CORE_WORKSPACE]),
-    startWatcher(["run", appScript, "-w", APP_WORKSPACE]),
-  ];
+  const signalingPort = SIGNALING_APP_SCRIPTS.includes(appScript)
+    ? String(await pickSignalingPort())
+    : undefined;
+
+  const watchers = [startWatcher(["run", "dev", "-w", CORE_WORKSPACE], {})];
+  if (signalingPort !== undefined)
+    watchers.push(
+      startWatcher(
+        ["run", "start", "-w", BROKER_WORKSPACE, "--", "--port", signalingPort],
+        {},
+      ),
+    );
+  watchers.push(
+    startWatcher(
+      ["run", appScript, "-w", APP_WORKSPACE],
+      signalingPort === undefined
+        ? {}
+        : { [DEV_SIGNALING_PORT_ENV]: signalingPort },
+    ),
+  );
 
   const first = await Promise.race(watchers.map((watcher) => watcher.exited));
   for (const watcher of watchers) watcher.kill("SIGTERM");
@@ -202,14 +254,18 @@ function exitCodeOf(child) {
 }
 
 /**
- * Starts one npm invocation and returns a handle that signals its whole process
- * group, so the tool npm launched through a shell goes down with it. Windows
- * gets no process group of its own, so there the signal reaches npm alone.
+ * Starts one npm invocation, with `env` added to this process's environment,
+ * and returns a handle that signals its whole process group, so the tool npm
+ * launched through a shell goes down with it. Windows gets no process group of
+ * its own, so there the signal reaches npm alone.
  *
  * @internal
  */
-export function startProcess(args) {
-  const child = spawn(NPM, args, SPAWN_OPTIONS);
+export function startProcess(args, env = {}) {
+  const child = spawn(NPM, args, {
+    ...SPAWN_OPTIONS,
+    env: { ...process.env, ...env },
+  });
   return {
     kill: (signal) => {
       if (child.exitCode !== null || child.signalCode !== null) return;
@@ -272,7 +328,7 @@ async function main() {
     appScript,
     isCoreBuildCurrent: () => coreBuildIsCurrent(),
     runToCompletion: (args) => teardown.track(startProcess(args)).exited,
-    startWatcher: (args) => teardown.track(startProcess(args)),
+    startWatcher: (args, env) => teardown.track(startProcess(args, env)),
     teardownSignal: teardown.signal,
   });
   process.exit(code);

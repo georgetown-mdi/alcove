@@ -335,8 +335,7 @@ opt-out, and it is the only way an absent build is not an error.
 ALCOVE_ALLOW_MISSING_WEB_BUILD=1 npm run test:integration -w apps/web
 ```
 
-The dev-server-backed specs (`signalingSurface`, `securityHeaders`) run either
-way. Neither root `npm run test` nor `test:browser` runs this project, so
+The dev-server-backed spec (`securityHeaders`) runs either way. Neither root `npm run test` nor `test:browser` runs this project, so
 neither is affected by the build requirement; `test:integration:browser` does
 run it, and so needs the build.
 
@@ -354,9 +353,19 @@ npm run test:integration -w apps/web    # reuses the running server
 
 The browser suite -- cross-implementation byte-vector checks, a live PSI
 exchange, and React component tests such as the accept consent gate, run in real
-Chromium via Playwright -- self-manages the dev server the same way: it stands up
-the PeerJS coordination server the exchange needs, reuses a running `npm run
-dev`, and otherwise starts and stops its own.
+Chromium via Playwright -- self-manages the dev server the same way: it reuses a
+running `npm run dev`, and otherwise starts and stops its own.
+
+The web app mounts no signaling broker, so both projects' setup
+(`apps/web/test/devServer/globalSetup.ts`) first starts the standalone one
+(`packages/peerjs-broker`) on an ephemeral loopback port, through the spawner the
+live WebRTC leg also uses (`apps/web/test/utils/standaloneBroker.ts`). The suites
+that open a real PeerJS connection dial it directly, at the port the setup
+provides. A dev server the setup starts is handed that port too and forwards
+its `/api/` to the broker, as `npm run dev` from the repository root does
+(`scripts/dev.mjs`); the setup counts that server ready only once a signaling
+dial through it opens. A reused server is not probed for signaling, since it
+forwards to whichever broker started with it.
 
 ```sh
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server

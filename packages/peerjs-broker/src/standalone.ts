@@ -27,12 +27,13 @@ import type { AddressInfo } from "node:net";
  * That is why .github/workflows/cli_build_and_test.yaml filters on this
  * workspace.
  *
- * In-process consumers inside the web app want its
+ * It is also what the web app's dev server forwards its `/api/` to
+ * (scripts/dev.mjs, apps/web/test/devServer/globalSetup.ts). In-process
+ * consumers inside the web app's tests want its
  * `test/utils/signalingHarness.ts` instead: it builds the `WebSocketServer`
  * directly and hands back the realm. This runner goes through
- * `CreatePeerServerWSOnly`, the same entry point the web app's
- * `src/peerServer.ts` mounts, so what a spawning test sees is the wiring the
- * deployed app has rather than a subset of it.
+ * `CreatePeerServerWSOnly`, the package's one builder, so what a spawning test
+ * sees is the deployed wiring rather than a subset of it.
  *
  * Protocol with the parent process: it prints one `alcove-broker <port>` line
  * on stdout once listening, then stays up until it is signalled. Nothing else

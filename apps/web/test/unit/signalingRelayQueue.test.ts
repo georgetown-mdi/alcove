@@ -13,7 +13,7 @@ import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
 import { MAX_QUEUE_BYTES } from "@alcove/peerjs-broker/models/realm";
 import { MessageType } from "@alcove/peerjs-broker/enums";
 
-import { signalingDiagnosticSink } from "../../src/signalingDiagnostics";
+import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
 
 import { KEY } from "../utils/signalingHarness";
 
@@ -111,11 +111,11 @@ function brokerLines(): Array<string> {
 }
 
 /** A signaling server built by `CreatePeerServerWSOnly` -- the single builder
- * the web app's mount and the standalone runner both go through -- so the queue
+ * the standalone runner goes through -- so the queue
  * and the drain behind it are the shipped ones rather than a restatement. */
 async function startShippedBroker(): Promise<{ port: number; realm: IRealm }> {
   const server = http.createServer();
-  const { realm } = CreatePeerServerWSOnly(server, signalingDiagnosticSink, {
+  const { realm } = CreatePeerServerWSOnly(server, brokerDiagnosticSink, {
     path: "/",
     key: KEY,
   });

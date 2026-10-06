@@ -47,14 +47,13 @@ describe("checkNitroWebsocketUnset against an injected load", () => {
     });
   });
 
-  it("fails a config that turns experimental.websocket on, naming the collision", async () => {
+  it("fails a config that turns experimental.websocket on, naming the listener", async () => {
     const result = await checkNitroWebsocketUnset({
       root: "unused",
       load: async () => ({ experimental: { websocket: true } }),
     });
     expect(result.ok).toBe(false);
-    expect(result.message).toMatch(/mis-route/);
-    expect(result.message).toMatch(/custom-entry\.ts/);
+    expect(result.message).toMatch(/upgrade listener with no path check/);
   });
 });
 
@@ -115,6 +114,6 @@ describe("the CLI entry, driven against a fixture tree", () => {
     const root = fixtureTree("{ experimental: { websocket: true } }");
     const result = runCheck(root);
     expect(result.status).toBe(1);
-    expect(result.stderr).toMatch(/mis-route/);
+    expect(result.stderr).toMatch(/upgrade listener with no path check/);
   });
 });

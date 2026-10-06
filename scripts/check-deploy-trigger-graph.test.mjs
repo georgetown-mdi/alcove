@@ -404,7 +404,7 @@ describe("proving the collection halves are alive", () => {
   it("reports every required root the graph does not reach", () => {
     expect(unreachedRoots(["apps/web/src/a.ts"]).map((r) => r.prefix)).toEqual([
       "apps/web/server/",
-      "packages/peerjs-broker/src/",
+      "apps/web/src/routes/",
     ]);
   });
 

@@ -209,7 +209,7 @@ export const CHECKS = [
     script: "check:nitro-websocket-unset",
     expiresOn: "2026-12-31",
     description:
-      "Nitro's experimental.websocket stays off, so nothing attaches a second upgrade listener beside the signaling route.",
+      "Nitro's experimental.websocket stays off, so nothing attaches an upgrade listener to the hosted server.",
   },
   {
     script: "check:core-barrel-wildcards",

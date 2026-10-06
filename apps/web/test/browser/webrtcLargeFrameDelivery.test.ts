@@ -15,7 +15,7 @@ import type { Packable } from "peerjs-js-binarypack";
 
 /**
  * The web transport's outbound encoder against the real stack: a real PeerJS
- * pair over the app's own broker, in real Chromium, sending the largest of the
+ * pair over the standalone broker, in real Chromium, sending the largest of the
  * four record-scaling frames at a size PeerJS's own packer cannot encode at all.
  * Only the real stack can say the replaced `_send` still chunks, buffers and
  * delivers as PeerJS does.
@@ -23,7 +23,7 @@ import type { Packable } from "peerjs-js-binarypack";
 
 const addressInfo = {
   address: "127.0.0.1",
-  port: inject("webDevServerPort") ?? 3000,
+  port: inject("signalingBrokerPort") ?? 0,
 };
 const hostString = `http://${addressInfo.address}:${String(addressInfo.port)}`;
 const serverUnreachableNote = `PeerJS coordination server at ${hostString} unreachable`;

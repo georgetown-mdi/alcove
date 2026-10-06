@@ -23,9 +23,6 @@ import { Route as BenchExchangeRouteImport } from './routes/bench/exchange'
 import { Route as BenchVerifyRouteImport } from './routes/bench/verify'
 import { Route as SavedIndexRouteImport } from './routes/saved.index'
 import { Route as SavedIdRouteImport } from './routes/saved.$id'
-import { Route as ApiPeerjsIndexRouteImport } from './routes/api/peerjs/index'
-import { Route as ApiPeerjsIdRouteImport } from './routes/api/peerjs/id'
-import { Route as ApiPeerjsKeyPeersRouteImport } from './routes/api/peerjs/$key/peers'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -97,21 +94,6 @@ const SavedIdRoute = SavedIdRouteImport.update({
   path: '/saved/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPeerjsIndexRoute = ApiPeerjsIndexRouteImport.update({
-  id: '/api/peerjs/',
-  path: '/api/peerjs/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPeerjsIdRoute = ApiPeerjsIdRouteImport.update({
-  id: '/api/peerjs/id',
-  path: '/api/peerjs/id',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPeerjsKeyPeersRoute = ApiPeerjsKeyPeersRouteImport.update({
-  id: '/api/peerjs/$key/peers',
-  path: '/api/peerjs/$key/peers',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -128,9 +110,6 @@ export interface FileRoutesByFullPath {
   '/saved/$id': typeof SavedIdRoute
   '/bench/': typeof BenchIndexRoute
   '/saved/': typeof SavedIndexRoute
-  '/api/peerjs/id': typeof ApiPeerjsIdRoute
-  '/api/peerjs/': typeof ApiPeerjsIndexRoute
-  '/api/peerjs/$key/peers': typeof ApiPeerjsKeyPeersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -146,9 +125,6 @@ export interface FileRoutesByTo {
   '/saved/$id': typeof SavedIdRoute
   '/bench': typeof BenchIndexRoute
   '/saved': typeof SavedIndexRoute
-  '/api/peerjs/id': typeof ApiPeerjsIdRoute
-  '/api/peerjs': typeof ApiPeerjsIndexRoute
-  '/api/peerjs/$key/peers': typeof ApiPeerjsKeyPeersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -166,9 +142,6 @@ export interface FileRoutesById {
   '/saved/$id': typeof SavedIdRoute
   '/bench/': typeof BenchIndexRoute
   '/saved/': typeof SavedIndexRoute
-  '/api/peerjs/id': typeof ApiPeerjsIdRoute
-  '/api/peerjs/': typeof ApiPeerjsIndexRoute
-  '/api/peerjs/$key/peers': typeof ApiPeerjsKeyPeersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,9 +160,6 @@ export interface FileRouteTypes {
     | '/saved/$id'
     | '/bench/'
     | '/saved/'
-    | '/api/peerjs/id'
-    | '/api/peerjs/'
-    | '/api/peerjs/$key/peers'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -205,9 +175,6 @@ export interface FileRouteTypes {
     | '/saved/$id'
     | '/bench'
     | '/saved'
-    | '/api/peerjs/id'
-    | '/api/peerjs'
-    | '/api/peerjs/$key/peers'
   id:
     | '__root__'
     | '/'
@@ -224,9 +191,6 @@ export interface FileRouteTypes {
     | '/saved/$id'
     | '/bench/'
     | '/saved/'
-    | '/api/peerjs/id'
-    | '/api/peerjs/'
-    | '/api/peerjs/$key/peers'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -240,9 +204,6 @@ export interface RootRouteChildren {
   VerifyRoute: typeof VerifyRoute
   SavedIdRoute: typeof SavedIdRoute
   SavedIndexRoute: typeof SavedIndexRoute
-  ApiPeerjsIdRoute: typeof ApiPeerjsIdRoute
-  ApiPeerjsIndexRoute: typeof ApiPeerjsIndexRoute
-  ApiPeerjsKeyPeersRoute: typeof ApiPeerjsKeyPeersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -345,27 +306,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SavedIdRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/peerjs/': {
-      id: '/api/peerjs/'
-      path: '/api/peerjs'
-      fullPath: '/api/peerjs/'
-      preLoaderRoute: typeof ApiPeerjsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/peerjs/id': {
-      id: '/api/peerjs/id'
-      path: '/api/peerjs/id'
-      fullPath: '/api/peerjs/id'
-      preLoaderRoute: typeof ApiPeerjsIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/peerjs/$key/peers': {
-      id: '/api/peerjs/$key/peers'
-      path: '/api/peerjs/$key/peers'
-      fullPath: '/api/peerjs/$key/peers'
-      preLoaderRoute: typeof ApiPeerjsKeyPeersRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
@@ -398,9 +338,6 @@ const rootRouteChildren: RootRouteChildren = {
   VerifyRoute: VerifyRoute,
   SavedIdRoute: SavedIdRoute,
   SavedIndexRoute: SavedIndexRoute,
-  ApiPeerjsIdRoute: ApiPeerjsIdRoute,
-  ApiPeerjsIndexRoute: ApiPeerjsIndexRoute,
-  ApiPeerjsKeyPeersRoute: ApiPeerjsKeyPeersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

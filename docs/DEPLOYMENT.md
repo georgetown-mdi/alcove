@@ -27,16 +27,16 @@ A WebSocket-to-TCP proxy is required only when a browser-based party needs to re
 
 ## Peer coordination server
 
-The web application bundles a PeerJS-compatible peer-coordination server, served under its own `/api/` route, so deploying the web application is sufficient to obtain a coordination server for parties that use it. The public PeerJS service (`api.peerjs.com`) is also usable for evaluation but routes connection-establishment metadata through a third party.
+The peer-coordination server is a PeerJS-compatible broker that runs as a service of its own -- the standalone broker (`npm start -w packages/peerjs-broker`) on a host of its own. The web application serves no coordination server. The public PeerJS service (`api.peerjs.com`) is also usable for evaluation but routes connection-establishment metadata through a third party.
 
-To have the web application's browser parties use a peer-coordination server deployed apart from it -- the standalone broker (`npm start -w packages/peerjs-broker`) on a host of its own -- set `VITE_SIGNALING_SERVER_URL` when building the web application:
+To name the broker the web application's browser parties use, set `VITE_SIGNALING_SERVER_URL` when building the web application:
 
 ```sh
 VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web
 ```
 
 - The value is a `ws:` or `wss:` URL whose path is the server's mount; the broker's mount and how to set it: [packages/peerjs-broker/README.md](../packages/peerjs-broker/README.md).
-- Unset or blank, the browser parties use the server bundled at the web application's own `/api/`.
+- Unset or blank, the browser parties dial the web application's own origin at `/api/`, which reaches a broker only where something in front of the web application routes that path to one, as the development server does (`npm run dev` from the repository root). A deployment that serves the web application alone sets the variable.
 - The URL's scheme must match the deployment's: `wss:` for one served over `https`, `ws:` for one served over `http`. A mismatch is refused when the app loads.
 - Every browser inviter of the deployment registers there, and every invitation it creates names that server, so a party accepting a fresh invitation dials it from whatever deployment they open it in. A saved exchange's later runs do the same: the accepting party's record keeps the server its invitation named and dials it on every run, so the two parties' deployments need not name the same server.
 - The value is fixed at build time, so changing it means rebuilding and redeploying; an invitation already sent keeps naming the server it was created with.
@@ -45,7 +45,7 @@ How the address is resolved, and what the invitation endpoint states: [WEBRTC_TR
 
 ### Hardening the signaling surface
 
-The bundled coordination server is untrusted by design: the rendezvous ids are derived from the out-of-band invitation secret and the two browsers run an authenticated key exchange directly between themselves, so the server only relays opaque setup messages and never sees exchange data (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)). The residual exposure on its WebSocket upgrade surface is therefore resource exhaustion and nuisance, not access to any party's data. The application enforces several defense-in-depth guards itself, unconditionally and regardless of deployment:
+The coordination server is untrusted by design: the rendezvous ids are derived from the out-of-band invitation secret and the two browsers run an authenticated key exchange directly between themselves, so the server only relays opaque setup messages and never sees exchange data (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)). The residual exposure on its WebSocket upgrade surface is therefore resource exhaustion and nuisance, not access to any party's data. The application enforces several defense-in-depth guards itself, unconditionally and regardless of deployment:
 
 - A slow, partial, or idle upgrade handshake (a "slowloris" that dribbles, stalls, or connects and then sends nothing at all) is bounded by connection-level timeouts and closed server-side rather than held open. These bounds cover the window before a request has wholly arrived; bounding the connection past that point is the deployment's, below.
 - Each signaling message is size-capped, so an unauthenticated peer cannot send an oversized frame.
@@ -93,7 +93,7 @@ location ^~ /api/peerjs {
 }
 ```
 
-The bundled AWS Elastic Beanstalk reference under `apps/web/deploy/aws_eb/` applies the per-address `limit_req`/`limit_conn` on `/api/peerjs` by default -- with the illustrative numbers above, to tune to your load -- and ships the Origin allowlist as a commented-out template you enable by uncommenting the `map` and its matching `if` and setting your public origin (it cannot ship active, because the map defaults to deny and would otherwise reject every client). On a load-balanced environment nginx sees the load balancer's address rather than the client's, so the per-address limits need the real client address recovered from `X-Forwarded-For` to throttle per client instead of collapsing onto one bucket; the reference ships a commented `real_ip` template you scope to the load balancer's subnet(s) -- not the whole VPC, which would let any host in it forge `X-Forwarded-For` -- for that. Confirm the limits suit your load, recover the real client address if you run load-balanced, and enable Origin enforcement if you want it, before exposing a deployment publicly.
+The web application serves no signaling, so on its own deployment that location answers the web application's `/api` refusal; the controls belong in front of the standalone broker. The bundled AWS Elastic Beanstalk reference under `apps/web/deploy/aws_eb/` applies the per-address `limit_req`/`limit_conn` on `/api/peerjs` by default -- with the illustrative numbers above, to tune to your load -- and ships the Origin allowlist as a commented-out template you enable by uncommenting the `map` and its matching `if` and setting your public origin (it cannot ship active, because the map defaults to deny and would otherwise reject every client). On a load-balanced environment nginx sees the load balancer's address rather than the client's, so the per-address limits need the real client address recovered from `X-Forwarded-For` to throttle per client instead of collapsing onto one bucket; the reference ships a commented `real_ip` template you scope to the load balancer's subnet(s) -- not the whole VPC, which would let any host in it forge `X-Forwarded-For` -- for that. Confirm the limits suit your load, recover the real client address if you run load-balanced, and enable Origin enforcement if you want it, before exposing a deployment publicly.
 
 #### TLS posture of the bundled reference
 

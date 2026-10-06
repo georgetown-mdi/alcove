@@ -6,12 +6,19 @@
  * an unreachable server lets the caller skip its suite rather than failing. Call
  * this inside a hook, never at module scope: a "Failed to fetch" during import
  * takes down the entire browser project (0 tests collected), hiding the
- * server-less vector suites that share it. */
+ * server-less vector suites that share it.
+ *
+ * The broker is on another origin than the page and sends no CORS headers, so
+ * the probe is a `no-cors` request to its readiness endpoint: any answer
+ * resolves it, and only an unreachable server rejects. */
 export async function canReachServer(hostString: string): Promise<boolean> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 1_000);
   try {
-    await fetch(`${hostString}/`, { signal: controller.signal });
+    await fetch(`${hostString}/api/health`, {
+      mode: "no-cors",
+      signal: controller.signal,
+    });
     return true;
   } catch {
     return false;

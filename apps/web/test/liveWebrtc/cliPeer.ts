@@ -4,8 +4,9 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
 import { cliEntry, pairsFromResultCsv } from "../interop/cliParty.ts";
+import { trackChild } from "../utils/childProcess.ts";
+
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
-import { trackChild } from "./childProcess.ts";
 
 import type { LiveLegCliOutcome, MatchedPair } from "./legTypes.ts";
 

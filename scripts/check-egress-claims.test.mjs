@@ -530,11 +530,11 @@ describe("allowlist matching", () => {
   });
 
   it("matches an exact entry only exactly", () => {
-    expect(allowlistEntryFor("https://peerjs.com/")).toBeDefined();
+    expect(allowlistEntryFor("http://www.w3.org/2000/svg")).toBeDefined();
     expect(
-      allowlistEntryFor("https://peerjs.com.evil.example"),
+      allowlistEntryFor("http://www.w3.org/2000/svg.evil.example"),
     ).toBeUndefined();
-    expect(allowlistEntryFor("https://peerjs.com/x")).toBeUndefined();
+    expect(allowlistEntryFor("http://www.w3.org/2000/svg/x")).toBeUndefined();
   });
 
   it("admits a prefix entry only at a path, query, or fragment boundary", () => {

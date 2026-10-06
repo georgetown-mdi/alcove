@@ -17,11 +17,12 @@ import {
 
 import type { ChildProcess } from "node:child_process";
 
-// On the hosted deployment every path under /api outside the broker's subtree
-// answers one response, whatever the request's spelling, method, or Accept
-// header; on the console deployment -- the console server, a separate build --
-// the broker's subtree, its signaling upgrade, and every path but a job route
-// written as declared answer that same response. Asserted against the real
+// On the hosted deployment every path under /api answers one response,
+// whatever the request's spelling, method, or Accept header; on the console
+// deployment -- the console server, a separate build -- every path but a job
+// route written as declared answers that same response. Neither serves the
+// signaling broker, which runs as a service of its own: its paths and its
+// WebSocket upgrade are refused on both. Asserted against the real
 // built servers because what would otherwise answer is the router's decision,
 // not any handler's: which spellings of the prefix it resolves to a route, which paths
 // it answers with a canonicalizing redirect rather than matching as written,
@@ -41,8 +42,8 @@ import type { ChildProcess } from "node:child_process";
 // is that the hosted build answers the one refusal for it and the console
 // server answers the job route. A third, doubly percent-encoded target is
 // written the same way to reach the guard's own dot resolution rather than the
-// URL parser's; as written it lands under the broker's subtree, so the console
-// refuses it too.
+// URL parser's; the console refuses it too, since no job route matches it as
+// written.
 
 /** The whole observable shape of a response. Date and the connection headers
  * are dropped: they vary per request rather than per path, and a probe reads
@@ -101,7 +102,7 @@ interface ForeignHeaders {
 const FOREIGN_ORIGIN = "http://evil.example";
 const FOREIGN_HOST = "evil.example";
 
-/** The header variants the broker's routes and its upgrade are driven with. */
+/** The header variants the broker's paths and its upgrade are driven with. */
 const FOREIGN_VARIANTS: ReadonlyArray<[string, ForeignHeaders]> = [
   ["no foreign header", {}],
   ["a foreign Origin", { origin: FOREIGN_ORIGIN }],
@@ -347,6 +348,14 @@ const REFUSED: ReadonlyArray<
   ["PATCH", "/api/jobs/inputs/coverage"],
   ["OPTIONS", "/api/nothing-here"],
   ["HEAD", "/api/jobs/slot", "jobRoute"],
+  // The signaling broker's paths, in the spellings a client writes them.
+  ["GET", "/api/peerjs"],
+  ["GET", "/api/peerjs/id"],
+  ["GET", "/api/peerjs/id/"],
+  ["GET", "/API/peerjs/id"],
+  ["GET", "/%61pi/peerjs/id"],
+  ["GET", "/api/peerjs/peerjs/peers"],
+  ["GET", "/api/health"],
 ];
 
 /** The matrix's rows as a request each arm drives. */
@@ -399,35 +408,23 @@ const DOUBLE_ENCODED_DOT_TARGET = "/api/peerjs/%252e%252e/jobs/slot";
  * matched inside the body rather than as the whole of it. */
 const SLOT_FREE = '{"occupied":false}';
 
-/** The broker's own route, in the spellings a client writes it: the peer server
- * attaches its WebSocket upgrade listener on the first GET under this subtree
- * (src/peerServer.ts), so a hosted refusal reaching it would stop public
- * signaling rather than harden anything. */
-const BROKER_PATHS: ReadonlyArray<string> = [
+/** The broker's paths a client reads: the server description, a fresh id,
+ * and peer discovery. */
+const BROKER_ROUTES: ReadonlyArray<string> = [
+  "/api/peerjs",
   "/api/peerjs/id",
-  "/api/peerjs/id/",
-  "/API/peerjs/id",
-  "/%61pi/peerjs/id",
-];
-
-/** Each broker route, and the status the hosted build answers it with: the
- * server description, a fresh id, and peer discovery, which is off. */
-const BROKER_ROUTES: ReadonlyArray<[path: string, hostedStatus: number]> = [
-  ["/api/peerjs", 200],
-  ["/api/peerjs/id", 200],
-  ["/api/peerjs/peerjs/peers", 401],
+  "/api/peerjs/peerjs/peers",
 ];
 
 /** Every broker route under every foreign-header variant. */
 const BROKER_ROUTE_REQUESTS: ReadonlyArray<
-  [path: string, variant: string, foreign: ForeignHeaders, hostedStatus: number]
-> = BROKER_ROUTES.flatMap(([path, hostedStatus]) =>
+  [path: string, variant: string, foreign: ForeignHeaders]
+> = BROKER_ROUTES.flatMap((path) =>
   FOREIGN_VARIANTS.map(
-    ([variant, foreign]): [string, string, ForeignHeaders, number] => [
+    ([variant, foreign]): [string, string, ForeignHeaders] => [
       path,
       variant,
       foreign,
-      hostedStatus,
     ],
   ),
 );
@@ -513,15 +510,6 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
         expect(body).toBe("");
       });
 
-      test.each(BROKER_PATHS)(
-        "the broker still answers GET %s on the hosted build",
-        async (path) => {
-          const answered = await shapeOf(hostedBase, "GET", path, accept);
-          expect(answered.status).toBe(200);
-          expect(answered.bodyLength).toBeGreaterThan(0);
-        },
-      );
-
       test.each(UNTOUCHED)(
         "a path outside /api is untouched: %s",
         async (path) => {
@@ -581,7 +569,7 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
         },
       );
 
-      test("the one refusal for a verbatim GET double-encoded dot segment written under the broker's subtree", async () => {
+      test("the one refusal for a verbatim GET double-encoded dot segment", async () => {
         const { body, ...shape } = await rawShapeOf(
           consoleBase,
           DOUBLE_ENCODED_DOT_TARGET,
@@ -592,55 +580,37 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
       });
     });
 
-    // The console serves no PeerJS route and no signaling upgrade, whatever the
-    // request's Origin or Host; the hosted build answers them as it always has.
-    describe("the broker's routes and signaling upgrade by profile", () => {
-      test.each(BROKER_ROUTE_REQUESTS)(
-        "the console answers the one refusal for GET %s with %s",
-        async (path, _variant, foreign) => {
-          const { body, ...shape } = await rawShapeOf(
-            consoleBase,
-            path,
-            ACCEPT_VALUES[1][1],
-            foreign,
-          );
-          expect(shape).toEqual(REFUSAL);
-          expect(body).toBe("");
-        },
-      );
+    // Neither profile serves a PeerJS route or the signaling upgrade, whatever
+    // the request's Origin or Host.
+    describe("the broker's paths and signaling upgrade", () => {
+      describe.each([
+        ["hosted build", () => hostedBase],
+        ["console", () => consoleBase],
+      ])("on the %s", (_profile, baseOf) => {
+        test.each(BROKER_ROUTE_REQUESTS)(
+          "answers the one refusal for GET %s with %s",
+          async (path, _variant, foreign) => {
+            const { body, ...shape } = await rawShapeOf(
+              baseOf(),
+              path,
+              ACCEPT_VALUES[1][1],
+              foreign,
+            );
+            expect(shape).toEqual(REFUSAL);
+            expect(body).toBe("");
+          },
+        );
 
-      test.each(BROKER_ROUTE_REQUESTS)(
-        "the hosted build answers GET %s with %s",
-        async (path, _variant, foreign, hostedStatus) => {
-          const answered = await rawShapeOf(
-            hostedBase,
-            path,
-            ACCEPT_VALUES[1][1],
-            foreign,
-          );
-          expect(answered.status).toBe(hostedStatus);
-        },
-      );
-
-      test.each(FOREIGN_VARIANTS)(
-        "the console refuses the signaling upgrade with %s",
-        async (_variant, foreign) => {
-          expect(await upgradeAnswerOf(consoleBase, foreign)).toEqual({
-            status: 404,
-            opened: false,
-          });
-        },
-      );
-
-      test.each(FOREIGN_VARIANTS)(
-        "the hosted build opens the signaling upgrade with %s",
-        async (_variant, foreign) => {
-          expect(await upgradeAnswerOf(hostedBase, foreign)).toEqual({
-            status: 101,
-            opened: true,
-          });
-        },
-      );
+        test.each(FOREIGN_VARIANTS)(
+          "refuses the signaling upgrade with %s",
+          async (_variant, foreign) => {
+            expect(await upgradeAnswerOf(baseOf(), foreign)).toEqual({
+              status: 404,
+              opened: false,
+            });
+          },
+        );
+      });
     });
   },
 );
