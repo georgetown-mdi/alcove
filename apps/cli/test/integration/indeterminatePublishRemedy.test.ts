@@ -9,10 +9,8 @@ import {
   TransportPublishIndeterminateError,
   UsageError,
   getLogger,
-  prepareForExchange,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { runProtocol, type ProtocolConnectionConfig } from "../../src/protocol";
@@ -21,6 +19,7 @@ import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
+import { preparedFor } from "../support";
 
 // What an operator is told after a mid-exchange message publish the transport
 // could not settle, and whether what they are told works.
@@ -61,17 +60,6 @@ const REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
   "exchange fresh.";
 
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 // Unequal sizes fix the PSI roles regardless of who wins the rendezvous race, so
 // "receiver" and "sender" are stable labels across attempts.
 const RECEIVER_ROWS = [{ first_name: "Bob" }, { first_name: "Carol" }];
@@ -80,11 +68,6 @@ const SENDER_ROWS = [
   { first_name: "Carol" },
   { first_name: "Dave" },
 ];
-
-function preparedFor(identity: string, rows: Array<Record<string, string>>) {
-  const spec: ExchangeDataSpec = { linkageTerms: { ...baseTerms, identity } };
-  return prepareForExchange(spec, identity, rows, ["first_name"]);
-}
 
 interface PartyOutcome {
   party: string;

@@ -2,18 +2,14 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { expect } from "vitest";
-import {
-  FileSyncConnection,
-  TransportOperationStalledError,
-  UsageError,
-} from "@alcove/core";
+import { TransportOperationStalledError, UsageError } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
 import { startInProcessSftpServer } from "../sftpServer";
-import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
+import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // A partner-side drop tears every operation the adapter has on the wire, not
 // just the one whose recovery re-dial runs. The adapter issues concurrent
@@ -37,9 +33,9 @@ import { inProcessOnly } from "../sftpBackendGate";
 // let a sibling file's traffic move the cut. The single-operation tear is
 // inflightDropRecovery.test.ts, the socket-state census over the dials this path
 // issues is dialDeferral.test.ts, and the withheld-close partner that leaves the
-// session property SET is heldSessionWithheldClose.test.ts; the party scaffolding
-// below is this file's own, as dialDeferral's is, because each file
-// needs a different slice of the session controls.
+// session property SET is heldSessionWithheldClose.test.ts. The party below
+// adds to the shared connectParty only the session controls this file arms
+// and clears.
 
 const TEST_TIMEOUT_MS = 120_000;
 
@@ -49,6 +45,11 @@ const TEST_TIMEOUT_MS = 120_000;
 // so a regression fails in seconds rather than spending the production
 // minute per operation.
 const STALL_DEADLINE_MS = 3_000;
+
+// The bound on a fan of deletes the tear settles. A fan settled by a deadline
+// apiece takes at least STALL_DEADLINE_MS, twice this; a fan the tear settles
+// took 3-13 ms over thirteen runs, over 100 times below the bound.
+const TORN_FAN_CEILING_MS = STALL_DEADLINE_MS / 2;
 
 // Large enough that the cut lands deep inside the transfer rather than at its
 // edges: ssh2-sftp-client reads in 32 KiB chunks, so this is a few hundred READs.
@@ -104,39 +105,26 @@ function recordDials(adapter: SSH2SFTPClientAdapter): DialOutcome[] {
   return dials;
 }
 
-interface Party {
+interface Party extends ConnectedParty {
   srv: InProcessSftpServer;
-  adapter: SSH2SFTPClientAdapter;
-  conn: FileSyncConnection;
   dials: DialOutcome[];
-  remote: string;
-  localDir: string;
-  stop: () => Promise<void>;
 }
 
 // One connected party on its own server, in its own rendezvous directory. The
 // party drives the adapter directly rather than through a poll loop, so the
 // server's op counter -- which is server-wide -- counts only this test's
 // operations and a cut lands where the case aimed it.
-async function connectParty(options: {
+async function connectPartyOnOwnServer(options: {
   maxReconnectAttempts: number;
   stallDeadlineMs?: number;
   withholdCloseOnDisconnect?: boolean;
   ephemeralSessions?: boolean;
 }): Promise<Party> {
   const srv = await startInProcessSftpServer();
-  // Every case calls this outside its own try, so nothing else owns what is
-  // allocated below once the dial throws: unwound here, a failed setup
-  // reports its own error; unwound nowhere, it leaves its listening server
-  // and its temp directory alive for the rest of the worker's life.
-  let allocatedDir: string | undefined;
-  let openedConn: FileSyncConnection | undefined;
+  // Every case calls this outside its own try, so nothing else owns the server
+  // once the dial throws: stopped here, a failed setup reports its own error;
+  // stopped nowhere, it stays listening for the rest of the worker's life.
   try {
-    const localDir = await fsp.mkdtemp(
-      path.join(srv.handle.backingDir, "concurrent-"),
-    );
-    allocatedDir = localDir;
-    const remote = `${srv.handle.remoteRoot}/${path.basename(localDir)}`;
     const adapter = new SSH2SFTPClientAdapter({
       ephemeralSessions: options.ephemeralSessions ?? false,
       ...(options.stallDeadlineMs === undefined
@@ -144,37 +132,23 @@ async function connectParty(options: {
         : { stallDeadlineMs: options.stallDeadlineMs }),
     });
     const dials = recordDials(adapter);
-    const conn = new FileSyncConnection(adapter, {
-      verbose: -1,
-      pollingFrequency: 10,
-    });
-    openedConn = conn;
-    conn.on("error", () => {});
     // Armed before the dial, because the control replaces the closers on every
     // socket the server accepts and this party's own connection is the one it has
     // to reach.
     if (options.withholdCloseOnDisconnect)
       srv.sessionControls.withholdCloseOnDisconnect = true;
-    await conn.open({
-      channel: "sftp",
-      server: {
-        host: srv.handle.host,
-        port: srv.handle.port,
-        ...serverAuth(srv.handle.usera),
-        path: remote,
-      },
-      options: { maxReconnectAttempts: options.maxReconnectAttempts },
+    const party = await connectParty(srv.handle, {
+      dirPrefix: "concurrent-",
+      adapter,
+      maxReconnectAttempts: options.maxReconnectAttempts,
     });
     // From here on the record holds only the dials a case provoked; the party's
     // own first connect is setup, not a subject.
     dials.length = 0;
     return {
+      ...party,
       srv,
-      adapter,
-      conn,
       dials,
-      remote,
-      localDir,
       stop: async () => {
         // Clear every standing cap and injection before the teardown dials and
         // closes: one left armed cuts or withholds from the teardown instead of
@@ -186,15 +160,11 @@ async function connectParty(options: {
         srv.sessionControls.stopWithholdingCloses();
         srv.inject.withholdOn = null;
         srv.inject.readdirBatchSize = 0;
-        await conn.close().catch(() => {});
-        await fsp.rm(localDir, { recursive: true, force: true });
+        await party.stop();
         await srv.stop();
       },
     };
   } catch (error: unknown) {
-    await openedConn?.close().catch(() => {});
-    if (allocatedDir !== undefined)
-      await fsp.rm(allocatedDir, { recursive: true, force: true });
     await srv.stop();
     throw error;
   }
@@ -298,7 +268,7 @@ for (const order of ["list-first", "get-first"] as const)
     `a list and a get on the wire together at a clean drop both complete, ` +
       `issued ${order}`,
     async () => {
-      const party = await connectParty({
+      const party = await connectPartyOnOwnServer({
         maxReconnectAttempts: 4,
         stallDeadlineMs: STALL_DEADLINE_MS,
       });
@@ -385,7 +355,7 @@ inProcessOnly(
     // The rendezvous orphan sweep's shape: one turn's worth of per-file deletes
     // under Promise.allSettled, all on the wire when the cut lands. Every member
     // but the one whose recovery runs is a concurrent operation by construction.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 6,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -448,7 +418,7 @@ for (const [shape, width] of [
     `one clean drop tearing ${shape} is one re-dial in the counters and one ` +
       `warning to the operator`,
     async () => {
-      const party = await connectParty({
+      const party = await connectPartyOnOwnServer({
         maxReconnectAttempts: 6,
         stallDeadlineMs: STALL_DEADLINE_MS,
       });
@@ -511,7 +481,7 @@ inProcessOnly(
     // holds a generation the gate has passed, looking exactly like the
     // once-per-loss property working. Driven with a fan at each drop, so an arm
     // of each drop's fan is in play.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 6,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -583,7 +553,7 @@ for (const [shape, width] of [
     `a mid-exchange reconnect budget of ${SPENDABLE_DROPS} survives ` +
       `${SPENDABLE_DROPS} drops tearing ${shape} and refuses the next`,
     async () => {
-      const party = await connectParty({
+      const party = await connectPartyOnOwnServer({
         maxReconnectAttempts: SPENDABLE_DROPS,
         stallDeadlineMs: STALL_DEADLINE_MS,
       });
@@ -688,7 +658,7 @@ inProcessOnly(
     // so the bound is measured, not reasoned about. What is asserted is only
     // that the budget bought no more handshakes than it allowed.
     const budget = 1;
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: budget,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -739,7 +709,7 @@ inProcessOnly(
     // rather than assumed, by taking more drops than the configured budget.
     const budget = 2;
     const dropsPastTheBudget = 3;
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: budget,
       stallDeadlineMs: STALL_DEADLINE_MS,
       ephemeralSessions: true,
@@ -819,7 +789,7 @@ inProcessOnly(
     //     transition, not a survived drop, counted nowhere.
     // Driven at the adapter, not through a poll loop, since neither boundary
     // falls on demand from inside one.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 4,
       stallDeadlineMs: STALL_DEADLINE_MS,
       ephemeralSessions: true,
@@ -900,7 +870,7 @@ inProcessOnly(
     // its never-reject contract, so no member of this fan dials into the window
     // the case above is about; what a drop must not do is break the contract the
     // connection cleanup and the rendezvous sweeps rely on.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 4,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -934,7 +904,7 @@ inProcessOnly(
       // turn before the cut, so both stand even for a member left riding its
       // liveness deadline. The ceiling is the only thing here that separates a fan
       // settled by its tear from one settled by a deadline apiece.
-      expect(outcomes.elapsedMs).toBeLessThan(500);
+      expect(outcomes.elapsedMs).toBeLessThan(TORN_FAN_CEILING_MS);
       expect(controls.handshakeCount()).toBe(0);
       expect(party.dials).toHaveLength(0);
     } finally {
@@ -954,7 +924,7 @@ inProcessOnly(
     // that can send nothing. What settles the beat is the read's own recovery
     // forcing that transport closed -- a close this side drives, needing nothing
     // from the partner -- rather than the beat's per-operation deadline.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 4,
       stallDeadlineMs: STALL_DEADLINE_MS,
       withholdCloseOnDisconnect: true,
@@ -1021,7 +991,7 @@ inProcessOnly(
     // REALPATH unanswered -- the server-side withhold this drives. The read
     // issued behind it is the operation whose recovery re-dial runs; the beat is
     // the concurrent one, so what matters is only that it settles, not its result.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 4,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });

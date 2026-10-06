@@ -17,6 +17,8 @@ import {
 import { MAX_DEFERRED_CLEANUP_DELETES } from "../../src/connection/sftpDeferredCleanup";
 import { serverAuth, sftpServer } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
+import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // ssh2-sftp-client brackets every operation with one 'end', one 'close' and one
 // 'error' listener on the ONE ssh2 Client the adapter holds for its whole life,
@@ -265,64 +267,24 @@ test("silencing and restoring leaves the same 'warning' listeners, one-shot wrap
 // adapter: no stallDeadlineMs hook, and no listener ceiling raised by the test.
 // ---------------------------------------------------------------------------
 
-interface Party {
-  adapter: SSH2SFTPClientAdapter;
-  conn: FileSyncConnection;
+interface Party extends ConnectedParty {
   probe: Probe;
-  remote: string;
-  localDir: string;
-  stop: () => Promise<void>;
 }
 
-async function connectParty(
+async function connectProbedParty(
   options: { ephemeralSessions?: boolean } = {},
 ): Promise<Party> {
-  let allocatedDir: string | undefined;
-  let openedConn: FileSyncConnection | undefined;
-  try {
-    const localDir = await fsp.mkdtemp(path.join(srv.backingDir, "ceiling-"));
-    allocatedDir = localDir;
-    const remote = `${srv.remoteRoot}/${path.basename(localDir)}`;
-    const adapter = new SSH2SFTPClientAdapter({
+  const party = await connectParty(srv, {
+    dirPrefix: "ceiling-",
+    adapter: new SSH2SFTPClientAdapter({
       verbosity: -1,
       ephemeralSessions: options.ephemeralSessions ?? false,
-    });
-    const conn = new FileSyncConnection(adapter, {
-      verbose: -1,
-      pollingFrequency: 10,
-    });
-    openedConn = conn;
-    conn.on("error", () => {});
-    await conn.open({
-      channel: "sftp",
-      server: {
-        host: srv.host,
-        port: srv.port,
-        ...serverAuth(srv.usera),
-        path: remote,
-      },
-      options: { maxReconnectAttempts: 4 },
-    });
-    // Installed after the dial, so the baseline is the persistent set a
-    // connected client holds rather than a fresh construction's.
-    const probe = probeListeners(adapter);
-    return {
-      adapter,
-      conn,
-      probe,
-      remote,
-      localDir,
-      stop: async () => {
-        await conn.close().catch(() => {});
-        await fsp.rm(localDir, { recursive: true, force: true });
-      },
-    };
-  } catch (error: unknown) {
-    await openedConn?.close().catch(() => {});
-    if (allocatedDir !== undefined)
-      await fsp.rm(allocatedDir, { recursive: true, force: true });
-    throw error;
-  }
+    }),
+    maxReconnectAttempts: 4,
+  });
+  // Installed after the dial, so the baseline is the persistent set a
+  // connected client holds rather than a fresh construction's.
+  return { ...party, probe: probeListeners(party.adapter) };
 }
 
 // `width` files for a delete fan to be aimed at, named off `prefix` so
@@ -359,15 +321,6 @@ async function fanSafeDelete(party: Party, targets: string[]): Promise<void> {
 // Messages the exchange sends. Enough that the poll loop cycles repeatedly
 // with a send landing in it, which is the overlap the term enumerates.
 const EXCHANGE_MESSAGES = 5;
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`waitFor: ${what} not met within timeout`);
-}
 
 // Runs a rendezvous, a polled message exchange and both teardowns between two
 // parties in one directory, with a probe on each party's shared client from the
@@ -425,10 +378,9 @@ async function driveExchange(receiverOptions: {
         receiver.start();
         for (let index = 0; index < EXCHANGE_MESSAGES; index += 1)
           await sender.send({ message: index });
-        await waitFor(
-          () => delivered.length === EXCHANGE_MESSAGES,
-          "every message to arrive",
-        );
+        await waitFor(() => delivered.length === EXCHANGE_MESSAGES, {
+          what: "every message to arrive",
+        });
         receiver.stop();
         // Teardown is inside the window by design: close() drains the cleanup
         // records and then waits out ssh2-sftp-client's end(), which parks
@@ -514,7 +466,7 @@ inProcessOnly(
   async () => {
     // Connection-per-poll releases the session at an idle boundary and the next
     // operation re-dials, which is a real second dial on the same adapter.
-    const party = await connectParty({ ephemeralSessions: true });
+    const party = await connectProbedParty({ ephemeralSessions: true });
     const watch = watchForListenerWarnings();
     try {
       const beforeRedial = party.probe.emitter;
@@ -556,7 +508,7 @@ for (const width of FAN_WIDTHS)
       // A fresh adapter per width: Node marks the warning per emitter and event
       // name, so a width sharing an emitter with an earlier one could pass on
       // the earlier one's suppression rather than on the ceiling.
-      const party = await connectParty();
+      const party = await connectProbedParty();
       const watch = watchForListenerWarnings();
       try {
         // The width really is one the default ceiling refused -- otherwise the
@@ -590,7 +542,7 @@ inProcessOnly(
     // The red case for the check above: a shape where each operation attaches a
     // listener to the shared client and nothing takes it off, which is exactly
     // what the raised ceiling cannot be relied on to expose.
-    const party = await connectParty();
+    const party = await connectProbedParty();
     const watch = watchForListenerWarnings();
     try {
       const emitter = party.probe.emitter;
@@ -637,7 +589,7 @@ inProcessOnly(
 inProcessOnly(
   "the cleanup drain's re-issue fan at its own cap warns nothing",
   async () => {
-    const party = await connectParty({ ephemeralSessions: true });
+    const party = await connectProbedParty({ ephemeralSessions: true });
     const watch = watchForListenerWarnings();
     try {
       const temps: string[] = [];

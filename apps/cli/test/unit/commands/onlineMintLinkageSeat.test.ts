@@ -41,6 +41,7 @@ import {
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 import { streamOf, withStdin } from "../../stdinStream";
 import { pathAsDisplayed } from "../../platformPaths";
+import { captureProcessExit } from "../../exitCapture";
 
 const silentLog = getLogger("online-mint-linkage-seat-test");
 silentLog.setLevel("silent");
@@ -157,20 +158,20 @@ test("the refused online mint prints no invitation and opens no connection", asy
   // printInvitation is the one console.log this path makes, so an unused spy is
   // the whole statement that no token was disclosed.
   const printed = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: ["wss://peers.example.org/psi", input],
-      "config-file": options.configFile,
-      "key-file": options.keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: ["wss://peers.example.org/psi", input],
+        "config-file": options.configFile,
+        "key-file": options.keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(printed).not.toHaveBeenCalled();
     expect(runOnlineBootstrap).not.toHaveBeenCalled();

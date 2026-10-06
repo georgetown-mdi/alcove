@@ -70,6 +70,7 @@ import {
   captureStdio,
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
+import { captureProcessExit, runToExit } from "../../exitCapture";
 
 // The main thread's heap limit as the heap check reads it, when a test sets one.
 const heapLimit = vi.hoisted(() => ({
@@ -1108,13 +1109,13 @@ describe("handler", () => {
       .mockImplementation((...args: unknown[]) => {
         stdoutLines.push(args.map((arg) => String(arg)).join(" "));
       });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const previousExitCode = process.exitCode;
     process.exitCode = undefined;
     try {
-      await handler(argv({ "log-level": "error", ...options }));
+      await runToExit(() =>
+        handler(argv({ "log-level": "error", ...options })),
+      );
       // Collected before the finally block restores the spies, which clears the
       // calls they recorded.
       return {

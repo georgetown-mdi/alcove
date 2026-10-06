@@ -4,18 +4,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import yargs from "yargs";
+import type { MockInstance } from "vitest";
 import { prepareForExchange, UNNAMED_PARTY_LABEL } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
-import {
-  builder as exchangeBuilder,
-  handler as exchangeHandler,
-} from "../../../src/commands/exchange";
-import {
-  builder as zeroSetupBuilder,
-  handler as zeroSetupHandler,
-} from "../../../src/commands/zeroSetup";
+import { buildCli } from "../../../src/cliParser";
 import { saveConfig } from "../../../src/config";
 import { UNNAMED_PARTNER_ACCOUNTING_NOTE } from "../../../src/protocol";
 import { saveKeyFile } from "../../../src/keyFile";
@@ -26,6 +19,7 @@ import {
 } from "../../../src/recordFile";
 import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
 import { captureStdio } from "../../loggingTestSupport";
+import { captureProcessExit } from "../../exitCapture";
 
 // Net-new coverage: the per-command-handler wiring that turns the default-on
 // audit record into files on disk. `alcove exchange` and the zero-setup
@@ -110,7 +104,7 @@ const RECORD_VERSION = "alcove-exchange-record/v10";
 
 let work: string;
 let originalCwd: string;
-let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
+let exitSpy: MockInstance<typeof process.exit> | undefined;
 
 beforeEach(() => {
   work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-cmd-record-"));
@@ -124,9 +118,7 @@ beforeEach(() => {
   // mismatched exchange); trap it so such a failure rejects the awaiting
   // parseAsync -- and thus fails the test with the exit code -- instead of
   // terminating the vitest worker. Mirrors the unit tests' exit trap.
-  exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${code ?? 0})`);
-  }) as never);
+  exitSpy = captureProcessExit();
 });
 
 afterEach(() => {
@@ -143,20 +135,13 @@ afterEach(() => {
   }
 });
 
-// Run a single CLI invocation exactly as index.ts wires it: the zero-setup
-// command as the `$0` default and `exchange` as a subcommand, so the same
-// builders apply the same option defaults, `record: true` among them. exitProcess
-// is disabled and fail(false) rethrows, so a yargs-level parse error rejects
-// rather than exiting or printing usage; a handler error already rejects via
-// the trapped process.exit above.
+// Run a single CLI invocation through the parser index.ts drives (buildCli),
+// so the same builders apply the same option defaults, `record: true` among
+// them. exitProcess is disabled and fail(false) rethrows, so a yargs-level
+// parse error rejects rather than exiting or printing usage; a handler error
+// already rejects via the trapped process.exit above.
 async function runCli(argv: string[]): Promise<void> {
-  await yargs(argv)
-    .scriptName("alcove")
-    .command("$0", "zero-setup exchange", zeroSetupBuilder, zeroSetupHandler)
-    .command("exchange <input> [output]", "", exchangeBuilder, exchangeHandler)
-    .exitProcess(false)
-    .fail(false)
-    .parseAsync();
+  await buildCli(argv).exitProcess(false).fail(false).parseAsync();
 }
 
 // Run both parties concurrently and wait for BOTH to settle (allSettled, not
@@ -441,7 +426,7 @@ test("exchange: a file as OUTPUT is refused with exit 64 before the partner is c
       "--log-level",
       "silent",
     ]),
-  ).rejects.toThrow("process.exit(64)");
+  ).rejects.toThrow("exit:64");
   expect(fs.readFileSync(fileAsOutput, "utf8")).toBe("from an earlier run\n");
   expect(fs.readFileSync(keyA, "utf8")).toBe(keyBefore);
 }, 90_000);

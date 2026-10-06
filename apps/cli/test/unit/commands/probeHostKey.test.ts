@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { Arguments } from "yargs";
 import {
   keyTypeFromBlob,
@@ -20,6 +20,7 @@ import {
   captureStdio,
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
+import { captureProcessExit } from "../../exitCapture";
 
 snapshotDiagnosticSinkAndLevel();
 
@@ -460,17 +461,17 @@ describe("both routes hold the producer's excerpt as it stands", () => {
 describe("--connect-timeout is capped", () => {
   test("a value above 7d is refused with exit 64 naming the flag and the maximum", async () => {
     const stdio = captureStdio();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
-      await probeHostKeyHandler({
-        _: [],
-        $0: "alcove",
-        "sftp-url": "sftp://sftp.example.org",
-        "connect-timeout": "8d",
-        "log-level": "info",
-      } as unknown as Arguments);
+      await expect(
+        probeHostKeyHandler({
+          _: [],
+          $0: "alcove",
+          "sftp-url": "sftp://sftp.example.org",
+          "connect-timeout": "8d",
+          "log-level": "info",
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       expect(exit).toHaveBeenCalledWith(64);
       expect(stdio.stderrWrites.join("")).toContain(
         "--connect-timeout must not exceed 7d; got 8d",

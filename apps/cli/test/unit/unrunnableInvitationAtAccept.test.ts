@@ -2,22 +2,13 @@ import { expect, test } from "vitest";
 import { UsageError } from "@alcove/core";
 
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
-
-// Builds the token at the wire level, bypassing encodeInvitation, whose own
-// schema validation would refuse the terms before the fixture could be built.
-async function encodeRaw(token: unknown): Promise<string> {
-  const toBase64Url = (bytes: Uint8Array): string =>
-    Buffer.from(bytes).toString("base64url");
-  const bytes = new TextEncoder().encode(JSON.stringify(token));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(digest).slice(0, 4));
-}
+import { encodeRawInvitation } from "../support";
 
 // A partner-crafted invitation whose count-only terms declare a candidate set:
 // a `split_on` fan-out on the key's only element. No count-only round resolves
 // one, so the exchange it invites cannot run.
 function unrunnableInvitation(): Promise<string> {
-  return encodeRaw({
+  return encodeRawInvitation({
     version: "1",
     linkageTerms: {
       version: "1.0.0",

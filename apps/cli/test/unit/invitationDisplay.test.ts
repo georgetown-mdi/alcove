@@ -45,7 +45,6 @@ import type {
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import { logDecisionFacts } from "../../src/invitationDisplay";
 import {
-  encodeRaw,
   FUTURE,
   OUTBOUND_SEND_LABEL,
   REPEAT_HEADING,
@@ -54,6 +53,7 @@ import {
   sampleTerms,
   sampleToken,
 } from "../invitationDisplayTestSupport";
+import { encodeRawInvitation } from "../support";
 
 // A token whose one linkage key splits its element's value into several match
 // candidates: the shape that raises a fan-out consent fact, in whichever of the
@@ -173,7 +173,7 @@ describe("displayInvitation: the declared terms it discloses (columns, citations
     // the renderer every CLI error sink takes, which escapes them ONCE -- the
     // error's own message holds them raw, as its input.
     const hostileKey = "\x1b[2J\x1b[31mFAKE";
-    const encoded = await encodeRaw({
+    const encoded = await encodeRawInvitation({
       ...sampleToken(FUTURE()),
       connectionEndpoint: {
         channel: "sftp",

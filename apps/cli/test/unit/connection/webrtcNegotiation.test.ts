@@ -42,6 +42,7 @@ import type {
   WeriftPeerConfiguration,
 } from "../../../src/connection/webrtc/weriftPeer";
 import type { RTCPeerConnection } from "werift";
+import { waitFor } from "../../support";
 
 /**
  * The negotiation state machine against a scripted broker and a scripted peer
@@ -686,7 +687,10 @@ test("an offer neither answered nor reported expired is sent again after the fal
     role: "acceptor",
     unreportedOfferResendMs: 200,
   });
-  await until(() => socket.ofType(BROKER_MESSAGE.offer).length === 3);
+  await waitFor(
+    () => socket.ofType(BROKER_MESSAGE.offer).length === 3,
+    NEGOTIATION_POLL,
+  );
   // The answer stops the fallback before its next turn.
   socket.deliver({
     type: BROKER_MESSAGE.answer,
@@ -719,7 +723,7 @@ test("an EXPIRE after the answer lands sends nothing", async () => {
     src: inviterId,
     payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
   });
-  await until(() => peer.remoteDescriptions.length === 1);
+  await waitFor(() => peer.remoteDescriptions.length === 1, NEGOTIATION_POLL);
   socket.deliver({ type: BROKER_MESSAGE.expire, src: inviterId });
   expect(socket.ofType(BROKER_MESSAGE.offer)).toHaveLength(1);
   peer.channels[0].open();
@@ -738,7 +742,10 @@ test("an inviter sends nothing on an EXPIRE and keeps its connection", async () 
       connectionId: "dc_partner",
     },
   });
-  await until(() => answeredConnectionIds(socket).length === 1);
+  await waitFor(
+    () => answeredConnectionIds(socket).length === 1,
+    NEGOTIATION_POLL,
+  );
   const sentBefore = socket.sent.length;
   socket.deliver({ type: BROKER_MESSAGE.expire, src: acceptorId });
   expect(socket.sent).toHaveLength(sentBefore);
@@ -888,7 +895,7 @@ test("the channel open ends its attempt at its fixed ceiling whatever both setti
   await vi.advanceTimersByTimeAsync(2_000 + ICE_STATS_TIMEOUT_MS);
   // A seven-day wait's first attempt is not its last, so the ceiling starts
   // the next attempt rather than failing the wait.
-  await until(() => sockets.length === 2);
+  await waitFor(() => sockets.length === 2, NEGOTIATION_POLL);
   expect(await settlementOf(session)).toBe("waiting");
   expect(
     lines.some((line) =>
@@ -1657,13 +1664,8 @@ const ONE_MINUTE_MS = 60_000;
 const TEN_MINUTES_MS = 10 * ONE_MINUTE_MS;
 const OFFER_SDP = { type: "offer", sdp: "v=0\r\noffer\r\n" };
 
-/** Resolve once `condition` holds, or fail after about a second. */
-async function until(condition: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
-  expect(condition()).toBe(true);
-}
+// How a case polls for the state a scripted socket reaches.
+const NEGOTIATION_POLL = { timeoutMs: 1_000, intervalMs: 5 };
 
 /**
  * Put the attempt bounds and the wait's deadline on a clock the test
@@ -1688,7 +1690,7 @@ async function settleRegistration(
   sockets: Array<ScriptedSocket>,
   count: number,
 ): Promise<void> {
-  await until(() => sockets.length === count);
+  await waitFor(() => sockets.length === count, NEGOTIATION_POLL);
   await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
@@ -1750,7 +1752,7 @@ test("a partner arriving mid-attempt is met by that attempt", async () => {
     });
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS / 2);
   answer(socket, inviterId, offeredConnectionIds(socket)[0]);
-  await until(() => peer.remoteDescriptions.length === 1);
+  await waitFor(() => peer.remoteDescriptions.length === 1, NEGOTIATION_POLL);
   peer.channels[0].open();
   expect((await session).channel).toBe(peer.channels[0]);
   expect(sockets).toHaveLength(1);
@@ -1775,7 +1777,10 @@ test("an inviter's partner arriving between attempts is met by the next one", as
   // The broker holds an offer sent while this side was between registrations
   // and hands it to the new one.
   offer(sockets[1], acceptorId, "dc_partner");
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.answer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.answer).length === 1,
+    NEGOTIATION_POLL,
+  );
   expect(socket.ofType(BROKER_MESSAGE.answer)).toEqual([]);
   expect(peers[1].remoteDescriptions).toEqual([OFFER_SDP]);
   const channel = new FakeChannel("dc_partner");
@@ -1794,7 +1799,10 @@ test("an acceptor's next attempt offers a new connection from a fresh registrati
   const [firstId] = offeredConnectionIds(socket);
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
   await settleRegistration(sockets, 2);
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   const [nextId] = offeredConnectionIds(sockets[1]);
   expect(nextId).not.toBe(firstId);
   expect(peers[0].closeCalls).toBe(1);
@@ -1806,7 +1814,10 @@ test("an acceptor's next attempt offers a new connection from a fresh registrati
   expect(peers[1].remoteDescriptions).toEqual([]);
 
   answer(sockets[1], inviterId, nextId);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
 });
@@ -1868,7 +1879,10 @@ test("a re-registration refused as ID-TAKEN is retried within the attempt cycle"
   // The retry registers the attempt's own peer connection; none is rebuilt.
   expect(peers).toHaveLength(2);
   offer(sockets[2], acceptorId, "dc_partner");
-  await until(() => sockets[2].ofType(BROKER_MESSAGE.answer).length === 1);
+  await waitFor(
+    () => sockets[2].ofType(BROKER_MESSAGE.answer).length === 1,
+    NEGOTIATION_POLL,
+  );
   const channel = new FakeChannel("dc_partner");
   peers[1].ondatachannel?.({ channel });
   channel.open();
@@ -1951,7 +1965,10 @@ test("a re-registration the signaling server drops is retried within the wait", 
   await settleRegistration(sockets, 3);
   expect(peers).toHaveLength(2);
   offer(sockets[2], acceptorId, "dc_partner");
-  await until(() => sockets[2].ofType(BROKER_MESSAGE.answer).length === 1);
+  await waitFor(
+    () => sockets[2].ofType(BROKER_MESSAGE.answer).length === 1,
+    NEGOTIATION_POLL,
+  );
   const channel = new FakeChannel("dc_partner");
   peers[1].ondatachannel?.({ channel });
   channel.open();
@@ -2100,9 +2117,15 @@ test("a broker socket dropped before the partner arrives starts the next attempt
   // The broker still holds the dropped socket's id, and the retry waits it out.
   await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
   await settleRegistration(sockets, 3);
-  await until(() => sockets[2].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[2].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   answer(sockets[2], inviterId, offeredConnectionIds(sockets[2])[0]);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
 });
@@ -2124,9 +2147,15 @@ test("a broker socket dropped as registration completes starts the next attempt"
   expect(await settlementOf(session)).toBe("waiting");
   expect(peers[0].closeCalls).toBe(1);
 
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
 });
@@ -2150,9 +2179,15 @@ test("a broker socket error before the partner arrives starts the next attempt",
     ),
   ).toContain("starting a new connection attempt");
 
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
 });
@@ -2183,7 +2218,7 @@ test("a broker socket dropped once the partner has answered fails the wait", asy
     role: "acceptor",
   });
   answer(socket, inviterId, offeredConnectionIds(socket)[0]);
-  await until(() => peer.remoteDescriptions.length === 1);
+  await waitFor(() => peer.remoteDescriptions.length === 1, NEGOTIATION_POLL);
   socket.drop();
   await expect(session).rejects.toThrow(
     /the signaling server closed the connection/,
@@ -2217,7 +2252,10 @@ test("an acceptor sends no offer in the quiet period before an attempt that anot
   expect(socket.ofType(BROKER_MESSAGE.offer)).toHaveLength(2);
   await vi.advanceTimersByTimeAsync(1_000);
   await settleRegistration(sockets, 2);
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
 });
 
 test("the last attempt of a wait keeps offering to its end", async () => {
@@ -2243,7 +2281,7 @@ test("a partner that has answered is not cut off at the attempt's bound", async 
   });
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS - 1_000);
   answer(socket, inviterId, offeredConnectionIds(socket)[0]);
-  await until(() => peer.remoteDescriptions.length === 1);
+  await waitFor(() => peer.remoteDescriptions.length === 1, NEGOTIATION_POLL);
   await vi.advanceTimersByTimeAsync(5_000);
   expect(sockets).toHaveLength(1);
   expect(peer.closeCalls).toBe(0);
@@ -2260,7 +2298,10 @@ test("an inviter whose answered partner goes quiet starts a new attempt after th
     channelOpenTimeoutMs: 10_000,
   });
   offer(socket, acceptorId, "dc_gone");
-  await until(() => socket.ofType(BROKER_MESSAGE.answer).length === 1);
+  await waitFor(
+    () => socket.ofType(BROKER_MESSAGE.answer).length === 1,
+    NEGOTIATION_POLL,
+  );
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS + 9_000);
   expect(sockets).toHaveLength(1);
   await vi.advanceTimersByTimeAsync(1_000);
@@ -2297,7 +2338,10 @@ test("an inviter offered a new connection after answering answers it in a new at
     },
   );
   offer(socket, acceptorId, "dc_first");
-  await until(() => answeredConnectionIds(socket).length === 1);
+  await waitFor(
+    () => answeredConnectionIds(socket).length === 1,
+    NEGOTIATION_POLL,
+  );
   offer(socket, acceptorId, "dc_second");
   await settleRegistration(sockets, 2);
   expect(answeredConnectionIds(socket)).toEqual(["dc_first"]);
@@ -2306,7 +2350,10 @@ test("an inviter offered a new connection after answering answers it in a new at
 
   // The broker delivered the new offer, so it holds nothing for the new
   // registration: the new attempt answers the offer the last one received.
-  await until(() => answeredConnectionIds(sockets[1]).length === 1);
+  await waitFor(
+    () => answeredConnectionIds(sockets[1]).length === 1,
+    NEGOTIATION_POLL,
+  );
   expect(answeredConnectionIds(sockets[1])).toEqual(["dc_second"]);
   expect(peers[1].remoteDescriptions).toEqual([OFFER_SDP]);
   const channel = new FakeChannel("dc_second");
@@ -2358,7 +2405,10 @@ test("an attempt that another follows whose channel does not open after the part
     { type: "local-candidate", id: "L1", candidateType: "host" },
   ]);
   answer(socket, inviterId, offeredConnectionIds(socket)[0]);
-  await until(() => peers[0].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[0].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   await vi.advanceTimersByTimeAsync(9_000);
   expect(sockets).toHaveLength(1);
   await vi.advanceTimersByTimeAsync(2_000);
@@ -2373,9 +2423,15 @@ test("an attempt that another follows whose channel does not open after the part
   );
   expect(warning).toContain("starting a new connection attempt");
 
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].channels[0].open();
   expect((await session).channel).toBe(peers[1].channels[0]);
 });
@@ -2390,12 +2446,18 @@ test("the last attempt whose channel does not open after the partner's descripti
   });
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
   await settleRegistration(sockets, 2);
-  await until(() => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1);
+  await waitFor(
+    () => sockets[1].ofType(BROKER_MESSAGE.offer).length === 1,
+    NEGOTIATION_POLL,
+  );
   peers[1].stats = iceStats([
     { type: "local-candidate", id: "L1", candidateType: "host" },
   ]);
   answer(sockets[1], inviterId, offeredConnectionIds(sockets[1])[0]);
-  await until(() => peers[1].remoteDescriptions.length === 1);
+  await waitFor(
+    () => peers[1].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
   await vi.advanceTimersByTimeAsync(11_000);
   const rendered = await renderedFailure(session);
   expect(rendered).toContain("did not open within 10s");

@@ -3,18 +3,16 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import yargs from "yargs";
+import type { MockInstance } from "vitest";
 
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
-import {
-  builder as exchangeBuilder,
-  handler as exchangeHandler,
-} from "../../../src/commands/exchange";
+import { buildCli } from "../../../src/cliParser";
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
 import { captureFd3 } from "../../eventStreamTestSupport";
+import { recordProcessExit } from "../../exitCapture";
 
 /**
  * A signal that arrives in the window the teardown opens: after the run's
@@ -74,14 +72,14 @@ vi.mock("../../../src/transportTeardown", async (importActual) => {
 });
 
 let work: string;
-let exitSpy: ReturnType<typeof vi.spyOn>;
+let exitSpy: MockInstance<typeof process.exit>;
 let priorExitCode: typeof process.exitCode;
 
 beforeEach(() => {
   signalled.done = false;
   work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-teardown-signal-"));
   priorExitCode = process.exitCode;
-  exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  exitSpy = recordProcessExit();
   // The run states its disclosure terms on stderr whatever the log level; this
   // case reads fd 3 and the exit status, so keep that block out of the report.
   vi.spyOn(process.stderr, "write").mockReturnValue(true);
@@ -94,9 +92,7 @@ afterEach(() => {
 });
 
 async function runCli(argv: string[]): Promise<void> {
-  await yargs(argv)
-    .scriptName("alcove")
-    .command("exchange <input> [output]", "", exchangeBuilder, exchangeHandler)
+  await buildCli(argv)
     .exitProcess(false)
     // Raise a failing run to the caller instead of letting yargs print its
     // usage block to the console, which this suite's sentinel treats as a line

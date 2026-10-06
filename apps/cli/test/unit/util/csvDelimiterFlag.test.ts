@@ -8,6 +8,7 @@ import {
 
 import { csvDelimiterFlag } from "../../../src/util/flags";
 import { buildCli } from "../../../src/cliParser";
+import { captureProcessExit } from "../../exitCapture";
 
 function argv(extra: Record<string, unknown>): Arguments {
   return { _: [], $0: "alcove", ...extra } as unknown as Arguments;
@@ -107,11 +108,7 @@ test("a command that reads no CSV refuses the flag as an unknown option", async 
   const error = vi.spyOn(console, "error").mockImplementation((...args) => {
     stderr.push(args.map(String).join(" "));
   });
-  const exit = vi.spyOn(process, "exit").mockImplementation(((
-    code?: number,
-  ) => {
-    throw new Error(`exit:${String(code)}`);
-  }) as never);
+  const exit = captureProcessExit();
   let raised = "";
   try {
     await buildCli([

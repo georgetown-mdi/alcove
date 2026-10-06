@@ -3,21 +3,14 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import yargs from "yargs";
+import type { MockInstance } from "vitest";
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
 import { RECEIPT_VERIFICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
 
-import {
-  builder as exchangeBuilder,
-  handler as exchangeHandler,
-} from "../../../src/commands/exchange";
-import {
-  builder as verifyBuilder,
-  handler as verifyHandler,
-  RESULT_FROM_ANOTHER_RUN_HEADLINE,
-} from "../../../src/commands/verifyReceipt";
+import { buildCli } from "../../../src/cliParser";
+import { RESULT_FROM_ANOTHER_RUN_HEADLINE } from "../../../src/commands/verifyReceipt";
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
 import {
@@ -25,6 +18,7 @@ import {
   DEFAULT_RECORD_BASENAME,
 } from "../../../src/recordFile";
 import { DEFAULT_RESULT_BASENAME } from "../../../src/resultFile";
+import { captureProcessExit } from "../../exitCapture";
 
 // A default (unsigned) exchange verified the way its operator would: the
 // record, the input, and the result, with no other file. Two runs of the
@@ -66,16 +60,14 @@ const PROVISION_ROWS = [
 
 let work: string;
 let originalCwd: string;
-let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
+let exitSpy: MockInstance<typeof process.exit> | undefined;
 
 beforeEach(() => {
   work = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-verify-default-"));
   originalCwd = process.cwd();
   // The default record path is relative to cwd.
   process.chdir(work);
-  exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${code ?? 0})`);
-  }) as never);
+  exitSpy = captureProcessExit();
 });
 
 afterEach(() => {
@@ -90,17 +82,7 @@ afterEach(() => {
 });
 
 async function runCli(argv: string[]): Promise<void> {
-  await yargs(argv)
-    .scriptName("alcove")
-    .command("exchange <input> [output]", "", exchangeBuilder, exchangeHandler)
-    .command(
-      "verify-receipt <record> [input-file] [result-file]",
-      "",
-      verifyBuilder,
-      verifyHandler,
-    )
-    .exitProcess(false)
-    .parseAsync();
+  await buildCli(argv).exitProcess(false).parseAsync();
 }
 
 async function runBoth(argvA: string[], argvB: string[]): Promise<void> {

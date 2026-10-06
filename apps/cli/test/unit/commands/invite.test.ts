@@ -710,21 +710,21 @@ test("handler: a webrtc URL the dial would refuse prints no invitation", async (
   // else -- stays empty. A check on validateInvite alone could not see a token
   // printed by the handler around it.
   const { input, options } = onlineFixture();
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: ["wss://peers.example.org/psi%3Fkey=private", input],
-      "config-file": options.configFile,
-      "key-file": options.keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: ["wss://peers.example.org/psi%3Fkey=private", input],
+        "config-file": options.configFile,
+        "key-file": options.keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(stdio.stdoutWrites.join("")).toBe("");
     expect(fs.existsSync(options.keyFile)).toBe(false);
@@ -3116,21 +3116,21 @@ test.each([
     const input = writeCsv(dir, "first_name,last_name,dob,ssn");
     const stdio = captureStdio();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
-      await inviteHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency A",
-        args: [input],
-        "config-file": path.join(dir, "alcove.yaml"),
-        "key-file": path.join(dir, ".alcove.key"),
-        "log-level": "info",
-        "expires-in": value,
-        record: false,
-      } as unknown as Arguments);
+      await expect(
+        inviteHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency A",
+          args: [input],
+          "config-file": path.join(dir, "alcove.yaml"),
+          "key-file": path.join(dir, ".alcove.key"),
+          "log-level": "info",
+          "expires-in": value,
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       expect(exit).toHaveBeenCalledWith(64);
       expect(stdio.stderrWrites.join("")).toContain(expected);
       expect(fs.existsSync(path.join(dir, ".alcove.key"))).toBe(false);
@@ -3230,24 +3230,24 @@ test("handler: a repeated --accept-timeout is rejected (exit 64) before validati
   // valid input file is present, so the guard alone stops the mint, print, and write.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-dup-"));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     const input = writeCsv(dir, "first_name,last_name,dob,ssn");
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [input],
-      "accept-timeout": [60, 120],
-      "config-file": configFile,
-      "key-file": keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "accept-timeout": [60, 120],
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     // Assert before restoring the spies: mockRestore clears the recorded calls.
     expect(exit).toHaveBeenCalledWith(64);
     // No invitation token reached stdout and neither file was written, so
@@ -3270,24 +3270,24 @@ test("handler: a bare-integer --accept-timeout is rejected (exit 64) before any 
   // write both files -- exactly the no-side-effect guarantee asserted below.
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-bare-"));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     const input = writeCsv(dir, "first_name,last_name,dob,ssn");
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [input],
-      "accept-timeout": "60",
-      "config-file": configFile,
-      "key-file": keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "accept-timeout": "60",
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(logSpy).not.toHaveBeenCalled();
     expect(fs.existsSync(configFile)).toBe(false);
@@ -3309,24 +3309,24 @@ test("handler: an --accept-timeout above the 7d ceiling is rejected (exit 64) be
   const overCeiling = `${MAX_TIMEOUT_SECONDS / 86_400 + 1}d`;
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-cap-"));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     const input = writeCsv(dir, "first_name,last_name,dob,ssn");
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [input],
-      "accept-timeout": overCeiling,
-      "config-file": configFile,
-      "key-file": keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "accept-timeout": overCeiling,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(logSpy).not.toHaveBeenCalled();
     expect(fs.existsSync(configFile)).toBe(false);
@@ -3346,24 +3346,24 @@ test("handler: an unrecognized --linkage-strategy is rejected (exit 64) before a
   // parser itself is unit-tested in bootstrap.test.ts).
   const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-strat-"));
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     const input = writeCsv(dir, "first_name,last_name,dob,ssn");
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: [input],
-      "linkage-strategy": "complete",
-      "config-file": configFile,
-      "key-file": keyFile,
-      "log-level": "silent",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: [input],
+        "linkage-strategy": "complete",
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(logSpy).not.toHaveBeenCalled();
     expect(fs.existsSync(configFile)).toBe(false);
@@ -3384,25 +3384,25 @@ test("handler: a mistyped --flag exits 64 naming it, before any side effect", as
   const configFile = path.join(dir, "alcove.yaml");
   const keyFile = path.join(dir, ".alcove.key");
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   // The run is read at the level an operator would see the rejection at: the
   // handler applies --log-level to every logger, so `silent` drops this message
   // like any other, and a logger method spied before the run is replaced by the
   // one the level installs.
   const { stderrWrites, restore } = captureStdio();
   try {
-    await inviteHandler({
-      _: [],
-      $0: "alcove",
-      identity: "Agency A",
-      args: ["--server-usernam", "u", input],
-      "config-file": configFile,
-      "key-file": keyFile,
-      "log-level": "error",
-      record: false,
-    } as unknown as Arguments);
+    await expect(
+      inviteHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency A",
+        args: ["--server-usernam", "u", input],
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "error",
+        record: false,
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     expect(stderrWrites.join("")).toContain("--server-usernam");
     expect(logSpy).not.toHaveBeenCalled();
@@ -3426,9 +3426,7 @@ async function inviteFromConfigWithWarnings(
   keyPath: string,
 ): Promise<{ raw: string; warnings: string }> {
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -3600,9 +3598,7 @@ test("handler: an offline invitation's placeholder connection has no role", asyn
     "first_name,last_name,dob,ssn\nAlice,Smith,1990-01-02,123456789\n",
   );
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     await inviteHandler({
       _: [],
@@ -3640,9 +3636,7 @@ test("handler: the offline notice and the written config point at the block", as
   const configFile = path.join(dir, "alcove.yaml");
   const keyFile = path.join(dir, ".alcove.key");
   const input = writeCsv(dir, "first_name,last_name,dob,ssn");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -3680,9 +3674,7 @@ test("handler: offline infer-from-input writes the stated payload.send into the 
     "first_name,last_name,dob,ssn,id\nAlice,Smith,1990-01-02,123456789,1\n",
   );
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     await inviteHandler({
       _: [],
@@ -3724,9 +3716,7 @@ test("handler: the invitation reaches stdout and never a diagnostic line", async
   const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
     printed.push(args.map(String).join(" "));
   });
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     await inviteHandler({
       _: [],
@@ -3785,9 +3775,7 @@ test("handler: online invite whose config write failed keeps exit 73 and says so
       configWriteError: new Error("permission denied"),
     };
   });
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   const previousExitCode = process.exitCode;
   process.exitCode = undefined;
@@ -3834,9 +3822,7 @@ test("handler: a clean config write leaves the exchange's own exit 73 in place",
     process.exitCode = 73;
     return { outcome: "completed", configWriteError: undefined };
   });
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   const previousExitCode = process.exitCode;
   process.exitCode = undefined;
@@ -3871,9 +3857,7 @@ test("handler: an interrupted online invite prints no completion line", async ()
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockResolvedValue({ outcome: "interrupted" });
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -3909,9 +3893,7 @@ test("handler: online hands the accept budget to the run and reports what was sa
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -3951,9 +3933,7 @@ test("handler: a webrtc online invite reports the webrtc peer-budget defaults, n
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -3987,9 +3967,7 @@ test("handler: a failed config write reports no saved peer budget", async () => 
     outcome: "completed",
     configWriteError: new Error("permission denied"),
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -4024,9 +4002,7 @@ test("handler: a failed config write leaves --peer-timeout's warning unfalsified
     outcome: "completed",
     configWriteError: new Error("permission denied"),
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -4065,9 +4041,7 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -4109,9 +4083,7 @@ test("handler: the server-URL accept template names the identity too", async () 
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -4145,9 +4117,7 @@ test("handler: a web app invite prints the accept link for either partner", asyn
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   const printed: string[] = [];
   const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
@@ -4204,9 +4174,7 @@ test("handler: an online file-drop accept template names the partner's folder by
   runOnlineBootstrapMock.mockImplementation(async () => ({
     outcome: "completed",
   }));
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({
@@ -4268,9 +4236,7 @@ test("handler: an offline invite states the expiry with the --expires-in hint", 
   const input = writeCsv(dir, "first_name,last_name,dob,ssn");
   const stdio = captureStdio();
   const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     await inviteHandler({
       _: [],
@@ -4507,12 +4473,12 @@ describe("handler: the --server-provision credential file on an online invite", 
         configWriteError: undefined,
       });
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = captureProcessExit();
       const stdio = captureStdio();
       try {
-        await inviteHandler(provisionedInviteArgv(options, input, tokenFile));
+        await expect(
+          inviteHandler(provisionedInviteArgv(options, input, tokenFile)),
+        ).rejects.toThrow("exit:64");
         expect(exit).toHaveBeenCalledWith(64);
         expect(logSpy).not.toHaveBeenCalled();
         expect(stdio.stdoutWrites.join("")).toBe("");
@@ -4541,9 +4507,7 @@ describe("handler: the --server-provision credential file on an online invite", 
     const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
       printed.push(args.map(String).join(" "));
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       await inviteHandler(provisionedInviteArgv(options, input, tokenFile));
       expect(exit).not.toHaveBeenCalled();
@@ -4605,21 +4569,21 @@ describe("handler: an @path connection credential on an online invite", () => {
         configWriteError: undefined,
       });
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = captureProcessExit();
       const stdio = captureStdio();
       try {
-        await inviteHandler(
-          credentialInviteArgv(options, input, "sftp://host/drop", {
-            // A passphrase is refused without a key to decrypt.
-            ...(flag === "server-private-key-passphrase"
-              ? { "server-private-key": "literal-key" }
-              : {}),
-            [flag]: `@${secretFile}`,
-            "log-level": "error",
-          }),
-        );
+        await expect(
+          inviteHandler(
+            credentialInviteArgv(options, input, "sftp://host/drop", {
+              // A passphrase is refused without a key to decrypt.
+              ...(flag === "server-private-key-passphrase"
+                ? { "server-private-key": "literal-key" }
+                : {}),
+              [flag]: `@${secretFile}`,
+              "log-level": "error",
+            }),
+          ),
+        ).rejects.toThrow("exit:64");
         expect(exit).toHaveBeenCalledWith(64);
         expect(stdio.stderrWrites.join("")).toContain("credential.secret");
         expect(logSpy).not.toHaveBeenCalled();
@@ -4649,9 +4613,7 @@ describe("handler: an @path connection credential on an online invite", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
       printed.push(args.map(String).join(" "));
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       await inviteHandler(
         credentialInviteArgv(options, input, "sftp://host/drop", {
@@ -4680,9 +4642,7 @@ describe("handler: an @path connection credential on an online invite", () => {
       configWriteError: undefined,
     });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       await inviteHandler(
         credentialInviteArgv(options, input, "sftp://host/drop", {
@@ -4710,9 +4670,7 @@ describe("handler: an @path connection credential on an online invite", () => {
       configWriteError: undefined,
     });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       await inviteHandler(
         credentialInviteArgv(options, input, "wss://peers.example.org/psi", {
@@ -4744,21 +4702,21 @@ test.each([
       unknown
     >;
     fs.writeFileSync(configPath, YAML.stringify({ ...written, [key]: [] }));
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
-      await inviteHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency A",
-        args: [],
-        "config-file": configPath,
-        "key-file": keyPath,
-        "log-level": "info",
-        record: false,
-      } as unknown as Arguments);
+      await expect(
+        inviteHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency A",
+          args: [],
+          "config-file": configPath,
+          "key-file": keyPath,
+          "log-level": "info",
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       expect(exit).toHaveBeenCalledWith(64);
       expect(stdio.stdoutWrites.join("")).toBe("");
       expect(stdio.stderrWrites.join("")).toContain(

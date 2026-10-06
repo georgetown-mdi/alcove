@@ -3,9 +3,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-
-import { prepareForExchange } from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import {
@@ -14,6 +11,7 @@ import {
 } from "../../../src/protocol";
 import { annotatedExitCode } from "../../../src/util/exit";
 import { captureFd3 } from "../../eventStreamTestSupport";
+import { preparedFor } from "../../support";
 
 /**
  * What a `--save` run reports when the reader of its stdout result stops
@@ -61,27 +59,6 @@ vi.mock("../../../src/util/dataIo", async (importActual) => {
     },
   };
 });
-
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
-function preparedFor(identity: string) {
-  const spec: ExchangeDataSpec = { linkageTerms: { ...baseTerms, identity } };
-  return prepareForExchange(
-    spec,
-    identity,
-    [{ first_name: "Bob" }],
-    ["first_name"],
-  );
-}
 
 let work: string;
 

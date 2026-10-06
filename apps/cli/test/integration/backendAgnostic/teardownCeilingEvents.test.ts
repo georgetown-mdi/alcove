@@ -4,21 +4,14 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import yargs from "yargs";
+import type { MockInstance } from "vitest";
 
 import { prepareForExchange } from "@alcove/core";
 import type { ExchangeSpec } from "@alcove/core";
 
 import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
 
-import {
-  builder as exchangeBuilder,
-  handler as exchangeHandler,
-} from "../../../src/commands/exchange";
-import {
-  builder as zeroSetupBuilder,
-  handler as zeroSetupHandler,
-} from "../../../src/commands/zeroSetup";
+import { buildCli } from "../../../src/cliParser";
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
 import {
@@ -26,6 +19,7 @@ import {
   restoreDirectoryWrites,
 } from "../../directoryWriteAccess";
 import { captureFd3 } from "../../eventStreamTestSupport";
+import { captureProcessExit } from "../../exitCapture";
 
 /**
  * Where a run reports a transport that did not finish closing inside the
@@ -105,7 +99,7 @@ const PEER_TIMEOUT = "30s";
 const CASE_TIMEOUT_MS = 90_000;
 
 let work: string;
-let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
+let exitSpy: MockInstance<typeof process.exit> | undefined;
 let priorExitCode: typeof process.exitCode;
 
 beforeEach(() => {
@@ -114,9 +108,7 @@ beforeEach(() => {
   // A handler exits the process on failure; trap it so a failure rejects the
   // awaited parse instead of killing the worker, as the sibling command tests
   // in this project do.
-  exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
-    throw new Error(`process.exit(${code ?? 0})`);
-  }) as never);
+  exitSpy = captureProcessExit();
 });
 
 afterEach(() => {
@@ -227,10 +219,7 @@ async function captureStderr<T>(
 }
 
 async function runCli(argv: string[]): Promise<void> {
-  await yargs(argv)
-    .scriptName("alcove")
-    .command("$0", "zero-setup exchange", zeroSetupBuilder, zeroSetupHandler)
-    .command("exchange <input> [output]", "", exchangeBuilder, exchangeHandler)
+  await buildCli(argv)
     .exitProcess(false)
     // Raise a failing run to the caller instead of letting yargs print its
     // usage block to the console, which this suite's sentinel treats as a line

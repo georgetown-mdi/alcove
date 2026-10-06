@@ -7,6 +7,7 @@ import {
   heldResourceKinds,
   processHeldNotice,
 } from "../../../src/util/exitGate";
+import { recordProcessExit } from "../../exitCapture";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -69,7 +70,7 @@ test("the gate exits with the status the run resolved, passed explicitly", async
   // the gate ends on has to be the one it read.
   const gate = await freshGate();
   const stderr = captureStderr();
-  const exit = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exit = recordProcessExit();
   const before = process.exitCode;
   process.exitCode = 73;
   try {
@@ -84,7 +85,7 @@ test("the gate exits with the status the run resolved, passed explicitly", async
 test("a run with no status of its own returns 0 rather than undefined", async () => {
   const gate = await freshGate();
   captureStderr();
-  const exit = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exit = recordProcessExit();
   const before = process.exitCode;
   process.exitCode = undefined;
   try {
@@ -101,7 +102,7 @@ test("a signal handler that owns the exit keeps the gate from arming", async () 
   // status and say the run finished and wrote its files.
   const gate = await freshGate();
   const stderr = captureStderr();
-  const exit = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exit = recordProcessExit();
   gate.noteSignalOwnsExit();
   gate.armProcessReturnGate(5);
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -112,7 +113,7 @@ test("a signal handler that owns the exit keeps the gate from arming", async () 
 test("a signal taken after the gate is armed still stops it", async () => {
   const gate = await freshGate();
   const stderr = captureStderr();
-  const exit = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exit = recordProcessExit();
   gate.armProcessReturnGate(20);
   gate.noteSignalOwnsExit();
   await new Promise((resolve) => setTimeout(resolve, 60));

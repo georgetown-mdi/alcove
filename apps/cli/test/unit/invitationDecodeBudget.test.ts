@@ -13,23 +13,13 @@ import {
 } from "@alcove/core";
 
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
-
-// Builds the token at the wire level, bypassing encodeInvitation: its schema
-// validation would refuse a non-locator endpoint field before the fixture
-// could be built.
-async function encodeRaw(token: unknown): Promise<string> {
-  const toBase64Url = (bytes: Uint8Array): string =>
-    Buffer.from(bytes).toString("base64url");
-  const bytes = new TextEncoder().encode(JSON.stringify(token));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(digest).slice(0, 4));
-}
+import { encodeRawInvitation } from "../support";
 
 // A partner-crafted invitation whose endpoint has a field outside the
 // locator allowlist -- the rejection whose fixed guidance is longer than one
 // VALUE's display budget.
 const nonLocatorInvitation = (): Promise<string> =>
-  encodeRaw({
+  encodeRawInvitation({
     version: "1",
     linkageTerms: getDefaultLinkageTerms("Inviter Org"),
     sharedSecret: generateSharedSecret(),
@@ -76,7 +66,7 @@ test("the locator rejection's guidance survives the CLI's own decode composition
 // description leads with: the issue path.
 const longKeyInvitation = (): Promise<string> => {
   const terms = getDefaultLinkageTerms("Inviter Org");
-  return encodeRaw({
+  return encodeRawInvitation({
     version: "1",
     linkageTerms: {
       ...terms,

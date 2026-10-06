@@ -19,6 +19,7 @@ import {
   slowClosingClient,
   wrapperMethods,
 } from "./ssh2SftpAdapterFixtures";
+import { waitFor } from "../../support";
 
 describe("deferred cleanup deletes across an idle release", () => {
   // The never-reject cleanup delete reaches no gate at all: its contract keeps it
@@ -27,14 +28,6 @@ describe("deferred cleanup deletes across an idle release", () => {
   // in core cannot tell that from a delete that landed -- only the adapter can,
   // and what it does with the reading is record the cleanup and re-issue it at the
   // next point a session exists.
-
-  // Wait for a condition the adapter reaches on its own schedule (a request
-  // arriving at the fixture), failing rather than hanging if it never does.
-  const waitUntil = async (predicate: () => boolean): Promise<void> => {
-    for (let turn = 0; turn < 2_000 && !predicate(); turn += 1)
-      await new Promise((resolve) => setTimeout(resolve, 1));
-    expect(predicate()).toBe(true);
-  };
 
   test("a cleanup delete issued while the deliberate-release boundary stands is re-issued at the next re-establishment", async () => {
     const { client, state, deleted } = ephemeralClient(wrapperMethods());
@@ -142,7 +135,10 @@ describe("deferred cleanup deletes across an idle release", () => {
     expect(deferredCleanupPaths(adapter)).toEqual([withheld]);
 
     const reestablishing = adapter.ensureConnected();
-    await waitUntil(() => calls.length === 2);
+    await waitFor(() => calls.length === 2, {
+      timeoutMs: 2_000,
+      intervalMs: 1,
+    });
     expect(state.live).toBe(true);
     expect(
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

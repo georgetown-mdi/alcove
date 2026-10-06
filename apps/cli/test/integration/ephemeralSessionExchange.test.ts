@@ -24,6 +24,7 @@ import { SftpAdapterLedger } from "../../src/connection/sftpAdapterLedger";
 import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 // End-to-end proof for connection-per-poll (ephemeral-session) SFTP mode against
 // the partner servers it is hardest on: one that accepts the client's disconnect
@@ -46,19 +47,6 @@ const BOUNDARY_TEST_TIMEOUT_MS = 120_000;
 // never transcript, so no run of either mode may end with one on the server.
 const isProtocolTemp = (name: string): boolean =>
   name.startsWith("temp-") && name.endsWith(".tmp");
-
-// Poll a predicate until it holds, failing if it never does.
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 60_000, intervalMs = 50, what = "condition" } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`waitFor: ${what} not met within timeout`);
-}
 
 // Count the deletes the adapter issues per remote path, so a case can assert
 // that a cleanup delete the partner's server will never let succeed costs a

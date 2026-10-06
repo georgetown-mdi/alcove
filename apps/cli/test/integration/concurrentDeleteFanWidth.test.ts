@@ -12,6 +12,8 @@ import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
+import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // Core issues its rendezvous and cleanup deletes as concurrent fans on the
 // ONE SFTP channel a party holds, and none of them holds a width cap of its
@@ -160,18 +162,6 @@ async function awaitDeletes(
     await new Promise((resolve) => setTimeout(resolve, 10));
 }
 
-async function waitFor(
-  predicate: () => Promise<boolean>,
-  what: string,
-): Promise<void> {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  throw new Error(`waited for ${what} and it did not happen`);
-}
-
 async function plant(dir: string, names: readonly string[]): Promise<void> {
   const perTurn = 512;
   for (let index = 0; index < names.length; index += perTurn)
@@ -194,60 +184,15 @@ function protocolLeftoverNames(prefix: string, count: number): string[] {
   );
 }
 
-interface Party {
-  adapter: SSH2SFTPClientAdapter;
-  conn: FileSyncConnection;
-  remote: string;
-  localDir: string;
-  stop: () => Promise<void>;
-}
+type Party = ConnectedParty;
 
 /** One connected party over a directory of its own, as protocol.ts dials. */
-async function connectParty(srv: InProcessSftpServer): Promise<Party> {
-  let allocatedDir: string | undefined;
-  let openedConn: FileSyncConnection | undefined;
-  try {
-    const localDir = await fsp.mkdtemp(
-      path.join(srv.handle.backingDir, "fan-"),
-    );
-    allocatedDir = localDir;
-    const remote = `${srv.handle.remoteRoot}/${path.basename(localDir)}`;
-    const adapter = new SSH2SFTPClientAdapter({ verbosity: -1 });
-    const conn = new FileSyncConnection(adapter, {
-      verbose: -1,
-      pollingFrequency: 50,
-    });
-    openedConn = conn;
-    conn.on("error", () => {});
-    await withCapturedLogs(
-      async () =>
-        conn.open({
-          channel: "sftp",
-          server: {
-            host: srv.handle.host,
-            port: srv.handle.port,
-            ...serverAuth(srv.handle.usera),
-            path: remote,
-          },
-        }),
-      () => true,
-    );
-    return {
-      adapter,
-      conn,
-      remote,
-      localDir,
-      stop: async () => {
-        await conn.close().catch(() => {});
-        await fsp.rm(localDir, { recursive: true, force: true });
-      },
-    };
-  } catch (error: unknown) {
-    await openedConn?.close().catch(() => {});
-    if (allocatedDir !== undefined)
-      await fsp.rm(allocatedDir, { recursive: true, force: true });
-    throw error;
-  }
+function connectFanParty(srv: InProcessSftpServer): Promise<Party> {
+  return connectParty(srv.handle, {
+    dirPrefix: "fan-",
+    pollingFrequency: 50,
+    quietOpen: true,
+  });
 }
 
 /**
@@ -305,7 +250,7 @@ for (const width of FAN_WIDTHS)
       // the ladder shows whether anything changes between the widths a real
       // exchange produces and the widths the bounds permit.
       const srv = await startInProcessSftpServer();
-      const party = await connectParty(srv);
+      const party = await connectFanParty(srv);
       try {
         const names = protocolLeftoverNames("w", width);
         await plant(party.localDir, names);
@@ -465,7 +410,7 @@ inProcessOnly(
     // already have made -- so it is driven at that listing bound, which is the
     // resource envelope rather than a width an exchange produces.
     const srv = await startInProcessSftpServer();
-    const party = await connectParty(srv);
+    const party = await connectFanParty(srv);
     try {
       const names = protocolLeftoverNames("c", MAX_DIRECTORY_ENTRIES);
       await plant(party.localDir, names);
@@ -542,13 +487,19 @@ inProcessOnly(
           receiver.start();
           for (let index = 0; index < EXCHANGE_MESSAGES; index += 1)
             await sender.send({ message: index });
-          await waitFor(async () => {
-            const present = new Set(await fsp.readdir(localDir));
-            return (
-              delivered.length === EXCHANGE_MESSAGES &&
-              ![...responsibleFiles].some((name) => present.has(name))
-            );
-          }, "the receiver to consume every message the sender wrote");
+          await waitFor(
+            async () => {
+              const present = new Set(await fsp.readdir(localDir));
+              return (
+                delivered.length === EXCHANGE_MESSAGES &&
+                ![...responsibleFiles].some((name) => present.has(name))
+              );
+            },
+            {
+              timeoutMs: 120_000,
+              what: "the receiver to consume every message the sender wrote",
+            },
+          );
           receiver.stop();
           await receiver.close();
           // Written with the receiver gone, so it is still on the server -- and

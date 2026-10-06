@@ -96,7 +96,6 @@ import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import { promptConfirm, promptFreeText } from "../../../src/util/prompt";
 import { captureProcessExit } from "../../exitCapture";
 import {
-  encodeRaw,
   FUTURE,
   LINKAGE_COLUMNS,
   OUTBOUND_SEND_LABEL,
@@ -113,6 +112,7 @@ import {
   platformAbsolutePath,
   platformFileUrl,
 } from "../../platformPaths";
+import { encodeRawInvitation } from "../../support";
 
 const promptConfirmMock = vi.mocked(promptConfirm);
 const promptFreeTextMock = vi.mocked(promptFreeText);
@@ -1123,7 +1123,7 @@ describe("the count-only shape, at the accept boundary", () => {
     // refused by the same schema, so it reaches this party only as a crafted token
     // -- and the decode is where the acceptance meets it, before the prompt.
     const base = countOnlyToken();
-    const crafted = await encodeRaw({
+    const crafted = await encodeRawInvitation({
       ...base,
       linkageTerms: {
         ...base.linkageTerms,
@@ -2970,17 +2970,17 @@ describe("handler: repeated single-value flag", () => {
     const logErr = vi
       .spyOn(getLogger("accept"), "error")
       .mockImplementation(() => {});
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
-      await acceptHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency B",
-        args: ["sftp://host/drop", "INVITATION", "input.csv"],
-        "server-port": [2222, 2223],
-      } as unknown as Arguments);
+      await expect(
+        acceptHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency B",
+          args: ["sftp://host/drop", "INVITATION", "input.csv"],
+          "server-port": [2222, 2223],
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       // Assert before restoring the spies: mockRestore clears the recorded calls.
       expect(exit).toHaveBeenCalledWith(64);
       expect(logErr).toHaveBeenCalledWith(
@@ -3000,9 +3000,7 @@ describe("handler: repeated single-value flag", () => {
     const dir = fs.mkdtempSync(path.join(tmpdir(), "alcove-accept-unknown-"));
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     // Read the rejection where the operator does, at a level that keeps it: the
     // handler applies --log-level to every logger, so `silent` drops this message
     // like any other, and a logger method spied before the run is replaced by the
@@ -3012,16 +3010,18 @@ describe("handler: repeated single-value flag", () => {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
       );
-      await acceptHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency B",
-        args: ["--server-usernam", "u", encoded, "input.csv"],
-        "config-file": configFile,
-        "key-file": keyFile,
-        "log-level": "error",
-        record: false,
-      } as unknown as Arguments);
+      await expect(
+        acceptHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency B",
+          args: ["--server-usernam", "u", encoded, "input.csv"],
+          "config-file": configFile,
+          "key-file": keyFile,
+          "log-level": "error",
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       expect(exit).toHaveBeenCalledWith(64);
       expect(stderrWrites.join("")).toContain("--server-usernam");
       expect(promptConfirmMock).not.toHaveBeenCalled();
@@ -3091,9 +3091,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     promptFreeTextMock.mockResolvedValue("Agency B, Health Dept");
     promptConfirmMock.mockResolvedValue(true);
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
       const encoded = await encodeInvitation(
@@ -3132,25 +3130,25 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // question that cannot follow: the operator gets the refusal naming the
     // flag (exit 64), not a decline that exits 0.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const { stdoutWrites, stderrWrites, restore } = captureStdio();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
       );
-      await withStdinStream(makeStdin(""), () =>
-        acceptHandler({
-          _: [],
-          $0: "alcove",
-          args: [encoded, input],
-          "config-file": configFile,
-          "key-file": keyFile,
-          "log-level": "info",
-          record: false,
-        } as unknown as Arguments),
-      );
+      await expect(
+        withStdinStream(makeStdin(""), () =>
+          acceptHandler({
+            _: [],
+            $0: "alcove",
+            args: [encoded, input],
+            "config-file": configFile,
+            "key-file": keyFile,
+            "log-level": "info",
+            record: false,
+          } as unknown as Arguments),
+        ),
+      ).rejects.toThrow("exit:64");
       restore();
       expect(exit).toHaveBeenCalledWith(64);
       expect(stderrWrites.join("")).toContain(ACCEPT_NEEDS_TERMINAL);
@@ -3174,26 +3172,26 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // refusal there even at a terminal, rather than growing a prompt the flag was
     // meant to remove.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const { restore } = captureStdio();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
       );
-      await withStdinStream(ttyStream(), () =>
-        acceptHandler({
-          _: [],
-          $0: "alcove",
-          args: [encoded, input],
-          "consent-to-terms": true,
-          "config-file": configFile,
-          "key-file": keyFile,
-          "log-level": "error",
-          record: false,
-        } as unknown as Arguments),
-      );
+      await expect(
+        withStdinStream(ttyStream(), () =>
+          acceptHandler({
+            _: [],
+            $0: "alcove",
+            args: [encoded, input],
+            "consent-to-terms": true,
+            "config-file": configFile,
+            "key-file": keyFile,
+            "log-level": "error",
+            record: false,
+          } as unknown as Arguments),
+        ),
+      ).rejects.toThrow("exit:64");
       restore();
       expect(exit).toHaveBeenCalledWith(64);
       expect(promptFreeTextMock).not.toHaveBeenCalled();
@@ -3213,9 +3211,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     // afterEach resets the shared mock, so it starts clean here; this test needs no
     // implementation because it asserts promptConfirm is never called.
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
@@ -3248,9 +3244,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // input file this acceptance writes that configuration and stops, which is the
     // path that has a file to assert.
     const { dir, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString(), {
@@ -3289,9 +3283,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // every later `alcove exchange`, so the relay is kept there too -- beside
     // this party's own relay settings, not in them.
     const { dir, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const relay = {
       turn: ["turns:relay.example.org:443?transport=tcp"],
       stun: ["stun:relay.example.org:3478"],
@@ -3340,9 +3332,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     const acceptLog = getLogger("accept");
     const priorLevel = acceptLog.getLevel();
     acceptLog.setLevel("info", false);
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
       const encoded = await encodeInvitation(
@@ -3386,9 +3376,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     const acceptLog = getLogger("accept");
     const priorLevel = acceptLog.getLevel();
     acceptLog.setLevel("info", false);
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
       const encoded = await encodeInvitation(
@@ -3436,9 +3424,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const output = path.join(dir, "results.csv");
     try {
       const token = sampleToken(FUTURE(), {
@@ -3488,9 +3474,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const fixtures = [offlineAcceptFixture(), offlineAcceptFixture()];
     try {
       const encoded = await encodeInvitation(
@@ -3543,9 +3527,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(FUTURE(), {
@@ -3589,9 +3571,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     });
     promptConfirmMock.mockResolvedValue(false);
     const stdio = captureStdio();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(FUTURE(), {
@@ -3627,9 +3607,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // The complement of the webrtc case: `role` belongs to the WebRTC channel
     // alone, so a file-sync acceptance's connection block has none.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString(), {
@@ -3687,9 +3665,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       token: InvitationToken,
     ): Promise<Record<string, unknown>> {
       const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = captureProcessExit();
       try {
         const encoded = await encodeInvitation(token);
         await acceptHandler({
@@ -3735,9 +3711,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // regardless (the surface tests below measure that); capture stdio so they land
     // here rather than in the suite's own output.
     const stdio = captureStdio();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
         sampleToken(new Date(Date.now() + 3_600_000).toISOString()),
@@ -3775,22 +3749,22 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       fs.writeFileSync(configFile, planted);
       return true;
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const { stderrWrites, restore } = captureStdio();
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
-      await acceptHandler({
-        _: [],
-        $0: "alcove",
-        identity: "Agency B",
-        args: [encoded, input],
-        "config-file": configFile,
-        "key-file": keyFile,
-        "log-level": "error",
-        record: false,
-      } as unknown as Arguments);
+      await expect(
+        acceptHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency B",
+          args: [encoded, input],
+          "config-file": configFile,
+          "key-file": keyFile,
+          "log-level": "error",
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
       restore();
       expect(promptConfirmMock).toHaveBeenCalledTimes(1);
       expect(exit).toHaveBeenCalledWith(64);
@@ -3966,9 +3940,7 @@ async function runOfflineAcceptCapturingStdio(params: {
       "info") as logLibrary.LogLevelDesc,
     false,
   );
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   if (onPrompt !== undefined)
     promptConfirmMock.mockImplementation(() =>
@@ -4700,7 +4672,7 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
     // run of dashes does not compile as one. So the surface never sees such a class
     // -- the refusal is the check, and it too reaches the operator redacted.
     const base = sampleToken(FUTURE());
-    const crafted = await encodeRaw({
+    const crafted = await encodeRawInvitation({
       ...base,
       linkageTerms: {
         ...base.linkageTerms,
@@ -4733,7 +4705,7 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
     // decode refuses the invitation and the refusal reaches the operator
     // redacted.
     const base = sampleToken(FUTURE());
-    const crafted = await encodeRaw({
+    const crafted = await encodeRawInvitation({
       ...base,
       linkageTerms: { ...base.linkageTerms, identity: ARMORED_IDENTITY },
     });
@@ -4880,9 +4852,7 @@ describe("handler: online accept-reuse forwards the acceptance record", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       // A config whose linkage terms and connection agree with the invitation and the
       // URL below, so reconciliation keeps it.
@@ -4937,9 +4907,7 @@ async function runOfflineAcceptReuse(params: {
   input?: string;
   token?: InvitationToken;
 }): Promise<string> {
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
     const encoded = await encodeInvitation(
       params.token ?? sampleToken(FUTURE()),
@@ -5090,9 +5058,7 @@ describe("the acceptance's terms-side commitment reaches the config", () => {
     // the one a hostile inviter would widen away from.
     for (const declared of [false, true]) {
       const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = captureProcessExit();
       try {
         const base = sampleToken(FUTURE());
         const encoded = await encodeInvitation({
@@ -5167,9 +5133,7 @@ describe("the acceptance's terms-side commitment reaches the config", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       for (const declared of [false, true]) {
         runOnlineBootstrapMock.mockClear();
@@ -5223,9 +5187,7 @@ describe("handler: an online acceptance whose configuration write fails", () => 
         configWriteError: new Error("permission denied"),
       };
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     const previousExitCode = process.exitCode;
     process.exitCode = undefined;
@@ -5275,9 +5237,7 @@ describe("handler: an online acceptance whose configuration write fails", () => 
       process.exitCode = 73;
       return { outcome: "completed", configWriteError: undefined };
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     const previousExitCode = process.exitCode;
     process.exitCode = undefined;
@@ -5315,9 +5275,7 @@ describe("handler: an online acceptance whose configuration write fails", () => 
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
     runOnlineBootstrapMock.mockResolvedValue({ outcome: "interrupted" });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
@@ -5472,9 +5430,7 @@ describe("online accept runs its own pre-flight checks", () => {
 describe("handler: a completed acceptance restores the diagnostic sink", () => {
   test("handler: the sink in place before the run is the sink after it", async () => {
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     const previousSink = getDiagnosticSink();
     const sinkBefore: Parameters<typeof setDiagnosticSink>[0] = () => {};
     setDiagnosticSink(sinkBefore);
@@ -5602,13 +5558,13 @@ describe("--server-provision on an acceptance", () => {
         outcome: "completed",
         configWriteError: undefined,
       });
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = captureProcessExit();
       const stdio = captureStdio();
       try {
         const encoded = await encodeInvitation(sampleToken(FUTURE()));
-        await acceptHandler(provisionedAcceptArgv(fixture, encoded, tokenFile));
+        await expect(
+          acceptHandler(provisionedAcceptArgv(fixture, encoded, tokenFile)),
+        ).rejects.toThrow("exit:64");
         expect(exit).toHaveBeenCalledWith(64);
         expect(stdio.stdoutWrites.join("")).toBe("");
         expect(runOnlineBootstrapMock).not.toHaveBeenCalled();
@@ -5632,9 +5588,7 @@ describe("--server-provision on an acceptance", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
       await acceptHandler(provisionedAcceptArgv(fixture, encoded, tokenFile));

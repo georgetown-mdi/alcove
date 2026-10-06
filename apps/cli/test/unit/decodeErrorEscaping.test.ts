@@ -9,6 +9,7 @@ import {
 
 import { buildErrorEvent } from "../../src/eventStream";
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
+import { encodeRawInvitation } from "../support";
 
 // An endpoint key name a malicious inviter can craft, holding every class this
 // route has to neutralize: a literal backslash, which one escape doubles and
@@ -17,19 +18,8 @@ import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 // or formatter can mangle an invisible literal.
 const HOSTILE_ENDPOINT_KEY = "col\x1b[2J\x1b[31m\u202e\\x";
 
-// Builds the token at the wire level, bypassing encodeInvitation: its schema
-// validation would refuse a non-locator endpoint field before the fixture
-// could be built.
-async function encodeRaw(token: unknown): Promise<string> {
-  const toBase64Url = (bytes: Uint8Array): string =>
-    Buffer.from(bytes).toString("base64url");
-  const bytes = new TextEncoder().encode(JSON.stringify(token));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(digest).slice(0, 4));
-}
-
 const hostileKeyInvitation = (): Promise<string> =>
-  encodeRaw({
+  encodeRawInvitation({
     version: "1",
     linkageTerms: getDefaultLinkageTerms("Inviter Org"),
     sharedSecret: generateSharedSecret(),

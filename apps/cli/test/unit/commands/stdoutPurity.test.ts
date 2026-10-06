@@ -20,6 +20,7 @@ import {
   captureStdio,
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
+import { captureProcessExit } from "../../exitCapture";
 
 // The stdout contract: stdout holds only a command's result data, and every
 // diagnostic goes to stderr. stdout reaches the caller by two mechanisms -- a
@@ -56,9 +57,7 @@ async function runCapturing(
     .mockImplementation((...args: unknown[]) => {
       stdoutWrites.push(args.map((a) => String(a)).join(" ") + "\n");
     });
-  const exitSpy = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exitSpy = captureProcessExit();
   try {
     await fn();
   } finally {
