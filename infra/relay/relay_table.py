@@ -611,6 +611,8 @@ def run_command(command, args):
         print("swept %d lapsed exchange(s)" % len(revoked))
         return 0
     if command == "status":
+        if not realm:
+            raise UsageError(REALM_REFUSAL)
         key = read_key()
         if not valid_exchange_id(args[0]):
             raise Refused(ID_REFUSAL)
@@ -619,6 +621,8 @@ def run_command(command, args):
         run_as_table_owner(TURNDB)
         return {"both": 0, "neither": 3, "disagree": 4}[status(open_table(), realm, args[0], key)]
     if command == "forget-key":
+        if not realm:
+            raise UsageError(REALM_REFUSAL)
         key = read_key()
         if not valid_key(key):
             raise Refused(KEY_REFUSAL)

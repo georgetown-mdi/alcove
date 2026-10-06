@@ -339,9 +339,13 @@ token, overwrite the file and
   and each later request on it, must arrive whole within 15 s, however the
   bytes are spaced, or the connection is closed. At most 32 connections are
   served at once; past that, up to 8 more are answered 503 with
-  `Retry-After: 5` and any further ones are closed unanswered. These bounds, and
-  the 4096 and 8192 byte limits above, are arbitrary working values set by
-  `REQUEST_DEADLINE_SECONDS`, `MAX_HANDLERS`, `MAX_BUSY_ANSWERS`,
+  `Retry-After: 5` and any further ones are closed unanswered. A connection in
+  that busy band gets the 503 only when it sends its request within 5 s
+  (`BUSY_DEADLINE_SECONDS`); one that stalls is closed unanswered. The
+  `Retry-After` value is `RETRY_AFTER_SECONDS`, which follows the busy
+  deadline. These bounds, and the 4096 and 8192 byte limits above, are
+  arbitrary working values set by `REQUEST_DEADLINE_SECONDS`, `MAX_HANDLERS`,
+  `MAX_BUSY_ANSWERS`, `BUSY_DEADLINE_SECONDS`, `RETRY_AFTER_SECONDS`,
   `MAX_REQUEST_LINE_BYTES` and `MAX_HEAD_BYTES` in `registrar.py`, and are
   raised on request.
 - **Recovery is the operator's action.** An exchange whose key nobody holds any

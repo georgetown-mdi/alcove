@@ -805,6 +805,36 @@ except relay_table.TableError as error:
     },
   );
 
+  it.each(["status exchange-1", "forget-key"])(
+    "refuses %s with no realm before opening a missing table, and leaves an existing one's bytes alone",
+    (command) => {
+      const host = fixtureHost();
+      const run = (turndb) =>
+        spawnSync(
+          "python3",
+          [join(relay, "relay_table.py"), ...command.split(" ")],
+          {
+            encoding: "utf8",
+            env: {
+              ...host.env,
+              ALCOVE_RELAY_TURNDB: turndb,
+              ALCOVE_RELAY_REALM: "",
+            },
+            input: `${KEY_A}\n`,
+          },
+        );
+      const missing = join(host.root, "no-such-table");
+      const result = run(missing);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("ALCOVE_RELAY_REALM is unset");
+      expect(existsSync(missing)).toBe(false);
+      const existing = host.env.ALCOVE_RELAY_TURNDB;
+      const before = readFileSync(existing);
+      expect(run(existing).status).toBe(2);
+      expect(readFileSync(existing).equals(before)).toBe(true);
+    },
+  );
+
   it("forgets a mapped key's mapping and row together, and leaves another realm's alone", () => {
     const host = fixtureHost();
     host.register("exchange-1", KEY_A);

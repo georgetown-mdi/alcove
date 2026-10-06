@@ -65,6 +65,7 @@ MAX_HANDLERS = 32
 # shorter deadline below; any more are closed unanswered.
 MAX_BUSY_ANSWERS = 8
 BUSY_DEADLINE_SECONDS = 5
+RETRY_AFTER_SECONDS = BUSY_DEADLINE_SECONDS
 BUSY_REFUSAL = "the registrar is answering as many requests as it can; try again in a few seconds"
 TABLE_FAILURE = (
     "the registrar could not read or write the relay's secrets table, and nothing changed; try again later, "
@@ -591,7 +592,7 @@ class BusyHandler(RegistrarHandler):
 
     def dispatch(self):
         self.close_connection = True
-        self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", "5"), ("Connection", "close")))
+        self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", str(RETRY_AFTER_SECONDS)), ("Connection", "close")))
 
 
 class RegistrarServer(http.server.ThreadingHTTPServer):
