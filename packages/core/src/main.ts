@@ -447,6 +447,7 @@ export {
   compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
+  termsDeltaIsEmpty,
   validateCompatibility,
 } from "./linkageTermsNegotiation";
 export type {

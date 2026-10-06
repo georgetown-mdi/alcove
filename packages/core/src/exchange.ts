@@ -17,6 +17,7 @@ import {
   resolvedMatchingFromTerms,
 } from "./linkageTermsPolicy.js";
 import { getDefaultLinkageTerms } from "./defaults/builtInLinkageTerms.js";
+import { quoteTermsValue } from "./config/compatibilityMessage.js";
 import {
   DEFAULT_DATE_INPUT_FORMAT,
   getDefaultStandardization,
@@ -597,9 +598,11 @@ function quotedTermsValue(
     return String(value);
   if (typeof value !== "string") return undefined;
   const codePoints = Array.from(redactPrivateKeyMaterial(value));
-  return codePoints.length > MAX_QUOTED_TERMS_VALUE_LENGTH
-    ? `"${codePoints.slice(0, MAX_QUOTED_TERMS_VALUE_LENGTH).join("")}..."`
-    : `"${codePoints.join("")}"`;
+  return quoteTermsValue(
+    codePoints.length > MAX_QUOTED_TERMS_VALUE_LENGTH
+      ? `${codePoints.slice(0, MAX_QUOTED_TERMS_VALUE_LENGTH).join("")}...`
+      : value,
+  );
 }
 
 /**

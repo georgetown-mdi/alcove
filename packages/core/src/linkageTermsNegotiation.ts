@@ -412,6 +412,20 @@ export interface TermsDelta {
   otherTerms: string[];
 }
 
+/**
+ * Whether `delta` holds no difference: the partner's terms change nothing
+ * this party agreed to. A payload column's `description` never makes one,
+ * since {@link compareTerms} compares columns by name.
+ */
+export function termsDeltaIsEmpty(delta: TermsDelta): boolean {
+  return (
+    delta.received === undefined &&
+    delta.sent === undefined &&
+    delta.partnerDeduplicate === undefined &&
+    delta.otherTerms.length === 0
+  );
+}
+
 interface CompatibilityResult {
   errors: string[];
   warnings: string[];

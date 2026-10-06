@@ -2,8 +2,10 @@ import { expect, test } from "vitest";
 
 import {
   TERMS_FIELDS_PARTNER_DOES_NOT_BIND,
+  compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
+  termsDeltaIsEmpty,
   validateCompatibility,
 } from "../src/linkageTermsNegotiation";
 import type { PartnerBoundTerms } from "../src/linkageTermsNegotiation";
@@ -190,6 +192,42 @@ test("an edit the partner does not refuse leaves the projection unchanged", () =
   expect(canonicalString(partnerBoundTerms(edited))).toBe(
     canonicalString(partnerBoundTerms(everyFieldStated)),
   );
+});
+
+test("a payload column description edit is no terms change", () => {
+  const baselines = { partnerDeduplicate: everyFieldStatedPartner.deduplicate };
+  const described: LinkageTerms = {
+    ...everyFieldStatedPartner,
+    payload: {
+      send: [{ name: "b", description: "edited for clarity" }],
+      receive: [{ name: "a", description: "what this party sends" }],
+    },
+  };
+  const { delta } = compareTerms(everyFieldStated, described, baselines);
+  expect(delta).toEqual({
+    received: undefined,
+    sent: undefined,
+    partnerDeduplicate: undefined,
+    otherTerms: [],
+  });
+  expect(termsDeltaIsEmpty(delta)).toBe(true);
+});
+
+test("an edit to every bound field is a terms change", () => {
+  const baselines = { partnerDeduplicate: everyFieldStatedPartner.deduplicate };
+  expect(
+    termsDeltaIsEmpty(
+      compareTerms(everyFieldStated, everyFieldStatedPartner, baselines).delta,
+    ),
+  ).toBe(true);
+  for (const [field, edit] of Object.entries(boundFieldEdits))
+    expect(
+      termsDeltaIsEmpty(
+        compareTerms(everyFieldStated, edit(everyFieldStatedPartner), baselines)
+          .delta,
+      ),
+      field,
+    ).toBe(false);
 });
 
 test("every value a warning can hold is already escape-stable", () => {
