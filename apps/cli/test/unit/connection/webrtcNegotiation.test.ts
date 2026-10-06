@@ -14,6 +14,7 @@ import {
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import {
   BROKER_MESSAGE,
+  BROKER_OPEN_TIMEOUT_MS,
   ID_TAKEN_MESSAGE,
 } from "../../../src/connection/webrtc/brokerClient";
 import { ICE_STATS_TIMEOUT_MS } from "../../../src/connection/webrtc/iceDiagnostics";
@@ -25,6 +26,7 @@ import {
   MAX_CONNECTION_ID_LENGTH,
   MAX_PENDING_REMOTE_CANDIDATES,
   ID_TAKEN_RETRY_FIRST_DELAY_MS,
+  ID_TAKEN_RETRY_MAX_DELAY_MS,
   MIN_OFFER_RESEND_INTERVAL_MS,
   NO_ICE_SERVERS_WARNING,
   idTakenAfterRetryMessage,
@@ -1851,6 +1853,153 @@ test("an interrupt during an ID-TAKEN retry ends the wait at once", async () => 
   await settleRegistration(sockets, 2);
   interrupt.abort();
   await expect(session).rejects.toThrow(/rendezvous was cancelled/);
+});
+
+test("a re-registration the signaling server drops is retried within the wait", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { sockets, peers, session, acceptorId } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.drop();
+      else socket.register();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(
+    lines.find((line) =>
+      line.includes("the signaling server closed the connection"),
+    ),
+  ).toContain("trying again until the wait for the partner ends");
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
+  await settleRegistration(sockets, 3);
+  expect(peers).toHaveLength(2);
+  offer(sockets[2], acceptorId, "dc_partner");
+  await until(() => sockets[2].ofType(BROKER_MESSAGE.answer).length === 1);
+  const channel = new FakeChannel("dc_partner");
+  peers[1].ondatachannel?.({ channel });
+  channel.open();
+  expect((await session).channel).toBe(channel);
+});
+
+test("a re-registration whose socket fails before the server answers is retried", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.fail();
+      else socket.register();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
+  await settleRegistration(sockets, 3);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(sockets[2].closeCalls).toBe(0);
+});
+
+test("a re-registration the server never confirms is retried once its open bound passes", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    laterRegistration: (socket, index) => {
+      if (index !== 1) socket.register();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  await vi.advanceTimersByTimeAsync(
+    BROKER_OPEN_TIMEOUT_MS + ID_TAKEN_RETRY_FIRST_DELAY_MS,
+  );
+  await settleRegistration(sockets, 3);
+  expect(sockets[1].closeCalls).toBe(1);
+  expect(await settlementOf(session)).toBe("waiting");
+});
+
+test("a re-registration the server never confirms ends at the deadline, not its open bound", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const attemptMs = 20_000;
+  const waitMs = 45_000;
+  const { sockets, session } = await startRendezvous({
+    role: "inviter",
+    attemptMs,
+    rendezvousTimeoutMs: waitMs,
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.drop();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(attemptMs);
+  await settleRegistration(sockets, 2);
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
+  await settleRegistration(sockets, 3);
+  // The retry's open now hangs; its own bound would end it 30 s on.
+  expect(waitMs - attemptMs).toBeLessThan(BROKER_OPEN_TIMEOUT_MS);
+  await vi.advanceTimersByTimeAsync(
+    waitMs - attemptMs - ID_TAKEN_RETRY_FIRST_DELAY_MS - 100,
+  );
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(200);
+  const failure = await session.then(
+    () => expect.unreachable("the wait should have failed"),
+    (err: unknown) => err,
+  );
+  expect(failure).toBeInstanceOf(ConnectionError);
+  expect((failure as ConnectionError).kind).toBe("transport");
+  expect((failure as ConnectionError).message).toMatch(
+    /^the signaling server did not confirm registration within/,
+  );
+  expect(sockets).toHaveLength(3);
+});
+
+test("a re-registration still failing at the deadline fails with the signaling server's failure", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const waitMs = 200_000;
+  const { sockets, session } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: waitMs,
+    laterRegistration: (socket) => socket.drop(),
+  });
+  await vi.advanceTimersByTimeAsync(waitMs - 1_000);
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_MAX_DELAY_MS + 1_000);
+  const failure = await session.then(
+    () => expect.unreachable("the wait should have failed"),
+    (err: unknown) => err,
+  );
+  expect(failure).toBeInstanceOf(ConnectionError);
+  expect((failure as ConnectionError).kind).toBe("transport");
+  expect((failure as ConnectionError).message).toBe(
+    "the signaling server closed the connection",
+  );
+  expect(sockets.length).toBeGreaterThan(3);
+  expect(sockets.every((socket) => socket.closeCalls === 1)).toBe(true);
+});
+
+test("a first registration the signaling server drops fails at once", async () => {
+  const { socket, sockets, session } = await startRendezvous({
+    role: "acceptor",
+    confirmRegistration: false,
+  });
+  socket.drop();
+  await expect(session).rejects.toThrow(
+    "the signaling server closed the connection",
+  );
+  expect(sockets).toHaveLength(1);
 });
 
 test("a broker socket dropped before the partner arrives starts the next attempt", async () => {

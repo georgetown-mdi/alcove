@@ -22,8 +22,10 @@ import {
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "../libraryIncompatibility";
 import {
   BROKER_MESSAGE,
+  BROKER_OPEN_TIMEOUT_MS,
   BrokerIdTakenError,
   BrokerSocketDroppedError,
+  BrokerUnreachableError,
   connectToBroker,
 } from "./brokerClient";
 import {
@@ -167,10 +169,10 @@ export const ATTEMPT_OFFER_QUIET_MS = 30_000;
  */
 export const ID_TAKEN_RETRY_WINDOW_MS = 120_000;
 
-/** The first wait before a refused re-registration is tried again; each later wait doubles, up to the maximum below. */
+/** The first wait before a refused or failed re-registration is tried again; each later wait doubles, up to the maximum below. */
 export const ID_TAKEN_RETRY_FIRST_DELAY_MS = 500;
 
-/** The longest wait between two tries of a refused re-registration. */
+/** The longest wait between two tries of a refused or failed re-registration. */
 export const ID_TAKEN_RETRY_MAX_DELAY_MS = 10_000;
 
 /**
@@ -942,7 +944,7 @@ export async function openWebRtcPeerSession(
     negotiation: Negotiation,
     reregistration: boolean,
   ): Promise<BrokerClient> => {
-    const connect = (): Promise<BrokerClient> =>
+    const connect = (openTimeoutMs?: number): Promise<BrokerClient> =>
       connectToBroker({
         location,
         id: localId,
@@ -950,39 +952,60 @@ export async function openWebRtcPeerSession(
           onMessage: (message) => negotiation.onBrokerMessage(message),
           onClose: (error) => negotiation.brokerEnded(error),
         },
+        openTimeoutMs,
         signal,
         socketFactory,
       });
     if (!reregistration) return await connect();
-    // The broker holds the id of a socket that vanished without closing until
-    // its liveness timeout, so a refusal here is waited out, within a window,
-    // rather than read as the role misconfiguration it is on a first
-    // registration.
+    // A re-registration follows one that succeeded in this run, so a refusal
+    // or an unreachable signaling server is waited out within the rendezvous
+    // deadline rather than read as the misconfiguration it is on a first
+    // registration. The broker holds the id of a socket that vanished without
+    // closing until its liveness timeout, so `ID-TAKEN` gets its own window.
     let refusedSince: number | undefined;
+    let unreachableReported = false;
     let delayMs = ID_TAKEN_RETRY_FIRST_DELAY_MS;
     for (;;) {
       try {
-        return await connect();
+        // A retry's open wait ends with the rendezvous deadline, not past it.
+        return await connect(
+          Math.min(BROKER_OPEN_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
+        );
       } catch (err) {
-        if (!(err instanceof BrokerIdTakenError)) throw err;
+        const idTaken = err instanceof BrokerIdTakenError;
+        const unreachable =
+          err instanceof BrokerUnreachableError ||
+          err instanceof BrokerSocketDroppedError;
+        if (!idTaken && !unreachable) throw err;
         const now = Date.now();
-        refusedSince ??= now;
-        if (now >= deadline) throw arrivalTimeout();
-        const windowLeftMs = refusedSince + idTakenRetryWindowMs - now;
-        if (windowLeftMs <= 0)
-          throw new ConnectionError(
-            idTakenAfterRetryMessage(idTakenRetryWindowMs),
-            "usage",
+        if (now >= deadline) throw idTaken ? arrivalTimeout() : err;
+        let waitMs = Math.min(delayMs, deadline - now);
+        if (idTaken) {
+          refusedSince ??= now;
+          const windowLeftMs = refusedSince + idTakenRetryWindowMs - now;
+          if (windowLeftMs <= 0)
+            throw new ConnectionError(
+              idTakenAfterRetryMessage(idTakenRetryWindowMs),
+              "usage",
+            );
+          waitMs = Math.min(waitMs, windowLeftMs);
+          log.debug(
+            "the signaling server still holds this party's peer id from the " +
+              "previous connection attempt; registering again shortly",
           );
-        log.debug(
-          "the signaling server still holds this party's peer id from the " +
-            "previous connection attempt; registering again shortly",
-        );
-        await waitUnlessCancelled(
-          Math.min(delayMs, windowLeftMs, deadline - now),
-          signal,
-          cancelled,
-        );
+        } else if (!unreachableReported) {
+          unreachableReported = true;
+          log.warn(
+            `${sanitizeErrorForDisplay(err)}; trying again until the wait ` +
+              "for the partner ends",
+          );
+        } else {
+          log.debug(
+            `${sanitizeErrorForDisplay(err)}; registering again shortly`,
+          );
+        }
+        await waitUnlessCancelled(waitMs, signal, cancelled);
+        if (Date.now() >= deadline) throw idTaken ? arrivalTimeout() : err;
         delayMs = Math.min(2 * delayMs, ID_TAKEN_RETRY_MAX_DELAY_MS);
       }
     }
@@ -1036,6 +1059,7 @@ export async function openWebRtcPeerSession(
       await logSelectedCandidatePair(peer, signal);
       // Take the state hook back off the negotiation, whose interest in it
       // ended when the channel opened.
+      // Any departure from `connected` is the partner lost: docs/spec/WEBRTC_TRANSPORT.md#the-clean-close.
       let onLost: (() => void) | undefined;
       peer.onconnectionstatechange = () => {
         log.debug("the peer connection is now", peer.connectionState);

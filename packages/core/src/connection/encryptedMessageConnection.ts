@@ -2,6 +2,7 @@ import { deriveAeadKey } from "../auth";
 import { enc } from "../utils/crypto";
 import {
   ConnectionError,
+  DeliveryUnconfirmedError,
   asConnectionError,
   type MessageConnection,
 } from "./messageConnection";
@@ -126,7 +127,11 @@ export class EncryptedMessageConnection implements MessageConnection {
   // Memoized inner-teardown promise: undefined until the first teardown, then
   // the single in-flight/settled inner.close() promise. Makes inner teardown
   // run exactly once whether triggered by a terminal failure or by close().
+  // It never rejects; an unconfirmed-delivery rejection of the inner close is
+  // kept beside it for close() to report.
   private innerClosed: Promise<void> | undefined = undefined;
+  private innerDeliveryUnconfirmed: DeliveryUnconfirmedError | undefined =
+    undefined;
   // The latch close() sets, kept so terminated() can tell this side's own
   // close from a failure the wrapper detected.
   private readonly closeLatch = new ConnectionError(
@@ -215,12 +220,16 @@ export class EncryptedMessageConnection implements MessageConnection {
   // Tear the inner transport down exactly once. Memoizing the promise makes
   // close() idempotent at this layer (rather than borrowing the inner
   // connection's own idempotency guard) and lets close() await the same
-  // teardown a prior fail() may have already started. Inner-teardown errors are
-  // swallowed: close() must always resolve per the MessageConnection contract,
-  // and teardown is best-effort whether it is reached via fail() or close().
+  // teardown a prior fail() may have already started. A teardown fail() starts
+  // is not awaited by anyone, so an unconfirmed-delivery rejection is recorded
+  // for close() to report; any other teardown failure is swallowed, as the
+  // MessageConnection.close contract allows only that one rejection.
   private closeInner(): Promise<void> {
     return (this.innerClosed ??= Promise.resolve(this.inner.close()).catch(
-      () => {},
+      (reason: unknown) => {
+        if (reason instanceof DeliveryUnconfirmedError)
+          this.innerDeliveryUnconfirmed = reason;
+      },
     ));
   }
 
@@ -561,8 +570,13 @@ export class EncryptedMessageConnection implements MessageConnection {
     // kind "closed", not by this latch. Going through
     // closeInner() makes this idempotent and reuses any teardown a prior fail()
     // already started, so inner.close() runs once no matter how this is reached.
+    // An inner close that tore down without the peer confirming its last
+    // frames is reported to every close() caller, as the inner connection
+    // would report it unwrapped.
     this.fail(this.closeLatch);
     await this.closeInner();
+    if (this.innerDeliveryUnconfirmed !== undefined)
+      throw this.innerDeliveryUnconfirmed;
   }
 
   // Forward the per-exchange inbound frame cap to the inner transport's read

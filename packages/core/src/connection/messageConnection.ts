@@ -46,6 +46,20 @@ export class ConnectionError extends Error {
 }
 
 /**
+ * What a transport's {@link MessageConnection.close} rejects with when it tore
+ * down without the peer confirming the last frames it was handed: the partner
+ * may or may not have them. Always kind `transport`. A transport subclasses it
+ * to give its own message; a wrapping connection passes it through its own
+ * close().
+ */
+export class DeliveryUnconfirmedError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "transport");
+    this.name = "DeliveryUnconfirmedError";
+  }
+}
+
+/**
  * Extracts a human-readable message from an arbitrary thrown value. The single
  * shared rule for turning an `unknown` error into display text: an `Error`'s
  * `message`, falling back to `String(err)` when that message is empty (so an
@@ -100,7 +114,12 @@ export interface MessageConnection {
    * so every later call fails fast.
    */
   receive(timeoutMs?: number): Promise<unknown>;
-  /** Tears down the transport. Idempotent; always resolves on a clean close. */
+  /**
+   * Tears down the transport. Idempotent. Rejects only with a
+   * {@link DeliveryUnconfirmedError}, once torn down, when a transport that
+   * waits for the peer to confirm its last frames did not get that
+   * confirmation; resolves otherwise, a failure of the teardown included.
+   */
   close(): Promise<void>;
   /**
    * Optional: resolves once the connection reaches a terminal state, with the

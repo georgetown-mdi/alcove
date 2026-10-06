@@ -74,7 +74,10 @@ import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { INACTIVITY_TIMEOUT_GUIDANCE } from "./connection/timeoutGuidance";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
-import { openWebRtcMessageConnection } from "./connection/webrtc/webrtcMessageConnection";
+import {
+  FinalFrameUnconfirmedError,
+  openWebRtcMessageConnection,
+} from "./connection/webrtc/webrtcMessageConnection";
 import {
   brokerLocationFromConnection,
   iceServersFromConnection,
@@ -1584,6 +1587,22 @@ async function closeRunLayers(params: {
   build.fileSync?.sealAbort();
   if (run.started) log.info("stopping polling");
   if (run.opened) log.info("closing connection");
+  // A finished exchange whose last message the partner never confirmed is
+  // the one close failure the operator acts on: the partner's run may have
+  // ended without it. Any other close failure stays a debug line. The
+  // encrypted layer passes the transport's rejection on, so the transport's
+  // own close can report the same delivery a second time.
+  let unconfirmedReported = false;
+  const reportCloseFailure = (label: string, err: unknown): void => {
+    if (
+      err instanceof FinalFrameUnconfirmedError &&
+      run.exchangeComplete &&
+      !unconfirmedReported
+    ) {
+      unconfirmedReported = true;
+      log.warn(sanitizeErrorForDisplay(err));
+    } else log.debug(label, sanitizeErrorForDisplay(err));
+  };
   return closeWithinCeiling(ceilingMs, async () => {
     // When the AEAD decorator was built (encryption negotiated), close it:
     // its close() delegates to mc.close(), detaching the bridge's
@@ -1594,10 +1613,7 @@ async function closeRunLayers(params: {
     // mc.close() below closes the transport directly. All idempotent.
     if (run.secure !== undefined) {
       await run.secure.close().catch((err: unknown) => {
-        log.debug(
-          "secure.close() during cleanup:",
-          sanitizeErrorForDisplay(err),
-        );
+        reportCloseFailure("secure.close() during cleanup:", err);
       });
     }
     // Closing the transport detaches the file-sync bridge's data/error
@@ -1608,10 +1624,7 @@ async function closeRunLayers(params: {
     // safe even when open() never ran. Undefined only when the webrtc
     // rendezvous never produced a connection.
     await build.transport?.close().catch((err: unknown) => {
-      log.debug(
-        "transport close during cleanup:",
-        sanitizeErrorForDisplay(err),
-      );
+      reportCloseFailure("transport close during cleanup:", err);
     });
     // If an earlier transport failure already terminated the bridge, its
     // close() returns immediately without re-closing fileSync (that earlier

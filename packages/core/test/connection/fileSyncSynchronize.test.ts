@@ -1922,8 +1922,10 @@ test("synchronize() joiner branch rejects a prefix-at-dash id pair", async () =>
   expect((err as Error).message).toContain("'-' boundary");
   // Connection must stay unsynchronized so a retry is not blocked.
   expect(conn.peerId).toBeUndefined();
-  // Our hello must have been deleted so a retry does not find a stale file.
-  expect(files.has(`${conn.path}/${myId}-hello.json`)).toBe(false);
+  // Refused before the joiner deletes anything: the partner's hello stays,
+  // and ours is published beside it so the partner refuses on reading it.
+  expect(files.has(`${conn.path}/${peerHelloName}`)).toBe(true);
+  expect(files.has(`${conn.path}/${myId}-hello.json`)).toBe(true);
 });
 
 test("synchronize() lock-detection branch rejects a prefix-at-dash id pair", async () => {

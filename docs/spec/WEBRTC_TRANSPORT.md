@@ -252,6 +252,7 @@ measurements behind the budgets here are in
 - **A partner that starts over.** An inviter that has answered and receives an `OFFER` naming a new `connectionId` ends its attempt, since the acceptor has abandoned the connection it answered, and the next attempt answers that offer. The broker delivered it, so it sends no `EXPIRE` and holds nothing for the new registration, and a browser acceptor never sends an offer again: its dial fails at its own 30 s open timeout and is not retried, since it retries only on `peer-unavailable`. An `OFFER` repeating the current `connectionId` is re-answered. No floor applies: a partner re-offering under new connection ids sets the attempt cadence, and each restart costs one credential mint, one broker registration and, when relayed, one relay allocation held until it expires. The parties' agreement, not a minimum interval, bounds it.
 - **A broker socket that drops.** The registered socket closing or failing before the partner has sent its session description ends the attempt as reaching its budget does, logging a warning, and the next begins at once; on the last attempt the next runs to the end of the rendezvous budget, so the wait still fails only there, with the rendezvous budget's expiry. The next registration may meet the broker still holding the dropped socket's id, which the ID-taken retry below waits out. A drop once the partner has sent its description, a refusal or `ERROR` from the broker, and a frame that breaches a bound fail the wait. No floor applies here either: a broker that drops every socket once registered sets the attempt cadence until the rendezvous budget ends.
 - **Re-registering the same id.** The broker frees an id within milliseconds of a clean close. It holds the id of a socket that vanished without closing until its 90 s liveness timeout ([CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#web-signaling-surface-bounds)), so an attempt after one whose network dropped can be refused. A registration after the first that is answered `ID-TAKEN` is therefore tried again, after a wait of 0.5 s that doubles to at most 10 s, for the ID-taken retry window (table below); still refused at its end, the wait fails, naming another run of the same role as the likely holder. A first registration answered `ID-TAKEN` fails at once, as above.
+- **A registration that fails.** A registration after the first whose socket fails, closes, or is not confirmed within the broker registration budget or the time left in the rendezvous budget, whichever is shorter, with no refusal from the broker, is tried again on the same schedule until the rendezvous budget ends. The first failure logs a warning, and later ones in the same wait log at debug level. Still failing then, the wait fails with that registration's own failure, not the rendezvous budget's expiry, since the signaling server is what kept the partner out. A first registration that fails this way fails at once: it has not yet shown the configured server reachable. A certificate verification failure or a proxy failure on a re-registration is retried like any other unreachable broker until the rendezvous deadline, with the first failure logged as a warning; no frame reaches a server whose certificate did not verify, so confidentiality is unaffected, but such a failure mid-run ends the run only at the deadline rather than at once.
 - **What the operator sees.** The no-ICE-servers warning is given once per run. An attempt that starts with a new relay credential logs why it starts -- the wait so far, or the partner's new connection -- and the new credential's expiry; any other attempt logs its start at debug level only.
 
 ## Negotiation envelope
@@ -631,6 +632,17 @@ acknowledgement and then tears down:
 3. close the data channel, wait for that close to complete, and only then tear
    down.
 
+Step 2 sends the sentinel only while the channel is still open and the link
+still connected: a send on a channel that has left `open` is queued and never
+delivered.
+
+A step 1 that ends without the acknowledgement -- on the close drain budget, or
+on the link going -- still runs steps 2 and 3 and tears down, and the close then
+rejects with a `transport` error naming which of the two it was, rather than
+reporting a clean close. A run whose exchange completed shows it to the operator
+as a warning that the partner may not have the last message; its exit status
+is unchanged.
+
 Step 3 is what the partner's own wait ends on, and it runs on both halves of a
 clean close -- the one this side asks for and the one it answers on reading the
 peer's sentinel. The channel's close is the whole of the delivery signal a
@@ -644,7 +656,10 @@ peer connection is already no longer up -- which covers a partner detected as
 gone before the close began. It is not the usual reading of a partner that
 vanishes: werift leaves the `connected` state about thirty seconds after a peer
 disappears, so a partner lost during the teardown itself costs the whole
-ceiling.
+ceiling. werift's only post-open departure from `connected` is `failed`, which
+the partner's packets arriving again do not undo, so the CLI treats any
+departure as the partner lost; `apps/cli/test/unit/connection/webrtcPostOpenLoss.test.ts`
+drives that on a loopback pair.
 
 The condition in step 1 is the SCTP association's send and unacknowledged queues
 both being empty. It is not the channel's `bufferedAmount`: that

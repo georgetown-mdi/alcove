@@ -273,6 +273,34 @@ test("open connects and sets path from sftp config", async () => {
   expect(conn.path).toBe("/exchanges");
 });
 
+test("a failed sftp connect sets no path, so close() makes no transport call", async () => {
+  const { client } = makeMockClient();
+  const calls: string[] = [];
+  client.connect = async () => {
+    throw new Error("connection refused");
+  };
+  client.ensureConnected = async () => {
+    calls.push("ensureConnected");
+    return true;
+  };
+  const list = client.list.bind(client);
+  client.list = async (dir) => {
+    calls.push("list");
+    return list(dir);
+  };
+  const conn = new FileSyncConnection(client, { verbose: -1 });
+  await expect(
+    conn.open({
+      channel: "sftp",
+      server: { host: "sftp.example.org", path: "/exchanges" },
+    }),
+  ).rejects.toThrow("connection refused");
+  expect(conn.path).toBeUndefined();
+
+  await conn.close();
+  expect(calls).toEqual([]);
+});
+
 test("open maps peerTimeoutMs to timeToLive for sftp config", async () => {
   const { client } = makeMockClient();
   const conn = new FileSyncConnection(client, { verbose: -1 });

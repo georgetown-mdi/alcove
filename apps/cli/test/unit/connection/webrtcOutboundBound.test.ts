@@ -48,7 +48,9 @@ function recordingSession(
       sent.push(new Uint8Array(data));
       onSend(sent);
     },
-    close: () => {},
+    close: () => {
+      channel.readyState = "closed";
+    },
     addEventListener: () => {},
     removeEventListener: () => {},
   };
@@ -56,7 +58,7 @@ function recordingSession(
     sent,
     session: {
       channel: channel as unknown as RTCDataChannel,
-      isConnected: () => false,
+      isConnected: () => true,
       outboundAcknowledged: () => true,
       outboundTransmitted: () => true,
       onDisconnected: () => {},

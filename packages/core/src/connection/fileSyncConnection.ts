@@ -654,18 +654,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return this.entryPeerHello;
   }
 
-  // The rendezvous path escaped for an operator-facing LOG line, whose call site
-  // is its display sink (a path composed into an error is interpolated raw and
-  // escaped once where the error is rendered). On an offline-accept-seeded config
-  // the path is partner-reachable (the partner's charset-unconstrained invitation
-  // endpoint, copied verbatim), so it can hold control/ANSI/Unicode bytes; the
-  // byte-exact this.path is reserved for transport-path construction. The ""
-  // fallback covers the post-handshake/close window where close() nulls this.path;
-  // a display sink only ever runs with it set, so the fallback never shows.
-  private get displayPath(): string {
-    return redactAndSanitizeForDisplay(this.path ?? "");
-  }
-
   // The directory self-written files go to: the configured outbound directory
   // in split mode, else the inbound `path` (shared mode). undefined only outside
   // an open session (mirrors `path`). Every self-write site (the hello, message,
@@ -1117,8 +1105,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           "sftp inbound and outbound directories resolve to the same " +
             "directory; they must be distinct",
         );
-      this.path = inboundDir;
-      this.outbound = split ? outboundDir : undefined;
 
       const connectOptions = this.sftpSession.buildConnectOptions(config, {
         includeCredentials: true,
@@ -1155,7 +1141,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.log.debug(
         `[${this.role}] connecting to ` +
           `${redactAndSanitizeForDisplay(config.server.host)}${portString}` +
-          `${usernameString}, path: ${this.displayPath}` +
+          `${usernameString}, path: ${redactAndSanitizeForDisplay(inboundDir)}` +
           // Name the outbound directory too in split mode, so a misconfigured
           // outbound path is diagnosable from the connect log rather than only
           // at the first write. Mirrors the filedrop open() log above.
@@ -1179,6 +1165,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         }
         throw err;
       }
+      // Set only once the server accepted the session: close() keys its
+      // teardown I/O on `path`, and a connect that failed has nothing to
+      // drain or sweep.
+      this.path = inboundDir;
+      this.outbound = split ? outboundDir : undefined;
     }
 
     this.connected = true;
