@@ -5,7 +5,8 @@ WebRTC exchange for a party on a network that blocks UDP or admits only TCP/443:
 a digest-pinned coturn image, a hardened configuration, the systemd unit that
 supervises it, an ACME renewal that keeps its certificate current, scripts that
 register and revoke each exchange's relay key, an optional HTTPS registrar that
-does the same for a caller holding the relay-owner token, a sweep that revokes
+enrolls an exchange under the relay-owner token and rotates or revokes it under
+a proof of holding its key, a sweep that revokes
 lapsed keys, and a verification script that asks the deployed relay whether it
 is doing its job.
 
@@ -107,8 +108,8 @@ or the Dockerfile and it converges.
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
 | `import-legacy-mapping.sh` | Carries the text mapping an install from before the secrets table's own mapping kept into the table, and deletes it once the table reads back every row; `install.sh` runs it. See [Per-exchange keys](#per-exchange-keys), The mapping |
 | `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, hourly. See [Per-exchange keys](#per-exchange-keys), Lifetime |
-| `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py` for a caller holding the relay-owner token. See [The registrar](#the-registrar) |
-| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Where the host holds a registrar token it also asks the registrar: calls with no token or a wrong one are answered 401 and write nothing, and a registration and a revocation with the token reach the mapping and the table; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a bare TCP connect before its first probe, waiting for a just-(re)started listener to come up; 30 by default |
+| `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
+| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Where the host holds a registrar token it also asks the registrar: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a bare TCP connect before its first probe, waiting for a just-(re)started listener to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
@@ -222,7 +223,9 @@ revoke-exchange.sh <exchange-id>
   SQLite's own reason, having changed nothing. A row no exchange maps -- one
   added by hand -- is removed by value, the key on standard input:
   `printf '%s\n' "$KEY" | python3 /opt/alcove-relay/relay_table.py forget-key`,
-  with `relay.env`'s variables in the environment. An `alcove-verify-` row
+  with `relay.env`'s variables in the environment. It removes the row and any
+  mapping of the key in `ALCOVE_RELAY_REALM`, in one transaction, and like
+  `status` exits 2 naming the variable when it is unset. An `alcove-verify-` row
   the import skips -- a verify run that died before cleaning up -- gets no
   mapping, so if an earlier install already wrote its key into the table
   that key stays until it is removed with `forget-key`, the key taken from
@@ -323,11 +326,20 @@ token, overwrite the file and
   body that is not that JSON object is answered 400, one over 1024 bytes 413,
   and one without a `Content-Length` 411; a revocation under a proof may send
   no body, which it signs as empty. A request line or header block the
-  registrar cannot parse is answered in JSON with the connection closed. A
-  refusal on the exchange's state -- a key another exchange holds, an id not
-  registered, a proof that does not verify under the key held -- is answered
-  409, and a table that cannot be written 500, each with `{"error": ...}`,
-  which never contains the key. One write runs at a time.
+  registrar cannot parse is answered in JSON with the connection closed, as
+  is a request line over 4096 bytes (414) and a request line and headers over
+  8192 bytes together (431). A refusal on the exchange's state -- a key
+  another exchange holds, an id not registered, a proof that does not verify
+  under the key held -- is answered 409 with `{"error": ...}`, which never
+  contains the key. A table that cannot be read or written is answered 500
+  with one fixed message, and the cause, naming the table's file, goes to the
+  registrar's journal only. A proof is checked before the table is opened for
+  writing, and one write runs at a time.
+- **Bounds on a connection.** A connection's TLS handshake and first request,
+  and each later request on it, must arrive whole within 15 s, however the
+  bytes are spaced, or the connection is closed. At most 32 connections are
+  served at once; past that, up to 8 more are answered 503 with
+  `Retry-After: 5` and any further ones are closed unanswered.
 - **Recovery is the operator's action.** An exchange whose key nobody holds any
   more -- a key lost, or a registrar holding a key the caller no longer has --
   is recovered by the relay's operator, deliberately: the token on `PUT` or
@@ -485,7 +497,7 @@ given.
 | path | what goes there |
 | --- | --- |
 | `/etc/alcove-relay/static-auth-secret` | Optional. The static secret `mint-credential.sh` signs under, mode 600. It never appears on a unit's `ExecStart` line, in a tracked file, or in the journal |
-| `/etc/alcove-relay/registrar-token` | Optional. The relay-owner token the registrar requires, mode 600; the registrar runs only where it exists |
+| `/etc/alcove-relay/registrar-token` | Optional. The relay-owner token, mode 600, which enrolls an exchange at the registrar and is the operator's recovery route there; the registrar runs only where it exists |
 | `/etc/alcove-relay/turnserver.conf` | The rendered configuration, mode 600, because it can hold that secret. Rendered from the tracked template on every start |
 | `/var/lib/alcove-relay/turndb` | The secrets table and the exchange mapping beside it, owned by the container's uid, in a mode-700 directory of that account's |
 | `/etc/alcove-relay/certs/` | The certificate and private key the ACME hook deploys. The key is mode 600 and owned by the container's uid |

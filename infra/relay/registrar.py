@@ -25,10 +25,12 @@ Python 3.9 standard library only: the version Amazon Linux 2023 ships.
 
 import hashlib
 import hmac
+import http.client
 import http.server
 import json
 import os
 import re
+import socket
 import socketserver
 import ssl
 import sys
@@ -51,8 +53,22 @@ REALM = os.environ.get("ALCOVE_RELAY_REALM") or ""
 
 PREFIX = "/exchanges/"
 MAX_BODY_BYTES = 1024
-# A slow or silent client holds one thread for at most this long.
-CONNECTION_TIMEOUT_SECONDS = 15
+MAX_REQUEST_LINE_BYTES = 4096
+# The request line and every header together.
+MAX_HEAD_BYTES = 8192
+# A connection's TLS handshake and first request, and each later request on it,
+# must arrive whole within this long, however the bytes are spaced.
+REQUEST_DEADLINE_SECONDS = 15
+MAX_HANDLERS = 32
+# Past MAX_HANDLERS, up to this many connections are answered 503 under the
+# shorter deadline below; any more are closed unanswered.
+MAX_BUSY_ANSWERS = 8
+BUSY_DEADLINE_SECONDS = 5
+BUSY_REFUSAL = "the registrar is answering as many requests as it can; try again in a few seconds"
+TABLE_FAILURE = (
+    "the registrar could not read or write the relay's secrets table, and nothing changed; try again later, "
+    "and if it persists ask the relay's operator, whose registrar log names the cause"
+)
 MIN_TOKEN_LENGTH = 32
 ID_REFUSAL = relay_table.ID_REFUSAL
 VERIFY_ID_REFUSAL = relay_table.VERIFY_ID_REFUSAL
@@ -137,17 +153,115 @@ class Proof:
         return hmac.compare_digest(expected.encode("ascii"), self.mac.encode("ascii"))
 
 
+class DeadlineSocket(ssl.SSLSocket):
+    """An accepted connection whose handshake and reads end at `deadline`, a
+    time.monotonic() value, rather than after a per-read idle timeout."""
+
+    deadline = None
+
+    def until_deadline(self):
+        if self.deadline is None:
+            return
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("the request did not arrive in time")
+        self.settimeout(remaining)
+
+    def do_handshake(self, *args, **kwargs):
+        self.until_deadline()
+        return super().do_handshake(*args, **kwargs)
+
+    def recv(self, *args, **kwargs):
+        self.until_deadline()
+        return super().recv(*args, **kwargs)
+
+    def recv_into(self, *args, **kwargs):
+        self.until_deadline()
+        return super().recv_into(*args, **kwargs)
+
+    def sendall(self, *args, **kwargs):
+        self.settimeout(REQUEST_DEADLINE_SECONDS)
+        return super().sendall(*args, **kwargs)
+
+
+class HeadTooLarge(http.client.LineTooLong):
+    pass
+
+
+class HeadLimitedReader:
+    """The connection's reader, refusing a request line and headers over
+    MAX_HEAD_BYTES together. A body is bounded by its Content-Length."""
+
+    def __init__(self, raw):
+        self.raw = raw
+        self.head_left = MAX_HEAD_BYTES
+
+    def start_request(self):
+        self.head_left = MAX_HEAD_BYTES
+
+    def readline(self, limit=-1):
+        cap = self.head_left + 1
+        line = self.raw.readline(cap if limit is None or limit < 0 else min(limit, cap))
+        self.head_left -= len(line)
+        if self.head_left < 0:
+            raise HeadTooLarge("the request line and headers are over %d bytes" % MAX_HEAD_BYTES)
+        return line
+
+    def read(self, size=-1):
+        return self.raw.read(size)
+
+    def close(self):
+        self.raw.close()
+
+
 class RegistrarHandler(http.server.BaseHTTPRequestHandler):
     server_version = "alcove-relay-registrar"
     sys_version = ""
     protocol_version = "HTTP/1.1"
-    timeout = CONNECTION_TIMEOUT_SECONDS
+    timeout = REQUEST_DEADLINE_SECONDS
+
+    def deadline_seconds(self):
+        return REQUEST_DEADLINE_SECONDS
+
+    def arm_deadline(self):
+        self.connection.deadline = time.monotonic() + self.deadline_seconds()
 
     def setup(self):
         super().setup()
+        self.rfile = HeadLimitedReader(self.rfile)
+        self.arm_deadline()
         # The listening socket defers the handshake, so a client that connects
         # and never completes one holds this thread, not the accept loop.
         self.connection.do_handshake()
+
+    def handle_one_request(self):
+        self.rfile.start_request()
+        try:
+            self.raw_requestline = self.rfile.readline(MAX_REQUEST_LINE_BYTES + 1)
+            if len(self.raw_requestline) > MAX_REQUEST_LINE_BYTES:
+                self.requestline = ""
+                self.request_version = ""
+                self.command = ""
+                self.send_error(414)
+                return
+            if not self.raw_requestline:
+                self.close_connection = True
+                return
+            if not self.parse_request():
+                return
+            self.dispatch()
+            self.wfile.flush()
+            self.arm_deadline()
+        except socket.timeout:
+            self.log_message("request timed out: it did not arrive whole within %d s", self.deadline_seconds())
+            self.close_connection = True
+
+    def dispatch(self):
+        handler = getattr(self, "do_" + self.command, None)
+        if handler is None:
+            self.refuse_method()
+            return
+        handler()
 
     def log_message(self, format, *args):
         # No caller address (docs/notes/webrtc-relay-deployment.md, What the relay host keeps).
@@ -164,12 +278,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.log_message("%s %s %s", method, path, str(int(code)) if code != "-" else code)
 
     def send_error(self, code, message=None, explain=None):
-        # Every error the standard library answers itself -- an unsupported
-        # method, a malformed request line or header block -- is answered here,
-        # in JSON, and with nothing from the request logged or echoed back.
-        if code == 501:
-            self.refuse_method()
-            return
+        # Every error the standard library answers itself -- a malformed or
+        # oversized request line or header block -- is answered here, in JSON,
+        # and with nothing from the request logged or echoed back.
         self.close_connection = True
         try:
             reason = self.responses[code][0]
@@ -265,22 +376,37 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return None
         return self.rfile.read(int(length))
 
+    def table_call(self, operation, extra_headers=()):
+        """operation()'s result; a refusal or a table failure is answered here
+        and None returned. A failure's cause names the table's path, so it goes
+        to the log only."""
+        try:
+            return operation()
+        except relay_table.Refused as error:
+            self.send_json(409, {"error": str(error)}, extra_headers)
+        except relay_table.TableError as error:
+            sys.stderr.write("%s\n" % error)
+            self.send_json(500, {"error": TABLE_FAILURE}, extra_headers)
+        return None
+
     def write_table(self, operation, extra_headers=()):
-        # One write at a time from this process; SQLite's lock orders it
-        # against the scripts and the sweep.
-        with self.server.table_lock:
-            try:
+        def locked():
+            # One write at a time from this process; SQLite's lock orders it
+            # against the scripts and the sweep.
+            with self.server.table_lock:
                 conn = relay_table.open_table()
                 try:
                     return operation(conn)
                 finally:
                     conn.close()
-            except relay_table.Refused as error:
-                self.send_json(409, {"error": str(error)}, extra_headers)
-            except relay_table.TableError as error:
-                sys.stderr.write("%s\n" % error)
-                self.send_json(500, {"error": str(error)}, extra_headers)
-        return None
+
+        return self.table_call(locked, extra_headers)
+
+    def proof_holds(self, exchange_id, proves_possession):
+        """Whether the proof verifies against the exchange's key, read without
+        the write lock, so a request with a bad proof never opens the table for
+        writing; the write checks it again under the lock."""
+        return self.table_call(lambda: relay_table.check_proof(exchange_id, proves_possession)) is not None
 
     def do_OPTIONS(self):
         # A browser's CORS preflight carries no Authorization header, so it is
@@ -401,6 +527,8 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
                 return True
             return credential.made_under(current, "PUT", exchange_id, raw)
 
+        if not self.proof_holds(exchange_id, holds):
+            return
         written = self.write_table(
             lambda conn: relay_table.rotate(conn, REALM, exchange_id, key, max_age_days, now, holds, True)
         )
@@ -424,11 +552,13 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             raw = self.read_body(empty_when_unsized=True)
             if raw is None:
                 return
-            revocation = self.write_table(
-                lambda conn: relay_table.revoke_with_proof(
-                    conn, exchange_id, lambda current: credential.made_under(current, "DELETE", exchange_id, raw)
-                )
-            )
+
+            def holds(current):
+                return credential.made_under(current, "DELETE", exchange_id, raw)
+
+            if not self.proof_holds(exchange_id, holds):
+                return
+            revocation = self.write_table(lambda conn: relay_table.revoke_with_proof(conn, exchange_id, holds))
             authority = AUTHORITY_PROOF
         if revocation is None:
             return
@@ -437,15 +567,57 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         self.send_json(200, {"message": message}, closing)
 
     def refuse_method(self):
-        # Reached through send_error's 501 for every method with no do_ handler.
         if self.credential() is not None:
             self.refuse(
                 405, "use POST, PUT or DELETE on %s<exchange-id>" % PREFIX, (("Allow", "POST, PUT, DELETE"),)
             )
 
 
+class BusyHandler(RegistrarHandler):
+    """Answers a connection past MAX_HANDLERS with a 503, and closes it."""
+
+    def deadline_seconds(self):
+        return BUSY_DEADLINE_SECONDS
+
+    def dispatch(self):
+        self.discard_body()
+        self.close_connection = True
+        self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", "5"), ("Connection", "close")))
+
+
 class RegistrarServer(http.server.ThreadingHTTPServer):
     daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self.handler_slots = threading.BoundedSemaphore(MAX_HANDLERS)
+        self.busy_slots = threading.BoundedSemaphore(MAX_BUSY_ANSWERS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if self.handler_slots.acquire(blocking=False):
+            slot, handler_class = self.handler_slots, self.RequestHandlerClass
+        elif self.busy_slots.acquire(blocking=False):
+            slot, handler_class = self.busy_slots, BusyHandler
+        else:
+            self.shutdown_request(request)
+            return
+        thread = threading.Thread(
+            target=self.serve_connection, args=(request, client_address, handler_class, slot), daemon=True
+        )
+        try:
+            thread.start()
+        except RuntimeError:
+            slot.release()
+            self.shutdown_request(request)
+
+    def serve_connection(self, request, client_address, handler_class, slot):
+        try:
+            handler_class(request, client_address, self)
+        except Exception:
+            self.handle_error(request, client_address)
+        finally:
+            self.shutdown_request(request)
+            slot.release()
 
     def server_bind(self):
         # HTTPServer's own server_bind looks up the bound address's hostname,
@@ -479,6 +651,7 @@ def main():
         fail_start("could not listen on port %s: %s" % (PORT, error))
     server.token = token
     server.table_lock = threading.Lock()
+    context.sslsocket_class = DeadlineSocket
     server.socket = context.wrap_socket(server.socket, server_side=True, do_handshake_on_connect=False)
     sys.stdout.write("Alcove relay registrar listening on port %d\n" % server.server_address[1])
     sys.stdout.flush()

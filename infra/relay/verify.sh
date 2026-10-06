@@ -406,24 +406,29 @@ if [ ! -f "$REGISTRAR_TOKEN_FILE" ]; then
 else
   REGISTRAR_TOKEN="$(tr -d '[:space:]' < "$REGISTRAR_TOKEN_FILE")"
   REGISTER_BODY="{\"key\": \"$KEY_R\", \"maxAgeDays\": 1}"
-  expect_status "a registration with no token" 401 "$(registrar_status PUT "" "$REGISTER_BODY")"
-  expect_status "a registration with a wrong token" 401 "$(registrar_status PUT "$(openssl rand -hex 32)" "$REGISTER_BODY")"
-  expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
-  READ_BACK=0; registrar_read_back || READ_BACK=$?
-  if [ "$READ_BACK" -eq 3 ]; then
-    report pass "the refused registration left no row"
-  else
-    report fail "a refused registration left the mapping or the table holding its key"
-  fi
   STATUS="$(registrar_status PUT "$REGISTRAR_TOKEN" "$REGISTER_BODY")"
   expect_status "a registration with the token" 200 "$STATUS"
+  REGISTERED=0; registrar_read_back || REGISTERED=$?
   if [ "$STATUS" = 200 ]; then
-    READ_BACK=0; registrar_read_back || READ_BACK=$?
-    if [ "$READ_BACK" -eq 0 ]; then
+    if [ "$REGISTERED" -eq 0 ]; then
       report pass "the registration is in the mapping and the secrets table"
     else
       report fail "the registrar answered 200, but the mapping and the secrets table do not both hold the key"
     fi
+  fi
+  # The refused calls name another key, so one that wrote would move the
+  # mapping off this run's key.
+  OTHER_BODY="{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": 1}"
+  expect_status "a registration with no token" 401 "$(registrar_status PUT "" "$OTHER_BODY")"
+  expect_status "a registration with a wrong token" 401 "$(registrar_status PUT "$(openssl rand -hex 32)" "$OTHER_BODY")"
+  expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
+  READ_BACK=0; registrar_read_back || READ_BACK=$?
+  if [ "$READ_BACK" -eq "$REGISTERED" ]; then
+    report pass "the refused calls left the mapping and the secrets table unchanged"
+  else
+    report fail "a refused call changed the mapping or the secrets table"
+  fi
+  if [ "$REGISTERED" -eq 0 ]; then
     STATUS="$(registrar_status DELETE "$REGISTRAR_TOKEN" "")"
     expect_status "a revocation with the token" 200 "$STATUS"
     READ_BACK=0; registrar_read_back || READ_BACK=$?
