@@ -9,6 +9,9 @@ import {
   PARTNER_REFUSED_EXIT_CODE,
   RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
   RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
+  UNAVAILABLE_EXIT_CODE,
+  UNCAUGHT_ERROR_EXIT_CODE,
+  USAGE_EXIT_CODE,
 } from "@alcove/cli-contract";
 import {
   classifyFailure,
@@ -128,7 +131,7 @@ function exitCodeForFailureClass(
 ): number | undefined {
   switch (failureClass) {
     case "usage-error":
-      return 64;
+      return USAGE_EXIT_CODE;
     case "internal-fault":
       return INTERNAL_FAULT_EXIT_CODE;
     case "partner-refused":
@@ -153,8 +156,8 @@ function exitCodeForFailureClass(
  * `partner-refused` and `receipt-not-verified`, and
  * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for `authentication-failed`;
  * otherwise the error's own numeric `exitCode` when it has one, else
- * EX_UNAVAILABLE (69). The classification a boundary reads when its errors
- * vary; a boundary whose errors are all usage faults exits 64 outright.
+ * EX_UNAVAILABLE (69). A usage failure (a `UsageError` or an
+ * `OperatorConfigError`) is classified `usage-error` and so maps to 64.
  *
  * The own-`exitCode` rung is what gives a run whose exchange completed while
  * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
@@ -167,18 +170,17 @@ export function exitCodeForError(err: unknown): number {
   const classCode = exitCodeForFailureClass(classifyFailure(err));
   if (classCode !== undefined) return classCode;
   const own = (err as { exitCode?: unknown } | null | undefined)?.exitCode;
-  return typeof own === "number" ? own : 69;
+  return typeof own === "number" ? own : UNAVAILABLE_EXIT_CODE;
 }
 
 /**
  * Log a caught error ({@link renderFailureForOperator}) at error level and exit the process with
  * `code`. The single log-and-exit boundary the bootstrap-style command handlers
  * route a caught error through, so the error-level routing and the sanitized
- * formatting cannot drift between call sites. `code` is supplied by the caller
- * because the classification is site-specific: a command whose errors are all
- * local usage faults passes 64 outright, while a command whose errors vary
- * resolves the code through {@link exitCodeForError}. Typed `never` so a
- * caller's definite-assignment narrowing treats it like `process.exit`.
+ * formatting cannot drift between call sites. The caller passes `code`, the
+ * result of {@link exitCodeForError}, which classifies the error and maps it
+ * to its code. Typed `never` so a caller's definite-assignment narrowing
+ * treats it like `process.exit`.
  */
 export function exitWithError(
   log: { error: (message: string) => void },
@@ -234,30 +236,32 @@ function exitOnFailure(err: unknown, code: number): never {
  */
 export function exitOnUncaughtError(err: unknown): never {
   console.error(renderFailureForOperator(err));
-  return exitOnFailure(err, 1);
+  return exitOnFailure(err, UNCAUGHT_ERROR_EXIT_CODE);
 }
 
 /**
  * Run a command body, mapping any thrown error to a process exit through
  * {@link exitCodeForError}. This is the single error->exit boundary for the
- * bootstrap-style commands: routing the whole handler body through it means a
- * thrown or rejected step exits cleanly rather than crashing with an
- * unhandled rejection.
+ * commands that conduct or set up an exchange: routing the whole handler body
+ * through it means a thrown or rejected step exits with its classified code
+ * rather than crashing with an unhandled rejection or exiting 1.
  *
- * The error logger is created from `loggerName` lazily in the catch, so it
- * picks up whatever sink and level the body installed rather than binding to
- * the defaults before the command has parsed its flags. `process.exit` is
- * typed `never`, so values produced inside `body` keep their
- * definite-assignment narrowing.
+ * `logger` is the logger the failure is shown on, or the name of one. A name
+ * is resolved lazily in the catch, so it picks up whatever sink and level the
+ * body installed rather than binding to the defaults before the command has
+ * parsed its flags; a command that configures its logging before the body
+ * passes that logger itself. `process.exit` is typed `never`, so values
+ * produced inside `body` keep their definite-assignment narrowing.
  */
 export async function runOrExit(
-  loggerName: string,
+  logger: string | { error: (message: string) => void },
   body: () => Promise<void>,
 ): Promise<void> {
   try {
     await body();
   } catch (err) {
-    getLogger(loggerName).error(renderFailureForOperator(err));
+    const log = typeof logger === "string" ? getLogger(logger) : logger;
+    log.error(renderFailureForOperator(err));
     exitOnFailure(err, exitCodeForError(err));
   }
 }

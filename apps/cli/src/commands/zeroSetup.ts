@@ -60,7 +60,7 @@ import {
   startModeProvisionAsRead,
   wakeServerThrough,
 } from "../serverProvision";
-import { exitCodeForError, exitWithError } from "../util/exit";
+import { runOrExit } from "../util/exit";
 import { csvDelimiterFlag, parseOrExit } from "../util/flags";
 import { configureLogging } from "../util/logging";
 import { preflightOutputFolder } from "../resultFile";
@@ -103,7 +103,7 @@ import {
   provisionLeftConfigOnDisk,
 } from "./provision";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
-import { BARE_INVOCATION_SUMMARY, unknownCommandMessage } from "../usageHints";
+import { BareInvocationError, unknownCommandMessage } from "../usageHints";
 import {
   isWindowsDrivePath,
   refuseSurplusPositionals,
@@ -349,6 +349,7 @@ export function resolvePositionals(positionals: Array<unknown>): {
   input: string;
   output: string | undefined;
 } {
+  if (positionals.length === 0) throw new BareInvocationError();
   const arg0 = String(positionals[0]);
   const arg1 =
     positionals[1] !== undefined ? String(positionals[1]) : undefined;
@@ -715,10 +716,6 @@ export async function handler(argv: Arguments): Promise<void> {
   const parsed = parseOrExit(() => parseArgs(argv));
   // The positionals are checked ahead of every check that logs: a bare
   // `alcove` or a mistyped command name is not an exchange.
-  if (argv._.length === 0) {
-    console.error(BARE_INVOCATION_SUMMARY);
-    process.exit(64);
-  }
   const resolved = parseOrExit(() => resolvePositionals(argv._));
   const {
     logLevel,
@@ -748,117 +745,97 @@ export async function handler(argv: Arguments): Promise<void> {
   );
 
   try {
-    try {
+    await runOrExit(log, async () => {
       assertRetainSweepGuard(sweepExchangeFiles, forceRetainSweep);
-    } catch (err) {
-      exitWithError(log, err, 64);
-    }
 
-    const { server, input, output } = resolved;
-    if (options.save) {
-      try {
-        assertBootstrapUrlPasswordStorable(argv, server);
-      } catch (err) {
-        exitWithError(log, err, 64);
-      }
-    }
-    warnIfCommandLineHoldsLiteralCredential(
-      commandLineLiteralCredentials(argv, server, BOOTSTRAP_CREDENTIAL_FLAGS),
-      log,
-    );
-
-    // Warn before createConnection can throw so the user sees the flag issue even
-    // if the channel is refused. The channel is derived from the URL here
-    // (pre-connection); an unknown scheme is swallowed because createConnection
-    // reports it below.
-    let channel: ConnectionConfig["channel"] | undefined;
-    try {
-      channel = channelFromURL(server);
-    } catch {
-      // Unknown URL scheme; createConnection handles this.
-    }
-    if (channel !== undefined)
-      warnUnsupportedFileSyncFlags(
-        channel,
-        {
-          locklessRendezvous: options.locklessRendezvous,
-          retainFiles: options.retainFiles,
-          pollingFrequencyMs: options.pollingFrequencyMs,
-          connectionPerPoll: options.connectionPerPoll,
-        },
+      const { server, input, output } = resolved;
+      if (options.save) assertBootstrapUrlPasswordStorable(argv, server);
+      warnIfCommandLineHoldsLiteralCredential(
+        commandLineLiteralCredentials(argv, server, BOOTSTRAP_CREDENTIAL_FLAGS),
         log,
       );
-    // Warn when the --polling-frequency override is set aggressively low (a
-    // sub-second poll can trip an SFTP server's anti-flood protection); no-op when
-    // the flag was not passed. Pass the resolved channel so this is silent on a
-    // non-file-sync (or unresolved) channel, where the override is dropped and
-    // warnUnsupportedFileSyncFlags above emits the ignored-flag warning instead.
-    warnLowPollingFrequency(channel, options.pollingFrequencyMs, log);
-    // Warn when --connection-per-poll is paired with a short poll interval. The
-    // zero-setup connection is built from the URL with no loaded config, so the
-    // CLI flag and override are the effective mode and interval here.
-    warnConnectionPerPollShortInterval(
-      channel,
-      options.connectionPerPoll,
-      options.pollingFrequencyMs,
-      log,
-    );
 
-    // A zero-setup exchange over webrtc is refused for the reason it cannot
-    // work, rather than as an unsupported channel: the two parties find each
-    // other at signaling ids derived from a shared secret, and a zero-setup
-    // exchange is defined by not having one. Raised here, before any file
-    // conflict check or dataset read, so nothing is done on the way to it.
-    if (channel === "webrtc")
-      exitWithError(log, new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED), 64);
-
-    // Detect a pre-existing config/key before any network activity. With --save
-    // an existing target is an error, checked up front so it aborts before a
-    // connection opens. Without --save, an existing config/key is ignored; warn
-    // and point at the command that would use it (docs/CLI.md "Zero-setup
-    // exchange").
-    //
-    // Both paths are reserved even though the partner-did-not-save branch writes
-    // only the config: whether a key file is written depends on the partner's
-    // intent, unknown until after the terms round-trip, and a key-file conflict
-    // found post-exchange would find the secret already on the wire.
-    if (options.save) {
+      // Warn before createConnection can throw so the user sees the flag issue even
+      // if the channel is refused. The channel is derived from the URL here
+      // (pre-connection); an unknown scheme is swallowed because createConnection
+      // reports it below.
+      let channel: ConnectionConfig["channel"] | undefined;
       try {
+        channel = channelFromURL(server);
+      } catch {
+        // Unknown URL scheme; createConnection handles this.
+      }
+      if (channel !== undefined)
+        warnUnsupportedFileSyncFlags(
+          channel,
+          {
+            locklessRendezvous: options.locklessRendezvous,
+            retainFiles: options.retainFiles,
+            pollingFrequencyMs: options.pollingFrequencyMs,
+            connectionPerPoll: options.connectionPerPoll,
+          },
+          log,
+        );
+      // Warn when the --polling-frequency override is set aggressively low (a
+      // sub-second poll can trip an SFTP server's anti-flood protection); no-op when
+      // the flag was not passed. Pass the resolved channel so this is silent on a
+      // non-file-sync (or unresolved) channel, where the override is dropped and
+      // warnUnsupportedFileSyncFlags above emits the ignored-flag warning instead.
+      warnLowPollingFrequency(channel, options.pollingFrequencyMs, log);
+      // Warn when --connection-per-poll is paired with a short poll interval. The
+      // zero-setup connection is built from the URL with no loaded config, so the
+      // CLI flag and override are the effective mode and interval here.
+      warnConnectionPerPollShortInterval(
+        channel,
+        options.connectionPerPoll,
+        options.pollingFrequencyMs,
+        log,
+      );
+
+      // A zero-setup exchange over webrtc is refused for the reason it cannot
+      // work, rather than as an unsupported channel: the two parties find each
+      // other at signaling ids derived from a shared secret, and a zero-setup
+      // exchange is defined by not having one. Raised here, before any file
+      // conflict check or dataset read, so nothing is done on the way to it.
+      if (channel === "webrtc")
+        throw new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED);
+
+      // Detect a pre-existing config/key before any network activity. With --save
+      // an existing target is an error, checked up front so it aborts before a
+      // connection opens. Without --save, an existing config/key is ignored; warn
+      // and point at the command that would use it (docs/CLI.md "Zero-setup
+      // exchange").
+      //
+      // Both paths are reserved even though the partner-did-not-save branch writes
+      // only the config: whether a key file is written depends on the partner's
+      // intent, unknown until after the terms round-trip, and a key-file conflict
+      // found post-exchange would find the secret already on the wire.
+      if (options.save) {
         assertNoProvisionConflicts({
           configPath: options.configFile,
           keyPath: options.keyFile,
         });
-      } catch (err) {
-        exitWithError(log, err, 64);
+      } else {
+        const existing = detectFileConflicts([
+          options.configFile,
+          options.keyFile,
+        ]);
+        if (existing.length > 0) {
+          const noun = existing.length === 1 ? "file" : "files";
+          log.warn(
+            `existing ${noun} ${existing.join(", ")} will be ignored by this ` +
+              "zero-setup exchange; to use saved configuration and key material, " +
+              "run 'alcove exchange' instead",
+          );
+        }
       }
-    } else {
-      const existing = detectFileConflicts([
-        options.configFile,
-        options.keyFile,
-      ]);
-      if (existing.length > 0) {
-        const noun = existing.length === 1 ? "file" : "files";
-        log.warn(
-          `existing ${noun} ${existing.join(", ")} will be ignored by this ` +
-            "zero-setup exchange; to use saved configuration and key material, " +
-            "run 'alcove exchange' instead",
-        );
-      }
-    }
 
-    let connection: ConnectionConfig;
-    let liveConnection: ConnectionConfig;
-    let prepared: PreparedExchange;
-    let eventStreamEmitter: EventStreamEmitter | undefined;
-    let undeclaredColumnsWarned: boolean;
-    let memoryBudgetReported: boolean;
-    try {
-      connection = createConnection(server, options);
+      const connection: ConnectionConfig = createConnection(server, options);
       // The quick path asks nothing and requires nothing: `--identity` rides
       // into the terms when it names this party, and the terms have none when
       // it does not. A blank value is what a scripted `--identity "$ORG"` sends
       // with ORG unset, so it is treated as absent rather than as an empty label.
-      prepared = await prepareDataset(
+      const prepared = await prepareDataset(
         optionalIdentity(options.identity),
         input,
         linkageStrategy,
@@ -884,8 +861,8 @@ export async function handler(argv: Arguments): Promise<void> {
       // terminal event. Opened here, before the host-key step, so the fd-3
       // preflight and the undeclared-columns notice both precede that step's
       // probe connection, as in `alcove exchange` (see docs/spec/CLI_EVENTS.md).
-      eventStreamEmitter = openEventStream(eventStream);
-      undeclaredColumnsWarned = warnUndeclaredColumns({
+      const eventStreamEmitter = openEventStream(eventStream);
+      const undeclaredColumnsWarned = warnUndeclaredColumns({
         prepared,
         alreadyWarned: false,
         remedy: QUICK_EXCHANGE_UNDECLARED_REMEDY,
@@ -894,6 +871,7 @@ export async function handler(argv: Arguments): Promise<void> {
           if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
         },
       });
+      let memoryBudgetReported = false;
       try {
         checkRunMemoryBudget({
           prepared,
@@ -952,19 +930,16 @@ export async function handler(argv: Arguments): Promise<void> {
       // The connection the exchange dials: the original cloned AFTER the host-key
       // step, so any just-confirmed pin rides along, with the credential values
       // read above applied to the clone alone.
-      liveConnection = applyConnectionCredentials(connection, credentials);
-    } catch (err) {
-      // A bad URL scheme or unsupported channel is a usage error (exit 64);
-      // prepareDataset failures have their own exitCode; otherwise exit 69.
-      exitWithError(log, err, exitCodeForError(err));
-    }
+      const liveConnection = applyConnectionCredentials(
+        connection,
+        credentials,
+      );
 
-    announceRetainMode(connection, log);
+      announceRetainMode(connection, log);
 
-    let filledPayloadReceive: string[] | undefined;
-    const interactive = stdinAnswersPrompts(input);
-    const unattendedWriter = interactive ? undefined : writePlainLine;
-    try {
+      let filledPayloadReceive: string[] | undefined;
+      const interactive = stdinAnswersPrompts(input);
+      const unattendedWriter = interactive ? undefined : writePlainLine;
       // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
       // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
       // (constrained to sftp and filedrop). The double cast through `unknown` is
@@ -1091,16 +1066,13 @@ export async function handler(argv: Arguments): Promise<void> {
           },
         },
       });
-    } catch (err) {
-      exitWithError(log, err, exitCodeForError(err));
-    }
+    });
   } finally {
     // Restore the loglevel factory (and close the log-file descriptor, for the
     // file sink) on the normal exit path, including a run that took a
-    // persistence loss and returns with the exit code already set.
-    // Writes are synchronous and already durable, so exitWithError's process.exit
-    // (which bypasses this finally) loses nothing -- this is only
-    // factory/descriptor cleanup.
+    // persistence loss and returns with the exit code already set. runOrExit
+    // logs a failure before its process.exit, which bypasses this finally, so
+    // this is only factory/descriptor cleanup.
     closeLogging();
   }
 }

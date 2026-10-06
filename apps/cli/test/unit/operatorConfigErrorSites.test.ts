@@ -295,6 +295,16 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose; not even the configured path is quoted.",
   },
   {
+    file: "apps/cli/src/commands/exchange.ts",
+    anchor: "readConfigDocument",
+    raises: "OperatorConfigError",
+    interpolates: ["configFile"],
+    provenance:
+      "`configFile` is the path the operator passed on their own command line " +
+      "(--config-file, else the default), raised when nothing exists there. " +
+      "The rest is fixed prose naming the command that writes one.",
+  },
+  {
     file: "apps/cli/src/config.ts",
     anchor: "assertPartnerFingerprintRecordable",
     raises: "OperatorConfigError",

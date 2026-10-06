@@ -4,6 +4,9 @@ The `alcove` CLI's machine interface, declared once for the CLI that emits it an
 the fd-3 event schema, the warning sources, the CLI's named exit codes, and the `cause` field of the `error` event.
 [docs/spec/CLI_EVENTS.md](../../docs/spec/CLI_EVENTS.md) specifies the stream; [docs/CLI.md](../../docs/CLI.md#exit-codes) lists every exit code.
 
+The exit codes are declared once, as named constants and as `EXIT_CODE_TABLE`, every code with its name in the order [docs/CLI.md](../../docs/CLI.md#exit-codes) lists them.
+That table is the exit-code reference: it states what each code means and what a supervisor does with it, and a test holds it to `EXIT_CODE_TABLE` row for row.
+
 The `cause` field is built from one row per kind of core's failure-cause catalog (`FAILURE_CAUSE_STREAM_FIELDS`).
 The kinds the stream states are that record's keys, and a cause whose kind has no row is dropped rather than built.
 

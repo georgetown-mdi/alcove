@@ -1,5 +1,22 @@
-// The CLI's named process exit codes, rungs of the sysexits table docs/CLI.md
-// (Exit codes) lists; 64 and 69 stay literals at the CLI's exit boundaries.
+// The CLI's process exit codes and the table of them, EXIT_CODE_TABLE, which
+// docs/CLI.md (Exit codes) lists row for row.
+
+/**
+ * The process exit code for a command refused because of something the
+ * operator supplied -- a flag, an argument, a configuration or key file, the
+ * input, or terms this build cannot run: `EX_USAGE` (64). Every `UsageError`
+ * reports it. The documented response is to fix what the message names; a
+ * run repeated unchanged fails the same way.
+ */
+export const USAGE_EXIT_CODE = 64;
+
+/**
+ * The process exit code for a failure no other code names, a transport or
+ * availability failure among them: `EX_UNAVAILABLE` (69). The one failure
+ * code a supervisor retries, up to a small fixed cap (see docs/CLI.md, Exit
+ * codes).
+ */
+export const UNAVAILABLE_EXIT_CODE = 69;
 
 /**
  * The process exit code for a failure in this implementation rather than in
@@ -97,3 +114,78 @@ export const INPUT_NOT_FOUND_EXIT_CODE = 66;
  * the code. See docs/CLI.md (Exit 73) and docs/spec/CLI_EVENTS.md.
  */
 export const PERSISTENCE_LOSS_EXIT_CODE = 73;
+
+/**
+ * The process exit code `alcove doctor` reports when its checks ran and found
+ * something to change before an exchange will work: `EX_CONFIG` (78). Set by
+ * no other command.
+ */
+export const DOCTOR_FINDINGS_EXIT_CODE = 78;
+
+/**
+ * The process exit code for a run interrupted by `SIGINT`: 130, 128 plus the
+ * signal number.
+ */
+export const INTERRUPTED_EXIT_CODE = 130;
+
+/**
+ * The process exit code for a run terminated by `SIGTERM`: 143, 128 plus the
+ * signal number.
+ */
+export const TERMINATED_EXIT_CODE = 143;
+
+/**
+ * The process exit code for an error that escaped every command handler: 1.
+ */
+export const UNCAUGHT_ERROR_EXIT_CODE = 1;
+
+/** One row of {@link EXIT_CODE_TABLE}. */
+export interface ExitCodeTableRow {
+  /** The process exit code. */
+  readonly code: number;
+  /**
+   * The code's `sysexits` name, or a short label for a code outside that
+   * convention.
+   */
+  readonly name: string;
+  /**
+   * `alcove` when the CLI exits with the code itself, `platform` when the
+   * code only reaches a supervisor because the process was ended from outside.
+   */
+  readonly setBy: "alcove" | "platform";
+}
+
+/**
+ * Every process exit code a supervisor of the `alcove` CLI can see, in the
+ * order docs/CLI.md (Exit codes) lists them; that table holds the meaning of
+ * each code and what a supervisor does with it.
+ */
+export const EXIT_CODE_TABLE: readonly ExitCodeTableRow[] = [
+  { code: 0, name: "success", setBy: "alcove" },
+  { code: USAGE_EXIT_CODE, name: "EX_USAGE", setBy: "alcove" },
+  {
+    code: RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
+    name: "EX_DATAERR",
+    setBy: "alcove",
+  },
+  { code: INPUT_NOT_FOUND_EXIT_CODE, name: "EX_NOINPUT", setBy: "alcove" },
+  { code: UNAVAILABLE_EXIT_CODE, name: "EX_UNAVAILABLE", setBy: "alcove" },
+  { code: INTERNAL_FAULT_EXIT_CODE, name: "EX_SOFTWARE", setBy: "alcove" },
+  { code: PERSISTENCE_LOSS_EXIT_CODE, name: "EX_CANTCREAT", setBy: "alcove" },
+  { code: PARTNER_REFUSED_EXIT_CODE, name: "EX_PROTOCOL", setBy: "alcove" },
+  {
+    code: AUTHENTICATION_FAILED_EXIT_CODE,
+    name: "EX_NOPERM",
+    setBy: "alcove",
+  },
+  { code: DOCTOR_FINDINGS_EXIT_CODE, name: "EX_CONFIG", setBy: "alcove" },
+  {
+    code: INTERRUPTED_EXIT_CODE,
+    name: "interrupted (SIGINT)",
+    setBy: "alcove",
+  },
+  { code: TERMINATED_EXIT_CODE, name: "terminated (SIGTERM)", setBy: "alcove" },
+  { code: 134, name: "aborted (SIGABRT)", setBy: "platform" },
+  { code: 137, name: "killed (SIGKILL)", setBy: "platform" },
+  { code: UNCAUGHT_ERROR_EXIT_CODE, name: "unexpected error", setBy: "alcove" },
+];

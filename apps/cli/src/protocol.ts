@@ -64,7 +64,9 @@ import type {
 
 import {
   AUTHENTICATION_FAILED_EXIT_CODE,
+  INTERRUPTED_EXIT_CODE,
   PERSISTENCE_LOSS_EXIT_CODE,
+  TERMINATED_EXIT_CODE,
   type ErrorPhase,
 } from "@alcove/cli-contract";
 
@@ -3086,7 +3088,10 @@ export async function runProtocol(
   }
   const psiWorkerExitWait: PsiWorkerExitWaitOptions = {
     announce: (line) => log.info(line),
-    exitAtOnce: (signal) => process.exit(signal === "SIGINT" ? 130 : 143),
+    exitAtOnce: (signal) =>
+      process.exit(
+        signal === "SIGINT" ? INTERRUPTED_EXIT_CODE : TERMINATED_EXIT_CODE,
+      ),
   };
   async function onSigint(): Promise<void> {
     // Must be set synchronously, before the first await, so the runProtocol
@@ -3116,7 +3121,7 @@ export async function runProtocol(
       await stopPsiWorkersBeforeExit(psiWorkerExitWait);
       // 128 + 2 (SIGINT): conventional exit code for a process interrupted
       // by SIGINT, distinguishable from a clean exit (0) or an error (69).
-      process.exit(130);
+      process.exit(INTERRUPTED_EXIT_CODE);
     }
   }
   async function onSigterm(): Promise<void> {
@@ -3143,7 +3148,7 @@ export async function runProtocol(
       await stopPsiWorkersBeforeExit(psiWorkerExitWait);
       // 128 + 15 (SIGTERM): conventional exit code for a process terminated by
       // SIGTERM, distinguishable from a clean exit (0) or an error exit (69).
-      process.exit(143);
+      process.exit(TERMINATED_EXIT_CODE);
     }
   }
 
