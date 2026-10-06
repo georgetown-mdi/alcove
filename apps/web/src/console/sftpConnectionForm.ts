@@ -75,6 +75,9 @@ export interface SftpConnectionFormValues {
    * password (password only, optional). Not a second credential: the same
    * password, offered over a different SSH authentication method. */
   keyboardInteractive: boolean;
+  /** Set when the last host input was a pasted address core could not read: the
+   * host field was cleared rather than keep text that may hold a password. */
+  hostPasteUnreadable?: boolean;
 }
 
 /** The form's initial state, before the operator authors anything. */
@@ -164,11 +167,12 @@ export function hostKeyFingerprintField(
   return typeof stated === "string" ? stated : stated.join(", ");
 }
 
+const SFTP_URL_SCHEME = /^(sftp|ssh):\/\//i;
+
 /** The connection fields a pasted `sftp://` or `ssh://` URL states, or null when
- * the input is not such a URL or core refuses it (so the caller keeps the raw
- * text and the host check reports it). */
+ * the input is not such a URL or core refuses it. */
 function sftpUrlFieldsOf(input: string): SftpUrlFields | null {
-  if (!/^(sftp|ssh):\/\//i.test(input.trim())) return null;
+  if (!SFTP_URL_SCHEME.test(input.trim())) return null;
   try {
     return parseSftpUrl(input);
   } catch {
@@ -177,25 +181,44 @@ function sftpUrlFieldsOf(input: string): SftpUrlFields | null {
 }
 
 /** Apply a host-field input: when it is a full `sftp://` URL, split it across the
- * host, username, port, and remote-directory fields; otherwise set the raw text as
- * the host so the operator can keep typing. A password in the URL is not read:
- * the credential is chosen as a file. */
+ * host, username, port, and remote-directory fields. An `sftp://` or `ssh://`
+ * address core refuses, or any text holding login details (`@`), clears the
+ * field and flags it, since the text may hold a password. Any other text is set
+ * as the host so the operator can keep typing. A password in the URL is not
+ * read: the credential is chosen as a file. */
 export function applyHostInput(
   values: SftpConnectionFormValues,
   raw: string,
 ): SftpConnectionFormValues {
   const parsed = sftpUrlFieldsOf(raw);
   if (parsed === null) {
-    return { ...values, host: raw.replace(/(\/\/)[^/@]*@/, "$1") };
+    const unreadable = SFTP_URL_SCHEME.test(raw.trim()) || raw.includes("@");
+    return {
+      ...values,
+      host: unreadable ? "" : raw,
+      hostPasteUnreadable: unreadable,
+    };
   }
   return {
     ...values,
+    hostPasteUnreadable: false,
     host: parsed.host,
     ...(parsed.username !== undefined ? { username: parsed.username } : {}),
     port: parsed.port !== undefined ? String(parsed.port) : values.port,
     remoteDirectory: parsed.path ?? values.remoteDirectory,
   };
 }
+
+// What the console says when the host field holds more than a bare host.
+const BARE_HOST_REQUIREMENT =
+  "Enter just the server address (like sftp.example.org) -- not a full URL " +
+  "or login details.";
+
+/** What the console says when a pasted address could not be read and the host
+ * field was cleared. */
+export const UNREADABLE_HOST_PASTE =
+  "The pasted address could not be read and was cleared. " +
+  BARE_HOST_REQUIREMENT;
 
 /** Whether a typed credential/passphrase reference is an `@`-prefixed path. */
 function isAtPath(value: string): boolean {
@@ -436,15 +459,12 @@ export function sftpFormError(
   retainFiles: boolean,
   singleFingerprint = false,
 ): SftpFormError | undefined {
+  if (values.host.trim() === "" && values.hostPasteUnreadable === true)
+    return { field: "host", message: UNREADABLE_HOST_PASTE };
   if (values.host.trim() === "")
     return { field: "host", message: "Enter the SFTP server address." };
   if (!isBareSftpHost(values.host.trim()))
-    return {
-      field: "host",
-      message:
-        "Enter just the server address (like sftp.example.org) -- not a " +
-        "full URL or login details.",
-    };
+    return { field: "host", message: BARE_HOST_REQUIREMENT };
   if (values.username.trim() === "")
     return {
       field: "username",

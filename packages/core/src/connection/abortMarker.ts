@@ -267,7 +267,7 @@ export class AbortMarkerSubsystem {
     // BEFORE close() runs (close() also signals, but may lose that race). No-op on
     // a transport that does not implement it.
     inputs.client.beginTeardown?.();
-    const tempPath = `${inputs.path}/temp-${uuidv4()}.tmp`;
+    const tempPath = joinFileSyncPath(inputs.path, `temp-${uuidv4()}.tmp`);
     const finalPath = joinFileSyncPath(inputs.path, inputs.finalName);
     await this.deps.runBudgeted(
       inputs.client.put(inputs.body, tempPath, {

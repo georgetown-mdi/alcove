@@ -203,6 +203,18 @@ test("writeMarker puts the envelope to a temp file, renames it into place, and l
   );
 });
 
+test("writeMarker with an empty directory keeps the temp and final paths relative to the login directory", async () => {
+  const client = makeClient();
+  const { subsystem } = armed(client, { writeDir: "" });
+  await subsystem.writeMarker();
+
+  const tempPath = vi.mocked(client.put).mock.calls[0][1];
+  expect(tempPath).toMatch(
+    /^temp-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/,
+  );
+  expect(client.rename).toHaveBeenCalledWith(tempPath, `${SELF_ID}-abort.json`);
+});
+
 test("writeMarker on a transport without beginTeardown still gets the marker", async () => {
   const client = makeClient({ beginTeardown: undefined });
   const { subsystem } = armed(client);

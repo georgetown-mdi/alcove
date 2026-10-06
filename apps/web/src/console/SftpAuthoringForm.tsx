@@ -126,8 +126,13 @@ export function SftpAuthoringForm({
   const probeTarget = probeTargetOf(values, reviewLocator);
 
   const error = sftpFormError(values, retainFiles, singleFingerprint);
+  // A cleared paste is reported at once: the operator just watched the field
+  // empty and needs the reason before trying to save.
+  const errorShown =
+    attempted ||
+    (values.hostPasteUnreadable === true && error?.field === "host");
   const fieldError = (field: SftpFormField): string | undefined =>
-    attempted && error?.field === field ? error.message : undefined;
+    errorShown && error?.field === field ? error.message : undefined;
 
   const update = (patch: Partial<SftpConnectionFormValues>): void => {
     setValues((current) => ({ ...current, ...patch }));

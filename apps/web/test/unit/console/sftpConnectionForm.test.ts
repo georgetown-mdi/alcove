@@ -7,6 +7,7 @@ import {
   SPLIT_DIRECTORY_BOTH_HALVES_REQUIREMENT,
   SPLIT_DIRECTORY_DISTINCT_REQUIREMENT,
   SPLIT_DIRECTORY_RETAIN_REQUIREMENT,
+  UNREADABLE_HOST_PASTE,
   applyHostInput,
   buildAuthoringRequest,
   sftpFormError,
@@ -45,10 +46,29 @@ const authoringRequest = (values: SftpConnectionFormValues) =>
   buildAuthoringRequest(values, true);
 
 describe("applyHostInput", () => {
-  test("keeps a password out of the host field when the paste is not a valid URL", () => {
-    expect(
-      applyHostInput(EMPTY_SFTP_FORM, "sftp://u:secret@host/a?b").host,
-    ).not.toContain("secret");
+  test("empties the host field and shows the notice when core cannot read the paste", () => {
+    for (const raw of [
+      "sftp://u:secret@host/a?b",
+      "sftp://u:se@cret@host/a?b",
+      "sftp://u:se/cret@host/a",
+      "u:secret@host",
+      "sftp://host:0/drop",
+      "sftp://host/bad%zz",
+    ]) {
+      const result = applyHostInput(EMPTY_SFTP_FORM, raw);
+      expect(result.host, raw).toBe("");
+      expect(formError({ ...validForm(), ...result })).toEqual({
+        field: "host",
+        message: UNREADABLE_HOST_PASTE,
+      });
+    }
+  });
+
+  test("clears the notice once the operator types a host", () => {
+    const refused = applyHostInput(EMPTY_SFTP_FORM, "u:secret@host");
+    const typed = applyHostInput(refused, "s");
+    expect(typed.host).toBe("s");
+    expect(typed.hostPasteUnreadable).toBe(false);
   });
 
   test("splits a pasted sftp URL across the fields", () => {
@@ -77,14 +97,10 @@ describe("applyHostInput", () => {
     expect(result.port).toBe("22");
   });
 
-  test("keeps the raw text for an sftp URL core refuses", () => {
-    for (const raw of [
-      "sftp://host:0/drop",
-      "sftp://host/bad%zz",
-      "sftp://",
-      "https://example.gov",
-    ])
-      expect(applyHostInput(EMPTY_SFTP_FORM, raw).host).toBe(raw);
+  test("keeps the raw text of a non-sftp address with no login details", () => {
+    const result = applyHostInput(EMPTY_SFTP_FORM, "https://example.gov");
+    expect(result.host).toBe("https://example.gov");
+    expect(result.hostPasteUnreadable).toBe(false);
   });
 
   test("sets the raw text as the host when it is not a URL", () => {

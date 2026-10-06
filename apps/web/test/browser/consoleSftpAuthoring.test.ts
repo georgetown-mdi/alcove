@@ -13,6 +13,7 @@ import { decodeInvitation } from "@alcove/core";
 
 import { InviterScreen } from "@exchange/InviterScreen";
 import { SftpCredentialWarnings } from "@console/SftpCredentialWarnings";
+import { UNREADABLE_HOST_PASTE } from "@console/sftpConnectionForm";
 import styles from "@styles/app.module.css";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -470,6 +471,19 @@ describe("console SFTP connection authoring", () => {
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeDisabled();
+  });
+
+  test("an unreadable pasted address empties the host field and says why at once", async () => {
+    stubJobApi();
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await page.getByRole("button", { name: "Add connection" }).click();
+    const host = page.getByLabelText("SFTP server address");
+    await userEvent.fill(host, "sftp://u:se@cret@host/a?b");
+    await expect.element(host).toHaveValue("");
+    await expect
+      .element(page.getByText(UNREADABLE_HOST_PASTE))
+      .toBeInTheDocument();
   });
 
   test("authors a connection from a picked secrets file, then runs it here", async () => {
