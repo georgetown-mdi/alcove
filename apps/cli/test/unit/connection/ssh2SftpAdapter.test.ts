@@ -6,6 +6,7 @@ import { describe, expect, test, vi, beforeEach } from "vitest";
 import {
   DirectoryListingBoundsError,
   FrameSizeExceededError,
+  InternalConsistencyError,
   TransportOperationStalledError,
   UsageError,
   sanitizeErrorForDisplay,
@@ -1223,6 +1224,19 @@ describe("capped get", () => {
     await expect(
       adapter.get("/remote/oversize.bin", { maxBytes: 32 }),
     ).rejects.toBeInstanceOf(FrameSizeExceededError);
+  });
+
+  test("refuses a cap that is not a positive finite number before reading", async () => {
+    const adapter = new SSH2SFTPClientAdapter();
+    const get = vi.fn();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = { get };
+    for (const maxBytes of [undefined, 0, -1, Number.NaN, Infinity]) {
+      await expect(
+        adapter.get("/remote/any.bin", { maxBytes: maxBytes as number }),
+      ).rejects.toBeInstanceOf(InternalConsistencyError);
+    }
+    expect(get).not.toHaveBeenCalled();
   });
 
   test("returns the buffer for an under-cap file", async () => {

@@ -126,7 +126,7 @@ const SSH_FX_FAILURE = 4;
 // A failed put is re-issued on the same session only for SSH_FX_FAILURE: the
 // only status that can report a condition that clears; the others answer a
 // re-issue the same way or belong to the recovery round. The statuses are
-// driven in test/integration/sftpStackPremises.test.ts.
+// driven through this adapter in test/integration/putWriteStatusRetry.test.ts.
 function isRetryableWriteStatus(error: unknown): boolean {
   return (error as Ssh2SftpError | null | undefined)?.code === SSH_FX_FAILURE;
 }
@@ -2905,6 +2905,13 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   }
 
   get(path: string, options: GetOptions): Promise<Buffer<ArrayBufferLike>> {
+    const { maxBytes } = options;
+    if (!(Number.isFinite(maxBytes) && maxBytes > 0))
+      return Promise.reject(
+        new InternalConsistencyError(
+          `SSH2SFTPClientAdapter.get: maxBytes must be a positive finite number, got ${String(maxBytes)}`,
+        ),
+      );
     return this.runOperation({ recovery: "verbatim" }, () =>
       this.getOnce(path, options),
     );

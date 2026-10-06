@@ -42,8 +42,9 @@ export const MAX_FILENAME_BYTES = MAX_FILE_NAME_BYTES;
  * The length {@link MAX_FILENAME_BYTES} bounds: the name's UTF-8 encoding in
  * bytes, not its JavaScript string length, which counts UTF-16 code units and
  * reads a name of multi-byte characters as shorter than the filesystem limit
- * it is measured against. Both transports hand over the name already decoded
- * from UTF-8, so this is the byte length of its re-encoding.
+ * it is measured against. For a name that arrives as a decoded string this is
+ * the length of its re-encoding, which over-counts bytes that were not valid
+ * UTF-8; `LocalFSClient` measures the raw on-disk bytes instead.
  */
 export function filenameByteLength(name: string): number {
   return Buffer.byteLength(name, "utf8");
@@ -90,7 +91,8 @@ export function directoryTooLargeError(
  * budget {@link directoryLink} fits to -- raw and unescaped (escaping is
  * the display boundary's job; a split surrogate pair still renders as a
  * visible escape, not mojibake). The true length is reported separately,
- * as a number, never partner text.
+ * as a number, never partner text: `nameBytes` where the caller measured the
+ * raw bytes, otherwise the length of `name` re-encoded.
  *
  * `dirPath` and `name` are chosen by different parties (operator/partner
  * endpoint vs. server), so each takes a labelled cause link of its own: a
@@ -101,6 +103,7 @@ export function filenameTooLongError(
   dirPath: string,
   name: string,
   max: number,
+  nameBytes: number = filenameByteLength(name),
 ): DirectoryListingBoundsError {
   // A name reaching here is longer than MAX_FILENAME_BYTES and so longer than
   // this preview, which is why the marker is unconditional. Redaction runs after
@@ -112,7 +115,7 @@ export function filenameTooLongError(
   )}${DISPLAY_TRUNCATION_MARKER}`;
   return new DirectoryListingBoundsError(
     `the rendezvous directory contains an entry whose filename is ` +
-      `${filenameByteLength(name)} bytes, exceeding the maximum of ${max}; ` +
+      `${nameBytes} bytes, exceeding the maximum of ${max}; ` +
       `refusing to process it`,
     {
       details: [directoryLink(dirPath), `entry name: ${shown}`],

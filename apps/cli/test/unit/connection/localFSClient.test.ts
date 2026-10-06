@@ -9,6 +9,7 @@ import {
   DirectoryListingBoundsError,
   failureCauseOf,
   FrameSizeExceededError,
+  InternalConsistencyError,
   TimeoutError,
   UsageError,
 } from "@alcove/core";
@@ -20,15 +21,15 @@ import {
   MAX_FILENAME_BYTES,
 } from "../../../src/connection/listingGuard";
 
-// A lazily-generated stand-in for fs.opendir's Dir: yields `total` synthetic
-// entries one at a time and records how many were actually pulled. Generating
+// A lazily-generated stand-in for fs.opendir's Dir, read with raw (Buffer)
+// entry names as list() reads it: yields `total` synthetic entries one at a time and records how many were actually pulled. Generating
 // entries on demand (rather than building an array) lets a test drive list()
 // with a directory far larger than the cap while proving the walk stops at the
 // bound -- without the test itself allocating the very array the bound exists to
 // prevent.
 function countingDir(
   total: number,
-  makeEntry: (i: number) => { name: string; isFile: () => boolean },
+  makeEntry: (i: number) => { name: Buffer; isFile: () => boolean },
 ) {
   let yielded = 0;
   return {
@@ -208,8 +209,10 @@ test("list omits a file that disappears between readdir and stat", async () => {
   // "gone.txt", replicating the readdir/stat race window without requiring a
   // real concurrent deletion.
   const realStat = fs.lstat.bind(fs);
-  const spy = vi.spyOn(fs, "lstat").mockImplementation(((filePath: string) => {
-    if (filePath.endsWith("gone.txt"))
+  const spy = vi.spyOn(fs, "lstat").mockImplementation(((
+    filePath: string | Buffer,
+  ) => {
+    if (filePath.toString().endsWith("gone.txt"))
       return Promise.reject(
         Object.assign(new Error("ENOENT: no such file or directory"), {
           code: "ENOENT",
@@ -233,7 +236,7 @@ test("list refuses a directory with more entries than the cap, stopping early", 
   // entry count. Proven by asserting the walk pulled exactly cap+1 entries (the
   // one that tripped the bound) and stopped, not all 5000 extra.
   const big = countingDir(MAX_DIRECTORY_ENTRIES + 5_000, (i) => ({
-    name: `f${i}.json`,
+    name: Buffer.from(`f${i}.json`),
     isFile: () => true,
   }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,7 +258,7 @@ test("list rejects an entry whose filename exceeds the maximum length", async ()
   // against the shared bound.
   const longName = `${"x".repeat(MAX_FILENAME_BYTES + 1)}.json`;
   const hostile = countingDir(1, () => ({
-    name: longName,
+    name: Buffer.from(longName),
     isFile: () => true,
   }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -272,7 +275,7 @@ test("list rejects an entry whose filename exceeds the maximum length", async ()
 test("list measures the filename bound in UTF-8 bytes, not string length", async () => {
   // 128 two-byte characters: 128 code units, 256 bytes -- one past the cap.
   const overByBytes = countingDir(1, () => ({
-    name: "\u00e9".repeat(128),
+    name: Buffer.from("\u00e9".repeat(128)),
     isFile: () => true,
   }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -286,11 +289,46 @@ test("list measures the filename bound in UTF-8 bytes, not string length", async
   }
 });
 
+// A name whose bytes are not valid UTF-8 decodes each invalid byte to U+FFFD,
+// three bytes when re-encoded, so it is measured from the raw bytes on disk.
+const INVALID_UTF8_BYTE = 0xe9;
+
+test("list accepts a name of raw non-UTF-8 bytes under the byte limit", async () => {
+  // 200 raw bytes on disk; decoded and re-encoded they would measure 600.
+  const rawName = Buffer.alloc(200, INVALID_UTF8_BYTE);
+  await fs.writeFile(
+    Buffer.concat([Buffer.from(path.join(dir, path.sep)), rawName]),
+    "x",
+  );
+  const entries = await client.list(dir);
+  expect(entries.map((e) => ({ name: e.name, size: e.size }))).toEqual([
+    { name: rawName.toString("utf8"), size: 1 },
+  ]);
+});
+
+test("list refuses a raw non-UTF-8 name over the byte limit with its on-disk length", async () => {
+  // No filesystem here stores a name past NAME_MAX, so the directory is mocked.
+  const overByOne = countingDir(1, () => ({
+    name: Buffer.alloc(MAX_FILENAME_BYTES + 1, INVALID_UTF8_BYTE),
+    isFile: () => true,
+  }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spy = vi.spyOn(fs, "opendir").mockResolvedValue(overByOne as any);
+  try {
+    await expect(client.list(dir)).rejects.toThrow(
+      `filename is ${MAX_FILENAME_BYTES + 1} bytes, exceeding the maximum of ` +
+        `${MAX_FILENAME_BYTES}`,
+    );
+  } finally {
+    spy.mockRestore();
+  }
+});
+
 test("list accepts a directory at exactly the entry cap", async () => {
   // Off-by-one guard: cap entries must list, only cap+1 trips. stat is mocked so
   // the synthetic names need not exist on disk.
   const atCap = countingDir(MAX_DIRECTORY_ENTRIES, (i) => ({
-    name: `f${i}.json`,
+    name: Buffer.from(`f${i}.json`),
     isFile: () => true,
   }));
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -371,6 +409,22 @@ test("get reads a file at exactly maxBytes", async () => {
   await fs.writeFile(filePath, contents);
   const buf = await client.get(filePath, { maxBytes: contents.length });
   expect(buf).toEqual(contents);
+});
+
+test("get refuses a cap that is not a positive finite number before opening", async () => {
+  const filePath = path.join(dir, "any.txt");
+  await fs.writeFile(filePath, "contents");
+  const openSpy = vi.spyOn(fs, "open");
+  try {
+    for (const maxBytes of [undefined, 0, -1, Number.NaN, Infinity]) {
+      await expect(
+        client.get(filePath, { maxBytes: maxBytes as number }),
+      ).rejects.toBeInstanceOf(InternalConsistencyError);
+    }
+    expect(openSpy).not.toHaveBeenCalled();
+  } finally {
+    openSpy.mockRestore();
+  }
 });
 
 test("get reads a file under maxBytes", async () => {
