@@ -36,7 +36,7 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 ```
 
 - The value is a `ws:` or `wss:` URL whose path is the server's mount; the broker's mount and how to set it: [packages/peerjs-broker/README.md](../packages/peerjs-broker/README.md).
-- A build for the hosted profile -- `npm run build -w apps/web` and the hosted static build (`npm run build:hosted -w apps/web`) -- refuses to run without it, because the web application's own origin serves no signaling.
+- A build for the hosted profile -- `npm run build -w apps/web` and the hosted static build (`npm run build:hosted -w apps/web`) -- refuses to run without it, because the web application's own origin serves no signaling. In the deploy workflow the repository variable `VITE_SIGNALING_SERVER_URL` is required for the deploy build; pull-request builds use a placeholder.
 - The development server and the console builds keep a default: unset or blank, the browser parties dial the web application's own origin at `/api/`, which the development server (`npm run dev` from the repository root) forwards to a broker it starts.
 - The URL's scheme must match the deployment's: `wss:` for one served over `https`, `ws:` for one served over `http`. A mismatch is refused when the app loads.
 - Every browser inviter of the deployment registers there, and every invitation it creates names that server, so a party accepting a fresh invitation dials it from whatever deployment they open it in. A saved exchange's later runs do the same: the accepting party's record keeps the server its invitation named and dials it on every run, so the two parties' deployments need not name the same server.

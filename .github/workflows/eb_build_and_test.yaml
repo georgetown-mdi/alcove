@@ -132,7 +132,9 @@ jobs:
       # signaling broker's address, a repository variable.
       - name: Build web app
         env:
-          VITE_SIGNALING_SERVER_URL: ${{vars.VITE_SIGNALING_SERVER_URL}}
+          # A pull request build is a check, not a deploy; the push build
+          # must refuse without the real address.
+          VITE_SIGNALING_SERVER_URL: ${{ github.event_name == 'pull_request' && (vars.VITE_SIGNALING_SERVER_URL || 'wss://signaling.example.invalid/api/') || vars.VITE_SIGNALING_SERVER_URL }}
         run: npm run build -w apps/web
       # Renders every page route from the build the step above left in
       # apps/web/.output, the one packaged below, and fails on a 5xx or on
