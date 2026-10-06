@@ -10,6 +10,7 @@ import {
 import {
   DEFAULT_SERVER_CONNECT_TIMEOUT_MS,
   DEFAULT_MAX_RECONNECT_ATTEMPTS,
+  INACTIVITY_TIMEOUT_KEY,
 } from "../config/connection";
 import type {
   SFTPConnectionConfig,
@@ -911,7 +912,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           ms,
           targets,
           this.options.inactivityTimeoutGuidance,
-          "inactivity_timeout_ms",
+          INACTIVITY_TIMEOUT_KEY,
         ),
       );
     };

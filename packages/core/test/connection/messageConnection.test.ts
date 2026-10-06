@@ -703,6 +703,32 @@ test("a shorter per-receive override does not attribute its wait to the setting"
   expect(err.message).not.toContain("inactivity_timeout_ms");
 });
 
+test("a function hint is told whether the message names the setting", async () => {
+  const limitNamed: boolean[] = [];
+  const options = {
+    inactivityTimeoutMs: 20,
+    inactivityTimeoutSetting: "inactivity_timeout_ms",
+    inactivityHint: (named: boolean) => {
+      limitNamed.push(named);
+      return "hint";
+    },
+  };
+  const [, eventB] = makeEventConnections();
+  await expectRejectionKind(
+    fromEventConnection(eventB, options).receive(),
+    "transport",
+  );
+  const [, eventD] = makeEventConnections();
+  await expectRejectionKind(
+    fromEventConnection(eventD, {
+      ...options,
+      inactivityTimeoutMs: 10_000,
+    }).receive(20),
+    "transport",
+  );
+  expect(limitNamed).toEqual([true, false]);
+});
+
 test("receive(timeoutMs) bounds a connection that has no inactivity default", async () => {
   // createMessagePipe is unbounded; the override is the only deadline source,
   // exercising armIdle's undefined-connection-default branch.

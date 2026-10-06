@@ -1,12 +1,13 @@
 import {
   ConnectionError,
   DeliveryUnconfirmedError,
+  INACTIVITY_TIMEOUT_KEY,
   MAX_WEBRTC_FRAME_BYTES,
   QueuedMessageConnection,
   asConnectionError,
 } from "@alcove/core";
 
-import { INACTIVITY_TIMEOUT_GUIDANCE } from "../timeoutGuidance";
+import { inactivityTimeoutGuidance } from "../timeoutGuidance";
 import { BoundedInboundFrames } from "./inboundBounds";
 import {
   PeerJsFrameEncoder,
@@ -400,8 +401,8 @@ export function webRtcMessageConnection(
     {
       inactivityTimeoutMs:
         options?.inactivityTimeoutMs ?? DEFAULT_WEBRTC_INACTIVITY_TIMEOUT_MS,
-      inactivityHint: INACTIVITY_TIMEOUT_GUIDANCE,
-      inactivityTimeoutSetting: "inactivity_timeout_ms",
+      inactivityHint: inactivityTimeoutGuidance,
+      inactivityTimeoutSetting: INACTIVITY_TIMEOUT_KEY,
     },
   );
 }

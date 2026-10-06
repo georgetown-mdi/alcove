@@ -136,8 +136,7 @@ describe.each(CHANNELS)("on $channel", ({ config }) => {
 });
 
 describe("each timeout failure ends with the guidance the caller supplied", () => {
-  const INACTIVITY_TIMEOUT_GUIDANCE =
-    "inactivity_timeout_ms sets the inactivity wait";
+  const INACTIVITY_TIMEOUT_GUIDANCE = "Raise that limit if the partner is slow";
 
   async function openGuided(
     client: FileTransportClient,

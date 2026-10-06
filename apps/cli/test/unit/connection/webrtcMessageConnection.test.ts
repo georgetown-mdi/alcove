@@ -512,9 +512,10 @@ test("a silent partner's failure names inactivity_timeout_ms", async () => {
     });
     await vi.advanceTimersByTimeAsync(1_000);
     await parked;
-    expect(sanitizeErrorForDisplay(failure)).toContain(
-      "inactivity_timeout_ms under connection.options",
-    );
+    const message = sanitizeErrorForDisplay(failure);
+    expect(message).toContain("(the limit inactivity_timeout_ms sets)");
+    expect(message).toContain("raise that limit under connection.options");
+    expect(message.split("inactivity_timeout_ms")).toHaveLength(2);
   } finally {
     vi.useRealTimers();
   }

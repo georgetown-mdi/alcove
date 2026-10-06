@@ -291,9 +291,8 @@ export class QueuedMessageConnection implements MessageConnection {
   // when the deadline FIRES, so guidance may depend on facts the transport
   // establishes after construction (the file-sync CLI decides between two
   // attributions on what the rendezvous observed).
-  private readonly inactivityHint: string | (() => string) | undefined;
-  // The name the operator sets inactivityTimeoutMs by, quoted in both timeout
-  // messages; absent where the operator has no setting to name.
+  private readonly inactivityHint:
+    string | ((limitNamed: boolean) => string) | undefined;
   private readonly inactivityTimeoutSetting: string | undefined;
   private readonly hooks: TransportHooks;
   // Single source of truth for the terminal lifecycle; undefined means open.
@@ -319,7 +318,7 @@ export class QueuedMessageConnection implements MessageConnection {
     options?: {
       capacity?: number;
       inactivityTimeoutMs?: number;
-      inactivityHint?: string | (() => string);
+      inactivityHint?: string | ((limitNamed: boolean) => string);
       inactivityTimeoutSetting?: string;
     },
   ) {
@@ -363,17 +362,16 @@ export class QueuedMessageConnection implements MessageConnection {
       // sentence, not the fail() below -- an escaping exception would leave the
       // parked receive() unresolved for the life of the process, turning a
       // decorative sentence into a hang at the last-resort failure boundary.
+      const setBy = this.inactivityLimitClause(ms);
       let hint: string | undefined;
       try {
         hint =
           typeof this.inactivityHint === "function"
-            ? this.inactivityHint()
+            ? this.inactivityHint(setBy !== "")
             : this.inactivityHint;
       } catch {
         hint = undefined;
       }
-      const setBy =
-        ms === connectionMs ? this.inactivityTimeoutSettingClause() : "";
       const deadline = new ConnectionError(
         `no message arrived within ${ms} ms${setBy}; the ` +
           "partner appears to have gone silent" +
@@ -387,8 +385,11 @@ export class QueuedMessageConnection implements MessageConnection {
     }, ms);
   }
 
-  private inactivityTimeoutSettingClause(): string {
-    return this.inactivityTimeoutSetting === undefined
+  // Names the setting only for a wait the connection's own limit set, not a
+  // shorter per-call override.
+  private inactivityLimitClause(ms: number): string {
+    return this.inactivityTimeoutSetting === undefined ||
+      ms !== this.inactivityTimeoutMs
       ? ""
       : ` (the limit ${this.inactivityTimeoutSetting} sets)`;
   }
@@ -435,7 +436,7 @@ export class QueuedMessageConnection implements MessageConnection {
           reject(
             new ConnectionError(
               `an outgoing message was not accepted for sending within ` +
-                `${ms} ms${this.inactivityTimeoutSettingClause()}; the ` +
+                `${ms} ms${this.inactivityLimitClause(ms)}; the ` +
                 "connection to the partner appears to have been lost",
               "transport",
             ),
@@ -699,17 +700,20 @@ export class QueuedMessageConnection implements MessageConnection {
  * it gets the bare diagnostic. Supply a FUNCTION when the guidance depends on
  * something the transport only learns after this bridge is built -- it is
  * resolved when the deadline fires, not here, and a function that throws costs
- * only its own sentence: the peer-silence failure still lands.
+ * only its own sentence: the peer-silence failure still lands. The function is
+ * told whether the message already names `inactivityTimeoutSetting`, so its
+ * guidance can refer to that limit rather than name the setting a second time.
  *
  * `inactivityTimeoutSetting` is the name the operator sets the inactivity
- * deadline by (a config key), quoted in the receive and send timeout messages.
+ * deadline by (a config key), quoted in the receive and send timeout messages
+ * when the connection's own limit set the wait.
  */
 export function fromEventConnection(
   conn: Connection,
   options?: {
     capacity?: number;
     inactivityTimeoutMs?: number;
-    inactivityHint?: string | (() => string);
+    inactivityHint?: string | ((limitNamed: boolean) => string);
     inactivityTimeoutSetting?: string;
   },
 ): MessageConnection {

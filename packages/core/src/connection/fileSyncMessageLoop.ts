@@ -61,6 +61,7 @@ import {
   isExpectedAbortName,
 } from "./fileSyncNames";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
+import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 
 // The single remedy for a message publish the transport could not settle,
 // shared by the two places send() prescribes it: the publish's own rejection,
@@ -264,7 +265,7 @@ export interface MessageLoopOptions {
   inactivityTimeoutGuidance?: string;
 }
 
-const INACTIVITY_LIMIT_CLAUSE = " (the limit inactivity_timeout_ms sets)";
+const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
 
 const inactivityGuidanceSuffix = (options: MessageLoopOptions): string =>
   options.inactivityTimeoutGuidance === undefined

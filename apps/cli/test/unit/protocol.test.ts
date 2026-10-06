@@ -404,7 +404,7 @@ import type {
 import {
   runProtocol,
   preflightRun,
-  PEER_SILENCE_GUIDANCE,
+  peerSilenceGuidance,
   BOTH_SWEPT_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
   TERMINATED_RECORD_UNBUILT_WARNING,
@@ -594,17 +594,21 @@ afterEach(async () => {
 // the core layer appends to the peer-silence error (the append mechanism is
 // pinned in packages/core/test/connection/messageConnection.test.ts). This pins the wording
 // itself.
-test("PEER_SILENCE_GUIDANCE names likely receiver-side causes without overclaiming", () => {
+test("peerSilenceGuidance names likely receiver-side causes without overclaiming", () => {
+  const guidance = peerSilenceGuidance(false);
   // Names the two probable receiver-side faults.
-  expect(PEER_SILENCE_GUIDANCE).toContain("exited");
-  expect(PEER_SILENCE_GUIDANCE).toContain("unwritable");
+  expect(guidance).toContain("exited");
+  expect(guidance).toContain("unwritable");
   // Directs the operator to where the real cause was recorded.
-  expect(PEER_SILENCE_GUIDANCE).toContain("logs");
+  expect(guidance).toContain("logs");
   // Hedges rather than asserting a single definite cause (no overclaim).
-  expect(PEER_SILENCE_GUIDANCE).toContain("may have");
+  expect(guidance).toContain("may have");
   // Notes the slow-large-dataset case so the timeout is not misread as a death.
-  expect(PEER_SILENCE_GUIDANCE).toContain("inactivity_timeout_ms");
-  expect(PEER_SILENCE_GUIDANCE).not.toContain("--peer-timeout");
+  expect(guidance).toContain("inactivity_timeout_ms");
+  expect(guidance).not.toContain("--peer-timeout");
+  // An error that already names the setting gets it referred to, not repeated.
+  expect(peerSilenceGuidance(true)).not.toContain("inactivity_timeout_ms");
+  expect(peerSilenceGuidance(true)).toContain("raise that limit");
 });
 
 test.each([
@@ -2851,7 +2855,7 @@ test("a file-sync run whose partner never arrives names --peer-timeout alone, wi
   );
 });
 
-test("a file-sync run hands its connection the guidance naming the inactivity setting", async () => {
+test("a file-sync run hands its connection the guidance on raising the inactivity limit", async () => {
   // Core appends it to its per-operation and send-wait timeout failures
   // (pinned in core's fileSyncPeerWaits.test.ts).
   let guidance: { inactivityTimeoutGuidance?: string } | undefined;
@@ -2877,7 +2881,7 @@ test("a file-sync run hands its connection the guidance naming the inactivity se
   }
   expect(guidance).not.toHaveProperty("peerTimeoutGuidance");
   expect(guidance?.inactivityTimeoutGuidance).toContain(
-    "inactivity_timeout_ms under connection.options",
+    "raise that limit under connection.options",
   );
 });
 

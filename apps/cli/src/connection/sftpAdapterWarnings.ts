@@ -33,6 +33,14 @@ export const SFTP_SESSION_CLOSED_MESSAGE =
   "successful connect (typically a server idle or session-time-limit " +
   "policy, or a network drop), so this operation cannot run.";
 
+const SESSION_STEP_LABELS: Record<SessionTransitionKind, string> = {
+  connect: "connect",
+  ensureConnected: "reconnect",
+  redialForRecovery: "recovery re-dial",
+  releaseForIdle: "idle disconnect",
+  teardown: "close",
+};
+
 /**
  * The abandon of a wait that has no benign value to report: a dial cannot report
  * a session it did not establish. Names the bound, and is distinct from the
@@ -53,14 +61,6 @@ export function transitionWaitExpiredError(
       `up, so nothing was dialed. Open a new connection to retry.`,
   );
 }
-
-const SESSION_STEP_LABELS: Record<SessionTransitionKind, string> = {
-  connect: "connect",
-  ensureConnected: "reconnect",
-  redialForRecovery: "recovery re-dial",
-  releaseForIdle: "idle disconnect",
-  teardown: "close",
-};
 
 /**
  * The refusal a server-driven operation gets once a fatal SFTP-protocol error
