@@ -74,26 +74,45 @@ function gigabytes(bytes: number): string {
 interface InputHeapShortfall {
   records: number;
   fileBytes: number;
+  /** The files counted together; more than one when the command holds them at once. */
+  fileCount?: number;
   heapLimitBytes: number;
 }
 
 function inputHeapShortfallSentence(params: InputHeapShortfall): string {
   const needBytes = mainThreadHeapNeedBytes(params.records);
+  const subject =
+    params.fileCount === undefined || params.fileCount === 1
+      ? "the CSV input holds"
+      : `the ${params.fileCount} CSV files hold`;
   return (
-    `the CSV input holds ${params.records.toLocaleString("en-US")} records ` +
+    `${subject} ${params.records.toLocaleString("en-US")} records ` +
     `(${(params.fileBytes / 1e6).toFixed(1)} MB), and reading and preparing them needs ` +
     `about ${gigabytes(needBytes)} of heap, more than this process's limit ` +
     `of ${gigabytes(params.heapLimitBytes)}`
   );
 }
 
-/** The refusal for an input the main thread's heap cannot hold. */
-export function inputHeapShortfallMessage(params: InputHeapShortfall): string {
+/**
+ * The refusal for an input the main thread's heap cannot hold. With
+ * `offerOverride: false`, for a command with no `--allow-memory-shortfall`
+ * flag, the refusal names a larger machine in its place.
+ */
+export function inputHeapShortfallMessage(
+  params: InputHeapShortfall,
+  { offerOverride = true }: { offerOverride?: boolean } = {},
+): string {
   const needBytes = mainThreadHeapNeedBytes(params.records);
+  const raiseHeap =
+    `Set NODE_OPTIONS=--max-old-space-size=${suggestedHeapMiB(needBytes)} in the ` +
+    `environment and run the command again`;
+  if (!offerOverride)
+    return (
+      `${inputHeapShortfallSentence(params)}. ${raiseHeap}, or run it on a ` +
+      `machine with more memory.`
+    );
   return (
-    `${inputHeapShortfallSentence(params)}. Set ` +
-    `NODE_OPTIONS=--max-old-space-size=${suggestedHeapMiB(needBytes)} in the ` +
-    `environment and run the command again, or pass ` +
+    `${inputHeapShortfallSentence(params)}. ${raiseHeap}, or pass ` +
     `--allow-memory-shortfall to run anyway; the run may then run out of ` +
     `heap while it reads the input and end with exit 134.`
   );
@@ -110,41 +129,55 @@ export function inputHeapShortfallOverrideWarning(
 }
 
 /**
- * Refuse, with a {@link UsageError}, a CSV input file the main thread's heap
- * cannot read and prepare, or with `allowShortfall` warn and return. Reads
- * nothing for stdin (`-`), and leaves a path it cannot stat or read to the read
- * that reports it. A file too small to hold more records than the heap admits
- * is not counted.
+ * Refuse, with a {@link UsageError}, CSV input files the main thread's heap
+ * cannot read and prepare, or with `allowShortfall` warn and return. Several
+ * files are checked against the heap together, for a command that holds them
+ * at once. `offerOverride: false` is for a command with no override flag.
+ * Reads nothing for stdin (`-`), and leaves a path it cannot stat or read to
+ * the read that reports it. Files too small to hold more records than the heap
+ * admits are not counted.
  */
 export async function checkInputFitsMainThreadHeap(
-  input: string,
+  inputs: string | readonly string[],
   {
     allowShortfall = false,
+    offerOverride = true,
     heapLimitBytes = getHeapStatistics().heap_size_limit,
-  }: { allowShortfall?: boolean; heapLimitBytes?: number } = {},
+  }: {
+    allowShortfall?: boolean;
+    offerOverride?: boolean;
+    heapLimitBytes?: number;
+  } = {},
 ): Promise<void> {
-  if (input === "-") return;
-  let fileBytes: number;
-  try {
-    const stat = fs.statSync(input);
-    if (!stat.isFile()) return;
-    fileBytes = stat.size;
-  } catch {
-    return;
+  const files: Array<{ path: string; bytes: number }> = [];
+  for (const path of typeof inputs === "string" ? [inputs] : inputs) {
+    if (path === "-") continue;
+    try {
+      const stat = fs.statSync(path);
+      if (stat.isFile()) files.push({ path, bytes: stat.size });
+    } catch {
+      continue;
+    }
   }
+  const fileBytes = files.reduce((total, file) => total + file.bytes, 0);
   const mostRecords = Math.floor(fileBytes / SMALLEST_RECORD_BYTES);
   if (mainThreadHeapNeedBytes(mostRecords) <= heapLimitBytes) return;
-  let records: number;
+  let records = 0;
   try {
-    records = await countCsvRecords(input);
+    for (const file of files) records += await countCsvRecords(file.path);
   } catch {
     return;
   }
   if (mainThreadHeapNeedBytes(records) <= heapLimitBytes) return;
-  const shortfall = { records, fileBytes, heapLimitBytes };
+  const shortfall = {
+    records,
+    fileBytes,
+    fileCount: files.length,
+    heapLimitBytes,
+  };
   if (allowShortfall) {
     getLogger("input").warn(inputHeapShortfallOverrideWarning(shortfall));
     return;
   }
-  throw new UsageError(inputHeapShortfallMessage(shortfall));
+  throw new UsageError(inputHeapShortfallMessage(shortfall, { offerOverride }));
 }
