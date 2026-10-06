@@ -1058,8 +1058,6 @@ export async function handler(argv: Arguments): Promise<void> {
       });
     });
   } finally {
-    // Also reached by a run that took a persistence loss and returns with the
-    // exit code already set.
     closeLogging();
   }
 }

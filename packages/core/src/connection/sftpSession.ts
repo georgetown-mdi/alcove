@@ -11,10 +11,10 @@
 // interaction, and the constant-time-compare hygiene -- is owned by
 // docs/SECURITY_DESIGN.md (Transport-layer authentication) and, at the
 // implementation tier, docs/spec/CHANNEL_SECURITY.md (SFTP host-key
-// verification). The pure host-key primitives it builds on -- the connect-option allowlists,
-// the defensive verdict delivery, the blob view -- live in ./sftpConnect, and
-// the fingerprint digest / set-membership match / key-type decode live in
-// utils/sshHostKey.ts.
+// verification). The pure host-key primitives it builds on -- the
+// connect-option allowlists, the defensive verdict delivery, the blob view --
+// live in ./sftpConnect, and the fingerprint digest / set-membership match /
+// key-type decode live in utils/sshHostKey.ts.
 
 import { errorMessage } from "../errors";
 import type { getLoggerForVerbosity } from "../utils/logger";

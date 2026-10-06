@@ -6,11 +6,11 @@
 // builders live in one place and cannot diverge between enforcement sites.
 //
 // The normative filename grammar is owned by the overview-tier
-// docs/EXCHANGE_REFERENCE.md ("Filename grammar"). The state machine that consumes these
-// predicates -- the directory-as-state-machine, the enforcement sites, and
-// the invariants -- is docs/spec/FILE_SYNC.md, a recorded tier inversion
-// (overview owns the grammar, spec owns the state machine): see
-// docs/spec/README.md.
+// docs/EXCHANGE_REFERENCE.md ("Filename grammar"). The state machine that
+// consumes these predicates -- the directory-as-state-machine, the
+// enforcement sites, and the invariants -- is docs/spec/FILE_SYNC.md, a
+// recorded tier inversion (overview owns the grammar, spec owns the state
+// machine): see docs/spec/README.md.
 
 import {
   v4 as uuidv4,
