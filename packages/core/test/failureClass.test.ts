@@ -1,8 +1,8 @@
 import { describe, expect, test } from "vitest";
 
-import { ConnectionError } from "../src/connection/messageConnection";
 import {
   AuthenticationError,
+  ConnectionError,
   InternalConsistencyError,
   OperatorConfigError,
   PeerAbortError,

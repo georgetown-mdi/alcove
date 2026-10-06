@@ -16,7 +16,6 @@ import type {
   FileDropConnectionConfig,
 } from "../config/connection";
 import type { HandshakeRole } from "../types";
-import { errorMessage } from "./messageConnection";
 import {
   AuthenticationError,
   InternalConsistencyError,
@@ -24,6 +23,7 @@ import {
   ConnectionClosedError,
   TransportOperationStalledError,
   chainDetailCauses,
+  errorMessage,
 } from "../errors";
 import { cancellableDelay } from "./fileSyncConstants";
 import { ackMarkerName } from "./fileSyncNames";

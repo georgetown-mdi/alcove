@@ -1,3 +1,4 @@
+import { ConnectionError } from "../src/errors";
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
@@ -6,10 +7,7 @@ import {
   authenticateConnection,
   deriveAeadKey,
 } from "../src/auth";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../src/connection/messageConnection";
+import { createMessagePipe } from "../src/connection/messageConnection";
 import { SHARED_SECRET_REGEX } from "../src/config/connection";
 import type { Authentication } from "../src/config/connection";
 import { hkdfDerive, toBase64Url } from "../src/utils/crypto";

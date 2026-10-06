@@ -31,16 +31,14 @@ import {
   FrameSizeExceededError,
   TransportOperationStalledError,
   TransportPublishIndeterminateError,
+  ConnectionError,
 } from "../../src/errors";
 import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import { isHelloTempName } from "../../src/connection/fileSyncNames";
 import { computeHostKeyFingerprint } from "../../src/utils/sshHostKey";
 import { sanitizeForDisplay } from "../../src/utils/sanitizeForDisplay";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
-import {
-  fromEventConnection,
-  ConnectionError,
-} from "../../src/connection/messageConnection";
+import { fromEventConnection } from "../../src/connection/messageConnection";
 import { withCapturedLogs } from "../../src/testing";
 import logLibrary from "loglevel";
 import {

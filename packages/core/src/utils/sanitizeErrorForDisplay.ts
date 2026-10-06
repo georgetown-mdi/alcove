@@ -1,4 +1,4 @@
-import { errorMessage } from "../connection/messageConnection";
+import { errorMessage } from "../errors";
 import {
   operatorSuppliedSpans,
   operatorSuppliedValue,

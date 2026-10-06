@@ -4,7 +4,6 @@ import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 import { canonicalBytes } from "../utils/canonical.js";
 import { safeParseLinkageTerms } from "../config/linkageTermsSchema.js";
 import { hkdfDerive, hmacSha256, toBase64Url } from "../utils/crypto.js";
-import { ConnectionError } from "../connection/messageConnection.js";
 import { receiveAfterTerms } from "../partnerAbortFrame.js";
 import {
   boundedWireCertificateSchema,
@@ -27,7 +26,7 @@ import type { CanonicalValue } from "../utils/canonical.js";
 import type { CommittedPayload } from "./exchangeRecord.js";
 import type { LinkageTerms } from "../config/linkageTermsSchema.js";
 import type { SigningCertificate, SigningIdentity } from "./signingIdentity.js";
-import { InternalConsistencyError } from "../errors.js";
+import { InternalConsistencyError, ConnectionError } from "../errors.js";
 
 // Certificate-backed signed exchange receipts (the sign/exchange step): both
 // parties sign one shared receipt content over signer-bound bytes and swap

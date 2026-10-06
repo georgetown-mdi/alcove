@@ -1,3 +1,8 @@
+import {
+  ConnectionError,
+  asConnectionError,
+  errorMessage,
+} from "../../src/errors";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -20,11 +25,6 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   sanitizeForDisplay,
 } from "../../src/utils/sanitizeForDisplay";
-import {
-  ConnectionError,
-  asConnectionError,
-  errorMessage,
-} from "../../src/connection/messageConnection";
 
 describe("sanitizeErrorForDisplay", () => {
   test("passes an ordinary error message through unchanged", () => {

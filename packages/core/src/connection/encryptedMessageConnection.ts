@@ -1,11 +1,11 @@
-import { deriveAeadKey } from "../auth";
-import { enc } from "../utils/crypto";
 import {
   ConnectionError,
   DeliveryUnconfirmedError,
   asConnectionError,
-  type MessageConnection,
-} from "./messageConnection";
+} from "../errors";
+import { deriveAeadKey } from "../auth";
+import { enc } from "../utils/crypto";
+import { type MessageConnection } from "./messageConnection";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import {
   parseBoundedJson,

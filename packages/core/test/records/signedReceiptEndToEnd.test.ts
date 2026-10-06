@@ -11,14 +11,12 @@ import {
   prepareForExchange,
   runExchange,
 } from "../../src/exchange";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import { withHostilePayload } from "../utils/hostilePayload";
 import {
   OperatorConfigError,
   TransportPublishIndeterminateError,
+  ConnectionError,
 } from "../../src/errors";
 import {
   ReceiptVerificationError,

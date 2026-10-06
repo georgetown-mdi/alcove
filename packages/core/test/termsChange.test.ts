@@ -2,11 +2,7 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import {
-  InvitationTermDivergenceError,
-  prepareForExchange,
-  runExchange,
-} from "../src/exchange";
+import { prepareForExchange, runExchange } from "../src/exchange";
 import {
   termsAdoptingPartnerTerms,
   termsReceivingPartnerSend,
@@ -17,7 +13,10 @@ import {
   TermsChangeRefusedError,
   exchangeTerms,
 } from "../src/protocolSetup";
-import { ProtocolRefusalError } from "../src/errors";
+import {
+  ProtocolRefusalError,
+  InvitationTermDivergenceError,
+} from "../src/errors";
 import { createMessagePipe } from "../src/connection/messageConnection";
 
 import type { Metadata } from "../src/config/metadata";

@@ -13,13 +13,13 @@ import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   InternalConsistencyError,
   ProtocolRefusalError,
+  ConnectionError,
 } from "../../src/errors";
 
 import {
   createMessagePipe,
   receiveParsed,
   parseOrProtocolError,
-  ConnectionError,
 } from "../../src/connection/messageConnection";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import { sortAssociationTable } from "../../src/testing";

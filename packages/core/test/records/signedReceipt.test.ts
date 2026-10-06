@@ -18,11 +18,8 @@ import {
   computeCertificateFingerprint,
   generateSigningIdentity,
 } from "../../src/records/signingIdentity";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
-import { PeerAbortError } from "../../src/errors";
+import { createMessagePipe } from "../../src/connection/messageConnection";
+import { PeerAbortError, ConnectionError } from "../../src/errors";
 import { MAX_NODE_COUNT } from "../../src/utils/camelizeKeys";
 
 import type {

@@ -18,8 +18,11 @@
 
 import { z } from "zod";
 
-import { ConnectionError } from "../connection/messageConnection.js";
-import { InternalConsistencyError, UsageError } from "../errors.js";
+import {
+  InternalConsistencyError,
+  UsageError,
+  ConnectionError,
+} from "../errors.js";
 import { readBoundedJsonBody } from "../utils/boundedJsonBody.js";
 import { enc } from "../utils/crypto.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";

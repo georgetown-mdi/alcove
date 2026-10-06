@@ -1,13 +1,11 @@
+import { ConnectionError } from "../src/errors";
 import { afterEach, expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
 import { EncryptedMessageConnection } from "../src/connection/encryptedMessageConnection";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../src/connection/messageConnection";
+import { createMessagePipe } from "../src/connection/messageConnection";
 import { InProcessPsiEngine } from "../src/psi/psiEngine";
 import { PsiOperationStoppedError } from "../src/psi/psiWorkerEngine";
 import { getLogger } from "../src/utils/logger";

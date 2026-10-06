@@ -113,6 +113,9 @@ import {
   RoundSetLimitError,
   UsageError,
   causeChainSome,
+  AlgorithmDivergenceError,
+  PayloadDisclosureDivergenceError,
+  InvitationTermDivergenceError,
 } from "./errors.js";
 import { SPLIT_INPUT_REMEDY } from "./connection/fileSyncOutboundBound.js";
 import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
@@ -130,10 +133,7 @@ import type {
   Prettify,
   Algorithm,
 } from "./types.js";
-import {
-  ConnectionError,
-  connectionEndReader,
-} from "./connection/messageConnection.js";
+import { connectionEndReader } from "./connection/messageConnection.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import type { PresentedHostKey } from "./connection/fileSyncConnection.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
@@ -305,23 +305,6 @@ export function assertTermsRunnable(
 }
 
 /**
- * The refusal raised when the two parties' agreed terms name different
- * algorithms at the run boundary ({@link resolveCountOnlyRun}).
- *
- * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: this
- * party's own algorithm is its own config, so a divergence means the
- * partner proceeded past the terms-exchange compatibility abort -- a
- * protocol violation, not a local misconfiguration (CLI exit 76, not 64).
- * The message names only the fixed algorithm literals, never partner text.
- */
-export class AlgorithmDivergenceError extends ConnectionError {
-  constructor(message: string) {
-    super(message, "protocol");
-    this.name = "AlgorithmDivergenceError";
-  }
-}
-
-/**
  * Resolve whether this exchange runs the count-only (`psi-c`) path, from
  * both parties' agreed terms, and refuse a count-only exchange outside the
  * shape docs/spec/PROTOCOL.md (PSI-C) admits.
@@ -347,35 +330,6 @@ export function resolveCountOnlyRun(
   assertCountOnlyTermsShape(localTerms);
   assertCountOnlyTermsShape(partnerTerms);
   return localTerms.algorithm === "psi-c";
-}
-
-/**
- * The refusal raised when a party asserts a payload disclosure the agreed
- * terms declare no column for ({@link resolveDirectionDisclosesPayload}).
- *
- * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: the
- * assertion is held against a pair of documents both parties agreed, so the
- * contradiction is a process disclosing against the terms it agreed under --
- * the classification {@link assertNoPayloadReceived} gives the same pair
- * when the column arrives (CLI exit 76, not 64). The constructor takes no
- * argument and holds the message itself, so no call site can compose a value
- * read off either agreed document into what the operator is shown.
- */
-export class PayloadDisclosureDivergenceError extends ConnectionError {
-  constructor() {
-    super(
-      "one party's run is set to send payload columns, but the receiving " +
-        "party's linkage terms declare an empty payload.receive. No " +
-        "association table or payload was sent. To send those columns, " +
-        "declare them in the sender's payload.send and the receiver's " +
-        "payload.receive, or remove the receiver's payload.receive so the " +
-        "next run sets it from the sender's columns. To send none, set the " +
-        "sender's input metadata to send no column (is_payload: false, or " +
-        "role ignored).",
-      "protocol",
-    );
-    this.name = "PayloadDisclosureDivergenceError";
-  }
 }
 
 /**
@@ -1113,27 +1067,6 @@ export async function resolvePartnerCertificateOrAbort(
     throw err;
   }
   return adopted;
-}
-
-/**
- * The refusal raised when a partner presents a `deduplicate` its
- * invitation did not declare
- * ({@link assertPresentedDeduplicateMatchesInvitation}).
- *
- * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}:
- * the contradiction is between two documents the partner authored (CLI
- * exit 76, not 64). Has `alcoveRecoveryHintEmitted` so the CLI's
- * hint-walker suppresses the generic "retry without re-inviting" advisory
- * -- this refusal is terminal against the held invitation and would
- * otherwise loop an unattended recurring exchange.
- */
-export class InvitationTermDivergenceError extends ConnectionError {
-  readonly alcoveRecoveryHintEmitted = true;
-
-  constructor(message: string) {
-    super(message, "protocol");
-    this.name = "InvitationTermDivergenceError";
-  }
 }
 
 /**

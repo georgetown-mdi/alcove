@@ -22,11 +22,14 @@ import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import { payloadReceiveFillsOnFirstRun } from "../src/config/recurringTerms";
 import {
   assertPresentedDeduplicateMatchesInvitation,
-  InvitationTermDivergenceError,
   resolveLinkageCardinality,
 } from "../src/exchange";
 import { COUNT_ONLY_SHAPE_REFUSALS } from "../src/linkageTermsPolicy";
-import { AcceptedTermsShapeError, UsageError } from "../src/errors";
+import {
+  AcceptedTermsShapeError,
+  UsageError,
+  InvitationTermDivergenceError,
+} from "../src/errors";
 import {
   DISPLAY_TRUNCATION_MARKER,
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,

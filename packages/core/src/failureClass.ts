@@ -2,9 +2,9 @@
 // decide what a failure means: the CLI's exit code and event-stream category,
 // and the web's security alert and retry decisions.
 
-import { ConnectionError } from "./connection/messageConnection";
 import {
   AuthenticationError,
+  ConnectionError,
   InternalConsistencyError,
   PeerAbortError,
   ProtocolRefusalError,

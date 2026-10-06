@@ -1,11 +1,9 @@
+import { ConnectionError } from "../../src/errors";
 import { readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
 
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
   arraySource,
   MATCHED_LIST_PART_HEADER_BYTES,

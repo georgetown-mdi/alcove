@@ -4,16 +4,13 @@ import PSI from "@openmined/psi.js";
 
 import { PSIParticipant } from "../../src/psi/participant";
 import { linkViaPSI, linkViaSinglePassPSI } from "../../src/psi/link";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import type {
   InProcessPsiEngineOptions,
   PsiEngine,
 } from "../../src/psi/psiEngine";
-import { isPsiLibraryFailure } from "../../src/errors";
+import { isPsiLibraryFailure, ConnectionError } from "../../src/errors";
 import {
   WorkerPsiEngine,
   servePsiWorker,

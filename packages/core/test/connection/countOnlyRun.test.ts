@@ -9,7 +9,6 @@ import { describe, expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import {
-  AlgorithmDivergenceError,
   exchangeRecordFromFailure,
   prepareForExchange,
   resolveCountOnlyRun,
@@ -17,13 +16,14 @@ import {
 } from "../../src/exchange";
 import { receiveCountReport } from "../../src/protocolSetup";
 import { verifyCommitmentOpening } from "../../src/records/exchangeRecord";
-import { UsageError } from "../../src/errors";
+import {
+  UsageError,
+  AlgorithmDivergenceError,
+  ConnectionError,
+} from "../../src/errors";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { withHostilePayload } from "../utils/hostilePayload";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { ExchangeResult, PreparedExchange } from "../../src/exchange";

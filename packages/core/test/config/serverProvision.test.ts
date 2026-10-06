@@ -2,8 +2,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, expect, test } from "vitest";
 
-import { ConnectionError } from "../../src/connection/messageConnection";
-import { UsageError } from "../../src/errors";
+import { UsageError, ConnectionError } from "../../src/errors";
 import type { ServerProvision } from "../../src/config/connection";
 import {
   MAX_ENDPOINT_HOST_LENGTH,

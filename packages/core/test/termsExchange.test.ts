@@ -10,14 +10,13 @@ import {
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
-import { ProtocolRefusalError } from "../src/errors";
+import { ProtocolRefusalError, ConnectionError } from "../src/errors";
 import type { LinkageTerms, Output } from "../src/config/linkageTermsSchema";
 import type { PresentedHostKey } from "../src/connection/fileSyncConnection";
 import type { PsiRole } from "../src/types";
 
 import {
   createMessagePipe,
-  ConnectionError,
   type MessageConnection,
 } from "../src/connection/messageConnection";
 import { sanitizeErrorForDisplay } from "../src/utils/sanitizeErrorForDisplay";

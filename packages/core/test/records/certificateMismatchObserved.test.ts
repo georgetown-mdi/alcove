@@ -1,3 +1,4 @@
+import { ConnectionError } from "../../src/errors";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -13,10 +14,7 @@ import {
 } from "../../src/records/signingIdentity";
 import { buildExchangeRecord } from "../../src/records/exchangeRecord";
 import { assertNoPayloadReceived } from "../../src/payloadExchange";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { SignedReceiptExchangeInputs } from "../../src/records/signedReceipt";
 import type {

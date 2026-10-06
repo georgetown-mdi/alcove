@@ -14,9 +14,9 @@ import {
   AuthenticationError,
   isPeerWaitTimeout,
   UsageError,
+  ConnectionError,
 } from "../src/errors";
 import {
-  ConnectionError,
   createMessagePipe,
   fromEventConnection,
   type MessageConnection,

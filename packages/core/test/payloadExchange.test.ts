@@ -18,6 +18,7 @@ import {
   ProtocolRefusalError,
   TransportPublishIndeterminateError,
   UsageError,
+  ConnectionError,
 } from "../src/errors";
 import { sanitizeErrorForDisplay } from "../src/utils/sanitizeErrorForDisplay";
 import { readMessage } from "./utils/compatibilityMessageReader";
@@ -31,10 +32,7 @@ import type {
 } from "../src/config/linkageTermsSchema";
 import type { PartnerPayload } from "../src/payloadExchange";
 
-import {
-  createMessagePipe,
-  ConnectionError,
-} from "../src/connection/messageConnection";
+import { createMessagePipe } from "../src/connection/messageConnection";
 import type { MessageConnection } from "../src/connection/messageConnection";
 import { partFrame } from "./utils/matchedListPartFrames";
 import { MESSAGE_HEADER_BYTES } from "../src/connection/fileSyncFraming";

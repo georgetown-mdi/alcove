@@ -10,7 +10,6 @@ import {
   resolveLinkageCardinality,
   assertMatchedPairsWellFormed,
   matchedPairCount,
-  InvitationTermDivergenceError,
 } from "../../src/exchange";
 import {
   assertBothSidedDeduplicateImplemented,
@@ -33,7 +32,11 @@ import { inferMetadata } from "../../src/config/metadata";
 import { mintExchangeFile } from "../../src/config/exchangeFile";
 import { parseExchangeSpec } from "../../src/config/exchangeSpec";
 import { buildOutputTable } from "../../src/payloadExchange";
-import { PeerAbortError, UsageError } from "../../src/errors";
+import {
+  PeerAbortError,
+  UsageError,
+  InvitationTermDivergenceError,
+} from "../../src/errors";
 
 import type { PreparedExchange, ExchangeResult } from "../../src/exchange";
 import type { MessageConnection } from "../../src/connection/messageConnection";
