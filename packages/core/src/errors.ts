@@ -1,11 +1,153 @@
-// PeerAbortError (below) extends ConnectionError, so this leaf-ish error module
-// imports it from the connection layer. This is a one-way edge, not a cycle:
-// messageConnection.ts imports only `import type { Connection }` from ./types
-// (which imports only zod) and never imports errors.ts. ConnectionError stays in
-// messageConnection with the rest of the message-connection error taxonomy
-// (asConnectionError, the ConnectionErrorKind type); relocating it here would
-// only push the same edge the other way, splitting that taxonomy.
-import { ConnectionError } from "./connection/messageConnection";
+/**
+ * Classifies a terminal {@link ConnectionError} so a consumer can decide how to
+ * respond:
+ * - `transport`: the link failed after the transport's own retries were
+ *   exhausted (peer unreachable, dropped, inactivity timeout). Retrying the
+ *   whole exchange is reasonable.
+ * - `security`: an authentication/replay/ordering check failed. Must not be
+ *   silently retried; report it loudly as possible tampering. The
+ *   authentication subset is the `AuthenticationError` subclass, which the
+ *   CLI's error->exit boundary maps to 77 (EX_NOPERM).
+ * - `usage`: the connection was misconfigured or used incorrectly (e.g. a send
+ *   after close, a path shared by another session). The caller must fix
+ *   something before retrying. The CLI's error->exit boundary maps this kind
+ *   to 64 (EX_USAGE) alongside `UsageError`, as it does a `transport` wrap
+ *   whose cause is either. `transport`, `closed`, and the other `security`
+ *   failures take 69.
+ * - `protocol`: the peer violated the message protocol (e.g. sent out of turn).
+ *   A retry meets the same partner, so the CLI's error->exit boundary maps
+ *   this kind to 76 (EX_PROTOCOL).
+ * - `closed`: a parked operation was cancelled by a local
+ *   {@link MessageConnection.close} (e.g. a signal-driven shutdown). Nothing
+ *   went wrong; it is distinct from `usage` (not a programming error) and from
+ *   `transport` (not a peer-timeout diagnostic). A clean *remote* close stays
+ *   `transport`; a future consumer needing to act on it separately should add
+ *   a dedicated kind (e.g. `peer-closed`). See docs/COMMUNICATION.md ("Error
+ *   handling").
+ */
+export type ConnectionErrorKind =
+  "transport" | "security" | "usage" | "protocol" | "closed";
+
+/** A terminal connection failure, tagged with a {@link ConnectionErrorKind}. */
+export class ConnectionError extends Error {
+  readonly kind: ConnectionErrorKind;
+
+  constructor(
+    message: string,
+    kind: ConnectionErrorKind,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.name = "ConnectionError";
+    this.kind = kind;
+  }
+}
+
+/**
+ * What a transport's {@link MessageConnection.close} rejects with when it tore
+ * down without the peer confirming the last frames it was handed: the partner
+ * may or may not have them. Always kind `transport`. A transport subclasses it
+ * to give its own message; a wrapping connection passes it through its own
+ * close().
+ */
+export class DeliveryUnconfirmedError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "transport");
+    this.name = "DeliveryUnconfirmedError";
+  }
+}
+
+/**
+ * Extracts a human-readable message from an arbitrary thrown value. The single
+ * shared rule for turning an `unknown` error into display text: an `Error`'s
+ * `message`, falling back to `String(err)` when that message is empty (so an
+ * `Error` with no message yields `"Error"` rather than a blank string), and
+ * `String(err)` for any non-`Error` value (so `null`/`undefined` become
+ * `"null"`/`"undefined"` rather than throwing on a `.message` dereference).
+ */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message || String(err) : String(err);
+}
+
+/**
+ * Wraps an arbitrary thrown value as a {@link ConnectionError}, passing an
+ * existing {@link ConnectionError} through unchanged. Shared by the bridges so
+ * every transport classifies a raw transport failure the same way.
+ */
+export function asConnectionError(
+  err: unknown,
+  kind: ConnectionErrorKind,
+): ConnectionError {
+  if (err instanceof ConnectionError) return err;
+  return new ConnectionError(errorMessage(err), kind, { cause: err });
+}
+
+/**
+ * The refusal raised when the two parties' agreed terms name different
+ * algorithms at the run boundary ({@link resolveCountOnlyRun}).
+ *
+ * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: this
+ * party's own algorithm is its own config, so a divergence means the
+ * partner proceeded past the terms-exchange compatibility abort -- a
+ * protocol violation, not a local misconfiguration (CLI exit 76, not 64).
+ * The message names only the fixed algorithm literals, never partner text.
+ */
+export class AlgorithmDivergenceError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "protocol");
+    this.name = "AlgorithmDivergenceError";
+  }
+}
+
+/**
+ * The refusal raised when a party asserts a payload disclosure the agreed
+ * terms declare no column for ({@link resolveDirectionDisclosesPayload}).
+ *
+ * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: the
+ * assertion is held against a pair of documents both parties agreed, so the
+ * contradiction is a process disclosing against the terms it agreed under --
+ * the classification {@link assertNoPayloadReceived} gives the same pair
+ * when the column arrives (CLI exit 76, not 64). The constructor takes no
+ * argument and holds the message itself, so no call site can compose a value
+ * read off either agreed document into what the operator is shown.
+ */
+export class PayloadDisclosureDivergenceError extends ConnectionError {
+  constructor() {
+    super(
+      "one party's run is set to send payload columns, but the receiving " +
+        "party's linkage terms declare an empty payload.receive. No " +
+        "association table or payload was sent. To send those columns, " +
+        "declare them in the sender's payload.send and the receiver's " +
+        "payload.receive, or remove the receiver's payload.receive so the " +
+        "next run sets it from the sender's columns. To send none, set the " +
+        "sender's input metadata to send no column (is_payload: false, or " +
+        "role ignored).",
+      "protocol",
+    );
+    this.name = "PayloadDisclosureDivergenceError";
+  }
+}
+
+/**
+ * The refusal raised when a partner presents a `deduplicate` its
+ * invitation did not declare
+ * ({@link assertPresentedDeduplicateMatchesInvitation}).
+ *
+ * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}:
+ * the contradiction is between two documents the partner authored (CLI
+ * exit 76, not 64). Has `alcoveRecoveryHintEmitted` so the CLI's
+ * hint-walker suppresses the generic "retry without re-inviting" advisory
+ * -- this refusal is terminal against the held invitation and would
+ * otherwise loop an unattended recurring exchange.
+ */
+export class InvitationTermDivergenceError extends ConnectionError {
+  readonly alcoveRecoveryHintEmitted = true;
+
+  constructor(message: string) {
+    super(message, "protocol");
+    this.name = "InvitationTermDivergenceError";
+  }
+}
 
 /**
  * Whether `error` or any link in its `cause` chain satisfies `predicate`.
