@@ -36,29 +36,13 @@ const rawYamlParserImportBan = {
 // `LogLevel` type -- so this bans the binding that can emit and nothing else. The
 // emit selector from eslint.boundaries.mjs bans the call shape as well, which is
 // what covers a root logger reached without an import of its own. `server/` takes
-// the whole-module ban below instead, and `vite.config.ts` sits outside every
-// glob and keeps loglevel's own root logger for its build-time warnings; it never
-// ships to the browser.
+// the same ban, and `vite.config.ts` sits outside every glob and keeps loglevel's
+// own root logger for its build-time warnings; it never ships to the browser.
 const rootLoglevelImportBan = {
   name: "loglevel",
   importNames: ["default"],
   message:
     "Do not import loglevel's default export in the web app: it is the root logger, whose emits skip the context prefix and the private-key redaction @alcove/core's getLogger installs. Emit through getLogger; import the named `setDefaultLevel` / `levels` for level configuration.",
-};
-
-// The server tree's ban on loglevel altogether, name and all. Node runs the built
-// Nitro entry with loglevel left external, and its ESM loader synthesizes no
-// named export off that CommonJS module, so a named import here is a SyntaxError
-// at boot, before the server listens. Banning the whole module rather than its
-// value exports alone is what a `paths` entry can express: no-restricted-imports
-// cannot tell a type-only import from a value one. The level goes to core's
-// setLogLevel, which sweeps every logger the entry's imports already built. The
-// client entry keeps its named import -- Vite bundles the browser build and
-// resolves the interop itself.
-const serverLoglevelModuleBan = {
-  name: "loglevel",
-  message:
-    "Do not import loglevel in the web app's server tree: it is a CommonJS module the built Nitro entry keeps external, so a named import of it throws `Named export not found` at boot, and its default export is the root logger, whose emits skip the context prefix and the private-key redaction @alcove/core's getLogger installs. Set the level with @alcove/core's setLogLevel and emit through getLogger.",
 };
 
 // Hold the draft-side rule-set membership compares at the one chokepoint that
@@ -276,8 +260,7 @@ const sharedSyntaxBans = [
 
 // The no-restricted-imports `paths` entries every block covering src/ takes,
 // spread for the same reason sharedSyntaxBans is: a block that restates the rule
-// cannot drop one of them by omission. server/ takes the yaml entry beside the
-// stricter loglevel entry, in the block of its own below.
+// cannot drop one of them by omission. server/ takes the same entries.
 const sharedImportPathBans = [rawYamlParserImportBan, rootLoglevelImportBan];
 
 // The files under src/ that are not in the browser bundle. Read from the
@@ -286,7 +269,6 @@ const sharedImportPathBans = [rawYamlParserImportBan, rootLoglevelImportBan];
 // own). The `node:` ban below covers src/ minus this list.
 const serverOnlySrcFiles = [
   "src/jobs/**/*.{ts,tsx}",
-  "src/server.ts",
   "src/utils/apiNamespace.ts",
   "src/utils/configManager.ts",
   "src/utils/securityHeaders.ts",
@@ -328,13 +310,7 @@ const layerDirectionBans = [
 
 export default [
   {
-    ignores: [
-      "eslint.config.js",
-      ".output/**",
-      ".nitro/**",
-      ".tanstack/**",
-      "dist/**",
-    ],
+    ignores: ["eslint.config.js", ".tanstack/**", "dist/**"],
   },
   ...tanstackConfig,
   ...pluginRouter.configs["flat/recommended"],
@@ -391,30 +367,12 @@ export default [
     },
   },
   {
-    // The server tree's stricter loglevel entry (see serverLoglevelModuleBan),
-    // which replaces the shared set for these files. It re-carries the
-    // sensitive-parse ban and the workspace-boundary groups the block above sets
-    // for them, since flat config replaces a rule's whole options; the syntax
-    // bans that block sets, the bare-root emit selector included, it leaves
-    // alone.
-    files: ["server/**/*.ts"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          paths: [rawYamlParserImportBan, serverLoglevelModuleBan],
-          patterns: crossWorkspaceImportBans.web,
-        },
-      ],
-    },
-  },
-  {
     // The raw-JSON.parse ban for the web app, over the two trees its files list
     // names: src/ and server/. src/ is not only the browser bundle -- the
     // console server's job machinery lives there too (src/jobs), and a request
     // body is the untrusted input the ban exists for. server/ is the console
-    // server with its job route handlers, the Nitro entry, and the upgrade
-    // hardening, which reach the socket earlier still. The test tree is outside
+    // server with its job route handlers and the upgrade hardening, which reach
+    // the socket earlier still. The test tree is outside
     // the ban, parsing fixtures it wrote itself. Raw `JSON.parse` is banned in
     // the no-restricted-properties form packages/core/src and apps/cli/src
     // already use, which also catches an alias, a computed access, and a

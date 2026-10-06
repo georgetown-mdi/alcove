@@ -910,13 +910,13 @@ run coverage` for the web workspace therefore stands up the dev server and
 Chromium the same way `npm run test:browser` does.
 
 The web black-box integration suite is excluded by design: it fetches
-a separately-spawned dev-server process and imports no `src`, so under
-`--coverage` it measures the empty runner process, not the server. Capturing
-that server-entry/route-handler code is feasible -- run the spawned server
-under `NODE_V8_COVERAGE` and merge its profile -- but low-value: it buys
-a bespoke merge step outside Vitest's model to cover thin server-entry and
-route glue whose behavior the integration suite already asserts end-to-end,
-so it is out of scope, not a deferred gap.
+separately-spawned servers and imports no `src`, so under `--coverage` it
+measures the empty runner process, not the server. Capturing the console
+server's entry and route code is feasible -- run the spawned server under
+`NODE_V8_COVERAGE` and merge its profile -- but low-value: it buys a bespoke
+merge step outside Vitest's model to cover thin entry and route glue whose
+behavior the integration suite already asserts end-to-end, so it is out of
+scope, not a deferred gap.
 
 By design there is NO global percentage gate, and adding one is not a missing
 piece to be "fixed": a blanket "N% or the build fails" bar rewards vanity tests

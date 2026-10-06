@@ -104,7 +104,7 @@ jobs:
       # Blocking half of the dependency audit, over the production tree the
       # shipped image runs: the release SBOM's scope -- the two workspaces the
       # Dockerfile's production install names, plus apps/web, whose
-      # runtime dependencies ship inside the pre-bundled Nitro output rather
+      # runtime dependencies ship inside the pre-bundled console builds rather
       # than through an install -- and the same command string CONTRIBUTING.md's
       # Dependency Policy and docs/RELEASES.md step 4 hand a maintainer, so the
       # local run and the gate cannot diverge. The wrapper it runs through

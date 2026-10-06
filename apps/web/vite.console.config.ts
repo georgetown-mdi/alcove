@@ -25,8 +25,6 @@ const consoleRouteTree = path.join(
  */
 export default defineConfig(({ isSsrBuild }) => ({
   root: appRoot,
-  // Read by the root route, whose document this client renders itself.
-  define: { "import.meta.env.CLIENT_RENDERED_DOCUMENT": "true" },
   plugins: [
     tanstackRouter({
       target: "react",

@@ -85,8 +85,8 @@ export class JobApiConfigError extends Error {
  * The response headers every job-API response has: `Cache-Control: no-store`
  * so a job status, event stream, or result is never cached, and NO CORS headers
  * (the job API is same-origin console-local; a cross-origin caller must not be
- * granted access). The security response headers the server entry already applies
- * globally are additive to these.
+ * granted access). The security response headers the console server's handler
+ * (`apps/web/server/console/app.ts`) adds to every response are additive to these.
  */
 export const JOB_RESPONSE_HEADERS: Readonly<Record<string, string>> = {
   "Cache-Control": "no-store",

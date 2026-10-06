@@ -3,8 +3,6 @@ import http from "node:http";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { createHooks } from "hookable";
-import { setupGracefulShutdown } from "nitropack/runtime/internal/shutdown";
 
 import { JobManager } from "@jobs/jobManager";
 import { registerJobManagerShutdown } from "@jobs/index";
@@ -21,7 +19,6 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { JobRecord } from "@jobs/jobManager";
-import type { NitroApp } from "nitropack/types";
 
 // A server shutting down while an exchange runs must wait for the CLI child to
 // exit: in the image the server is PID 1, so its exit kills the child
@@ -133,29 +130,14 @@ describe("JobManager.shutdown waits for the running child", () => {
   });
 });
 
-/** Each server entry's wiring of the job manager into its graceful shutdown. */
-const SERVER_SHUTDOWNS: ReadonlyArray<
-  [name: string, install: (server: http.Server) => void]
-> = [
-  [
-    "the Nitro server",
-    (server) => {
-      const hooks = createHooks();
-      registerJobManagerShutdown(hooks);
-      setupGracefulShutdown(server, { hooks } as unknown as NitroApp);
-    },
-  ],
-  [
-    "the console server",
-    (server) => {
-      const hooks = createCloseHooks();
-      registerJobManagerShutdown(hooks);
-      installGracefulShutdown(server, hooks, { timeoutMs: 30_000 });
-    },
-  ],
-];
+/** The console server's wiring of the job manager into its graceful shutdown. */
+function installConsoleShutdown(server: http.Server): void {
+  const hooks = createCloseHooks();
+  registerJobManagerShutdown(hooks);
+  installGracefulShutdown(server, hooks, { timeoutMs: 30_000 });
+}
 
-describe.each(SERVER_SHUTDOWNS)("%s's graceful shutdown", (_name, install) => {
+describe("the console server's graceful shutdown", () => {
   test("exits the process only after the running child has exited", async () => {
     const { manager, record, cleanupFile } = await runningJob({
       STUB_SIGTERM_CLEANUP_MS: "400",
@@ -175,7 +157,7 @@ describe.each(SERVER_SHUTDOWNS)("%s's graceful shutdown", (_name, install) => {
       server.listen(0, "127.0.0.1", resolve),
     );
     try {
-      install(server);
+      installConsoleShutdown(server);
 
       let childExitedAtProcessExit: boolean | undefined;
       const processExited = new Promise<void>((resolve) => {

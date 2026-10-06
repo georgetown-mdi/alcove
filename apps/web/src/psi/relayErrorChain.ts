@@ -5,8 +5,8 @@
  * the budget the renderer gave it (`validateAndSanitizeEvent` in
  * `@jobs/cliDriver`), and the console seat rebuilds the chain from the links
  * (`errorMessageOf` in `./serverJobExchangeDriver`). It has its own module because
- * the relay runs in the Nitro server and imports `node:child_process`, so the seat
- * cannot import it for one constant.
+ * the relay runs in the console server and imports `node:child_process`, so the
+ * seat cannot import it for one constant.
  *
  * A terminal the job manager synthesizes for a run that emitted none composes its
  * own links (`diagnosedTerminal` in `@jobs/jobManager`), and composes them RAW:

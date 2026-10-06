@@ -229,7 +229,7 @@ A non-registry source -- a `file:` tarball or directory, a git URL, a remote tar
 **Why the allow and deny entries are pinned differently.**
 
 - **Allows are pinned to an exact version** (`esbuild`, `ssh2`, `cpu-features`). The approval is a review of one version's script, so it must not extend to the next one: a bump arrives with no verdict and has to be reviewed rather than inheriting the answer.
-- **Denials are name-only** (`@parcel/watcher`, `unrs-resolver`), which covers every version. Both are dev-only native builds unreachable from the shipped image, so no future version of either needs a fresh review to stay blocked. Under npm 11.16.0 or 11.17.0 a version that added a `bin` would lose its `.bin` links along with its script, which is the one change that would need a fresh look; from 11.18.0 it keeps them (see Enforcement status above).
+- **Denials are name-only** (`unrs-resolver`), which covers every version. It is a dev-only native build unreachable from the shipped image, so no future version of it needs a fresh review to stay blocked. Under npm 11.16.0 or 11.17.0 a version that added a `bin` would lose its `.bin` links along with its script, which is the one change that would need a fresh look; from 11.18.0 it keeps them (see Enforcement status above).
 - **`fsevents` is denied at both installed versions** (`"fsevents@2.3.2 || 2.3.3"`, 2.3.3 at the root and 2.3.2 nested under `playwright`). Nothing runs either way: both published tarballs declare only `clean`, `build`, `test` and `prepublishOnly` and ship no `binding.gyp`, so the `node-gyp rebuild` an install would run does not exist -- it sits in `build`. Re-driven 2026-10-01:
   - Both tarballs, unpacked from `npm pack`, hold exactly that script set and no `binding.gyp`.
   - The lockfile's `hasInstallScript: true` matches the flag the registry's abbreviated packument carries for both versions, while the registry's full version metadata (what `npm view fsevents@2.3.3 scripts` reads) lists an `install: node-gyp rebuild` the tarball does not hold.
@@ -367,38 +367,24 @@ reading there may be nothing to open.
 
 ## npm resolution residuals
 
-Three records of what npm's resolver leaves behind in this workspace: a peer
-conflict the release SBOM works around, what a root `overrides` block does to
-the lockfile it is added to or removed from and to later installs, and the
-`brace-expansion` copies the development tree holds. Their normative residue is
-short -- release step 9 runs with `--legacy-peer-deps`, the root `package.json`
-holds no `overrides` block, and CI checks stand over the first two records: one
-watching for the upstream move that retires the flag, and two watching what an
-`overrides` block leaves behind, the out-of-range edges and the split hoist. The
-measurement behind each is kept so the dead ends are not re-walked.
+Three records of what npm's resolver leaves behind in this workspace: the
+packages the release SBOM omits, what a root `overrides` block does to the
+lockfile it is added to or removed from and to later installs, and the
+`brace-expansion` copy the development tree holds. Their normative residue is
+short -- the root `package.json` holds no `overrides` block, and two CI checks
+watch what an `overrides` block leaves behind, the out-of-range edges and the
+split hoist. The measurement behind each is kept so the dead ends are not
+re-walked.
 
-### The crossws peer conflict blocks the release SBOM
+### The release SBOM's hoisting residual
 
-`npm sbom` refuses to run unflagged, so release step 9 in [RELEASES.md](../RELEASES.md) runs it with `--legacy-peer-deps` to produce the CycloneDX BOM that records the release's npm dependency and license set. This is a known upstream-driven breakage; every local fix that would leave the tree itself changed was rejected, and the flag adopted instead disables validation for that one invocation rather than changing anything it resolves.
+Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. On npm 11.19.1 against the committed lockfile:
 
-```
-npm error code ESBOMPROBLEMS
-npm error invalid: crossws@0.3.5, ^0.4.1 required by h3-v2@npm:h3@2.0.1-rc.20
-```
+- `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web` exits 0 at 130 components, and the same command without `-w apps/web` exits 0 at 84. Every one of those 84 also appears in the 130, so the full-scope command closes the web console's runtime set into the BOM rather than dropping it.
+- `npm ls --all --omit=dev --package-lock-only` exits 0, so the tree reports no peer conflict.
+- `yaml` 2.9.1 and `tslib` 2.8.1 are installed in the shipped tree, per `npm ls yaml tslib --omit=dev -w packages/core -w apps/cli -w apps/web`, and absent from the step 9 command's component list. That list holds `tslib` 1.14.1, a copy nested under `tsyringe`.
 
-`@tanstack/start-server-core` depends on `h3-v2`, an alias for a prerelease `h3@2`, which declares an **optional** peer on `crossws ^0.4.1`. `nitropack` and `h3@1.x`, both development dependencies, hard-depend on `^0.3.5`. npm hoists one `crossws` for the whole tree, resolves it to the 0.3 line the hard dependents require, and then reports the unsatisfied optional peer as `invalid` -- which is enough for `npm sbom` to refuse. Nothing is broken at runtime: the peer is optional, and the signaling WebSocket is the vendored `ws`-based PeerJS server, not h3's.
-
-**What `npm ls` does with the same edge.** The invalid edge sits under `@tanstack/start-server-core`, below the depth `npm ls` reports by default, so `npm ls --omit=dev` exits 0 and prints the tree, both unfiltered and scoped `-w packages/core -w apps/cli -w apps/web`. So does the named-package form `npm ls <pkg> --omit=dev -w packages/core -w apps/cli -w apps/web` that [RELEASES.md](../RELEASES.md#software-bill-of-materials-sbom) prescribes for checking which packages the SBOM's hoisting residual drops. A full-depth `npm ls --all --omit=dev` walks onto the edge and exits 1 with `ELSPROBLEMS` naming the same `crossws@0.3.5`, so the whole-tree walk is the one form of the query that is unavailable.
-
-**Why the obvious fixes are wrong.** Forcing the 0.4 line into the root -- the only directory on `h3-v2`'s resolution path, since it resolves upward from `node_modules/@tanstack/start-server-core/node_modules/` and never reaches a workspace's -- clears the refusal, and loses a component from the BOM doing it. Measured 2026-09-04 on npm 11.19.0, by adding `"crossws": "^0.4.1"` to the root `devDependencies` and running `npm install`: the tree comes out fully valid, `npm ls --all` and `npm ls --all --omit=dev` both exiting 0, with 0.4.12 at the root for the peer, 0.3.5 nested beside `nitropack` and `h3`, and `listhen`'s `>=0.2.0 <0.5.0` satisfied by the root copy. The unflagged step 9 command then exits 0, and `npm run check:crossws-sbom-block` fails with the cleanup message it holds for that state. But the BOM that unflagged command emits has 182 components and omits `srvx@0.11.22`, where the same command with `--legacy-peer-deps` against that same forced tree emits 183 including it -- the count the flagged command produced against the committed lockfile that day. `srvx` is no development package there: `npm ls srvx --all --omit=dev` reports it under `apps/web` twice over, through `@tanstack/start-plugin-core` and through `h3-v2`'s own `^0.11.13`. The build, the typecheck, and the unit suites all pass on the forced tree, so what rejects this candidate is that one trade: the flag exchanged for a release BOM missing a package the release runs. Forcing the line no longer crosses a type boundary in `apps/web/server/custom-entry.ts`, which does not import crossws at all -- the WebSocket `upgrade` block that once fed `nitroApp.h3App.websocket` into `crossws/adapters/node` is deleted. The constraint it existed to guard, that wiring a crossws adapter onto the shared HTTP server is unsafe while the PeerJS signaling listener shares it, is held by `scripts/check-nitro-websocket-unset.mjs`, which fails if `apps/web/nitro.config.ts` ever turns `experimental.websocket` on.
-
-The other candidates fail outright: `overrides` scoped to the parent or to the alias do not move the hoisted copy, and a global override collapses the tree to one version and drops `crossws` below the dev dependents that require it. Declaring it in `apps/web` leaves the peer unsatisfied because that directory is not on the resolution path, and `npm sbom --omit peer` still runs the tree-validity check.
-
-**The adopted workaround.** `--legacy-peer-deps` on the step 9 invocation disables peer-conflict validation for that command alone rather than mutating the lockfile or the installed tree, which is what separates it in kind from every candidate above. Measured 2026-09-25 on npm 11.19.1 against the committed lockfile: `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev --legacy-peer-deps -w packages/core -w apps/cli -w apps/web` exits 0 at 176 components, and the same command without `-w apps/web` exits 0 at 64. Every one of those 64 also appears in the 176, so the flagged, full-scope command is a strict superset that closes the web console's runtime set into the BOM rather than dropping it. Re-driven 2026-10-05 on npm 11.19.1 against the lockfile of that day, the two counts are 139 and 63, and the superset still holds. On that run the unflagged command exited 1 naming the `crossws` edge alone and the flagged one exited 0. The hoisting residual stated in RELEASES.md was measured the same day: `yaml` 2.9.1 and `tslib` 2.8.1 are installed in the shipped tree and absent from the flagged command's component list, while that list holds `tslib` 1.14.1, a copy nested under another package. Its cost is stated where the command is documented: this one invocation would suppress a genuine peer conflict elsewhere in the tree just as quietly as it suppresses this one. That is why [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) pairs it with `npm ls --all --omit=dev` as a compensating strict check that still fails loudly and, as of the same measurement, names only this same `crossws` edge.
-
-**Resolution path.** This clears upstream, without action here, once `h3` v2 ships stable (so `@tanstack/start-server-core` stops depending on a prerelease) or `nitropack` / `h3@1.x` move to the 0.4 line -- at which point the ranges are mutually satisfiable, npm hoists one version that satisfies everyone, and the unflagged release-scoped `npm sbom` runs again. A dev-inclusive `npm sbom` clears at the same point: re-driven 2026-10-01 on 11.17.0 and 11.19.1, the unscoped command names this edge alone. Until then, step 9 runs with `--legacy-peer-deps` as above; re-check after any `@tanstack/*` or `nitropack` bump. When the flag is no longer needed, drop it from step 9, remove this section and step 9's cost note and compensating check, and re-check the SBOM section's hoisting residual in the same pass, since that residual is stated independently of this block and outlives it. A further local workaround, if one is ever wanted before then, is weighed against the rejected candidates recorded above rather than re-derived from scratch, and any that touches the tree still needs to keep `scripts/check-nitro-websocket-unset.mjs` passing.
-
-**What watches this.** `scripts/check-crossws-sbom-block.mjs` (`npm run check:crossws-sbom-block`, a CI static check in `static_checks.yaml`) is what watches the revisit trigger above, rather than leaving it to memory. It runs the unflagged command itself and fails once it succeeds while `docs/RELEASES.md` still prescribes the flag, so the manual "re-check after a bump" habit has a safety check that does not depend on anyone remembering to look.
+The residual is a property of how `npm sbom` walks a hoisted entry shared with a dev-only consumer, and RELEASES.md states the query that checks one package's presence when the BOM lacks it.
 
 ### What a root `overrides` block changes about later installs
 
@@ -453,9 +439,8 @@ committed lockfile and fails on any edge whose locked version lies outside the
 range its dependent declared, naming the dependent, the declared range and the
 locked version, for every dependent the lockfile records: the root project,
 each workspace, and each installed package. An edge meant to stand is recorded
-with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which holds the
-[crossws optional peer](#the-crossws-peer-conflict-blocks-the-release-sbom)
-alone; an override-forced edge fails until it is recorded, and a recorded edge
+with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which is empty;
+an override-forced edge fails until it is recorded, and a recorded edge
 that comes back into range fails until its entry is deleted. It compares
 declared ranges with locked versions only, and does not model npm's resolution
 or which override forced an edge.
@@ -490,13 +475,6 @@ required `vite` below 8.1.5, so the retained root copy was a stale hoist and not
 constraint. Toggling only the root `overrides` key against live npm, over two base
 lockfiles, is what attributes the behavior to the block's presence.
 
-**What the split costs.** The TanStack Start dev SSR middleware never installs and
-every route 404s, so the web integration and browser suites die in their shared
-`globalSetup`: no test fails, and CI reports a bare exit code 1 with nothing
-naming the cause. `npm run build -w apps/web` still succeeds, so the deployed
-artifact is never affected -- the damage is confined to the development tree and
-to the signal CI gives about it.
-
 **The remedy measured to work** is to delete the duplicated lockfile entries and
 re-resolve with `npm install --package-lock-only`. Two routes were measured not to
 work: `@dependabot rebase` and `@dependabot recreate` each reproduce the
@@ -510,7 +488,7 @@ being landed.
 reads the committed lockfile and fails on any package installed at the top level
 of both the root `node_modules` and a workspace's, naming the package and both
 entries. The split then lands as a named failure on the bump's own pull request
-rather than as the unattributed exit code above. It covers every package rather
+rather than as a downstream failure that does not name it. It covers every package rather
 than the ones this has happened to, because the mechanism is the block's
 presence and not any one dependency; a split that is meant to stand is recorded,
 with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. What
@@ -518,42 +496,18 @@ it reports is the split the lockfile records, not one npm would resolve, and
 only at that one depth: a copy nested under another package is ordinary conflict
 resolution, which this tree has dozens of.
 
-### The development tree's brace-expansion copies
+### The development tree's brace-expansion copy
 
-The tree holds three `brace-expansion` copies, each development-only: 5.0.12
-hoisted at the root for `minimatch@10.2.5` under `eslint`, and 2.1.7 nested
-under `archiver-utils` and `readdir-glob`, whose `minimatch@9.0.9` and
-`minimatch@5.1.9` declare `^2.0.2` and `^2.0.1`. Against the committed lockfile
-`npm audit --package-lock-only` and `npm audit --omit=dev --package-lock-only`
-each answer `found 0 vulnerabilities` (re-driven 2026-10-01 on 11.17.0 and
-11.19.1), and `npm ls brace-expansion --all` marks no edge.
-
-**Why the nested copies stay on the 2.x line.** Both `minimatch` ranges cap
-below 5.x, so an advisory against `brace-expansion` clears for them only once
-its 2.x line is patched. On 2026-10-01 the registry's advisory data names a
-2.x patch for every advisory it holds against the package, the highest floor
-being 2.1.7 (GHSA-q2hr-2g5m-vwhr). `nitropack@2.13.4`, the current release
-that day, declares `archiver: ^7.0.1`, which reaches those two `minimatch`
-lines, so no bump on that path moves the copies off 2.x until `minimatch`
-widens the range on one of those lines or `archiver` and `nitropack` move off
-them. An advisory that names no 2.x patch meets that cap, and an override
-answering it carries the costs recorded in
+The tree holds one `brace-expansion` copy, 5.0.12, hoisted at the root for
+`minimatch@10.2.5` under `eslint` and development-only. On npm 11.19.1 against
+the committed lockfile: `npm ls brace-expansion --all`
+names that copy alone, `npm ls brace-expansion --omit=dev` prints `(empty)`,
+npm's no-match answer, and `npm audit --package-lock-only` and
+`npm audit --omit=dev --package-lock-only -w packages/core -w apps/cli -w apps/web`
+each answer `found 0 vulnerabilities`. An advisory against it is a
+development-tree finding, triaged as [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy)
+states, and an override answering one carries the costs recorded in
 [What a root `overrides` block changes about later installs](#what-a-root-overrides-block-changes-about-later-installs).
-
-**Why none of it reaches the shipped tree.** `npm ls --omit=dev brace-expansion`
-prints `(empty)`, which is npm's no-match answer -- it exits nonzero on a
-filtered query that matches nothing, while the unfiltered `npm ls --omit=dev`
-runs clean (re-driven 2026-10-01 on 11.19.1). `npm audit --omit=dev
---package-lock-only -w packages/core -w apps/cli`, the scope matching the
-Dockerfile's runtime install, answers `found 0 vulnerabilities` the same day.
-The path is the web build toolchain: `@tanstack/nitro-v2-vite-plugin` ->
-`nitropack` -> `archiver` -> `archiver-utils` / `readdir-glob` -> `minimatch`
--> `brace-expansion`, which is nitropack archiving its own build output. The
-brace patterns expanded there come from this repository's build configuration,
-not from partner, operator, or network input, and the shipped CLI image installs
-`--omit=dev` (see [The Docker image's dependency
-freeze](CONTAINER_IMAGES.md#the-docker-images-dependency-freeze)). That bounds
-the urgency of a finding on this path rather than its fix.
 
 ## Upgrading the SFTP Stack (ssh2 / ssh2-sftp-client)
 

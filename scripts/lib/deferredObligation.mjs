@@ -7,11 +7,6 @@
 // and check-exchange-record-version.mjs. The argument handling and the two
 // failure reports are identical for both, so what a blocked run says, and how a
 // failure is laid out, is one edit here rather than one per check.
-//
-// check-crossws-sbom-block.mjs is the same family and is not on this: it
-// reports a single verdict over the repository it sits in, with no tree to
-// point elsewhere and no reasons it could not run, so it has nothing to read
-// from here.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";

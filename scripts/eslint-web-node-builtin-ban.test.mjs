@@ -44,7 +44,6 @@ const CLIENT_FILES = [
 const SERVER_ONLY_FILES = [
   "apps/web/src/jobs/workdir.ts",
   "apps/web/src/utils/apiNamespace.ts",
-  "apps/web/src/server.ts",
   "apps/web/src/utils/serverConfig.ts",
 ];
 

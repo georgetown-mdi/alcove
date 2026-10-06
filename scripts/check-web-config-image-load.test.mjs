@@ -49,7 +49,7 @@ RUN npm ci \\
   --omit=dev
 
 FROM node:26-alpine
-COPY --from=builder /build/apps/web/.output apps/web/.output
+COPY --from=builder /build/apps/web/dist apps/web/dist
 `;
 
 describe("reading the builder stage's copies", () => {

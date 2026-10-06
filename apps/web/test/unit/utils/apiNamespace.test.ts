@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { HOSTED_API_PREFIXES, withApiGuard } from "@utils/apiNamespace";
 import { jobEmptyResponse } from "@jobs/gate";
+import { withApiGuard } from "@utils/apiNamespace";
 
-// withApiGuard is what src/server.ts puts every request through ahead of the
-// framework's handler. These cover the refusal in isolation, over the spellings
-// of the /api prefix a router resolves to a route; whether this app's router
-// still resolves them that way is what the integration matrix drives against
-// the built server (apps/web/test/integration/apiNamespace.test.ts).
+// withApiGuard is what the console server (server/console/app.ts) puts every
+// request through ahead of its route table. These cover the refusal in
+// isolation, over the spellings of the /api prefix a router resolves to a
+// route; the integration matrix drives them against the built server
+// (apps/web/test/integration/apiNamespace.test.ts).
 
 /** A route that records what reached it and answers the app document, which is
  * what the framework renders for a path no handler serves. */
@@ -56,9 +56,9 @@ async function answer(
   return { response, reached };
 }
 
-/** The hosted deployment: no console profile, no data root, so the job API is
- * not enabled and the refusal applies. */
-function hostedProfile(): void {
+/** No console profile and no data root, so the job API is not enabled and the
+ * refusal applies. */
+function jobApiOff(): void {
   vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "");
   vi.stubEnv("JOB_DATA_ROOT", "");
 }
@@ -88,7 +88,7 @@ const BROKER_SPELLINGS: ReadonlyArray<[string, string]> = [
 ];
 
 describe("the /api refusal on a deployment without the job API", () => {
-  beforeEach(hostedProfile);
+  beforeEach(jobApiOff);
 
   test("answers the job gate's own 404, header for header", async () => {
     const { response } = await answer("GET", "/api/jobs/slot");
@@ -233,10 +233,4 @@ describe("the /api refusal on the console profile with no data root", () => {
       expect(response.status).toBe(404);
     },
   );
-});
-
-describe("the hosted-only allowlist", () => {
-  test("is empty, so the hosted deployment refuses the whole namespace", () => {
-    expect(HOSTED_API_PREFIXES).toEqual([]);
-  });
 });

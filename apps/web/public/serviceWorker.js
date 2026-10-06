@@ -75,13 +75,12 @@ const CURRENT_CACHES = [SHELL_CACHE, ASSET_CACHE];
  * The one navigation document the shell cache holds, and the only URL a
  * navigation response is ever stored under.
  *
- * Every route of the app renders client-side from the same server-rendered
- * shell, so one document serves an offline navigation to any path: the client
- * router resolves the route from the address bar after hydration. Storing only
- * the root's own response is also what keeps the cache free of anything derived
- * from where the operator has been -- a deeper route's document embeds its path
- * and parameters (a saved exchange's id) in the router's dehydrated state, so
- * caching it would put that id at rest in a second place.
+ * Every route of the app renders client-side from the root document, so one
+ * document serves an offline navigation to any path: the client router resolves
+ * the route from the address bar. Storing only the root's own response is also
+ * what keeps the cache free of anything derived from where the operator has
+ * been -- a deeper route's URL holds its parameters (a saved exchange's id), so
+ * storing a response under it would put that id at rest in a second place.
  */
 const SHELL_PATH = "/";
 
@@ -336,9 +335,8 @@ async function claimAndDiscardOldCaches() {
  * Navigations are network-first: the served deployment always wins while the
  * network is reachable, and only a failed fetch falls back to the cached shell.
  * A successful response is stored only when the request is the bare origin root
- * -- a deeper route's document carries its path and parameters in the router's
- * dehydrated state (see {@link SHELL_PATH}), and a query string could carry
- * anything at all.
+ * -- a deeper route's URL holds its parameters (see {@link SHELL_PATH}), and a
+ * query string could hold anything at all.
  */
 async function handleNavigation(request) {
   let response;

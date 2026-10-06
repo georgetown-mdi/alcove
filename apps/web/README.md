@@ -25,8 +25,8 @@ An invitation created on this server carries `localhost` as its address, so it o
 ## Source layout
 
 `src/` holds three products and the layers below them. Each `@`-prefixed alias in
-the list is registered in `vite.config.ts` (`srcAliases`) and `nitro.config.ts`
-(`serverAliases`); `tsconfig.json` resolves them through its `@*` catch-all.
+the list is registered in `vite.config.ts` (`srcAliases`); `tsconfig.json`
+resolves them through its `@*` catch-all.
 
 | Path             | Alias         | What it holds                                                                       |
 | ---------------- | ------------- | ----------------------------------------------------------------------------------- |
@@ -65,7 +65,7 @@ console's cards under the console build's own gate.
 
 ## Generated route tree
 
-`src/routeTree.gen.ts` is written by the TanStack Router codegen, which the `tanstackStart` plugin in `vite.config.ts` runs whenever anything loads that config -- the dev server or a vitest run. The hosted and console builds write their own copies under `.tanstack/` and leave this one alone.
+`src/routeTree.gen.ts` is written by the TanStack Router codegen, which the router plugin in `vite.config.ts` runs whenever anything loads that config -- the dev server or a vitest run. The hosted and console builds write their own copies under `.tanstack/` and leave this one alone.
 It is checked in deliberately: typecheck, lint, build, and the test suites all read it, so a fresh clone works with no generation step in front of them.
 
 Adding, renaming, or removing a route file therefore changes two files.

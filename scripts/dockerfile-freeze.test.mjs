@@ -599,19 +599,6 @@ for (const {
     const cliArgv = execArgv((l) => l.includes("--expose-gc"));
     const cliEntryPath = cliArgv.find((t) => t.endsWith("index.js"));
 
-    it("copies nothing from a .output directory into the runtime stage", () => {
-      // The console image runs apps/web/dist/console-server, not the Nitro
-      // server whose build writes .output.
-      const offending = image.runtimeCopies.filter(({ sources }) =>
-        sources.some((source) => /(?:^|\/)\.output(?:\/|$)/.test(source)),
-      );
-      expect(
-        offending.map(({ flags, sources, dests }) =>
-          ["COPY", ...flags, ...sources, ...dests].join(" "),
-        ),
-      ).toEqual([]);
-    });
-
     it("ships every script on the entrypoint chain", () => {
       expect(entrypointArgv).toEqual([chain[0]]);
       for (const scriptPath of chain) {
@@ -1049,7 +1036,7 @@ describe.each(IMAGES)(
       expect(normalize(versionRuns[0])).toContain(
         "npm run build:console-server -w apps/web",
       );
-      // The hosted build's .output is not what the image runs.
+      // The hosted static site is not what the image runs.
       expect(normalize(versionRuns[0])).not.toContain(
         "npm run build -w apps/web",
       );

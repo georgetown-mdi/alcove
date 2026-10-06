@@ -15,10 +15,8 @@ import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
 import type { HtmlTagDescriptor, Plugin, Rollup } from "vite";
 
-// The hosted build's document writer, driven over a fabricated bundle. What the
-// documents of a real build name, against what the Start build's server-rendered
-// documents name, was measured when the writer was introduced; this holds the
-// writer's own rules: every warmed route gets a document, a route's document
+// The hosted build's document writer, driven over a fabricated bundle. This
+// holds the writer's own rules: every warmed route gets a document, a route's document
 // names its static import graph and stylesheets, and nothing it imports lazily.
 
 const routesDirectory = fileURLToPath(

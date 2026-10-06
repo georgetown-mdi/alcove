@@ -30,9 +30,9 @@ A URL names its bytes only when the server sent those bytes. A static host answe
 
 ### One cached document, not one per route
 
-Every route of the app renders client-side from the same server-rendered shell, so a single cached document answers an offline navigation to any path: the client router resolves the route from the address bar after hydration. This was verified against the built server rather than assumed -- the root document served at a `/saved/<id>` URL hydrates and renders that route's surface.
+Every route of the app renders client-side from the root document, so a single cached document answers an offline navigation to any path: the client router resolves the route from the address bar. This was verified against a built server rather than assumed -- the root document served at a `/saved/<id>` URL renders that route's surface.
 
-Caching only the root's own response is also the more conservative choice. A deeper route's document embeds its path and parameters in the router's dehydrated state, so caching one would put a saved exchange's id at rest in a second place, beside the record store that already holds it. A query string could hold anything at all. Neither is stored.
+Caching only the root's own response is also the more conservative choice. A deeper route's URL holds its parameters, so storing a response under it would put a saved exchange's id at rest in a second place, beside the record store that already holds it. A query string could hold anything at all. Neither is stored.
 
 ### How much of the app is precached, and when
 
@@ -66,6 +66,6 @@ That benefit is available here without them. The worker fetches the app document
 
 Against that, adopting the tooling costs a dependency and its transitive tree on the one surface in the application that intercepts every request the origin makes -- a surface a reviewer should be able to read end to end. The project's dependency policy asks for exactly that conservatism. The worker is a few hundred lines with no imports, its behavior is driven directly in a unit test against a fabricated service-worker global scope, and there is no generated artifact whose contents have to be trusted.
 
-Deriving the graph at install rather than injecting it at build time does couple the worker to the markup Vite and TanStack Start emit, and that is the one place the trade is worse. One path read wrongly is absorbed, as above; an extraction that stopped matching the emitted preloads altogether would not be, and it would be silent -- install and the warm would both succeed, holding nothing, and the offline promise would narrow to whatever the operator had already visited. A build-time manifest would fail loudly instead. So that failure is not left to the unit suite, which feeds the worker documents this repository writes and would stay green straight through it, but pinned against the production build the app deploys.
+Deriving the graph at install rather than injecting it at build time does couple the worker to the markup the hosted build emits, and that is the one place the trade is worse. One path read wrongly is absorbed, as above; an extraction that stopped matching the emitted preloads altogether would not be, and it would be silent -- install and the warm would both succeed, holding nothing, and the offline promise would narrow to whatever the operator had already visited. A build-time manifest would fail loudly instead. So that failure is not left to the unit suite, which feeds the worker documents this repository writes and would stay green straight through it, but pinned against the production build the app deploys.
 
 The decision would be worth revisiting if the shell's needs grow past caching -- background sync, navigation preload, precise runtime routing across many asset classes -- where re-deriving Workbox's machinery would be the poorer trade.

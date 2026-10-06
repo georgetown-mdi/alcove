@@ -13,8 +13,9 @@ import {
 //
 // The gate is what keeps the job API off the public web deployment -- a disabled
 // API answers 404, the same response the /api namespace's refusal returns ahead
-// of the router (apps/web/src/utils/apiNamespace.ts, held to the route tree by
-// scripts/api-namespace-allowlist.test.mjs) -- and what refuses a non-loopback
+// of the router (apps/web/src/utils/apiNamespace.ts, with the route tree held
+// to serving nothing there by scripts/api-namespace-routes.test.mjs) -- and
+// what refuses a non-loopback
 // Host and a cross-origin browser request on an API that has no per-request auth
 // beyond it. A handler that omits the call, and a handler that
 // makes the call and drops the refusal in its outcome, are exposed on all three

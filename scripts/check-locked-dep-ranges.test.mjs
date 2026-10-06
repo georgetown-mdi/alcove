@@ -4,7 +4,6 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
-  OUT_OF_RANGE_BY_DESIGN,
   assess,
   classifyEdges,
   lookupPaths,
@@ -242,27 +241,13 @@ describe("the verdict over a lockfile", () => {
 });
 
 describe("the committed tree", () => {
-  it("passes, with the crossws optional peer its only out-of-range edge", () => {
+  it("passes, with no out-of-range edge", () => {
     const result = assess(committedLock());
     expect(result.ok, text(result)).toBe(true);
     const outOfRange = classifyEdges(committedLock()).filter(
       (edge) => edge.status === "out-of-range",
     );
-    expect(
-      outOfRange.map(
-        ({ dependent, dependency, range }) =>
-          `${dependent} ${dependency} ${range}`,
-      ),
-    ).toEqual(["h3 crossws ^0.4.1"]);
-  });
-
-  it("fails naming the crossws edge once its record is gone", () => {
-    const allowlist = OUT_OF_RANGE_BY_DESIGN.filter(
-      (allowed) => allowed.dependency !== "crossws",
-    );
-    const result = assess(committedLock(), allowlist);
-    expect(result.ok).toBe(false);
-    expect(text(result)).toContain('declares crossws "^0.4.1"');
+    expect(outOfRange).toEqual([]);
   });
 
   it("exits 0 as a script against the committed lockfile", () => {

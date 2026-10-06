@@ -69,7 +69,7 @@ const WEB_OUTSIDE_SRC = resolve(repoRoot, "apps/web/vite.config.ts");
 const WEB_SRC_FIRST_PARSE = resolve(repoRoot, "apps/web/src/utils/seo.ts");
 const WEB_OUTSIDE_SRC_FIRST_PARSE = resolve(
   repoRoot,
-  "apps/web/nitro.config.ts",
+  "apps/web/vite.console.config.ts",
 );
 
 // The reaches each guarded tree must refuse. The bare package names are live

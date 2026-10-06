@@ -4,10 +4,7 @@ import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { seo } from "@utils/seo";
 
 export const Route = createFileRoute("/accept")({
-  // The encoded token is in the URL fragment, which never reaches the server, so
-  // decoding and rendering happen client-side only. The inviter's deep link
-  // points here (ACCEPT_ROUTE_PATH in psi/invitation.ts).
-  ssr: false,
+  // The inviter's deep link points here (ACCEPT_ROUTE_PATH in psi/invitation.ts).
   component: AcceptorScreen,
   head: () => ({
     meta: seo({

@@ -8,10 +8,6 @@ node_modules
 # Build outputs -- the builder regenerates all of these.
 dist
 **/dist
-.output
-**/.output
-.nitro
-**/.nitro
 .tanstack
 **/.tanstack
 

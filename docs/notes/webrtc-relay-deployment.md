@@ -353,12 +353,9 @@ full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
 
-If it does leave, the standing constraint in
-[web-server-runtime-role.md](web-server-runtime-role.md) reaches its trigger:
-the server's last runtime service goes with the broker, and what remains is a
-server whose whole job is delivering code. That note records the direction and
-schedules nothing; a framework removal is a candidate item under the epic below
-rather than a consequence that follows automatically.
+The web app runs no broker and no other runtime service: the hosted app is a
+static site with no server framework
+([web-server-runtime-role.md](web-server-runtime-role.md)).
 
 ## The proposed epic
 
@@ -398,8 +395,8 @@ Candidate members, by title:
   client's ICE list is a disclosure decision as well as a connectivity one, so
   the item is a scope call before it is an implementation.
 - **New, conditional on the coordination server leaving: remove the web app's
-  server framework.** Only once the broker is deployed elsewhere, and only on
-  the terms in [web-server-runtime-role.md](web-server-runtime-role.md).
+  server framework.** Done once the broker was deployed elsewhere; see
+  [web-server-runtime-role.md](web-server-runtime-role.md).
 
 ## Logging and data handling
 

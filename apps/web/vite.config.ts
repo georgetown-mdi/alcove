@@ -4,9 +4,8 @@ import { pathToFileURL } from "node:url";
 
 import { defineConfig, loadEnv } from "vite";
 import logLibrary from "loglevel";
-import { nitroV2Plugin } from "@tanstack/nitro-v2-vite-plugin";
 import { playwright } from "@vitest/browser-playwright";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
 import { ConfigManager } from "./src/utils/serverConfig.ts";
@@ -14,7 +13,7 @@ import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
-import type { ConfigEnv, ProxyOptions } from "vite";
+import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 
 const configManager = new ConfigManager();
 const config = await configManager.load({ dotenv: true });
@@ -142,9 +141,46 @@ export function devSignalingProxy({
   return { "/api/": { target: `http://127.0.0.1:${port}`, ws: true } };
 }
 
+/** Whether `vite dev` answers `request` with the hosted client's document: a
+ * page navigation (a GET accepting HTML) to a path outside `/api/` whose last
+ * segment names no file. */
+export function isHostedDevDocumentRequest(request: {
+  method?: string;
+  url?: string;
+  headers: { accept?: string };
+}): boolean {
+  const pathname = (request.url ?? "/").split("?", 1)[0] ?? "/";
+  return (
+    request.method === "GET" &&
+    request.headers.accept?.includes("text/html") === true &&
+    !pathname.startsWith("/api/") &&
+    !path.posix.basename(pathname).includes(".")
+  );
+}
+
+// The root index.html is the console client's document; `vite dev` answers a
+// page request with the hosted client's instead, as the hosted build does.
+function hostedDevDocument(): Plugin {
+  return {
+    name: "alcove-hosted-dev-document",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (isHostedDevDocumentRequest(request))
+          request.url = "/hosted/index.html";
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);
   return {
+    // Under Vitest, no HTML fallback: it answers a component's unrouted
+    // `/api/` fetch with index.html, whose pre-transform pulls the whole route
+    // tree into the dependency optimizer mid-run and reloads every open test.
+    appType: underVitest ? "custom" : "spa",
     server: {
       host: "127.0.0.1",
       port: config.PORT,
@@ -177,13 +213,13 @@ export default defineConfig((configEnv) => {
       // opt-in because the report is on-demand and never gates: its cost is
       // paid only when asked for, with no CI stability bar to protect.
       // The integration project stays out: it is a black-box HTTP suite that
-      // fetches a separately-spawned dev-server process and imports no src, so
-      // under --coverage it measures the empty runner process, not the server.
-      // Capturing that server-entry/route-handler code is feasible -- run the
-      // spawned server under NODE_V8_COVERAGE and merge its profile -- but
+      // fetches separately-spawned servers and imports no src, so under
+      // --coverage it measures the empty runner process, not the server.
+      // Capturing the console server's entry and route code is feasible -- run
+      // the spawned server under NODE_V8_COVERAGE and merge its profile -- but
       // low-value: a bespoke merge step outside Vitest's model, to cover thin
-      // server-entry and route glue whose behavior the integration suite
-      // already asserts end-to-end. So it is out of scope, not a deferred gap.
+      // entry and route glue whose behavior the integration suite already
+      // asserts end-to-end. So it is out of scope, not a deferred gap.
       coverage: {
         provider: "v8",
         // text -> terminal summary; html + lcov -> browsable/tooling report
@@ -355,11 +391,18 @@ export default defineConfig((configEnv) => {
       ],
     },
     plugins: [
-      tanstackStart({
-        srcDirectory: "src",
+      tanstackRouter({
+        target: "react",
+        routesDirectory: path.join(import.meta.dirname, "src/routes"),
+        generatedRouteTree: path.join(
+          import.meta.dirname,
+          "src/routeTree.gen.ts",
+        ),
+        autoCodeSplitting: true,
+        codeSplittingOptions: { deleteNodes: ["ssr", "server", "headers"] },
       }),
-      nitroV2Plugin({ preset: "node-server" }),
       viteReact(),
+      ...(underVitest ? [] : [hostedDevDocument()]),
     ],
     resolve: {
       tsconfigPaths: true,

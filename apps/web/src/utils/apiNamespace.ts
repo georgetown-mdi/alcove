@@ -1,13 +1,11 @@
 /**
- * The refusal the server entry (src/server.ts) applies to the `/api` namespace
- * ahead of the router.
+ * The refusal the console server (server/console/app.ts) applies to the `/api`
+ * namespace ahead of its route table.
  *
  * The only server API under `/api` is the console job API (`/api/jobs/...`),
  * enabled only on the console deployment profile; the peer-coordination broker
- * runs as a service of its own (packages/peerjs-broker). The profiles refuse:
- *
- * - Hosted: the whole namespace.
- * - Console: the whole namespace unless the job API is enabled.
+ * runs as a service of its own (packages/peerjs-broker). The whole namespace is
+ * refused unless the job API is enabled.
  *
  * A refused request is answered with the job gate's own empty `404`
  * ({@link jobEmptyResponse}) and never reaches the router. What the refusal
@@ -23,17 +21,6 @@ import {
 
 /** The path the app's server API routes are served under. */
 const API_PATH_ROOT = "/api";
-
-/**
- * The paths under {@link API_PATH_ROOT} the hosted deployment lets through to
- * the router, and the console profile refuses even with the job API enabled.
- * Empty: the hosted deployment serves nothing under the namespace.
- *
- * scripts/api-namespace-allowlist.test.mjs holds this list against the
- * generated route tree, so a path the router serves under the namespace that is
- * neither listed here nor behind the job gate cannot land unnoticed.
- */
-export const HOSTED_API_PREFIXES: ReadonlyArray<string> = [];
 
 /** How many times a path is percent-decoded while looking for a fixed point. A
  * path still decoding past this is refused outright when it is under `/api`. */
@@ -105,11 +92,6 @@ function spellingsOf(pathname: string): {
   return { spellings: [...spellings], settled };
 }
 
-/** Whether `spelling` is under one of {@link HOSTED_API_PREFIXES}. */
-function isHostedApiPath(spelling: string): boolean {
-  return HOSTED_API_PREFIXES.some((prefix) => isUnderPrefix(spelling, prefix));
-}
-
 /**
  * Whether any spelling of `pathname` -- as written, case-folded,
  * dot-resolved, or percent-decoded -- is `/api` or under it, or decoding was
@@ -124,31 +106,23 @@ export function isApiNamespacePath(pathname: string): boolean {
 }
 
 /**
- * Whether the request for `url` is refused under the current profile: on the
- * hosted profile, any spelling of its path lands under `/api` outside
- * {@link HOSTED_API_PREFIXES}; on the console profile, any spelling lands under
- * one of them, or under `/api` at all while the job API is not enabled.
- * Deciding over every spelling rather than one normal form makes the refusal
- * wider than the router's own resolution and never narrower -- a spelling the
- * router resolves to a route under `/api` is refused whether or not this agrees
- * with the router on which route that is. A path still decoding at the round
- * bound is refused on being under `/api` at all.
+ * Whether the request for `url` is refused: any spelling of its path lands
+ * under `/api` while the job API is not enabled. Deciding over every spelling
+ * rather than one normal form makes the refusal wider than the router's own
+ * resolution and never narrower -- a spelling the router resolves to a route
+ * under `/api` is refused whether or not this agrees with the router on which
+ * route that is. A path still decoding at the round bound is refused on being
+ * under `/api` at all.
  */
 function isRefusedApiPath(url: string): boolean {
   const { spellings, settled } = spellingsOf(new URL(url).pathname);
-  const underApi = spellings.filter((spelling) =>
-    isUnderPrefix(spelling, API_PATH_ROOT),
-  );
-  if (underApi.length === 0) return false;
-  if (!settled) return true;
-  const config = readJobApiConfig();
-  if (config.consoleProfile)
-    return !isJobApiEnabled(config) || underApi.some(isHostedApiPath);
-  return underApi.some((spelling) => !isHostedApiPath(spelling));
+  if (!spellings.some((spelling) => isUnderPrefix(spelling, API_PATH_ROOT)))
+    return false;
+  return !settled || !isJobApiEnabled(readJobApiConfig());
 }
 
 /**
- * Wrap `route` -- the framework's request handler -- in the `/api` refusal: a
+ * Wrap `route` -- the server's request handler -- in the `/api` refusal: a
  * refused path is answered without calling `route` at all. The profile and
  * enablement are read per request from the same {@link readJobApiConfig} and
  * {@link isJobApiEnabled} the per-route job gate reads, so the two cannot

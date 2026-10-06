@@ -733,14 +733,13 @@ describe("scanned roots", { timeout: SCAN_TIMEOUT_MS }, () => {
     });
   });
 
-  it("covers the server entry point the deployed web app boots", () => {
-    // Nitro builds the deployed server around this entry, so a URL literal
+  it("covers the console server entry point the image boots", () => {
+    // The console server build is bundled from this entry, so a URL literal
     // reached during server boot is as shipped as anything under src/.
-    const nitro = readFileSync(
-      resolve(repoRoot, "apps/web/nitro.config.ts"),
-      "utf8",
+    const { scripts } = JSON.parse(
+      readFileSync(resolve(repoRoot, "apps/web/package.json"), "utf8"),
     );
-    const entry = /\bentry:\s*"([^"]+)"/.exec(nitro);
+    const entry = /--ssr\s+(\S+)/.exec(scripts["build:console-server"]);
     expect(entry).not.toBeNull();
     const entryPath = `apps/web/${entry[1].replace(/^\.\//, "")}`;
     expect(SCANNED_ROOTS.some((root) => entryPath.startsWith(`${root}/`))).toBe(

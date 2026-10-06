@@ -10,9 +10,7 @@ coverage
 count.txt
 .env
 .env.development
-.nitro
 .tanstack
-.output
 # Vitest browser-mode failure screenshots and run attachments.
 .vitest
 __screenshots__

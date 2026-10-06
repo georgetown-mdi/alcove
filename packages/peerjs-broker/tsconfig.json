@@ -7,7 +7,7 @@
     "lib": ["ES2022"],
 
     /* Bundler mode: the package ships TypeScript source, which the web app's
-       vite/nitro passes transform and the standalone entry runs under tsx, so
+       vite passes transform and the standalone entry runs under tsx, so
        nothing here emits. */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

@@ -29,7 +29,7 @@ dependency and transitive in the image is therefore the exact version in the com
 lockfile: a rebuild without a lockfile change cannot re-resolve a caret range,
 and the image ships the same tree CI tested. The release SBOM covers a wider
 scope than this install -- step 9 in [RELEASES.md](../RELEASES.md) runs
-`npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev --legacy-peer-deps -w packages/core -w apps/cli -w apps/web`
+`npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web`
 -- because the console server build this image copies
 (`apps/web/dist/console-server`) bundles `apps/web`'s runtime dependencies, and
 the console client build (`apps/web/dist/console`) its browser ones, which the
@@ -94,12 +94,13 @@ command with the `-w` flags dropped: scoped, npm reifies in place and removes
 only what the scope reaches, leaving the build's own dependencies -- `eslint`
 among them -- where the first install put them.
 
-Emptying it is not sufficient on its own. npm omits a package the lockfile flags
-`dev` and keeps one it flags `devOptional`, and `vite` has the second flag:
-`apps/web` declares it a devDependency while `@tanstack/react-start`,
-`@tanstack/router-plugin`, `@tanstack/start-plugin-core`, `@vitest/mocker` and
-`vitefu` each declare it an optional peer. `--omit=optional` is what leaves it,
-and `rolldown` and `esbuild` beneath it, out of the image.
+npm omits a package the lockfile flags `dev` and keeps one it flags
+`devOptional`. The lockfile flags `vite` `dev`, so the emptied tree holds no
+`vite`, and no `rolldown` or `esbuild` beneath it. The table's figures were
+taken against an earlier lockfile. Driven the same way on npm 11.19.1 against
+the committed one, the emptied-tree install holds no `vite` with or without
+`--omit=optional`, at 69 and 66 top-level entries; the flag's only effect is
+the omission below.
 
 What that omission costs is ssh2's two optional edges, the only ones inside the
 `packages/core` plus `apps/cli` scope: `cpu-features`, its native CPU-detection

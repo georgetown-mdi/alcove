@@ -2,8 +2,7 @@
  * Defense-in-depth response headers. The hosted static site sends them from the
  * generated `_headers` file, which `apps/web/hosted/headersFile.ts` writes from
  * this one; the console server sets them itself on every response it sends
- * (`apps/web/server/console/app.ts`), and so does the web app's server entry
- * (`apps/web/src/server.ts`).
+ * (`apps/web/server/console/app.ts`).
  *
  * The confidential invitation token rides in the URL fragment, which browsers
  * already withhold from `Referer`; `Referrer-Policy: no-referrer` extends that
