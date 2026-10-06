@@ -125,9 +125,9 @@ A gated claim or confirmed review finding has four dispositions, not one:
    runtime change, and filed as `.claude/pm/ruleset.md`, Filing and updating
    items, allows.
 4. **Record it as a stated limit**: the finding is true, it stands, and what it
-   costs is written into the round's dispositions ledger. No branch edit, no
-   `docs/spec/` line, and NO BOARD ITEM -- the ledger entry is the record, and it
-   is durable because the ledger is per branch and survives the round.
+   costs is written into the round's dispositions ledger, and NO BOARD ITEM.
+   Whether it also becomes a `docs/spec/` limits line at merge-ready is set by
+   `.claude/orchestration/ruleset.md`, Review flow.
 
 The last two are the cheap ones, not failures. A true finding whose fix would
 grow the guarded surface is usually best narrowed, and one that costs nothing a
@@ -241,7 +241,11 @@ and did not hold), `narrowed` (the limits line is on the branch), `limit`
 table, and a named home). A `limit`
 entry has a `note` beside it -- one phrase saying what the branch is living
 with -- because the entry is the whole record of that finding and an unannotated
-one is treated as an entry nobody wrote down.
+one is treated as an entry nobody wrote down. It also states its surface, as
+`.claude/commands/light-review.md`, Step 3 -- Trajectory, ledger, write, lists:
+`"surface": "internal"`, or a `limitsLine` once the limit is promoted. The check
+holds this only for rounds dated the limit-rule date the check's header names
+or later; a limit in an earlier round stays ledger-only.
 
 A `deferred` entry names where the finding went: a board item,
 as `"board": "<board>/<itemId>"`, or a spec limits line on the branch, as
@@ -277,10 +281,13 @@ run `node .claude/scripts/check-review-ledger-dispositions.mjs
 PRIMARY/scratch/review-rounds/<key>.jsonl <PR head sha>` against the PR head.
 It refuses a `fixed` entry whose commit is not contained in the head -- as an
 ancestor, or as a commit with the same patch after a rebase -- and a `deferred`
-entry that names neither a board item nor a limits line the head holds; its
+entry that names neither a board item nor a limits line the head holds, and a
+`limit` entry on a reachable surface without a limits line the head holds; its
 header states which older rows it skips. A refusal gates readiness: a fix that
-never reached the head goes back into a fix pass, and a deferral with no home is
-given one or rewritten as `limit` with a note.
+never reached the head goes back into a fix pass, a deferral with no home is
+given one or rewritten as `limit` with a note, and a reachable limit has its
+limits line written on the branch, or its entry marked `"surface": "internal"`
+when nothing a user or partner reaches is limited.
 
 **Re-attestation.** A fix committed here moves the head, so a Security review
 line already attesting an earlier sha goes stale. The mechanical paths below are

@@ -202,8 +202,9 @@ the first. In order:
   model a mechanism rests on, an alternative weighed and set aside -- amends the
   surface's model note under `docs/notes/` on the branch that raised it, rather
   than being filed or written into the spec. Recommend that and file nothing.
-- A review finding's default sink is a limits line in the governing `docs/spec/`
-  file, written on the branch that raised it. Recommend that and file nothing.
+- A review finding's default sink is the stated limit
+  `.claude/orchestration/ruleset.md`, Review flow, defines, not a board item.
+  Recommend that and file nothing.
 - A finding that belongs on the board but matches a standing sweep item (a
   coverage sweep, an accounting reconciliation) is APPENDED to that item -- name the
   item and add the finding to its criteria rather than creating a sibling.
