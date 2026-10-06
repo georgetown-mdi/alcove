@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
 import {
   LEGACY_CUTOFF_DATE,
+  LIMIT_RULE_DATE,
   checkLedger,
   parseLedger,
   remapFixCommits,
@@ -23,6 +24,7 @@ const { makeFixture, makeTempDir, cleanup } = createGitFixtures();
 afterEach(cleanup);
 
 const DATE = LEGACY_CUTOFF_DATE;
+const LIMIT_DATE = LIMIT_RULE_DATE;
 const FILE = "a\n1\n2\n3\n4\n5\nb\nc\n";
 
 /**
@@ -230,27 +232,30 @@ describe("limit entries", () => {
     const { fixture, oldHead } = branchWithFix();
     const results = check(
       fixture,
-      row([
-        {
-          item: "helper name",
-          disposition: "limit",
-          note: "internal naming",
-          surface: "internal",
-        },
-        {
-          item: "blank rows",
-          disposition: "limit",
-          note: "partner sees fewer rows",
-          surface: "reachable",
-          limitsLine: 'docs/spec/LIMITS.md#"skips blank rows"',
-        },
-        {
-          item: "unmarked but promoted",
-          disposition: "limit",
-          note: "partner sees fewer rows",
-          limitsLine: "docs/spec/LIMITS.md#limits",
-        },
-      ]),
+      row(
+        [
+          {
+            item: "helper name",
+            disposition: "limit",
+            note: "internal naming",
+            surface: "internal",
+          },
+          {
+            item: "blank rows",
+            disposition: "limit",
+            note: "partner sees fewer rows",
+            surface: "reachable",
+            limitsLine: 'docs/spec/LIMITS.md#"skips blank rows"',
+          },
+          {
+            item: "unmarked but promoted",
+            disposition: "limit",
+            note: "partner sees fewer rows",
+            limitsLine: "docs/spec/LIMITS.md#limits",
+          },
+        ],
+        { date: LIMIT_DATE },
+      ),
       oldHead,
     );
     expect(results.map((r) => `${r.item}:${r.status}`)).toEqual([
@@ -264,27 +269,30 @@ describe("limit entries", () => {
     const { fixture, oldHead } = branchWithFix();
     const results = check(
       fixture,
-      row([
-        {
-          item: "reachable",
-          disposition: "limit",
-          note: "n",
-          surface: "reachable",
-        },
-        { item: "unmarked", disposition: "limit", note: "n" },
-        {
-          item: "absent phrase",
-          disposition: "limit",
-          note: "n",
-          limitsLine: 'docs/spec/LIMITS.md#"skips every row"',
-        },
-        {
-          item: "unknown surface",
-          disposition: "limit",
-          note: "n",
-          surface: "partner",
-        },
-      ]),
+      row(
+        [
+          {
+            item: "reachable",
+            disposition: "limit",
+            note: "n",
+            surface: "reachable",
+          },
+          { item: "unmarked", disposition: "limit", note: "n" },
+          {
+            item: "absent phrase",
+            disposition: "limit",
+            note: "n",
+            limitsLine: 'docs/spec/LIMITS.md#"skips every row"',
+          },
+          {
+            item: "unknown surface",
+            disposition: "limit",
+            note: "n",
+            surface: "partner",
+          },
+        ],
+        { date: LIMIT_DATE },
+      ),
       oldHead,
     );
     expect(results.map((r) => [r.item, r.status, r.reason])).toEqual([
@@ -301,6 +309,23 @@ describe("limit entries", () => {
         expect.stringMatching(/not "reachable" or "internal"/),
       ],
     ]);
+  });
+
+  it("exempts a limit dated before the limit rule and holds one dated on it", () => {
+    const { fixture, oldHead } = branchWithFix();
+    const limit = [{ item: "rows", disposition: "limit", note: "n" }];
+    const day = (date) =>
+      new Date(Date.parse(date) - 86400000).toISOString().slice(0, 10);
+    expect(
+      check(fixture, row(limit, { date: day(LIMIT_DATE) }), oldHead).map(
+        (r) => r.status,
+      ),
+    ).toEqual(["skipped"]);
+    expect(
+      check(fixture, row(limit, { date: LIMIT_DATE }), oldHead).map(
+        (r) => r.status,
+      ),
+    ).toEqual(["refused"]);
   });
 });
 
@@ -334,7 +359,7 @@ describe("legacy rows", () => {
       "new fix:ok",
       "old fix:refused",
       "old deferral:refused",
-      "old limit:refused",
+      "old limit:skipped",
     ]);
   });
 
@@ -357,10 +382,10 @@ describe("legacy rows", () => {
     expect(
       check(fixture, ledger, oldHead).map((r) => `${r.item}:${r.status}`),
     ).toEqual([
-      "new limit:ok",
+      "new limit:skipped",
       "old fix:refused",
       "old deferral:refused",
-      "old limit:refused",
+      "old limit:skipped",
     ]);
   });
 
@@ -370,7 +395,7 @@ describe("legacy rows", () => {
       check(fixture, legacyRow(LEGACY_CUTOFF_DATE), oldHead).map(
         (r) => r.status,
       ),
-    ).toEqual(["refused", "refused", "refused"]);
+    ).toEqual(["refused", "refused", "skipped"]);
   });
 });
 
@@ -406,13 +431,17 @@ describe("the command line", () => {
     const dir = makeTempDir("ledger-file-");
     const ledgerPath = join(dir, "branch.jsonl");
     const limit = { item: "rows", disposition: "limit", note: "lived with" };
+    const dated = (entries) => row(entries, { date: LIMIT_DATE });
 
-    writeFileSync(ledgerPath, `${row([limit])}\n`);
+    writeFileSync(ledgerPath, `${dated([limit])}\n`);
     const refused = runScript(fixture.dir, [ledgerPath, oldHead]);
     expect(refused.status).toBe(1);
     expect(refused.stdout).toMatch(/round 1 limit: rows/);
 
-    writeFileSync(ledgerPath, `${row([{ ...limit, surface: "internal" }])}\n`);
+    writeFileSync(
+      ledgerPath,
+      `${dated([{ ...limit, surface: "internal" }])}\n`,
+    );
     const passed = runScript(fixture.dir, [ledgerPath, oldHead]);
     expect(passed.status).toBe(0);
     expect(passed.stdout).toMatch(/dispositions: PASS -- 1 checked/);

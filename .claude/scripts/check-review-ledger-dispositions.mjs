@@ -51,6 +51,10 @@
 // per-worktree ref (`HEAD`, `ORIG_HEAD`) means a different commit in each
 // linked tree.
 //
+// Limit rule date. A row dated before LIMIT_RULE_DATE is exempt from the
+// `limit` check above, so its limits stay ledger-only: the rule landed on that
+// day, and earlier limits were written under the ledger-only default.
+//
 // Exit codes: 0 every held entry passes (legacy rows skipped); 1 an entry is
 // refused; 2 usage, an unreadable ledger line, an invocation from outside a
 // git worktree, or a git error.
@@ -62,6 +66,9 @@ import { isAncestor } from "./verify-rebase-invariance.mjs";
 
 /** Rows dated on or after this day are never treated as legacy. */
 export const LEGACY_CUTOFF_DATE = "2026-10-01";
+
+/** Rows dated on or after this day are held to the `limit` check. */
+export const LIMIT_RULE_DATE = "2026-10-07";
 
 /**
  * The ledger's rows as `{rows, unreadable}`. Each row keeps the index of the
@@ -217,6 +224,18 @@ export function checkLedger({ rows, head, git }) {
       const base = { round: row.round, item, disposition };
       if (legacy.has(row)) {
         results.push({ ...base, status: "skipped", reason: "legacy row" });
+        continue;
+      }
+      if (
+        disposition === "limit" &&
+        typeof row.date === "string" &&
+        row.date < LIMIT_RULE_DATE
+      ) {
+        results.push({
+          ...base,
+          status: "skipped",
+          reason: "limit before the limit rule",
+        });
         continue;
       }
       const reason = reasonFor[disposition](entry);
