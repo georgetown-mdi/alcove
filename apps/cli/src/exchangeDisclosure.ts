@@ -18,6 +18,7 @@ import {
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
   redactAndSanitizeForDisplay,
+  redactUrlCredentials,
   ruleSetCitation,
   summarizeInvitation,
   withholdsPartnerAssociationTable,
@@ -30,7 +31,6 @@ import {
   type ConsentSurfaceSink,
 } from "./invitationDisplay";
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
-import { redactUrlCredentials } from "./util/connectionUrl";
 import { logFileLinePattern, readLogFileTail } from "./util/logging";
 
 import type { ProtocolConnectionConfig } from "./protocol";

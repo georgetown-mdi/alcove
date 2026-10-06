@@ -4,11 +4,11 @@ import {
   disclosedColumnNames,
   displayPartyIdentity,
   holdsPrivateKeyMaterial,
+  isBareSftpHost,
   summarizeInvitation,
 } from "@alcove/core";
 
 import { commitAcceptance } from "@psi/acceptConsent";
-import { isBareSftpHost } from "@psi/sftpHost";
 
 import { isolatedColumnName } from "@components/ColumnName";
 

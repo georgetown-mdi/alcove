@@ -182,6 +182,15 @@ Every command that takes a path or other positional argument reads the arguments
 
 When a connection is supplied as a URL, Alcove percent-decodes the host, path, username, and password into the stored connection fields, so a reserved or non-ASCII character must be percent-encoded in the URL and is stored decoded -- for example `sftp://user@host/my%20drop` targets the directory `my drop`, and a percent-encoded password is sent decoded. All URL-to-config paths decode identically. A malformed percent-escape (such as a lone `%`) is rejected with a usage error (exit 64), and the credential is redacted from the message.
 
+The path of an `sftp://` or `ssh://` URL names the server directory:
+
+- A path names an absolute directory: `sftp://host/srv/drop` is `/srv/drop`.
+- A path under `/~/` names a directory relative to the login directory: `sftp://host/~/drop` is `drop`. Write `%7E` for a first directory literally named `~` (`sftp://host/%7E/drop` is `/~/drop`).
+- No path, `/`, or `/~` uses the login directory itself.
+- Each path segment is decoded on its own, and a segment holding an encoded slash (`%2F`) is refused (exit 64): separate directories with `/`.
+
+The host must be a server name or an IP address, an IPv6 literal written in brackets (`sftp://[2001:db8::1]/drop`); a port must be 1 to 65535. A URL holding a query or fragment is refused (exit 64), so a `?` or `#` in a directory name is written `%3F` or `%23`.
+
 An `INPUT_FILE` argument may be given as `-` to read the CSV from standard input instead of a file on disk -- for example, `cat data.csv | alcove exchange - results/` -- so a pipeline need not stage a temporary file. This applies to `alcove exchange`, the zero-setup form (`alcove URL INPUT_FILE`), `alcove invite`, `alcove init`, and `alcove verify-receipt` -- for the last, to its `INPUT_FILE` only; the `RESULT_FILE` positional must be a path.
 
 - **`alcove accept`** applies it only with `--consent-to-terms`: `accept` normally reads its interactive confirmation from standard input and so cannot also take the CSV there, so a `-` input is rejected with guidance to give a file path; passing `--consent-to-terms` skips that prompt and frees standard input, so `accept --consent-to-terms - ...` reads the CSV from stdin like the others.

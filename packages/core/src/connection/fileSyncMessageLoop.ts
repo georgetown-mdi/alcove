@@ -38,6 +38,7 @@ import {
   TransportPublishIndeterminateError,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
+import { joinFileSyncPath } from "./fileSyncPath";
 import {
   MESSAGE_ENVELOPE_VERSION,
   MESSAGE_TYPE_OBJECT,
@@ -427,7 +428,7 @@ export class FileSyncMessageLoop {
     // A `.tmp` extension (not `.json`) keeps this in-flight write from matching
     // a `*.json` sync-tool watch before the rename to the final name lands.
     const tempFile = `temp-${uuidv4()}.tmp`;
-    const tempPath = `${outboundPath}/${tempFile}`;
+    const tempPath = joinFileSyncPath(outboundPath, tempFile);
 
     // Waits for the EXACT message we last sent (this.lastSentFile) to be
     // consumed (deleted) by the peer, not for any <id>-<digits>.json. Under
@@ -553,7 +554,7 @@ export class FileSyncMessageLoop {
         seq,
         ts,
       });
-      const outPath = `${outboundPath}/${outName}`;
+      const outPath = joinFileSyncPath(outboundPath, outName);
 
       deps
         .log()
@@ -909,7 +910,7 @@ export class FileSyncMessageLoop {
                 `${declaredSize} bytes; waiting for full sync`,
             );
         } else {
-          const inPath = `${path}/${messageFile.name}`;
+          const inPath = joinFileSyncPath(path, messageFile.name);
           deps
             .log()
             .debug(

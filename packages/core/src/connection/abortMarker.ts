@@ -33,6 +33,7 @@ import { toBase64Url, fromBase64Url, bytesEqual } from "../utils/crypto";
 import { parseBoundedJson } from "../utils/boundedJson";
 import { TransportOperationStalledError, UsageError } from "../errors";
 import { ABORT_SUFFIX } from "./fileSyncNames";
+import { joinFileSyncPath } from "./fileSyncPath";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 
 // Hard cap on the abort marker read. The envelope is ~80 bytes; 1 KiB is
@@ -266,8 +267,8 @@ export class AbortMarkerSubsystem {
     // BEFORE close() runs (close() also signals, but may lose that race). No-op on
     // a transport that does not implement it.
     inputs.client.beginTeardown?.();
-    const tempPath = `${inputs.path}/temp-${uuidv4()}.tmp`;
-    const finalPath = `${inputs.path}/${inputs.finalName}`;
+    const tempPath = joinFileSyncPath(inputs.path, `temp-${uuidv4()}.tmp`);
+    const finalPath = joinFileSyncPath(inputs.path, inputs.finalName);
     await this.deps.runBudgeted(
       inputs.client.put(inputs.body, tempPath, {
         flags: "w",
@@ -391,7 +392,7 @@ export class AbortMarkerSubsystem {
       // self-bounds reads. The short rawClient budget is reserved for the
       // teardown write, which must fast-fail so a faulting process is not
       // held open.
-      const raw = await client.get(`${path}/${markerName}`, {
+      const raw = await client.get(joinFileSyncPath(path, markerName), {
         encoding: "utf-8",
         maxBytes: ABORT_MARKER_MAX_BYTES,
       });

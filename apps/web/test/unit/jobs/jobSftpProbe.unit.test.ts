@@ -11,7 +11,6 @@ import {
   PROBE_EXCERPT_MAX_DISPLAY_LENGTH,
   PROBE_PEER_READ_BUDGET_MS,
   PROBE_SIGTERM_MS,
-  buildSftpProbeUrl,
   parseProbeDiagnosis,
   parseProbeStdout,
   probeSftpHostKey,
@@ -46,26 +45,6 @@ const okLine = (
   fingerprint = TEST_HOST_KEY_FINGERPRINT,
   keyType = "ssh-ed25519",
 ) => JSON.stringify({ fingerprint, key_type: keyType }) + "\n";
-
-describe("buildSftpProbeUrl composes a bare sftp URL", () => {
-  test("host only", () => {
-    expect(buildSftpProbeUrl("sftp.example.org", undefined)).toBe(
-      "sftp://sftp.example.org",
-    );
-  });
-
-  test("host and port", () => {
-    expect(buildSftpProbeUrl("sftp.example.org", 2222)).toBe(
-      "sftp://sftp.example.org:2222",
-    );
-  });
-
-  test("brackets a bare IPv6 literal", () => {
-    expect(buildSftpProbeUrl("2001:db8::1", 22)).toBe(
-      "sftp://[2001:db8::1]:22",
-    );
-  });
-});
 
 describe("reconcileProbeExit maps the child's exit", () => {
   test("exit 69 is unreachable", () => {

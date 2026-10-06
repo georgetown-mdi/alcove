@@ -23,6 +23,7 @@ import { InternalConsistencyError, UsageError } from "../errors.js";
 import { readBoundedJsonBody } from "../utils/boundedJsonBody.js";
 import { enc } from "../utils/crypto.js";
 import { maxCodeUnits } from "../utils/maxCodeUnits.js";
+import { isBareIpv6Address } from "./sftpUrl.js";
 import {
   MAX_ENDPOINT_HOST_LENGTH,
   MAX_ENDPOINT_PATH_LENGTH,
@@ -75,19 +76,6 @@ const HOST_LABEL_PATTERN = /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
  */
 function isHostName(host: string): boolean {
   return host.split(".").every((label) => HOST_LABEL_PATTERN.test(label));
-}
-
-/**
- * A conservative bare IPv6 literal check: only hex digits, `:` and, in at
- * most one trailing dotted run (an IPv4-mapped tail), a decimal `.`; at
- * least two colons tell it from a host name or IPv4 address. Brackets are
- * refused here -- `hostForAuthority` adds them for the request itself.
- */
-function isBareIpv6Address(host: string): boolean {
-  if (!/^[0-9A-Fa-f:.]+$/.test(host)) return false;
-  if ((host.match(/:/g) ?? []).length < 2) return false;
-  const dots = host.match(/\./g) ?? [];
-  return dots.length === 0 || dots.length === 3;
 }
 
 function isHostNameOrIpAddress(host: string): boolean {

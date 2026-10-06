@@ -1,5 +1,6 @@
 import {
   HOST_KEY_FINGERPRINT_REGEX,
+  formatSftpUrl,
   parseBoundedJson,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -126,38 +127,6 @@ export type SftpProbeResult =
   | { kind: "timeout" }
   | { kind: "error" };
 
-// The placeholder host the URL is seeded with, distinguished from a real host so
-// a setter no-op (which leaves this value in place) is detectable. `.invalid` is
-// a reserved TLD (RFC 6761), so it is never a legitimately authored server.
-const PROBE_URL_SENTINEL_HOST = "host.invalid";
-
-/**
- * Build the `sftp://host[:port]` URL the probe child dials, from a host that
- * has already passed {@link isBareSftpHost}. Mirrors the WHATWG-URL /
- * IPv6-bracket discipline of `buildZeroSetupSftpUrl`: a bare IPv6 literal is
- * bracketed first (the hostname setter rejects an unbracketed one), the host
- * is assigned through the {@link URL} object (never string concatenation),
- * and a total drop -- an empty hostname or the untouched sentinel -- is a
- * hard error.
- *
- * @internal exported for testing
- */
-export function buildSftpProbeUrl(
-  host: string,
-  port: number | undefined,
-): string {
-  const hostForUrl =
-    host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
-  const url = new URL(`sftp://${PROBE_URL_SENTINEL_HOST}`);
-  url.hostname = hostForUrl;
-  if (url.hostname === "" || url.hostname === PROBE_URL_SENTINEL_HOST)
-    throw new Error(
-      "could not encode the sftp host into a URL for a host-key probe",
-    );
-  if (port !== undefined) url.port = String(port);
-  return url.href;
-}
-
 /**
  * Reconcile the probe child's exit into an {@link SftpProbeResult}. Exit 69 (the
  * CLI's transport-failure code) is `unreachable`; exit 0 parses the captured
@@ -277,9 +246,9 @@ export function parseProbeStdout(stdout: string): SftpProbeResult {
  * child's own connect timeout. This driver owns the argv, the two budgets,
  * and the exit-to-result mapping.
  *
- * The URL build can throw only on a host that never passed the bare-host
- * predicate (a caller bug); it surfaces as a rejected promise the caller
- * maps to a 500.
+ * The URL build (core's `formatSftpUrl`) throws only on a host or port the
+ * route's own checks refuse (a caller bug); it surfaces as a rejected promise
+ * the caller maps to a 500.
  */
 export async function probeSftpHostKey(args: {
   host: string;
@@ -289,7 +258,10 @@ export async function probeSftpHostKey(args: {
   sigtermMs?: number;
   sigkillGraceMs?: number;
 }): Promise<SftpProbeResult> {
-  const url = buildSftpProbeUrl(args.host, args.port);
+  const url = formatSftpUrl({
+    host: args.host,
+    ...(args.port !== undefined ? { port: args.port } : {}),
+  });
   const outcome = await runCapturedCliChild({
     argv: [
       args.binaryPath,

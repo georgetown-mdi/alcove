@@ -69,6 +69,17 @@ test("buildConnectOptions keeps an allowlisted providerOptions key and drops a n
   expect(warnings.some((w) => w.includes("providerOptions.sock"))).toBe(true);
 });
 
+test("buildConnectOptions dials a bracketed IPv6 host without its brackets", () => {
+  const { session } = makeSession();
+  for (const host of ["[2001:db8::1]", "2001:db8::1"]) {
+    const opts = session.buildConnectOptions(
+      { channel: "sftp", server: { host } },
+      { includeCredentials: false },
+    );
+    expect(opts["host"]).toBe("2001:db8::1");
+  }
+});
+
 test("buildConnectOptions filters algorithms to the tunable sub-keys and drops serverHostKey", () => {
   const { session, warnings } = makeSession();
   const config: SFTPConnectionConfig = {

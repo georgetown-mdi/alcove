@@ -7,9 +7,10 @@ import {
   SPLIT_DIRECTORY_BOTH_HALVES_REQUIREMENT,
   SPLIT_DIRECTORY_DISTINCT_REQUIREMENT,
   SPLIT_DIRECTORY_RETAIN_REQUIREMENT,
-  applyHostInput,
+  UNREADABLE_HOST_PASTE,
   buildAuthoringRequest,
-  parseSftpUrl,
+  hostPasted,
+  hostTyped,
   sftpFormError,
   sftpFormFromLocator,
 } from "@console/sftpConnectionForm";
@@ -45,45 +46,82 @@ const formError = (values: SftpConnectionFormValues) =>
 const authoringRequest = (values: SftpConnectionFormValues) =>
   buildAuthoringRequest(values, true);
 
-describe("parseSftpUrl", () => {
-  test("splits a full sftp URL into its fields", () => {
-    expect(parseSftpUrl("sftp://linkage@sftp.example.gov:2022/drop")).toEqual({
-      host: "sftp.example.gov",
-      username: "linkage",
-      port: 2022,
-      path: "/drop",
-    });
+describe("hostTyped", () => {
+  test("keeps a partly typed sftp:// address as typed", () => {
+    for (const raw of ["s", "sftp:", "sftp://", "sftp://u@"]) {
+      const result = hostTyped(EMPTY_SFTP_FORM, raw);
+      expect(result.host, raw).toBe(raw);
+      expect(result.hostPasteUnreadable, raw).toBe(false);
+    }
   });
 
-  test("omits an absent user, port, and path", () => {
-    expect(parseSftpUrl("sftp://sftp.example.gov")).toEqual({
-      host: "sftp.example.gov",
-    });
+  test("reports typed login details through the bare-host check", () => {
+    const result = hostTyped(EMPTY_SFTP_FORM, "sftp://u@host");
+    expect(formError({ ...validForm(), ...result })?.field).toBe("host");
+    expect(formError({ ...validForm(), ...result })?.message).not.toBe(
+      UNREADABLE_HOST_PASTE,
+    );
   });
 
-  test("returns null for a non-sftp or unparseable input", () => {
-    expect(parseSftpUrl("sftp.example.gov")).toBeNull();
-    expect(parseSftpUrl("https://example.gov")).toBeNull();
-    expect(parseSftpUrl("sftp://")).toBeNull();
+  test("clears the paste notice once the operator types a host", () => {
+    const refused = hostPasted(EMPTY_SFTP_FORM, "u:secret@host");
+    expect(refused).toBeDefined();
+    const typed = hostTyped(refused ?? EMPTY_SFTP_FORM, "s");
+    expect(typed.host).toBe("s");
+    expect(typed.hostPasteUnreadable).toBe(false);
   });
 });
 
-describe("applyHostInput", () => {
-  test("splits a pasted sftp URL across the fields", () => {
-    const result = applyHostInput(
+describe("hostPasted", () => {
+  test("empties the host field and shows the notice when core cannot read the paste", () => {
+    for (const raw of [
+      "sftp://",
+      "sftp://u:secret@host/a?b",
+      "sftp://u:se@cret@host/a?b",
+      "sftp://u:se/cret@host/a",
+      "u:secret@host",
+      "sftp://host:0/drop",
+      "sftp://host/bad%zz",
+    ]) {
+      const result = hostPasted(validForm(), raw);
+      expect(result?.host, raw).toBe("");
+      expect(result === undefined ? undefined : formError(result)).toEqual({
+        field: "host",
+        message: UNREADABLE_HOST_PASTE,
+      });
+    }
+  });
+
+  test("splits a pasted sftp URL across the host, port and user fields", () => {
+    const result = hostPasted(
       EMPTY_SFTP_FORM,
       "sftp://linkage@sftp.example.gov:2022/drop",
     );
-    expect(result.host).toBe("sftp.example.gov");
-    expect(result.username).toBe("linkage");
-    expect(result.port).toBe("2022");
-    expect(result.remoteDirectory).toBe("/drop");
+    expect(result?.host).toBe("sftp.example.gov");
+    expect(result?.username).toBe("linkage");
+    expect(result?.port).toBe("2022");
+    expect(result?.remoteDirectory).toBe("/drop");
+    expect(result?.hostPasteUnreadable).toBe(false);
   });
 
-  test("sets the raw text as the host when it is not a URL", () => {
-    const result = applyHostInput(EMPTY_SFTP_FORM, "sftp.example.gov");
-    expect(result.host).toBe("sftp.example.gov");
-    expect(result.username).toBe("");
+  test("decodes the pasted directory, relative under /~/, as the CLI does", () => {
+    expect(
+      hostPasted(EMPTY_SFTP_FORM, "sftp://host/my%20dir")?.remoteDirectory,
+    ).toBe("/my dir");
+    expect(
+      hostPasted(EMPTY_SFTP_FORM, "sftp://host/~/in%25box")?.remoteDirectory,
+    ).toBe("in%box");
+  });
+
+  test("takes an IPv6 literal without its brackets", () => {
+    const result = hostPasted(EMPTY_SFTP_FORM, "sftp://[2001:db8::1]:22/x");
+    expect(result?.host).toBe("2001:db8::1");
+    expect(result?.port).toBe("22");
+  });
+
+  test("leaves text with no sftp scheme and no login details to the input", () => {
+    for (const raw of ["https://example.gov", "sftp.example.gov"])
+      expect(hostPasted(EMPTY_SFTP_FORM, raw), raw).toBeUndefined();
   });
 });
 
@@ -118,6 +156,7 @@ describe("sftpFormError", () => {
   test("bounds an optional port", () => {
     expect(formError(validForm({ port: "70000" }))?.field).toBe("port");
     expect(formError(validForm({ port: "-1" }))?.field).toBe("port");
+    expect(formError(validForm({ port: "0" }))?.field).toBe("port");
     expect(formError(validForm({ port: "22" }))).toBeUndefined();
   });
 

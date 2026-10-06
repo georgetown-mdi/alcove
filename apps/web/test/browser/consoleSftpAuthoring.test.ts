@@ -13,6 +13,7 @@ import { decodeInvitation } from "@alcove/core";
 
 import { InviterScreen } from "@exchange/InviterScreen";
 import { SftpCredentialWarnings } from "@console/SftpCredentialWarnings";
+import { UNREADABLE_HOST_PASTE } from "@console/sftpConnectionForm";
 import styles from "@styles/app.module.css";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -472,6 +473,41 @@ describe("console SFTP connection authoring", () => {
       .toBeDisabled();
   });
 
+  test("a typed sftp:// prefix stays in the host field", async () => {
+    stubJobApi();
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await page.getByRole("button", { name: "Add connection" }).click();
+    const host = page.getByLabelText("SFTP server address");
+    await userEvent.type(host, "sftp://");
+    await expect.element(host).toHaveValue("sftp://");
+    await expect
+      .element(page.getByText(UNREADABLE_HOST_PASTE))
+      .not.toBeInTheDocument();
+  });
+
+  test("an unreadable pasted address empties the host field and says why at once", async () => {
+    stubJobApi();
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await page.getByRole("button", { name: "Add connection" }).click();
+    const host = page.getByLabelText("SFTP server address");
+    await userEvent.click(host);
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", "sftp://u:se@cret@host/a?b");
+    host.element().dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await expect.element(host).toHaveValue("");
+    await expect
+      .element(page.getByText(UNREADABLE_HOST_PASTE))
+      .toBeInTheDocument();
+  });
+
   test("authors a connection from a picked secrets file, then runs it here", async () => {
     const api = stubJobApi();
     app.render(createElement(InviterScreen));
@@ -740,7 +776,7 @@ describe("console SFTP connection authoring", () => {
     await page.getByRole("button", { name: "Save connection" }).click();
     // Save reopens Advanced so the blocking port error is visible.
     await expect
-      .element(page.getByText("Enter a port number between 0 and 65535"))
+      .element(page.getByText("Enter a port number between 1 and 65535"))
       .toBeVisible();
   });
 

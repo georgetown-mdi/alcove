@@ -17,7 +17,7 @@ import {
 } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
-import { sanitizeForDisplay } from "@alcove/core";
+import { isBareSftpHost, isSftpPort, sanitizeForDisplay } from "@alcove/core";
 
 import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 
@@ -25,13 +25,13 @@ import {
   probeSftpHostKey,
   putSftpConnection,
 } from "@psi/jobClient/sftpAuthoringClient";
-import { isBareSftpHost } from "@psi/sftpHost";
 
 import styles from "@styles/app.module.css";
 
 import {
-  applyHostInput,
   buildAuthoringRequest,
+  hostPasted,
+  hostTyped,
   sftpFormError,
 } from "./sftpConnectionForm";
 import { SecretsFilePicker } from "./SecretsFilePicker";
@@ -127,8 +127,13 @@ export function SftpAuthoringForm({
   const probeTarget = probeTargetOf(values, reviewLocator);
 
   const error = sftpFormError(values, retainFiles, singleFingerprint);
+  // A cleared paste is reported at once: the operator just watched the field
+  // empty and needs the reason before trying to save.
+  const errorShown =
+    attempted ||
+    (values.hostPasteUnreadable === true && error?.field === "host");
   const fieldError = (field: SftpFormField): string | undefined =>
-    attempted && error?.field === field ? error.message : undefined;
+    errorShown && error?.field === field ? error.message : undefined;
 
   const update = (patch: Partial<SftpConnectionFormValues>): void => {
     setValues((current) => ({ ...current, ...patch }));
@@ -182,11 +187,16 @@ export function SftpAuthoringForm({
           value={values.host}
           error={fieldError("host")}
           errorProps={{ role: "alert" }}
-          onChange={(event) =>
-            setValues((current) =>
-              applyHostInput(current, event.currentTarget.value),
-            )
-          }
+          onChange={(event) => {
+            const typed = event.currentTarget.value;
+            setValues((current) => hostTyped(current, typed));
+          }}
+          onPaste={(event) => {
+            const pasted = event.clipboardData.getData("text");
+            if (hostPasted(values, pasted) === undefined) return;
+            event.preventDefault();
+            setValues((current) => hostPasted(current, pasted) ?? current);
+          }}
         />
       )}
       <TextInput
@@ -664,8 +674,7 @@ function probeTargetOf(
   const portText = values.port.trim();
   if (portText === "") return { host };
   const port = Number(portText);
-  if (!Number.isInteger(port) || port < 0 || port > 65535)
-    return { disabledReason: "Enter a valid port first." };
+  if (!isSftpPort(port)) return { disabledReason: "Enter a valid port first." };
   return { host, port };
 }
 

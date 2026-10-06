@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { isBareSftpHost } from "@psi/sftpHost";
+import { SftpPortSchema, isBareSftpHost } from "@alcove/core";
 
 import {
   MAX_SFTP_PROBE_BODY_BYTES,
@@ -25,7 +25,7 @@ import type { SftpProbeResult } from "@jobs/sftpProbe";
  */
 const probeBodySchema = z.strictObject({
   host: z.string().min(1),
-  port: z.int().min(0).max(65535).optional(),
+  port: SftpPortSchema.optional(),
 });
 
 /**
