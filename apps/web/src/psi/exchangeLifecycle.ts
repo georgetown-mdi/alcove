@@ -392,10 +392,10 @@ interface RunExchangeLifecycleOptions<
  *   raises no alert -- the results are available and there is nothing for the
  *   operator to act on.
  * - **The exchange-vs-output distinction survives** (F2). A failure from
- *   acquire/open/run is `"exchange"`, except a trust failure from the
- *   authenticated key exchange (a `security`-kind `ConnectionError`), which
- *   is `"security"` so the UI shows an authentication failure rather than a
- *   retryable transport drop; a `generateOutput` throw (the exchange already
+ *   acquire/open/run is `"exchange"`, except a failure the core
+ *   classifier reads as a trust-boundary failure, behind transport wraps or
+ *   bare, which is `"security"` so the UI shows an authentication failure
+ *   rather than a retryable transport drop; a `generateOutput` throw (the exchange already
  *   succeeded) is `"output"`; a teardown-only throw raises neither.
  * - **A failure after this party's payload send keeps the record.** Both a
  *   run failure core attached a record to and an `"output"` failure of a

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { default as EventEmitter } from "eventemitter3";
 
 import {
+  AuthenticationError,
   ConnectionError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
@@ -797,6 +798,42 @@ describe("runExchangeLifecycle", () => {
     // The trust boundary holds: no PSI frame is sent after a failed handshake.
     expect(mockedRunExchange).not.toHaveBeenCalled();
     expect(s.onResult).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    {
+      name: "an authentication failure behind a transport wrap is category 'security'",
+      cause: new AuthenticationError("key exchange authentication failed"),
+      category: "security",
+    },
+    {
+      name: "a usage failure behind a transport wrap stays category 'exchange'",
+      cause: new UsageError("the frame limit was exceeded"),
+      category: "exchange",
+    },
+  ])("$name", async ({ cause, category }) => {
+    const { mc } = makeFakeMc();
+    mockedOpen.mockResolvedValue(mc);
+    const wrapped = new ConnectionError(
+      "the message send failed",
+      "transport",
+      {
+        cause,
+      },
+    );
+    mockedAuthenticate.mockRejectedValue(wrapped);
+    const { acquired } = makeResources();
+    const acquire: Acquire = () => Promise.resolve(acquired);
+    const s = seams();
+
+    await runExchangeLifecycle({
+      acquire,
+      exchangeRole: "initiator",
+      signal: new AbortController().signal,
+      ...s,
+    });
+
+    expect(s.onError).toHaveBeenCalledWith({ category, error: wrapped });
   });
 
   test("a handshake transport drop stays the retryable category 'exchange'", async () => {
