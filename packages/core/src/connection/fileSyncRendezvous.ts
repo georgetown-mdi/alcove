@@ -309,10 +309,12 @@ const longestTwoIdNameBytes = (selfId: string, peerId: string): number =>
 // they do for a BilateralModeMismatchError: the peer reaches the same verdict
 // only by reading it.
 class PeerIdsTooLongError extends UsageError {}
+class PeerIdsPrefixError extends UsageError {}
 
 // Refuses a peer id that, with this party's id, would make a file name the
-// exchange writes longer than MAX_FILE_NAME_BYTES. Called at every site that
-// reads a peer hello before writing a name derived from it.
+// exchange writes longer than MAX_FILE_NAME_BYTES. Applied, with the prefix
+// refusal, at every site that reads a peer hello before writing a name derived
+// from it.
 /** @internal */
 export function peerIdLengthRefusal(
   selfId: string,
@@ -327,6 +329,34 @@ export function peerIdLengthRefusal(
       `file names built from them reach ${bytes} bytes, over the ` +
       `${MAX_FILE_NAME_BYTES}-byte limit. Set a shorter peer_id on the ` +
       "party that configured a long one.",
+  );
+}
+
+// Refuses an id pair where one id extends the other at a '-' boundary (e.g.
+// 'site' / 'site-2'): a file named for one party would then parse as the
+// other's. Needs only the two ids, so it runs where a peer hello is read,
+// before any write that hello leads to.
+/** @internal */
+export function peerIdPrefixRefusal(
+  selfId: string,
+  peerId: string,
+): UsageError | undefined {
+  if (!peerId.startsWith(selfId + "-") && !selfId.startsWith(peerId + "-"))
+    return undefined;
+  return new PeerIdsPrefixError(
+    `peer id '${redactPrivateKeyMaterial(peerId)}' and this party's id ` +
+      `'${selfId}' share a prefix at a '-' boundary; ids must not be ` +
+      "prefix-extensions of each other (e.g. 'site' / 'site-2')",
+  );
+}
+
+// The id-pair refusals every peer-hello read applies before it writes.
+function peerIdPairRefusal(
+  selfId: string,
+  peerId: string,
+): UsageError | undefined {
+  return (
+    peerIdLengthRefusal(selfId, peerId) ?? peerIdPrefixRefusal(selfId, peerId)
   );
 }
 
@@ -1376,13 +1406,13 @@ export class FileSyncRendezvous {
     );
 
     // A flag mismatch here means the peer is lockless: only a lockless peer
-    // leaves its hello for a lock joiner to find. On either refusal the joiner
+    // leaves its hello for a lock joiner to find. On any refusal the joiner
     // publishes its own hello first, so the peer reads it and refuses too, and
     // keeps the peer hello: both are the directory's terminal state, untracked
     // so close()/cleanup() does not sweep them.
     const refusal =
       bilateralMismatch(peerEnvelope, deps.options()) ??
-      peerIdLengthRefusal(deps.id(), peerId);
+      peerIdPairRefusal(deps.id(), peerId);
     if (refusal) {
       await this.advertiseHelloBeforeRefusal(scope, helloPath);
       // Reset role/peer fields, mirroring the outer catch.
@@ -1456,24 +1486,6 @@ export class FileSyncRendezvous {
     // "already synchronized" guard does not block a retry on the same
     // instance, and `handshakeRole` does not point at a peer that may
     // not actually exist.
-    if (
-      peerId.startsWith(deps.id() + "-") ||
-      deps.id().startsWith(peerId + "-")
-    ) {
-      // Remove our hello before throwing: without this, a retry on the
-      // same path (or the same instance) would find the stale file and
-      // either mistake it for the peer's hello or trip the preexisting-
-      // file guard. The throw escapes synchronize() directly (the joiner
-      // fast-path has no enclosing catch), so no outer handler cleans up.
-      await deps.client().safeDelete(helloPath);
-      if (!deps.options().retainFiles) deps.responsibleFiles.delete(helloName);
-      deps.resetSessionState();
-      throw new UsageError(
-        `peer id '${redactPrivateKeyMaterial(peerId)}' and this party's id ` +
-          `'${deps.id()}' share a prefix at a '-' boundary; ids must not be ` +
-          "prefix-extensions of each other (e.g. 'site' / 'site-2')",
-      );
-    }
     deps.setHandshakeRole("initiator");
     deps.setRole("joiner");
     deps.setPeerId(peerId);
@@ -1608,8 +1620,8 @@ export class FileSyncRendezvous {
             // that read our hello at its own two-hellos branch).
             const mismatch = bilateralMismatch(peerEnvelope, deps.options());
             if (mismatch) throw mismatch;
-            const idTooLong = peerIdLengthRefusal(deps.id(), peerId);
-            if (idTooLong) throw idTooLong;
+            const idRefusal = peerIdPairRefusal(deps.id(), peerId);
+            if (idRefusal) throw idRefusal;
 
             // Acknowledge the peer's hello with a zero-length marker named
             // after it (`<myId>-<peerHelloStem>-ack.json`). This is a
@@ -1981,7 +1993,7 @@ export class FileSyncRendezvous {
           // outer catch's skip-sweep for the peer to read.
           const refusal =
             bilateralMismatch(peerEnvelope, deps.options()) ??
-            peerIdLengthRefusal(deps.id(), otherId);
+            peerIdPairRefusal(deps.id(), otherId);
           if (refusal) {
             await deps
               .client()
@@ -2059,11 +2071,11 @@ export class FileSyncRendezvous {
           // and the sweep are both skipped.
           const mismatch = bilateralMismatch(peerEnvelope, deps.options());
           if (mismatch) throw mismatch;
-          const idTooLong = peerIdLengthRefusal(
+          const idRefusal = peerIdPairRefusal(
             deps.id(),
             otherFile.name.slice(0, -HELLO_SUFFIX.length),
           );
-          if (idTooLong) throw idTooLong;
+          if (idRefusal) throw idRefusal;
 
           // arrived first, should wait for a message
           deps.setHandshakeRole("responder");
@@ -2127,8 +2139,8 @@ export class FileSyncRendezvous {
           );
           const mismatch = bilateralMismatch(peerEnvelope, deps.options());
           if (mismatch) throw mismatch;
-          const idTooLong = peerIdLengthRefusal(deps.id(), deps.peerId()!);
-          if (idTooLong) throw idTooLong;
+          const idRefusal = peerIdPairRefusal(deps.id(), deps.peerId()!);
+          if (idRefusal) throw idRefusal;
 
           const lockName =
             `${arrivedFirst ? deps.id() : deps.peerId()}-` +
@@ -2282,25 +2294,19 @@ export class FileSyncRendezvous {
       // depth: a peerId="" slipping through would make poll() treat every
       // "-"-prefixed file as a peer message and the lockless ack barrier
       // wait on an ack no honest peer writes, so fail closed here rather
-      // than proceed.
+      // than proceed. Each peer-hello read checks the id pair before its
+      // write; the check here covers a peer id the lockless barrier commits
+      // from a later listing than the hello it read.
       if (deps.peerId()!.length === 0)
         throw new UsageError(
           "rendezvous recovered an empty peer id; a bare " +
             `'${HELLO_SUFFIX}' is not a usable peer hello`,
         );
-      if (
-        deps.peerId()!.startsWith(deps.id() + "-") ||
-        deps.id().startsWith(deps.peerId()! + "-")
-      )
-        throw new UsageError(
-          `peer id '${redactPrivateKeyMaterial(deps.peerId()!)}' and this ` +
-            `party's id '${deps.id()}' share ` +
-            "a prefix at a '-' boundary; ids must not be prefix-extensions " +
-            "of each other (e.g. 'site' / 'site-2')",
-        );
+      const prefixRefusal = peerIdPrefixRefusal(deps.id(), deps.peerId()!);
+      if (prefixRefusal) throw prefixRefusal;
       return;
     } catch (err: unknown) {
-      // A bilateral-mode mismatch and an id-length refusal must not sweep
+      // A bilateral-mode mismatch and an id-pair refusal must not sweep
       // the directory: this party's advertised hello (written before the
       // loop) is the directory's terminal state, left in place so the peer
       // reads it through its own peer-hello read and refuses too. Skip the
@@ -2311,7 +2317,8 @@ export class FileSyncRendezvous {
       // (I0) until the operator clears the directory.
       if (
         !(err instanceof BilateralModeMismatchError) &&
-        !(err instanceof PeerIdsTooLongError)
+        !(err instanceof PeerIdsTooLongError) &&
+        !(err instanceof PeerIdsPrefixError)
       ) {
         if (lockPath) await deps.client().safeDelete(lockPath);
         if (ackPath) await deps.client().safeDelete(ackPath);

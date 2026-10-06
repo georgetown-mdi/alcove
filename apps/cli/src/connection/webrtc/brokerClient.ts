@@ -220,6 +220,17 @@ export class BrokerSocketDroppedError extends ConnectionError {
   }
 }
 
+/**
+ * A registration that failed before the broker answered: the socket erred,
+ * ended or timed out without a refusal from the broker. A caller that has
+ * registered once already in this run can register again.
+ */
+export class BrokerUnreachableError extends ConnectionError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, "transport", options);
+  }
+}
+
 /** What a failed signaling socket reports when the certificate verified. */
 export const SIGNALING_SOCKET_FAILED_MESSAGE =
   "the connection to the signaling server failed";
@@ -271,18 +282,14 @@ function signalingSocketError(
   certificate: SignalingCertificateAnswer,
 ): ConnectionError {
   if (certificate === undefined)
-    return new ConnectionError(SIGNALING_SOCKET_FAILED_MESSAGE, "transport");
+    return new BrokerUnreachableError(SIGNALING_SOCKET_FAILED_MESSAGE);
   if (certificate.kind === "not-checked-proxied")
-    return new ConnectionError(SIGNALING_PROXIED_FAILED_MESSAGE, "transport");
-  return new ConnectionError(
-    SIGNALING_CERTIFICATE_FAILED_MESSAGE,
-    "transport",
-    {
-      cause: chainDetailCauses([
-        fittedCauseLink(CERTIFICATE_PROBLEM_LINK_LABEL, certificate.code),
-      ]),
-    },
-  );
+    return new BrokerUnreachableError(SIGNALING_PROXIED_FAILED_MESSAGE);
+  return new BrokerUnreachableError(SIGNALING_CERTIFICATE_FAILED_MESSAGE, {
+    cause: chainDetailCauses([
+      fittedCauseLink(CERTIFICATE_PROBLEM_LINK_LABEL, certificate.code),
+    ]),
+  });
 }
 
 /**
@@ -685,10 +692,9 @@ export function connectToBroker(
       if (!opened) {
         reject(
           error ??
-            new ConnectionError(
+            new BrokerUnreachableError(
               "the connection to the signaling server ended before it was " +
                 "registered",
-              "transport",
             ),
         );
         return;
@@ -839,10 +845,9 @@ export function connectToBroker(
     openTimer = setTimeout(
       () =>
         end(
-          new ConnectionError(
+          new BrokerUnreachableError(
             `the signaling server did not confirm registration within ` +
               `${openTimeoutMs}ms`,
-            "transport",
           ),
         ),
       openTimeoutMs,

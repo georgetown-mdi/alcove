@@ -37,6 +37,8 @@ const mockState = vi.hoisted(() => ({
   exchangeConnections: [] as Array<unknown>,
   /** Every `log.info` line the run emitted, with its arguments joined as a console joins them. */
   logLines: [] as Array<string>,
+  /** Every `log.warn` line, joined the same way. */
+  warnLines: [] as Array<string>,
 }));
 
 vi.mock("@openmined/psi.js", () => ({
@@ -56,7 +58,9 @@ vi.mock("@alcove/core", async (importActual) => {
       info: (...parts: Array<unknown>) => {
         mockState.logLines.push(parts.map((part) => String(part)).join(" "));
       },
-      warn: () => {},
+      warn: (...parts: Array<unknown>) => {
+        mockState.warnLines.push(parts.map((part) => String(part)).join(" "));
+      },
       error: () => {},
       debug: () => {},
       trace: () => {},
@@ -111,14 +115,20 @@ vi.mock("@alcove/core", async (importActual) => {
 // The transport itself is stood up by its own suites; here it is replaced by a
 // pair of in-memory connections so the dispatch's inputs and the handshake it
 // drives are what the run depends on.
-vi.mock("../../../src/connection/webrtc/webrtcMessageConnection", async () => ({
-  openWebRtcMessageConnection: vi.fn(
-    async (options: Record<string, unknown>) => {
-      mockState.dials.push(options);
-      return linkedConnection(options.role as "inviter" | "acceptor");
-    },
-  ),
-}));
+vi.mock(
+  "../../../src/connection/webrtc/webrtcMessageConnection",
+  async (importActual) => ({
+    ...(await importActual<
+      typeof import("../../../src/connection/webrtc/webrtcMessageConnection")
+    >()),
+    openWebRtcMessageConnection: vi.fn(
+      async (options: Record<string, unknown>) => {
+        mockState.dials.push(options);
+        return linkedConnection(options.role as "inviter" | "acceptor");
+      },
+    ),
+  }),
+);
 
 // The SFTP adapter must never be constructed on this channel; importing the real
 // one would also pull ssh2 into a suite that has no server.
@@ -148,6 +158,10 @@ const {
   WEBRTC_BROKER_PATH_REFUSED,
 } = await import("../../../src/connection/webrtc/weriftPeer");
 const { saveKeyFile } = await import("../../../src/keyFile");
+const {
+  FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  FinalFrameUnconfirmedError,
+} = await import("../../../src/connection/webrtc/webrtcMessageConnection");
 const {
   DISPLAY_TRUNCATION_MARKER,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
@@ -239,6 +253,7 @@ beforeEach(() => {
   mockState.handshakes.length = 0;
   mockState.exchangeConnections.length = 0;
   mockState.logLines.length = 0;
+  mockState.warnLines.length = 0;
 });
 
 afterEach(() => {
@@ -447,6 +462,33 @@ function captureSignalExit(): {
   }) as never);
   return { exit, exited };
 }
+
+test("a finished exchange whose last message the partner never confirmed warns the operator", async () => {
+  pair.inviter.close = async () => {
+    throw new FinalFrameUnconfirmedError(
+      FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+    );
+  };
+  await Promise.all([runParty("inviter"), runParty("acceptor")]);
+  expect(mockState.warnLines).toContain(
+    sanitizeErrorForDisplay(
+      new FinalFrameUnconfirmedError(FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE),
+    ),
+  );
+});
+
+test("any other close failure of a finished exchange is not raised to the operator", async () => {
+  const { ConnectionError } = await import("@alcove/core");
+  pair.inviter.close = async () => {
+    throw new ConnectionError("the data channel did not close", "transport");
+  };
+  await Promise.all([runParty("inviter"), runParty("acceptor")]);
+  expect(
+    mockState.warnLines.some((line) =>
+      line.includes("the data channel did not close"),
+    ),
+  ).toBe(false);
+});
 
 test("a signal during the rendezvous closes the channel it opened", async () => {
   // The interrupt handler's cleanup runs while the dial is still in flight, so

@@ -100,7 +100,11 @@ export interface MessageConnection {
    * so every later call fails fast.
    */
   receive(timeoutMs?: number): Promise<unknown>;
-  /** Tears down the transport. Idempotent; always resolves on a clean close. */
+  /**
+   * Tears down the transport. Idempotent; resolves on a clean close, and
+   * rejects, once torn down, when a transport that waits for the peer to
+   * confirm its last frames did not get that confirmation.
+   */
   close(): Promise<void>;
   /**
    * Optional: resolves once the connection reaches a terminal state, with the

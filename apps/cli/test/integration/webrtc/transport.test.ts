@@ -13,7 +13,11 @@ import {
   setLogLevel,
 } from "@alcove/core";
 
-import { openWebRtcMessageConnection } from "../../../src/connection/webrtc/webrtcMessageConnection";
+import {
+  FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  FinalFrameUnconfirmedError,
+  openWebRtcMessageConnection,
+} from "../../../src/connection/webrtc/webrtcMessageConnection";
 import {
   describeSelectedCandidatePair,
   readIceStats,
@@ -628,11 +632,12 @@ test("a clean close of this side's own closes the channel too", async () => {
   }
 }, 120_000);
 
-test("closing after the partner has vanished still returns, on the flush ceiling", async () => {
+test("closing after the partner has vanished ends on the flush ceiling and reports the frame unconfirmed", async () => {
   // The drain waits for the peer to acknowledge, and a peer that is simply
   // gone never does: werift keeps reporting the connection up for about
   // thirty seconds, with `bufferedAmount` pinned at its peak. The ceiling is
-  // what ends the close instead of the peer-loss signal.
+  // what ends the close instead of the peer-loss signal, and the close says
+  // the frame was not confirmed rather than reporting a clean close.
   //
   // The partner is torn down at the session, not through its message
   // connection, so no close sentinel reaches this side -- otherwise the peer
@@ -655,8 +660,15 @@ test("closing after the partner has vanished still returns, on the flush ceiling
   await vanishing.close();
 
   const started = Date.now();
-  await acceptor.close();
+  const failure = await acceptor.close().then(
+    () => undefined,
+    (err: unknown) => err,
+  );
   const elapsed = Date.now() - started;
+  expect(failure).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((failure as Error).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  );
   expect(elapsed).toBeGreaterThanOrEqual(2_000);
   // Comfortably inside werift's ~30s consent-freshness detection, so it is the
   // ceiling that ended the wait and not the peer-loss signal.

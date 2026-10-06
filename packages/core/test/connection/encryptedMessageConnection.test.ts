@@ -831,14 +831,18 @@ test("a security failure tears down the inner transport", async () => {
   await expect(peer.receive()).rejects.toThrow(/peer closed/i);
 });
 
-test("close() resolves even when the inner connection's close rejects", async () => {
+test("close() reports the inner connection's close rejection, tearing it down once", async () => {
   let closeCalls = 0;
+  const innerFailure = new ConnectionError(
+    "last frame not confirmed",
+    "transport",
+  );
   const inner: MessageConnection = {
     send: () => Promise.resolve(),
     receive: () => new Promise<unknown>(() => {}),
     close: () => {
       closeCalls++;
-      return Promise.reject(new Error("inner close boom"));
+      return Promise.reject(innerFailure);
     },
   };
   const enc = await EncryptedMessageConnection.create(
@@ -846,11 +850,37 @@ test("close() resolves even when the inner connection's close rejects", async ()
     SESSION_KEY,
     "initiator",
   );
-  // close() must resolve (the MessageConnection contract), and be idempotent: a
-  // second close() also resolves without tearing the inner down twice.
-  await expect(enc.close()).resolves.toBeUndefined();
-  await expect(enc.close()).resolves.toBeUndefined();
+  // A transport that could not confirm delivery says so through close(); a
+  // second close() reports the same outcome without a second inner teardown.
+  await expect(enc.close()).rejects.toBe(innerFailure);
+  await expect(enc.close()).rejects.toBe(innerFailure);
   expect(closeCalls).toBe(1);
+});
+
+test("an inner close rejection during a failure teardown is reported by the later close()", async () => {
+  const innerFailure = new ConnectionError(
+    "last frame not confirmed",
+    "transport",
+  );
+  let rejectInnerClose: (reason: unknown) => void = () => {};
+  const inner: MessageConnection = {
+    send: () => Promise.resolve(),
+    receive: () => Promise.resolve(new Uint8Array([0xff])),
+    close: () =>
+      new Promise<void>((_, reject) => {
+        rejectInnerClose = reject;
+      }),
+  };
+  const enc = await EncryptedMessageConnection.create(
+    inner,
+    SESSION_KEY,
+    "initiator",
+  );
+  // A malformed frame latches a failure, which starts the inner teardown with
+  // no caller awaiting it.
+  await expect(enc.receive()).rejects.toBeInstanceOf(ConnectionError);
+  rejectInnerClose(innerFailure);
+  await expect(enc.close()).rejects.toBe(innerFailure);
 });
 
 // --- deriveAeadKey known-answer vector ----------------------------------------

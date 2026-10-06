@@ -126,7 +126,10 @@ export class EncryptedMessageConnection implements MessageConnection {
   // Memoized inner-teardown promise: undefined until the first teardown, then
   // the single in-flight/settled inner.close() promise. Makes inner teardown
   // run exactly once whether triggered by a terminal failure or by close().
+  // It never rejects; a rejection of the inner close is kept beside it for
+  // close() to report.
   private innerClosed: Promise<void> | undefined = undefined;
+  private innerCloseFailure: { reason: unknown } | undefined = undefined;
   // The latch close() sets, kept so terminated() can tell this side's own
   // close from a failure the wrapper detected.
   private readonly closeLatch = new ConnectionError(
@@ -215,12 +218,14 @@ export class EncryptedMessageConnection implements MessageConnection {
   // Tear the inner transport down exactly once. Memoizing the promise makes
   // close() idempotent at this layer (rather than borrowing the inner
   // connection's own idempotency guard) and lets close() await the same
-  // teardown a prior fail() may have already started. Inner-teardown errors are
-  // swallowed: close() must always resolve per the MessageConnection contract,
-  // and teardown is best-effort whether it is reached via fail() or close().
+  // teardown a prior fail() may have already started. A teardown fail() starts
+  // is not awaited by anyone, so the inner close's rejection is recorded rather
+  // than left unhandled, and close() reports it.
   private closeInner(): Promise<void> {
     return (this.innerClosed ??= Promise.resolve(this.inner.close()).catch(
-      () => {},
+      (reason: unknown) => {
+        this.innerCloseFailure = { reason };
+      },
     ));
   }
 
@@ -561,8 +566,13 @@ export class EncryptedMessageConnection implements MessageConnection {
     // kind "closed", not by this latch. Going through
     // closeInner() makes this idempotent and reuses any teardown a prior fail()
     // already started, so inner.close() runs once no matter how this is reached.
+    // A rejection of the inner close -- a transport that tore down without
+    // confirming its last frames reached the peer -- is reported to every
+    // close() caller, as the inner connection would report it unwrapped.
     this.fail(this.closeLatch);
     await this.closeInner();
+    if (this.innerCloseFailure !== undefined)
+      throw this.innerCloseFailure.reason;
   }
 
   // Forward the per-exchange inbound frame cap to the inner transport's read

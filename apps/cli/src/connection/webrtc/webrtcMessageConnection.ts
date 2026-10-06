@@ -138,8 +138,33 @@ export interface WebRtcMessageConnectionOptions {
 }
 
 /**
- * Resolve once `settled` holds -- or once there is no live peer left to drain
- * to, or the budget runs out.
+ * What a flushing close rejects with when the peer did not acknowledge every
+ * frame handed over before it: the connection is torn down either way, and the
+ * partner may or may not have the last frame this side sent.
+ */
+export class FinalFrameUnconfirmedError extends ConnectionError {
+  constructor(message: string) {
+    super(message, "transport");
+  }
+}
+
+/** @internal */
+export const FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE =
+  "the exchange partner did not confirm receiving this side's last message " +
+  "before the wait for them ran out, so their exchange may have ended " +
+  "without it. Check with your partner that their exchange finished before " +
+  "either of you relies on their copy.";
+
+/** @internal */
+export const FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE =
+  "the connection closed before the exchange partner confirmed receiving " +
+  "this side's last message, so they may or may not have received it. Check " +
+  "with your partner that their exchange finished before either of you " +
+  "relies on their copy.";
+
+/**
+ * Wait until `settled` holds -- or until there is no live peer left to drain
+ * to, or the budget runs out -- and return whether it held.
  *
  * The liveness condition is not belt-and-braces. An acknowledgement never comes
  * from a peer that has gone, so a drain that watched only the clock would turn
@@ -152,7 +177,7 @@ async function drainOutbound(
   session: Pick<WebRtcPeerSession, "isConnected">,
   settled: () => boolean,
   timeoutMs: number,
-): Promise<void> {
+): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (
     !settled() &&
@@ -167,6 +192,7 @@ async function drainOutbound(
       setTimeout(resolve, CLOSE_FLUSH_POLL_INTERVAL_MS),
     );
   }
+  return settled();
 }
 
 /**
@@ -249,7 +275,9 @@ export function webRtcMessageConnection(
             if (!sendable()) throw sendCut();
             await sendWake.wait();
           }
-          if (sendStopped) throw sendCut();
+          // werift queues a send on a channel that has left `open` without
+          // complaint, so a datagram handed over then would never arrive.
+          if (!sendable()) throw sendCut();
           channel.send(Buffer.from(datagram));
         }
       };
@@ -312,19 +340,27 @@ export function webRtcMessageConnection(
           channel.onmessage = undefined;
           channel.onclose = undefined;
           channel.onerror = undefined;
+          let unconfirmed: FinalFrameUnconfirmedError | undefined;
           // Flush only an open channel: on a closed one the sentinel cannot be
           // written and there is nothing left to drain, so the wait would be
           // pure delay on a path that is already failing.
           if (closeOptions?.flush && channel.readyState === "open") {
             // Phase one: every frame already handed over reaches the peer. This
             // is the delivery guarantee, so it waits for acknowledgement and
-            // gets the whole budget.
-            await drainOutbound(
+            // gets the whole budget; a drain that ends without it is reported
+            // once the teardown below has run.
+            const acknowledged = await drainOutbound(
               channel,
               session,
               session.outboundAcknowledged,
               closeFlushTimeoutMs,
             );
+            if (!acknowledged)
+              unconfirmed = new FinalFrameUnconfirmedError(
+                channel.readyState === "open" && session.isConnected()
+                  ? FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE
+                  : FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+              );
             try {
               channel.send(Buffer.from(packCloseSentinel()));
             } catch {
@@ -351,6 +387,7 @@ export function webRtcMessageConnection(
           if (cleanClose && channel.readyState === "open")
             await closeChannel(channel, session, channelCloseTimeoutMs);
           await session.close();
+          if (unconfirmed !== undefined) throw unconfirmed;
         },
         // No `setInboundFrameCap`: this transport bounds its inbound path with
         // its own fixed reassembly envelope rather than a per-exchange cap, so

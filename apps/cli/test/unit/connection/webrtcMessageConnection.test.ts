@@ -14,6 +14,9 @@ import {
   packValue,
 } from "../../../src/connection/webrtc/peerjsWire";
 import {
+  FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  FinalFrameUnconfirmedError,
   sendWindowWake,
   webRtcMessageConnection,
 } from "../../../src/connection/webrtc/webrtcMessageConnection";
@@ -171,6 +174,29 @@ test("what goes on the wire decodes back to what was sent", async () => {
   const decoded = decodeSent(channel);
   expect(decoded[0]).toEqual({ step: 1, note: "one" });
   expect(decoded).toHaveLength(2);
+});
+
+test("a send on a channel that left open without an event hands nothing over", async () => {
+  // werift queues a send on a closing channel rather than refusing it, so a
+  // send that reached it would resolve for bytes that never arrive.
+  const { channel, session } = harness();
+  const connection = webRtcMessageConnection(session);
+  channel.readyState = "closing";
+  await expect(connection.send({ step: 1 })).rejects.toThrow(
+    "closed before a message could be sent",
+  );
+  expect(channel.sent).toHaveLength(0);
+});
+
+test("a send after the partner has gone hands nothing over", async () => {
+  const { channel, session, setConnected } = harness();
+  const connection = webRtcMessageConnection(session);
+  await connection.send({ step: 1 });
+  setConnected(false);
+  await expect(connection.send({ step: 2 })).rejects.toThrow(
+    "closed before a message could be sent",
+  );
+  expect(decodeSent(channel)).toEqual([{ step: 1 }]);
 });
 
 test("a send on a gone channel raises a terminal transport error", async () => {
@@ -525,9 +551,10 @@ test("a clean close waits for the peer to acknowledge before tearing down", asyn
   ]);
 });
 
-test("a clean close still returns when the acknowledgement never comes", async () => {
+test("a clean close the acknowledgement never comes to tears down at the ceiling and rejects", async () => {
   // A partner that stops acknowledging must not hang an unattended run: the
-  // ceiling is what guarantees the close terminates.
+  // ceiling is what guarantees the close terminates, and the close says the
+  // final frame was not confirmed rather than reporting a clean close.
   const { session, closed, setAcknowledged } = harness();
   const connection = webRtcMessageConnection(session, {
     closeFlushTimeoutMs: 80,
@@ -535,8 +562,50 @@ test("a clean close still returns when the acknowledgement never comes", async (
   await connection.send({ step: "last" });
   setAcknowledged(false);
   const started = Date.now();
-  await connection.close();
+  const failure = await connection.close().then(
+    () => expect.unreachable("the close should have rejected"),
+    (err: unknown) => err,
+  );
   expect(Date.now() - started).toBeGreaterThanOrEqual(80);
+  expect(closed()).toBe(1);
+  expect(failure).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((failure as ConnectionError).kind).toBe("transport");
+  expect((failure as ConnectionError).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE,
+  );
+});
+
+test("a clean close whose partner goes before acknowledging tears down and rejects", async () => {
+  const { session, closed, setAcknowledged, setConnected } = harness();
+  const connection = webRtcMessageConnection(session, {
+    closeFlushTimeoutMs: 10_000,
+  });
+  await connection.send({ step: "last" });
+  setAcknowledged(false);
+  const closing = connection.close().then(
+    () => expect.unreachable("the close should have rejected"),
+    (err: unknown) => err,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  const started = Date.now();
+  setConnected(false);
+  const failure = await closing;
+  expect(Date.now() - started).toBeLessThan(1_000);
+  expect(closed()).toBe(1);
+  expect(failure).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((failure as ConnectionError).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  );
+});
+
+test("a partner that acknowledged everything before going leaves a clean close", async () => {
+  const { session, closed, setConnected } = harness();
+  const connection = webRtcMessageConnection(session, {
+    closeFlushTimeoutMs: 10_000,
+  });
+  await connection.send({ step: "last" });
+  setConnected(false);
+  await expect(connection.close()).resolves.toBeUndefined();
   expect(closed()).toBe(1);
 });
 

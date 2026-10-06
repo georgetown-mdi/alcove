@@ -913,7 +913,7 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
-  test("prefix-at-dash in the lock-joiner guard resets counters but not identity", async () => {
+  test("prefix-at-dash in the lock-joiner guard refuses before deleting the peer hello", async () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: false, retainFiles: false };
     // Peer id is a prefix-extension of this party's id at a '-' boundary.
@@ -925,30 +925,60 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     await expect(rejection).rejects.toMatchObject({
       message: expect.stringContaining("share a prefix at a '-' boundary"),
     });
-    // The lock-joiner prefix guard fires BEFORE the identity commit, so it
-    // resets session state only -- identity is never touched and no abort
-    // marker is cleared.
+    expectResetToPreSync(p.state);
     expect(p.state.resetCount).toBe(1);
-    expect(p.state.clearCount).toBe(0);
-    expect(p.state.role).toBe("unknown role");
-    expect(p.state.peerId).toBeUndefined();
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(false);
+    expect(p.state.clearCount).toBe(1);
+    // The partner's hello is never deleted and no sentinel is published; this
+    // party's hello is advertised so the partner refuses on reading it.
+    expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
+    expect(files.has(`${DIR}/aaa${JOINING_SUFFIX}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
-  test("prefix-at-dash at the hello-exchange final gate resets committed identity", async () => {
+  test("prefix-at-dash in the lockless barrier refuses before writing the ack", async () => {
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "aaa-2", flags);
-    placePeerAckOf(files, "aaa-2", "aaa");
+    const p = makeParty("aaa", flags, files);
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
+      message: expect.stringContaining("share a prefix at a '-' boundary"),
+    });
+    expectResetToPreSync(p.state);
+    expect([...files.keys()].some((k) => k.includes("-ack.json"))).toBe(false);
+    // Skip-sweep: this party's hello stays for the partner to read.
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+  });
+
+  test("prefix-at-dash at the hello-exchange final gate resets committed identity", async () => {
+    // The barrier acks one hello, then commits the peer id of a different one
+    // a later listing shows with its ack; only the final gate sees that id.
+    const files = new Map<string, Buffer>();
+    const flags = { locklessRendezvous: true, retainFiles: false };
+    placePeerHello(files, "zzz", flags);
     const p = makeParty("aaa", flags, files, {
-      hideAtEntry: [ackMarkerName("aaa-2", helloStem("aaa"))],
+      listScript: (entries, call) =>
+        call < 2
+          ? entries
+          : [
+              ...entries.filter((e) => e.name !== helloName("zzz")),
+              { name: helloName("aaa-2"), size: 1, modifyTime: 0 },
+              {
+                name: ackMarkerName("aaa-2", helloStem("aaa")),
+                size: 0,
+                modifyTime: 0,
+              },
+            ],
     });
 
-    await expect(p.rdv.run(p.scope)).rejects.toBeInstanceOf(UsageError);
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
+      message: expect.stringContaining("share a prefix at a '-' boundary"),
+    });
     // waitForPeer committed identity; the final prefix guard rolls it back.
     expectResetToPreSync(p.state);
     expect(p.state.clearCount).toBe(1);
     expect(p.state.resetCount).toBe(1);
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
   test("TTL timeout resets identity and is not blocked on a second run", async () => {
@@ -967,6 +997,83 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expect(p.state.peerId).toBeUndefined();
   });
 });
+
+describe("FileSyncRendezvous id-pair refusal ahead of each write", () => {
+  const lockFlags = { locklessRendezvous: false, retainFiles: false };
+  const prefixRefusal = {
+    message: expect.stringContaining("share a prefix at a '-' boundary"),
+  };
+
+  test("the two-hellos branch refuses before racing for the lock", async () => {
+    const files = new Map<string, Buffer>();
+    placePeerHello(files, "aaa-2", lockFlags);
+    const p = makeParty("aaa", lockFlags, files, {
+      hideAtEntry: [helloName("aaa-2")],
+    });
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject(prefixRefusal);
+    expect([...files.keys()].some((name) => name.endsWith(LOCK_SUFFIX))).toBe(
+      false,
+    );
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
+  });
+
+  test("the responder branch refuses before deleting the joiner's hello", async () => {
+    const files = new Map<string, Buffer>();
+    placePeerHello(files, "aaa-2", lockFlags);
+    const p = makeParty("aaa", lockFlags, files, {
+      hideAtEntry: [helloName("aaa-2")],
+      hideSelfHello: helloName("aaa"),
+    });
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject(prefixRefusal);
+    expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
+    expectResetToPreSyncState(p.state);
+  });
+
+  test("the lock-detection branch refuses before committing the pair", async () => {
+    const files = new Map<string, Buffer>();
+    placePeerHello(files, "aaa-2", lockFlags);
+    const lockName = `aaa-2-aaa${LOCK_SUFFIX}`;
+    files.set(`${DIR}/${lockName}`, Buffer.alloc(0));
+    const p = makeParty("aaa", lockFlags, files, {
+      hideAtEntry: [helloName("aaa-2"), lockName],
+    });
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject(prefixRefusal);
+    expectResetToPreSyncState(p.state);
+    // The peer's lock goes, as on a mismatch; both hellos stay for the
+    // partner to reach the same refusal.
+    expect(files.has(`${DIR}/${lockName}`)).toBe(false);
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
+    expect(files.has(`${DIR}/${helloName("aaa-2")}`)).toBe(true);
+  });
+
+  test("two lock parties with prefix-colliding ids both refuse without waiting out the budget", async () => {
+    // The first party arrives and waits; the second takes the joiner fast
+    // path. Each refuses on reading the other's hello.
+    const files = new Map<string, Buffer>();
+    const first = makeParty("aaa", lockFlags, files);
+    const firstRun = first.rdv.run(first.scope);
+    await vi.waitFor(() =>
+      expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true),
+    );
+    const second = makeParty("aaa-2", lockFlags, files);
+    const started = Date.now();
+    await expect(second.rdv.run(second.scope)).rejects.toMatchObject(
+      prefixRefusal,
+    );
+    await expect(firstRun).rejects.toMatchObject(prefixRefusal);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
+const expectResetToPreSyncState = (state: PartyState) => {
+  expect(state.peerId).toBeUndefined();
+  expect(state.role).toBe("unknown role");
+  expect(state.handshakeRole).toBeUndefined();
+};
 
 describe("FileSyncRendezvous mismatch skip-sweep", () => {
   test("leaves this party's own hello but removes a peer lock on mismatch", async () => {
