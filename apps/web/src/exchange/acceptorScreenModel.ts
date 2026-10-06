@@ -125,6 +125,11 @@ export interface AcceptorScreenState {
    * run only by passing it again (the columns step holds the launch while the
    * two disagree). */
   committedDeduplicate: boolean;
+  /** The field delimiter this party's file was read by when the same gate
+   * passed, and the only one the run writes its result with: the consent step's
+   * control stays editable after the file is accepted, and a later choice did
+   * not read the rows the run holds. Undefined reads and writes commas. */
+  committedCsvDelimiter: string | undefined;
   /** The chosen file, held as an unparsed handle until "Accept and continue"
    * fires and passes the gate. */
   file: File | undefined;
@@ -201,6 +206,7 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   acceptorDeduplicate: false,
   committedName: "",
   committedDeduplicate: false,
+  committedCsvDelimiter: undefined,
   file: undefined,
   acceptedFile: undefined,
   consoleSource: undefined,
@@ -279,6 +285,7 @@ export type AcceptorScreenAction =
   | {
       type: "console-accept-committed";
       name: string;
+      csvDelimiter: string | undefined;
       acquired: AcceptorAcquiredCsv;
     }
   /** The consent gate passed on the hosted build; the browser parse began. */
@@ -289,6 +296,7 @@ export type AcceptorScreenAction =
       type: "file-accepted";
       name: string;
       deduplicate: boolean;
+      csvDelimiter: string | undefined;
       positions: Array<number>;
       file: File;
       acquired: AcceptorAcquiredCsv;
@@ -429,6 +437,7 @@ export function acceptorScreenReducer(
         fieldErrors: {},
         committedName: action.name,
         committedDeduplicate: state.acceptorDeduplicate,
+        committedCsvDelimiter: action.csvDelimiter,
         acquired: action.acquired,
       };
     case "parse-started":
@@ -444,6 +453,7 @@ export function acceptorScreenReducer(
         sanitizedColumnPositions: action.positions,
         committedName: action.name,
         committedDeduplicate: action.deduplicate,
+        committedCsvDelimiter: action.csvDelimiter,
         acceptedFile: action.file,
         acquired: action.acquired,
         columnsState: acceptorInitialColumnsState(action.acquired.columns),

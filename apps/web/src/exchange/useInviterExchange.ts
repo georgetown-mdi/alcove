@@ -59,6 +59,7 @@ import {
 } from "@psi/transport/waitForConnection";
 
 import { isConsoleBuild } from "@utils/clientConfig";
+import { useRequestGeneration } from "@utils/requestGeneration";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 import { undeclaredColumnsRunNotice } from "@psi/runWarnings";
@@ -944,6 +945,11 @@ export function useInviterExchange({
   // the re-entry guard and the real run would never start.
   const abortRef = useRef<AbortController | undefined>(undefined);
 
+  // Which retry is the live one: a server-job retry starts its run only once the
+  // failed job's discard settles, and a superseded invitation, a leave, or a
+  // newer retry in that window means that run is no longer wanted.
+  const retryGeneration = useRequestGeneration();
+
   // Revoke this run's object URLs when they are replaced or the owner
   // unmounts: createObjectURL keeps each Blob alive until revoked, and the
   // verification-keys blob is private material, so it should not outlive the
@@ -1213,10 +1219,11 @@ export function useInviterExchange({
     }
     startRef.current(invitation);
     return () => {
+      retryGeneration.invalidate();
       abortRef.current?.abort();
       abortRef.current = undefined;
     };
-  }, [invitation]);
+  }, [invitation, retryGeneration]);
 
   // Offered by the retryable-failure alert alone: the run is over (the
   // lifecycle tore down), so a fresh listen on the same invitation cannot race
@@ -1247,9 +1254,10 @@ export function useInviterExchange({
     // no server job to discard.
     if (runMode === "server-job" && failedJobId !== undefined) {
       currentJobIdRef.current = undefined;
-      void discardServerJob(jobApiClient, failedJobId).then(() =>
-        start(retryInvitation),
-      );
+      const retry = retryGeneration.next();
+      void discardServerJob(jobApiClient, failedJobId).then(() => {
+        if (retryGeneration.isCurrent(retry)) start(retryInvitation);
+      });
       return;
     }
     start(retryInvitation);
@@ -1261,6 +1269,7 @@ export function useInviterExchange({
   // run or before any job exists. This is what frees the console's single
   // slot for the next exchange.
   function abandonRun() {
+    retryGeneration.invalidate();
     const jobId = currentJobIdRef.current;
     if (jobId === undefined) return;
     currentJobIdRef.current = undefined;

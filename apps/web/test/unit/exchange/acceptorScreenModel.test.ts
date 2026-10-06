@@ -106,6 +106,7 @@ function accepted(
     type: "file-accepted",
     name: "Sam Rivera",
     deduplicate: false,
+    csvDelimiter: undefined,
     positions: [],
     file: new File(["first_name\nAnn\n"], csv.fileName, { type: "text/csv" }),
     acquired: csv,
@@ -370,6 +371,7 @@ describe("whether the launch may proceed", () => {
       type: "file-accepted",
       name: "Sam Rivera",
       deduplicate: false,
+      csvDelimiter: undefined,
       positions: [],
       file: new File(["first_name\nAnn\n"], csv.fileName, {
         type: "text/csv",
@@ -383,6 +385,7 @@ describe("whether the launch may proceed", () => {
       type: "file-accepted",
       name: "Sam Rivera",
       deduplicate: true,
+      csvDelimiter: undefined,
       positions: [],
       file: new File(["first_name\nAnn\n"], csv.fileName, {
         type: "text/csv",
@@ -391,6 +394,30 @@ describe("whether the launch may proceed", () => {
     });
     expect(settledTrue.acceptorDeduplicate).toBe(false);
     expect(settledTrue.committedDeduplicate).toBe(true);
+  });
+
+  test("the gate commits the delimiter the file was read by", () => {
+    expect(ACCEPTOR_SCREEN_INITIAL.committedCsvDelimiter).toBeUndefined();
+    const hostedCommit = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "file-accepted",
+      name: "Sam Rivera",
+      deduplicate: false,
+      csvDelimiter: ";",
+      positions: [],
+      file: new File(["first_name\nAnn\n"], csv.fileName, {
+        type: "text/csv",
+      }),
+      acquired: csv,
+    });
+    expect(hostedCommit.committedCsvDelimiter).toBe(";");
+
+    const consoleCommit = acceptorScreenReducer(ACCEPTOR_SCREEN_INITIAL, {
+      type: "console-accept-committed",
+      name: "Sam Rivera",
+      csvDelimiter: "\t",
+      acquired: csv,
+    });
+    expect(consoleCommit.committedCsvDelimiter).toBe("\t");
   });
 
   test("a launch presents the cardinality the gate committed, not the control", () => {
@@ -420,6 +447,7 @@ describe("whether the launch may proceed", () => {
       {
         type: "console-accept-committed",
         name: "Sam Rivera",
+        csvDelimiter: undefined,
         acquired: csv,
       },
     );
@@ -520,6 +548,7 @@ describe("the console's mounted-file commit", () => {
     const gatePassed = acceptorScreenReducer(committed, {
       type: "console-accept-committed",
       name: "Ida Mensah",
+      csvDelimiter: undefined,
       acquired: csv,
     });
     const voided = acceptorScreenReducer(gatePassed, {
@@ -618,6 +647,7 @@ describe("what a voided commit can still compose", () => {
     const gatePassed = acceptorScreenReducer(committed, {
       type: "console-accept-committed",
       name: "Sam Rivera",
+      csvDelimiter: ",",
       acquired: csv,
     });
     const underComma = serverJobConfigFor(gatePassed, ",");

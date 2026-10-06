@@ -189,6 +189,27 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
   },
 }));
 
+// The launch the run hook last received, so a test can read the delimiter the
+// run writes its result with. The real hook still runs.
+const launchHarness = vi.hoisted(() => ({
+  last: undefined as { csvDelimiter?: string } | undefined,
+}));
+vi.mock("@exchange/useAcceptorExchange", async (importOriginal) => {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const useAcceptorExchange = actual.useAcceptorExchange as (args: {
+    launch: { csvDelimiter?: string } | undefined;
+  }) => unknown;
+  return {
+    ...actual,
+    useAcceptorExchange: (args: {
+      launch: { csvDelimiter?: string } | undefined;
+    }) => {
+      if (args.launch !== undefined) launchHarness.last = args.launch;
+      return useAcceptorExchange(args);
+    },
+  };
+});
+
 function lifecycleCall(index: number): CapturedLifecycle {
   return lifecycleHarness.calls[index] as CapturedLifecycle;
 }
@@ -324,6 +345,7 @@ afterEach(() => {
   csvLoadHarness.lastSignal = undefined;
   csvLoadHarness.resolve = undefined;
   lifecycleHarness.calls.length = 0;
+  launchHarness.last = undefined;
   window.location.hash = "";
 });
 
@@ -1435,6 +1457,32 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
     await expect
       .element(page.getByRole("heading", { name: "Confirm your columns" }))
       .toBeInTheDocument();
+  });
+
+  test("the run writes with the delimiter the file was read by at consent", async () => {
+    await reachColumns("first_name,last_name\nAlice,Smith\n");
+
+    // Back at consent the control is live again, but the rows the run holds
+    // were read by comma, and returning forward does not read them again.
+    window.history.back();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Consent & your file");
+    await userEvent.selectOptions(
+      page.getByRole("combobox", { name: "How your file separates fields" }),
+      "\t",
+    );
+    window.history.forward();
+    await expect
+      .element(page.getByRole("heading", { name: "Confirm your columns" }))
+      .toBeInTheDocument();
+
+    await userEvent.click(
+      page.getByRole("button", { name: "Start the exchange" }),
+    );
+    await vi.waitFor(() => expect(lifecycleHarness.calls).toHaveLength(1));
+    expect(csvLoadHarness.called).toBe(1);
+    expect(launchHarness.last?.csvDelimiter).toBe(",");
   });
 
   test("browser Back walks the acceptor steps in place, including the cleaning tab", async () => {
