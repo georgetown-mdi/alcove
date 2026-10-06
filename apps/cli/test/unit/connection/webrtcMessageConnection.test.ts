@@ -598,6 +598,31 @@ test("a clean close whose partner goes before acknowledging tears down and rejec
   );
 });
 
+test("a channel that leaves open during the close's drain is sent no sentinel", async () => {
+  // werift queues a send on a channel that has left `open`, so a sentinel
+  // handed over then would never arrive.
+  const { channel, session, closed, setAcknowledged } = harness();
+  const connection = webRtcMessageConnection(session, {
+    closeFlushTimeoutMs: 10_000,
+  });
+  await connection.send({ step: "last" });
+  setAcknowledged(false);
+  const closing = connection.close().then(
+    () => expect.unreachable("the close should have rejected"),
+    (err: unknown) => err,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  channel.readyState = "closing";
+  const failure = await closing;
+  expect(channel.sent).toHaveLength(1);
+  expect(decodeSent(channel)).toEqual([{ step: "last" }]);
+  expect(closed()).toBe(1);
+  expect(failure).toBeInstanceOf(FinalFrameUnconfirmedError);
+  expect((failure as ConnectionError).message).toBe(
+    FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
+  );
+});
+
 test("a partner that acknowledged everything before going leaves a clean close", async () => {
   const { session, closed, setConnected } = harness();
   const connection = webRtcMessageConnection(session, {

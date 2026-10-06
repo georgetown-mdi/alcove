@@ -256,8 +256,9 @@ export function webRtcMessageConnection(
       channel.bufferedAmountLowThreshold = sendWindowLowBytes;
       channel.addEventListener("bufferedamountlow", wake);
 
-      const sendable = (): boolean =>
-        !sendStopped && channel.readyState === "open" && session.isConnected();
+      const channelSendable = (): boolean =>
+        channel.readyState === "open" && session.isConnected();
+      const sendable = (): boolean => !sendStopped && channelSendable();
 
       const sendCut = (): ConnectionError =>
         new ConnectionError(
@@ -354,29 +355,33 @@ export function webRtcMessageConnection(
             );
             if (!acknowledged)
               unconfirmed = new FinalFrameUnconfirmedError(
-                channel.readyState === "open" && session.isConnected()
+                channelSendable()
                   ? FINAL_FRAME_UNCONFIRMED_WAIT_EXPIRED_MESSAGE
                   : FINAL_FRAME_UNCONFIRMED_LINK_LOST_MESSAGE,
               );
-            try {
-              channel.send(Buffer.from(packCloseSentinel()));
-            } catch {
-              // The channel went while the sentinel was being written; the peer
-              // will see the drop instead of the clean close, and every frame
-              // before it has already been acknowledged.
+            // werift queues a send on a channel that has left `open`, so the
+            // sentinel goes only while the channel can still deliver it.
+            if (channelSendable()) {
+              try {
+                channel.send(Buffer.from(packCloseSentinel()));
+              } catch {
+                // The channel went while the sentinel was being written; the
+                // peer sees the drop instead of the clean close. Any frame
+                // left unacknowledged is already recorded in `unconfirmed`.
+              }
+              // Phase two: the sentinel goes on the wire. It is NOT waited on
+              // for acknowledgement -- a peer closes the moment it reads the
+              // sentinel, so it stops acknowledging at exactly that point and
+              // this wait would always spend the whole budget. Losing the
+              // sentinel costs the peer its clean-close signal (it falls back
+              // to observing the connection drop), never a frame.
+              await drainOutbound(
+                channel,
+                session,
+                session.outboundTransmitted,
+                SENTINEL_HANDOFF_TIMEOUT_MS,
+              );
             }
-            // Phase two: the sentinel goes on the wire. It is NOT waited on
-            // for acknowledgement -- a peer closes the moment it reads the
-            // sentinel, so it stops acknowledging at exactly that point and
-            // this wait would always spend the whole budget. Losing the
-            // sentinel costs the peer its clean-close signal (it falls back
-            // to observing the connection drop), never a frame.
-            await drainOutbound(
-              channel,
-              session,
-              session.outboundTransmitted,
-              SENTINEL_HANDOFF_TIMEOUT_MS,
-            );
           }
           // Phase three: the channel's own close, which is the delivery
           // signal a browser partner reads (see `closeChannel`).

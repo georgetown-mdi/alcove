@@ -22,6 +22,7 @@ import {
 import { REPORT_LIBRARY_INCOMPATIBILITY } from "../libraryIncompatibility";
 import {
   BROKER_MESSAGE,
+  BROKER_OPEN_TIMEOUT_MS,
   BrokerIdTakenError,
   BrokerSocketDroppedError,
   BrokerUnreachableError,
@@ -943,7 +944,7 @@ export async function openWebRtcPeerSession(
     negotiation: Negotiation,
     reregistration: boolean,
   ): Promise<BrokerClient> => {
-    const connect = (): Promise<BrokerClient> =>
+    const connect = (openTimeoutMs?: number): Promise<BrokerClient> =>
       connectToBroker({
         location,
         id: localId,
@@ -951,6 +952,7 @@ export async function openWebRtcPeerSession(
           onMessage: (message) => negotiation.onBrokerMessage(message),
           onClose: (error) => negotiation.brokerEnded(error),
         },
+        openTimeoutMs,
         signal,
         socketFactory,
       });
@@ -965,7 +967,10 @@ export async function openWebRtcPeerSession(
     let delayMs = ID_TAKEN_RETRY_FIRST_DELAY_MS;
     for (;;) {
       try {
-        return await connect();
+        // A retry's open wait ends with the rendezvous deadline, not past it.
+        return await connect(
+          Math.min(BROKER_OPEN_TIMEOUT_MS, Math.max(1, deadline - Date.now())),
+        );
       } catch (err) {
         const idTaken = err instanceof BrokerIdTakenError;
         const unreachable =
@@ -1000,6 +1005,7 @@ export async function openWebRtcPeerSession(
           );
         }
         await waitUnlessCancelled(waitMs, signal, cancelled);
+        if (Date.now() >= deadline) throw idTaken ? arrivalTimeout() : err;
         delayMs = Math.min(2 * delayMs, ID_TAKEN_RETRY_MAX_DELAY_MS);
       }
     }

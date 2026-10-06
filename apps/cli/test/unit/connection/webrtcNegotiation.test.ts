@@ -1928,6 +1928,42 @@ test("a re-registration the server never confirms is retried once its open bound
   expect(await settlementOf(session)).toBe("waiting");
 });
 
+test("a re-registration the server never confirms ends at the deadline, not its open bound", async () => {
+  captureDiagnostics();
+  holdAttemptClock();
+  const attemptMs = 20_000;
+  const waitMs = 45_000;
+  const { sockets, session } = await startRendezvous({
+    role: "inviter",
+    attemptMs,
+    rendezvousTimeoutMs: waitMs,
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.drop();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(attemptMs);
+  await settleRegistration(sockets, 2);
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
+  await settleRegistration(sockets, 3);
+  // The retry's open now hangs; its own bound would end it 30 s on.
+  expect(waitMs - attemptMs).toBeLessThan(BROKER_OPEN_TIMEOUT_MS);
+  await vi.advanceTimersByTimeAsync(
+    waitMs - attemptMs - ID_TAKEN_RETRY_FIRST_DELAY_MS - 100,
+  );
+  expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(200);
+  const failure = await session.then(
+    () => expect.unreachable("the wait should have failed"),
+    (err: unknown) => err,
+  );
+  expect(failure).toBeInstanceOf(ConnectionError);
+  expect((failure as ConnectionError).kind).toBe("transport");
+  expect((failure as ConnectionError).message).toMatch(
+    /^the signaling server did not confirm registration within/,
+  );
+  expect(sockets).toHaveLength(3);
+});
+
 test("a re-registration still failing at the deadline fails with the signaling server's failure", async () => {
   captureDiagnostics();
   holdAttemptClock();
