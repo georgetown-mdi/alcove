@@ -5,8 +5,8 @@ import type { PsiProgress } from "@alcove/core";
 
 import {
   createPsiProgressDisplay,
-  formatCount,
   formatDuration,
+  formatValues,
   psiMilestoneText,
   psiStatusText,
   terminalPsiStatusLine,
@@ -60,10 +60,11 @@ function recordingStatusLine(): {
 }
 
 test("groups a millions-scale count into threes", () => {
-  expect(formatCount(0)).toBe("0");
-  expect(formatCount(999)).toBe("999");
-  expect(formatCount(1000)).toBe("1,000");
-  expect(formatCount(1_204_833)).toBe("1,204,833");
+  expect(formatValues(0)).toBe("0 values");
+  expect(formatValues(999)).toBe("999 values");
+  expect(formatValues(1000)).toBe("1,000 values");
+  expect(formatValues(1_204_833)).toBe("1,204,833 values");
+  expect(formatValues(1_204_833.9)).toBe("1,204,833 values");
 });
 
 test.each([

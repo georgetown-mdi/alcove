@@ -17,6 +17,7 @@ import {
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
+  recordFileStamp,
   snakeizeKeys,
 } from "@alcove/core";
 import { stringify as stringifyYaml } from "yaml";
@@ -29,7 +30,6 @@ import { applyJobTermsProposal } from "@psi/jobClient/termsProposalClient";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { connectionTuningOptions } from "@console/connectionTuningModel";
 import { openMountedConfiguration } from "@jobs/configLoad";
-import { recordFileStamp } from "@psi/runOutputs";
 import { relayedTermsChangeOf } from "@psi/jobClient/serverJobExchangeDriver";
 
 import { route as ApplyTermsRoute } from "../../server/console/routes/$jobId/apply-terms";

@@ -5,9 +5,14 @@
  * which a locale-default separator (a non-breaking space in several) would put
  * there.
  *
- * The one formatter for every figure an operator-facing sentence composed in
- * this package states, so no two of them group digits differently.
+ * The one formatter for every figure an operator-facing sentence states, so
+ * no two of them group digits differently. A non-finite number is written as
+ * `String` writes it, since the formatter would write infinity as a non-ASCII
+ * symbol. Rounds a fraction to at most three places; a caller counting whole
+ * items truncates first.
  */
 export function formatCount(count: number | bigint): string {
+  if (typeof count === "number" && !Number.isFinite(count))
+    return String(count);
   return new Intl.NumberFormat("en-US").format(count);
 }

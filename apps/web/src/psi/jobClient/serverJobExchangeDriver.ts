@@ -6,6 +6,7 @@ import {
   getLogger,
   joinErrorCauseChain,
   parseBoundedJson,
+  recordFileStamp,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -19,7 +20,6 @@ import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 import { isJobCreateRefusalReason } from "@jobs/jobCreateRefusal";
 import { jobCreateIntentSchema } from "@jobs/intentSchemas";
 import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
-import { recordFileStamp } from "@psi/runOutputs";
 import { refusedColumnNames } from "@psi/columnNames";
 import { whenDiagnostic } from "@utils/diagnostics";
 

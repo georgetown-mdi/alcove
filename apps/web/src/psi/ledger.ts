@@ -5,7 +5,7 @@
  * drop one from that trust surface.
  */
 
-import { disclosedColumnNames } from "@alcove/core";
+import { disclosedColumnNames, formatCount } from "@alcove/core";
 
 import { isolatedColumnName } from "@components/ColumnName";
 
@@ -94,7 +94,7 @@ function countOnlyLedgerValue(
   countReportedByPartner: boolean,
 ): string {
   return (
-    `${new Intl.NumberFormat("en-US").format(intersectionCount)} records in ` +
+    `${formatCount(intersectionCount)} records in ` +
     `common - the size of the overlap only, ${COUNT_ONLY_NO_TABLE}` +
     (countReportedByPartner ? "; reported by your partner" : "")
   );
@@ -145,9 +145,7 @@ export function settledReceiveValue(
     case "matched":
       return outcome.matchedRecordCount === undefined
         ? uncountedMatchedValue(matchedRowsSuffix)
-        : `${new Intl.NumberFormat("en-US").format(
-            outcome.matchedRecordCount,
-          )} matched rows${matchedRowsSuffix}`;
+        : `${formatCount(outcome.matchedRecordCount)} matched rows${matchedRowsSuffix}`;
   }
 }
 

@@ -19,15 +19,13 @@
  * for how each outcome is told apart.
  */
 
-import { EXCHANGE_RECORD_OUTCOMES } from "@alcove/core";
+import { EXCHANGE_RECORD_OUTCOMES, recordFileStamp } from "@alcove/core";
 
 import {
   MAX_JOB_STATUS_RESPONSE_BYTES,
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
 import { delayUntilAborted } from "@psi/delayUntilAborted";
-
-import { recordFileStamp } from "../runOutputs";
 
 import type { ExchangeRecordOutcome } from "@alcove/core";
 import type { RecordDownloads } from "../exchangeLifecycle";

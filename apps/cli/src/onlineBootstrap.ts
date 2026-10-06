@@ -426,11 +426,6 @@ export { endpointFromConnection } from "@alcove/core";
  */
 export { generateSharedSecret } from "@alcove/core";
 
-/** ISO 8601 datetime `durationSeconds` from now, for an invitation's `expires`. */
-export function expiresFromNow(durationSeconds: number): string {
-  return new Date(Date.now() + durationSeconds * 1000).toISOString();
-}
-
 // --- Input data --------------------------------------------------------------
 
 /**

@@ -7,6 +7,7 @@ import {
   assertFirstRoundWithinSetMaximum,
   deriveAcceptedLinkageTerms,
   getLogger,
+  handshakeRoleForRendezvousRole,
   loadPsiBackend,
 } from "@alcove/core";
 
@@ -18,7 +19,6 @@ import {
   discardServerJob,
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
-import { HANDSHAKE_ROLE_FOR_SIDE } from "@psi/handshakeRole";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
@@ -254,7 +254,7 @@ async function resolveJobInputSource(
  * effect, and an effect keyed on the launch so a superseded launch aborts and
  * resets -- with the acceptor's own differences:
  *
- *  - The acceptor is the PSI INITIATOR ({@link HANDSHAKE_ROLE_FOR_SIDE}), and the
+ *  - The acceptor is the PSI INITIATOR ({@link handshakeRoleForRendezvousRole}), and the
  *    WASM library is awaited EARLY (before dialing, to fail fast) -- the inverse
  *    of the inviter's late await.
  *  - It DIALS the inviter's derived id ({@link dialAsAcceptor}), which tears down
@@ -472,7 +472,7 @@ export function useAcceptorExchange({
     const browserDriver = (): ExchangeDriver<RunOutputs> =>
       createBrowserExchangeDriver<RunOutputs>({
         acquire,
-        exchangeRole: HANDSHAKE_ROLE_FOR_SIDE.acceptor,
+        exchangeRole: handshakeRoleForRendezvousRole("acceptor"),
         sharedSecret: token.sharedSecret,
         expires: token.expires,
         generateOutput,

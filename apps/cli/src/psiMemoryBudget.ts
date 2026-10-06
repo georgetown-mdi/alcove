@@ -4,6 +4,7 @@ import {
   MAX_PSI_DECODE_ELEMENTS,
   RoundCapacityError,
   UsageError,
+  formatCount,
 } from "@alcove/core";
 
 import { readRuntimeEnv, type RuntimeEnvSnapshot } from "./util/runtimeEnv";
@@ -178,7 +179,7 @@ export function psiMemoryStatement(assessment: PsiMemoryAssessment): string {
       `limit of ${mainThread}`;
   return (
     `memory: ${limits}; a round over this run's ` +
-    `${assessment.records.toLocaleString("en-US")} records needs about ` +
+    `${formatCount(assessment.records)} records needs about ` +
     `${gigabytes(assessment.needBytes)}, and this process has ` +
     `${gigabytes(assessment.availableBytes)} (host memory ` +
     `${gigabytes(readings.hostBytes)}, ${container})`
@@ -188,7 +189,7 @@ export function psiMemoryStatement(assessment: PsiMemoryAssessment): string {
 function shortfallSentence(assessment: PsiMemoryAssessment): string {
   return (
     `this run needs about ${gigabytes(assessment.needBytes)} of memory for a ` +
-    `PSI round over its ${assessment.records.toLocaleString("en-US")} ` +
+    `PSI round over its ${formatCount(assessment.records)} ` +
     `records, and this process has ${gigabytes(assessment.availableBytes)} ` +
     `(${LIMIT_NAMES[assessment.limitedBy]})`
   );
@@ -250,7 +251,7 @@ export function checkPsiMemoryBudget(params: {
 function partnerShortfallSentence(assessment: PsiMemoryAssessment): string {
   return (
     `your partner's set for one linkage key can hold up to ` +
-    `${assessment.records.toLocaleString("en-US")} values, a PSI round over ` +
+    `${formatCount(assessment.records)} values, a PSI round over ` +
     `that many needs about ${gigabytes(assessment.needBytes)} of memory, and ` +
     `this process has ${gigabytes(assessment.availableBytes)} ` +
     `(${LIMIT_NAMES[assessment.limitedBy]})`

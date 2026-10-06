@@ -10,6 +10,7 @@
     "./standalone": "./src/standalone.ts",
     "./standaloneOptions": "./src/standaloneOptions.ts",
     "./diagnostics": "./src/diagnostics.ts",
+    "./standaloneUpgradeBounds": "./src/standaloneUpgradeBounds.ts",
     "./*": "./src/contrib/*.ts"
   },
   "scripts": {

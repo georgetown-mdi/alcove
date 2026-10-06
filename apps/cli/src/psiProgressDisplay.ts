@@ -19,6 +19,7 @@ import logLibrary from "loglevel";
 
 import {
   SINGLE_PASS_STAGE_IDS,
+  formatCount,
   type PsiOperation,
   type PsiProgress,
   type PsiProgressReporter,
@@ -102,11 +103,6 @@ export interface PsiProgressDisplayOptions {
   tickMs?: number;
 }
 
-/** Digits of `value` in groups of three, so a millions figure stays readable. */
-export function formatCount(value: number): string {
-  return String(Math.trunc(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-}
-
 /**
  * `durationMs` as the largest two units that hold it -- `42s`, `1m 12s`,
  * `2h 05m` -- so a multi-minute operation's figure stays short enough for one
@@ -125,7 +121,7 @@ export function formatDuration(durationMs: number): string {
 
 /** `count` with the unit the operator reads it in, singular where it is one. */
 export function formatValues(count: number, unit: Unit = VALUES): string {
-  return `${formatCount(count)} ${count === 1 ? unit.one : unit.many}`;
+  return `${formatCount(Math.trunc(count))} ${count === 1 ? unit.one : unit.many}`;
 }
 
 // The measured throughput, or undefined where the figures do not support one:
@@ -157,7 +153,7 @@ function formatProcessed(
     elements <= 0
       ? 100
       : Math.min(100, Math.floor((processed / elements) * 100));
-  return `${formatCount(processed)} of ${formatValues(elements, unit)} (${share}%)`;
+  return `${formatCount(Math.trunc(processed))} of ${formatValues(elements, unit)} (${share}%)`;
 }
 
 /**

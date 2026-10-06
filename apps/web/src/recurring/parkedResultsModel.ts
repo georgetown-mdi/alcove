@@ -8,13 +8,15 @@
  *
  * The one partner-authored value here is the partner's declared record count,
  * admitted only as a schema-bounded integer from the terms-exchange envelope and
- * rendered through Intl.NumberFormat: the safety argument is that bound, not an
+ * rendered through core's formatCount: the safety argument is that bound, not an
  * absence of partner input. Everything else a row states -- an instant, a count
  * this browser produced, the name of a folder the operator themselves chose, and
  * fixed first-party copy -- needs no such boundary. The results themselves are
  * never rendered -- they are handed to the operator as the file the run built, or
  * written to the folder they granted.
  */
+
+import { formatCount } from "@alcove/core";
 
 import {
   MAX_PARKED_RESULT_BYTES,
@@ -125,18 +127,13 @@ export const UNAVAILABLE_PARKED_RESULTS_NOTE =
   "running an older version of this app can hold that storage for a while; " +
   "close any other tab this app is open in, then try again.";
 
-/** A count with grouped digits, so a figure in the millions reads as one. */
-function formatRecordCount(count: number | bigint): string {
-  return new Intl.NumberFormat("en-US").format(count);
-}
-
 /** How many rows a run's results hold, as a phrase to open a summary with, or
  * `undefined` where the run reported no count. */
 function matchedRecordPhrase(count: number | undefined): string | undefined {
   if (count === undefined) return undefined;
   return count === 1
     ? "1 matched record"
-    : `${formatRecordCount(count)} matched records`;
+    : `${formatCount(count)} matched records`;
 }
 
 /** What a row says about a run whose results went into the granted folder: where
@@ -265,10 +262,10 @@ export function projectedResultSizeWarning(
   if (factors === undefined || !projectionOverParkedBound(factors))
     return undefined;
   return (
-    `Your last scheduled run declared ${formatRecordCount(factors.local)} ` +
-    `records against your partner's ${formatRecordCount(factors.partner)}, and ` +
+    `Your last scheduled run declared ${formatCount(factors.local)} ` +
+    `records against your partner's ${formatCount(factors.partner)}, and ` +
     `the terms let every record on each side match every record on the other: ` +
-    `up to ${formatRecordCount(projectedPairs(factors))} matched pairs, one ` +
+    `up to ${formatCount(projectedPairs(factors))} matched pairs, one ` +
     `row each. A result ` +
     `that size is more than the ${PARKED_SIZE_PHRASE} this browser keeps, so ` +
     `a run with nobody present would leave nothing here. That is the most ` +

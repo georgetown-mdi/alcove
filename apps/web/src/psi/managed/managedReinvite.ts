@@ -49,7 +49,8 @@
 
 import {
   INVITATION_LIFETIME_SECONDS,
-  MAX_INVITATION_LIFETIME_SECONDS,
+  assertInvitationLifetimeSeconds,
+  invitationExpires,
   termsStatingDeclaredPayloadSend,
 } from "@alcove/core";
 
@@ -155,7 +156,7 @@ interface ManagedReinviteSeams {
   now: () => number;
   /** The setup lifetime in seconds; defaults to the one-hour
    * {@link INVITATION_LIFETIME_SECONDS} and is bounded by
-   * {@link MAX_INVITATION_LIFETIME_SECONDS}. */
+   * {@link assertInvitationLifetimeSeconds}. */
   lifetimeSeconds?: number;
   /** This browser's own relay, which the invitation names; `undefined` names
    * none. */
@@ -186,19 +187,17 @@ export async function composeManagedReinvite(
         "accepts a fresh invitation from the partner",
     );
   const lifetimeSeconds = seams.lifetimeSeconds ?? INVITATION_LIFETIME_SECONDS;
-  if (!Number.isFinite(lifetimeSeconds) || lifetimeSeconds <= 0)
-    throw new Error(
-      "re-invite lifetimeSeconds must be a finite, positive number of seconds",
-    );
-  if (lifetimeSeconds > MAX_INVITATION_LIFETIME_SECONDS)
-    throw new Error(
-      "re-invite lifetimeSeconds must not exceed " +
-        `${MAX_INVITATION_LIFETIME_SECONDS} seconds (one year)`,
-    );
+  try {
+    assertInvitationLifetimeSeconds(lifetimeSeconds);
+  } catch (err: unknown) {
+    if (err instanceof RangeError)
+      throw new RangeError(`re-invite: ${err.message}`, { cause: err });
+    throw err;
+  }
 
   const now = seams.now();
   const freshSecret = seams.generateSecret();
-  const tokenExpires = new Date(now + lifetimeSeconds * 1000).toISOString();
+  const tokenExpires = invitationExpires(lifetimeSeconds, now);
   const token = buildReinviteToken(
     record,
     location,

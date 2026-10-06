@@ -229,6 +229,10 @@ export { loneSurrogateIndex } from "./utils/wellFormedString";
 // The package's one counting unit for a string length bound, shared so a schema
 // the web app declares bounds a name the way the wire and the record do.
 export { maxCodeUnits } from "./utils/maxCodeUnits";
+export { MS_PER_DAY } from "./utils/msPerDay";
+// The one count formatter, so the CLI, the web app and this package group
+// digits identically and in ASCII.
+export { formatCount } from "./utils/formatCount";
 export {
   sanitizeForDisplay,
   renderOperatorSuppliedText,
@@ -354,6 +358,7 @@ export {
   KEY_FILE_SHARED_SECRET_FORMAT_MESSAGE,
   KeyFileSchema,
   keyFileUnreadFieldNames,
+  rotatedKeyExpires,
   serializeKeyFile,
 } from "./config/keyFile";
 export type { KeyFile } from "./config/keyFile";
@@ -479,6 +484,8 @@ export {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
   InvitationDecodeError,
+  assertInvitationLifetimeSeconds,
+  invitationExpires,
   MAX_ENCODED_INVITATION_LENGTH,
   MAX_INVITATION_LIFETIME_SECONDS,
   decodeInvitation,
@@ -833,6 +840,7 @@ export {
   serializeVerificationKeys,
   verifyRecordCommitments,
 } from "./records/exchangeRecord";
+export { recordFileStamp } from "./records/recordFileStamp";
 export type {
   BuiltExchangeRecord,
   CommitmentName,
@@ -923,6 +931,7 @@ export { runKex } from "./kex";
 export {
   authorityMovingSignalingField,
   deriveRendezvousPeerId,
+  handshakeRoleForRendezvousRole,
   RENDEZVOUS_ROLES,
 } from "./rendezvous";
 export type { RendezvousRole, SignalingLocationField } from "./rendezvous";

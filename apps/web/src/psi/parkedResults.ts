@@ -26,10 +26,10 @@
  * caller.
  */
 
+import { MS_PER_DAY, recordFileStamp } from "@alcove/core";
 import { z } from "zod";
 
 import { parseStoredInstant } from "./managed/managedExchangeRecord";
-import { recordFileStamp } from "./runOutputs";
 
 import type { PairTableFactors } from "./resultSizeProjection";
 import type { ZodType } from "zod";
@@ -44,8 +44,6 @@ export const PARKED_RESULTS_VERSION = "alcove-parked-results/v2";
  * itself. The surface states this number and the store enforces exactly it (see
  * {@link retainParkedResults}). */
 export const PARKED_RESULTS_RETENTION_DAYS = 30;
-
-const MS_PER_DAY = 86_400_000;
 
 /** Why a run that held a working-folder grant did not write its results there:
  * the grant was not one the run could use with nobody present (never taken, not

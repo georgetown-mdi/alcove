@@ -7,7 +7,11 @@ import {
   encodeInvitation,
   isInvitationExpired,
 } from "../../src/config/invitation";
-import { RENDEZVOUS_ROLES, deriveRendezvousPeerId } from "../../src/rendezvous";
+import {
+  RENDEZVOUS_ROLES,
+  deriveRendezvousPeerId,
+  handshakeRoleForRendezvousRole,
+} from "../../src/rendezvous";
 
 import type { InvitationToken } from "../../src/config/invitation";
 import type { RendezvousRole } from "../../src/rendezvous";
@@ -109,6 +113,13 @@ describe("the two sides take complementary key-exchange roles", () => {
     expect(vectors.rendezvous.sides.every((s) => !s.requestEncryption)).toBe(
       true,
     );
+  });
+
+  test("the role rule both apps call reproduces each side's vector", () => {
+    for (const side of vectors.rendezvous.sides)
+      expect(handshakeRoleForRendezvousRole(side.side)).toBe(
+        side.handshakeRole,
+      );
   });
 });
 

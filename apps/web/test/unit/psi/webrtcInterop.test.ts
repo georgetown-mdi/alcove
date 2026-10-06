@@ -4,13 +4,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { default as EventEmitter } from "eventemitter3";
 
-import { ConnectionError } from "@alcove/core";
+import { ConnectionError, handshakeRoleForRendezvousRole } from "@alcove/core";
 
 import {
   dialAsAcceptor,
   listenAsInviter,
 } from "../../../src/psi/transport/rendezvous.js";
-import { HANDSHAKE_ROLE_FOR_SIDE } from "../../../src/psi/handshakeRole.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
 import { resolveSignalingAddress } from "../../../src/psi/transport/signalingAddress.js";
@@ -318,14 +317,16 @@ async function ephemeralShare(): Promise<string> {
 }
 
 describe("the handshake role and encryption request the web app puts on the wire", () => {
-  test("the side-to-role table matches the vector for every rendezvous side", () => {
-    // The one table all three web flows read (the one-shot inviter and acceptor
-    // and the managed re-run). Necessary and not sufficient: a flow that read
-    // the wrong side out of a correct table would still take a role the CLI does
-    // not pair with, so which KEY each one reads is pinned at its own call site
+  test("the side-to-role rule matches the vector for every rendezvous side", () => {
+    // The one rule all three web flows call (the one-shot inviter and acceptor
+    // and the managed re-run). Necessary and not sufficient: a flow that passed
+    // the wrong side to a correct rule would still take a role the CLI does not
+    // pair with, so which side each one passes is pinned at its own call site
     // (webrtcInteropHooks.test.ts, managedRunDriver.test.ts).
     for (const side of vectors.rendezvous.sides)
-      expect(HANDSHAKE_ROLE_FOR_SIDE[side.side]).toBe(side.handshakeRole);
+      expect(handshakeRoleForRendezvousRole(side.side)).toBe(
+        side.handshakeRole,
+      );
   });
 
   test("the acceptor's role sends the first message, declining the AEAD wrap", async () => {
@@ -333,7 +334,7 @@ describe("the handshake role and encryption request the web app puts on the wire
     const scripted = scriptedConnection();
     const run = authenticateExchange(
       scripted.conn,
-      HANDSHAKE_ROLE_FOR_SIDE[acceptor.side],
+      handshakeRoleForRendezvousRole(acceptor.side),
       sharedSecret,
     );
     await vi.waitFor(() => expect(scripted.sent.length).toBe(1));
@@ -350,7 +351,7 @@ describe("the handshake role and encryption request the web app puts on the wire
     const scripted = scriptedConnection();
     const run = authenticateExchange(
       scripted.conn,
-      HANDSHAKE_ROLE_FOR_SIDE[inviter.side],
+      handshakeRoleForRendezvousRole(inviter.side),
       sharedSecret,
     );
     // Parked on a receive with nothing sent: this side waits for its partner's

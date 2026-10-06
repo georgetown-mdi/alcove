@@ -3,6 +3,7 @@ import {
   ProcessState,
   SINGLE_PASS_STAGE_IDS,
   describeExchangeStages,
+  formatCount,
 } from "@alcove/core";
 
 import type {
@@ -405,7 +406,7 @@ export function currentStageLabel(run: ExchangeRun): string {
  * millions figure stays readable. The first-round count walks this party's
  * records, so its figures count records rather than values. */
 function valueCountLabel(count: number, operation: PsiOperation): string {
-  const grouped = new Intl.NumberFormat("en-US").format(Math.trunc(count));
+  const grouped = formatCount(Math.trunc(count));
   const [one, many] =
     operation === "countFirstRoundValues"
       ? ["record", "records"]
@@ -438,7 +439,7 @@ function processedLabel(running: RunningPsiOperation): string {
     elements <= 0
       ? 100
       : Math.min(100, Math.floor((processed / elements) * 100));
-  const grouped = new Intl.NumberFormat("en-US").format(Math.trunc(processed));
+  const grouped = formatCount(Math.trunc(processed));
   return `${grouped} of ${valueCountLabel(elements, operation)} (${share}%)`;
 }
 

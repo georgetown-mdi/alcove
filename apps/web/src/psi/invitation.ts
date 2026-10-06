@@ -1,8 +1,8 @@
 import {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
-  MAX_INVITATION_LIFETIME_SECONDS,
   assertFanOutImplemented,
+  assertInvitationLifetimeSeconds,
   assertPayloadSendDisclosed,
   assertStandardizationMatchesTerms,
   assertTransformsCompile,
@@ -13,6 +13,7 @@ import {
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
+  invitationExpires,
   overlongDisclosedColumnPositions,
   relayLocatorFromOwnRelay,
   stripInvitationWhitespace,
@@ -435,7 +436,8 @@ export async function generateInvitation(params: {
   /**
    * Invitation lifetime in seconds; defaults to
    * {@link INVITATION_LIFETIME_SECONDS} (one hour) and must be in the range
-   * `(0, {@link MAX_INVITATION_LIFETIME_SECONDS}]` (up to one year). The quick
+   * `(0, MAX_INVITATION_LIFETIME_SECONDS]` (up to one year), as
+   * {@link assertInvitationLifetimeSeconds} enforces. The quick
    * path omits it and takes the default; the inviter console passes the
    * inviter's chosen lifetime. The bounds are enforced here so this function
    * cannot mint an unbounded token.
@@ -534,22 +536,10 @@ export async function generateInvitation(params: {
       "generateInvitation requires exactly one of file or profiledColumns",
     );
 
-  // Bound the selected lifetime up front, before encodeInvitation's "expires
-  // must be in the future" check, which only catches a non-positive net
-  // lifetime. Mirrors the CLI's two up-front rejections in validateInvite
-  // (apps/cli/src/commands/invite.ts): a non-positive lifetime, and one past
-  // the one-year ceiling -- the invariant that keeps this function from
-  // minting an effectively-permanent token; see
-  // MAX_INVITATION_LIFETIME_SECONDS.
-  if (!Number.isFinite(lifetimeSeconds) || lifetimeSeconds <= 0)
-    throw new Error(
-      "invitation lifetimeSeconds must be a finite, positive number of seconds",
-    );
-  if (lifetimeSeconds > MAX_INVITATION_LIFETIME_SECONDS)
-    throw new Error(
-      "invitation lifetimeSeconds must not exceed " +
-        `${MAX_INVITATION_LIFETIME_SECONDS} seconds (one year)`,
-    );
+  // Bound the selected lifetime before the CSV is read or anything is
+  // minted, so a lifetime past the one-year ceiling cannot mint an
+  // effectively-permanent token.
+  assertInvitationLifetimeSeconds(lifetimeSeconds);
 
   // Parse the inviter's CSV here, before anything is minted, so an unreadable
   // file aborts with no token. loadCSVFileOffMainThread rejects on a
@@ -725,12 +715,9 @@ export async function generateInvitation(params: {
     assertStandardizationMatchesTerms(standardization, linkageTerms);
 
   // Bound the token's lifetime so an intercepted invitation cannot be
-  // accepted indefinitely. Measured from the current instant, so the
-  // lifetime clock starts when the token is minted; the CLI mints `expires`
-  // the same way (expiresFromNow in apps/cli/src/commands/bootstrap.ts).
-  // encodeInvitation re-checks the result is in the future as a safety
-  // check.
-  const expires = new Date(Date.now() + lifetimeSeconds * 1000).toISOString();
+  // accepted indefinitely, measured from the mint. encodeInvitation
+  // re-checks the result is in the future as a safety check.
+  const expires = invitationExpires(lifetimeSeconds, Date.now());
   const sharedSecret = generateSharedSecret();
   const declaresRetainedFiles = invitationDeclaresRetainedFiles({
     connectionEndpoint,

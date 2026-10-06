@@ -11,11 +11,9 @@
  * caller's, matching the run+rotate module's clock discipline.
  */
 
-import type { ManagedExchangeRecord } from "./managedExchangeRecord";
+import { MS_PER_DAY } from "@alcove/core";
 
-/** Milliseconds in a day, matching {@link ./managedRunRotate.ts}'s `MS_PER_DAY`
- * (the anchor derivation must use the same day length the stamp did). */
-const MS_PER_DAY = 86_400_000;
+import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
 /**
  * Derive the `expires` bound a local edit of `tokenMaxAgeDays` should write,

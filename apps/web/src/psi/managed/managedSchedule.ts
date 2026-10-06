@@ -16,6 +16,8 @@
  * of the managed modules, so every rule here is a pure function of its inputs.
  */
 
+import { MS_PER_DAY } from "@alcove/core";
+
 import {
   MAX_SCHEDULE_INTERVAL_DAYS,
   MAX_SCHEDULE_WINDOW_SECONDS,
@@ -30,10 +32,6 @@ import type {
   ManagedExchangeRunOutcome,
   ManagedExchangeSchedule,
 } from "./managedExchangeRecord";
-
-/** Milliseconds in a day, matching {@link ./managedRunRotate.ts}'s `MS_PER_DAY`:
- * the recurrence period is a whole number of these, never a calendar day. */
-const MS_PER_DAY = 86_400_000;
 
 const MS_PER_SECOND = 1000;
 

@@ -3,7 +3,11 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { commands } from "vitest/browser";
 
-import { loadCSVFile, runExchange } from "@alcove/core";
+import {
+  handshakeRoleForRendezvousRole,
+  loadCSVFile,
+  runExchange,
+} from "@alcove/core";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
@@ -12,7 +16,6 @@ import {
   acceptorInitialColumnsState,
   acceptorLaunchPayload,
 } from "@exchange/acceptorColumnsModel";
-import { HANDSHAKE_ROLE_FOR_SIDE } from "@psi/handshakeRole";
 import { authenticateExchange } from "@psi/authenticateExchange";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
 import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
@@ -207,7 +210,7 @@ async function runBrowserPeer(invitation: string): Promise<BrowserOutcome> {
       closeOutcome = outcome;
     },
   });
-  const handshakeRole = HANDSHAKE_ROLE_FOR_SIDE.acceptor;
+  const handshakeRole = handshakeRoleForRendezvousRole("acceptor");
   await authenticateExchange(
     mc,
     handshakeRole,

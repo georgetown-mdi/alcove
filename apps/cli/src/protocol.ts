@@ -24,6 +24,7 @@ import {
   assertSharedSecretReadyForHandshake,
   ConnectionError,
   deriveAbortToken,
+  handshakeRoleForRendezvousRole,
   OperatorConfigError,
   PeerAbortError,
   ReceiptVerificationError,
@@ -496,7 +497,7 @@ export function webRtcDialFrom(
   const peerTimeoutMs = connection.options?.peerTimeoutMs;
   const inactivityTimeoutMs = connection.options?.inactivityTimeoutMs;
   return {
-    handshakeRole: role === "acceptor" ? "initiator" : "responder",
+    handshakeRole: handshakeRoleForRendezvousRole(role),
     options: {
       location: brokerLocationFromConnection(connection.server),
       role,

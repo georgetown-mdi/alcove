@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   getLogger,
   operatorSuppliedText,
+  recordFileStamp,
   redactAndRenderOperatorSuppliedText,
   sanitizeErrorForDisplay,
   serializeDualSignedRecord,
@@ -10,7 +11,6 @@ import {
 import type { DualSignedRecord } from "@alcove/core";
 
 import { writeFileOwnerOnly } from "./fileUtils";
-import { recordFileStamp } from "./recordFile";
 
 // File custody for the dual-signed exchange record (the signed-receipt step's
 // output). Mirrors recordFile.ts: a timestamped default path in the run's
