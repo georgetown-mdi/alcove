@@ -102,4 +102,4 @@ export const PARTNER_PIN_UNRECORDABLE_FAILURE =
   "to run 'alcove fingerprint' and send you the value over a channel you " +
   "trust -- a phone call, not the same email as the invitation -- then enter " +
   "it under your partner's fingerprint and run the exchange again. If the run " +
-  "stops here a second time, check that the folder you mounted is writable.";
+  "stops here a second time, check that your working folder is writable.";

@@ -68,9 +68,9 @@ export function RunDiagnosticsCard({
     >
       <Stack gap="md" mt="sm">
         <Text size="sm" c="dimmed">
-          Reach for these when a run has already gone wrong: to capture what the
-          exchange did, or to clear out what a crashed run left in the shared
-          directory. Both apply to this run only.
+          Use these after a run has failed, to capture what the exchange did or
+          to clear out what a crashed run left in the shared folder. Both apply
+          to this run only.
         </Text>
 
         <Checkbox
@@ -104,8 +104,8 @@ export function RunDiagnosticsCard({
           label={SWEEP_CONTROL_LABEL}
           description={
             "Use this when a previous run crashed or stopped mismatched and " +
-            "left the shared directory in a state the next run cannot meet a " +
-            "partner in."
+            "left files in the shared folder that stop the next run from " +
+            "starting."
           }
         />
 

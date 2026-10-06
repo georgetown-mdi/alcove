@@ -34,15 +34,15 @@ import type { ReactNode } from "react";
 /** How each mount is named: the breadcrumb's root label, and the phrase the
  * picker's sentences use. */
 const MOUNT_NAMES: Record<CredentialMount, { root: string; phrase: string }> = {
-  secrets: { root: "secrets", phrase: "the secrets directory" },
+  secrets: { root: "secrets", phrase: "the secrets folder" },
   folder: { root: "your folder", phrase: "your folder" },
 };
 
 /** What the credential picker says above a browse of the working folder, which
- * it offers when no separate secrets directory is mounted. */
+ * it offers when no separate secrets folder is mounted. */
 export const FOLDER_CREDENTIAL_NOTICE =
-  "This console has no separate secrets directory, so choose the file from " +
-  "your mounted folder. That works, and the console warns you once the " +
+  "This console has no separate secrets folder, so choose the file from " +
+  "your folder. That works, and the console warns you once the " +
   "connection is saved: Alcove writes exchange files and results into this " +
   "folder. For better isolation, start the console with " +
   "-v <secrets folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets and choose " +
@@ -59,9 +59,9 @@ function secretsLiveMessage(
   if (listing.kind === "error")
     return `${capitalized(MOUNT_NAMES[mount].phrase)} could not be read.`;
   if (!listing.configured)
-    return "No secrets directory is configured on this console.";
-  if (!listing.readable) return "This directory could not be read.";
-  if (listing.entries.length === 0) return "This directory is empty.";
+    return "No secrets folder is configured on this console.";
+  if (!listing.readable) return "This folder could not be read.";
+  if (listing.entries.length === 0) return "This folder is empty.";
   return `Loaded ${listing.entries.length} ${listing.entries.length === 1 ? "entry" : "entries"}.`;
 }
 
@@ -234,16 +234,16 @@ function renderListing(
     return (
       <MountStateNotice
         color="blue"
-        title="No separate secrets directory"
+        title="No separate secrets folder"
         action={refresh}
       >
         {unconfiguredNotice ?? (
           <>
-            This console has no separate secrets directory to browse, so type a
+            This console has no separate secrets folder to browse, so type a
             file reference below to a credential file (a password file or an SSH
-            private key) in your mounted folder. For better isolation, mount a
-            separate read-only directory as JOB_SECRETS_DIR and reference the
-            file there instead, then restart the console.
+            private key) in your folder. For better isolation, mount a separate
+            read-only folder as JOB_SECRETS_DIR and reference the file there
+            instead, then restart the console.
           </>
         )}
       </MountStateNotice>
@@ -293,10 +293,10 @@ function renderListing(
         {breadcrumb}
         <MountStateNotice
           color="red"
-          title="Could not read this directory"
+          title="Could not read this folder"
           action={refresh}
         >
-          This directory in {names.phrase} could not be read. It may have been
+          This folder in {names.phrase} could not be read. It may have been
           removed since the listing. Step back with the path above, or refresh.
         </MountStateNotice>
       </Stack>
@@ -311,9 +311,9 @@ function renderListing(
           title="This folder is empty"
           action={refresh}
         >
-          This folder has no files or subdirectories. Step back with the path
-          above and pick another, or place your credential file in{" "}
-          {names.phrase} and refresh.
+          This folder has no files or subfolders. Step back with the path above
+          and pick another, or place your credential file in {names.phrase} and
+          refresh.
         </MountStateNotice>
       </Stack>
     );

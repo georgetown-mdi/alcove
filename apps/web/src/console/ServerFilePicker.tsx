@@ -48,7 +48,7 @@ const PROFILE_UNAVAILABLE_COPY: Record<
   { title: string; body: string }
 > = {
   not_found: {
-    title: "This file is no longer in the work directory",
+    title: "This file is no longer in your folder",
     body: "It may have been removed or replaced since the listing. Refresh the file list and try another.",
   },
   too_large: {
@@ -76,10 +76,10 @@ function listingLiveMessage(listing: JobInputsResult | "loading"): string {
     return "This console was started without a folder.";
   if (listing.kind === "error") return "The file listing could not be loaded.";
   const { files, configured, readable } = listing.listing;
-  if (!configured) return "No work directory is configured on this console.";
-  if (!readable) return "The work directory could not be read.";
-  if (files.length === 0) return "No usable files in the work directory.";
-  return `Loaded ${files.length} ${files.length === 1 ? "file" : "files"} from the work directory.`;
+  if (!configured) return "No input folder is configured on this console.";
+  if (!readable) return "Your folder could not be read.";
+  if (files.length === 0) return "No usable files in your folder.";
+  return `Loaded ${files.length} ${files.length === 1 ? "file" : "files"} from your folder.`;
 }
 
 /** The profile settle copy for the aria-live status region. */
@@ -324,11 +324,11 @@ function ListingView({
     return (
       <MountStateNotice
         color="red"
-        title="Could not list the work directory"
+        title="Could not list your folder"
         action={refreshButton}
       >
-        The console did not return a file listing. Check that the job API is
-        reachable, then try again.
+        The console did not answer. Check that it is still running, then try
+        again.
       </MountStateNotice>
     );
 
@@ -341,11 +341,11 @@ function ListingView({
     return (
       <MountStateNotice
         color="blue"
-        title="No work directory configured"
+        title="No input folder configured"
         action={refreshButton}
       >
-        No work directory is configured on this console. Set JOB_INPUT_DIR to
-        the mounted input directory.
+        This console has no folder to list your input files from. Set
+        JOB_INPUT_DIR to the folder holding them, then restart the console.
       </MountStateNotice>
     );
 
@@ -356,11 +356,11 @@ function ListingView({
     return (
       <MountStateNotice
         color="red"
-        title="Could not read the work directory"
+        title="Could not read your folder"
         action={refreshButton}
       >
-        The mounted work directory could not be read. Check that it is mounted
-        and readable on this console, then refresh.
+        Your folder could not be read. Check that it is mounted and readable on
+        this console, then refresh.
       </MountStateNotice>
     );
 
@@ -368,24 +368,24 @@ function ListingView({
     return (
       <MountStateNotice
         color="blue"
-        title="No usable files in the work directory"
+        title="No usable files in your folder"
         action={refreshButton}
       >
-        Place your input CSV in this console's mounted work directory, then
-        refresh. Directories and dot-prefixed files are not listed.
+        Place your input CSV in your folder, then refresh. Folders and
+        dot-prefixed files are not listed.
       </MountStateNotice>
     );
 
   return (
     <Stack gap="sm">
       <Group justify="space-between" align="center">
-        <h2 style={{ margin: 0 }}>Choose a file from the work directory</h2>
+        <h2 style={{ margin: 0 }}>Choose a file from your folder</h2>
         {refreshButton}
       </Group>
       <Table
         highlightOnHover
         withRowBorders={false}
-        aria-label="Work directory files"
+        aria-label="Files in your folder"
       >
         <Table.Thead>
           <Table.Tr>

@@ -480,8 +480,8 @@ describe("the create gate and the two sentences that state it", () => {
   if (DIVERGENCE_STATEMENT === undefined)
     throw new Error("the diverging draft above states no divergence");
   const RUN_WITHHELD =
-    "The console cannot run this webrtc configuration: it conducts sftp and " +
-    "filedrop exchanges only.";
+    "The console cannot run this webrtc configuration, because it runs " +
+    "SFTP and shared-folder exchanges only.";
   const clearGates: InviterCreateGates = {
     runWithheld: undefined,
     offlineBlocked: false,

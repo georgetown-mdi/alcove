@@ -258,7 +258,11 @@ describe("the load offer on the file step", () => {
     app.render(createElement(InviterScreen));
     await page.getByRole("button", { name: OPEN_CONFIGURATION_LABEL }).click();
     await expect
-      .element(page.getByText(/no shared folder mounted/))
+      .element(
+        page.getByText(
+          /runs over a shared folder, and this console has none mounted/,
+        ),
+      )
       .toBeInTheDocument();
   });
 
@@ -477,7 +481,7 @@ describe("an opened configuration's own signing paths on the review step", () =>
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     await openConfiguration();
     await expect
-      .element(page.getByText(/names a path of its own/).first())
+      .element(page.getByText(/sets its own paths? in/).first())
       .toBeInTheDocument();
     await commitFile();
     await page
@@ -492,9 +496,7 @@ describe("an opened configuration's own signing paths on the review step", () =>
     await expect
       .element(
         page
-          .getByText(
-            /names a signing path of its own \(signing\.identity_file\)/,
-          )
+          .getByText(/sets its own signing path in signing\.identity_file,/)
           .first(),
       )
       .toBeInTheDocument();
@@ -502,7 +504,7 @@ describe("an opened configuration's own signing paths on the review step", () =>
       .getByRole("button", { name: CONVERT_CONFIGURATION_LABEL })
       .click();
     await expect
-      .element(page.getByText(/names a signing path of its own/).first())
+      .element(page.getByText(/sets its own signing path in/).first())
       .not.toBeInTheDocument();
     expect(
       page.getByRole("button", { name: CONVERT_CONFIGURATION_LABEL }).query(),

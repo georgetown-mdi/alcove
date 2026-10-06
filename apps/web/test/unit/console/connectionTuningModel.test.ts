@@ -23,6 +23,7 @@ import {
   CONNECTION_TUNING_DEFAULT,
   DIRECT_FILEDROP_CONNECTION_TUNING,
   DIRECT_SFTP_CONNECTION_TUNING,
+  DURATION_FIELD_UNITS,
   FILEDROP_CONNECTION_TUNING,
   LOW_POLL_INTERVAL_ADVISORY,
   SFTP_CONNECTION_TUNING,
@@ -31,6 +32,8 @@ import {
   connectionTuningProblems,
   connectionTuningSummary,
   defaultPlaceholder,
+  durationFieldForMs,
+  durationUnitChoices,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { zeroSetupOptionsArgv } from "@jobs/intentArgv";
@@ -558,6 +561,40 @@ describe("the placeholder shows core's own default in the chosen unit", () => {
       expect(defaultPlaceholder(defaultMs, unit)).toBe(expected);
     },
   );
+});
+
+describe("one unit chooser serves the loader and the card", () => {
+  test("a field lists its own units while its value is in one of them", () => {
+    expect(durationUnitChoices(DURATION_FIELD_UNITS.peerTimeout, "m")).toEqual([
+      "s",
+      "m",
+      "h",
+    ]);
+    expect(durationUnitChoices(DURATION_FIELD_UNITS.pollInterval, "s")).toEqual(
+      ["ms", "s", "m"],
+    );
+  });
+
+  test("a value in a unit the field lacks adds that unit, finest first", () => {
+    expect(
+      durationUnitChoices(DURATION_FIELD_UNITS.serverConnectTimeout, "ms"),
+    ).toEqual(["ms", "s", "m", "h"]);
+    expect(durationUnitChoices(DURATION_FIELD_UNITS.pollInterval, "h")).toEqual(
+      ["ms", "s", "m", "h"],
+    );
+  });
+
+  test("a value takes the coarsest of its field's units that holds it whole", () => {
+    expect(
+      durationFieldForMs(3_600_000, DURATION_FIELD_UNITS.pollInterval),
+    ).toEqual({ magnitude: "60", unit: "m" });
+    expect(
+      durationFieldForMs(3_600_000, DURATION_FIELD_UNITS.peerTimeout),
+    ).toEqual({ magnitude: "1", unit: "h" });
+    expect(
+      durationFieldForMs(2_500, DURATION_FIELD_UNITS.serverConnectTimeout),
+    ).toEqual({ magnitude: "2500", unit: "ms" });
+  });
 });
 
 describe("the fields the two cards contribute", () => {

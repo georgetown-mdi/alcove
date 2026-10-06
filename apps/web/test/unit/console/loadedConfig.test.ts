@@ -3,14 +3,16 @@ import path from "node:path";
 
 import { describe, expect, test } from "vitest";
 
-import { getDefaultLinkageTerms } from "@alcove/core";
+import { MAX_TIMEOUT_SECONDS, getDefaultLinkageTerms } from "@alcove/core";
 
 import { composeSftpConfigSpec } from "@jobs/intentConfig";
 import { validateAuthoredSftpServer } from "@jobs/sftpServer";
 
 import {
   CONNECTION_TUNING_DEFAULT,
+  DURATION_FIELD_UNITS,
   connectionTuningOptions,
+  durationUnitChoices,
 } from "@console/connectionTuningModel";
 import {
   EMPTY_SFTP_FORM,
@@ -137,7 +139,7 @@ describe("the connection-tuning draft a loaded options block seeds", () => {
     expect(connectionTuningFromOptions({})).toEqual(CONNECTION_TUNING_DEFAULT);
   });
 
-  test("a duration opens in the coarsest unit it is whole in", () => {
+  test("a duration opens in the coarsest unit its field offers that holds it whole", () => {
     const draft = connectionTuningFromOptions({
       pollIntervalMs: 120_000,
       peerTimeoutMs: 3_600_000,
@@ -150,6 +152,50 @@ describe("the connection-tuning draft a loaded options block seeds", () => {
       unit: "ms",
     });
   });
+
+  test("an hour-long check interval opens in minutes, a unit its control lists", () => {
+    const draft = connectionTuningFromOptions({ pollIntervalMs: 3_600_000 });
+    expect(draft.pollInterval).toEqual({ magnitude: "60", unit: "m" });
+    expect(
+      durationUnitChoices(
+        DURATION_FIELD_UNITS.pollInterval,
+        draft.pollInterval.unit,
+      ),
+    ).toContain(draft.pollInterval.unit);
+  });
+
+  test.each([
+    1,
+    999,
+    1_000,
+    1_500,
+    2_500,
+    59_000,
+    60_000,
+    90_000,
+    3_600_000,
+    5_400_000,
+    86_400_000,
+    MAX_TIMEOUT_SECONDS * 1000,
+  ])(
+    "%i ms in every duration field opens in a unit its control lists and composes back unchanged",
+    (ms) => {
+      const stated = {
+        pollIntervalMs: ms,
+        peerTimeoutMs: ms,
+        inactivityTimeoutMs: ms,
+        serverConnectTimeoutMs: ms,
+      };
+      const draft = connectionTuningFromOptions(stated);
+      for (const field of Object.keys(DURATION_FIELD_UNITS) as Array<
+        keyof typeof DURATION_FIELD_UNITS
+      >)
+        expect(
+          durationUnitChoices(DURATION_FIELD_UNITS[field], draft[field].unit),
+        ).toContain(draft[field].unit);
+      expect(connectionTuningOptions(draft)).toEqual(stated);
+    },
+  );
 
   test("the round trip through the composition it inverts is the identity", () => {
     const stated = {

@@ -271,9 +271,7 @@ describe("console inputs disabled state", () => {
     // ServerFilePicker notice title is the anchor: it belongs to the error branch
     // alone, where a fragment of the body would have to match a longer sentence.
     expect(
-      page
-        .getByText("Could not list the work directory", { exact: true })
-        .query(),
+      page.getByText("Could not list your folder", { exact: true }).query(),
     ).toBeNull();
     // Nothing to recover, so no recovery panel.
     await vi.waitFor(() =>

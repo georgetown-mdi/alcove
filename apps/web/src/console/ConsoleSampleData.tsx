@@ -30,7 +30,7 @@ export function sampleInputsFailure(
       return (
         "The console could not write the sample files into your folder, " +
         "which may be mounted read-only. Download them instead and copy one " +
-        "into the folder you mounted."
+        "into your folder."
       );
     case "disabled":
       return (

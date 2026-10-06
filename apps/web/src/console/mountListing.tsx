@@ -119,7 +119,7 @@ export function NoMountedFolderNotice({
     >
       <Stack gap="xs">
         <Text size="sm">
-          The console has no mounted folder, so it cannot {cannot}. Stop it and
+          The console has no working folder, so it cannot {cannot}. Stop it and
           start it again with your folder mounted:
         </Text>
         <Code block>{SINGLE_FOLDER_RUN_COMMAND}</Code>

@@ -550,7 +550,7 @@ function CredentialField({
 
       <TextInput
         label="File reference"
-        description="For a file you cannot choose above. Type an @ and the file's absolute path inside the console's container, such as @/secrets/sftp-password.txt for a secrets directory mounted at /secrets. A path on your computer is not found."
+        description="For a file you cannot choose above. Type an @ and the file's absolute path inside the console's container, such as @/secrets/sftp-password.txt for a secrets folder mounted at /secrets. A path on your computer is not found."
         classNames={{ input: styles.mono }}
         value={typedRef}
         error={picked === undefined && !pasteActive ? error : undefined}

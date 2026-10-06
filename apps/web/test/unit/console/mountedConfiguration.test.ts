@@ -172,8 +172,8 @@ describe("an opened configuration's own paths, until converted", () => {
     expect(reason).toContain(CONVERT_CONFIGURATION_LABEL);
     expect(reason).toContain("turn the signed receipt off");
     expect(reason).toContain(
-      "this exchange then runs unsigned, and the configuration the console " +
-        "gives you to run on a schedule keeps your file's signing settings",
+      "This exchange then runs unsigned, and the configuration for " +
+        "scheduled runs keeps your file's signing settings.",
     );
   });
 
@@ -204,22 +204,30 @@ describe("an opened configuration's own paths, until converted", () => {
       "With the signed receipt off, this exchange runs unsigned",
     );
     expect(statement).toContain("keeps your file's signing settings");
+    expect(statement).toContain("The run here uses your folder either way.");
     expect(statement).toContain(
-      "The run uses the console's mounted folder either way.",
+      "Converting also changes the configuration for scheduled runs.",
     );
     expect(statement).toContain(
-      "a placeholder in place of signing.identity_file, connection.path",
+      "That configuration then names no receipt file and states a " +
+        "placeholder for signing.identity_file, connection.path, to set on " +
+        "the machine you schedule from.",
     );
-    expect(statement).toContain("names no receipt file");
   });
 
   test("converting only a folder path changes only the scheduled configuration", () => {
     const statement = conversionStatement(openedWithPaths([]));
-    expect(statement).toContain("names a path of its own: connection.path.");
     expect(statement).toContain(
-      "The run uses the console's mounted folder either way.",
+      "Your alcove.yaml sets its own path in connection.path.",
     );
-    expect(statement).toContain("Converting changes only the configuration");
+    expect(statement).toContain("The run here uses your folder either way.");
+    expect(statement).toContain(
+      "Converting changes only the configuration for scheduled runs.",
+    );
+    expect(statement).toContain(
+      "That configuration then states a placeholder for connection.path, " +
+        "to set on the machine you schedule from.",
+    );
     expect(statement).not.toContain("signed receipt");
     expect(statement).not.toContain("receipt file");
   });
@@ -280,7 +288,7 @@ describe("a configuration on a channel the console does not conduct", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     const reason = runWithheldReason(state);
     expect(reason).toContain("webrtc");
-    expect(reason).toContain("sftp and filedrop");
+    expect(reason).toContain("SFTP and shared-folder exchanges only");
     expect(reason).toMatch(/Alcove on the command line/);
     expect(reason).toMatch(/Save your changes to alcove\.yaml/);
   });
@@ -496,7 +504,7 @@ describe("the notices name the settings and say what happens to them", () => {
     const notice = credentialWarningNotice(["connection.server.password"]);
     expect(notice).toContain("connection.server.password");
     expect(notice).toMatch(/connection step/);
-    expect(notice).toMatch(/folder you mounted/);
+    expect(notice).toMatch(/from your folder/);
   });
 
   test("several credential fields are all named", () => {
@@ -529,7 +537,7 @@ describe("the notices name the settings and say what happens to them", () => {
       withUnavailableTransport(read.state, "filedrop"),
     );
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toContain("shared directory");
+    expect(notices[0]).toContain("shared folder");
     expect(notices[0]).toContain("JOB_RENDEZVOUS_DIR");
     expect(notices[0]).toMatch(/review step/);
   });
@@ -556,7 +564,7 @@ describe("the notices name the settings and say what happens to them", () => {
       ),
     );
     expect(notices).toHaveLength(4);
-    expect(notices[0]).toContain("shared directory");
+    expect(notices[0]).toContain("shared folder");
     expect(notices[1]).toContain("signing.receipt_output");
     expect(notices[2]).toContain("connection.server.password");
     expect(notices[3]).toContain("metadata");

@@ -2258,7 +2258,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
     expect(body).not.toContain(ref);
     const parsed = JSON.parse(body) as { credentialWarnings?: Array<string> };
     expect(parsed.credentialWarnings).toHaveLength(1);
-    expect(parsed.credentialWarnings?.[0]).toContain("mounted folder");
+    expect(parsed.credentialWarnings?.[0]).toContain("inside your folder");
   });
 
   test("the input listing leaves out the credential file the authored connection references", async () => {
@@ -2335,7 +2335,7 @@ describe("PUT/DELETE /api/jobs/sftp (authoring the connection)", () => {
     expect(response.status).toBe(400);
     const text = await response.text();
     expect(text).toContain("connection.credential");
-    expect(text).toContain("secrets directory");
+    expect(text).toContain("secrets folder");
   });
 
   test.each([
