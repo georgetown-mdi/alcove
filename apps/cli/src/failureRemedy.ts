@@ -123,11 +123,12 @@ function arrivalWaitOf(err: unknown): ArrivalWait {
 
 /**
  * The CLI's remedy for the catalog cause `err` holds anywhere in its cause
- * chain, else `undefined`.
+ * chain, else `undefined`: also for a tagged kind with no row here, since a
+ * cause read off an error's tag is typed rather than checked.
  */
 export function failureRemedy(err: unknown): string | undefined {
   const cause = failureCauseOf(err);
-  return cause === undefined
+  return cause === undefined || !Object.hasOwn(CLI_FAILURE_REMEDIES, cause.kind)
     ? undefined
     : remedyForCause(cause, { arrivalWait: arrivalWaitOf(err) });
 }

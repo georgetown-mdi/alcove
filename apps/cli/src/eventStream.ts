@@ -16,20 +16,38 @@ import type {
   Displayable,
   EntityClusterSummary,
   ExchangeStageDefinition,
-  FailureCause,
-  FailureCauseKind,
-  FailureCauseOfKind,
-  PartnerDeduplicateChange,
   PayloadColumnsChange,
-  RelayRegistrarUnreachableFailure,
   ResolvedMatching,
 } from "@alcove/core";
+
+import {
+  EVENT_RESULT_CLUSTER_SHAPES_MAX,
+  EVENT_STREAM_FD,
+  EVENT_STREAM_VERSION,
+  INTERNAL_FAULT_EXIT_CODE,
+  PERSISTENCE_LOSS_EXIT_CODE,
+  failureCauseStreamField,
+  toStreamCount,
+} from "@alcove/cli-contract";
+import type {
+  ErrorEvent,
+  ErrorEventColumnsChange,
+  ErrorPhase,
+  ExchangeErrorCategory,
+  MetricsEvent,
+  ResultEvent,
+  StageEndEvent,
+  StageEvent,
+  StagesEvent,
+  StreamEvent,
+  WarningEvent,
+  WarningSource,
+} from "@alcove/cli-contract";
 
 import {
   exitCodeForError,
   fixedNextStep,
   installTerminalFailureReporter,
-  INTERNAL_FAULT_EXIT_CODE,
   renderFailureForOperator,
 } from "./util/exit";
 import { failureRemedy } from "./failureRemedy";
@@ -40,212 +58,6 @@ import { termsChangeNotTakenOf } from "./termsChangeNotTaken";
 
 const log = getLogger("event-stream");
 
-/**
- * The fixed file descriptor the opt-in machine-readable event stream is written
- * to. Not configurable: a supervisor spawns Alcove with descriptor 3 wired to a
- * pipe it reads, so a constant is the contract. stdout (fd 1) and stderr (fd 2)
- * are untouched -- the event stream is a third channel, so a supervisor reads
- * structured events without parsing the human log or corrupting the CSV result.
- * The full contract lives in docs/spec/CLI_EVENTS.md.
- */
-export const EVENT_STREAM_FD = 3;
-
-/**
- * The schema version stamped on every emitted line (the `v` field). A small
- * integer so a supervisor can read the version from any single line without
- * tracking stream position. Bump it on any breaking change to an event's field
- * layout or the classification rules; an additive field need not bump it. See
- * docs/spec/CLI_EVENTS.md.
- */
-export const EVENT_STREAM_VERSION = 1;
-
-/**
- * The most shape entries the `result` event's `entityClusters` field holds.
- *
- * That list is the one variable-length field of this stream, and a run whose
- * clusters take thousands of distinct shapes would push the terminal event past
- * a consumer's per-line bound -- the console relay's is 1 MiB
- * (`apps/web/src/jobs/cliDriver.ts`) -- costing the run the outcome the event
- * exists to report. A wider distribution drops the field rather than truncating
- * the list, since a short list would misstate how many shapes the summary's own
- * sentence leaves unnamed. Sized well above any distribution an operator reads
- * and well below that bound.
- */
-export const EVENT_RESULT_CLUSTER_SHAPES_MAX = 256;
-
-/**
- * The closed vocabulary of event `type` values. This party owns every one of
- * these strings -- none is partner-derived -- so a consumer can switch on the
- * discriminant safely. `stages` is the one-shot stage-list event; `stage` marks
- * each stage transition; `stageEnd` reports a completed stage's wall-clock
- * duration; `warning` holds a non-fatal warning, whose own {@link WarningSource}
- * field names which notice raised it;
- * `metrics` is the one-shot operational-counter summary emitted just before the
- * terminal event; `result` and `error` are the two terminal events (exactly one
- * fires per run).
- */
-export type EventType =
-  "stages" | "stage" | "stageEnd" | "warning" | "metrics" | "result" | "error";
-
-/**
- * The closed vocabulary of `warning` `source` values, naming which of this
- * party's notices raised the warning. Like `type`, every value is this party's
- * own string and none is partner-derived, so a consumer switching on it can
- * tell the cross-party host-key divergence security signal from a routine
- * per-run notice without parsing `message` -- which an unattended supervisor
- * otherwise has to, to decide whether to alert.
- *
- * `persistenceLoss` is the one value tied to an exit code: it is stamped by
- * {@link reportPersistenceLoss}, the single call site that also sets
- * {@link PERSISTENCE_LOSS_EXIT_CODE}, so the source and the code cannot part.
- *
- * docs/spec/CLI_EVENTS.md (Warning sources) is the registry every value is
- * described in, and where a new warning source claims one;
- * scripts/check-warning-sources.mjs fails when the two disagree.
- */
-export const WARNING_SOURCES = [
-  "termsExchange",
-  "hostKeyDivergence",
-  "partnerCertificatePinned",
-  "unnamedPartnerRecord",
-  "resolvedCardinality",
-  "pairTableAdvisory",
-  "signingWithoutRecord",
-  "undeclaredColumns",
-  "payloadSendBeyondConfiguration",
-  "payloadReceiveTaken",
-  "terminatedRunRecord",
-  "persistenceLoss",
-  "logFileLoss",
-  "memoryShortfall",
-] as const;
-
-/** One {@link WARNING_SOURCES} value; see that list. */
-export type WarningSource = (typeof WARNING_SOURCES)[number];
-
-/**
- * The four terminal-error categories, lifted verbatim from the web's
- * `ExchangeErrorCategory` (apps/web/src/psi/exchangeLifecycle.ts) so a consumer
- * classifies a CLI failure exactly as it would a web one:
- * - `config`: a PREPARE-phase {@link OperatorConfigError} -- a fault composed
- *   solely of this party's own configuration, actionable and safe to show.
- * - `security`: a trust-boundary failure -- a `security`-kind
- *   {@link ConnectionError} from the authenticated key exchange (wrong secret,
- *   tamper, replay), from SFTP host-key verification (a pinned-fingerprint
- *   mismatch), or from the post-handshake AEAD layer. It must be identifiable from the terminal event
- *   alone, since an integrity failure exits 69 like a plain transport
- *   failure.
- * - `output`: the privacy-sensitive exchange already succeeded and only local
- *   result-file generation failed -- the operator must NOT re-run the exchange.
- * - `exchange`: every other failure (a transport or usage fault, or a refusal
- *   by the partner or the agreed terms).
- */
-export type ExchangeErrorCategory =
-  "exchange" | "output" | "security" | "config";
-
-/**
- * The lifecycle phase a terminal error was raised in, mirroring the web's
- * `phase` argument to its classifier. `prepare` covers everything before the
- * exchange proper begins (dataset prep, connection open, handshake); `run`
- * covers the PSI exchange itself; `output` covers local result-file generation
- * after the exchange succeeded.
- */
-export type ErrorPhase = "prepare" | "run" | "output";
-
-/** A single stage in the emitted stage list, echoing the web's onStages shape. */
-export interface EventStageDefinition {
-  id: string;
-  label: string;
-}
-
-interface EventBase {
-  /** Schema version; see {@link EVENT_STREAM_VERSION}. */
-  v: number;
-  type: EventType;
-}
-
-/** The one-shot stage-list event, the CLI counterpart of the web's onStages. */
-export interface StagesEvent extends EventBase {
-  type: "stages";
-  stages: EventStageDefinition[];
-}
-
-/** A stage-transition event, the counterpart of the web's onStage. */
-export interface StageEvent extends EventBase {
-  type: "stage";
-  id: string;
-  label: string;
-}
-
-/**
- * A stage-completion event, emitted when a protocol stage finishes, reporting
- * how long it ran. It pairs with the start-of-stage {@link StageEvent} so a
- * supervisor can attribute wall-clock to the stage named by `id`. Only a
- * completed stage is reported: a run that aborts mid-stage emits no `stageEnd`
- * for the in-flight stage, so a reported duration is always a whole stage's time.
- */
-export interface StageEndEvent extends EventBase {
-  type: "stageEnd";
-  /** The completed stage's identifier, matching an `id` from the `stages` event. */
-  id: string;
-  /** Wall-clock the stage ran, in whole milliseconds; never negative. */
-  durationMs: number;
-}
-
-/**
- * A non-fatal warning. `source` names which notice raised it, so a supervisor
- * classifies the warning without parsing `message`.
- */
-export interface WarningEvent extends EventBase {
-  type: "warning";
-  source: WarningSource;
-  message: string;
-  /**
-   * The text `message` escapes, before that escape: redacted and fitted so
-   * its escaped form stays within `WARNING_MESSAGE_MAX_DISPLAY_LENGTH`, but
-   * not escaped, so a consumer that escapes what it shows makes the one pass
-   * the text takes. Present on every warning but `payloadReceiveTaken`,
-   * whose partner text is in `columns` ({@link buildWarningEvent}).
-   */
-  unescapedMessage?: string;
-  /**
-   * How many diagnostic lines the `--log-file` could not take; present only
-   * under `source: "logFileLoss"` ({@link reportLogFileLoss}).
-   */
-  lostLines?: number;
-  /**
-   * The partner's column names the message holds, as the partner declared
-   * them: redacted and fitted to the per-value budget but not escaped, so a
-   * consumer escapes a name where it shows it. Present only under
-   * `source: "payloadReceiveTaken"` ({@link buildPayloadReceiveTakenEvent}).
-   */
-  columns?: string[];
-  /**
-   * How many columns the run took, more than `columns` holds where the
-   * message was cut; present only beside `columns`.
-   */
-  columnCount?: number;
-}
-
-/**
- * The per-run operational-counter summary, emitted exactly once immediately
- * before the terminal {@link ResultEvent}/{@link ErrorEvent} (so the terminal
- * event stays last). It reports this party's dataset size and how often the
- * transport had to retry a data operation or re-establish the connection over
- * the run. Every field is this party's own non-negative integer -- none is
- * partner-derived -- so no sanitization applies. Not emitted on a signal exit,
- * which emits no terminal event either.
- */
-export interface MetricsEvent extends EventBase {
-  type: "metrics";
-  /** This party's input record count fed into the exchange. */
-  recordsProcessed: number;
-  /** Transport data-operation retries over the run; 0 when none occurred. */
-  transportRetries: number;
-  /** Connection re-establishment attempts over the run; 0 when none occurred. */
-  reconnects: number;
-}
-
 /** Where a written result table went, for the `result` event. */
 export interface ResultTableDelivery {
   /** The number of matched rows in the table. */
@@ -253,146 +65,6 @@ export interface ResultTableDelivery {
   /** The result file's absolute path; absent when it went to stdout. */
   resultPath?: string;
 }
-
-/** The success terminal event. Exactly one terminal event fires per run. */
-export interface ResultEvent extends EventBase {
-  type: "result";
-  /**
-   * Whether this party received a matched result table. False for a one-sided
-   * exchange in which this party is the helper and its agreed terms give it no
-   * output -- it contributed to the match but receives no result file -- and
-   * false for a count-only exchange, which produces no matched pairing for
-   * anyone, in which case {@link intersectionCount} holds the outcome.
-   */
-  resultWritten: boolean;
-  /**
-   * The size of the intersection a count-only (`psi-c`) exchange reported,
-   * present exactly when this party's agreed terms gave it the count and absent
-   * on every other run. It is what separates the two `resultWritten: false`
-   * outcomes: with the field, this party received exactly what its terms
-   * promised; without it, the terms withheld the result table.
-   */
-  intersectionCount?: number;
-  /**
-   * The number of matched rows in the result table this party received,
-   * present exactly when {@link resultWritten} is true.
-   */
-  matchedRows?: number;
-  /**
-   * The absolute path the result table was written to, escaped for display,
-   * present when {@link resultWritten} is true and the result went to a file
-   * rather than to stdout.
-   */
-  resultPath?: string;
-  /**
-   * Whether {@link intersectionCount} arrived as the partner's report rather than
-   * as a figure this party computed -- true for the PSI sender seat of a
-   * both-entitled count-only run, false for the receiver that computed it. Emitted
-   * exactly when {@link intersectionCount} is, so a consumer reads the pair or
-   * neither; absent means there was no count to qualify.
-   */
-  countReportedByPartner?: boolean;
-  /**
-   * What the two parties' agreed `deduplicate` values resolved to for this
-   * party ({@link ResolvedMatching}): the pair as presented and the cardinality
-   * it gives this side. Present on every successful run.
-   *
-   * On the stream because the human log states it at info level, which a
-   * supervisor discarding stderr -- or running at a quieter level -- never
-   * reads, and a console seat watching the run reads nothing else. Both
-   * booleans and the closed cardinality label are this party's own values,
-   * derived from terms the run boundary already parsed, so no partner free
-   * text rides the field.
-   */
-  matching: ResolvedMatching;
-  /**
-   * How the entity closure grouped this party's result: the cluster count, how
-   * many records of each party stand in a cluster, and the distribution of the
-   * shapes those clusters take ({@link EntityClusterSummary}).
-   *
-   * Present on a `many-to-many` run this party holds the table of, absent under
-   * every other cardinality -- whose clusters follow from the table's own shape
-   * -- and absent where the distribution holds more shapes than
-   * {@link EVENT_RESULT_CLUSTER_SHAPES_MAX}.
-   *
-   * On the stream for the reason {@link matching} is: the human log states the
-   * same summary as a sentence at info level, which a supervisor reading fd 3
-   * alone -- or a console seat watching the run -- never reads. Every figure is
-   * one of this party's own counts over its own table, so no partner free text
-   * rides the field.
-   */
-  entityClusters?: EntityClusterSummary;
-}
-
-/** The failure terminal event. Exactly one terminal event fires per run. */
-export interface ErrorEvent extends EventBase {
-  type: "error";
-  category: ExchangeErrorCategory;
-  /**
-   * Display-safe error text, the same text stderr receives
-   * ({@link renderFailureForOperator}).
-   */
-  message: string;
-  /**
-   * Present and `true` when {@link message} holds its own next step: read off
-   * core's `alcoveRecoveryHintEmitted` tag ({@link errorStatesItsOwnNextStep}),
-   * or set where the CLI appended {@link fixedNextStep}'s step to an internal
-   * fault's or a partner refusal's message, or its remedy for a {@link cause}
-   * ({@link failureRemedy}). A supervisor showing fixed copy
-   * for this category shows the message instead, and adds no advisory of its
-   * own; absent, it has no such assurance. Omitted rather than emitted `false`, so the field is the
-   * assurance and nothing else.
-   */
-  recoveryHint?: true;
-  /**
-   * Present and `true` exactly when {@link exitCode} is
-   * {@link INTERNAL_FAULT_EXIT_CODE} (70): a fault in Alcove itself, which a
-   * retry reaches again. A supervisor offering a retry for the `exchange`
-   * category withholds it here. Omitted rather than emitted `false`.
-   */
-  internalFault?: true;
-  /**
-   * The code the process exits with on this failure. Optional on the wire
-   * (docs/spec/CLI_EVENTS.md): a consumer reads its absence as an emitter
-   * older than the field, never as success.
-   */
-  exitCode: number;
-  /**
-   * Present when the run ended on a partner terms change it did not take on
-   * ({@link termsChangeNotTakenOf}): how the partner's terms differ, each
-   * partner-chosen name and diagnostic escaped, and whether the run wrote
-   * them beside the configuration for `alcove apply`.
-   */
-  termsChange?: ErrorEventTermsChange;
-  /**
-   * The cause from core's failure-cause catalog the failure holds
-   * (`failureCauseOf`), as its kind and facts: a supervisor states the cause
-   * from it and names its own remedy rather than reading {@link message}.
-   * Absent on a failure the catalog does not name.
-   */
-  cause?: FailureCause;
-}
-
-/** One direction's changed payload columns, as the `error` event states them. */
-export type ErrorEventColumnsChange = PayloadColumnsChange;
-
-/** The `error` event's {@link ErrorEvent.termsChange}. */
-export interface ErrorEventTermsChange {
-  proposalWritten: boolean;
-  received?: ErrorEventColumnsChange;
-  sent?: ErrorEventColumnsChange;
-  partnerDeduplicate?: PartnerDeduplicateChange;
-  otherTerms: string[];
-}
-
-export type StreamEvent =
-  | StagesEvent
-  | StageEvent
-  | StageEndEvent
-  | WarningEvent
-  | MetricsEvent
-  | ResultEvent
-  | ErrorEvent;
 
 // --- Pure event construction (no file descriptor) ----------------------------
 
@@ -453,16 +125,6 @@ export function buildStageEvent(id: string, label: string): StageEvent {
   };
 }
 
-/**
- * Coerce a counter or duration to a non-negative whole number, so a malformed
- * caller value (undefined, NaN, negative, fractional) can never produce an
- * out-of-contract numeric field. These metric values are this party's own
- * integers, so this is a robustness floor, not a sanitizer.
- */
-function toCount(value: number): number {
-  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
-}
-
 /** Build a stage-completion event from a stage id and its measured duration. */
 export function buildStageEndEvent(
   id: string,
@@ -474,7 +136,7 @@ export function buildStageEndEvent(
     // The id echoes a partner-authorable stage identifier, taking the same pass
     // as the stage event's id.
     id: redactAndSanitizeForDisplay(id),
-    durationMs: toCount(durationMs),
+    durationMs: toStreamCount(durationMs),
   };
 }
 
@@ -528,7 +190,7 @@ export function buildPayloadReceiveTakenEvent(
     columns: shownColumns.map((name) =>
       redactAndFitUnescaped(name, DEFAULT_MAX_DISPLAY_LENGTH),
     ),
-    columnCount: toCount(columnCount),
+    columnCount: toStreamCount(columnCount),
   };
 }
 
@@ -541,9 +203,9 @@ export function buildMetricsEvent(
   return {
     v: EVENT_STREAM_VERSION,
     type: "metrics",
-    recordsProcessed: toCount(recordsProcessed),
-    transportRetries: toCount(transportRetries),
-    reconnects: toCount(reconnects),
+    recordsProcessed: toStreamCount(recordsProcessed),
+    transportRetries: toStreamCount(transportRetries),
+    reconnects: toStreamCount(reconnects),
   };
 }
 
@@ -579,7 +241,7 @@ export function buildResultEvent(
     resultWritten: table !== undefined,
     ...(table !== undefined
       ? {
-          matchedRows: toCount(table.matchedRows),
+          matchedRows: toStreamCount(table.matchedRows),
           ...(table.resultPath !== undefined
             ? {
                 resultPath: redactAndSanitizeForDisplay(table.resultPath, {
@@ -603,7 +265,7 @@ export function buildResultEvent(
     // counts before it gets here.
     ...(count !== undefined
       ? {
-          intersectionCount: toCount(count.intersectionCount),
+          intersectionCount: toStreamCount(count.intersectionCount),
           countReportedByPartner: count.reportedByPartner,
         }
       : {}),
@@ -625,14 +287,14 @@ function copyClusterSummary(
   summary: EntityClusterSummary,
 ): EntityClusterSummary {
   return {
-    clusterCount: toCount(summary.clusterCount),
-    localRows: toCount(summary.localRows),
-    partnerRows: toCount(summary.partnerRows),
+    clusterCount: toStreamCount(summary.clusterCount),
+    localRows: toStreamCount(summary.localRows),
+    partnerRows: toStreamCount(summary.partnerRows),
     shapes: summary.shapes.map((shape) => ({
-      localRows: toCount(shape.localRows),
-      partnerRows: toCount(shape.partnerRows),
-      distinctValues: toCount(shape.distinctValues),
-      clusters: toCount(shape.clusters),
+      localRows: toStreamCount(shape.localRows),
+      partnerRows: toStreamCount(shape.partnerRows),
+      distinctValues: toStreamCount(shape.distinctValues),
+      clusters: toStreamCount(shape.clusters),
     })),
   };
 }
@@ -682,61 +344,12 @@ export function buildErrorEvent(
   };
 }
 
-// Each kind's facts copied one by one, so nothing beyond them widens the line,
-// a path escaped as the stream's other free text is, and a wait floored to a
-// whole count. Total over the kinds, so a cause core adds fails to compile here
-// until it has a row.
-const CAUSE_FIELDS: {
-  readonly [K in FailureCauseKind]: (
-    cause: FailureCauseOfKind<K>,
-  ) => FailureCauseOfKind<K>;
-} = {
-  "partner-never-arrived": ({ channel, waitedMs }) => ({
-    kind: "partner-never-arrived",
-    ...(channel !== undefined ? { channel } : {}),
-    ...(waitedMs !== undefined ? { waitedMs: toCount(waitedMs) } : {}),
-  }),
-  "folder-missing": ({ path, code }) => ({
-    kind: "folder-missing",
-    path: redactAndSanitizeForDisplay(path, {
-      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
-    }),
-    code,
-  }),
-  "relay-registrar-unreachable": (cause) => ({
-    kind: "relay-registrar-unreachable",
-    host: redactAndSanitizeForDisplay(cause.host, {
-      maxLength: FAILURE_CAUSE_PATH_MAX_LENGTH,
-    }),
-    port: cause.port,
-    ...relayRegistrarFailureFields(cause),
-  }),
-};
-
-function relayRegistrarFailureFields(
-  cause: RelayRegistrarUnreachableFailure,
-): RelayRegistrarUnreachableFailure {
-  switch (cause.failure) {
-    case "no-connection":
-      return { failure: cause.failure, code: cause.code };
-    case "name-not-resolved":
-      return { failure: cause.failure, code: cause.code };
-    case "no-answer":
-      return "timedOutMs" in cause
-        ? { failure: cause.failure, timedOutMs: toCount(cause.timedOutMs) }
-        : { failure: cause.failure, code: cause.code };
-  }
-}
-
 /** The {@link ErrorEvent.cause} field for `error`, as the fields to spread. */
 function causeFieldOf(error: unknown): Pick<ErrorEvent, "cause"> {
   const cause = failureCauseOf(error);
   if (cause === undefined) return {};
-  return {
-    cause: (CAUSE_FIELDS[cause.kind] as (cause: FailureCause) => FailureCause)(
-      cause,
-    ),
-  };
+  const field = failureCauseStreamField(cause);
+  return field === undefined ? {} : { cause: field };
 }
 
 /**
@@ -978,17 +591,6 @@ export function openEventStream(
 }
 
 // --- Persistence loss on a completed run -------------------------------------
-
-/**
- * The exit code a run reports when the exchange itself completed and a local
- * write did not: the result file, an audit artifact, the configuration and
- * consent records an online `invite`/`accept` writes, or the configuration and
- * key a zero-setup `--save` writes. `EX_CANTCREAT` (73) in the BSD `sysexits`
- * convention, not `EX_UNAVAILABLE` (69): the two exit codes demand opposite
- * operator responses (retry vs. do not retry), and a bare supervisor sees only
- * the code. See docs/CLI.md (Exit 73) and docs/spec/CLI_EVENTS.md.
- */
-export const PERSISTENCE_LOSS_EXIT_CODE = 73;
 
 /**
  * Report a persistence failure the completed exchange survives, on both machine

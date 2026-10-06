@@ -53,13 +53,16 @@ jobs:
           # spawned process (apps/cli/test/signaling/brokerProcess.ts), so the
           # broker workspace is in scope. The CLI's unit suite is driven by
           # fixtures packages/testkit holds (docs/TESTING.md, Shared test
-          # material), so a change confined to them re-runs the suites too.
+          # material), so a change confined to them re-runs the suites too, and
+          # the CLI depends on packages/cli-contract, whose own unit suite runs
+          # beside the CLI's.
           paths: |
             apps/cli/**
             packages/core/**
             lib/**
             packages/peerjs-broker/**
             packages/testkit/**
+            packages/cli-contract/**
             package-lock.json
             tsconfig.base.json
             .github/actions/setup/**
@@ -92,7 +95,7 @@ jobs:
       matrix:
         include:
           - suite: unit
-            command: npm run test:unit -w apps/cli
+            command: npm run test:unit -w packages/cli-contract -w apps/cli
           # Integration tests exercise the real ssh2 SFTPWrapper contract end to
           # end (unit tests run against mocks), so they are what actually
           # catches a dependency bump that breaks the coupling. The suite is

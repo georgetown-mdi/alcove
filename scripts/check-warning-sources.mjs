@@ -48,7 +48,7 @@ import { descendants, parseSource } from "./lib/typeScriptSources.mjs";
 export const REGISTRIES = [
   {
     stream: "the CLI's fd-3 event stream",
-    module: "apps/cli/src/eventStream.ts",
+    module: "packages/cli-contract/src/warningSources.ts",
     declaration: "WARNING_SOURCES",
     doc: "docs/spec/CLI_EVENTS.md",
     heading: "#### Warning sources",

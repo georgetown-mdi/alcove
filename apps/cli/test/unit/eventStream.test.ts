@@ -29,6 +29,11 @@ import {
   EVENT_STREAM_VERSION,
   PERSISTENCE_LOSS_EXIT_CODE,
   WARNING_SOURCES,
+  type ErrorPhase,
+  type StreamEvent,
+} from "@alcove/cli-contract";
+
+import {
   assertEventStreamFdOpen,
   buildErrorEvent,
   buildMetricsEvent,
@@ -40,8 +45,6 @@ import {
   classifyTerminalError,
   openEventStream,
   reportPersistenceLoss,
-  type ErrorPhase,
-  type StreamEvent,
 } from "../../src/eventStream";
 import {
   INTERNAL_FAULT_NEXT_STEP,

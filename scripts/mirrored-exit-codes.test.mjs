@@ -44,7 +44,7 @@ const SERVER_MODULE = "apps/web/src/jobs/cliDriver.ts";
 const MIRRORS = [
   {
     constant: "PERSISTENCE_LOSS_EXIT_CODE",
-    cliModule: "apps/cli/src/eventStream.ts",
+    cliModule: "packages/cli-contract/src/exitCodes.ts",
     consequence:
       "a run that completed its exchange and lost a local write is " +
       "classified as an ordinary failure -- which tells a supervisor to " +
@@ -53,7 +53,7 @@ const MIRRORS = [
   },
   {
     constant: "INTERNAL_FAULT_EXIT_CODE",
-    cliModule: "apps/cli/src/util/exit.ts",
+    cliModule: "packages/cli-contract/src/exitCodes.ts",
     consequence:
       "a run that stopped on an internal fault without reporting it gets the " +
       "retryable terminal synthesized for a broken event stream, offering a " +
@@ -61,7 +61,7 @@ const MIRRORS = [
   },
   {
     constant: "PARTNER_REFUSED_EXIT_CODE",
-    cliModule: "apps/cli/src/util/exit.ts",
+    cliModule: "packages/cli-contract/src/exitCodes.ts",
     serverModule: "apps/web/src/psi/jobClient/serverJobExchangeDriver.ts",
     consequence:
       "a run the partner or the agreed terms refused is shown as a failure " +

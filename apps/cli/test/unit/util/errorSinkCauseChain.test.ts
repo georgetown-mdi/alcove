@@ -11,7 +11,8 @@ import {
 } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
-import { EVENT_STREAM_FD, type ErrorEvent } from "../../../src/eventStream";
+import { EVENT_STREAM_FD, type ErrorEvent } from "@alcove/cli-contract";
+
 import { openEventStreamWithFdWired } from "../../eventStreamTestSupport";
 import { exitWithError, runOrExit } from "../../../src/util/exit";
 import { parseOrExit } from "../../../src/util/flags";

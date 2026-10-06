@@ -16,6 +16,8 @@ import type {
   RelayRegistrationEnvironment,
 } from "@alcove/core";
 
+import { AUTHENTICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
+
 import {
   clearRelayRegistrationPending,
   loadKeyFile,
@@ -28,10 +30,7 @@ import {
   relayRegistrationNotice,
   type RelayRegistrationOutcome,
 } from "./relayRegistrar";
-import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
-  renderFailureForOperator,
-} from "./util/exit";
+import { renderFailureForOperator } from "./util/exit";
 import { withRecoveryHintTag } from "./util/recoveryHint";
 
 export {

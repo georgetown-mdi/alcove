@@ -8,7 +8,8 @@ import { getLogger } from "@alcove/core";
 import type { PresentedHostKey } from "@alcove/core";
 import { reconcileHostKeyFingerprints } from "@alcove/core/testing";
 
-import { EVENT_STREAM_FD, type WarningEvent } from "../../../src/eventStream";
+import { EVENT_STREAM_FD, type WarningEvent } from "@alcove/cli-contract";
+
 import { openEventStreamWithFdWired } from "../../eventStreamTestSupport";
 import {
   configureLogFile,

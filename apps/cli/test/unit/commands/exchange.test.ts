@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import yargs, { type Arguments } from "yargs";
 
+import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
+
 import type { ProtocolConnectionConfig } from "../../../src/protocol";
 import YAML from "yaml";
 import {
@@ -46,7 +48,6 @@ import {
 } from "../../../src/signingIdentityFile";
 import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
 import { runProtocol } from "../../../src/protocol";
-import { PERSISTENCE_LOSS_EXIT_CODE } from "../../../src/eventStream";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import { pathAsDisplayed } from "../../platformPaths";
 import {

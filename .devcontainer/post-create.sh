@@ -22,6 +22,8 @@ npm ci
 # built dist/, which is gitignored and lives on the bind-mounted tree (not the
 # node_modules volume), so a fresh container would otherwise see it unbuilt.
 npm run build -w packages/core
+# The CLI reads @alcove/cli-contract from its built dist/ the same way.
+npm run build -w packages/cli-contract
 
 # Fetch the Chromium build the web app's browser test suite drives via Playwright.
 # Here -- after `npm ci`, so it installs with the exact playwright the lockfile

@@ -24,6 +24,8 @@ jobs:
         run: npm run build -w apps/cli
       - name: Unit tests (core)
         run: npm test -w packages/core
+      - name: Unit tests (CLI contract)
+        run: npm test -w packages/cli-contract
       - name: Unit tests (CLI)
         run: npm run test:unit -w apps/cli
 

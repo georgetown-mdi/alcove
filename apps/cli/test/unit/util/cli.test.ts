@@ -21,19 +21,22 @@ import {
 import type { ConnectionErrorKind } from "@alcove/core";
 
 import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  INPUT_NOT_FOUND_EXIT_CODE,
+  INTERNAL_FAULT_EXIT_CODE,
+  PARTNER_REFUSED_EXIT_CODE,
+} from "@alcove/cli-contract";
+
+import {
   openInputSource,
   resetStdoutErrorGuard,
   stdoutDrainExpiredNotice,
   writeOutput,
 } from "../../../src/util/dataIo";
 import {
-  AUTHENTICATION_FAILED_EXIT_CODE,
   exitCodeForError,
-  INPUT_NOT_FOUND_EXIT_CODE,
   InputNotFoundError,
   exitWithError,
-  INTERNAL_FAULT_EXIT_CODE,
-  PARTNER_REFUSED_EXIT_CODE,
 } from "../../../src/util/exit";
 import {
   assertNoUnknownOptions,

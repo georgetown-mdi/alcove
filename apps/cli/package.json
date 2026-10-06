@@ -21,6 +21,7 @@
   "dependencies": {
     "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.3.tgz",
     "@alcove/core": "file:../../packages/core",
+    "@alcove/cli-contract": "file:../../packages/cli-contract",
     "loglevel": "^1.9.2",
     "peerjs-js-binarypack": "2.1.0",
     "ssh2": "1.17.0",

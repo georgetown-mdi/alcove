@@ -60,6 +60,11 @@ import type {
 } from "@alcove/core";
 
 import {
+  RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
+  RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
+} from "@alcove/cli-contract";
+
+import {
   readConfigLinkageSource,
   warnOnLinkageRuleSetCitationDrift,
   type ConfigLinkageSource,
@@ -78,8 +83,6 @@ import { openInputSource } from "../util/dataIo";
 import {
   exitCodeForError,
   exitWithError,
-  RECEIPT_VERIFICATION_FAILED_EXIT_CODE,
-  RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE,
   worseReceiptVerdictExitCode,
 } from "../util/exit";
 import { declarePositionals } from "../util/positionals";
