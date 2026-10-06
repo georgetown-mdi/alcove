@@ -190,7 +190,7 @@ which accepts the transformed signature. The scope of impact is narrow because
 nothing in this project treats a signature as an identifier -- the receipt
 signature is never hashed, committed to, deduped, or used as a key anywhere in
 the tree, and the exchange record's commitments do not cover it. The one claim it
-backs is [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#dual-signed-record-file)'s
+backs is [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#signed-receipt-file)'s
 statement that both parties write a byte-identical artifact, which such a third
 party could break in a copy without invalidating anything the artifact attests.
 
@@ -284,7 +284,7 @@ What it would buy is nothing the tree uses. The measured scope of impact above
 holds: no signature is hashed, committed to, deduped, or used as an identifier
 anywhere, and the exchange record's commitments do not cover one. The single
 claim resting on non-malleability was
-[EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#dual-signed-record-file)'s
+[EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#signed-receipt-file)'s
 statement that both parties write a byte-identical artifact, and that statement
 was narrowed instead: the two parties' files agree because each copies the
 signature the partner sent rather than re-deriving it, which is a property of how
@@ -359,7 +359,7 @@ before it is relied on again.
   the normative constructions: the certificate document, the self-signature, the
   fingerprint, and the signed-receipt step.
 - [EXCHANGE_RECORD.md](../spec/EXCHANGE_RECORD.md#signed-receipt) -- the receipt
-  byte layout, the signed bytes, and the dual-signed record file.
+  byte layout, the signed bytes, and the signed receipt file.
 - [fips-provider-surface.md](fips-provider-surface.md) -- what a FIPS provider
   has and reaches in the shipped image, and what the certificates approve.
 - [key-establishment-fips-boundary.md](key-establishment-fips-boundary.md) -- the

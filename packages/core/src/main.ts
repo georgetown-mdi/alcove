@@ -911,6 +911,7 @@ export {
   signedRecordExpectations,
   verifyDualSignedRecord,
 } from "./records/signedReceiptVerification";
+export { OWN_IDENTITY_UNMATCHED_CAUSES } from "./receiptVerdictText";
 export type {
   AnchoredCertificateSlot,
   AnchoredCertificateStatus,

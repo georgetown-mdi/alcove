@@ -46,7 +46,7 @@ A record of a terminated run readable as a completed run's would be worse than n
 
 **A distinguished filename.** Cheapest, and rejected. The record is designed to stand on its own when it is handed to an auditor or copied into an agency's own system, and a filename does not stay with a document.
 
-**The absent run binder.** A terminated run could simply omit the `receiptBinder`, since this party exchanged no receipt. Rejected on two counts. It does not distinguish: a record with no binder is also exactly what a completed run with no signing identity writes, which is most runs. And it is not true -- by the swap's wire ordering the partner may hold a completed receipt bearing this run's binder, and a record that dropped the value would leave that genuine receipt displaying as unpaired against it.
+**The absent binder.** A terminated run could simply omit the `receiptBinder`, since this party exchanged no receipt. Rejected on two counts. It does not distinguish: a record with no binder is also exactly what a completed run with no signing identity writes, which is most runs. And it is not true -- by the swap's wire ordering the partner may hold a completed receipt bearing this run's binder, and a record that dropped the value would leave that genuine receipt displaying as unpaired against it.
 
 **A stated outcome on the record.** Built. Every record states an `outcome`, and a terminated one keeps its binder beside it, so the two fields say different things: the binder says which run a receipt would belong to, and the outcome says whether this party got one.
 
@@ -74,4 +74,4 @@ The rot objection the section raises against a cause or step enum is unaffected 
 
 ## What it does not change
 
-The receipt's all-or-nothing rule is untouched: a terminated swap still writes no partial or unverifiable dual-signed record, and the record is not one -- it is the separate unsigned artifact, and it attests only what this party itself disclosed. The run still fails, with its own exit code; keeping the record is not a rescue of the exchange. And the record's own build stays non-fatal, so a run whose record cannot be built reports that and loses nothing else.
+The receipt's all-or-nothing rule is untouched: a terminated swap still writes no partial or unverifiable signed receipt, and the record is not one -- it is the separate unsigned artifact, and it attests only what this party itself disclosed. The run still fails, with its own exit code; keeping the record is not a rescue of the exchange. And the record's own build stays non-fatal, so a run whose record cannot be built reports that and loses nothing else.

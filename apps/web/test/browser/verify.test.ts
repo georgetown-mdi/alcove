@@ -311,7 +311,7 @@ async function verifyRecordAndSignedRecord(): Promise<{
     jsonFile("certificate.json", serializeCertificate(ourCertificate)),
   );
   await userEvent.click(
-    page.getByRole("button", { name: "Verify with the signed record" }),
+    page.getByRole("button", { name: "Verify with the signed receipt" }),
   );
 
   await expect
@@ -319,7 +319,11 @@ async function verifyRecordAndSignedRecord(): Promise<{
     .toBeInTheDocument();
   await expect
     .element(
-      page.getByText("checked separately below", { exact: false }).first(),
+      page
+        .getByText("are checked below, against the signed receipt", {
+          exact: false,
+        })
+        .first(),
     )
     .toBeInTheDocument();
   return { record, signed };
@@ -335,7 +339,11 @@ async function expectBothVerdictsGone() {
     .element(page.getByText("What was checked"))
     .not.toBeInTheDocument();
   await expect
-    .element(page.getByText("checked separately below", { exact: false }))
+    .element(
+      page.getByText("are checked below, against the signed receipt", {
+        exact: false,
+      }),
+    )
     .not.toBeInTheDocument();
 }
 
@@ -361,7 +369,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await expect.element(page.getByText("Incomplete")).toBeInTheDocument();
     await expect
       .element(
-        page.getByText("Supply your retained files", { exact: false }).first(),
+        page
+          .getByText("Supply the input and result files you kept", {
+            exact: false,
+          })
+          .first(),
       )
       .toBeInTheDocument();
 
@@ -558,12 +570,12 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .element(page.getByText("Verification failed"))
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("the record was altered", { exact: false }))
+      .element(
+        page.getByText("the exchange record was altered", { exact: false }),
+      )
       .toBeInTheDocument();
     await expect
-      .element(
-        page.getByText("does not belong to this exchange", { exact: false }),
-      )
+      .element(page.getByText("is not from this exchange", { exact: false }))
       .toBeInTheDocument();
   });
 
@@ -699,7 +711,9 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .element(page.getByText("Cannot be opened").first())
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("wrong or drifted keys file", { exact: false }))
+      .element(
+        page.getByText("the keys file is not this record's", { exact: false }),
+      )
       .toBeInTheDocument();
   });
 
@@ -991,7 +1005,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       jsonFile("certificate.json", serializeCertificate(ourCertificate)),
     );
     await userEvent.click(
-      page.getByRole("button", { name: "Verify with the signed record" }),
+      page.getByRole("button", { name: "Verify with the signed receipt" }),
     );
 
     await expect
@@ -1007,7 +1021,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     // signed-receipt verdict is on screen beside it.
     await expect
       .element(
-        page.getByText("checked separately below", { exact: false }).first(),
+        page
+          .getByText("are checked below, against the signed receipt", {
+            exact: false,
+          })
+          .first(),
       )
       .toBeInTheDocument();
   });
@@ -1058,7 +1076,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       jsonFile("certificate.json", serializeCertificate(ourCertificate)),
     );
     await userEvent.click(
-      page.getByRole("button", { name: "Verify with the signed record" }),
+      page.getByRole("button", { name: "Verify with the signed receipt" }),
     );
   }
 
@@ -1124,7 +1142,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       jsonFile("certificate.json", serializeCertificate(ourCertificate)),
     );
     await userEvent.click(
-      page.getByRole("button", { name: "Verify with the signed record" }),
+      page.getByRole("button", { name: "Verify with the signed receipt" }),
     );
 
     await expect
@@ -1133,7 +1151,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await expect
       .element(
         page.getByText(
-          "Nothing outside the record anchors the responder's certificate",
+          "Nothing you supplied confirms who holds the responder's certificate",
           { exact: false },
         ),
       )
@@ -1274,7 +1292,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .not.toBeInTheDocument();
     await expect
       .element(
-        page.getByText("Partner receipt signatures are not checked", {
+        page.getByText("Your partner's signatures are not checked", {
           exact: false,
         }),
       )
@@ -1315,11 +1333,11 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
 
     await expect
       .element(
-        page.getByRole("button", { name: "Verify with the signed record" }),
+        page.getByRole("button", { name: "Verify with the signed receipt" }),
       )
       .toBeEnabled();
     await userEvent.click(
-      page.getByRole("button", { name: "Verify with the signed record" }),
+      page.getByRole("button", { name: "Verify with the signed receipt" }),
     );
 
     // The signed leg ran: both certificates are anchored, and what holds the
@@ -1367,7 +1385,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     // commitments no more than starting it from the top would.
     await expect
       .element(
-        page.getByRole("button", { name: "Verify with the signed record" }),
+        page.getByRole("button", { name: "Verify with the signed receipt" }),
       )
       .toBeDisabled();
     await expect

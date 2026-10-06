@@ -647,7 +647,7 @@ export function VerifyReceiptScreen() {
         matches it states is the number it holds, and the terms it records are
         the ones you and your partner agreed to. If both parties signed the
         exchange, check their signatures too. This is read-only and runs
-        entirely in your browser -- nothing is uploaded.
+        entirely in your browser. Nothing is uploaded.
       </p>
 
       <Stack gap="lg" mt="md">
@@ -690,7 +690,7 @@ export function VerifyReceiptScreen() {
             ? "Ready to verify."
             : signedReady
               ? "Ready to verify the signed receipt."
-              : "Load the record and its keys, or a signed receipt, to verify."}
+              : "Load the exchange record and its keys, or a signed receipt, to verify."}
         </p>
         {oneCsvStarvesRun && <OneCsvWarning />}
       </div>
@@ -866,14 +866,14 @@ export function VerifyReceiptScreen() {
               the command-line tool or the console writes one; an exchange run
               in this browser app does not. Signatures alone prove only that the
               holders of the two certificates inside it signed, and anyone can
-              mint two certificates of their own -- so each certificate must be
-              anchored to a party you know from outside the record. Enter your
-              partner&apos;s fingerprint, pinned out-of-band, and load your own
-              exported certificate for the slot that is yours.
+              make two certificates of their own. So each certificate must be
+              tied to a party you know by something outside the receipt. Enter
+              your partner&apos;s fingerprint, pinned out-of-band, and load your
+              own exported certificate for your side.
             </Text>
             <JsonDropzone
               label="Signed receipt"
-              hint="The record both parties signed: alcove-receipt-<time>.json"
+              hint="The receipt both parties signed: alcove-receipt-<time>.json"
               chosen={signedRecord?.file}
               onFile={(file) => void onSignedRecordFile(file)}
             />
@@ -885,7 +885,7 @@ export function VerifyReceiptScreen() {
             )}
             <TextInput
               label="Your partner's certificate fingerprint"
-              description="The fingerprint your partner gave you out-of-band, from 'alcove fingerprint'. It anchors their slot: without it, nothing outside the record vouches for their certificate."
+              description="The fingerprint your partner gave you out-of-band, from 'alcove fingerprint'. It anchors their certificate. Without it, nothing outside the receipt confirms whose certificate it is."
               classNames={{ input: styles.mono }}
               value={pinnedFingerprint}
               error={pinProblem}
@@ -911,7 +911,7 @@ export function VerifyReceiptScreen() {
                 onClick={() => void runVerify()}
                 disabled={!canVerify || oneCsvStarvesRun}
               >
-                Verify with the signed record
+                Verify with the signed receipt
               </Button>
               {signedReady && (
                 <Text size="xs" c="dimmed" mt={4}>

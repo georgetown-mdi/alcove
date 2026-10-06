@@ -455,7 +455,7 @@ The signing identity is persisted in its own file, separate from the per-directo
 
 **Written once, read thereafter.** `alcove fingerprint --identity-file` is the only command that writes the identity; an exchange and `alcove verify-receipt` read the file and write neither it, its directory, nor anything beside it, so a read-only mount of its own serves every run but the one that provisions the key. Creation is announced, never silent, and regenerating is a separate, explicit action (`--force`) that warns it invalidates any fingerprint a partner has already pinned.
 
-A certificate-mode exchange configured with no `identity_file` is refused before any credential, terms, or data are sent, alongside the other pre-flight configuration refusals (exit 64). `alcove verify-receipt` refuses nothing on the same input: it leaves this party's own certificate slot unanchored and grades the verdict short of verified, which is the accurate reading of a check that could not run.
+A certificate-mode exchange configured with no `identity_file` is refused before any credential, terms, or data are sent, alongside the other pre-flight configuration refusals (exit 64). `alcove verify-receipt` refuses nothing on the same input: it leaves this party's own certificate unanchored and grades the verdict short of verified, which is the accurate reading of a check that could not run.
 
 ### Pinned self-signed trust model
 

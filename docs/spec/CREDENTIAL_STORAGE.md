@@ -17,7 +17,7 @@ warnings, and remediation commands; this document covers how each write is
 constructed. The same construction governs every owner-only artifact written in
 one shot: the key file (`.alcove.key`), the signing identity, the
 self-attested exchange record and the private verification-keys file beside it
-(see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)), the dual-signed receipt, the
+(see [EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)), the signed receipt, the
 operator config `alcove.yaml`, and the credentials file that holds the
 operator's SMB password to `smbclient` for `doctor probe`. It is therefore
 specified once here and referenced from each. Two owner-only artifacts are written on the
@@ -191,7 +191,7 @@ content lands in:
 
 The strip covers every artifact this document's write construction produces --
 the key file, the signing identity, the exchange record and its verification
-keys, the dual-signed receipt, the operator config, the `doctor probe`
+keys, the signed receipt, the operator config, the `doctor probe`
 credentials file, and the result CSV -- and the exported public certificate as
 well. It runs at any mode, including that certificate's public `0644`, because
 an inherited ACE can grant access (write included) that the explicit mode

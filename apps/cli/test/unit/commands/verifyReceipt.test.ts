@@ -211,9 +211,7 @@ describe("formatVerificationReport", () => {
     expect(lines.join("\n")).toContain(
       "agreed-terms hash: re-derives and matches",
     );
-    expect(lines.join("\n")).toContain(
-      "partner receipt signatures are not checked here",
-    );
+    expect(lines.join("\n")).toContain("partner signatures: not checked");
     expect(exitCode).toBe(0);
   });
 
@@ -230,7 +228,7 @@ describe("formatVerificationReport", () => {
     const { lines, exitCode } = formatVerificationReport(report("failed"), []);
     expect(lines[0]).toMatch(/^VERIFICATION FAILED/);
     // The message allows for a re-supply mismatch, not only tampering.
-    expect(lines[0]).toContain("does not match this exchange");
+    expect(lines[0]).toContain("is not from this exchange");
     expect(lines.join("\n")).toContain(
       "commitment localPayloadSent: DOES NOT MATCH",
     );
@@ -358,9 +356,9 @@ describe("formatVerificationReport: the recorded result size", () => {
     const { lines, exitCode } = formatVerificationReport(onlyTheSizeFailed, []);
     expect(lines[0]).toMatch(/^VERIFICATION FAILED/);
     expect(lines[0]).toContain("the record was altered");
-    expect(lines[0]).toContain("the files you re-supplied check out");
-    expect(lines[0]).not.toContain("may have been altered");
-    expect(lines[0]).not.toContain("does not match this exchange");
+    expect(lines[0]).toContain("The files you supplied check out");
+    expect(lines[0]).not.toContain("Either the exchange record was altered");
+    expect(lines[0]).not.toContain("is not from this exchange");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 
@@ -375,8 +373,8 @@ describe("formatVerificationReport: the recorded result size", () => {
       },
       [],
     );
-    expect(lines[0]).toContain("the record may have been altered");
-    expect(lines[0]).toContain("does not match this exchange");
+    expect(lines[0]).toContain("Either the exchange record was altered");
+    expect(lines[0]).toContain("is not from this exchange");
   });
 
   test("an unchecked terms hash keeps the two-cause headline", () => {
@@ -386,7 +384,7 @@ describe("formatVerificationReport: the recorded result size", () => {
       { ...onlyTheSizeFailed, termsHash: "not-checked" },
       [],
     );
-    expect(lines[0]).toContain("the record may have been altered");
+    expect(lines[0]).toContain("Either the exchange record was altered");
   });
 });
 
@@ -407,8 +405,8 @@ describe("formatVerificationReport: a result file from another run", () => {
   test("leads with the result not belonging to this run, and exits 65", () => {
     const { lines, exitCode } = formatVerificationReport(laterRunResult, []);
     expect(lines[0]).toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
-    expect(lines[0]).toContain("does not belong to this record's run");
-    expect(lines[0]).not.toContain("may have been altered");
+    expect(lines[0]).toContain("is not from this exchange record's run");
+    expect(lines[0]).not.toContain("Either the exchange record was altered");
     expect(lines.join("\n")).toContain(
       "commitment associationTable: DOES NOT MATCH",
     );
@@ -439,7 +437,7 @@ describe("formatVerificationReport: a result file from another run", () => {
       true,
     );
     expect(lines[0]).not.toBe(RESULT_FROM_ANOTHER_RUN_HEADLINE);
-    expect(lines[0]).toContain("the record may have been altered");
+    expect(lines[0]).toContain("Either the exchange record was altered");
   });
 
   test.each<[string, Partial<RecordVerificationReport>]>([
@@ -471,7 +469,7 @@ describe("formatVerificationReport: a result file from another run", () => {
       { ...laterRunResult, ...overrides },
       [],
     );
-    expect(lines[0]).toContain("the record may have been altered");
+    expect(lines[0]).toContain("Either the exchange record was altered");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 });
@@ -521,10 +519,10 @@ describe("formatSignedRecordReport", () => {
     // leaving the reader to weigh the other.
     const { lines } = formatSignedRecordReport(report());
     expect(lines[0]).toBe(
-      "SIGNED RECEIPT VERIFIED: both signatures verify, and both certificates " +
-        "are anchored outside the record -- the initiator's by your own " +
-        "signing identity, and the responder's by a fingerprint you pinned " +
-        "out-of-band.",
+      "SIGNED RECEIPT VERIFIED: every check below passed. Both signatures " +
+        "verify, and something outside the receipt anchors each certificate: " +
+        "the initiator's by your own signing identity, and the responder's by " +
+        "a fingerprint you pinned out-of-band.",
     );
     const out = lines.join("\n");
     expect(out).toContain("is your own signing identity's certificate");
@@ -542,22 +540,22 @@ describe("formatSignedRecordReport", () => {
       }),
     );
     expect(lines[0]).toBe(
-      "SIGNED RECEIPT INCOMPLETE: nothing contradicted the signed receipt, " +
-        "but not everything could be checked (see below). Nothing outside the " +
-        "record anchors the initiator's certificate.",
+      "SIGNED RECEIPT INCOMPLETE: no check failed, but some could not run, " +
+        "so the signed receipt is not fully verified. Nothing you supplied " +
+        "confirms who holds the initiator's certificate.",
     );
     const out = lines.join("\n");
     // No signing identity was supplied, so nothing was compared against this
     // certificate to rule out its being the operator's own: the line says what
     // the run did check, and no more.
     expect(out).toContain(
-      "not anchored (nothing you supplied anchors it -- no pinned value " +
-        "matches it)",
+      "not anchored - nothing you supplied confirms whose certificate this " +
+        "is (no fingerprint you pinned matches it)",
     );
     expect(out).not.toContain("your own certificate");
     expect(out).toContain(
-      "the initiator's certificate is anchored by nothing outside this record, " +
-        "which is what holds the verdict short of VERIFIED",
+      "to confirm who holds the initiator's certificate, pin that party's " +
+        "fingerprint",
     );
     expect(out).toContain("--identity-file");
     // Short of verified is not a failure: the incomplete code, not 65.
@@ -579,8 +577,10 @@ describe("formatSignedRecordReport", () => {
       }),
     );
     const out = lines.join("\n");
-    expect(out).toContain("not anchored (nothing you supplied anchors it)");
-    expect(out).not.toContain("no pinned value matches it");
+    expect(out).toContain(
+      "not anchored - nothing you supplied confirms whose certificate this is",
+    );
+    expect(out).not.toContain("no fingerprint you pinned matches it");
   });
 
   test("an unanchored slot names your own identity only once one was compared", () => {
@@ -597,8 +597,9 @@ describe("formatSignedRecordReport", () => {
       { localTerms: true, partnerTerms: true },
     );
     expect(lines.join("\n")).toContain(
-      "not anchored (nothing you supplied anchors it -- no pinned value " +
-        "matches it, and it is not your own certificate)",
+      "not anchored - nothing you supplied confirms whose certificate this " +
+        "is (no fingerprint you pinned matches it, and it is not your own " +
+        "certificate)",
     );
   });
 
@@ -634,7 +635,7 @@ describe("formatSignedRecordReport", () => {
     failed.localIdentity = "not-supplied";
     const unanchoredOut = formatSignedRecordReport(failed).lines.join("\n");
     expect(unanchoredOut).not.toContain("signatures verify against");
-    expect(unanchoredOut).toContain("trust not established");
+    expect(unanchoredOut).toContain("whose certificates these are");
   });
 
   test("a pinned value reaching neither certificate is named as the failure", () => {
@@ -648,12 +649,12 @@ describe("formatSignedRecordReport", () => {
       }),
     );
     expect(lines.join("\n")).toContain(
-      "a pinned fingerprint matches NEITHER certificate in this record: this " +
-        "is not the record of the party you pinned.",
+      "the fingerprint you pinned matches NEITHER certificate in this signed " +
+        "receipt, so it is not a receipt from the party you pinned.",
     );
     // A pinned value that reached nothing is not the same as none supplied, and
     // the line answering it is not followed by advice to supply one.
-    expect(lines.join("\n")).not.toContain("trust not established");
+    expect(lines.join("\n")).not.toContain("whose certificates these are");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 
@@ -668,7 +669,7 @@ describe("formatSignedRecordReport", () => {
       { localTerms: true, partnerTerms: true },
     );
     expect(lines.join("\n")).toContain(
-      "the signing identity you named is neither certificate in this record",
+      "the signing identity you named matches NEITHER certificate",
     );
   });
 
@@ -684,26 +685,27 @@ describe("formatSignedRecordReport", () => {
     );
     const out = lines.join("\n");
     expect(out).toContain(
-      "note: your own signing identity is neither certificate here, so it " +
-        "anchors nothing",
+      "note: your own signing identity matches neither certificate in this " +
+        "signed receipt, so it anchors neither. You were not a party to this " +
+        "exchange, or you have made a new signing identity since.",
     );
-    expect(out).not.toContain("neither certificate in this record:");
+    expect(out).not.toContain("NEITHER certificate");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
   test("the binder is reported as covered but never recomputed", () => {
     const { lines } = formatSignedRecordReport(report());
     expect(lines.join("\n")).toContain(
-      "per-exchange binder YmluZGVy: covered by both signatures, never " +
-        "recomputed",
+      "run identifier YmluZGVy: both signatures cover it. It cannot be " +
+        "recomputed here",
     );
   });
 
   test("a paired receipt and record are reported as the same run", () => {
     const { lines, exitCode } = formatSignedRecordReport(report());
     expect(lines.join("\n")).toContain(
-      "receipt-record pairing: this receipt and this exchange record are the " +
-        "same run",
+      "receipt-record pairing: this receipt and this exchange record are " +
+        "from the same run",
     );
     expect(exitCode).toBe(0);
   });
@@ -716,15 +718,16 @@ describe("formatSignedRecordReport", () => {
     );
     const out = lines.join("\n");
     expect(out).toContain(
-      "receipt-record pairing: DOES NOT MATCH the exchange record's run binder",
+      "receipt-record pairing: DOES NOT MATCH: the receipt and the exchange " +
+        "record hold different run identifiers",
     );
-    expect(out).toContain("the receipt and the record are from different runs");
+    expect(out).toContain("so they are from different runs");
     // The checks that did pass are still reported as passing.
     expect(out).toContain("receipt signature: verifies over this receipt's");
     expect(out).toContain("asserted identity: matches an identity expected");
     expect(out).toContain("matches a fingerprint you pinned out-of-band");
     // And the operator is told how to pair them.
-    expect(out).toContain("so pair them by that stamp");
+    expect(out).toContain("so pair them by that timestamp");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 
@@ -734,7 +737,7 @@ describe("formatSignedRecordReport", () => {
     );
     const out = lines.join("\n");
     expect(out).toContain(
-      "receipt-record pairing: the exchange record holds no run binder",
+      "receipt-record pairing: the exchange record holds no run identifier",
     );
     expect(out).toContain("produced no signed receipt");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
@@ -747,13 +750,13 @@ describe("formatSignedRecordReport", () => {
     const out = lines.join("\n");
     expect(out).toContain("receipt-record pairing: not checked");
     expect(out).toContain(
-      "name this exchange's record as the positional and pass this file with " +
+      "name this exchange's record as <record> and pass this file with " +
         "--signed-record",
     );
     // Short of verified, but not a failure: the holder of one artifact is not
     // accused of anything.
     expect(lines[0]).toMatch(/^SIGNED RECEIPT INCOMPLETE/);
-    expect(out).not.toContain("so pair them by that stamp");
+    expect(out).not.toContain("so pair them by that timestamp");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
@@ -770,7 +773,8 @@ describe("formatSignedRecordReport", () => {
     );
     expect(lines[0]).toMatch(/^SIGNED RECEIPT INCOMPLETE/);
     expect(lines.join("\n")).toContain(
-      "certificate fingerprint trust not established (no pinned value supplied)",
+      "nothing you supplied confirms whose certificates these are. Pass your " +
+        "partner's fingerprint with --partner-fingerprint",
     );
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
@@ -795,7 +799,7 @@ describe("formatSignedRecordReport", () => {
     expect(lines[0]).toMatch(/^SIGNED RECEIPT VERIFICATION FAILED/);
     expect(out).toContain("receipt signature: DOES NOT VERIFY");
     expect(out).toContain("SELF-SIGNATURE DOES NOT VERIFY");
-    expect(out).toContain("matches NEITHER certificate in this record");
+    expect(out).toContain("matches NEITHER certificate in this signed receipt");
     expect(out).toContain(
       "asserted identity: DOES NOT MATCH an identity expected",
     );
@@ -860,7 +864,7 @@ describe("formatSignedRecordReport", () => {
     const out = lines.join("\n");
     expect(out).not.toContain(esc);
     expect(out).toContain("initiator: A");
-    expect(out).toContain("per-exchange binder YmluZGVy");
+    expect(out).toContain("run identifier YmluZGVy");
   });
 });
 
@@ -895,7 +899,7 @@ describe("builder", () => {
     );
     expect(described["partner-fingerprint"]).toContain("Repeat it");
     expect(described["identity-file"]).toContain(
-      "anchors your own slot in the signed record",
+      "anchors your own certificate in the signed receipt",
     );
   });
 });
@@ -1683,7 +1687,7 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toMatch(/^INCOMPLETE/);
     expect(stdout).toContain("commitment localPayloadSent:");
-    expect(stdout).toContain("partner receipt signatures are not checked here");
+    expect(stdout).toContain("partner signatures: not checked");
     expect(stdout).not.toContain("SIGNED RECEIPT");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
@@ -1859,7 +1863,7 @@ describe("handler", () => {
         "identity-file": identityPath,
       };
       const intact = await runVerify(args);
-      expect(intact.stdout).toContain("does not belong to this record's run");
+      expect(intact.stdout).toContain("is not from this exchange record's run");
 
       const signed = JSON.parse(readFileSync(signedPath, "utf8")) as {
         initiator: { signature: string };
@@ -1872,7 +1876,7 @@ describe("handler", () => {
       const { stdout, exits } = await runVerify(args);
       expect(exits).toEqual([]);
       expect(stdout).toContain("receipt signature: DOES NOT VERIFY");
-      expect(stdout).not.toContain("does not belong to this record's run");
+      expect(stdout).not.toContain("is not from this exchange record's run");
     });
 
     test("a signed receipt's carried partner terms come before the file's", async () => {
@@ -2293,15 +2297,15 @@ describe("handler", () => {
     });
     expect(exits).toEqual([]);
     expect(stdout).toContain(
-      "partner receipt signatures: checked separately below",
+      "partner signatures: checked below, against the signed receipt",
     );
     // Naming the exchange record is what supplies the identities, the
     // agreed-terms hash, and the run binder the signature checks are anchored to,
     // so the signed half reaches verified rather than incomplete.
     expect(stdout).toContain("SIGNED RECEIPT VERIFIED");
     expect(stdout).toContain(
-      "receipt-record pairing: this receipt and this exchange record are the " +
-        "same run",
+      "receipt-record pairing: this receipt and this exchange record are " +
+        "from the same run",
     );
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
@@ -2392,7 +2396,8 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toContain("SIGNED RECEIPT VERIFICATION FAILED");
     expect(stdout).toContain(
-      "receipt-record pairing: DOES NOT MATCH the exchange record's run binder",
+      "receipt-record pairing: DOES NOT MATCH: the receipt and the exchange " +
+        "record hold different run identifiers",
     );
     // Distinguishable from the other failure classes: every signature, identity,
     // and anchor in this record still checks out.
@@ -2413,7 +2418,7 @@ describe("handler", () => {
     });
     expect(exits).toEqual([]);
     expect(stdout).toContain(
-      "receipt-record pairing: the exchange record holds no run binder",
+      "receipt-record pairing: the exchange record holds no run identifier",
     );
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
@@ -2445,7 +2450,7 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toContain("SIGNED RECEIPT INCOMPLETE");
     expect(stdout).toContain(
-      "Nothing outside the record anchors the initiator's certificate.",
+      "Nothing you supplied confirms who holds the initiator's certificate.",
     );
     expect(stdout).not.toContain("SIGNED RECEIPT VERIFIED");
     // Short of verified, not contradicted: the incomplete code, not 65.
@@ -2462,8 +2467,8 @@ describe("handler", () => {
     expect(stdout).toContain("SIGNED RECEIPT INCOMPLETE");
     // No exchange record and no terms, so the identities and the agreed-terms
     // hash stay unchecked; what both pins settle is the anchoring.
-    expect(stdout).not.toContain("Nothing outside the record anchors");
-    expect(stdout).not.toContain("trust not established");
+    expect(stdout).not.toContain("Nothing you supplied confirms who holds");
+    expect(stdout).not.toContain("whose certificates these are");
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
@@ -2504,7 +2509,7 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toContain("SIGNED RECEIPT VERIFICATION FAILED");
     expect(stdout).toContain(
-      "the signing identity you named is neither certificate in this record",
+      "the signing identity you named matches NEITHER certificate",
     );
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
@@ -2587,7 +2592,7 @@ describe("handler", () => {
     expect(exits).toEqual([]);
     expect(stdout).toContain("SIGNED RECEIPT INCOMPLETE");
     expect(stdout).toContain(
-      "Nothing outside the record anchors the initiator's certificate",
+      "Nothing you supplied confirms who holds the initiator's certificate",
     );
     expect(stdout).toContain("name your own signing identity with");
     expect(stderr).toBe("");
@@ -2647,7 +2652,7 @@ describe("handler", () => {
         expect(exits).toEqual([]);
         expect(stdout).toContain("SIGNED RECEIPT INCOMPLETE");
         expect(stdout).toContain(
-          "Nothing outside the record anchors the initiator's certificate",
+          "Nothing you supplied confirms who holds the initiator's certificate",
         );
         expect(stderr).toBe("");
         expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);

@@ -290,7 +290,7 @@ string, which is what RFC 8785 requires:
   usage error, naming the field that holds the value (`config file <path> has
   invalid linkage_terms: legal_agreement.reference: a linkage terms text value
   must not contain an unpaired UTF-16 surrogate`) rather than a terms-hash
-  mismatch. The partner's terms a dual-signed record
+  mismatch. The partner's terms a signed receipt
   retains in its envelope are read under that same parse, so a record
   holding such a document is refused as an unreadable artifact rather than
   verified against terms the encoder cannot reproduce.

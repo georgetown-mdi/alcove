@@ -2,6 +2,7 @@ import {
   EXCHANGE_KEYS_VERSION,
   EXCHANGE_RECORD_VERSION,
   FINGERPRINT_REGEX,
+  OWN_IDENTITY_UNMATCHED_CAUSES,
   SIGNED_RECEIPT_VERSION,
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
@@ -144,13 +145,13 @@ const MALFORMED_KEYS_MESSAGE =
 
 const MALFORMED_SIGNED_RECORD_MESSAGE =
   "This is not a valid signed receipt. Check that you loaded the " +
-  "alcove-receipt-<time>.json file (the record both parties signed), not the " +
+  "alcove-receipt-<time>.json file (the receipt both parties signed), not the " +
   "exchange record or another document.";
 
 const MALFORMED_CERTIFICATE_MESSAGE =
   "This is not a usable signing certificate. Check that you loaded the " +
   "certificate you exported with 'alcove fingerprint --export-certificate', " +
-  "and that it has not been edited since -- its own self-signature must verify.";
+  "and that it has not been edited since. Its own self-signature must verify.";
 
 // The identity file is refused rather than mined for the certificate beside the
 // key: the key is what makes the file worth protecting, and nothing this page
@@ -384,25 +385,25 @@ const HEADLINES: Record<RecordVerificationReport["outcome"], VerdictHeadline> =
       tone: "verified",
       title: "Verified",
       detail:
-        "The record is internally consistent: every commitment opened against " +
-        "the files you supplied, the recorded result size recounts from the " +
-        "opened pairing where the record holds one, and the agreed-terms " +
-        "hash re-derives.",
+        "Every commitment opened against the files you supplied, the result " +
+        "size the record states matches its matched pairs where it states " +
+        "one, and the agreed-terms hash matches. The exchange record agrees " +
+        "with the files and terms you supplied.",
     },
     incomplete: {
       tone: "incomplete",
       title: "Incomplete",
       detail:
-        "Nothing contradicted the record, but not everything could be checked. " +
-        "See the rows below for what is still open.",
+        "No check failed, but some could not run, so the exchange record is " +
+        "not fully verified. The rows below say what is missing.",
     },
     failed: {
       tone: "failed",
       title: "Verification failed",
       detail:
-        "A check did not match. This means one of two things, and they cannot be " +
-        "told apart here: the record was altered, or a file you re-supplied (an " +
-        "input, a result, or the linkage terms) does not belong to this exchange.",
+        "A check below did not match. Either the exchange record was altered, " +
+        "or a file you supplied (an input, a result, or linkage terms) is not " +
+        "from this exchange. This check cannot tell which.",
     },
   };
 
@@ -415,9 +416,10 @@ const RESULT_SIZE_ONLY_HEADLINE: VerdictHeadline = {
   tone: "failed",
   title: "Verification failed",
   detail:
-    "The recorded result size disagrees with the matched pairs the record " +
-    "itself commits to. The record was altered; the files you supplied check " +
-    "out -- every commitment opened and the agreed-terms hash re-derives.",
+    "The result size the exchange record states disagrees with the matched " +
+    "pairs the record itself commits to, so the record was altered. The files " +
+    "you supplied check out: every commitment opened and the agreed-terms hash " +
+    "matches.",
 };
 
 function headlineFor(report: RecordVerificationReport): VerdictHeadline {
@@ -440,16 +442,16 @@ const COMMITMENT_ROWS: Record<
     status: "Not opened",
     tone: "incomplete",
     explanation:
-      "Supply your retained files to open this commitment. Without them it " +
-      "cannot be checked -- this is not a failure.",
+      "Supply the input and result files you kept to open this commitment. " +
+      "Until then it is not checked, which is not a failure.",
   },
   unopenable: {
     status: "Cannot be opened",
     tone: "incomplete",
     explanation:
-      "The keys file has no salt for this commitment, so it cannot be opened. " +
-      "This is likely a wrong or drifted keys file, not a problem with the " +
-      "record.",
+      "The keys file holds no salt for this commitment, so it cannot be " +
+      "opened. This usually means the keys file is not this record's. It " +
+      "shows no problem with the record.",
   },
 };
 
@@ -475,9 +477,9 @@ const RESULT_SIZE_ROWS: Record<
     status: "Not checked",
     tone: "incomplete",
     explanation:
-      "Supply your retained result so its matched pairs can be recounted. " +
-      "Without it the recorded number cannot be checked -- this is not a " +
-      "failure.",
+      "Supply the result file you kept so its matched pairs can be " +
+      "recounted. Until then the recorded number is not checked, which is not " +
+      "a failure.",
   },
   unopenable: {
     status: "Not checked",
@@ -527,8 +529,9 @@ const COMMITMENT_ORDER: ReadonlyArray<CommitmentName> = [
 ];
 
 const SIGNATURE_NOTE =
-  "Partner receipt signatures are not checked here. This confirms the record is " +
-  "internally consistent, not that your partner signed it.";
+  "Your partner's signatures are not checked here. Only your side wrote the " +
+  "exchange record, so it shows nothing about your partner. To check their " +
+  "signatures, load the signed receipt below if your exchange wrote one.";
 
 // The record is self-attested either way, so this section says nothing about the
 // partner; what changes when a signed receipt was verified in the same run is
@@ -538,8 +541,8 @@ const SIGNATURE_NOTE =
 // row, which may equally report that they are not, so this sentence must not
 // presume the answer.
 const SIGNATURE_NOTE_WITH_SIGNED_RECORD =
-  "Partner receipt signatures are checked separately below, against the " +
-  "signed receipt you loaded.";
+  "Your partner's signatures are checked below, against the signed receipt " +
+  "you loaded.";
 
 /**
  * Build the verdict view-model from a {@link RecordVerificationReport} and any
@@ -699,7 +702,7 @@ export interface SignedVerdictViewModel {
    * anchoring value that reached neither certificate means. Empty when neither
    * applies. */
   guidance: Array<string>;
-  /** The standing note that the per-exchange binder is reported, not
+  /** The standing note that the run identifier is reported, not
    * recomputed. */
   binderNote: string;
 }
@@ -729,9 +732,9 @@ const SIGNED_FAILED_HEADLINE: VerdictHeadline = {
   tone: "failed",
   title: "Signed receipt verification failed",
   detail:
-    "A check did not match. This means one of two things, and they cannot be " +
-    "told apart here: the signed receipt was altered, or it is not the " +
-    "exchange or the partner you are checking it against.",
+    "A check below did not match. Either the signed receipt was altered, or " +
+    "it is not from the exchange or the partner you are checking it against. " +
+    "This check cannot tell which.",
 };
 
 const CERTIFICATE_BINDING_COPY: Record<CertificateBindingStatus, RowCopy> = {
@@ -820,7 +823,7 @@ function signedTermsNotCheckedExplanation(
 ): string {
   if (supplied.partnerTerms && !supplied.localTerms)
     return (
-      "Paste your own linkage terms to check the agreed-terms hash -- your " +
+      "Paste your own linkage terms to check the agreed-terms hash. Your " +
       "partner's are supplied already, from the signed receipt you loaded " +
       "or from the document you pasted. Loading this exchange's record " +
       "supplies the hash instead."
@@ -841,31 +844,30 @@ function signedTermsNotCheckedExplanation(
 // repeat across every run of it.
 const RUN_BINDING_COPY: Record<RunBindingStatus, RowCopy> = {
   verified: {
-    status: "This receipt and this record are the same run",
+    status: "This receipt and this exchange record are from the same run",
     explanation:
-      "Both hold one run's binder, which is what tells one run of a " +
-      "partnership from the next.",
+      "Both hold the same run identifier, which differs for every run of a " +
+      "partnership.",
   },
   mismatch: {
-    status: "Does not match the record's run binder",
+    status: "Does not match",
     explanation:
-      "The receipt and the record you loaded are from different runs, not from " +
-      "one exchange.",
+      "The receipt and the exchange record you loaded hold different run " +
+      "identifiers, so they are from different runs.",
   },
   unpaired: {
-    status: "The record holds no run binder",
+    status: "The exchange record holds no run identifier",
     explanation:
-      "The record you loaded is of an exchange that produced no signed receipt, " +
-      "so this receipt is not that run's. Load the record written alongside " +
-      "this receipt.",
+      "The exchange record you loaded is of a run that produced no signed " +
+      "receipt, so this receipt is not from it. Load the record written " +
+      "alongside this receipt.",
   },
   "not-checked": {
     status: "Not checked",
     explanation:
       "Load the exchange record for this run to pair the receipt to it. " +
-      "Without it, the signed values that can be checked here repeat across " +
-      "each run of this partnership under these terms, so which run this " +
-      "receipt attests stays open.",
+      "Without it, this receipt could be from any run of this partnership " +
+      "under these terms.",
   },
 };
 
@@ -873,27 +875,26 @@ const RUN_BINDING_COPY: Record<RunBindingStatus, RowCopy> = {
 // verdict says have earned it: the two artifacts of one exchange are written
 // together, so the likely cause is two files from different runs.
 const PAIR_BY_STAMP =
-  "An exchange writes both artifacts together, under one timestamp stamp by " +
-  "default, so pair them by that stamp.";
+  "An exchange writes both files together, under one timestamp by default, " +
+  "so pair them by that timestamp.";
 
 const ANCHORED_CERTIFICATE_COPY: Record<AnchoredCertificateStatus, RowCopy> = {
   "partner-pin": {
     status: "Matches the fingerprint you pinned out-of-band",
     explanation:
-      "The pin is what ties this certificate to a party you know, and it came " +
-      "from outside this record.",
+      "The pin ties this certificate to a party you know, and it came from " +
+      "outside this receipt.",
   },
   "local-identity": {
     status: "Is the certificate you supplied as your own",
     explanation:
-      "Certificates are public, so this says whose certificate sits in this " +
-      "slot and nothing more. What refuses a slot its holder did not sign is " +
-      "the receipt signature below, which only that certificate's private key " +
-      "could have produced.",
+      "Certificates are public, so this says only whose certificate this is. " +
+      "The receipt signature below is what shows its holder signed, since " +
+      "only that certificate's private key could have produced it.",
   },
 };
 
-// What an unanchored slot says, one clause per finding the verdict states. Which
+// What an unanchored certificate says, one clause per finding the verdict states. Which
 // of them a run supports is core's decision: a check that did not run, or one
 // that ran and matched this very certificate, is not narrated here as a check
 // this certificate failed.
@@ -929,17 +930,17 @@ function anchorRow(anchor: SignedReceiptVerdictAnchor): VerdictRow {
   const supported =
     anchor.unanchoredClauses.length === 0
       ? ""
-      : ` -- ${anchor.unanchoredClauses
+      : ` (${anchor.unanchoredClauses
           .map((clause) => UNANCHORED_CLAUSE_COPY[clause])
-          .join(", and ")}`;
+          .join(", and ")})`;
   return {
     label,
     status: "Not anchored",
     tone: anchor.tone,
     explanation:
-      `Nothing you supplied anchors it${supported}. Whoever assembled this ` +
-      "record could have minted this certificate, so the verdict cannot speak " +
-      "for this slot.",
+      `Nothing you supplied confirms whose certificate this is${supported}. ` +
+      "Whoever put this receipt together could have made this certificate, " +
+      "so the verdict cannot speak for it.",
   };
 }
 
@@ -976,15 +977,15 @@ function signedHeadline(
       tone: "incomplete",
       title: "Signed receipt incomplete",
       detail:
-        "Nothing contradicted the signed receipt, but not everything could " +
-        "be checked. See the rows below for what is still open." +
-        // The record holds two certificates and a verdict speaks for both, so
-        // the headline names the slot nothing outside the record reaches rather
-        // than leaving the reader to find it in the rows.
+        "No check failed, but some could not run, so the signed receipt is " +
+        "not fully verified." +
+        // The receipt holds two certificates and a verdict speaks for both, so
+        // the headline names the certificate nothing outside the receipt
+        // confirms rather than leaving the reader to find it in the rows.
         headline.unanchoredRoles
           .map(
             (role) =>
-              ` Nothing outside the record anchors the ${role}'s certificate.`,
+              ` Nothing you supplied confirms who holds the ${role}'s certificate.`,
           )
           .join(""),
     };
@@ -992,8 +993,9 @@ function signedHeadline(
     tone: "verified",
     title: "Signed receipt verified",
     detail:
-      "Both signatures verify, and both certificates are anchored outside the " +
-      `record -- ${anchorsPhrase(headline.anchoredSlots, ANCHOR_SOURCE_PHRASES)}.`,
+      "Every check below passed. Both signatures verify, and something " +
+      "outside the receipt anchors each certificate: " +
+      `${anchorsPhrase(headline.anchoredSlots, ANCHOR_SOURCE_PHRASES)}.`,
   };
 }
 
@@ -1007,7 +1009,11 @@ function runBindingRow(runBinding: SignedReceiptVerdictRunBinding): VerdictRow {
   return { ...row, explanation: `${row.explanation} ${PAIR_BY_STAMP}` };
 }
 
-// What to do about a certificate nothing outside the record vouches for, and what
+function capitalized(sentence: string): string {
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+}
+
+// What to do about a certificate nothing outside the receipt vouches for, and what
 // a supplied anchor that reached neither certificate means, in this page's
 // vocabulary. Which of them a run has earned, and in what order, is the verdict's
 // decision.
@@ -1016,32 +1022,31 @@ function guidanceLine(guidance: SignedReceiptVerdictGuidance): string {
     case "pinned-fingerprint-unmatched":
       return (
         "The fingerprint you pinned matches neither certificate in this " +
-        "record: this is not the record of the party you pinned."
+        "signed receipt, so it is not a receipt from the party you pinned."
       );
     case "named-local-identity-unmatched":
       return (
-        "The certificate you supplied as your own is neither certificate in " +
-        "this record: this is not a receipt you signed."
+        "The certificate you supplied as your own matches neither certificate " +
+        "in this signed receipt, so it is not a receipt you signed."
       );
     case "resolved-local-identity-unmatched":
       return (
-        "The certificate taken as your own is neither certificate in this " +
-        "record, so it anchors nothing: you were not a party to this " +
-        "exchange, or you have re-keyed since."
+        "The certificate taken as your own matches neither certificate in " +
+        "this signed receipt, so it anchors neither. " +
+        `${capitalized(OWN_IDENTITY_UNMATCHED_CAUSES)}.`
       );
     case "no-certificate-anchored":
       return (
-        "Certificate fingerprint trust is not established: nothing you " +
-        "supplied ties either certificate to a party you know. Enter your " +
-        "partner's pinned fingerprint, and load your own exported certificate " +
-        "when one of these slots is yours."
+        "Nothing you supplied confirms whose certificates these are. Enter " +
+        "your partner's pinned fingerprint, and load your own exported " +
+        "certificate if one of these is yours."
       );
     case "certificate-unanchored":
       return (
-        `The ${guidance.role}'s certificate is anchored by nothing outside ` +
-        "this record, which is what holds the verdict short of verified: enter " +
-        "that party's pinned fingerprint, or load your own exported " +
-        "certificate when that slot is yours."
+        `To confirm who holds the ${guidance.role}'s certificate, enter that ` +
+        "party's pinned fingerprint, or load your own exported certificate if " +
+        "that certificate is yours. Until then the verdict stays short of " +
+        "verified."
       );
   }
 }
@@ -1082,13 +1087,13 @@ export function signedVerdictViewModel(
         : termsRow,
     runBinding: runBindingRow(verdict.runBinding),
     guidance: verdict.guidance.map(guidanceLine),
-    // Never RECOMPUTED: deriving the binder needs the exchange session key. What
-    // is checked against it is the pairing row above -- that it is the value the
-    // run's own record holds.
+    // Never recomputed: deriving the binder needs the exchange session key.
+    // What is checked against it is the pairing row above: that it is the
+    // value the run's own record holds.
     binderNote:
-      `The per-exchange binder ${sanitizeForDisplay(verdict.binder)} is ` +
-      "covered by both signatures and is never recomputed here: deriving it " +
-      "needs the exchange session key, which only the two parties held.",
+      `The run identifier ${sanitizeForDisplay(verdict.binder)} is covered by ` +
+      "both signatures. It cannot be recomputed here, because that needs the " +
+      "exchange's session key, which only the two parties held.",
   };
 }
 
