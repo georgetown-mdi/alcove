@@ -2,7 +2,7 @@ import {
   EXCHANGE_KEYS_VERSION,
   EXCHANGE_RECORD_VERSION,
   FINGERPRINT_REGEX,
-  OWN_IDENTITY_UNMATCHED_CAUSES,
+  OWN_IDENTITY_UNMATCHED_SENTENCE,
   SIGNED_RECEIPT_VERSION,
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
@@ -894,10 +894,10 @@ const ANCHORED_CERTIFICATE_COPY: Record<AnchoredCertificateStatus, RowCopy> = {
   },
 };
 
-// What an unanchored certificate says, one clause per finding the verdict states. Which
-// of them a run supports is core's decision: a check that did not run, or one
-// that ran and matched this very certificate, is not narrated here as a check
-// this certificate failed.
+// What an unanchored certificate says, one clause per finding the verdict
+// states. Which of them a run supports is core's decision: a check that did
+// not run, or one that ran and matched this very certificate, is not narrated
+// here as a check this certificate failed.
 const UNANCHORED_CLAUSE_COPY: Record<UnanchoredCertificateClause, string> = {
   "no-pinned-value-matches": "no fingerprint you pinned matches it",
   "not-your-own-certificate":
@@ -1009,10 +1009,6 @@ function runBindingRow(runBinding: SignedReceiptVerdictRunBinding): VerdictRow {
   return { ...row, explanation: `${row.explanation} ${PAIR_BY_STAMP}` };
 }
 
-function capitalized(sentence: string): string {
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
-
 // What to do about a certificate nothing outside the receipt vouches for, and what
 // a supplied anchor that reached neither certificate means, in this page's
 // vocabulary. Which of them a run has earned, and in what order, is the verdict's
@@ -1033,7 +1029,7 @@ function guidanceLine(guidance: SignedReceiptVerdictGuidance): string {
       return (
         "The certificate taken as your own matches neither certificate in " +
         "this signed receipt, so it anchors neither. " +
-        `${capitalized(OWN_IDENTITY_UNMATCHED_CAUSES)}.`
+        `${OWN_IDENTITY_UNMATCHED_SENTENCE}.`
       );
     case "no-certificate-anchored":
       return (

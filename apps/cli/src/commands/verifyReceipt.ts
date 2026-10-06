@@ -22,7 +22,7 @@ import {
   keepOperatorSuppliedText,
   messageWithOperatorText,
   operatorSuppliedText,
-  OWN_IDENTITY_UNMATCHED_CAUSES,
+  OWN_IDENTITY_UNMATCHED_SENTENCE,
   redactAndRenderOperatorSuppliedText,
   reproductionMismatchCauses,
   resuppliedFilesAreFromAnotherRun,
@@ -619,10 +619,10 @@ const ANCHORED_CERTIFICATE_WORD: Record<AnchoredCertificateStatus, string> = {
   "local-identity": "is your own signing identity's certificate",
 };
 
-// What an unanchored certificate says, one clause per finding the verdict states. Which
-// of them a run supports is core's decision: a check that did not run, or one
-// that ran and matched this very certificate, is not narrated here as a check
-// this certificate failed.
+// What an unanchored certificate says, one clause per finding the verdict
+// states. Which of them a run supports is core's decision: a check that did
+// not run, or one that ran and matched this very certificate, is not narrated
+// here as a check this certificate failed.
 const UNANCHORED_CLAUSE_WORD: Record<UnanchoredCertificateClause, string> = {
   "no-pinned-value-matches": "no fingerprint you pinned matches it",
   "not-your-own-certificate": "it is not your own certificate",
@@ -732,10 +732,6 @@ function signedPartyLines(
   ];
 }
 
-function capitalized(sentence: string): string {
-  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
-}
-
 // What to do about a certificate nothing outside the receipt vouches for, and what
 // a supplied anchor that reached neither certificate means, in this command's
 // vocabulary. Which of them a run has earned, and in what order, is the verdict's
@@ -755,7 +751,7 @@ function guidanceLine(guidance: SignedReceiptVerdictGuidance): string {
     case "resolved-local-identity-unmatched":
       return (
         "  note: your own signing identity matches neither certificate in " +
-        `this signed receipt, so it anchors neither. ${capitalized(OWN_IDENTITY_UNMATCHED_CAUSES)}.`
+        `this signed receipt, so it anchors neither. ${OWN_IDENTITY_UNMATCHED_SENTENCE}.`
       );
     case "no-certificate-anchored":
       return (

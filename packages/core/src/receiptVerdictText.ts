@@ -7,3 +7,7 @@
 export const OWN_IDENTITY_UNMATCHED_CAUSES =
   "you were not a party to this exchange, or you have made a new signing " +
   "identity since";
+
+export const OWN_IDENTITY_UNMATCHED_SENTENCE =
+  OWN_IDENTITY_UNMATCHED_CAUSES.charAt(0).toUpperCase() +
+  OWN_IDENTITY_UNMATCHED_CAUSES.slice(1);
