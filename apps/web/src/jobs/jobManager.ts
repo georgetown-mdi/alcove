@@ -142,12 +142,7 @@ export class ExchangeBusyError extends Error {
   }
 }
 
-/**
- * Thrown by every {@link JobManager} method that would spawn a CLI child once
- * {@link JobManager.shutdown} has been called: the server is exiting, and a
- * child spawned now would outlive it or be killed mid-run. The routes map it
- * to a 503.
- */
+/** Thrown when a spawn is requested after {@link JobManager.shutdown}; a 503. */
 export class ConsoleShuttingDownError extends Error {
   constructor() {
     super("the console is shutting down");
@@ -662,7 +657,6 @@ export class JobManager {
    * whose failed run holds it until deleted.
    */
   private termsApplyInFlight = false;
-  /** Set by the first {@link shutdown} call; every spawn is refused from then. */
   private shuttingDown = false;
   /**
    * The configuration the operator last opened off the mount, as that open
@@ -1688,9 +1682,8 @@ export class JobManager {
    * the end of the tail, the report among it.
    *
    * The only slot-release point besides the pre-spawn create failure: fires
-   * on the child's `close`, so a killed child is
-   * confirmed dead before {@link maybeFreeSlot} frees the slot for a
-   * successor.
+   * on the child's `close`, so a killed child is confirmed dead before
+   * {@link maybeFreeSlot} frees the slot for a successor.
    */
   private reconcileTerminal(
     record: JobRecord,
