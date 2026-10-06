@@ -40,11 +40,11 @@ import {
   withUnavailableTransport,
 } from "@console/mountedConfiguration";
 
-import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobs/intentSchemas";
+import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobContract/intentSchemas";
 import { buildImageReference } from "@psi/dockerRunCommand";
 
 import type { DisclosedExchangeDocument } from "@jobs/configLoad";
-import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
 
 // The load offer as a value: which of the three states each answer lands in, and

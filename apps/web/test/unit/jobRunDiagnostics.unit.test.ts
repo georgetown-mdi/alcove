@@ -6,7 +6,10 @@ import {
   DIAGNOSTIC_LOG_UNANSWERED_LEAD,
   DIAGNOSTIC_LOG_UNANSWERED_NOTICE,
 } from "@exchange/DiagnosticLogPanel";
-import { JOB_FILE_NAMES, jobCreateIntentSchema } from "@jobs/intentSchemas";
+import {
+  JOB_FILE_NAMES,
+  jobCreateIntentSchema,
+} from "@jobContract/intentSchemas";
 import {
   LOG_AVAILABILITY_UNANSWERED_LIMIT,
   watchJobDiagnosticLog,

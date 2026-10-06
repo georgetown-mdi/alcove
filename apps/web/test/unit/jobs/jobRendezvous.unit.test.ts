@@ -13,7 +13,7 @@ import {
 } from "@alcove/core";
 import { MAX_ENDPOINT_PATH_LENGTH } from "@alcove/core/testing";
 
-import { MAX_INPUT_NAME_LENGTH } from "@jobs/workInputName";
+import { MAX_INPUT_NAME_LENGTH } from "@jobContract/workInputName";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 

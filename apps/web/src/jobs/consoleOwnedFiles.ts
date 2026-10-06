@@ -7,7 +7,7 @@ import {
   JOB_FILE_NAMES,
   PREVIOUS_CONFIGURATION_FILE_NAME,
   SIGNING_IDENTITY_FILE_NAME,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
 import { SIGNING_CERTIFICATE_FILE_NAME } from "./signingIdentity";
 import { isPathWithin } from "./pathContainment";
 import { isValidJobId } from "./workdir";

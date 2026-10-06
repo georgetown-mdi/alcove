@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { JOB_FILE_NAMES } from "./intentSchemas";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { jobPathPresent } from "./workdir";
 import { runArtifactKindsIn } from "./runArtifacts";
 

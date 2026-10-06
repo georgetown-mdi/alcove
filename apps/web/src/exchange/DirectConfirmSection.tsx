@@ -24,7 +24,7 @@ import {
   IDENTITY_CONTROL_CHAR_PATTERN,
   IDENTITY_DIRECTION_CHAR_PATTERN,
   MAX_IDENTITY_LENGTH,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import {
   LINKAGE_STRATEGY_LABEL,
   LINKAGE_STRATEGY_OPTION_COPY,

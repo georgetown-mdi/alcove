@@ -4,6 +4,8 @@ import {
   snakeizeKey,
 } from "@alcove/core";
 
+import { isJobChannel } from "@jobContract/intentSchemas";
+
 import {
   COMPOSED_BLOCKS,
   RUN_COMPOSED_HAND_BACK_HELD_BLOCK,
@@ -15,8 +17,6 @@ import {
   composeFiledropConfigSpec,
   composeSftpConfigSpec,
 } from "./intentConfig";
-
-import { isJobChannel } from "./intentSchemas";
 
 import {
   HANDOFF_LOG_FILE_NAME,
@@ -33,7 +33,8 @@ import type {
   JobHandBackSigning,
   JobSigningPaths,
   JobZeroSetupIntent,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
+
 import type { HandoffBindPath } from "./handoffBindPaths";
 import type { JobSftpServerEntry } from "./sftpServer";
 

@@ -17,7 +17,7 @@ import { failureFor } from "./useInviterExchange";
 import type {
   JobExchangeOptions,
   JobZeroSetupLinkageStrategy,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import type {
   JobInputSource,
   JobRunStatus,

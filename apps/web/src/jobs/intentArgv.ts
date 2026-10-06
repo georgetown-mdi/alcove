@@ -2,13 +2,13 @@ import { pathToFileURL } from "node:url";
 
 import { formatSftpUrl } from "@alcove/core";
 
-import { isAdmissiblePeerId } from "@jobs/intentSchemas";
+import { isAdmissiblePeerId } from "@jobContract/intentSchemas";
 
 import { composeSftpConfigDocument } from "./intentConfig";
 
 import type { JobSftpServerEntry } from "./sftpServer";
 
-import type { JobExchangeOptions } from "./intentSchemas";
+import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 
 /**
  * Thrown by {@link zeroSetupSftpArgv} when the authored connection pins more
@@ -120,7 +120,7 @@ export function zeroSetupFiledropArgv(
  * run composes no config document, so these flags are the only route the
  * operator's authored choices have into the child; every field the
  * zero-setup arms admit has one here (see
- * the zero-setup options schema in `./intentSchemas`).
+ * the zero-setup options schema in `@jobContract/intentSchemas`).
  *
  * Only an enabled toggle is emitted: each of the three booleans is `false`
  * by default in core, and a zero-setup run loads no configuration file for

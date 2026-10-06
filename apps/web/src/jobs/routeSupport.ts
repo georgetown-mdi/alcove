@@ -4,7 +4,7 @@ import {
   redactAndSanitizeForDisplay,
 } from "@alcove/core";
 
-import { MAX_INPUT_CSV_LENGTH } from "./intentSchemas";
+import { MAX_INPUT_CSV_LENGTH } from "@jobContract/intentSchemas";
 
 import {
   JOB_ALLOWED_HOSTS_ENV,

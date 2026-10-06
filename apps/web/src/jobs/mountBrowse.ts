@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { browseSegment } from "./workInputName";
+import { browseSegment } from "@jobContract/workInputName";
 import { isPathWithin } from "./pathContainment";
 
 /**

@@ -32,7 +32,7 @@ import { expectCliSucceeded, invitationFrom, startCli } from "./cliParty";
 
 import type { CliRun } from "./cliParty";
 import type { ExchangeSpec } from "@alcove/core";
-import type { JobExchangeIntent } from "@jobs/intentSchemas";
+import type { JobExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobSftpServerEntry } from "@jobs/sftpServer";
 
 /**

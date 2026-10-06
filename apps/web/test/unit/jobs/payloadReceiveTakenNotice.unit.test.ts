@@ -20,7 +20,7 @@ import {
   payloadReceiveTakenConsoleNotice,
   relayedTakenColumns,
 } from "@jobs/payloadReceiveTakenNotice";
-import { JOB_FILE_NAMES } from "@jobs/intentSchemas";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
@@ -35,7 +35,7 @@ import {
   validZeroSetupIntent,
 } from "../../utils/jobFixtures";
 
-import type { JobCreateIntent } from "@jobs/intentSchemas";
+import type { JobCreateIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 import type { RelayEvent } from "@jobs/cliDriver";
 

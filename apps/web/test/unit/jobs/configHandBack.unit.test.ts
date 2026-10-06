@@ -22,12 +22,12 @@ import {
 import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   jobConfigurationHandBackSchema,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobs/handoff";
 import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
-import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 // The hand-back of a webrtc configuration the console opened: the settings the
 // authoring steps edit are written into the mounted alcove.yaml, and every

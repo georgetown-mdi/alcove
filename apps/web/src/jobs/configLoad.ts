@@ -59,7 +59,7 @@ import {
   retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
-import { JOB_FILE_NAMES, isJobChannel } from "./intentSchemas";
+import { JOB_FILE_NAMES, isJobChannel } from "@jobContract/intentSchemas";
 import { mountedKeyFileFault } from "./mountedKeyFile";
 import { readBoundedMountedFile } from "./boundedMountedFile";
 
@@ -75,7 +75,7 @@ import type {
   JobExchangeIntentBase,
   JobFiledropExchangeIntent,
   JobSftpExchangeIntent,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
 import type { JobSftpServerEntry } from "./sftpServer";
 import type { MountedKeyFileFault } from "./mountedKeyFile";
 

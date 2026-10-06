@@ -4,7 +4,7 @@ import {
   MAX_STANDARDIZATION_STEPS,
   MAX_STANDARDIZATION_TRANSFORMATIONS,
   stepPatternsWithinCap,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import { isolatedColumnName } from "@components/ColumnName";
 
 import type { Standardization } from "@alcove/core";

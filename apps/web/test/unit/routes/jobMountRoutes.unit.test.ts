@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobs/mountBrowsePurpose";
+import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 
 import { route as FolderEntriesRoute } from "../../../server/console/routes/mounts/folder/entries";
 import { route as SecretsEntriesRoute } from "../../../server/console/routes/mounts/secrets/entries";

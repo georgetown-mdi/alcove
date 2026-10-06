@@ -48,6 +48,7 @@ export const srcAliases = {
   "@components": path.resolve(import.meta.dirname, "src/components"),
   "@console": path.resolve(import.meta.dirname, "src/console"),
   "@exchange": path.resolve(import.meta.dirname, "src/exchange"),
+  "@jobContract": path.resolve(import.meta.dirname, "src/jobContract"),
   "@jobs": path.resolve(import.meta.dirname, "src/jobs"),
   "@recurring": path.resolve(import.meta.dirname, "src/recurring"),
   "@styles": path.resolve(import.meta.dirname, "src/styles"),

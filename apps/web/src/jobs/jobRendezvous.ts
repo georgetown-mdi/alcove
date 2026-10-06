@@ -8,8 +8,9 @@ import {
   renderedDisplayCost,
 } from "@alcove/core";
 
+import { browseSegment } from "@jobContract/workInputName";
+
 import { JOB_DATA_ROOT_ENV } from "./gate";
-import { browseSegment } from "./workInputName";
 import { isPathWithin } from "./pathContainment";
 
 /**

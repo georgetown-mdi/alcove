@@ -58,7 +58,7 @@ import {
 import { composeSftpConfigSpec } from "@jobs/intentConfig";
 import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { inviterServerJobConfig } from "@exchange/useInviterExchange";
-import { jobCreateIntentSchema } from "@jobs/intentSchemas";
+import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { testSftpServerEntry } from "../../utils/jobFixtures";
 

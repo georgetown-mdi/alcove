@@ -1,8 +1,8 @@
 /**
  * The pure name-shape admission rules for mounted work inputs and mount browsing,
- * shared so their callers cannot drift: the directory listing ({@link ./workInputs})
+ * shared so their callers cannot drift: the directory listing ({@link @jobs/workInputs})
  * and the job intent's `inputFile` reference apply {@link isAdmissibleInputName};
- * the secrets-mount browse ({@link ./mountBrowse}) applies {@link browseSegment}.
+ * the secrets-mount browse ({@link @jobs/mountBrowse}) applies {@link browseSegment}.
  * Both derive from one single-segment shape predicate and differ only on the
  * leading-dot rule. Kept free of any filesystem dependency: the intent schema
  * reuses the predicate without pulling `node:fs` into its import graph, and the
@@ -55,7 +55,7 @@ export function isAdmissibleInputName(name: string): boolean {
  * key material lives under such names. Differs from {@link isAdmissibleInputName}
  * only on the leading dot; every returned listing entry passes this rule, so
  * each is itself a valid next segment. A name is never trusted from the shape
- * alone -- {@link ./mountBrowse} re-resolves it under the server-anchored mount
+ * alone -- {@link @jobs/mountBrowse} re-resolves it under the server-anchored mount
  * root and re-confines the realpath.
  */
 export function browseSegment(name: string): boolean {

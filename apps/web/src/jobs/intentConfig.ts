@@ -6,7 +6,7 @@ import {
   snakeizeKeys,
 } from "@alcove/core";
 
-import { composedSigning } from "./intentSchemas";
+import { composedSigning } from "@jobContract/intentSchemas";
 
 import type {
   ExchangeFileInput,
@@ -22,7 +22,7 @@ import type {
   JobFiledropExchangeIntent,
   JobSftpExchangeIntent,
   JobSigningPaths,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
 
 /**
  * Compose the CLI config document (snake_case YAML the CLI loads verbatim) from a

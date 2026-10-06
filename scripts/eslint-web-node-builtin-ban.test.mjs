@@ -38,6 +38,7 @@ const CLIENT_FILES = [
   "apps/web/src/exchange/Lobby.tsx",
   "apps/web/src/psi/runOutputs.ts",
   "apps/web/src/components/AppPage.tsx",
+  "apps/web/src/jobContract/intentSchemas.ts",
   "apps/web/src/psi/linkageComparison.ts",
 ];
 

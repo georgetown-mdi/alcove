@@ -73,15 +73,15 @@ import {
   SIGNING_IDENTITY_FILE_NAME,
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import {
   buildAdvancedTerms,
   seedAdvancedInvite,
 } from "@psi/authoring/advancedInvite";
-import { browseSegment } from "@jobs/workInputName";
+import { browseSegment } from "@jobContract/workInputName";
 import { importLinkageTerms } from "@psi/linkageTermsIO";
 import { resolveWorkdirFile } from "@jobs/workdir";
-import { runArtifactNames } from "@jobs/runArtifactNames";
+import { runArtifactNames } from "@jobContract/runArtifactNames";
 import { runArtifactPaths } from "@jobs/runArtifacts";
 
 import {
@@ -96,7 +96,7 @@ import {
 
 import type { CertificateBody, LinkageTerms } from "@alcove/core";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
-import type { JobSigningPaths } from "@jobs/intentSchemas";
+import type { JobSigningPaths } from "@jobContract/intentSchemas";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 
 // The console's receipt-signing and retention authoring surface, end to end: what
@@ -1062,7 +1062,7 @@ describe("the receipts card's model", () => {
 
   test("a control character in the retention note is caught on the card, not only at submit", () => {
     // Mirrors the server's own refusal (NOTE_CONTROL_CHAR_PATTERN in
-    // apps/web/src/jobs/intentSchemas.ts, the pattern both surfaces read):
+    // apps/web/src/jobContract/intentSchemas.ts, the pattern both surfaces read):
     // a NUL or an ESC pasted into the note must report a card
     // problem here, or the operator would see nothing wrong until the run
     // failed at submit with a generic 400.

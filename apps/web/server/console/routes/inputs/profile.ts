@@ -7,7 +7,7 @@ import {
 } from "@jobs/workInputs";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { gateJobRoute } from "@jobs/routeSupport";
-import { jobCsvDelimiterSchema } from "@jobs/intentSchemas";
+import { jobCsvDelimiterSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../../jobRoute";
 

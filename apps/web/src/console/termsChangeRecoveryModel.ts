@@ -1,4 +1,4 @@
-import { TERMS_PROPOSAL_FILE_NAME } from "@jobs/intentSchemas";
+import { TERMS_PROPOSAL_FILE_NAME } from "@jobContract/intentSchemas";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
 
 import type { TermsProposalApplyOutcome } from "@psi/jobClient/termsProposalClient";

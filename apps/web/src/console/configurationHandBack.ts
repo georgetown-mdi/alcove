@@ -2,7 +2,7 @@ import { ownColumnsField } from "@psi/ownColumnsModel";
 import { standardizationForTerms } from "@psi/authoring/advancedInviteTerms";
 
 import type { InviterEditor } from "@psi/inviterEditor";
-import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 import type { LinkageTerms } from "@alcove/core";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 

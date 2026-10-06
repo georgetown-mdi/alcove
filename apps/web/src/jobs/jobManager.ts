@@ -14,6 +14,12 @@ import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
 import {
+  runArtifactNames,
+  stampOfResultPath,
+} from "@jobContract/runArtifactNames";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
+
+import {
   zeroSetupFiledropArgv,
   zeroSetupOptionsArgv,
   zeroSetupSftpArgv,
@@ -31,8 +37,6 @@ import {
   composeSftpConfigDocument,
 } from "./intentConfig";
 import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
-import { runArtifactNames, stampOfResultPath } from "./runArtifactNames";
-import { JOB_FILE_NAMES } from "./intentSchemas";
 import { readJobFolderContents } from "./jobFolder";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
@@ -98,7 +102,8 @@ import type {
   JobInputFileReference,
   JobSigningIdentityLocation,
   JobSigningPaths,
-} from "./intentSchemas";
+} from "@jobContract/intentSchemas";
+
 import type { TermsProposalApplyResult } from "./termsProposal";
 
 import type { ExchangeRecordOutcome, PartnerOriginText } from "@alcove/core";

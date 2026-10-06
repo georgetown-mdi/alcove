@@ -13,7 +13,7 @@
 
 import { KeyFileSchema, parseSensitiveJson } from "@alcove/core";
 
-import { JOB_FILE_NAMES } from "./intentSchemas";
+import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { readBoundedMountedFile } from "./boundedMountedFile";
 import { resolveWorkdirFile } from "./workdir";
 

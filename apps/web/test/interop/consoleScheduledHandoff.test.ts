@@ -41,7 +41,7 @@ import {
   startCli,
 } from "./cliParty";
 
-import type { JobFiledropExchangeIntent } from "@jobs/intentSchemas";
+import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 
 /**

@@ -44,10 +44,10 @@ import {
 } from "@jobs/mountedKeyFile";
 import { generateJobId, writeJobFile } from "@jobs/workdir";
 import { JobInputNotFoundError } from "@jobs/workInputs";
-import { SIGNING_IDENTITY_FILE_NAME } from "@jobs/intentSchemas";
-import { SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL } from "@jobs/jobCreateRefusal";
+import { SIGNING_IDENTITY_FILE_NAME } from "@jobContract/intentSchemas";
+import { SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL } from "@jobContract/jobCreateRefusal";
 import { failureFor } from "@exchange/useInviterExchange";
-import { runArtifactNames } from "@jobs/runArtifactNames";
+import { runArtifactNames } from "@jobContract/runArtifactNames";
 
 import {
   STUB_CLI_PATH,
@@ -79,7 +79,7 @@ import type {
 import type {
   JobFiledropExchangeIntent,
   JobInputFileReference,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
 import type { JobApiClient } from "@psi/jobClient/serverJobExchangeDriver";
 

@@ -20,10 +20,13 @@ import {
   MAX_SFTP_CONNECTION_RESPONSE_BYTES,
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
-import { runArtifactNames, stampOfResultPath } from "@jobs/runArtifactNames";
+import {
+  runArtifactNames,
+  stampOfResultPath,
+} from "@jobContract/runArtifactNames";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
-import { isJobCreateRefusalReason } from "@jobs/jobCreateRefusal";
-import { jobCreateIntentSchema } from "@jobs/intentSchemas";
+import { isJobCreateRefusalReason } from "@jobContract/jobCreateRefusal";
+import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
 import { refusedColumnNames } from "@psi/columnNames";
 import { whenDiagnostic } from "@utils/diagnostics";
@@ -54,8 +57,8 @@ import type {
   JobExchangeSide,
   JobZeroSetupIntent,
   JobZeroSetupLinkageStrategy,
-} from "@jobs/intentSchemas";
-import type { JobCreateRefusalReason } from "@jobs/jobCreateRefusal";
+} from "@jobContract/intentSchemas";
+import type { JobCreateRefusalReason } from "@jobContract/jobCreateRefusal";
 import type { ReceiptsIntentFields } from "../receiptsModel";
 import type { RefusedColumnName } from "@psi/columnNames";
 import type { RelayEvent } from "@jobs/cliDriver";

@@ -13,7 +13,7 @@ import {
 import {
   JOB_FILE_NAMES,
   SIGNING_IDENTITY_FILE_NAME,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import {
   SIGNING_CERTIFICATE_FILE_NAME,
   SigningIdentityLocationError,
@@ -31,7 +31,7 @@ import {
   validSftpIntent,
 } from "../../utils/jobFixtures";
 
-import type { JobCreateIntent } from "@jobs/intentSchemas";
+import type { JobCreateIntent } from "@jobContract/intentSchemas";
 
 // The signing identity's LOCATION as a console option: what the operator's
 // picked mount locator resolves to, which directory the two refusals compare

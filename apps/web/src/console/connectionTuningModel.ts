@@ -11,7 +11,7 @@ import {
   MAX_TIMER_MS,
 } from "@alcove/core";
 
-import type { JobExchangeOptions } from "@jobs/intentSchemas";
+import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 
 /**
  * The pure model behind the console's "Connection tuning" authoring card: how the

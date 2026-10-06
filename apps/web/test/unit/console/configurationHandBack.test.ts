@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { editorFromCsv, editorWithIncludeOwnColumns } from "@psi/inviterEditor";
 import { configurationHandBack } from "@console/configurationHandBack";
-import { jobConfigurationHandBackSchema } from "@jobs/intentSchemas";
+import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
 import { reviewValidation } from "@psi/inviterModel";
 
 import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";

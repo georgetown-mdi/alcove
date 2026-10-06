@@ -7,7 +7,7 @@ import {
 } from "./jobApiBody";
 
 import type { DisclosedExchangeDocument } from "@jobs/configLoad";
-import type { JobConfigurationHandBack } from "@jobs/intentSchemas";
+import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 /**
  * The browser's read of `GET /api/jobs/config`: the command-line configuration

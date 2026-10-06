@@ -24,7 +24,7 @@ import {
 import {
   MAX_STANDARDIZATION_STEPS,
   jobCreateIntentSchema,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import {
   consoleJobColumnRefusalAlert,
   overlongCoverageColumns,

@@ -4,10 +4,13 @@ import {
   latestRunStamp,
   parseRunArtifactName,
   runArtifactNames,
-} from "./runArtifactNames";
+} from "@jobContract/runArtifactNames";
 import { resolveWorkdirFile } from "./workdir";
 
-import type { RunArtifactKind, RunArtifactNames } from "./runArtifactNames";
+import type {
+  RunArtifactKind,
+  RunArtifactNames,
+} from "@jobContract/runArtifactNames";
 
 /** One run's artifact paths inside a job workdir, all under one stamp. Each
  * names where the CLI writes that artifact; whether it did is checked where the
@@ -45,7 +48,7 @@ export function runArtifactKindsIn(workdir: string): Set<RunArtifactKind> {
 /**
  * The paths of the run with `stamp` inside `workdir`, each resolved through the
  * workdir's containment check. A stamp is digits, hyphens, `T` and `Z` only
- * ({@link ./runArtifactNames}), so a refusal here is a caller bug and throws.
+ * ({@link @jobContract/runArtifactNames}), so a refusal here is a caller bug and throws.
  */
 export function runArtifactPaths(
   workdir: string,

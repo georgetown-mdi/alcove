@@ -16,7 +16,7 @@ import type {
   JobSftpExchangeIntent,
   JobZeroSetupFiledropIntent,
   JobZeroSetupSftpIntent,
-} from "@jobs/intentSchemas";
+} from "@jobContract/intentSchemas";
 import type { JobManager } from "@jobs/jobManager";
 import type { JobSftpServerEntry } from "@jobs/sftpServer";
 import type { LinkageTerms } from "@alcove/core";
