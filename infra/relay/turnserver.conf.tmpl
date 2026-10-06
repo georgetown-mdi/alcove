@@ -21,6 +21,10 @@ no-dtls
 no-tlsv1
 no-tlsv1_1
 
+# The exchange reaches the relay over UDP or TLS-over-TCP and never asks for a TCP
+# relay transport to a peer, so that allocation type is refused.
+no-tcp-relay
+
 listening-ip=__LISTENING_IP__
 relay-ip=__LISTENING_IP__
 

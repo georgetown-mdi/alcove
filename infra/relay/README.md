@@ -98,7 +98,7 @@ or the Dockerfile and it converges.
 | path | what it is |
 | --- | --- |
 | `Dockerfile` | The base image pin, and nothing else. One line of instruction: `coturn/coturn` at a tag and its multi-arch index digest. The single home of that digest -- every other file names the locally built `localhost/alcove-relay:installed` tag, so a base move is exactly one edit. Its comment carries the fallback if the community image stops publishing |
-| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. Tracked; the rendered file is not |
+| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. It sets `no-tcp-relay`, because the exchange never asks for a TCP relay transport to a peer, and `verify.sh` probes that such an allocation is refused. Tracked; the rendered file is not |
 | `render-config.sh` | Substitutes the template at mode 600. Run at install and again on every start, because a stopped and started instance comes back on a different address and a stale `external-ip` advertises a candidate nobody can reach. The cloud seam is one variable: an executable printing `<public>/<private>` |
 | `alcove-relay.container` | The Quadlet unit for a podman host, installed at `/etc/containers/systemd/`. systemd is the only supervisor; there is no container daemon under it |
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |

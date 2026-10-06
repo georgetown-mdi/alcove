@@ -260,13 +260,13 @@ fi
 RUNTIME_FLAGS=()
 [ "$RUNTIME" != podman ] || RUNTIME_FLAGS=(--events-backend=none)
 uclient() {
-  local peer="$1" user="${2:-$TURN_USER}" cred="${3:-$TURN_CRED}"
+  local peer="$1" user="${2:-$TURN_USER}" cred="${3:-$TURN_CRED}" extra="${4:-}"
   # The trailing argument is the TCP connect target; coturn's own 401 challenge
   # carries the realm it authenticates against (turnserver.conf's REALM), so
   # swapping this address does not change what realm the exchange below
   # authenticates under.
   bounded 60 "$RUNTIME" ${RUNTIME_FLAGS[@]+"${RUNTIME_FLAGS[@]}"} run --rm --network host --entrypoint turnutils_uclient "$IMAGE" \
-    -t -S -p 443 -u "$user" -w "$cred" -e "$peer" -n 2 -c -v "$CONNECT" 2>&1
+    ${extra:+"$extra"} -t -S -p 443 -u "$user" -w "$cred" -e "$peer" -n 2 -c -v "$CONNECT" 2>&1
 }
 
 # Measured 2026-09-03 against coturn 4.17.2: a successful run through this
@@ -309,6 +309,19 @@ if [ -n "$TURN_USER" ] && [ -n "$TURN_CRED" ]; then
         "$(printf '%s' "$OUT" | tr '\n' ' ' | cut -c1-200)"
     fi
   done
+
+  # A TCP relay allocation (RFC 6062, the client's -T) is refused. Passes only on
+  # an observed refusal; the refusal's wording is not required.
+  OUT="$(uclient 203.0.113.9 "$TURN_USER" "$TURN_CRED" -T)"
+  if allocated "$OUT"; then
+    report fail "a TCP relay allocation was NOT refused" \
+      "no-tcp-relay in turnserver.conf is not doing its job"
+  elif printf '%s' "$OUT" | grep -qi 'forbidden\|403\|denied\|not allowed\|unsupported\|cannot complete allocation'; then
+    report pass "a TCP relay allocation was refused"
+  else
+    report unclear "could not tell whether a TCP relay allocation was refused" \
+      "$(printf '%s' "$OUT" | tr '\n' ' ' | cut -c1-200)"
+  fi
 else
   report unclear "no credential, so no allocation and no refusal was probed"
 fi
