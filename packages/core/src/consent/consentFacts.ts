@@ -164,8 +164,9 @@ export const CONSENT_FACTS = {
       "stated for both.",
     note:
       "Alcove does not check a count your partner sends you against a run of " +
-      "its own. Only one of you computes the count, and which one follows " +
-      "from the record counts you exchange when the run starts.",
+      "its own. Only one of you computes the count and sends it to the " +
+      "other, and which one follows from the record counts you exchange when " +
+      "the run starts.",
   },
   countOnlyInputChoice: {
     basis: "trust-contingent",
@@ -182,9 +183,11 @@ export const CONSENT_FACTS = {
       "honest-but-curious model leans on exists.",
     note:
       "Your partner can learn whether one person is in your data by choosing " +
-      "which records to ask about. A crafted list, or a second run differing " +
-      "by one record, turns a count into an answer about one person, and " +
-      "Alcove does not check what your partner contributes.",
+      "which records to ask about. A count-only exchange bounds what Alcove " +
+      "hands your partner, not what its choice of records reveals. A crafted " +
+      "list, or a second run differing by one record, turns a count into an " +
+      "answer about one person, and Alcove does not check what your partner " +
+      "contributes.",
   },
   countOnlyNoPayload: {
     basis: "enforced",
@@ -263,7 +266,8 @@ export const CONSENT_FACTS = {
     note:
       "Even when the terms are honored, your partner learns which of its own " +
       "records are in your data, though not which of your records they are. " +
-      "Every match that reveals identifiers discloses this.",
+      "A match that reveals identifiers discloses this whenever your partner " +
+      "is sent its half of the matched-pair table.",
   },
   partnerOwnMembershipWithheld: {
     basis: "enforced",
@@ -389,7 +393,8 @@ export const CONSENT_FACTS = {
       "You are shown no group sizes, no row positions, and nothing about " +
       "which of your own records matched. This exchange withholds your half " +
       "of the matched-pair table: Alcove on your side never reads it, and a " +
-      "partner running Alcove never sends it.",
+      "partner running Alcove never sends it. The exchange enforces this " +
+      "whatever software your partner runs.",
   },
   partnerReadsDuplicateGrouping: {
     basis: "trust-contingent",
@@ -454,8 +459,9 @@ export const CONSENT_FACTS = {
     note:
       "With duplicate matching set for your own records, the exchange will " +
       "refuse to run. Your partner declares that several of its records may " +
-      "match one of yours, and the linkage strategy these terms name does " +
-      "not match records grouped on both sides. Leave your own setting off " +
+      "match one of yours, so each party's records could group the other's, " +
+      "and the linkage strategy these terms name does not match records " +
+      "grouped on both sides. Leave your own setting off " +
       "to run these terms, or ask your partner for an invitation that drops " +
       "its own duplicate matching.",
   },
@@ -662,7 +668,7 @@ export const CONSENT_FACTS = {
       "promise a cleanup the transport does not make -- and an invitation " +
       "carrying no declaration has made no claim to state at all.",
     note:
-      "Every file this exchange writes stays in the shared folder or on the " +
+      "Every file your partner writes stays in the shared folder or on the " +
       "server after it is read, because your partner runs in retain mode. " +
       "What you send stays encrypted there, and no file left behind is your " +
       "data file or the matched result. The small files the two sides use to " +

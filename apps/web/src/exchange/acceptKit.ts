@@ -214,8 +214,8 @@ function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
           `  You read from:  ${printable(endpoint.outboundPath)}`,
         ]),
     "",
-    "The invitation names the same server. Check it against what you were",
-    "told to expect before you accept.",
+    "The invitation names the same server and directory. Check both against",
+    "what you were told to expect before you accept.",
   ];
 }
 

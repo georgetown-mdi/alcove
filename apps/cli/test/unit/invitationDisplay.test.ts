@@ -1635,9 +1635,11 @@ const COUNT_ONLY_STATEMENT =
   "records match.";
 const COUNT_ONLY_INPUT_CHOICE_BOUND =
   "Your partner can learn whether one person is in your data by choosing " +
-  "which records to ask about. A crafted list, or a second run differing " +
-  "by one record, turns a count into an answer about one person, and " +
-  "Alcove does not check what your partner contributes.";
+  "which records to ask about. A count-only exchange bounds what Alcove " +
+  "hands your partner, not what its choice of records reveals. A crafted " +
+  "list, or a second run differing by one record, turns a count into an " +
+  "answer about one person, and Alcove does not check what your partner " +
+  "contributes.";
 
 /**
  * The five tier sentences, read from the shared table by this surface and by the
