@@ -338,9 +338,12 @@ token, overwrite the file and
 - **Bounds on a connection.** A connection's TLS handshake and first request,
   and each later request on it, must arrive whole within 15 s, however the
   bytes are spaced, or the connection is closed. Sending a response has its own
-  15 s bound (`RESPONSE_DEADLINE_SECONDS`), and a write waits for the table no
-  longer than its request's deadline, answering 503 with `Retry-After` and
-  writing nothing past it. At most 32 connections are
+  15 s bound (`RESPONSE_DEADLINE_SECONDS`), and a write waits for the
+  registrar's in-process lock no longer than its request's deadline, answering
+  503 with `Retry-After` and writing nothing past it. The SQLite lock wait
+  inside the table open and transaction is bounded separately by
+  `BUSY_TIMEOUT_SECONDS` (10 s), whatever the deadline; if an outside holder
+  keeps the lock past that, the answer is the fixed 500, not a 503. At most 32 connections are
   served at once; past that, up to 8 more are answered 503 with
   `Retry-After: 5` and any further ones are closed unanswered. A connection in
   that busy band gets the 503 only when it sends its request within 5 s
