@@ -109,8 +109,8 @@ describe("the app-shell service worker", () => {
     // Named explicitly as well as bounded by the list above: Periodic
     // Background Sync's short opportunistic windows cannot sustain a live
     // two-party exchange, so the runner is an open app runtime and the worker
-    // is not a second one by design (docs/MANAGED_EXCHANGE.md, "The
-    // automation goal and its platform envelope").
+    // is not a second one by design (docs/notes/managed-exchange-design.md,
+    // "The automation goal and its platform envelope").
     expect(harness.registeredEventTypes).not.toContain("periodicsync");
     expect(harness.registeredEventTypes).not.toContain("sync");
     expect(harness.registeredEventTypes).not.toContain("push");

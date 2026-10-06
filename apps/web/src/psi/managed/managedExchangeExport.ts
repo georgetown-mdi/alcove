@@ -1,7 +1,7 @@
 /**
  * The managed-exchange export intents, wired over the pure artifact encoder,
  * the blob download, and the local sibling-state writes. Backup and
- * migration share one artifact format (docs/MANAGED_EXCHANGE.md,
+ * migration share one artifact format (docs/notes/managed-exchange-design.md,
  * "Export/import is migration, not sync").
  *
  * - A BACKUP export reads the current record, serializes it, and stamps the
@@ -555,8 +555,8 @@ const CRON_EXPORT_HANDOFF: ManagedSpentHandoff = "command-line";
  *
  * The spend is not written here, for the reason
  * {@link dispatchManagedMigration} defers it (single-device ownership;
- * docs/MANAGED_EXCHANGE.md, "Single-device ownership"), and records the
- * command-line hand-off ({@link ManagedSpentHandoff}) rather than a bare
+ * docs/notes/managed-exchange-design.md, "Single-device ownership"), and
+ * records the command-line hand-off ({@link ManagedSpentHandoff}) rather than a bare
  * instant, so the durable spent state does not read as a migration's.
  *
  * @throws {Error} if no record with `id` exists, or if the record is one

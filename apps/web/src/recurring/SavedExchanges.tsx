@@ -359,8 +359,8 @@ function runnableRow(row: SavedExchangeRow): boolean {
  *
  * The coordination line takes the caution treatment, matching the yellow Alert
  * the exchange's own surface uses for the same state, rather than the failure
- * red (docs/MANAGED_EXCHANGE.md, "Repeated misses surface, they do not
- * auto-pause"). */
+ * red (docs/notes/managed-exchange-design.md, "Repeated misses surface, they
+ * do not auto-pause"). */
 function ScheduleLines({ row }: { row: SavedExchangeRow }) {
   if (row.schedule === undefined) return null;
   return (

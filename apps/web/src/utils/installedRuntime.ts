@@ -5,11 +5,11 @@
  * Two things read it and must agree: the app-shell registration, which asks an
  * installed app's worker to cache every route's code, and the unattended
  * scheduled runner, which runs only in an installed runtime -- the platform
- * envelope in docs/MANAGED_EXCHANGE.md ("The automation goal and its platform
- * envelope"). An installed copy is launched at OS login and stays open; an
- * ordinary tab is opened and closed around whatever the operator came to do, so
- * a runner firing there would start an exchange under a page the operator is
- * about to navigate away from.
+ * envelope in docs/notes/managed-exchange-design.md ("The automation goal and
+ * its platform envelope"). An installed copy is launched at OS login and stays
+ * open; an ordinary tab is opened and closed around whatever the operator came
+ * to do, so a runner firing there would start an exchange under a page the
+ * operator is about to navigate away from.
  *
  * The manifest declares `standalone` display, and the media query is what the
  * platform answers with once the app is launched from its installed entry. It is

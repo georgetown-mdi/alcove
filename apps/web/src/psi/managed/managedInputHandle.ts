@@ -229,8 +229,8 @@ export async function ensureHandlePermission(
  * results write after the run, which only queries; a refusal is not followed
  * by a `read` request (Chrome shows that second prompt only inside the Run
  * click's transient-activation window, so whether it appears at all is not
- * something the operator can see -- see docs/MANAGED_EXCHANGE.md). An
- * unattended run queries `read` and never prompts.
+ * something the operator can see -- see docs/MANAGED_EXCHANGE.md, "The input file
+ * each run"). An unattended run queries `read` and never prompts.
  */
 async function secureInputReadPermission(
   directory: FileSystemDirectoryHandle,

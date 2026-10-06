@@ -4,8 +4,8 @@
  * `expires`, and the local `imported` marker -- never the live error, so an
  * unattended run's failure tiers the same way at the next visit as it would at
  * the moment it failed.
- * Design rationale for the desync-versus-attack tiering: docs/MANAGED_EXCHANGE.md,
- * "Telling a desync from an attack".
+ * Design rationale for the desync-versus-attack tiering:
+ * docs/notes/managed-exchange-design.md, "Telling a desync from an attack".
  *
  * Pure and platform-free: it reads a record and its import marker and returns a
  * tier. The confirmation MESSAGE and the two-outcome GATE are composed in the
@@ -263,8 +263,8 @@ export function deriveManagedFailureTier(
  * success, and only then `"unexplained"` for a failed-closed (`auth`) handshake
  * with none of those. The lapse check is its caller's, mirroring the
  * pre-connection check's own position. Rationale for the ordering and the
- * secret-farming caveat: docs/MANAGED_EXCHANGE.md, "Telling a desync from an
- * attack".
+ * secret-farming caveat: docs/notes/managed-exchange-design.md, "Telling a
+ * desync from an attack" and "Recovery: fast re-invite".
  */
 function recordedFailureTier(
   record: ManagedExchangeRecord,
@@ -317,8 +317,8 @@ function recordedFailureTier(
   // A restore since the last success benignly explains only a failed-CLOSED
   // `auth` handshake -- a stale-secret restore does not bear on a transport
   // drop, which stays the retryable transport tier regardless of the marker.
-  // Rationale and the secret-farming caveat: docs/MANAGED_EXCHANGE.md, "Telling
-  // a desync from an attack".
+  // Rationale and the secret-farming caveat: docs/notes/managed-exchange-design.md,
+  // "Telling a desync from an attack" and "Recovery: fast re-invite".
   if (lastRun.failureKind === "auth" && importedSinceLastSuccess(local))
     return "imported";
 

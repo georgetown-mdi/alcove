@@ -465,8 +465,8 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     // The escalation is a state to look into, not a failure: it takes the same
     // caution treatment the exchange's own surface renders it in, and the failure
     // red would make the miss show up as the standing warning the design keeps it
-    // from being (docs/MANAGED_EXCHANGE.md, "Repeated misses surface, they do not
-    // auto-pause").
+    // from being (docs/notes/managed-exchange-design.md, "Repeated misses
+    // surface, they do not auto-pause").
     expect(
       app.container.querySelector(`.${styles.statusLineWarn}`)?.textContent,
     ).toMatch(/2 scheduled runs in a row/);

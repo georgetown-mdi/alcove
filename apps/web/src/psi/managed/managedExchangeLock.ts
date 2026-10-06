@@ -19,8 +19,8 @@
  * within one browser profile on one device, which is the scope where a racing second
  * context is a realistic accident; it does not and cannot guard a second device or a
  * second browser profile, where the durable single-owner property rests on
- * migration-not-sync export semantics instead (normative in docs/MANAGED_EXCHANGE.md
- * and docs/spec/MANAGED_EXCHANGE_RECORD.md).
+ * migration-not-sync export semantics instead (see
+ * docs/notes/managed-exchange-design.md and docs/spec/MANAGED_EXCHANGE_RECORD.md).
  */
 
 /** Namespace prefix for the Web Locks name, so a managed-exchange run lock cannot

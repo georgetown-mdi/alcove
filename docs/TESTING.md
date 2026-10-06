@@ -220,11 +220,11 @@ asserts the ORDER of what goes on the wire.
 #### The one-command acceptance leg
 
 `oneCommandAcceptance.test.ts` drives whole COMMANDS rather than the transport
-beneath them: an inviting `alcove invite` mints a webrtc invitation and waits,
+beneath them: an inviting `alcove invite` creates a webrtc invitation and waits,
 and an accepting `alcove accept INVITATION INPUT_FILE OUTPUT_FOLDER` resolves its
 positionals, renders the consent surface, takes its confirmation from stdin,
 resolves the connection from the invitation's own endpoint, dials, and runs the
-exchange -- with the linkage result asserted on both sides. Both parties are
+exchange, with the linkage result asserted on both sides. Both parties are
 child processes (`apps/cli/test/cliProcess.ts`), so each run has its own argv,
 stdin, stdout, and exit code; an acceptance driven through the exported handler
 would have to stub the confirmation prompt, which is the checkpoint the leg
@@ -247,7 +247,7 @@ A broker or environment failure stays distinguishable from an exchange failure. 
 precondition test ahead of the leg fetches the broker's own 404 through the
 front, with the throwaway certificate as its only trusted authority, so a broker
 that did not start, a front that is not listening, or a certificate this
-environment could not mint fails as itself; past it, a failing leg belongs to the
+environment could not create fails as itself; past it, a failing leg belongs to the
 command path. Each party also has a hard deadline of its own, so a stalled
 run is reported with its exit status and the tail of its diagnostics instead of
 running until the framework kills the worker under it.
@@ -481,7 +481,7 @@ there because the app has no counterpart it could use:
   `apps/web` applies the wrap itself, which is when the stand-in should go.
 
 Everything else is each runtime's own: the CLI's argv, configuration, key file,
-PSI backend and result CSV; the web app's acceptor assembly, its invitation mint
+PSI backend and result CSV; the web app's acceptor assembly, its invitation creation
 and inviter spec assembly, and its browser WASM PSI engine.
 
 It runs on both `cli_build_and_test.yaml` and `eb_build_and_test.yaml`. That is
@@ -512,8 +512,8 @@ browser commands in `test/liveWebrtc/legCommands.ts` -- the channel a browser
 test has for work it cannot do itself -- so the test body asserts both parties'
 association tables rather than leaving one to a teardown hook.
 
-The CLI holds the inviter seat, which is what puts the broker on an origin of
-its own rather than the page's: the invitation a CLI party mints from a `ws://`
+The CLI holds the inviter role, which is what puts the broker on an origin of
+its own rather than the page's: the invitation a CLI party creates from a `ws://`
 coordination-server URL names that broker's host, port and mount, and the
 browser peer dials what the invitation names. A browser inviter would name its
 own page's origin instead.
@@ -608,7 +608,7 @@ a source since reverted to identical bytes.
 Some legs need a tool the repository does not ship. The web signaling suites and
 the CLI's live one-command acceptance need a self-signed loopback certificate,
 which Node cannot issue, so `@alcove/testkit/loopbackTlsCert` shells out to
-`openssl` and those legs skip where it cannot mint one (no `openssl`, or a
+`openssl` and those legs skip where it cannot create one (no `openssl`, or a
 LibreSSL one that takes the flags differently).
 
 `apps/web/test/requireTestPrerequisites.ts` declares each such prerequisite and
@@ -624,7 +624,7 @@ the certificate. The CLI states three of its own the same way but per leg, since
 the legs that must have them are named individually:
 `ALCOVE_REQUIRE_WORKER_BUILD=1` on the leg that builds the CLI worker bundle,
 `ALCOVE_SFTP_CHROOT_REQUIRED=1` on the chroot profile, and the one-command
-acceptance leg's own `openssl`, which it mints its TLS front's certificate with.
+acceptance leg's own `openssl`, which it creates its TLS front's certificate with.
 That leg reads `CI` and the same `ALCOVE_ALLOW_MISSING_TEST_PREREQUISITES`
 opt-out as the web gate, so an operator whose machine has no `openssl` sets one
 variable for both.

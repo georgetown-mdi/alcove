@@ -8,8 +8,9 @@
  * data-exchange phase is a callback this module invokes only after the
  * durable persist resolves.
  *
- * Five invariants this module owns (normative in docs/MANAGED_EXCHANGE.md and
- * docs/spec/MANAGED_EXCHANGE_RECORD.md):
+ * Five invariants this module owns (normative in
+ * docs/spec/MANAGED_EXCHANGE_RECORD.md; docs/notes/managed-exchange-design.md
+ * records the rationale):
  *
  * - **Input guard before connection.** The input file is acquired and its
  *   columns validated against the standing terms before the handshake opens

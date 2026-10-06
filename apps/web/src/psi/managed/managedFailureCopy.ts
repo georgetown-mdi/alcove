@@ -57,8 +57,8 @@ export const REPEATED_MISS_TITLE = "Runs are not happening on schedule";
  * run's own outcome). Both phrasings name BOTH checks, the partner and this
  * device's own clock, since a drifted clock produces exactly this pattern;
  * neither offers to pause anything -- the agreed cadence stands
- * (docs/MANAGED_EXCHANGE.md, "Repeated misses surface, they do not
- * auto-pause").
+ * (docs/notes/managed-exchange-design.md, "Repeated misses surface, they do
+ * not auto-pause").
  */
 export function repeatedMissCoordination(
   schedule: ManagedExchangeSchedule,

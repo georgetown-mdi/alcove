@@ -715,7 +715,7 @@ leaves the two parties on different secrets, and the handshakes after it fail
 closed. It is the Tier 1 reading ("the record holds a benign explanation") made
 durable rather than a rule of its own, and the rationale for that tiering,
 including what an adversary gains by provoking the benign reading, is [Telling a
-desync from an attack](../MANAGED_EXCHANGE.md#telling-a-desync-from-an-attack).
+desync from an attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack).
 A recorded benign cause is not displaced by either rule: it is the run's own
 actionable state, and the condition stands until something clears it.
 
@@ -993,7 +993,7 @@ window rather than replaying stale past ones. Crossing the two-miss escalation
 threshold during catch-up fires the repeated-miss surface at the wake -- which
 is how a persistently absent party learns of a miss pattern late rather than
 never (see
-[MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#retry-and-repeated-misses)).
+[managed-exchange-design.md](../notes/managed-exchange-design.md#retry-and-repeated-misses)).
 
 The wake's bookkeeping write is **conditioned on the plan it read**: it lands
 only while the stored `anchor`, `intervalDays`, `windowSeconds`, `nextWindow`,
@@ -1032,7 +1032,7 @@ attempt takes the [single-writer lock](#the-secret-is-a-linear-resource) back at
 once. But an attempt that fails fast leaves the lock free for the rest of its
 pacing gap, and a window whose attempt cap runs out before the close leaves it
 free for the tail (see
-[MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#cross-tab-single-writer-locking-web-locks)).
+[managed-exchange-design.md](../notes/managed-exchange-design.md#cross-tab-single-writer-locking-web-locks)).
 An operator's own Run can take the lock in any such free interval and rotate
 the shared secret. The occupancy does not attempt again after it: the attempt
 after the Run finds its success stamped inside the window on the record it
@@ -1280,7 +1280,7 @@ re-persisted) by **one device only**. If two devices both hold a copy and both
 run, they fork the secret permanently: after the first device rotates, the second
 device's copy is stale, and no automatic reconciliation exists (there is no grace
 window; see [Desync detection and
-recovery](../MANAGED_EXCHANGE.md#desync-detection-and-recovery)). The guard on a
+recovery](../notes/managed-exchange-design.md#desync-detection-and-recovery)). The guard on a
 single device is a cross-tab single-writer lock (Web Locks) held from a run's
 begin through the success stamp it writes, so **one exchange of a record is in
 flight at a time** on a browser profile: a second tab, a second attended Run, and
@@ -1319,7 +1319,7 @@ discard what the transport already holds buffered: the teardown's close flushes
 rather than drops, so a cancel does not mean nothing further leaves the device.
 Export/import between devices is **migration, not sync** (the source copy is
 invalidated on export). Both are specified in
-[MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#single-device-ownership).
+[managed-exchange-design.md](../notes/managed-exchange-design.md#single-device-ownership).
 
 ### Persist-before-success ordering
 
@@ -1737,7 +1737,7 @@ device's pending decision on a partner's changed terms. The four:
   marker an import stamps has no `savedAs`, since its file is the one
   imported, not one this app saved. It is the input to the derived backup state the UI
   surfaces (see [Moment-anchored backup
-  surfaces](../MANAGED_EXCHANGE.md#moment-anchored-backup-surfaces)), which is
+  surfaces](../notes/managed-exchange-design.md#moment-anchored-backup-surfaces)), which is
   simply **marker present / absent**: a present marker is "backed up", no marker is
   "backup needed". "Taken since the last rotation" is enforced **structurally**, not
   re-derived from `lastRun`, by the write-side rules below -- which also settle which
@@ -1992,7 +1992,7 @@ device's pending decision on a partner's changed terms. The four:
   **import/restore since the last successful run** apart from an unexplained
   handshake failure (Tier 1 versus
   Tier 2; see [Telling a desync from an
-  attack](../MANAGED_EXCHANGE.md#telling-a-desync-from-an-attack)). A restored
+  attack](../notes/managed-exchange-design.md#telling-a-desync-from-an-attack)). A restored
   copy can hold a secret the partnership has rotated past, so a handshake
   failure while this marker stands is the benign import tier (recovery:
   re-invite), not the attack path. "Since the last successful run" is enforced
@@ -2775,7 +2775,8 @@ service-worker registration shows the notice through the page's own
 
 ## See also
 
-- [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md) - the managed exchange lifecycle: who it serves, the automation goal and platform envelope, durability contract, single-owner invariant, desync story, eviction survival, and the moment-anchored backup surfaces
+- [MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md) - the guide to running a recurring exchange in the web app: saving, scheduled runs, installing, the input file, moving between devices, recovery, and deleting
+- [managed-exchange-design.md](../notes/managed-exchange-design.md) - the design rationale: who it serves, the automation goal and platform envelope, the durability contract, the single-owner invariant, the desync story, and the moment-anchored backup surfaces
 - [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#hosted-at-rest-threat-model-for-managed-exchanges) - the browser at-rest threat model for the persisted secret: the primary controls, the rollback and metadata-at-rest analyses, and the egress-hardening limits
 - [EXCHANGE_FILE.md](EXCHANGE_FILE.md) - the exchange-file artifact and the credential-free endpoint locator the record composes from
 - [PROTOCOL.md](PROTOCOL.md#shared-secret-rotation) - the shared-secret rotation and rendezvous-peer-id derivation constructions
