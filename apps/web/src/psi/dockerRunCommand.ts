@@ -54,9 +54,14 @@ function isPlainBindPath(bindPath: string): boolean {
     .every((segment) => segment !== "" && segment !== "." && segment !== "..");
 }
 
+/** A control character, or a bidirectional override or isolate character. */
+const CONTROL_OR_DIRECTION_CHARACTER =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/;
+
 /** Why a bind path cannot be mounted at its own path by a `--mount` option. */
 export type UnmountableReason =
-  "comma" | "quote" | "dots" | "workFolder" | "root";
+  "control" | "comma" | "quote" | "dots" | "workFolder" | "root";
 
 /** A bind path the Docker lines cannot mount, and why. */
 export interface UnmountableBindPath {
@@ -68,8 +73,11 @@ export interface UnmountableBindPath {
  * The bind paths a `--mount` option cannot state at their own path: `--mount`
  * is a comma-separated list read as CSV, so a `,` ends the path and a `"`
  * starts a quoted field, and a path at or under `/work` lands inside the
- * exchange folder's mount. The filesystem root `/` is refused too: binding it
- * would give the container the whole host filesystem. A path not written
+ * exchange folder's mount. A control or text-direction character is refused:
+ * a crontab ends an entry at a line break whatever the shell quoting, and the
+ * path can come from a partner's invitation. The filesystem root `/` is
+ * refused too: binding it would give the container the whole host
+ * filesystem. A path not written
  * plainly is refused rather than rewritten, so the mount binds exactly the
  * path the configuration names.
  */
@@ -77,6 +85,8 @@ export function unmountableBindPaths(
   bindPaths: ReadonlyArray<HandoffBindPath>,
 ): Array<UnmountableBindPath> {
   return bindPaths.flatMap(({ path }): Array<UnmountableBindPath> => {
+    if (CONTROL_OR_DIRECTION_CHARACTER.test(path))
+      return [{ path, reason: "control" }];
     if (path.includes(",")) return [{ path, reason: "comma" }];
     if (path.includes('"')) return [{ path, reason: "quote" }];
     if (!isPlainBindPath(path)) return [{ path, reason: "dots" }];

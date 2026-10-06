@@ -308,8 +308,10 @@ const PICKED_IDENTITY_FILE_PLACEHOLDER = `${SECRETS_FOLDER_PLACEHOLDER}/FILE`;
  * `alcove fingerprint` with `args`, as the command over the operator's working
  * folder, on the identity this card uses: the console's default file in that
  * folder, or, where `picked`, the file they picked in their secrets folder,
- * that folder mounted at its own path. The sentence naming a picked command
- * says FILE is the file they picked.
+ * that folder mounted at its own path: read-write for a command that creates
+ * or replaces the identity (one naming `--identity` or `--force`), read-only
+ * otherwise. The sentence naming a picked command says FILE is the file they
+ * picked.
  */
 export function fingerprintCommand(
   picked: boolean,
@@ -323,7 +325,16 @@ export function fingerprintCommand(
           PICKED_IDENTITY_FILE_PLACEHOLDER,
           ...args,
         ],
-        { bindPaths: [{ path: SECRETS_FOLDER_PLACEHOLDER, readOnly: false }] },
+        {
+          bindPaths: [
+            {
+              path: SECRETS_FOLDER_PLACEHOLDER,
+              readOnly: !args.some(
+                (arg) => arg === "--identity" || arg === "--force",
+              ),
+            },
+          ],
+        },
       )
     : workingFolderCommand([
         "fingerprint",

@@ -1,3 +1,5 @@
+import { sanitizeForDisplay } from "@alcove/core";
+
 import {
   shellJoinCommand,
   windowsJoinCommand,
@@ -133,6 +135,8 @@ export function handoffInputName(argv: ReadonlyArray<string>): string {
 
 /** What stops the Docker lines mounting a path, as the panel words it. */
 const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
+  control:
+    "contains a line break, another control character, or a text-direction character, which a scheduled command cannot hold",
   comma: "contains a comma, which a --mount option cannot hold",
   quote: "contains a double quote, which a --mount option cannot hold",
   dots: "is not a plain path: write the path without . or .. segments, repeated slashes, or a trailing slash",
@@ -145,13 +149,19 @@ export function unmountableBindPathsNotice(
   unmountable: ReadonlyArray<UnmountableBindPath>,
 ): string {
   const named = unmountable
-    .map(({ path, reason }) => `${path} ${UNMOUNTABLE_REASON_TEXT[reason]}`)
+    .map(
+      ({ path, reason }) =>
+        `${reason === "control" ? sanitizeForDisplay(path) : path} ` +
+        UNMOUNTABLE_REASON_TEXT[reason],
+    )
     .join("; ");
-  return (
-    `The Docker commands are not shown because ${named}. To run Alcove ` +
-    "from its image, write the docker run command yourself and mount that " +
-    "path by hand, or run an installed Alcove with the commands below."
-  );
+  const remedy = unmountable.some(({ reason }) => reason === "control")
+    ? "Move that folder to a path without such a character, and set the " +
+      "new path in the configuration."
+    : "To run Alcove from its image, write the docker run command yourself " +
+      "and mount that path by hand, or run an installed Alcove with the " +
+      "commands below.";
+  return `The Docker commands are not shown because ${named}. ${remedy}`;
 }
 
 /**

@@ -33,6 +33,7 @@ import {
   SESSION_DERIVED_PROBLEM,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
   UNNAMED_PARTY_PROBLEM,
+  fingerprintCommand,
   fingerprintRequestProblem,
   identityLocationLabel,
   identityRegenerationNotice,
@@ -1570,6 +1571,25 @@ describe("the receipts card's model", () => {
         "FILE the file you picked",
     );
     expect(IDENTITY_PICKED_LOCATION_NOTICE).toMatch(/your partner syncs/);
+  });
+
+  test("a picked-identity command mounts the secrets folder writable only to create or replace", () => {
+    const readOnlyMount =
+      "type=bind,src=/path/to/your/secrets-folder," +
+      "dst=/path/to/your/secrets-folder,readonly ";
+    expect(fingerprintCommand(true)).toBe(
+      PICKED_IDENTITY_COMMAND.replace(
+        "dst=/path/to/your/secrets-folder ",
+        "dst=/path/to/your/secrets-folder,readonly ",
+      ),
+    );
+    expect(fingerprintCommand(true)).toContain(readOnlyMount);
+    expect(fingerprintCommand(true, ["--identity", "NAME"])).toBe(
+      `${PICKED_IDENTITY_COMMAND} --identity NAME`,
+    );
+    expect(fingerprintCommand(true, ["--force", "--identity", "NAME"])).toBe(
+      `${PICKED_IDENTITY_COMMAND} --force --identity NAME`,
+    );
   });
 
   test("re-keying is named as the image's command over the operator's folders", () => {
