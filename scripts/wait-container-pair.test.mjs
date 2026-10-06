@@ -18,6 +18,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 // containing `-waitfail` makes `docker wait` itself fail (exit 1, no output).
 // A name containing `-neverdies` makes the container ignore `docker kill` and
 // run for a bounded 60s, standing in for a half that never reports an exit.
+// A `-lead` and a `-follow` half exit in that order: the lead exits with its
+// status once the follower is running, and the follower exits with its status
+// once the lead process is gone. An exited lead's pid stays live until the
+// script reaps it, so the follower exits only after the script has collected the
+// lead's exit. A bounded wait that runs out reports status 98 or 99.
 
 const SCRIPT = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -29,7 +34,32 @@ set -eu
 case "$1" in
   wait)
     id="$2"
+    status="\${id##*-exit}"; status="\${status%%-*}"
     case "$id" in
+      *-lead*)
+        echo $$ > "$STUB_DIR/lead.pid"
+        n=0
+        while [ ! -e "$STUB_DIR/follow.ready" ]; do
+          if [ "$n" -ge 300 ]; then echo 98; exit 0; fi
+          sleep 0.01; n=$((n + 1))
+        done
+        echo "$status"
+        exit 0 ;;
+      *-follow*)
+        n=0
+        while [ ! -s "$STUB_DIR/lead.pid" ]; do
+          if [ "$n" -ge 300 ]; then echo 98; exit 0; fi
+          sleep 0.01; n=$((n + 1))
+        done
+        lead=$(cat "$STUB_DIR/lead.pid")
+        touch "$STUB_DIR/follow.ready"
+        n=0
+        while kill -0 "$lead" 2>/dev/null; do
+          if [ "$n" -ge 1000000 ]; then echo 99; exit 0; fi
+          n=$((n + 1))
+        done
+        echo "$status"
+        exit 0 ;;
       *-neverdies*)
         n=0
         while [ "$n" -lt 300 ]; do sleep 0.2; n=$((n + 1)); done
@@ -37,7 +67,6 @@ case "$1" in
         exit 0 ;;
       *-waitfail*) exit 1 ;;
     esac
-    status="\${id##*-exit}"; status="\${status%%-*}"
     after="\${id##*-after}"
     ticks=0
     while [ ! -e "$STUB_DIR/$id.killed" ]; do
@@ -162,10 +191,11 @@ describe("wait-container-pair", () => {
     );
   });
 
-  it("does not kill a half that exits at nearly the same instant as its failing partner", () => {
-    const run = runPair(30, "i-exit1-after0", "a-exit0-after0");
+  it("does not kill a half that exits just after its failing partner", () => {
+    const run = runPair(30, "i-exit1-lead", "a-exit0-follow");
     expect(run.status).toBe(1);
-    expect(run.kills).not.toContain("a-exit0-after0");
+    expect(run.kills).toEqual([]);
+    expect(run.stderr).toContain("inviter: exited, status 1");
     expect(run.stderr).toContain("acceptor: exited, status 0");
   });
 
