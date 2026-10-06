@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { startStaticHost } from "../staticHost/server";
+import { startStaticHost } from "../staticHost/server.js";
 
 import {
   getFreePort,

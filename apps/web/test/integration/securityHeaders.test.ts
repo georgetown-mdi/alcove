@@ -3,11 +3,14 @@ import { resolve } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
-import { DEFAULT_CACHE_CONTROL, startStaticHost } from "../staticHost/server";
+import {
+  DEFAULT_CACHE_CONTROL,
+  startStaticHost,
+} from "../staticHost/server.js";
 
 import { hasHostedBuild, hostedOutput } from "./prodServer.js";
 
-import type { StaticHost } from "../staticHost/server";
+import type { StaticHost } from "../staticHost/server.js";
 
 // These assert at the HTTP boundary that the defense-in-depth response headers
 // reach the wire: from the Start dev server on an SSR document route, which

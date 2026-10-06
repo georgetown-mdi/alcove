@@ -10,6 +10,7 @@ import {
   startStaticHost,
 } from "../staticHost/server";
 import { headersForPath, parseHeadersFile } from "../staticHost/headersFile";
+import { HASHED_ASSET_CACHE_CONTROL } from "../../hosted/headersFile";
 
 import type { StaticHost } from "../staticHost/server";
 
@@ -46,7 +47,10 @@ describe("the static host's file resolution", () => {
     write("saved.html", "saved");
     write("saved/_.html", "saved-item");
     write("assets/app-AAAA1111.js", "code");
-    write("_headers", "/*\n  X-Test: on\n");
+    write(
+      "_headers",
+      `/*\n  X-Test: on\n/assets/*\n  Cache-Control: ${HASHED_ASSET_CACHE_CONTROL}\n`,
+    );
     host = await startStaticHost(root);
   });
 
@@ -60,6 +64,8 @@ describe("the static host's file resolution", () => {
     ["/assets/missing-BBBB2222.js", "root"],
     ["/not-a-route/deeper", "root"],
     ["/_headers", "root"],
+    ["//_headers", "root"],
+    ["/./_headers", "root"],
   ])("answers %s with %s", async (path, expected) => {
     expect((await get(path)).body).toBe(expected);
   });
@@ -74,6 +80,12 @@ describe("the static host's file resolution", () => {
     expect(asset.headers.get("content-type")).toBe("application/javascript");
     const fallback = await get("/assets/missing-BBBB2222.js");
     expect(fallback.headers.get("content-type")).toMatch(/^text\/html/);
+  });
+
+  test("sends a missing asset the root document with the immutable cache", async () => {
+    const { headers } = await get("/assets/missing-BBBB2222.js");
+    expect(headers.get("content-type")).toMatch(/^text\/html/);
+    expect(headers.get("cache-control")).toBe(HASHED_ASSET_CACHE_CONTROL);
   });
 
   test("applies _headers by request path over the default cache", async () => {

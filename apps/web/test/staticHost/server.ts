@@ -8,13 +8,8 @@ import type { AddressInfo } from "node:net";
 import type { HeaderRule } from "./headersFile";
 
 // A static file server emulating the part of Cloudflare Pages the hosted build
-// relies on: a path naming a file gets that file, `_headers` excepted; an
-// extensionless path gets `<path>.html`; any other path gets the root
-// `index.html` with status 200, as Pages does when the output holds no
-// `404.html`; every response gets the `_headers` rules matching its request
-// path, over Pages' default revalidating Cache-Control. It refuses an output
-// holding `_redirects` or `404.html`, which change that fallback on Pages.
-// Which of these were measured on Pages: docs/notes/hosted-static-build.md.
+// relies on. What it emulates, and which of that was measured on Pages:
+// docs/notes/hosted-static-build.md, Static-host harness.
 
 /** Files whose presence makes Pages rewrite or replace unmatched paths. */
 export const CATCH_ALL_FILES = ["_redirects", "404.html"];
@@ -22,6 +17,10 @@ export const CATCH_ALL_FILES = ["_redirects", "404.html"];
 /** Host configuration files in the output, which Pages reads and never serves
  * as a file. */
 const CONFIGURATION_FILES = ["_headers"];
+
+function isConfigurationFile(root: string, target: string): boolean {
+  return CONFIGURATION_FILES.some((name) => target === join(root, name));
+}
 
 /** The Cache-Control Pages sends on a file no `_headers` rule gives one. */
 export const DEFAULT_CACHE_CONTROL = "public, max-age=0, must-revalidate";
@@ -37,6 +36,14 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".svg": "image/svg+xml",
   ".txt": "text/plain; charset=utf-8",
   ".wasm": "application/wasm",
+  ".map": "application/json",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".xml": "application/xml",
 };
 
 /** A running static host. */
@@ -67,8 +74,7 @@ export function resolveStaticFile(root: string, pathname: string): string {
     const index = join(target, "index.html");
     return isFile(index) ? index : fallback;
   }
-  if (isFile(target) && !CONFIGURATION_FILES.includes(decoded.slice(1)))
-    return target;
+  if (isFile(target) && !isConfigurationFile(root, target)) return target;
   if (extname(decoded) === "" && isFile(`${target}.html`))
     return `${target}.html`;
   return fallback;

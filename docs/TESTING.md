@@ -334,19 +334,13 @@ skipped.
 
 `apps/web/test/staticHost/` is a small Node server standing in for Cloudflare
 Pages, which serves the hosted static site. It runs in the test process, on a
-free loopback port, and serves the subset of Pages behavior the site relies on:
-
-- a path naming a file gets that file, and an extensionless path gets
-  `<path>.html`;
-- any other path gets the root `index.html` with status 200;
-- every response gets the `_headers` rules matching its request path, over
-  Pages' default revalidating `Cache-Control`.
-
+free loopback port, and serves only the subset of Pages behavior the site
+relies on; the list, and what of it was measured on Pages, is in
+[docs/notes/hosted-static-build.md](notes/hosted-static-build.md#static-host-harness).
 It refuses to start on an output holding `_redirects` or `404.html`, and on
 `_headers` syntax outside that subset. `appShellWarm`, `csvWorkerProd` and the
 static half of `securityHeaders` run against it as well as against the built
-Start server. What of that subset was measured on Pages:
-[docs/notes/hosted-static-build.md](notes/hosted-static-build.md#static-host-harness).
+Start server.
 
 For a dev-server-only run, set `ALCOVE_ALLOW_MISSING_WEB_BUILD=1`:
 the built-server specs report as skipped and the run passes. That is the one

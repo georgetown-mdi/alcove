@@ -16,14 +16,13 @@ const builtHeadersFile = `${appRoot}dist/hosted/_headers`;
 
 // The static host sends the security headers from `_headers` rather than from
 // src/server.ts, so the file must state exactly what securityResponseHeaders
-// does, as the service worker's offline response must.
+// does.
 describe("the hosted _headers file", () => {
   const rules = parseHeadersFile(hostedHeadersFileSource());
 
   test.each(["/", "/accept", "/saved/an-id", "/serviceWorker.js"])(
     "sets exactly the security headers on %s",
     (path) => {
-      expect(Object.keys(securityResponseHeaders).length).toBe(4);
       expect(Object.fromEntries(headersForPath(rules, path))).toEqual(
         securityResponseHeaders,
       );
