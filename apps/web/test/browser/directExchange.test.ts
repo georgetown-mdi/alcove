@@ -161,6 +161,9 @@ interface StubOptions {
    * denies availability. The default is the console's definitive denial, which
    * is what a run that owes no record answers. */
   recordUnavailable?: string;
+  /** When true every `DELETE /api/jobs/job-7` is held open until
+   * `releaseDeletes()`, so a test can act while a discard is still in flight. */
+  holdDeletes?: boolean;
 }
 
 /** The same-origin job API, stubbed at the global fetch boundary. Unmatched URLs fall
@@ -170,6 +173,7 @@ function stubJobApi(options: StubOptions = {}): {
   emitEvent: (event: object) => void;
   closeEvents: () => void;
   resolveProbe: () => void;
+  releaseDeletes: () => void;
 } {
   const captured: Array<CapturedRequest> = [];
   const encoder = new TextEncoder();
@@ -182,6 +186,10 @@ function stubJobApi(options: StubOptions = {}): {
     releaseProbe = resolve;
   });
   let firstProbeHeld = false;
+  let releaseDeletes: (() => void) | undefined;
+  const deleteGate = new Promise<void>((resolve) => {
+    releaseDeletes = resolve;
+  });
 
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -290,8 +298,12 @@ function stubJobApi(options: StubOptions = {}): {
           ),
         );
       if (url === "/api/jobs/job-7") {
-        if ((init?.method ?? "GET") === "DELETE")
-          return Promise.resolve(new Response(null, { status: 204 }));
+        if ((init?.method ?? "GET") === "DELETE") {
+          const deleted = () => new Response(null, { status: 204 });
+          return options.holdDeletes === true
+            ? deleteGate.then(deleted)
+            : Promise.resolve(deleted());
+        }
         return Promise.resolve(
           jsonResponse({
             status: options.jobStatus ?? "running",
@@ -323,6 +335,7 @@ function stubJobApi(options: StubOptions = {}): {
       sse?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)),
     closeEvents: () => sse?.close(),
     resolveProbe: () => releaseProbe?.(),
+    releaseDeletes: () => releaseDeletes?.(),
   };
 }
 
@@ -1908,7 +1921,7 @@ describe("direct exchange retry on a relayed internal fault", () => {
   /** Drives the hook alone, with a retry control rendered whatever the failure
    * says, so the hook's own guard is what a press meets. */
   function RetryHarness() {
-    const { failure, start, tryAgain } = useDirectExchange({
+    const { failure, start, tryAgain, reset } = useDirectExchange({
       channel: "sftp",
       inputSource: { kind: "workFile", name: "clients.csv" },
     });
@@ -1921,9 +1934,51 @@ describe("direct exchange retry on a relayed internal fault", () => {
         { type: "button", onClick: tryAgain },
         "Retry regardless",
       ),
+      createElement("button", { type: "button", onClick: reset }, "Reset"),
       createElement("output", null, failure?.retry ?? "none"),
     );
   }
+
+  test("a retry whose discard settles after a reset starts no run", async () => {
+    expectConsole(
+      "error",
+      `RelayedSelfExplainingError: ${TAGGED_STALL_TERMINAL.message}`,
+    );
+    const api = stubJobApi({
+      sftp: CONFIGURED_SFTP,
+      jobStatus: "failed",
+      holdDeletes: true,
+    });
+    app.render(createElement(RetryHarness));
+    await page.getByRole("button", { name: "Run" }).click();
+    await vi.waitFor(() =>
+      expect(api.captured.some((r) => r.url === "/api/jobs/job-7/events")).toBe(
+        true,
+      ),
+    );
+    api.emitEvent(TAGGED_STALL_TERMINAL);
+    api.closeEvents();
+    await expect.element(page.getByRole("status")).toHaveTextContent("offered");
+
+    await page.getByRole("button", { name: "Retry regardless" }).click();
+    await vi.waitFor(() =>
+      expect(
+        api.captured.some(
+          (r) => r.url === "/api/jobs/job-7" && r.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+    await page.getByRole("button", { name: "Reset" }).click();
+    await expect.element(page.getByRole("status")).toHaveTextContent("none");
+    api.releaseDeletes();
+    await flushPendingUpdates();
+    await flushPendingUpdates();
+
+    expect(
+      api.captured.filter((r) => r.url === "/api/jobs" && r.method === "POST"),
+    ).toHaveLength(1);
+    await expect.element(page.getByRole("status")).toHaveTextContent("none");
+  });
 
   test.each([
     {

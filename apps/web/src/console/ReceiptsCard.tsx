@@ -18,6 +18,7 @@ import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react";
 import { MAX_TOKEN_MAX_AGE_DAYS, sanitizeForDisplay } from "@alcove/core";
 
 import { resolveSigningFingerprint } from "@psi/jobClient/signingIdentityClient";
+import { useRequestGeneration } from "@utils/requestGeneration";
 
 import {
   CERTIFICATE_EXPORT_NOTICE,
@@ -211,13 +212,13 @@ export function ReceiptsCard({
   // which holds the same value without depending on when it ran.
   const draftRef = useRef(draft);
   draftRef.current = draft;
-  // Bumped on every new request AND on every mode change, so a fingerprint that
-  // resolves after the operator left certificate mode is discarded: leaving the
-  // mode drops the resolved fingerprint (`receiptsWithField`) precisely so a
-  // return re-asks the console, and a late resolution must not put one back.
-  // The host-key probe's staleness guard has the same shape (`runProbe` in
-  // `SftpAuthoringForm.tsx`).
-  const seqRef = useRef(0);
+  // Superseded by every new request and by every change of mode or identity
+  // location, so a fingerprint that resolves after the operator left
+  // certificate mode or moved the identity is discarded: either change drops the
+  // resolved fingerprint (`receiptsWithField`), and a late resolution must not
+  // put back one read from a key the draft no longer names.
+  const fingerprintRequests = useRequestGeneration();
+  const identityLocationKey = JSON.stringify(draft.identityLocation ?? null);
   // Defence in depth for a non-secure origin, where the clipboard API is absent
   // and the value is still selectable by hand. The typings promise it is always
   // there, which is why this check exists by design rather than as redundancy.
@@ -238,18 +239,19 @@ export function ReceiptsCard({
     value: ReceiptsDraft[TField],
   ): void => onChange(receiptsWithField(draft, field, value));
 
-  // The request state is about one visit to certificate mode, so leaving the
-  // mode ends it: a failure the operator left behind must not re-render as news
-  // on their next visit, and a request still in flight is disowned here rather
-  // than left to strand a button in a permanent loading state.
+  // The request state is about one identity in one visit to certificate mode,
+  // so leaving the mode or moving the identity ends it: a failure the operator
+  // left behind must not re-render as news on their next visit, and a request
+  // still in flight is disowned here rather than left to strand a button in a
+  // permanent loading state.
   useEffect(() => {
-    seqRef.current += 1;
+    fingerprintRequests.invalidate();
     setResolving(false);
     setFailure(undefined);
-  }, [draft.mode]);
+  }, [draft.mode, identityLocationKey, fingerprintRequests]);
 
   async function resolveFingerprint(): Promise<void> {
-    const seq = (seqRef.current += 1);
+    const request = fingerprintRequests.next();
     setResolving(true);
     setFailure(undefined);
     const location = draftRef.current.identityLocation;
@@ -257,8 +259,7 @@ export function ReceiptsCard({
       exportCertificate,
       ...(location !== undefined ? { identityLocation: location } : {}),
     });
-    // Discard a superseded result: the mode changed, or a newer request started.
-    if (seqRef.current !== seq) return;
+    if (!fingerprintRequests.isCurrent(request)) return;
     setResolving(false);
     if (outcome.kind !== "ok") {
       setFailure(fingerprintFailureMessage(outcome, location !== undefined));

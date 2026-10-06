@@ -17,6 +17,7 @@ import {
   partnerTermsForVerification,
   reconstructCommittedData,
   reproductionMismatchCauses,
+  resultCsvDelimiter,
   sanitizeErrorForDisplay,
   toRetainedResult,
   verifyExchangeRecord,
@@ -31,6 +32,7 @@ import { DisclosureSection } from "@components/DisclosureSection";
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
 import { importLinkageTermsDocument } from "@psi/linkageTermsIO";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
+import { useRequestGeneration } from "@utils/requestGeneration";
 
 import styles from "@styles/app.module.css";
 
@@ -367,9 +369,16 @@ export function VerifyReceiptScreen() {
   // change, and used as the terms inputs' key so their paste buffers are the
   // previous exchange's no more than the parsed terms are.
   const [exchangeGeneration, setExchangeGeneration] = useState(0);
-  // Which set of inputs a verdict may be written from: bumped by every input
-  // event, and read by a run to decide whether its own inputs still stand.
-  const runToken = useRef(0);
+  // Which set of inputs a verdict may be written from: superseded by every
+  // input event, and checked by a run to decide whether its own inputs still
+  // stand.
+  const verdictGeneration = useRequestGeneration();
+  // Which read of each JSON slot is the live one, so a file chosen after
+  // another wins whichever read settles first.
+  const recordReads = useRequestGeneration();
+  const keysReads = useRequestGeneration();
+  const signedRecordReads = useRequestGeneration();
+  const certificateReads = useRequestGeneration();
 
   const headingRef = useRef<HTMLHeadingElement>(null);
   const verdictRef = useRef<HTMLDivElement>(null);
@@ -390,7 +399,7 @@ export function VerifyReceiptScreen() {
   // first bump and its awaited parse, since the handlers bump again after
   // their state writes land.
   function invalidateVerdicts() {
-    runToken.current += 1;
+    verdictGeneration.invalidate();
     setVerdict(undefined);
     setSignedVerdict(undefined);
     setVerifyError(undefined);
@@ -407,6 +416,7 @@ export function VerifyReceiptScreen() {
   // certificate in the record, which the verdict reports as an unmatched
   // anchor.
   function clearExchangeScopedInputs() {
+    signedRecordReads.invalidate();
     setInputCsv(undefined);
     setResultCsv(undefined);
     setLocalTerms(undefined);
@@ -416,8 +426,10 @@ export function VerifyReceiptScreen() {
   }
 
   async function onRecordFile(file: File) {
+    const read = recordReads.next();
     invalidateVerdicts();
     const parsed = parseRecordDocument(await file.text());
+    if (!recordReads.isCurrent(read)) return;
     clearExchangeScopedInputs();
     const chosen = { name: file.name };
     if (parsed.kind === "ok")
@@ -427,8 +439,10 @@ export function VerifyReceiptScreen() {
   }
 
   async function onKeysFile(file: File) {
+    const read = keysReads.next();
     invalidateVerdicts();
     const parsed = parseKeysDocument(await file.text());
+    if (!keysReads.isCurrent(read)) return;
     clearExchangeScopedInputs();
     const chosen = { name: file.name };
     if (parsed.kind === "ok") setKeys({ file: chosen, keys: parsed.keys });
@@ -437,8 +451,10 @@ export function VerifyReceiptScreen() {
   }
 
   async function onSignedRecordFile(file: File) {
+    const read = signedRecordReads.next();
     invalidateVerdicts();
     const parsed = parseSignedRecordDocument(await file.text());
+    if (!signedRecordReads.isCurrent(read)) return;
     const chosen = { name: file.name };
     if (parsed.kind === "ok")
       setSignedRecord({ file: chosen, record: parsed.record });
@@ -447,8 +463,10 @@ export function VerifyReceiptScreen() {
   }
 
   async function onCertificateFile(file: File) {
+    const read = certificateReads.next();
     invalidateVerdicts();
     const parsed = await parseCertificateDocument(await file.text());
+    if (!certificateReads.isCurrent(read)) return;
     const chosen = { name: file.name };
     if (parsed.kind === "ok")
       setCertificate({ file: chosen, fingerprint: parsed.fingerprint });
@@ -498,16 +516,16 @@ export function VerifyReceiptScreen() {
     setVerifying(true);
     // The inputs this run reads are the ones loaded now; nothing on the page is
     // disabled while it runs, and it writes its verdicts several awaits later.
-    const token = runToken.current;
+    const token = verdictGeneration.next();
     setVerifyError(undefined);
     try {
       const parsedRecord = record?.record;
-      const readBy =
+      const inputReadBy =
         csvDelimiter !== undefined ? { delimiter: csvDelimiter } : {};
       const inputParse =
         inputCsv === undefined
           ? undefined
-          : await loadCSVFileOffMainThread(inputCsv, readBy);
+          : await loadCSVFileOffMainThread(inputCsv, inputReadBy);
       const stated = statedTermsForVerification(
         localTerms,
         partnerTerms,
@@ -533,7 +551,9 @@ export function VerifyReceiptScreen() {
         let data: Awaited<ReturnType<typeof reconstructCommittedData>>["data"] =
           {};
         if (inputParse !== undefined && resultCsv !== undefined) {
-          const resultParse = await loadCSVFileOffMainThread(resultCsv, readBy);
+          const resultParse = await loadCSVFileOffMainThread(resultCsv, {
+            delimiter: resultCsvDelimiter(csvDelimiter),
+          });
           const result = toRetainedResult(resultParse);
           const ourIdColumn = deriveOurIdColumn(
             result.headers,
@@ -583,7 +603,7 @@ export function VerifyReceiptScreen() {
       // An input changed while this run was reading files and computing, so its
       // result describes inputs the page no longer holds: the edit already
       // withdrew the verdicts, and this run adds none back.
-      if (token !== runToken.current) return;
+      if (!verdictGeneration.isCurrent(token)) return;
       // Both verdicts are set once both legs have run: the record verdict's
       // standing note points at the signed panel on the strength of the verdict
       // rendered beside it, never of the input supplied to produce it.
@@ -602,7 +622,7 @@ export function VerifyReceiptScreen() {
       // The verify path is fail-safe in core (every check yields a status), so a
       // throw here is an unexpected fault -- show it sanitized, never raw,
       // and only while it is still this run's inputs that faulted.
-      if (token === runToken.current)
+      if (verdictGeneration.isCurrent(token))
         setVerifyError(sanitizeErrorForDisplay(error));
     } finally {
       setVerifying(false);

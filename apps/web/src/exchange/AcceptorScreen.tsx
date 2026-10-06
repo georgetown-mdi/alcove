@@ -244,6 +244,7 @@ export function AcceptorScreen() {
     acquired,
     columnsSection,
     columnsState,
+    committedCsvDelimiter,
     committedDeduplicate,
     committedName,
     connectionTuning,
@@ -628,6 +629,7 @@ export function AcceptorScreen() {
       dispatch({
         type: "console-accept-committed",
         name,
+        csvDelimiter,
         acquired: consoleAcquiredCsv({
           fileName: consoleSource.name,
           sizeBytes: consoleSource.sizeBytes,
@@ -673,6 +675,7 @@ export function AcceptorScreen() {
         type: "file-accepted",
         name,
         deduplicate,
+        csvDelimiter,
         positions: stripped,
         file,
         acquired: {
@@ -820,7 +823,9 @@ export function AcceptorScreen() {
       ...(options !== undefined ? { options } : {}),
       runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
       receipts: receiptsIntentFields(receipts),
-      ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+      ...(committedCsvDelimiter !== undefined
+        ? { csvDelimiter: committedCsvDelimiter }
+        : {}),
     };
     // `launched` is the launch key: it is set once, from the same render that
     // fixes the acquired CSV, its input source, the committed name, and the ready
@@ -1130,7 +1135,9 @@ export function AcceptorScreen() {
               standardization: launched.edits.standardization,
               expectedPartnerDeduplicate:
                 invitationToken.linkageTerms.deduplicate,
-              ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
+              ...(committedCsvDelimiter !== undefined
+                ? { csvDelimiter: committedCsvDelimiter }
+                : {}),
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
             sharedSecret: invitationToken.sharedSecret,

@@ -1,6 +1,6 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { page, userEvent } from "vitest/browser";
 
@@ -107,6 +107,40 @@ async function buildFixture(receiptBinder = RECEIPT_BINDER): Promise<{
     associationTable,
     createdAt: "2026-01-02T03:04:05.000Z",
     receiptBinder,
+  });
+}
+
+// The same exchange with a partner column whose name and values hold
+// semicolons: the result is still written with commas, but every line of it
+// has more semicolons than commas, so detection reads it by semicolon.
+const SEMICOLON_COLUMN = "clinic;ward;bed;room";
+const SEMICOLON_PARTNER_TERMS: LinkageTerms = {
+  ...PARTNER_TERMS,
+  payload: { send: [{ name: SEMICOLON_COLUMN }] },
+};
+const SEMICOLON_RESULT_CSV =
+  `pid,their_row_id,${SEMICOLON_COLUMN}\n` +
+  "P0,1,south;b;2;y\nP1,0,north;a;1;x\n";
+
+async function buildSemicolonFixture(): Promise<{
+  record: ExchangeRecord;
+  keys: VerificationKeys;
+}> {
+  return buildExchangeRecord({
+    localTerms: LOCAL_TERMS,
+    partnerTerms: SEMICOLON_PARTNER_TERMS,
+    contributedLinkageFields: ["ssn"],
+    outcome: "completed",
+    certificateMismatchObserved: false,
+    recordsExposed: 2,
+    localPayloadSent,
+    partnerPayloadReceived: {
+      columns: [SEMICOLON_COLUMN],
+      rows: [["north;a;1;x"], ["south;b;2;y"]],
+    },
+    associationTable,
+    createdAt: "2026-01-02T03:04:05.000Z",
+    receiptBinder: RECEIPT_BINDER,
   });
 }
 
@@ -367,6 +401,74 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
     await expect
       .element(page.getByText("Re-derives and matches"))
       .toBeInTheDocument();
+  });
+
+  test("under Detect the result file is read by the comma it was written with", async () => {
+    const { record, keys } = await buildSemicolonFixture();
+    await mountVerifyScreen();
+    await uploadAt(0, jsonFile("semi.json", serializeExchangeRecord(record)));
+    await uploadAt(
+      1,
+      jsonFile("semi.keys.json", serializeVerificationKeys(keys)),
+    );
+    await userEvent.click(
+      page.getByRole("button", {
+        name: "Re-supply your files to open the commitments",
+      }),
+    );
+    await uploadAt(2, csvFile("semi-input.csv", INPUT_CSV));
+    await uploadAt(3, csvFile("semi-result.csv", SEMICOLON_RESULT_CSV));
+    await userEvent.selectOptions(
+      page.getByRole("combobox", { name: "How your file separates fields" }),
+      "detect",
+    );
+
+    await userEvent.click(
+      page.getByRole("button", { name: "Verify with these files" }),
+    );
+    await expect
+      .element(page.getByText("Opened and matches").first())
+      .toBeInTheDocument();
+    expect(page.getByText("Verification failed").query()).toBeNull();
+  });
+
+  test("a record file chosen after another keeps its place when the earlier read settles last", async () => {
+    const first = await buildFixture("Zmlyc3Q");
+    const second = await buildFixture();
+    // The first file's read is held open until the second has landed.
+    let releaseFirstRead = (): void => {};
+    const firstReadHeld = new Promise<void>((resolve) => {
+      releaseFirstRead = resolve;
+    });
+    const realText = Blob.prototype.text;
+    const textSpy = vi
+      .spyOn(Blob.prototype, "text")
+      .mockImplementation(function (this: Blob) {
+        const read = realText.call(this);
+        return this instanceof File && this.name === "first-record.json"
+          ? firstReadHeld.then(() => read)
+          : read;
+      });
+    onTestFinished(() => {
+      textSpy.mockRestore();
+    });
+    await mountVerifyScreen();
+
+    const recordInput = document.querySelectorAll('input[type="file"]')[0];
+    await userEvent.upload(
+      page.elementLocator(recordInput),
+      jsonFile("first-record.json", serializeExchangeRecord(first.record)),
+    );
+    await uploadAt(
+      0,
+      jsonFile("second-record.json", serializeExchangeRecord(second.record)),
+    );
+    releaseFirstRead();
+    await flushPendingUpdates();
+    await flushPendingUpdates();
+
+    expect(app.container.textContent).toContain("second-record.json");
+    expect(app.container.textContent).not.toContain("first-record.json");
   });
 
   test("a first run's record re-derives its hash from the configuration the fill wrote", async () => {

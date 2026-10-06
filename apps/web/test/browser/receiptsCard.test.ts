@@ -597,6 +597,31 @@ describe("ReceiptsCard: a request that resolves while the operator edits", () =>
     await userEvent.selectOptions(modeSelect(), "certificate");
     await expect.element(createButton()).toBeInTheDocument();
   });
+
+  test("never attaches a fingerprint read at a location the operator moved from", async () => {
+    const gate = createGate();
+    stubSigningApi({
+      gates: [gate.promise],
+      secretsEntries: [{ name: PICKED_IDENTITY, kind: "file" }],
+    });
+    await renderCard();
+    await chooseCertificateMode();
+
+    await createButton().click();
+    await pickIdentityLocation(PICKED_IDENTITY);
+    gate.settle();
+    await drainSettledResponse();
+
+    expect(latestDraft.identityLocation).toEqual({
+      mount: "secrets",
+      subPath: [PICKED_IDENTITY],
+    });
+    expect(latestDraft.ownFingerprint).toBeUndefined();
+    expect(app.container.textContent).not.toContain(FINGERPRINT);
+    await expect
+      .element(page.getByRole("button", { name: "Show my fingerprint" }))
+      .toBeEnabled();
+  });
 });
 
 describe("ReceiptsCard: a failed request", () => {

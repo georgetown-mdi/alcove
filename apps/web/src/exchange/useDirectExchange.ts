@@ -8,6 +8,7 @@ import {
   discardServerJob,
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
+import { useRequestGeneration } from "@utils/requestGeneration";
 
 import { initialRun, runWithFailure } from "./exchangeRun";
 import { buildRunEvents } from "./runEvents";
@@ -148,6 +149,11 @@ export function useDirectExchange({
     [],
   );
 
+  // Which retry is the live one: a retry starts its run only once the failed
+  // job's discard settles, and a reset, a leave, or an unmount in that window
+  // means that run is no longer wanted.
+  const retryGeneration = useRequestGeneration();
+
   function start() {
     // Guard re-entry: a run in flight owns the AbortController; starting a second
     // would orphan the first's signal and race two folds. tryAgain clears the ref
@@ -226,7 +232,10 @@ export function useDirectExchange({
     const failedJobId = currentJobIdRef.current;
     if (failedJobId !== undefined) {
       currentJobIdRef.current = undefined;
-      void discardServerJob(jobApiClient, failedJobId).then(() => start());
+      const retry = retryGeneration.next();
+      void discardServerJob(jobApiClient, failedJobId).then(() => {
+        if (retryGeneration.isCurrent(retry)) start();
+      });
       return;
     }
     start();
@@ -241,6 +250,7 @@ export function useDirectExchange({
   // essential: start()'s re-entry guard bails while it holds the finished run's
   // controller.
   function reset() {
+    retryGeneration.invalidate();
     abortRef.current?.abort();
     abortRef.current = undefined;
     const jobId = currentJobIdRef.current;
@@ -263,6 +273,7 @@ export function useDirectExchange({
   // what frees the console's single slot for the next exchange. Fire-and-forget
   // -- the caller navigates away -- and a no-op before any job exists.
   function abandonRun() {
+    retryGeneration.invalidate();
     const jobId = currentJobIdRef.current;
     if (jobId === undefined) return;
     currentJobIdRef.current = undefined;

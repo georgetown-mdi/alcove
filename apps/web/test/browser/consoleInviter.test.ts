@@ -136,6 +136,9 @@ interface StubOptions {
    * record ask has neither answered nor given up. DELETE is unaffected, so a
    * discard the seat commits in that window is still observable. */
   holdStatus?: boolean;
+  /** When true every `DELETE /api/jobs/job-7` is held open until
+   * `releaseDeletes()`, so a test can act while a discard is still in flight. */
+  holdDeletes?: boolean;
 }
 
 /** The same-origin job API, stubbed at the global fetch boundary. Unmatched URLs fall
@@ -149,6 +152,7 @@ function stubJobApi(options: StubOptions = {}): {
   closeEvents: () => void;
   resolveProbe: () => void;
   releaseStatus: () => void;
+  releaseDeletes: () => void;
 } {
   const captured: Array<CapturedRequest> = [];
   const encoder = new TextEncoder();
@@ -175,6 +179,10 @@ function stubJobApi(options: StubOptions = {}): {
   // The run status the job's GET status endpoint reports (the discard poll reads
   // it); a test flips it to a terminal value to let a discard complete promptly.
   let jobStatus = "running";
+  let releaseDeletes: (() => void) | undefined;
+  const deleteGate = new Promise<void>((resolve) => {
+    releaseDeletes = resolve;
+  });
 
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
@@ -285,8 +293,12 @@ function stubJobApi(options: StubOptions = {}): {
           ),
         );
       if (url === "/api/jobs/job-7") {
-        if ((init?.method ?? "GET") === "DELETE")
-          return Promise.resolve(new Response(null, { status: 204 }));
+        if ((init?.method ?? "GET") === "DELETE") {
+          const deleted = () => new Response(null, { status: 204 });
+          return options.holdDeletes === true
+            ? deleteGate.then(deleted)
+            : Promise.resolve(deleted());
+        }
         if (options.statusFault === true)
           return Promise.resolve(new Response(null, { status: 503 }));
         const respond = () =>
@@ -337,6 +349,7 @@ function stubJobApi(options: StubOptions = {}): {
     closeEvents: () => sse?.close(),
     resolveProbe: () => releaseProbe?.(),
     releaseStatus: () => releaseStatus?.(),
+    releaseDeletes: () => releaseDeletes?.(),
   };
 }
 
@@ -1326,6 +1339,46 @@ describe("console inviter run teardown and abandonment", () => {
       .map(({ index }) => index)[1];
     expect(deleteIndex).toBeGreaterThanOrEqual(0);
     expect(deleteIndex).toBeLessThan(secondPostIndex);
+  });
+
+  test("a retry whose discard settles after the screen is gone starts no run", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: temporary connection problem",
+    );
+    const api = stubJobApi({
+      sftp: { configured: true, host: "dr.example.gov", port: 2222 },
+      holdDeletes: true,
+    });
+    app.render(createElement(InviterScreen));
+    await reachRunningRun(api);
+    api.setJobStatus("failed");
+    api.emitEvent({
+      v: 1,
+      type: "error",
+      category: "exchange",
+      message: "temporary connection problem",
+    });
+    api.closeEvents();
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .toBeInTheDocument();
+    await awaitStraightThroughRecovery("Try again");
+    await page.getByRole("button", { name: "Try again" }).click();
+    await vi.waitFor(() =>
+      expect(
+        api.captured.some(
+          (r) => r.url === "/api/jobs/job-7" && r.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+
+    app.unmount();
+    api.releaseDeletes();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      api.captured.filter((r) => r.url === "/api/jobs" && r.method === "POST"),
+    ).toHaveLength(1);
   });
 });
 

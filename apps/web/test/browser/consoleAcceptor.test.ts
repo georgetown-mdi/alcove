@@ -474,6 +474,9 @@ interface AcceptStubOptions {
    * denies availability. The default is the console's definitive denial, which
    * is what a run that owes no record answers. */
   recordUnavailable?: string;
+  /** When true every `DELETE /api/jobs/job-7` is held open until
+   * `releaseDeletes()`, so a test can act while a discard is still in flight. */
+  holdDeletes?: boolean;
 }
 
 // The full same-origin job API a console server-job accept drives: a mounted
@@ -489,6 +492,7 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
   closeEvents: () => void;
   hasEventStream: () => boolean;
   resolveProbe: () => void;
+  releaseDeletes: () => void;
 } {
   const captured: Array<{
     url: string;
@@ -505,6 +509,10 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
     releaseProbe = resolve;
   });
   let firstProbeHeld = false;
+  let releaseDeletes: (() => void) | undefined;
+  const deleteGate = new Promise<void>((resolve) => {
+    releaseDeletes = resolve;
+  });
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
@@ -574,8 +582,12 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
       if (url === "/api/jobs/job-7/events")
         return Promise.resolve(eventStream());
       if (url === "/api/jobs/job-7") {
-        if ((init?.method ?? "GET") === "DELETE")
-          return Promise.resolve(new Response(null, { status: 204 }));
+        if ((init?.method ?? "GET") === "DELETE") {
+          const deleted = () => new Response(null, { status: 204 });
+          return options.holdDeletes === true
+            ? deleteGate.then(deleted)
+            : Promise.resolve(deleted());
+        }
         return Promise.resolve(
           jsonResponse({
             status: options.jobStatus ?? "running",
@@ -607,6 +619,7 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
     closeEvents: () => sse?.close(),
     hasEventStream: () => sse !== undefined,
     resolveProbe: () => releaseProbe?.(),
+    releaseDeletes: () => releaseDeletes?.(),
   };
 }
 
@@ -1305,6 +1318,34 @@ describe("console acceptor recoveries against the run's exchange record", () => 
         ),
       ).toBe(true),
     );
+  });
+
+  test("a retry whose discard settles after the screen is gone starts no run", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
+    const api = stubServerJobAccept({ jobStatus: "failed", holdDeletes: true });
+    await acceptToExchangeFailure(api);
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .not.toHaveAttribute("aria-haspopup");
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await vi.waitFor(() =>
+      expect(
+        api.captured.some(
+          (r) => r.url === "/api/jobs/job-7" && r.method === "DELETE",
+        ),
+      ).toBe(true),
+    );
+
+    app.unmount();
+    api.releaseDeletes();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(
+      api.captured.filter((r) => r.url === "/api/jobs" && r.method === "POST"),
+    ).toHaveLength(1);
   });
 });
 
