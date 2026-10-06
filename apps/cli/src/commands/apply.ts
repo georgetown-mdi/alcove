@@ -311,19 +311,25 @@ const columnNames = (
  * the comparison does not show -- a rule-set citation only one side states,
  * the columns this party sends where the partner states none it receives,
  * the columns it receives where the configuration lists none -- is stated on
- * its own lines, and any other changed term by name.
+ * its own lines, and any other changed term by name. A received-column list
+ * the update leaves unstated is shown as before and after lines, not as
+ * columns removed, since the next exchange then takes whatever is sent.
  */
 function displayChanges(
   emit: ConsentSurfaceSink,
   configPath: string,
   changes: UpdateChanges,
 ): void {
-  const { delta, before, after, changedTerms, firstPartnerDeduplicate } =
-    changes;
+  const { before, after, changedTerms, firstPartnerDeduplicate } = changes;
   const sendBefore = columnNames(before.payload?.send);
   const sendAfter = columnNames(after.payload?.send);
   const receiveBefore = columnNames(before.payload?.receive);
   const receiveAfter = columnNames(after.payload?.receive);
+  const receiveBecomesUnstated =
+    receiveBefore !== undefined && receiveAfter === undefined;
+  const delta: TermsDelta = receiveBecomesUnstated
+    ? { ...changes.delta, received: undefined }
+    : changes.delta;
   const showRuleSet =
     changedTerms.includes("linkageRuleSet") &&
     (before.linkageRuleSet === undefined || after.linkageRuleSet === undefined);

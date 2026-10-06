@@ -490,6 +490,26 @@ describe("alcove apply", () => {
     expect(lines).toContain("      notes");
   });
 
+  test("an update leaving the received columns unstated shows before and after, not columns removed", async () => {
+    const { metadata: _metadata, ...withoutMetadata } = readSpec(
+      partnership.a.config,
+    );
+    saveConfig(partnership.a.config, withoutMetadata);
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(false);
+
+    const { stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).not.toContain("  columns your partner no longer sends you:");
+    expect(lines).toContain("  columns you will receive: change");
+    expect(lines).toContain("    before:");
+    expect(lines).toContain("      notes");
+    expect(lines).toContain(
+      "    after: not stated -- the next exchange takes whatever columns your partner sends",
+    );
+  });
+
   test("an update recording the partner's deduplicate for the first time asks", async () => {
     const { expectedPartnerDeduplicate: _unused, ...unrecorded } = readSpec(
       partnership.b.config,

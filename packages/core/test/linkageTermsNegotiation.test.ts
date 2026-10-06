@@ -271,6 +271,25 @@ test("changedPartnerBoundTerms counts a field one side leaves unstated", () => {
   ).toEqual(["payload"]);
 });
 
+test("changedPartnerBoundTerms counts a dropped or changed payload receive", () => {
+  const withoutReceive: LinkageTerms = {
+    ...everyFieldStated,
+    payload: { send: [{ name: "a" }] },
+  };
+  expect(changedPartnerBoundTerms(everyFieldStated, withoutReceive)).toEqual([
+    "payload",
+  ]);
+  expect(changedPartnerBoundTerms(withoutReceive, everyFieldStated)).toEqual([
+    "payload",
+  ]);
+  expect(
+    changedPartnerBoundTerms(everyFieldStated, {
+      ...everyFieldStated,
+      payload: { send: [{ name: "a" }], receive: [{ name: "c" }] },
+    }),
+  ).toEqual(["payload"]);
+});
+
 test("changedPartnerBoundTerms ignores descriptions and unbound fields", () => {
   expect(
     changedPartnerBoundTerms(everyFieldStated, {
