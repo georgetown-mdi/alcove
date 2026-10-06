@@ -19,6 +19,7 @@ import {
   clearManagedExchanges,
   listManagedExchanges,
 } from "@psi/managed/managedExchangeStore";
+import { ACCEPTED_INVITATION_STORAGE_KEY } from "@exchange/acceptedInvitation";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { stagesFor } from "@exchange/exchangeRun";
@@ -202,6 +203,7 @@ describe("the managed record a one-shot hand-off deposits", () => {
     const rotatedSecret = generateSharedSecret();
     const runSecret = await completeRun(rotatedSecret);
     expect(runSecret).toBe(token.sharedSecret);
+    expect(sessionStorage.getItem(ACCEPTED_INVITATION_STORAGE_KEY)).toBeNull();
     const record = await saveAndReadRecord();
 
     expect(record.side).toBe("acceptor");
