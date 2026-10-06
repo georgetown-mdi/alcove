@@ -180,8 +180,8 @@ export function ExchangeFilesCard({
             label="If an unrecognised file appears"
             description={
               "What to do when a file that is not part of this exchange turns " +
-              "up in the shared directory mid-run. Automatic stops the " +
-              "exchange on a plain directory and warns when the settings above " +
+              "up in the shared folder mid-run. Automatic stops the " +
+              "exchange on a plain folder and warns when the settings above " +
               "mark it as kept in step by a sync tool."
             }
             value={draft.unexpectedFiles}

@@ -254,9 +254,9 @@ function credentialRefExclusions(
       exclusions.push({ dir: form, label, kind });
     }
   };
-  add(path.resolve(dataRoot), "your mounted folder", "dataRoot");
+  add(path.resolve(dataRoot), "your folder", "dataRoot");
   for (const rendezvousDir of rendezvousDirs)
-    add(path.resolve(rendezvousDir), "the rendezvous directory", "rendezvous");
+    add(path.resolve(rendezvousDir), "the shared folder", "rendezvous");
   return exclusions;
 }
 
@@ -535,7 +535,7 @@ interface CredentialMounts {
 const CREDENTIAL_MOUNT_LABELS: Record<
   AuthoredMountRefCredential["mount"],
   string
-> = { secrets: "the secrets directory", folder: "your folder" };
+> = { secrets: "the secrets folder", folder: "your folder" };
 
 /**
  * Turn a credential locator into an `@path` reference: resolve `subPath` under
@@ -734,7 +734,7 @@ function credentialContainmentWarning(
   const fieldLabel = CREDENTIAL_FIELD_LABELS[field];
   const remediation =
     "For better isolation, move the file to a folder of its own, start the " +
-    "console with that folder mounted read-only as its secrets directory " +
+    "console with that folder mounted read-only as its secrets folder " +
     "(add -v <that folder>:/secrets:ro --env JOB_SECRETS_DIR=/secrets to " +
     "docker run), and choose the file there.";
   if (exclusion.kind === "rendezvous")

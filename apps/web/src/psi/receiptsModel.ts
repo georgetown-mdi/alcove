@@ -168,8 +168,7 @@ export function receiptsWithResolvedIdentity(
  * folder's own words. Never a container path -- the browser holds a locator and
  * shows exactly that.
  */
-export const IDENTITY_DEFAULT_LOCATION_LABEL =
-  "The folder you mounted (default)";
+export const IDENTITY_DEFAULT_LOCATION_LABEL = "Your working folder (default)";
 
 /**
  * The picked location as one displayable line: the mount id then each segment,
@@ -580,7 +579,7 @@ export function receiptsProblems(
  * {@link IDENTITY_PICKED_LOCATION_NOTICE} instead.
  */
 export const IDENTITY_AT_REST_NOTICE =
-  "Your signing key is written into the folder you mounted, beside this " +
+  "Your signing key is written into your working folder, beside this " +
   "exchange's other files, because it has to outlive the run and be a file you " +
   "still have afterwards. Treat that folder like the results themselves: keep " +
   "it readable only by you, and do not put it on shared storage. To keep it " +
@@ -626,8 +625,8 @@ const IDENTITY_PICKED_LOCATION_READ_NOTICE =
  */
 export const IDENTITY_DEFAULT_PATH_LEFTOVER_CAVEAT =
   "Picking a location does not move a key you already have: one created " +
-  "earlier at the console's default path stays in your mounted working " +
-  "directory, and a shared-folder exchange is refused while a key sits in a " +
+  "earlier at the console's default path stays in your working folder, " +
+  "and a shared-folder exchange is refused while a key sits in a " +
   "folder your partner syncs. Move that file to the location you picked, " +
   "or remove it if that key is not one you use, knowing that a " +
   "replacement has a new fingerprint every partner who pinned the old " +
@@ -721,9 +720,9 @@ export const IDENTITY_REGENERATION_NOTICE =
  * left holding it.
  */
 export const RECEIPT_LOCATION_NOTICE =
-  "The signed receipt is written with this run's files in your mounted folder, " +
+  "The signed receipt is written with this run's files in your working folder, " +
   "as alcove-receipt-<time>.json, named for the time of the run, inside the " +
-  "run's own directory, and the run screen offers " +
+  "run's own folder, and the run screen offers " +
   "it as a download once the run finishes or fails. Discarding the run removes " +
   "it along with the results, so keep a copy of your own if you mean to keep " +
   "it -- it is the artifact an auditor checks, and neither party can recreate " +
@@ -735,7 +734,7 @@ export const RECEIPT_LOCATION_NOTICE =
  * console writes to. */
 export const CERTIFICATE_EXPORT_NOTICE =
   "The export is the public certificate only -- never your private key -- and " +
-  "it lands in the folder you mounted, there even when your signing identity " +
+  "it lands in your working folder, there even when your signing identity " +
   "is kept elsewhere. Your partner needs only the fingerprint " +
   "to pin you; the certificate file is for an auditor who wants to check a " +
   "receipt without either party's help.";

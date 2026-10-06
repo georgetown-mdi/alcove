@@ -1351,7 +1351,7 @@ describe("direct exchange transport step", () => {
       .element(page.getByRole("radio", { name: "An SFTP server" }))
       .toBeChecked();
     await expect
-      .element(page.getByLabelText("A shared directory", { exact: false }))
+      .element(page.getByLabelText("A shared folder", { exact: false }))
       .toBeDisabled();
   });
 
@@ -1368,7 +1368,7 @@ describe("direct exchange transport step", () => {
     await page.getByRole("button", { name: "Select clients.csv" }).click();
     await page.getByRole("button", { name: "Use this file" }).click();
     await page
-      .getByRole("radio", { name: "A shared directory", exact: false })
+      .getByRole("radio", { name: "A shared folder", exact: false })
       .click();
     await expect
       .element(page.getByText("agency-a-agency-b", { exact: false }))
@@ -1390,7 +1390,7 @@ describe("direct exchange transport step", () => {
     await page.getByRole("button", { name: "Select clients.csv" }).click();
     await page.getByRole("button", { name: "Use this file" }).click();
     await page
-      .getByRole("radio", { name: "A shared directory", exact: false })
+      .getByRole("radio", { name: "A shared folder", exact: false })
       .click();
     await expect
       .element(page.getByText("The shared folder holds your own files"))
@@ -1414,12 +1414,10 @@ describe("direct exchange transport step", () => {
     await page.getByRole("button", { name: "Select clients.csv" }).click();
     await page.getByRole("button", { name: "Use this file" }).click();
     await page
-      .getByRole("radio", { name: "A shared directory", exact: false })
+      .getByRole("radio", { name: "A shared folder", exact: false })
       .click();
     await expect
-      .element(
-        page.getByText("Runs through the shared directory mounted on this"),
-      )
+      .element(page.getByText("Runs through the shared folder mounted on this"))
       .toBeInTheDocument();
     expect(page.getByText("rendezvous", { exact: true }).query()).toBeNull();
   });
@@ -1443,7 +1441,7 @@ describe("direct exchange transport step", () => {
     await page.getByRole("button", { name: "Select clients.csv" }).click();
     await page.getByRole("button", { name: "Use this file" }).click();
     await page
-      .getByRole("radio", { name: "A shared directory", exact: false })
+      .getByRole("radio", { name: "A shared folder", exact: false })
       .click();
     await expect
       .element(

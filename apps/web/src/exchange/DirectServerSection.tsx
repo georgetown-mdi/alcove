@@ -146,8 +146,8 @@ export function DirectServerSection({
             disabled={!rendezvousConfigured}
             label={
               rendezvousConfigured
-                ? "A shared directory on this console"
-                : "A shared directory (no directory is mounted on this console)"
+                ? "A shared folder on this console"
+                : "A shared folder (no shared folder is mounted on this console)"
             }
           />
         </Stack>
@@ -193,12 +193,10 @@ export function DirectServerSection({
             ) : (
               <>
                 {rendezvous.folderName === undefined ? (
-                  <>
-                    Runs through the shared directory mounted on this console.
-                  </>
+                  <>Runs through the shared folder mounted on this console.</>
                 ) : (
                   <>
-                    Runs through the shared directory{" "}
+                    Runs through the shared folder{" "}
                     <span className={styles.mono}>{rendezvous.folderName}</span>{" "}
                     on this console.
                   </>
@@ -216,14 +214,14 @@ export function DirectServerSection({
         <Alert
           color="blue"
           icon={<IconAlertCircle aria-hidden />}
-          title="No shared directory is mounted"
+          title="No shared folder is mounted"
         >
           {/* The console's own reason wins where it has one: an incoherent
               pair of mounts reports itself unconfigured, and the generic
               sentence would send an operator who already mounted two folders to
               add a third. */}
           {rendezvous?.problem ??
-            "This console has no rendezvous directory mounted, so a shared-directory exchange cannot run here. Choose SFTP, or mount a rendezvous directory and restart the console."}
+            "This console has no shared folder mounted, so a shared-folder exchange cannot run here. Choose SFTP, or mount a shared folder and restart the console."}
         </Alert>
       )}
 

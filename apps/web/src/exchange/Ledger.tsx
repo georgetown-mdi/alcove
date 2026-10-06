@@ -76,7 +76,7 @@ const HEADING_INFO: Record<string, string | undefined> = {
     "parties see the reference before the exchange runs.",
   "How it runs":
     "How the exchange runs: live between your two browsers, or through " +
-    "files on an SFTP server or shared directory using the command-line " +
+    "files on an SFTP server or shared folder using the command-line " +
     "tool.",
 };
 

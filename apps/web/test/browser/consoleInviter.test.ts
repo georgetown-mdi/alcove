@@ -497,29 +497,27 @@ describe("console inviter file picker states", () => {
     app.render(createElement(InviterScreen));
     await expect
       .element(
-        page.getByText("No usable files in the work directory", {
+        page.getByText("No usable files in your folder", {
           exact: true,
         }),
       )
       .toBeInTheDocument();
   });
 
-  test("an unconfigured work directory names the env var to set", async () => {
+  test("an unconfigured input folder names the env var to set", async () => {
     stubJobApi({ listing: { configured: false, files: [] } });
     app.render(createElement(InviterScreen));
     // An unset JOB_INPUT_DIR is a deployment-config gap, distinct from an
     // empty-but-mounted directory: name the env var, do not tell the operator to
     // place a file in a directory that is not configured.
     await expect
-      .element(page.getByText("No work directory configured", { exact: true }))
+      .element(page.getByText("No input folder configured", { exact: true }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("Set JOB_INPUT_DIR", { exact: false }))
       .toBeInTheDocument();
     expect(
-      page
-        .getByText("No usable files in the work directory", { exact: true })
-        .query(),
+      page.getByText("No usable files in your folder", { exact: true }).query(),
     ).toBeNull();
   });
 
@@ -537,14 +535,10 @@ describe("console inviter file picker states", () => {
     // A mounted-but-unreadable directory tells the operator to check the mount, not
     // to place a file that may already be there (the empty-directory copy).
     await expect
-      .element(
-        page.getByText("Could not read the work directory", { exact: true }),
-      )
+      .element(page.getByText("Could not read your folder", { exact: true }))
       .toBeInTheDocument();
     expect(
-      page
-        .getByText("No usable files in the work directory", { exact: true })
-        .query(),
+      page.getByText("No usable files in your folder", { exact: true }).query(),
     ).toBeNull();
   });
 
@@ -605,10 +599,10 @@ describe("console inviter transports and sample data", () => {
     await reachReviewCreate();
     const browser = page.getByLabelText("Live, in this browser");
     await expect.element(browser).toBeDisabled();
-    // The disabled card names its in-tab exchange as out of scope on the console
+    // The disabled card states the console does not run in-browser exchanges
     // (this phrasing is unique to the Browser card's description).
     await expect
-      .element(page.getByText("the public Alcove web app's domain"))
+      .element(page.getByText("This console does not run in-browser exchanges"))
       .toBeInTheDocument();
   });
 
@@ -645,7 +639,7 @@ describe("console inviter transports and sample data", () => {
     app.render(createElement(InviterScreen));
     await reachReviewCreate();
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
   });
 
@@ -699,7 +693,7 @@ describe("console inviter transports and sample data", () => {
     app.render(createElement(InviterScreen));
     await reachReviewCreate();
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
     expect(
       page.getByText("The shared folder holds your own files").query(),
@@ -716,7 +710,7 @@ describe("console inviter transports and sample data", () => {
     await expect
       .element(
         page.getByLabelText(
-          "Over a shared directory, run by the command-line tool",
+          "Over a shared folder, run by the command-line tool",
         ),
       )
       .toBeDisabled();
@@ -887,7 +881,7 @@ describe("console inviter split-rendezvous retain gate", () => {
     // off -- the state the console's provisioning and the operator's own choice
     // disagree in, which the create gate holds.
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
@@ -1083,7 +1077,7 @@ describe("console inviter mint and run", () => {
     await reachReviewCreate();
     // Filedrop is the default (a rendezvous mount, no sftp server) and runs here.
     await expect
-      .element(page.getByLabelText("Over a shared directory, run here"))
+      .element(page.getByLabelText("Over a shared folder, run here"))
       .toBeChecked();
 
     await page.getByRole("button", { name: "Create the invitation" }).click();
@@ -1390,7 +1384,7 @@ describe("console inviter picker accessibility", () => {
       .element(
         page.getByRole("heading", {
           level: 2,
-          name: "Choose a file from the work directory",
+          name: "Choose a file from your folder",
         }),
       )
       .toBeInTheDocument();

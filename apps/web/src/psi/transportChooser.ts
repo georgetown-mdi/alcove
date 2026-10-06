@@ -24,14 +24,14 @@ export type Transport = "browser" | "sftp" | "filedrop";
 export const TRANSPORT_LEDGER_LABELS: Record<Transport, string> = {
   browser: "Browser",
   sftp: "SFTP (command-line tool)",
-  filedrop: "Shared directory (command-line tool)",
+  filedrop: "Shared folder (command-line tool)",
 };
 
 /** The review answers-table phrasing for each {@link Transport}. */
 export const TRANSPORT_ANSWER_LABELS: Record<Transport, string> = {
   browser: "Live, in this browser",
   sftp: "SFTP (command-line tool)",
-  filedrop: "Shared directory (command-line tool)",
+  filedrop: "Shared folder (command-line tool)",
 };
 
 /** Whether a transport runs in the command-line tool rather than this browser
@@ -46,7 +46,7 @@ export function isCliTransport(
 
 /** How a chosen transport would run on this build: the
  * {@link ExchangeDriverSelection} kind as the inviter chooser's UI policy. A console
- * filedrop runs as a server job against the mounted rendezvous directory when
+ * filedrop runs as a server job against the mounted shared folder when
  * `JOB_RENDEZVOUS_DIR` is set, and is disabled otherwise. */
 type TransportRunMode = ExchangeDriverSelection["kind"];
 
@@ -153,7 +153,7 @@ export function transportOffered(
 const TRANSPORT_RUN_NOUN: Record<Transport, string> = {
   browser: "live",
   sftp: "SFTP",
-  filedrop: "shared-directory",
+  filedrop: "shared-folder",
 };
 
 function joinNouns(nouns: ReadonlyArray<string>): string {
@@ -179,7 +179,7 @@ function capabilityNoteFor(
   available: AvailableTransports,
 ): string {
   if (!consoleBuild)
-    return "This browser runs live exchanges only; SFTP and shared-directory exchanges run in the Alcove command-line tool.";
+    return "This browser runs live exchanges only; SFTP and shared-folder exchanges run in the Alcove command-line tool.";
   const here = transportNounsByRunMode(available, "server-job");
   const cli = transportNounsByRunMode(available, "save-file");
   const parts: Array<string> = [];
@@ -248,23 +248,23 @@ export function transportChooserCopy(
   return {
     browserLabel: "Live, in this browser",
     browserDescription: consoleBuild
-      ? "In-tab browser exchanges are out of scope on this console -- they are the public Alcove web app's domain. Run the exchange over SFTP or a shared directory instead."
+      ? "This console does not run in-browser exchanges; the public Alcove web app runs those. Run the exchange over SFTP or a shared folder instead."
       : "Your browsers connect directly. You get an invitation link and code to share; keep this tab open while your partner accepts.",
     filedropLabel: filedropRunsHere
-      ? "Over a shared directory, run here"
-      : "Over a shared directory, run by the command-line tool",
+      ? "Over a shared folder, run here"
+      : "Over a shared folder, run by the command-line tool",
     filedropDescription: filedropRunsHere
       ? rendezvousShape.split === true
-        ? 'Runs the exchange here against the two shared folders mounted on this console: it reads your partner\'s files out of one and writes yours into the other. That needs retain mode -- turn on "Keep every exchange file" below. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code and runs their half against the same two folders.'
-        : "Runs the exchange here against the shared directory mounted on this console. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code and runs their half against the same synced folder."
+        ? 'Runs the exchange here against the two shared folders mounted on this console: it reads your partner\'s files out of one and writes yours into the other. That needs retain mode, so turn on "Keep every exchange file" below. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code and runs their half against the same two folders.'
+        : "Runs the exchange here against the shared folder mounted on this console. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation code and runs their half against the same shared folder."
       : consoleBuild
         ? // The console's own reason wins where it has one: an incoherent pair
           // reports itself unconfigured, and the generic mount-a-directory
           // message would otherwise tell an operator who already mounted two
           // to add a third.
           (rendezvousShape.problem ??
-          "Unavailable: mount a rendezvous directory and set JOB_RENDEZVOUS_DIR to run a shared-directory exchange here.")
-        : "Saves an exchange file the command-line tool runs against a directory both parties can reach.",
+          "Unavailable: mount a shared folder and set JOB_RENDEZVOUS_DIR to it to run a shared-folder exchange here.")
+        : "Saves an exchange file the command-line tool runs against a folder both parties can reach.",
     sftpLabel: sftpRunsHere
       ? "Over SFTP, run here"
       : "Over SFTP, run by the Alcove command-line tool",

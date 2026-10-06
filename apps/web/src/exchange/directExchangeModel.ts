@@ -176,7 +176,7 @@ export function directBothSidedDeduplicateNotice(
 export interface DirectServerGates {
   transport: DirectTransport;
   /** Whether the chosen transport is usable: an authored SFTP connection, or a
-   * mounted rendezvous directory. */
+   * mounted shared folder. */
   transportReady: boolean;
   /** Whether the file-handling card holds a combination core refuses. */
   exchangeFilesBlocked: boolean;
@@ -209,7 +209,7 @@ export function directServerBlockedReason(
   if (!gates.transportReady)
     return gates.transport === "sftp"
       ? "Set up the SFTP connection above to continue."
-      : "Mount a shared directory on this console, or choose SFTP, to continue.";
+      : "Mount a shared folder on this console, or choose SFTP, to continue.";
   if (gates.exchangeFilesBlocked)
     return "Resolve the file-handling settings above to continue.";
   if (gates.connectionTuningBlocked)

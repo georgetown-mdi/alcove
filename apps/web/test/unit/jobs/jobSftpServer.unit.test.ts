@@ -278,7 +278,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     expect(entry.password).toBe(`@${ref}`);
     expect(credentialWarnings).toHaveLength(1);
     expect(credentialWarnings[0]).toContain("password");
-    expect(credentialWarnings[0]).toContain("mounted folder");
+    expect(credentialWarnings[0]).toContain("inside your folder");
     expect(credentialWarnings[0]).not.toContain(ref);
   });
 
@@ -295,7 +295,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
       [rendezvousDir],
     );
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("rendezvous");
+    expect(credentialWarnings[0]).toContain("inside the shared folder");
     expect(credentialWarnings[0]).not.toContain(ref);
   });
 
@@ -317,7 +317,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
       [inbound, outbound],
     );
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("rendezvous");
+    expect(credentialWarnings[0]).toContain("inside the shared folder");
     expect(credentialWarnings[0]).not.toContain(ref);
   });
 
@@ -340,7 +340,7 @@ describe("validateAuthoredSftpServer (request-sourced authoring path)", () => {
     // Lexically outside, so only the realpath arm catches it -- and it warns.
     expect(entry.password).toBe(`@${link}`);
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("mounted folder");
+    expect(credentialWarnings[0]).toContain("inside your folder");
     expect(credentialWarnings[0]).not.toContain(link);
   });
 
@@ -571,7 +571,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
     }
     expect(caught).toBeInstanceOf(JobApiConfigError);
     expect(caught?.message).toContain("connection.credential");
-    expect(caught?.message).toContain("secrets directory");
+    expect(caught?.message).toContain("secrets folder");
   });
 
   test("an unknown mount id is rejected naming the field", () => {
@@ -617,7 +617,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
       secretsDir,
     );
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("mounted folder");
+    expect(credentialWarnings[0]).toContain("inside your folder");
   });
 
   test("a folder locator resolves in the working folder with no secrets mount, and warns", () => {
@@ -644,7 +644,7 @@ describe("validateAuthoredSftpServer mountRef credential path", () => {
       `@${fs.realpathSync(path.join(dataRoot, "sftp-password.txt"))}`,
     );
     expect(credentialWarnings).toHaveLength(1);
-    expect(credentialWarnings[0]).toContain("mounted folder");
+    expect(credentialWarnings[0]).toContain("inside your folder");
     expect(credentialWarnings[0]).toContain("JOB_SECRETS_DIR=/secrets");
     expect(credentialWarnings[0]).not.toContain(dataRoot);
   });

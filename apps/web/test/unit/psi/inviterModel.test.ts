@@ -480,8 +480,8 @@ describe("the create gate and the two sentences that state it", () => {
   if (DIVERGENCE_STATEMENT === undefined)
     throw new Error("the diverging draft above states no divergence");
   const RUN_WITHHELD =
-    "The console cannot run this webrtc configuration: it conducts sftp and " +
-    "filedrop exchanges only.";
+    "The console cannot run this webrtc configuration, because it runs " +
+    "SFTP and shared-folder exchanges only.";
   const clearGates: InviterCreateGates = {
     runWithheld: undefined,
     offlineBlocked: false,
@@ -886,10 +886,10 @@ describe("transport choice", () => {
     expect(editor.transport).toBe("filedrop");
     expect(isCliTransport("filedrop")).toBe(true);
     expect(transportRow(inviterLedgerRows(editor)).value).toBe(
-      "Shared directory (command-line tool)",
+      "Shared folder (command-line tool)",
     );
     expect(transportRow(answersRows(editor, csv)).value).toBe(
-      "Shared directory (command-line tool)",
+      "Shared folder (command-line tool)",
     );
   });
 
@@ -1040,22 +1040,22 @@ describe("transport chooser copy by deployment", () => {
   test("a hosted build offers to save the shared-directory exchange", () => {
     const copy = transportChooserCopy(false, false, false);
     expect(copy.filedropLabel).toBe(
-      "Over a shared directory, run by the command-line tool",
+      "Over a shared folder, run by the command-line tool",
     );
     expect(copy.filedropDescription).toContain("Saves an exchange file");
     expect(copy.browserDescription).toContain("Your browsers connect directly");
     expect(copy.capabilityNote).toBe(
-      "This browser runs live exchanges only; SFTP and shared-directory exchanges run in the Alcove command-line tool.",
+      "This browser runs live exchanges only; SFTP and shared-folder exchanges run in the Alcove command-line tool.",
     );
   });
 
   test("a console build with a rendezvous mount runs the shared-directory exchange here", () => {
     const copy = transportChooserCopy(true, false, true);
-    expect(copy.filedropLabel).toBe("Over a shared directory, run here");
+    expect(copy.filedropLabel).toBe("Over a shared folder, run here");
     expect(copy.filedropDescription).toContain("Runs the exchange here");
-    // The Browser card names its in-tab exchange as out of scope on the console.
-    expect(copy.browserDescription).toContain("out of scope");
-    expect(copy.capabilityNote).toContain("shared-directory exchanges here");
+    // The Browser card states the console does not run in-browser exchanges.
+    expect(copy.browserDescription).toContain("does not run in-browser");
+    expect(copy.capabilityNote).toContain("shared-folder exchanges here");
     expect(copy.capabilityNote).toContain("out of scope on this console");
   });
 
@@ -1071,7 +1071,7 @@ describe("transport chooser copy by deployment", () => {
     });
     // The card still runs here; what changes is what it SAYS, since a split pair
     // meets the partner in two folders and cannot run without retain mode.
-    expect(copy.filedropLabel).toBe("Over a shared directory, run here");
+    expect(copy.filedropLabel).toBe("Over a shared folder, run here");
     expect(copy.filedropDescription).toContain("two shared folders");
     expect(copy.filedropDescription).toContain("Keep every exchange file");
     // The single-folder sentence would tell an operator with two mounts to meet
@@ -1086,9 +1086,7 @@ describe("transport chooser copy by deployment", () => {
     expect(copy.filedropDescription).toBe(problem);
     // The generic remedy would send an operator who already mounted two folders
     // to add a third.
-    expect(copy.filedropDescription).not.toContain(
-      "mount a rendezvous directory",
-    );
+    expect(copy.filedropDescription).not.toContain("mount a shared folder");
   });
 
   test("a hosted build keeps SFTP a command-line save", () => {

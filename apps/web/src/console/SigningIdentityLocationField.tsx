@@ -55,8 +55,8 @@ export function SigningIdentityLocationField({
         Where your signing identity is kept
       </Text>
       <Text size="xs" c="dimmed">
-        By default the console creates it in the folder you mounted. Point it at
-        a file in your secrets folder instead to keep the key out of the folder
+        By default the console creates it in your working folder. Point it at a
+        file in your secrets folder instead to keep the key out of the folder
         this exchange works in. Either way the configuration you take to the
         command line names the same file.
       </Text>
@@ -72,7 +72,7 @@ export function SigningIdentityLocationField({
             variant="subtle"
             onClick={() => onChange(undefined)}
           >
-            Use the folder you mounted
+            Use your folder
           </Button>
         )}
       </Group>
@@ -84,11 +84,11 @@ export function SigningIdentityLocationField({
               purpose={SIGNING_IDENTITY_BROWSE_PURPOSE}
               unconfiguredNotice={
                 <>
-                  This console has no separate secrets directory to browse, so
-                  your signing identity stays in the folder you mounted. To keep
-                  it somewhere else, mount a separate directory as
-                  JOB_SECRETS_DIR, put your identity file there with Alcove
-                  fingerprint, and restart the console.
+                  This console has no separate secrets folder to browse, so your
+                  signing identity stays in your folder. To keep it somewhere
+                  else, mount a separate folder as JOB_SECRETS_DIR, create your
+                  identity file there with &apos;alcove fingerprint
+                  --identity-file&apos;, and restart the console.
                 </>
               }
               onSelect={(subPath) => {

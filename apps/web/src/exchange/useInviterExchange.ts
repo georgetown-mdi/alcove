@@ -292,7 +292,7 @@ function failureContentFor(
         ? "The console did not start it. A file sits at a path this console " +
           "reads your signing identity from, in a folder this exchange shares " +
           "with your partner: either the location you picked, or the " +
-          "console's default in your mounted working directory, which picking " +
+          "console's default in your working folder, which picking " +
           "a location leaves behind. Whoever reads a signing key there can " +
           "sign receipts in your name -- for every exchange, with every " +
           "partner. Move the file at the location you picked out of every " +

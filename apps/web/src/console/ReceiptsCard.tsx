@@ -104,16 +104,16 @@ function fingerprintFailureMessage(
         ? "Your signing identity could not be read from the file you picked. " +
             "It may be unreadable, or not a signing identity. Check that file at " +
             "the location you picked, or pick another one. Check too that any " +
-            "alcove.yaml in the folder you mounted is valid YAML. If that " +
+            "alcove.yaml in your working folder is valid YAML. If that " +
             "folder is also the one your partner syncs into, the alcove.yaml " +
-            "may be theirs, so read it before changing your own setup. A " +
+            "may be theirs, so read it before changing your own setup. An " +
             "alcove.yaml your partner wrote cannot move where your key is read " +
             "from or change whose name it binds, because both are passed " +
             "explicitly here. Fix what you find and try again -- running " +
             "'alcove fingerprint --identity-file' pointed at that file prints " +
             "the reason."
-        : "Your signing identity could not be created or read in the folder " +
-            "you mounted. Check that the folder is writable, that any signing " +
+        : "Your signing identity could not be created or read in your " +
+            "working folder. Check that the folder is writable, that any signing " +
             "identity already in it is intact, and that any alcove.yaml there " +
             "is valid YAML. If that folder is also the one your partner syncs " +
             "into, the alcove.yaml may be theirs, so read it before changing " +
@@ -127,7 +127,7 @@ function fingerprintFailureMessage(
         "A shared-folder exchange is still open on this console, and it syncs " +
         "the folder your signing identity would be written into. Wait for that " +
         "exchange to finish, discard it, then create your identity. Or give " +
-        "the synced folder a mount of its own (JOB_RENDEZVOUS_DIR) so your key " +
+        "the shared folder a mount of its own (JOB_RENDEZVOUS_DIR) so your key " +
         "is never in it."
       );
     case "invalid":
@@ -393,7 +393,7 @@ export function ReceiptsCard({
                     {identityFileName !== undefined
                       ? ` (${sanitizeForDisplay(identityFileName)} in ${
                           draft.identityLocation === undefined
-                            ? "your mounted folder"
+                            ? "your folder"
                             : "your secrets folder"
                         })`
                       : ""}

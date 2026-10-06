@@ -71,7 +71,7 @@ export const RETAIN_MODE_BILATERAL_NOTICE =
   "Retain mode is an agreement, not a negotiation. Your partner must turn on " +
   "the same three settings (retain, timestamped filenames, lockless " +
   "rendezvous) on their side, and you must both start from an empty shared " +
-  "directory. A mismatch is only discovered when the two sides meet, and the " +
+  "folder. A mismatch is only discovered when the two sides meet, and the " +
   "exchange then stops with an error.";
 
 /** Resolve a {@link FileSyncToggle} to the boolean the option block holds, or

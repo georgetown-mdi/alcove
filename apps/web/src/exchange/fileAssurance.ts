@@ -18,7 +18,7 @@ export const BROWSER_ONLY_FILE_ASSURANCE =
  * mounted-input surface opts into this copy explicitly.
  */
 export const APPLIANCE_FILE_ASSURANCE =
-  "Files are read from this console's mounted work directory; your browser " +
+  "Files are read from your working folder on this console; your browser " +
   "does not upload them.";
 
 /**

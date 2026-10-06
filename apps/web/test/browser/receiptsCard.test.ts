@@ -56,7 +56,7 @@ const SYNCING_FAILURE =
  * where the identity is in the mounted working directory and this endpoint
  * creates it there. */
 const REFUSED_DEFAULT =
-  "Your signing identity could not be created or read in the folder you mounted. Check that the folder is writable,";
+  "Your signing identity could not be created or read in your working folder. Check that the folder is writable,";
 
 /** The same refusal where the operator picked a location: the console reads
  * that file and creates nothing at it, apart from a file removed between the
@@ -502,9 +502,7 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
     await chooseCertificateMode();
     await pickIdentityLocation(PICKED_IDENTITY);
 
-    await page
-      .getByRole("button", { name: "Use the folder you mounted" })
-      .click();
+    await page.getByRole("button", { name: "Use your folder" }).click();
     await createButton().click();
 
     await expect
@@ -527,13 +525,9 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
       .click();
 
     await expect
-      .element(
-        page.getByText("your signing identity stays in the folder you mounted"),
-      )
+      .element(page.getByText("your signing identity stays in your folder"))
       .toBeInTheDocument();
-    expect(app.container.textContent).toContain(
-      "No separate secrets directory",
-    );
+    expect(app.container.textContent).toContain("No separate secrets folder");
     expect(app.container.textContent).not.toContain("type a file reference");
   });
 
@@ -718,7 +712,7 @@ describe("ReceiptsCard: a failed request", () => {
     // root whatever the identity's location, so that file is still the one it
     // can read.
     expect(app.container.textContent).toContain(
-      "any alcove.yaml in the folder you mounted is valid YAML",
+      "any alcove.yaml in your working folder is valid YAML",
     );
 
     await showButton.click();

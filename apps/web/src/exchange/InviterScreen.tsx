@@ -163,8 +163,10 @@ import {
   liveRunLedgerFooter,
   saveExchangeError,
   saveRailNote,
-  saveTrustFooter,
 } from "./saveExchangeModel";
+
+import { preRunTrustFooter } from "./trustFooter";
+
 import { useBeforeUnloadPrompt, useUnloadGuard } from "./useUnloadGuard";
 import { AgreementTab } from "./AgreementTab";
 import { WorkShell } from "./WorkShell";
@@ -700,7 +702,7 @@ export function InviterScreen() {
   // projection): hold it and drop any save-a-file preference so the run mode flips
   // to server-job. The connection lives in console memory, scoped to the one
   // exchange; the browser holds only the locator. A freshly authored server is a
-  // different rendezvous directory, so any sweep confirmation is re-asked.
+  // different shared folder, so any sweep confirmation is re-asked.
   function authorSftpConnection(connection: SftpConnectionProjection) {
     dispatch({ type: "sftp-connection-authored", connection });
   }
@@ -1560,7 +1562,7 @@ export function InviterScreen() {
           }))}
           footer={
             section === "save" && isCliTransport(transport)
-              ? saveTrustFooter()
+              ? preRunTrustFooter(2)
               : liveRunLedgerFooter(
                   chosenRunMode === "server-job",
                   outputs !== undefined,

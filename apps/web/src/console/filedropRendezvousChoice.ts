@@ -87,7 +87,7 @@ export function acceptKitEndpointForRendezvous(
  * the operator can empty, so retain mode is the only way out of this disagreement.
  */
 export const SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT =
-  "This console rendezvouses through separate inbound and outbound folders, " +
+  "This console uses separate inbound and outbound folders, " +
   "which need retain mode: nothing is deleted after it is read, so each folder " +
   'keeps what is written into it. Turn on "Keep every exchange file" under "How ' +
   'files are handled" to run a shared-folder exchange here.';

@@ -48,7 +48,7 @@ export type LoadedChannel = LoadedAuthoringState["channel"];
 type UnconductedChannel = Exclude<LoadedChannel, JobChannel>;
 
 /** A conducted channel this console can be left with nothing to run over: a
- * shared directory needs a mounted folder, while SFTP is always offered, since
+ * shared folder needs its own mount, while SFTP is always offered, since
  * the operator authors its connection in the console. */
 export type UnofferedChannel = Extract<JobChannel, "filedrop">;
 
@@ -111,18 +111,18 @@ export const OPEN_CONFIGURATION_LABEL = "Open the configuration in my folder";
 /** What the control says while nothing has been read. */
 export const OPEN_CONFIGURATION_INVITATION =
   "If you already run this exchange with Alcove on the command line, open " +
-  "its alcove.yaml from the folder you mounted and every step below starts " +
+  "its alcove.yaml from your working folder and every step below starts " +
   "from it.";
 
 /** What the control says for a mount holding no configuration. Not a fault: a
  * console whose operator has authored nothing yet is the ordinary first run. */
 export const NO_CONFIGURATION_IN_FOLDER =
-  "There is no alcove.yaml in the folder you mounted, so this exchange is " +
+  "There is no alcove.yaml in your working folder, so this exchange is " +
   "authored here from the start.";
 
 /** What the control says for a read that did not answer. */
 export const CONFIGURATION_READ_UNAVAILABLE =
-  "The console could not read the folder you mounted. Nothing below has " +
+  "The console could not read your working folder. Nothing below has " +
   "changed; try opening the configuration again.";
 
 /** What the control says once an invitation is minted from terms the console
@@ -239,8 +239,8 @@ export function configurationOpenedMessage(
  * the console does not conduct, naming the channel as the file spells it. */
 export function channelNotConductedNotice(channel: UnconductedChannel): string {
   return (
-    `This configuration runs over ${channel}, and the console conducts sftp ` +
-    "and filedrop exchanges only. Change its settings in the steps below, " +
+    `This configuration runs over ${channel}, and the console runs SFTP ` +
+    "and shared-folder exchanges only. Change its settings in the steps below, " +
     `then save them to alcove.yaml on the review step: its ${channel} ` +
     "connection is kept exactly as your file states it. Run the saved file " +
     `with Alcove on the command line, which conducts ${channel} exchanges.`
@@ -268,9 +268,9 @@ export function runWithheldReason(
   if (state.status !== "opened" || state.notConducted === undefined)
     return undefined;
   return (
-    `The console cannot run this ${state.notConducted} configuration: it ` +
-    "conducts sftp and filedrop exchanges only. Save your changes to " +
-    "alcove.yaml, then run it with Alcove on the command line."
+    `The console cannot run this ${state.notConducted} configuration, ` +
+    "because it runs SFTP and shared-folder exchanges only. Save your " +
+    "changes to alcove.yaml, then run it with Alcove on the command line."
   );
 }
 
@@ -348,15 +348,11 @@ export function conversionOffered(
   );
 }
 
-/** How the operator's user-visible text names the recurring-run hand-off. */
-const SCHEDULED_CONFIGURATION =
-  "the configuration the console gives you to run on a schedule";
-
 /**
  * What the operator is told before converting, naming every setting the
  * conversion replaces as the file spells them, or undefined where none is
- * offered. A run uses the console's mounted folder either way; converting
- * releases a signed run and changes what the hand-off states.
+ * offered. A run uses the working folder either way; converting releases a
+ * signed run and changes what the hand-off states.
  */
 export function conversionStatement(
   state: MountedConfigurationState,
@@ -369,41 +365,44 @@ export function conversionStatement(
     return undefined;
   const replaced = pathsConversionReplaces(state);
   if (replaced.length === 0) return undefined;
-  const signingPaths = state.signingPaths ?? [];
-  const signs = signingPaths.length > 0;
+  const signs = (state.signingPaths ?? []).length > 0;
   const folders = (state.folderPaths ?? []).length > 0;
-  const receipt = signingPaths.includes("signing.receipt_output");
-  const placeholders = replaced.filter(
-    (setting) => setting !== "signing.receipt_output",
+  const receipt = replaced.includes("signing.receipt_output");
+  const placeholders = nameList(
+    replaced.filter((setting) => setting !== "signing.receipt_output"),
   );
-  const handoff =
-    placeholders.length > 0
-      ? "it then states a placeholder in place of " +
-        nameList(placeholders) +
-        ", to set on the machine you schedule from" +
-        (receipt ? ", and names no receipt file" : "")
-      : "it then names no receipt file";
-  return (
-    "Your alcove.yaml names " +
-    (replaced.length === 1 ? "a path" : "paths") +
-    " of its own: " +
-    nameList(replaced) +
-    "." +
-    (signs
-      ? " A run with a signed receipt waits until you convert, which lets " +
-        "it go ahead with the console's own signing identity and receipt " +
-        "file. With the signed receipt off, this exchange runs unsigned and " +
-        SCHEDULED_CONFIGURATION +
-        " keeps your file's signing settings as they are."
-      : "") +
-    (folders ? " The run uses the console's mounted folder either way." : "") +
-    " Converting " +
-    (signs ? "also changes " : "changes only ") +
-    SCHEDULED_CONFIGURATION +
-    ": " +
-    handoff +
-    "."
+  const sentences = [
+    replaced.length === 1
+      ? `Your alcove.yaml sets its own path in ${nameList(replaced)}.`
+      : `Your alcove.yaml sets its own paths in ${nameList(replaced)}.`,
+  ];
+  if (signs)
+    sentences.push(
+      "A run with a signed receipt waits until you convert, and then uses " +
+        "the console's own signing identity and receipt file.",
+      "With the signed receipt off, this exchange runs unsigned, and the " +
+        "configuration for scheduled runs keeps your file's signing settings.",
+    );
+  if (folders) sentences.push("The run here uses your folder either way.");
+  sentences.push(
+    signs
+      ? "Converting also changes the configuration for scheduled runs."
+      : "Converting changes only the configuration for scheduled runs.",
   );
+  if (placeholders === "")
+    sentences.push("That configuration then names no receipt file.");
+  else if (receipt)
+    sentences.push(
+      "That configuration then names no receipt file and states a " +
+        `placeholder for ${placeholders}, to set on the machine you ` +
+        "schedule from.",
+    );
+  else
+    sentences.push(
+      `That configuration then states a placeholder for ${placeholders}, ` +
+        "to set on the machine you schedule from.",
+    );
+  return sentences.join(" ");
 }
 
 /** What the operator is told once the open configuration is converted. */
@@ -416,19 +415,27 @@ export function convertedStatement(
     state.converted !== true
   )
     return undefined;
+  const replaced = nameList(pathsConversionReplaces(state));
   const signs = (state.signingPaths ?? []).length > 0;
-  return (
-    "Converted: " +
-    SCHEDULED_CONFIGURATION +
-    " states the console's own paths in place of " +
-    nameList(pathsConversionReplaces(state)) +
-    (signs
-      ? ", and a run with a signed receipt uses the console's signing " +
-        "identity and receipt file. With the signed receipt off, it states " +
-        "no signing settings at all"
-      : "") +
-    ". Close this configuration and open it again to keep your file's own."
+  const sentences = [
+    "Converted.",
+    signs
+      ? "The configuration for scheduled runs states the console's own " +
+        `paths in place of ${replaced}, and a run with a signed receipt ` +
+        "uses the console's signing identity and receipt file."
+      : "The configuration for scheduled runs states the console's own " +
+        `paths in place of ${replaced}.`,
+  ];
+  if (signs)
+    sentences.push(
+      "With the signed receipt off, that configuration states no signing " +
+        "settings at all.",
+    );
+  sentences.push(
+    "To keep your file's own paths, close this configuration and open it " +
+      "again.",
   );
+  return sentences.join(" ");
 }
 
 /** The open configuration converted to the console's own paths. Any other
@@ -462,21 +469,21 @@ export function unconvertedSigningWithheldReason(
     return undefined;
   const signingPaths = state.signingPaths ?? [];
   if (signingPaths.length === 0) return undefined;
-  const one = signingPaths.length === 1;
-  return (
-    "This configuration names " +
-    (one ? "a signing path" : "signing paths") +
-    " of its own (" +
-    nameList(signingPaths) +
-    "), and the console signs only with its own signing identity. Choose " +
-    `${CONVERT_CONFIGURATION_LABEL} to sign with the console's identity; ` +
-    SCHEDULED_CONFIGURATION +
-    " then states the console's paths in place of yours. Or turn the " +
-    "signed receipt off: this exchange then runs unsigned, and " +
-    SCHEDULED_CONFIGURATION +
-    " keeps your file's signing settings as they are. Or run the file with " +
-    "Alcove on the command line."
-  );
+  const paths = nameList(signingPaths);
+  return [
+    signingPaths.length === 1
+      ? `This configuration sets its own signing path in ${paths}, and the ` +
+        "console signs only with its own signing identity."
+      : `This configuration sets its own signing paths in ${paths}, and the ` +
+        "console signs only with its own signing identity.",
+    `Choose ${CONVERT_CONFIGURATION_LABEL} to sign with the console's ` +
+      "identity. The configuration for scheduled runs then states the " +
+      "console's paths in place of yours.",
+    "Or turn the signed receipt off. This exchange then runs unsigned, and " +
+      "the configuration for scheduled runs keeps your file's signing " +
+      "settings.",
+    "Or run the file with Alcove on the command line.",
+  ].join(" ");
 }
 
 /**
@@ -568,9 +575,9 @@ const RECORDS_WITH_NO_CONTROL: ReadonlyArray<
  * here. */
 const TRANSPORT_UNAVAILABLE_NOTICE: Record<UnofferedChannel, string> = {
   filedrop:
-    "This configuration runs over a shared directory, and this console has " +
-    "no shared folder mounted. Mount one and set JOB_RENDEZVOUS_DIR to run " +
-    "it here, or choose how this exchange runs on the review step below.",
+    "This configuration runs over a shared folder, and this console has " +
+    "none mounted. Mount one and set JOB_RENDEZVOUS_DIR to run it here, or " +
+    "choose how this exchange runs on the review step below.",
 };
 
 /** A list of setting names as a sentence fragment, in the file's own spelling. */
@@ -636,32 +643,33 @@ export function carriedThroughNotice(
   if (fields.length === 0) return undefined;
   const one = fields.length === 1;
   const notApplied = fields.filter((field) => !heldSettingTheRunStates(field));
-  const notAppliedOne = notApplied.length === 1;
-  const notAppliedNames =
-    notApplied.length === fields.length
-      ? notAppliedOne
-        ? "it"
-        : "them"
-      : nameList(notApplied);
-  return (
-    "This configuration states " +
-    (one ? "a setting" : "settings") +
-    " the console has no control for, and keeps " +
-    (one ? "it" : "each") +
-    " unchanged: " +
-    nameList(fields) +
-    "." +
-    (notApplied.length === 0
-      ? ""
-      : " The run started here does not apply " +
-        notAppliedNames +
-        "; the configuration the console hands back states " +
-        (notAppliedOne ? "it" : "them") +
-        " as your file does.") +
-    " Edit " +
-    (one ? "it" : "them") +
-    " with Alcove on the command line."
+  const sentences = [
+    one
+      ? "This configuration states a setting the console has no control " +
+        `for, and keeps it unchanged: ${nameList(fields)}.`
+      : "This configuration states settings the console has no control " +
+        `for, and keeps each unchanged: ${nameList(fields)}.`,
+  ];
+  if (notApplied.length === fields.length)
+    sentences.push(
+      one
+        ? "The run started here does not apply it, and the configuration " +
+            "the console hands back states it as your file does."
+        : "The run started here does not apply them, and the configuration " +
+            "the console hands back states them as your file does.",
+    );
+  else if (notApplied.length > 0)
+    sentences.push(
+      `The run started here does not apply ${nameList(notApplied)}, and ` +
+        "the configuration the console hands back states each setting as " +
+        "your file does.",
+    );
+  sentences.push(
+    one
+      ? "Edit it with Alcove on the command line."
+      : "Edit them with Alcove on the command line.",
   );
+  return sentences.join(" ");
 }
 
 /**
@@ -674,16 +682,13 @@ export function credentialWarningNotice(
   fields: ReadonlyArray<string>,
 ): string | undefined {
   if (fields.length === 0) return undefined;
-  const one = fields.length === 1;
-  return (
-    "The console cannot fill in " +
-    (one ? "the credential" : "the credentials") +
-    " this configuration states: " +
-    nameList(fields) +
-    ". Supply " +
-    (one ? "it" : "each") +
-    " again in the connection step, from the folder you mounted."
-  );
+  return fields.length === 1
+    ? "The console cannot fill in the credential this configuration " +
+        `states: ${nameList(fields)}. Supply it again in the connection ` +
+        "step, from your folder."
+    : "The console cannot fill in the credentials this configuration " +
+        `states: ${nameList(fields)}. Supply each again in the connection ` +
+        "step, from your folder.";
 }
 
 /**
@@ -698,18 +703,15 @@ export function termsNotAppliedNotice(
   fields: ReadonlyArray<string>,
 ): string | undefined {
   if (fields.length === 0) return undefined;
-  const one = fields.length === 1;
-  return (
+  const shortfall =
     "Your input file cannot supply everything this configuration states " +
-    "under " +
-    nameList(fields) +
-    ", so the steps below hold what your own columns support. Run this " +
-    "exchange with Alcove on the command line to keep " +
-    (one ? "that setting" : "those settings") +
-    " as your file states " +
-    (one ? "it" : "them") +
-    "."
-  );
+    `under ${nameList(fields)}, so the steps below hold what your own ` +
+    "columns support.";
+  return fields.length === 1
+    ? `${shortfall} To keep that setting as your file states it, run this ` +
+        "exchange with Alcove on the command line."
+    : `${shortfall} To keep those settings as your file states them, run ` +
+        "this exchange with Alcove on the command line.";
 }
 
 /**
@@ -725,9 +727,9 @@ export function columnsNotCoveredNotice(
   if (fields.length === 0) return undefined;
   return (
     "Your input file has columns this configuration does not state under " +
-    nameList(fields) +
-    ", so the steps below keep those columns back instead of sending them " +
-    "to your partner. Change how each one is used on the next step to send it."
+    `${nameList(fields)}, so the steps below keep those columns back ` +
+    "instead of sending them to your partner. To send one, change how it " +
+    "is used on the next step."
   );
 }
 

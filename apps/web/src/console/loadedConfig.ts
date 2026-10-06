@@ -52,8 +52,12 @@ import {
   editorWithImportedTerms,
 } from "@psi/inviterEditor";
 
+import {
+  CONNECTION_TUNING_DEFAULT,
+  DURATION_FIELD_UNITS,
+  durationFieldForMs,
+} from "./connectionTuningModel";
 import { EMPTY_SFTP_FORM, hostKeyFingerprintField } from "./sftpConnectionForm";
-import { CONNECTION_TUNING_DEFAULT } from "./connectionTuningModel";
 import { EXCHANGE_FILES_DEFAULT } from "./exchangeFilesModel";
 
 import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
@@ -77,7 +81,7 @@ import type { ReceiptsSigningMode } from "@psi/receiptsModel";
 import type {
   ConnectionTuningDraft,
   DurationField,
-  DurationUnit,
+  DurationFieldName,
 } from "./connectionTuningModel";
 import type { ExchangeFilesDraft, FileSyncToggle } from "./exchangeFilesModel";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
@@ -130,30 +134,14 @@ export interface LoadedAuthoringState {
   standardization?: Standardization;
 }
 
-/** The unit a duration reads naturally in, coarsest first, so a value the file
- * states in whole minutes opens the field in minutes rather than as a
- * six-figure millisecond count. */
-const COARSEST_FIRST: ReadonlyArray<DurationUnit> = ["h", "m", "s", "ms"];
-
-const UNIT_MS: Record<DurationUnit, number> = {
-  ms: 1,
-  s: 1_000,
-  m: 60_000,
-  h: 3_600_000,
-};
-
 /** One duration field from the milliseconds the file states, or the card's own
  * starting field when the file states none. */
 function durationField(
   ms: number | undefined,
-  unset: DurationField,
+  field: DurationFieldName,
 ): DurationField {
-  if (ms === undefined) return unset;
-  const unit =
-    COARSEST_FIRST.find((candidate) =>
-      Number.isInteger(ms / UNIT_MS[candidate]),
-    ) ?? "ms";
-  return { magnitude: String(ms / UNIT_MS[unit]), unit };
+  if (ms === undefined) return CONNECTION_TUNING_DEFAULT[field];
+  return durationFieldForMs(ms, DURATION_FIELD_UNITS[field]);
 }
 
 /** One file-sync toggle from the boolean the file states: `auto` where it
@@ -173,21 +161,15 @@ export function connectionTuningFromOptions(
 ): ConnectionTuningDraft {
   const stated = options ?? {};
   return {
-    pollInterval: durationField(
-      stated.pollIntervalMs,
-      CONNECTION_TUNING_DEFAULT.pollInterval,
-    ),
-    peerTimeout: durationField(
-      stated.peerTimeoutMs,
-      CONNECTION_TUNING_DEFAULT.peerTimeout,
-    ),
+    pollInterval: durationField(stated.pollIntervalMs, "pollInterval"),
+    peerTimeout: durationField(stated.peerTimeoutMs, "peerTimeout"),
     inactivityTimeout: durationField(
       stated.inactivityTimeoutMs,
-      CONNECTION_TUNING_DEFAULT.inactivityTimeout,
+      "inactivityTimeout",
     ),
     serverConnectTimeout: durationField(
       stated.serverConnectTimeoutMs,
-      CONNECTION_TUNING_DEFAULT.serverConnectTimeout,
+      "serverConnectTimeout",
     ),
     maxReconnectAttempts:
       stated.maxReconnectAttempts === undefined

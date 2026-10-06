@@ -970,7 +970,7 @@ describe("a loaded configuration reaches the editor once a file is read", () => 
     });
     expect(loaded.loadedConfiguration?.transport).toBeUndefined();
     const notices = noticesOf(loaded);
-    expect(notices.some((notice) => notice.includes("shared directory"))).toBe(
+    expect(notices.some((notice) => notice.includes("shared folder"))).toBe(
       true,
     );
     expect(withFileRead(loaded).editor?.transport).toBeUndefined();

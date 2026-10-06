@@ -32,7 +32,7 @@ export class MountedKeyFileRefusedError extends Error {
   constructor(readonly fault: MountedKeyFileFault) {
     super(
       fault === "absent"
-        ? "the mounted working folder holds no key file beside the configuration"
+        ? "your working folder holds no key file beside the configuration"
         : "the key file beside the mounted configuration is not one Alcove can read",
     );
     this.name = "MountedKeyFileRefusedError";

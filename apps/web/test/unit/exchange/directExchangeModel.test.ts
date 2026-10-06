@@ -366,7 +366,7 @@ describe("the agreed-server step's continue gate", () => {
       directServerBlockedReason(
         gates({ transport: "filedrop", transportReady: false }),
       ),
-    ).toContain("shared directory");
+    ).toContain("shared folder");
   });
 
   test("a refused connection-tuning value names that card rather than the file-handling one", () => {

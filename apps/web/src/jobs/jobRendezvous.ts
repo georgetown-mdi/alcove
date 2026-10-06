@@ -13,7 +13,7 @@ import { browseSegment } from "./workInputName";
 import { isPathWithin } from "./pathContainment";
 
 /**
- * Names the operator-mounted rendezvous directory a filedrop exchange reads and
+ * Names the operator-mounted shared folder a filedrop exchange reads and
  * writes. Falls back to `JOB_DATA_ROOT` when unset or empty; filedrop is
  * unavailable only when both are unset. Server-side configuration, never a
  * browser-sent path.
@@ -24,7 +24,7 @@ import { isPathWithin } from "./pathContainment";
 const JOB_RENDEZVOUS_DIR_ENV = "JOB_RENDEZVOUS_DIR";
 
 /**
- * Names the OUTBOUND (self-written) rendezvous directory of a split filedrop
+ * Names the OUTBOUND (self-written) shared folder of a split filedrop
  * exchange, the companion to {@link JOB_RENDEZVOUS_DIR_ENV}'s inbound leg. Set it
  * when the partner-shared mailbox is two folders; every filedrop exchange the
  * console runs then uses the CLI's `inbound_path`/`outbound_path` pair instead of
@@ -205,8 +205,8 @@ function resolveJobRendezvousOutboundFolderName(
 /**
  * The advisory locator a filedrop invitation minted here states: the shared
  * folder's name where the console can name it, else the rendezvous mount's own
- * last segment (the partner's CLI remaps it anyway). Undefined when no rendezvous
- * directory is configured or it reduces to no segment (the filesystem root).
+ * last segment (the partner's CLI remaps it anyway). Undefined when no shared
+ * folder is configured or it reduces to no segment (the filesystem root).
  *
  * Separate from the folder name because only the name is safe to PRINT: the
  * accept kit and confirm line say nothing where there is none, while the token
@@ -333,8 +333,8 @@ function describeUnresolvedLegs(
   if (!inbound.canonicalized && !outbound.canonicalized)
     return (
       `The real path of ${JOB_RENDEZVOUS_DIR_ENV} and ${JOB_RENDEZVOUS_OUTBOUND_DIR_ENV} ` +
-      "could not be read, so the inbound and outbound rendezvous directories " +
-      "were compared as configured and a symlink making them one directory " +
+      "could not be read, so the inbound and outbound shared folders were " +
+      "compared as configured and a symlink making them one folder " +
       `would not be caught. ${recovery}`
     );
   const [unresolvedVar, unresolvedLeg, resolvedLeg] = inbound.canonicalized
@@ -342,7 +342,7 @@ function describeUnresolvedLegs(
     : [JOB_RENDEZVOUS_DIR_ENV, "inbound", "outbound"];
   return (
     `The real path of ${unresolvedVar} could not be read, so the ` +
-    `${unresolvedLeg} rendezvous directory was compared only as configured; ` +
+    `${unresolvedLeg} shared folder was compared only as configured; ` +
     `the ${resolvedLeg} leg's real path still applied, so only a symlink on ` +
     `the ${unresolvedLeg} side would go uncaught. ${recovery}`
   );
@@ -367,21 +367,21 @@ function splitPairProblem(
   const { locator, outboundLocator } = provisioning;
   if (pathFormsOverlap(inbound, outbound))
     return (
-      "The inbound and outbound rendezvous directories are the same directory, " +
+      "The inbound and outbound shared folders are the same folder, " +
       "or one is inside the other, so this console would read its own writes " +
       `as your partner's. Mount ${JOB_RENDEZVOUS_OUTBOUND_DIR_ENV} outside ` +
       `${JOB_RENDEZVOUS_DIR_ENV} and restart the console.`
     );
   if (locator === undefined || outboundLocator === undefined)
     return (
-      "This console cannot name both rendezvous folders, so an invitation " +
+      "This console cannot name both shared folders, so an invitation " +
       `minted here would carry no locator for one of them. Set ${JOB_RENDEZVOUS_NAME_ENV} ` +
       `and ${JOB_RENDEZVOUS_OUTBOUND_NAME_ENV} to the two folders' own names and ` +
       "restart the console."
     );
   if (pathsResolveToSameDir(locator, outboundLocator))
     return (
-      "The inbound and outbound rendezvous folders resolve to the same name, so " +
+      "The inbound and outbound shared folders resolve to the same name, so " +
       "an invitation minted here could not tell your partner which is which. Set " +
       `${JOB_RENDEZVOUS_NAME_ENV} and ${JOB_RENDEZVOUS_OUTBOUND_NAME_ENV} to ` +
       "distinct names and restart the console."
@@ -422,7 +422,7 @@ export function rendezvousSplitFaults(
     return {
       problem:
         `${JOB_RENDEZVOUS_OUTBOUND_DIR_ENV} is set but ${JOB_RENDEZVOUS_DIR_ENV} ` +
-        "is not, so this console has only one leg of a split rendezvous. Set " +
+        "is not, so this console has only one of the two shared folders. Set " +
         `${JOB_RENDEZVOUS_DIR_ENV} to the folder your partner writes into and ` +
         "restart the console.",
     };
@@ -715,12 +715,10 @@ function andMoreSuffix(count: number): string {
   return ` and ${count} more`;
 }
 
-/** How a notice names the mount it is about: "the rendezvous directory" on a
- * single-mount console, "the inbound/outbound rendezvous directory" on a split
- * one. `noun` is `path` for the one notice about something that is not a
- * directory at all. */
-function legNoun(leg: RendezvousLeg, noun: "directory" | "path"): string {
-  return `the ${leg === "shared" ? "" : `${leg} `}rendezvous ${noun}`;
+/** How a notice names the mount it is about: "the shared folder" on a
+ * single-mount console, "the inbound/outbound shared folder" on a split one. */
+function legNoun(leg: RendezvousLeg): string {
+  return `the ${leg === "shared" ? "" : `${leg} `}shared folder`;
 }
 
 /**
@@ -758,7 +756,7 @@ function unresolvedRealPathNotice(
 const QUOTED_SWEEP_CONTROL = "Clear leftover exchange files";
 
 /**
- * The lead of the warning for a rendezvous directory holding exchange files --
+ * The lead of the warning for a shared folder holding exchange files --
  * names in the exchange's own filename grammar ({@link isProtocolGrammarName}),
  * which is what its entry guard refuses over: what is wrong, the console's own
  * sweep control that clears it (never a host-side deletion), and that the
@@ -780,7 +778,7 @@ export function notEmptyLead(
   leg: RendezvousLeg,
   sweepExchangeFiles: boolean,
 ): string {
-  const label = legNoun(leg, "directory");
+  const label = legNoun(leg);
   const problem =
     " holds an earlier exchange's files, which an exchange refuses to start on. ";
   const recovery = sweepExchangeFiles
@@ -795,7 +793,7 @@ export function notEmptyLead(
 }
 
 /**
- * The exchange files a rendezvous directory holds, as their own warning message.
+ * The exchange files a shared folder holds, as their own warning message.
  * Sorted, because readdir order is not a promise, so the same directory reads the
  * same way twice.
  *
@@ -809,7 +807,7 @@ function describeRendezvousEntries(
   entries: Array<string>,
   leg: RendezvousLeg,
 ): string {
-  const head = `${legNoun(leg, "directory")} holds `;
+  const head = `${legNoun(leg)} holds `;
   const budget = RENDEZVOUS_NOTICE_BUDGET - renderedDisplayCost(head);
   let listed = "";
   let listedCost = 0;
@@ -848,8 +846,8 @@ const OVERLAP_SUBJECTS: ReadonlyArray<OverlapSubject> = [
 ];
 
 const OVERLAP_SUBJECT_LABELS: Record<OverlapSubject, string> = {
-  dataRoot: "the job data root",
-  inputDir: "the work-input directory",
+  dataRoot: "your working folder",
+  inputDir: "your input folder",
 };
 
 /**
@@ -865,7 +863,7 @@ function sharedFolderExposureNotice(
   held: ReadonlySet<OverlapSubject>,
   nestedIn: ReadonlySet<OverlapSubject>,
 ): string {
-  const label = legNoun(leg, "directory");
+  const label = legNoun(leg);
   const contents =
     held.has("inputDir") && held.has("dataRoot")
       ? "input files, configuration and results"
@@ -906,13 +904,13 @@ function nestedRendezvousNotice(
   leg: RendezvousLeg,
   nestedIn: ReadonlySet<OverlapSubject>,
 ): string {
-  const label = legNoun(leg, "directory");
+  const label = legNoun(leg);
   const nested = ` is ${nestedClause(nestedIn)}`;
   return fitNotice(`${label} ${rendezvousDir}${nested}`, `${label}${nested}`);
 }
 
 /**
- * The preflight warnings for a filedrop job's rendezvous directory, reported
+ * The preflight warnings for a filedrop job's shared folder, reported
  * through the job's warning channel at start. Defensive, never fatal: a missing,
  * non-directory, non-writable, or unlistable mount, or one holding files the
  * exchange's entry guard would refuse over, only warns, and an overlap with the
@@ -936,14 +934,14 @@ export function rendezvousStartupWarnings(
   jobWorkdir: string,
   sweepExchangeFiles: boolean,
 ): Array<string> {
-  const label = legNoun(leg, "directory");
+  const label = legNoun(leg);
   const warnings: Array<string> = [];
   let stat: fs.Stats | undefined;
   try {
     stat = fs.statSync(rendezvousDir);
   } catch {
     const missing =
-      " does not exist yet; the exchange cannot rendezvous until both " +
+      " does not exist yet; the exchange cannot start until both " +
       "parties can reach it";
     warnings.push(
       fitNotice(`${label} ${rendezvousDir}${missing}`, `${label}${missing}`),
@@ -953,8 +951,8 @@ export function rendezvousStartupWarnings(
     if (!stat.isDirectory())
       warnings.push(
         fitNotice(
-          `${legNoun(leg, "path")} ${rendezvousDir} is not a directory`,
-          `${legNoun(leg, "path")} is not a directory`,
+          `${label} ${rendezvousDir} is not a folder`,
+          `${label} is not a folder`,
         ),
       );
     else {
@@ -968,9 +966,8 @@ export function rendezvousStartupWarnings(
         const unwritable =
           leg === "inbound"
             ? " is not writable; the exchange checks write access on both " +
-              "rendezvous folders before it starts"
-            : " is not writable; the exchange writes its half of the " +
-              "rendezvous there";
+              "shared folders before it starts"
+            : " is not writable; the exchange writes its messages there";
         warnings.push(
           fitNotice(
             `${label} ${rendezvousDir}${unwritable}`,

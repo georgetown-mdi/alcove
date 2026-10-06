@@ -162,11 +162,11 @@ function scratchExclusions(
     for (const form of new Set([path.resolve(dir), realpathIfPresent(dir)]))
       exclusions.push({ dir: form, label });
   };
-  add(dataRoot, "the job data root");
+  add(dataRoot, "your working folder");
   for (const rendezvousDir of rendezvousDirs)
-    add(rendezvousDir, "the rendezvous directory");
+    add(rendezvousDir, "the shared folder");
   if (secretsDir !== undefined) add(secretsDir, "the secrets mount");
-  if (inputDir !== undefined) add(inputDir, "the work-input directory");
+  if (inputDir !== undefined) add(inputDir, "your input folder");
   return exclusions;
 }
 

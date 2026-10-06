@@ -105,13 +105,13 @@ import { PASTE_INVITATION_FIELD_ID } from "@psi/invitation";
 
 import { invitationDecodeRefusal } from "./invitationDecodeRefusal";
 
+import { preRunTrustFooter, settledTrustFooter } from "./trustFooter";
+
 import {
   ACCEPTOR_COLUMNS_LEDGER_FOOTER,
-  ACCEPTOR_LEDGER_FOOTER,
   acceptUnsupported,
   acceptorConsentName,
   acceptorConsentReady,
-  acceptorDoneLedgerFooter,
   acceptorDoneLedgerRows,
   acceptorDoneLedgerTag,
   acceptorHowItRunsLabel,
@@ -1071,10 +1071,10 @@ function AcceptorInvitationScreen({
         }))}
         footer={
           settled
-            ? acceptorDoneLedgerFooter(acceptServerJob)
+            ? settledTrustFooter(acceptServerJob)
             : step === "columns"
               ? ACCEPTOR_COLUMNS_LEDGER_FOOTER
-              : ACCEPTOR_LEDGER_FOOTER
+              : preRunTrustFooter(3)
         }
       />
     );
@@ -1138,7 +1138,7 @@ function AcceptorInvitationScreen({
   // (its credential-free projection): hold it so launch unblocks. The connection
   // material -- credential and host-key fingerprint -- lives in console memory,
   // scoped to this one exchange; the browser holds only the locator. A freshly
-  // authored server is a different rendezvous directory, so any sweep
+  // authored server is a different shared folder, so any sweep
   // confirmation is re-asked.
   const authorSftpConnection = (connection: SftpConnectionProjection) =>
     dispatch({ type: "sftp-connection-authored", connection });
@@ -1324,7 +1324,7 @@ function AcceptorInvitationScreen({
             <p className={`${styles.small} ${styles.sub}`}>
               This invitation should have reached you over a trusted channel.
               {consoleBuild
-                ? " This console runs the exchange from its mounted work directory."
+                ? " This console runs the exchange from your working folder."
                 : " Your browser connects directly to your partner."}
             </p>
             <Checkbox
@@ -1525,7 +1525,7 @@ function AcceptorInvitationScreen({
                 mt="md"
               >
                 {consoleBuild
-                  ? "A file is needed before the exchange can be set up. Choose one from the work directory above."
+                  ? "A file is needed before the exchange can be set up. Choose one from your folder above."
                   : "A file is needed before the exchange can be set up. Drag one into the dropzone or click it to select."}
               </Alert>
             )}

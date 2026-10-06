@@ -177,12 +177,12 @@ export const HANDOFF_CREDENTIAL_PATH_PLACEHOLDER =
 export const HANDOFF_PASSPHRASE_PATH_PLACEHOLDER =
   "@/path/to/your/passphrase-file";
 
-/** The placeholder the filedrop rendezvous directory is shown as in the exchange
+/** The placeholder the filedrop shared folder is shown as in the exchange
  * config's `connection.path`. */
 export const HANDOFF_SHARED_DIRECTORY_PLACEHOLDER =
   "/path/to/your/shared-directory";
 
-/** The placeholder the filedrop rendezvous directory is shown as in a zero-setup
+/** The placeholder the filedrop shared folder is shown as in a zero-setup
  * command's `file://` locator (the CLI requires the three-slash URL form for a
  * filedrop positional). */
 export const HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER =

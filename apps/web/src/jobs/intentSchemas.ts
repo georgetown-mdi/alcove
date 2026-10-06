@@ -183,7 +183,7 @@ export const NOTE_CONTROL_CHAR_PATTERN =
  * directory.
  *
  * `peerId` is the one free-text field: it becomes a FILENAME PREFIX in the
- * shared rendezvous directory, so {@link isAdmissiblePeerId} confines it to a
+ * shared folder, so {@link isAdmissiblePeerId} confines it to a
  * single bounded label -- never a separator, a dot run, or a leading dash.
  * Its semantic rules (the `timestampInFilename` dependency and the reserved
  * `temp` value) are core's, applied through core's own schema.
@@ -702,8 +702,8 @@ export interface JobExchangeIntentBase {
 /**
  * A filedrop exchange intent. A filedrop exchange has no host and no
  * credentials at all, so the connection block the server composes holds no
- * injectable field; the one path field is the server-chosen rendezvous
- * directory inside the job workdir.
+ * injectable field; the one path field is the server-chosen shared
+ * folder inside the job workdir.
  */
 export interface JobFiledropExchangeIntent extends JobExchangeIntentBase {
   channel: "filedrop";
@@ -797,7 +797,7 @@ interface JobZeroSetupIntentBase {
 /**
  * A filedrop zero-setup intent. Like the filedrop exchange arm it has no host and
  * no credentials: the connection is a `file://` locator the server builds from the
- * operator-configured rendezvous directory, so the intent contributes no injectable
+ * operator-configured shared folder, so the intent contributes no injectable
  * connection field.
  */
 export interface JobZeroSetupFiledropIntent extends JobZeroSetupIntentBase {

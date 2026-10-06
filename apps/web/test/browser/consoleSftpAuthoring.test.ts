@@ -790,7 +790,7 @@ describe("console SFTP connection authoring", () => {
       .click();
     await expect
       .element(
-        page.getByText("This console has no separate secrets directory", {
+        page.getByText("This console has no separate secrets folder", {
           exact: false,
         }),
       )

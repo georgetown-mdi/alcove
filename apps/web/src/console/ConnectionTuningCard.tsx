@@ -17,14 +17,14 @@ import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
   CONNECTION_TUNING_HEADING,
+  DURATION_FIELD_UNITS,
   PEER_TIMEOUT_LABEL,
-  POLL_INTERVAL_UNITS,
-  TIMEOUT_UNITS,
   TUNING_DEFAULT_MS,
   connectionTuningAdvisories,
   connectionTuningProblems,
   connectionTuningSummary,
   defaultPlaceholder,
+  durationUnitChoices,
 } from "./connectionTuningModel";
 
 import type {
@@ -43,7 +43,10 @@ const UNIT_LABELS: Record<DurationUnit, string> = {
 
 /** One duration control: the magnitude beside the unit it is authored in. The
  * unit select has no visible label -- the pairing is visual -- so its accessible
- * name names the field it belongs to. */
+ * name names the field it belongs to. A unit the field does not offer stays
+ * listed for as long as the row is mounted, so a loaded 2500 ms can be restored
+ * after switching to seconds. A value arriving in another unit the field lacks
+ * takes its place. */
 function DurationRow({
   label,
   description,
@@ -59,6 +62,9 @@ function DurationRow({
   value: DurationField;
   onChange: (next: DurationField) => void;
 }) {
+  const [loadedUnit, setLoadedUnit] = useState(value.unit);
+  if (value.unit !== loadedUnit && !units.includes(value.unit))
+    setLoadedUnit(value.unit);
   return (
     <Group align="flex-end" gap="xs" wrap="nowrap">
       <TextInput
@@ -75,7 +81,10 @@ function DurationRow({
       <NativeSelect
         aria-label={`${label}: unit`}
         value={value.unit}
-        data={units.map((unit) => ({ value: unit, label: UNIT_LABELS[unit] }))}
+        data={durationUnitChoices(units, loadedUnit).map((unit) => ({
+          value: unit,
+          label: UNIT_LABELS[unit],
+        }))}
         onChange={(event) =>
           onChange({
             ...value,
@@ -141,8 +150,8 @@ export function ConnectionTuningCard({
 
         <DurationRow
           label="How often to check for your partner's files"
-          description="Each check lists the shared directory. Checking less often is gentler on the server; checking more often finds your partner's files sooner."
-          units={POLL_INTERVAL_UNITS}
+          description="Each check looks for new files from your partner. Checking less often is gentler on the server; checking more often finds your partner's files sooner."
+          units={DURATION_FIELD_UNITS.pollInterval}
           defaultMs={TUNING_DEFAULT_MS.pollInterval}
           value={draft.pollInterval}
           onChange={(next) => set("pollInterval", next)}
@@ -151,7 +160,7 @@ export function ConnectionTuningCard({
         <DurationRow
           label={PEER_TIMEOUT_LABEL}
           description="How long this side waits for the other to start its half before it gives up."
-          units={TIMEOUT_UNITS}
+          units={DURATION_FIELD_UNITS.peerTimeout}
           defaultMs={TUNING_DEFAULT_MS.peerTimeout}
           value={draft.peerTimeout}
           onChange={(next) => set("peerTimeout", next)}
@@ -161,7 +170,7 @@ export function ConnectionTuningCard({
           <DurationRow
             label="How long your partner may go quiet"
             description="Once your partner has started, how long this side waits for each next step from them before it gives up. Raise it for a partner working through a large file."
-            units={TIMEOUT_UNITS}
+            units={DURATION_FIELD_UNITS.inactivityTimeout}
             defaultMs={TUNING_DEFAULT_MS.inactivityTimeout}
             value={draft.inactivityTimeout}
             onChange={(next) => set("inactivityTimeout", next)}
@@ -171,7 +180,7 @@ export function ConnectionTuningCard({
         <DurationRow
           label="How long to wait for each connection attempt"
           description="How long one attempt to reach the server may take before it counts as failed. Applies to each attempt, not to all of them together."
-          units={TIMEOUT_UNITS}
+          units={DURATION_FIELD_UNITS.serverConnectTimeout}
           defaultMs={TUNING_DEFAULT_MS.serverConnectTimeout}
           value={draft.serverConnectTimeout}
           onChange={(next) => set("serverConnectTimeout", next)}

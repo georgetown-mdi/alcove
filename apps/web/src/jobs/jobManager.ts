@@ -178,14 +178,14 @@ export class SigningFingerprintBusyError extends Error {
 
 /**
  * Thrown by {@link JobManager.createJob} when a filedrop intent arrives but
- * this console cannot rendezvous one: no rendezvous directory is resolved
+ * this console cannot rendezvous one: no shared folder is resolved
  * (neither `JOB_RENDEZVOUS_DIR` nor its `JOB_DATA_ROOT` fallback is set), or
  * the split pair a second mount provisions is incoherent (see
  * `rendezvousSplitFaults`). The route maps it to a 400.
  */
 export class JobRendezvousUnavailableError extends Error {
   constructor() {
-    super("no rendezvous directory is configured for a filedrop exchange");
+    super("no shared folder is configured for a shared-folder exchange");
     this.name = "JobRendezvousUnavailableError";
   }
 }
@@ -200,9 +200,7 @@ export class JobRendezvousUnavailableError extends Error {
  */
 export class JobRendezvousRetainRequiredError extends Error {
   constructor() {
-    super(
-      "a split rendezvous (inbound and outbound directories) requires retain mode",
-    );
+    super("separate inbound and outbound shared folders require retain mode");
     this.name = "JobRendezvousRetainRequiredError";
   }
 }
@@ -210,7 +208,7 @@ export class JobRendezvousRetainRequiredError extends Error {
 /**
  * Thrown by {@link JobManager.createJob} when a filedrop intent would sync the
  * folder this party's signing identity sits in: the run publishes everything in
- * the rendezvous directory to the partner, and a long-lived private key there
+ * the shared folder to the partner, and a long-lived private key there
  * lets whoever reads it sign receipts in this party's name with every partner.
  *
  * Raised only where a rendezvous leg IS or HOLDS the identity's directory,
@@ -221,7 +219,7 @@ export class JobRendezvousRetainRequiredError extends Error {
 export class JobSigningIdentityExposedError extends Error {
   constructor() {
     super(
-      "a rendezvous directory holds this party's signing identity, so the run would publish the private key",
+      "a shared folder holds this party's signing identity, so the run would publish the private key",
     );
     this.name = "JobSigningIdentityExposedError";
   }
@@ -527,7 +525,7 @@ interface JobManagerOptions {
    */
   jobInputDir?: string;
   /**
-   * The resolved rendezvous directory (from {@link JobRendezvousProvisioning.dir})
+   * The resolved shared folder (from {@link JobRendezvousProvisioning.dir})
    * a filedrop exchange reads and writes, which falls back to the data root when
    * `JOB_RENDEZVOUS_DIR` is unset. Absent only when neither resolves; a filedrop intent
    * then fails with {@link JobRendezvousUnavailableError}. On a split-provisioned
@@ -1417,7 +1415,7 @@ export class JobManager {
     }
     if (this.jobRendezvousDir === undefined)
       throw new Error(
-        "filedrop zero-setup job reached spawn without a rendezvous directory",
+        "filedrop zero-setup job reached spawn without a shared folder",
       );
     return zeroSetupFiledropArgv(
       this.jobRendezvousDir,
@@ -2387,9 +2385,7 @@ function composeDocumentByChannel(
     return composeSftpConfigDocument(intent, serverEntry, signingPaths);
   }
   if (rendezvousDir === undefined)
-    throw new Error(
-      "filedrop job reached compose without a rendezvous directory",
-    );
+    throw new Error("filedrop job reached compose without a shared folder");
   return composeConfigDocument(
     intent,
     rendezvousDir,
