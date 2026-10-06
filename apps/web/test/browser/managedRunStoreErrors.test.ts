@@ -234,9 +234,13 @@ test("a run whose success stamp the store aborts shows its results and says the 
   await expect
     .element(page.getByText(RUN_OUTCOME_UNSAVED_NOTE.message))
     .toBeInTheDocument();
-  // The abort was IndexedDB's own, with the timing the store write reads.
+  // The abort was IndexedDB's own, with the timing the store write reads. The
+  // note shows once the write rejects at the error event; the abort event
+  // follows in a later task, so it may not have fired yet.
   expect(storeFault.atError).toBeNull();
-  expect(storeFault.atAbort?.name).toBe("ConstraintError");
+  await vi.waitFor(() => {
+    expect(storeFault.atAbort?.name).toBe("ConstraintError");
+  });
   // The rotation committed before the stamp; the stamp did not.
   const stored = await getManagedExchange(created.id);
   expect(stored?.sharedSecret).not.toBe(created.sharedSecret);
