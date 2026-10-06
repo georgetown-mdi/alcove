@@ -27,7 +27,9 @@ fails on those same names a second way: each must be declared at one exact
 version by every workspace manifest declaring it, so a checklist cannot outlive
 the pin its assumptions rest on, nor cover only one of two versions this workspace
 installs. A new section follows the same heading form; the check's header states
-what else it reads and what it does not.
+what else it reads, and
+[its design note](../notes/repo-check-scripts.md#dependabot-checklist-pin-coverage)
+what it does not cover.
 
 That form is for npm packages only, because every name in such a heading is read
 as one and looked up in the npm groups. A checklist for a pin in another
