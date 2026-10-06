@@ -19,6 +19,7 @@ import {
   startInProcessSftpServer,
 } from "../sftpServer";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 // Assumptions about the pinned ssh2 / ssh2-sftp-client stack that Alcove's own
 // code is built on, driven at the layer each is asserted about: the raw
@@ -67,6 +68,9 @@ const NAME_REPLY_SILENCE_MS = 1_500;
 // reply, narrow enough to be nowhere near any bound.
 const CALIBRATION_FILENAME_BYTES = 1_024;
 const TEST_TIMEOUT_MS = 60_000;
+
+// How a case polls for a dial to reach the phase it parks in.
+const PARK_POLL = { timeoutMs: 30_000, intervalMs: 10 };
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -132,18 +136,6 @@ function trackDial(dial: Promise<unknown>): TrackedDial {
   };
 }
 
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 30_000, intervalMs = 10 } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await delay(intervalMs);
-  }
-  throw new Error("waitFor: condition not met within timeout");
-}
-
 // Park a dial past authentication, against a server that accepts the session
 // channel and then never answers the `subsystem sftp` request. The waits are
 // the same two the mid-handshake park needs, and for the same reason: the
@@ -177,8 +169,11 @@ async function parkDialAtSubsystemOpen(
       readyTimeout: SUBSYSTEM_PHASE_READY_TIMEOUT_MS,
     }),
   );
-  await waitFor(() => internals.client?._sock !== undefined);
-  await waitFor(() => controls.withheldSubsystemOpenCount() > withheldBefore);
+  await waitFor(() => internals.client?._sock !== undefined, PARK_POLL);
+  await waitFor(
+    () => controls.withheldSubsystemOpenCount() > withheldBefore,
+    PARK_POLL,
+  );
   const requestedAtMs = Date.now() - started;
   const socket = internals.client?._sock as Socket;
   expect(dial.outcome()).toBe("pending");
@@ -202,8 +197,11 @@ async function parkDialMidHandshake(
   controls.stallHandshakeOnConnect = true;
   const dial = trackDial(client.connect(dialOptions(srv)));
   const internals = internalsOf(client);
-  await waitFor(() => internals.client?._sock !== undefined);
-  await waitFor(() => controls.stalledConnectionCount() > stalledBefore);
+  await waitFor(() => internals.client?._sock !== undefined, PARK_POLL);
+  await waitFor(
+    () => controls.stalledConnectionCount() > stalledBefore,
+    PARK_POLL,
+  );
   const socket = internals.client?._sock as Socket;
   expect(dial.outcome()).toBe("pending");
   return { dial, socket };
@@ -576,7 +574,7 @@ inProcessOnly(
       // A clean server-side drop, then the re-dial that assigns a fresh wrapper
       // over the captured one -- the shape a mid-exchange recovery reaches.
       srv.sessionControls.dropActiveAfterMs(1);
-      await waitFor(() => internals.sftp === undefined);
+      await waitFor(() => internals.sftp === undefined, PARK_POLL);
       await client.connect(dialOptions(srv));
       const fresh = internals.sftp;
       expect(fresh).toBeDefined();

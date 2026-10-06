@@ -15,6 +15,7 @@ import { serverAuth } from "../sftpServer/testContext";
 import { APPENDED_MARKERS, createKexinitRecordingRelay } from "./kexOfferWire";
 import type { KexPrimitive } from "../../src/connection/sftpKexCapability";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 // A live connection-per-poll exchange whose partner's SFTP endpoint changes its
 // key-exchange policy underneath it: it accepts the exchange's opening
@@ -88,19 +89,6 @@ const forcedMissingPrimitive: KexPrimitive = {
 const OPERATOR_WITHHELD_X25519 = {
   algorithms: { kex: { remove: [/25519/i] } },
 };
-
-// Poll a predicate until it holds, failing if it never does.
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 60_000, intervalMs = 50, what = "condition" } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`waitFor: ${what} not met within timeout`);
-}
 
 // Every message in an error's cause chain, so a case can assert which link a
 // fragment is on: the diagnostic replaces ssh2's message and keeps it one link

@@ -13,6 +13,7 @@ import {
   hostMemory,
   writeInput,
 } from "./completionRun";
+import { waitFor } from "../support";
 
 // Ctrl-C while a party's PSI worker is masking: the built CLI exits 130 on
 // every attempt, never aborting (134) by tearing its worker down inside a
@@ -85,18 +86,6 @@ function drawingLiveLine(party: Party): boolean {
   return MASKING_LINE.test(segments.at(-1) ?? "");
 }
 
-async function waitFor(
-  condition: () => boolean,
-  timeoutMs: number,
-): Promise<boolean> {
-  const deadline = performance.now() + timeoutMs;
-  while (!condition()) {
-    if (performance.now() > deadline) return false;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  return true;
-}
-
 test(
   `Ctrl-C during encryption at ${ROWS} records exits 130 on each of ${ATTEMPTS} attempts`,
   { timeout: ATTEMPTS * ATTEMPT_TIMEOUT_MS },
@@ -133,12 +122,13 @@ test(
         const parties = [startParty(a, drop), startParty(b, drop)];
         live.push(...parties.map((party) => party.child));
         try {
-          expect(
-            await waitFor(
-              () => parties.some((party) => MASKING_LINE.test(party.log())),
-              ATTEMPT_TIMEOUT_MS,
-            ),
-          ).toBe(true);
+          await waitFor(
+            () => parties.some((party) => MASKING_LINE.test(party.log())),
+            {
+              timeoutMs: ATTEMPT_TIMEOUT_MS,
+              what: "a party drawing the masking line",
+            },
+          );
           const target = parties.find((party) =>
             MASKING_LINE.test(party.log()),
           )!;

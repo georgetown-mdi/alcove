@@ -503,9 +503,7 @@ test("parseOrExit: a UsageError is reported on stderr and exits 64", () => {
 test("parseOrExit: a non-UsageError propagates unchanged without exiting", () => {
   // An unexpected error keeps its stack and reaches the top-level handler rather
   // than being flattened to a bare exit.
-  const exitSpy = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exitSpy = captureProcessExit();
   try {
     expect(() =>
       parseOrExit(() => {

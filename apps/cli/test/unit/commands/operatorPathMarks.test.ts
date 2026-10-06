@@ -72,6 +72,7 @@ import {
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
 import { answeringTtyStream, withStdin } from "../../stdinStream";
+import { captureProcessExit, runToExit } from "../../exitCapture";
 
 // Every message these command modules compose about the OPERATOR's own path --
 // a refusal, a warning, an informational line, a prompt -- marks that path, so
@@ -704,17 +705,11 @@ function silentLogger(name: string): ReturnType<typeof getLogger> {
 
 /** Run a command, returning every line it wrote where the operator reads. */
 async function stderrLinesOf(act: () => Promise<void>): Promise<string[]> {
-  const exit = vi.spyOn(process, "exit").mockImplementation(((
-    code?: number,
-  ) => {
-    throw new Error(`exit:${String(code)}`);
-  }) as never);
+  const exit = captureProcessExit();
   const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
   const stdio = captureStdio();
   try {
-    await act();
-  } catch (err: unknown) {
-    if (!(err instanceof Error) || !err.message.startsWith("exit:")) throw err;
+    await runToExit(act);
   } finally {
     stdio.restore();
     stdout.mockRestore();

@@ -23,6 +23,7 @@ import { runProtocol } from "../../../src/protocol";
 import type { RunProtocolOptions } from "../../../src/protocol";
 import { DEFAULT_ACCEPT_TIMEOUT_SECONDS } from "../../../src/onlineBootstrap";
 import { captureStdio } from "../../loggingTestSupport";
+import { captureProcessExit } from "../../exitCapture";
 
 const tmpDirs: string[] = [];
 afterEach(() => {
@@ -84,9 +85,7 @@ async function inviteOnline(
     return {};
   }) as never);
 
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
     await inviteHandler({

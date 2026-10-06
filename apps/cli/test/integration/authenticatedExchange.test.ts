@@ -12,8 +12,7 @@ import {
   expect,
   test,
 } from "vitest";
-import { prepareForExchange, SHARED_SECRET_REGEX } from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
+import { SHARED_SECRET_REGEX } from "@alcove/core";
 
 import { runProtocol, type ProtocolConnectionConfig } from "../../src/protocol";
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";
@@ -23,6 +22,7 @@ import {
   serverAuth,
   sftpServer,
 } from "../sftpServer/testContext";
+import { preparedFor } from "../support";
 
 // Net-new coverage: the full authenticated CLI path -- X25519 handshake +
 // per-direction AEAD -- driven end to end over both real transports, via
@@ -40,20 +40,6 @@ const srv = sftpServer();
 // files.
 const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
-// firstName-only terms over a tiny dataset: the default key templates all
-// require SSN/DOB, so an explicit firstName key gives both parties valid,
-// matching terms (same approach as saveBootstrap.test.ts).
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 // Unequal dataset sizes make the PSI roles deterministic regardless of which
 // party wins the rendezvous race: the smaller dataset always becomes the
 // receiver (resolveRole), so "the receiver" is a stable label across runs and
@@ -64,13 +50,6 @@ const SENDER_ROWS = [
   { first_name: "Carol" },
   { first_name: "Dave" },
 ];
-
-function preparedFor(identity: string, rows: Array<Record<string, string>>) {
-  const spec: ExchangeDataSpec = {
-    linkageTerms: { ...baseTerms, identity },
-  };
-  return prepareForExchange(spec, identity, rows, ["first_name"]);
-}
 
 type ConfigFactory = () => ProtocolConnectionConfig;
 

@@ -77,12 +77,7 @@ vi.mock("@alcove/core", async (importActual) => {
   };
 });
 
-import {
-  prepareForExchange,
-  PeerAbortError,
-  ConnectionError,
-} from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
+import { PeerAbortError, ConnectionError } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import { runProtocol, type ProtocolConnectionConfig } from "../../src/protocol";
@@ -93,6 +88,7 @@ import {
   serverAuth,
   sftpServer,
 } from "../sftpServer/testContext";
+import { preparedFor } from "../support";
 
 const srv = sftpServer();
 
@@ -110,22 +106,9 @@ const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 // wall-clock bound is needed (and none is asserted).
 const PEER_TIMEOUT_MS = 20_000;
 
-// firstName-only terms over a tiny dataset (same approach as
-// authenticatedExchange.test.ts): gives both parties valid, matching terms. An
-// attempt that faults never reaches a PSI round, so for those the rows only need
-// to make prepareForExchange succeed; the retry attempt does intersect them, and
-// its result is what proves the recovered exchange ran whole.
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
+// An attempt that faults never reaches a PSI round, so for those the rows only
+// need to make prepareForExchange succeed; the retry attempt does intersect
+// them, and its result is what proves the recovered exchange ran whole.
 // Party A holds fewer rows than Party B, so A is the PSI receiver -- the side
 // that learns the intersection and writes it -- regardless of which party wins
 // the rendezvous.
@@ -135,13 +118,6 @@ const ROWS_B = [
   { first_name: "Carol" },
   { first_name: "Dave" },
 ];
-
-function preparedFor(identity: string, rows: Array<Record<string, string>>) {
-  const spec: ExchangeDataSpec = {
-    linkageTerms: { ...baseTerms, identity },
-  };
-  return prepareForExchange(spec, identity, rows, ["first_name"]);
-}
 
 const IDENTITY_A = "Party A";
 const IDENTITY_B = "Party B";

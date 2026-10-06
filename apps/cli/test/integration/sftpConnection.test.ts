@@ -26,6 +26,7 @@ import {
 
 import log from "loglevel";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 log.setLevel(log.levels.DEBUG);
 
@@ -67,19 +68,6 @@ function desynchronize(conn: FileSyncConnection) {
   conn.peerId = undefined;
   conn.handshakeRole = undefined;
   conn.role = "unknown";
-}
-
-// Poll a predicate until it holds (no fixed sleep), failing if it never does.
-async function waitFor(
-  predicate: () => Promise<boolean>,
-  { timeoutMs = 5_000, intervalMs = 25 } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error("waitFor: condition not met within timeout");
 }
 
 // A freshly-created, exclusively-owned rendezvous directory under the served
@@ -397,8 +385,10 @@ test("lock starter aborts on a stuck mid-arrival joiner over real SFTP", async (
     // operations take absolute paths, so it reaches this test's dedicated
     // rendezvous): delete the hello and drop a sentinel from a different id in
     // its place.
-    await waitFor(async () =>
-      (await serverSFTP.list(remote)).some((f) => f.name === helloName),
+    await waitFor(
+      async () =>
+        (await serverSFTP.list(remote)).some((f) => f.name === helloName),
+      { timeoutMs: 5_000, intervalMs: 25 },
     );
     await serverSFTP.safeDelete(`${remote}/${helloName}`);
     await serverSFTP.put(

@@ -10,6 +10,7 @@ import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
 import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 // The unattended failures the bounded session-transition wait exists for, driven
 // against the real stack rather than a mock: a teardown, an idle release and a
@@ -29,18 +30,8 @@ const WAIT_FLOOR_MS = 5_000;
 const WAIT_CEILING_MS = 25_000;
 const TEST_TIMEOUT_MS = 180_000;
 
-// Poll a predicate until it holds, failing if it never does.
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 90_000, intervalMs = 50 } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error("waitFor: condition not met within timeout");
-}
+// How a case polls for the dial or release it waits on.
+const DIAL_POLL = { timeoutMs: 90_000 };
 
 // Count the dials the adapter issues, so a test can wait for the parked one to be
 // in flight rather than guess at a delay.
@@ -98,7 +89,7 @@ inProcessOnly(
             () => "listed",
             () => "torn",
           );
-          await waitFor(() => dials() > dialsAtOpen);
+          await waitFor(() => dials() > dialsAtOpen, DIAL_POLL);
 
           const started = Date.now();
           await adapter.end();
@@ -176,8 +167,11 @@ inProcessOnly(
             return error;
           },
         );
-      await waitFor(() => dials() > 0);
-      await waitFor(() => srv.sessionControls.stalledConnectionCount() > 0);
+      await waitFor(() => dials() > 0, DIAL_POLL);
+      await waitFor(
+        () => srv.sessionControls.stalledConnectionCount() > 0,
+        DIAL_POLL,
+      );
 
       const started = Date.now();
       await adapter.end();
@@ -254,7 +248,7 @@ inProcessOnly(
 
       // The child opens against a server that handshakes normally and releases the
       // session; only then is the stall armed, so what parks is its re-dial.
-      await waitFor(() => exited || out.includes("RELEASED"));
+      await waitFor(() => exited || out.includes("RELEASED"), DIAL_POLL);
       srv.sessionControls.stallHandshakeOnConnect = true;
       await fsp.writeFile(goFile, "go");
 
@@ -366,7 +360,7 @@ inProcessOnly(
             // with the parked dial holding: each of those spends the bound twice --
             // once on the cycle-start signal, once on the release -- so a loop that
             // stalled instead of cycling never reaches four.
-            await waitFor(() => releases.length >= 4);
+            await waitFor(() => releases.length >= 4, DIAL_POLL);
           } finally {
             receiver.stop();
             srv.sessionControls.stopStallingHandshakes();
@@ -492,7 +486,10 @@ async function parkRecoveryRedial(label: string): Promise<ParkedRedial> {
   // Read from the server rather than after a delay: a client's socket exists from
   // the moment it starts connecting, so only the server's own count says the
   // stall has taken hold of the re-dial rather than of nothing yet.
-  await waitFor(() => srv.sessionControls.stalledConnectionCount() >= 1);
+  await waitFor(
+    () => srv.sessionControls.stalledConnectionCount() >= 1,
+    DIAL_POLL,
+  );
   const releaseParkedDial = (): void => {
     srv.sessionControls.stallHandshakeOnConnect = false;
     srv.sessionControls.closeStalledConnections();

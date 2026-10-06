@@ -4,8 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { UsageError, prepareForExchange } from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
+import { UsageError } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import {
@@ -14,6 +13,7 @@ import {
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
 import { loadKeyFile, saveKeyFile } from "../../../src/keyFile";
+import { preparedFor, waitFor } from "../../support";
 
 // What `--sweep-exchange-files` does when both operators reach for it, and
 // whether what each of them is then told works.
@@ -55,17 +55,6 @@ const TIMEOUT_PEER_TIMEOUT_MS = 5_000;
 // wait for a partner that is not coming.
 const COMPLETING_PEER_TIMEOUT_MS = 30_000;
 
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 // Party A holds fewer rows, so it is the PSI receiver -- the side that learns
 // the intersection and writes it -- whichever party wins the rendezvous.
 const ROWS_A = [{ first_name: "Bob" }, { first_name: "Carol" }];
@@ -74,11 +63,6 @@ const ROWS_B = [
   { first_name: "Carol" },
   { first_name: "Dave" },
 ];
-
-function preparedFor(identity: string, rows: Array<Record<string, string>>) {
-  const spec: ExchangeDataSpec = { linkageTerms: { ...baseTerms, identity } };
-  return prepareForExchange(spec, identity, rows, ["first_name"]);
-}
 
 interface PartyOutcome {
   /** "a" is the party that enters first, "b" the one that follows it in. */
@@ -116,17 +100,14 @@ interface PairOptions {
  * reports that rather than hanging the file.
  */
 async function waitForHelloPublished(dropDir: string): Promise<void> {
-  const deadline = Date.now() + 10_000;
-  for (;;) {
-    if (fs.readdirSync(dropDir).some((name) => name.endsWith("-hello.json")))
-      return;
-    if (Date.now() > deadline)
-      throw new Error(
-        "the first party never published a rendezvous hello, so the second " +
-          "party's entry could not be sequenced after it",
-      );
-    await new Promise((resolve) => setTimeout(resolve, 5));
-  }
+  await waitFor(
+    () => fs.readdirSync(dropDir).some((name) => name.endsWith("-hello.json")),
+    {
+      timeoutMs: 10_000,
+      intervalMs: 5,
+      what: "the first party's rendezvous hello",
+    },
+  );
 }
 
 /**

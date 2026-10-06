@@ -16,7 +16,7 @@ import { EVENT_STREAM_FD, type ErrorEvent } from "@alcove/cli-contract";
 import { openEventStreamWithFdWired } from "../../eventStreamTestSupport";
 import { exitWithError, runOrExit } from "../../../src/util/exit";
 import { parseOrExit } from "../../../src/util/flags";
-import { captureProcessExit } from "../../exitCapture";
+import { captureProcessExit, recordProcessExit } from "../../exitCapture";
 
 // src/index.ts is a module-top-level side effect -- buildCli(...).parseAsync()
 // with the last-resort catch attached to it -- so its own catch runs only when
@@ -170,9 +170,7 @@ const SINK_PROBES: SinkProbe[] = [
     name: "the last-resort catch (apps/cli/src/index.ts)",
     drive: async (error) => {
       const written = captureConsoleError();
-      const exit = vi
-        .spyOn(process, "exit")
-        .mockImplementation((() => undefined) as never);
+      const exit = recordProcessExit();
       parseAsync.mockRejectedValue(error);
       vi.resetModules();
       await import("../../../src/index");

@@ -16,6 +16,7 @@ import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
 import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
 import { inProcessOnly } from "../sftpBackendGate";
+import { waitFor } from "../support";
 
 // What the adapter does with a partner server that goes silent rather than
 // failing: nothing closes, nothing resets, and no further byte arrives, so the
@@ -70,6 +71,7 @@ const STALLED_SILENCE_MS = 500;
 // them is loopback work the release triggers at once; the bound is here so a
 // case that never gets it fails loudly instead of running to the file's timeout.
 const SERVER_RESPONSE_WAIT_MS = 10_000;
+const SERVER_POLL = { timeoutMs: SERVER_RESPONSE_WAIT_MS, intervalMs: 25 };
 
 // The two emitters a client learns of a lost session from: the ssh2 Client and
 // the socket beneath it. Both are internals, which is the point -- a vanished
@@ -166,16 +168,6 @@ function watchForLostSession(adapter: SSH2SFTPClientAdapter): QuietCensus {
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
-
-// Wait on something the server does, and fail naming it rather than letting a
-// case go on reading a state that never arrived.
-async function waitFor(ready: () => boolean, what: string): Promise<void> {
-  const deadline = Date.now() + SERVER_RESPONSE_WAIT_MS;
-  while (!ready()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
-    await delay(25);
-  }
-}
 
 /** A bare TCP connection to the test server, and what the server sent it. */
 interface SecondConnection {
@@ -552,10 +544,10 @@ inProcessOnly(
       // connection, before any control can reach that socket, so the stall is
       // measured by what does NOT follow it: this dial sends its own
       // identification and no key exchange comes back.
-      await waitFor(
-        () => stalled.bytesFromServer() > 0,
-        "the server's identification string",
-      );
+      await waitFor(() => stalled.bytesFromServer() > 0, {
+        ...SERVER_POLL,
+        what: "the server's identification string",
+      });
       const identificationBytes = stalled.bytesFromServer();
       stalled.sendIdentification();
       await delay(STALLED_SILENCE_MS);
@@ -572,10 +564,10 @@ inProcessOnly(
         srv.handle.port,
       );
       unstalled.sendIdentification();
-      await waitFor(
-        () => unstalled.bytesFromServer() > identificationBytes,
-        "the unstalled dial's key exchange",
-      );
+      await waitFor(() => unstalled.bytesFromServer() > identificationBytes, {
+        ...SERVER_POLL,
+        what: "the unstalled dial's key exchange",
+      });
       unstalled.close();
 
       // The vanished session's write is its own again: an operation completes,
@@ -586,10 +578,10 @@ inProcessOnly(
       // would leave faked: the server can end this session and the client hears
       // it go.
       srv.sessionControls.dropActiveAfterMs(1);
-      await waitFor(
-        () => census.heard.includes("client:close"),
-        "the close the server sends the released session",
-      );
+      await waitFor(() => census.heard.includes("client:close"), {
+        ...SERVER_POLL,
+        what: "the close the server sends the released session",
+      });
       expect(census.heard).toContain("socket:close");
     } finally {
       census.stop();
@@ -616,10 +608,10 @@ inProcessOnly(
       // vanish silences into. The case does not rest on that: the vanished
       // socket is in that pool by the vanish alone, and this connection is only
       // why a suite would call the stop at all.
-      await waitFor(
-        () => held.bytesFromServer() > 0,
-        "the second connection's identification string",
-      );
+      await waitFor(() => held.bytesFromServer() > 0, {
+        ...SERVER_POLL,
+        what: "the second connection's identification string",
+      });
 
       srv.sessionControls.vanishActiveSession();
       srv.sessionControls.stopWithholdingCloses();
@@ -630,10 +622,10 @@ inProcessOnly(
       await expect(adapter.exists(remote)).resolves.toBe(true);
       expect(census.bytesFromServer()).toBeGreaterThan(0);
       srv.sessionControls.dropActiveAfterMs(1);
-      await waitFor(
-        () => census.heard.includes("client:close"),
-        "the close the server sends the released session",
-      );
+      await waitFor(() => census.heard.includes("client:close"), {
+        ...SERVER_POLL,
+        what: "the close the server sends the released session",
+      });
       expect(census.heard).toContain("socket:close");
     } finally {
       census.stop();

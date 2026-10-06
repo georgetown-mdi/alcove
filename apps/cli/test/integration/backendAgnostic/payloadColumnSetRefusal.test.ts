@@ -9,7 +9,7 @@ import {
   prepareForExchange,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
-import type { LinkageTerms, Metadata, PreparedExchange } from "@alcove/core";
+import type { Metadata, PreparedExchange } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import type { EventStreamEmitter } from "../../../src/eventStream";
@@ -18,6 +18,7 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
+import { firstNameTerms } from "../../support";
 
 // Two CLI parties run a real file-drop exchange. The sending party's metadata
 // is switched once the PSI round begins, after both parties agreed terms
@@ -28,17 +29,6 @@ import {
 const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 const UNAGREED_COLUMN = "unagreed_column_name";
-
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
 
 const linkageColumn: Metadata[number] = {
   name: "first_name",
@@ -94,7 +84,7 @@ function switchingSender(sentMetadata: Metadata): {
   const prepared = prepareForExchange(
     {
       metadata: agreedMetadata,
-      linkageTerms: { ...baseTerms, identity: "Sender" },
+      linkageTerms: { ...firstNameTerms, identity: "Sender" },
     },
     "Sender",
     [{ first_name: "Bob", a: "1", b: "2", [UNAGREED_COLUMN]: "3" }],
@@ -117,7 +107,7 @@ function receiver(): PreparedExchange {
   return prepareForExchange(
     {
       metadata: [linkageColumn],
-      linkageTerms: { ...baseTerms, identity: "Receiver" },
+      linkageTerms: { ...firstNameTerms, identity: "Receiver" },
     },
     "Receiver",
     [{ first_name: "Bob" }],

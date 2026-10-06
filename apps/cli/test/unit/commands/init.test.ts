@@ -51,6 +51,7 @@ import {
 import { captureStdio } from "../../loggingTestSupport";
 import { platformAbsolutePath, platformFileUrl } from "../../platformPaths";
 import { streamOf, ttyStream, withStdin } from "../../stdinStream";
+import { captureProcessExit } from "../../exitCapture";
 
 // Both terminal reads are mocked so the handler's interactive branches are
 // deterministic -- neither the overwrite confirmation nor the identity question
@@ -604,9 +605,7 @@ test.each([
   async (_label, url) => {
     const dir = scratchDir();
     const logFile = path.join(dir, "init.log");
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => {}) as never);
+    const exit = captureProcessExit();
     const written: Array<string> = [];
     const capture = (chunk: unknown): boolean => {
       written.push(String(chunk));
@@ -615,14 +614,16 @@ test.each([
     vi.spyOn(process.stdout, "write").mockImplementation(capture as never);
     vi.spyOn(process.stderr, "write").mockImplementation(capture as never);
 
-    await initHandler(
-      argvFor({
-        args: [url],
-        "config-file": path.join(dir, "alcove.yaml"),
-        "log-file": logFile,
-        "log-level": "info",
-      }),
-    );
+    await expect(
+      initHandler(
+        argvFor({
+          args: [url],
+          "config-file": path.join(dir, "alcove.yaml"),
+          "log-file": logFile,
+          "log-level": "info",
+        }),
+      ),
+    ).rejects.toThrow("exit:64");
 
     expect(exit).toHaveBeenCalledWith(64);
     for (const text of [written.join(""), fs.readFileSync(logFile, "utf8")])
@@ -635,9 +636,7 @@ test("handler: a URL password beginning with @ is refused and nothing is written
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   const logFile = path.join(dir, "init.log");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   const stderr: Array<string> = [];
   vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
@@ -645,14 +644,16 @@ test("handler: a URL password beginning with @ is refused and nothing is written
     return true;
   }) as never);
 
-  await initHandler(
-    argvFor({
-      args: ["sftp://alice:%40pwDISTINCT7@h/drop"],
-      "config-file": configFile,
-      "log-file": logFile,
-      "log-level": "info",
-    }),
-  );
+  await expect(
+    initHandler(
+      argvFor({
+        args: ["sftp://alice:%40pwDISTINCT7@h/drop"],
+        "config-file": configFile,
+        "log-file": logFile,
+        "log-level": "info",
+      }),
+    ),
+  ).rejects.toThrow("exit:64");
 
   expect(exit).toHaveBeenCalledWith(64);
   expect(fs.existsSync(configFile)).toBe(false);
@@ -826,9 +827,7 @@ function argvFor(overrides: Record<string, unknown>): Arguments {
 test("handler: writes a parseable template and no key file, then exits 0", async () => {
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await initHandler(argvFor({ "config-file": configFile }));
 
@@ -847,7 +846,7 @@ test("handler: the identity it writes unasked is one no resolver accepts", async
   // against a non-interactive stdin, which is what leaves the field unasked.
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  vi.spyOn(process, "exit").mockImplementation((() => {}) as never);
+  captureProcessExit();
 
   await withStdin(streamOf(""), () =>
     initHandler(argvFor({ "config-file": configFile })),
@@ -884,9 +883,7 @@ test("handler: at a terminal with no --identity, it asks and writes the answer",
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   promptFreeTextMock.mockResolvedValue("  Jane Smith, Agency A  ");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   const { stdoutWrites, stderrWrites, restore } = captureStdio();
 
   await withStdin(ttyStream(), () =>
@@ -918,9 +915,7 @@ test("handler: with no terminal it asks nothing and writes the placeholder", asy
   // placeholder, so a scripted init behaves as it did before there was a prompt.
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await withStdin(streamOf(""), () =>
     initHandler(argvFor({ "config-file": configFile })),
@@ -939,9 +934,7 @@ test("handler: --identity at a terminal is answered by the flag, not a question"
   // from being asked, terminal or not.
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await withStdin(ttyStream(), () =>
     initHandler(argvFor({ "config-file": configFile, identity: "Agency A" })),
@@ -962,9 +955,7 @@ test("handler: a blank answer leaves the placeholder to fill in by hand", async 
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   promptFreeTextMock.mockResolvedValue("   ");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   const { restore } = captureStdio();
 
   await withStdin(ttyStream(), () =>
@@ -987,14 +978,14 @@ test("handler: the placeholder typed at the question is refused, writing nothing
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   promptFreeTextMock.mockResolvedValue(`  ${PLACEHOLDER_IDENTITY}  `);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   const { stderrWrites, restore } = captureStdio();
 
-  await withStdin(ttyStream(), () =>
-    initHandler(argvFor({ "config-file": configFile, "log-level": "error" })),
-  );
+  await expect(
+    withStdin(ttyStream(), () =>
+      initHandler(argvFor({ "config-file": configFile, "log-level": "error" })),
+    ),
+  ).rejects.toThrow("exit:64");
 
   restore();
   expect(exit).toHaveBeenCalledWith(64);
@@ -1010,9 +1001,7 @@ test("handler: declining the overwrite asks for no identity", async () => {
   const configFile = path.join(dir, "alcove.yaml");
   fs.writeFileSync(configFile, "old contents\n");
   promptConfirmMock.mockResolvedValue(false);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await withStdin(ttyStream(), () =>
     initHandler(argvFor({ "config-file": configFile })),
@@ -1028,9 +1017,7 @@ test("handler: --log-file is accepted and the config is still written", async ()
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   const logFile = path.join(dir, "init.log");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await initHandler(
     argvFor({ "config-file": configFile, "log-file": logFile }),
@@ -1047,9 +1034,7 @@ test("handler: an input file infers metadata and standardization into the file",
   const configFile = path.join(dir, "alcove.yaml");
   const input = path.join(dir, "in.csv");
   fs.writeFileSync(input, SAMPLE_CSV);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await initHandler(argvFor({ "config-file": configFile, args: [input] }));
 
@@ -1072,17 +1057,15 @@ test("handler: a file appearing after the check fails closed (exit 64)", async (
   writeFileOwnerOnlyMock.mockImplementationOnce(() => {
     throw new FileExistsError(configFile);
   });
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   // Read the message where the operator does: the handler's level reaches every
   // logger, so a logger method spied before the run is replaced by the one the
   // level installs.
   const { stderrWrites, restore } = captureStdio();
 
-  await initHandler(
-    argvFor({ "config-file": configFile, "log-level": "error" }),
-  );
+  await expect(
+    initHandler(argvFor({ "config-file": configFile, "log-level": "error" })),
+  ).rejects.toThrow("exit:64");
 
   restore();
   expect(exit).toHaveBeenCalledWith(64);
@@ -1093,12 +1076,12 @@ test("handler: an existing file with no terminal fails closed (exit 64), unchang
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
   fs.writeFileSync(configFile, "old contents\n");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   // vitest's process.stdin is not a TTY, so the handler cannot prompt.
-  await initHandler(argvFor({ "config-file": configFile }));
+  await expect(
+    initHandler(argvFor({ "config-file": configFile })),
+  ).rejects.toThrow("exit:64");
 
   expect(exit).toHaveBeenCalledWith(64);
   expect(fs.readFileSync(configFile, "utf8")).toBe("old contents\n");
@@ -1109,9 +1092,7 @@ test("handler: declining the interactive overwrite leaves the file untouched", a
   const configFile = path.join(dir, "alcove.yaml");
   fs.writeFileSync(configFile, "old contents\n");
   promptConfirmMock.mockResolvedValue(false);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
   await withInteractiveStdin(async () => {
     await initHandler(argvFor({ "config-file": configFile }));
@@ -1127,9 +1108,7 @@ test("handler: confirming the interactive overwrite replaces the file", async ()
   const configFile = path.join(dir, "alcove.yaml");
   fs.writeFileSync(configFile, "old contents\n");
   promptConfirmMock.mockResolvedValue(true);
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   // The confirmed overwrite goes on to ask for the identity, which writes its
   // preamble to stderr; capture it rather than leaking it into the runner's own.
   const { restore } = captureStdio();
@@ -1148,16 +1127,16 @@ test("handler: confirming the interactive overwrite replaces the file", async ()
 test("handler: a malformed input file exits 64", async () => {
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
-  await initHandler(
-    argvFor({
-      "config-file": configFile,
-      args: [path.join(dir, "does-not-exist.csv")],
-    }),
-  );
+  await expect(
+    initHandler(
+      argvFor({
+        "config-file": configFile,
+        args: [path.join(dir, "does-not-exist.csv")],
+      }),
+    ),
+  ).rejects.toThrow("exit:64");
 
   expect(exit).toHaveBeenCalledWith(64);
   expect(fs.existsSync(configFile)).toBe(false);
@@ -1165,16 +1144,16 @@ test("handler: a malformed input file exits 64", async () => {
 
 test("handler: an unrecognized --log-level exits 64", async () => {
   const dir = scratchDir();
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
 
-  await initHandler(
-    argvFor({
-      "config-file": path.join(dir, "alcove.yaml"),
-      "log-level": "loud",
-    }),
-  );
+  await expect(
+    initHandler(
+      argvFor({
+        "config-file": path.join(dir, "alcove.yaml"),
+        "log-level": "loud",
+      }),
+    ),
+  ).rejects.toThrow("exit:64");
 
   expect(exit).toHaveBeenCalledWith(64);
 });
@@ -1185,18 +1164,18 @@ test("handler: a mistyped --flag exits 64 naming it, writing no config", async (
   // an input path.
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   const { stderrWrites, restore } = captureStdio();
 
-  await initHandler(
-    argvFor({
-      "config-file": configFile,
-      "log-level": "error",
-      args: ["--identit", "x"],
-    }),
-  );
+  await expect(
+    initHandler(
+      argvFor({
+        "config-file": configFile,
+        "log-level": "error",
+        args: ["--identit", "x"],
+      }),
+    ),
+  ).rejects.toThrow("exit:64");
 
   restore();
   expect(exit).toHaveBeenCalledWith(64);
@@ -1211,18 +1190,18 @@ test("handler: a `-`-leading input positional is not treated as an option", asyn
   // (exit 64) -- not the unknown-option path, and never a silently-dropped flag.
   const dir = scratchDir();
   const configFile = path.join(dir, "alcove.yaml");
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => {}) as never);
+  const exit = captureProcessExit();
   const { stderrWrites, restore } = captureStdio();
 
-  await initHandler(
-    argvFor({
-      "config-file": configFile,
-      "log-level": "error",
-      args: ["-not-a-flag.csv"],
-    }),
-  );
+  await expect(
+    initHandler(
+      argvFor({
+        "config-file": configFile,
+        "log-level": "error",
+        args: ["-not-a-flag.csv"],
+      }),
+    ),
+  ).rejects.toThrow("exit:64");
 
   restore();
   expect(exit).toHaveBeenCalledWith(64);

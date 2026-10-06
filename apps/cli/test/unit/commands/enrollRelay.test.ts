@@ -19,6 +19,7 @@ import {
   jsonResponse,
   registrationAnswer,
 } from "../relayRegistrarFake";
+import { captureProcessExit } from "../../exitCapture";
 
 const SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM";
 const OWNER_TOKEN = "0123456789abcdef-owner-token";
@@ -244,11 +245,11 @@ test.each([
 /** The line `exitWithError`, the handler's failure path, logs for `failure`. */
 function loggedFailureLine(failure: unknown): string {
   const lines: string[] = [];
-  const exit = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exit = captureProcessExit();
   try {
-    exitWithError({ error: (m) => lines.push(m) }, failure, 1);
+    expect(() =>
+      exitWithError({ error: (m) => lines.push(m) }, failure, 1),
+    ).toThrow("exit:1");
   } finally {
     exit.mockRestore();
   }

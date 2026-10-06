@@ -21,6 +21,7 @@ import type {
   BrokerMessage,
 } from "../../../src/connection/webrtc/brokerClient";
 import type { BrokerProcess } from "../../signaling/brokerProcess";
+import { waitFor } from "../../support";
 
 /**
  * Tests the CLI's signaling client against the repository's real vendored
@@ -140,17 +141,6 @@ async function register(id: string): Promise<{
       });
     });
   return { client, inbox, closes, awaitMessage };
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  timeoutMs = 10_000,
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (!predicate()) {
-    if (Date.now() >= deadline) throw new Error("condition not met in time");
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
 }
 
 beforeAll(async () => {
@@ -295,8 +285,9 @@ test("a broker diagnostic reaches stderr, leaving the ready-line stdout alone", 
   const stderrBefore = broker.stderr().length;
   socket?.send("not json at all");
 
-  await waitFor(() =>
-    broker.stderr().slice(stderrBefore).includes("[client-frame]"),
+  await waitFor(
+    () => broker.stderr().slice(stderrBefore).includes("[client-frame]"),
+    { timeoutMs: 10_000 },
   );
   expect(broker.stdout()).toMatch(/^alcove-broker \d+\n$/);
 }, 60_000);
@@ -320,8 +311,9 @@ test("a broker diagnostic opens with the prefix core would have written", async 
   const stderrBefore = broker.stderr().length;
   const sentAt = Date.now();
   socket?.send("not json at all");
-  await waitFor(() =>
-    broker.stderr().slice(stderrBefore).includes("[client-frame]"),
+  await waitFor(
+    () => broker.stderr().slice(stderrBefore).includes("[client-frame]"),
+    { timeoutMs: 10_000 },
   );
   const observedAt = Date.now();
 

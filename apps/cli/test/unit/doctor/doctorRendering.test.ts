@@ -10,6 +10,7 @@ import {
   captureStdio,
   snapshotDiagnosticSinkAndLevel,
 } from "../../loggingTestSupport";
+import { captureProcessExit, runToExit } from "../../exitCapture";
 
 // The human check lines are a rendering an operator reads, not log records: a
 // Windows setup script re-prints them in an 80-column console, where the
@@ -49,13 +50,13 @@ async function runMount(
     .mockImplementation((...args: unknown[]) => {
       stdoutWrites.push(args.map((a) => String(a)).join(" ") + "\n");
     });
-  const exitSpy = vi
-    .spyOn(process, "exit")
-    .mockImplementation((() => undefined) as never);
+  const exitSpy = captureProcessExit();
   const previousExitCode = process.exitCode;
   try {
-    await mountHandler(
-      argv({ directory, json: false, "log-level": "info", ...options }),
+    await runToExit(() =>
+      mountHandler(
+        argv({ directory, json: false, "log-level": "info", ...options }),
+      ),
     );
   } finally {
     process.exitCode = previousExitCode;

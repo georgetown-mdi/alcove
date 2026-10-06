@@ -4,9 +4,6 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-
-import { prepareForExchange } from "@alcove/core";
-import type { ExchangeDataSpec, LinkageTerms } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
 import {
@@ -14,6 +11,7 @@ import {
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
 import { saveKeyFile } from "../../../src/keyFile";
+import { preparedFor } from "../../support";
 
 // A clean authenticated exchange completes for both parties; then one party's
 // result-CSV write fails (ENOENT at the file's open) AFTER runExchange has
@@ -31,32 +29,6 @@ import { saveKeyFile } from "../../../src/keyFile";
 // start from it so the handshake -- which must complete for the connection to
 // arm -- succeeds and the exchange runs to completion.
 const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-
-// firstName-only terms over a one-row dataset both parties share ("Bob"), so the
-// clean exchange computes a real intersection and reaches the output stage on
-// both sides (mirrors ../authenticatedExchange.test.ts).
-const baseTerms: Omit<LinkageTerms, "identity"> = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi",
-  linkageStrategy: "cascade",
-  deduplicate: false,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
-function preparedFor(identity: string) {
-  const spec: ExchangeDataSpec = {
-    linkageTerms: { ...baseTerms, identity },
-  };
-  return prepareForExchange(
-    spec,
-    identity,
-    [{ first_name: "Bob" }],
-    ["first_name"],
-  );
-}
 
 let work: string;
 

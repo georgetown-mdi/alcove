@@ -445,6 +445,7 @@ import {
 } from "../../src/exchangeOutcome";
 import { termsChangeHandler } from "../../src/termsChange";
 import { LocalFSClient } from "../../src/connection/localFSClient";
+import { captureProcessExit, recordProcessExit } from "../exitCapture";
 
 // 32 zero bytes in base64url (43 chars, no padding).
 const TOKEN_A = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -2502,7 +2503,7 @@ test("runProtocol writes no key when SIGINT cancels before the handshake complet
   // handshake) must leave no usable credential: the in-memory setup secret is
   // discarded and the key file is never written. process.exit is mocked so the
   // signal handler runs to completion without terminating the test process.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
   const keyFile = path.join(tmpDir, "a.key");
   // peerTimeoutMs is generous so the wait does not time out on its own before the
   // signal arrives; the SIGINT is what ends the run.
@@ -5060,9 +5061,11 @@ test("runProtocol marks the key-file path when the rotated token cannot be saved
 
   // The secrets may now differ, so the refusal exits with the authentication
   // code a retry cannot clear, through the real command exit mapper.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = captureProcessExit();
   try {
-    await runOrExit("test-a", () => Promise.reject(thrown));
+    await expect(
+      runOrExit("test-a", () => Promise.reject(thrown)),
+    ).rejects.toThrow("exit:77");
     expect(exitSpy).toHaveBeenCalledWith(77);
   } finally {
     exitSpy.mockRestore();
@@ -5648,7 +5651,7 @@ test("runProtocol logs an 'error in flight when SIGINT arrived' error when inter
   // signal handler's process.exit(130)), the in-flight error must still be
   // reported at error level so its diagnostic information is not lost even
   // under `--log-level=error`.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -5728,7 +5731,7 @@ test("runProtocol sanitizes a hostile cause chain in the signal in-flight log", 
   // cause -- a partner-chosen message-file path containing control/ANSI bytes
   // -- must be neutralized here, and the chain shown, like the per-command
   // catches.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -5812,7 +5815,7 @@ test("SIGINT logs recovery message when tokenRotated=true", async () => {
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -5956,7 +5959,7 @@ test("warns on a close failure when the open completes after cleanup began", asy
   // between layer closes. The connection did open, so a close failure is the
   // operator's to see rather than a debug line: the transport may not have
   // terminated cleanly and files may be left behind on the remote.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
   let openReached = false;
   let releaseOpen!: () => void;
   const openHeld = new Promise<void>((resolve) => {
@@ -6023,7 +6026,7 @@ test("SIGTERM logs recovery message when tokenRotated=true", async () => {
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -6107,7 +6110,7 @@ test("SIGTERM logs recovery message when tokenRotated=true", async () => {
 // own exit path.
 
 test("runProtocol resolves (does not reject) when interrupted by SIGINT mid-runExchange", async () => {
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -6184,7 +6187,7 @@ test("runProtocol resolves (does not reject) when interrupted by SIGINT mid-runE
 }, 20_000);
 
 test("runProtocol resolves (does not reject) when interrupted by SIGTERM mid-runExchange", async () => {
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
 
   let rejectA!: (err: Error) => void;
   let rejectB!: (err: Error) => void;
@@ -8240,9 +8243,11 @@ test("a mismatched shared secret under --event-stream emits category security an
   expect(lines[1].v).toBe(1);
 
   // Feed the real captured error through the real command exit mapper.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = captureProcessExit();
   try {
-    await runOrExit("test-a", () => Promise.reject(reasonA));
+    await expect(
+      runOrExit("test-a", () => Promise.reject(reasonA)),
+    ).rejects.toThrow("exit:77");
     expect(exitSpy).toHaveBeenCalledWith(77);
   } finally {
     exitSpy.mockRestore();
@@ -8291,9 +8296,11 @@ test("an SFTP host-key mismatch under --event-stream emits category security and
   expect(lines[1].category).toBe("security");
   expect(lines[1].v).toBe(1);
 
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = captureProcessExit();
   try {
-    await runOrExit("test", () => Promise.reject(err));
+    await expect(runOrExit("test", () => Promise.reject(err))).rejects.toThrow(
+      "exit:77",
+    );
     expect(exitSpy).toHaveBeenCalledWith(77);
   } finally {
     exitSpy.mockRestore();

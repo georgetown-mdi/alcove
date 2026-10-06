@@ -46,22 +46,6 @@ export function sampleToken(
 }
 
 /**
- * Encodes a token WITHOUT schema validation (encodeInvitation would reject a
- * malicious token), reproducing decodeInvitation's checksum + base64url framing
- * so the decode path runs on attacker-shaped input.
- */
-export async function encodeRaw(obj: unknown): Promise<string> {
-  const toBase64Url = (b: Uint8Array): string =>
-    btoa(Array.from(b, (byte) => String.fromCharCode(byte)).join(""))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  const bytes = new TextEncoder().encode(JSON.stringify(obj));
-  const hashBuf = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(hashBuf).slice(0, 4));
-}
-
-/**
  * Renders displayInvitation into the joined info-log output, through the same
  * log-writing sink the unattended path renders to and spying on the given logger
  * so each test can assert against its own logger instance. The acceptor's own

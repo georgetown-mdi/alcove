@@ -63,6 +63,7 @@ vi.mock("../../src/psiProgressDisplay", () => ({
 import { runExchange } from "@alcove/core";
 
 import { runProtocol } from "../../src/protocol";
+import { recordProcessExit } from "../exitCapture";
 
 // 32 zero bytes in base64url (43 chars, no padding).
 const TOKEN_A = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -140,7 +141,7 @@ test("a SIGINT interrupt under --event-stream emits no terminal event", async ()
   // instead of terminating, so the interrupt hits the main catch's
   // in-flight-error path rather than the bypass a real exit gives.
   mockFd3Open();
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
   const signalListenersBefore = {
     SIGINT: process.listenerCount("SIGINT"),
     SIGTERM: process.listenerCount("SIGTERM"),
@@ -208,7 +209,7 @@ test("an interrupt drops the live progress line before it logs anything", async 
   // Ctrl-C lands mid-operation with the cursor parked on the redrawn progress
   // row, so the display is closed before the first interrupt line: otherwise
   // "caught SIGINT, exiting" is written over the half-drawn row.
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
   const keyFile = path.join(tmpDir, "interrupted-progress.key");
   const run = runProtocol({
     connection: {
@@ -252,7 +253,7 @@ test("an interrupt drops the live progress line before it logs anything", async 
 async function deliverSignals(
   signals: readonly NodeJS.Signals[],
 ): Promise<{ exits: unknown[]; caught: string[] }> {
-  const exitSpy = vi.spyOn(process, "exit").mockReturnValue(undefined as never);
+  const exitSpy = recordProcessExit();
   const keyFile = path.join(tmpDir, "interrupted-twice.key");
   try {
     const run = runProtocol({

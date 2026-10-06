@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { expect } from "vitest";
 import {
-  FileSyncConnection,
   TransportPublishIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
@@ -12,9 +11,9 @@ import { withCapturedLogs } from "@alcove/core/testing";
 
 import { SSH2SFTPClientAdapter } from "../../src/connection/ssh2SftpAdapter";
 import { startInProcessSftpServer } from "../sftpServer";
-import { serverAuth } from "../sftpServer/testContext";
 import type { InProcessSftpServer } from "../sftpServer/types";
 import { inProcessOnly } from "../sftpBackendGate";
+import { connectParty, type ConnectedParty } from "../sftpServer/connectParty";
 
 // A partner server that drops the SFTP session cleanly while a HIGH-LEVEL
 // ssh2-sftp-client operation (get, the put family, delete, rename, exists) is in
@@ -98,76 +97,57 @@ function recordDials(adapter: SSH2SFTPClientAdapter): DialOutcome[] {
   return dials;
 }
 
-interface Party {
+interface Party extends ConnectedParty {
   srv: InProcessSftpServer;
-  adapter: SSH2SFTPClientAdapter;
-  conn: FileSyncConnection;
   dials: DialOutcome[];
-  remote: string;
-  localDir: string;
-  stop: () => Promise<void>;
 }
 
-// One connected party on its own server, in its own rendezvous directory (never a
-// shared one; see sftpConnection.test.ts's header). The party drives the adapter
-// directly rather than through a poll loop, so the server's op counter -- which is
-// server-wide -- counts only this test's operations and a cut lands where the case
-// aimed it.
-async function connectParty(options: {
+// One connected party on its own server, in its own rendezvous directory. The
+// party drives the adapter directly rather than through a poll loop, so the
+// server's op counter -- which is server-wide -- counts only this test's
+// operations and a cut lands where the case aimed it.
+async function connectPartyOnOwnServer(options: {
   maxReconnectAttempts: number;
   ephemeralSessions?: boolean;
   stallDeadlineMs?: number;
 }): Promise<Party> {
   const srv = await startInProcessSftpServer();
-  const localDir = await fsp.mkdtemp(
-    path.join(srv.handle.backingDir, "inflight-"),
-  );
-  const remote = `${srv.handle.remoteRoot}/${path.basename(localDir)}`;
-  const adapter = new SSH2SFTPClientAdapter({
-    ephemeralSessions: options.ephemeralSessions ?? false,
-    ...(options.stallDeadlineMs === undefined
-      ? {}
-      : { stallDeadlineMs: options.stallDeadlineMs }),
-  });
-  const dials = recordDials(adapter);
-  const conn = new FileSyncConnection(adapter, {
-    verbose: -1,
-    pollingFrequency: 10,
-  });
-  conn.on("error", () => {});
-  await conn.open({
-    channel: "sftp",
-    server: {
-      host: srv.handle.host,
-      port: srv.handle.port,
-      ...serverAuth(srv.handle.usera),
-      path: remote,
-    },
-    options: { maxReconnectAttempts: options.maxReconnectAttempts },
-  });
-  // From here on the record holds only the dials a case provoked; the party's own
-  // first connect is setup, not a subject.
-  dials.length = 0;
-  return {
-    srv,
-    adapter,
-    conn,
-    dials,
-    remote,
-    localDir,
-    stop: async () => {
-      // Clear every standing cap before the teardown dials and closes: a cap left
-      // armed cuts the pre-drain reconnect instead of the call under test.
-      srv.sessionControls.maxIdleMs = 0;
-      srv.sessionControls.maxOps = 0;
-      srv.sessionControls.maxLifetimeMs = 0;
-      srv.sessionControls.dropActiveAfterOps(0);
-      srv.sessionControls.stopWithholdingCloses();
-      await conn.close().catch(() => {});
-      await fsp.rm(localDir, { recursive: true, force: true });
-      await srv.stop();
-    },
-  };
+  try {
+    const adapter = new SSH2SFTPClientAdapter({
+      ephemeralSessions: options.ephemeralSessions ?? false,
+      ...(options.stallDeadlineMs === undefined
+        ? {}
+        : { stallDeadlineMs: options.stallDeadlineMs }),
+    });
+    const dials = recordDials(adapter);
+    const party = await connectParty(srv.handle, {
+      dirPrefix: "inflight-",
+      adapter,
+      maxReconnectAttempts: options.maxReconnectAttempts,
+    });
+    // From here on the record holds only the dials a case provoked; the party's
+    // own first connect is setup, not a subject.
+    dials.length = 0;
+    return {
+      ...party,
+      srv,
+      dials,
+      stop: async () => {
+        // Clear every standing cap before the teardown dials and closes: a cap
+        // left armed cuts the pre-drain reconnect instead of the call under test.
+        srv.sessionControls.maxIdleMs = 0;
+        srv.sessionControls.maxOps = 0;
+        srv.sessionControls.maxLifetimeMs = 0;
+        srv.sessionControls.dropActiveAfterOps(0);
+        srv.sessionControls.stopWithholdingCloses();
+        await party.stop();
+        await srv.stop();
+      },
+    };
+  } catch (error: unknown) {
+    await srv.stop();
+    throw error;
+  }
 }
 
 async function plantTransfer(party: Party): Promise<string> {
@@ -182,7 +162,7 @@ inProcessOnly(
   "an in-flight read torn by a clean drop returns its result, wherever inside " +
     "the transfer the cut lands",
   async () => {
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: CUT_POINTS.length + 1,
     });
     try {
@@ -262,7 +242,7 @@ for (const [arm, keepsCutting] of [
   inProcessOnly(
     `an in-flight read torn by a clean drop completes against ${arm}`,
     async () => {
-      const party = await connectParty({ maxReconnectAttempts: 3 });
+      const party = await connectPartyOnOwnServer({ maxReconnectAttempts: 3 });
       try {
         const remoteFile = await plantTransfer(party);
         const controls = party.srv.sessionControls;
@@ -309,7 +289,7 @@ inProcessOnly(
     // very first in-flight tear is terminal. What the operator is owed there is the
     // drop and what to do about it -- a dial failure would name neither, and the
     // budget clause would be the wrong one.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 0,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -356,7 +336,7 @@ inProcessOnly(
     // The same statement one drop later: the budget's last re-dial is spent on the
     // first cut, so the second is terminal -- and terminal on the budget, with the
     // remedies, rather than on a dial.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: 1,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -409,7 +389,7 @@ inProcessOnly(
     "is reported indeterminate once something has taken it",
   async () => {
     // Each tear costs one re-dial, and the two determinate arms one each.
-    const party = await connectParty({
+    const party = await connectPartyOnOwnServer({
       maxReconnectAttempts: LANDED_PUBLISH_REPEATS * 2 + 4,
       stallDeadlineMs: STALL_DEADLINE_MS,
     });
@@ -543,7 +523,7 @@ for (const [mode, ephemeralSessions] of [
       // meet the window above, and a drop that lands on an idle wire BEFORE the
       // operation is issued -- the class whose whole lifecycle sequence has run by
       // the time recovery is reached.
-      const party = await connectParty({
+      const party = await connectPartyOnOwnServer({
         maxReconnectAttempts: 4,
         ephemeralSessions,
       });
@@ -595,7 +575,7 @@ inProcessOnly(
   "a transient rename refusal counts as transport retries and a recovered " +
     "drop as a reconnect, each in its own counter",
   async () => {
-    const party = await connectParty({ maxReconnectAttempts: 4 });
+    const party = await connectPartyOnOwnServer({ maxReconnectAttempts: 4 });
     try {
       await fsp.writeFile(path.join(party.localDir, "from.json"), "{}");
       party.srv.inject.renameFailuresRemaining = 2;

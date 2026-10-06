@@ -84,6 +84,7 @@ import {
 import type { RunProtocolOptions } from "../../src/protocol";
 import { captureFd3 } from "../eventStreamTestSupport";
 import { streamOf, ttyStream, withStdin } from "../stdinStream";
+import { captureProcessExit, recordProcessExit } from "../exitCapture";
 
 // runOnlineBootstrap's config-persistence tests below drive its wiring without
 // opening a connection: runProtocol is mocked so each test chooses whether the
@@ -736,44 +737,42 @@ describe("redactUrlCredentials", () => {
 
 describe("runOrExit", () => {
   test("a UsageError exits 64", async () => {
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
-    await runOrExit("bootstrap-test", async () => {
-      throw new UsageError("bad usage");
-    });
+    const exit = captureProcessExit();
+    await expect(
+      runOrExit("bootstrap-test", async () => {
+        throw new UsageError("bad usage");
+      }),
+    ).rejects.toThrow("exit:64");
     expect(exit).toHaveBeenCalledWith(64);
     exit.mockRestore();
   });
 
   test("a non-UsageError keeps its annotated exit code (not collapsed to 69)", async () => {
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
-    await runOrExit("bootstrap-test", async () => {
-      // A distinctive code (not 69) proves the annotated rung is preserved, so
-      // a missing input file keeps its own exit code instead of becoming 69.
-      throw withExitCode(new Error("input file not found"), 66);
-    });
+    const exit = captureProcessExit();
+    await expect(
+      runOrExit("bootstrap-test", async () => {
+        // A distinctive code (not 69) proves the annotated rung is preserved, so
+        // a missing input file keeps its own exit code instead of becoming 69.
+        throw withExitCode(new Error("input file not found"), 66);
+      }),
+    ).rejects.toThrow("exit:66");
     expect(exit).toHaveBeenCalledWith(66);
     exit.mockRestore();
   });
 
   test("an error without an exitCode defaults to 69", async () => {
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
-    await runOrExit("bootstrap-test", async () => {
-      throw new Error("transport failure");
-    });
+    const exit = captureProcessExit();
+    await expect(
+      runOrExit("bootstrap-test", async () => {
+        throw new Error("transport failure");
+      }),
+    ).rejects.toThrow("exit:69");
     expect(exit).toHaveBeenCalledWith(69);
     exit.mockRestore();
   });
 
   test("a rejected body (e.g. a stdin/prompt error) exits cleanly, never throwing", async () => {
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = recordProcessExit();
     // A readline rejection mid-prompt is just a rejected promise inside the body;
     // runOrExit maps it to an exit rather than letting it crash unhandled.
     await expect(
@@ -1328,9 +1327,7 @@ describe("warnUnsupportedWebRTCServerFlags", () => {
 
 describe("runOrExit", () => {
   test("a successful body does not exit", async () => {
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     let ran = false;
     await runOrExit("bootstrap-test", async () => {
       ran = true;
@@ -1349,16 +1346,16 @@ describe("runOrExit", () => {
     // logger's methods are (re)built, so the spy must be in place first.
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     getLogger("cause-chain-render-test").setLevel("error");
-    const exit = vi
-      .spyOn(process, "exit")
-      .mockImplementation((() => undefined) as never);
+    const exit = captureProcessExit();
     try {
       const hostileCause = new Error(
         "ENOENT: no such file or directory, open '/drop/\x1b[31mEVIL\nFAKE.json'",
       );
-      await runOrExit("cause-chain-render-test", async () => {
-        throw new Error("transport failed", { cause: hostileCause });
-      });
+      await expect(
+        runOrExit("cause-chain-render-test", async () => {
+          throw new Error("transport failed", { cause: hostileCause });
+        }),
+      ).rejects.toThrow("exit:69");
       const output = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
       expect(output).toContain("transport failed");
       expect(output).toContain("caused by:");
