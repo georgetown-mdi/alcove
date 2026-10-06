@@ -5,14 +5,12 @@
 // already has: npm 11.17 does not hoist a later range bump incrementally
 // while a root `overrides` block stands, so the stale hoisted copy is kept and
 // the raised version is nested under the workspace that asked for it. Nothing
-// at install time reports that split. What it costs is measured in
-// docs/spec/DEPENDENCY_PINS.md, "What a root overrides block changes about
-// later installs": the web build plugins resolve the root copy while the
-// dev server runs the nested one, and when it landed the web integration and
-// browser suites died in their shared globalSetup -- no test FAILED, and CI
-// reported a bare exit code 1 naming nothing. It has landed twice, and `@dependabot rebase` and
-// `@dependabot recreate` each reproduce it, so the next bump is what stands
-// between here and a third.
+// at install time reports that split: a build plugin can resolve the root copy
+// while the dev server runs the nested one, and a suite that fails on it does
+// not name the split as the cause. `@dependabot rebase` and
+// `@dependabot recreate` each reproduce it. The measurements and the remedy are
+// in docs/spec/DEPENDENCY_PINS.md, "What a root overrides block changes about
+// later installs".
 //
 // So this fails on any package the committed lockfile installs at the top level
 // of BOTH the root node_modules and a workspace's, naming the package and both

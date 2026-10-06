@@ -378,7 +378,7 @@ re-walked.
 
 ### The release SBOM's hoisting residual
 
-Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. Measured 2026-10-06 on npm 11.19.1 against the committed lockfile:
+Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. On npm 11.19.1 against the committed lockfile:
 
 - `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web` exits 0 at 130 components, and the same command without `-w apps/web` exits 0 at 84. Every one of those 84 also appears in the 130, so the full-scope command closes the web console's runtime set into the BOM rather than dropping it.
 - `npm ls --all --omit=dev --package-lock-only` exits 0, so the tree reports no peer conflict.
@@ -475,13 +475,6 @@ required `vite` below 8.1.5, so the retained root copy was a stale hoist and not
 constraint. Toggling only the root `overrides` key against live npm, over two base
 lockfiles, is what attributes the behavior to the block's presence.
 
-**What the split costs.** Measured when it landed, the dev server's rendering
-middleware never installed and every route answered 404, so the web integration
-and browser suites died in their shared `globalSetup`: no test failed, and CI
-reported a bare exit code 1 with nothing naming the cause. `npm run build -w apps/web` still succeeds, so the deployed
-artifact is never affected -- the damage is confined to the development tree and
-to the signal CI gives about it.
-
 **The remedy measured to work** is to delete the duplicated lockfile entries and
 re-resolve with `npm install --package-lock-only`. Two routes were measured not to
 work: `@dependabot rebase` and `@dependabot recreate` each reproduce the
@@ -495,7 +488,7 @@ being landed.
 reads the committed lockfile and fails on any package installed at the top level
 of both the root `node_modules` and a workspace's, naming the package and both
 entries. The split then lands as a named failure on the bump's own pull request
-rather than as the unattributed exit code above. It covers every package rather
+rather than as a downstream failure that does not name it. It covers every package rather
 than the ones this has happened to, because the mechanism is the block's
 presence and not any one dependency; a split that is meant to stand is recorded,
 with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. What
@@ -506,8 +499,8 @@ resolution, which this tree has dozens of.
 ### The development tree's brace-expansion copy
 
 The tree holds one `brace-expansion` copy, 5.0.12, hoisted at the root for
-`minimatch@10.2.5` under `eslint` and development-only. Re-driven 2026-10-06 on
-npm 11.19.1 against the committed lockfile: `npm ls brace-expansion --all`
+`minimatch@10.2.5` under `eslint` and development-only. On npm 11.19.1 against
+the committed lockfile: `npm ls brace-expansion --all`
 names that copy alone, `npm ls brace-expansion --omit=dev` prints `(empty)`,
 npm's no-match answer, and `npm audit --package-lock-only` and
 `npm audit --omit=dev --package-lock-only -w packages/core -w apps/cli -w apps/web`

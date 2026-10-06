@@ -42,8 +42,9 @@ declare global {
  * and the work-input directory (a misconfiguration refuses the boot) -- creates it
  * owner-only, and sweeps any credential a prior run orphaned. A no-op when the API
  * is disabled -- no manager is constructed, so no paste can be authored. The
- * server entry calls this once at startup; a {@link JobApiConfigError} propagates
- * and refuses startup.
+ * console server's `startConsoleServer` (`apps/web/server/console/start.ts`)
+ * calls this once at startup; a {@link JobApiConfigError} propagates and refuses
+ * startup.
  *
  * The rendezvous mounts it excludes come from the memoized provisioning, the same
  * value the boot warning and the manager read, so a split console resolves each
@@ -94,10 +95,10 @@ export function warnJobRendezvousProvisioning(
  * profile is not `console`, so the job API stays disabled despite
  * `JOB_DATA_ROOT`. A no-op in a console build (the API is enabled) and in the
  * plain hosted case (no data root, nothing an operator meant to turn on). The
- * server entry calls this once at startup, the only point at which the mismatch
- * is reachable: {@link isJobApiEnabled} gates every route to 404 before
- * {@link useJobManager} runs, so a mismatched config never reaches the manager
- * on a request. Non-fatal -- a misconfigured hosted build boots with the job API
+ * console server's `startConsoleServer` calls this once at startup, the only
+ * point at which the mismatch is reachable: {@link isJobApiEnabled} gates every
+ * route to 404 before {@link useJobManager} runs, so a mismatched config never
+ * reaches the manager on a request. Non-fatal -- a misconfigured hosted build boots with the job API
  * dark rather than refusing to start.
  */
 export function warnJobApiProfileMismatch(

@@ -96,10 +96,11 @@ among them -- where the first install put them.
 
 npm omits a package the lockfile flags `dev` and keeps one it flags
 `devOptional`. The lockfile flags `vite` `dev`, so the emptied tree holds no
-`vite`, and no `rolldown` or `esbuild` beneath it. Re-driven 2026-10-06 the
-same way on npm 11.19.1, against a lockfile newer than the table's, the
-emptied-tree install holds no `vite` with or without `--omit=optional`, at 69
-and 66 top-level entries; the flag's only effect is the omission below.
+`vite`, and no `rolldown` or `esbuild` beneath it. The table's figures were
+taken against an earlier lockfile. Driven the same way on npm 11.19.1 against
+the committed one, the emptied-tree install holds no `vite` with or without
+`--omit=optional`, at 69 and 66 top-level entries; the flag's only effect is
+the omission below.
 
 What that omission costs is ssh2's two optional edges, the only ones inside the
 `packages/core` plus `apps/cli` scope: `cpu-features`, its native CPU-detection

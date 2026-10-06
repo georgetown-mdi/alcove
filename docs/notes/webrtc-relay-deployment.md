@@ -353,8 +353,8 @@ full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
 
-It did leave, and with it the web app's last runtime service: the hosted app is
-a static site, and the framework's server half is removed
+The web app runs no broker and no other runtime service: the hosted app is a
+static site with no server framework
 ([web-server-runtime-role.md](web-server-runtime-role.md)).
 
 ## The proposed epic

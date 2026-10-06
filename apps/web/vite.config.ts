@@ -141,6 +141,23 @@ export function devSignalingProxy({
   return { "/api/": { target: `http://127.0.0.1:${port}`, ws: true } };
 }
 
+/** Whether `vite dev` answers `request` with the hosted client's document: a
+ * page navigation (a GET accepting HTML) to a path outside `/api/` whose last
+ * segment names no file. */
+export function isHostedDevDocumentRequest(request: {
+  method?: string;
+  url?: string;
+  headers: { accept?: string };
+}): boolean {
+  const pathname = (request.url ?? "/").split("?", 1)[0] ?? "/";
+  return (
+    request.method === "GET" &&
+    request.headers.accept?.includes("text/html") === true &&
+    !pathname.startsWith("/api/") &&
+    !path.posix.basename(pathname).includes(".")
+  );
+}
+
 // The root index.html is the console client's document; `vite dev` answers a
 // page request with the hosted client's instead, as the hosted build does.
 function hostedDevDocument(): Plugin {
@@ -149,13 +166,7 @@ function hostedDevDocument(): Plugin {
     apply: "serve",
     configureServer(server) {
       server.middlewares.use((request, _response, next) => {
-        const pathname = (request.url ?? "/").split("?", 1)[0] ?? "/";
-        if (
-          request.method === "GET" &&
-          request.headers.accept?.includes("text/html") === true &&
-          !pathname.startsWith("/api/") &&
-          !path.posix.basename(pathname).includes(".")
-        )
+        if (isHostedDevDocumentRequest(request))
           request.url = "/hosted/index.html";
         next();
       });
