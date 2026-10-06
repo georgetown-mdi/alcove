@@ -245,17 +245,12 @@ test("resolveExchangeSpecRefs resolves @path credential and opaque fields on an 
         password: atFile("pw", "s3cret\n"),
         provision: { host: "prov", auth: { bearer: atFile("tok", "BEAR\n") } },
       },
-      proxy: {
-        host: "proxy",
-        auth: { username: "u", password: atFile("pp", "PROXYPW\n") },
-      },
       provider_options: { nested: { secret: atFile("po", "OPAQUE\n") } },
     },
   });
   const conn = resolveExchangeSpecRefs(spec).connection as SFTPConnectionConfig;
   expect(conn.server.password).toBe("s3cret");
   expect(conn.server.provision?.auth?.bearer).toBe("BEAR");
-  expect(conn.proxy?.auth?.password).toBe("PROXYPW");
   expect((conn.providerOptions?.nested as { secret: string }).secret).toBe(
     "OPAQUE",
   );

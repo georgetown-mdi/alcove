@@ -954,24 +954,9 @@ connection:
       password: "@/run/secrets/twilio.key"
 ```
 
-### `connection.proxy`
-
-*Type:* object  
-*Required:* no  
-*Applies to:* `sftp`
-
-A WebSocket-to-TCP proxy that tunnels the SFTP connection through HTTPS. This field is determined by the client's network capabilities, not the server: a browser-based client requires it because browsers cannot open raw TCP connections, while a CLI client connects natively and omits this field. The two parties' configs will therefore differ here even when connecting to the same server. No Alcove client uses this field: the CLI connects to the SFTP server directly, and the web app runs no SFTP exchange.
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `host` | string | yes | Proxy hostname |
-| `port` | integer | no | Port |
-| `path` | string | no | Proxy path |
-| `auth` | object | no | Authentication credentials (see [HTTP service authentication](#http-service-authentication-auth)) |
-
 ### HTTP service authentication (`auth`)
 
-The `server.provision`, `ice_provision`, and `proxy` objects each accept an optional `auth` sub-object. Exactly one authentication method may be specified. `username` and `password` must appear together; neither is valid alone.
+The `server.provision` and `ice_provision` objects each accept an optional `auth` sub-object. Exactly one authentication method may be specified. `username` and `password` must appear together; neither is valid alone.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -984,10 +969,10 @@ connection:
   channel: sftp
   server:
     host: sftp.example.org
-  proxy:
-    host: proxy.example.org
-    auth:
-      bearer: "@/run/secrets/proxy.key"
+    provision:
+      host: wake.example.org
+      auth:
+        bearer: "@/run/secrets/wake.key"
 ```
 
 ### `connection.options`
@@ -1702,7 +1687,6 @@ The cells:
 | `connection.relay_registrar` | carried | not applicable | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
 | `connection.ice_transport_policy` | carried | not applicable | refused |
 | `connection.ice_provision` | refused | not applicable | refused |
-| `connection.proxy` | not applicable | refused | not applicable |
 | `connection.options.peer_timeout_ms` | authored | authored | refused |
 | `connection.options.inactivity_timeout_ms` | authored | authored | refused |
 | `connection.options.server_connect_timeout_ms` | authored | authored | refused |

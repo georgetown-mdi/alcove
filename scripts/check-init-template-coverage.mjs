@@ -43,10 +43,6 @@ export const ALLOWED_OMISSIONS = new Map([
     "Refused when the configuration loads: a known_hosts file is not supported; host_key_fingerprint pins the host key.",
   ],
   [
-    "connection.proxy",
-    "No Alcove client reads it: the CLI opens the SFTP connection itself.",
-  ],
-  [
     "connection.provider_options",
     "An allowlisted map of SSH library settings for a server that needs one; the reference documents the keys it admits.",
   ],

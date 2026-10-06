@@ -333,7 +333,7 @@ describe("accepting a configuration on a channel this app does not run", () => {
     expect(connection.server.keyboardInteractive).toBe(true);
   });
 
-  test("a proxy, provisioning endpoint, and provider options are held with @path credentials", () => {
+  test("a provisioning endpoint and provider options are held with @path credentials", () => {
     const document = sftpDocumentWithServerLine({
       provision: {
         host: "wake.example.org",
@@ -345,10 +345,6 @@ describe("accepting a configuration on a channel this app does not run", () => {
         ...document,
         connection: {
           ...document.connection,
-          proxy: {
-            host: "proxy.example.org",
-            auth: { username: "relay", password: "@/secrets/proxy.password" },
-          },
           providerOptions: {
             readyTimeout: 20000,
             passphrase: "@/secrets/key.passphrase",
@@ -362,22 +358,14 @@ describe("accepting a configuration on a channel this app does not run", () => {
     expect(connection.server.provision?.auth?.bearer).toBe(
       "@/secrets/wake.bearer",
     );
-    expect(connection.proxy?.auth).toEqual({
-      username: "relay",
-      password: "@/secrets/proxy.password",
-    });
     expect(connection.providerOptions).toEqual({
       readyTimeout: 20000,
       passphrase: "@/secrets/key.passphrase",
     });
   });
 
-  test("a literal credential in a proxy, provisioning auth, or provider option is refused", () => {
-    const secrets = [
-      "bearer-not-echoed",
-      "proxy-not-echoed",
-      "option-not-echoed",
-    ];
+  test("a literal credential in provisioning auth or a provider option is refused", () => {
+    const secrets = ["bearer-not-echoed", "option-not-echoed"];
     const document = sftpDocumentWithServerLine({
       provision: { host: "wake.example.org", auth: { bearer: secrets[0] } },
     });
@@ -386,17 +374,13 @@ describe("accepting a configuration on a channel this app does not run", () => {
         ...document,
         connection: {
           ...document.connection,
-          proxy: {
-            host: "proxy.example.org",
-            auth: { username: "relay", password: secrets[1] },
-          },
-          providerOptions: { password: secrets[2] },
+          providerOptions: { password: secrets[1] },
         },
       }),
     );
 
     expect(message).toContain(
-      "connection.provider_options.password, connection.proxy.auth.password, " +
+      "connection.provider_options.password, " +
         "connection.server.provision.auth.bearer",
     );
     for (const secret of secrets) expect(message).not.toContain(secret);
@@ -948,7 +932,6 @@ describe("import, edit, and export on every channel", () => {
         keyboardInteractive: true,
         hostKeyFingerprint: `SHA256:${"B".repeat(42)}A`,
       },
-      proxy: { host: "proxy.example.org", port: 8443, path: "/sftp" },
       options: {
         ...sftpConnection.options,
         peerTimeoutMs: 600_000,

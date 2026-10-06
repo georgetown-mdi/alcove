@@ -112,11 +112,10 @@ export class SftpSession {
   // orchestrator to advertise this party's observed fingerprint in the
   // authenticated terms exchange for cross-party reconciliation. It
   // stays `undefined` on every path that observes no host key -- a file-drop
-  // mount, the browser/proxy SFTP path (neither runs ssh2's hostVerifier), and a
-  // refused connection (no-pin fail-closed or a mismatch) that never establishes
-  // a session -- so a party with nothing to advertise reconciles to no
-  // divergence. Identity/connection-scoped like handshakeRole; not reset per
-  // session.
+  // mount (which runs no ssh2 hostVerifier) and a refused connection (no-pin
+  // fail-closed or a mismatch) that never establishes a session -- so a party
+  // with nothing to advertise reconciles to no divergence.
+  // Identity/connection-scoped like handshakeRole; not reset per session.
   observedHostKey: PresentedHostKey | undefined;
 
   constructor(private readonly deps: SftpSessionDeps) {}

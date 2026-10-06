@@ -660,8 +660,11 @@ test("safeParseConnectionConfig returns success: false on invalid input", () => 
 
 test("HttpAuth with username but no password is rejected", () => {
   const result = safeParseConnectionConfig({
-    ...sftpBase,
-    proxy: { host: "proxy.example.org", auth: { username: "user" } },
+    ...webrtcBase,
+    server: {
+      host: "api.peerjs.com",
+      provision: { host: "api.example.org", auth: { username: "user" } },
+    },
   });
   expect(result.success).toBe(false);
   if (result.success) return;
@@ -671,8 +674,11 @@ test("HttpAuth with username but no password is rejected", () => {
 
 test("HttpAuth with password but no username is rejected", () => {
   const result = safeParseConnectionConfig({
-    ...sftpBase,
-    proxy: { host: "proxy.example.org", auth: { password: "secret" } },
+    ...webrtcBase,
+    server: {
+      host: "api.peerjs.com",
+      provision: { host: "api.example.org", auth: { password: "secret" } },
+    },
   });
   expect(result.success).toBe(false);
   if (result.success) return;

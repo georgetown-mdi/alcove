@@ -98,7 +98,6 @@ function sftpConnection(variant: Variant, server: Record<string, unknown>) {
       },
       ...server,
     },
-    proxy: httpEndpoint(variant, "proxy"),
     options: fileSyncOptions(variant),
     providerOptions: { readyTimeout: doubled(variant, 20_000) },
   };

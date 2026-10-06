@@ -134,7 +134,6 @@ function credentialFreeLocatorFields(
 
 /** The sftp connection fields held beyond the locator's expansion. */
 const SFTP_HELD_CONNECTION_FIELDS = [
-  "proxy",
   "providerOptions",
 ] as const satisfies ReadonlyArray<keyof SFTPConnectionConfig>;
 
@@ -347,7 +346,6 @@ function sftpFileReadableValues(
       "connection.server.provision.auth",
       server.provision?.auth,
     ),
-    ...httpAuthValues("connection.proxy.auth", connection.proxy?.auth),
     ...providerOptionValues(
       "connection.provider_options",
       connection.providerOptions ?? {},
