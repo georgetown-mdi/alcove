@@ -83,7 +83,7 @@ export function applyCommand(paths: {
  * (`termsDeltaSections`). Every name and value in `delta` is the partner's and
  * is escaped here.
  */
-function displayTermsDelta(
+export function displayTermsDelta(
   emit: ConsentSurfaceSink,
   heading: string,
   delta: TermsDelta,

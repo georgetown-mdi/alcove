@@ -5,6 +5,8 @@ import type { Argv, Arguments } from "yargs";
 
 import {
   assertTermsRunnable,
+  changedPartnerBoundTerms,
+  compareTerms,
   decodeTermsUpdate,
   disclosedColumnNames,
   keepFirstPartyLinesWithOperatorText,
@@ -13,22 +15,27 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   redactAndSanitizeForDisplay,
+  ruleSetCitation,
   stripInvitationWhitespace,
+  termsDeltaIsEmpty,
   TermsUpdateRefusedError,
   UsageError,
 } from "@alcove/core";
-import type { ExchangeSpec, TermsUpdate } from "@alcove/core";
+import type {
+  ExchangeSpec,
+  LinkageRuleSetReference,
+  LinkageTerms,
+  PartnerBoundTerms,
+  TermsDelta,
+  TermsUpdate,
+} from "@alcove/core";
 
 import {
   deriveAcceptedInvitationTerms,
   termsUpdateWrite,
   type AcceptedInvitationTerms,
 } from "../acceptedTermsRecords";
-import {
-  DEFAULT_CONFIG_PATH,
-  diffLinkageTerms,
-  persistTermsUpdate,
-} from "../config";
+import { DEFAULT_CONFIG_PATH, persistTermsUpdate } from "../config";
 import { expandTilde } from "../fileUtils";
 import {
   consentSurfaceSink,
@@ -46,7 +53,11 @@ import {
   readPartnershipConfig,
   readPartnershipSecret,
 } from "../termsUpdateFiles";
-import { applyCommand, termsProposalPath } from "../termsChange";
+import {
+  applyCommand,
+  displayTermsDelta,
+  termsProposalPath,
+} from "../termsChange";
 import { resolveAtSignRefs } from "../util/atSignRefs";
 import { runOrExit } from "../util/exit";
 import { assertNoUnknownOptions, singleValue } from "../util/flags";
@@ -194,12 +205,10 @@ function refusalOf(
 function columnLines(
   label: string,
   columns: ReadonlyArray<string> | undefined,
+  notStated: string,
 ): string[] {
   if (columns === undefined)
-    return [
-      `    ${label}: not stated -- the next exchange takes whatever columns ` +
-        "your partner sends",
-    ];
+    return [`    ${label}: not stated -- ${notStated}`];
   if (columns.length === 0) return [`    ${label}: (none)`];
   return [
     `    ${label}:`,
@@ -215,68 +224,166 @@ function sameColumns(
   return a.length === b.length && a.every((column, i) => column === b[i]);
 }
 
-/**
- * The linkage-terms fields the update changes, by the name each has in the
- * configuration. The agreed fields come from the reconciliation an acceptance
- * runs over a kept configuration; the two fields each party holds for itself
- * are compared here.
- */
-function changedTermsFields(
-  existing: ExchangeSpec,
-  accepted: AcceptedInvitationTerms,
-): string[] {
-  const fields = diffLinkageTerms(
-    existing.linkageTerms,
-    accepted.linkageTerms,
-  ).conflicts.map((diff) => diff.field);
-  const before = existing.linkageTerms.output;
-  const after = accepted.linkageTerms.output;
-  if (
-    before.expectsOutput !== after.expectsOutput ||
-    before.shareWithPartner !== after.shareWithPartner
-  )
-    fields.push("output");
-  if (
-    existing.expectedPartnerDeduplicate !== accepted.expectedPartnerDeduplicate
-  )
-    fields.push("your partner's deduplicate");
-  return fields;
+const RECEIVE_NOT_STATED =
+  "the next exchange takes whatever columns your partner sends";
+const SEND_NOT_STATED =
+  "the next exchange sends the columns your metadata marks as payload";
+
+/** The citation as the change summary shows it, each value escaped. */
+function ruleSetLine(
+  label: string,
+  ruleSet: LinkageRuleSetReference | undefined,
+): string {
+  if (ruleSet === undefined) return `    ${label}: not stated`;
+  const cite = ({ name, version }: { name: string; version: string }) =>
+    ruleSetCitation(
+      redactAndSanitizeForDisplay(name),
+      redactAndSanitizeForDisplay(version),
+    );
+  return `    ${label}: ${cite(ruleSet.keySet)} over ${cite(ruleSet.fieldSet)}`;
+}
+
+function snakeCase(field: string): string {
+  return field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/** What applying an update changes in the configuration. */
+interface UpdateChanges {
+  delta: TermsDelta;
+  before: LinkageTerms;
+  after: LinkageTerms;
+  /**
+   * The partner-bound terms the write changes, a payload column's
+   * description aside, including the ones the comparison skips.
+   */
+  changedTerms: Array<keyof PartnerBoundTerms>;
+  /**
+   * The partner's `deduplicate` the update records where the configuration
+   * records none, which the comparison does not hold the partner to.
+   */
+  firstPartnerDeduplicate: boolean | undefined;
+  /** Whether nothing the operator consents to changes. */
+  none: boolean;
 }
 
 /**
+ * The update's changes to the configuration: the terms as core compares
+ * them against the partner's, the partner-bound terms the write changes, and
+ * the partner's `deduplicate` this party records. A payload column's
+ * description changes none of them.
+ */
+function updateChanges(
+  existing: ExchangeSpec,
+  update: TermsUpdate,
+  accepted: AcceptedInvitationTerms,
+): UpdateChanges {
+  const { delta } = compareTerms(existing.linkageTerms, update.linkageTerms, {
+    partnerDeduplicate: existing.expectedPartnerDeduplicate,
+  });
+  const changedTerms = changedPartnerBoundTerms(
+    existing.linkageTerms,
+    accepted.linkageTerms,
+  );
+  const firstPartnerDeduplicate =
+    existing.expectedPartnerDeduplicate === undefined
+      ? accepted.expectedPartnerDeduplicate
+      : undefined;
+  return {
+    delta,
+    before: existing.linkageTerms,
+    after: accepted.linkageTerms,
+    changedTerms,
+    firstPartnerDeduplicate,
+    none:
+      termsDeltaIsEmpty(delta) &&
+      changedTerms.length === 0 &&
+      firstPartnerDeduplicate === undefined,
+  };
+}
+
+const columnNames = (
+  columns: ReadonlyArray<{ name: string }> | undefined,
+): string[] | undefined => columns?.map(({ name }) => name);
+
+/**
  * State what the update changes in the configuration, ahead of the terms it
- * adopts: the linkage terms and the columns this party receives are separate
- * lines, so a change to what the partner discloses is never read as part of a
- * terms change.
+ * adopts, in the sections every front end shows a terms change in. A change
+ * the comparison does not show -- a rule-set citation only one side states,
+ * the columns this party sends where the partner states none it receives,
+ * the columns it receives where the configuration lists none -- is stated on
+ * its own lines, and any other changed term by name. A received-column list
+ * the update leaves unstated is shown as before and after lines, not as
+ * columns removed, since the next exchange then takes whatever is sent.
  */
 function displayChanges(
   emit: ConsentSurfaceSink,
   configPath: string,
-  existing: ExchangeSpec,
-  accepted: AcceptedInvitationTerms,
+  changes: UpdateChanges,
 ): void {
-  emit(
+  const { before, after, changedTerms, firstPartnerDeduplicate } = changes;
+  const sendBefore = columnNames(before.payload?.send);
+  const sendAfter = columnNames(after.payload?.send);
+  const receiveBefore = columnNames(before.payload?.receive);
+  const receiveAfter = columnNames(after.payload?.receive);
+  const receiveBecomesUnstated =
+    receiveBefore !== undefined && receiveAfter === undefined;
+  const delta: TermsDelta = receiveBecomesUnstated
+    ? { ...changes.delta, received: undefined }
+    : changes.delta;
+  const showRuleSet =
+    changedTerms.includes("linkageRuleSet") &&
+    (before.linkageRuleSet === undefined || after.linkageRuleSet === undefined);
+  const showSend =
+    delta.sent === undefined && !sameColumns(sendBefore, sendAfter);
+  const showReceive =
+    delta.received === undefined && !sameColumns(receiveBefore, receiveAfter);
+  const shown = new Set<string>([
+    ...(showRuleSet ? ["linkageRuleSet"] : []),
+    ...(showSend || showReceive ? ["payload"] : []),
+  ]);
+  const unnamed = termsDeltaIsEmpty(delta)
+    ? changedTerms.filter((field) => !shown.has(field))
+    : [];
+
+  displayTermsDelta(
+    emit,
     `Changes this update makes to ${redactAndRenderOperatorSuppliedText(
       operatorSuppliedText(configPath),
     )}:`,
+    delta,
   );
-  const fields = changedTermsFields(existing, accepted);
-  emit(
-    fields.length === 0
-      ? "  linkage terms: no change"
-      : `  linkage terms: ${fields.join(", ")} change (the new terms follow)`,
-  );
-  const before = existing.linkageTerms.payload?.receive?.map(
-    ({ name }) => name,
-  );
-  const after = accepted.linkageTerms.payload?.receive?.map(({ name }) => name);
-  if (sameColumns(before, after)) {
-    emit("  columns you will receive: no change");
-    return;
+  if (
+    termsDeltaIsEmpty(delta) &&
+    !showRuleSet &&
+    !showSend &&
+    unnamed.length === 0
+  )
+    emit("  linkage terms: no change");
+  if (unnamed.length > 0)
+    emit(`  other terms that change: ${unnamed.map(snakeCase).join(", ")}`);
+  if (showRuleSet) {
+    emit("  linkage rule set: change");
+    emit(ruleSetLine("before", before.linkageRuleSet));
+    emit(ruleSetLine("after", after.linkageRuleSet));
   }
-  emit("  columns you will receive: change");
-  for (const line of columnLines("before", before)) emit(line);
-  for (const line of columnLines("after", after)) emit(line);
+  if (firstPartnerDeduplicate !== undefined)
+    emit(
+      `  your partner's deduplicate: recorded as ${String(firstPartnerDeduplicate)}`,
+    );
+  if (showSend) {
+    emit("  columns you send: change");
+    for (const line of columnLines("before", sendBefore, SEND_NOT_STATED))
+      emit(line);
+    for (const line of columnLines("after", sendAfter, SEND_NOT_STATED))
+      emit(line);
+  }
+  if (showReceive) {
+    emit("  columns you will receive: change");
+    for (const line of columnLines("before", receiveBefore, RECEIVE_NOT_STATED))
+      emit(line);
+    for (const line of columnLines("after", receiveAfter, RECEIVE_NOT_STATED))
+      emit(line);
+  }
 }
 
 export async function handler(argv: Arguments): Promise<void> {
@@ -343,12 +450,27 @@ export async function handler(argv: Arguments): Promise<void> {
       assertTermsRunnable(accepted.linkageTerms, existing);
       const write = termsUpdateWrite(accepted);
 
+      const changes = updateChanges(existing, update, accepted);
+      if (changes.none) {
+        persistTermsUpdate(configPath, write);
+        log.info(
+          "the terms update changes no linkage term other than the date or " +
+            "a payload column description, and states the deduplicate " +
+            "already recorded for your partner, so it was applied to " +
+            `${redactAndRenderOperatorSuppliedText(
+              operatorSuppliedText(configPath),
+            )} without asking. Your next 'alcove exchange' with this ` +
+            "partner runs on the same terms.",
+        );
+        return;
+      }
+
       const consentSurface = consentSurfaceSink({
         log,
         logFile,
         toPromptStream: !consentToTerms,
       });
-      displayChanges(consentSurface, configPath, existing, accepted);
+      displayChanges(consentSurface, configPath, changes);
       displayInvitation({
         token: update,
         ownOutboundSend:

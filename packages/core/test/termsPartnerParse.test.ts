@@ -52,6 +52,14 @@ test("a quoted value is cut short so the refusal stays on one line", () => {
   expect(message).not.toContain("\n");
 });
 
+test("a quoted value doubles its delimiter and replaces its control characters", () => {
+  const err = refusalOf({ ...identifierTerms, version: 'a"b\tc' });
+  expect(err).toBeInstanceOf(OperatorConfigError);
+  const message = (err as Error).message;
+  expect(message).toContain('(the value is "a""b');
+  expect(message).not.toContain("\t");
+});
+
 test("valid terms still prepare", () => {
   const prepared = prepareForExchange(
     {

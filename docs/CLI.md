@@ -656,9 +656,11 @@ Each refusal names the check that refused the update, changes nothing, and exits
 
 An update that passes is a consent event, shown the way an [offline acceptance](#offline-acceptance) shows an invitation:
 
-1. **What changes.** A first block names the linkage-terms fields the update changes, then, on its own line, whether the columns you will receive from your partner change, listing them before and after.
+1. **What changes.** A first block shows the change in the sections an exchange shows [a change to your partner's terms](#when-your-partners-terms-change) in: the columns your partner now sends you or no longer sends you, the columns you now send or no longer send, your partner's `deduplicate`, and each other term that differs. A change an exchange does not hold your partner to is shown on its own lines, before and after: a linkage rule set only one of you cites, the columns you send where the update states none your partner receives, and the columns you receive where your configuration lists none.
 2. **The terms.** The same outline an acceptance shows follows, leading with the columns you will send. Your partner is shown as the inviting party.
 3. **The question.** You are asked to confirm. Declining leaves the configuration exactly as it was; confirming and declining both exit 0.
+
+An update is applied without being shown or asked about, and the command exits 0, only when it changes nothing in `linkage_terms` but the `date` or a payload column `description`, and states the `deduplicate` already recorded for your partner in `expected_partner_deduplicate`. An update that only rewords a column description is applied this way.
 
 `--consent-to-terms` records your consent to the update's terms in advance and skips the question, so `apply` can run unattended or in a script -- where there is no terminal, the question otherwise reads end-of-file and declines. The checks above still run and refuse as they do without it; an update that passes is applied and the command exits 0. Nothing is asked, so the change and the terms are diagnostic output on the routing you chose, as for [an acceptance without the prompt](#accepting-without-the-prompt). Review the update before using it. The [console](CONSOLE.md#when-your-partners-terms-change) runs `alcove apply` this way when you choose Apply, having shown you the change itself.
 

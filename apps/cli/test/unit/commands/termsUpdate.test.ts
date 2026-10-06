@@ -373,21 +373,22 @@ describe("alcove apply", () => {
     expect(readSpec(partnership.b.config).connection).toEqual(connectionBefore);
   });
 
-  test("states a disclosed-column change on its own line, apart from the terms", async () => {
+  test("states a disclosed-column change in its own section, apart from the other terms", async () => {
     editAgencyA();
     const update = await runUpdate();
     promptConfirmMock.mockResolvedValue(false);
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
-    expect(lines).toContain("  columns you will receive: change");
+    expect(lines).toContain("  columns your partner now sends you:");
+    expect(lines).toContain("    county");
+    expect(lines).toContain("  other terms that differ:");
     expect(
-      lines.some((line) => line.startsWith("  linkage terms: linkage_keys")),
+      lines.some((line) => line.startsWith("    linkage keys do not match")),
     ).toBe(true);
-    expect(lines).toContain("      county");
   });
 
-  test("a disclosure-only update reports a payload change of the linkage terms", async () => {
+  test("a disclosure-only update states the column and no other term", async () => {
     saveConfig(partnership.a.config, {
       ...readSpec(partnership.a.config),
       metadata: metadataWith("notes", "county"),
@@ -397,10 +398,131 @@ describe("alcove apply", () => {
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
-    expect(lines).toContain(
-      "  linkage terms: payload change (the new terms follow)",
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).toContain("  columns your partner now sends you:");
+    expect(lines).toContain("    county");
+    expect(lines).not.toContain("  other terms that differ:");
+  });
+
+  test("a description-only update is applied without asking", async () => {
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: {
+        ...partnership.aTerms,
+        payload: {
+          send: [{ name: "notes", description: "case notes, reworded" }],
+        },
+      },
+    });
+    const update = await runUpdate();
+
+    const { exit, stderr } = await runApply(update);
+    expect(exit).toBeUndefined();
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(stderr).toContain("changes no linkage term");
+    expect(stderr).not.toContain("Changes this update makes");
+    expect(
+      readSpec(partnership.b.config).linkageTerms.payload?.receive,
+    ).toEqual([{ name: "notes", description: "case notes, reworded" }]);
+  });
+
+  test("an update dropping a rule-set citation only this party states asks", async () => {
+    expect(readSpec(partnership.b.config).linkageTerms.linkageRuleSet).toEqual(
+      partnership.aTerms.linkageRuleSet,
     );
+    const { linkageRuleSet: _ruleSet, ...uncited } = partnership.aTerms;
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: uncited,
+    });
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(false);
+    const before = fs.readFileSync(partnership.b.config, "utf8");
+
+    const { exit, stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(exit).toBeUndefined();
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).toContain("  linkage rule set: change");
+    expect(lines).toContain("    after: not stated");
+    expect(lines).not.toContain("  linkage terms: no change");
+    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test("an update stating no columns the partner receives asks before dropping this party's send", async () => {
+    const spec = readSpec(partnership.b.config);
+    saveConfig(partnership.b.config, {
+      ...spec,
+      linkageTerms: {
+        ...spec.linkageTerms,
+        payload: { ...spec.linkageTerms.payload, send: [{ name: "program" }] },
+      },
+    });
+    const update = await runUpdate();
+    expect(
+      (await decodeTermsUpdate(update, partnership.secret)).linkageTerms.payload
+        ?.receive,
+    ).toBeUndefined();
+    promptConfirmMock.mockResolvedValue(false);
+
+    const { stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).toContain("  columns you send: change");
+    expect(lines).toContain("      program");
+    expect(lines.some((line) => line.startsWith("    after: not stated"))).toBe(
+      true,
+    );
+  });
+
+  test("an update filling the columns a configuration lists none of asks", async () => {
+    const spec = readSpec(partnership.b.config);
+    const { payload: _payload, ...withoutPayload } = spec.linkageTerms;
+    saveConfig(partnership.b.config, { ...spec, linkageTerms: withoutPayload });
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(false);
+
+    const { stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).toContain("  linkage terms: no change");
     expect(lines).toContain("  columns you will receive: change");
+    expect(lines).toContain("      notes");
+  });
+
+  test("an update leaving the received columns unstated shows before and after, not columns removed", async () => {
+    const { metadata: _metadata, ...withoutMetadata } = readSpec(
+      partnership.a.config,
+    );
+    saveConfig(partnership.a.config, withoutMetadata);
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(false);
+
+    const { stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).not.toContain("  columns your partner no longer sends you:");
+    expect(lines).toContain("  columns you will receive: change");
+    expect(lines).toContain("    before:");
+    expect(lines).toContain("      notes");
+    expect(lines).toContain(
+      "    after: not stated -- the next exchange takes whatever columns your partner sends",
+    );
+  });
+
+  test("an update recording the partner's deduplicate for the first time asks", async () => {
+    const { expectedPartnerDeduplicate: _unused, ...unrecorded } = readSpec(
+      partnership.b.config,
+    );
+    saveConfig(partnership.b.config, unrecorded);
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue(false);
+
+    const { stderr } = await runApply(update);
+    const lines = stderr.split("\n");
+    expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+    expect(lines).toContain("  linkage terms: no change");
+    expect(lines).toContain("  your partner's deduplicate: recorded as false");
   });
 
   test("applies terms whose payload.send differs from what this party's metadata transmits", async () => {

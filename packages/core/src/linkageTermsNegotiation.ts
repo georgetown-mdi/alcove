@@ -412,6 +412,70 @@ export interface TermsDelta {
   otherTerms: string[];
 }
 
+/**
+ * Whether `delta` holds no difference {@link compareTerms} reports. A payload
+ * column's `description` never makes one, since columns are compared by name.
+ * The comparison skips a `linkageRuleSet` only one side states and the sent
+ * columns where the partner states no `payload.receive`, so an empty delta
+ * does not mean adopting the partner's terms changes nothing:
+ * {@link changedPartnerBoundTerms} answers that.
+ */
+export function termsDeltaIsEmpty(delta: TermsDelta): boolean {
+  return (
+    delta.received === undefined &&
+    delta.sent === undefined &&
+    delta.partnerDeduplicate === undefined &&
+    delta.otherTerms.length === 0
+  );
+}
+
+function withoutColumnDescriptions(
+  columns: ReadonlyArray<PayloadColumn> | undefined,
+): PayloadColumn[] | undefined {
+  return columns?.map(({ name }) => ({ name }));
+}
+
+/**
+ * The fields of {@link partnerBoundTerms} on which `before` and `after`
+ * differ, a payload column's `description` aside, each compared by canonical
+ * form. A field one side leaves unstated differs from a stated one, and a
+ * field that cannot be canonically encoded counts as differing.
+ */
+export function changedPartnerBoundTerms(
+  before: LinkageTerms,
+  after: LinkageTerms,
+): Array<keyof PartnerBoundTerms> {
+  const comparable = (terms: LinkageTerms): Record<string, unknown> => {
+    const bound: Record<string, unknown> = { ...partnerBoundTerms(terms) };
+    if (terms.payload !== undefined) {
+      const payload: Payload = {};
+      const send = withoutColumnDescriptions(terms.payload.send);
+      const receive = withoutColumnDescriptions(terms.payload.receive);
+      if (send !== undefined) payload.send = send;
+      if (receive !== undefined) payload.receive = receive;
+      bound["payload"] = payload;
+    }
+    return bound;
+  };
+  const a = comparable(before);
+  const b = comparable(after);
+  const fields = new Set([...Object.keys(a), ...Object.keys(b)]);
+  return [...fields]
+    .filter((field) => {
+      const valueA = a[field];
+      const valueB = b[field];
+      if (valueA === undefined || valueB === undefined)
+        return valueA !== valueB;
+      try {
+        return canonicalString(valueA) !== canonicalString(valueB);
+      } catch (err) {
+        if (err instanceof CanonicalEncodingError) return true;
+        throw err;
+      }
+    })
+    .sort() as Array<keyof PartnerBoundTerms>;
+}
+
 interface CompatibilityResult {
   errors: string[];
   warnings: string[];
