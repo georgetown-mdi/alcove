@@ -24,7 +24,13 @@ import { afterAll, describe, expect, it } from "vitest";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const WORKSPACES = ["packages/core", "apps/cli"];
-const COPIED = ["package.json", "tsconfig.json", "rollup.config.ts", "src"];
+const COPIED = [
+  "package.json",
+  "tsconfig.json",
+  "tsconfig.rollup.json",
+  "rollup.config.ts",
+  "src",
+];
 const STEP_TIMEOUT_MS = 180_000;
 
 // An incremental compile of rollup.config.ts through the plugin, the way a

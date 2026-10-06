@@ -8,20 +8,6 @@ import typescript from "@rollup/plugin-typescript";
 const require = createRequire(import.meta.url);
 const pkg = require("./package.json");
 
-// An incremental compile skips emitting what a leftover
-// dist/tsconfig.tsbuildinfo lists as built, and rollup then parses raw
-// TypeScript; with no declaration output the compile writes nothing into dist.
-// The build script's --configPlugin passes the same options for this file.
-// See docs/notes/core-dist-cache-buildinfo.md.
-const NON_INCREMENTAL = {
-  compilerOptions: {
-    composite: false,
-    incremental: false,
-    declaration: false,
-    declarationMap: false,
-  },
-};
-
 // Packages bundled into the output rather than kept as peer dependencies.
 // @openmined/psi.js is always bundled (WASM, no npm-installable form).
 // canonicalize is always bundled: Node 26 `require`s it as a module namespace,
@@ -60,7 +46,8 @@ export default defineConfig([
     // resolve() lets rollup inline the ALWAYS_BUNDLED packages (currently
     // canonicalize) from node_modules; everything else is held external by the
     // `external` predicate above, so only the bundled set is pulled in.
-    plugins: [resolve(), typescript(NON_INCREMENTAL)],
+    // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
+    plugins: [resolve(), typescript({ tsconfig: "./tsconfig.rollup.json" })],
     // `[name]` is the input key above, so the entry names have to stay `core`,
     // `testing` and `untrusted-text`: package.json points main, module, and
     // every `exports` condition at dist/core.*, dist/testing.* and

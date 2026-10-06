@@ -27,9 +27,9 @@ RUN --mount=type=cache,target=/root/.npm \
   npm ci -w packages/core -w packages/peerjs-broker -w apps/cli -w apps/web
 
 COPY tsconfig.base.json tsconfig.json ./
-COPY packages/core/*.ts packages/core/tsconfig.json packages/core/
+COPY packages/core/*.ts packages/core/tsconfig.json packages/core/tsconfig.rollup.json packages/core/
 COPY packages/core/src packages/core/src/
-COPY apps/cli/tsconfig.json apps/cli/*.ts apps/cli/
+COPY apps/cli/tsconfig.json apps/cli/tsconfig.rollup.json apps/cli/*.ts apps/cli/
 COPY apps/cli/src apps/cli/src/
 # @alcove/core must be built before the web build: apps/web consumes it from its
 # built dist/ (a file: workspace dependency), so build core and the CLI first.

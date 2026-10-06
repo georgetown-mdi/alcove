@@ -9,20 +9,6 @@ import typescript from "@rollup/plugin-typescript";
 const require = createRequire(import.meta.url);
 const pkg = require("./package.json");
 
-// An incremental compile skips emitting what a leftover
-// dist/tsconfig.tsbuildinfo lists as built, and rollup then parses raw
-// TypeScript; with no declaration output the compile writes nothing into dist.
-// The build script's --configPlugin passes the same options for this file.
-// See docs/notes/core-dist-cache-buildinfo.md.
-const NON_INCREMENTAL = {
-  compilerOptions: {
-    composite: false,
-    incremental: false,
-    declaration: false,
-    declarationMap: false,
-  },
-};
-
 // Keep every dependency external -- and any subpath of one, so the native PSI addon
 // entry (@openmined/psi.js/psi_native_node.js) is resolved at runtime rather than
 // bundled (its prebuilds/ are located relative to the installed package, which
@@ -39,10 +25,8 @@ const plugins = () => [
   }),
   commonjs(),
   json(),
-  typescript({
-    tsconfig: "./tsconfig.json",
-    ...NON_INCREMENTAL,
-  }),
+  // tsconfig.rollup.json: see docs/notes/core-dist-cache-buildinfo.md.
+  typescript({ tsconfig: "./tsconfig.rollup.json" }),
 ];
 
 export default defineConfig([
