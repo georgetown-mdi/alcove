@@ -784,7 +784,7 @@ test("filedrop: a shared-secret mismatch aborts the handshake, persisting no con
     advisories.filter((message) =>
       message.includes(
         "Authentication failed, and a retry with this key file fails the " +
-          "same way: do not retry.",
+          "same way. Ask your partner for a new invitation",
       ),
     ),
   ).toHaveLength(authenticationFailures);
