@@ -4,18 +4,24 @@ import PSI from "@openmined/psi.js";
 
 import { PSIParticipant } from "../../src/psi/participant";
 import {
+  InProcessPsiEngine,
+  type InProcessPsiEngineOptions,
+  type PsiEngineMode,
+} from "../../src/psi/psiEngine";
+import {
   PsiOperationStoppedError,
   WorkerPsiEngine,
   servePsiWorker,
   type PsiWorkerHandle,
+  type PsiWorkerInit,
   type PsiWorkerRequest,
   type PsiWorkerResponse,
 } from "../../src/psi/psiWorkerEngine";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
-// A stop requested while an operation runs takes effect at the next chunk
-// boundary, so at most one more chunk runs after the request: the worker is
-// never torn down inside a library call.
+// A stop requested while an operation runs takes effect at the next chunk or
+// match slice boundary, so at most one more library call runs after the
+// request: the worker is never torn down inside a library call.
 
 const psiLibrary = await PSI();
 
@@ -25,7 +31,10 @@ const VALUES = Array.from({ length: 100 }, (_, index) => `v-${index}`);
 // A WorkerPsiEngine over an in-process dispatcher, cloning each message as a
 // real worker boundary does; the shared stop flag survives the clone as shared
 // memory, as it does across worker_threads.
-function chunkingWorkerEngine(): {
+function inProcessWorkerEngine(
+  init: PsiWorkerInit,
+  options: InProcessPsiEngineOptions,
+): {
   engine: WorkerPsiEngine;
   posted: Array<PsiWorkerResponse>;
   terminated: () => number;
@@ -35,13 +44,13 @@ function chunkingWorkerEngine(): {
   let deliver: (response: PsiWorkerResponse) => void = () => {};
   const dispatch = servePsiWorker(
     psiLibrary,
-    { role: "starter", id: "server", mode: "identifier-revealing" },
+    init,
     (response) => {
       const cloned = structuredClone(response);
       posted.push(cloned);
       deliver(cloned);
     },
-    { chunkElements: CHUNK_ELEMENTS },
+    options,
   );
   const handle: PsiWorkerHandle = {
     postMessage: (request) => dispatch(structuredClone(request)),
@@ -57,6 +66,13 @@ function chunkingWorkerEngine(): {
     posted,
     terminated: () => terminateCalls,
   };
+}
+
+function chunkingWorkerEngine(): ReturnType<typeof inProcessWorkerEngine> {
+  return inProcessWorkerEngine(
+    { role: "starter", id: "server", mode: "identifier-revealing" },
+    { chunkElements: CHUNK_ELEMENTS },
+  );
 }
 
 test("a stop requested at the first chunk boundary ends the operation at the next one", async () => {
@@ -147,5 +163,154 @@ test("a stop flag once set is not cleared by a later request", async () => {
     expect(Atomics.load(posted[1]!.stopFlag!, 0)).not.toBe(0);
   } finally {
     engine.dispose();
+  }
+});
+
+// Five slices of the partner's 100-element setup.
+const SLICE_ELEMENTS = 20;
+const JOINER_VALUES = VALUES.map((value, index) =>
+  index % 2 === 0 ? value : `joiner-only-${index}`,
+);
+const SHARED_INDICES = JOINER_VALUES.flatMap((_, index) =>
+  index % 2 === 0 ? [index] : [],
+);
+const MODES: ReadonlyArray<PsiEngineMode> = [
+  "identifier-revealing",
+  "count-only",
+];
+
+// The partner's setup and its response to the request `createRequest` makes,
+// from a starter in `mode`.
+async function matchFrames(
+  mode: PsiEngineMode,
+  createRequest: (values: ReadonlyArray<string>) => Promise<Uint8Array>,
+): Promise<{ setup: Uint8Array; response: Uint8Array }> {
+  const starter = new InProcessPsiEngine(psiLibrary, "starter", "server", mode);
+  try {
+    const { setup } = await starter.createServerSetup(VALUES);
+    const response = await starter.processClientRequest(
+      await createRequest(JOINER_VALUES),
+    );
+    return { setup, response };
+  } finally {
+    starter.dispose();
+  }
+}
+
+// A joiner's worker engine in `mode` and the match it runs on the partner's
+// frames, started by `match()`.
+async function joinerMatch(
+  mode: PsiEngineMode,
+  options: InProcessPsiEngineOptions,
+): Promise<
+  ReturnType<typeof inProcessWorkerEngine> & { match: () => Promise<unknown> }
+> {
+  const joiner = inProcessWorkerEngine(
+    { role: "joiner", id: "client", mode },
+    options,
+  );
+  const { setup, response } = await matchFrames(mode, (values) =>
+    joiner.engine.createClientRequest(values),
+  );
+  await joiner.engine.receiveServerSetup(setup);
+  const match = () =>
+    mode === "count-only"
+      ? joiner.engine.computeIntersectionCardinality(response)
+      : joiner.engine.computeAssociationTable(response);
+  return { ...joiner, match };
+}
+
+test.each(MODES)(
+  "a stop requested at the first slice of a sliced %s match ends it at the next slice, and nothing of the match leaves the worker",
+  async (mode) => {
+    const { engine, posted, match } = await joinerMatch(mode, {
+      setupSliceElements: SLICE_ELEMENTS,
+    });
+    const seen: Array<number> = [];
+    engine.observeProcessedElements((processed) => {
+      seen.push(processed);
+      expect(engine.stopInFlight()).toBe(true);
+    });
+    const before = posted.length;
+    try {
+      await expect(match()).rejects.toBeInstanceOf(PsiOperationStoppedError);
+    } finally {
+      engine.dispose();
+    }
+    expect(seen).toStrictEqual([SLICE_ELEMENTS]);
+    const matchId = posted[before]!.id;
+    expect(posted.slice(before)).toStrictEqual([
+      { id: matchId, processed: SLICE_ELEMENTS },
+      {
+        id: matchId,
+        ok: false,
+        error: new PsiOperationStoppedError().message,
+        libraryFailure: false,
+        stopped: true,
+      },
+    ]);
+  },
+);
+
+test.each(MODES)(
+  "a stop requested during a one-call %s match takes effect only after the match finishes",
+  async (mode) => {
+    const { engine, posted, match } = await joinerMatch(mode, {});
+    const before = posted.length;
+    let result: unknown;
+    try {
+      const matching = match();
+      expect(engine.stopInFlight()).toBe(true);
+      result = await matching;
+    } finally {
+      engine.dispose();
+    }
+    const matched =
+      mode === "count-only"
+        ? result
+        : [...(result as [Array<number>, Array<number>])[0]].sort(
+            (a, b) => a - b,
+          );
+    expect(matched).toStrictEqual(
+      mode === "count-only" ? SHARED_INDICES.length : SHARED_INDICES,
+    );
+    expect(posted.slice(before)).toStrictEqual([
+      { id: posted[before]!.id, ok: true, result },
+    ]);
+  },
+);
+
+test("a partner lost at the first slice of a participant's sliced match fails it with the loss", async () => {
+  const { engine } = inProcessWorkerEngine(
+    { role: "joiner", id: "client", mode: "identifier-revealing" },
+    { setupSliceElements: SLICE_ELEMENTS },
+  );
+  const participant = new PSIParticipant(
+    "client",
+    psiLibrary,
+    { role: "joiner", verbose: -1 },
+    UNBOUNDED_PSI_ELEMENTS,
+    engine,
+  );
+  const partnerLost = new Error("partner lost");
+  let lost = false;
+  participant.stopOperationsWhen(() => (lost ? partnerLost : undefined));
+  try {
+    const { setup, response } = await matchFrames(
+      "identifier-revealing",
+      (values) => participant.createClientRequest(values),
+    );
+    const seen: Array<number> = [];
+    engine.observeProcessedElements((processed) => {
+      seen.push(processed);
+      lost = true;
+      expect(participant.stopOperationInFlight()).toBe(true);
+    });
+    await expect(participant.computeValueMatches(setup, response)).rejects.toBe(
+      partnerLost,
+    );
+    expect(seen).toStrictEqual([SLICE_ELEMENTS]);
+  } finally {
+    participant.dispose();
   }
 });
