@@ -14,7 +14,7 @@ export type SendSetStep = 2 | 3;
  * decided. */
 export function preRunTrustFooter(sendSetStep: SendSetStep): string {
   return (
-    "PII for linkage is encrypted locally before leaving your machine. " +
+    "The fields you match on are encrypted on your machine before they leave it. " +
     "Your partner receives only the fields listed under 'you will send' " +
     `(step ${sendSetStep} above) and only for clients who are in common.`
   );

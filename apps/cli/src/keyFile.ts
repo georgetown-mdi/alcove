@@ -270,7 +270,7 @@ function alreadyProvisionedError(keyFilePath: string): UsageError {
 /** What {@link alreadyProvisionedError} states behind the key file's path. */
 const ALREADY_PROVISIONED_REMEDY =
   "because one already exists: it is already provisioned. After the first " +
-  "exchange the shared secret rotates, so the original invitation code " +
+  "exchange the shared secret rotates, so the original invitation " +
   "can no longer establish a valid key. To re-provision, remove the file. " +
   `${NEW_INVITATION_REMEDY} Or drop --invitation to run with the ` +
   "existing key.";

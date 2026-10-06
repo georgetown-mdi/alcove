@@ -648,7 +648,7 @@ function savedAddressRefusedFailure(
 ): ManagedRunFailureAlert {
   return {
     kind: "saved-address-refused",
-    title: "The saved signaling server address cannot be used",
+    title: "The saved coordination server address cannot be used",
     message:
       `${error.refusal} The run stopped before connecting, so your partner ` +
       "was not contacted and nothing left this device. Running it again " +

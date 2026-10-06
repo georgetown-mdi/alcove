@@ -373,7 +373,7 @@ interface JobView {
    * receipt from one whose receipt has not appeared, exactly as
    * {@link logRequested} does for the log. */
   receiptRequested: boolean;
-  /** Whether this run wrote a dual-signed receipt and the file is on disk. */
+  /** Whether this run wrote a signed receipt and the file is on disk. */
   receiptAvailable: boolean;
   /** Whether the run reported that its transport close left this party's
    * protocol files in the shared exchange directory. False until the child's

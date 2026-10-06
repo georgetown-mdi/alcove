@@ -991,8 +991,8 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
 
   test("a placeholder shared directory is one to set", () => {
     expect(handoffCaveats(handoffWith("filedrop", {}))).toEqual([
-      "The shared-directory path is a placeholder -- set it to the synced " +
-        "shared directory on the machine that runs the schedule.",
+      "The shared folder path is a placeholder. Set it to the shared " +
+        "folder on the machine that runs the schedule.",
     ]);
   });
 
@@ -1000,9 +1000,9 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
     expect(
       handoffCaveats(handoffWith("filedrop", { sharedDirectory: true })),
     ).toEqual([
-      "The shared-directory path is the one in the configuration you opened " +
-        "-- check that the synced shared directory is at that path on the " +
-        "machine that runs the schedule.",
+      "The shared folder path is the one in the configuration you opened. " +
+        "Check that the shared folder is at that path on the machine that " +
+        "runs the schedule.",
     ]);
   });
 

@@ -665,7 +665,7 @@ test("rejects a string that is too short to contain a checksum", async () => {
 test("rejects invalid base64url characters in the body", async () => {
   // '!' is not a valid base64url character; pad to exceed CHECKSUM_CHARS
   await expect(decodeInvitation("!!!!!!!!!!!!")).rejects.toThrow(
-    "not valid base64url",
+    "characters an invitation cannot hold",
   );
 });
 
@@ -675,7 +675,7 @@ test("rejects an out-of-alphabet body character before the checksum comparison",
   const encoded = await encodeInvitation(baseToken);
   const planted = encoded.slice(0, 4) + "!" + encoded.slice(5);
   await expect(decodeInvitation(planted)).rejects.toThrow(
-    "invitation string is not valid base64url",
+    "the invitation contains characters an invitation cannot hold",
   );
 });
 
@@ -683,7 +683,7 @@ test("rejects a body whose length is not a valid base64 length", async () => {
   // Seven characters: a one-character body ahead of the six-character checksum
   // slot, a length no base64 encoding produces.
   await expect(decodeInvitation("AAAAAAA")).rejects.toThrow(
-    "invitation string is not valid base64url",
+    "the invitation contains characters an invitation cannot hold",
   );
 });
 
@@ -695,7 +695,7 @@ test("rejects a body holding the whitespace a wrapped paste leaves", async () =>
   const encoded = await encodeInvitation(baseToken);
   const wrapped = `${encoded.slice(0, 20)}\n  ${encoded.slice(20)}`;
   await expect(decodeInvitation(wrapped)).rejects.toThrow(
-    "invitation string is not valid base64url",
+    "the invitation contains characters an invitation cannot hold",
   );
   const decoded = await decodeInvitation(stripInvitationWhitespace(wrapped));
   expect(decoded.sharedSecret).toBe(baseToken.sharedSecret);
@@ -820,7 +820,7 @@ test("decodeInvitation swallows the base64url decode error, throwing only the fi
   const err = await decodeInvitation(encoded).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(Error);
   expect((err as Error).message).toBe(
-    "invitation string is not valid base64url",
+    "the invitation contains characters an invitation cannot hold",
   );
 });
 
@@ -1336,7 +1336,7 @@ test("the CLI route renders a rejected endpoint key escaped exactly once", async
     (e: unknown) => e,
   );
   const rendered = sanitizeErrorForDisplay(
-    new Error(`invalid invitation string: ${rawDecodeErrorDescription(err)}`),
+    new Error(`invalid invitation: ${rawDecodeErrorDescription(err)}`),
   );
   expect(rendered).toContain(
     `Remove unexpected field(s): ${HOSTILE_ENDPOINT_KEY_ESCAPED_ONCE}`,
@@ -1397,7 +1397,7 @@ test("a long key in the issue path leaves the reason on both renders", async () 
   expect(web.length).toBeLessThan(COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH);
 
   const rendered = sanitizeErrorForDisplay(
-    new Error(`invalid invitation string: ${rawDecodeErrorDescription(err)}`),
+    new Error(`invalid invitation: ${rawDecodeErrorDescription(err)}`),
   );
   expect(rendered).toContain(": Invalid key in record");
   expect(rendered.length).toBeLessThan(COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH);
@@ -1416,7 +1416,7 @@ test("a long rejected endpoint key renders within one value's budget", async () 
   });
   const err = await decodeInvitation(encoded).catch((e: unknown) => e);
   const rendered = sanitizeErrorForDisplay(
-    new Error(`invalid invitation string: ${rawDecodeErrorDescription(err)}`),
+    new Error(`invalid invitation: ${rawDecodeErrorDescription(err)}`),
   );
   const listed = "Remove unexpected field(s): ";
   const shownKeys = rendered.slice(rendered.indexOf(listed) + listed.length);
@@ -1447,7 +1447,7 @@ test("the locator rejection's guidance survives the display boundary whole", asy
     (e: unknown) => e,
   );
   const rendered = sanitizeErrorForDisplay(
-    new Error(`invalid invitation string: ${rawDecodeErrorDescription(err)}`),
+    new Error(`invalid invitation: ${rawDecodeErrorDescription(err)}`),
   );
   expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
   expect(rendered).toContain("a connection endpoint may hold only a");

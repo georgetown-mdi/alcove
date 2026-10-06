@@ -70,7 +70,7 @@ describe("connectionRows", () => {
   test("names the channel and the credential-free rendezvous endpoint", () => {
     const rows = connectionRows(exchangeFile());
     const channel = rows.find((row) => row.label === "Channel");
-    const server = rows.find((row) => row.label === "Rendezvous server");
+    const server = rows.find((row) => row.label === "Coordination server");
     expect(channel?.value).toBe("Live (browser)");
     expect(server?.value).toBe("signaling.example.org:3000/api/");
     // No credential field is representable in the stored document, so none shows.
@@ -179,7 +179,7 @@ describe("the configuration rows escape what somebody else authored", () => {
         linkageTerms,
       }),
     );
-    const server = rows.find((row) => row.label === "Rendezvous server");
+    const server = rows.find((row) => row.label === "Coordination server");
     expect(server?.value).not.toContain(RLO);
     expect(server?.value).not.toContain(ZWJ);
     // Both halves survive: the path is not what a padded host spends, because

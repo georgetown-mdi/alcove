@@ -87,6 +87,14 @@ const FUZZY_LABELS: Record<FuzzyComparison, string> = {
   day_month_swaps: "Day and month exchanged",
 };
 
+/** What each choice matches, stated under the control once one is chosen. */
+const FUZZY_DESCRIPTIONS: Record<FuzzyComparison, string> = {
+  transpositions: "Also match values with two characters swapped",
+  edit_distances: "Also match values one typo away",
+  adjacent_years: "Also match dates one year away",
+  day_month_swaps: "Also match dates with the day and month swapped",
+};
+
 /** The control's options, in the order the labels above declare. */
 const FUZZY_OPTIONS: Array<{ value: FuzzyComparison; label: string }> = (
   Object.keys(FUZZY_LABELS) as Array<FuzzyComparison>
@@ -553,7 +561,14 @@ export function ExpertKeyEditor({
                                     element.generateFuzzyComparisons ?? null
                                   }
                                   clearable
-                                  description="Expand this value into near-matches before hashing"
+                                  description={
+                                    element.generateFuzzyComparisons ===
+                                    undefined
+                                      ? "Also match values close to this one, such as one typo away"
+                                      : FUZZY_DESCRIPTIONS[
+                                          element.generateFuzzyComparisons
+                                        ]
+                                  }
                                   onChange={(value) =>
                                     editElement(
                                       keyIndex,

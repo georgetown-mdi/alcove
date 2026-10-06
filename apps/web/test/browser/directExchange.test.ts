@@ -1733,7 +1733,7 @@ describe("console lobby direct-exchange card", () => {
   test("offers a third card that links to the direct-exchange route", async () => {
     stubJobApi();
     app.render(createElement(Lobby));
-    const link = page.getByRole("link", { name: "Run a direct exchange" });
+    const link = page.getByRole("link", { name: "Run a quick exchange" });
     await expect.element(link).toBeInTheDocument();
     await expect.element(link).toHaveAttribute("href", "/direct");
   });

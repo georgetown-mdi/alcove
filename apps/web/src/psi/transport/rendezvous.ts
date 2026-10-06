@@ -80,9 +80,9 @@ export const BROKER_REGISTRATION_TIMEOUT_MS = 30_000;
 export function brokerRegistrationTimedOutMessage(timeoutMs: number): string {
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));
   return (
-    `The signaling server did not accept the connection within ` +
+    `The coordination server did not accept the connection within ` +
     `${seconds} second${seconds === 1 ? "" : "s"}. Check the network ` +
-    `connection and try again; if it keeps happening, the signaling server ` +
+    `connection and try again; if it keeps happening, the coordination server ` +
     `may be down.`
   );
 }
@@ -314,7 +314,7 @@ function waitForPeerOpen(
     const onError = (err: Error) => settle(() => reject(err));
     const onAbort = () =>
       settle(() =>
-        reject(new Error("connecting to the signaling server was aborted")),
+        reject(new Error("connecting to the coordination server was aborted")),
       );
     const timer = setTimeout(() => {
       settle(() =>
@@ -377,7 +377,7 @@ export async function listenAsInviter(
   // derivation above so an abort during it is still caught: no peer is
   // constructed and no derived id registered when the caller already aborted.
   if (signal?.aborted)
-    throw new Error("connecting to the signaling server was aborted");
+    throw new Error("connecting to the coordination server was aborted");
   // The derived id is a rendezvous address that correlates exchanges, so keep it
   // out of default (info) logs; show it only at debug for connection triage.
   log.info(`listening as inviter at ${loc.host}:${loc.port}`);

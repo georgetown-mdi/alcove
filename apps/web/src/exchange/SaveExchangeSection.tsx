@@ -118,8 +118,9 @@ export function SaveExchangeSection({
 
       {saved !== undefined && (
         <CopyRow
-          label="Invitation code"
-          hint="Your partner accepts with this same code, whichever transport they run"
+          label="Invitation as text"
+          noun="invitation"
+          hint="Your partner accepts with this same text, whichever transport they run"
           value={saved.invitation.encoded}
         />
       )}
@@ -179,10 +180,10 @@ export function SaveExchangeSection({
 
           <p className={styles.small}>{saveClosingCopy(fields, transport)}</p>
           <p className={styles.small}>
-            Run it with this one command. Save the invitation code into a file
-            named <span className={styles.mono}>invitation-code.txt</span>{" "}
-            beside the exchange file - this keeps it out of your shell history,
-            and the command below reads it back with{" "}
+            Run it with this one command. Save the invitation into a file named{" "}
+            <span className={styles.mono}>invitation-code.txt</span> beside the
+            exchange file - this keeps it out of your shell history, and the
+            command below reads it back with{" "}
             <span className={styles.mono}>@invitation-code.txt</span>.
           </p>
           <div className={`${styles.codeBlock} ${styles.mono}`}>

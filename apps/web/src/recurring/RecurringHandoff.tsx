@@ -257,7 +257,7 @@ function ConfigSteps({
                 "working folder and wrote its new shared secret back to that " +
                 "file."
               : "This run writes its shared secret to .alcove.key in the " +
-                `folder ${runFolder} in the console's working directory, ` +
+                `folder ${runFolder} in your working folder, ` +
                 "which discarding the run deletes."}{" "}
             Copy that file into the same folder as alcove.yaml, readable only by
             you (chmod 600 on Linux/macOS). The secret rotates at each run's
@@ -274,7 +274,7 @@ function ConfigSteps({
           </p>
           <p className={styles.small}>
             This run signs its receipt with the signing identity at the location
-            you chose on the console -- the folder you mounted, or the file you
+            you chose on the console: your working folder, or the file you
             picked in your secrets folder. Copy that file to the scheduling
             machine, readable only by you (chmod 600 on Linux/macOS), and set
             signing.identity_file to where you put it -- the path in the
@@ -338,13 +338,14 @@ function CommandSteps({
       </h3>
       <CopyableCode
         code={command}
-        ariaLabel="recurring Direct exchange command"
+        ariaLabel="recurring quick exchange command"
       />
       <p className={styles.small}>
-        A Direct exchange has no shared secret -- trust rests on the transport
-        -- and re-infers the linkage terms from your file each run, so there is
-        no key file to copy. To persist a configuration and host-key pin for
-        later plain alcove exchange runs, add --save the first time you run it.
+        A quick exchange has no shared secret, so the server or shared folder is
+        all that protects it. It infers the linkage terms from your file on each
+        run, so there is no key file to copy. To persist a configuration and
+        host-key pin for later plain alcove exchange runs, add --save the first
+        time you run it.
       </p>
     </>
   );

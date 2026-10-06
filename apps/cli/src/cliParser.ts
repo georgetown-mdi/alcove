@@ -198,7 +198,7 @@ export function buildCli(argv: string[]): Argv {
       // handler to serve.
       .command(
         "doctor",
-        "Check a network file drop before an exchange (probe | mount)",
+        "Check a network shared folder before an exchange (probe | mount)",
         doctorBuilder,
       )
       // Fail fast on a misspelled option (e.g. --server-user for

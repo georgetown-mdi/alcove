@@ -6,7 +6,7 @@ import { jobFileExists } from "@jobs/workdir";
 import { defineJobRoute } from "../../jobRoute";
 
 /**
- * `GET /api/jobs/:jobId/receipt` -- serve the job's dual-signed receipt.
+ * `GET /api/jobs/:jobId/receipt` -- serve the job's signed receipt.
  *
  * A near-exact mirror of the record route: feature-gated, id-validated, and served
  * from the job's server-chosen receipt path inside its workdir (never derived from

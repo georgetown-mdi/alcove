@@ -205,9 +205,9 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     );
     expect(failure).toEqual({
       kind: "saved-address-refused",
-      title: "The saved signaling server address cannot be used",
+      title: "The saved coordination server address cannot be used",
       message:
-        'The saved exchange "Riverbend quarterly" cannot run: the signaling ' +
+        'The saved exchange "Riverbend quarterly" cannot run: the coordination ' +
         `server address it saved ${reason}. The run stopped before ` +
         "connecting, so your partner was not contacted and nothing left " +
         "this device. Running it again stops the same way; this exchange " +

@@ -45,7 +45,7 @@ function CleanedValue({
         // distinctly from the grey "dropped" chip so the operator does not read a
         // degenerate empty key as an excluded record.
         <Tooltip
-          label="Cleaned to an empty value. It is not dropped -- it still participates in matching, as an empty key."
+          label="Cleaned to an empty value, which still takes part in matching as an empty key. Check this field's cleaning steps: a value that should not match should be dropped, not emptied."
           multiline
           w={240}
         >

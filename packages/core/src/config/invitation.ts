@@ -913,15 +913,12 @@ export async function decodeInvitation(
   if (encoded.length > MAX_ENCODED_INVITATION_LENGTH) {
     throw new InvitationDecodeError(
       "tooLong",
-      "invitation string exceeds the maximum length of " +
+      "the invitation exceeds the maximum length of " +
         `${MAX_ENCODED_INVITATION_LENGTH} characters`,
     );
   }
   if (encoded.length <= CHECKSUM_CHARS) {
-    throw new InvitationDecodeError(
-      "tooShort",
-      "invitation string is too short",
-    );
+    throw new InvitationDecodeError("tooShort", "the invitation is too short");
   }
   const body = encoded.slice(0, -CHECKSUM_CHARS);
   const receivedChecksum = encoded.slice(-CHECKSUM_CHARS);
@@ -936,7 +933,7 @@ export async function decodeInvitation(
     // rejection.
     throw new InvitationDecodeError(
       "notBase64Url",
-      "invitation string is not valid base64url",
+      "the invitation contains characters an invitation cannot hold",
     );
   }
   const hashBuf = await globalThis.crypto.subtle.digest("SHA-256", bytes);

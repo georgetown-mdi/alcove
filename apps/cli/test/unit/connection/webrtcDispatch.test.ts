@@ -394,7 +394,7 @@ test("the rendezvous line names the authority dialed, not the configured text", 
   // because one of the two is invisible in source.
   const host = "PEERS\u3002Example\u200B.ORG";
   await Promise.all([runParty("inviter", host), runParty("acceptor", host)]);
-  const rendezvousLine = "rendezvousing through the signaling server at";
+  const rendezvousLine = "connecting through the coordination server at";
   expect(
     mockState.logLines.filter((line) => line.startsWith(rendezvousLine)),
   ).toEqual([

@@ -848,7 +848,7 @@ describe("InvitationTerms: result sharing is stated from the viewer's perspectiv
       "By agreement, not enforced",
     );
     expect(app.container.textContent).toContain(
-      "Once received, its use is governed by your agreement, not this tool.",
+      "Once received, its use is governed by your agreement, not by Alcove.",
     );
     // The partner receives the result here, so the honest-helper membership line
     // does not apply -- it is scoped to the "partner does not receive" case.

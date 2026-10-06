@@ -284,8 +284,8 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
     },
   },
   {
-    name: "receipt file: the dual-signed record it wrote",
-    says: ["wrote dual-signed exchange record"],
+    name: "receipt file: the signed receipt it wrote",
+    says: ["wrote signed receipt"],
     drive: async () => {
       const folder = backslashedFolder();
       const filePath = receiptFilePathIn(folder, "2026-01-01T00:00:00Z");

@@ -643,7 +643,7 @@ function AcceptorInvitationScreen({
       // A name containing a control character needs no entry here: the field
       // renders that refusal live, for every keystroke rather than this submit.
       if (name === undefined && acceptorName.trim() === "")
-        nextErrors.name = "Your name is required";
+        nextErrors.name = "Enter your name or agency.";
       if (!fileChosen) nextErrors.file = true;
       dispatch({ type: "consent-refused", errors: nextErrors });
       return;
@@ -1265,6 +1265,7 @@ function AcceptorInvitationScreen({
         )}
         {decode.status === "ready" && step === "review" && (
           <>
+            <p className={styles.eyebrow}>Step 1 of 3</p>
             <InvitationTerms
               linkageTerms={decode.invitation.token.linkageTerms}
               expires={decode.invitation.token.expires}
@@ -1327,6 +1328,38 @@ function AcceptorInvitationScreen({
                 ? " This console runs the exchange from your working folder."
                 : " Your browser connects directly to your partner."}
             </p>
+            {legalAgreementDisplay !== undefined && (
+              <fieldset className={styles.fieldset}>
+                <legend>Legal agreement</legend>
+                <p className={`${styles.small} ${styles.sub}`}>
+                  Check these values against your signed agreement before you
+                  accept.
+                </p>
+                <Text size="sm">
+                  Agreement reference:{" "}
+                  <span className={styles.mono}>
+                    {legalAgreementDisplay.reference}
+                  </span>
+                </Text>
+                <Text size="sm">
+                  Stated purpose of the disclosure:{" "}
+                  {legalAgreementDisplay.purpose}
+                </Text>
+                <Text size="sm">
+                  Expiration date:{" "}
+                  <span className={styles.mono}>
+                    {legalAgreementDisplay.expirationDate}
+                  </span>
+                </Text>
+                {legalAgreementDisplay.alteredForDisplay && (
+                  <p className={`${styles.small} ${styles.sub}`}>
+                    Some characters here are shown as escape codes because they
+                    fall outside plain ASCII, so these values may not read
+                    exactly as they do in your document.
+                  </p>
+                )}
+              </fieldset>
+            )}
             <Checkbox
               mt="md"
               checked={consented}
@@ -1342,7 +1375,7 @@ function AcceptorInvitationScreen({
               mt="md"
               withAsterisk
               required
-              label="Your name"
+              label="Your name or agency"
               description="Shown to your partner so they can identify you in this exchange"
               value={acceptorName}
               maxLength={200}
@@ -1402,7 +1435,7 @@ function AcceptorInvitationScreen({
                   mt="md"
                 >
                   <p>
-                    <strong>Drag files here or click to select</strong>
+                    <strong>Drag your CSV here, or select to browse</strong>
                   </p>
                   <p className={styles.dropzoneMax}>
                     (Max file size: {maxMb} MB)
@@ -1500,7 +1533,7 @@ function AcceptorInvitationScreen({
                       </>
                     )}{" "}
                     this console. Check with your partner that you are both
-                    using the same synced folder.
+                    using the same shared folder.
                   </>
                 )}
               </Alert>
@@ -1526,7 +1559,7 @@ function AcceptorInvitationScreen({
               >
                 {consoleBuild
                   ? "A file is needed before the exchange can be set up. Choose one from your folder above."
-                  : "A file is needed before the exchange can be set up. Drag one into the dropzone or click it to select."}
+                  : "A file is needed before the exchange can be set up. Drag one into the box above, or select it to browse."}
               </Alert>
             )}
             {parseAlert !== undefined && (
@@ -1552,38 +1585,6 @@ function AcceptorInvitationScreen({
               >
                 {sanitizedNotice.message}
               </Alert>
-            )}
-            {legalAgreementDisplay !== undefined && (
-              <fieldset className={styles.fieldset}>
-                <legend>Legal agreement</legend>
-                <p className={`${styles.small} ${styles.sub}`}>
-                  Check these values against your signed agreement before you
-                  accept.
-                </p>
-                <Text size="sm">
-                  Agreement reference:{" "}
-                  <span className={styles.mono}>
-                    {legalAgreementDisplay.reference}
-                  </span>
-                </Text>
-                <Text size="sm">
-                  Stated purpose of the disclosure:{" "}
-                  {legalAgreementDisplay.purpose}
-                </Text>
-                <Text size="sm">
-                  Expiration date:{" "}
-                  <span className={styles.mono}>
-                    {legalAgreementDisplay.expirationDate}
-                  </span>
-                </Text>
-                {legalAgreementDisplay.alteredForDisplay && (
-                  <p className={`${styles.small} ${styles.sub}`}>
-                    Some characters here are shown as escape codes because they
-                    fall outside plain ASCII, so these values may not read
-                    exactly as they do in your document.
-                  </p>
-                )}
-              </fieldset>
             )}
             <div className={styles.workFoot}>
               <Button

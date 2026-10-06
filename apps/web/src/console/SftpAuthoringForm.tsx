@@ -390,7 +390,7 @@ function SplitDirectoryField({
         }}
       >
         {open
-          ? "Use one shared directory instead"
+          ? "Use one shared folder instead"
           : "Use separate inbound and outbound directories"}
       </Button>
       <Collapse expanded={open}>

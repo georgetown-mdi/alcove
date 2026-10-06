@@ -2065,8 +2065,12 @@ function ReinvitePanel({
         it must stay trusted each time. Your partner accepts it by opening the
         link.
       </p>
-      <CopyRow label="Invitation link" value={reinvite.deepLink} />
-      <CopyRow label="Invitation code" value={reinvite.encoded} />
+      <CopyRow label="Invitation as a link" value={reinvite.deepLink} />
+      <CopyRow
+        label="Invitation as text"
+        noun="invitation"
+        value={reinvite.encoded}
+      />
       <p className={styles.small}>
         <strong>
           This invitation expires{" "}

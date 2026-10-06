@@ -214,7 +214,7 @@ const SCANNED_STATES: Array<ScannedState> = [
   {
     route: "/direct",
     state: "not offered by this deployment",
-    heading: "Direct exchange",
+    heading: "Quick exchange",
     node: () => Promise.resolve(createElement(DirectExchangeScreen)),
   },
   {

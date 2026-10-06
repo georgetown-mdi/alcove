@@ -838,7 +838,7 @@ function waitUnlessCancelled(
  */
 export function idTakenAfterRetryMessage(windowMs: number): string {
   return (
-    "the signaling server still reports this party's peer id as registered " +
+    "the coordination server still reports this party's peer id as registered " +
     `${budgetSeconds(windowMs)} after the previous connection attempt ended. ` +
     "Another run of this exchange in the same role may be holding it: stop " +
     "that run, or check the `role` field on each party's webrtc connection."
@@ -1000,7 +1000,7 @@ export async function openWebRtcPeerSession(
             );
           waitMs = Math.min(waitMs, windowLeftMs);
           log.debug(
-            "the signaling server still holds this party's peer id from the " +
+            "the coordination server still holds this party's peer id from the " +
               "previous connection attempt; registering again shortly",
           );
         } else if (!unreachableReported) {
@@ -1537,7 +1537,7 @@ class Negotiation {
       case BROKER_MESSAGE.leave:
         this.fail(
           new ConnectionError(
-            "the exchange partner left the signaling server before the " +
+            "the exchange partner left the coordination server before the " +
               "connection was established",
             "transport",
           ),

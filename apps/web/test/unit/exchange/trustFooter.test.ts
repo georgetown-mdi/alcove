@@ -45,7 +45,7 @@ function filesContainingEach(
 describe("the privacy footer", () => {
   test("states the pre-run assurance with the step that decides the send set", () => {
     expect(preRunTrustFooter(2)).toBe(
-      "PII for linkage is encrypted locally before leaving your machine. " +
+      "The fields you match on are encrypted on your machine before they leave it. " +
         "Your partner receives only the fields listed under 'you will send' " +
         "(step 2 above) and only for clients who are in common.",
     );
@@ -64,7 +64,7 @@ describe("the privacy footer", () => {
 
   test("its text is written in one source file", () => {
     const fragments = [
-      "PII for linkage is encrypted locally",
+      "The fields you match on are encrypted on your machine",
       "never left this browser.",
       "all your partner received about your data",
     ];

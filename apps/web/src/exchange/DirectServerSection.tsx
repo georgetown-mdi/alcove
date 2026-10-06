@@ -201,7 +201,7 @@ export function DirectServerSection({
                     on this console.
                   </>
                 )}{" "}
-                Point your partner&apos;s console at the same synced folder.
+                Point your partner&apos;s console at the same shared folder.
               </>
             )}
           </Text>

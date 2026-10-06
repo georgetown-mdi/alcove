@@ -11,7 +11,7 @@ import { defineJobRoute } from "../../jobRoute";
  * GET reports status, the reconciled terminal outcome, whether a result file is
  * available, whether the exchange-record pair is available (with its `createdAt`,
  * its own `outcome`, and its certificate-mismatch marker when it is, and why it
- * is withheld when it is not), and -- for the diagnostic log and the dual-signed
+ * is withheld when it is not), and -- for the diagnostic log and the signed
  * receipt alike -- whether this run asked for the artifact and whether it is on
  * disk. It also reports whether the run told this console that its transport
  * close left protocol files behind, which is the one report a client cannot read

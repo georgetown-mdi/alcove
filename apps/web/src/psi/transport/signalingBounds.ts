@@ -86,7 +86,7 @@ export function boundPeerSignaling(peer: Peer): Peer {
   const refuseOversizedFrame = (): void => {
     peer.emitError(
       SERVER_ERROR,
-      `the signaling server sent a frame larger than the ` +
+      `the coordination server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
     );
     peer.disconnect();

@@ -98,14 +98,14 @@ import { configureLogging, logLevelFlag } from "../util/logging";
 //     agreed-terms hash re-derives from both parties' terms -- the agreed-terms
 //     file the exchange wrote beside it, or the documents the operator names.
 //     This proves nothing about the partner.
-//   - The dual-signed record (SIGNED): evidence against the partner. Each party's
+//   - The signed receipt (SIGNED): evidence against the partner. Each party's
 //     receipt signature is checked against the certificate the record holds, each
 //     certificate's identity binding is checked, and each certificate is checked
 //     against what anchors it outside the record -- a fingerprint the verifier
 //     pinned, or the verifier's own signing identity.
 //
 // The positional accepts either artifact, dispatched on its format `version`; the
-// dual-signed record can also be named with --signed-record to verify both
+// signed receipt can also be named with --signed-record to verify both
 // artifacts of one exchange in a single run, which is what lets the record's terms
 // hash, party identities, and run binder be included in the signature checks. The
 // run binder is the pairing: without the exchange record beside it a receipt
@@ -131,7 +131,7 @@ export function builder(cmd: Argv): Argv {
   )
     .usage(
       "Usage: $0 verify-receipt <record> [input-file] [result-file] [options]\n\n" +
-        "Check a stored exchange record or dual-signed receipt and, given the\n" +
+        "Check a stored exchange record or signed receipt and, given the\n" +
         "input and result files the run used, open its commitments. Reads\n" +
         "only; writes nothing.",
     )
@@ -139,7 +139,7 @@ export function builder(cmd: Argv): Argv {
       type: "string",
       describe:
         "the stored artifact to verify: an exchange record " +
-        "(alcove-record-*.json) or a dual-signed record " +
+        "(alcove-record-*.json) or a signed receipt " +
         "(alcove-receipt-*.json)",
     })
     .positional("input-file", {
@@ -163,7 +163,7 @@ export function builder(cmd: Argv): Argv {
     .option("signed-record", {
       type: "string",
       describe:
-        "the dual-signed record for this exchange (alcove-receipt-*.json); " +
+        "the signed receipt for this exchange (alcove-receipt-*.json); " +
         "checks both parties' signatures and certificates alongside the record, " +
         "and that the two artifacts are from the same run",
     })
@@ -194,7 +194,7 @@ export function builder(cmd: Argv): Argv {
       describe:
         "the partner's linkage terms (config or exported terms), for the " +
         "agreed-terms hash check; the record's agreed-terms file " +
-        "(<record>.terms.json) and a dual-signed record hold them, and this " +
+        "(<record>.terms.json) and a signed receipt hold them, and this " +
         "stands in for a record with neither",
     });
   return addLoggingOptions(beforeLogging);
@@ -214,18 +214,18 @@ function readTextFile(pathValue: string, kind: string): string {
 }
 
 // The receipt format's version family, taken from the literal this build reads
-// so the two cannot drift apart. A file whose version is in it is a dual-signed
-// record of another format -- the case the remedy below speaks to.
+// so the two cannot drift apart. A file whose version is in it is a signed
+// receipt of another format -- the case the remedy below speaks to.
 const RECEIPT_VERSION_FAMILY = SIGNED_RECEIPT_VERSION.slice(
   0,
   SIGNED_RECEIPT_VERSION.lastIndexOf("/") + 1,
 );
 
-// A dual-signed record of another format is refused rather than read, and the
+// A signed receipt of another format is refused rather than read, and the
 // run it attests is still verifiable from its exchange record, so the refusal
 // says where to go rather than stopping at the version.
 const OTHER_RECEIPT_FORMAT_REMEDY =
-  ". A dual-signed record of another format is not read: verify that run from " +
+  ". A signed receipt of another format is not read: verify that run from " +
   "its exchange record, passing the partner's terms with --partner-terms";
 
 function otherReceiptFormatRemedy(version: unknown): string {
@@ -293,7 +293,7 @@ function parseSignedRecord(raw: unknown, pathValue: string): DualSignedRecord {
   } catch (err) {
     const message = messageWithOperatorText`signed-record file ${operatorSuppliedText(
       pathValue,
-    )} is not a valid dual-signed record: ${firstIssue(err)}`;
+    )} is not a valid signed receipt: ${firstIssue(err)}`;
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
 }
@@ -323,12 +323,12 @@ export type VerifiableArtifact =
   | { kind: "record"; record: ExchangeRecord }
   | { kind: "signed"; signed: DualSignedRecord };
 
-/** What the version refusal states behind the dual-signed record's version. */
-const DUAL_SIGNED_VERSION_NOTE = " (a dual-signed record)";
+/** What the version refusal states behind the signed receipt's version. */
+const SIGNED_RECEIPT_VERSION_NOTE = " (a signed receipt)";
 
 /**
  * Read the positional artifact, dispatching on its format `version`: the
- * self-attested exchange record, or the dual-signed record an auditor may hold on
+ * self-attested exchange record, or the signed receipt an auditor may hold on
  * its own. Any other version is refused with both recognized values named, rather
  * than parsed as whichever shape it happens to fit. @internal exported for testing
  */
@@ -343,7 +343,7 @@ export function readVerifiableArtifact(pathValue: string): VerifiableArtifact {
     pathValue,
   )} has an unrecognized version (${
     typeof version === "string" ? version : "missing"
-  }); this build recognizes ${EXCHANGE_RECORD_VERSION} (an exchange record) and ${SIGNED_RECEIPT_VERSION}${DUAL_SIGNED_VERSION_NOTE}${otherReceiptFormatRemedy(
+  }); this build recognizes ${EXCHANGE_RECORD_VERSION} (an exchange record) and ${SIGNED_RECEIPT_VERSION}${SIGNED_RECEIPT_VERSION_NOTE}${otherReceiptFormatRemedy(
     version,
   )}`;
   throw keepOperatorSuppliedText(new UsageError(message.text), message);
@@ -432,8 +432,8 @@ export interface SuppliedVerificationInputs {
   configFile?: string;
   /** Whether that config defined `linkage_terms`. */
   localTerms: boolean;
-  /** Whether the partner's terms were in hand: carried by the dual-signed
-   * record, or supplied on `--partner-terms`. */
+  /** Whether the partner's terms were in hand: carried by the signed
+   * receipt, or supplied on `--partner-terms`. */
   partnerTerms: boolean;
   /** Whether this section includes the note explaining a config that defines no
    * `linkage_terms`. A run reporting both artifacts prints it once, under the
@@ -534,7 +534,7 @@ export const RESULT_FROM_ANOTHER_RUN_HEADLINE =
 
 /** Render the unsigned record's verification report to output lines and an exit
  * code (0 only when the verdict is verified). `signatureFailed` marks a run
- * whose dual-signed record failed a signature check: that failure governs, so
+ * whose signed receipt failed a signature check: that failure governs, so
  * the headline blaming a later run's files is withheld.
  * @internal exported for testing */
 export function formatVerificationReport(
@@ -586,10 +586,10 @@ export function formatVerificationReport(
   lines.push(
     signedRecordSupplied
       ? "  partner receipt signatures: checked separately below, against the " +
-          "dual-signed record."
+          "signed receipt."
       : "  partner receipt signatures are not checked here; this record is " +
-          "self-attested. Pass --signed-record with the exchange's dual-signed " +
-          "record (alcove-receipt-*.json) to check them.",
+          "self-attested. Pass --signed-record with the exchange's signed " +
+          "receipt (alcove-receipt-*.json) to check them.",
   );
   return { lines, exitCode: verdictExitCode(report.outcome) };
 }
@@ -656,7 +656,7 @@ function signedTermsWord(
 
 // What pairing this receipt to one run says. The `not-checked` remediation names
 // the one invocation that supplies the pairing: the exchange record has to be the
-// positional, since --signed-record is refused beside a dual-signed positional.
+// positional, since --signed-record is refused beside a signed-receipt positional.
 const RUN_BINDING_WORD: Record<RunBindingStatus, string> = {
   verified: "this receipt and this exchange record are the same run",
   mismatch:
@@ -762,7 +762,7 @@ function guidanceLine(guidance: SignedReceiptVerdictGuidance): string {
   }
 }
 
-/** Render the dual-signed record's verification report to output lines and an exit
+/** Render the signed receipt's verification report to output lines and an exit
  * code (0 only when the verdict is verified). @internal exported for testing */
 export function formatSignedRecordReport(
   report: DualSignedRecordVerificationReport,
@@ -774,7 +774,7 @@ export function formatSignedRecordReport(
   if (headline.tone === "failed")
     lines.push(
       "SIGNED RECEIPT VERIFICATION FAILED: a check did not match -- the " +
-        "dual-signed record may have been altered, or it is not the exchange " +
+        "signed receipt may have been altered, or it is not the exchange " +
         "or the partner it is being checked against.",
     );
   else if (headline.tone === "incomplete")
@@ -782,7 +782,7 @@ export function formatSignedRecordReport(
     // headline names the slot nothing outside the record reaches rather than
     // speaking past it.
     lines.push(
-      "SIGNED RECEIPT INCOMPLETE: nothing contradicted the dual-signed record, " +
+      "SIGNED RECEIPT INCOMPLETE: nothing contradicted the signed receipt, " +
         "but not everything could be checked (see below)." +
         headline.unanchoredRoles
           .map(
@@ -921,7 +921,7 @@ function localTermsAsTheRunStatedThem(
 
 /**
  * The partner's linkage terms, from the file named by `--partner-terms`, which
- * stand in for the copy a dual-signed record holds. That file has the one
+ * stand in for the copy a signed receipt holds. That file has the one
  * purpose, so unlike `--config-file` a file defining no `linkage_terms` is
  * refused rather than noted, and a path that does not exist is refused as well:
  * either would otherwise leave the agreed-terms hash reported as not checked,
@@ -1171,7 +1171,7 @@ function resolvePinnedFingerprints(
   }
   if (flagValues.length > 2)
     throw new UsageError(
-      "--partner-fingerprint may be given at most twice: a dual-signed record " +
+      "--partner-fingerprint may be given at most twice: a signed receipt " +
         "has two certificates, so a third pinned value can anchor none of " +
         "them",
     );
@@ -1282,12 +1282,12 @@ async function chosenLocalIdentity(
 
 /** What the --signed-record refusal states behind the record path. */
 const SIGNED_RECORD_FLAG_REMEDY =
-  " is already a dual-signed record, so --signed-record has nothing to add; " +
+  " is already a signed receipt, so --signed-record has nothing to add; " +
   "name the exchange record instead to verify both";
 
 /** What the commitment-flag refusal states behind the record path. */
 const COMMITMENT_FLAGS_REMEDY =
-  " is a dual-signed record, which commits to no data: an input file, a " +
+  " is a signed receipt, which commits to no data: an input file, a " +
   "result file, and --keys apply to the exchange record, which must be " +
   "named as the positional to be verified";
 
@@ -1336,7 +1336,7 @@ export async function handler(argv: Arguments): Promise<void> {
       );
 
     const artifact = readVerifiableArtifact(recordPath);
-    // A dual-signed record holds no commitments and no terms, so the options
+    // A signed receipt holds no commitments and no terms, so the options
     // that only apply to an exchange record are refused rather than ignored.
     if (artifact.kind === "signed") {
       if (signedRecordArg !== undefined) {
@@ -1374,7 +1374,7 @@ export async function handler(argv: Arguments): Promise<void> {
           );
     // The exchange record's own run wrote both parties' terms beside it. Each
     // half is taken from the first source that supplies it: the flag naming
-    // it, then (for the partner's half) the dual-signed record's carried copy,
+    // it, then (for the partner's half) the signed receipt's carried copy,
     // then this file.
     const agreedTerms =
       artifact.kind === "record"
@@ -1391,7 +1391,7 @@ export async function handler(argv: Arguments): Promise<void> {
         : signedRecordArg !== undefined
           ? readSignedRecordFile(signedRecordArg)
           : undefined;
-    // The dual-signed record holds the partner's terms, so a run naming one
+    // The signed receipt holds the partner's terms, so a run naming one
     // checks the agreed-terms hash with no second file; a file the operator
     // named wins over that copy.
     const partnerTerms =
@@ -1400,15 +1400,15 @@ export async function handler(argv: Arguments): Promise<void> {
 
     if (signedRecord === undefined && partnerFingerprintArgs.length > 0)
       throw new UsageError(
-        "--partner-fingerprint pins a certificate in a dual-signed record, " +
-          "and no dual-signed record was named; pass --signed-record, or name " +
-          "the dual-signed record as the artifact to verify",
+        "--partner-fingerprint pins a certificate in a signed receipt, " +
+          "and no signed receipt was named; pass --signed-record, or name " +
+          "the signed receipt as the artifact to verify",
       );
     if (signedRecord === undefined && identityFileArg !== undefined)
       throw new UsageError(
-        "--identity-file anchors your own certificate in a dual-signed record, " +
-          "and no dual-signed record was named; pass --signed-record, or name " +
-          "the dual-signed record as the artifact to verify",
+        "--identity-file anchors your own certificate in a signed receipt, " +
+          "and no signed receipt was named; pass --signed-record, or name " +
+          "the signed receipt as the artifact to verify",
       );
 
     const supplied: SuppliedVerificationInputs = {

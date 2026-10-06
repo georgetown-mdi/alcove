@@ -101,7 +101,7 @@ test.each([
     const result = await outcome;
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toBe(
-      `the signaling server sent a frame larger than the ` +
+      `the coordination server sent a frame larger than the ` +
         `${MAX_SIGNALING_FRAME_BYTES}-byte limit`,
     );
     await closed;

@@ -18,7 +18,7 @@ export interface JobFolderContents {
   record: boolean;
   /** The key file holding the shared secret, {@link JOB_FILE_NAMES.key}. */
   sharedSecret: boolean;
-  /** A dual-signed receipt, `alcove-receipt-<time>.json`. */
+  /** A signed receipt, `alcove-receipt-<time>.json`. */
   receipt: boolean;
   /** The diagnostic log. */
   log: boolean;

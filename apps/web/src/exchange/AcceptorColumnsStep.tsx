@@ -339,7 +339,7 @@ export function AcceptorColumnsStep({
         Confirm your columns
       </h1>
       <p className={`${styles.small} ${styles.sub}`}>
-        Tell us what each column in your file is and what should be done with
+        Confirm what each column in your file is and what should be done with
         it.{" "}
         {/* The bound on what leaves, stated where the operator starts marking
             columns. Its exception clause drops when the payload step sends nothing:

@@ -289,7 +289,7 @@ function probeReturnMs(run: FinishedParty): number {
  * Assert every artifact the asserted party owed is on disk and whole in its
  * output folder: the result CSV with both matched rows, named with its
  * record's stamp, the exchange record with its private
- * verification keys, and the dual-signed receipt. This is what the forced exit
+ * verification keys, and the signed receipt. This is what the forced exit
  * must never cut short, since the gate runs after all of them.
  */
 function expectArtifactsComplete(outputFolder: string): void {

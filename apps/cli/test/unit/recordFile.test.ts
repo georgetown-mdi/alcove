@@ -180,7 +180,7 @@ test("writeExchangeRecord is non-fatal when the destination is unwritable", () =
   }).not.toThrow();
   expect(written?.kind).toBe("failed");
   const failure = written?.kind === "failed" ? written.message : undefined;
-  expect(failure).toContain("the audit record could not be written to");
+  expect(failure).toContain("the exchange record could not be written to");
   expect(failure).toContain(recordFilePath);
   expect(failure).toContain("need not be re-run");
   expect(fs.existsSync(recordFilePath)).toBe(false);
@@ -188,7 +188,7 @@ test("writeExchangeRecord is non-fatal when the destination is unwritable", () =
   // diagnostic fired and keeps it off the suite output).
   expect(
     logCapture.warnings.some((m) =>
-      m.includes("the audit record could not be written"),
+      m.includes("the exchange record could not be written"),
     ),
   ).toBe(true);
 });
@@ -272,7 +272,7 @@ test("a terminated run's lost record is not reported as a completed exchange", (
   );
   expect(written.kind).toBe("failed");
   const failure = written.kind === "failed" ? written.message : undefined;
-  expect(failure).toContain("the audit record could not be written to");
+  expect(failure).toContain("the exchange record could not be written to");
   expect(failure).toContain("disclosed before it failed");
   expect(failure).not.toContain("need not be re-run");
   expect(

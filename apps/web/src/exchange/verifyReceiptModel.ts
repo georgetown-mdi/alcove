@@ -64,7 +64,7 @@ import type {
  * through the DOM.
  *
  * Both verdicts come from `@alcove/core` as-is. Neither the assignment of
- * anchoring values over the dual-signed record's two certificate slots nor the
+ * anchoring values over the signed receipt's two certificate slots nor the
  * verdict decided over it -- the tier each row holds, the clauses an unanchored
  * slot supports, the remediation a run has earned -- is re-derived here: this
  * model supplies what the verifier holds and puts this page's words to the
@@ -104,7 +104,7 @@ type KeysParseResult =
   | { kind: "malformed"; message: string }
   | { kind: "unrecognized-version"; message: string };
 
-/** A parsed dual-signed record: the signed evidence bundle both parties hold,
+/** A parsed signed receipt: the signed evidence bundle both parties hold,
  * separate from the unsigned record above. */
 type SignedRecordParseResult =
   | { kind: "ok"; record: DualSignedRecord }
@@ -129,7 +129,7 @@ type CertificateParseResult =
 // the chokepoint is used regardless so a syntax error cannot echo source.
 const RECORD_LABEL = "the record file";
 const KEYS_LABEL = "the verification-keys file";
-const SIGNED_RECORD_LABEL = "the dual-signed record file";
+const SIGNED_RECORD_LABEL = "the signed receipt file";
 const CERTIFICATE_LABEL = "the certificate file";
 
 const MALFORMED_RECORD_MESSAGE =
@@ -143,7 +143,7 @@ const MALFORMED_KEYS_MESSAGE =
   "file or another document.";
 
 const MALFORMED_SIGNED_RECORD_MESSAGE =
-  "This is not a valid dual-signed record. Check that you loaded the " +
+  "This is not a valid signed receipt. Check that you loaded the " +
   "alcove-receipt-<time>.json file (the record both parties signed), not the " +
   "exchange record or another document.";
 
@@ -166,7 +166,7 @@ const RECOGNIZED_VERSIONS = {
   record: { what: "record", version: EXCHANGE_RECORD_VERSION },
   keys: { what: "verification-keys", version: EXCHANGE_KEYS_VERSION },
   "signed-record": {
-    what: "dual-signed record",
+    what: "signed receipt",
     version: SIGNED_RECEIPT_VERSION,
   },
   certificate: { what: "certificate", version: SIGNING_CERTIFICATE_VERSION },
@@ -238,7 +238,7 @@ export function parseKeysDocument(text: string): KeysParseResult {
   }
 }
 
-/** Parse the dual-signed record document, with the same phased outcomes as
+/** Parse the signed receipt document, with the same phased outcomes as
  * {@link parseRecordDocument}. Shape only: every signature, certificate, and
  * anchoring check belongs to core's verification, which
  * {@link verifySignedRecord} runs on the parsed record. */
@@ -501,15 +501,15 @@ const TERMS_ROWS: Record<
 };
 
 // What a not-checked agreed-terms hash is still waiting on. The partner's half
-// comes from the dual-signed record, so a reader who loaded one whose holder
+// comes from the signed receipt, so a reader who loaded one whose holder
 // stripped that copy is told it is not there rather than pointed back at the
 // file they already supplied.
 const TERMS_NOT_CHECKED =
   "Supply both parties' linkage terms to check the agreed-terms hash. Paste " +
-  "yours; your partner's are the copy a loaded dual-signed record holds, or a " +
+  "yours; your partner's are the copy a loaded signed receipt holds, or a " +
   "document you paste in its place.";
 const TERMS_NOT_CHECKED_RECEIPT_WITHOUT_TERMS =
-  "The dual-signed record you loaded holds no copy of your partner's linkage " +
+  "The signed receipt you loaded holds no copy of your partner's linkage " +
   "terms. Paste both parties' terms to check the agreed-terms hash.";
 
 // The readable name of each commitment, in the record's committed order. Fixed
@@ -531,7 +531,7 @@ const SIGNATURE_NOTE =
   "internally consistent, not that your partner signed it.";
 
 // The record is self-attested either way, so this section says nothing about the
-// partner; what changes when a dual-signed record was verified in the same run is
+// partner; what changes when a signed receipt was verified in the same run is
 // where the evidence against the partner is, not whether this section holds it.
 // The note names the document the reader supplied rather than "this exchange's
 // receipt": whether the two artifacts are one run is the signed verdict's pairing
@@ -539,7 +539,7 @@ const SIGNATURE_NOTE =
 // presume the answer.
 const SIGNATURE_NOTE_WITH_SIGNED_RECORD =
   "Partner receipt signatures are checked separately below, against the " +
-  "dual-signed record you loaded.";
+  "signed receipt you loaded.";
 
 /**
  * Build the verdict view-model from a {@link RecordVerificationReport} and any
@@ -551,10 +551,10 @@ const SIGNATURE_NOTE_WITH_SIGNED_RECORD =
  * the association table appears only when the record holds it. The result-size
  * row follows the same rule -- shown only where the record records a size.
  *
- * Pass `signedRecordVerified` when the same run also verified a dual-signed
- * record, so the standing caveat points at that verdict rather than telling the
+ * Pass `signedRecordVerified` when the same run also verified a signed
+ * receipt, so the standing caveat points at that verdict rather than telling the
  * reader signatures went unchecked beside a verdict that checked them. Pass
- * `receiptHoldsNoPartnerTerms` when a dual-signed record is loaded whose
+ * `receiptHoldsNoPartnerTerms` when a signed receipt is loaded whose
  * unsigned envelope holds no terms, so a not-checked agreed-terms hash names
  * that rather than the copy a receipt usually supplies.
  */
@@ -616,7 +616,7 @@ export function verdictViewModel(
 // --- Signed-record verification ----------------------------------------------
 
 /**
- * What the verifier holds outside the dual-signed record, one value per slot:
+ * What the verifier holds outside the signed receipt, one value per slot:
  * the partner's certificate reached by a fingerprint pinned out-of-band, the
  * verifier's own by the certificate it exported. Each is optional, and a record
  * checked with neither is checked for internal consistency only.
@@ -632,7 +632,7 @@ interface SignedRecordAnchors {
 }
 
 /**
- * Verify a parsed dual-signed record against what the verifier holds outside it.
+ * Verify a parsed signed receipt against what the verifier holds outside it.
  * The verdict is core's: this assembles the anchoring values and the expected
  * identities/terms hash and returns
  * {@link verifyDualSignedRecord}'s report unmodified, so which slot an anchoring
@@ -730,7 +730,7 @@ const SIGNED_FAILED_HEADLINE: VerdictHeadline = {
   title: "Signed receipt verification failed",
   detail:
     "A check did not match. This means one of two things, and they cannot be " +
-    "told apart here: the dual-signed record was altered, or it is not the " +
+    "told apart here: the signed receipt was altered, or it is not the " +
     "exchange or the partner you are checking it against.",
 };
 
@@ -821,7 +821,7 @@ function signedTermsNotCheckedExplanation(
   if (supplied.partnerTerms && !supplied.localTerms)
     return (
       "Paste your own linkage terms to check the agreed-terms hash -- your " +
-      "partner's are supplied already, from the dual-signed record you loaded " +
+      "partner's are supplied already, from the signed receipt you loaded " +
       "or from the document you pasted. Loading this exchange's record " +
       "supplies the hash instead."
     );
@@ -829,7 +829,7 @@ function signedTermsNotCheckedExplanation(
     ? "Paste your partner's terms"
     : "Paste both parties' terms";
   return (
-    "The dual-signed record you loaded holds no copy of your partner's " +
+    "The signed receipt you loaded holds no copy of your partner's " +
     `linkage terms. ${missing} to check the agreed-terms hash, or load this ` +
     "exchange's record."
   );
@@ -976,7 +976,7 @@ function signedHeadline(
       tone: "incomplete",
       title: "Signed receipt incomplete",
       detail:
-        "Nothing contradicted the dual-signed record, but not everything could " +
+        "Nothing contradicted the signed receipt, but not everything could " +
         "be checked. See the rows below for what is still open." +
         // The record holds two certificates and a verdict speaks for both, so
         // the headline names the slot nothing outside the record reaches rather

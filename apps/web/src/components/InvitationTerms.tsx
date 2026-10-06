@@ -894,7 +894,10 @@ export function InvitationTerms({
               <>
                 The shared identifiers of records you have in common are
                 revealed to whoever receives the result.{" "}
-                <strong>PII is not directly revealed.</strong>
+                <strong>
+                  Names, dates of birth and the other fields you match on are
+                  not revealed.
+                </strong>
               </>
             )}
           </Text>

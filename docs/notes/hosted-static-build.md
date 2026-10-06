@@ -1,6 +1,6 @@
 # Hosted static build
 
-`npm run build -w apps/web` writes the hosted app as a static site to `dist/hosted/`; it is the hosted app's only build, and no hosted server is built. The entry is `src/hostedClient.tsx`; the documents are written by `hosted/routeDocuments.ts`. The build fails before bundling unless `VITE_SIGNALING_SERVER_URL` is set (environment or `.env` file), since the hosted origin serves no signaling; see [DEPLOYMENT.md](../DEPLOYMENT.md#peer-coordination-server).
+`npm run build -w apps/web` writes the hosted app as a static site to `dist/hosted/`; it is the hosted app's only build, and no hosted server is built. The entry is `src/hostedClient.tsx`; the documents are written by `hosted/routeDocuments.ts`. The build fails before bundling unless `VITE_SIGNALING_SERVER_URL` is set (environment or `.env` file), since the hosted origin serves no signaling; see [DEPLOYMENT.md](../DEPLOYMENT.md#coordination-server).
 
 ## One document per warmed route
 

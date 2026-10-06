@@ -554,7 +554,7 @@ describe("console SFTP connection authoring", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Your invitation is ready");
-    await page.getByRole("button", { name: "Show full code" }).click();
+    await page.getByRole("button", { name: "Show full invitation" }).click();
     const encoded = (
       document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
     ).value;

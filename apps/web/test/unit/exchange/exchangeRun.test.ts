@@ -66,7 +66,7 @@ describe("stage trees", () => {
       DONE_STAGE_ID,
     ]);
     expect(stages[1].label).toBe("Waiting for your partner");
-    expect(stages[3].label).toBe("Linking key 1 / 2");
+    expect(stages[3].label).toBe("Matching records (key 1 of 2)");
   });
 
   test("a single-pass tree has no per-key stages", () => {
@@ -97,8 +97,8 @@ describe("the timeline advances on stage events", () => {
     expect(states(initialRun())).toEqual([
       "Share:current",
       "Partner accepts:pending",
-      "Confirm protocol:pending",
-      "Link keys:pending",
+      "Check settings:pending",
+      "Match records:pending",
       "Done:pending",
     ]);
     const waiting = runToWaiting();
@@ -116,21 +116,21 @@ describe("the timeline advances on stage events", () => {
     expect(states(confirming)).toEqual([
       "Share:done",
       "Partner accepts:done",
-      "Confirm protocol:current",
-      "Link keys:pending",
+      "Check settings:current",
+      "Match records:pending",
       "Done:pending",
     ]);
     expect(awaitingPartner(confirming)).toBe(false);
   });
 
-  test("the per-key stages sit under Link keys", () => {
+  test("the per-key stages sit under Match records", () => {
     const linking = runWithStage(
       runWithStage(runToWaiting(), CONFIRMING_PROTOCOL_STAGE_ID, at(39)),
       "stage 2 / 2",
       at(43),
     );
-    expect(states(linking)[3]).toBe("Link keys:current");
-    expect(currentStageLabel(linking)).toBe("Linking key 2 / 2");
+    expect(states(linking)[3]).toBe("Match records:current");
+    expect(currentStageLabel(linking)).toBe("Matching records (key 2 of 2)");
   });
 
   test("completion finishes every step and pins the finish instant", () => {
@@ -141,8 +141,8 @@ describe("the timeline advances on stage events", () => {
     expect(states(done)).toEqual([
       "Share:done",
       "Partner accepts:done",
-      "Confirm protocol:done",
-      "Link keys:done",
+      "Check settings:done",
+      "Match records:done",
       "Done:done",
     ]);
     expect(done.finishedAt).toEqual(at(47));
@@ -162,7 +162,7 @@ describe("the timeline advances on stage events", () => {
     );
     const staged = runWithStage(running, DONE_STAGE_ID, at(44));
     expect(staged.finishedAt).toBeUndefined();
-    expect(currentStageLabel(staged)).toBe("Confirming protocol");
+    expect(currentStageLabel(staged)).toBe("Checking settings match");
     expect(states(staged)[4]).toBe("Done:pending");
     expect(progressPercent(staged)).toBe(40);
     const completed = runWithCompletion(staged, at(47));
@@ -171,7 +171,7 @@ describe("the timeline advances on stage events", () => {
     expect(progressPercent(completed)).toBe(100);
   });
 
-  test("under single-pass, Link keys completes without ever being current", () => {
+  test("under single-pass, Match records completes without ever being current", () => {
     const seeded = runWithStages(
       initialRun(),
       stagesFor(preparedWith("single-pass", 3)),
@@ -181,9 +181,9 @@ describe("the timeline advances on stage events", () => {
       CONFIRMING_PROTOCOL_STAGE_ID,
       at(39),
     );
-    expect(states(confirming)[3]).toBe("Link keys:pending");
+    expect(states(confirming)[3]).toBe("Match records:pending");
     expect(states(runWithCompletion(confirming, at(41)))[3]).toBe(
-      "Link keys:done",
+      "Match records:done",
     );
   });
 
@@ -211,13 +211,17 @@ describe("the visit history", () => {
       at(39),
     );
     expect(run.visits).toEqual([
-      { id: BEFORE_START_STAGE_ID, label: "Before start", completedAt: at(32) },
+      {
+        id: BEFORE_START_STAGE_ID,
+        label: "Getting ready",
+        completedAt: at(32),
+      },
       {
         id: WAITING_STAGE_ID,
         label: "Waiting for your partner",
         completedAt: at(39),
       },
-      { id: CONFIRMING_PROTOCOL_STAGE_ID, label: "Confirming protocol" },
+      { id: CONFIRMING_PROTOCOL_STAGE_ID, label: "Checking settings match" },
     ]);
   });
 
@@ -240,7 +244,11 @@ describe("the visit history", () => {
     expect(runWithStage(confirming, DONE_STAGE_ID, at(44))).toBe(confirming);
     const completed = runWithCompletion(confirming, at(47));
     expect(completed.visits).toEqual([
-      { id: BEFORE_START_STAGE_ID, label: "Before start", completedAt: at(32) },
+      {
+        id: BEFORE_START_STAGE_ID,
+        label: "Getting ready",
+        completedAt: at(32),
+      },
       {
         id: WAITING_STAGE_ID,
         label: "Waiting for your partner",
@@ -248,7 +256,7 @@ describe("the visit history", () => {
       },
       {
         id: CONFIRMING_PROTOCOL_STAGE_ID,
-        label: "Confirming protocol",
+        label: "Checking settings match",
         completedAt: at(47),
       },
       { id: DONE_STAGE_ID, label: "Done", completedAt: at(47) },
@@ -285,7 +293,7 @@ describe("the visit history", () => {
   test("a stage id outside the tree is treated as mid-protocol with itself as label", () => {
     const run = runWithStage(initialRun(), "surprise stage", at(32));
     expect(currentStageLabel(run)).toBe("surprise stage");
-    expect(states(run)[3]).toBe("Link keys:current");
+    expect(states(run)[3]).toBe("Match records:current");
   });
 
   test("a stage id outside the tree holds the bar at the last known stage", () => {
@@ -339,23 +347,23 @@ describe("the acceptor timeline and labels", () => {
     );
   });
 
-  test("the acceptor rail is four steps: Connect, Confirm protocol, Link keys, Done", () => {
+  test("the acceptor rail is four steps: Connect, Check settings, Match records, Done", () => {
     expect(
       acceptorTimelineSteps(initialRun("acceptor")).map((step) => step.label),
-    ).toEqual(["Connect", "Confirm protocol", "Link keys", "Done"]);
+    ).toEqual(["Connect", "Check settings", "Match records", "Done"]);
   });
 
   test("Connect stays current through before-start and the connecting wait", () => {
     expect(acceptorStates(initialRun("acceptor"))).toEqual([
       "Connect:current",
-      "Confirm protocol:pending",
-      "Link keys:pending",
+      "Check settings:pending",
+      "Match records:pending",
       "Done:pending",
     ]);
     expect(acceptorStates(acceptorToWaiting())[0]).toBe("Connect:current");
   });
 
-  test("a protocol stage flips Connect to done and Confirm protocol to current", () => {
+  test("a protocol stage flips Connect to done and Check settings to current", () => {
     const confirming = runWithStage(
       acceptorToWaiting(),
       CONFIRMING_PROTOCOL_STAGE_ID,
@@ -363,20 +371,20 @@ describe("the acceptor timeline and labels", () => {
     );
     expect(acceptorStates(confirming)).toEqual([
       "Connect:done",
-      "Confirm protocol:current",
-      "Link keys:pending",
+      "Check settings:current",
+      "Match records:pending",
       "Done:pending",
     ]);
   });
 
-  test("the per-key stages sit under Link keys", () => {
+  test("the per-key stages sit under Match records", () => {
     const linking = runWithStage(
       runWithStage(acceptorToWaiting(), CONFIRMING_PROTOCOL_STAGE_ID, at(39)),
       "stage 2 / 2",
       at(43),
     );
-    expect(acceptorStates(linking)[2]).toBe("Link keys:current");
-    expect(currentStageLabel(linking)).toBe("Linking key 2 / 2");
+    expect(acceptorStates(linking)[2]).toBe("Match records:current");
+    expect(currentStageLabel(linking)).toBe("Matching records (key 2 of 2)");
   });
 
   test("completion finishes every acceptor step", () => {
@@ -386,8 +394,8 @@ describe("the acceptor timeline and labels", () => {
     );
     expect(acceptorStates(done)).toEqual([
       "Connect:done",
-      "Confirm protocol:done",
-      "Link keys:done",
+      "Check settings:done",
+      "Match records:done",
       "Done:done",
     ]);
     expect(currentStageLabel(done)).toBe("Done");
@@ -473,10 +481,10 @@ describe("single-pass stage labels", () => {
       CONFIRMING_PROTOCOL_STAGE_ID,
       at(39),
     );
-    expect(currentStageLabel(confirming)).toBe("Confirming protocol");
+    expect(currentStageLabel(confirming)).toBe("Checking settings match");
     expect(
       currentStageLabel(runWithStage(confirming, "stage 1 / 2", at(41))),
-    ).toBe("Linking key 1 / 2");
+    ).toBe("Matching records (key 1 of 2)");
   });
 
   test("an unlabelled stage id renders the id, and an empty one a readable label", () => {

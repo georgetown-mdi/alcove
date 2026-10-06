@@ -421,8 +421,8 @@ describe("review and create", () => {
     );
     const rows = answersRows(editor, csv);
     const byLabel = new Map(rows.map((row) => [row.label, row]));
-    expect(byLabel.get("Your name")?.value).toBe("Dana Okafor");
-    expect(byLabel.get("Your name")?.changeTarget).toBe("file");
+    expect(byLabel.get("Your name or agency")?.value).toBe("Dana Okafor");
+    expect(byLabel.get("Your name or agency")?.changeTarget).toBe("file");
     expect(byLabel.get("Your file")?.value).toBe("clients.csv - 1 rows");
     expect(byLabel.get("Columns shared")?.value).toBe(
       isolatedColumnName("program_code"),

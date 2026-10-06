@@ -330,7 +330,7 @@ export function payloadSendBeyondConfigurationNotice(
  * tells a supervisor not to re-run.
  */
 export const TERMINATED_RECORD_UNBUILT_WARNING =
-  "no audit record could be built for this exchange, so none was written; " +
+  "no exchange record could be built for this exchange, so none was written; " +
   "the exchange had already disclosed when it failed, so that disclosure has " +
   "no local record";
 
@@ -459,7 +459,7 @@ export const WEBRTC_RENDEZVOUS_SECRET_REQUIRED =
  */
 export const WEBRTC_ROLE_REQUIRED =
   "this webrtc connection has no `role`: each party registers with the " +
-  "signaling server under the id its own role derives, and dials the id the " +
+  "coordination server under the id its own role derives, and dials the id the " +
   "other's does. Set `role: inviter` or `role: acceptor` on the connection " +
   "block.";
 
@@ -1044,7 +1044,7 @@ async function openRunTransport(params: {
         "the webrtc rendezvous was not resolved",
       );
     log.info(
-      "rendezvousing through the signaling server at",
+      "connecting through the coordination server at",
       // dialedBrokerAuthority (see its doc) is what the socket actually
       // dials, not the configured `host` text.
       //
@@ -2331,7 +2331,7 @@ type ExchangeOutcome = Awaited<ReturnType<typeof runExchange>>;
 
 /**
  * The run's local output stage: report the outcome, write the result CSV, then
- * the audit record, the dual-signed record, and finally the caller's own
+ * the audit record, the signed receipt, and finally the caller's own
  * post-exchange persistence. Runs only after the two-party exchange completed,
  * so every failure here is local and none of it may be re-run.
  *
@@ -2534,7 +2534,7 @@ async function writeExchangeOutputs(params: {
   if (!writeRecord) record = { kind: "disabled" };
   else if (audit === undefined) {
     missingArtifacts.push(
-      "no audit record could be built for this exchange, so none was " +
+      "no exchange record could be built for this exchange, so none was " +
         "written; the exchange and its results succeeded and need not be " +
         "re-run",
     );
@@ -2557,7 +2557,7 @@ async function writeExchangeOutputs(params: {
       };
   }
 
-  // Persist the dual-signed record after the self-attested record.
+  // Persist the signed receipt after the self-attested record.
   // Written only when the signing step ran and the signature exchange
   // completed (runExchange returns signedReceipt undefined otherwise,
   // and throws to the catch on a verification failure, so no partial
@@ -2855,8 +2855,8 @@ export interface RunProtocolOptions {
  * pre-terminal {@link FileSyncRuntimeOptions.onOutputComplete} hook.
  *
  * `signing` holds the signed-receipt inputs (this party's signing identity,
- * the pinned partner fingerprint, and where to write the dual-signed
- * record). Pass `null` (the default) to skip signing. Runs only on the
+ * the pinned partner fingerprint, and where to write the signed
+ * receipt). Pass `null` (the default) to skip signing. Runs only on the
  * authenticated path, the only one holding the session key the receipt
  * binder needs; a non-null `signing` on the unauthenticated (`auth: null`)
  * path is rejected up front. A non-null `signing` without `writeRecord` is

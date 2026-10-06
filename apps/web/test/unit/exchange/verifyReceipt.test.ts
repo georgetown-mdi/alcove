@@ -94,7 +94,7 @@ const associationTable: AssociationTable = [
   [1, 0],
 ];
 
-// The run binder the record fixture and the dual-signed record fixture below both
+// The run binder the record fixture and the signed receipt fixture below both
 // hold, so the two artifacts pair as one run. One constant, so a fixture cannot
 // drift into an accidental cross-run pair.
 const RECEIPT_BINDER = "YmluZGVy";
@@ -416,7 +416,7 @@ describe("verdictViewModel: no re-supply", () => {
     const report = await verifyExchangeRecord(record, keys, {});
     const view = verdictViewModel(report, [], false, false);
     expect(view.termsHash.explanation).toContain(
-      "a loaded dual-signed record holds",
+      "a loaded signed receipt holds",
     );
   });
 
@@ -687,7 +687,7 @@ describe("verdictViewModel: the recorded result size", () => {
 
 // --- The signed leg ----------------------------------------------------------
 
-// A dual-signed record over the same exchange the fixtures above describe: the
+// A signed receipt over the same exchange the fixtures above describe: the
 // receipt content holds that record's agreed-terms hash and each certificate
 // holds the identity the record names, so a run supplying the record reaches
 // every check rather than stalling on an expectation it cannot state. Keys are
@@ -731,7 +731,7 @@ async function signedFixture(record: ExchangeRecord): Promise<{
 }
 
 describe("parseSignedRecordDocument", () => {
-  test("a valid dual-signed record parses to the ok outcome", async () => {
+  test("a valid signed receipt parses to the ok outcome", async () => {
     const { record } = await fixtures();
     const { signed } = await signedFixture(record);
     const parsed = parseSignedRecordDocument(serializeDualSignedRecord(signed));
@@ -1380,7 +1380,7 @@ describe("signedVerdictViewModel: over a report built by hand", () => {
 });
 
 describe("verdictViewModel: the unsigned record's standing caveat", () => {
-  test("a run that also verified a dual-signed record points at that verdict", async () => {
+  test("a run that also verified a signed receipt points at that verdict", async () => {
     const { record, keys } = await fixtures();
     const report = await verifyExchangeRecord(record, keys, {});
     // The note names the loaded document: whether the two artifacts are one run
@@ -1388,7 +1388,7 @@ describe("verdictViewModel: the unsigned record's standing caveat", () => {
     // not, so this sentence may not presume the answer.
     expect(verdictViewModel(report, [], true).signatureNote).toBe(
       "Partner receipt signatures are checked separately below, against the " +
-        "dual-signed record you loaded.",
+        "signed receipt you loaded.",
     );
     // Unchanged for the record-only run: the default is today's copy.
     expect(verdictViewModel(report, []).signatureNote).toContain(

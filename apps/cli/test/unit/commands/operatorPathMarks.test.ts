@@ -418,8 +418,8 @@ const REFUSALS: readonly SinkCase<RefusalOutcome>[] = [
     },
   },
   {
-    name: "verify-receipt: a signed-record file that is not a dual-signed record",
-    says: ["is not a valid dual-signed record"],
+    name: "verify-receipt: a signed-record file that is not a signed receipt",
+    says: ["is not a valid signed receipt"],
     drive: async () => {
       const filePath = backslashedPath("signed.json");
       fs.writeFileSync(
@@ -970,7 +970,7 @@ for (const { name, says, drive } of COMMAND_LINES)
     expectPathAsTyped(await drive(), says);
   });
 
-/** A dual-signed record between two parties, written under the fixture dir. */
+/** A signed receipt between two parties, written under the fixture dir. */
 async function writeSignedRecord(filePath: string): Promise<void> {
   const content: ReceiptContent = {
     termsHash: "dGVybXNIYXNo",
@@ -997,7 +997,7 @@ async function writeSignedRecord(filePath: string): Promise<void> {
   );
 }
 
-/** Verify a dual-signed record against a config naming `identityFile`. */
+/** Verify a signed receipt against a config naming `identityFile`. */
 async function verifyReceiptWithConfiguredIdentity(
   identityFile: string,
 ): Promise<string[]> {
@@ -1354,8 +1354,8 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
     },
   },
   {
-    name: "verify-receipt: a dual-signed record named beside --signed-record",
-    says: ["is already a dual-signed record"],
+    name: "verify-receipt: a signed receipt named beside --signed-record",
+    says: ["is already a signed receipt"],
     drive: async () => {
       const filePath = backslashedPath("receipt.json");
       await writeSignedRecord(filePath);
@@ -1368,7 +1368,7 @@ const MORE_COMMAND_LINES: readonly SinkCase<LineOutcome>[] = [
     },
   },
   {
-    name: "verify-receipt: a dual-signed record named beside --keys",
+    name: "verify-receipt: a signed receipt named beside --keys",
     says: ["which commits to no data"],
     drive: async () => {
       const filePath = backslashedPath("receipt.json");

@@ -43,7 +43,7 @@ afterEach(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-// A minimal schema-valid dual-signed record (the certificates self-verify; these
+// A minimal schema-valid signed receipt (the certificates self-verify; these
 // are the checked-in signing-cert vectors' identities, reused for a valid shape).
 const certA = {
   version: "alcove-signing-cert/v3" as const,
@@ -124,6 +124,6 @@ test("writeDualSignedRecord warns rather than throws on a write failure", () => 
   // The returned message is the machine-interface half of the same failure: a
   // supervisor that reads only fd 3 and the exit code learns the receipt is
   // missing from it. It names the destination and no cause.
-  expect(failure).toContain("the dual-signed record could not be written to");
+  expect(failure).toContain("the signed receipt could not be written to");
   expect(failure).toContain(target);
 });

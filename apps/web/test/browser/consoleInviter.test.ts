@@ -973,7 +973,7 @@ describe("console inviter mint and run", () => {
 
     // The minted code holds the authored connection's locator, never inline
     // content.
-    await page.getByRole("button", { name: "Show full code" }).click();
+    await page.getByRole("button", { name: "Show full invitation" }).click();
     const encoded = (
       document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
     ).value;
@@ -1085,7 +1085,7 @@ describe("console inviter mint and run", () => {
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Your invitation is ready");
 
-    await page.getByRole("button", { name: "Show full code" }).click();
+    await page.getByRole("button", { name: "Show full invitation" }).click();
     const encoded = (
       document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
     ).value;
@@ -1828,7 +1828,7 @@ describe("console inviter partner accept kit", () => {
 
       // What it must never hold: the minted secret or the token itself. The
       // partner pastes their own copy over the placeholder.
-      await page.getByRole("button", { name: "Show full code" }).click();
+      await page.getByRole("button", { name: "Show full invitation" }).click();
       const encoded = (
         document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
       ).value;

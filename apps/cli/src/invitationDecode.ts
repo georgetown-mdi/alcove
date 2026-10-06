@@ -43,7 +43,7 @@ export async function decodeAndValidateInvitation(
     );
   } catch (err) {
     throw new UsageError(
-      "invalid invitation string: " + rawDecodeErrorDescription(err),
+      "invalid invitation: " + rawDecodeErrorDescription(err),
     );
   }
 

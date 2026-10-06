@@ -323,7 +323,7 @@ export function applyConnectionOverrides(
     if (result.channel === "filedrop")
       throw new UsageError(
         "--server-provision is only supported on the sftp and webrtc " +
-          "channels; a synced folder has no server to start.",
+          "channels; a shared folder has no server to start.",
       );
     result.server.provision = structuredClone(serverOverrides.provision);
     serverModified = true;
@@ -500,7 +500,7 @@ export function announceRetainMode(
   ) {
     log.info(
       "retain mode is enabled, with lockless_rendezvous and " +
-        "timestamp_in_filename; the peer must set all three identically " +
+        "timestamp_in_filename; your partner must set all three identically " +
         "(these flags are not negotiated).",
     );
   }

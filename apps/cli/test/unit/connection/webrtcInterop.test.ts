@@ -390,7 +390,7 @@ describe("the rendezvous ids the CLI registers and addresses", () => {
       expect(settlement()).toBe("rejected");
 
       await expect(session).rejects.toThrow(
-        /left the signaling server before the connection was established/,
+        /left the coordination server before the connection was established/,
       );
     },
   );

@@ -19,7 +19,7 @@ import type { JobExchangeOptions } from "./intentSchemas";
 export class ZeroSetupFingerprintListError extends Error {
   constructor() {
     super(
-      "a zero-setup exchange cannot pin more than one host-key fingerprint; " +
+      "a quick exchange cannot pin more than one host-key fingerprint; " +
         "the CLI --server-host-key-fingerprint flag is single-valued",
     );
     this.name = "ZeroSetupFingerprintListError";

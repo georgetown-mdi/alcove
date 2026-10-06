@@ -99,7 +99,7 @@ export class ManagedSignalingEndpointRefusedError extends Error {
       label.trim() === ""
         ? "This saved exchange"
         : `The saved exchange "${label}"`;
-    const refusal = `${name} cannot run: the signaling server address it saved ${reason}.`;
+    const refusal = `${name} cannot run: the coordination server address it saved ${reason}.`;
     super(`${refusal} Ask your partner for a new invitation and accept it.`);
     this.name = "ManagedSignalingEndpointRefusedError";
     this.label = label;

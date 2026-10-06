@@ -129,7 +129,7 @@ async function pressRun(id: string): Promise<void> {
 }
 
 describe("an accepting party's re-run", () => {
-  test("dials the signaling server the record saved", async () => {
+  test("dials the coordination server the record saved", async () => {
     expectConsole("error", /no partner in this test/);
     const created = await createManagedExchange(
       await acceptorExchange("rerun-saved-endpoint"),
@@ -167,7 +167,7 @@ describe("an accepting party's re-run", () => {
     await expect
       .element(
         page.getByText(
-          `The saved exchange "${LABEL}" cannot run: the signaling server ` +
+          `The saved exchange "${LABEL}" cannot run: the coordination server ` +
             "address it saved names a host that could move the connection " +
             "to another server.",
           { exact: false },
@@ -177,7 +177,7 @@ describe("an accepting party's re-run", () => {
     expect(dials.endpoints).toHaveLength(0);
 
     const alert = page.getByRole("alert").filter({
-      hasText: "The saved signaling server address cannot be used",
+      hasText: "The saved coordination server address cannot be used",
     });
     await expect.element(alert).toBeInTheDocument();
     const alertText = alert.element().textContent;

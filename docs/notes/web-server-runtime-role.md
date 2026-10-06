@@ -27,7 +27,7 @@ no exchange content -- the rendezvous ids derive from the invitation secret, and
 the data channel is confidential against it under DTLS
 ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)). It is not part of
 the web app's deployment: a page dials the broker the build names
-([DEPLOYMENT.md](../DEPLOYMENT.md#peer-coordination-server)), and where that
+([DEPLOYMENT.md](../DEPLOYMENT.md#coordination-server)), and where that
 broker runs is recorded in
 [webrtc-relay-deployment.md](webrtc-relay-deployment.md).
 

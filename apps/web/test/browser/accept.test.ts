@@ -691,7 +691,7 @@ describe("acceptor screen: review terms", () => {
       .toBeInTheDocument();
     const ledger = document.querySelector('aside[aria-label="This exchange"]');
     expect(ledger?.textContent).toContain(
-      "PII for linkage is encrypted locally before leaving your machine.",
+      "The fields you match on are encrypted on your machine before they leave it.",
     );
 
     // The top bar walks the acceptor spine with Review the terms current;
@@ -1396,7 +1396,7 @@ describe("acceptor screen: confirm your columns (verdict, mapper, launch)", () =
         "matches, never these settings.",
     );
     expect(ledger?.textContent).not.toContain(
-      "PII for linkage is encrypted locally before leaving your machine.",
+      "The fields you match on are encrypted on your machine before they leave it.",
     );
   });
 
@@ -2082,20 +2082,20 @@ describe("acceptor screen: run and completion", () => {
     });
     expect(currentStepLabel()).toBe("Connect");
 
-    // A protocol stage flips Connect to done and Confirm protocol to current.
+    // A protocol stage flips Connect to done and Check settings to current.
     call.onStage("confirming protocol");
     await vi.waitFor(() => {
-      expect(currentStepLabel()).toBe("Confirm protocol");
+      expect(currentStepLabel()).toBe("Check settings");
     });
 
-    // Per-key stages sit under Link keys.
+    // Per-key stages sit under Match records.
     call.onStage("stage 2 / 2");
     await vi.waitFor(() => {
       expect(document.querySelector(`.${styles.stageLabel}`)?.textContent).toBe(
-        "Linking key 2 / 2",
+        "Matching records (key 2 of 2)",
       );
     });
-    expect(currentStepLabel()).toBe("Link keys");
+    expect(currentStepLabel()).toBe("Match records");
   });
 
   test("the resolved matching is readable before the run ends", async () => {

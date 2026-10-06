@@ -301,7 +301,7 @@ describe("decode + validate (the gate before the prompt)", () => {
       );
       expect(err).toBeInstanceOf(UsageError);
       const message = (err as Error).message;
-      expect(message).toMatch(/^invalid invitation string: /);
+      expect(message).toMatch(/^invalid invitation: /);
       expect(message).not.toMatch(/app\.example\.org|LINKQUERY|LINKPATH/);
     }
   });
@@ -313,7 +313,7 @@ describe("decode + validate (the gate before the prompt)", () => {
       `ftp://app.example.org/accept#${encoded}`,
     ).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UsageError);
-    expect((err as Error).message).toMatch(/^invalid invitation string: /);
+    expect((err as Error).message).toMatch(/^invalid invitation: /);
   });
 
   test("encode/decode round-trips an invitation at the command level", async () => {

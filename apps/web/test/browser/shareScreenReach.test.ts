@@ -106,12 +106,10 @@ describe("share screen reach warning", () => {
   test("a command-line partner is pointed at the code, which names no address", async () => {
     renderShareScreen("http://127.0.0.1:3000", true);
     await expect
-      .element(
-        page.getByText("The invitation link only works on this computer"),
-      )
+      .element(page.getByText("The link only works on this computer"))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "Send your partner the invitation code instead of the link.",
+      "Send your partner the invitation as text instead of the link.",
     );
   });
 

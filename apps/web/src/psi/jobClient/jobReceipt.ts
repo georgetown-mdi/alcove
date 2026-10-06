@@ -1,5 +1,5 @@
 /**
- * The browser-side reader for a console run's dual-signed receipt: whether the
+ * The browser-side reader for a console run's signed receipt: whether the
  * console holds one for a job, where to download it from, and what to name the
  * saved file.
  *

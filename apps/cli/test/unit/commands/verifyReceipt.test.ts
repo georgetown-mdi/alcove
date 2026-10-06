@@ -100,7 +100,7 @@ const localPayloadSent: CommittedPayload = {
   columns: ["dose"],
   rows: [["10mg"]],
 };
-// The run binder both the record fixture and the dual-signed record fixture
+// The run binder both the record fixture and the signed receipt fixture
 // below hold, so the two artifacts pair as one run. One constant, so a fixture
 // cannot drift into an accidental cross-run pair.
 const RECEIPT_BINDER = "YmluZGVy";
@@ -144,7 +144,7 @@ const receiptContent: ReceiptContent = {
   binder: RECEIPT_BINDER,
 };
 
-/** A dual-signed record between Party A (initiator) and Party B (responder),
+/** A signed receipt between Party A (initiator) and Party B (responder),
  * written to `receipt.json` in `dir`, alongside Party A's signing identity file
  * (`identity.json`) -- what the initiator holds to anchor its own slot. Fixed
  * keys keep the fixture reproducible. */
@@ -542,7 +542,7 @@ describe("formatSignedRecordReport", () => {
       }),
     );
     expect(lines[0]).toBe(
-      "SIGNED RECEIPT INCOMPLETE: nothing contradicted the dual-signed record, " +
+      "SIGNED RECEIPT INCOMPLETE: nothing contradicted the signed receipt, " +
         "but not everything could be checked (see below). Nothing outside the " +
         "record anchors the initiator's certificate.",
     );
@@ -900,8 +900,8 @@ describe("builder", () => {
   });
 });
 
-describe("reading a dual-signed record", () => {
-  test("reads a dual-signed record back", async () => {
+describe("reading a signed receipt", () => {
+  test("reads a signed receipt back", async () => {
     const path = await writeSignedRecord(tmp());
     expect(readSignedRecordFile(path).version).toBe(SIGNED_RECEIPT_VERSION);
   });
@@ -939,7 +939,7 @@ describe("reading a dual-signed record", () => {
     expect(() => readVerifiableArtifact(path)).toThrow(UsageError);
     expect(() => readVerifiableArtifact(path)).toThrow(
       `recognizes ${EXCHANGE_RECORD_VERSION} (an exchange record) and ` +
-        `${SIGNED_RECEIPT_VERSION} (a dual-signed record)`,
+        `${SIGNED_RECEIPT_VERSION} (a signed receipt)`,
     );
     // A version of neither family earns no receipt-format remedy: nothing says
     // the file is a receipt at all.
@@ -1132,7 +1132,7 @@ describe("handler", () => {
   }
 
   /** Both artifacts of one exchange -- the record with its keys file beside it,
-   * and the dual-signed record holding that exchange's agreed-terms hash -- plus
+   * and the signed receipt holding that exchange's agreed-terms hash -- plus
    * the responder's fingerprint (the pin a verifier holds for its partner), the
    * initiator's (what an auditor holding both would pin), and the path to the
    * initiator's own signing identity, which anchors its own slot. */
@@ -1179,14 +1179,14 @@ describe("handler", () => {
     return path;
   };
 
-  test("a dual-signed record positional refuses --signed-record", async () => {
+  test("a signed receipt positional refuses --signed-record", async () => {
     const { signedPath } = await exchangeArtifacts();
     const { stdout, stderr, exits } = await runVerify({
       record: signedPath,
       "signed-record": signedPath,
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain("already a dual-signed record");
+    expect(stderr).toContain("already a signed receipt");
     expect(stdout).toBe("");
   });
 
@@ -1252,7 +1252,7 @@ describe("handler", () => {
     ["--keys", { keys: "rec.keys.json" }],
   ];
   test.each(exchangeRecordOnlyOptions)(
-    "a dual-signed record positional refuses %s, which apply to the exchange record",
+    "a signed receipt positional refuses %s, which apply to the exchange record",
     async (_label, extra) => {
       const { signedPath } = await exchangeArtifacts();
       const { stdout, stderr, exits } = await runVerify({
@@ -1265,14 +1265,14 @@ describe("handler", () => {
     },
   );
 
-  test("--partner-fingerprint with no dual-signed record named is refused", async () => {
+  test("--partner-fingerprint with no signed receipt named is refused", async () => {
     const { recordPath, pin } = await exchangeArtifacts();
     const { stdout, stderr, exits } = await runVerify({
       record: recordPath,
       "partner-fingerprint": pin,
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain("no dual-signed record was named");
+    expect(stderr).toContain("no signed receipt was named");
     // The record on its own would have verified and printed a verdict, so an
     // empty stdout is what shows the pin was refused rather than ignored.
     expect(stdout).toBe("");
@@ -1293,7 +1293,7 @@ describe("handler", () => {
   });
 
   test("a --config-file that does not exist is refused on a record-only run", async () => {
-    // Nothing reads the config's pin on this run -- no dual-signed record was
+    // Nothing reads the config's pin on this run -- no signed receipt was
     // named -- so the terms half is what has to catch the typo; mapping it to "no
     // terms supplied" would report the agreed-terms hash as merely not checked.
     const { recordPath } = await exchangeArtifacts();
@@ -1875,7 +1875,7 @@ describe("handler", () => {
       expect(stdout).not.toContain("does not belong to this record's run");
     });
 
-    test("a dual-signed record's carried partner terms come before the file's", async () => {
+    test("a signed receipt's carried partner terms come before the file's", async () => {
       const { recordPath, signedPath } = await exchangeArtifacts();
       writeAgreedTerms(recordPath, {
         partnerTerms: { ...baseInputs.partnerTerms, identity: "Party C" },
@@ -2048,7 +2048,7 @@ describe("handler", () => {
       expect(worseReceiptVerdictExitCode(a, b), `${a}, ${b}`).toBe(worse);
   });
 
-  test("a dual-signed record positional verifies the signatures alone", async () => {
+  test("a signed receipt positional verifies the signatures alone", async () => {
     const { signedPath, identityPath, pin } = await exchangeArtifacts();
     const { stdout, exits, exitCode } = await runVerify({
       record: signedPath,
@@ -2259,7 +2259,7 @@ describe("handler", () => {
     expect(exitCode).toBe(RECEIPT_VERIFICATION_INCOMPLETE_EXIT_CODE);
   });
 
-  test("a dual-signed record of another format is refused naming the remedy", async () => {
+  test("a signed receipt of another format is refused naming the remedy", async () => {
     // Pre-release the earlier format is refused rather than migrated, and the
     // refusal leaves the operator somewhere to go: the run's exchange record,
     // whose agreed-terms hash a supplied terms file still checks.
@@ -2418,7 +2418,7 @@ describe("handler", () => {
     expect(exitCode).toBe(RECEIPT_VERIFICATION_FAILED_EXIT_CODE);
   });
 
-  test("a dual-signed record verified alone leaves the pairing unchecked", async () => {
+  test("a signed receipt verified alone leaves the pairing unchecked", async () => {
     // The third party handed one artifact: the pairing is reported as not checked
     // rather than failed, and that alone holds the verdict short of verified.
     const { signedPath, pin, ownFingerprint } = await exchangeArtifacts();
@@ -2520,14 +2520,14 @@ describe("handler", () => {
     expect(stderr).toContain("does not exist");
   });
 
-  test("--identity-file with no dual-signed record named is refused", async () => {
+  test("--identity-file with no signed receipt named is refused", async () => {
     const { recordPath, identityPath } = await exchangeArtifacts();
     const { stderr, exits } = await runVerify({
       record: recordPath,
       "identity-file": identityPath,
     });
     expect(exits).toEqual([64]);
-    expect(stderr).toContain("no dual-signed record was named");
+    expect(stderr).toContain("no signed receipt was named");
   });
 
   test("an identity file whose private key no longer matches still anchors the slot", async () => {

@@ -73,7 +73,7 @@ async function inviteByKeyboard(): Promise<CapturedRun> {
   await expect.element(page.getByLabelText("Your name")).toBeInTheDocument();
   expectNoAccessibilityViolations(app.container, { page: true });
 
-  await typeInto(control("textbox", "Your name"), "Dana Okafor");
+  await typeInto(control("textbox", "Your name or agency"), "Dana Okafor");
   await tabTo(
     (focused) => focused.getAttribute("aria-label") === "Your data file",
   );
@@ -104,7 +104,7 @@ async function inviteByKeyboard(): Promise<CapturedRun> {
 
   await expectHeadingFocused("Your invitation is ready");
   expectNoAccessibilityViolations(app.container, { page: true });
-  await tabTo(control("button", "Copy invitation link"));
+  await tabTo(control("button", "Copy invitation as a link"));
   await vi.waitFor(() => expect(runs.calls).toHaveLength(1));
   return runs.calls[0] as CapturedRun;
 }

@@ -2,7 +2,7 @@
  * refused: an invitation endpoint names no scheme, so the acceptor dials with
  * its own page's. */
 export const SIGNALING_SCHEME_MISMATCH =
-  "the signaling server's scheme must match the page's (wss: for a page " +
+  "the coordination server's scheme must match the page's (wss: for a page " +
   "served over https, ws: for a page served over http); set it to match and " +
   "rebuild the app";
 

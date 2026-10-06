@@ -1618,7 +1618,7 @@ const AwaitingAddressSchema: z.ZodType<ConnectionConfigAwaitingAddress> = z
     },
     {
       message:
-        "set either a single shared directory (path / server.path) or the " +
+        "set either a single shared folder (path / server.path) or the " +
         "inbound_path/outbound_path pair, not both",
     },
   )

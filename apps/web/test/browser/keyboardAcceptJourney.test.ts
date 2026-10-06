@@ -170,7 +170,7 @@ async function acceptByKeyboard(): Promise<void> {
   );
   await expect.element(page.getByText("cohort_intake.csv")).toBeInTheDocument();
   await toggle(control("checkbox", /./));
-  await typeInto(control("textbox", "Your name"), "Sam Alvarez");
+  await typeInto(control("textbox", "Your name or agency"), "Sam Alvarez");
   await expect
     .element(page.getByLabelText("Your name"))
     .toHaveValue("Sam Alvarez");

@@ -153,12 +153,12 @@ const FOLDER_LINES: Record<FolderReadiness, Omit<ReadinessLine, "id">> = {
 const SIGNALING_LINES: Record<SignalingReadiness, Omit<ReadinessLine, "id">> = {
   answered: {
     ok: true,
-    message: "This browser connected to the signaling server.",
+    message: "This browser connected to the coordination server.",
   },
   noAnswer: {
     ok: false,
     message:
-      "This browser could not connect to the signaling server. Check your network connection and try again; if it still cannot connect, ask your IT team whether this network blocks it.",
+      "This browser could not connect to the coordination server. Check your network connection and try again; if it still cannot connect, ask your IT team whether this network blocks it.",
   },
   offline: {
     ok: false,
