@@ -3362,6 +3362,49 @@ test("a key exchange that fails closed removes both markers and leaves both secr
   expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_B });
 }, 20_000);
 
+test("a security failure wrapped in a transport failure removes the marker and leaves the secret", async () => {
+  const keyFileA = path.join(tmpDir, "a.key");
+  const keyFileB = path.join(tmpDir, "b.key");
+  saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
+  saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
+  let started = 0;
+  let bothStarted: () => void = () => {};
+  const bothInKeyExchange = new Promise<void>((resolve) => {
+    bothStarted = resolve;
+  });
+  vi.mocked(authenticateConnection).mockImplementation(async () => {
+    started += 1;
+    if (started === 2) bothStarted();
+    await bothInKeyExchange;
+    throw new ConnectionError("the message send failed", "transport", {
+      cause: new ConnectionError(
+        "a frame failed its integrity check",
+        "security",
+      ),
+    });
+  });
+
+  const results = await Promise.allSettled(
+    [keyFileA, keyFileB].map((keyFilePath, index) =>
+      runProtocol({
+        connection: {
+          channel: "filedrop",
+          path: dropDir,
+          options: TWO_PARTY_OPTIONS,
+        },
+        auth: { sharedSecret: TOKEN_A, keyFilePath },
+        prepared: minimalPrepared,
+        output: undefined,
+        verbosity: -1,
+        loggerName: `test-${index}`,
+      }),
+    ),
+  );
+  for (const result of results) expect(result.status).toBe("rejected");
+  expect(loadKeyFile(keyFileA)).toEqual({ sharedSecret: TOKEN_A });
+  expect(loadKeyFile(keyFileB)).toEqual({ sharedSecret: TOKEN_A });
+}, 20_000);
+
 test("a key exchange the partner never answers leaves the marker set", async () => {
   const keyFileA = path.join(tmpDir, "a.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
