@@ -266,19 +266,28 @@ jobs:
         run: npm run build -w apps/cli
       # The integration project's globalSetup
       # (apps/web/test/integration/requireProdBuild.ts) fails the run when
-      # apps/web/.output or the console builds under apps/web/dist are absent
-      # rather than letting the suites that drive the built servers skip, so
-      # this leg builds the hosted app and the console for itself. Taking the
-      # `package` job's build through the deploy artifact instead would serialize
-      # the slowest leg behind that job for a build of about half a minute.
-      # The suites serve the build over http and need no reachable broker, so
-      # it names a loopback ws: address.
+      # apps/web/.output, the console builds under apps/web/dist, or the hosted
+      # static site under apps/web/dist/hosted are absent rather than letting
+      # the suites that drive them skip, so this leg builds all of them for
+      # itself. Taking the `package` job's build through the deploy artifact
+      # instead would serialize the slowest leg behind that job for a build of
+      # about half a minute. The suites serve the build over http and need no
+      # reachable broker, so it names a loopback ws: address.
       - name: Build the web app for the integration suites
         if: matrix.build-web == 'true'
         run: |
           VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web
           npm run build:console -w apps/web
           npm run build:console-server -w apps/web
+      # The static-host harness (apps/web/test/staticHost) serves this build to
+      # the integration suites over http, where the app refuses a wss: broker
+      # address, and the suites dial no broker; so the build names a loopback
+      # ws: address.
+      - name: Build the hosted static site for the integration suites
+        if: matrix.build-web == 'true'
+        env:
+          VITE_SIGNALING_SERVER_URL: ws://127.0.0.1/api/
+        run: npm run build:hosted -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.

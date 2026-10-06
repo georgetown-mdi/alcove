@@ -13,3 +13,32 @@ Measured against a real build, each route's document names a superset of what th
 ## No catch-all rewrite
 
 The build writes no `_redirects` or `404.html` and fails if one is present in its output. With neither file, Cloudflare Pages answers an unmatched path with the root `index.html`, while a catch-all rewrite to a document makes Cloudflare Pages loop.
+
+## The host configuration file
+
+The build writes `_headers` (`hosted/headersFile.ts`), the file Cloudflare Pages reads for response headers:
+
+- `/*` gets the four security headers, taken from `securityResponseHeaders` in `src/utils/securityHeaders.ts`, the value the Start server applies in code. The reason for each header: [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security).
+- `/assets/*` gets `Cache-Control: public, max-age=31536000, immutable`. Every file under `/assets/` has a content hash in its name.
+
+Everything else keeps Pages' default `Cache-Control: public, max-age=0, must-revalidate`, so the documents and `serviceWorker.js` revalidate on every load.
+
+The build emits the file rather than keeping it in `public/`, so the console, which serves `public/`, never serves it.
+
+With `_headers`, the headers reach every response, assets included, where the Start server's entry skips static assets. `/api/*` on the static host answers with the root document and 200 rather than the Start server's empty 404; the hosted app calls no API.
+
+## Server-only modules
+
+The build fails if the browser bundle or a worker bundle imports a `node:` builtin, `env-schema` or `dotenv` (`hosted/moduleGraphGuard.ts`). A production browser build gives every Node builtin one shared stub id, so the guard records the import specifiers as well as the resolved ids. A bare builtin without the `node:` prefix is not refused: `@openmined/psi.js` imports `url`, which the build stubs.
+
+## Static-host harness
+
+The integration suites serve the build through `test/staticHost/`, which emulates the part of Pages the site relies on (its rules: [docs/TESTING.md](../TESTING.md#static-host-harness)). Measured on the Pages emulator (wrangler 4.147.0):
+
+- an unmatched path, `/assets/` paths included, gets the root `index.html` with 200 when the output has no `404.html`;
+- the `_headers` rules under `/*` reach documents, the fallback document and assets;
+- every file's default `Cache-Control` is `public, max-age=0, must-revalidate`.
+
+Not measured, so the harness follows the Pages documentation: an extensionless path served from `<path>.html` (the emulator run used `<path>/index.html`, which Pages answers with a 308 to the trailing-slash path), a `_headers` rule replacing that default `Cache-Control`, and `_headers` itself not being served. The harness refuses `_headers` syntax outside the subset it reads. Before cutover, a preview deployment repeats these checks on the real Pages edge.
+
+The Start build logged a failed import of peerjs's `PeerErrorType` while rendering a route on the server. The static build has no server render, and `csvWorkerProd` fails on any browser message naming `PeerErrorType` on either build.

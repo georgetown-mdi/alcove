@@ -6,23 +6,19 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 
 import { chromium } from "playwright";
 
-import {
-  getFreePort,
-  hasBuild,
-  spawnProdServer,
-  stopProdServer,
-  waitForRoot,
-} from "./prodServer.js";
+import { deployments } from "./deployments";
 
 import type { Browser, FileChooser } from "playwright";
-import type { ChildProcess } from "node:child_process";
+import type { Served } from "./deployments";
 
 // PapaParse's `worker: true` self-hosted worker corrupted the CSV parse once
 // Vite bundled and minified the app; only a production build catches it, since
 // dev and Vitest's real-Chromium tests both passed with the broken worker. This
-// drives the real inviter screen flow against a `vite build` (.output), with a
-// CSV sized above CSV_WORKER_FILE_BYTE_THRESHOLD so parsing routes off-thread.
-// Rebuild (`npm run build -w apps/web`) before re-running; CI always rebuilds
+// drives the real inviter screen flow against each production build -- the
+// Start server's (.output) and the hosted static site (dist/hosted, behind the
+// static-host harness) -- with a CSV sized above CSV_WORKER_FILE_BYTE_THRESHOLD
+// so parsing routes off-thread. Rebuild (`npm run build -w apps/web` and
+// `npm run build:hosted -w apps/web`) before re-running; CI always rebuilds
 // first.
 
 const READY_TIMEOUT_MS = 30_000;
@@ -53,31 +49,29 @@ function writeLargeCsv(dir: string): string {
   return path;
 }
 
-describe.skipIf(!hasBuild)(
-  "the production bundle parses a large CSV through the Vite-native worker",
-  () => {
-    let child: ChildProcess | undefined;
+describe.each(deployments)(
+  "$name parses a large CSV through the Vite-native worker",
+  ({ available, serve }) => {
+    let served: Served | undefined;
     let browser: Browser | undefined;
     let tempDir: string | undefined;
-    let port = 0;
+    let base = "";
 
     beforeAll(async () => {
+      if (!available) return;
       tempDir = mkdtempSync(join(tmpdir(), "alcove-csv-worker-"));
-      port = await getFreePort();
-      const { child: proc, getLaunchError } = await spawnProdServer(port);
-      child = proc;
-
-      await waitForRoot(`http://127.0.0.1:${port}/`, proc, getLaunchError);
+      served = await serve();
+      base = served.base;
       browser = await chromium.launch({ headless: true });
     }, READY_TIMEOUT_MS + 20_000);
 
     afterAll(async () => {
       await browser?.close();
       if (tempDir) rmSync(tempDir, { recursive: true, force: true });
-      await stopProdServer(child);
+      await served?.stop();
     });
 
-    test(
+    test.skipIf(!available)(
       "a large CSV parses off-thread and the invitation is generated",
       async () => {
         if (browser === undefined || tempDir === undefined)
@@ -92,10 +86,15 @@ describe.skipIf(!hasBuild)(
           // emits it as `csvParse.worker-<hash>.js`, so its URL includes that name.
           const workerUrls: Array<string> = [];
           page.on("worker", (worker) => workerUrls.push(worker.url()));
+          // The Start server's route render logged a failed import of peerjs's
+          // PeerErrorType; no build's page may report one.
+          const pageMessages: Array<string> = [];
+          page.on("console", (message) => pageMessages.push(message.text()));
+          page.on("pageerror", (error) => pageMessages.push(error.message));
 
           // Step 1 of the inviter spine ("Your file") lives on the served /exchange
           // route.
-          await page.goto(`http://127.0.0.1:${port}/exchange`, {
+          await page.goto(`${base}/exchange`, {
             waitUntil: "load",
             timeout: GENERATE_TIMEOUT_MS,
           });
@@ -194,6 +193,9 @@ describe.skipIf(!hasBuild)(
           expect(deepLink).toContain("/accept#");
 
           expect(workerUrls.some((url) => url.includes("csvParse"))).toBe(true);
+          expect(
+            pageMessages.filter((message) => message.includes("PeerErrorType")),
+          ).toEqual([]);
         } finally {
           await page.close();
         }

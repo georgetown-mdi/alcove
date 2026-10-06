@@ -40,6 +40,13 @@ export const consoleClientIndex = resolve(webRoot, "dist/console/index.html");
 export const CONSOLE_BUILD_COMMAND =
   "npm run build:console -w apps/web && npm run build:console-server -w apps/web";
 
+/** The static site `npm run build:hosted -w apps/web` writes, served by the
+ * static-host harness (test/staticHost/server.ts). */
+export const hostedOutput = resolve(webRoot, "dist/hosted");
+
+/** The command that produces {@link hostedOutput}. */
+export const HOSTED_BUILD_COMMAND = "npm run build:hosted -w apps/web";
+
 /** Set to `1` to run the integration project without a production build: the
  * built-server suites skip instead of failing it (see requireProdBuild.ts). */
 export const ALLOW_MISSING_BUILD_ENV = "ALCOVE_ALLOW_MISSING_WEB_BUILD";
@@ -49,6 +56,9 @@ export const ALLOW_MISSING_BUILD_ENV = "ALCOVE_ALLOW_MISSING_WEB_BUILD";
  * it, so an absent build cannot mean one thing to the guard and another to a
  * suite. */
 export const hasBuild = existsSync(prodEntry);
+
+/** {@link hasBuild}'s counterpart for the hosted static site. */
+export const hasHostedBuild = existsSync(resolve(hostedOutput, "index.html"));
 
 /** {@link hasBuild}'s counterpart for the console server and the client it
  * serves, both of which it needs to start. */
