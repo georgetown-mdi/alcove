@@ -8,7 +8,7 @@ The app-shell worker (`public/serviceWorker.js`) warms each path in its `SHELL_R
 
 The page list is the worker's own list, so the two cannot disagree. Lazily imported code is not linked: it is fetched when used.
 
-Measured against a real build of the app's TanStack Start version, each route's document named a superset of what that build's server-rendered document named, so no route loses code the Start deployment warmed.
+Each route's document names every asset the app-shell worker needs to run that route offline; lazily imported code is fetched when used.
 
 ## No catch-all rewrite
 
@@ -50,4 +50,4 @@ Measured on the Pages emulator (wrangler 4.147.0):
 
 Not measured, so the harness follows the Pages documentation: an extensionless path served from `<path>.html` (the emulator run used `<path>/index.html`, which Pages answers with a 308 to the trailing-slash path), a `_headers` rule replacing that default `Cache-Control`, and `_headers` itself not being served. The harness refuses `_headers` syntax outside the subset it reads. Before cutover, a preview deployment repeats these checks on the real Pages edge.
 
-`csvWorkerProd` fails on any browser message naming a failed import of peerjs's `PeerErrorType`, which a server render of the page once logged.
+`csvWorkerProd` fails on any browser message naming a failed import of peerjs's `PeerErrorType`.

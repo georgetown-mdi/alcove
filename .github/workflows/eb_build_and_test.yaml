@@ -68,9 +68,9 @@ jobs:
       #
       # packages/peerjs-broker/** is here because the web dev loop and suites
       # run the standalone broker from that workspace, and packages/testkit/**
-      # because the web unit suite is driven by fixtures it holds. eb_deploy.yaml is here because the deploy-trigger coverage step
-      # reads its push filter, and narrowing that filter is the change the step
-      # exists to catch.
+      # because the web unit suite is driven by fixtures it holds. eb_deploy.yaml
+      # is here because the deploy-trigger coverage step reads its push filter,
+      # and narrowing that filter is the change the step exists to catch.
       #
       # The `!` entries exclude markdown under the directory globs. The claim
       # that no suite this gate runs reads one as a fixture or input is held by
@@ -117,11 +117,7 @@ jobs:
     # rather than only a pull request. 15 min sits far above a normal run
     # (install + the web build + the zip) yet cuts a true hang short.
     #
-    # The artifact is the hosted static site (apps/web/dist/hosted) with the
-    # apps/web/deploy/aws_eb payload and an empty .env copied over it. That
-    # payload's Procfile starts `node server/index.mjs`, which the static build
-    # does not emit, so the artifact holds no process for Elastic Beanstalk to
-    # run.
+    # What the artifact holds: docs/DEPLOYMENT.md, "The deploy artifact".
     timeout-minutes: 15
     outputs:
       artifactName: ${{steps.artifact-name.outputs.artifactName}}
