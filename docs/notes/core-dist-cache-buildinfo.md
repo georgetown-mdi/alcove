@@ -4,11 +4,12 @@ title: "Dropping the Restored Core Build's tsconfig.tsbuildinfo"
 
 # Core dist cache buildinfo: why a cache hit drops it
 
-_Status: decided and built. This note records the `RollupError` a
-`packages/core/dist` cache hit produced, the single condition that flips it,
-the alternatives measured and set aside, and the decision taken in
-`.github/actions/setup/action.yml`'s restore, restamp, and save steps for the
-core build cache. See [docs/notes/README.md](README.md)._
+_Status: superseded by a non-incremental build. This note records the
+`RollupError` a `packages/core/dist` cache hit produced, the single condition
+that flips it, the alternatives measured and set aside, and the cache-side
+decision first taken in `.github/actions/setup/action.yml`; the last section
+records the build-side change that replaced it. See
+[docs/notes/README.md](README.md)._
 
 ## What was measured
 
@@ -81,3 +82,36 @@ of the build.
 This is scoped to the composite build's own TypeScript emit cache. It does not
 change what `packages/core/dist` cache key binds, the freshness guard compared
 in `docs/TESTING.md`, or the install-tree cache the same action also restores.
+
+## Superseded: the build compiles without a build-info file
+
+The same failure reaches local builds of `packages/core` and `apps/cli`
+whenever `dist/tsconfig.tsbuildinfo` outlives its `.rollup.cache/` -- a deleted
+cache, or a checkout at a new path, since the cache's paths are absolute. Both
+builds compile twice through `@rollup/plugin-typescript`
+-- `rollup.config.ts` through `--configPlugin`, then the sources -- and each
+compile could skip emitting what the build-info file listed.
+
+Both compiles now override the workspace tsconfig with `composite: false`,
+`incremental: false`, `declaration: false` and `declarationMap: false`, in the
+`--configPlugin` option of each `build` script and in each `rollup.config.ts`.
+Measured against the real build:
+
+- `incremental: false` alone still fails: with `composite` on, the
+  config-plugin compile skipped `rollup.config.ts` as before.
+- Turning off `composite` in the config-plugin compile alone moves the failure
+  to the sources: `src/index.ts` is parsed as raw TypeScript.
+- Without the two declaration options, `apps/cli` (whose tsconfig sets
+  `declaration`) writes `.d.ts` files into `dist/`.
+
+With all four, a clean build of either workspace produces the same `dist/`
+file for file, less the build-info file, which is no longer written, and no
+`.rollup.cache/` directory. The CI cache's removal and exclusion of the
+build-info file are gone with it. The project-reference typecheck is
+unaffected: it reads `tsconfig.json`, which keeps `composite`.
+
+`scripts/rollup-stale-buildinfo.test.mjs` copies both workspaces, leaves the
+build-info file an incremental compile writes and no cache, and runs each
+`npm run build`; it runs in the `repo-scripts` project, which
+`npm run check:all` drives, not in the unit suites, because two full builds
+take about a minute.
