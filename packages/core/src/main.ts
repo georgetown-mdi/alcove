@@ -444,6 +444,7 @@ export {
   TRANSFORM_PARAM_COUNT_MESSAGE,
 } from "./config/transformParamDisplay";
 export {
+  changedPartnerBoundTerms,
   compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,

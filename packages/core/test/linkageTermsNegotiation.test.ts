@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   TERMS_FIELDS_PARTNER_DOES_NOT_BIND,
+  changedPartnerBoundTerms,
   compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
@@ -228,6 +229,61 @@ test("an edit to every bound field is a terms change", () => {
       ),
       field,
     ).toBe(false);
+});
+
+test("a terms change the comparison skips leaves the delta empty", () => {
+  const baselines = { partnerDeduplicate: everyFieldStatedPartner.deduplicate };
+  const { linkageRuleSet: _ruleSet, ...withoutRuleSet } =
+    everyFieldStatedPartner;
+  const withoutReceive: LinkageTerms = {
+    ...everyFieldStatedPartner,
+    payload: { send: [{ name: "b" }] },
+  };
+  for (const partner of [withoutRuleSet, withoutReceive])
+    expect(
+      termsDeltaIsEmpty(
+        compareTerms(everyFieldStated, partner, baselines).delta,
+      ),
+    ).toBe(true);
+});
+
+test("changedPartnerBoundTerms names each bound field an edit changes", () => {
+  for (const [field, edit] of Object.entries(boundFieldEdits))
+    expect(
+      changedPartnerBoundTerms(everyFieldStated, edit(everyFieldStated)),
+      field,
+    ).toEqual([field]);
+});
+
+test("changedPartnerBoundTerms counts a field one side leaves unstated", () => {
+  const { linkageRuleSet: _ruleSet, ...withoutRuleSet } = everyFieldStated;
+  expect(changedPartnerBoundTerms(everyFieldStated, withoutRuleSet)).toEqual([
+    "linkageRuleSet",
+  ]);
+  expect(changedPartnerBoundTerms(withoutRuleSet, everyFieldStated)).toEqual([
+    "linkageRuleSet",
+  ]);
+  expect(
+    changedPartnerBoundTerms(everyFieldStated, {
+      ...everyFieldStated,
+      payload: { receive: [{ name: "b" }] },
+    }),
+  ).toEqual(["payload"]);
+});
+
+test("changedPartnerBoundTerms ignores descriptions and unbound fields", () => {
+  expect(
+    changedPartnerBoundTerms(everyFieldStated, {
+      ...everyFieldStated,
+      identity: "Party A, renamed",
+      date: "2025-06-01",
+      linkageFields: [...everyFieldStated.linkageFields].reverse(),
+      payload: {
+        send: [{ name: "a", description: "reworded" }],
+        receive: [{ name: "b", description: "added" }],
+      },
+    }),
+  ).toEqual([]);
 });
 
 test("every value a warning can hold is already escape-stable", () => {
