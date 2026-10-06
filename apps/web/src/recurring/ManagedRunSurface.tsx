@@ -215,9 +215,6 @@ interface LiveManagedRunFailure {
  * {@link runManagedExchangeInBrowser}; this thin host owns the record load, the
  * per-run input (the working folder, or a chosen file where none can be
  * granted), and folds the outcome into the completion surface.
- *
- * It is the run affordance only, not the management surface -- deleting,
- * editing, and per-exchange detail are separate items.
  */
 export function ManagedRunSurface({ id }: { id: string }) {
   const [record, setRecord] = useState<RunnableManagedExchangeRecord>();

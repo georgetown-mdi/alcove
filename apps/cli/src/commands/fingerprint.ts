@@ -528,16 +528,8 @@ export async function handler(argv: Arguments): Promise<void> {
   // logLevelFlag; the command reads only the log-level flag through it rather
   // than the shared bootstrap parser, which a fingerprint run does not need.
   const logLevel = parseOrExit(() => logLevelFlag(argv));
-  // Install the sink, apply the level, and build getLogger("fingerprint") through
-  // the shared configureLogging helper (in that order, so the logger inherits the
-  // sink): the file sink when --log-file is given, otherwise the default stderr
-  // sink, so the command's logged diagnostics (the preflight warnings and the
-  // report's banner, bound identity, regeneration warning, and sharing
-  // instructions) stay off stdout. report() prints only the bare fingerprint value
-  // through console.log; everything else it emits routes through this logger.
-  // singleValue rejects a repeated --log-file and configureLogFile rejects an
-  // unopenable path; both are UsageErrors mapped to stderr + exit 64 by the
-  // surrounding parseOrExit.
+  // Diagnostics stay off stdout: report() prints only the bare fingerprint
+  // through console.log.
   const { log, close: closeLogging } = parseOrExit(() =>
     configureLogging({
       logLevel,
@@ -634,10 +626,6 @@ export async function handler(argv: Arguments): Promise<void> {
   } catch (err) {
     exitWithError(log, err, exitCodeForError(err));
   } finally {
-    // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path. Writes are synchronous and already
-    // durable, so exitWithError's process.exit (which bypasses this finally)
-    // loses nothing -- this is only factory/descriptor cleanup.
     closeLogging();
   }
 }

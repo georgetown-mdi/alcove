@@ -121,8 +121,7 @@ export type {
   PutOptions,
   PutSource,
 } from "./connection/fileSyncConnection";
-// The filename grammar module is not barrelled (see its header); this one
-// recognizer is named individually because a FileTransportClient implementation
+// Named individually because a FileTransportClient implementation
 // outside this package needs it -- the CLI's SFTP adapter decides from it
 // whether a path handed to safeDelete is the protocol's own in-flight temp
 // write.

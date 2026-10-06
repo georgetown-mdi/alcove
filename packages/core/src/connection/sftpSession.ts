@@ -3,27 +3,18 @@
 // connect path enforces, and runs the ssh-keyscan-analogue host-key probe. It
 // holds live SFTP-session state -- the host key the server presented once its
 // pin check passed (observedHostKey), read post-handshake to advertise this
-// party's observed fingerprint for cross-party reconciliation -- so, like the
-// abortMarker extraction and unlike the pure sftpConnect helpers, it is a class
-// FileSyncConnection composes rather than a bag of free functions.
+// party's observed fingerprint for cross-party reconciliation -- so it is a
+// class FileSyncConnection composes.
 //
 // The host-key verification RATIONALE -- why the fingerprint is pinned, the
 // fail-closed default, the first-use trust flow, the provider-options
 // interaction, and the constant-time-compare hygiene -- is owned by
 // docs/SECURITY_DESIGN.md (Transport-layer authentication) and, at the
 // implementation tier, docs/spec/CHANNEL_SECURITY.md (SFTP host-key
-// verification). This module implements that control and does not restate it.
-// The pure host-key primitives it builds on -- the connect-option allowlists,
-// the defensive verdict delivery, the blob view -- live in ./sftpConnect, and
-// the fingerprint digest / set-membership match / key-type decode live in
-// utils/sshHostKey.ts, modules this one neither owns nor extends.
-//
-// By design, this module is NOT re-exported by the package barrel (main.ts
-// barrels fileSyncConnection.ts via `export *`, not this file), so it stays out
-// of the package's public runtime surface while fileSyncConnection.ts composes
-// it -- the same pattern as abortMarker.ts and sftpConnect.ts. The connection
-// keeps thin delegating members (probeHostKeyFingerprint and the observedHostKey
-// getter) so its public and test surface is unchanged.
+// verification). The pure host-key primitives it builds on -- the
+// connect-option allowlists, the defensive verdict delivery, the blob view --
+// live in ./sftpConnect, and the fingerprint digest / set-membership match /
+// key-type decode live in utils/sshHostKey.ts.
 
 import { errorMessage } from "../errors";
 import type { getLoggerForVerbosity } from "../utils/logger";

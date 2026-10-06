@@ -6,20 +6,11 @@
 // builders live in one place and cannot diverge between enforcement sites.
 //
 // The normative filename grammar is owned by the overview-tier
-// docs/EXCHANGE_REFERENCE.md ("Filename grammar"); this module implements
-// it and does not restate it. The state machine that consumes these
-// predicates -- the directory-as-state-machine, the enforcement sites, and
-// the invariants -- is docs/spec/FILE_SYNC.md, a recorded tier inversion
-// (overview owns the grammar, spec owns the state machine): see
-// docs/spec/README.md.
-//
-// Not re-exported wholesale by the package barrel (main.ts barrels
-// fileSyncConnection.ts, not this file), so an `@internal` export here
-// stays out of the public runtime surface while a unit test can still
-// deep-import it -- the same pattern as fileSyncConstants.ts. Four
-// recognizers are public: isAbortMarkerName and isExpectedAbortName,
-// re-exported from fileSyncConnection.ts (which IS barrelled), and
-// isProtocolTempName and isProtocolGrammarName, named individually by main.ts.
+// docs/EXCHANGE_REFERENCE.md ("Filename grammar"). The state machine that
+// consumes these predicates -- the directory-as-state-machine, the
+// enforcement sites, and the invariants -- is docs/spec/FILE_SYNC.md, a
+// recorded tier inversion (overview owns the grammar, spec owns the state
+// machine): see docs/spec/README.md.
 
 import {
   v4 as uuidv4,

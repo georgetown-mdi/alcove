@@ -1062,11 +1062,6 @@ export async function handler(argv: Arguments): Promise<void> {
     ...options
   } = parsed;
 
-  // Install the sink, apply the level, and build getLogger("exchange") through the
-  // shared configureLogging helper (in that order, so the logger inherits the
-  // sink): the file sink when --log-file is given, otherwise the default stderr
-  // sink. A missing parent directory (configureLogFile) is a UsageError reported
-  // on stderr and mapped to exit 64 by parseOrExit here.
   const {
     log,
     writePlainLine,
@@ -1419,10 +1414,6 @@ export async function handler(argv: Arguments): Promise<void> {
       if (exchangeError !== undefined) throw exchangeError;
     });
   } finally {
-    // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path. runOrExit logs a failure before its
-    // process.exit, which bypasses this finally, so this is only
-    // factory/descriptor cleanup.
     closeLogging();
   }
 }

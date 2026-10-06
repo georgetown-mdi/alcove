@@ -10,16 +10,12 @@
 // through its setters, mutating the connection's
 // responsibleFiles/foreignFileSnapshot Sets by shared reference.
 //
-// This module is not re-exported by the package barrel, so its @internal
-// exports stay out of the public runtime surface while a unit test can
-// deep-import them (fileSyncNames.ts and fileSyncFraming.ts follow the same
-// pattern). FileSyncConnection's public synchronize() entry calls
+// FileSyncConnection's public synchronize() entry calls
 // validateSynchronizeEntry() then rendezvous.run(scope).
 //
 // The protocol itself -- wire names, ordering, lock-vs-lockless
 // negotiation, bilateral-mismatch and joiner-recovery guarantees -- is
-// specified in docs/spec/FILE_SYNC.md and docs/spec/CHANNEL_SECURITY.md;
-// this module implements it and does not restate it.
+// specified in docs/spec/FILE_SYNC.md and docs/spec/CHANNEL_SECURITY.md.
 
 import * as z from "zod";
 import { NIL as NIL_UUID } from "uuid";

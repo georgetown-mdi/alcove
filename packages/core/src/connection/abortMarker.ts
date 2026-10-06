@@ -5,25 +5,14 @@
 // PeerAbortError instead of waiting out the full peer-inactivity budget.
 // Holds live per-exchange state (the two role-derived tokens, the captured
 // write inputs, and the write-vs-seal decision one-shot the teardown
-// sequencing parks on), so unlike the pure fileSyncNames/sftpConnect
-// extractions it is a class FileSyncConnection composes rather than a bag
-// of free functions.
+// sequencing parks on), so it is a class FileSyncConnection composes.
 //
 // The abort-marker rationale -- the HKDF-derived token and its per-role /
 // per-session binding, the size cap and short write budget, why the marker
 // is best-effort and holds no cause, and the fail-closed read -- is
 // normatively specified in docs/spec/CHANNEL_SECURITY.md ("Authenticated
-// abort marker"). This module implements that control and does not
-// restate it; the comments here cover only the local mechanics (state
-// ownership, teardown sequencing, idempotency) the spec section does not.
-//
-// Not re-exported by the package barrel (main.ts barrels
-// fileSyncConnection.ts, not this file), so it stays out of the public
-// runtime surface while fileSyncConnection.ts composes it -- the same
-// pattern as fileSyncNames.ts and sftpConnect.ts. The connection keeps
-// thin delegating members (armAbort / writeAbortMarker / sealAbort /
-// abortArmed and the internal test call sites) so its public surface --
-// what the CLI orchestrator and the unit tests call -- is unchanged.
+// abort marker"); the comments here cover only the local mechanics (state
+// ownership, teardown sequencing, idempotency).
 
 import { v4 as uuidv4 } from "uuid";
 

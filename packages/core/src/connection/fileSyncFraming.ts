@@ -3,16 +3,6 @@
 // every data-plane message file holds. Everything here is a pure function of
 // its byte/number inputs -- no instance state, no I/O -- so the wire layout and
 // its validation live in one place.
-//
-// Not re-exported by the package barrel (main.ts barrels
-// fileSyncConnection.ts via `export *`, not this file), so an `@internal`
-// export here stays out of the public runtime surface while a unit test can
-// deep-import it -- the same pattern as fileSyncNames.ts and
-// fileSyncConstants.ts. The public codec symbols (MESSAGE_ENVELOPE_VERSION,
-// MESSAGE_TYPE_OBJECT, MESSAGE_TYPE_BINARY, MESSAGE_HEADER_BYTES,
-// serializeFileSyncMessageHeader, serializeFileSyncMessage) keep their public
-// surface by being re-exported from fileSyncConnection.ts (which IS
-// barrelled).
 
 // Binary message-frame envelope. Every data-plane message file -- a JSON
 // control message (the pre-encryption handshake) and an encrypted binary PSI

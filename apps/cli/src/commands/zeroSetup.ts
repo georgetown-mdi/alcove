@@ -731,11 +731,6 @@ export async function handler(argv: Arguments): Promise<void> {
     ...options
   } = parsed;
 
-  // Install the sink, apply the level, and build getLogger("alcove") through the
-  // shared configureLogging helper (in that order, so the logger inherits the
-  // sink): the file sink when --log-file is given, otherwise the default stderr
-  // sink. A missing parent directory (configureLogFile) is a UsageError reported
-  // on stderr and mapped to exit 64 by parseOrExit here.
   const {
     log,
     writePlainLine,
@@ -940,11 +935,6 @@ export async function handler(argv: Arguments): Promise<void> {
       let filledPayloadReceive: string[] | undefined;
       const interactive = stdinAnswersPrompts(input);
       const unattendedWriter = interactive ? undefined : writePlainLine;
-      // Cast: `liveConnection` is `ConnectionConfig` (which includes the webrtc
-      // channel), so TypeScript cannot verify it fits `ProtocolConnectionConfig`
-      // (constrained to sftp and filedrop). The double cast through `unknown` is
-      // intentional; the channel guard inside `runProtocol` rejects unsupported
-      // channels at runtime.
       // auth: null is the explicit opt-out that tells runProtocol to proceed
       // without authentication and without a warning.
       await runProtocol({
@@ -1068,11 +1058,6 @@ export async function handler(argv: Arguments): Promise<void> {
       });
     });
   } finally {
-    // Restore the loglevel factory (and close the log-file descriptor, for the
-    // file sink) on the normal exit path, including a run that took a
-    // persistence loss and returns with the exit code already set. runOrExit
-    // logs a failure before its process.exit, which bypasses this finally, so
-    // this is only factory/descriptor cleanup.
     closeLogging();
   }
 }
