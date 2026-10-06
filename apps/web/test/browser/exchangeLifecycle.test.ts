@@ -4,6 +4,7 @@ import { beforeAll, expect, inject, test } from "vitest";
 
 import {
   CONFIRMING_PROTOCOL_STAGE_ID,
+  SHARED_SECRET_REGEX,
   generateSharedSecret,
   prepareForExchange,
 } from "@alcove/core";
@@ -24,6 +25,7 @@ import { connectRendezvousPair } from "../utils/rendezvousPair.js";
 import type {
   ExchangeErrorCategory,
   ExchangeOutputs,
+  RunCompletion,
 } from "../../src/psi/exchangeLifecycle.js";
 import type {
   ExchangeResult,
@@ -69,6 +71,8 @@ interface CapturedRun {
   stages: Array<string>;
   /** onResult payloads (one on success). */
   results: Array<ExchangeOutputs>;
+  /** The completion each onResult carried beside its outputs. */
+  completions: Array<RunCompletion>;
   /** onError failures (none on success). */
   errors: Array<{ category: ExchangeErrorCategory; error: unknown }>;
   /** onWarning messages (none on a run whose close reaches the peer). */
@@ -104,6 +108,7 @@ async function driveRole(
   const captured: CapturedRun = {
     stages: [],
     results: [],
+    completions: [],
     errors: [],
     warnings: [],
     matchings: [],
@@ -131,7 +136,10 @@ async function driveRole(
     },
     onStages: () => {},
     onStage: (id) => captured.stages.push(id),
-    onResult: (outputs) => captured.results.push(outputs),
+    onResult: (outputs, completion) => {
+      captured.results.push(outputs);
+      captured.completions.push(completion);
+    },
     onError: (failure) => captured.errors.push(failure),
     onWarning: (message) => captured.warnings.push(message),
     onResolvedMatching: (matching) => captured.matchings.push(matching),
@@ -144,6 +152,7 @@ async function driveRole(
 // absent result.
 let responder: CapturedRun | undefined;
 let initiator: CapturedRun | undefined;
+let invitationSecret: string | undefined;
 
 // Generous timeout: peer coordination, the WASM load, and the round-trip exchange
 // all happen here.
@@ -151,6 +160,7 @@ beforeAll(async () => {
   if (!(await canReachServer(hostString))) return;
 
   const sharedSecret = generateSharedSecret();
+  invitationSecret = sharedSecret;
   const { inviterPeer, acceptorPeer, inviterConn, acceptorConn } =
     await connectRendezvousPair(sharedSecret, addressInfo);
 
@@ -213,6 +223,23 @@ test("both roles complete with a result and no error", (ctx) => {
   expect(initiator.results).toHaveLength(1);
   expect(resultsUrlOf(responder.results[0])).toBe("blob:results-responder");
   expect(resultsUrlOf(initiator.results[0])).toBe("blob:results-initiator");
+});
+
+test("both roles complete holding the same rotated secret, not the invitation's", (ctx) => {
+  if (!responder || !initiator) return ctx.skip(serverUnreachableNote);
+
+  // The secret a hand-off to a managed exchange deposits: each side derived it
+  // from the run's session key on its own, so the two agree without a message,
+  // and it replaces the secret the invitation carried.
+  expect(responder.completions).toHaveLength(1);
+  expect(initiator.completions).toHaveLength(1);
+  const [responderCompletion] = responder.completions;
+  const [initiatorCompletion] = initiator.completions;
+  expect(responderCompletion.rotatedSecret).toMatch(SHARED_SECRET_REGEX);
+  expect(responderCompletion.rotatedSecret).toBe(
+    initiatorCompletion.rotatedSecret,
+  );
+  expect(responderCompletion.rotatedSecret).not.toBe(invitationSecret);
 });
 
 test("the lifecycle forwards the real protocol-stage progression", (ctx) => {

@@ -31,6 +31,7 @@ import {
   acceptorInitialColumnsState,
   acceptorVerdict,
 } from "@exchange/acceptorColumnsModel";
+import { ACCEPTED_INVITATION_STORAGE_KEY } from "@exchange/acceptedInvitation";
 import { ACCEPTOR_NAME_CONTROL_CHAR_PROBLEM } from "@exchange/acceptorModel";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
 
@@ -2540,6 +2541,39 @@ describe("acceptor screen: run and completion", () => {
     }
   });
 
+  test("an exchange failure on an invitation with no expiry offers start-over, not Try again", async () => {
+    expectConsole("error", "Error: transport");
+    await reachRun(
+      await encodeInvitation({
+        version: "1",
+        linkageTerms: acceptorTerms,
+        sharedSecret: generateSharedSecret(),
+        connectionEndpoint: {
+          channel: "webrtc",
+          host: "127.0.0.1",
+          port: 3000,
+          path: "/api/",
+        },
+      }),
+    );
+    expect(lifecycleCall(0).expires).toBeUndefined();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "exchange",
+      error: new Error("transport"),
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        Array.from(document.querySelectorAll("a")).some(
+          (anchor) =>
+            anchor.textContent === "Start over with a fresh invitation",
+        ),
+      ).toBe(true);
+    });
+    expect(page.getByRole("button", { name: "Try again" }).query()).toBeNull();
+  });
+
   test("a security failure forbids retry and links to a fresh invitation", async () => {
     expectConsole("error", "Error: kex failed");
     await reachRun();
@@ -2561,6 +2595,41 @@ describe("acceptor screen: run and completion", () => {
       (anchor) => anchor.textContent === "Start over with a fresh invitation",
     );
     expect(link?.getAttribute("href")).toBe("/quick");
+  });
+
+  test("a failure with no retry forgets the tab's kept invitation", async () => {
+    expectConsole("error", "Error: kex failed");
+    await reachRun();
+    const kept = () =>
+      window.sessionStorage.getItem(ACCEPTED_INVITATION_STORAGE_KEY);
+    expect(kept()).not.toBeNull();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "security",
+      error: new Error("kex failed"),
+    });
+
+    await expect
+      .element(page.getByText("Could not verify your partner"))
+      .toBeInTheDocument();
+    expect(kept()).toBeNull();
+  });
+
+  test("a retryable failure keeps the tab's invitation for a reload", async () => {
+    expectConsole("error", "Error: transport");
+    await reachRun();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "exchange",
+      error: new Error("transport"),
+    });
+
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .toBeInTheDocument();
+    expect(
+      window.sessionStorage.getItem(ACCEPTED_INVITATION_STORAGE_KEY),
+    ).not.toBeNull();
   });
 
   test("an expired-invitation security failure names itself, not the partner", async () => {

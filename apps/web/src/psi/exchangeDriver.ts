@@ -5,6 +5,7 @@ import type {
   ExchangeFailure,
   ExchangeOutputs,
   GenerateOutput,
+  RunCompletion,
   StageDefinition,
 } from "./exchangeLifecycle";
 import type { PsiProgress, ResolvedMatching } from "@alcove/core";
@@ -32,8 +33,11 @@ export interface ExchangeDriverEvents<
   onStages: (stages: Array<StageDefinition>) => void;
   /** Activate a stage by id as the run advances through it. */
   onStage: (stageId: string) => void;
-  /** The run succeeded: the owner-widened outputs. */
-  onResult: (outputs: TOutputs) => void;
+  /** The run succeeded: the owner-widened outputs and, from the in-browser
+   * driver, the {@link RunCompletion} holding the secret its handshake rotated
+   * to. A console-conducted run passes none: the command line keeps that
+   * secret. */
+  onResult: (outputs: TOutputs, completion?: RunCompletion) => void;
   /** The run failed, tagged with the category that decides the consumer's
    * recovery affordance, and holding the run's exchange record where the
    * in-browser driver has one to offer. The server-job driver sets no record:

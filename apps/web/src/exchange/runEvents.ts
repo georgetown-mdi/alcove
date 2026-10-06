@@ -43,6 +43,10 @@ interface RunEventsConfig {
   raiseFailure: (category: ExchangeErrorCategory, error: unknown) => void;
   setRun: Dispatch<SetStateAction<ExchangeRun>>;
   setOutputs: Dispatch<SetStateAction<RunOutputs | undefined>>;
+  /** Hold the secret a completed in-browser run rotated to, for the seat's
+   * hand-off to a managed exchange; a console-conducted completion clears it.
+   * A seat that offers no hand-off omits it. */
+  setRotatedSecret?: Dispatch<SetStateAction<string | undefined>>;
   setWarnings: Dispatch<SetStateAction<Array<string>>>;
   setReattached: Dispatch<SetStateAction<JobRunStatus | undefined>>;
   setReattaching: Dispatch<SetStateAction<boolean>>;
@@ -74,6 +78,7 @@ export function buildRunEvents({
   raiseFailure,
   setRun,
   setOutputs,
+  setRotatedSecret,
   setWarnings,
   setReattached,
   setReattaching,
@@ -85,8 +90,9 @@ export function buildRunEvents({
     onStages: (stages) => setRun((current) => runWithStages(current, stages)),
     onStage: (stageId) =>
       setRun((current) => runWithStage(current, stageId, new Date())),
-    onResult: (generated) => {
+    onResult: (generated, completion) => {
       setOutputs(generated);
+      setRotatedSecret?.(completion?.rotatedSecret);
       setRun((current) => runWithCompletion(current, new Date()));
     },
     onWarning: (message) =>

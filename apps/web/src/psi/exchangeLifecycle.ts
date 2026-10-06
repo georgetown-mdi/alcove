@@ -279,6 +279,15 @@ interface CountOnlyExchangeOutputs extends ExchangeOutputsBase {
 export type ExchangeOutputs =
   ReceivedExchangeOutputs | WithheldExchangeOutputs | CountOnlyExchangeOutputs;
 
+/** What a completed in-browser run hands its owner beside the outputs: the
+ * shared secret the run's handshake rotated to, which both parties derived from
+ * the session key and which replaces the invitation's secret for any later run
+ * of the same partnership. A one-shot owner that saves nothing drops it with the
+ * run; the hand-off to a managed exchange deposits it. */
+export interface RunCompletion {
+  rotatedSecret: string;
+}
+
 /** Pure output-generation step: build the local results file plus the
  * exchange-record artifacts (record + verification keys) from the exchange result
  * and return their URLs. May throw (classified as `"output"`); runs inside the
@@ -340,7 +349,7 @@ interface RunExchangeLifecycleOptions<
   generateOutput: GenerateOutput<TOutputs>;
   onStages: (stages: Array<StageDefinition>) => void;
   onStage: (stageId: string) => void;
-  onResult: (outputs: TOutputs) => void;
+  onResult: (outputs: TOutputs, completion: RunCompletion) => void;
   onError: (failure: ExchangeFailure) => void;
   /** A non-fatal, operator-relevant notice raised mid-run. Two sources, arriving
    * at opposite ends of the run: the deduplicating cardinality and the pair-table
@@ -428,9 +437,9 @@ export async function runExchangeLifecycle<
   const emitStages = ifLive(onStages);
   const emitStage = ifLive(onStage);
   let reportedResult = false;
-  const emitResult = ifLive((outputs: TOutputs) => {
+  const emitResult = ifLive((outputs: TOutputs, completion: RunCompletion) => {
     reportedResult = true;
-    onResult(outputs);
+    onResult(outputs, completion);
   });
   const emitError = ifLive(onError);
   // Two gates guard emitWarning, the one callback that can still fire during
@@ -569,17 +578,21 @@ export async function runExchangeLifecycle<
     // Authenticate the peer before any PSI frame is sent: the P-256 key exchange
     // fails closed on a wrong secret or tampered/malformed frame, so an
     // unauthenticated peer never reaches runExchange. Its 32-byte session key is
-    // discarded here (web is single-use and, under DTLS, declines the AEAD wrap --
-    // see authenticateExchange); deriving it is the act of authenticating. A
-    // trust failure is a security-kind ConnectionError, routed by the catch
-    // below to the distinct authentication-failure alert.
+    // discarded here (under DTLS the web declines the AEAD wrap -- see
+    // authenticateExchange). A trust failure is a security-kind ConnectionError,
+    // routed by the catch below to the distinct authentication-failure alert.
     //
     // This runs BEFORE `await psi`: the handshake needs no PSI library, and
     // authenticating first keeps the responder's WASM load out of the handshake's
     // critical path -- a load that approached the per-message kex timeout could
     // otherwise time out the initiator's wait for the responder's reply -- and
     // spends no WASM load on a peer that fails authentication.
-    await authenticateExchange(mc, exchangeRole, sharedSecret, expires);
+    const { rotatedSecret } = await authenticateExchange(
+      mc,
+      exchangeRole,
+      sharedSecret,
+      expires,
+    );
     // Resolves before runExchange: instant for the initiator (it loaded the
     // library during acquire), the real WASM wait for the responder, overlapping
     // the wait for the peer's first PSI frame.
@@ -636,7 +649,7 @@ export async function runExchangeLifecycle<
       });
       return;
     }
-    emitResult(outputs);
+    emitResult(outputs, { rotatedSecret });
   } catch (error) {
     const record = recordFromFailure(error);
     emitError({
