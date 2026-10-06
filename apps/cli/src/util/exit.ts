@@ -156,8 +156,8 @@ function exitCodeForFailureClass(
  * `partner-refused` and `receipt-not-verified`, and
  * {@link AUTHENTICATION_FAILED_EXIT_CODE} (77) for `authentication-failed`;
  * otherwise the error's own numeric `exitCode` when it has one, else
- * EX_UNAVAILABLE (69). The classification a boundary reads when its errors
- * vary; a boundary whose errors are all usage faults exits 64 outright.
+ * EX_UNAVAILABLE (69). A usage failure (a `UsageError` or an
+ * `OperatorConfigError`) is classified `usage-error` and so maps to 64.
  *
  * The own-`exitCode` rung is what gives a run whose exchange completed while
  * its result file did not reach disk `PERSISTENCE_LOSS_EXIT_CODE` (73). The
@@ -177,11 +177,10 @@ export function exitCodeForError(err: unknown): number {
  * Log a caught error ({@link renderFailureForOperator}) at error level and exit the process with
  * `code`. The single log-and-exit boundary the bootstrap-style command handlers
  * route a caught error through, so the error-level routing and the sanitized
- * formatting cannot drift between call sites. `code` is supplied by the caller
- * because the classification is site-specific: a command whose errors are all
- * local usage faults passes 64 outright, while a command whose errors vary
- * resolves the code through {@link exitCodeForError}. Typed `never` so a
- * caller's definite-assignment narrowing treats it like `process.exit`.
+ * formatting cannot drift between call sites. The caller passes `code`, the
+ * result of {@link exitCodeForError}, which classifies the error and maps it
+ * to its code. Typed `never` so a caller's definite-assignment narrowing
+ * treats it like `process.exit`.
  */
 export function exitWithError(
   log: { error: (message: string) => void },

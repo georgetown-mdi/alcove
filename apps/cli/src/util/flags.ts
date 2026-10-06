@@ -213,14 +213,13 @@ export function csvDelimiterFlag(argv: Arguments): string | undefined {
 
 /**
  * Run a pre-logger parse step, mapping a {@link UsageError} it throws to a
- * clean stderr message and exit 64. A {@link BareInvocationError} prints
- * {@link BARE_INVOCATION_SUMMARY} as written: its line breaks are its own.
- * A bootstrap-style command resolves its log
- * level and reads every option before the logger exists, so a usage error
+ * clean stderr message and exit 64. A bootstrap-style command resolves its
+ * log level and reads every option before the logger exists, so a usage error
  * there cannot be routed through the logger; this is the one place that
  * boundary lives. Any other error propagates unchanged to the top-level
  * handler. `process.exit` is typed `never`, so this returns the parsed value
- * on the success path.
+ * on the success path. A {@link BareInvocationError} prints
+ * {@link BARE_INVOCATION_SUMMARY} as written: its line breaks are its own.
  */
 export function parseOrExit<T>(parse: () => T): T {
   try {
