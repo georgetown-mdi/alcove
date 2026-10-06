@@ -936,7 +936,6 @@ export class PSIParticipant {
       // Send-before-parse: receive the partner's original indices, acknowledge
       // with status:completed, then parse. Sending the acknowledgement before
       // validating ensures a malformed final frame does not strand the partner.
-      // A partner that aborted instead is not waiting for it.
       const rawData = await conn.receive();
       throwIfPartnerAbort(rawData);
       this.log.debug(`${this.id}: receiving original server indices`);

@@ -1,10 +1,6 @@
-// Past the terms exchange, a refusal on one side is one-sided: the refusing
-// party best-effort sends an abort frame (see `sendAbort`) to a partner already
-// parked on whatever receive comes next. That receive may await a PSI binary
-// frame or a JSON frame with a strict schema; either way the abort is read for
-// what it is before the frame is parsed as the one the receive awaited, so the
-// parked party reports that the partner ended the exchange rather than a
-// schema or decode failure naming nothing it can act on.
+// A partner parked on its next receive is read for an abort frame (see
+// `sendAbort`) before the frame is parsed as the one awaited, so it reports
+// that the partner ended the exchange, not a schema or decode failure.
 import { parseOrProtocolError } from "./connection/messageConnection";
 import { PeerAbortError } from "./errors";
 
@@ -46,13 +42,8 @@ const ROUND_ABORT_REASONS: ReadonlyArray<string> = [
 ];
 
 /**
- * Whether a raw received frame is one of the abort decisions `sendAbort`
- * emits. Read off the `decision` discriminant alone, which is what both
- * terms-exchange slots key on and the only field either form of the frame is
- * required to hold: the reasons beside it are partner-written text.
- *
- * The terms exchange itself parses the whole envelope instead, because it
- * reads the rest of the frame.
+ * Whether a raw received frame is an abort decision, read off the `decision`
+ * discriminant alone.
  */
 function isPartnerAbortFrame(frame: unknown): boolean {
   return (

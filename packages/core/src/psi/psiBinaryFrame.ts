@@ -36,10 +36,6 @@ export async function receivePsiBinaryFrame(
 /**
  * Reads the next frame where the protocol expects a binary frame.
  *
- * A partner's abort decision raises `PeerAbortError` (see
- * {@link throwIfPartnerAbort}): the partner ended the exchange and holds the
- * reason locally.
- *
  * Bytes delivered as an `ArrayBuffer` are viewed as a `Uint8Array`, the one
  * shape everything below reads. Anything else that is not a byte frame is a
  * `protocol` {@link ConnectionError} naming the frame this round awaited. It is
