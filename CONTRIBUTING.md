@@ -24,7 +24,7 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker: vendored server source plus a standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app's dev loop and tests run it beside the dev server |
 | `packages/testkit/` | Test-only material shared by more than one workspace's test tree (`@alcove/testkit`), consumed as raw TypeScript with no build step; what qualifies and why: [docs/TESTING.md](docs/TESTING.md#shared-test-material) and [docs/notes/cross-workspace-test-material.md](docs/notes/cross-workspace-test-material.md) |
 | `apps/cli/`      | Node.js CLI (`alcove`), built with Rollup, distributed as a Docker image                  |
-| `apps/web/`      | TanStack Start (React/SSR) web app; mounts no broker, and its browser parties dial the one above |
+| `apps/web/`      | React web app, built for hosting as a static site (`dist/hosted/`) and for the console; mounts no broker, and its browser parties dial the one above |
 | `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records |
 | `scripts/`       | [Repository checks CI runs](scripts/README.md) (doc links, PR checklist, claim and drift guards) with their tests |
 | `support/`       | [Field guides](support/README.md) for the environment around Alcove -- Windows, Docker, agency networks -- plus the FIPS measurement harness |
@@ -68,7 +68,7 @@ No additional environment variables are required for local development or the te
 ```sh
 npm run build -w packages/core   # must build before the apps and the broker; rebuild after any core change
 npm run build -w apps/cli        # -> apps/cli/dist/; Docker image built separately (docs/RELEASES.md)
-VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web  # names the broker (docs/DEPLOYMENT.md)
+VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web  # -> apps/web/dist/hosted/, a static site; names the broker (docs/DEPLOYMENT.md)
 ```
 
 ## Testing

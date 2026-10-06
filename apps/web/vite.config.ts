@@ -1,5 +1,4 @@
 /// <reference types="vitest/config" />
-import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -15,7 +14,7 @@ import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
-import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
+import type { ConfigEnv, ProxyOptions } from "vite";
 
 const configManager = new ConfigManager();
 const config = await configManager.load({ dotenv: true });
@@ -104,46 +103,6 @@ const browserDisableFeaturesSwitch = `--disable-features=${[
   ...playwrightDisabledFeatures,
   "WebRtcHideLocalIpsWithMdns",
 ].join(",")}`;
-
-// The Elastic Beanstalk deploy trigger (.github/workflows/eb_deploy.yaml) is a
-// hand-written path filter over the sources this build reads, and the bundler is
-// the only thing that knows what that set actually is. When
-// scripts/check-deploy-trigger-graph.mjs sets this variable, the build records
-// every module id it resolves so the check can hold the filter against the real
-// graph instead of predicting it. Unset -- every developer build, every CI build
-// that is not that check -- no plugin is added at all.
-const deployGraphRecordPath = process.env.ALCOVE_DEPLOY_GRAPH_RECORD;
-
-// Records the module ids of one build into recordPath. It contributes no hook
-// that can resolve, load, or rewrite a module (`transform` returns null), so the
-// artifact a recorded build produces is the artifact a plain build produces --
-// which is what makes the recording evidence about the deployed server rather
-// than about a build shaped to be measured. Each environment closes its own
-// bundle, so the write merges with what is already there; the check names a path
-// in a scratch directory of its own, so no earlier run carries into it.
-function deployGraphRecorder(recordPath: string): Plugin {
-  const moduleIds = new Set<string>();
-  return {
-    name: "alcove-deploy-graph-recorder",
-    apply: "build",
-    transform(_code, id) {
-      moduleIds.add(id);
-      return null;
-    },
-    closeBundle() {
-      let recorded: Array<string> = [];
-      try {
-        recorded = JSON.parse(fs.readFileSync(recordPath, "utf8"));
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
-      fs.writeFileSync(
-        recordPath,
-        JSON.stringify([...new Set([...recorded, ...moduleIds])].sort()),
-      );
-    },
-  };
-}
 
 /**
  * Refuses a `vite build` for the hosted profile (`VITE_DEPLOYMENT_PROFILE`
@@ -396,9 +355,6 @@ export default defineConfig((configEnv) => {
       ],
     },
     plugins: [
-      ...(deployGraphRecordPath
-        ? [deployGraphRecorder(deployGraphRecordPath)]
-        : []),
       tanstackStart({
         srcDirectory: "src",
       }),

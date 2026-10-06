@@ -6,13 +6,15 @@ import viteReact from "@vitejs/plugin-react";
 
 import { requireHostedSignalingServer, srcAliases } from "./vite.config.ts";
 import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
+import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
 import { hostedHeadersFile } from "./hosted/headersFile.ts";
 import { hostedRouteDocuments } from "./hosted/routeDocuments.ts";
 
 const appRoot = import.meta.dirname;
 
-// Written outside src/, so the checked-in src/routeTree.gen.ts the Start build
-// generates is never rewritten; router.tsx's import of it resolves here.
+// Written outside src/, so the checked-in src/routeTree.gen.ts the dev server
+// and vitest generate is never rewritten; router.tsx's import of it resolves
+// here.
 const hostedRouteTree = path.join(appRoot, ".tanstack/hosted/routeTree.gen.ts");
 
 const template = "hosted/index.html";
@@ -22,6 +24,7 @@ const hostedConfig = {
   // Read by the root route, whose document this client renders itself.
   define: { "import.meta.env.CLIENT_RENDERED_DOCUMENT": "true" },
   plugins: [
+    ...deployGraphRecorderFromEnv(),
     tanstackRouter({
       target: "react",
       routesDirectory: path.join(appRoot, "src/routes"),
@@ -35,7 +38,9 @@ const hostedConfig = {
     hostedHeadersFile(),
     clientModuleGraphGuard(),
   ],
-  worker: { plugins: () => [clientModuleGraphGuard()] },
+  worker: {
+    plugins: () => [...deployGraphRecorderFromEnv(), clientModuleGraphGuard()],
+  },
   resolve: {
     alias: [
       { find: /^\.\/routeTree\.gen$/, replacement: hostedRouteTree },
@@ -54,7 +59,7 @@ const hostedConfig = {
 };
 
 /**
- * The hosted app as a static site: `vite build --config vite.hosted.config.ts`
+ * The hosted app as a static site, and its only build: `npm run build`
  * writes a single-page client to `dist/hosted/`, with one document per route
  * the app-shell worker warms (hosted/routeDocuments.ts), the host's `_headers`
  * (hosted/headersFile.ts) and no server. The build fails if the page's or a

@@ -13,19 +13,12 @@ import { hasHostedBuild, hostedOutput } from "./prodServer.js";
 import type { StaticHost } from "../staticHost/server.js";
 
 // These assert at the HTTP boundary that the defense-in-depth response headers
-// reach the wire: from the Start dev server on an SSR document route, which
-// flows through the server-entry chokepoint (src/server.ts), and from the hosted
-// static site's `_headers` behind the static-host harness, on documents and
-// assets alike. Values are pinned here as the observable contract, not imported
-// from the source that sets them, since the integration project resolves no
-// `@utils` alias and a black-box check should not read the value it verifies.
-// The dev server forwards /api/ to the signaling broker, so the /api refusal's
-// headers are held against the built servers instead (apiNamespace.test.ts,
-// REFUSAL).
-//
-// The port matches the dev-server globalSetup, which derives it the same way.
-const port = parseInt(process.env.PORT ?? "3000", 10);
-const base = `http://127.0.0.1:${port}`;
+// reach the wire from the hosted static site's `_headers` behind the
+// static-host harness, on documents and assets alike. Values are pinned here as
+// the observable contract, not imported from the source that sets them, since
+// the integration project resolves no `@utils` alias and a black-box check
+// should not read the value it verifies. The console server's headers are held
+// with its /api refusal (apiNamespace.test.ts, REFUSAL).
 
 const expectedHeaders: Record<string, string> = {
   "referrer-policy": "no-referrer",
@@ -36,7 +29,7 @@ const expectedHeaders: Record<string, string> = {
 
 async function expectSecurityHeaders(
   path: string,
-  origin = base,
+  origin: string,
 ): Promise<Headers> {
   const response = await fetch(`${origin}${path}`);
   // Release the socket: only the headers matter here.
@@ -46,12 +39,6 @@ async function expectSecurityHeaders(
   }
   return response.headers;
 }
-
-describe("security response headers (app-wide, at the HTTP boundary)", () => {
-  test("an SSR document route includes them", async () => {
-    await expectSecurityHeaders("/");
-  });
-});
 
 describe.skipIf(!hasHostedBuild)(
   "security response headers from the hosted static site's _headers",

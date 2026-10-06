@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-05"
+last_reviewed: "2026-10-06"
 ---
 
 # Alcove security
@@ -321,7 +321,7 @@ The peer-coordination server is untrusted by design and relays only opaque rende
 
 The web app also sets a small set of defense-in-depth HTTP headers, stated once in `apps/web/src/utils/securityHeaders.ts` and delivered two ways:
 
-- The Node server applies them to every response its server entry returns, through one chokepoint; static public assets and the signaling WebSocket upgrade bypass that entry and need none of them.
+- The console server applies them to every response it returns, static files included, through one chokepoint.
 - The hosted static build writes them into the static host's `_headers` file under `/*`, so the host sends them on every response, assets and the root-document fallback included. A unit test holds the file to the same value, and an integration test reads them off the served static site ([hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
 
 `Referrer-Policy: no-referrer` keeps the confidential invitation token out of the `Referer` header (the token rides in the URL fragment, which modern browsers already withhold, so this hardens older-client behavior). `X-Frame-Options: DENY` and the Content-Security-Policy `frame-ancestors 'none'` deny framing (clickjacking) for legacy and modern clients. `X-Content-Type-Options: nosniff` stops MIME-sniffing away from a declared `Content-Type`. These complement the proxy-set `Strict-Transport-Security` covered in [DEPLOYMENT.md](DEPLOYMENT.md#hardening-the-signaling-surface).

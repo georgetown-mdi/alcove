@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BUILD_OUTPUT,
   DEPLOY_WORKFLOW,
+  RECORDER_MODULE,
   RECORD_ENV,
   REQUIRED_GRAPH_ROOTS,
   classifyGraph,
@@ -14,7 +15,6 @@ import {
   compileFilter,
   moduleIdToPath,
   readTriggerPaths,
-  sourceMapPaths,
   toRepoPath,
   trackedFiles,
   unreachedRoots,
@@ -240,22 +240,6 @@ describe("normalizing what a build reports", () => {
     },
   );
 
-  it("resolves sourcemap sources against the directory holding the map", () => {
-    expect(
-      sourceMapPaths(
-        { sources: ["../../../src/httpServer.ts", "assets/routes-abc123.js"] },
-        "/repo/apps/web/.output/server/chunks",
-      ),
-    ).toEqual([
-      "/repo/apps/web/src/httpServer.ts",
-      "/repo/apps/web/.output/server/chunks/assets/routes-abc123.js",
-    ]);
-  });
-
-  it("reports no sources for a map that declares none", () => {
-    expect(sourceMapPaths({}, "/repo")).toEqual([]);
-  });
-
   it("keeps a path inside the repository and drops the rest", () => {
     expect(toRepoPath("/repo/apps/web/src/a.ts", "/repo")).toBe(
       "apps/web/src/a.ts",
@@ -269,27 +253,15 @@ describe("normalizing what a build reports", () => {
 });
 
 describe("collecting the graph from a build", () => {
-  // The recorded module ids and the sourcemap sources cover different passes of
-  // the same build -- rolldown's environments and Nitro's server rollup -- so a
-  // collection that lost either half would look like a smaller, still-passing
-  // graph. This drives the union over a prepared tree with the build injected.
+  // Drives collection over a prepared tree with the build injected.
   function prepare(root) {
-    writeFile(root, "apps/web/src/peerServer.ts", "");
-    writeFile(root, "apps/web/server/custom-entry.ts", "");
+    writeFile(root, "apps/web/src/a.worker.ts", "");
+    writeFile(root, "apps/web/src/main.ts", "");
     writeFile(root, "node_modules/dep/index.js", "");
-    writeFile(
-      root,
-      `${BUILD_OUTPUT}/server/index.mjs.map`,
-      JSON.stringify({
-        sources: [
-          "../../server/custom-entry.ts",
-          "../../assets/routes-abc123.js",
-        ],
-      }),
-    );
+    writeFile(root, `${BUILD_OUTPUT}/index.html`, "");
   }
 
-  it("unions the recorded module ids with the sourcemap sources", () => {
+  it("keeps the recorded module ids that name repository files", () => {
     const root = scratchRepo();
     prepare(root);
     const graph = collectGraph(root, {
@@ -297,16 +269,15 @@ describe("collecting the graph from a build", () => {
         writeFileSync(
           recordPath,
           JSON.stringify([
-            join(root, "apps/web/src/peerServer.ts?worker"),
+            join(root, "apps/web/src/a.worker.ts?worker"),
+            join(root, "apps/web/src/main.ts"),
+            join(root, "apps/web/src/gone.ts"),
             join(root, "node_modules/dep/index.js"),
             "\0virtual:entry",
           ]),
         ),
     });
-    expect(graph).toEqual([
-      "apps/web/server/custom-entry.ts",
-      "apps/web/src/peerServer.ts",
-    ]);
+    expect(graph).toEqual(["apps/web/src/a.worker.ts", "apps/web/src/main.ts"]);
   });
 
   it("throws when the build records no module ids", () => {
@@ -400,12 +371,22 @@ describe("holding the graph against the filter", () => {
   });
 });
 
-describe("proving the collection halves are alive", () => {
+describe("proving the recorder ran in every bundle", () => {
   it("reports every required root the graph does not reach", () => {
     expect(unreachedRoots(["apps/web/src/a.ts"]).map((r) => r.prefix)).toEqual([
-      "apps/web/server/",
       "apps/web/src/routes/",
+      "apps/web/src/psi/workers/psiCrypto.worker.ts",
     ]);
+  });
+
+  it("names roots holding a tracked file", () => {
+    const tracked = [...trackedFiles(repoRoot)];
+    for (const root of REQUIRED_GRAPH_ROOTS) {
+      expect(
+        tracked.some((file) => file.startsWith(root.prefix)),
+        root.prefix,
+      ).toBe(true);
+    }
   });
 
   it("reports none when every root is reached", () => {
@@ -418,11 +399,11 @@ describe("proving the collection halves are alive", () => {
 describe("wiring", () => {
   // A text scan, not a build: it asserts the two ends of the recorder handshake
   // name the same variable, which is the drift that would leave the record empty.
-  it("names the record variable in the build config the recorder lives in", () => {
-    expect(readRepo("apps/web/vite.config.ts")).toContain(RECORD_ENV);
+  it("names the record variable in the module the recorder lives in", () => {
+    expect(readRepo(RECORDER_MODULE)).toContain(`"${RECORD_ENV}"`);
   });
 
-  // The artifact is packaged from what the build leaves in apps/web/.output, so
+  // The artifact is packaged from what the build leaves in apps/web/dist/hosted, so
   // the build and the upload have to stay in one job: a build moved to a job of
   // its own would leave the packaging job with nothing to zip.
   it("builds the web app in the job that uploads the deploy artifact", () => {

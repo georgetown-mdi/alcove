@@ -64,26 +64,6 @@ describe("the check:all list against the root package.json", () => {
     }
   });
 
-  it("builds the web app once: the route render check reuses the deploy-trigger check's build", () => {
-    const order = CHECKS.map((check) => check.script);
-    const render = CHECKS.find(
-      (check) => check.script === "check:web-route-render",
-    );
-    expect(render?.command).toEqual([
-      "node",
-      "scripts/check-web-route-render.mjs",
-    ]);
-    expect(render?.command).not.toContain("--build");
-    expect(render?.buildFrom).toBe("check:deploy-trigger-graph");
-    expect(scripts["check:web-route-render"]).toContain("--build");
-    expect(order.indexOf("check:deploy-trigger-graph")).toBeGreaterThanOrEqual(
-      0,
-    );
-    expect(order.indexOf("check:deploy-trigger-graph")).toBeLessThan(
-      order.indexOf("check:web-route-render"),
-    );
-  });
-
   it("runs the runner from check:all", () => {
     expect(scripts["check:all"]).toBe("node scripts/run-checks.mjs");
   });

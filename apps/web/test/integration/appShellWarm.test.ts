@@ -22,11 +22,10 @@ import type { Served } from "./deployments";
 // The app-shell worker discovers what to cache by reading `/assets/...` paths
 // out of the documents the server sends (`hashedAssetPathsIn`), not from a
 // build-time manifest -- a coupling to how the build emits module preloads
-// that no unit test can hold. This drives each real deployment: the built
-// Start server from `npm run build -w apps/web` (`.output`), and the static
-// site from `npm run build:hosted -w apps/web` (`dist/hosted`) behind the
-// static-host harness. Rebuild before re-running to validate a change; CI
-// always rebuilds first.
+// that no unit test can hold. This drives the real deployment: the static site
+// `npm run build -w apps/web` writes (`dist/hosted`) behind the static-host
+// harness. Rebuild before re-running to validate a change; CI always rebuilds
+// first.
 
 const READY_TIMEOUT_MS = 30_000;
 

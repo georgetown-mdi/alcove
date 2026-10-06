@@ -6,11 +6,12 @@ import { spawn } from "node:child_process";
 
 import type { ChildProcess } from "node:child_process";
 
-// Shared production-server harness for the integration suites that drive the
-// real built app: resolve and probe the built entries, probe a free loopback
-// port, spawn the hosted build's `.output/server/index.mjs` or the console
-// server's `dist/console-server/main.mjs` as its own process group, wait for it
-// to answer HTTP, and tear the whole group down on teardown.
+// Shared production-build harness for the integration suites that drive the
+// real built app: resolve and probe the built outputs, probe a free loopback
+// port, spawn the console server's `dist/console-server/main.mjs` as its own
+// process group, wait for it to answer HTTP, and tear the whole group down on
+// teardown. The hosted static site has no server of its own; the static-host
+// harness (test/staticHost/server.ts) serves it.
 
 const READY_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
@@ -19,14 +20,6 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 /** `apps/web`, the working directory a built server is spawned from. */
 export const webRoot = resolve(here, "../..");
-
-/** The Nitro entry `npm run build -w apps/web` emits. */
-export const prodEntry = resolve(webRoot, ".output/server/index.mjs");
-
-/** The command that produces {@link prodEntry}, quoted in the guard's message so
- * a failing run says how to fix itself. */
-export const BUILD_COMMAND =
-  "VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web";
 
 /** The console server entry `npm run build:console-server -w apps/web` emits. */
 export const consoleEntry = resolve(webRoot, "dist/console-server/main.mjs");
@@ -40,28 +33,28 @@ export const consoleClientIndex = resolve(webRoot, "dist/console/index.html");
 export const CONSOLE_BUILD_COMMAND =
   "npm run build:console -w apps/web && npm run build:console-server -w apps/web";
 
-/** The static site `npm run build:hosted -w apps/web` writes, served by the
+/** The static site `npm run build -w apps/web` writes, served by the
  * static-host harness (test/staticHost/server.ts). */
 export const hostedOutput = resolve(webRoot, "dist/hosted");
 
-/** The command that produces {@link hostedOutput}. */
-export const HOSTED_BUILD_COMMAND = "npm run build:hosted -w apps/web";
+/** The command that produces {@link hostedOutput}, quoted in the guard's
+ * message so a failing run says how to fix itself. The suites dial no broker,
+ * so it names a loopback address. */
+export const HOSTED_BUILD_COMMAND =
+  "VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web";
 
 /** Set to `1` to run the integration project without a production build: the
  * built-server suites skip instead of failing it (see requireProdBuild.ts). */
 export const ALLOW_MISSING_BUILD_ENV = "ALCOVE_ALLOW_MISSING_WEB_BUILD";
 
-/** The single build-presence predicate, probed at import: the guard fails the
- * project on it, and every suite that drives the built server gates itself on
+/** The hosted build-presence predicate, probed at import: the guard fails the
+ * project on it, and every suite that serves the hosted site gates itself on
  * it, so an absent build cannot mean one thing to the guard and another to a
  * suite. */
-export const hasBuild = existsSync(prodEntry);
-
-/** {@link hasBuild}'s counterpart for the hosted static site. */
 export const hasHostedBuild = existsSync(resolve(hostedOutput, "index.html"));
 
-/** {@link hasBuild}'s counterpart for the console server and the client it
- * serves, both of which it needs to start. */
+/** {@link hasHostedBuild}'s counterpart for the console server and the client
+ * it serves, both of which it needs to start. */
 export const hasConsoleBuild =
   existsSync(consoleEntry) && existsSync(consoleClientIndex);
 
@@ -144,22 +137,6 @@ export async function waitForRoot(
 export interface ProdServer {
   child: ChildProcess;
   getLaunchError: () => Error | undefined;
-}
-
-/** Spawn the hosted build's {@link prodEntry} on `port`, bound to loopback.
- * NITRO_HOST pins the loopback bind; PORT pins the free port (the nitro entry
- * reads it straight from process.env, no dotenv override). `extraEnv` merges
- * over the inherited environment. */
-export function spawnProdServer(
-  port: number,
-  extraEnv: NodeJS.ProcessEnv = {},
-): Promise<ProdServer> {
-  return spawnServer(prodEntry, {
-    ...process.env,
-    PORT: String(port),
-    NITRO_HOST: "127.0.0.1",
-    ...extraEnv,
-  });
 }
 
 /** Spawn the console server, {@link consoleEntry}, on `port` with the console
