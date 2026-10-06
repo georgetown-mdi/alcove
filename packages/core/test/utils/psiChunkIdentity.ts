@@ -4,7 +4,7 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { isNamedDiagnosis } from "../../src/errors";
+import { isPsiLibraryFailure } from "../../src/errors";
 
 import type { InProcessPsiEngineOptions } from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "./fixedKeyPsiLibrary";
@@ -345,7 +345,7 @@ export async function expectBoundaryRepeatRefused(params: {
         expect((caught as Error).message).toBe(
           "joiner protocol error: PSI server setup is not in strictly ascending element order",
         );
-        expect(isNamedDiagnosis(caught)).toBe(true);
+        expect(isPsiLibraryFailure(caught)).toBe(false);
       }
     } finally {
       sliced.dispose();

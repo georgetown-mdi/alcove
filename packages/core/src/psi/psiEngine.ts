@@ -2,7 +2,7 @@ import type { Client as PSIClient } from "@openmined/psi.js/implementation/clien
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { Server as PSIServer } from "@openmined/psi.js/implementation/server.d.ts";
 
-import { markNamedDiagnosis } from "../errors";
+import { markPsiLibraryFailure } from "../errors";
 import { DistinctValues } from "../utils/distinctValues";
 import {
   appendChunkElements,
@@ -68,13 +68,15 @@ function modeName(revealsIdentifiers: boolean): PsiEngineMode {
   return revealsIdentifiers ? "identifier-revealing" : "count-only";
 }
 
-// Every refusal the engine raises itself, as against a failure raised inside
-// the PSI library: each states the condition it refused on, so the frame
-// boundary above raises it unchanged rather than re-labeling it a decode
-// failure (decodePsiBinaryFrame, psi/psiBinaryFrame.ts). Routing every throw
-// through one constructor keeps a raise site from being added untagged.
-function engineRefusal(message: string): Error {
-  return markNamedDiagnosis(new Error(message));
+// Runs a PSI library call over a partner's frame, tagging what it throws as
+// the library's failure: the one failure the frame boundary above reports as
+// the frame failing to decode (decodePsiBinaryFrame, psi/psiBinaryFrame.ts).
+function fromLibrary<T>(call: () => T): T {
+  try {
+    return call();
+  } catch (error) {
+    throw markPsiLibraryFailure(error);
+  }
 }
 
 /**
@@ -145,6 +147,11 @@ export type PsiProcessedElementsReporter = (processed: number) => void;
  * operations of the other mode refuse rather than return: which disclosure
  * a round produces is fixed with the key it is produced under, not chosen
  * when the result is read.
+ *
+ * An operation over a partner's frame tags a failure the PSI library raises
+ * on it with `markPsiLibraryFailure` (`errors.ts`), and only that failure:
+ * the caller reports a tagged failure as the frame failing to decode and
+ * raises any other unchanged.
  */
 export interface PsiEngine {
   /**
@@ -415,7 +422,7 @@ export class InProcessPsiEngine implements PsiEngine {
     );
     const raw = setup.getRaw();
     if (!raw)
-      throw engineRefusal(
+      throw new Error(
         `${this.id}: the PSI library returned a server setup that is not a Raw data structure`,
       );
     return { elements: raw.getEncryptedElementsList_asU8(), permutation };
@@ -426,9 +433,7 @@ export class InProcessPsiEngine implements PsiEngine {
   ): Promise<{ setup: Uint8Array; permutation: Array<number> }> {
     const server = this.server;
     if (!server)
-      throw engineRefusal(
-        `${this.id}: createServerSetup requires the server role`,
-      );
+      throw new Error(`${this.id}: createServerSetup requires the server role`);
     const countOnly = !this.revealsIdentifiers;
     const contributed = countOnly
       ? valuesContributedExactlyOnce(values)
@@ -469,10 +474,12 @@ export class InProcessPsiEngine implements PsiEngine {
   processClientRequest(requestBytes: Uint8Array): Promise<Uint8Array> {
     const server = this.server;
     if (!server)
-      throw engineRefusal(
+      throw new Error(
         `${this.id}: processClientRequest requires the server role`,
       );
-    const request = this.library.request.deserializeBinary(requestBytes);
+    const request = fromLibrary(() =>
+      this.library.request.deserializeBinary(requestBytes),
+    );
     // The reveal flag rides the request, and the library refuses to serve a
     // request whose flag disagrees with the key this server was created
     // under -- the wire-enforced mode agreement (docs/spec/PROTOCOL.md,
@@ -481,7 +488,7 @@ export class InProcessPsiEngine implements PsiEngine {
     // opaque embind marshalling error, indistinguishable from a malformed
     // frame. Fixed literals only: the request is partner-supplied.
     if (request.getRevealIntersection() !== this.revealsIdentifiers)
-      throw engineRefusal(
+      throw new Error(
         `${this.id} protocol error: the partner's PSI request ran the ` +
           `${modeName(request.getRevealIntersection())} mode, where this ` +
           `exchange runs ${modeName(this.revealsIdentifiers)}`,
@@ -493,18 +500,20 @@ export class InProcessPsiEngine implements PsiEngine {
     // One chunk is the single call: the partner's request is re-encrypted as
     // the library deserialized it, so nothing materializes its element list.
     if (ranges.length === 1)
-      return Promise.resolve(server.processRequest(request).serializeBinary());
+      return Promise.resolve(
+        fromLibrary(() => server.processRequest(request)).serializeBinary(),
+      );
     const inbound = request.getEncryptedElementsList_asU8();
     const maskChunk = (range: PsiChunkRange): Array<Uint8Array> =>
-      server
-        .processRequest(
+      fromLibrary(() =>
+        server.processRequest(
           buildRequest(
             this.library,
             inbound.slice(range.start, range.end),
             this.revealsIdentifiers,
           ),
-        )
-        .getEncryptedElementsList_asU8();
+        ),
+      ).getEncryptedElementsList_asU8();
     // A count-only response is sorted by element bytes, so the whole masked
     // list is held to order it; an identifier-revealing one answers position
     // by position, so each chunk goes straight into the outgoing message.
@@ -525,7 +534,7 @@ export class InProcessPsiEngine implements PsiEngine {
   createClientRequest(values: ReadonlyArray<string>): Promise<Uint8Array> {
     const client = this.client;
     if (!client)
-      throw engineRefusal(
+      throw new Error(
         `${this.id}: createClientRequest requires the client role`,
       );
     const contributed = this.revealsIdentifiers
@@ -552,7 +561,9 @@ export class InProcessPsiEngine implements PsiEngine {
   }
 
   receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
-    const setup = this.library.serverSetup.deserializeBinary(setupBytes);
+    const setup = fromLibrary(() =>
+      this.library.serverSetup.deserializeBinary(setupBytes),
+    );
     // This protocol only ever sends a Raw server setup (createSetupMessage
     // with dataStructure.Raw), so a received setup whose data-structure
     // oneof is anything other than Raw -- or is unset -- is malformed:
@@ -563,7 +574,7 @@ export class InProcessPsiEngine implements PsiEngine {
     // fail-closed guard, not a memory bound -- the pre-deserialize element
     // scan in PSIParticipant already bounded the setup's allocation.)
     if (!setup.getRaw())
-      throw engineRefusal(
+      throw new Error(
         `${this.id} protocol error: PSI server setup is not a Raw data structure`,
       );
     this.pendingSetup = setup;
@@ -580,14 +591,14 @@ export class InProcessPsiEngine implements PsiEngine {
   ): { client: PSIClient; setup: DeserializedServerSetup } {
     const client = this.client;
     if (!client)
-      throw engineRefusal(`${this.id}: ${operation} requires the client role`);
+      throw new Error(`${this.id}: ${operation} requires the client role`);
     if (this.revealsIdentifiers !== modeRevealsIdentifiers(requiredMode))
-      throw engineRefusal(
+      throw new Error(
         `${this.id}: ${operation} requires a ${requiredMode} PSI engine; this one is ${modeName(this.revealsIdentifiers)}`,
       );
     const setup = this.pendingSetup;
     if (setup === undefined)
-      throw engineRefusal(
+      throw new Error(
         `${this.id}: ${operation} called before receiveServerSetup`,
       );
     this.pendingSetup = undefined;
@@ -602,7 +613,9 @@ export class InProcessPsiEngine implements PsiEngine {
       "identifier-revealing",
     );
     const setupElements = this.ascendingSetupElements(setup);
-    const response = this.library.response.deserializeBinary(responseBytes);
+    const response = fromLibrary(() =>
+      this.library.response.deserializeBinary(responseBytes),
+    );
     const responseCount = response.getEncryptedElementsList().length;
     const ranges = this.rangesFor(responseCount);
     const slices = this.setupSlicesFor(
@@ -623,16 +636,23 @@ export class InProcessPsiEngine implements PsiEngine {
         ),
       );
     if (ranges.length === 1) {
-      const table = client.getAssociationTable(setup, response);
+      const table = fromLibrary(() =>
+        client.getAssociationTable(setup, response),
+      );
       return Promise.resolve([table[0], table[1]]);
     }
     const elements = response.getEncryptedElementsList_asU8();
     return Promise.resolve(
       mergeAssociationChunks(
         this.overChunks(ranges, (range) => {
-          const table = client.getAssociationTable(
-            setup,
-            buildResponse(this.library, elements.slice(range.start, range.end)),
+          const table = fromLibrary(() =>
+            client.getAssociationTable(
+              setup,
+              buildResponse(
+                this.library,
+                elements.slice(range.start, range.end),
+              ),
+            ),
           );
           return {
             start: range.start,
@@ -673,9 +693,8 @@ export class InProcessPsiEngine implements PsiEngine {
         setupElements.slice(slice.start, slice.end),
       );
       for (let r = 0; r < ranges.length; r += 1) {
-        const table = client.getAssociationTable(
-          sliceSetup,
-          responseChunks[r]!,
+        const table = fromLibrary(() =>
+          client.getAssociationTable(sliceSetup, responseChunks[r]!),
         );
         chunks.push({
           start: ranges[r]!.start,
@@ -704,17 +723,23 @@ export class InProcessPsiEngine implements PsiEngine {
     // count-only match). Setup slices of a strictly ascending setup are
     // disjoint, so each call sees the whole response and the counts add.
     const setupElements = this.ascendingSetupElements(setup);
-    const response = this.library.response.deserializeBinary(responseBytes);
+    const response = fromLibrary(() =>
+      this.library.response.deserializeBinary(responseBytes),
+    );
     const responseCount = response.getEncryptedElementsList().length;
     const slices = this.setupSlicesFor(setupElements.length, responseCount);
     if (slices.length === 1)
-      return Promise.resolve(client.getIntersectionSize(setup, response));
+      return Promise.resolve(
+        fromLibrary(() => client.getIntersectionSize(setup, response)),
+      );
     let size = 0;
     for (let s = 0; s < slices.length; s += 1) {
       const slice = slices[s]!;
-      size += client.getIntersectionSize(
-        buildSetup(this.library, setupElements.slice(slice.start, slice.end)),
-        response,
+      size += fromLibrary(() =>
+        client.getIntersectionSize(
+          buildSetup(this.library, setupElements.slice(slice.start, slice.end)),
+          response,
+        ),
       );
       if (s < slices.length - 1)
         this.onProcessed?.(

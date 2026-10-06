@@ -880,13 +880,25 @@ function readExistingAcceptConfig(
 ): ExchangeSpec | undefined {
   if (detectFileConflicts([configPath]).length === 0) return undefined;
   const { against, retryWith } = sources;
+  let source: string;
+  try {
+    source = fs.readFileSync(configPath, "utf8");
+  } catch (err) {
+    // The errno code alone: the fs message repeats the path unmarked.
+    const code = (err as NodeJS.ErrnoException).code;
+    const reason = code === undefined ? "" : ` (${code})`;
+    const message = messageWithOperatorText`${EXISTING_CONFIG_PREAMBLE}${operatorSuppliedText(
+      configPath,
+    )} but could not be read${reason}, so it cannot be compared against ${against}.${RECONCILE_RETRY_REMEDY} ${retryWith}.`;
+    throw keepOperatorSuppliedText(new UsageError(message.text), message);
+  }
   let parsed: unknown;
   try {
     // The chokepoint's own path-only message is discarded by the catch below,
     // which re-labels with reconciliation guidance; the label is passed only to
     // keep the call signature uniform.
     parsed = parseSensitiveYaml(
-      fs.readFileSync(configPath, "utf8"),
+      source,
       `a configuration file at ${configPath}`,
     );
   } catch {

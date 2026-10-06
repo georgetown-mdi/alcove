@@ -27,7 +27,7 @@ import { sendAbort } from "../../src/protocolSetup";
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "../../src/psi/psiBinaryFrame";
+} from "../../src/partnerAbortFrame";
 import { PSIParticipant } from "../../src/psi/participant";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {

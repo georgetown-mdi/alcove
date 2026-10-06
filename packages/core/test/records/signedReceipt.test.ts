@@ -22,6 +22,7 @@ import {
   ConnectionError,
   createMessagePipe,
 } from "../../src/connection/messageConnection";
+import { PeerAbortError } from "../../src/errors";
 import { MAX_NODE_COUNT } from "../../src/utils/camelizeKeys";
 
 import type {
@@ -657,13 +658,41 @@ describe("exchangeSignedReceipt (two-party over the pipe)", () => {
             "agreed terms under",
         ],
       });
-      // The frame is not a receipt, so the parked receive refuses it as a
-      // protocol fault -- with no close, no timeout, and nothing signed.
+      // The parked receive reports the partner's termination -- with no
+      // close, no timeout, and nothing signed.
       const reason = await parked;
-      expect(reason).toBeInstanceOf(ConnectionError);
-      expect((reason as ConnectionError).kind).toBe("protocol");
+      expect(reason).toBeInstanceOf(PeerAbortError);
       await connParked.close();
       await connAborting.close();
+    });
+
+    test(`the ${parkedRole} ends on a lost connection as a transport failure`, async () => {
+      const [connParked, connLost] = createMessagePipe();
+      const shared = content();
+      const parked = exchangeSignedReceipt(
+        connParked,
+        parkedRole,
+        inputsFor(
+          parkedRole === "initiator" ? identityA : identityB,
+          parkedRole === "initiator" ? fingerprintB : fingerprintA,
+          parkedRole === "initiator"
+            ? partnerIdentityForA
+            : partnerIdentityForB,
+          shared,
+        ),
+      ).then(
+        () => {
+          throw new Error("expected the parked party to reject, not return");
+        },
+        (reason: unknown) => reason,
+      );
+      if (parkedRole === "initiator") await connLost.receive();
+      await connLost.close();
+      const reason = await parked;
+      expect(reason).toBeInstanceOf(ConnectionError);
+      expect(reason).not.toBeInstanceOf(PeerAbortError);
+      expect((reason as ConnectionError).kind).toBe("transport");
+      await connParked.close();
     });
   }
 });

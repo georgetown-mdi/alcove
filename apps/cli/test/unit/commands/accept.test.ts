@@ -2532,6 +2532,56 @@ describe("reconciling a pre-existing config", () => {
     }
   });
 
+  test("validateAccept: a config path that cannot be read is reported as unreadable, not as invalid YAML", async () => {
+    const options = testOptions();
+    fs.mkdirSync(options.configFile);
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      const caught = await validateAccept({
+        resolved: { mode: "offline", invitation: encoded },
+        options,
+        log: silentLog,
+      }).then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      expect(caught).toBeInstanceOf(UsageError);
+      expect((caught as Error).message).toContain(
+        "but could not be read (EISDIR), so it cannot be compared against the invitation.",
+      );
+      expect((caught as Error).message).not.toMatch(/not valid YAML/);
+    } finally {
+      fs.rmSync(options.configFile, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.getuid?.() === 0)(
+    "validateAccept: a config file without read permission is reported as unreadable",
+    async () => {
+      const options = testOptions();
+      writeExistingConfig(options.configFile, {});
+      fs.chmodSync(options.configFile, 0o000);
+      try {
+        const encoded = await encodeInvitation(sampleToken(FUTURE()));
+        const caught = await validateAccept({
+          resolved: { mode: "offline", invitation: encoded },
+          options,
+          log: silentLog,
+        }).then(
+          () => undefined,
+          (err: unknown) => err,
+        );
+        expect(caught).toBeInstanceOf(UsageError);
+        expect((caught as Error).message).toContain(
+          "but could not be read (EACCES)",
+        );
+        expect((caught as Error).message).not.toMatch(/not valid YAML/);
+      } finally {
+        fs.rmSync(options.configFile, { force: true });
+      }
+    },
+  );
+
   test("validateAccept: online aborts (no acceptance sent) when the connection block disagrees with the URL", async () => {
     const options = testOptions();
     // Linkage terms agree; only the connection host disagrees with the URL.

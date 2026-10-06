@@ -13,7 +13,7 @@ import type {
   InProcessPsiEngineOptions,
   PsiEngine,
 } from "../../src/psi/psiEngine";
-import { isNamedDiagnosis } from "../../src/errors";
+import { isPsiLibraryFailure } from "../../src/errors";
 import {
   WorkerPsiEngine,
   servePsiWorker,
@@ -184,10 +184,7 @@ test("an engine error propagates across the worker boundary", async () => {
   );
 });
 
-test("an engine refusal stays recognizable after the worker round trip", async () => {
-  // Only the message crosses the boundary, so without the reply's own marker
-  // a worker-backed run would lose the diagnosis and hand the frame boundary
-  // above an error it re-labels as a decode fault.
+test("an engine refusal keeps its own message after the worker round trip", async () => {
   const participant = joinerOver(inProcessWorkerEngine("joiner", "receiver"));
   const [nonRaw, response] = joinerMatchFrames();
 
@@ -197,6 +194,23 @@ test("an engine refusal stays recognizable after the worker round trip", async (
 
   expect(refused?.message).toMatch(/server setup is not a Raw data structure/);
   expect(refused?.message).not.toMatch(/failed to decode/);
+});
+
+test("a library failure stays recognizable after the worker round trip", async () => {
+  // Only the message crosses the boundary, so without the reply's own flag a
+  // worker-backed run would raise the library's message with no frame named.
+  const participant = joinerOver(inProcessWorkerEngine("joiner", "receiver"));
+  const [, response] = joinerMatchFrames();
+
+  const failure = await rejection(
+    participant.computeValueMatches(new Uint8Array([0, 0]), response),
+  );
+
+  expect(failure).toBeInstanceOf(ConnectionError);
+  expect(failure?.message).toBe(
+    "receiver protocol error: inbound PSI serverSetup failed to decode",
+  );
+  expect(isPsiLibraryFailure(failure?.cause)).toBe(true);
 });
 
 test("a disposed engine is reported as the local fault it is", async () => {
@@ -304,7 +318,7 @@ test("a fault that is not an Error keeps the original value as its cause", async
   const failure = await rejection(pending);
   expect(failure?.message).toBe("[object Object]");
   expect(failure?.cause).toBe(raw);
-  expect(isNamedDiagnosis(failure)).toBe(true);
+  expect(isPsiLibraryFailure(failure)).toBe(false);
 });
 
 test("a call after a worker error fails fast with the crash cause", async () => {
@@ -342,7 +356,7 @@ test("a second concurrent call is rejected as a lockstep violation", async () =>
   expect(failure?.message).toMatch(/lockstep/);
   // A caller bug on this side, so the frame boundary above states it rather
   // than re-labeling it a decode failure.
-  expect(isNamedDiagnosis(failure)).toBe(true);
+  expect(isPsiLibraryFailure(failure)).toBe(false);
 });
 
 test("a worker serves its engine options: a setup-sliced match equals the in-process one", async () => {

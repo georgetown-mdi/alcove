@@ -2,7 +2,6 @@ import * as z from "zod";
 
 import type { AssociationTable, Config } from "../types";
 import {
-  receiveParsed,
   parseOrProtocolError,
   type MessageConnection,
 } from "../connection/messageConnection";
@@ -27,9 +26,11 @@ import {
 } from "../errors";
 import { sendAbort } from "../protocolSetup";
 import {
-  decodePsiBinaryFrame,
   PSI_SET_TOO_LARGE_ABORT_REASON,
-} from "./psiBinaryFrame";
+  receiveAfterTerms,
+  throwIfPartnerAbort,
+} from "../partnerAbortFrame";
+import { decodePsiBinaryFrame } from "./psiBinaryFrame";
 import { InProcessPsiEngine, type PsiEngine } from "./psiEngine";
 import { PsiOperationStoppedError } from "./psiWorkerEngine";
 import {
@@ -77,7 +78,7 @@ export const numberArrayMessage = singleIssueArray<number>(
 // send a tuple whose inner index array holds hundreds of thousands of invalid
 // (non-number) elements, and Zod overflows its call stack spreading one issue
 // per element up through the inner-array and tuple frames (RangeError reproduced
-// at ~130k on Zod 4.5.4). receiveParsed already caught that harmlessly; the
+// at ~130k on Zod 4.5.4). The strict parse already caught that harmlessly; the
 // single-issue validators below turn it into a clean, bounded rejection instead.
 // A count `.max()` is not an option: the association table is the PSI
 // intersection, legitimately in the millions (MAX_FRAME_SIZE_BYTES bounds it),
@@ -842,8 +843,11 @@ export class PSIParticipant {
         Array<number>,
         (RoundGroupingField | undefined)?,
       ] = grouping
-        ? await receiveParsed(conn, roundAssociationTableMessage)
-        : [...(await receiveParsed(conn, associationTableMessage)), undefined];
+        ? await receiveAfterTerms(conn, roundAssociationTableMessage)
+        : [
+            ...(await receiveAfterTerms(conn, associationTableMessage)),
+            undefined,
+          ];
       this.log.debug(`${this.id}: received association table`);
 
       // The round's matches, as computed by the partner: our half indexes the
@@ -885,7 +889,7 @@ export class PSIParticipant {
       );
 
       this.log.debug(`${this.id}: waiting for status completed`);
-      await receiveParsed(conn, statusCompletedMessage);
+      await receiveAfterTerms(conn, statusCompletedMessage);
 
       return [localIndices, partnerIndices];
     } else {
@@ -932,7 +936,9 @@ export class PSIParticipant {
       // Send-before-parse: receive the partner's original indices, acknowledge
       // with status:completed, then parse. Sending the acknowledgement before
       // validating ensures a malformed final frame does not strand the partner.
+      // A partner that aborted instead is not waiting for it.
       const rawData = await conn.receive();
+      throwIfPartnerAbort(rawData);
       this.log.debug(`${this.id}: receiving original server indices`);
 
       this.log.debug(`${this.id}: sending status completed`);

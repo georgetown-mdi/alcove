@@ -771,10 +771,10 @@ export class ConnectionClosedError extends Error {
  *
  * - The file-sync abort marker (`<peerId>-abort.json`), whose token
  *   verifies against this party's locally-derived peer abort token.
- * - The peer's abort decision frame arriving where a PSI round awaits
- *   binary (`receivePsiBinaryFrame`, `psi/psiBinaryFrame.ts`). A refusal
+ * - The peer's abort decision frame arriving at any receive past the terms
+ *   exchange (`throwIfPartnerAbort`, `partnerAbortFrame.ts`). A refusal
  *   that sends an abort past the terms exchange is one-sided (see
- *   `sendAbort`), so the frame reaches a partner parked on its next round.
+ *   `sendAbort`), so the frame reaches a partner parked on its next receive.
  *
  * Either way this party holds no reason of its own, which is why the
  * message sends the operator to the partner rather than stating a cause.
@@ -885,43 +885,44 @@ export function isPeerWaitTimeout(error: unknown): boolean {
   );
 }
 
-/** The property {@link markNamedDiagnosis} sets and {@link isNamedDiagnosis} reads. */
-const NAMED_DIAGNOSIS_TAG = "alcoveNamedDiagnosis";
+/** The property {@link markPsiLibraryFailure} sets and {@link isPsiLibraryFailure} reads. */
+const PSI_LIBRARY_FAILURE_TAG = "alcovePsiLibraryFailure";
 
 /**
- * Tags an error whose own message states the condition that failed, so a
- * boundary classifying whatever it catches raises it unchanged instead of
- * re-labeling it. The PSI engine's refusals are the raise sites: a
- * precondition its caller broke, and the reveal-flag divergence between the
- * two parties' rounds, each named where the library beneath reports only an
- * opaque marshalling failure (`psi/psiEngine.ts`).
+ * Tags a failure the PSI library raised while it handled a frame, the one
+ * failure the PSI frame boundary reports as the partner's frame failing to
+ * decode (`decodePsiBinaryFrame`, `psi/psiBinaryFrame.ts`). Every other
+ * failure crosses that boundary unchanged, so a fault on this party's machine,
+ * a step stopped on connection loss, or a refusal the engine names keeps its
+ * own message.
  *
  * A property tag rather than a subclass, on {@link markPeerWaitTimeout}'s
- * reasoning: it adds a machine-readable identity without changing the message
- * or the `instanceof` classification the CLI's 64-vs-69 exit-code split
- * reads. A tagged error must hold no value another party chose in its
- * message, since that message becomes the top line an operator is shown.
+ * reasoning, and because the library throws errors of its own classes.
+ * Returns what to throw: `error` itself, tagged, or, for a thrown value that
+ * cannot hold the tag, an `Error` holding it as its `cause`.
  *
  * The PSI worker boundary carries an error as its message alone, so the tag
  * rides its reply as a field of its own and is re-applied to the rebuilt
  * error on the host side (`psi/psiWorkerEngine.ts`).
  */
-export function markNamedDiagnosis<E extends object>(error: E): E {
-  return Object.assign(error, { [NAMED_DIAGNOSIS_TAG]: true });
+export function markPsiLibraryFailure(error: unknown): object {
+  const failure =
+    typeof error === "object" && error !== null && Object.isExtensible(error)
+      ? error
+      : new Error("the PSI library failed", { cause: error });
+  return Object.assign(failure, { [PSI_LIBRARY_FAILURE_TAG]: true });
 }
 
 /**
- * Whether `error` itself holds the {@link markNamedDiagnosis} tag.
- *
- * Read off the value handed over rather than its `cause` chain, unlike
- * {@link isPeerWaitTimeout}: what a classifying boundary asks is whether THIS
- * error's message is fit to stand as the top line, and a wrapper holding a
- * tagged cause has a message of its own that is not.
+ * Whether `error` itself holds the {@link markPsiLibraryFailure} tag. Read off
+ * the value handed over rather than its `cause` chain, unlike
+ * {@link isPeerWaitTimeout}: a wrapper holding a tagged cause has a message of
+ * its own.
  */
-export function isNamedDiagnosis(error: unknown): boolean {
+export function isPsiLibraryFailure(error: unknown): boolean {
   return (
     typeof error === "object" &&
     error !== null &&
-    (error as Record<string, unknown>)[NAMED_DIAGNOSIS_TAG] === true
+    (error as Record<string, unknown>)[PSI_LIBRARY_FAILURE_TAG] === true
   );
 }
