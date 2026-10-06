@@ -2,33 +2,28 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+import { DEV_SIGNALING_PORT_ENV } from "../../src/utils/devSignalingPort.ts";
+import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
+
+import { waitForColdSignaling } from "./signalingProbe.ts";
+
 import type { TestProject } from "vitest/node";
 
 // Vitest globalSetup shared by the `integration` and `browser` projects: it
-// brings the Vite/TanStack dev server up before the suite and tears it down
-// after, so `npm run test:integration` and `npm run test:browser` are each
-// self-contained rather than requiring the operator to start `npm run dev`
-// first. The unit project does not reference this file, so `npm run test` never
-// touches the dev server.
-//
-// The dev server runs on 127.0.0.1 (the Vite bind host -- not `localhost`,
-// which may resolve to ::1 and miss the IPv4 bind), on the port resolved as
-// `process.env.PORT ?? "3000"`, matching vite.config.ts. The integration
-// tests read the same expression; the browser tests cannot read
-// `process.env`, so the resolved port is published via `provide()` for them
-// to `inject()`. A PORT set only in `.env`, not the environment, is
-// unsupported.
-//
-// If a server is already listening on 127.0.0.1:PORT when the suite starts,
-// it is reused and left running on teardown, so a developer's long-lived
-// `npm run dev` is not killed mid-session -- matching the CLI integration
-// suite's warm-container reuse behavior.
+// starts the standalone signaling broker and the dev server, which forwards its
+// /api/ to that broker, and stops both on teardown (docs/TESTING.md). The broker
+// port is published via `provide()`. A server already listening on
+// 127.0.0.1:PORT (`process.env.PORT ?? "3000"`; a PORT set only in `.env` is
+// unsupported) is reused, left running, and not probed for signaling.
 
 declare module "vitest" {
   interface ProvidedContext {
-    webDevServerPort?: number;
+    signalingBrokerPort?: number;
   }
 }
+
+/** What marks a failure this setup reports as the test environment's. */
+const SETUP_FAILURE = "dev-server setup failure:";
 
 const here = dirname(fileURLToPath(import.meta.url));
 // apps/web/test/devServer -> apps/web is two levels up.
@@ -83,48 +78,16 @@ async function waitForServer(url: string): Promise<void> {
   }
 }
 
-// Vite dev compiles route modules lazily, on first request; the PeerJS
-// signaling server's WebSocket `upgrade` handler attaches only once
-// /api/peerjs first loads, and waitForServer's probe of `/` never touches
-// it. A peer with an explicit, pre-derived id dials the signaling WebSocket
-// directly and stalls on an unhandled upgrade, so warm the id endpoint here
-// to load the module before declaring ready.
-async function warmPeerSignaling(port: number): Promise<void> {
-  const idUrl = `http://127.0.0.1:${port}/api/peerjs/id`;
-  const deadline = Date.now() + READY_TIMEOUT_MS;
-  for (;;) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-    try {
-      const res = await fetch(idUrl, { signal: controller.signal });
-      // Once the module is live the id endpoint answers text/plain with a peer
-      // id; before that, the SPA 404 fallback answers text/html. Keying off the
-      // content type avoids coupling readiness to the id's exact shape.
-      if (res.ok && res.headers.get("content-type")?.includes("text/plain"))
-        return;
-    } catch {
-      // Not ready yet -- fall through to the deadline check and retry.
-    } finally {
-      clearTimeout(timer);
-    }
-    if (Date.now() >= deadline)
-      throw new Error(
-        `PeerJS signaling did not become ready at ${idUrl} within ` +
-          `${READY_TIMEOUT_MS / 1000}s.`,
-      );
-    await new Promise((r) => setTimeout(r, PROBE_SLEEP_MS));
-  }
-}
-
 export default async function setup({
   provide,
 }: TestProject): Promise<() => Promise<void>> {
   const port = getPort();
   const url = `http://127.0.0.1:${port}/`;
 
-  // Publish the port for browser tests, which cannot read `process.env`. Done
-  // before the reuse early-return so it is set on every path.
-  provide("webDevServerPort", port);
+  const broker = await startStandaloneBroker(SETUP_FAILURE);
+  console.log(`[dev-server] signaling broker on port ${broker.port}`);
+  // Published before the reuse early-return so it is set on every path.
+  provide("signalingBrokerPort", broker.port);
 
   // Reuse a server already listening on the port (manual `npm run dev`, or a
   // warm one from a prior run): skip launch and leave it running on teardown.
@@ -132,17 +95,15 @@ export default async function setup({
     console.log(
       `[dev-server] reusing server already listening on port ${port}`,
     );
-    // Even a reused server may never have been asked for /api/peerjs/* (a bare
-    // `npm run dev` no one exercised), so warm signaling here too; it is
-    // idempotent on an already-warm server.
-    await warmPeerSignaling(port);
-    return () => Promise.resolve();
+    return () => broker.stop();
   }
 
-  // Strip VITEST so vite.config.ts wires the dev-server-snagger and
-  // preview-server-snagger plugins (they are skipped when VITEST is set,
-  // since globalSetup runs inside the vitest process where VITEST=true).
-  const env: NodeJS.ProcessEnv = { ...process.env };
+  // Strip VITEST so the dev server loads vite.config.ts as `npm run dev` does
+  // rather than as the vitest run this setup is part of.
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    [DEV_SIGNALING_PORT_ENV]: String(broker.port),
+  };
   delete env.VITEST;
 
   console.log(`[dev-server] starting dev server on port ${port}`);
@@ -208,19 +169,24 @@ export default async function setup({
     await new Promise<void>((r) => setImmediate(r));
     if (launchError) throw launchError;
     await waitForServer(url);
-    // Readiness is not just an HTTP response on `/`: a browser peer needs the
-    // PeerJS signaling WebSocket, whose handler attaches only once the
-    // /api/peerjs module is first loaded. Warm it before declaring ready.
-    await warmPeerSignaling(port);
+    if (!(await waitForColdSignaling(port, { deadlineMs: READY_TIMEOUT_MS })))
+      throw new Error(
+        `${SETUP_FAILURE} a signaling dial at ${url}api/ did not open within ` +
+          `${READY_TIMEOUT_MS / 1000}s, so the dev server is not forwarding ` +
+          `/api/ to the broker on port ${broker.port}. Check the proxy in ` +
+          `vite.config.ts.`,
+      );
   } catch (err) {
     await stopServer();
+    await broker.stop();
     throw err;
   }
 
   console.log(`[dev-server] ready on port ${port}`);
 
-  return () => {
-    console.log("[dev-server] stopping dev server");
-    return stopServer();
+  return async () => {
+    console.log("[dev-server] stopping dev server and signaling broker");
+    await stopServer();
+    await broker.stop();
   };
 }

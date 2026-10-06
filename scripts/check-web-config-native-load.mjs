@@ -16,8 +16,8 @@
 // The refusal is a parse error in the module that holds the construct, so it
 // fires for anything anywhere in the config's transitive import graph, not just
 // the config file itself -- and the graph reaches app source
-// (`src/utils/serverConfig.ts` -> `src/utils/configManager.ts`,
-// `src/httpServer.ts`), which nothing else holds to erasable syntax. Neither
+// (`src/utils/serverConfig.ts` -> `src/utils/configManager.ts`), which
+// nothing else holds to erasable syntax. Neither
 // typecheck nor lint nor a bundling `vite build` sees it, since every one of
 // those runs a real TypeScript transform.
 //

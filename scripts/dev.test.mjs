@@ -6,39 +6,53 @@ import {
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   APP_WORKSPACE,
+  BROKER_WORKSPACE,
   CORE_WORKSPACE,
   DEFAULT_APP_SCRIPT,
+  SIGNALING_APP_SCRIPTS,
   TEARDOWN_SIGNALS,
   appScriptNames,
   coreBuildIsCurrent,
   createTeardown,
+  freeLoopbackPort,
   parseAppScript,
   runDevLoop,
   startProcess,
 } from "./dev.mjs";
+import { DEV_SIGNALING_PORT_ENV } from "../apps/web/src/utils/devSignalingPort.ts";
 
 // Coverage of the root dev loop's two critical properties, neither of which
 // a passing dev session would report: core's dist is current BEFORE the dev
 // server starts (a server that races the watcher resolves whatever dist happened
 // to be on disk, which is the stale build the loop exists to prevent), and one
-// side exiting takes the other down (a surviving rollup watcher or dev server
-// holds the port and the file watches after the loop is gone).
+// side exiting takes the others down (a surviving rollup watcher, broker or dev
+// server holds the port and the file watches after the loop is gone).
 //
 // The process control is injected, so these run the real ordering and teardown
 // logic against recorded invocations rather than a spawned dev server.
 
-/** Recording process-control fakes for runDevLoop. */
-function harness({ buildCode = 0, buildIsCurrent = false } = {}) {
+/** The port the fakes below hand the loop for the signaling broker. */
+const PICKED_PORT = 45_678;
+
+/** Recording process-control fakes for runDevLoop. `watcherCount` is how many
+ * watchers the loop starts for the app script the test names. */
+function harness({
+  buildCode = 0,
+  buildIsCurrent = false,
+  watcherCount = 3,
+  signalingAnswers = Promise.resolve(true),
+} = {}) {
   const order = [];
   const watchers = [];
-  let bothStarted;
+  let allStarted;
   const started = new Promise((r) => {
-    bothStarted = r;
+    allStarted = r;
   });
 
   const isCoreBuildCurrent = () => buildIsCurrent;
@@ -48,11 +62,12 @@ function harness({ buildCode = 0, buildIsCurrent = false } = {}) {
     return buildCode;
   };
 
-  const startWatcher = (args) => {
+  const startWatcher = (args, env) => {
     order.push(["watcher", args]);
     let settle;
     const watcher = {
       args,
+      env,
       killed: [],
       exited: new Promise((r) => {
         settle = r;
@@ -64,7 +79,7 @@ function harness({ buildCode = 0, buildIsCurrent = false } = {}) {
       exit: (code) => settle(code),
     };
     watchers.push(watcher);
-    if (watchers.length === 2) bothStarted();
+    if (watchers.length === watcherCount) allStarted();
     return watcher;
   };
 
@@ -75,10 +90,15 @@ function harness({ buildCode = 0, buildIsCurrent = false } = {}) {
     isCoreBuildCurrent,
     runToCompletion,
     startWatcher,
+    pickSignalingPort: async () => PICKED_PORT,
+    waitForSignaling: (port) => {
+      order.push(["wait-for-signaling", port]);
+      return signalingAnswers;
+    },
   };
 }
 
-// Start the loop and resolve once both watchers are running. The loop promise is
+// Start the loop and resolve once every watcher is running. The loop promise is
 // returned boxed: `await` on a bare promise return value would unwrap it, and the
 // loop does not settle until a watcher exits.
 async function startedLoop(harnessState, appScript = "dev") {
@@ -87,6 +107,8 @@ async function startedLoop(harnessState, appScript = "dev") {
     isCoreBuildCurrent: harnessState.isCoreBuildCurrent,
     runToCompletion: harnessState.runToCompletion,
     startWatcher: harnessState.startWatcher,
+    pickSignalingPort: harnessState.pickSignalingPort,
+    waitForSignaling: harnessState.waitForSignaling,
   });
   await harnessState.started;
   return { loop };
@@ -111,12 +133,14 @@ describe("the root dev loop", () => {
   it("builds core before starting anything long-running", async () => {
     const h = harness();
     const { loop } = await startedLoop(h);
-    h.watchers[1].exit(0);
+    h.watchers[2].exit(0);
     await loop;
 
     expect(h.order.map(([kind]) => kind)).toEqual([
       "run-to-completion",
       "watcher",
+      "watcher",
+      "wait-for-signaling",
       "watcher",
     ]);
     expect(h.order[0][1]).toEqual(["run", "build", "-w", CORE_WORKSPACE]);
@@ -125,21 +149,58 @@ describe("the root dev loop", () => {
   it("skips the build when core's dist is already current", async () => {
     const h = harness({ buildIsCurrent: true });
     const { loop } = await startedLoop(h);
-    h.watchers[1].exit(0);
+    h.watchers[2].exit(0);
     await loop;
 
-    expect(h.order.map(([kind]) => kind)).toEqual(["watcher", "watcher"]);
+    expect(h.order.map(([kind]) => kind)).toEqual([
+      "watcher",
+      "watcher",
+      "wait-for-signaling",
+      "watcher",
+    ]);
   });
 
-  it("starts the core watcher and the named app script", async () => {
+  it("starts the broker on the picked port and hands that port to the dev server", async () => {
     const h = harness();
+    const { loop } = await startedLoop(h, DEFAULT_APP_SCRIPT);
+    h.watchers[2].exit(0);
+    await loop;
+
+    expect(SIGNALING_APP_SCRIPTS).toContain(DEFAULT_APP_SCRIPT);
+    expect(h.order).toContainEqual(["wait-for-signaling", String(PICKED_PORT)]);
+    expect(h.watchers.map((w) => [w.args, w.env])).toEqual([
+      [["run", "dev", "-w", CORE_WORKSPACE], {}],
+      [
+        [
+          "run",
+          "start",
+          "-w",
+          BROKER_WORKSPACE,
+          "--",
+          "--port",
+          String(PICKED_PORT),
+          "--host",
+          "127.0.0.1",
+        ],
+        {},
+      ],
+      [
+        ["run", DEFAULT_APP_SCRIPT, "-w", APP_WORKSPACE],
+        { [DEV_SIGNALING_PORT_ENV]: String(PICKED_PORT) },
+      ],
+    ]);
+  });
+
+  it("starts no broker for the console's app script", async () => {
+    const h = harness({ watcherCount: 2 });
     const { loop } = await startedLoop(h, "dev:console");
     h.watchers[1].exit(0);
     await loop;
 
-    expect(h.watchers.map((w) => w.args)).toEqual([
-      ["run", "dev", "-w", CORE_WORKSPACE],
-      ["run", "dev:console", "-w", APP_WORKSPACE],
+    expect(SIGNALING_APP_SCRIPTS).not.toContain("dev:console");
+    expect(h.watchers.map((w) => [w.args, w.env])).toEqual([
+      [["run", "dev", "-w", CORE_WORKSPACE], {}],
+      [["run", "dev:console", "-w", APP_WORKSPACE], {}],
     ]);
   });
 
@@ -151,6 +212,7 @@ describe("the root dev loop", () => {
         isCoreBuildCurrent: h.isCoreBuildCurrent,
         runToCompletion: h.runToCompletion,
         startWatcher: h.startWatcher,
+        pickSignalingPort: h.pickSignalingPort,
       }),
     ).resolves.toBe(1);
     expect(h.watchers).toHaveLength(0);
@@ -164,28 +226,89 @@ describe("the root dev loop", () => {
         isCoreBuildCurrent: h.isCoreBuildCurrent,
         runToCompletion: h.runToCompletion,
         startWatcher: h.startWatcher,
+        pickSignalingPort: h.pickSignalingPort,
         teardownSignal: () => "SIGINT",
       }),
     ).resolves.toBe(130);
     expect(h.watchers).toHaveLength(0);
   });
 
-  it("takes down the app server when the core watcher exits", async () => {
+  it("takes down the broker and the app server when the core watcher exits", async () => {
     const h = harness();
     const { loop } = await startedLoop(h);
     h.watchers[0].exit(7);
 
     expect(await loop).toBe(7);
     expect(h.watchers[1].killed).toEqual(["SIGTERM"]);
+    expect(h.watchers[2].killed).toEqual(["SIGTERM"]);
   });
 
-  it("takes down the core watcher when the app server exits", async () => {
+  it("takes down the core watcher and the app server when the broker exits", async () => {
     const h = harness();
     const { loop } = await startedLoop(h);
-    h.watchers[1].exit(3);
+    h.watchers[1].exit(69);
+
+    expect(await loop).toBe(69);
+    expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+    expect(h.watchers[2].killed).toEqual(["SIGTERM"]);
+  });
+
+  it("takes down the core watcher and the broker when the app server exits", async () => {
+    const h = harness();
+    const { loop } = await startedLoop(h);
+    h.watchers[2].exit(3);
 
     expect(await loop).toBe(3);
     expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+    expect(h.watchers[1].killed).toEqual(["SIGTERM"]);
+  });
+
+  it("starts no app server and stops the rest when the broker never answers", async () => {
+    const h = harness({ signalingAnswers: Promise.resolve(false) });
+    const loop = runDevLoop({
+      appScript: "dev",
+      isCoreBuildCurrent: h.isCoreBuildCurrent,
+      runToCompletion: h.runToCompletion,
+      startWatcher: h.startWatcher,
+      pickSignalingPort: h.pickSignalingPort,
+      waitForSignaling: h.waitForSignaling,
+    });
+
+    expect(await loop).toBe(1);
+    expect(h.watchers).toHaveLength(2);
+    expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+    expect(h.watchers[1].killed).toEqual(["SIGTERM"]);
+  });
+
+  it("starts no app server when the broker exits before it answers", async () => {
+    const h = harness({ signalingAnswers: new Promise(() => {}) });
+    const loop = runDevLoop({
+      appScript: "dev",
+      isCoreBuildCurrent: h.isCoreBuildCurrent,
+      runToCompletion: h.runToCompletion,
+      startWatcher: h.startWatcher,
+      pickSignalingPort: h.pickSignalingPort,
+      waitForSignaling: h.waitForSignaling,
+    });
+    await new Promise((resolveTick) => setImmediate(resolveTick));
+    h.watchers[1].exit(69);
+
+    expect(await loop).toBe(69);
+    expect(h.watchers).toHaveLength(2);
+    expect(h.watchers[0].killed).toEqual(["SIGTERM"]);
+  });
+});
+
+describe("the signaling port the dev loop hands the dev server", () => {
+  it("is a loopback port free to bind", async () => {
+    const port = await freeLoopbackPort();
+    expect(port).toBeGreaterThan(0);
+    const server = createServer();
+    await new Promise((resolveListen, reject) => {
+      server.once("error", reject);
+      server.listen(port, "127.0.0.1", resolveListen);
+    });
+    await new Promise((resolveClose) => server.close(resolveClose));
   });
 });
 
@@ -323,6 +446,7 @@ describe.skipIf(ON_WINDOWS)("a teardown signal during the core build", () => {
         started.push(args);
         return { kill: () => {}, exited: Promise.resolve(0) };
       },
+      pickSignalingPort: async () => PICKED_PORT,
       teardownSignal: teardown.signal,
     });
 

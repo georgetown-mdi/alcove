@@ -4,8 +4,8 @@ import { defineConfig } from "vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
+import { requireHostedSignalingServer, srcAliases } from "./vite.config.ts";
 import { hostedRouteDocuments } from "./hosted/routeDocuments.ts";
-import { srcAliases } from "./vite.config.ts";
 
 const appRoot = import.meta.dirname;
 
@@ -15,12 +15,7 @@ const hostedRouteTree = path.join(appRoot, ".tanstack/hosted/routeTree.gen.ts");
 
 const template = "hosted/index.html";
 
-/**
- * The hosted app as a static site: `vite build --config vite.hosted.config.ts`
- * writes a single-page client to `dist/hosted/`, with one document per route
- * the app-shell worker warms (hosted/routeDocuments.ts) and no server.
- */
-export default defineConfig({
+const hostedConfig = {
   root: appRoot,
   // Read by the root route, whose document this client renders itself.
   define: { "import.meta.env.CLIENT_RENDERED_DOCUMENT": "true" },
@@ -51,4 +46,14 @@ export default defineConfig({
     manifest: true,
     rollupOptions: { input: path.join(appRoot, template) },
   },
+};
+
+/**
+ * The hosted app as a static site: `vite build --config vite.hosted.config.ts`
+ * writes a single-page client to `dist/hosted/`, with one document per route
+ * the app-shell worker warms (hosted/routeDocuments.ts) and no server.
+ */
+export default defineConfig((configEnv) => {
+  requireHostedSignalingServer(configEnv);
+  return hostedConfig;
 });

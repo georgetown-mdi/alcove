@@ -89,7 +89,7 @@ Which assets each document links and why the build writes no `_redirects` or `40
 `vite.config.ts` is evaluated with no transform in front of it by Vite's `configLoader: "native"` and by a plain `node` import, both of which hand it to Node's strip-only type stripping.
 That erases type annotations and nothing else, so a TypeScript construct needing code generated for it -- a constructor parameter property, an `enum`, a non-`declare` `namespace`, an `import x = require(...)` alias -- is refused outright with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`.
 
-The refusal is a parse error in whichever module carries the construct, so it applies to everything the config imports, transitively -- including the app source it reaches (`src/utils/serverConfig.ts`, `src/httpServer.ts`).
+The refusal is a parse error in whichever module carries the construct, so it applies to everything the config imports, transitively -- including the app source it reaches (`src/utils/serverConfig.ts`).
 Write erasable syntax there: a parameter property becomes a field declaration plus an assignment in the constructor body.
 Nothing else holds those modules to it, and typecheck, lint, and `vite build` all run a real TypeScript transform and so see none of it.
 

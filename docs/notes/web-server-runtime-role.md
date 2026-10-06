@@ -64,11 +64,10 @@ protocol is peer to peer, and the coordination that remains is the broker's.
 The broker is not the framework's either. It is a workspace of its own,
 `packages/peerjs-broker`, with an entry point that runs it as a standalone
 service with no web app around it -- the CLI's signaling tests spawn exactly
-that ([TESTING.md](../TESTING.md)) -- and the web app imports that workspace
-(`apps/web/src/peerServer.ts`) rather than implementing signaling. That isolation
-boundary is the critical one in this picture; the framework's server half
-sits above it, delivering an app shell that anything able to serve static assets
-and one WebSocket mount could deliver.
+that ([TESTING.md](../TESTING.md)) -- and the web app mounts none of it: its
+pages dial that service. That isolation boundary is the critical one in this
+picture; the framework's server half sits above it, delivering an app shell
+that anything able to serve static assets could deliver.
 
 The client half is a different question and is not settled here. The router,
 form, and query libraries are client libraries a code-delivering server still

@@ -40,6 +40,17 @@ export const SERVER_ENTRY = "apps/web/.output/server/index.mjs";
 export const DYNAMIC_SEGMENT_VALUE = "route-render-check";
 
 const BUILD_ARGV = ["npm", "run", "build", "-w", "apps/web"];
+
+/**
+ * `env` with a loopback signaling address filled in when it names none: the
+ * hosted build refuses to run without VITE_SIGNALING_SERVER_URL
+ * (apps/web/vite.config.ts), and a check that builds the app to read or render
+ * it never dials the broker.
+ */
+export function webBuildEnv(env = process.env) {
+  if (env.VITE_SIGNALING_SERVER_URL?.trim()) return env;
+  return { ...env, VITE_SIGNALING_SERVER_URL: "ws://127.0.0.1/api/" };
+}
 const BUILD_TIMEOUT_MS = 600_000;
 const RUN_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 30_000;
@@ -258,6 +269,7 @@ function build(root) {
       const [command, ...args] = BUILD_ARGV;
       const result = spawnSync(command, args, {
         cwd: root,
+        env: webBuildEnv(),
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,
         timeout: BUILD_TIMEOUT_MS,

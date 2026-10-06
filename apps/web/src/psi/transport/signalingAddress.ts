@@ -22,8 +22,9 @@ export interface SignalingAddress {
   secure: boolean;
 }
 
-/** The mount this app's own signaling server answers at: `peerServer.ts`
- * mounts it at `/api`, and the PeerJS client dials the mount with its slash. */
+/** The mount the signaling broker answers at on this app's own origin: the
+ * standalone broker (packages/peerjs-broker) mounts it at `/api` by default,
+ * and the PeerJS client dials the mount with its slash. */
 export const OWN_SIGNALING_PATH = "/api/";
 
 /**

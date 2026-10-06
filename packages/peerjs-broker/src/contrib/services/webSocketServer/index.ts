@@ -183,8 +183,8 @@ export class WebSocketServer extends EventEmitter implements IWebSocketServer {
     }
 
     // This listener lives for the life of `server`, with no teardown -- by
-    // design, not omission. The peer server is a per-process singleton
-    // (`usePeerServer`) bound to the process-lived dev/Nitro HTTP server, so this
+    // design, not omission. The peer server is built once per process, on the
+    // process-lived HTTP server the standalone runner listens with, so this
     // WebSocketServer is constructed once and shares the server's lifetime; the
     // socketServer is never closed. There is therefore no reinstantiation that
     // would stack listeners, and no closed socketServer for a stale listener to

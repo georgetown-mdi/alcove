@@ -1,11 +1,13 @@
 import { describe, expect, test } from "vitest";
 
 // These assert at the HTTP boundary that the defense-in-depth response headers reach
-// the wire on both an SSR document route and an API route -- the two response kinds
-// that flow through the server-entry chokepoint (src/server.ts). Values are pinned
-// here as the observable contract, not imported from the source that sets them,
-// since the integration project resolves no `@utils` alias and a black-box check
-// should not read the value it verifies.
+// the wire on an SSR document route, which flows through the server-entry
+// chokepoint (src/server.ts). Values are pinned here as the observable contract,
+// not imported from the source that sets them, since the integration project
+// resolves no `@utils` alias and a black-box check should not read the value it
+// verifies. The dev server forwards /api/ to the signaling broker, so the /api
+// refusal's headers are held against the built servers instead
+// (apiNamespace.test.ts, REFUSAL).
 //
 // The port matches the dev-server globalSetup, which derives it the same way.
 const port = parseInt(process.env.PORT ?? "3000", 10);
@@ -30,9 +32,5 @@ async function expectSecurityHeaders(path: string): Promise<void> {
 describe("security response headers (app-wide, at the HTTP boundary)", () => {
   test("an SSR document route includes them", async () => {
     await expectSecurityHeaders("/");
-  });
-
-  test("an API route includes them", async () => {
-    await expectSecurityHeaders("/api/peerjs/id");
   });
 });

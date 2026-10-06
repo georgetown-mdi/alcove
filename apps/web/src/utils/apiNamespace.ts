@@ -2,14 +2,12 @@
  * The refusal the server entry (src/server.ts) applies to the `/api` namespace
  * ahead of the router.
  *
- * The app serves two server APIs under `/api`: the console job API
- * (`/api/jobs/...`), enabled only on the console deployment profile, and the
- * peer-coordination broker (`/api/peerjs/...`), served only on the hosted
- * profile. The two profiles refuse complementary parts of the namespace:
+ * The only server API under `/api` is the console job API (`/api/jobs/...`),
+ * enabled only on the console deployment profile; the peer-coordination broker
+ * runs as a service of its own (packages/peerjs-broker). The profiles refuse:
  *
- * - Hosted: every path outside the broker's subtree is refused.
- * - Console: the broker's subtree is refused, and so is the rest of the
- *   namespace unless the job API is enabled.
+ * - Hosted: the whole namespace.
+ * - Console: the whole namespace unless the job API is enabled.
  *
  * A refused request is answered with the job gate's own empty `404`
  * ({@link jobEmptyResponse}) and never reaches the router. What the refusal
@@ -27,17 +25,15 @@ import {
 const API_PATH_ROOT = "/api";
 
 /**
- * The paths under {@link API_PATH_ROOT} the hosted deployment serves, and the
- * only ones its refusal lets through to the router: the peer-coordination
- * broker's own subtree. The broker attaches its WebSocket upgrade listener on
- * the first `GET` under it (src/peerServer.ts). The console profile refuses
- * these same paths, so it never attaches that listener.
+ * The paths under {@link API_PATH_ROOT} the hosted deployment lets through to
+ * the router, and the console profile refuses even with the job API enabled.
+ * Empty: the hosted deployment serves nothing under the namespace.
  *
  * scripts/api-namespace-allowlist.test.mjs holds this list against the
  * generated route tree, so a path the router serves under the namespace that is
  * neither listed here nor behind the job gate cannot land unnoticed.
  */
-export const HOSTED_API_PREFIXES: ReadonlyArray<string> = ["/api/peerjs"];
+export const HOSTED_API_PREFIXES: ReadonlyArray<string> = [];
 
 /** How many times a path is percent-decoded while looking for a fixed point. A
  * path still decoding past this is refused outright when it is under `/api`. */

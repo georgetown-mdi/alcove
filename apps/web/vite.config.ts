@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import logLibrary from "loglevel";
 import { nitroV2Plugin } from "@tanstack/nitro-v2-vite-plugin";
 import { playwright } from "@vitest/browser-playwright";
@@ -11,13 +11,11 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 
 import { ConfigManager } from "./src/utils/serverConfig.ts";
-
-import { readJobApiConfig } from "./src/jobs/gate.ts";
-import { registerServer } from "./src/httpServer.ts";
+import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
-import type { Plugin, PreviewServer, ViteDevServer } from "vite";
+import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
 
 const configManager = new ConfigManager();
 const config = await configManager.load({ dotenv: true });
@@ -147,52 +145,51 @@ function deployGraphRecorder(recordPath: string): Plugin {
   };
 }
 
-// The PeerJS signaling server attaches its WebSocket `upgrade` handler only when
-// the /api/peerjs route module first runs usePeerServer() -- triggered by an HTTP
-// GET to /api/peerjs/id|peers. The real client dials the signaling WebSocket with
-// an explicit, pre-derived id, so it never makes that GET; the upgrade then goes
-// unhandled and surfaces to the peer as "Lost connection to server." Warm the id
-// endpoint at dev-server startup to load the module and attach the handler before
-// any peer connects. Mirrors test/devServer/globalSetup's warmPeerSignaling (kept
-// separate: that one bootstraps the test harness, this one fixes a plain
-// `npm run dev`). Retries until the route answers text/plain, since Vite compiles
-// the route module lazily and the first hits may fall through to the SPA fallback.
-async function warmPeerSignaling(port: number): Promise<void> {
-  const url = `http://127.0.0.1:${port}/api/peerjs/id`;
-  const deadline = Date.now() + 60_000;
-  const perAttemptMs = 2_000;
-  for (;;) {
-    // Bound each attempt so a hung in-flight request cannot stall the loop past
-    // the outer deadline (the deadline is only re-checked between attempts).
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), perAttemptMs);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      const ready =
-        res.ok && !!res.headers.get("content-type")?.includes("text/plain");
-      // Release the socket: we read only status/headers, never the body. Left
-      // unconsumed, undici holds the socket open until GC, and the SPA-fallback
-      // retries (before the route module compiles) hit this path repeatedly.
-      await res.body?.cancel();
-      if (ready) return;
-    } catch {
-      // Server still coming up, or this attempt aborted; retry.
-    } finally {
-      clearTimeout(timer);
-    }
-    if (Date.now() >= deadline) {
-      logLibrary.warn("peer signaling warm-up did not complete within 60s");
-      return;
-    }
-    await new Promise((r) => setTimeout(r, 250));
-  }
+/**
+ * Refuses a `vite build` for the hosted profile (`VITE_DEPLOYMENT_PROFILE`
+ * unset or `hosted`) when `VITE_SIGNALING_SERVER_URL` is unset or blank: the
+ * app's own origin serves no signaling. `vite dev` and the console profile
+ * fall back to the origin's `/api/`.
+ */
+export function requireHostedSignalingServer({
+  command,
+  mode,
+}: Pick<ConfigEnv, "command" | "mode">): void {
+  if (command !== "build") return;
+  const env = loadEnv(mode, import.meta.dirname, "VITE_");
+  if (env["VITE_DEPLOYMENT_PROFILE"] === "console") return;
+  const signalingServerUrl = env["VITE_SIGNALING_SERVER_URL"] as
+    string | undefined;
+  if (signalingServerUrl === undefined || signalingServerUrl.trim() === "")
+    throw new Error(
+      "VITE_SIGNALING_SERVER_URL is not set. A hosted build needs the address of the standalone peer-coordination broker, because the app's own origin serves no signaling. Set it to the broker's ws: or wss: URL and rebuild.",
+    );
 }
 
-export default defineConfig((_configEnv) => {
+// The dev server mounts no broker, so its /api/ forwards to the standalone one.
+// Dev only: `vite preview` and builds never install the proxy.
+export function devSignalingProxy({
+  command,
+  isPreview,
+}: Pick<ConfigEnv, "command" | "isPreview">): Record<string, ProxyOptions> {
+  if (command !== "serve" || isPreview === true) return {};
+  const raw = process.env[DEV_SIGNALING_PORT_ENV];
+  if (raw === undefined || raw === "") return {};
+  const port = /^\d{1,5}$/.test(raw) ? Number(raw) : Number.NaN;
+  if (!(port >= 1 && port <= 65_535))
+    throw new Error(
+      `${DEV_SIGNALING_PORT_ENV} must be a port number from 1 to 65535; got ${JSON.stringify(raw)}`,
+    );
+  return { "/api/": { target: `http://127.0.0.1:${port}`, ws: true } };
+}
+
+export default defineConfig((configEnv) => {
+  requireHostedSignalingServer(configEnv);
   return {
     server: {
       host: "127.0.0.1",
       port: config.PORT,
+      proxy: devSignalingProxy(configEnv),
     },
     test: {
       // Run-level, not per-project: vitest reads these once for the run rather
@@ -305,11 +302,8 @@ export default defineConfig((_configEnv) => {
               "test/**/*.browser.{test,spec}.{ts,tsx}",
             ],
             name: "browser",
-            // Stand up the dev server (PeerJS coordination + /api) the same way
-            // the integration project does, so a cold `test:browser` is green:
-            // the server-dependent suite (invitedPSI) needs :3000, and the setup
-            // reuses a developer's running `npm run dev` rather than starting a
-            // second one. The server-less vector suites pay a reuse-aware probe.
+            // The same broker and dev-server setup as the integration project,
+            // so a cold `test:browser` is green.
             globalSetup: ["./test/devServer/globalSetup.ts"],
             // A suite's tests share one page, whose session storage would otherwise
             // carry an invitation one test minted into the next test's file step.
@@ -410,51 +404,6 @@ export default defineConfig((_configEnv) => {
       }),
       nitroV2Plugin({ preset: "node-server" }),
       viteReact(),
-      // Vitest evaluates this config but starts no dev/preview server, so the
-      // server snagger plugins here have no httpServer to capture (the hook
-      // would just warn "http server is undefined"). Skip them under test.
-      ...(underVitest
-        ? []
-        : [
-            {
-              name: "dev-server-snagger",
-              configureServer(server: ViteDevServer) {
-                if (server.httpServer) {
-                  registerServer(server.httpServer);
-                  // Once listening, warm the signaling module so its WebSocket
-                  // `upgrade` handler is attached before any peer dials it (see
-                  // warmPeerSignaling). Read the actual bound port: Vite does not
-                  // set strictPort, so if config.PORT is occupied it auto-
-                  // increments, and config.PORT would then warm the wrong port,
-                  // leaving the handler unattached.
-                  server.httpServer.once("listening", () => {
-                    const address = server.httpServer?.address();
-                    // The dev server binds TCP (host + port above), so address is
-                    // an AddressInfo. If it is ever a string (unix socket) or
-                    // null, a TCP warm cannot reach it -- warn and skip rather
-                    // than silently warming the wrong port.
-                    if (typeof address !== "object" || address === null) {
-                      logLibrary.warn(
-                        "dev server bound a non-TCP address; skipping signaling warm-up",
-                      );
-                      return;
-                    }
-                    // The console profile serves no signaling server.
-                    if (!readJobApiConfig().consoleProfile)
-                      void warmPeerSignaling(address.port);
-                  });
-                } else {
-                  console.warn("http server is undefined");
-                }
-              },
-            },
-            {
-              name: "preview-server-snagger",
-              configurePreviewServer(server: PreviewServer) {
-                registerServer(server.httpServer);
-              },
-            },
-          ]),
     ],
     resolve: {
       tsconfigPaths: true,

@@ -20,7 +20,7 @@ import {
 import { CreatePeerServerWSOnly } from "@alcove/peerjs-broker";
 import { Realm } from "@alcove/peerjs-broker/models/realm";
 
-import { signalingDiagnosticSink } from "../../src/signalingDiagnostics";
+import { brokerDiagnosticSink } from "../utils/brokerDiagnosticSink";
 
 import type { AddressInfo } from "node:net";
 import type { DiagnosticSink } from "@alcove/core";
@@ -155,7 +155,7 @@ async function startBroker(): Promise<Broker> {
     realm: new Realm(),
     config: { path: "/", key: "peerjs", concurrent_limit: 5000 },
   });
-  attachSignalingDiagnostics(wss, signalingDiagnosticSink);
+  attachSignalingDiagnostics(wss, brokerDiagnosticSink);
 
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   closeWithTest(server);
@@ -163,14 +163,14 @@ async function startBroker(): Promise<Broker> {
 }
 
 /** A signaling server built by `CreatePeerServerWSOnly` -- the single builder
- * the web app's mount and the standalone runner both go through -- so a test
+ * the standalone runner goes through -- so a test
  * driving a real socket at it measures the shipped wiring rather than a
  * restatement of it. */
 async function startShippedBroker(
   opts: { coResidentUpgrade?: "answers" | "ignores" } = {},
 ): Promise<{ port: number; realm: IRealm }> {
   const server = http.createServer();
-  const { realm } = CreatePeerServerWSOnly(server, signalingDiagnosticSink, {
+  const { realm } = CreatePeerServerWSOnly(server, brokerDiagnosticSink, {
     path: "/",
     key: "peerjs",
   });

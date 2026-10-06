@@ -16,14 +16,12 @@ import {
 // router tree.
 //
 // The refusal (apps/web/src/utils/apiNamespace.ts) keeps a public deployment
-// from routing to anything under /api but the peer-coordination broker, so the
-// router's own answers -- the app document, its canonicalizing redirect, the
-// SSR path's JSON refusal -- are not observable there. It also keeps the
-// console from serving the broker at all. Its allowlist is a hand-written list
-// of prefixes, and a route added outside it is served or refused by whatever
-// the list happens to say, with nothing failing either way, and a route
-// served on the public deployment outside the broker is wrong. This is that
-// obligation as a check.
+// from routing to anything under /api, so the router's own answers -- the app
+// document, its canonicalizing redirect, the SSR path's JSON refusal -- are not
+// observable there. Its allowlist is a hand-written list of prefixes, empty
+// while the hosted deployment serves no API, and a route added outside it is
+// served or refused by whatever the list happens to say, with nothing failing
+// either way. This is that obligation as a check.
 //
 // It is an INCLUSION check over the ROUTER'S OWN ACCOUNT of what it serves:
 // the entries come from the generated route tree
@@ -46,11 +44,6 @@ import {
 // which does not run the server entry (apps/web/src/utils/securityHeaders.ts
 // states that bypass), so an asset under public/api would answer past the
 // refusal entirely. None may exist.
-//
-// One arm holds every route module outside the allowlist to not importing the
-// peer server (apps/web/src/peerServer.ts). It reads a module's own static
-// import specifiers only; the peer server's refusal to start on the console
-// profile is apps/web/test/unit/peerServer.test.ts's claim.
 
 const SELF = "scripts/api-namespace-allowlist.test.mjs";
 
@@ -76,9 +69,6 @@ const SERVED_PATHS = "FileRoutesByFullPath";
  * constant so the two cannot name different namespaces. */
 const API_PATH_ROOT = "/api";
 const API_PATH_ROOT_CONSTANT = "API_PATH_ROOT";
-
-/** The tail of the specifier a route module imports the peer server by. */
-const PEER_SERVER_MODULE_TAIL = "peerServer";
 
 /**
  * The string-literal elements of the array `name` is declared with in
@@ -119,17 +109,6 @@ function stringConstant(sourceFile, name) {
     }
   }
   return null;
-}
-
-/** Whether `sourceFile` imports anything, or runs a side-effect import, from a
- * specifier whose tail is `tail`. */
-function importsModule(sourceFile, tail) {
-  return sourceFile.statements.some(
-    (statement) =>
-      ts.isImportDeclaration(statement) &&
-      ts.isStringLiteral(statement.moduleSpecifier) &&
-      statement.moduleSpecifier.text.endsWith(tail),
-  );
 }
 
 /** Whether `sourceFile` imports `name` from a specifier whose tail is `tail`. */
@@ -281,14 +260,14 @@ describe("every /api route is accounted for by the namespace refusal", () => {
   it("reads the refusal's allowlist and the routes it decides over", () => {
     // A rot guard: a rewritten allowlist, a renamed guard, or a generated route
     // tree this check no longer reads would otherwise empty the enumeration and
-    // make the assertions below vacuous.
+    // make the assertions below vacuous. The allowlist and the namespace may
+    // both be empty; the tree's served paths may not.
     expect(
       allowlist,
       `${GUARD_MODULE} no longer declares ${ALLOWLIST} as an array of string ` +
         `literals, which is the only shape this check reads. Teach ${SELF} the ` +
         `new one.`,
     ).not.toBeNull();
-    expect(allowlist.length).toBeGreaterThan(0);
     expect(
       stringConstant(guardSource, API_PATH_ROOT_CONSTANT),
       `${GUARD_MODULE} refuses under a namespace root other than ` +
@@ -302,7 +281,7 @@ describe("every /api route is accounted for by the namespace refusal", () => {
         `paths the router serves cannot be enumerated from it. Teach ${SELF} ` +
         `the new one.`,
     ).not.toBeNull();
-    expect(entries.length).toBeGreaterThan(0);
+    expect(served.length).toBeGreaterThan(0);
     expect(
       importsFrom(parseFile(SERVER_ENTRY), GUARD, "apiNamespace"),
       `${SERVER_ENTRY} no longer installs ${GUARD}, so nothing applies the ` +
@@ -363,38 +342,6 @@ describe("every /api route is accounted for by the namespace refusal", () => {
         `when it is wrong. Add the route to ${ALLOWLIST} if the hosted ` +
         `deployment serves it and the console must not. Job handlers belong ` +
         `under apps/web/server/console/routes, not ${ROUTE_TREE}.`,
-    ).toEqual([]);
-  });
-
-  it("holds every route importing the peer server to the allowlist", () => {
-    const hostedOnly = new Set(
-      entries
-        .filter((entry) =>
-          allowlist.some((prefix) => isUnderPrefix(entry.route, prefix)),
-        )
-        .flatMap((entry) => [...entry.modules]),
-    );
-    const importers = [...modulesByStem.values()]
-      .filter((module) =>
-        importsModule(parseFile(module), PEER_SERVER_MODULE_TAIL),
-      )
-      .sort();
-    // A rot guard: a renamed peer server module would leave no importer and
-    // the assertion below passing over nothing.
-    expect(
-      importers.some((module) => hostedOnly.has(module)),
-      `No route module under ${ALLOWLIST} imports a specifier ending ` +
-        `"${PEER_SERVER_MODULE_TAIL}", so this arm reads no importer. Teach ` +
-        `${SELF} the peer server's new module name.`,
-    ).toBe(true);
-    const outside = importers.filter((module) => !hostedOnly.has(module));
-    expect(
-      outside,
-      `${outside.length} route module(s) outside ${GUARD_MODULE}'s ` +
-        `${ALLOWLIST} import the peer server. The console refuses only the ` +
-        `allowlisted paths, so such a route would start signaling on the ` +
-        `console and attach its upgrade listener to the whole server. Serve ` +
-        `the route under ${ALLOWLIST}, or drop the import.`,
     ).toEqual([]);
   });
 

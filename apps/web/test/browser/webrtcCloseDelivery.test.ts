@@ -20,7 +20,7 @@ import type { RendezvousPair } from "../utils/rendezvousPair.js";
 
 /**
  * The web transport's clean close against the real stack: a real PeerJS pair
- * over the app's own broker, in real Chromium, with a final frame large
+ * over the standalone broker, in real Chromium, with a final frame large
  * enough that delivery is measurable. This pins the delivery contract in
  * docs/COMMUNICATION.md: a close must wait for the peer to take the last
  * frame, since PeerJS's own close can return before it leaves the buffer.
@@ -29,7 +29,7 @@ import type { RendezvousPair } from "../utils/rendezvousPair.js";
 
 const addressInfo = {
   address: "127.0.0.1",
-  port: inject("webDevServerPort") ?? 3000,
+  port: inject("signalingBrokerPort") ?? 0,
 };
 const hostString = `http://${addressInfo.address}:${String(addressInfo.port)}`;
 const serverUnreachableNote = `PeerJS coordination server at ${hostString} unreachable`;

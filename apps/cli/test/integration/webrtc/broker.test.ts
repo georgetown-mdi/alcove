@@ -51,7 +51,8 @@ async function freshIds(): Promise<{ inviterId: string; acceptorId: string }> {
 }
 
 /** The logger name the broker's reports are written under, in the runner
- * (packages/peerjs-broker/src/standalone.ts) and in the web app's mount alike. */
+ * (packages/peerjs-broker/src/standalone.ts) and by any embedding that writes
+ * them through a prefixed core logger. */
 const BROKER_LOG_CONTEXT = "peerjs-broker";
 
 /**
@@ -302,10 +303,10 @@ test("a broker diagnostic reaches stderr, leaving the ready-line stdout alone", 
 
 test("a broker diagnostic opens with the prefix core would have written", async () => {
   // The runner writes its stderr lines itself rather than through core's
-  // logger, so one embedding's line shape can move without the other's. The
-  // web app hands the same reports to a prefixed core logger under the same
-  // context (apps/web/src/signalingDiagnostics.ts), and an operator reading a
-  // stream both write to sees one line shape, so the two are held equal here.
+  // logger, so its line shape can move without core's. An embedding that hands
+  // the same reports to a prefixed core logger under the same context writes
+  // lines an operator reads beside the runner's, so the two are held equal
+  // here.
   const { inviterId } = await freshIds();
   let socket: WebSocket | undefined;
   const client = await connectToBroker({

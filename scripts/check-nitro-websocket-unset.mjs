@@ -1,20 +1,15 @@
 #!/usr/bin/env node
 // nitro.config.ts websocket-unset check, run by static_checks.yaml on every PR.
 //
-// apps/web/server/custom-entry.ts wires exactly one production upgrade
-// listener onto the shared HTTP server: usePeerServer()'s PeerJS signaling
-// route, attached lazily the first time it is requested, and path-routed to
-// its own endpoint. Nitro's own WebSocket support -- crossws's node adapter,
-// gated behind `experimental.websocket` in the Nitro config -- would attach a
-// SECOND, independent `server.on("upgrade", ...)` listener with no path check
-// of its own. Two such listeners on one HTTP server mis-route: whichever
-// attaches first sees every upgrade request, so turning Nitro's WebSocket
-// support on while PeerJS shares this server would grab PeerJS's signaling
-// upgrades too (or leave crossws's own upgrades unserved, depending on
-// attachment order), and neither listener coordinates with the other to sort
-// that out. Coexisting safely needs a single path-routed upgrade dispatcher in
-// front of both, not two independent listeners -- work nothing in this
-// codebase does today, so `experimental.websocket` must stay unset.
+// apps/web/server/custom-entry.ts wires no production upgrade listener onto
+// the hosted server: the signaling broker is a service of its own, and a
+// signaling upgrade there gets the /api refusal's 404
+// (apps/web/test/integration/apiNamespace.test.ts holds that). Nitro's own
+// WebSocket support -- crossws's node adapter, gated behind
+// `experimental.websocket` in the Nitro config -- would attach a
+// `server.on("upgrade", ...)` listener with no path check of its own, opening
+// an upgrade surface on the public server that nothing here bounds or
+// reviews. So `experimental.websocket` must stay unset.
 //
 // This is a "does not happen at runtime" claim, which CLAUDE.md's Agent
 // conventions and CONTRIBUTING.md's Code Conventions say belongs in an
@@ -30,12 +25,9 @@
 // reimplementing defineNitroConfig's own resolution.
 //
 // What this check does not cover:
-//   - Any OTHER way a second upgrade listener could be attached to the shared
+//   - Any OTHER way an upgrade listener could be attached to the hosted
 //     server. It watches only the one setting -- `experimental.websocket` --
 //     that wires the crossws adapter through Nitro's own build.
-//   - Whether PeerJS's own listener still path-checks; that is
-//     apps/web/server/upgradeHardening.ts's and the PeerJS signaling route's
-//     concern.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -59,11 +51,10 @@ export function websocketEnabled(config) {
 }
 
 const FAILURE_MESSAGE = [
-  `${NITRO_CONFIG} sets experimental.websocket, which wires a second,`,
-  "independent WebSocket upgrade listener onto the HTTP server PeerJS",
-  "signaling already shares. Two such listeners mis-route -- see this",
-  "script's header comment for why, and apps/web/server/custom-entry.ts for",
-  "the listener this would collide with.",
+  `${NITRO_CONFIG} sets experimental.websocket, which wires a WebSocket`,
+  "upgrade listener with no path check onto the hosted server, which",
+  "otherwise serves no upgrade -- see this script's header comment for why.",
+  "Unset it.",
 ].join(" ");
 
 /**

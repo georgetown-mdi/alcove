@@ -20,8 +20,8 @@
 //
 //   1. The module ids rolldown resolves in the client and ssr environments,
 //      recorded by the plugin apps/web/vite.config.ts installs when this check
-//      sets ALCOVE_DEPLOY_GRAPH_RECORD. This is the half that sees the signaling
-//      broker, which enters through a route module inside the ssr bundle.
+//      sets ALCOVE_DEPLOY_GRAPH_RECORD. This is the half that sees the route
+//      modules, which enter only through the client and ssr bundles.
 //   2. The `sources` of every sourcemap Nitro emits under apps/web/.output. This
 //      is the half that sees Nitro's own server pass -- the custom entry and what
 //      it pulls in -- which runs outside vite's plugin container and so records
@@ -68,7 +68,7 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ROUTE_TREE } from "./check-web-route-render.mjs";
+import { ROUTE_TREE, webBuildEnv } from "./check-web-route-render.mjs";
 import { withRestoreOnSignal } from "./lib/regenerationChecks.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
@@ -112,9 +112,9 @@ export const REQUIRED_GRAPH_ROOTS = [
       "the Nitro custom entry, which only the sourcemap half sees -- so this is the entry that fails when apps/web/.output stops carrying maps",
   },
   {
-    prefix: "packages/peerjs-broker/src/",
+    prefix: "apps/web/src/routes/",
     reason:
-      "the signaling broker the deployed server bundles, which only the recorded-module-id half sees -- so this is the entry that fails when the recorder plugin stops being installed, and it is the tree the deploy filter narrows",
+      "the route modules, which only the recorded-module-id half sees -- so this is the entry that fails when the recorder plugin stops being installed",
   },
 ];
 
@@ -323,7 +323,7 @@ function runBuild(repoRoot, recordPath) {
       execFileSync(command, args, {
         cwd: repoRoot,
         stdio: "inherit",
-        env: { ...process.env, [RECORD_ENV]: recordPath },
+        env: { ...webBuildEnv(), [RECORD_ENV]: recordPath },
       }),
   );
 }

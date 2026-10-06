@@ -81,7 +81,8 @@ page it was served over and the CLI has no page for:
 | `secure` | `true` |
 
 Those defaults are one implementation's, not the wire's: a browser peer resolves
-an absent `path` to the web app's own broker mount (`/api/`) rather than to `/`.
+an absent `path` to the broker mount the web app dials by default (`/api/`)
+rather than to `/`.
 An invitation endpoint therefore holds the mount point resolved -- `alcove
 invite` records the path it will itself dial, `/` included, even where the
 `ws:`/`wss:` URL wrote none -- so a locator crossing between the two

@@ -2,12 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { relative } from "node:path";
 
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   declaredRoutes,
   matchesRoutePattern,
 } from "../../hosted/declaredRoutes";
+import hostedConfig from "../../vite.hosted.config";
+import { requireHostedSignalingServer } from "../../vite.config";
 import { routeDocumentFileName } from "../../hosted/routeDocuments";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
@@ -76,4 +78,54 @@ describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
       expect(missing).toEqual([]);
     },
   );
+});
+
+describe("the hosted build's signaling control", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const resolve = () =>
+    (
+      hostedConfig as (env: {
+        mode: string;
+        command: "build";
+      }) => Record<string, unknown>
+    )({ mode: "production", command: "build" });
+
+  test.each(["", "   "])("refuses a build with the variable %j", (value) => {
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", value);
+    expect(resolve).toThrow(/VITE_SIGNALING_SERVER_URL/);
+  });
+
+  test("builds when the variable holds a value", () => {
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
+    expect(resolve()).toHaveProperty("build.outDir", "dist/hosted");
+  });
+});
+
+describe("the Start build's signaling control", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const check = (command: "build" | "serve") => () =>
+    requireHostedSignalingServer({ command, mode: "production" });
+
+  test.each([undefined, "hosted"])(
+    "refuses a build for the profile %j without the variable",
+    (profile) => {
+      vi.stubEnv("VITE_DEPLOYMENT_PROFILE", profile);
+      vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+      expect(check("build")).toThrow(/VITE_SIGNALING_SERVER_URL/);
+    },
+  );
+
+  test("leaves the console build to its own origin", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", "console");
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+    expect(check("build")).not.toThrow();
+  });
+
+  test("leaves the dev server to its own origin", () => {
+    vi.stubEnv("VITE_DEPLOYMENT_PROFILE", undefined);
+    vi.stubEnv("VITE_SIGNALING_SERVER_URL", undefined);
+    expect(check("serve")).not.toThrow();
+  });
 });

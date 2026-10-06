@@ -1,11 +1,7 @@
 import WebSocket from "ws";
 
-// A cold dial of the PeerJS signaling WebSocket: it connects the upgrade
-// directly, exactly as the real client does (an explicit, pre-derived id
-// skips the GET /api/peerjs/id that would lazily load the route module). A
-// WebSocket upgrade does not run that route handler, so this probe only
-// observes whether signaling was already warmed at startup (by the
-// dev-server-snagger in vite.config, or the nitro entry's localFetch).
+// A dial of the PeerJS signaling WebSocket at a server's own /api/, as the real
+// client dials it with an explicit, pre-derived id.
 
 // Process-wide so every attempt registers under a distinct broker id: a retry
 // that lands before the server has reaped a prior probe's socket would otherwise
@@ -40,9 +36,6 @@ function coldSignalingAttempt(
       }
       resolvePromise(ok);
     };
-    // `finish` closes over `timer` but is only ever invoked asynchronously (from a
-    // ws event or this timeout), so the reference is resolved well after this
-    // line; a `const` here keeps prefer-const happy without a TDZ in practice.
     const timer = setTimeout(() => finish(false), perAttemptMs);
     ws.on("message", (data: WebSocket.RawData) => {
       // Resolve only on the OPEN frame; ignore any other frame rather than
@@ -66,8 +59,7 @@ function coldSignalingAttempt(
  * elapses; returns whether it opened. `deadlineMs` bounds when polling stops, not
  * total runtime: an attempt in flight when it passes runs to completion, so the
  * call can overrun by up to one attempt (`perAttemptMs`) plus the inter-attempt
- * sleep. Used by the production signaling smoke test to assert the built server
- * warms signaling at startup. */
+ * sleep. */
 export async function waitForColdSignaling(
   port: number,
   options: { deadlineMs: number; perAttemptMs?: number },
@@ -79,38 +71,4 @@ export async function waitForColdSignaling(
     if (Date.now() >= deadline) return false;
     await new Promise((r) => setTimeout(r, 500));
   }
-}
-
-/** Dial a websocket upgrade at a NON-signaling path. On the production
- * server the PeerJS listener is the only `upgrade` listener, so a
- * non-matching upgrade must be closed -- otherwise the socket is left open
- * with no timeout to reap it (an unauthenticated FD/socket-exhaustion
- * vector). Resolves true if the server closes/rejects within `timeoutMs`,
- * false if left hanging or if it unexpectedly completes the handshake. */
-export function probeUnmatchedUpgrade(
-  port: number,
-  timeoutMs: number,
-): Promise<boolean> {
-  return new Promise((resolvePromise) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}/not-the-signaling-path`);
-    let settled = false;
-    const finish = (closed: boolean) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      try {
-        ws.terminate();
-      } catch {
-        // already gone
-      }
-      resolvePromise(closed);
-    };
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    // A non-signaling path must never 101; treat an unexpected open as a failure
-    // to reject. A server-side destroy shows up as error and/or close -- both
-    // mean the upgrade was rejected rather than leaked.
-    ws.on("open", () => finish(false));
-    ws.on("close", () => finish(true));
-    ws.on("error", () => finish(true));
-  });
 }

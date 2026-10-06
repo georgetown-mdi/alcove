@@ -39,7 +39,7 @@ transport holds.
   `peerjs-js-binarypack`, PeerJS's chunk envelope, and PeerJS's in-band close
   sentinel for the clean close.
 - **Signaling: the vendored PeerServer, reused as-is.** The broker already runs
-  in Node (`apps/web/src/peerServer.ts`). The CLI adopts the web's
+  in Node (`packages/peerjs-broker`). The CLI adopts the web's
   `HKDF(secret, role)` rendezvous peer-id derivation rather than defining its
   own, which is what puts the two parties on the same connection with no
   coordination backend.

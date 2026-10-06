@@ -5,14 +5,14 @@ import { spawn } from "node:child_process";
 
 import { READINESS_SEGMENT } from "@alcove/peerjs-broker/standaloneOptions";
 
-import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
 import { trackChild } from "./childProcess.ts";
 
 /**
  * Starts the repository's vendored PeerJS broker as a process of its own, on a
- * loopback origin that is NOT the page's, so the browser peer in
- * `liveExchange.test.ts` meets a CLI peer through the wiring a provisioned
- * broker runs rather than through the web app's own `/api` mount.
+ * loopback origin that is NOT the page's, with the wiring a provisioned broker
+ * runs: the live WebRTC leg meets its CLI peer there, and the dev-server setup
+ * (`test/devServer/globalSetup.ts`) starts one for the browser suites and the
+ * dev server's `/api/` proxy.
  *
  * Runs through `tsx`, not plain `node`: the vendored broker uses TypeScript
  * parameter properties, which Node's strip-only type support refuses outright.
@@ -71,6 +71,7 @@ function delay(ms: number): Promise<void> {
 async function probeReadiness(
   origin: string,
   readinessPath: string,
+  failurePrefix: string,
 ): Promise<string> {
   const deadline = Date.now() + READY_PROBE_TIMEOUT_MS;
   let lastFailure = "no attempt was made";
@@ -86,7 +87,7 @@ async function probeReadiness(
     }
     if (Date.now() >= deadline)
       throw new Error(
-        `${LEG_ENVIRONMENT_FAILURE} the signaling broker did not answer ` +
+        `${failurePrefix} the signaling broker did not answer ` +
           `${readinessPath} within ${READY_PROBE_TIMEOUT_MS}ms: ${lastFailure}`,
       );
     await delay(READY_PROBE_INTERVAL_MS);
@@ -98,14 +99,26 @@ async function probeReadiness(
  * reported that port AND answered its readiness endpoint. Kills the child
  * before rejecting, so a failed start leaves no orphan.
  *
- * Every rejection here is prefixed {@link LEG_ENVIRONMENT_FAILURE}: a broker
- * that will not start is the leg's environment, never an interop divergence.
+ * Every rejection here is prefixed `failurePrefix`, so the caller's report
+ * names a broker that will not start as its environment rather than as what it
+ * tests.
  */
-export async function startStandaloneBroker(): Promise<StandaloneBroker> {
+export async function startStandaloneBroker(
+  failurePrefix: string,
+): Promise<StandaloneBroker> {
   const mountPath = "/api";
   const child = spawn(
     process.execPath,
-    [tsxCli, runner, "--path", mountPath, "--key", "peerjs"],
+    [
+      tsxCli,
+      runner,
+      "--path",
+      mountPath,
+      "--key",
+      "peerjs",
+      "--host",
+      "127.0.0.1",
+    ],
     { cwd: brokerRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
   const stop = trackChild(child);
@@ -134,7 +147,7 @@ export async function startStandaloneBroker(): Promise<StandaloneBroker> {
         // is written, so quoting it here is safe.
         reject(
           new Error(
-            `${LEG_ENVIRONMENT_FAILURE} ${reason}` +
+            `${failurePrefix} ${reason}` +
               (stderr.trim() === "" ? "" : `\n${stderr.trim()}`),
           ),
         );
@@ -163,6 +176,7 @@ export async function startStandaloneBroker(): Promise<StandaloneBroker> {
     readinessBody = await probeReadiness(
       origin,
       `${mountPath}/${READINESS_SEGMENT}`,
+      failurePrefix,
     );
   } catch (error) {
     await stop();

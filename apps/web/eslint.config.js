@@ -286,11 +286,7 @@ const sharedImportPathBans = [rawYamlParserImportBan, rootLoglevelImportBan];
 // own). The `node:` ban below covers src/ minus this list.
 const serverOnlySrcFiles = [
   "src/jobs/**/*.{ts,tsx}",
-  "src/routes/api/**/*.{ts,tsx}",
   "src/server.ts",
-  "src/httpServer.ts",
-  "src/peerServer.ts",
-  "src/signalingDiagnostics.ts",
   "src/utils/apiNamespace.ts",
   "src/utils/configManager.ts",
   "src/utils/securityHeaders.ts",

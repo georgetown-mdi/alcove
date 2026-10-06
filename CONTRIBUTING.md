@@ -21,10 +21,10 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | Path             | Description                                                                                |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | `packages/core/` | Shared library: PSI primitive, exchange orchestration, file-sync transport, config schemas |
-| `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker: vendored server source plus a standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app bundles it into its server |
+| `packages/peerjs-broker/` | The PeerJS-compatible WebRTC signaling broker: vendored server source plus a standalone entry point (`npm start -w packages/peerjs-broker`). Ships TypeScript source with no build step of its own, reading `@alcove/core/untrusted-text` -- the whole of its reach into core -- from that workspace's `dist/`; the web app's dev loop and tests run it beside the dev server |
 | `packages/testkit/` | Test-only material shared by more than one workspace's test tree (`@alcove/testkit`), consumed as raw TypeScript with no build step; what qualifies and why: [docs/TESTING.md](docs/TESTING.md#shared-test-material) and [docs/notes/cross-workspace-test-material.md](docs/notes/cross-workspace-test-material.md) |
 | `apps/cli/`      | Node.js CLI (`alcove`), built with Rollup, distributed as a Docker image                  |
-| `apps/web/`      | TanStack Start (React/SSR) web app; serves the peer-coordination broker above at `/api`    |
+| `apps/web/`      | TanStack Start (React/SSR) web app; mounts no broker, and its browser parties dial the one above |
 | `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records |
 | `scripts/`       | [Repository checks CI runs](scripts/README.md) (doc links, PR checklist, claim and drift guards) with their tests |
 | `support/`       | [Field guides](support/README.md) for the environment around Alcove -- Windows, Docker, agency networks -- plus the FIPS measurement harness |
@@ -55,11 +55,11 @@ npm run build -w packages/core   # core must be built before the apps and the br
 For work that spans `packages/core` and the web app, run the dev loop from the repository root:
 
 ```sh
-npm run dev            # core's build watcher + the web dev server
+npm run dev            # core's build watcher + the signaling broker + the web dev server
 npm run dev:console    # core's build watcher + the console Node server, its client served through Vite middleware
 ```
 
-The apps consume `@alcove/core` from its built `dist/`, so a core edit made while a bare `npm run dev -w apps/web` is running never reaches the page. The root script brings `dist/` up to date before the server starts and rebuilds it on every later change; either side exiting stops the other.
+The apps consume `@alcove/core` from its built `dist/`, so a core edit made while a bare `npm run dev -w apps/web` is running never reaches the page. The root script brings `dist/` up to date before the server starts and rebuilds it on every later change; any one of its processes exiting stops the others. The web app mounts no signaling broker, so `npm run dev` also starts the standalone one (`packages/peerjs-broker`) on loopback and the dev server forwards `/api/` to it; a bare `npm run dev -w apps/web` has no signaling.
 
 No additional environment variables are required for local development or the tests. The CLI SFTP integration suite starts its own server; set `ALCOVE_SFTP_BACKEND=native` to run it against a native OpenSSH `sshd` instead of the in-process default (see [docs/TESTING.md](docs/TESTING.md), which documents the variable).
 
@@ -68,7 +68,7 @@ No additional environment variables are required for local development or the te
 ```sh
 npm run build -w packages/core   # must build before the apps and the broker; rebuild after any core change
 npm run build -w apps/cli        # -> apps/cli/dist/; Docker image built separately (docs/RELEASES.md)
-npm run build -w apps/web
+VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web  # names the broker (docs/DEPLOYMENT.md)
 ```
 
 ## Testing

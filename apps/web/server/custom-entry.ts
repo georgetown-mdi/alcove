@@ -24,8 +24,6 @@ import {
 } from "../src/jobs/index";
 import { ConfigManager } from "../src/utils/serverConfig";
 import { jobApiRequestTimeoutMs } from "../src/jobs/routeSupport";
-import { readJobApiConfig } from "../src/jobs/gate";
-import { registerServer } from "../src/httpServer";
 
 import { attachRequestAbortSignal } from "./requestAbortSignal";
 import { hardenUpgradeSurface } from "./upgradeHardening";
@@ -54,8 +52,7 @@ const server =
     : // @ts-ignore part of preset
       new HttpServer(toNodeListener(nitroApp.h3App));
 
-// Bound a slow or partial signaling upgrade handshake (slowloris) on the shared
-// HTTP server; post-101 reaping is the signaling layer's job. With the job API
+// Bound a slow or partial request (slowloris) on this server. With the job API
 // enabled, the whole-request bound is sized to its largest upload instead.
 const requestTimeoutMs = jobApiRequestTimeoutMs();
 hardenUpgradeSurface(
@@ -91,36 +88,6 @@ const listener = server.listen(path ? { path } : { port, host }, (err) => {
     console.error(err);
     process.exit(1);
   }
-  // Eagerly warm the PeerJS signaling route now that the HTTP server is listening
-  // (so its address resolves). registerServer at the end of this module is
-  // synchronous, so it has already run by the time this callback fires on a later
-  // tick, and usePeerServer's getHttpServer() finds the registered server. The
-  // route runs usePeerServer()
-  // -- which attaches the WebSocket `upgrade` handler -- only when first requested,
-  // and the real client never requests it: it dials the signaling WebSocket with
-  // an explicit, pre-derived id and skips the GET /api/peerjs/id. Without this the
-  // upgrade goes unhandled and the peer reports "Lost connection to server."
-  // localFetch dispatches in-process through the nitro app (no real socket), so it
-  // is independent of bind type (TCP, TLS, unix socket) and of this entry's own
-  // module-alias resolution.
-  // The console profile serves no signaling server, so it has nothing to warm.
-  if (!readJobApiConfig().consoleProfile)
-    void nitroApp
-      .localFetch("/api/peerjs/id")
-      .then(async (res) => {
-        // A non-2xx resolves normally (no rejection to .catch): surface it, since
-        // it means usePeerServer() did not attach the handler. Release the body
-        // either way -- we read neither. Unlike the dev warm (vite.config.ts), no
-        // content-type check is needed here: the built server registers this route
-        // eagerly, so a 2xx cannot be a lazily-compiled SPA fallback the way it can
-        // under Vite.
-        if (!res.ok)
-          log.warn(`peer signaling warm-up returned HTTP ${res.status}`);
-        await res.body?.cancel();
-      })
-      .catch((warmErr: unknown) =>
-        log.warn("peer signaling warm-up failed:", warmErr),
-      );
   const protocol = cert && key ? "https" : "http";
   const addressInfo = listener.address() as AddressInfo;
   if (typeof addressInfo === "string") {
@@ -152,7 +119,5 @@ setupGracefulShutdown(listener, nitroApp);
 if (import.meta._tasks) {
   startScheduleRunner();
 }
-
-registerServer(server);
 
 export default {};

@@ -1,11 +1,13 @@
 import { READINESS_BODY } from "@alcove/peerjs-broker/standaloneOptions";
 
+import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
+
 import { CLI_IDENTITY, startCliInviter } from "./cliPeer.ts";
-import { startStandaloneBroker } from "./standaloneBroker.ts";
+import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
 
 import type { LiveLegCliOutcome, LiveLegStart } from "./legTypes.ts";
 import type { CliInviter } from "./cliPeer.ts";
-import type { StandaloneBroker } from "./standaloneBroker.ts";
+import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
 
 /**
  * The Node half of the live CLI-to-browser WebRTC leg, registered as vitest
@@ -37,7 +39,7 @@ let probeBroker: StandaloneBroker | undefined;
  */
 async function startLeg(): Promise<LiveLegStart> {
   await stopLeg();
-  broker = await startStandaloneBroker();
+  broker = await startStandaloneBroker(LEG_ENVIRONMENT_FAILURE);
   inviter = await startCliInviter(
     `ws://127.0.0.1:${broker.port}${broker.path}`,
   );
@@ -70,7 +72,7 @@ async function stopLeg(): Promise<void> {
  * mount path. */
 async function startProbeBroker(): Promise<{ port: number; path: string }> {
   await stopProbeBroker();
-  probeBroker = await startStandaloneBroker();
+  probeBroker = await startStandaloneBroker(LEG_ENVIRONMENT_FAILURE);
   return { port: probeBroker.port, path: probeBroker.path };
 }
 

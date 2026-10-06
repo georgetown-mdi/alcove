@@ -50,11 +50,11 @@ interface AddressInfo {
 
 const addressInfo: AddressInfo = {
   address: "127.0.0.1",
-  // The browser project's globalSetup publishes the port it probed/launched the
-  // dev server on (browser tests run in Chromium and cannot read process.env), so
-  // the rendezvous below targets that exact port. Falls back to the Vite default
-  // when run without that setup, where an unreachable server skips the suite.
-  port: inject("webDevServerPort") ?? 3000,
+  // The browser project's globalSetup publishes the port of the standalone
+  // signaling broker it started (browser tests run in Chromium and cannot read
+  // process.env), so the rendezvous below targets that exact port. Run without
+  // that setup, the probe finds no broker and skips the suite.
+  port: inject("signalingBrokerPort") ?? 0,
 };
 
 const hostString = `http://${addressInfo.address}:${addressInfo.port.toString()}`;

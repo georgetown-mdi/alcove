@@ -207,12 +207,6 @@ export const ALLOWLIST = [
       "fixed origin the console server builds each request's URL on so the request target can be parsed; never dereferenced",
   },
   {
-    url: "https://peerjs.com/",
-    match: "exact",
-    reason:
-      "metadata string in the PeerJS server-info response describing the upstream project; never contacted",
-  },
-  {
     url: "http://www.w3.org/2000/svg",
     match: "exact",
     reason:

@@ -67,6 +67,26 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+/** Every spelling of the signaling broker's path a client writes, and the ones
+ * only the refusal's own decoding reaches. The broker is a service of its own,
+ * so none of them is served here on any profile. */
+const BROKER_SPELLINGS: ReadonlyArray<[string, string]> = [
+  ["GET", "/api/peerjs"],
+  ["GET", "/api/peerjs/"],
+  ["GET", "/api/peerjs/id"],
+  ["GET", "/api/peerjs/id/"],
+  ["GET", "/api/peerjs/peerjs/peers"],
+  ["GET", "/api/peerjs?key=peerjs&id=probe&token=t"],
+  ["GET", "/API/peerjs/id"],
+  ["GET", "/%61pi/peerjs/id"],
+  ["GET", "/api/PEERJS/id"],
+  ["GET", "/api/%70eerjs/id"],
+  ["GET", "/api/%2570eerjs/id"],
+  ["GET", "/api//peerjs/id"],
+  ["POST", "/api/peerjs/id"],
+  ["OPTIONS", "/api/peerjs/id"],
+];
+
 describe("the /api refusal on a deployment without the job API", () => {
   beforeEach(hostedProfile);
 
@@ -129,6 +149,7 @@ describe("the /api refusal on a deployment without the job API", () => {
     ["GET", "/api/%2570eerjs/id"],
     ["GET", "/api/PEERJS/id"],
     ["GET", "/api/%70eerjs/id"],
+    ...BROKER_SPELLINGS,
   ])("refuses %s %s before the router", async (method, path) => {
     const { response, reached } = await answer(method, path);
     expect(reached).toEqual([]);
@@ -138,29 +159,16 @@ describe("the /api refusal on a deployment without the job API", () => {
     expect(await response.text()).toBe("");
   });
 
-  test("refuses a double-encoded dot segment past the broker's subtree, which the guard's own resolution catches", async () => {
-    // Measured: replacing the guard's dot resolution with the identity turns
-    // this refusal into a pass-through, since neither the URL parser nor a
-    // single decode round reduces `%252e%252e` to `..` -- only the guard's own
-    // repeated decode-and-resolve does.
+  test("refuses a double-encoded dot segment that leads into the namespace, which the guard's own resolution catches", async () => {
+    // Neither the URL parser nor a single decode round reduces `%252e%252e` to
+    // `..`, so only the guard's own repeated decode-and-resolve places this path
+    // under /api.
     const { response, reached } = await answer(
       "GET",
-      "/api/peerjs/%252e%252e/jobs/slot",
+      "/x/%252e%252e/api/jobs/slot",
     );
     expect(reached).toEqual([]);
     expect(response.status).toBe(404);
-  });
-
-  test.each([
-    ["GET", "/api/peerjs/id"],
-    ["GET", "/api/peerjs/id/"],
-    ["GET", "/api/peerjs"],
-    ["GET", "/API/peerjs/id"],
-    ["GET", "/%61pi/peerjs/id"],
-    ["POST", "/api/peerjs/id"],
-  ])("routes %s %s, the broker's own subtree", async (method, path) => {
-    const { reached } = await answer(method, path);
-    expect(reached).toHaveLength(1);
   });
 
   test.each([
@@ -174,25 +182,6 @@ describe("the /api refusal on a deployment without the job API", () => {
     expect(reached).toHaveLength(1);
   });
 });
-
-/** Every spelling of the broker's subtree a client writes or the router
- * resolves, and the ones only the refusal's own decoding reaches. */
-const BROKER_SPELLINGS: ReadonlyArray<[string, string]> = [
-  ["GET", "/api/peerjs"],
-  ["GET", "/api/peerjs/"],
-  ["GET", "/api/peerjs/id"],
-  ["GET", "/api/peerjs/id/"],
-  ["GET", "/api/peerjs/peerjs/peers"],
-  ["GET", "/api/peerjs?key=peerjs&id=probe&token=t"],
-  ["GET", "/API/peerjs/id"],
-  ["GET", "/%61pi/peerjs/id"],
-  ["GET", "/api/PEERJS/id"],
-  ["GET", "/api/%70eerjs/id"],
-  ["GET", "/api/%2570eerjs/id"],
-  ["GET", "/api//peerjs/id"],
-  ["POST", "/api/peerjs/id"],
-  ["OPTIONS", "/api/peerjs/id"],
-];
 
 describe("the /api refusal on the console profile with the job API enabled", () => {
   beforeEach(() => {
@@ -213,24 +202,12 @@ describe("the /api refusal on the console profile with the job API enabled", () 
   );
 
   test.each(BROKER_SPELLINGS)(
-    "refuses %s %s, the broker's subtree, before the router",
+    "routes %s %s, which no job route answers, to the job routes",
     async (method, path) => {
-      const { response, reached } = await answer(method, path);
-      expect(reached).toEqual([]);
-      expect(await shapeOf(response)).toEqual(
-        await shapeOf(jobEmptyResponse(404)),
-      );
+      const { reached } = await answer(method, path);
+      expect(reached).toHaveLength(1);
     },
   );
-
-  test("refuses a double-encoded dot segment written under the broker's subtree", async () => {
-    const { response, reached } = await answer(
-      "GET",
-      "/api/peerjs/%252e%252e/jobs/slot",
-    );
-    expect(reached).toEqual([]);
-    expect(response.status).toBe(404);
-  });
 
   test.each([
     ["GET", "/"],
@@ -259,12 +236,7 @@ describe("the /api refusal on the console profile with no data root", () => {
 });
 
 describe("the hosted-only allowlist", () => {
-  test("names the broker's subtree under /api", () => {
-    // A rot guard: an emptied list would make the hosted namespace refuse the
-    // broker and stop signaling, and a list reaching past /api would refuse
-    // nothing.
-    expect(HOSTED_API_PREFIXES.length).toBeGreaterThan(0);
-    for (const prefix of HOSTED_API_PREFIXES)
-      expect(prefix.startsWith("/api/")).toBe(true);
+  test("is empty, so the hosted deployment refuses the whole namespace", () => {
+    expect(HOSTED_API_PREFIXES).toEqual([]);
   });
 });
