@@ -65,7 +65,7 @@ console's cards under the console build's own gate.
 
 ## Generated route tree
 
-`src/routeTree.gen.ts` is written by the TanStack Router codegen, which the `tanstackStart` plugin in `vite.config.ts` runs whenever anything loads that config -- the dev server, a build, or a vitest run.
+`src/routeTree.gen.ts` is written by the TanStack Router codegen, which the `tanstackStart` plugin in `vite.config.ts` runs whenever anything loads that config -- the dev server or a vitest run. The hosted and console builds write their own copies under `.tanstack/` and leave this one alone.
 It is checked in deliberately: typecheck, lint, build, and the test suites all read it, so a fresh clone works with no generation step in front of them.
 
 Adding, renaming, or removing a route file therefore changes two files.
@@ -80,7 +80,7 @@ It regenerates with the generator the lockfile pins, compares byte for byte, and
 
 ## Hosted static build
 
-`npm run build:hosted -w apps/web` writes the hosted app as a static site to `dist/hosted/`, beside the TanStack Start build `npm run build` writes to `.output/`.
+`npm run build -w apps/web` writes the hosted app as a static site to `dist/hosted/`; no hosted server is built.
 It is the single-page client `src/hostedClient.tsx`, with one document per path in the app-shell worker's `SHELL_ROUTES`.
 Which assets each document links and why the build writes no `_redirects` or `404.html`: [docs/notes/hosted-static-build.md](../../docs/notes/hosted-static-build.md).
 
@@ -103,7 +103,7 @@ It drives both load paths for real, and calibrates each against a control fixtur
 ## What the config may import
 
 The image's builder stage copies this app's config, `src/`, `server/` and `public/`, and no test tree (see the root `Dockerfile`), and the config loader bundles `vite.config.ts` rather than importing it.
-Bundling resolves every literal specifier the file holds -- inside a dynamic `import()` as much as a static import, and whether or not the branch holding it is ever taken -- so one import of a test-tree module fails `npm run build -w apps/web` in the image while the dev server, vitest, typecheck and lint all stay green on a tree that has the file.
+Bundling resolves every literal specifier the file holds -- inside a dynamic `import()` as much as a static import, and whether or not the branch holding it is ever taken -- so one import of a test-tree module fails `npm run build:console -w apps/web` in the image while the dev server, vitest, typecheck and lint all stay green on a tree that has the file.
 
 Reach anything outside that subset through a path built at runtime instead, as the config does for the live-webrtc leg's browser commands.
 

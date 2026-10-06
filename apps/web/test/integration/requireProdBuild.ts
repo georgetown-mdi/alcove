@@ -1,24 +1,20 @@
 import {
   ALLOW_MISSING_BUILD_ENV,
-  BUILD_COMMAND,
   CONSOLE_BUILD_COMMAND,
   HOSTED_BUILD_COMMAND,
   consoleEntry,
-  hasBuild,
   hasConsoleBuild,
   hasHostedBuild,
   hostedOutput,
-  prodEntry,
 } from "./prodServer.js";
 
 // A globalSetup on the `integration` project only, listed before the dev-server
 // setup so a missing build fails the project once, before the run pays to start a
-// server. The suites that drive the hosted build's `node .output/server/index.mjs`
-// gate on hasBuild, those that drive the console server on hasConsoleBuild, and
+// server. The suites that drive the console server gate on hasConsoleBuild and
 // those that serve the hosted static site on hasHostedBuild, so without this
 // guard a build-free run reports a PASS with the built surface unexercised. CI
-// builds all three first (eb_build_and_test.yaml), so this only fires on a
-// local run against a fresh clone.
+// builds both first (eb_build_and_test.yaml), so this only fires on a local run
+// against a fresh clone.
 //
 // The opt-out restores the skip for a dev-server-only run. The guard cannot
 // live on the shared dev-server setup, which the `browser` project also runs
@@ -26,7 +22,6 @@ import {
 
 export default function setup(): void {
   const missing = [
-    ...(hasBuild ? [] : [{ entry: prodEntry, command: BUILD_COMMAND }]),
     ...(hasConsoleBuild
       ? []
       : [{ entry: consoleEntry, command: CONSOLE_BUILD_COMMAND }]),

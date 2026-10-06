@@ -66,12 +66,11 @@ jobs:
       # `core` leg, while the deploy filter omits the test/** trees. The two
       # lists cannot be one because of that difference.
       #
-      # packages/peerjs-broker/** is here because the web app bundles the
-      # signaling broker from that workspace into the deployed server, and
-      # packages/testkit/** because the web unit suite is driven by fixtures it
-      # holds. eb_deploy.yaml is here because the deploy-trigger coverage step
-      # reads its push filter, and narrowing that filter is the change the step
-      # exists to catch.
+      # packages/peerjs-broker/** is here because the web dev loop and suites
+      # run the standalone broker from that workspace, and packages/testkit/**
+      # because the web unit suite is driven by fixtures it holds. eb_deploy.yaml
+      # is here because the deploy-trigger coverage step reads its push filter,
+      # and narrowing that filter is the change the step exists to catch.
       #
       # The `!` entries exclude markdown under the directory globs. The claim
       # that no suite this gate runs reads one as a fixture or input is held by
@@ -117,6 +116,8 @@ jobs:
     # workflow_call, so a stalled install or build here holds a production deploy
     # rather than only a pull request. 15 min sits far above a normal run
     # (install + the web build + the zip) yet cuts a true hang short.
+    #
+    # What the artifact holds: docs/DEPLOYMENT.md, "The deploy artifact".
     timeout-minutes: 15
     outputs:
       artifactName: ${{steps.artifact-name.outputs.artifactName}}
@@ -126,7 +127,7 @@ jobs:
       # Pins Node, installs from the lockfile, and builds @alcove/core.
       - name: Set up and build core
         uses: ./.github/actions/setup
-      # The production web build this job packages below. The deploy-trigger
+      # The hosted static build this job packages below. The deploy-trigger
       # coverage check (check:deploy-trigger-graph) runs in the repo-wide
       # static checks, not here. The build refuses to run without the
       # signaling broker's address, a repository variable.
@@ -136,16 +137,11 @@ jobs:
           # must refuse without the real address.
           VITE_SIGNALING_SERVER_URL: ${{ github.event_name == 'pull_request' && (vars.VITE_SIGNALING_SERVER_URL || 'wss://signaling.example.invalid/api/') || vars.VITE_SIGNALING_SERVER_URL }}
         run: npm run build -w apps/web
-      # Renders every page route from the build the step above left in
-      # apps/web/.output, the one packaged below, and fails on a 5xx or on
-      # anything the server writes to stderr while rendering.
-      - name: Render every web route
-        run: node scripts/check-web-route-render.mjs
       - name: Package for Elastic Beanstalk
         run: |
-          cp -a apps/web/deploy/aws_eb/. apps/web/.output
-          touch apps/web/.output/.env
-          (cd apps/web/.output && zip -r ../../../${{github.sha}}.zip .)
+          cp -a apps/web/deploy/aws_eb/. apps/web/dist/hosted
+          touch apps/web/dist/hosted/.env
+          (cd apps/web/dist/hosted && zip -r ../../../../${{github.sha}}.zip .)
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -189,7 +185,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # The core unit suite runs on this gate because the deployed server
+          # The core unit suite runs on this gate because the deployed site
           # bundles @alcove/core. test:unit is the same vitest project as
           # `npm test -w packages/core` without that script's pretest rebuild:
           # the setup action has already restored or built packages/core/dist and
@@ -265,29 +261,22 @@ jobs:
         if: matrix.build-cli == 'true'
         run: npm run build -w apps/cli
       # The integration project's globalSetup
-      # (apps/web/test/integration/requireProdBuild.ts) fails the run when
-      # apps/web/.output, the console builds under apps/web/dist, or the hosted
-      # static site under apps/web/dist/hosted are absent rather than letting
-      # the suites that drive them skip, so this leg builds all of them for
-      # itself. Taking the `package` job's build through the deploy artifact
-      # instead would serialize the slowest leg behind that job for a build of
-      # about half a minute. The suites serve the build over http and need no
-      # reachable broker, so it names a loopback ws: address.
+      # (apps/web/test/integration/requireProdBuild.ts) fails the run when the
+      # hosted static site under apps/web/dist/hosted or the console builds
+      # under apps/web/dist are absent rather than letting the suites that
+      # drive them skip, so this leg builds all of them for itself. Taking the
+      # `package` job's build through the deploy artifact instead would
+      # serialize the slowest leg behind that job for a build of about half a
+      # minute. The static-host harness (apps/web/test/staticHost) serves the
+      # hosted build over http, where the app refuses a wss: broker address,
+      # and the suites dial no broker; so the build names a loopback ws:
+      # address.
       - name: Build the web app for the integration suites
         if: matrix.build-web == 'true'
         run: |
           VITE_SIGNALING_SERVER_URL=ws://127.0.0.1/api/ npm run build -w apps/web
           npm run build:console -w apps/web
           npm run build:console-server -w apps/web
-      # The static-host harness (apps/web/test/staticHost) serves this build to
-      # the integration suites over http, where the app refuses a wss: broker
-      # address, and the suites dial no broker; so the build names a loopback
-      # ws: address.
-      - name: Build the hosted static site for the integration suites
-        if: matrix.build-web == 'true'
-        env:
-          VITE_SIGNALING_SERVER_URL: ws://127.0.0.1/api/
-        run: npm run build:hosted -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.

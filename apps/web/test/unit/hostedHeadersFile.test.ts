@@ -42,7 +42,7 @@ describe("the hosted _headers file", () => {
     expect(existsSync(`${appRoot}public/_headers`)).toBe(false);
   });
 
-  // Needs `npm run build:hosted -w apps/web` first.
+  // Needs `npm run build -w apps/web` first.
   test.skipIf(!existsSync(builtHeadersFile))(
     "is what the hosted build wrote",
     () => {

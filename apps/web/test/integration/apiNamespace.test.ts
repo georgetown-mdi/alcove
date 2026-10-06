@@ -1,34 +1,36 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
+import { securityResponseHeaders } from "@utils/securityHeaders";
+
+import { startStaticHost } from "../staticHost/server.js";
+
 import {
   getFreePort,
-  hasBuild,
   hasConsoleBuild,
+  hasHostedBuild,
+  hostedOutput,
   spawnConsoleServer,
-  spawnProdServer,
   stopProdServer,
   waitForRoot,
 } from "./prodServer.js";
 
 import type { ChildProcess } from "node:child_process";
+import type { StaticHost } from "../staticHost/server.js";
 
-// On the hosted deployment every path under /api answers one response,
-// whatever the request's spelling, method, or Accept header; on the console
-// deployment -- the console server, a separate build -- every path but a job
-// route written as declared answers that same response. Neither serves the
-// signaling broker, which runs as a service of its own: its paths and its
-// WebSocket upgrade are refused on both. Asserted against the real
-// built servers because what would otherwise answer is the router's decision,
-// not any handler's: which spellings of the prefix it resolves to a route, which paths
-// it answers with a canonicalizing redirect rather than matching as written,
-// what it renders for a method a route declares no handler for, and what the
-// SSR path returns to a request that excludes HTML are visible only on the
-// wire.
+// On the console server every path under /api but a job route written as
+// declared answers one response, whatever the request's spelling, method, or
+// Accept header. It does not serve the signaling broker, which runs as a
+// service of its own: its paths and its WebSocket upgrade are refused. Asserted
+// against the real built server because what would otherwise answer is the
+// router's decision, not any handler's: which spellings of the prefix it
+// resolves to a route, which paths it answers with a canonicalizing redirect
+// rather than matching as written, and what it renders for a method a route
+// declares no handler for are visible only on the wire.
 //
 // This matrix, rather than a unit assertion per shape, is what catches a
 // framework version that adds a response shape: the shapes belong to the
@@ -39,11 +41,13 @@ import type { ChildProcess } from "node:child_process";
 // through `fetch`, which resolves a dot segment against the base URL before
 // the request leaves. Sent raw, a dot segment reaches the server as written,
 // and where the stack resolves it is not this suite's claim: what is required
-// is that the hosted build answers the one refusal for it and the console
-// server answers the job route. A third, doubly percent-encoded target is
-// written the same way to reach the guard's own dot resolution rather than the
-// URL parser's; the console refuses it too, since no job route matches it as
-// written.
+// is that the console server answers the job route. A third, doubly
+// percent-encoded target is written the same way to reach the guard's own dot
+// resolution rather than the URL parser's; the console refuses it, since no job
+// route matches it as written.
+//
+// The hosted app has no server: the same requests are held against the static
+// site the hosted build writes, where each answers the root document.
 
 /** The whole observable shape of a response. Date and the connection headers
  * are dropped: they vary per request rather than per path, and a probe reads
@@ -61,8 +65,7 @@ const VOLATILE_HEADERS: ReadonlySet<string> = new Set([
 ]);
 
 /** The two Accept headers a probe reads the namespace with: a browser's, and
- * one excluding HTML, which is what the SSR path refuses with a JSON 500 when
- * a request reaches it. */
+ * one excluding HTML. */
 const ACCEPT_VALUES: ReadonlyArray<[string, string]> = [
   ["html", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"],
   ["json", "application/json"],
@@ -255,8 +258,8 @@ function upgradeAnswerOf(
 }
 
 /** The one refusal: the job gate's own empty 404 (jobEmptyResponse in
- * src/jobs/gate.ts) with the security headers the server entry applies to every
- * response. Written out rather than read from the app, so a change to either
+ * src/jobs/gate.ts) with the security headers the console server applies to
+ * every response. Written out rather than read from the app, so a change to either
  * side of the wire shows here. */
 const REFUSAL: ResponseShape = {
   status: 404,
@@ -375,18 +378,6 @@ const CONSOLE_REFUSED_REQUESTS: ReadonlyArray<[string, string]> =
     path,
   ]);
 
-/** Paths the refusal does not reach, each held to the answer it has with no
- * refusal installed: a page outside the namespace, a path whose decoded form
- * leaves it, and one whose first segment is `api` only as written -- `%20`
- * decodes that segment to `api `, which is not the namespace, so the path
- * resolves to no route on either deployment profile and answers the site's
- * ordinary shapes. */
-const UNTOUCHED: ReadonlyArray<string> = [
-  "/nothing-here",
-  "/ap%69x",
-  "/api%20/jobs/slot",
-];
-
 /** The targets the matrix writes on the wire verbatim: a dot segment past the
  * allowlisted prefix, spelled plainly and percent-encoded. `fetch` resolves
  * both to `/api/jobs/slot` before sending, so driven through it neither reaches
@@ -429,13 +420,86 @@ const BROKER_ROUTE_REQUESTS: ReadonlyArray<
   ),
 );
 
-describe.skipIf(!hasBuild || !hasConsoleBuild)(
-  "the /api namespace's refusal",
+/** The GET and HEAD rows of the matrix and the broker's paths, which a static
+ * host answers from its files; it refuses any other method itself. */
+const STATIC_HOST_REQUESTS: ReadonlyArray<[string, string]> = [
+  ...REFUSED_REQUESTS.filter(
+    ([method]) => method === "GET" || method === "HEAD",
+  ),
+  ...BROKER_ROUTES.map((path): [string, string] => ["GET", path]),
+];
+
+/** Whether a top-level entry of the hosted output is one a static host would
+ * serve under /api: the directory itself, or a file it would answer
+ * extensionless. Case-folded, since a host may match either way. */
+function isApiEntry(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower === "api" || lower.startsWith("api.");
+}
+
+// The hosted app is a static site with no server of its own: whatever a static
+// host answers under /api comes from the files the build writes. So what is
+// held here is that the build writes none there, and that every /api request
+// then answers the root document, as an unknown path does. The refusal of
+// other methods and of a WebSocket upgrade is the host's, not the build's, so
+// it is not asserted against the harness.
+describe.skipIf(!hasHostedBuild)("the hosted static site under /api", () => {
+  let host: StaticHost | undefined;
+  let rootDocument = "";
+
+  beforeAll(async () => {
+    host = await startStaticHost(hostedOutput);
+    rootDocument = readFileSync(join(hostedOutput, "index.html"), "utf8");
+  });
+
+  afterAll(async () => {
+    await host?.close();
+  });
+
+  function origin(): string {
+    if (host === undefined) throw new Error("static host not started");
+    return host.origin;
+  }
+
+  test("the build writes nothing a static host would serve under /api", () => {
+    expect(readdirSync(hostedOutput).filter(isApiEntry)).toEqual([]);
+  });
+
+  test.each(STATIC_HOST_REQUESTS)(
+    "%s %s answers the root document",
+    async (method, path) => {
+      const response = await fetch(`${origin()}${path}`, {
+        method,
+        redirect: "manual",
+      });
+      const body = await response.text();
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toMatch(/^text\/html/);
+      if (method === "GET") expect(body).toBe(rootDocument);
+      for (const [name, value] of Object.entries(securityResponseHeaders))
+        expect(response.headers.get(name)).toBe(value);
+    },
+  );
+
+  test.each([...RAW_TARGETS, DOUBLE_ENCODED_DOT_TARGET])(
+    "a verbatim GET %s answers the root document",
+    async (target) => {
+      const { status, body } = await rawShapeOf(
+        origin(),
+        target,
+        ACCEPT_VALUES[0][1],
+      );
+      expect(status).toBe(200);
+      expect(body).toBe(rootDocument);
+    },
+  );
+});
+
+describe.skipIf(!hasConsoleBuild)(
+  "the /api namespace's refusal on the console",
   () => {
-    let hosted: ChildProcess | undefined;
     let consoleServer: ChildProcess | undefined;
     const roots: Array<string> = [];
-    let hostedBase = "";
     let consoleBase = "";
 
     beforeAll(async () => {
@@ -444,17 +508,6 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
       // pasted-credential scratch dir off the root-owned default it boots on.
       const credentialDir = mkdtempSync(join(tmpdir(), "alcove-api-ns-cred-"));
       roots.push(dataRoot, credentialDir);
-
-      const hostedPort = await getFreePort();
-      const hostedServer = await spawnProdServer(hostedPort, {
-        // The hosted build leaves the profile unset; a data root it never reads
-        // would not enable the API, so none is supplied.
-        VITE_DEPLOYMENT_PROFILE: "",
-        JOB_DATA_ROOT: "",
-      });
-      hosted = hostedServer.child;
-      hostedBase = `http://127.0.0.1:${hostedPort}`;
-      await waitForRoot(`${hostedBase}/`, hosted, hostedServer.getLaunchError);
 
       const consolePort = await getFreePort();
       const spawned = await spawnConsoleServer(consolePort, {
@@ -471,53 +524,9 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
     }, 90_000);
 
     afterAll(async () => {
-      await stopProdServer(hosted);
       await stopProdServer(consoleServer);
       for (const root of roots.splice(0))
         rmSync(root, { recursive: true, force: true });
-    });
-
-    describe.each(ACCEPT_VALUES)("under Accept: %s", (_name, accept) => {
-      test.each(REFUSED_REQUESTS)(
-        "a hosted probe reads the one refusal for %s %s",
-        async (method, path) => {
-          expect(await shapeOf(hostedBase, method, path, accept)).toEqual(
-            refusalFor(method),
-          );
-        },
-      );
-
-      test.each(RAW_TARGETS)(
-        "a hosted probe reads the one refusal for a verbatim GET %s",
-        async (target) => {
-          const { body, ...shape } = await rawShapeOf(
-            hostedBase,
-            target,
-            accept,
-          );
-          expect(shape).toEqual(REFUSAL);
-          expect(body).toBe("");
-        },
-      );
-
-      test("a hosted probe reads the one refusal for a verbatim double-encoded dot segment", async () => {
-        const { body, ...shape } = await rawShapeOf(
-          hostedBase,
-          DOUBLE_ENCODED_DOT_TARGET,
-          accept,
-        );
-        expect(shape).toEqual(REFUSAL);
-        expect(body).toBe("");
-      });
-
-      test.each(UNTOUCHED)(
-        "a path outside /api is untouched: %s",
-        async (path) => {
-          const rendered = await shapeOf(hostedBase, "GET", path, accept);
-          expect(rendered).not.toEqual(REFUSAL);
-          expect(rendered.bodyLength).toBeGreaterThan(0);
-        },
-      );
     });
 
     // Against the console server, where the job API is enabled. The refusal
@@ -580,37 +589,32 @@ describe.skipIf(!hasBuild || !hasConsoleBuild)(
       });
     });
 
-    // Neither profile serves a PeerJS route or the signaling upgrade, whatever
+    // The console serves no PeerJS route or the signaling upgrade, whatever
     // the request's Origin or Host.
     describe("the broker's paths and signaling upgrade", () => {
-      describe.each([
-        ["hosted build", () => hostedBase],
-        ["console", () => consoleBase],
-      ])("on the %s", (_profile, baseOf) => {
-        test.each(BROKER_ROUTE_REQUESTS)(
-          "answers the one refusal for GET %s with %s",
-          async (path, _variant, foreign) => {
-            const { body, ...shape } = await rawShapeOf(
-              baseOf(),
-              path,
-              ACCEPT_VALUES[1][1],
-              foreign,
-            );
-            expect(shape).toEqual(REFUSAL);
-            expect(body).toBe("");
-          },
-        );
+      test.each(BROKER_ROUTE_REQUESTS)(
+        "answers the one refusal for GET %s with %s",
+        async (path, _variant, foreign) => {
+          const { body, ...shape } = await rawShapeOf(
+            consoleBase,
+            path,
+            ACCEPT_VALUES[1][1],
+            foreign,
+          );
+          expect(shape).toEqual(REFUSAL);
+          expect(body).toBe("");
+        },
+      );
 
-        test.each(FOREIGN_VARIANTS)(
-          "refuses the signaling upgrade with %s",
-          async (_variant, foreign) => {
-            expect(await upgradeAnswerOf(baseOf(), foreign)).toEqual({
-              status: 404,
-              opened: false,
-            });
-          },
-        );
-      });
+      test.each(FOREIGN_VARIANTS)(
+        "refuses the signaling upgrade with %s",
+        async (_variant, foreign) => {
+          expect(await upgradeAnswerOf(consoleBase, foreign)).toEqual({
+            status: 404,
+            opened: false,
+          });
+        },
+      );
     });
   },
 );

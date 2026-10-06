@@ -23,7 +23,7 @@ const appRoot = fileURLToPath(new URL("../..", import.meta.url));
 const outDirectory = `${appRoot}dist/hosted/`;
 const manifestPath = `${outDirectory}.vite/manifest.json`;
 
-// Needs `npm run build:hosted -w apps/web` first.
+// Needs `npm run build -w apps/web` first.
 describe.skipIf(!existsSync(manifestPath))("the built route documents", () => {
   const readManifest = () =>
     JSON.parse(readFileSync(manifestPath, "utf8")) as Record<

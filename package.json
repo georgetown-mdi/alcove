@@ -42,7 +42,6 @@
     "check:locked-dep-ranges": "node scripts/check-locked-dep-ranges.mjs",
     "check:deploy-trigger-graph": "node scripts/check-deploy-trigger-graph.mjs",
     "check:routetree": "node scripts/check-routetree-fresh.mjs",
-    "check:web-route-render": "node scripts/check-web-route-render.mjs --build",
     "check:web-config-native-load": "node scripts/check-web-config-native-load.mjs",
     "check:web-config-image-load": "node scripts/check-web-config-image-load.mjs",
     "check:nitro-websocket-unset": "node scripts/check-nitro-websocket-unset.mjs",

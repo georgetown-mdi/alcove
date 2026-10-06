@@ -28,11 +28,10 @@
 // install cannot run from a plain checkout, and one whose cost is measured in
 // minutes does not belong on the unfiltered merge path.
 //
-// The two checks that need the production web build share one: the run clears
-// apps/web/.output first, the deploy-trigger check builds it, and the route
-// render check reads it without building (its entry point, invoked with no
-// --build), so no run reads a build from before it started. When the build
-// fails, the route render check is skipped with a line saying so.
+// A check that needs the production web build marks it with `usesBuild`: the
+// run clears apps/web/dist/hosted first, so no check reads a build from before
+// the run started. One that reads another's build without building names it in
+// `buildFrom`, and is skipped with a line saying so when that build fails.
 // scripts/run-checks.test.mjs holds every `check:*` script in the root
 // package.json to one list or the other, so a new check cannot be added without
 // being classified, and holds the repo-guards job to this one step plus the
@@ -300,16 +299,7 @@ export const CHECKS = [
     usesBuild: true,
     expiresOn: "2026-12-31",
     description:
-      "Every repository source the production web build reads matches a push filter of eb_deploy.yaml, so an edit to the deployed server always triggers a deploy. Builds apps/web once, for itself and the route render check after it.",
-  },
-  {
-    script: "check:web-route-render",
-    command: ["node", "scripts/check-web-route-render.mjs"],
-    usesBuild: true,
-    buildFrom: "check:deploy-trigger-graph",
-    expiresOn: "2026-12-31",
-    description:
-      "Every page route in the checked-in route tree renders, with no 5xx and nothing written to the server's stderr, from the production web build the deploy-trigger check just made.",
+      "Every repository source the hosted static web build reads matches a push filter of eb_deploy.yaml, so an edit to the deployed site always triggers a deploy.",
   },
   {
     script: "test:scripts",

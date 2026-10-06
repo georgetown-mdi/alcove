@@ -8,8 +8,9 @@ import { srcAliases } from "./vite.config.ts";
 
 const appRoot = import.meta.dirname;
 
-// Written outside src/, so the checked-in src/routeTree.gen.ts the hosted
-// build generates is never rewritten; router.tsx's import of it resolves here.
+// Written outside src/, so the checked-in src/routeTree.gen.ts the dev server
+// and vitest generate is never rewritten; router.tsx's import of it resolves
+// here.
 const consoleRouteTree = path.join(
   appRoot,
   ".tanstack/console/routeTree.gen.ts",

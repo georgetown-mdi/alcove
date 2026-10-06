@@ -14,11 +14,10 @@ import type { Served } from "./deployments";
 // PapaParse's `worker: true` self-hosted worker corrupted the CSV parse once
 // Vite bundled and minified the app; only a production build catches it, since
 // dev and Vitest's real-Chromium tests both passed with the broken worker. This
-// drives the real inviter screen flow against each production build -- the
-// Start server's (.output) and the hosted static site (dist/hosted, behind the
-// static-host harness) -- with a CSV sized above CSV_WORKER_FILE_BYTE_THRESHOLD
-// so parsing routes off-thread. Rebuild (`npm run build -w apps/web` and
-// `npm run build:hosted -w apps/web`) before re-running; CI always rebuilds
+// drives the real inviter screen flow against the production build -- the
+// hosted static site (dist/hosted, behind the static-host harness) -- with a
+// CSV sized above CSV_WORKER_FILE_BYTE_THRESHOLD so parsing routes off-thread.
+// Rebuild (`npm run build -w apps/web`) before re-running; CI always rebuilds
 // first.
 
 const READY_TIMEOUT_MS = 30_000;
@@ -86,8 +85,7 @@ describe.each(deployments)(
           // emits it as `csvParse.worker-<hash>.js`, so its URL includes that name.
           const workerUrls: Array<string> = [];
           page.on("worker", (worker) => workerUrls.push(worker.url()));
-          // The Start server's route render logged a failed import of peerjs's
-          // PeerErrorType; no build's page may report one.
+          // The page may report no failed import of peerjs's PeerErrorType.
           const pageMessages: Array<string> = [];
           page.on("console", (message) => pageMessages.push(message.text()));
           page.on("pageerror", (error) => pageMessages.push(error.message));

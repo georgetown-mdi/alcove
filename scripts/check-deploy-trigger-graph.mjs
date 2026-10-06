@@ -7,29 +7,21 @@
 // `packages/peerjs-broker/src/contrib/**`, which by design omits the sibling
 // `src/standalone.ts` on the assumption that the local `npm start` entry is in no
 // deployed import graph. An assumption like that is invisible when it breaks: let
-// standalone.ts (or any other unfiltered source) into the deployed server and
+// standalone.ts (or any other unfiltered source) into the deployed site and
 // edits to it stop triggering a deploy, production quietly serves the previous
 // build, and no run anywhere goes red. So the assumption is encoded here instead of
 // asserted in a comment: every repository source the deployed build actually
 // reads has to match the filter that redeploys it.
 //
 // The graph is read out of a real build rather than predicted from the sources.
-// Nothing here resolves an import, expands an alias, or models what rolldown,
-// Nitro, or the TanStack Start plugin would do with a specifier; the build runs
-// and reports what it read, through two complementary halves:
-//
-//   1. The module ids rolldown resolves in the client and ssr environments,
-//      recorded by the plugin apps/web/vite.config.ts installs when this check
-//      sets ALCOVE_DEPLOY_GRAPH_RECORD. This is the half that sees the route
-//      modules, which enter only through the client and ssr bundles.
-//   2. The `sources` of every sourcemap Nitro emits under apps/web/.output. This
-//      is the half that sees Nitro's own server pass -- the custom entry and what
-//      it pulls in -- which runs outside vite's plugin container and so records
-//      nothing in half 1.
-//
-// Neither half alone covers the deployed server, and REQUIRED_GRAPH_ROOTS below
-// fails the check when either stops producing paths, so a half that goes quiet
-// cannot be treated as a clean graph.
+// Nothing here resolves an import, expands an alias, or models what rolldown or
+// the router plugin would do with a specifier; the build runs and reports what
+// it read. The deployed artifact is the hosted static build, so the graph is the
+// module ids rolldown resolves in its page bundle and in each worker bundle,
+// recorded by apps/web/hosted/deployGraphRecorder.ts when this check sets
+// ALCOVE_DEPLOY_GRAPH_RECORD. REQUIRED_GRAPH_ROOTS fails the check when the
+// record stops reaching a tree it must, so a recorder that goes quiet in either
+// bundle cannot be treated as a clean graph.
 //
 // WHAT THIS CHECK DOES NOT COVER:
 //
@@ -46,12 +38,8 @@
 //     not a finding: the filter legitimately covers files no module graph reads
 //     (package.json, tsconfig.json, the deploy/aws_eb payload, public assets).
 //   - Anything a build does not resolve as a module. A file read at runtime by
-//     path, or copied into the artifact by a plugin, is in neither half.
-//   - Sourcemap entries naming a path that is not a file in the working tree.
-//     Nitro's maps name its rollup inputs, and the ssr chunks it consumes are
-//     intermediates that no longer exist on disk (and whose own sources it does
-//     not chain). Those names are dropped here -- half 1 is what covers what
-//     went into them.
+//     path, or copied into the artifact by a plugin (public/, the per-route
+//     documents' template), is not in the record.
 //   - Whether a deploy that IS triggered succeeds. This is about the trigger.
 
 import { execFileSync } from "node:child_process";
@@ -59,28 +47,27 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ROUTE_TREE, webBuildEnv } from "./check-web-route-render.mjs";
-import { withRestoreOnSignal } from "./lib/regenerationChecks.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 /** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/eb_deploy.yaml`;
 
 /** The build output the deployed artifact is packaged from. */
-export const BUILD_OUTPUT = "apps/web/.output";
+export const BUILD_OUTPUT = "apps/web/dist/hosted";
+
+/** The module that installs the recorder this check reads. */
+export const RECORDER_MODULE = "apps/web/hosted/deployGraphRecorder.ts";
 
 /**
- * The environment variable apps/web/vite.config.ts reads to install its
- * module-id recorder. Named in both places and nowhere else; a rename that
+ * The environment variable RECORDER_MODULE reads to install its module-id
+ * recorder. Named in both places and nowhere else; a rename that
  * misses one side leaves the record empty, which REQUIRED_GRAPH_ROOTS fails on.
  */
 export const RECORD_ENV = "ALCOVE_DEPLOY_GRAPH_RECORD";
@@ -94,27 +81,38 @@ const BUILD_ARGV = ["npm", "run", "build", "-w", "apps/web"];
 export const BUILD_COMMAND = BUILD_ARGV.join(" ");
 
 /**
+ * `env` with a loopback signaling address filled in when it names none: the
+ * hosted build refuses to run without VITE_SIGNALING_SERVER_URL
+ * (apps/web/vite.config.ts), and this check reads the build without dialing
+ * the broker.
+ */
+export function webBuildEnv(env = process.env) {
+  if (env.VITE_SIGNALING_SERVER_URL?.trim()) return env;
+  return { ...env, VITE_SIGNALING_SERVER_URL: "ws://127.0.0.1/api/" };
+}
+
+/**
  * Trees that must each contribute at least one path to the collected graph. A
- * collection half that silently stops producing -- a recorder plugin no longer
- * installed, a Nitro release that stops emitting sourcemaps -- would otherwise
- * leave a shrunken graph that trivially satisfies the filter. Each entry names
- * the half it proves alive.
+ * recorder that silently stops producing in one bundle -- no longer installed
+ * on the page build, or on the worker builds -- would otherwise leave a
+ * shrunken graph that trivially satisfies the filter. Each entry names the
+ * bundle it proves recorded.
  */
 export const REQUIRED_GRAPH_ROOTS = [
   {
     prefix: "apps/web/src/",
     reason:
-      "the application sources, which both halves see; an empty result here means the build itself produced nothing to read",
-  },
-  {
-    prefix: "apps/web/server/",
-    reason:
-      "the Nitro custom entry, which only the sourcemap half sees -- so this is the entry that fails when apps/web/.output stops carrying maps",
+      "the application sources; an empty result here means the build itself produced nothing to read",
   },
   {
     prefix: "apps/web/src/routes/",
     reason:
-      "the route modules, which only the recorded-module-id half sees -- so this is the entry that fails when the recorder plugin stops being installed",
+      "the route modules, which only the page bundle reads -- so this is the entry that fails when the recorder stops being installed on the page build",
+  },
+  {
+    prefix: "apps/web/src/psi/workers/psiCrypto.worker.ts",
+    reason:
+      "the PSI worker's entry, which only its worker bundle reads -- so this is the entry that fails when the recorder stops being installed on the worker builds",
   },
 ];
 
@@ -131,6 +129,12 @@ export const BUILD_PRODUCTS = [
     sources: "packages/core/src/",
     reason:
       "the apps consume @alcove/core from its built dist/ (CONTRIBUTING.md, Building), so the bundlers read the bundle and never the sources it was built from",
+  },
+  {
+    product: "apps/web/.tanstack/hosted/",
+    sources: "apps/web/src/routes/",
+    reason:
+      "the hosted build generates its route tree there from the route files (apps/web/vite.hosted.config.ts), so the bundler reads the generated tree and the route files it names",
   },
 ];
 
@@ -218,18 +222,6 @@ export function moduleIdToPath(id) {
 }
 
 /**
- * The absolute paths a sourcemap's `sources` name, resolved against the
- * directory holding the map. Entries that name no file are the caller's to drop:
- * this reports what the map says.
- */
-export function sourceMapPaths(map, mapDirectory) {
-  if (!Array.isArray(map?.sources)) return [];
-  return map.sources
-    .filter((source) => typeof source === "string" && source.length > 0)
-    .map((source) => resolve(mapDirectory, source.split("?")[0]));
-}
-
-/**
  * The repository-relative form of an absolute path, or null when it is outside
  * the repository or inside a `node_modules` tree. A dependency is not a
  * repository source: what moves when one changes is package-lock.json, which
@@ -298,38 +290,18 @@ export function unreachedRoots(graph, roots = REQUIRED_GRAPH_ROOTS) {
   );
 }
 
-/** Every `*.map` file under `directory`, recursively. */
-function sourceMapFiles(directory) {
-  const found = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) found.push(...sourceMapFiles(path));
-    else if (entry.name.endsWith(".map")) found.push(path);
-  }
-  return found;
-}
-
-/**
- * Run the real build with the recorder pointed at `recordPath`, then write the
- * route tree's checked-in bytes back, since the build regenerates that file.
- */
+/** Run the real build with the recorder pointed at `recordPath`. */
 function runBuild(repoRoot, recordPath) {
   const [command, ...args] = BUILD_ARGV;
-  const routeTree = resolve(repoRoot, ROUTE_TREE);
-  const original = readFileSync(routeTree);
-  withRestoreOnSignal(
-    () => writeFileSync(routeTree, original),
-    () =>
-      execFileSync(command, args, {
-        cwd: repoRoot,
-        stdio: "inherit",
-        env: { ...webBuildEnv(), [RECORD_ENV]: recordPath },
-      }),
-  );
+  execFileSync(command, args, {
+    cwd: repoRoot,
+    stdio: "inherit",
+    env: { ...webBuildEnv(), [RECORD_ENV]: recordPath },
+  });
 }
 
 /**
- * Build, then collect the repository sources both halves report, sorted and
+ * Build, then collect the repository sources the record names, sorted and
  * deduplicated. `build` is injectable so a test can drive collection over a
  * prepared tree without paying for a real build.
  */
@@ -340,7 +312,7 @@ export function collectGraph(repoRoot, { build = runBuild } = {}) {
     build(repoRoot, recordPath);
     if (!existsSync(recordPath)) {
       throw new Error(
-        `${BUILD_COMMAND} wrote no module-id record. apps/web/vite.config.ts installs its recorder when ${RECORD_ENV} is set; either that plugin is gone or the build never reached a bundle, and either way the graph this check reads would be missing everything rolldown resolves.`,
+        `${BUILD_COMMAND} wrote no module-id record. ${RECORDER_MODULE} installs its recorder when ${RECORD_ENV} is set; either the hosted build no longer installs it or the build never reached a bundle, and either way the graph this check reads would be missing everything rolldown resolves.`,
       );
     }
     const output = resolve(repoRoot, BUILD_OUTPUT);
@@ -349,15 +321,9 @@ export function collectGraph(repoRoot, { build = runBuild } = {}) {
         `${BUILD_COMMAND} left no ${BUILD_OUTPUT}. The deployed artifact is packaged from that directory, so there is no build to read.`,
       );
     }
-    const absolute = [
-      ...JSON.parse(readFileSync(recordPath, "utf8")).map(moduleIdToPath),
-      ...sourceMapFiles(output).flatMap((mapFile) =>
-        sourceMapPaths(
-          JSON.parse(readFileSync(mapFile, "utf8")),
-          resolve(mapFile, ".."),
-        ),
-      ),
-    ];
+    const absolute = JSON.parse(readFileSync(recordPath, "utf8")).map(
+      moduleIdToPath,
+    );
     const files = new Set();
     for (const path of absolute) {
       if (path === null) continue;
@@ -396,13 +362,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const missingRoots = unreachedRoots(graph);
   if (missingRoots.length > 0) {
     console.error(
-      `Deploy trigger coverage check failed: the collected graph (${graph.length} files) reaches none of ${missingRoots.length} tree(s) it must, so it is not a graph of the deployed server:\n`,
+      `Deploy trigger coverage check failed: the collected graph (${graph.length} files) reaches none of ${missingRoots.length} tree(s) it must, so it is not a graph of the deployed site:\n`,
     );
     for (const root of missingRoots) {
       console.error(`  ${root.prefix} -- ${root.reason}`);
     }
     console.error(
-      "\nOne of the two collection halves stopped producing paths. Fix the collection before reading anything into the filter result: a shrunken graph satisfies the filter for the wrong reason.",
+      "\nThe recorder stopped producing paths for one of the bundles. Fix the collection before reading anything into the filter result: a shrunken graph satisfies the filter for the wrong reason.",
     );
     process.exit(1);
   }
@@ -419,7 +385,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       );
       for (const file of uncovered) console.error(`  ${file}`);
       console.error(
-        `\nAn edit to one of these changes the deployed server and triggers no deploy: production would keep serving the previous build with nothing red. Either add the path to that filter, or take the file back out of the deployed import graph.`,
+        `\nAn edit to one of these changes the deployed site and triggers no deploy: production would keep serving the previous build with nothing red. Either add the path to that filter, or take the file back out of the deployed import graph.`,
       );
     }
     for (const gap of productGaps) {
