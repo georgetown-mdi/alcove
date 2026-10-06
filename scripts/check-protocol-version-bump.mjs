@@ -1,79 +1,27 @@
 #!/usr/bin/env node
-// Post-publication PROTOCOL_VERSION bump check, run by static_checks.yaml on
-// every PR.
+// Post-publication PROTOCOL_VERSION bump check:
+// `npm run check:protocol-version-bump`, run by static_checks.yaml on every PR;
+// `--root <tree>` reads another tree. Enforces docs/spec/PROTOCOL.md's
+// "Wire-format deltas: existing frames only, and no version bump": from the
+// first published release on, a wire-format delta takes a version bump.
 //
-// docs/spec/PROTOCOL.md's "Wire-format deltas: existing frames only, and no
-// version bump" states the rule in prose: a wire-format delta ships within
-// PROTOCOL_VERSION 1 while Alcove is pre-publication, and takes a bump from the
-// first published deployment onward. A future obligation written as prose is the
-// shape that rots -- the release it binds arrives long after the sentence was
-// written, nothing fails when it is forgotten, and the change that should have
-// taken the version decision ships past it. This is that obligation as a check.
+// Reads, from the tree alone:
+//   - the release marker, apps/cli/package.json's version; the rule binds once
+//     it rises above 0.1.0;
+//   - the wire-format pin, a digest of each known-answer vectors file under
+//     packages/core/test/vectors/, taken over its parsed JSON; every *.json
+//     there must be classified below as covered by PROTOCOL_VERSION or by a
+//     neighbouring version marker;
+//   - the pin ledger, scripts/protocol-version-pins.json, empty until the marker
+//     moves and append-only after;
+//   - PROTOCOL_VERSION, as the `export const` integer literal in source.
 //
-// Three parts, each read from the tree alone:
-//
-//   A. THE RELEASE MARKER, which decides whether the rule binds yet.
-//      apps/cli/package.json's version -- what docs/RELEASES.md step 2 calls the
-//      canonical release version, and what check-release-version.mjs holds the
-//      pushed tag to. The rule binds once that version rises above 0.1.0. It is
-//      read from the tree rather than from a git tag because the checkout the
-//      gate runs in has no tags: static_checks.yaml pins neither `fetch-depth`
-//      nor `fetch-tags` on its checkout, and a marker absent from the checkout
-//      would leave this check silently inert forever -- the one failure mode a
-//      dormant check cannot afford.
-//
-//   B. THE WIRE-FORMAT PIN, which stands in for "the wire format changed": the
-//      known-answer vectors under packages/core/test/vectors/ that pin what the
-//      linkage rounds put on the wire, digested per file. Every *.json in that
-//      directory is classified below -- covered by PROTOCOL_VERSION, or covered
-//      by one of the neighbouring version markers docs/spec/PROTOCOL.md
-//      distinguishes it from -- and a file matching neither list fails the
-//      check, so coverage cannot rot behind a vectors file nobody classified.
-//
-//   C. THE PIN LEDGER, scripts/protocol-version-pins.json: the digests recorded
-//      for each published PROTOCOL_VERSION. It is empty while the rule is
-//      inert, because a pin recorded pre-publication would only go stale against
-//      months of permitted deltas and then fail at publication for a reason that
-//      is not the one this check exists to report. The first run after the
-//      marker appears asks for the pin and prints it; every run after that holds
-//      the tree to it.
-//
-// Once armed the ledger is append-only, and that shape is the review surface: a
-// bump ADDS an entry, so a legitimate bump and an in-place rewrite of a published
-// version's pin are different diffs. This check cannot tell a legitimate re-pin
-// from a rewrite that dodges the bump -- the same limit the pull-request
-// checklist's security-review sha has -- so an edit to an already-recorded
-// entry is a reviewer's call, not this check's.
-//
-// What this check cannot see:
-//   - A wire-format delta no vectors file pins. The pinned files cover the PSI
-//     engine's bytes, the resolved association mapping, the terms-exchange
-//     envelope, single-pass message 2's frame layout, the parts a PSI set
-//     is sent in, and the parts a matched-record list is sent in -- not every
-//     frame the protocol defines. The bodies of the cascade's mapped-element
-//     lists, its per-round association-table frames, and the count-only
-//     reply are specified in
-//     docs/spec/PROTOCOL.md, and the save-bootstrap secret frame in
-//     docs/SECURITY_DESIGN.md; all are pinned by no file here, so a delta
-//     confined to one of them moves no digest. The pin is the
-//     issue's stated proxy for a wire-format change, not a complete model of the
-//     wire format.
-//   - A frame shape the pinned scenarios do not drive. The terms-envelope
-//     vectors capture what exchangeTerms and sendAbort EMIT on the scenarios
-//     they run, so a field none of them advertises moves no digest here. That
-//     gap is held shut on the suite's side rather than this one's: it reads the
-//     field set each slot's schema ADMITS out of the source and fails until the
-//     pinned frames' union covers it, so an added field takes a scenario, and a
-//     scenario moves the digest.
-//   - The difference between a wire-format change and a cosmetic one. The digest
-//     is taken over the file's parsed JSON, so reformatting does not move it,
-//     but re-ordering keys or editing a vector's hand-authored name does. Such a
-//     change fails toward taking the version decision rather than away from it.
-//   - Whether the version decision taken was the RIGHT one. It fails a moved pin
-//     that has no bump; it cannot judge a bump that was not needed.
-//   - A PROTOCOL_VERSION that is not a literal. It reads the `export const`
-//     initializer out of the source rather than importing the built package, and
-//     fails rather than guessing when that line does not read as an integer.
+// Once the rule binds, fails on a missing pin for the current version (printing
+// the entry to record), a moved pin, or a ledger with a malformed, future or
+// dropped entry; at any time, on a vectors file classified in neither list or
+// listed but absent. Exit 1 on a finding or an unreadable input, 2 on a
+// `--root` naming no tree. An in-place edit of a recorded entry is a reviewer's
+// call. What the pin does not cover: docs/notes/repo-check-scripts.md.
 
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";

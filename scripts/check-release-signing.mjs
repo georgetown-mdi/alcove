@@ -1,79 +1,29 @@
 #!/usr/bin/env node
-// Release signing coupling check, run by static_checks.yaml on every pull
-// request.
+// Release signing coupling check: `npm run check:release-signing`, run by
+// static_checks.yaml on every pull request. The `cosign verify` and
+// `gh attestation verify` commands docs/RELEASES.md publishes must name the
+// signing workflow's own path and tag trigger. Fails unless:
 //
-// Keyless signing leaves no public key to fetch, so what the `cosign verify`
-// command docs/RELEASES.md publishes pins is the release workflow's Sigstore
-// identity: this repository's path to the workflow file, plus the ref the run
-// came from. Both halves are properties of the workflow rather than of the
-// document -- its filename and its `on.push.tags` filter -- and neither a
-// rename nor a widened trigger touches the document. What the drift costs runs
-// in both directions: a published pattern that no longer describes the signer
-// refuses the signature a real release produced, so a partner's verification
-// fails over a good image and the project hears about it from the partner; a
-// pattern loosened until it passes again accepts signatures a release did not
-// produce.
-//
-// The workflow's own self-verify step catches the first direction, but only at
-// release time, with the tag already pushed and the image already published.
-// This check is the pull-request half.
-//
-// The build-provenance attestation the same document publishes a command for
-// holds the coupling a second time: `gh attestation verify --signer-workflow`
-// names the workflow file whose run produced the attestation, so a rename
-// leaves that command reporting no matching attestation for an image every
-// release attests. Nothing measures that at release time -- GitHub holds the
-// attestation and no step reads it back -- so here is the only half there is.
-//
-// Six rules:
-//
-//   1. The signing workflow and docs/RELEASES.md publish ONE identity pattern
-//      and ONE issuer between them, and the issuer is GitHub Actions'.
-//   2. That identity decomposes to the anchored shape
+//   1. The workflow and the document publish one identity pattern and one
+//      issuer between them, and the issuer is GitHub Actions'.
+//   2. The identity decomposes to
 //      `^https://github\.com/<owner>/<repo>/<workflow path>@refs/tags/<tag>$`,
-//      and its workflow-path segment is the signing workflow's own path. The
-//      decomposition refuses any regular-expression metacharacter in the path
-//      segment, so a pattern loosened by unescaping a `.` fails here rather
-//      than reading as a rename.
-//   3. Its tag pattern is the signing workflow's own `on.push.tags` filter.
+//      its workflow-path segment is the signing workflow's path, and that
+//      segment contains no regular-expression metacharacter.
+//   3. Its tag pattern is the workflow's `on.push.tags` filter. A filter is
+//      translated only over letters, digits and `_ - / . + [ ]`, with `.`
+//      escaped; any other character, `*` and `?` above all, fails.
 //   4. Every step that pushes an image is followed by its own cosign sign,
-//      cosign verify and attest steps before any later image build. A second
-//      image's push sitting between the first one's push and its signing leaves
-//      the first published under `latest` and unsigned for as long as that
-//      build runs, and permanently if the build fails.
-//   5. Every one of those verify steps includes both `--certificate-` arguments
-//      in its own run text, with the values the document publishes. Rule 1
-//      reads the whole file at once and rule 4 credits a step by the digest it
-//      names, so one step's copy of the pair satisfies rule 1 for every other
-//      step: a verify step stripped of the pair -- or pointed at another
-//      identity -- would otherwise pass both while running a command no partner
-//      runs. This rule is what holds each self-verify step to that command.
-//   6. Every `--signer-workflow` docs/RELEASES.md publishes names that same
-//      workflow path, and the document publishes at least one: without it the
-//      attestation command's `--repo` is satisfied by an attestation any
-//      workflow in this repository produced.
+//      cosign verify and attest steps before any later image build.
+//   5. Each of those verify steps passes both `--certificate-` arguments, with
+//      the published values, in its own run text.
+//   6. docs/RELEASES.md publishes at least one `--signer-workflow`, and each
+//      names that workflow path.
 //
-// What this check cannot see:
-//   - Whether the identity is the one a run actually produces. It holds the
-//     published pattern to this repository's workflow path and tag filter;
-//     wrong together is agreement. What Fulcio puts in the certificate was
-//     driven rather than inferred, and is recorded in
-//     docs/notes/cosign-keyless-signing.md.
-//   - The `<owner>/<repo>` segment of either published command, which nothing
-//     in the tree derives. A fork publishing this document unchanged is treated
-//     as agreeing, and the two commands' copies of that segment are not compared
-//     against each other.
-//   - Rule 3 compares text under a stated correspondence rather than modelling
-//     GitHub's filter-pattern semantics: over the character class it accepts
-//     (letters, digits, `_`, `-`, `/`, `.`, `+`, `[`, `]`), a filter and a
-//     regular expression agree character for character except that `.` is
-//     literal in a filter and must be escaped in a regular expression. A filter
-//     containing anything else -- `*` and `?` above all, whose glob meanings a
-//     regular expression does not share -- fails the rule rather than being
-//     translated on a guess.
-//   - Whether any of it verifies. Only a release run signs anything; the
-//     workflow's self-verify step is what measures that, and this check is what
-//     keeps the step's two arguments the published ones.
+// Reads docs/RELEASES.md and the workflow files. The `<owner>/<repo>` segment
+// of either command is not compared, and whether a release run produces this
+// identity is not seen. Exit 0 clean, 1 on a finding. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -157,8 +107,8 @@ export function signerWorkflows(source) {
 
 /**
  * The workflow path a `--signer-workflow` value names, or a `{problem}` phrase
- * naming why it names none. Its owner and repository segments go unread, for
- * the reason the header gives.
+ * naming why it names none. Its owner and repository segments go unread, since
+ * nothing in the tree derives them.
  */
 export function parseSignerWorkflow(value) {
   const segments = value.split("/");

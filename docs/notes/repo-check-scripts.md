@@ -393,3 +393,172 @@ a false report whose fix is to read the two names apart.
 Every half of the claim is named by identifier, so a rename would leave the check scanning for something that no longer exists.
 Each tracked type's and each sink's declaration must still be where the check says,
 and each sink must have at least one render going through it.
+
+## Release signing coupling
+
+[`scripts/check-release-signing.mjs`](../../scripts/check-release-signing.mjs)
+
+### Why it is a check
+
+Keyless signing leaves no public key to fetch,
+so what the `cosign verify` command in [RELEASES.md](../RELEASES.md) pins is the release workflow's Sigstore identity:
+this repository's path to the workflow file, plus the ref the run came from.
+Both halves are properties of the workflow, its filename and its `on.push.tags` filter,
+and neither a rename nor a widened trigger touches the document.
+The drift costs in both directions.
+A published pattern that no longer describes the signer refuses the signature a real release produced,
+so a partner's verification fails over a good image and the project hears about it from the partner.
+A pattern loosened until it passes again accepts signatures a release did not produce.
+
+The workflow's own self-verify step catches the first direction, but only at release time, with the tag pushed and the image published.
+This check is the pull-request half.
+
+The build-provenance attestation is coupled the same way:
+`gh attestation verify --signer-workflow` names the workflow file whose run produced the attestation,
+so a rename leaves that command reporting no matching attestation for an image every release attests.
+Nothing measures that at release time, since GitHub keeps the attestation and no step reads it back,
+so this check is the only half there is.
+The decision to sign keylessly, and the probe runs behind the issuer and identity, are in [cosign-keyless-signing.md](cosign-keyless-signing.md).
+
+### Why each rule
+
+- Rule 2 refuses a regular-expression metacharacter in the path segment, so a pattern loosened by unescaping a `.` fails rather than being treated as a rename.
+- Rule 4 exists because a second image's push between the first one's push and its signing leaves the first published under `latest` and unsigned for as long as that build runs,
+  and permanently if the build fails.
+- Rule 5 exists because rule 1 reads the whole workflow file at once and rule 4 credits a step by the digest it names,
+  so one step's copy of the certificate arguments would satisfy rule 1 for every other step.
+  A verify step stripped of the pair, or pointed at another identity, would pass both while running a command no partner runs.
+- Rule 6 requires at least one `--signer-workflow`, since without it the attestation command's `--repo` is satisfied by an attestation any workflow in this repository produced.
+
+### What it does not cover
+
+- Whether the identity is the one a run produces.
+  The check compares the published pattern against this repository's workflow path and tag filter, so the two being wrong together passes.
+  What Fulcio writes into the certificate was driven rather than inferred, in [cosign-keyless-signing.md](cosign-keyless-signing.md).
+- The `<owner>/<repo>` segment of either command, which nothing in the tree derives.
+  A fork publishing the document unchanged passes, and the two commands' copies of that segment are not compared with each other.
+- GitHub's filter-pattern semantics.
+  Rule 3 compares text under a stated correspondence rather than modelling them:
+  over the accepted character class a filter and a regular expression agree character for character, except that `.` is literal in a filter.
+  Any other character, `*` and `?` above all, fails rather than being translated on a guess.
+- Whether any of it verifies.
+  Only a release run signs anything; the self-verify step measures that, and this check keeps that step's two arguments the published ones.
+
+## Post-publication protocol version bump
+
+[`scripts/check-protocol-version-bump.mjs`](../../scripts/check-protocol-version-bump.mjs)
+
+### Why it is a check
+
+[PROTOCOL.md](../spec/PROTOCOL.md) states that a wire-format delta ships within `PROTOCOL_VERSION` 1 while Alcove is pre-publication,
+and takes a bump from the first published deployment onward.
+The release that obligation binds arrives long after the sentence was written, nothing fails when it is forgotten,
+and the change that should have taken the version decision ships past it.
+
+### Reading choices
+
+- The release marker is `apps/cli/package.json`'s version, which [RELEASES.md](../RELEASES.md) step 2 calls the release version and `check-release-version.mjs` compares the pushed tag against.
+  It is read from the tree rather than a git tag because the gate's checkout has no tags:
+  `static_checks.yaml` pins neither `fetch-depth` nor `fetch-tags`, and a marker absent from the checkout would leave the check inert forever.
+- The vectors digests are the proxy for "the wire format changed".
+  A vectors file classified in neither list fails, so coverage cannot lapse behind a file nobody classified.
+- The ledger is empty while the rule is inert,
+  because a pin recorded pre-publication would go stale against months of permitted deltas and then fail at publication for an unrelated reason.
+- Once the rule binds, the ledger is append-only, and that shape is what a reviewer reads:
+  a bump adds an entry, so a legitimate bump and an in-place rewrite of a published version's pin are different diffs.
+  The check cannot tell a legitimate re-pin from a rewrite that dodges the bump,
+  the same limit the pull-request checklist's security-review sha has.
+
+### What it does not cover
+
+- A wire-format delta no vectors file pins.
+  The pinned files cover the PSI engine's bytes, the resolved association mapping, the terms-exchange envelope, single-pass message 2's frame layout,
+  and the parts a PSI set and a matched-record list are sent in.
+  The cascade's mapped-element list bodies, its per-round association-table frames, the count-only reply ([PROTOCOL.md](../spec/PROTOCOL.md)),
+  and the save-bootstrap secret frame ([SECURITY_DESIGN.md](../SECURITY_DESIGN.md)) are pinned by no file, so a delta confined to one of them moves no digest.
+- A frame shape the pinned scenarios do not drive.
+  The terms-envelope vectors capture what `exchangeTerms` and `sendAbort` emit on the scenarios they run.
+  The vectors suite closes that gap on its side: it reads the field set each slot's schema admits from the source and fails until the pinned frames cover it,
+  so an added field takes a scenario, and a scenario moves the digest.
+- A cosmetic change against a wire-format one.
+  The digest is over parsed JSON, so reformatting does not move it, but reordering keys or renaming a hand-authored vector does,
+  which fails toward taking the version decision.
+- Whether the version decision taken was right: it fails a moved pin with no bump, and cannot judge a bump that was not needed.
+- A `PROTOCOL_VERSION` that is not an integer literal, which fails rather than being guessed, since the check reads source instead of importing the built package.
+
+## WebRTC `provider_options` unread
+
+[`scripts/check-webrtc-provider-options-unread.mjs`](../../scripts/check-webrtc-provider-options-unread.mjs)
+
+### Why it is a check
+
+That no WebRTC transport reads `connection.provider_options` is a claim about runtime,
+and prose asserting one goes stale silently the day a WebRTC consumer of the map is added.
+It also makes the SFTP-only default-deny allowlist in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionprovider_options) a safe place to stop:
+the day a WebRTC transport reads the map, this check fails before that transport ships without an allowlist of its own.
+
+### The scanned set is the claim
+
+A WebRTC source the lists do not name is unexamined, as with [`scripts/lib/sftpAdapterSites.mjs`](../../scripts/lib/sftpAdapterSites.mjs).
+Each list is checked against the tree, so an added or removed file fails rather than changing what the list means.
+The web neighbours are resolved with the TypeScript compiler's own resolver under `apps/web/tsconfig.json`'s merged options rather than a re-parse of its `paths` map.
+A dynamic `import()` and a second hop are outside the set.
+
+`WEB_FILES` stays a list rather than a directory scan of `apps/web/src`, the shape `CLI_FILES` uses,
+because `apps/web` also hosts the console's job API, whose SFTP-authoring code may legitimately read `provider_options`.
+
+### What a read matches
+
+Both spellings are watched: the camelCase name the parsed exchange spec uses at runtime, and the snake_case name in the document and an unnormalized parse.
+A destructured key is matched plain or renamed, in a declaration or a parameter.
+A dynamic key (`x[computedKeyVar]`, or a computed destructuring key) and a re-export under another name are not seen,
+since neither writes the name in a shape the scan reads.
+
+## Single-pass measurement harness
+
+[`scripts/single-pass-bench.mjs`](../../scripts/single-pass-bench.mjs) is a bench rather than a check;
+the figures it produced, and the ceiling derived from them, are in [PROTOCOL.md](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and-masking-compute).
+
+### What it measures
+
+The single-pass dataset ceiling is bound by two costs, not by the wire size:
+
+- ECDH masking compute: one elliptic-curve scalar multiplication per distinct linkage-key value, single-threaded through `@openmined/psi.js`.
+  Across the exchange the curve work is `c_enc*(D_send + D_recv)` for each party's first encryption plus `c_re*(2*D_recv)` for the sender's re-encryption and the receiver's match,
+  where `D` is the count of distinct values a party pools across all keys.
+- The receiver's peak resident memory.
+  It keeps the reply, decodes it, builds its own and the sender's distinct-value index tables, and runs the cascade replay, all resident at once,
+  so the receiver is the heavier side.
+
+### Three memory quantities
+
+They differ by more than an order of magnitude:
+
+- the lifetime peak RSS, which includes transient allocation churn and is the practical ceiling;
+- the live V8 heap after a forced GC, the retained JS;
+- the WebAssembly linear heap.
+
+The WASM heap is the emmalloc linear memory the OpenMined module exports, grow-only and never returned to the OS.
+`process.memoryUsage().arrayBuffers` does not include it, since it counts only the V8 wire-buffer copies,
+so the harness wraps `WebAssembly.instantiate` before the module instantiates and reads the exported memory's byte length.
+
+### Mode choices
+
+- `rates` establishes that masking is linear in the distinct-value count, so the spec's table can extrapolate from its slopes.
+- `sweep` runs each side in its own forked process so `process.resourceUsage().maxRSS` is isolated per side,
+  with the receiver's decode, index-table build and cascade replay exercised as in a live exchange.
+  `maxRSS` is a whole-process lifetime high-water mark, so it includes churn across all phases, and most of the per-value slope is collectable garbage.
+  Under `--gc` the children run `@alcove/core`'s `relieveTransientMemory` at the single-pass phase boundaries, so the receiver RSS reported is the shipped relief rather than a bench-only collection.
+- `both-sided` is the quadratic case.
+  At the default group size the resolved table reaches `N * N` pairs, exactly the pair-count bound the sender applies to the returned table (own rows times the partner's declared record count).
+  The later keys keep near-unique values, so `D` stays `keys * rows` and the masking workload matches the sweep's;
+  the receiver's post-replay time is where the closure check over the table's blocks lands.
+- The masking ops need one PSI client key shared between the receiver's request and its match step,
+  so the two sides cannot run as independent processes each generating its own key, and the sweep relays a live exchange instead of building a reply offline.
+
+### Datasets
+
+Every cell is a distinct value within a party, so `D = keys * rows`, the worst case the ceiling must cover.
+The first `overlap * rows` rows are shared across parties so the match path runs and the result can be checked.
+Both parties are sized equally, the symmetric case the role rule targets:
+the sender's row count drives the index table, and the larger distinct-value counts drive everything else.

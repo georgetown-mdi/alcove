@@ -1,66 +1,23 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse an Edit, Write, or NotebookEdit that would write a file
-// git does not ignore into a checkout of this repository that the session is not
-// working in -- the MAIN worktree always, and a sibling worktree when the session
-// is itself working inside a linked one.
+// PreToolUse hook on Edit, Write and NotebookEdit: refuse a write to a path git
+// does not ignore in a checkout of this repository that the session is not
+// working in -- the MAIN worktree always, whoever writes, and a sibling worktree
+// when the session is itself working inside a linked one. Paths git ignores
+// (scratch/, briefs, round artifacts) and paths outside the repository pass.
 //
-// Why this exists: review and fixing run by ref. The orchestrating session stays
-// in the primary checkout and never enters a branch's tree, while every branch
-// lives in its own worktree under .claude/worktrees/ and every writing spawn is
-// pointed at that tree by absolute path. A write that lands in the primary
-// checkout instead is therefore always a mistake -- it puts the edit on whatever
-// branch that checkout happens to hold (staging, typically), off the branch under
-// review, where no round will ever see it and no PR will include it. The sibling
-// case is the same loss by a different route: the file tools take a literal
-// absolute path, every unmodified tracked file is byte-identical across the
-// trees, so reusing a path read from context succeeds, reads back correctly, and
-// shows up only as an unexplained diff on somebody else's branch.
+// Ignored-ness is asked of `git check-ignore` in the worktree that owns the path,
+// so a new file and an edit to a tracked one are refused alike; a gitignored
+// symlink into another tree resolves to its target's checkout first. The
+// session's tree is the event's cwd, and a cwd no worktree contains leaves the
+// sibling rule silent. Only file_path and notebook_path are read; a write made
+// through Bash is not gated.
 //
-// The two rules differ in scope. The main-worktree refusal is path-scoped: it
-// fires whoever writes and from wherever, since no session writes that content.
-// The sibling refusal binds only a session already working inside a linked
-// worktree, because pointing a spawn at a tree by absolute path from the primary
-// checkout is the dispatch shape the by-ref model is built on. A session
-// directory that cannot be placed in a worktree leaves the sibling rule silent.
-//
-// WHAT PASSES is decided by IGNORED-ness, not tracked-ness: the only legitimate
-// writes to a checkout the session is not working in are to paths git ignores --
-// scratch/, briefs, round artifacts -- plus anything outside the repository,
-// which is not this hook's business. A brand-new source file created in the
-// primary checkout lands on whatever branch it holds exactly as an edit to a
-// tracked one does, and `git check-ignore` answers for both, asked of the
-// worktree that owns the path. A gitignored local a worktree holds as a symlink
-// into another tree resolves to its target's checkout before either rule runs.
-//
-// FAIL OPEN, by design, and opposite to require-clean-tree-for-review.mjs: this
-// guard shapes where work is written, nothing about correctness or disclosure
-// rides on it, and a bug here that failed closed would wedge every edit in every
-// tree. The refusal fires only where the path is positively determined to be
-// non-ignored content of a checkout the session is not working in; every
-// unanswerable state allows.
-//
-// THE BY-DESIGN OVERRIDE, the idiom block-model-drop-sendmessage.mjs sets with
-// its [accept-model-drop] marker: a maintainer-directed edit of such a checkout
-// stays possible by creating the sentinel file named in OVERRIDE_SENTINEL below
-// IN THAT CHECKOUT, which lifts this hook for it until the file is deleted. Edit
-// and Write have no free-text field a marker could ride in, so the opt-in is a
-// file rather than a phrase, and like that marker it is self-applicable: what it
-// buys is an override that is named, visible in the tree, and reversible, not
-// one that cannot be forged.
-//
-// STATED LIMITS.
-//   - Only file_path (Edit, Write) and notebook_path (NotebookEdit) are read. A
-//     tool naming its target under another key is not seen, and neither is a
-//     write made through Bash, which this hook does not gate at all.
-//   - Ignored-ness is asked of git at the time of the call, and a tracked file
-//     is reported as not ignored whatever the exclude patterns say, since the
-//     check consults the index. A path whose answer changes between the check
-//     and the write is answered as git sees it now.
-//   - The session's tree is read from the event's cwd, where the harness says
-//     the session is working, not where any one command ran. A cwd that silently
-//     reverted out of an entered worktree is treated as the tree it reverted to.
+// Override: create the sentinel file OVERRIDE_SENTINEL names in that checkout,
+// which allows writes there until the file is deleted.
 //
 // Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
+// Every state it cannot answer allows (fail open). Rationale:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";

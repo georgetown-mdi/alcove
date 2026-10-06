@@ -1,65 +1,20 @@
 #!/usr/bin/env node
-// WebRTC provider_options unread claim check, run by static_checks.yaml.
+// WebRTC provider_options unread check:
+// `npm run check:webrtc-provider-options-unread`, run by static_checks.yaml.
+// Enforces the claim in docs/spec/WEBRTC_TRANSPORT.md (ICE) and
+// docs/EXCHANGE_REFERENCE.md (`### connection.provider_options`) that no WebRTC
+// transport reads `connection.provider_options`.
 //
-// docs/spec/WEBRTC_TRANSPORT.md (ICE) and docs/EXCHANGE_REFERENCE.md
-// (`### connection.provider_options`) state that `connection.provider_options`
-// is inert on the `webrtc` channel: no transport on either side reads it, so no
-// key in it reaches the PeerJS client, the peer connection, or the ICE
-// configuration. That is a "does not happen at runtime" claim -- prose asserting
-// a runtime fact rots silently the day a WebRTC consumer of the map is added --
-// so it is encoded here instead: every listed WebRTC source is parsed and
-// scanned for a read of the option, and the check fails the moment one appears.
-//
-// It is also what makes the SFTP-only default-deny `provider_options` allowlist
-// (docs/EXCHANGE_REFERENCE.md, same section) a safe place to stop: the day a
-// WebRTC transport does read the map, this check reddens before that transport
-// ships with no allowlist of its own.
-//
-// THE SCANNED SET IS THE CLAIM (the scripts/lib/sftpAdapterSites.mjs precedent):
-// a WebRTC source this list does not name is unexamined, not cleared. It has two
-// halves.
-//
-//   - CLI_FILES: every file under apps/cli/src/connection/webrtc/, the whole
-//     WebRTC connection implementation for the command-line party. Held to the
-//     directory's real listing below, so an added or removed file fails the
-//     check rather than silently changing what "every file" means.
-//   - WEB_FILES: the three sources the issue names (rendezvous.ts,
-//     managedRendezvous.ts, peerMessageConnection.ts) plus their first-party
-//     neighbours -- every local module (relative, or a tsconfig `paths` alias
-//     such as `@utils/*`) any of the three reaches via a static `import` or
-//     `export ... from` specifier, one hop out, value or type-only alike; a
-//     dynamic `import()` and a second hop are both outside the set. The hop is
-//     held to the entry points' real import statements by webFilesDrift below,
-//     which resolves each specifier with the TypeScript compiler's own
-//     resolver (`ts.resolveModuleName`, under apps/web/tsconfig.json's merged
-//     options) rather than a re-parse of the `paths` map, so an added or
-//     removed neighbour fails the check exactly as CLI_FILES's directoryDrift
-//     does. WEB_FILES stays an explicit list rather than a directory scan of
-//     apps/web/src (CLI_FILES's shape) because apps/web also hosts the
-//     console's job API, whose future SFTP-authoring code may legitimately
-//     read provider_options; a directory scan would fold that unrelated
-//     surface into this claim, so the scanned set stays the explicit list --
-//     the set IS the claim.
-//
-// WHAT A "READ" MATCHES, and what it cannot:
-//
-//   - Matched: a property access (`x.providerOptions`, optional chaining
-//     included), a bracket access keyed by the literal
-//     (`x["provider_options"]`), and a destructured binding naming either
-//     spelling as the source key -- a plain `{ providerOptions }`, a renamed
-//     `{ providerOptions: opts }`, or the same in a function parameter. Both
-//     spellings are watched: the camelCase name the parsed exchange spec holds
-//     it under at runtime, and the snake_case name the document and an
-//     unnormalized parse use.
-//   - Not matched, by construction of an AST walk: a mention inside a comment or
-//     a string/template literal that is not itself the destructured key or the
-//     bracket literal -- a doc string or a log message naming the option is not
-//     a read of it.
-//   - Not matched, as a stated limit: a dynamic key (`x[computedKeyVar]`, or a
-//     computed destructuring key), and a re-export under another name
-//     (`export { providerOptions as somethingElse }`, whose specifier nodes are
-//     identifiers rather than the property-access or destructuring shapes
-//     above). Neither writes the name in a shape this scan reads.
+// Scans CLI_FILES, every file under apps/cli/src/connection/webrtc/, checked
+// against the directory listing; and WEB_FILES, rendezvous.ts,
+// managedRendezvous.ts and peerMessageConnection.ts plus every local module they
+// import statically, one hop out, checked against their import statements
+// through `ts.resolveModuleName`. A file outside these lists is unexamined, not
+// cleared. Fails on drift in either list, and on a property access, a literal
+// bracket access or a destructured key naming `providerOptions` or
+// `provider_options`. A mention in a comment or string is not a read; a computed
+// key and a renamed re-export are not seen. Exit 0 clean, 1 on a finding. Why
+// the web set is a list: docs/notes/repo-check-scripts.md.
 
 import ts from "typescript";
 import { dirname, relative, resolve } from "node:path";

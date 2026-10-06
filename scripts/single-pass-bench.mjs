@@ -1,82 +1,28 @@
-// Single-pass PSI measurement harness.
-//
-// Measures the two costs that bind the single-pass dataset ceiling -- they are
-// NOT the wire size (see docs/spec/PROTOCOL.md, "Linkage strategies"):
-//
-//   1. ECDH masking compute -- one elliptic-curve scalar multiplication per
-//      DISTINCT linkage-key value, single-threaded through @openmined/psi.js.
-//      Across the exchange the curve work is c_enc*(D_send + D_recv) for the
-//      first encryption of each party's set plus c_re*(2*D_recv) for the
-//      sender's re-encryption and the receiver's match, where D is the count of
-//      distinct values a party pools across all keys.
-//   2. The RECEIVER's peak resident memory -- it holds the reply, decodes it,
-//      builds its own and the sender's distinct-value index tables, and runs the
-//      cascade replay, all resident at once. The receiver is the heavier side.
-//
-// Three memory quantities are reported, and they differ by more than an order of
-// magnitude (see docs/spec/PROTOCOL.md, the single-pass dataset ceiling): the
-// lifetime peak RSS (transient allocation churn, the
-// practical ceiling), the live V8 heap after a forced GC (retained JS), and the
-// WebAssembly linear heap. The WASM heap must be measured DIRECTLY -- it is the
-// emmalloc linear memory the OpenMined module exports, grow-only and never
-// returned to the OS, and process.memoryUsage().arrayBuffers does NOT include it
-// (arrayBuffers counts only the V8 wire-buffer copies). The harness captures the
-// exported WebAssembly.Memory by wrapping WebAssembly.instantiate before the
-// module instantiates and reads its byte length (installWasmHeapProbe below).
-//
-// Modes:
+// Single-pass PSI measurement harness. Not a check: it prints the tables behind
+// docs/spec/PROTOCOL.md's single-pass dataset ceiling, and exits 2 on an
+// unknown mode.
 //
 //   node scripts/single-pass-bench.mjs rates [D ...]
-//     Times each masking op directly at the given distinct-value counts (no
-//     network) and prints per-value microseconds, bytes-per-value, and the
-//     cumulative WASM linear-heap size. Establishes that masking is linear in the
-//     distinct-value count, so the table in the spec can extrapolate from these
-//     slopes. The WASM heap is grow-only and shared across the D values in one run,
-//     so its column is CUMULATIVE; for a clean per-D WASM floor (e.g. a high-D
-//     point near the cell ceiling) run a SINGLE D: `rates 500000`.
+//     Times each masking op at each distinct-value count D, with no network, and
+//     prints per-value microseconds, bytes per value and the WASM linear heap.
+//     The heap column is cumulative across one run; pass a single D for a clean
+//     per-D floor.
 //
 //   node scripts/single-pass-bench.mjs sweep [--keys K] [--overlap F] [--sizes N,N,...] [--gc]
-//     For each row count N it forks a sender and a receiver child running the real
-//     linkViaSinglePassPSI over a parent-relayed pipe, so each process's peak RSS
-//     (process.resourceUsage().maxRSS) is isolated and faithful -- the receiver
-//     decode + index-table build + cascade replay are exercised exactly as in a
-//     live exchange. Prints a table of masking wall-clock, peak RSS, and the WASM
-//     linear heap per side. maxRSS is the WHOLE-PROCESS LIFETIME high-water mark, so
-//     it captures transient allocation churn across all phases, not an isolated
-//     single phase's peak; most of the per-value slope is collectable JS garbage,
-//     not live retained memory. With --gc the children fork under --expose-gc,
-//     the same runtime flag the shipped CLI sets, which turns on
-//     @alcove/core's relieveTransientMemory at the single-pass phase boundaries --
-//     so the recv RSS the table reports is the real shipped relief, not a
-//     bench-only collection. The table also adds the post-GC live heap, the
-//     retained floor the transient peak sits above (the split that shows the peak
-//     is mostly collectable churn).
+//     For each row count N, forks a sender and a receiver running the real
+//     linkViaSinglePassPSI over a parent-relayed pipe, and prints masking time,
+//     peak RSS and WASM heap per side. --gc forks the children under
+//     --expose-gc, as the shipped CLI runs, and adds the post-GC live heap.
 //
 //   node scripts/single-pass-bench.mjs both-sided [--keys K] [--sizes N,N,...]
 //                                                [--group G] [--gc]
-//     The QUADRATIC case: both parties declare `deduplicate`, so the run resolves
-//     many-to-many and a value g of each party's rows hold contributes g * g
-//     pairs. Every row of both parties holds a key-0 value shared with the
-//     partner, in groups of G (default G = N, the whole dataset on one value),
-//     so the resolved table holds N * G pairs and at the default reaches
-//     N * N -- exactly the pair-count bound the sender holds the returned table
-//     to (own rows times the partner's declared record count). The later keys
-//     hold near-unique values, so D stays keys * rows and the masking workload
-//     is the sweep's. Prints the pair count beside each side's peak RSS and the
-//     receiver's post-replay wall-clock, which is where the closure check over
-//     the table's blocks lands.
+//     Both parties declare `deduplicate` and share key-0 values in groups of G
+//     (default N), so the resolved table has N * G pairs; prints the pair count,
+//     each side's peak RSS and the receiver's post-replay time.
 //
-// The masking ops require a shared PSI client key between the receiver's request
-// and its match step, so the two sides cannot run as independent processes that
-// each mint their own key; they must exchange live, which is why the sweep relays
-// a real exchange rather than pre-building a reply offline.
-//
-// Datasets are near-unique within a party (every cell a distinct value, so
-// D = keys * rows -- the worst case the ceiling must hold for) with the first
-// `overlap * rows` rows shared across parties so the match path runs and the
-// result can be checked. Both parties are sized equally (the symmetric case the
-// role rule targets); the sender's row count drives the index table, the larger
-// distinct-value counts drive everything else.
+// Datasets are near-unique within a party (D = keys * rows), with the first
+// overlap * rows rows shared. What each quantity measures, and why the WASM
+// heap is read directly: docs/notes/repo-check-scripts.md.
 
 import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
