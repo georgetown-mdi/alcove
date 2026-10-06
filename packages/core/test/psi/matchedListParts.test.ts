@@ -1,12 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
-  ConnectionError,
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import { MESSAGE_HEADER_BYTES } from "../../src/connection/fileSyncFraming";
-import { PeerAbortError } from "../../src/errors";
+import { PeerAbortError, ConnectionError } from "../../src/errors";
 import {
   arrayPart,
   arraySource,

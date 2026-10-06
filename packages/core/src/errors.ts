@@ -18,7 +18,7 @@
  *   A retry meets the same partner, so the CLI's error->exit boundary maps
  *   this kind to 76 (EX_PROTOCOL).
  * - `closed`: a parked operation was cancelled by a local
- *   {@link MessageConnection.close} (e.g. a signal-driven shutdown). Nothing
+ *   `MessageConnection.close` (e.g. a signal-driven shutdown). Nothing
  *   went wrong; it is distinct from `usage` (not a programming error) and from
  *   `transport` (not a peer-timeout diagnostic). A clean *remote* close stays
  *   `transport`; a future consumer needing to act on it separately should add
@@ -44,7 +44,7 @@ export class ConnectionError extends Error {
 }
 
 /**
- * What a transport's {@link MessageConnection.close} rejects with when it tore
+ * What a transport's `MessageConnection.close` rejects with when it tore
  * down without the peer confirming the last frames it was handed: the partner
  * may or may not have them. Always kind `transport`. A transport subclasses it
  * to give its own message; a wrapping connection passes it through its own
@@ -84,7 +84,7 @@ export function asConnectionError(
 
 /**
  * The refusal raised when the two parties' agreed terms name different
- * algorithms at the run boundary ({@link resolveCountOnlyRun}).
+ * algorithms at the run boundary (`resolveCountOnlyRun`).
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: this
  * party's own algorithm is its own config, so a divergence means the
@@ -101,12 +101,12 @@ export class AlgorithmDivergenceError extends ConnectionError {
 
 /**
  * The refusal raised when a party asserts a payload disclosure the agreed
- * terms declare no column for ({@link resolveDirectionDisclosesPayload}).
+ * terms declare no column for (`resolveDirectionDisclosesPayload`).
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}: the
  * assertion is held against a pair of documents both parties agreed, so the
  * contradiction is a process disclosing against the terms it agreed under --
- * the classification {@link assertNoPayloadReceived} gives the same pair
+ * the classification `assertNoPayloadReceived` gives the same pair
  * when the column arrives (CLI exit 76, not 64). The constructor takes no
  * argument and holds the message itself, so no call site can compose a value
  * read off either agreed document into what the operator is shown.
@@ -131,7 +131,7 @@ export class PayloadDisclosureDivergenceError extends ConnectionError {
 /**
  * The refusal raised when a partner presents a `deduplicate` its
  * invitation did not declare
- * ({@link assertPresentedDeduplicateMatchesInvitation}).
+ * (`assertPresentedDeduplicateMatchesInvitation`).
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}:
  * the contradiction is between two documents the partner authored (CLI

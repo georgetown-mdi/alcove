@@ -36,6 +36,7 @@ import {
   PeerAbortError,
   ProtocolRefusalError,
   TransportPublishIndeterminateError,
+  errorMessage,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -59,7 +60,6 @@ import {
   isProtocolTempName,
   isExpectedAbortName,
 } from "./fileSyncNames";
-import { errorMessage } from "./messageConnection";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 
 // The single remedy for a message publish the transport could not settle,

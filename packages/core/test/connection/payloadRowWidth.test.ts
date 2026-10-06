@@ -1,3 +1,4 @@
+import { ConnectionError } from "../../src/errors";
 import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
@@ -8,10 +9,7 @@ import {
   prepareForExchange,
   runExchange,
 } from "../../src/exchange";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PreparedExchange } from "../../src/exchange";

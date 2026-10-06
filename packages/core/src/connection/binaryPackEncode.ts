@@ -24,8 +24,6 @@
 // has no end, so the cycle is refused as soon as it is reached rather than left
 // to fill memory.
 
-import { ConnectionError } from "./messageConnection";
-
 /**
  * Longest array, map, string or byte string BinaryPack can declare: its widest
  * container header is a 32-bit count.
@@ -393,3 +391,4 @@ export function encodeBinaryPackValue(value: unknown): ArrayBuffer {
   }
   return sink.toArrayBuffer();
 }
+import { ConnectionError } from "../errors";

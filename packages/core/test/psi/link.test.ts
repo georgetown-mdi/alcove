@@ -47,7 +47,6 @@ import {
   createMessagePipe,
   receiveParsed,
   parseOrProtocolError,
-  ConnectionError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
@@ -55,6 +54,7 @@ import {
   InternalConsistencyError,
   ProtocolRefusalError,
   UsageError,
+  ConnectionError,
 } from "../../src/errors";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";

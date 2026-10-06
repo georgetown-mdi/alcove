@@ -13,9 +13,12 @@
 export {
   AcceptedTermsShapeError,
   AuthenticationError,
+  ConnectionError,
+  DeliveryUnconfirmedError,
   DirectoryListingBoundsError,
   FrameSizeExceededError,
   InternalConsistencyError,
+  InvitationTermDivergenceError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
   PeerAbortError,
@@ -27,12 +30,14 @@ export {
   TransportPublishIndeterminateError,
   UnknownStandardizationFunctionError,
   UsageError,
+  asConnectionError,
   causeChainSome,
   chainDetailCauses,
+  errorMessage,
   isPeerWaitTimeout,
   isSetTooLargeError,
 } from "./errors";
-export type { RoundSetLimitReason } from "./errors";
+export type { ConnectionErrorKind, RoundSetLimitReason } from "./errors";
 export {
   FAILURE_CAUSE_KINDS,
   FAILURE_CAUSE_PATH_MAX_LENGTH,
@@ -130,17 +135,10 @@ export { MAX_FILE_NAME_BYTES } from "./connection/fileSyncRendezvous";
 // console matches a run's stderr tail against it.
 export { TEARDOWN_LEFTOVER_FILES_CLAUSE } from "./transportTeardownNotice";
 export {
-  ConnectionError,
-  DeliveryUnconfirmedError,
   QueuedMessageConnection,
-  asConnectionError,
-  errorMessage,
   fromEventConnection,
 } from "./connection/messageConnection";
-export type {
-  ConnectionErrorKind,
-  MessageConnection,
-} from "./connection/messageConnection";
+export type { MessageConnection } from "./connection/messageConnection";
 export { EncryptedMessageConnection } from "./connection/encryptedMessageConnection";
 // The transport-agnostic half of the WebRTC data-channel inbound bound. Barrelled
 // because the enforcement point is per-transport and lives outside this package
@@ -795,7 +793,6 @@ export {
 } from "./utils/sshHostKey.js";
 export {
   CONFIRMING_PROTOCOL_STAGE_ID,
-  InvitationTermDivergenceError,
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,

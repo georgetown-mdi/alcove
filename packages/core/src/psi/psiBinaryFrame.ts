@@ -10,8 +10,7 @@
 //     otherwise end on a decode message naming nothing it can act on.
 //   - Any other frame, which keeps the cause it failed with behind an Alcove
 //     protocol error naming the boundary.
-import { ConnectionError } from "../connection/messageConnection";
-import { isPsiLibraryFailure } from "../errors";
+import { isPsiLibraryFailure, ConnectionError } from "../errors";
 import { throwIfPartnerAbort } from "../partnerAbortFrame";
 
 import type { MessageConnection } from "../connection/messageConnection";

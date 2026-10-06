@@ -8,7 +8,7 @@
 // header of the part that draws it. Each part's body is parsed as the part
 // arrives, so the receiver holds one unparsed part at a time
 // (docs/spec/PROTOCOL.md, "A list of matched records is sent in parts").
-import { ConnectionError } from "../connection/messageConnection";
+import { ConnectionError } from "../errors";
 import {
   MAX_JSON_ARRAY_ELEMENTS,
   parseBoundedJson,

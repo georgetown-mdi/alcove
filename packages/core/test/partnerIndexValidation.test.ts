@@ -1,3 +1,4 @@
+import { ConnectionError } from "../src/errors";
 import { expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
@@ -51,7 +52,6 @@ import {
 import { fanOutFreeBounds } from "./utils/singlePassBounds";
 import {
   createMessagePipe,
-  ConnectionError,
   type MessageConnection,
 } from "../src/connection/messageConnection";
 import type { AssociationTable } from "../src/types";

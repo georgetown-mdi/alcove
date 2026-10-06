@@ -3,14 +3,12 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { PSIParticipant } from "../../src/psi/participant";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import {
   InternalConsistencyError,
   markPsiLibraryFailure,
   PeerAbortError,
+  ConnectionError,
 } from "../../src/errors";
 import { PSI_SET_TOO_LARGE_ABORT_REASON } from "../../src/partnerAbortFrame";
 import { decodePsiBinaryFrame } from "../../src/psi/psiBinaryFrame";

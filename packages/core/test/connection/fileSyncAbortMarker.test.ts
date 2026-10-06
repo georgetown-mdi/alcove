@@ -6,14 +6,13 @@ import type {
   FileInfo,
 } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
-import { PeerAbortError } from "../../src/errors";
+import { PeerAbortError, ConnectionError } from "../../src/errors";
 import {
   serializeFileSyncMessage,
   MESSAGE_TYPE_OBJECT,
 } from "../../src/connection/fileSyncFraming";
 import {
   fromEventConnection,
-  ConnectionError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";

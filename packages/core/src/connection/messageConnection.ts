@@ -1,12 +1,5 @@
 import type { Connection } from "../types";
 import { ConnectionError, asConnectionError } from "../errors";
-export {
-  ConnectionError,
-  DeliveryUnconfirmedError,
-  asConnectionError,
-  errorMessage,
-} from "../errors";
-export type { ConnectionErrorKind } from "../errors";
 
 /**
  * Pull-based transport abstraction. A consumer drives the conversation by

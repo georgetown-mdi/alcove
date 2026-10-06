@@ -16,8 +16,8 @@ import {
   isTransportPublishIndeterminate,
   markPeerWaitTimeout,
   RoundSetLimitError,
+  ConnectionError,
 } from "../src/errors";
-import { ConnectionError } from "../src/connection/messageConnection";
 
 // The recovery step each of the three classes chains behind its summary: the
 // first cause link, read off the error itself rather than restated here.

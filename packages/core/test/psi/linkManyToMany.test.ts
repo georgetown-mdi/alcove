@@ -49,12 +49,11 @@ import { linkViaPSI, linkViaSinglePassPSI } from "../../src/psi/link";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import {
   createMessagePipe,
-  ConnectionError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import { entityClusters } from "../../src/psi/entityClosure";
 import type { EntityClusterSummary } from "../../src/psi/entityClosure";
-import { InternalConsistencyError } from "../../src/errors";
+import { InternalConsistencyError, ConnectionError } from "../../src/errors";
 import { matchedPairCount } from "../../src/exchange";
 import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
 import type { Metadata } from "../../src/config/metadata";

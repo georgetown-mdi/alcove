@@ -135,11 +135,6 @@ import type {
 } from "./types.js";
 import { connectionEndReader } from "./connection/messageConnection.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
-export {
-  AlgorithmDivergenceError,
-  InvitationTermDivergenceError,
-  PayloadDisclosureDivergenceError,
-} from "./errors.js";
 import type { PresentedHostKey } from "./connection/fileSyncConnection.js";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { ExchangeSpec } from "./config/exchangeSpec.js";

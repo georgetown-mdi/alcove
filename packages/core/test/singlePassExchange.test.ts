@@ -3,7 +3,6 @@ import { expect, test } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import {
-  PayloadDisclosureDivergenceError,
   prepareForExchange,
   resolveBothDirectionsDisclosePayload,
   resolveDirectionDisclosesPayload,
@@ -13,7 +12,10 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../src/connection/messageConnection";
-import { PeerAbortError } from "../src/errors";
+import {
+  PeerAbortError,
+  PayloadDisclosureDivergenceError,
+} from "../src/errors";
 
 import type { BuiltExchangeRecord } from "../src/records/exchangeRecord";
 import type { Metadata } from "../src/config/metadata";

@@ -10,8 +10,7 @@
 // to a pair-count bound the caller derived. The wire schemas accept any FINITE
 // number, so integrality is checked here too: a fractional index addresses
 // nothing and is `undefined`.
-import { ConnectionError } from "../connection/messageConnection";
-import { InternalConsistencyError } from "../errors";
+import { InternalConsistencyError, ConnectionError } from "../errors";
 
 /**
  * A partner-frame violation, tagged `"protocol"` so it is classified exactly like

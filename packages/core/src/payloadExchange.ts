@@ -26,10 +26,7 @@ import { readRowColumn } from "./file.js";
 import type { CSVRow } from "./file.js";
 import type { CommittedPayload } from "./records/exchangeRecord.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
-import {
-  ConnectionError,
-  parseOrProtocolError,
-} from "./connection/messageConnection.js";
+import { parseOrProtocolError } from "./connection/messageConnection.js";
 import {
   receiveMatchedListParts,
   sendMatchedList,
@@ -45,6 +42,7 @@ import {
   ProtocolRefusalError,
   UsageError,
   isTransportPublishIndeterminate,
+  ConnectionError,
 } from "./errors.js";
 
 /** The payload received from the exchange partner after PSI linkage. */

@@ -44,6 +44,7 @@ import {
   BilateralModeMismatchError,
   FrameSizeExceededError,
   markPeerWaitTimeout,
+  errorMessage,
 } from "../errors";
 import { failureCauseError } from "../failureCause";
 import {
@@ -71,7 +72,6 @@ import {
   serializeEnvelope,
   type HelloEnvelope,
 } from "./controlEnvelope";
-import { errorMessage } from "./messageConnection";
 import type { FileInfo, FileTransportClient } from "./fileSyncConnection";
 
 // The path/display scope a synchronize() call computes once at entry (from

@@ -1,14 +1,16 @@
+import {
+  ConnectionError,
+  asConnectionError,
+  errorMessage,
+} from "../../src/errors";
 import { expect, test, vi } from "vitest";
 import { z } from "zod";
 
 import {
-  ConnectionError,
   DEFAULT_INACTIVITY_TIMEOUT_MS,
   QueuedMessageConnection,
-  asConnectionError,
   connectionEndReader,
   createMessagePipe,
-  errorMessage,
   fromEventConnection,
   isReceiveDeadlineFailure,
   parseOrProtocolError,

@@ -1,3 +1,4 @@
+import { ConnectionError } from "../../src/errors";
 import { expect, test } from "vitest";
 
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
@@ -9,10 +10,7 @@ import type {
   FileTransportClient,
   FileInfo,
 } from "../../src/connection/fileSyncConnection";
-import {
-  ConnectionError,
-  fromEventConnection,
-} from "../../src/connection/messageConnection";
+import { fromEventConnection } from "../../src/connection/messageConnection";
 import { withCapturedLogs } from "../../src/testing";
 
 import { expectRejectionKind } from "../utils/expectRejection";

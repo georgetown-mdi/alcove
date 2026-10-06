@@ -16,13 +16,13 @@ import {
 import {
   createMessagePipe,
   receiveParsed,
-  ConnectionError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import {
   InternalConsistencyError,
   isPsiLibraryFailure,
+  ConnectionError,
 } from "../../src/errors";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";

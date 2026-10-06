@@ -31,7 +31,6 @@ import {
 } from "./roundResolution";
 import type { AssociationTable } from "../types";
 import {
-  ConnectionError,
   connectionEndReader,
   parseOrProtocolError,
   type MessageConnection,
@@ -77,6 +76,7 @@ import {
   InternalConsistencyError,
   ProtocolRefusalError,
   UsageError,
+  ConnectionError,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { receiveAfterTerms } from "../partnerAbortFrame";

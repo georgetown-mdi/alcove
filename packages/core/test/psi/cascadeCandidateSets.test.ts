@@ -1,3 +1,4 @@
+import { ConnectionError } from "../../src/errors";
 import { expect, test, vi } from "vitest";
 
 import PSI from "@openmined/psi.js";
@@ -21,7 +22,6 @@ import {
   type LinkageCardinality,
 } from "../../src/psi/link";
 import {
-  ConnectionError,
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";

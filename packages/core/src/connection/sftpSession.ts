@@ -25,6 +25,7 @@
 // keeps thin delegating members (probeHostKeyFingerprint and the observedHostKey
 // getter) so its public and test surface is unchanged.
 
+import { errorMessage } from "../errors";
 import type { getLoggerForVerbosity } from "../utils/logger";
 import {
   redactAndSanitizeForDisplay,
@@ -48,7 +49,6 @@ import {
   SFTP_ALGORITHMS_ALLOWED_SUBKEYS,
 } from "./sftpConnect";
 import type { PresentedHostKey } from "./sftpConnect";
-import { errorMessage } from "./messageConnection";
 import type { FileTransportClient } from "./fileSyncConnection";
 
 // The connection primitives the subsystem borrows from FileSyncConnection,

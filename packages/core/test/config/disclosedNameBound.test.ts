@@ -7,11 +7,8 @@ import {
 import { prepareForExchange, runExchange } from "../../src/exchange";
 import { overlongDisclosedColumnPositions } from "../../src/config/metadata";
 import { MAX_NAME_LENGTH } from "../../src/config/linkageTermsSchema";
-import { UsageError } from "../../src/errors";
-import {
-  createMessagePipe,
-  ConnectionError,
-} from "../../src/connection/messageConnection";
+import { UsageError, ConnectionError } from "../../src/errors";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 

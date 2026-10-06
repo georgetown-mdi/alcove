@@ -1,13 +1,11 @@
+import { ConnectionError } from "../src/errors";
 import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
 import { deriveAcceptedLinkageTerms } from "../src/linkageTermsNegotiation";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../src/connection/messageConnection";
+import { createMessagePipe } from "../src/connection/messageConnection";
 import {
   assertPayloadMatchesAgreedSend,
   buildOutputTable,

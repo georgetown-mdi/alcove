@@ -1,6 +1,5 @@
+import { ConnectionError } from "../../src/errors";
 import { expect } from "vitest";
-
-import { ConnectionError } from "../../src/connection/messageConnection";
 
 // Assert that `p` rejects with a ConnectionError of `kind`, and return the
 // error so a caller can layer further assertions (its message, or sticky-state

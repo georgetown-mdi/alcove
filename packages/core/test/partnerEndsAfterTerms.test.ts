@@ -3,11 +3,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { prepareForExchange, runExchange } from "../src/exchange";
-import {
-  ConnectionError,
-  createMessagePipe,
-} from "../src/connection/messageConnection";
-import { PeerAbortError } from "../src/errors";
+import { createMessagePipe } from "../src/connection/messageConnection";
+import { PeerAbortError, ConnectionError } from "../src/errors";
 import { sendAbort } from "../src/protocolSetup";
 import { getLogger } from "../src/utils/logger";
 

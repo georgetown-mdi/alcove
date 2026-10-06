@@ -1,3 +1,4 @@
+import { ConnectionError, DeliveryUnconfirmedError } from "../../src/errors";
 import { readFileSync } from "node:fs";
 
 import { expect, test } from "vitest";
@@ -15,8 +16,6 @@ import {
 } from "../../src/utils/boundedJson";
 import {
   createMessagePipe,
-  ConnectionError,
-  DeliveryUnconfirmedError,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
 import { deriveAeadKey, AEAD_CONTEXTS, type AeadContext } from "../../src/auth";
