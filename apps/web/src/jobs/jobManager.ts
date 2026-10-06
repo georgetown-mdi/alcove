@@ -5,6 +5,8 @@ import {
   NestingDepthExceededError,
   NodeCountExceededError,
   errorWithPartnerCauseLinks,
+  getLogger,
+  sanitizeErrorForDisplay,
   sanitizeForDisplay,
 } from "@alcove/core";
 
@@ -137,6 +139,19 @@ export class ExchangeBusyError extends Error {
   constructor(readonly activeJobId: string) {
     super("an exchange is already active");
     this.name = "ExchangeBusyError";
+  }
+}
+
+/**
+ * Thrown by every {@link JobManager} method that would spawn a CLI child once
+ * {@link JobManager.shutdown} has been called: the server is exiting, and a
+ * child spawned now would outlive it or be killed mid-run. The routes map it
+ * to a 503.
+ */
+export class ConsoleShuttingDownError extends Error {
+  constructor() {
+    super("the console is shutting down");
+    this.name = "ConsoleShuttingDownError";
   }
 }
 
@@ -315,8 +330,9 @@ type JobStatus = "running" | "succeeded" | "failed" | "cancelled";
  * denial (nothing at the record path), the only one that licenses destroying
  * the workdir without asking; `undescribable-record` is a record file present
  * but not one this bundle can parse (unknown `outcome`, malformed, or missing
- * its keys half); `not-settled` is a run still going, whose pair the CLI
- * writes near the end.
+ * its keys half); `not-settled` is a run whose child has not exited, even
+ * where its terminal event has arrived, since the CLI writes the pair near the
+ * end and the run's artifacts are resolved only on exit.
  */
 export type RecordUnavailableReason =
   "not-settled" | "no-record" | "undescribable-record";
@@ -491,6 +507,8 @@ type ExchangeSlot = { channel: JobCreateIntent["channel"] } & (
  */
 const EVENT_BUFFER_CAP = 10000;
 
+const log = getLogger("job-api");
+
 /** The grace before SIGINT escalates to SIGTERM during cancellation. */
 const CANCEL_SIGTERM_GRACE_MS = 5000;
 /** The grace before SIGTERM escalates to SIGKILL during cancellation. */
@@ -644,6 +662,8 @@ export class JobManager {
    * whose failed run holds it until deleted.
    */
   private termsApplyInFlight = false;
+  /** Set by the first {@link shutdown} call; every spawn is refused from then. */
+  private shuttingDown = false;
   /**
    * The configuration the operator last opened off the mount, as that open
    * read it: what a run of the opened configuration composes its hand-off
@@ -698,6 +718,7 @@ export class JobManager {
     // console answers with the occupying exchange's id, which the caller
     // re-attaches to, whatever else this create would be refused for.
     if (this.slot !== null) throw new ExchangeBusyError(this.slotId()!);
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
 
     let serverEntry: JobSftpServerEntry | undefined;
     if (intent.channel === "sftp") {
@@ -799,7 +820,13 @@ export class JobManager {
           "createJob cleanup reached with a spawned child; refusing to free the slot",
         );
       this.slot = null;
-      if (workdir !== null) await removeWorkdir(workdir);
+      if (workdir !== null)
+        await removeWorkdir(workdir).catch((cleanupError: unknown) => {
+          log.warn(
+            "Could not remove the folder of an exchange that failed to start:",
+            sanitizeErrorForDisplay(cleanupError),
+          );
+        });
       throw error;
     }
   }
@@ -1025,6 +1052,7 @@ export class JobManager {
     host: string;
     port?: number;
   }): Promise<SftpProbeResult> {
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
     if (this.probeInFlight) throw new SftpProbeBusyError();
     this.probeInFlight = true;
     try {
@@ -1093,6 +1121,7 @@ export class JobManager {
     exportCertificate: boolean;
     identityLocation?: JobSigningIdentityLocation;
   }): Promise<SigningFingerprintResult> {
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
     if (this.fingerprintInFlight) throw new SigningFingerprintBusyError();
     const identityPath = resolveSigningIdentityPath({
       dataRoot: this.dataRoot,
@@ -1261,6 +1290,7 @@ export class JobManager {
         this.reconcileTerminal(record, state, diagnostics),
     };
 
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
     record.handle = this.spawnForMode(intent, {
       exchangeDocuments,
       serverEntry,
@@ -1549,6 +1579,7 @@ export class JobManager {
     | TermsProposalApplyResult
     | { kind: "unavailable" | "busy" | "configuration-changed" }
   > {
+    if (this.shuttingDown) throw new ConsoleShuttingDownError();
     const record = this.getJob(id);
     const basis = record?.termsProposalBasis ?? null;
     if (
@@ -1657,7 +1688,7 @@ export class JobManager {
    * the end of the tail, the report among it.
    *
    * The only slot-release point besides the pre-spawn create failure: fires
-   * on the child's `close` (or a spawn `error`), so a killed child is
+   * on the child's `close`, so a killed child is
    * confirmed dead before {@link maybeFreeSlot} frees the slot for a
    * successor.
    */
@@ -1893,8 +1924,11 @@ export class JobManager {
    * server exits only after the CLI's own cleanup and no orphaned CLI outlives
    * it. Resolves at once when no child is running. A repeated call while that
    * child is stopping signals nothing further and returns the same promise.
+   * From the first call on, every spawn is refused with
+   * {@link ConsoleShuttingDownError}.
    */
   shutdown(): Promise<void> {
+    this.shuttingDown = true;
     const slot = this.slot;
     if (slot === null || slot.phase !== "active") return Promise.resolve();
     const record = slot.record;
@@ -1929,7 +1963,8 @@ export class JobManager {
  * (docs/spec/EXCHANGE_RECORD.md, When a record is owed), so a run that
  * disclosed and then terminated writes one too. Settling is read separately
  * because the CLI writes the pair near the end of a run, so a mid-run ask
- * could read a half-written state.
+ * could read a half-written state. Settled is the child's exit, not its
+ * terminal event: a failing run reports its error before it exits.
  *
  * `recordOutcome` travels with the availability so a client can tell a
  * terminated record (no result file behind it) from a completed one, and
@@ -1950,7 +1985,7 @@ function liveRecordAvailability(record: JobRecord):
     recordAvailable: false as const,
     recordUnavailableReason,
   });
-  if (record.status === "running") return withheld("not-settled");
+  if (record.terminal === null) return withheld("not-settled");
   const artifacts = runArtifactsOf(record);
   if (artifacts === null || !jobFileExists(artifacts.record))
     return withheld("no-record");

@@ -1,4 +1,5 @@
 import {
+  ConsoleShuttingDownError,
   ExchangeBusyError,
   JobIntentUncomposableError,
   JobRendezvousRetainRequiredError,
@@ -101,6 +102,8 @@ export const route = defineJobRoute({
         // browser can re-attach to the running exchange.
         if (error instanceof ExchangeBusyError)
           return jobJsonResponse({ id: error.activeJobId }, 409);
+        if (error instanceof ConsoleShuttingDownError)
+          return jobEmptyResponse(503);
         // The refusal the browser cannot diagnose from the intent it sent: it
         // is about the console's mounts. The body names the refusal with a
         // fixed token and nothing else -- no path, no mount name.

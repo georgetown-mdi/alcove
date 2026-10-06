@@ -10,8 +10,9 @@
  * too, since such a run reaches the seat as a failure
  * (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
  *
- * The ask is made only once the run has settled, matching the console's own
- * rule of reporting no record for a running job.
+ * The ask is made once the seat has seen the run's terminal event, and asked
+ * again while the console reports the run's child has not yet exited: the
+ * console reports no record until then, and the CLI may still be writing it.
  *
  * An ask the console does not answer is not a run without a record: reading
  * it as one would hide a disclosure's record behind a single hiccup, on the
@@ -102,6 +103,15 @@ export type JobExchangeRecordOffer =
   | { kind: "none" }
   | { kind: "unanswered" };
 
+/**
+ * What one ask of the status route answered: an offer, or the console reporting
+ * that the run's child has not exited, so it cannot yet say. Kept out of
+ * {@link JobExchangeRecordOffer} because no seat holds it as an answer:
+ * {@link askJobExchangeRecordOffer} asks again until the run settles.
+ */
+export type JobExchangeRecordAnswer =
+  JobExchangeRecordOffer | { kind: "not-settled" };
+
 /** The status-body fields this reader looks at, all of them unknown until read:
  * the body is JSON off the network, so nothing about its shape is given. */
 interface JobStatusFields {
@@ -122,9 +132,9 @@ interface JobStatusFields {
  */
 const OFFER_FOR_UNAVAILABLE_REASON: Record<
   RecordUnavailableReason,
-  JobExchangeRecordOffer
+  JobExchangeRecordAnswer
 > = {
-  "not-settled": { kind: "none" },
+  "not-settled": { kind: "not-settled" },
   "no-record": { kind: "none" },
   "undescribable-record": { kind: "undescribable" },
 };
@@ -141,7 +151,7 @@ const OFFER_FOR_UNAVAILABLE_REASON: Record<
  * read is not a denial, and folding it into `none` would let it license
  * destroying the run's workdir.
  */
-function offerForUnavailableRecord(reason: unknown): JobExchangeRecordOffer {
+function offerForUnavailableRecord(reason: unknown): JobExchangeRecordAnswer {
   if (reason === undefined) return { kind: "none" };
   for (const [known, offer] of Object.entries(OFFER_FOR_UNAVAILABLE_REASON))
     if (reason === known) return offer;
@@ -163,8 +173,8 @@ function recordOutcomeOf(value: unknown): ExchangeRecordOutcome | undefined {
  * a 200 whose body does not assert `recordAvailable: true` is the console not
  * offering the pair, and `recordUnavailableReason` says whether that is a
  * definitive absence or a record it holds and cannot describe
- * ({@link offerForUnavailableRecord}). Only the definitive absence licenses a
- * discard that does not ask again.
+ * ({@link offerForUnavailableRecord}), or that the run's child has not exited
+ * yet. Only the definitive absence licenses a discard that does not ask again.
  *
  * A body asserting `recordAvailable === true` is trusted even where the rest
  * is not: a missing/non-string `recordCreatedAt` or an unrecognized
@@ -183,7 +193,7 @@ function recordOutcomeOf(value: unknown): ExchangeRecordOutcome | undefined {
 export async function fetchJobExchangeRecordOffer(
   jobId: string,
   fetchImpl: typeof fetch = fetch,
-): Promise<JobExchangeRecordOffer> {
+): Promise<JobExchangeRecordAnswer> {
   try {
     const response = await fetchImpl(`/api/jobs/${jobId}`, { method: "GET" });
     if (!response.ok) return { kind: "unanswered" };
@@ -230,13 +240,15 @@ const RECORD_AVAILABILITY_RETRY_MS = 2_000;
 export const RECORD_AVAILABILITY_UNANSWERED_LIMIT = 5;
 
 /**
- * Ask the console where this job's record stands, re-asking while the ask
- * itself holds no answer.
+ * Ask the console where this job's record stands, re-asking while the run's
+ * child has not exited and while the ask itself holds no answer.
  *
- * One ask determines every answer the console actually gives: the seat asks a
- * run that has already settled, so `available` and `none` cannot change and
- * asking again would tell it the same thing. Only the ask that comes back
- * with nothing cannot be left alone -- a hiccup at the moment the run
+ * The seat asks once it has seen the run's terminal event, which a failing run
+ * emits before its child exits; the console answers `not-settled` until the
+ * exit, and that is asked again without bound, since the caller stays in its
+ * asking state meanwhile. Once settled, `available` and `none` cannot change
+ * and asking again would tell it the same thing. The ask that comes back
+ * with nothing is asked again within a bound -- a hiccup at the moment the run
  * settles would otherwise hide the record of a disclosure for the whole life
  * of the seat, on the one surface that also offers to delete it.
  *
@@ -260,8 +272,9 @@ export async function askJobExchangeRecordOffer(
   for (;;) {
     if (aborted()) return { kind: "none" };
     const offer = await fetchJobExchangeRecordOffer(jobId, fetchImpl);
-    if (offer.kind !== "unanswered") return offer;
-    if (++unanswered >= RECORD_AVAILABILITY_UNANSWERED_LIMIT)
+    if (offer.kind === "not-settled") unanswered = 0;
+    else if (offer.kind !== "unanswered") return offer;
+    else if (++unanswered >= RECORD_AVAILABILITY_UNANSWERED_LIMIT)
       return { kind: "unanswered" };
     if (aborted()) return { kind: "none" };
     await delay(RECORD_AVAILABILITY_RETRY_MS, signal);

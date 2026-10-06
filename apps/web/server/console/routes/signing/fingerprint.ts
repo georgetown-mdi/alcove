@@ -13,6 +13,10 @@ import {
 } from "@jobs/intentSchemas";
 
 import {
+  ConsoleShuttingDownError,
+  SigningFingerprintBusyError,
+} from "@jobs/jobManager";
+import {
   MAX_SIGNING_FINGERPRINT_BODY_BYTES,
   gateJobRoute,
   readJobRequestBody,
@@ -23,7 +27,6 @@ import {
   SigningIdentityLocationError,
 } from "@jobs/signingIdentity";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
-import { SigningFingerprintBusyError } from "@jobs/jobManager";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 
 import { defineJobRoute } from "../../jobRoute";
@@ -167,13 +170,16 @@ export const route = defineJobRoute({
           ...(identityLocation !== undefined ? { identityLocation } : {}),
         });
       } catch (error) {
-        // A request already in flight is a 409 (the busy convention). A
+        // A request already in flight is a 409 (the busy convention), and a
+        // console shutting down a 503. A
         // location that names nothing in the secrets mount is a 400 whose
         // message holds a field path and a reason, the shape every authoring
         // rejection takes. Anything else is an unexpected internal fault --
         // no detail crosses the boundary.
         if (error instanceof SigningFingerprintBusyError)
           return jobEmptyResponse(409);
+        if (error instanceof ConsoleShuttingDownError)
+          return jobEmptyResponse(503);
         if (error instanceof SigningIdentityLocationError)
           return jobJsonResponse({ error: error.message }, 400);
         return jobEmptyResponse(500);

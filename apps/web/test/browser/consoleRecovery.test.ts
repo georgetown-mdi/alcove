@@ -9,9 +9,12 @@ import { createElement } from "react";
 // Load Mantine's stylesheet so components render with their real geometry.
 import "@mantine/core/styles.css";
 
+import {
+  PENDING_RECORD_CONFIRM_BODY,
+  UNTAKEN_RECORD_CONFIRM_BODY,
+} from "@exchange/RunSurface";
 import { DISCARD_CONFIRM_BODY } from "@exchange/RecoveredExchangePanel";
 import { InviterScreen } from "@exchange/InviterScreen";
-import { UNTAKEN_RECORD_CONFIRM_BODY } from "@exchange/RunSurface";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
@@ -65,6 +68,9 @@ interface RecoveryStubOptions {
     outcome: string;
     certificateMismatchObserved?: boolean;
   };
+  /** Whether the status route reports the record `not-settled`: the run's
+   * terminal event has arrived and its child has not exited. */
+  recordNotSettled?: boolean;
   /** The body `GET /api/jobs/:id/folder` answers with; absent leaves it 404, a
    * job with no folder on disk. */
   folder?: object;
@@ -171,7 +177,12 @@ function stubRecoveryApi(options: RecoveryStubOptions = {}): {
                   recordCertificateMismatchObserved:
                     options.record.certificateMismatchObserved ?? false,
                 }
-              : { recordAvailable: false }),
+              : options.recordNotSettled === true
+                ? {
+                    recordAvailable: false,
+                    recordUnavailableReason: "not-settled",
+                  }
+                : { recordAvailable: false }),
           }),
         );
       }
@@ -878,6 +889,42 @@ describe("console strand recovery panel", () => {
 
     await expect
       .element(page.getByText(UNTAKEN_RECORD_CONFIRM_BODY))
+      .toBeInTheDocument();
+    expect(page.getByText(DISCARD_CONFIRM_BODY).query()).toBeNull();
+    expect(
+      api.captured.some(
+        (r) => r.url === "/api/jobs/job-fail" && r.method === "DELETE",
+      ),
+    ).toBe(false);
+  });
+
+  test("a failed run whose child has not exited still confirms the discard as a pending record", async () => {
+    // The run's error arrives before its child exits, and the record is
+    // written near the end: until the console says the run has settled, the
+    // discard confirm names a record that may be there.
+    persistAttachment("job-fail");
+    const api = stubRecoveryApi({
+      jobId: "job-fail",
+      status: "failed",
+      recordNotSettled: true,
+    });
+    app.render(createElement(InviterScreen));
+
+    await expect
+      .element(page.getByText("An exchange started from this console stopped"))
+      .toBeInTheDocument();
+    await expect
+      .poll(() =>
+        api.captured.some(
+          (r) => r.url === "/api/jobs/job-fail" && r.method === "GET",
+        ),
+      )
+      .toBe(true);
+    await flushPendingUpdates();
+    await page.getByRole("button", { name: "Discard" }).click();
+
+    await expect
+      .element(page.getByText(PENDING_RECORD_CONFIRM_BODY))
       .toBeInTheDocument();
     expect(page.getByText(DISCARD_CONFIRM_BODY).query()).toBeNull();
     expect(

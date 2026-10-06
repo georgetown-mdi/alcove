@@ -873,10 +873,6 @@ function sanitizeValue(value: unknown): unknown {
  * so `end` flushes the remainder into the window rather than leaving the
  * child's last line short of what it wrote.
  *
- * A caller that reads the window before stderr's `end` -- the spawn-error path
- * in {@link attachTerminalReconciliation} -- is short by up to a marker's
- * lookahead (`PRIVATE_KEY_MARKER_LOOKAHEAD` code units) of the last delivery.
- *
  * Both diagnostics come off one read of the window, so the tail an operator is
  * shown and the teardown report read out of it are the same bytes.
  */
@@ -948,18 +944,18 @@ function attachTerminalReconciliation(
   // so the CLI's own terminal fd-3 event is always parsed before the exit is
   // classified. On "exit" the terminal line can still sit in the pipe buffer,
   // and the manager would synthesize a misclassified terminal in its place.
-  child.on("close", (code, signal) => deliver(code, signal));
+  // An `error` does not deliver: Node emits `close` after a failed spawn too,
+  // and a failed kill leaves the child running.
+  let spawnFailed = false;
+  child.on("close", (code, signal) =>
+    spawnFailed ? deliver(1, null) : deliver(code, signal),
+  );
   child.on("error", (error: Error) => {
-    // The child could not be spawned or died abnormally; report a diagnostic and
-    // classify as a failure so the manager always reaches a terminal state.
-    // It delivers before stderr's `end`, so the tail can be short by a marker's
-    // lookahead of the child's last delivery: diagnostic fidelity only, on a
-    // path that rarely has stderr at all.
+    if (child.pid === undefined) spawnFailed = true;
     handlers.onDegraded(
       "relayProcessError",
       `CLI process error: ${redactAndFitUnescaped(error.message, DEFAULT_MAX_DISPLAY_LENGTH)}`,
     );
-    deliver(1, null);
   });
 }
 

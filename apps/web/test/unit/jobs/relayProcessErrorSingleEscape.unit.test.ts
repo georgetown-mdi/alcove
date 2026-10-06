@@ -71,8 +71,8 @@ function scratchDir(label: string): string {
   return dir;
 }
 
-/** A child whose spawn fails with `message`, as Node reports it on the child's
- * `error` event. */
+/** A child whose spawn fails with `message`, as Node reports it: an `error`
+ * event, then `close` with a negative errno and no pid. */
 function failingChild(message: string): ChildProcess {
   const child = new EventEmitter();
   const stdout = new PassThrough();
@@ -86,7 +86,10 @@ function failingChild(message: string): ChildProcess {
     signalCode: null,
     kill: () => false,
   });
-  setImmediate(() => child.emit("error", new Error(message)));
+  setImmediate(() => {
+    child.emit("error", new Error(message));
+    child.emit("close", -2, null);
+  });
   return child as unknown as ChildProcess;
 }
 

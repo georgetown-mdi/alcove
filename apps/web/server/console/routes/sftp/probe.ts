@@ -2,13 +2,13 @@ import { z } from "zod";
 
 import { SftpPortSchema, isBareSftpHost } from "@alcove/core";
 
+import { ConsoleShuttingDownError, SftpProbeBusyError } from "@jobs/jobManager";
 import {
   MAX_SFTP_PROBE_BODY_BYTES,
   gateJobRoute,
   readJobRequestBody,
 } from "@jobs/routeSupport";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
-import { SftpProbeBusyError } from "@jobs/jobManager";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 
 import { defineJobRoute } from "../../jobRoute";
@@ -110,9 +110,12 @@ export const route = defineJobRoute({
           ...(parsed.data.port !== undefined ? { port: parsed.data.port } : {}),
         });
       } catch (error) {
-        // A probe already in flight is a 409 (the busy convention). Anything
-        // else is an unexpected internal fault -- no detail crosses the boundary.
+        // A probe already in flight is a 409 (the busy convention), and a
+        // console shutting down a 503. Anything else is an unexpected internal
+        // fault -- no detail crosses the boundary.
         if (error instanceof SftpProbeBusyError) return jobEmptyResponse(409);
+        if (error instanceof ConsoleShuttingDownError)
+          return jobEmptyResponse(503);
         return jobEmptyResponse(500);
       }
       return jobJsonResponse(probeEnvelope(result));

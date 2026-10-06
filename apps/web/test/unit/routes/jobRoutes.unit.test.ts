@@ -1188,6 +1188,61 @@ describe("status route reports record availability", () => {
     expect(body.recordUnavailableReason).toBe("not-settled");
   });
 
+  test("a failed run's pair stays not settled until its child exits", async () => {
+    // A failing run reports its error before its child exits, and the
+    // operator's discard control acts on that report: an answer of no record
+    // here would let it delete the record without asking.
+    const root = tempDataRoot("routes-failing-record");
+    roots.push(root);
+    vi.stubEnv("JOB_DATA_ROOT", root);
+    const manager = new JobManager({
+      dataRoot: root,
+      binaryPath: STUB_CLI_PATH,
+      jobRendezvousDir: rvzRoot(),
+      childEnv: {
+        STUB_FD3_EVENTS: JSON.stringify([
+          {
+            v: 1,
+            type: "error",
+            category: "exchange",
+            message: "the partner stopped",
+          },
+        ]),
+        STUB_RECORD_JSON: recordJson(CREATED_AT, "receipt-swap-terminated"),
+        STUB_EXIT_CODE: "1",
+        STUB_DELAY_MS: "1500",
+      },
+    });
+    (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
+      manager;
+    const id = await manager.createJob(validIntent());
+    const record = manager.getJob(id)!;
+    const until = async (done: () => boolean): Promise<void> => {
+      const deadline = Date.now() + 5000;
+      while (!done()) {
+        if (Date.now() > deadline) throw new Error("timed out");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    };
+
+    await until(() => record.terminalEmitted);
+    expect(record.terminal).toBeNull();
+    const early = await recordStatusOf(id);
+    expect(early.status).toBe("failed");
+    expect(early.recordAvailable).toBe(false);
+    expect(early.recordUnavailableReason).toBe("not-settled");
+    const earlyDownload = (await handlersOf(RecordRoute).GET({
+      request: jobRequest(`http://localhost/api/jobs/${id}/record`),
+      params: { jobId: id },
+    })) as Response;
+    expect(earlyDownload.status).toBe(404);
+
+    await until(() => record.terminal !== null);
+    const settled = await recordStatusOf(id);
+    expect(settled.recordAvailable).toBe(true);
+    expect(settled.recordOutcome).toBe("receipt-swap-terminated");
+  });
+
   test("a run that disclosed and then terminated is offered its record", async () => {
     // A run that terminated after its payloads crossed writes the exchange record
     // of that disclosure and still exits non-zero, so the record pair is on disk
@@ -1596,6 +1651,38 @@ describe("POST /api/jobs and the authored sftp connection", () => {
     expect(server.host).toBe("sftp.example.org");
     expect(server.password).toBe(credentialRef);
     expect(composed).not.toContain("s3cret");
+  });
+});
+
+describe("the spawning routes answer 503 once shutdown has started", () => {
+  test("create and the host-key probe are 503", async () => {
+    const root = tempDataRoot("routes-shutting-down");
+    roots.push(root);
+    vi.stubEnv("JOB_DATA_ROOT", root);
+    const manager = new JobManager({
+      dataRoot: root,
+      binaryPath: STUB_CLI_PATH,
+      jobRendezvousDir: rvzRoot(),
+    });
+    (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
+      manager;
+    await manager.shutdown();
+
+    const created = (await handlersOf(CreateRoute).POST({
+      request: createRequest(validIntent()),
+      params: {},
+    })) as Response;
+    expect(created.status).toBe(503);
+
+    const probed = (await handlersOf(SftpProbeRoute).POST({
+      request: jobRequest("http://localhost/api/jobs/sftp/probe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ host: "sftp.example.org" }),
+      }),
+      params: {},
+    })) as Response;
+    expect(probed.status).toBe(503);
   });
 });
 

@@ -1,5 +1,6 @@
 import { gateJobRoute, validateJobIdParam } from "@jobs/routeSupport";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+import { ConsoleShuttingDownError } from "@jobs/jobManager";
 
 import { defineJobRoute } from "../../jobRoute";
 
@@ -11,9 +12,9 @@ import { defineJobRoute } from "../../jobRoute";
  *
  * No request body. `404` on a malformed or unknown id and on a job with no
  * proposal to apply; `409` (empty body) while an apply runs or the run's
- * child has not exited. A completed attempt is `200 { "status" }`: `applied`,
- * `refused`, `timeout`, `error`, `configuration-changed`, or
- * `run-terms-differ`.
+ * child has not exited; `503` once the console is shutting down. A completed
+ * attempt is `200 { "status" }`: `applied`, `refused`, `timeout`, `error`,
+ * `configuration-changed`, or `run-terms-differ`.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/$jobId/apply-terms",
@@ -27,7 +28,9 @@ export const route = defineJobRoute({
       let result: Awaited<ReturnType<typeof gate.manager.applyTermsProposal>>;
       try {
         result = await gate.manager.applyTermsProposal(jobId);
-      } catch {
+      } catch (error) {
+        if (error instanceof ConsoleShuttingDownError)
+          return jobEmptyResponse(503);
         return jobEmptyResponse(500);
       }
       if (result.kind === "unavailable") return jobEmptyResponse(404);
