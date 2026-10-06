@@ -348,7 +348,7 @@ describe("a managed exchange", () => {
     expect(runHistoryEntries({ lastRun: stampedInRound })[0].disclosure).toBe(
       "The run did not complete. Whether any data reached your partner is " +
         "not recorded here; check the accounting of disclosures below, where " +
-        "a run that sent its payload files its record.",
+        "a run that sent your columns files its record.",
     );
   });
 

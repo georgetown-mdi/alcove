@@ -555,7 +555,7 @@ describe("the working-folder grant the surfaces offer", () => {
   });
 
   test("states the reach of the folder where the folder is chosen", () => {
-    expect(WORKING_FOLDER_SCOPE_NOTE).toContain("read and write everything");
+    expect(WORKING_FOLDER_SCOPE_NOTE).toContain("read and write every file");
     expect(WORKING_FOLDER_SCOPE_NOTE).toContain("use it for nothing else");
   });
 

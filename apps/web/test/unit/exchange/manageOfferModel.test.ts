@@ -442,7 +442,7 @@ describe("the label guidance", () => {
     expect(guidance).toContain("this browser's storage");
     expect(guidance).toContain("anyone reading it can see");
     expect(guidance).toContain("name of every results file");
-    expect(guidance).toContain("folder you grant");
+    expect(guidance).toContain("folder you choose");
     expect(guidance).toContain("copy you download");
     expect(guidance).toContain("between-visit notifications");
     expect(guidance).toContain("locked screen");

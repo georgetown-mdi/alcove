@@ -1812,7 +1812,7 @@ describe("managed exchange detail relay registration", () => {
 });
 
 describe("managed exchange detail accounting of disclosures", () => {
-  test("frames the accounting as self-attested and unsigned, never a signed receipt", async () => {
+  test("frames each entry as this browser's own unsigned record, never a signed receipt", async () => {
     app.render(
       createElement(ManagedExchangeDetail, {
         record: record("inviter"),
@@ -1842,10 +1842,18 @@ describe("managed exchange detail accounting of disclosures", () => {
     );
 
     await expect
-      .element(page.getByText("self-attested", { exact: false }))
+      .element(
+        page.getByText("this browser's own record of the run", {
+          exact: false,
+        }),
+      )
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("not a signed or", { exact: false }))
+      .element(
+        page.getByText("It is not signed, so it cannot prove", {
+          exact: false,
+        }),
+      )
       .toBeInTheDocument();
     // The verify page is linked, not modified.
     const verify = page.getByRole("link", { name: "verify page" });
@@ -2142,7 +2150,7 @@ describe("managed exchange detail accounting of disclosures", () => {
       .toBeVisible();
     await expect
       .element(
-        page.getByText("whether it reached your partner is not confirmed", {
+        page.getByText("Whether your partner received them is not confirmed", {
           exact: false,
         }),
       )

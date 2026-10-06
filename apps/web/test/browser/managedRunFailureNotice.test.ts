@@ -26,7 +26,7 @@ import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
 // could not be filed, and then fails. The notice has to reach the operator on the
 // state that run lands in: the completion surface that renders the run's notices
 // is the one surface such a run never gets to, so a failed run that dropped them
-// would leave the accounting's own promise -- every run that sent your payload
+// would leave the accounting's own promise -- every run that sent your columns
 // files its record here, and warns you if it cannot -- unkept.
 
 const raised = vi.hoisted(() => ({ notice: "" }));

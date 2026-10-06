@@ -313,7 +313,7 @@ export function maxAgeCadenceNote(
  * belong in it (see docs/SECURITY_DESIGN.md, "Metadata at rest: presence and
  * shape"). */
 export const LABEL_GUIDANCE =
-  "Name the partnership so you recognize it later. The label is never sent, but three things show it: this browser's storage, which anyone reading it can see; the name of every results file, in a folder you grant and in a copy you download; and, if you turn on between-visit notifications, a notification your device may show on a locked screen or mirror to your other devices. Keep agreement numbers, contact details, and other sensitive counterparty information out of it.";
+  "Name the partnership so you recognize it later. The label is never sent, but three things show it: this browser's storage, which anyone reading it can see; the name of every results file, in a folder you choose and in a copy you download; and, if you turn on between-visit notifications, a notification your device may show on a locked screen or mirror to your other devices. Keep agreement numbers, contact details, and other sensitive counterparty information out of it.";
 
 /** The problem a retention note holding a control character reports. A tab,
  * a line break, or a carriage return is fine: the note is written in a

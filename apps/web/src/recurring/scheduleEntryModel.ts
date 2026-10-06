@@ -476,8 +476,9 @@ export function workingFolderGrantedNote(name: string): string {
     `of this exchange there, including its shared secret, in place of the one ` +
     `the previous run wrote, so keep ${name} readable only by you on this ` +
     `device, and delete any other backup of this exchange there once you no ` +
-    `longer need it. That folder stands until you choose another or stop ` +
-    `using it; deleting this exchange drops it too.`
+    `longer need it. Runs keep using that folder until you choose another or ` +
+    `stop using it, and deleting this exchange also ends this site's access ` +
+    `to it.`
   );
 }
 
@@ -489,6 +490,6 @@ export const WORKING_FOLDER_SCOPE_NOTE =
   "including its shared secret, is written into this folder in place of the " +
   "one the previous run wrote, so choose one only you can read on this " +
   "device, use it for nothing else, and delete any other backup of this " +
-  "exchange there once you no longer need it. While the " +
-  "grant stands, this site can read and write everything in the folder you " +
-  "choose, not only the files this exchange uses.";
+  "exchange there once you no longer need it. While you allow it, this site " +
+  "can read and write every file in the folder you choose, including files " +
+  "this exchange does not use.";

@@ -192,18 +192,17 @@ export function ManagedCronExportPanel({
               the command line instead, download the two files{" "}
               <span className={styles.mono}>alcove exchange</span> opens, put
               them in a folder on the machine that will run the schedule, and
-              schedule the command there. Handing it over ends its life in this
-              browser: one owner holds a recurring exchange&apos;s secret, never
-              two.
+              schedule the command there. After you hand it over, this exchange
+              no longer runs in this browser.
             </p>
             <p className={styles.small}>
-              These two files are the command line&apos;s, not a backup file
-              this browser can restore from. Importing the alcove.yaml here
-              brings back its settings and no secret, so downloading them leaves
-              the backup state above exactly as it is. If you want a file that
-              brings this exchange back to this browser, download a backup up
-              there first and keep the exchange here -- once you hand it over, a
-              backup taken before the hand-off will not bring it back.
+              These two files are for the command line, and this browser cannot
+              restore the exchange from them. Importing the alcove.yaml here
+              brings back its settings without the secret, and downloading the
+              files does not change the backup state above. To keep a file that
+              brings this exchange back to this browser, download a backup above
+              and keep the exchange here. After you hand it over, a backup taken
+              before the hand-off cannot bring it back.
             </p>
             <ol className={styles.handoffSteps}>
               <li>
@@ -215,20 +214,20 @@ export function ManagedCronExportPanel({
                     <span className={styles.mono}>
                       {state.composed.config.fileName}
                     </span>{" "}
-                    -- the agreed terms and the rendezvous address. No secret.
+                    - the agreed terms and the connection settings, with no
+                    secret.
                   </li>
                   <li>
                     <span className={styles.mono}>
                       {state.composed.key.fileName}
                     </span>{" "}
-                    -- this exchange&apos;s shared secret, in plain text.
+                    - this exchange&apos;s shared secret, in plain text.
                   </li>
                 </ul>
                 <p className={styles.small}>
-                  Save the key file readable only by you, and never send it over
-                  an unencrypted channel. It is the command-line
-                  application&apos;s own key file and is held under that
-                  file&apos;s custody rules --{" "}
+                  Save the key file so only you can read it, and never send it
+                  over an unencrypted channel. The command line&apos;s rules for
+                  keeping its key file apply to it. See{" "}
                   <Anchor
                     inherit
                     href={KEY_FILE_SECURITY_DOC_URL}
@@ -308,36 +307,37 @@ export function ManagedCronExportPanel({
               </li>
               <li>
                 {state.fromAgreedSchedule
-                  ? "The schedule you agreed with your partner does not " +
-                    "travel in these files: the cron entry or scheduled task " +
-                    "is the schedule on the command line, and the lines above " +
-                    "are set to it. Each run waits for your partner until the " +
-                    "agreed window closes, then stops."
-                  : "The schedule you agreed with your partner does not " +
-                    "travel in these files -- the cron entry or scheduled " +
-                    "task is the schedule on the command line, so set it to " +
-                    "the window your partner expects."}
+                  ? "These files do not include the schedule you agreed with " +
+                    "your partner. On the command line, the cron entry or " +
+                    "scheduled task sets the schedule, and the lines above " +
+                    "use the agreed one. Each run waits for your partner until " +
+                    "the agreed window closes, then stops."
+                  : "These files do not include the schedule you agreed with " +
+                    "your partner. On the command line, the cron entry or " +
+                    "scheduled task sets the schedule, so set it to the " +
+                    "window your partner expects."}
               </li>
               <li>
-                Once you confirm the hand-off, these two files are this
-                exchange&apos;s backup of record: this browser&apos;s copy is
-                spent, and each scheduled run rotates the secret past any
-                browser backup you took earlier.
+                Once you confirm the hand-off, these two files are the only copy
+                of this exchange that can run. This browser&apos;s copy stops
+                working. Each scheduled run replaces the shared secret, so a
+                browser backup you took earlier stops working after the next
+                run.
               </li>
             </ul>
             {dispatch !== undefined && (
               <>
                 <p className={styles.calloutLead}>Confirm the hand-off.</p>
                 <p className={styles.small}>
-                  Both files were downloaded. Confirm they landed before this
-                  browser gives up its copy: once you confirm, this exchange no
-                  longer runs here. If only one arrived, or a save was
-                  cancelled, keep it here and download again.
+                  Both files were downloaded. Check that both are saved before
+                  you confirm. Once you confirm, this exchange no longer runs
+                  here. If only one arrived, or a save was cancelled, keep it
+                  here and download again.
                 </p>
                 <p className={styles.small}>
-                  This exchange&apos;s accounting of disclosures stays in this
-                  browser: it does not travel in these files. If you need to
-                  keep it, export it as CSV below before you confirm.
+                  These files do not include this exchange&apos;s accounting of
+                  disclosures, which stays in this browser. If you need to keep
+                  it, export it as CSV below before you confirm.
                 </p>
                 {failed && (
                   <Alert

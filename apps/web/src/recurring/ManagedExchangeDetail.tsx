@@ -1036,7 +1036,7 @@ function RunHistory({
         <>
           <p className={`${styles.small} ${styles.sub}`}>
             The last {MAX_RECENT_RUNS} runs are kept here, newest first. Every
-            run that sent your payload files its disclosure in the accounting
+            run that sent your columns files its disclosure in the accounting
             below, whether or not it finished, and warns you if it cannot.
           </p>
           <ol aria-label="Recent runs" className={styles.runHistoryList}>
@@ -1382,15 +1382,15 @@ function DisclosureAccountingView({
     <div className={styles.callout}>
       <h2 className={styles.eyebrow}>Accounting of disclosures</h2>
       <p className={styles.small}>
-        Every run that sent your payload files its own record here, whether or
-        not it finished, and warns you if it cannot: who you disclosed to, under
-        which agreement and for what purpose, the categories of data that moved
-        each way, how many records you exposed, and -- when both sides received
-        the result -- its size. A run that stopped after sending is marked, and
-        states that delivery to your partner is not confirmed. Each entry is
-        that run&apos;s self-attested record, built from what both sides already
-        hold and deliberately unsigned: an honest local account, not a signed or
-        non-repudiable receipt.
+        Every run that sent your columns files its own record here, whether or
+        not it finished, and warns you if it cannot. Each record states who you
+        disclosed to, under which agreement and for what purpose, the categories
+        of data that moved each way, how many records you exposed, and the size
+        of the result when both sides received it. A run that stopped after
+        sending is marked, and states that delivery to your partner is not
+        confirmed. Each entry is this browser&apos;s own record of the run,
+        built from what both sides already hold. It is not signed, so it cannot
+        prove to anyone else what was sent.
       </p>
       <UnfiledDisclosureNotice
         read={unfiledRead}
@@ -1517,7 +1517,7 @@ function UnfiledDisclosureNotice({
           title="A run's record is missing from this accounting"
           mt="sm"
         >
-          A run of this exchange disclosed your payload and its record was not
+          A run of this exchange disclosed your columns and its record was not
           saved to the accounting below. The note of which run it was cannot be
           read by this version of the app, so the run is not named here. The
           accounting below is short at least one entry.
@@ -1540,10 +1540,10 @@ function UnfiledDisclosureNotice({
           mt="sm"
         >
           <p>
-            Each run below disclosed your payload and its record was not saved
+            Each run below disclosed your columns and its record was not saved
             to the accounting, so the accounting is not a complete account of
-            what this exchange has disclosed. An accounting exported while this
-            stands is short these runs.
+            what this exchange has disclosed. An accounting exported now will be
+            missing these runs.
           </p>
           {rows.map((row) => (
             <div key={row.key} className={styles.dlRow}>
@@ -1585,7 +1585,7 @@ function UnrecordedRunAlert({ onShown }: { onShown: () => void }) {
       mt="sm"
     >
       <p>
-        At least one run of this exchange disclosed your payload, and this
+        At least one run of this exchange disclosed your columns, and this
         browser&apos;s storage would take neither its record nor a note of which
         run it was. The accounting below has no entry for it, and there is
         nothing left to add: record the disclosure in your own compliance
@@ -1692,7 +1692,7 @@ function EmptyAccountingNotice({
         everything this exchange has disclosed. Records filed here are destroyed
         by &quot;Start a fresh accounting&quot;, and an exchange restored from
         an export or backup file arrives without the accounting kept on the
-        device it came from. Each run that sends your payload files its record
+        device it came from. Each run that sends your columns files its record
         here, whether or not it finishes.
       </p>
     );
@@ -1714,7 +1714,7 @@ function EmptyAccountingNotice({
       exchange has filed a disclosure here. That is not necessarily the
       exchange&apos;s whole history: an exchange imported from a backup file
       arrives without the accounting kept on the device it came from. Each run
-      that sends your payload will file its record here, whether or not it
+      that sends your columns will file its record here, whether or not it
       finishes.
     </p>
   );

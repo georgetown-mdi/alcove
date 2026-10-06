@@ -1322,8 +1322,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <p className={styles.mono}>{commandLineHandoff}</p>
             <p className={styles.small}>
-              Those two files are this exchange&apos;s backup of record. Keep
-              them somewhere only you can read.
+              Those two files are the only copy of this exchange that can run.
+              Keep them somewhere only you can read.
             </p>
             <SavedExchangesFoot />
           </>
@@ -2185,7 +2185,7 @@ function BackupPanel({
  * later visit -- so it must say what THAT hand-off left the operator with. A
  * migration copy is somewhere an import can bring back; a command-line hand-off
  * produced the CLI's two files, which bring back no secret, so the exchange runs
- * from those files and they are its backup of record.
+ * from those files and they are the only copy of this exchange that can run.
  *
  * `spent` is undefined when the run-refusal transition reached this state without
  * the stored entry in hand: the reload behind it reads the record and the sibling
@@ -2267,8 +2267,8 @@ function SpentSurface({
       </p>
       {refused}
       <p className={styles.small}>
-        Those two files are this exchange&apos;s backup of record. Keep them
-        somewhere only you can read.
+        Those two files are the only copy of this exchange that can run. Keep
+        them somewhere only you can read.
       </p>
       <RetakeControl id={id} onRetaken={onRetaken} />
       {parked}

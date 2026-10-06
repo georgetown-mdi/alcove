@@ -168,8 +168,8 @@ describe("the exchange-record copy", () => {
     // every control on this surface removes it.
     expect(TERMINATED_RECORD_NOTICE).toContain("disclosure accounting");
     expect(TERMINATED_RECORD_NOTICE).toContain("Download it now");
-    expect(TERMINATED_RECORD_NOTICE).toContain("removes this run's files");
-    expect(TERMINATED_RECORD_NOTICE).toContain("still happened");
+    expect(TERMINATED_RECORD_NOTICE).toContain("delete this run's files");
+    expect(TERMINATED_RECORD_NOTICE).toContain("already happened");
     // It stands on the run seats and on the compact recovery panel, whose controls
     // are worded differently, so it names no control by its label.
     expect(TERMINATED_RECORD_NOTICE).not.toMatch(/"Try again"|"Discard"/);
@@ -305,7 +305,7 @@ describe("the exchange-record copy", () => {
     expect(RECORD_UNANSWERED_LEAD).toContain("stopped answering");
     expect(RECORD_UNANSWERED_NOTICE).toContain("stopped asking");
     expect(RECORD_UNANSWERED_NOTICE).toContain("If this run got as far as");
-    expect(RECORD_UNANSWERED_NOTICE).toContain("reload");
+    expect(RECORD_UNANSWERED_NOTICE).toContain("Reload");
     expect(RECORD_UNANSWERED_NOTICE).toContain("keep the run");
   });
 
@@ -316,7 +316,7 @@ describe("the exchange-record copy", () => {
     expect(UNDESCRIBABLE_RECORD_LEAD).toContain("cannot read as an exchange");
     expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("your working folder");
     expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("No download is offered");
-    expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("removes this run's files");
+    expect(UNDESCRIBABLE_RECORD_NOTICE).toContain("delete this run's files");
     // What it must not do is assert the run's disclosure the way the offered
     // record's copy does: that reading is exactly what failed.
     expect(UNDESCRIBABLE_RECORD_NOTICE).not.toContain(
@@ -330,10 +330,8 @@ describe("the exchange-record copy", () => {
     // file still is.
     expect(UNTAKEN_RECORD_CONFIRM_TITLE).toContain("exchange record");
     expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain("disclosed your data before");
-    expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain("removes the run");
-    expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain(
-      "neither party can recreate it",
-    );
+    expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain("deletes the run");
+    expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain("neither party can recreate");
     expect(UNTAKEN_RECORD_CONFIRM_BODY).toContain("Download it");
   });
 
@@ -344,9 +342,7 @@ describe("the exchange-record copy", () => {
     // answer.
     expect(UNKNOWN_RECORD_CONFIRM_TITLE).toContain("possible exchange record");
     expect(UNKNOWN_RECORD_CONFIRM_BODY).toContain("stopped answering");
-    expect(UNKNOWN_RECORD_CONFIRM_BODY).toContain(
-      "neither party can recreate it",
-    );
+    expect(UNKNOWN_RECORD_CONFIRM_BODY).toContain("neither party can recreate");
     expect(UNKNOWN_RECORD_CONFIRM_BODY).toContain("Reload this page");
     expect(UNKNOWN_RECORD_CONFIRM_BODY).not.toContain("this console holds");
   });
@@ -359,7 +355,7 @@ describe("the exchange-record copy", () => {
     expect(UNDESCRIBABLE_RECORD_CONFIRM_TITLE).toContain("exchange record");
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain("cannot read");
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain(
-      "neither party can recreate it",
+      "neither party can recreate",
     );
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).toContain("your working folder");
     expect(UNDESCRIBABLE_RECORD_CONFIRM_BODY).not.toContain("Download it");
@@ -371,9 +367,7 @@ describe("the exchange-record copy", () => {
     // account of the silence, nor send the operator to a reload that would only
     // start the asking over.
     expect(PENDING_RECORD_CONFIRM_BODY).toContain("has not yet answered");
-    expect(PENDING_RECORD_CONFIRM_BODY).toContain(
-      "neither party can recreate it",
-    );
+    expect(PENDING_RECORD_CONFIRM_BODY).toContain("neither party can recreate");
     expect(PENDING_RECORD_CONFIRM_BODY).toContain("Wait for the answer");
     expect(PENDING_RECORD_CONFIRM_BODY).not.toContain("stopped answering");
     expect(PENDING_RECORD_CONFIRM_BODY).not.toContain("Reload this page");
