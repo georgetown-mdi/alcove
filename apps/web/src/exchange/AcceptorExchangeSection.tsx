@@ -2,8 +2,6 @@ import { useEffect, useRef } from "react";
 
 import { describeResolvedMatching } from "@alcove/core";
 
-import { invitationUsable } from "@psi/formatting";
-
 import { RecurringHandoff } from "@recurring/RecurringHandoff";
 import styles from "@styles/app.module.css";
 
@@ -32,6 +30,8 @@ import { reattachedRunState } from "./reattachedRunState";
 import { useBeforeUnloadPrompt } from "./useUnloadGuard";
 import { useDiscardFolder } from "./discardFolder";
 import { useJobExchangeRecordOffer } from "./useJobExchangeRecordOffer";
+
+import { acceptorRetryAllowed } from "./useAcceptorExchange";
 
 import type { AvailableRecordOffer, RunOutputs } from "@psi/runOutputs";
 import type { AcceptableInvitation } from "@psi/acceptInvitation";
@@ -160,15 +160,10 @@ export function AcceptorExchangeSection({
     !serverJob && phase === "done" && leftBehind.length > 0,
   );
 
-  // A retry is genuine only while the invitation can still be accepted:
-  // re-dialing a lapsed credential cannot succeed, so an expired exchange failure
-  // routes to the fresh-invitation link instead, as does a token with no
-  // `expires`, which the hook's retry refuses.
-  const expires = invitation.token.expires;
+  // A failure the hook will not retry routes to the fresh-invitation link.
   const retryable =
     failure?.retry === "offered" &&
-    expires !== undefined &&
-    invitationUsable(expires, new Date());
+    acceptorRetryAllowed(invitation.token.expires, new Date());
   const columnsCanResolve =
     failure?.category === "config" && failure.settingsCannotResolve !== true;
   const offersFreshInvitation =

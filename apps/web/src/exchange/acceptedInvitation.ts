@@ -5,13 +5,9 @@ import { getLogger } from "@alcove/core";
 import { whenDiagnostic } from "@utils/diagnostics";
 
 /**
- * Where the acceptor's encoded invitation lives once the page has read it. The
- * deep link carries it in the URL fragment; the page takes it from there, removes
- * it from the address bar and the history entry, and keeps one copy in this tab's
- * session storage so a reload lands on the same invitation. That copy is removed
- * when the screen is left, when the invitation is refused, and when the exchange
- * completes (see docs/SECURITY_DESIGN.md, "Invitation contents and
- * confidentiality").
+ * The acceptor's encoded invitation, taken out of the URL fragment and kept in
+ * this tab's session storage for a reload. When the copy is removed:
+ * docs/SECURITY_DESIGN.md, "Invitation contents and confidentiality".
  */
 
 const log = getLogger("acceptedInvitation");
@@ -80,16 +76,13 @@ function takeFromAddress(encoded: string): void {
  * address has been read, then the fragment's token, or the tab's kept copy where
  * the address holds none (a reload), or `""` where neither does. A fragment
  * arriving later -- a second invitation pasted into the address bar of the same
- * tab -- replaces it. The fragment is cleared from the address each time it is
- * read, and the kept copy is removed when the screen unmounts.
+ * tab -- replaces it.
  */
 export function useAcceptedInvitation(): string | undefined {
   const [encoded, setEncoded] = useState<string>();
 
   useEffect(() => {
-    // Keeps the copy as it clears the fragment, with no removal on cleanup: a
-    // remount of this effect (React's development double-mount) then reads the
-    // copy rather than the address it already cleared.
+    // No removal on cleanup: a remount reads the kept copy, the fragment gone.
     const fromAddress = addressFragment();
     if (fromAddress !== "") {
       takeFromAddress(fromAddress);

@@ -182,6 +182,16 @@ export function acceptorServerJobConfig({
   };
 }
 
+/** Whether a failed acceptor run on an invitation with this `expires` may be
+ * retried on the same invitation: only while it is still usable. A token with no
+ * `expires` is refused, as the inviter's kept invitation is. */
+export function acceptorRetryAllowed(
+  expires: string | undefined,
+  now: Date,
+): boolean {
+  return expires !== undefined && invitationUsable(expires, now);
+}
+
 /** Where the acceptor's own input comes from on a server-job run. `inline` holds
  * the browser's File, whose text the hook reads at run time (the hosted-shaped path);
  * `workFile` holds only a REFERENCE to a file in the console's mounted work-input
@@ -642,12 +652,11 @@ export function useAcceptorExchange({
   // same secret stays valid for the original link -- the security category
   // instead forces a fresh invitation, and an output failure must not re-run an
   // exchange that already succeeded. Gated on the invitation's expiry as well:
-  // re-dialing a lapsed credential cannot succeed (no peer can pass it). A token
-  // with no `expires` is refused a retry, as the inviter's kept invitation is.
+  // re-dialing a lapsed credential cannot succeed (no peer can pass it).
   function tryAgain() {
     if (launch === undefined || failure?.retry !== "offered") return;
-    const expires = launch.invitation.token.expires;
-    if (expires === undefined || !invitationUsable(expires, new Date())) return;
+    if (!acceptorRetryAllowed(launch.invitation.token.expires, new Date()))
+      return;
     const retryLaunch = launch;
     abortRef.current?.abort();
     abortRef.current = undefined;

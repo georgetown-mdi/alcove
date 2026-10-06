@@ -184,7 +184,7 @@ The acceptor's page takes the invitation out of the address as soon as it reads 
 
 - **The address.** The page reads the invitation from the URL fragment, then rewrites the current history entry without it, so the address bar and the tab's history no longer show it. The fragment never reaches the server. A second invitation opened in the same tab is read and cleared the same way, and replaces the first one's terms on screen along with everything chosen under them.
 - **What is kept.** The encoded invitation, in the tab's session storage, so a reload of the screen opens the same invitation.
-- **When it is removed.** When the operator leaves the acceptor screen, when the invitation is refused, and when the exchange completes. The exposure is the in-origin, tab-scoped one stated for the inviter above.
+- **When it is removed.** When the operator leaves the acceptor screen, when the invitation is refused, when the exchange completes, and when it fails in a way no later run on the same invitation can follow (no retry, no return to the columns step, or an invitation past its expiry). The exposure is the in-origin, tab-scoped one stated for the inviter above.
 
 Holding the secret also grants relay access: a party's relay credential is derived from it, so while that exchange's relay key is registered with a relay, anyone holding the secret can use that relay ([PROTOCOL.md](spec/PROTOCOL.md#relay-credential-derivation)).
 

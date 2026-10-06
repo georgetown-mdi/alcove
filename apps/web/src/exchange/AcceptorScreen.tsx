@@ -152,7 +152,12 @@ import { RecoveredExchangePanel } from "./RecoveredExchangePanel";
 import { TopBar } from "./TopBar";
 import { acceptorTimelineSteps } from "./exchangeRun";
 import { restorablePosition } from "./stepRestore";
-import { useAcceptorExchange } from "./useAcceptorExchange";
+
+import {
+  acceptorRetryAllowed,
+  useAcceptorExchange,
+} from "./useAcceptorExchange";
+
 import { useStepHistory } from "./useStepHistory";
 
 import {
@@ -900,6 +905,20 @@ function AcceptorInvitationScreen({
   useEffect(() => {
     if (outputs !== undefined) forgetAcceptedInvitation();
   }, [outputs]);
+
+  // A failure no run on this invitation can follow -- no retry, and no return to
+  // the columns step -- leaves nothing for a reload to resume.
+  useEffect(() => {
+    if (failure === undefined) return;
+    const relaunchable =
+      failure.retry === "offered" ||
+      (failure.category === "config" && failure.settingsCannotResolve !== true);
+    if (
+      !relaunchable ||
+      !acceptorRetryAllowed(launch?.invitation.token.expires, new Date())
+    )
+      forgetAcceptedInvitation();
+  }, [failure, launch]);
 
   // The coverage input, unified across builds: the browser's parsed rows on the
   // hosted build, the mounted-file reference on the console (whose sweep is a fetch

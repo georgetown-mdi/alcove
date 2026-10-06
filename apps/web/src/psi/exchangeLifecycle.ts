@@ -579,10 +579,8 @@ export async function runExchangeLifecycle<
     // fails closed on a wrong secret or tampered/malformed frame, so an
     // unauthenticated peer never reaches runExchange. Its 32-byte session key is
     // discarded here (under DTLS the web declines the AEAD wrap -- see
-    // authenticateExchange); the rotated secret is held for the completion, so
-    // a hand-off to a managed exchange stores it rather than the invitation's. A
-    // trust failure is a security-kind ConnectionError, routed by the catch
-    // below to the distinct authentication-failure alert.
+    // authenticateExchange). A trust failure is a security-kind ConnectionError,
+    // routed by the catch below to the distinct authentication-failure alert.
     //
     // This runs BEFORE `await psi`: the handshake needs no PSI library, and
     // authenticating first keeps the responder's WASM load out of the handshake's

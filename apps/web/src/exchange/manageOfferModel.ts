@@ -15,9 +15,8 @@
  * exchange-file document verbatim (no `authentication` block), composed from a
  * credential-free {@link WebRTCExchangeLocator} through the shared schema (see
  * {@link composeManagedExchangeFile}). The deposited secret is the one the
- * completed one-shot run's handshake rotated to, never the invitation's: both
- * parties derive the same value from the session key, so either side's record
- * holds the secret the partnership's next run authenticates with. Declining
+ * completed run's handshake rotated to; both parties derive the same value, so
+ * either side's record authenticates the partnership's next run. Declining
  * leaves no record: the offer is skipped and the one-shot flow drops the rotated
  * secret with the run, so there is by design no "compose then throw away" path
  * here -- a caller that declines never composes.
