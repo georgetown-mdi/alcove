@@ -339,7 +339,11 @@ token, overwrite the file and
   and each later request on it, must arrive whole within 15 s, however the
   bytes are spaced, or the connection is closed. At most 32 connections are
   served at once; past that, up to 8 more are answered 503 with
-  `Retry-After: 5` and any further ones are closed unanswered.
+  `Retry-After: 5` and any further ones are closed unanswered. These bounds, and
+  the 4096 and 8192 byte limits above, are arbitrary working values set by
+  `REQUEST_DEADLINE_SECONDS`, `MAX_HANDLERS`, `MAX_BUSY_ANSWERS`,
+  `MAX_REQUEST_LINE_BYTES` and `MAX_HEAD_BYTES` in `registrar.py`, and are
+  raised on request.
 - **Recovery is the operator's action.** An exchange whose key nobody holds any
   more -- a key lost, or a registrar holding a key the caller no longer has --
   is recovered by the relay's operator, deliberately: the token on `PUT` or

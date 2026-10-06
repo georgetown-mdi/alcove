@@ -610,8 +610,6 @@ def run_command(command, args):
             print("%s: its registration lapsed" % describe_revocation(revocation))
         print("swept %d lapsed exchange(s)" % len(revoked))
         return 0
-    if command in ("status", "forget-key") and not realm:
-        raise UsageError(REALM_REFUSAL)
     if command == "status":
         key = read_key()
         if not valid_exchange_id(args[0]):

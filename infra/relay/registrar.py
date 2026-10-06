@@ -56,6 +56,7 @@ MAX_BODY_BYTES = 1024
 MAX_REQUEST_LINE_BYTES = 4096
 # The request line and every header together.
 MAX_HEAD_BYTES = 8192
+# These bounds are arbitrary working values, raised on request.
 # A connection's TLS handshake and first request, and each later request on it,
 # must arrive whole within this long, however the bytes are spaced.
 REQUEST_DEADLINE_SECONDS = 15
@@ -158,6 +159,7 @@ class DeadlineSocket(ssl.SSLSocket):
     time.monotonic() value, rather than after a per-read idle timeout."""
 
     deadline = None
+    received = 0
 
     def until_deadline(self):
         if self.deadline is None:
@@ -173,14 +175,18 @@ class DeadlineSocket(ssl.SSLSocket):
 
     def recv(self, *args, **kwargs):
         self.until_deadline()
-        return super().recv(*args, **kwargs)
+        data = super().recv(*args, **kwargs)
+        self.received += len(data)
+        return data
 
     def recv_into(self, *args, **kwargs):
         self.until_deadline()
-        return super().recv_into(*args, **kwargs)
+        count = super().recv_into(*args, **kwargs)
+        self.received += count
+        return count
 
     def sendall(self, *args, **kwargs):
-        self.settimeout(REQUEST_DEADLINE_SECONDS)
+        self.until_deadline()
         return super().sendall(*args, **kwargs)
 
 
@@ -225,6 +231,7 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
 
     def arm_deadline(self):
         self.connection.deadline = time.monotonic() + self.deadline_seconds()
+        self.connection.received = 0
 
     def setup(self):
         super().setup()
@@ -253,7 +260,8 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.flush()
             self.arm_deadline()
         except socket.timeout:
-            self.log_message("request timed out: it did not arrive whole within %d s", self.deadline_seconds())
+            if self.connection.received:
+                self.log_message("request timed out: it did not arrive whole within %d s", self.deadline_seconds())
             self.close_connection = True
 
     def dispatch(self):
@@ -574,13 +582,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
 
 
 class BusyHandler(RegistrarHandler):
-    """Answers a connection past MAX_HANDLERS with a 503, and closes it."""
+    """Answers a connection past MAX_HANDLERS with a 503, and closes it. It
+    never reads the request body: a busy slot is not held while a client
+    sends one, so the connection closes with the body unread."""
 
     def deadline_seconds(self):
         return BUSY_DEADLINE_SECONDS
 
     def dispatch(self):
-        self.discard_body()
         self.close_connection = True
         self.send_json(503, {"error": BUSY_REFUSAL}, (("Retry-After", "5"), ("Connection", "close")))
 
