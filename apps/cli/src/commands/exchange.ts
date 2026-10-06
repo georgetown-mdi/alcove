@@ -9,6 +9,7 @@ import {
   redactAndRenderOperatorSuppliedText,
   parseExchangeSpec,
   retiredSettingIssue,
+  retiredSigningSettingNotice,
   getLogger,
   OperatorConfigError,
   prepareForExchange,
@@ -66,7 +67,6 @@ import {
   type KeyFileExpiryStatus,
 } from "../keyFile";
 import { optionalIdentity } from "../partyIdentity";
-import { resolveReceiptOutput } from "../receiptFile";
 import { assertIdentityMatchesAgreedTerms } from "../signingIdentityDivergence";
 import { loadSigningIdentity } from "../signingIdentityFile";
 import { displayExchangeDisclosure } from "../exchangeDisclosure";
@@ -498,6 +498,14 @@ export function loadConfig(options: ExchangeOptions): {
       operatorSuppliedText(options.configFile),
     ),
   );
+
+  const retiredSigningSetting = retiredSigningSettingNotice(rawConfig);
+  if (retiredSigningSetting !== undefined)
+    log.warn(
+      `${redactAndRenderOperatorSuppliedText(
+        operatorSuppliedText(options.configFile),
+      )}: ${retiredSigningSetting}`,
+    );
 
   warnOnLinkageRuleSetCitationDrift(
     exchangeDataSpec.linkageTerms,
@@ -999,7 +1007,6 @@ export async function resolveSigningPersist(
   return {
     identity,
     partnerFingerprint: signing.partnerFingerprint,
-    receiptOutput: resolveReceiptOutput(signing.receiptOutput),
     configPath,
   };
 }

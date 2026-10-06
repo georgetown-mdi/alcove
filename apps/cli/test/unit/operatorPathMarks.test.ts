@@ -11,7 +11,10 @@ import type {
 } from "@alcove/core";
 
 import { logOnlineBootstrapOutcome } from "../../src/onlineBootstrap";
-import { writeDualSignedRecord } from "../../src/receiptFile";
+import {
+  receiptFilePathIn,
+  writeDualSignedRecord,
+} from "../../src/receiptFile";
 import { recordFilePathIn, writeExchangeRecord } from "../../src/recordFile";
 import { openInputSource } from "../../src/util/dataIo";
 
@@ -284,12 +287,12 @@ const LINES: readonly SinkCase<LineOutcome>[] = [
     name: "receipt file: the dual-signed record it wrote",
     says: ["wrote dual-signed exchange record"],
     drive: async () => {
-      const filePath = backslashedPath("alcove-receipt.json");
+      const folder = backslashedFolder();
+      const filePath = receiptFilePathIn(folder, "2026-01-01T00:00:00Z");
       const lines = captureLines("receipt-marks");
       writeDualSignedRecord(
-        { receiptFile: filePath },
         DUAL_SIGNED_RECORD,
-        dir,
+        folder,
         "2026-01-01T00:00:00Z",
         "receipt-marks",
       );

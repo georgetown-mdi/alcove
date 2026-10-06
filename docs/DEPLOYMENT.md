@@ -708,7 +708,7 @@ docker run --rm \
   --identity "Agency A, a@agency-a.gov"
 ```
 
-Then mount it read-only for every exchange thereafter, beside the read-write mount the key file needs, with `signing.identity_file: /run/signing/alcove-signing-identity.json` in the mounted `alcove.yaml`. Give the exchange a writable output folder too: the image's `WORKDIR` is `/work`, which this example mounts read-only, and a run with no output folder writes its record and receipt to the working directory -- a write that fails there is non-fatal and only warns, so the exchange would complete while landing neither. In the output folder each run writes its result, record, verification keys and receipt under its own time-stamped names, so the folder keeps every run's files ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)). `signing.receipt_output`, where set, names one receipt file that every run replaces; leave it unset to keep each run's receipt beside its record.
+Then mount it read-only for every exchange thereafter, beside the read-write mount the key file needs, with `signing.identity_file: /run/signing/alcove-signing-identity.json` in the mounted `alcove.yaml`. Give the exchange a writable output folder too: the image's `WORKDIR` is `/work`, which this example mounts read-only, and a run with no output folder writes its record and receipt to the working directory -- a write that fails there is non-fatal and only warns, so the exchange would complete while landing neither. In the output folder each run writes its result, record, verification keys and receipt under its own time-stamped names, so the folder keeps every run's files ([Where a run's files go](spec/EXCHANGE_RECORD.md#where-a-runs-files-go)).
 
 ```sh
 docker run \

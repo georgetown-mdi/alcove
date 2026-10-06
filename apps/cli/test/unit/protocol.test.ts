@@ -425,6 +425,7 @@ import {
   keysPathFor,
   recordFilePathIn,
 } from "../../src/recordFile";
+import { receiptFilePathIn } from "../../src/receiptFile";
 import { resultFilePath } from "../../src/resultFile";
 import { configureLogFile } from "../../src/util/logging";
 import { openEventStreamWithFdWired } from "../eventStreamTestSupport";
@@ -2072,7 +2073,10 @@ test("a partner payload missing a matched row still leaves the record and the re
       path.join(tmpDir, `out-${name}`),
       sampleRecord.createdAt,
     ),
-    receipt: path.join(tmpDir, `receipt-${name}.json`),
+    receipt: receiptFilePathIn(
+      path.join(tmpDir, `out-${name}`),
+      sampleRecord.createdAt,
+    ),
     keyFile: name === "a" ? keyFileA : keyFileB,
     name: `test-${name}`,
   }));
@@ -2080,9 +2084,7 @@ test("a partner payload missing a matched row still leaves the record and the re
   let outcomes: PromiseSettledResult<unknown>[];
   try {
     outcomes = await Promise.allSettled(
-      parties.map((p) =>
-        runSigningParty(p.keyFile, p.name, p.receipt, p.folder),
-      ),
+      parties.map((p) => runSigningParty(p.keyFile, p.name, p.folder)),
     );
   } finally {
     vi.mocked(buildOutputTable).mockReturnValue({ headers: [], rows: [] });
@@ -3677,12 +3679,10 @@ const MISSING_RECEIPT_WARNING =
   "reached this side before the exchange ended";
 
 function signingPersistFixture(
-  receiptFile: string,
   configPath = path.join(tmpDir, "alcove.yaml"),
 ): SigningPersist {
   return {
     identity: signingIdentityFixture,
-    receiptOutput: { receiptFile },
     configPath,
   };
 }
@@ -3690,10 +3690,10 @@ function signingPersistFixture(
 function runSigningParty(
   keyFilePath: string,
   name: string,
-  receiptFile: string,
-  recordFolder?: string,
+  outputFolder?: string,
   machineInterface: { eventStream?: boolean } = {},
   configPath?: string,
+  writeRecord = outputFolder !== undefined,
 ): Promise<unknown> {
   return runProtocol({
     connection: {
@@ -3703,12 +3703,12 @@ function runSigningParty(
     },
     auth: { sharedSecret: TOKEN_A, keyFilePath },
     prepared: minimalPrepared,
-    output: recordFolder,
+    output: outputFolder,
     verbosity: -1,
     loggerName: name,
-    writeRecord: recordFolder !== undefined,
+    writeRecord,
     fileSyncRuntime: machineInterface,
-    signing: signingPersistFixture(receiptFile, configPath),
+    signing: signingPersistFixture(configPath),
   }) as unknown as Promise<unknown>;
 }
 
@@ -3750,19 +3750,11 @@ test("a first-contact pin is recorded and stated on both sinks, unattended", asy
       runSigningParty(
         keyFileA,
         "test-a",
-        path.join(tmpDir, "receipt-a.json"),
         undefined,
         { eventStream: true },
         configA,
       ),
-      runSigningParty(
-        keyFileB,
-        "test-b",
-        path.join(tmpDir, "receipt-b.json"),
-        undefined,
-        {},
-        configB,
-      ),
+      runSigningParty(keyFileB, "test-b", undefined, {}, configB),
     ]);
     expect(resultA.status).toBe("fulfilled");
     expect(resultB.status).toBe("fulfilled");
@@ -3804,8 +3796,8 @@ test("a completed signed run does not warn about a missing receipt", async () =>
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
   const [resultA, resultB] = await Promise.allSettled([
-    runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-    runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+    runSigningParty(keyFileA, "test-a"),
+    runSigningParty(keyFileB, "test-b"),
   ]);
   expect(resultA.status).toBe("fulfilled");
   expect(resultB.status).toBe("fulfilled");
@@ -3867,16 +3859,21 @@ test("writes the dual-signed receipt when no audit record was built", async () =
     return { ...base, signedReceipt: signedReceiptFixture };
   }) as never);
 
-  const receiptA = path.join(tmpDir, "receipt-a.json");
-  const receiptB = path.join(tmpDir, "receipt-b.json");
+  const folderA = path.join(tmpDir, "out-a");
+  const folderB = path.join(tmpDir, "out-b");
   const [resultA, resultB] = await Promise.allSettled([
-    runSigningParty(keyFileA, "test-a", receiptA),
-    runSigningParty(keyFileB, "test-b", receiptB),
+    runSigningParty(keyFileA, "test-a", folderA, {}, undefined, false),
+    runSigningParty(keyFileB, "test-b", folderB, {}, undefined, false),
   ]);
   expect(resultA.status).toBe("fulfilled");
   expect(resultB.status).toBe("fulfilled");
 
-  for (const receipt of [receiptA, receiptB]) {
+  for (const folder of [folderA, folderB]) {
+    const receipts = fs
+      .readdirSync(folder)
+      .filter((name) => /^alcove-receipt-.*\.json$/.test(name));
+    expect(receipts).toHaveLength(1);
+    const receipt = path.join(folder, receipts[0]!);
     expect(
       parseDualSignedRecord(JSON.parse(fs.readFileSync(receipt, "utf8"))),
     ).toEqual(signedReceiptFixture);
@@ -3901,8 +3898,8 @@ test(
     }) as never);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+      runSigningParty(keyFileA, "test-a"),
+      runSigningParty(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("rejected");
     expect(resultB.status).toBe("rejected");
@@ -3935,8 +3932,8 @@ test(
     }) as never);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+      runSigningParty(keyFileA, "test-a"),
+      runSigningParty(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("rejected");
     expect(resultB.status).toBe("rejected");
@@ -3967,8 +3964,8 @@ test(
     }) as never);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+      runSigningParty(keyFileA, "test-a"),
+      runSigningParty(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("rejected");
     expect(resultB.status).toBe("rejected");
@@ -3995,8 +3992,8 @@ test(
     }) as never);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+      runSigningParty(keyFileA, "test-a"),
+      runSigningParty(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("rejected");
     expect(resultB.status).toBe("rejected");
@@ -4051,18 +4048,8 @@ test(
     vi.mocked(exchangeRecordFromFailure).mockReturnValue(terminatedAudit);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(
-        keyFileA,
-        "test-a",
-        path.join(tmpDir, "receipt-a.json"),
-        folderA,
-      ),
-      runSigningParty(
-        keyFileB,
-        "test-b",
-        path.join(tmpDir, "receipt-b.json"),
-        folderB,
-      ),
+      runSigningParty(keyFileA, "test-a", folderA),
+      runSigningParty(keyFileB, "test-b", folderB),
     ]);
     // The run still fails: keeping the record is not a rescue of the exchange.
     expect(resultA.status).toBe("rejected");
@@ -4088,8 +4075,12 @@ test(
     }
     // No dual-signed receipt accompanies it: a terminated swap persists no
     // partial artifact.
-    expect(fs.existsSync(path.join(tmpDir, "receipt-a.json"))).toBe(false);
-    expect(fs.existsSync(path.join(tmpDir, "receipt-b.json"))).toBe(false);
+    for (const folder of [folderA, folderB])
+      expect(
+        fs
+          .readdirSync(folder)
+          .filter((name) => name.startsWith("alcove-receipt-")),
+      ).toEqual([]);
   },
 );
 
@@ -4109,8 +4100,8 @@ test(
     vi.mocked(exchangeRecordFromFailure).mockReturnValue(terminatedAudit);
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-      runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+      runSigningParty(keyFileA, "test-a"),
+      runSigningParty(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("rejected");
     expect(resultB.status).toBe("rejected");
@@ -4153,18 +4144,8 @@ test(
     mockFd3Open();
     try {
       const [resultA, resultB] = await Promise.allSettled([
-        runSigningParty(
-          keyFileA,
-          "test-a",
-          path.join(tmpDir, "receipt-a.json"),
-          folderA,
-          { eventStream: true },
-        ),
-        runSigningParty(
-          keyFileB,
-          "test-b",
-          path.join(tmpDir, "receipt-b.json"),
-        ),
+        runSigningParty(keyFileA, "test-a", folderA, { eventStream: true }),
+        runSigningParty(keyFileB, "test-b"),
       ]);
       expect(resultA.status).toBe("rejected");
       expect(resultB.status).toBe("rejected");
@@ -4203,18 +4184,8 @@ test(
     mockFd3Open();
     try {
       const [resultA, resultB] = await Promise.allSettled([
-        runSigningParty(
-          keyFileA,
-          "test-a",
-          path.join(tmpDir, "receipt-a.json"),
-          folderA,
-          { eventStream: true },
-        ),
-        runSigningParty(
-          keyFileB,
-          "test-b",
-          path.join(tmpDir, "receipt-b.json"),
-        ),
+        runSigningParty(keyFileA, "test-a", folderA, { eventStream: true }),
+        runSigningParty(keyFileB, "test-b"),
       ]);
       expect(resultA.status).toBe("rejected");
       expect(resultB.status).toBe("rejected");
@@ -4261,18 +4232,8 @@ test(
     mockFd3Open();
     try {
       const [resultA, resultB] = await Promise.allSettled([
-        runSigningParty(
-          keyFileA,
-          "test-a",
-          path.join(tmpDir, "receipt-a.json"),
-          folderA,
-          { eventStream: true },
-        ),
-        runSigningParty(
-          keyFileB,
-          "test-b",
-          path.join(tmpDir, "receipt-b.json"),
-        ),
+        runSigningParty(keyFileA, "test-a", folderA, { eventStream: true }),
+        runSigningParty(keyFileB, "test-b"),
       ]);
       expect(resultA.status).toBe("rejected");
       expect(resultB.status).toBe("rejected");
@@ -4322,11 +4283,7 @@ test("signing with records off warns on both the log and the event stream", asyn
   mockFd3Open();
   try {
     await expect(
-      runThroughWarnGate(
-        signingPersistFixture(path.join(tmpDir, "receipt.json")),
-        undefined,
-        true,
-      ),
+      runThroughWarnGate(signingPersistFixture(), undefined, true),
     ).rejects.toThrow("key file path is empty");
   } finally {
     vi.mocked(fs.fstatSync).mockRestore();
@@ -4344,10 +4301,7 @@ test("signing with records off warns on both the log and the event stream", asyn
 
 test("a signing run that writes its record does not warn", async () => {
   await expect(
-    runThroughWarnGate(
-      signingPersistFixture(path.join(tmpDir, "receipt.json")),
-      true,
-    ),
+    runThroughWarnGate(signingPersistFixture(), true),
   ).rejects.toThrow("key file path is empty");
 
   expect(mockState.warnings).not.toContain(SIGNING_WITHOUT_RECORD_WARNING);
@@ -4608,8 +4562,8 @@ test("the warned run still completes", { timeout: 20_000 }, async () => {
   saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
   const [resultA, resultB] = await Promise.allSettled([
-    runSigningParty(keyFileA, "test-a", path.join(tmpDir, "receipt-a.json")),
-    runSigningParty(keyFileB, "test-b", path.join(tmpDir, "receipt-b.json")),
+    runSigningParty(keyFileA, "test-a"),
+    runSigningParty(keyFileB, "test-b"),
   ]);
   expect(resultA.status).toBe("fulfilled");
   expect(resultB.status).toBe("fulfilled");
@@ -4642,7 +4596,7 @@ test("preflightRun on a signed --no-record run emits the warning ahead of its ow
         },
         prepared: { ...minimalPrepared, undeclaredColumns },
         output: undefined,
-        signing: signingPersistFixture(path.join(tmpDir, "receipt.json")),
+        signing: signingPersistFixture(),
         writeRecord: false,
         verbosity: -1,
         loggerName: "test",
@@ -4847,7 +4801,6 @@ test("the partner's round is held to this process's memory once the terms are ex
 async function runSigningPartyWithPreflight(
   keyFilePath: string,
   name: string,
-  receiptFile: string,
   prepared: PreparedExchange = minimalPrepared,
 ): Promise<unknown> {
   const connection = {
@@ -4856,7 +4809,7 @@ async function runSigningPartyWithPreflight(
     options: TWO_PARTY_OPTIONS,
   };
   const auth = { sharedSecret: TOKEN_A, keyFilePath };
-  const signing = signingPersistFixture(receiptFile);
+  const signing = signingPersistFixture();
   const { eventStream, signingWithoutRecordWarned, undeclaredColumnsWarned } =
     await preflightRun({
       connection,
@@ -4894,16 +4847,8 @@ test(
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningPartyWithPreflight(
-        keyFileA,
-        "test-a",
-        path.join(tmpDir, "receipt-a.json"),
-      ),
-      runSigningPartyWithPreflight(
-        keyFileB,
-        "test-b",
-        path.join(tmpDir, "receipt-b.json"),
-      ),
+      runSigningPartyWithPreflight(keyFileA, "test-a"),
+      runSigningPartyWithPreflight(keyFileB, "test-b"),
     ]);
     expect(resultA.status).toBe("fulfilled");
     expect(resultB.status).toBe("fulfilled");
@@ -4933,18 +4878,8 @@ test(
     saveKeyFile(keyFileB, { sharedSecret: TOKEN_A });
 
     const [resultA, resultB] = await Promise.allSettled([
-      runSigningPartyWithPreflight(
-        keyFileA,
-        "test-a",
-        path.join(tmpDir, "receipt-a.json"),
-        prepared,
-      ),
-      runSigningPartyWithPreflight(
-        keyFileB,
-        "test-b",
-        path.join(tmpDir, "receipt-b.json"),
-        prepared,
-      ),
+      runSigningPartyWithPreflight(keyFileA, "test-a", prepared),
+      runSigningPartyWithPreflight(keyFileB, "test-b", prepared),
     ]);
     expect(resultA.status).toBe("fulfilled");
     expect(resultB.status).toBe("fulfilled");

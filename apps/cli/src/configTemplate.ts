@@ -408,12 +408,12 @@ export const OPTIONAL_SECTIONS = `# --- Optional sections (uncomment and edit to
 # credential, so you choose where it lives and Alcove never does -- a mount of
 # its own is the usual home, read-only for every run except the one that creates
 # the file. Create it with
-# 'alcove fingerprint --identity-file <the path below>'.
+# 'alcove fingerprint --identity-file <the path below>'. A signed run writes its
+# receipt into the output folder beside the result and record.
 # signing:
 #   mode: none
 #   # identity_file: /run/signing/alcove-signing-identity.json
-#   # partner_fingerprint: <43-char base64url>          # pin the partner's certificate
-#   # receipt_output: ./receipts/exchange-receipt.json  # where the receipt file is written
+#   # partner_fingerprint: <43-char base64url>  # pin the partner's certificate
 
 # retention_disposition: a local note (recorded in your own exchange record
 # only, never shared) describing where you file the result and under what

@@ -29,8 +29,6 @@ import { parseDualSignedRecord, type DualSignedRecord } from "@alcove/core";
 
 import {
   receiptFilePathIn,
-  receiptPathFor,
-  resolveReceiptOutput,
   writeDualSignedRecord,
 } from "../../src/receiptFile";
 
@@ -86,35 +84,12 @@ test("receiptFilePathIn is a filesystem-safe timestamped path in the folder", ()
   );
 });
 
-test("resolveReceiptOutput keeps an explicit path, else selects the default", () => {
-  expect(resolveReceiptOutput("/tmp/r.json")).toEqual({
-    receiptFile: "/tmp/r.json",
-  });
-  // Whitespace-only and absent both fall back to the default.
-  expect(resolveReceiptOutput("   ")).toEqual({ receiptFile: undefined });
-  expect(resolveReceiptOutput()).toEqual({ receiptFile: undefined });
-});
-
-test("receiptPathFor uses an explicit path verbatim, else the timestamped name in the folder", () => {
+test("writeDualSignedRecord writes a parseable owner-only file in the folder", () => {
+  const target = path.join(dir, "alcove-receipt-2026-01-01T00-00-00Z.json");
   expect(
-    receiptPathFor({ receiptFile: "/tmp/x.json" }, dir, "2026-01-01T00:00:00Z"),
-  ).toBe("/tmp/x.json");
-  expect(
-    receiptPathFor({ receiptFile: undefined }, dir, "2026-01-01T00:00:00Z"),
-  ).toBe(path.join(dir, "alcove-receipt-2026-01-01T00-00-00Z.json"));
-});
-
-test("writeDualSignedRecord writes a parseable owner-only file", () => {
-  const target = path.join(dir, "receipt.json");
-  expect(
-    writeDualSignedRecord(
-      { receiptFile: target },
-      record,
-      dir,
-      "2026-01-01T00:00:00Z",
-      "test",
-    ),
+    writeDualSignedRecord(record, dir, "2026-01-01T00:00:00Z", "test"),
   ).toBeUndefined();
+  expect(fs.readdirSync(dir)).toEqual([path.basename(target)]);
   expect(fs.existsSync(target)).toBe(true);
   // The written file round-trips through the parser.
   const parsed = parseDualSignedRecord(
@@ -134,13 +109,12 @@ test("writeDualSignedRecord warns rather than throws on a write failure", () => 
   // helper is non-fatal, so it warns and does not throw.
   const fileAsParent = path.join(dir, "afile");
   fs.writeFileSync(fileAsParent, "x");
-  const target = path.join(fileAsParent, "receipt.json");
+  const target = receiptFilePathIn(fileAsParent, "2026-01-01T00:00:00Z");
   let failure: string | undefined;
   expect(() => {
     failure = writeDualSignedRecord(
-      { receiptFile: target },
       record,
-      dir,
+      fileAsParent,
       "2026-01-01T00:00:00Z",
       "test",
     );

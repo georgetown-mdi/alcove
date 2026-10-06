@@ -138,7 +138,6 @@ beforeEach(async () => {
         partnerFingerprint: await computeCertificateFingerprint(
           partnerIdentity.certificate,
         ),
-        receiptOutput: path.join(work, `${self}-receipt.json`),
       },
     };
     saveConfig(path.join(work, `${self}.yaml`), spec);
@@ -316,7 +315,10 @@ function expectArtifactsComplete(outputFolder: string): void {
   expect(Object.keys(keys).length).toBeGreaterThan(0);
 
   const receipt = JSON.parse(
-    fs.readFileSync(path.join(work, "a-receipt.json"), "utf8"),
+    fs.readFileSync(
+      onlyArtifactIn(outputFolder, "alcove-receipt", ".json"),
+      "utf8",
+    ),
   ) as Record<string, unknown>;
   expect(Object.keys(receipt).length).toBeGreaterThan(0);
 }
@@ -652,7 +654,7 @@ test(
     expect(record.localIdentity).toBe("party-a");
     expect(fs.existsSync(keysPathFor(recordPath))).toBe(true);
     const receipt = JSON.parse(
-      fs.readFileSync(path.join(work, "a-receipt.json"), "utf8"),
+      fs.readFileSync(onlyArtifactIn(work, "alcove-receipt", ".json"), "utf8"),
     ) as Record<string, unknown>;
     expect(Object.keys(receipt).length).toBeGreaterThan(0);
   },
