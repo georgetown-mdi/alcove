@@ -247,8 +247,9 @@ afterEach(() => {
 describe("runExchangeLifecycle", () => {
   beforeEach(() => {
     // Default happy mocks; individual tests override as needed. The handshake
-    // resolves (its 32-byte session key is unused by the lifecycle today), so the
-    // owner advances to runExchange.
+    // resolves (its 32-byte session key is unused by the lifecycle today; its
+    // rotated secret reaches the completion), so the owner advances to
+    // runExchange.
     mockedAuthenticate.mockResolvedValue({
       sessionKey: new Uint8Array(32),
       rotatedSecret: "rotated",
@@ -257,7 +258,7 @@ describe("runExchangeLifecycle", () => {
     mockedRunExchange.mockResolvedValue(STUB_EXCHANGE_RESULT);
   });
 
-  test("success: reports the result, then tears down", async () => {
+  test("success: reports the result with the handshake's rotated secret, then tears down", async () => {
     const { mc, close } = makeFakeMc();
     mockedOpen.mockResolvedValue(mc);
     const { acquired, peer } = makeResources();
@@ -272,7 +273,9 @@ describe("runExchangeLifecycle", () => {
     });
 
     expect(s.generateOutput).toHaveBeenCalledTimes(1);
-    expect(s.onResult).toHaveBeenCalledWith(OUTPUTS);
+    expect(s.onResult).toHaveBeenCalledWith(OUTPUTS, {
+      rotatedSecret: "rotated",
+    });
     expect(s.onError).not.toHaveBeenCalled();
     // Teardown ran: the flushing close (teardown-exclusive) once, and the peer
     // was disconnected.
@@ -893,7 +896,9 @@ describe("runExchangeLifecycle", () => {
 
     // The exchange and output both succeeded; only teardown threw, so the
     // success state survives and neither alert is shown (F2).
-    expect(s.onResult).toHaveBeenCalledWith(OUTPUTS);
+    expect(s.onResult).toHaveBeenCalledWith(OUTPUTS, {
+      rotatedSecret: "rotated",
+    });
     expect(s.onError).not.toHaveBeenCalled();
     // The swallowed teardown failure is still logged (capturing it proves the
     // diagnostic fired and keeps it off the test output).

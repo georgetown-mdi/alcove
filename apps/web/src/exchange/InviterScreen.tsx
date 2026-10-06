@@ -606,6 +606,7 @@ export function InviterScreen() {
   const {
     run,
     outputs,
+    rotatedSecret,
     failure,
     runRecord,
     warnings,
@@ -734,15 +735,18 @@ export function InviterScreen() {
   }
 
   // Deposit a managed-exchange record for this exchange as the inviter: the
-  // standing terms plus the secret embedded in the just-minted invitation, so the
+  // standing terms plus the secret the completed run rotated to, so the
   // partnership can run again later. The connection block is composed from this
   // app's own signaling address -- the same ownSignalingAddress source the
   // invitation's endpoint was built from -- not read back off the encoded token.
-  // The secret is the minted invitation's, not the one-shot run's own derived
-  // rotation; only a managed re-run rotates it. Declining is simply not pressing
-  // Manage, so there is no discard path here.
+  // Declining is simply not pressing Manage, so there is no discard path here.
   async function manageExchange(choices: ManageOfferChoices) {
-    if (invitation === undefined || editor === undefined) return;
+    if (
+      invitation === undefined ||
+      editor === undefined ||
+      rotatedSecret === undefined
+    )
+      return;
     dispatch({ type: "manage-offer-started" });
     try {
       const connection = webrtcLocatorFromEndpoint(
@@ -766,7 +770,7 @@ export function InviterScreen() {
               ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
             },
             connection,
-            sharedSecret: invitation.sharedSecret,
+            rotatedSecret,
             choices,
           },
           Date.now(),
@@ -1902,11 +1906,13 @@ export function InviterScreen() {
             />
             {/* The manage offer is webrtc-only (its record composes a webrtc
                 locator) and is skippable: leaving it untouched keeps the exchange
-                one-off. It appears once the exchange completes. The sample demo
-                is excluded: a standing record of synthetic terms armed with a
-                real secret is not a partnership to manage. */}
+                one-off. It appears once the exchange completes and holds the
+                secret it rotated to. The sample demo is excluded: a standing
+                record of synthetic terms armed with a real secret is not a
+                partnership to manage. */}
             {transport === "browser" &&
               outputs !== undefined &&
+              rotatedSecret !== undefined &&
               failure === undefined &&
               !demoActive && (
                 <ManageExchangeOffer

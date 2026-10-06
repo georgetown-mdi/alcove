@@ -86,6 +86,7 @@ function seat(probe: JobStatusProbe = { kind: "gone" }) {
   const state = {
     run: initialRun(),
     outputs: undefined as RunOutputs | undefined,
+    rotatedSecret: undefined as string | undefined,
     warnings: [] as Array<string>,
     reattached: undefined as JobRunStatus | undefined,
     reattaching: false,
@@ -105,6 +106,9 @@ function seat(probe: JobStatusProbe = { kind: "gone" }) {
     },
     setOutputs: (update) => {
       state.outputs = applied(state.outputs, update);
+    },
+    setRotatedSecret: (update) => {
+      state.rotatedSecret = applied(state.rotatedSecret, update);
     },
     setWarnings: (update) => {
       state.warnings = applied(state.warnings, update);
@@ -212,6 +216,23 @@ describe("buildRunEvents", () => {
     expect(state.outputs).toBe(outputs);
     expect(state.run.finishedAt).toBeInstanceOf(Date);
     expect(state.run.failed).toBe(false);
+  });
+
+  test("an in-browser result holds the secret the run rotated to", () => {
+    const { state, events } = seat();
+
+    events.onResult({ kind: "withheld" }, { rotatedSecret: "rotated" });
+
+    expect(state.rotatedSecret).toBe("rotated");
+  });
+
+  test("a console-conducted result clears any rotated secret held", () => {
+    const { state, events } = seat();
+    state.rotatedSecret = "earlier";
+
+    events.onResult({ kind: "withheld" });
+
+    expect(state.rotatedSecret).toBeUndefined();
   });
 
   test("a warning is escaped once at the shared display boundary", () => {

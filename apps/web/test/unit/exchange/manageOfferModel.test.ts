@@ -77,7 +77,7 @@ function depositInputs(
       metadata: inviterMetadata,
     },
     connection: webrtcLocatorFromEndpoint(inviterEndpoint),
-    sharedSecret: generateSharedSecret(),
+    rotatedSecret: generateSharedSecret(),
     choices: { label: "Riverbend quarterly" },
     ...overrides,
   };
@@ -187,10 +187,10 @@ const acceptorMetadataFixture = [
 ];
 
 describe("buildManagedDeposit (inviter)", () => {
-  test("deposits side inviter with the invitation's secret and composed document", () => {
+  test("deposits side inviter with the run's rotated secret and composed document", () => {
     const secret = generateSharedSecret();
     const deposit = buildManagedDeposit(
-      depositInputs({ sharedSecret: secret }),
+      depositInputs({ rotatedSecret: secret }),
       Date.UTC(2026, 6, 15, 12, 0, 0),
     );
     expect(deposit.side).toBe("inviter");
@@ -253,7 +253,7 @@ describe("buildManagedDeposit (acceptor)", () => {
             : {}),
         },
         connection: webrtcLocatorFromEndpoint(invitationEndpoint),
-        sharedSecret: generateSharedSecret(),
+        rotatedSecret: generateSharedSecret(),
         choices: { label: "Clinic A partnership" },
       },
       Date.now(),
@@ -293,7 +293,7 @@ describe("the deposit's side and its document", () => {
       {
         documentParts: parts,
         connection,
-        sharedSecret: generateSharedSecret(),
+        rotatedSecret: generateSharedSecret(),
         choices: { label: "Clinic A partnership" },
       },
       Date.now(),

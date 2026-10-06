@@ -2540,6 +2540,39 @@ describe("acceptor screen: run and completion", () => {
     }
   });
 
+  test("an exchange failure on an invitation with no expiry offers start-over, not Try again", async () => {
+    expectConsole("error", "Error: transport");
+    await reachRun(
+      await encodeInvitation({
+        version: "1",
+        linkageTerms: acceptorTerms,
+        sharedSecret: generateSharedSecret(),
+        connectionEndpoint: {
+          channel: "webrtc",
+          host: "127.0.0.1",
+          port: 3000,
+          path: "/api/",
+        },
+      }),
+    );
+    expect(lifecycleCall(0).expires).toBeUndefined();
+    lifecycleCall(0).onStage("waiting for peer");
+    lifecycleCall(0).onError({
+      category: "exchange",
+      error: new Error("transport"),
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        Array.from(document.querySelectorAll("a")).some(
+          (anchor) =>
+            anchor.textContent === "Start over with a fresh invitation",
+        ),
+      ).toBe(true);
+    });
+    expect(page.getByRole("button", { name: "Try again" }).query()).toBeNull();
+  });
+
   test("a security failure forbids retry and links to a fresh invitation", async () => {
     expectConsole("error", "Error: kex failed");
     await reachRun();

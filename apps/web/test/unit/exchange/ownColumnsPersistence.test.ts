@@ -72,7 +72,7 @@ function depositRecord(includeOwnColumns?: "disclosed" | "all") {
           ...(includeOwnColumns !== undefined ? { includeOwnColumns } : {}),
         },
         connection: webrtcLocatorFromEndpoint(endpoint),
-        sharedSecret: generateSharedSecret(),
+        rotatedSecret: generateSharedSecret(),
         choices: { label: "Riverbend quarterly" },
       },
       Date.parse("2026-03-01T00:00:00.000Z"),

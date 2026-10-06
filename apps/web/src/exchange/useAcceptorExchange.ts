@@ -281,6 +281,10 @@ export function useAcceptorExchange({
 }): {
   run: ExchangeRun;
   outputs: RunOutputs | undefined;
+  /** The shared secret the completed in-browser run's handshake rotated to,
+   * the one a hand-off to a managed exchange deposits; undefined before the run
+   * completes and on a console-conducted run. */
+  rotatedSecret: string | undefined;
   failure: RunFailure | undefined;
   /** The exchange record a failed in-browser run holds, offered for download
    * beside the failure; undefined on every other run. */
@@ -311,6 +315,7 @@ export function useAcceptorExchange({
 } {
   const [run, setRun] = useState<ExchangeRun>(() => initialRun("acceptor"));
   const [outputs, setOutputs] = useState<RunOutputs>();
+  const [rotatedSecret, setRotatedSecret] = useState<string>();
   const [failure, setFailure] = useState<RunFailure>();
   const { runRecord, offerRunRecord, clearRunRecord } = useFailedRunRecord();
   const [warnings, setWarnings] = useState<Array<string>>([]);
@@ -378,6 +383,7 @@ export function useAcceptorExchange({
 
     setRun(initialRun("acceptor"));
     setOutputs(undefined);
+    setRotatedSecret(undefined);
     setFailure(undefined);
     clearRunRecord();
     setWarnings([]);
@@ -575,6 +581,7 @@ export function useAcceptorExchange({
       raiseFailure,
       setRun,
       setOutputs,
+      setRotatedSecret,
       setWarnings,
       setReattached,
       setReattaching,
@@ -613,6 +620,7 @@ export function useAcceptorExchange({
     if (launch === undefined) {
       setRun(initialRun("acceptor"));
       setOutputs(undefined);
+      setRotatedSecret(undefined);
       setFailure(undefined);
       clearRunRecord();
       setWarnings([]);
@@ -635,11 +643,11 @@ export function useAcceptorExchange({
   // instead forces a fresh invitation, and an output failure must not re-run an
   // exchange that already succeeded. Gated on the invitation's expiry as well:
   // re-dialing a lapsed credential cannot succeed (no peer can pass it). A token
-  // without an `expires` has no deadline, so it stays retryable.
+  // with no `expires` is refused a retry, as the inviter's kept invitation is.
   function tryAgain() {
     if (launch === undefined || failure?.retry !== "offered") return;
     const expires = launch.invitation.token.expires;
-    if (expires !== undefined && !invitationUsable(expires, new Date())) return;
+    if (expires === undefined || !invitationUsable(expires, new Date())) return;
     const retryLaunch = launch;
     abortRef.current?.abort();
     abortRef.current = undefined;
@@ -682,6 +690,7 @@ export function useAcceptorExchange({
   return {
     run,
     outputs,
+    rotatedSecret,
     failure,
     runRecord,
     warnings,

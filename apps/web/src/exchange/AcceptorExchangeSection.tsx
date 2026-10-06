@@ -162,12 +162,13 @@ export function AcceptorExchangeSection({
 
   // A retry is genuine only while the invitation can still be accepted:
   // re-dialing a lapsed credential cannot succeed, so an expired exchange failure
-  // routes to the fresh-invitation link instead. A token without `expires`
-  // has no deadline and stays retryable.
+  // routes to the fresh-invitation link instead, as does a token with no
+  // `expires`, which the hook's retry refuses.
   const expires = invitation.token.expires;
   const retryable =
     failure?.retry === "offered" &&
-    (expires === undefined || invitationUsable(expires, new Date()));
+    expires !== undefined &&
+    invitationUsable(expires, new Date());
   const columnsCanResolve =
     failure?.category === "config" && failure.settingsCannotResolve !== true;
   const offersFreshInvitation =

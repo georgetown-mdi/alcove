@@ -46,8 +46,10 @@ const NON_TRUST_KINDS: ReadonlySet<ConnectionErrorKind> = new Set([
  * `true`). The 32-byte session key is still derived, for the deferred
  * web-encryption work to consume once a relay can force the wrap on. The
  * returned {@link AuthResult} holds the rotated secret unchanged: the
- * one-shot flow discards it, a managed exchange feeds it to the run+rotate
- * write-back ({@link ./managedExchangeRun.ts}). This function neither
+ * one-shot flow hands it to its completion (`RunCompletion` in
+ * ./exchangeLifecycle.ts), where a hand-off to a managed exchange deposits it,
+ * and a managed run feeds it to the run+rotate write-back
+ * ({@link ./managedExchangeRun.ts}). This function neither
  * persists nor rotates; it authenticates and returns.
  *
  * Failure handling fails closed. A handshake failure aborts the exchange

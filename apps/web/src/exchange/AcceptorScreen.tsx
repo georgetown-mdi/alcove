@@ -155,6 +155,11 @@ import { restorablePosition } from "./stepRestore";
 import { useAcceptorExchange } from "./useAcceptorExchange";
 import { useStepHistory } from "./useStepHistory";
 
+import {
+  forgetAcceptedInvitation,
+  useAcceptedInvitation,
+} from "./acceptedInvitation";
+
 import type { InvitationDecodeRefusal } from "./invitationDecodeRefusal";
 
 import type {
@@ -212,8 +217,20 @@ function isAcceptorStep(value: string): value is AcceptorStep {
 }
 
 /**
- * The acceptor's pre-columns working surface. It decodes the invitation from the
- * URL fragment (failing closed before anything renders), reviews the partner's
+ * The acceptor's screen for the invitation the address carries
+ * ({@link useAcceptedInvitation}). Each invitation gets its own instance, keyed
+ * by its encoded token, so a second invitation pasted into the same tab starts
+ * over on its own terms and drops everything chosen under the first, a launched
+ * run included.
+ */
+export function AcceptorScreen() {
+  const encoded = useAcceptedInvitation();
+  return <AcceptorInvitationScreen key={encoded ?? ""} encoded={encoded} />;
+}
+
+/**
+ * The acceptor's pre-columns working surface. It decodes the invitation it is
+ * given (failing closed before anything renders), reviews the partner's
  * terms, captures explicit consent and a name, and takes the acceptor's file --
  * then commits it behind the consent gate (parsing it in the browser on the hosted
  * build, or referencing the profiled mounted file on the console build) and hands
@@ -231,7 +248,13 @@ function isAcceptorStep(value: string): value is AcceptorStep {
  * component holds the I/O -- the decode, the parse, the launch, and the
  * console's fetches -- and reports each outcome to it as an action.
  */
-export function AcceptorScreen() {
+function AcceptorInvitationScreen({
+  encoded,
+}: {
+  /** The encoded invitation, `""` where the address held none, or `undefined`
+   * while the address is still being read. */
+  encoded: string | undefined;
+}) {
   const consoleBuild = isConsoleBuild();
   const [screenState, dispatch] = useReducer(
     acceptorScreenReducer,
@@ -278,15 +301,16 @@ export function AcceptorScreen() {
     ? delimiterResolution.delimiter
     : undefined;
 
-  // Decode the fragment token once, failing closed: an empty fragment, a bad
+  // Decode the token once, failing closed: an empty fragment, a bad
   // checksum/schema, an expired token, or an endpoint this build cannot drive
   // (SFTP, or a filedrop endpoint on a non-console build) each throws in
-  // prepareAcceptedInvitation and lands on the focused error alert; only a valid
-  // invitation reaches the review step. The token rides ONLY in the fragment,
-  // which never reaches the server. Aborted on unmount so a resolving decode does
-  // not setState after teardown.
+  // prepareAcceptedInvitation and lands on the focused error alert, and the
+  // tab's kept copy of a refused token is removed; only a valid invitation
+  // reaches the review step. The token arrives ONLY in the fragment, which never
+  // reaches the server. Aborted on unmount so a resolving decode does not
+  // setState after teardown.
   useEffect(() => {
-    const encoded = window.location.hash.replace(/^#/, "");
+    if (encoded === undefined) return;
     if (encoded === "") {
       dispatch({ type: "decode-refused", refusal: { kind: "noToken" } });
       return;
@@ -310,15 +334,16 @@ export function AcceptorScreen() {
             rendezvous: rvz,
           });
       } catch (error) {
-        if (!controller.signal.aborted)
-          dispatch({
-            type: "decode-refused",
-            refusal: invitationDecodeRefusal(error),
-          });
+        if (controller.signal.aborted) return;
+        forgetAcceptedInvitation();
+        dispatch({
+          type: "decode-refused",
+          refusal: invitationDecodeRefusal(error),
+        });
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [encoded, consoleBuild]);
 
   // A console accept whose endpoint this console cannot run, decided by the endpoint
   // SHAPE against this console's own provisioning ({@link acceptUnsupported}): a
@@ -835,6 +860,7 @@ export function AcceptorScreen() {
   const {
     run,
     outputs,
+    rotatedSecret,
     failure,
     runRecord,
     warnings: runWarnings,
@@ -869,6 +895,11 @@ export function AcceptorScreen() {
       outputs === undefined &&
       failure === undefined,
   );
+
+  // A completed exchange has spent the invitation, so a reload need not find it.
+  useEffect(() => {
+    if (outputs !== undefined) forgetAcceptedInvitation();
+  }, [outputs]);
 
   // The coverage input, unified across builds: the browser's parsed rows on the
   // hosted build, the mounted-file reference on the console (whose sweep is a fetch
@@ -1114,7 +1145,7 @@ export function AcceptorScreen() {
 
   // Deposit a managed-exchange record for this exchange as the acceptor: this
   // party's perspective of the terms, its authored metadata and standardization,
-  // and the secret held in the invitation link, so the same partnership can run
+  // and the secret the completed run rotated to, so the same partnership can run
   // again later. The connection composes from the INVITATION's endpoint, since
   // the acceptor's rendezvous is the inviter's signaling location, not this
   // browser's. expectedPartnerDeduplicate persists the token's declared
@@ -1122,7 +1153,12 @@ export function AcceptorScreen() {
   // docs/spec/MANAGED_EXCHANGE_RECORD.md). Declining is simply not pressing
   // Manage.
   async function manageExchange(choices: ManageOfferChoices) {
-    if (decode.status !== "ready" || launched === undefined) return;
+    if (
+      decode.status !== "ready" ||
+      launched === undefined ||
+      rotatedSecret === undefined
+    )
+      return;
     const { token: invitationToken, endpoint } = decode.invitation;
     if (endpoint.channel !== "webrtc") return;
     dispatch({ type: "manage-offer-started" });
@@ -1146,7 +1182,7 @@ export function AcceptorScreen() {
                 : {}),
             },
             connection: webrtcLocatorFromEndpoint(endpoint),
-            sharedSecret: invitationToken.sharedSecret,
+            rotatedSecret,
             choices,
           },
           Date.now(),
@@ -1692,10 +1728,11 @@ export function AcceptorScreen() {
             {/* The manage offer is webrtc-only (its record composes a webrtc
                 locator from the invitation's endpoint) and is skippable: leaving
                 it untouched keeps the exchange one-off. It appears once the
-                exchange completes. */}
+                exchange completes and holds the secret it rotated to. */}
             {decode.invitation.endpoint.channel === "webrtc" &&
               launched !== undefined &&
               outputs !== undefined &&
+              rotatedSecret !== undefined &&
               failure === undefined && (
                 <ManageExchangeOffer
                   status={manageOffer.status}

@@ -14,13 +14,13 @@
  * docs/spec/MANAGED_EXCHANGE_RECORD.md: the record persists this party's whole
  * exchange-file document verbatim (no `authentication` block), composed from a
  * credential-free {@link WebRTCExchangeLocator} through the shared schema (see
- * {@link composeManagedExchangeFile}). The deposited secret is the invitation's
- * secret -- `sharedSecret` on the inviter's minted invitation, `token.sharedSecret`
- * on the acceptor's decoded one; the one-shot run that follows discards its own
- * derived rotation, so both parties' records stay coherent at the deposited value
- * until a later managed re-run rotates it. Declining leaves no record: the offer
- * is skipped and the one-shot flow's discard stands, so there is by design no
- * "compose then throw away" path here -- a caller that declines never composes.
+ * {@link composeManagedExchangeFile}). The deposited secret is the one the
+ * completed one-shot run's handshake rotated to, never the invitation's: both
+ * parties derive the same value from the session key, so either side's record
+ * holds the secret the partnership's next run authenticates with. Declining
+ * leaves no record: the offer is skipped and the one-shot flow drops the rotated
+ * secret with the run, so there is by design no "compose then throw away" path
+ * here -- a caller that declines never composes.
  */
 
 import { MAX_TEXT_LENGTH, MAX_TOKEN_MAX_AGE_DAYS } from "@alcove/core";
@@ -215,7 +215,7 @@ export interface ManageOfferChoices {
 
 /** Everything a completion surface supplies to turn the offer into a deposit: the
  * parts of this party's document and the locator to compose it from, the
- * invitation's secret, and the operator's choices. */
+ * completed run's rotated secret, and the operator's choices. */
 export interface ManagedDepositInputs {
   /** This party's document parts, holding the deposit's one statement of its
    * `side` (see {@link ManagedExchangeDocumentParts}). */
@@ -223,10 +223,9 @@ export interface ManagedDepositInputs {
   /** The credential-free webrtc locator the document's connection block is
    * composed from (see {@link webrtcLocatorFromEndpoint}). */
   connection: WebRTCExchangeLocator;
-  /** The invitation's shared secret -- the inviter's minted `sharedSecret`, the
-   * acceptor's `token.sharedSecret`. The one-shot run discards its rotation, so
-   * this stays the record's live secret until a managed re-run rotates it. */
-  sharedSecret: string;
+  /** The shared secret the completed one-shot run's handshake rotated to (the
+   * seat hook's `rotatedSecret`), stored as the record's live secret. */
+  rotatedSecret: string;
   /** The operator's label, opt-in max-age policy, and retention note. */
   choices: ManageOfferChoices;
 }
@@ -261,7 +260,7 @@ export function buildManagedDeposit(
   now: number,
 ): NewManagedExchange {
   const { tokenMaxAgeDays } = inputs.choices;
-  const stamp = rotationWriteBack(inputs.sharedSecret, tokenMaxAgeDays, now);
+  const stamp = rotationWriteBack(inputs.rotatedSecret, tokenMaxAgeDays, now);
   return {
     label: inputs.choices.label,
     exchangeFile: composeManagedDocument(
@@ -274,7 +273,7 @@ export function buildManagedDeposit(
       inputs.connection,
     ),
     side: inputs.documentParts.side,
-    sharedSecret: inputs.sharedSecret,
+    sharedSecret: inputs.rotatedSecret,
     ...(tokenMaxAgeDays !== undefined ? { tokenMaxAgeDays } : {}),
     ...(stamp.expires !== null ? { expires: stamp.expires } : {}),
   };

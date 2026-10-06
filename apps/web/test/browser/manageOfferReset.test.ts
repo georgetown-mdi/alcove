@@ -29,6 +29,7 @@ import { createAppMount } from "./renderApp";
 import { expectConsole } from "./expectedConsole";
 
 import type { InvitationToken, LinkageTerms } from "@alcove/core";
+import type { RunCompletion } from "@psi/exchangeLifecycle";
 
 // The recurring-save offer's refusal disables its own deposit, so it must not
 // outlive the exchange it was about. Each seat keeps one component instance
@@ -51,11 +52,14 @@ vi.mock("@psi/transport/rendezvous", async () =>
 // callbacks the real lifecycle fires: the offer appears only at completion.
 interface CapturedRun {
   onStages: (stages: Array<unknown>) => void;
-  onResult: (outputs: {
-    kind: "matched";
-    resultsUrl: string;
-    matchedRecordCount: number;
-  }) => void;
+  onResult: (
+    outputs: {
+      kind: "matched";
+      resultsUrl: string;
+      matchedRecordCount: number;
+    },
+    completion: RunCompletion,
+  ) => void;
 }
 const runs = vi.hoisted(() => ({ calls: [] as Array<unknown> }));
 vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
@@ -93,11 +97,14 @@ async function completeRun(count: number) {
       }),
     ),
   );
-  run.onResult({
-    kind: "matched",
-    resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
-    matchedRecordCount: 2,
-  });
+  run.onResult(
+    {
+      kind: "matched",
+      resultsUrl: URL.createObjectURL(new Blob(["a,b\n"])),
+      matchedRecordCount: 2,
+    },
+    { rotatedSecret: generateSharedSecret() },
+  );
   await expect.element(saveButton()).toBeInTheDocument();
 }
 

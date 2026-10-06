@@ -59,11 +59,14 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
     signal: AbortSignal;
     onStages: (stages: Array<unknown>) => void;
     onStage: (stageId: string) => void;
-    onResult: (outputs: {
-      kind: "matched";
-      resultsUrl: string;
-      matchedRecordCount: number;
-    }) => void;
+    onResult: (
+      outputs: {
+        kind: "matched";
+        resultsUrl: string;
+        matchedRecordCount: number;
+      },
+      completion: { rotatedSecret: string },
+    ) => void;
   }) =>
     Promise.resolve().then(() => {
       if (options.signal.aborted) return;
@@ -75,11 +78,14 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) => ({
       );
       options.onStage(WAITING_STAGE_ID);
       options.onStage(CONFIRMING_PROTOCOL_STAGE_ID);
-      options.onResult({
-        kind: "matched" as const,
-        resultsUrl: journeyResultsUrl,
-        matchedRecordCount: 12,
-      });
+      options.onResult(
+        {
+          kind: "matched" as const,
+          resultsUrl: journeyResultsUrl,
+          matchedRecordCount: 12,
+        },
+        { rotatedSecret: `${"R".repeat(42)}A` },
+      );
     }),
 }));
 

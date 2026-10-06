@@ -879,6 +879,10 @@ export function useInviterExchange({
 }): {
   run: ExchangeRun;
   outputs: RunOutputs | undefined;
+  /** The shared secret the completed in-browser run's handshake rotated to,
+   * the one a hand-off to a managed exchange deposits; undefined before the run
+   * completes and on a console-conducted run. */
+  rotatedSecret: string | undefined;
   failure: RunFailure | undefined;
   /** The exchange record a failed in-browser run holds, offered for download
    * beside the failure; undefined on every other run. */
@@ -906,6 +910,7 @@ export function useInviterExchange({
 } {
   const [run, setRun] = useState<ExchangeRun>(initialRun);
   const [outputs, setOutputs] = useState<RunOutputs>();
+  const [rotatedSecret, setRotatedSecret] = useState<string>();
   const [failure, setFailure] = useState<RunFailure>();
   const { runRecord, offerRunRecord, clearRunRecord } = useFailedRunRecord();
   const [warnings, setWarnings] = useState<Array<string>>([]);
@@ -977,6 +982,7 @@ export function useInviterExchange({
 
     setRun(initialRun());
     setOutputs(undefined);
+    setRotatedSecret(undefined);
     setFailure(undefined);
     clearRunRecord();
     setWarnings([]);
@@ -1169,6 +1175,7 @@ export function useInviterExchange({
       raiseFailure,
       setRun,
       setOutputs,
+      setRotatedSecret,
       setWarnings,
       setReattached,
       setReattaching,
@@ -1208,6 +1215,7 @@ export function useInviterExchange({
       // rather than lingering until the console unmounts.
       setRun(initialRun());
       setOutputs(undefined);
+      setRotatedSecret(undefined);
       setFailure(undefined);
       clearRunRecord();
       setWarnings([]);
@@ -1279,6 +1287,7 @@ export function useInviterExchange({
   return {
     run,
     outputs,
+    rotatedSecret,
     failure,
     runRecord,
     warnings,
