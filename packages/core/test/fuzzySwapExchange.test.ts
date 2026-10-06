@@ -7,19 +7,19 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { prepareForExchange, runExchange } from "../src/exchange";
+import { runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 
-import type { ExchangeResult, PreparedExchange } from "../src/exchange";
+import type { ExchangeResult } from "../src/exchange";
+import type { CSVRow } from "../src/file";
 import type {
   LinkageKey,
-  Output,
+  LinkageTerms,
   TransformStep,
 } from "../src/config/linkageTermsSchema";
+import { prepared } from "./utils/support";
 
 const psiLibrary = await PSI();
-
-const both: Output = { expectsOutput: true, shareWithPartner: true };
 
 type NameRow = { first_name: string; last_name: string };
 
@@ -80,46 +80,36 @@ const filler = (party: string, count: number): NameRow[] =>
     last_name: `${party}FILLERLAST${"ABCDEFGHIJ"[i % 10]}`,
   }));
 
-function prepared(key: LinkageKey, identity: string, rows: NameRow[]) {
-  return prepareForExchange(
-    {
-      linkageTerms: {
-        ...baseTerms,
-        linkageKeys: [key],
-        identity,
-        output: both,
-      },
-    },
-    identity,
-    rows,
-    ["first_name", "last_name"],
-  );
-}
-
 /**
  * Drive one exchange between two already-padded parties over a fresh message
- * pipe. `prepare` turns each side's own rows into a `PreparedExchange` --
- * `prepared` and `preparedDob` below, generic over the row shape the linkage
- * terms in use expect.
+ * pipe, each side preparing its own rows under `terms` with `key` as the one
+ * linkage key.
  */
-async function runFuzzyExchange<Row>(
+async function runFuzzyExchange<Row extends CSVRow>(
   key: LinkageKey,
   authoredRows: Row[],
   reversedRows: Row[],
-  prepare: (key: LinkageKey, identity: string, rows: Row[]) => PreparedExchange,
+  terms: Partial<LinkageTerms>,
+  columns: Array<string>,
 ): Promise<{ authored: ExchangeResult; reversed: ExchangeResult }> {
   const [connAuthored, connReversed] = createMessagePipe();
   const [authored, reversed] = await Promise.all([
     runExchange(
       connAuthored,
       "initiator",
-      prepare(key, "Authored Co", authoredRows),
+      prepared("Authored Co", authoredRows, {
+        terms: { ...terms, linkageKeys: [key] },
+        columns,
+      }),
       { psiLibrary },
     ),
     runExchange(
       connReversed,
       "responder",
-      prepare(key, "Reversed Co", reversedRows),
+      prepared("Reversed Co", reversedRows, {
+        terms: { ...terms, linkageKeys: [key] },
+        columns,
+      }),
       { psiLibrary },
     ),
   ]);
@@ -153,7 +143,8 @@ async function runSwapExchange(
       ...reversedRows,
       ...(receiver === "reversed" ? [] : filler("REV", padding)),
     ],
-    prepared,
+    baseTerms,
+    ["first_name", "last_name"],
   );
 }
 
@@ -326,22 +317,6 @@ const dobTerms = {
   linkageFields: [{ name: "dob", type: "date_of_birth" as const }],
 };
 
-function preparedDob(key: LinkageKey, identity: string, rows: DobRow[]) {
-  return prepareForExchange(
-    {
-      linkageTerms: {
-        ...dobTerms,
-        linkageKeys: [key],
-        identity,
-        output: both,
-      },
-    },
-    identity,
-    rows,
-    ["date_of_birth"],
-  );
-}
-
 // Padding rows for role resolution, dated well outside either test pair so
 // none of them collides with a candidate either kind's expansion realizes.
 // Only one side is ever padded in a given run (the receiver keeps its own row
@@ -364,7 +339,8 @@ async function runDobExchange(
     key,
     [...authoredRows, ...(receiver === "authored" ? [] : dobFiller(padding))],
     [...reversedRows, ...(receiver === "reversed" ? [] : dobFiller(padding))],
-    preparedDob,
+    dobTerms,
+    ["date_of_birth"],
   );
 }
 

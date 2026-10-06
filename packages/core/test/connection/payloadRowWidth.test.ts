@@ -6,16 +6,15 @@ import PSI from "@openmined/psi.js";
 import {
   exchangeDisclosedWithoutPartnerPayload,
   exchangeRecordFromFailure,
-  prepareForExchange,
   runExchange,
 } from "../../src/exchange";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { PreparedExchange } from "../../src/exchange";
-import type { Output } from "../../src/config/linkageTermsSchema";
 import type { Metadata } from "../../src/config/metadata";
 import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
+import { prepared } from "../utils/support";
 
 // A payload row must supply exactly one value per named column, or the
 // record's readable governance list and its committed values fall out of
@@ -25,18 +24,6 @@ import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
 // payloadExchange.test.ts.
 
 const psiLibrary = await PSI();
-
-const both: Output = { expectsOutput: true, shareWithPartner: true };
-
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
 
 // The receiving party holds a linkage column only, so it discloses nothing of its
 // own and every payload assertion below is about what it RECEIVED.
@@ -55,7 +42,7 @@ const senderRows = [
 ];
 const senderColumns = ["first_name", "diagnosis"];
 
-function prepared(
+function preparedWithoutPayloadBlock(
   identity: string,
   rows: Array<Record<string, string>>,
   columns: Array<string>,
@@ -65,12 +52,7 @@ function prepared(
       ? { name, type: "first_name", role: "linkage", isPayload: false }
       : { name, type: "other", role: "payload", isPayload: true },
   );
-  const exchange = prepareForExchange(
-    { metadata, linkageTerms: { ...firstNameTerms, identity, output: both } },
-    identity,
-    rows,
-    columns,
-  );
+  const exchange = prepared(identity, rows, { metadata, columns });
   // No payload block: the receive side is lazy, so the run takes whatever
   // arrives and the wire schema is the only thing standing between a forged
   // frame and the record.
@@ -99,7 +81,7 @@ test("a run receiving an honest payload frame records the columns whose values i
     runExchange(
       connReceiver,
       "initiator",
-      prepared("Receiver Co", receiverRows, receiverColumns),
+      preparedWithoutPayloadBlock("Receiver Co", receiverRows, receiverColumns),
       {
         psiLibrary,
       },
@@ -107,7 +89,7 @@ test("a run receiving an honest payload frame records the columns whose values i
     runExchange(
       connSender,
       "responder",
-      prepared("Sender Co", senderRows, senderColumns),
+      preparedWithoutPayloadBlock("Sender Co", senderRows, senderColumns),
       {
         psiLibrary,
       },
@@ -147,7 +129,7 @@ test("a run receiving a columnless frame that holds rows is refused before its o
     runExchange(
       connReceiver,
       "initiator",
-      prepared("Receiver Co", receiverRows, receiverColumns),
+      preparedWithoutPayloadBlock("Receiver Co", receiverRows, receiverColumns),
       {
         psiLibrary,
       },
@@ -155,7 +137,7 @@ test("a run receiving a columnless frame that holds rows is refused before its o
     runExchange(
       connSender,
       "responder",
-      prepared("Sender Co", senderRows, senderColumns),
+      preparedWithoutPayloadBlock("Sender Co", senderRows, senderColumns),
       {
         psiLibrary,
       },

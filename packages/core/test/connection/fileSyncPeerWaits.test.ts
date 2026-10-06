@@ -9,10 +9,8 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
 import { failureCauseOf } from "../../src/failureCause";
 import { MAX_TIMEOUT_SECONDS } from "../../src/config/connection";
-import {
-  makeMockClient,
-  messageLoopInternals,
-} from "../utils/fileSyncConnectionFixture";
+import { messageLoopInternals } from "../utils/fileSyncConnectionFixture";
+import { makeMockClient } from "../utils/support";
 
 import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import type {

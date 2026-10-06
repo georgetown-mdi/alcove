@@ -13,6 +13,7 @@ import {
   MAX_KEY_CANDIDATE_WIDTH,
 } from "../../src/fanOutFunctions";
 import { REGEX_STEP_PATTERN_PARAM } from "../../src/config/transformRegexDialect";
+import { encodeRawInvitation } from "../utils/support";
 
 // The strings a partner authors in the document below. A refusal locates the
 // offending key by its position and states a fixed literal, so none of these
@@ -104,20 +105,8 @@ function expectNoPartnerText(messages: ReadonlyArray<string>): void {
       expect(message).not.toContain(authored);
 }
 
-// Reproduces encodeInvitation's body-plus-checksum encoding without its schema
-// validation, so a token the schema refuses can still be handed to the decode.
-// The checksum detects a transcription error rather than authenticating the
-// token, so a partner composes a valid one over any payload.
-async function encodeRaw(token: unknown): Promise<string> {
-  const toBase64Url = (bytes: Uint8Array): string =>
-    Buffer.from(bytes).toString("base64url");
-  const bytes = new TextEncoder().encode(JSON.stringify(token));
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(digest).slice(0, 4));
-}
-
 function invitationOver(terms: Record<string, unknown>): Promise<string> {
-  return encodeRaw({
+  return encodeRawInvitation({
     version: "1",
     linkageTerms: terms,
     sharedSecret: VALID_SECRET,

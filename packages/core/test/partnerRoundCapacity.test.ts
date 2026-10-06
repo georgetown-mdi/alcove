@@ -13,7 +13,6 @@ import {
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   partnerRoundValues,
-  prepareForExchange,
   roundOneSetOverPartnerCeilingMessage,
   runExchange,
 } from "../src/exchange";
@@ -36,6 +35,7 @@ import type {
   LinkageStrategy,
 } from "../src/config/linkageTermsSchema";
 import type { PreparedExchange, RunExchangeOptions } from "../src/exchange";
+import { prepared } from "./utils/support";
 
 // The checks a party makes once the terms are exchanged and before any PSI set
 // moves: its own capacity against the partner's round (docs/spec/FILE_SYNC.md,
@@ -52,7 +52,7 @@ const swappedKey = {
   swap: ["firstName", "lastName"] as [string, string],
 };
 
-function prepared(
+function preparedRows(
   identity: string,
   rowCount: number,
   linkageStrategy: LinkageStrategy = "cascade",
@@ -65,31 +65,23 @@ function prepared(
     const i = row < rowCount - sharedRows ? row : row - sharedRows;
     return `zq${String.fromCharCode(97 + (i % 26))}${Math.floor(i / 26)}`;
   };
-  return prepareForExchange(
-    {
-      linkageTerms: {
-        version: "1.0.0",
-        date: "2026-01-01",
-        algorithm: "psi",
-        deduplicate: false,
-        linkageStrategy,
-        identity,
-        output: { expectsOutput: true, shareWithPartner: true },
-        linkageFields: [
-          { name: "firstName", type: "first_name" },
-          { name: "lastName", type: "last_name" },
-        ],
-        linkageKeys: swapped
-          ? [swappedKey]
-          : [{ name: "firstName", elements: [{ field: "firstName" }] }],
-      },
-    },
+  return prepared(
     identity,
     Array.from({ length: rowCount }, (_unused, i) => ({
       first_name: name(i),
       last_name: `${name(i)}x`,
     })),
-    ["first_name", "last_name"],
+    {
+      terms: {
+        linkageStrategy,
+        linkageFields: [
+          { name: "firstName", type: "first_name" },
+          { name: "lastName", type: "last_name" },
+        ],
+        ...(swapped ? { linkageKeys: [swappedKey] } : {}),
+      },
+      columns: ["first_name", "last_name"],
+    },
   );
 }
 
@@ -130,13 +122,18 @@ async function runPair(params: {
     runExchange(
       withCeiling(local, params.ceiling, sent),
       "initiator",
-      prepared("Local Co", params.localRows, params.strategy, params.swapped),
+      preparedRows(
+        "Local Co",
+        params.localRows,
+        params.strategy,
+        params.swapped,
+      ),
       { psiLibrary, ...params.options },
     ),
     runExchange(
       withCeiling(partner, undefined, partnerSent),
       "responder",
-      prepared(
+      preparedRows(
         "Partner Co",
         params.partnerRows,
         params.strategy,
@@ -316,13 +313,13 @@ test("a first round refused for other than its size sends the partner a fixed ab
     runExchange(
       withCeiling(local, 11, sent),
       "initiator",
-      prepared("Local Co", 5),
+      preparedRows("Local Co", 5),
       { psiLibrary },
     ),
     runExchange(
       withCeiling(partner, undefined, partnerSent),
       "responder",
-      withThrowingRows(prepared("Partner Co", 12), refusal),
+      withThrowingRows(preparedRows("Partner Co", 12), refusal),
       { psiLibrary },
     ),
   ]);
@@ -349,13 +346,13 @@ test("a first round this party could not count sends the partner the refused abo
     runExchange(
       withCeiling(local, 11, sent),
       "initiator",
-      prepared("Local Co", 5),
+      preparedRows("Local Co", 5),
       { psiLibrary },
     ),
     runExchange(
       withCeiling(partner, undefined, partnerSent),
       "responder",
-      withThrowingRows(prepared("Partner Co", 12), failure),
+      withThrowingRows(preparedRows("Partner Co", 12), failure),
       { psiLibrary },
     ),
   ]);
@@ -507,13 +504,13 @@ test("a failure of the capacity check other than a capacity refusal propagates a
   const partnerRun = runExchange(
     partner,
     "responder",
-    prepared("Partner Co", 12),
+    preparedRows("Partner Co", 12),
     { psiLibrary },
   );
   const localOutcome = await runExchange(
     withCeiling(local, undefined, sent),
     "initiator",
-    prepared("Local Co", 5),
+    preparedRows("Local Co", 5),
     {
       psiLibrary,
       checkPartnerRoundCapacity: () => {

@@ -13,21 +13,15 @@ vi.mock("../../src/linkageTermsPolicy", async (importOriginal) => {
   return { ...original, candidateSetIsImplementedForStrategy: () => true };
 });
 
-import { PSIParticipant } from "../../src/psi/participant";
 import {
   groupDuplicatesAndRemoveUndefineds,
-  linkViaPSI,
   linkViaSinglePassPSI,
   removeDuplicatesAndUndefineds,
   type LinkageCardinality,
 } from "../../src/psi/link";
-import {
-  createMessagePipe,
-  type MessageConnection,
-} from "../../src/connection/messageConnection";
+import { createMessagePipe } from "../../src/connection/messageConnection";
 import type { AssociationTable } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { recordingConnection } from "../utils/recordingConnection";
 import {
   candidateSetBounds,
@@ -35,55 +29,35 @@ import {
   mirrorCardinality,
   type Column,
 } from "../utils/candidateSetBounds";
-import { deviateListBody } from "../utils/matchedListPartFrames";
+import {
+  makeParticipant,
+  runCascade,
+  tablesOf,
+  type CascadeRunOptions,
+} from "../utils/support";
 
 const psiLibrary = await PSI();
-
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-  );
-}
 
 interface CascadeRun {
   starter: AssociationTable;
   joiner: AssociationTable;
 }
 
-async function runCascade(
+async function sortedCascade(
   starterKeys: Array<Column>,
   joinerKeys: Array<Column>,
-  starterCardinality: LinkageCardinality = "one-to-one",
-  wrap?: {
-    party: "starter" | "joiner";
-    conn: (conn: MessageConnection) => MessageConnection;
-  },
+  cardinality: LinkageCardinality = "one-to-one",
+  wrap?: CascadeRunOptions["wrap"],
 ): Promise<CascadeRun> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const connFor = (party: "starter" | "joiner", conn: MessageConnection) =>
-    wrap?.party === party ? wrap.conn(conn) : conn;
-  const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-  const [starter, joiner] = await Promise.all([
-    linkViaPSI(
-      { cardinality: starterCardinality },
-      makeParticipant("starter"),
-      connFor("starter", starterConn),
+  const { starter, joiner } = tablesOf(
+    await runCascade({
+      library: psiLibrary,
       starterKeys,
-      candidateSetBounds(joinerKeys[0].length, keyWidths),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: mirrorCardinality(starterCardinality) },
-      makeParticipant("joiner"),
-      connFor("joiner", joinerConn),
       joinerKeys,
-      candidateSetBounds(starterKeys[0].length, keyWidths),
-      -1,
-    ),
-  ]);
+      cardinality,
+      wrap,
+    }),
+  );
   return {
     starter: sortAssociationTable(starter),
     joiner: sortAssociationTable(joiner, true),
@@ -245,7 +219,7 @@ test("the shared-value drop is per value, so a fanning record still matches on i
   // Both starter rows hold "shared", which leaves the round on the starter;
   // row 0's "only-mine" is unique and still matches. A rule applied per RECORD
   // would have dropped row 0 entirely.
-  const run = await runCascade(
+  const run = await sortedCascade(
     [[new Set(["shared", "only-mine"]), new Set(["shared", "unmatched"])]],
     [["only-mine", "shared"]],
   );
@@ -260,7 +234,7 @@ test("a record the sweep discards ends unmatched and out of candidacy", async ()
   // rows; the sweep accepts the lower and discards the other pair. Round 2
   // would match the joiner's discarded row uniquely, and must not: it left
   // candidacy on the potential match.
-  const run = await runCascade(
+  const run = await sortedCascade(
     [
       [new Set(["p", "q"]), undefined],
       [undefined, "late"],
@@ -278,7 +252,7 @@ test("the discarded record is in no mapped-element list and no later round", asy
   // The same shape with the later key held by BOTH parties' discarded rows, so
   // a round that failed to remove them would produce a second pair rather than
   // a silent no-op.
-  const run = await runCascade(
+  const run = await sortedCascade(
     [
       [new Set(["p", "q"]), "z"],
       ["late", "late"],
@@ -304,7 +278,7 @@ const DOUBLE_MATCH_S: Array<Column> = [
 const DOUBLE_MATCH_R: Array<Column> = [["ab", new Set(["cd", "ef"])]];
 
 test("both parties produce the same table with S as the sender", async () => {
-  const run = await runCascade(DOUBLE_MATCH_S, DOUBLE_MATCH_R);
+  const run = await sortedCascade(DOUBLE_MATCH_S, DOUBLE_MATCH_R);
   expect(run.starter).toStrictEqual([
     [0, 1],
     [0, 1],
@@ -315,7 +289,7 @@ test("both parties produce the same table with S as the sender", async () => {
 test("both parties produce the same table with S as the receiver", async () => {
   // The sweep's order is role-derived, so the case runs in both role
   // assignments and must reach the same records either way.
-  const run = await runCascade(DOUBLE_MATCH_R, DOUBLE_MATCH_S);
+  const run = await sortedCascade(DOUBLE_MATCH_R, DOUBLE_MATCH_S);
   expect(run.starter).toStrictEqual([
     [0, 1],
     [0, 1],
@@ -327,7 +301,7 @@ test("the tiebreak is decided by rank, not by the order values enter the round",
   // S0's two candidates swapped in its realized set, which moves "cd" ahead of
   // "ab" in the round's candidate list. The table is unchanged: the order is
   // the records' ranks, and a resolution reading list order would invert here.
-  const run = await runCascade(
+  const run = await sortedCascade(
     [[new Set(["cd", "ab"]), new Set(["ef"])]],
     [["ab", new Set(["ef", "cd"])]],
   );
@@ -346,9 +320,8 @@ async function recordedStarterFrames(
   cardinality: LinkageCardinality = "one-to-one",
 ): Promise<Array<unknown>> {
   let sent: Array<unknown> = [];
-  await runCascade(starterKeys, joinerKeys, cardinality, {
-    party: "starter",
-    conn: (conn) => {
+  await sortedCascade(starterKeys, joinerKeys, cardinality, {
+    starter: (conn) => {
       const recorder = recordingConnection(conn);
       sent = recorder.sent;
       return recorder.conn;
@@ -467,7 +440,7 @@ async function runSinglePass(
   const [starter, joiner] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality: starterCardinality },
-      makeParticipant("starter"),
+      makeParticipant(psiLibrary, "starter"),
       starterConn,
       starterKeys,
       {
@@ -479,7 +452,7 @@ async function runSinglePass(
     ),
     linkViaSinglePassPSI(
       { cardinality: mirrorCardinality(starterCardinality) },
-      makeParticipant("joiner"),
+      makeParticipant(psiLibrary, "joiner"),
       joinerConn,
       joinerKeys,
       {
@@ -504,7 +477,7 @@ async function expectBothPartiesResolveAsSinglePass(
     [manySide, oneSide, "many-to-one"],
     [oneSide, manySide, "one-to-many"],
   ] as Array<[Array<Column>, Array<Column>, LinkageCardinality]>) {
-    const cascade = await runCascade(starterKeys, joinerKeys, cardinality);
+    const cascade = await sortedCascade(starterKeys, joinerKeys, cardinality);
     const single = await runSinglePass(starterKeys, joinerKeys, cardinality);
     expect(sortAssociationTable(cascade.starter)).toStrictEqual(
       sortAssociationTable(single.starter),
@@ -574,10 +547,14 @@ for (const manySide of ["starter", "joiner"] as const) {
     // list of its records; the last entry is moved off the canonical position
     // onto the record's other matched one.
     let named: Array<MappedElement> | undefined;
-    const deviating = (conn: MessageConnection): MessageConnection => ({
-      send: (data) => conn.send(data),
-      receive: async (timeoutMs?: number) =>
-        deviateListBody(await conn.receive(timeoutMs), (frame) => {
+    const run = await runCascade({
+      library: psiLibrary,
+      starterKeys,
+      joinerKeys,
+      cardinality,
+      deviate: {
+        party: oneSide,
+        deviation: (frame) => {
           if (named !== undefined || !isMappedElementList(frame)) return frame;
           named = frame;
           const last = frame[frame.length - 1];
@@ -585,46 +562,10 @@ for (const manySide of ["starter", "joiner"] as const) {
             ...frame.slice(0, -1),
             { ...last, theirIndex: 1 - last.theirIndex },
           ];
-        }),
-      close: () => conn.close(),
-      setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
+        },
+      },
     });
-
-    const [starterConn, joinerConn] = createMessagePipe();
-    const connFor = (party: "starter" | "joiner", conn: MessageConnection) =>
-      party === oneSide ? deviating(conn) : conn;
-    const keyWidths = declaredKeyWidths(starterKeys, joinerKeys);
-    const settle = (run: Promise<AssociationTable>) =>
-      run.then(
-        (table) => table,
-        (err: unknown) => err as Error,
-      );
-    const runs = {
-      starter: settle(
-        linkViaPSI(
-          { cardinality },
-          makeParticipant("starter"),
-          connFor("starter", starterConn),
-          starterKeys,
-          candidateSetBounds(joinerKeys[0].length, keyWidths),
-          -1,
-        ),
-      ),
-      joiner: settle(
-        linkViaPSI(
-          { cardinality: mirrorCardinality(cardinality) },
-          makeParticipant("joiner"),
-          connFor("joiner", joinerConn),
-          joinerKeys,
-          candidateSetBounds(starterKeys[0].length, keyWidths),
-          -1,
-        ),
-      ),
-    };
-    const outcome = await runs[oneSide];
-    await starterConn.close();
-    await joinerConn.close();
-    await Promise.all([runs.starter, runs.joiner]);
+    const outcome = run[oneSide];
 
     // Non-vacuity: the conforming list named the one record twice, both times
     // by its canonical position, so the deviation names its other one.

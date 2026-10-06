@@ -10,7 +10,6 @@ import PSI from "@openmined/psi.js";
 
 import {
   exchangeRecordFromFailure,
-  prepareForExchange,
   resolveCountOnlyRun,
   runExchange,
 } from "../../src/exchange";
@@ -29,24 +28,13 @@ import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { ExchangeResult, PreparedExchange } from "../../src/exchange";
 import type { Algorithm } from "../../src/types";
 import type { LinkageTerms, Output } from "../../src/config/linkageTermsSchema";
+import { prepared, withSentNote } from "../utils/support";
 
 const psiLibrary = await PSI();
 
 const both: Output = { expectsOutput: true, shareWithPartner: true };
 const receives: Output = { expectsOutput: true, shareWithPartner: false };
 const helps: Output = { expectsOutput: false, shareWithPartner: true };
-
-// firstName-only terms, as the record end-to-end suite uses: the default key
-// templates all need SSN/DOB, so an explicit key is what gives both parties valid,
-// matching terms over a first-name column.
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
 
 // Elizabeth is duplicated within the responder's own dataset, so both parties drop
 // it from the round entirely and Carol is the only match. That is the vector the
@@ -65,20 +53,6 @@ const initiatorRows = [
   { first_name: "Henry" },
 ];
 const expectedCount = 1;
-
-function prepared(
-  identity: string,
-  output: Output,
-  rows: Array<Record<string, string>>,
-  algorithm: Algorithm,
-): PreparedExchange {
-  return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, algorithm, identity, output } },
-    identity,
-    rows,
-    ["first_name"],
-  );
-}
 
 // Records every frame this party puts on the wire, leaving the receive path and the
 // message order untouched -- what the count-report suppression is asserted against.
@@ -141,18 +115,12 @@ async function runBoth(
   const [connInitiator, connResponder] = createMessagePipe();
   const initiatorSent: Array<unknown> = [];
   const responderSent: Array<unknown> = [];
-  const initiatorPrepared = prepared(
-    "Initiator Co",
-    initiatorOutput,
-    datasets.initiator,
-    algorithm,
-  );
-  const responderPrepared = prepared(
-    "Responder Co",
-    responderOutput,
-    datasets.responder,
-    algorithm,
-  );
+  const initiatorPrepared = prepared("Initiator Co", datasets.initiator, {
+    terms: { algorithm, output: initiatorOutput },
+  });
+  const responderPrepared = prepared("Responder Co", datasets.responder, {
+    terms: { algorithm, output: responderOutput },
+  });
   mutate(initiatorPrepared);
   mutate(responderPrepared);
   const [initiator, responder] = await Promise.all([
@@ -424,13 +392,17 @@ test.each([
       runExchange(
         recording(connInitiator, initiatorSent),
         "initiator",
-        prepared("Initiator Co", both, initiatorRows, initiatorAlgorithm),
+        prepared("Initiator Co", initiatorRows, {
+          terms: { algorithm: initiatorAlgorithm },
+        }),
         { psiLibrary },
       ),
       runExchange(
         recording(connResponder, responderSent),
         "responder",
-        prepared("Responder Co", both, responderRows, responderAlgorithm),
+        prepared("Responder Co", responderRows, {
+          terms: { algorithm: responderAlgorithm },
+        }),
         { psiLibrary },
       ),
     ]);
@@ -452,18 +424,12 @@ test("an algorithm divergence is refused at the agreed-terms run boundary", () =
   // run turns on: a pair that diverged anyway must refuse rather than resolve to "not
   // count-only", which would run the identifier-revealing engine while the psi-c
   // party's own record attested the count-only algorithm its terms named.
-  const countOnlyTerms = prepared(
-    "Initiator Co",
-    both,
-    initiatorRows,
-    "psi-c",
-  ).linkageTerms;
-  const revealingTerms = prepared(
-    "Responder Co",
-    both,
-    responderRows,
-    "psi",
-  ).linkageTerms;
+  const countOnlyTerms = prepared("Initiator Co", initiatorRows, {
+    terms: { algorithm: "psi-c" },
+  }).linkageTerms;
+  const revealingTerms = prepared("Responder Co", responderRows, {
+    terms: { algorithm: "psi" },
+  }).linkageTerms;
 
   // Symmetric over the agreed pair: each party calls it with its own terms first, so
   // both refuse at this same point rather than one starting a round the other refuses.
@@ -501,12 +467,9 @@ test("an algorithm divergence is refused at the agreed-terms run boundary", () =
 // first. What the boundary covers alone is a PreparedExchange assembled or
 // mutated past that prepare step (docs/spec/PROTOCOL.md, PSI-C).
 
-const agreedCountOnlyTerms = prepared(
-  "Initiator Co",
-  both,
-  initiatorRows,
-  "psi-c",
-).linkageTerms;
+const agreedCountOnlyTerms = prepared("Initiator Co", initiatorRows, {
+  terms: { algorithm: "psi-c" },
+}).linkageTerms;
 
 // An algorithm value outside the implemented pair, as prepareForExchange.test.ts
 // drives the shared guard with: the shape a member later added to AlgorithmSchema
@@ -563,28 +526,10 @@ test("a count-only exchange whose input metadata would transmit a column is refu
   // before any credential, terms, or data are sent, rather than dropping the
   // marked column to bring the run into shape.
   expect(() =>
-    prepareForExchange(
-      {
-        metadata: [
-          {
-            name: "first_name",
-            type: "first_name",
-            role: "linkage",
-            isPayload: false,
-          },
-          { name: "note", type: "other", role: "payload", isPayload: true },
-        ],
-        linkageTerms: {
-          ...firstNameTerms,
-          algorithm: "psi-c",
-          identity: "Initiator Co",
-          output: both,
-        },
-      },
-      "Initiator Co",
-      [{ first_name: "Carol", note: "c-c" }],
-      ["first_name", "note"],
-    ),
+    prepared("Initiator Co", [{ first_name: "Carol", note: "c-c" }], {
+      ...withSentNote,
+      terms: { algorithm: "psi-c" },
+    }),
   ).toThrow(/sends no data columns/);
 });
 
@@ -606,13 +551,17 @@ test("a count-only run refuses an inbound payload column from a non-conforming p
     runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", both, initiatorRows, "psi-c"),
+      prepared("Initiator Co", initiatorRows, {
+        terms: { algorithm: "psi-c" },
+      }),
       { psiLibrary },
     ),
     runExchange(
       withHostilePayload(connResponder, hostilePayload),
       "responder",
-      prepared("Responder Co", both, responderRows, "psi-c"),
+      prepared("Responder Co", responderRows, {
+        terms: { algorithm: "psi-c" },
+      }),
       { psiLibrary },
     ),
   ]);

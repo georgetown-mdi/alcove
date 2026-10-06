@@ -44,10 +44,10 @@ import type { DualSignedRecord } from "../../src/records/signedReceipt";
 import type { MessageConnection } from "../../src/connection/messageConnection";
 import type { ExchangeRecord } from "../../src/records/exchangeRecord";
 import type { ExchangeResult } from "../../src/exchange";
-import type { Metadata } from "../../src/config/metadata";
 import type { RunExchangeOptions } from "../../src/exchange";
 import type { DualSignedRecordVerificationInputs } from "../../src/records/signedReceiptVerification";
 import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
+import { firstNameTerms, prepared, withSentNote } from "../utils/support";
 
 // End-to-end coverage of the signed-receipt step in runExchange: two parties
 // run a full exchange over an in-memory pipe (real PSI) with signing identities
@@ -58,31 +58,12 @@ import { partFrame, payloadPartBody } from "../utils/matchedListPartFrames";
 
 const psiLibrary = await PSI();
 
-const firstNameTerms = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  deduplicate: false,
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 const serverRows = [
   { first_name: "Carol" },
   { first_name: "Elizabeth" },
   { first_name: "Henry" },
 ];
 const clientRows = [{ first_name: "Carol" }, { first_name: "Elizabeth" }];
-
-function prepared(identity: string, output: Output, rows: typeof serverRows) {
-  return prepareForExchange(
-    { linkageTerms: { ...firstNameTerms, identity, output } },
-    identity,
-    rows,
-    ["first_name"],
-  );
-}
 
 const both: Output = { expectsOutput: true, shareWithPartner: true };
 
@@ -130,7 +111,7 @@ async function runBoth(
     runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         ...initiatorSigning,
@@ -139,7 +120,7 @@ async function runBoth(
     runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", both, serverRows),
+      prepared("Responder Co", serverRows),
       {
         psiLibrary,
         ...responderSigning,
@@ -227,13 +208,13 @@ test("a partner that signs nothing is refused at the terms exchange", async () =
   const responder = runExchange(
     connResponder,
     "responder",
-    prepared("Responder Co", both, serverRows),
+    prepared("Responder Co", serverRows),
     { psiLibrary },
   ).catch((reason: unknown) => reason);
   const raised = await runExchange(
     initiatorSide.conn,
     "initiator",
-    prepared("Initiator Co", both, clientRows),
+    prepared("Initiator Co", clientRows),
     {
       psiLibrary,
       signingIdentity: identityA,
@@ -285,7 +266,7 @@ test("an unnamed party refuses at terms agreement rather than signing", async ()
   const initiator = runExchange(
     connInitiator,
     "initiator",
-    prepared("Initiator Co", both, clientRows),
+    prepared("Initiator Co", clientRows),
     {
       psiLibrary,
       signingIdentity: identityA,
@@ -394,7 +375,7 @@ describe("a signing party refuses an unnamed partner before its own data moves",
       const refusal = runExchange(
         signerSide.conn,
         signerRole,
-        prepared("Signing Co", both, clientRows),
+        prepared("Signing Co", clientRows),
         {
           psiLibrary,
           signingIdentity: identityA,
@@ -452,7 +433,7 @@ describe("a signing party refuses an unnamed partner before its own data moves",
       runExchange(
         connInitiator,
         "initiator",
-        prepared("Signing Co", both, clientRows),
+        prepared("Signing Co", clientRows),
         { psiLibrary },
       ),
       runExchange(connResponder, "responder", unnamed, { psiLibrary }),
@@ -485,7 +466,6 @@ describe("a fingerprint-pin mismatch ends the run at the terms exchange", () => 
         partnerRole,
         prepared(
           partnerRole === "initiator" ? "Initiator Co" : "Responder Co",
-          both,
           partnerRole === "initiator" ? clientRows : serverRows,
         ),
         {
@@ -501,7 +481,6 @@ describe("a fingerprint-pin mismatch ends the run at the terms exchange", () => 
         refusingRole,
         prepared(
           refusingRole === "initiator" ? "Initiator Co" : "Responder Co",
-          both,
           refusingRole === "initiator" ? clientRows : serverRows,
         ),
         {
@@ -568,7 +547,7 @@ describe("a party whose certificate is bound away from its agreed terms", () => 
       const initiator = runExchange(
         initiatorSide.conn,
         "initiator",
-        prepared(divergesFirst ? RENAMED : "Initiator Co", both, clientRows),
+        prepared(divergesFirst ? RENAMED : "Initiator Co", clientRows),
         {
           psiLibrary,
           signingIdentity: identityA,
@@ -584,7 +563,7 @@ describe("a party whose certificate is bound away from its agreed terms", () => 
       const responder = runExchange(
         responderSide.conn,
         "responder",
-        prepared(divergesFirst ? "Responder Co" : RENAMED, both, serverRows),
+        prepared(divergesFirst ? "Responder Co" : RENAMED, serverRows),
         {
           psiLibrary,
           signingIdentity: identityB,
@@ -648,7 +627,7 @@ describe("a party whose certificate is bound away from its agreed terms", () => 
       runExchange(
         initiatorSide.conn,
         "initiator",
-        prepared("Initiator Co", both, clientRows),
+        prepared("Initiator Co", clientRows),
         {
           psiLibrary,
           signingIdentity: identityA,
@@ -659,7 +638,7 @@ describe("a party whose certificate is bound away from its agreed terms", () => 
       runExchange(
         responderSide.conn,
         "responder",
-        prepared("Responder Co", both, serverRows),
+        prepared("Responder Co", serverRows),
         {
           psiLibrary,
           signingIdentity: identityB,
@@ -1100,28 +1079,7 @@ const payloadClient = [
   { first_name: "Elizabeth", note: "c-e" },
 ];
 
-const firstNameAndSentNote: Metadata = [
-  { name: "first_name", type: "first_name", role: "linkage", isPayload: false },
-  { name: "note", type: "other", role: "payload", isPayload: true },
-];
-
 /** The suite's `prepared`, with `note` declared as a transmitted payload column. */
-function preparedWithPayload(
-  identity: string,
-  rows: typeof payloadServer,
-  output: Output = both,
-) {
-  return prepareForExchange(
-    {
-      metadata: firstNameAndSentNote,
-      linkageTerms: { ...firstNameTerms, identity, output },
-    },
-    identity,
-    rows,
-    ["first_name", "note"],
-  );
-}
-
 /** Fail this party's connection at the `nth` frame it sends or receives after
  * its own payload frame has gone out, placing a cut at a chosen position inside
  * the record-owed region. */
@@ -1267,7 +1225,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       withForgedReceiptCertificate(rawInitiator, identityB.certificate),
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -1283,7 +1241,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const responderFailure = await runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", both, serverRows),
+      prepared("Responder Co", serverRows),
       {
         psiLibrary,
         signingIdentity: identityB,
@@ -1354,7 +1312,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
         secondRun[0].signedReceipt!.initiator.signature,
       ),
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -1370,7 +1328,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const responderFailure = await runExchange(
       connResponder,
       "responder",
-      prepared("Responder Co", both, serverRows),
+      prepared("Responder Co", serverRows),
       {
         psiLibrary,
         signingIdentity: identityB,
@@ -1412,7 +1370,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -1428,7 +1386,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const partner = await runExchange(
       withoutReceiptFrame(rawResponder),
       "responder",
-      prepared("Responder Co", both, serverRows),
+      prepared("Responder Co", serverRows),
       {
         psiLibrary,
         signingIdentity: identityB,
@@ -1468,7 +1426,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const unnamed = runExchange(
       connInitiator,
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       { psiLibrary },
     ).catch(() => undefined);
     const refused = await runExchange(
@@ -1509,11 +1467,10 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     // came back, so the disclosure is owed a record exactly as a terminated
     // swap's is. Both sides run unsigned, so the receipt step plays no part in
     // producing it.
-    const initiatorPrepared = preparedWithPayload(
-      "Initiator Co",
-      payloadClient,
-      { expectsOutput: false, shareWithPartner: true },
-    );
+    const initiatorPrepared = prepared("Initiator Co", payloadClient, {
+      ...withSentNote,
+      terms: { output: { expectsOutput: false, shareWithPartner: true } },
+    });
     const [connInitiator, connResponder] = createMessagePipe();
     const [initiatorSettled, responderSettled] = await Promise.allSettled([
       runExchange(connInitiator, "initiator", initiatorPrepared, {
@@ -1527,9 +1484,14 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
           rows: [["s-c"]],
         }),
         "responder",
-        preparedWithPayload("Responder Co", payloadServer, {
-          expectsOutput: true,
-          shareWithPartner: false,
+        prepared("Responder Co", payloadServer, {
+          ...withSentNote,
+          terms: {
+            output: {
+              expectsOutput: true,
+              shareWithPartner: false,
+            },
+          },
         }),
         { psiLibrary },
       ),
@@ -1574,13 +1536,13 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
       runExchange(
         cutAfterPayloadSend(connInitiatorRaw, 1),
         "initiator",
-        preparedWithPayload("Initiator Co", payloadClient),
+        prepared("Initiator Co", payloadClient, withSentNote),
         { psiLibrary },
       ),
       runExchange(
         connResponder,
         "responder",
-        preparedWithPayload("Responder Co", payloadServer),
+        prepared("Responder Co", payloadServer, withSentNote),
         { psiLibrary },
       ),
     ]);
@@ -1624,13 +1586,13 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
       runExchange(
         connInitiator,
         "initiator",
-        preparedWithPayload("Initiator Co", payloadClient),
+        prepared("Initiator Co", payloadClient, withSentNote),
         { psiLibrary },
       ),
       runExchange(
         connResponder,
         "responder",
-        preparedWithPayload("Responder Co", payloadServer),
+        prepared("Responder Co", payloadServer, withSentNote),
         { psiLibrary },
       ),
     ]);
@@ -1665,13 +1627,13 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       connInitiator,
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       { psiLibrary },
     ).catch((reason: unknown) => reason);
     const responderFailure = await runExchange(
       connResponder,
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       { psiLibrary },
     ).then(
       () => {
@@ -1705,13 +1667,13 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const responder = runExchange(
       connResponder,
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       { psiLibrary },
     ).catch((reason: unknown) => reason);
     const failure = await runExchange(
       rejectPayloadSend(connInitiatorRaw),
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       { psiLibrary },
     ).then(
       () => {
@@ -1744,7 +1706,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const responder = runExchange(
       connResponder,
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       { psiLibrary },
     ).catch((reason: unknown) => reason);
     const failure = await runExchange(
@@ -1758,7 +1720,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
         }),
       ),
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       { psiLibrary },
     ).then(
       () => {
@@ -1795,7 +1757,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       connInitiator,
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       { psiLibrary },
     ).catch((reason: unknown) => reason);
     const failure = await runExchange(
@@ -1809,7 +1771,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
         }),
       ),
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       { psiLibrary },
     ).then(
       () => {
@@ -1840,13 +1802,13 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       connInitiator,
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       { psiLibrary },
     ).catch((reason: unknown) => reason);
     const failure = await runExchange(
       rejectPayloadSend(connResponderRaw),
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       { psiLibrary },
     ).then(
       () => {
@@ -1878,7 +1840,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
       const responder = runExchange(
         connResponder,
         "responder",
-        preparedWithPayload("Responder Co", payloadServer),
+        prepared("Responder Co", payloadServer, withSentNote),
         {
           psiLibrary,
           signingIdentity: identityB,
@@ -1889,7 +1851,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
       const failure = await runExchange(
         cutAfterPayloadSend(connInitiatorRaw, nth),
         "initiator",
-        preparedWithPayload("Initiator Co", payloadClient),
+        prepared("Initiator Co", payloadClient, withSentNote),
         {
           psiLibrary,
           signingIdentity: identityA,
@@ -1931,7 +1893,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
     const initiator = runExchange(
       withForgedReceiptCertificate(rawInitiator, identityB.certificate),
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -1948,7 +1910,7 @@ describe("a run terminated after its disclosure keeps the record of it", () => {
       connResponder,
       "responder",
       {
-        ...prepared("Responder Co", both, serverRows),
+        ...prepared("Responder Co", serverRows),
         retentionDisposition: "",
       },
       {
@@ -1998,7 +1960,7 @@ describe("partner terms holding a lone surrogate end the run before disclosure",
     const honest = runExchange(
       honestSide.conn,
       "initiator",
-      prepared("Initiator Co", both, clientRows),
+      prepared("Initiator Co", clientRows),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -2014,7 +1976,7 @@ describe("partner terms holding a lone surrogate end the run before disclosure",
     // The hostile party signs nothing: its own leg never reaches the swap, and
     // the identity it authored would not be one its certificate authorizes.
     // Its terms are altered after prepare, which refuses them.
-    const hostilePrepared = prepared("Responder Co", both, serverRows);
+    const hostilePrepared = prepared("Responder Co", serverRows);
     const hostile = runExchange(
       hostileSide.conn,
       "responder",
@@ -2112,7 +2074,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
     const hostile = runExchange(
       withTaintedPayload(rawHostile),
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -2123,7 +2085,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
     const raised = await runExchange(
       honestSide.conn,
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       {
         psiLibrary,
         signingIdentity: identityB,
@@ -2163,7 +2125,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
     const hostile = runExchange(
       withTaintedPayload(rawHostile),
       "responder",
-      preparedWithPayload("Responder Co", payloadServer),
+      prepared("Responder Co", payloadServer, withSentNote),
       {
         psiLibrary,
         signingIdentity: identityB,
@@ -2174,7 +2136,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
     const raised = await runExchange(
       rawHonest,
       "initiator",
-      preparedWithPayload("Initiator Co", payloadClient),
+      prepared("Initiator Co", payloadClient, withSentNote),
       {
         psiLibrary,
         signingIdentity: identityA,
@@ -2217,7 +2179,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
       runExchange(
         connInitiator,
         "initiator",
-        preparedWithPayload("Initiator Co", payloadClient),
+        prepared("Initiator Co", payloadClient, withSentNote),
         {
           psiLibrary,
           signingIdentity: identityA,
@@ -2228,7 +2190,7 @@ describe("a partner payload holding a lone surrogate is refused at the wire sche
       runExchange(
         connResponder,
         "responder",
-        preparedWithPayload("Responder Co", payloadServer),
+        prepared("Responder Co", payloadServer, withSentNote),
         {
           psiLibrary,
           signingIdentity: identityB,

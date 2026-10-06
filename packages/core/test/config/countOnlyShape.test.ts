@@ -23,6 +23,7 @@ import {
 } from "../../src/config/invitation";
 import { assertAlgorithmImplemented } from "../../src/exchange";
 import { UsageError } from "../../src/errors";
+import { encodeRawInvitation } from "../utils/support";
 
 // The count-only shape refusals (docs/spec/PROTOCOL.md, PSI-C) are enforced
 // at two points core owns -- every PARSE path (a partner's invitation is
@@ -152,7 +153,7 @@ test.each(outOfShape)(
         }),
       COUNT_ONLY_SHAPE_REFUSALS[rule],
     );
-    const crafted = await encodeRaw({
+    const crafted = await encodeRawInvitation({
       version: "1",
       linkageTerms: terms,
       sharedSecret: VALID_SECRET,
@@ -329,18 +330,3 @@ test("a count-only document already in shape passes every rule and the algorithm
   for (const { terms } of outOfShape)
     expect(() => assertAlgorithmImplemented(terms.algorithm)).not.toThrow();
 });
-
-// Appends a valid 4-byte checksum over an arbitrary token object, reproducing
-// encodeInvitation's encoding WITHOUT its schema validation -- the only way to
-// put a document the schema refuses on the wire, which is what a crafted
-// partner token is.
-async function encodeRaw(obj: unknown): Promise<string> {
-  const toBase64Url = (b: Uint8Array): string =>
-    btoa(Array.from(b, (byte) => String.fromCharCode(byte)).join(""))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  const bytes = new TextEncoder().encode(JSON.stringify(obj));
-  const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  return toBase64Url(bytes) + toBase64Url(new Uint8Array(hash).slice(0, 4));
-}

@@ -46,6 +46,7 @@ import type {
 } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 import type { Metadata } from "../../src/config/metadata";
+import { prepared } from "../utils/support";
 
 // The cardinality runExchange passes to the linkage strategies comes from the
 // agreed `deduplicate` settings. Both strategies run every cardinality the
@@ -630,14 +631,9 @@ function preparedWithDeduplicate(
   deduplicate: boolean,
   linkageStrategy: LinkageStrategy = "cascade",
 ): PreparedExchange {
-  const prepared = prepareForExchange(
-    { linkageTerms: { ...termsBase, identity, deduplicate } },
-    identity,
-    rows,
-    ["first_name"],
-  );
-  prepared.linkageTerms = { ...prepared.linkageTerms, linkageStrategy };
-  return prepared;
+  const exchange = prepared(identity, rows, { terms: { deduplicate } });
+  exchange.linkageTerms = { ...exchange.linkageTerms, linkageStrategy };
+  return exchange;
 }
 
 async function runBothWithDeduplicate(

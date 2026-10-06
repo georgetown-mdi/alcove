@@ -41,6 +41,10 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   sanitizeForDisplay,
 } from "../../src/utils/sanitizeForDisplay";
+import {
+  encodeRawInvitation,
+  encodeRawInvitationPayload,
+} from "../utils/support";
 
 // A SHARED_SECRET_REGEX-valid placeholder (43 base64url chars = 32 zero bytes).
 // InvitationTokenSchema enforces that shape, so test tokens hold a real one
@@ -64,32 +68,6 @@ const baseToken: InvitationToken = {
   linkageTerms: baseTerms,
   sharedSecret: VALID_SECRET,
 };
-
-// Appends a valid 4-byte checksum over an ARBITRARY payload string, reproducing
-// encodeInvitation's body+checksum encoding without its schema validation. The
-// payload-string form (rather than an object) lets a test craft a checksum-valid
-// invitation whose decoded bytes are NOT valid JSON, to exercise
-// decodeInvitation's JSON.parse swallow -- a path encodeRaw cannot reach because
-// it always emits well-formed JSON.
-async function encodeRawPayload(payload: string): Promise<string> {
-  const toBase64Url = (b: Uint8Array): string => {
-    const s = Array.from(b, (byte) => String.fromCharCode(byte)).join("");
-    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
-  };
-  const bytes = new TextEncoder().encode(payload);
-  const body = toBase64Url(bytes);
-  const hashBuf = await globalThis.crypto.subtle.digest("SHA-256", bytes);
-  const checksum = toBase64Url(new Uint8Array(hashBuf).slice(0, 4));
-  return body + checksum;
-}
-
-// Reproduces the encoding step without schema validation so that tests can
-// craft valid-checksum / invalid-schema strings. Cannot delegate to
-// encodeInvitation because that function validates the token first, which would
-// prevent testing decodeInvitation's own schema-rejection behavior.
-async function encodeRaw(obj: unknown): Promise<string> {
-  return encodeRawPayload(JSON.stringify(obj));
-}
 
 // --- Lifetime policy ---------------------------------------------------------
 
@@ -277,7 +255,7 @@ test("decodeInvitation rejects linkage terms holding an out-of-dialect transform
       ],
     },
   };
-  const encoded = await encodeRaw(malicious);
+  const encoded = await encodeRawInvitation(malicious);
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
   await expect(decodeInvitation(encoded)).rejects.toThrow(
     /linear-time dialect/,
@@ -307,15 +285,17 @@ test("the author's mint and the acceptor's decode give one verdict on the transf
   const atCap = tokenWith("a{998}");
   const minted = await encodeInvitation(atCap);
   await expect(decodeInvitation(minted)).resolves.toBeDefined();
-  await expect(decodeInvitation(await encodeRaw(atCap))).resolves.toBeDefined();
+  await expect(
+    decodeInvitation(await encodeRawInvitation(atCap)),
+  ).resolves.toBeDefined();
 
   const pastCap = tokenWith("a{999}");
   const sizeRefusal =
     /linkage_keys\[0\]\.elements\[0\]\.transform\[0\]\.params\.pattern is too large: its size is 1001 \(.*\), over the limit of 1000\./;
   await expect(encodeInvitation(pastCap)).rejects.toThrow(sizeRefusal);
-  await expect(decodeInvitation(await encodeRaw(pastCap))).rejects.toThrow(
-    sizeRefusal,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(pastCap)),
+  ).rejects.toThrow(sizeRefusal);
 });
 
 test("decodeInvitation refuses a transform pattern declared as an object", async () => {
@@ -346,7 +326,7 @@ test("decodeInvitation refuses a transform pattern declared as an object", async
       ],
     },
   };
-  const encoded = await encodeRaw(malicious);
+  const encoded = await encodeRawInvitation(malicious);
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
   await expect(decodeInvitation(encoded)).rejects.toThrow(
     /replace_regex pattern must be text, not an object/,
@@ -389,7 +369,7 @@ test("decodeInvitation normalizes snake_case transform.params keys to camelCase"
       ],
     },
   };
-  const decoded = await decodeInvitation(await encodeRaw(token));
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
   expect(
     decoded.linkageTerms.linkageKeys[0].elements[0].transform?.[0].params,
   ).toEqual({ inputFormat: "MM/DD/YYYY", outputFormat: "YYYYMMDD" });
@@ -412,7 +392,7 @@ test("decodeInvitation reads a payload column named twice as one entry", async (
       },
     },
   };
-  const decoded = await decodeInvitation(await encodeRaw(token));
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
   expect(decoded.linkageTerms.payload?.send).toEqual([
     { name: "dose", description: "Dose administered" },
   ]);
@@ -450,9 +430,9 @@ test("decodeInvitation screens a snake_case parse_date inputFormat for length (t
       ],
     },
   };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    /must not exceed/,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(token)),
+  ).rejects.toThrow(/must not exceed/);
 });
 
 test("decodeInvitation: a param spelling the fold leaves non-canonical is inert (screen and runtime read the same name)", async () => {
@@ -489,7 +469,7 @@ test("decodeInvitation: a param spelling the fold leaves non-canonical is inert 
       ],
     },
   };
-  const decoded = await decodeInvitation(await encodeRaw(token));
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
   const params =
     decoded.linkageTerms.linkageKeys[0].elements[0].transform?.[0].params;
   // The over-cap format stayed under the non-canonical key, untouched; the
@@ -529,9 +509,9 @@ test("decodeInvitation refuses a transform param over the content bound", async 
       ],
     },
   };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    /transform param must not exceed/,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(token)),
+  ).rejects.toThrow(/transform param must not exceed/);
 });
 
 test("decodeInvitation refuses a transform param declared as the wrong type", async () => {
@@ -560,9 +540,9 @@ test("decodeInvitation refuses a transform param declared as the wrong type", as
       ],
     },
   };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    /replace_regex replacement must be text, not a number/,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(token)),
+  ).rejects.toThrow(/replace_regex replacement must be text, not a number/);
 });
 
 test("decodeInvitation refuses a bidi override in a name", async () => {
@@ -578,9 +558,9 @@ test("decodeInvitation refuses a bidi override in a name", async () => {
       payload: { send: [{ name: "risk\u202escore" }] },
     },
   };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    NAME_SHAPE_MESSAGE,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(token)),
+  ).rejects.toThrow(NAME_SHAPE_MESSAGE);
 });
 
 // A single-pass `psi` invitation handing the result to the accepting party
@@ -594,7 +574,7 @@ const helperInviterTerms = {
 
 test("an empty payload.send decodes and selects the withheld table", async () => {
   const decoded = await decodeInvitation(
-    await encodeRaw({
+    await encodeRawInvitation({
       ...baseToken,
       linkageTerms: { ...helperInviterTerms, payload: { send: [] } },
     }),
@@ -604,7 +584,7 @@ test("an empty payload.send decodes and selects the withheld table", async () =>
 
 test("a payload.send naming a column decodes and does not select the withheld table", async () => {
   const decoded = await decodeInvitation(
-    await encodeRaw({
+    await encodeRawInvitation({
       ...baseToken,
       linkageTerms: {
         ...helperInviterTerms,
@@ -637,9 +617,9 @@ test("decodeInvitation rejects a deeply-nested transform.params at decode (bound
       ],
     },
   };
-  await expect(decodeInvitation(await encodeRaw(token))).rejects.toThrow(
-    NestingDepthExceededError,
-  );
+  await expect(
+    decodeInvitation(await encodeRawInvitation(token)),
+  ).rejects.toThrow(NestingDepthExceededError);
 });
 
 test("decodeInvitation accepts snake_case structural linkage-terms keys, like the config path", async () => {
@@ -663,7 +643,7 @@ test("decodeInvitation accepts snake_case structural linkage-terms keys, like th
       linkage_keys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
     },
   };
-  const decoded = await decodeInvitation(await encodeRaw(token));
+  const decoded = await decodeInvitation(await encodeRawInvitation(token));
   expect(decoded.linkageTerms.linkageFields[0].name).toBe("ssn");
   expect(decoded.linkageTerms.output.expectsOutput).toBe(true);
 });
@@ -729,7 +709,7 @@ test("each pre-schema decode failure names its kind on the error", async () => {
     ["short", "tooShort"],
     ["!!!!!!!!!!!!", "notBase64Url"],
     [encoded.slice(0, -1) + (lastChar === "A" ? "B" : "A"), "checksumMismatch"],
-    [await encodeRawPayload("not json"), "notJson"],
+    [await encodeRawInvitationPayload("not json"), "notJson"],
   ];
   for (const [input, failure] of cases) {
     const err = await decodeInvitation(input).catch((e: unknown) => e);
@@ -797,7 +777,7 @@ test("decodeInvitation swallows the JSON.parse error, never relaying partner byt
   // input-quoting "Unexpected token X, \"...\" is not valid JSON" form, which
   // embeds a span of the offending input verbatim.
   const hostile = PLANTED_DISPLAY_BYTES.join("") + "not valid json";
-  const encoded = await encodeRawPayload(hostile);
+  const encoded = await encodeRawInvitationPayload(hostile);
 
   const err = await decodeInvitation(encoded).catch((e: unknown) => e);
   expect(err).toBeInstanceOf(Error);
@@ -855,12 +835,18 @@ test("rejects encoding a token with a past expires", async () => {
 });
 
 test("rejects an invalid expires value", async () => {
-  const encoded = await encodeRaw({ ...baseToken, expires: "not-a-datetime" });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    expires: "not-a-datetime",
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow();
 });
 
 test("rejects a date-only expires (not a datetime)", async () => {
-  const encoded = await encodeRaw({ ...baseToken, expires: "2025-12-31" });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    expires: "2025-12-31",
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow();
 });
 
@@ -876,23 +862,26 @@ test("rejects a token whose sharedSecret is not a base64url-encoded 32-byte valu
   // A non-empty but wrong-shape secret is caught at decode (matching the
   // KeyFile and Authentication schemas) instead of slipping through to fail
   // later at saveKeyFile / authenticateConnection.
-  const encoded = await encodeRaw({ ...baseToken, sharedSecret: "abc123" });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    sharedSecret: "abc123",
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
 test("rejects a token with missing sharedSecret", async () => {
   const { sharedSecret: _, ...withoutToken } = baseToken;
-  const encoded = await encodeRaw(withoutToken);
+  const encoded = await encodeRawInvitation(withoutToken);
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
 test("rejects a token with missing linkageTerms", async () => {
-  const encoded = await encodeRaw({ sharedSecret: VALID_SECRET });
+  const encoded = await encodeRawInvitation({ sharedSecret: VALID_SECRET });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
 test("rejects a token with invalid linkage terms (bad version)", async () => {
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: { ...baseTerms, version: "not-semver" },
   });
@@ -900,7 +889,7 @@ test("rejects a token with invalid linkage terms (bad version)", async () => {
 });
 
 test("rejects a token with an unknown token version", async () => {
-  const encoded = await encodeRaw({ ...baseToken, version: "2" });
+  const encoded = await encodeRawInvitation({ ...baseToken, version: "2" });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
@@ -908,7 +897,7 @@ test("rejects a token with an unknown token version", async () => {
 
 test("decodeInvitation succeeds on a token with a past expires", async () => {
   // Expiry is not checked at decode time; callers must compare expires themselves.
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     expires: "2020-01-01T00:00:00Z",
   });
@@ -1011,7 +1000,7 @@ test("a token holding the disclosed-columns list an earlier build wrote decodes 
   // longer reads is dropped rather than refused; the terms' own payload.send
   // states the same columns.
   const decoded = await decodeInvitation(
-    await encodeRaw({
+    await encodeRawInvitation({
       ...baseToken,
       disclosedPayloadColumns: ["county", "enrollment_id"],
     }),
@@ -1036,7 +1025,7 @@ test("a token minted without the retain declaration still decodes (top-level bac
   // key at all. The non-strict token schema ignores its absence, and the field
   // arrives undefined -- "nothing declared", which is not "delete mode".
   const decoded = await decodeInvitation(
-    await encodeRaw({
+    await encodeRawInvitation({
       version: "1",
       linkageTerms: baseTerms,
       sharedSecret: VALID_SECRET,
@@ -1050,13 +1039,13 @@ test("decodeInvitation returns a declared-false retain mode verbatim", async () 
   // being rejected, and stays distinguishable from an absent declaration on the
   // token; what neither states on a consent surface is the summary's business.
   const decoded = await decodeInvitation(
-    await encodeRaw({ ...baseToken, inviterRetainsFiles: false }),
+    await encodeRawInvitation({ ...baseToken, inviterRetainsFiles: false }),
   );
   expect(decoded.inviterRetainsFiles).toBe(false);
 });
 
 test("decodeInvitation rejects a non-boolean retain declaration", async () => {
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     inviterRetainsFiles: "true",
   });
@@ -1068,7 +1057,7 @@ test.each([
   {
     half: "decodeInvitation",
     run: async (token: InvitationToken) =>
-      decodeInvitation(await encodeRaw(token)),
+      decodeInvitation(await encodeRawInvitation(token)),
   },
 ])(
   "$half refuses a retain declaration on a webrtc endpoint",
@@ -1148,7 +1137,7 @@ test.each(
       half: "decodeInvitation",
       endpoint,
       run: async (token: InvitationToken) =>
-        decodeInvitation(await encodeRaw(token)),
+        decodeInvitation(await encodeRawInvitation(token)),
     },
   ]),
 )(
@@ -1207,7 +1196,7 @@ test.each(splitRetainEndpoints)(
     // swallow it -- and the summary states the retention on the endpoint's shape
     // regardless, so nothing an acceptor is shown depends on the mint-side rule.
     const token = { ...baseToken, connectionEndpoint: endpoint };
-    const decoded = await decodeInvitation(await encodeRaw(token));
+    const decoded = await decodeInvitation(await encodeRawInvitation(token));
     expect(decoded.inviterRetainsFiles).toBeUndefined();
     expect(decoded.connectionEndpoint).toEqual(endpoint);
     expect(summarizeInvitation(decoded).disclosesRetainedFiles).toBe(true);
@@ -1260,7 +1249,7 @@ test.each(credentialCases)(
 test.each(credentialCases)(
   "decodeInvitation rejects a $channel endpoint holding $field",
   async ({ field, minimal }) => {
-    const encoded = await encodeRaw({
+    const encoded = await encodeRawInvitation({
       ...baseToken,
       connectionEndpoint: { ...minimal, [field]: "secret" },
     });
@@ -1294,7 +1283,7 @@ test.each(nonLocatorCases)(
 test.each(nonLocatorCases)(
   "decodeInvitation rejects a $channel endpoint with a non-credential extra field",
   async ({ minimal }) => {
-    const encoded = await encodeRaw({
+    const encoded = await encodeRawInvitation({
       ...baseToken,
       connectionEndpoint: { ...minimal, username: "alice" },
     });
@@ -1319,7 +1308,7 @@ const HOSTILE_ENDPOINT_KEY_ESCAPED_ONCE =
   sanitizeForDisplay(HOSTILE_ENDPOINT_KEY);
 
 const rejectedEndpointKeyToken = (): Promise<string> =>
-  encodeRaw({
+  encodeRawInvitation({
     ...baseToken,
     connectionEndpoint: {
       ...CHANNEL_SHAPES.sftp.minimal,
@@ -1380,7 +1369,7 @@ test("a long key in the issue path leaves the reason on both renders", async () 
   // screenful of the inviter's own bytes instead. Measured on both routes: the
   // web accept screen, which escapes and caps the description itself, and the
   // CLI render over the composition its decode wrapper makes.
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: {
       ...baseTerms,
@@ -1418,7 +1407,7 @@ test("a long rejected endpoint key renders within one value's budget", async () 
   // The other position, where the guidance leads and the key follows: the fit
   // is what keeps a single rejected name from spending the rest of the link,
   // which the list of any further rejected names needs.
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     connectionEndpoint: {
       ...CHANNEL_SHAPES.sftp.minimal,
@@ -1478,7 +1467,7 @@ test("does not relay a hostile partner VALUE raw through describeDecodeError", a
   // that began interpolating the rejected value into its default message would
   // trip this even though no source-level escape changed.
   const hostileValue = "\x1b[31m" + "A".repeat(MAX_TEXT_LENGTH);
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: { ...baseTerms, identity: hostileValue },
   });
@@ -1507,7 +1496,10 @@ test.each([
     bad: null,
   },
 ])("rejects $name", async ({ bad }) => {
-  const encoded = await encodeRaw({ ...baseToken, connectionEndpoint: bad });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    connectionEndpoint: bad,
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
@@ -1536,7 +1528,10 @@ test.each([
     bad: { channel: "filedrop", path: "" },
   },
 ])("rejects $name", async ({ bad }) => {
-  const encoded = await encodeRaw({ ...baseToken, connectionEndpoint: bad });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    connectionEndpoint: bad,
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
@@ -1638,7 +1633,10 @@ test.each([
     bad: { channel: "filedrop", inboundPath: "/x", outboundPath: "/x/" },
   },
 ])("rejects $name", async ({ bad }) => {
-  const encoded = await encodeRaw({ ...baseToken, connectionEndpoint: bad });
+  const encoded = await encodeRawInvitation({
+    ...baseToken,
+    connectionEndpoint: bad,
+  });
   await expect(decodeInvitation(encoded)).rejects.toThrow(ZodError);
 });
 
@@ -1670,8 +1668,8 @@ test("strips an unknown top-level field rather than embedding it", async () => {
 // The decoder accepts attacker-influenceable fields from a token whose only
 // integrity check is a transcription checksum anyone can recompute, so each
 // bound is exercised at the decode boundary -- the path both apps/cli and
-// apps/web share. encodeRaw crafts a valid-checksum string that violates a bound
-// (encodeInvitation could not, since it validates first).
+// apps/web share. encodeRawInvitation crafts a valid-checksum string that
+// violates a bound (encodeInvitation could not, since it validates first).
 
 test("rejects an encoded string longer than the maximum, before parsing", async () => {
   // A string over the cap is refused at the boundary before any base64-decode,
@@ -1690,7 +1688,7 @@ test("admits an encoded string at exactly the maximum length", async () => {
 });
 
 test("rejects a token whose identity exceeds the maximum length", async () => {
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: { ...baseTerms, identity: "x".repeat(MAX_TEXT_LENGTH + 1) },
   });
@@ -1702,7 +1700,7 @@ test("rejects a token with more linkageKeys than the maximum count", async () =>
     { length: MAX_LINKAGE_ENTRIES + 1 },
     (_, i) => ({ name: `K${i}`, elements: [{ field: "ssn" }] }),
   );
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: { ...baseTerms, linkageKeys },
   });
@@ -1714,7 +1712,7 @@ test("rejects a token with more linkageFields than the maximum count", async () 
     { length: MAX_LINKAGE_ENTRIES + 1 },
     (_, i) => ({ name: `f${i}`, type: "ssn" as const }),
   );
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: { ...baseTerms, linkageFields },
   });
@@ -1722,7 +1720,7 @@ test("rejects a token with more linkageFields than the maximum count", async () 
 });
 
 test("rejects a token whose linkage key name exceeds the maximum length", async () => {
-  const encoded = await encodeRaw({
+  const encoded = await encodeRawInvitation({
     ...baseToken,
     linkageTerms: {
       ...baseTerms,
@@ -1737,7 +1735,7 @@ test("rejects a token whose linkage key name exceeds the maximum length", async 
 test.each(["webrtc", "sftp"])(
   "rejects a %s endpoint whose host exceeds the maximum length",
   async (channel) => {
-    const encoded = await encodeRaw({
+    const encoded = await encodeRawInvitation({
       ...baseToken,
       connectionEndpoint: {
         channel,
@@ -1775,7 +1773,7 @@ test.each([
 ])(
   "rejects a $channel endpoint whose path exceeds the maximum length",
   async ({ endpoint }) => {
-    const encoded = await encodeRaw({
+    const encoded = await encodeRawInvitation({
       ...baseToken,
       connectionEndpoint: endpoint,
     });

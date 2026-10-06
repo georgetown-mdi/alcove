@@ -33,14 +33,8 @@ async function withCandidateSetGate<T>(
   }
 }
 
-import { PSIParticipant } from "../src/psi/participant";
-import {
-  linkViaPSI,
-  linkViaSinglePassPSI,
-  type LinkageCardinality,
-} from "../src/psi/link";
+import { linkViaSinglePassPSI, type LinkageCardinality } from "../src/psi/link";
 import { readPartnerRoundGrouping } from "../src/psi/roundGrouping";
-import { UNBOUNDED_PSI_ELEMENTS } from "./utils/psiElementBounds";
 import {
   MAX_RECORD_COUNT,
   psiElementBounds,
@@ -50,12 +44,16 @@ import {
   resolveRunGroupedReturn,
 } from "../src/utils/partnerIndices";
 import { fanOutFreeBounds } from "./utils/singlePassBounds";
-import {
-  createMessagePipe,
-  type MessageConnection,
-} from "../src/connection/messageConnection";
+import { createMessagePipe } from "../src/connection/messageConnection";
 import type { AssociationTable } from "../src/types";
-import { deviateListBody } from "./utils/matchedListPartFrames";
+import {
+  deviatingInbound,
+  makeParticipant,
+  runCascade,
+  tablesOf,
+  type Deviation,
+  type Party,
+} from "./utils/support";
 
 // Every index list a party receives from its partner addresses rows or
 // per-round positions the RECEIVING party owns, so each is checked against that
@@ -80,36 +78,10 @@ const elementBounds = psiElementBounds(
   { effectiveKeyCount: 1, recordCount: ROWS },
 );
 
-function makeParticipant(role: "starter" | "joiner"): PSIParticipant {
-  return new PSIParticipant(
-    role === "starter" ? "server" : "client",
-    psiLibrary,
-    { role, verbose: -1 },
-    elementBounds,
-  );
-}
-
 type MappedElement = {
   theirIndex: number | Array<number>;
   iteration: number;
 };
-type Deviation = (frame: unknown) => unknown;
-
-// Interpose on one party's INBOUND frames, leaving both parties' own behavior
-// untouched: the deviation stands in for a partner that computes the protocol
-// honestly right up to the frame under test.
-function deviatingInbound(
-  conn: MessageConnection,
-  deviate: Deviation,
-): MessageConnection {
-  return {
-    send: (data) => conn.send(data),
-    receive: async (timeoutMs?: number) =>
-      deviateListBody(await conn.receive(timeoutMs), deviate),
-    close: () => conn.close(),
-    setInboundFrameCap: conn.setInboundFrameCap?.bind(conn),
-  };
-}
 
 // The two frame shapes a deviation aims at, identified by shape rather than by
 // position, so a test names its target as "the association table" / "the
@@ -146,35 +118,18 @@ function onMappedElementList(
 }
 
 // Run both parties, deviating the starter's inbound frames. Returns the starter's
-// rejection (or undefined if it accepted the deviating frame, which fails the
-// assertion that follows). The pipe is closed afterwards so the honest joiner --
-// which may be parked waiting for a frame the aborted starter never sent --
-// settles instead of holding the test open.
+// rejection, or undefined if it accepted the deviating frame (which fails the
+// assertion that follows).
 async function cascadeWithDeviation(deviate: Deviation): Promise<unknown> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const starterRun = linkViaPSI(
-    { cardinality: "one-to-one" },
-    makeParticipant("starter"),
-    deviatingInbound(starterConn, deviate),
+  const run = await runCascade({
+    library: psiLibrary,
     starterKeys,
-    fanOutFreeBounds(starterKeys.length, ROWS),
-    -1,
-  );
-  const joinerRun = linkViaPSI(
-    { cardinality: "one-to-one" },
-    makeParticipant("joiner"),
-    joinerConn,
     joinerKeys,
-    fanOutFreeBounds(joinerKeys.length, ROWS),
-    -1,
-  );
-  const outcome = await starterRun.then(
-    () => undefined,
-    (err: unknown) => err,
-  );
-  await starterConn.close();
-  await joinerRun.catch(() => undefined);
-  return outcome;
+    keyWidths: [1],
+    elementBounds,
+    deviate: { party: "starter", deviation: deviate },
+  });
+  return run.starter instanceof Error ? run.starter : undefined;
 }
 
 // The mirror boundary on the other role: the joiner reads the starter's own
@@ -183,41 +138,28 @@ async function cascadeWithDeviation(deviate: Deviation): Promise<unknown> {
 async function cascadeWithJoinerDeviation(
   transform: (list: Array<number>) => unknown,
 ): Promise<unknown> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const starterRun = linkViaPSI(
-    { cardinality: "one-to-one" },
-    makeParticipant("starter"),
-    starterConn,
+  const run = await runCascade({
+    library: psiLibrary,
     starterKeys,
-    fanOutFreeBounds(starterKeys.length, ROWS),
-    -1,
-  );
-  const joinerRun = linkViaPSI(
-    { cardinality: "one-to-one" },
-    makeParticipant("joiner"),
-    deviatingInbound(joinerConn, (frame) =>
-      Array.isArray(frame) && typeof frame[0] === "number"
-        ? transform(frame as Array<number>)
-        : frame,
-    ),
     joinerKeys,
-    fanOutFreeBounds(joinerKeys.length, ROWS),
-    -1,
-  );
-  const outcome = await joinerRun.then(
-    () => undefined,
-    (err: unknown) => err,
-  );
-  await joinerConn.close();
-  await starterRun.catch(() => undefined);
-  return outcome;
+    keyWidths: [1],
+    elementBounds,
+    deviate: {
+      party: "joiner",
+      deviation: (frame) =>
+        Array.isArray(frame) && typeof frame[0] === "number"
+          ? transform(frame as Array<number>)
+          : frame,
+    },
+  });
+  return run.joiner instanceof Error ? run.joiner : undefined;
 }
 
 async function singlePassWithDeviation(deviate: Deviation): Promise<unknown> {
   const [senderConn, receiverConn] = createMessagePipe();
   const senderRun = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    makeParticipant("starter"),
+    makeParticipant(psiLibrary, "starter", elementBounds),
     deviatingInbound(senderConn, deviate),
     starterKeys,
     fanOutFreeBounds(1, ROWS),
@@ -226,7 +168,7 @@ async function singlePassWithDeviation(deviate: Deviation): Promise<unknown> {
   );
   const receiverRun = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    makeParticipant("joiner"),
+    makeParticipant(psiLibrary, "joiner", elementBounds),
     receiverConn,
     joinerKeys,
     fanOutFreeBounds(1, ROWS),
@@ -357,7 +299,7 @@ async function singlePassDeduplicating(
   const [senderConn, receiverConn] = createMessagePipe();
   const senderRun = linkViaSinglePassPSI(
     { cardinality: senderCardinality },
-    makeParticipant("starter"),
+    makeParticipant(psiLibrary, "starter", elementBounds),
     deviatingInbound(senderConn, deviate),
     senderKeys,
     fanOutFreeBounds(1, ROWS),
@@ -366,7 +308,7 @@ async function singlePassDeduplicating(
   );
   const receiverRun = linkViaSinglePassPSI(
     { cardinality: senderIsMany ? "one-to-many" : "many-to-one" },
-    makeParticipant("joiner"),
+    makeParticipant(psiLibrary, "joiner", elementBounds),
     receiverConn,
     receiverKeys,
     fanOutFreeBounds(1, ROWS),
@@ -1052,25 +994,15 @@ test("runs that do not cover the list are a caller fault", () => {
 // --- The untouched run --------------------------------------------------------
 
 test("an untouched exchange is unaffected by the checks", async () => {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const [starterResult, joinerResult] = await Promise.all([
-    linkViaPSI(
-      { cardinality: "one-to-one" },
-      makeParticipant("starter"),
-      starterConn,
+  const { starter: starterResult, joiner: joinerResult } = tablesOf(
+    await runCascade({
+      library: psiLibrary,
       starterKeys,
-      fanOutFreeBounds(starterKeys.length, ROWS),
-      -1,
-    ),
-    linkViaPSI(
-      { cardinality: "one-to-one" },
-      makeParticipant("joiner"),
-      joinerConn,
       joinerKeys,
-      fanOutFreeBounds(joinerKeys.length, ROWS),
-      -1,
-    ),
-  ]);
+      keyWidths: [1],
+      elementBounds,
+    }),
+  );
   expect(starterResult[0]).toStrictEqual([1, 2]);
   expect(starterResult[1]).toStrictEqual(joinerResult[0]);
   expect(joinerResult[1]).toStrictEqual(starterResult[0]);
@@ -1126,61 +1058,26 @@ function onRoundIndexList(
 }
 
 // Width one, so the per-record ceiling is the bare fan-out factor and a
-// deviation can cross it inside a three-position round.
+// deviation can cross it inside a three-position round. The element bound is
+// the round's own, derived per message; a widened round legitimately encrypts
+// more elements than its row count, so these fixtures are not the place to pin
+// it.
 async function widenedRound(
-  party: "starter" | "joiner",
+  party: Party,
   deviate: Deviation,
   starterKeys: Cells = WIDENED_STARTER_KEYS,
   joinerKeys: Cells = WIDENED_JOINER_KEYS,
   starterCardinality: LinkageCardinality = "one-to-one",
 ): Promise<unknown> {
-  const [starterConn, joinerConn] = createMessagePipe();
-  const bounds = (partnerRows: number) => ({
-    partnerRecordCount: partnerRows,
-    keyWidths: [1],
-  });
-  // The element bound is the round's own, derived per message; a widened round
-  // legitimately encrypts more elements than its row count, so these fixtures
-  // are not the place to pin it.
-  const wideParticipant = (role: "starter" | "joiner") =>
-    new PSIParticipant(
-      role === "starter" ? "server" : "client",
-      psiLibrary,
-      { role, verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    );
-  const starterRun = linkViaPSI(
-    { cardinality: starterCardinality },
-    wideParticipant("starter"),
-    party === "starter" ? deviatingInbound(starterConn, deviate) : starterConn,
+  const run = await runCascade({
+    library: psiLibrary,
     starterKeys,
-    bounds(joinerKeys[0].length),
-    -1,
-  );
-  const joinerRun = linkViaPSI(
-    {
-      cardinality:
-        starterCardinality === "many-to-one"
-          ? "one-to-many"
-          : starterCardinality === "one-to-many"
-            ? "many-to-one"
-            : starterCardinality,
-    },
-    wideParticipant("joiner"),
-    party === "joiner" ? deviatingInbound(joinerConn, deviate) : joinerConn,
     joinerKeys,
-    bounds(starterKeys[0].length),
-    -1,
-  );
-  const under = party === "starter" ? starterRun : joinerRun;
-  const outcome = await under.then(
-    () => undefined,
-    (err: unknown) => err,
-  );
-  await starterConn.close();
-  await joinerRun.catch(() => undefined);
-  await starterRun.catch(() => undefined);
-  return outcome;
+    cardinality: starterCardinality,
+    keyWidths: [1],
+    deviate: { party, deviation: deviate },
+  });
+  return run[party] instanceof Error ? run[party] : undefined;
 }
 
 test("a widened round runs untouched", async () => {

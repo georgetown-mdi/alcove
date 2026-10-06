@@ -61,6 +61,7 @@ import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import { partFrame, readPartFrame } from "../utils/matchedListPartFrames";
 import { MATCHED_LIST_PART_HEADER_BYTES } from "../../src/psi/matchedListParts";
+import { mirrorCardinality } from "../utils/candidateSetBounds";
 
 const psiLibrary = await PSI();
 
@@ -522,14 +523,6 @@ test("withholdsSenderAssociationTable withholds only for a non-receiving, no-pay
 // receiver's OUTBOUND is what catches a regression that sends an empty [[], []]
 // table instead of suppressing the frame: the sender's inbound alone would miss it,
 // since a withholding sender never awaits that frame.
-function mirrorCardinality(
-  cardinality: LinkageCardinality,
-): LinkageCardinality {
-  if (cardinality === "many-to-one") return "one-to-many";
-  if (cardinality === "one-to-many") return "many-to-one";
-  return cardinality;
-}
-
 async function runSinglePassCapturingFrames(
   senderSet: Array<string>,
   receiverSet: Array<string>,

@@ -37,6 +37,11 @@ import { MAX_FRAME_SIZE_BYTES } from "../../src/connection/frameSize";
 import type { HandshakeRole } from "../../src/types";
 import { getLoggerForVerbosity } from "../../src/utils/logger";
 import {
+  makeMockClient,
+  type ListScript,
+  type MockClientOptions,
+} from "../utils/support";
+import {
   sanitizeForDisplay,
   DISPLAY_TRUNCATION_MARKER,
   DEFAULT_MAX_DISPLAY_LENGTH,
@@ -495,88 +500,6 @@ describe("readControlFileWithGate", () => {
 
 const DIR = "/d";
 
-// A scripted list override: given the default listing and the (0-based) call
-// index, return the listing the coordinator should observe on that poll.
-type ListScript = (defaultListing: FileInfo[], call: number) => FileInfo[];
-
-interface MemClientOptions {
-  deleteThrows?: boolean;
-  createExclusiveThrows?: boolean;
-  existsReturns?: boolean;
-  hideSelfHello?: string;
-  // Names hidden from the FIRST list() (the entry scan) only, present on every
-  // later poll: models a protocol file (a peer ack, lock, or hello) that a peer
-  // publishes only after this party's strict-empty entry check has run.
-  hideAtEntry?: string[];
-  listScript?: ListScript;
-}
-
-function memClient(
-  files: Map<string, Buffer>,
-  opts: MemClientOptions = {},
-): FileTransportClient {
-  let listCall = 0;
-  const baseList = (dir: string): FileInfo[] => {
-    const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-    return [...files.entries()]
-      .filter(
-        ([p]) => p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
-      )
-      .map(([p, buf]) => ({
-        name: p.slice(prefix.length),
-        modifyTime: 0,
-        size: buf.length,
-      }));
-  };
-  return {
-    connect: async () => {},
-    end: async () => {},
-    list: async (dir: string): Promise<FileInfo[]> => {
-      let entries = baseList(dir);
-      if (opts.hideSelfHello !== undefined)
-        entries = entries.filter((e) => e.name !== opts.hideSelfHello);
-      if (opts.hideAtEntry !== undefined && listCall === 0)
-        entries = entries.filter((e) => !opts.hideAtEntry!.includes(e.name));
-      if (opts.listScript) entries = opts.listScript(entries, listCall);
-      listCall += 1;
-      return entries;
-    },
-    get: async (path: string) => {
-      const data = files.get(path);
-      if (!data) throw new Error(`${path}: not found`);
-      return data as Buffer<ArrayBufferLike>;
-    },
-    put: async (src, dest) => {
-      files.set(dest, src as Buffer);
-    },
-    delete: async (path: string) => {
-      if (opts.deleteThrows) throw new Error("delete not supported");
-      files.delete(path);
-    },
-    safeDelete: async (path: string) => {
-      files.delete(path);
-    },
-    rename: async (from: string, to: string) => {
-      const data = files.get(from);
-      if (data === undefined) throw new Error(`${from}: no such file`);
-      files.delete(from);
-      files.set(to, data);
-    },
-    createExclusive: async (path: string) => {
-      if (opts.createExclusiveThrows)
-        throw Object.assign(new Error(`${path}: file already exists`), {
-          code: "EEXIST",
-        });
-      if (files.has(path))
-        throw Object.assign(new Error(`${path}: file already exists`), {
-          code: "EEXIST",
-        });
-      files.set(path, Buffer.alloc(0));
-    },
-    exists: async (path: string) => opts.existsReturns ?? files.has(path),
-  };
-}
-
 interface PartyState {
   role: string;
   peerId: string | undefined;
@@ -613,7 +536,7 @@ function makeParty(
   id: string,
   overrides: Partial<RendezvousOptions> = {},
   files: Map<string, Buffer> = new Map(),
-  clientOpts: MemClientOptions = {},
+  clientOpts: MockClientOptions = {},
   // The rendezvous directory. DIR is two characters, which suits every test
   // that cares about protocol behavior and none that measures a message
   // against the display boundary -- there the path is part of what has to fit.
@@ -631,7 +554,7 @@ function makeParty(
     foreignFileSnapshot: new Set<string>(),
   };
   const controller = new AbortController();
-  const client = memClient(files, clientOpts);
+  const { client } = makeMockClient({ ...clientOpts, files });
   const log = getLoggerForVerbosity(`rdv-${id}`, -1);
   const deps: RendezvousDeps = {
     responsibleFiles: state.responsibleFiles,
@@ -810,7 +733,7 @@ describe("FileSyncRendezvous commit values", () => {
     // branch runs, tidies, and returns rather than parking.
     const p = makeParty("aaa", flags, files, {
       hideAtEntry: [helloName("zzz")],
-      createExclusiveThrows: true,
+      createExclusiveBehavior: "eexist",
       existsReturns: true,
     });
 
@@ -831,7 +754,7 @@ describe("FileSyncRendezvous commit values", () => {
     // is taken.
     const p = makeParty("aaa", flags, files, {
       hideAtEntry: [helloName("zzz")],
-      hideSelfHello: helloName("aaa"),
+      hideFromList: [helloName("aaa")],
     });
 
     await p.rdv.run(p.scope);
@@ -1024,7 +947,7 @@ describe("FileSyncRendezvous id-pair refusal ahead of each write", () => {
     placePeerHello(files, "aaa-2", lockFlags);
     const p = makeParty("aaa", lockFlags, files, {
       hideAtEntry: [helloName("aaa-2")],
-      hideSelfHello: helloName("aaa"),
+      hideFromList: [helloName("aaa")],
     });
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject(prefixRefusal);
@@ -1179,27 +1102,38 @@ describe("FileSyncRendezvous joiner-recovery window", () => {
     };
     const listScript: ListScript = (entries, call) =>
       call === 0 ? entries : [...entries, sentinel];
-    const p = makeParty(
-      "aaa",
-      {
-        locklessRendezvous: false,
-        joinerRecoveryMs: 60,
-        pollingFrequency: 20,
-        timeToLive: new Date(Date.now() + 5000),
-      },
-      new Map<string, Buffer>(),
-      { listScript },
-    );
+    vi.useFakeTimers();
+    try {
+      const p = makeParty(
+        "aaa",
+        {
+          locklessRendezvous: false,
+          joinerRecoveryMs: 60,
+          pollingFrequency: 20,
+          timeToLive: new Date(Date.now() + 5000),
+        },
+        new Map<string, Buffer>(),
+        { listScript },
+      );
 
-    const start = Date.now();
-    await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("recovery window"),
-    });
-    const elapsed = Date.now() - start;
-    // (joinerRecoveryMs, joinerRecoveryMs + pollingFrequency], with slack for
-    // scheduler jitter -- the point is it fired well before the 5 s TTL.
-    expect(elapsed).toBeGreaterThanOrEqual(60);
-    expect(elapsed).toBeLessThan(60 + 20 + 400);
+      const start = Date.now();
+      let settledAt: number | undefined;
+      const run = p.rdv.run(p.scope).finally(() => (settledAt = Date.now()));
+      run.catch(() => {});
+      while (settledAt === undefined && Date.now() - start < 5000)
+        await vi.advanceTimersByTimeAsync(1);
+      await expect(run).rejects.toMatchObject({
+        message: expect.stringContaining("recovery window"),
+      });
+      // On the virtual clock the window is exact: the sentinel is first seen
+      // within one poll of the start, and the abort fires in (joinerRecoveryMs,
+      // joinerRecoveryMs + pollingFrequency] after that, well before the TTL.
+      const elapsed = settledAt! - start;
+      expect(elapsed).toBeGreaterThan(60);
+      expect(elapsed).toBeLessThanOrEqual(60 + 20 + 20);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("a different sentinel name restarts the window (never fires early)", async () => {
@@ -1393,7 +1327,7 @@ describe("FileSyncRendezvous entry scan and sweep contract", () => {
         sweepExchangeFiles: true,
       },
       files,
-      { deleteThrows: true },
+      { deleteBehavior: "throw", safeDeleteBehavior: "real" },
     );
 
     const err = await p.rdv.run(p.scope).then(
@@ -1891,7 +1825,8 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     files.set(`${DIR}/${planted}`, Buffer.alloc(0));
     files.set(`${DIR}/${second}`, Buffer.alloc(0));
     const p = makeParty("aaa", { ...flags, sweepExchangeFiles: true }, files, {
-      deleteThrows: true,
+      deleteBehavior: "throw",
+      safeDeleteBehavior: "real",
     });
 
     const err = await p.rdv.run(p.scope).then(
@@ -1910,7 +1845,9 @@ describe("FileSyncRendezvous entry-guard refusals at the display boundary", () =
     // entry keeps its own parenthetical: redacting `<name> (<error>)` as one
     // string would leave the entry reading as a bare replacement and drop the
     // reason its delete failed, which is the half that says what to fix.
-    expect(rendered).toContain("[redacted private key] (delete not supported)");
+    expect(rendered).toContain(
+      "[redacted private key] (delete not supported on this transport)",
+    );
   });
 
   // The scope is the one fragment the entry guard clips itself, and it is clipped

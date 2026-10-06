@@ -1,10 +1,7 @@
 import { expect, test, vi } from "vitest";
 
 import { FileSyncConnection } from "../../src/connection/fileSyncConnection";
-import type {
-  FileTransportClient,
-  FileInfo,
-} from "../../src/connection/fileSyncConnection";
+import type { FileTransportClient } from "../../src/connection/fileSyncConnection";
 import type { FileDropConnectionConfig } from "../../src/config/connection";
 import { PeerAbortError, ConnectionError } from "../../src/errors";
 import {
@@ -19,6 +16,7 @@ import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import { exchangeTerms, PROTOCOL_VERSION } from "../../src/protocolSetup";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { toBase64Url } from "../../src/utils/crypto";
+import { makeMockClient } from "../utils/support";
 
 // Short marker-write / decision-grace budget mirrored from the production
 // constant ABORT_MARKER_WRITE_BUDGET_MS (module-private), referenced here so the
@@ -34,12 +32,11 @@ const TOKEN_PEER = new Uint8Array(32).fill(0x22);
 
 const TEST_DIR = "/test";
 
-// In-memory FileTransportClient for the teardown-sequencing tests: records an
-// op log so a test can assert ordering (e.g. the marker rename completed
-// before the transport was ended). Models a real transport where end()
-// destroys the channel, so a put/rename still in flight after it rejects,
-// making the ordering assertion a genuine falsifier. Optionally delays writes
-// (to race a missing await) or hangs them forever (for the write-budget tests).
+// The in-memory transport with an op log, so a test can assert ordering (the
+// marker rename completed before the transport was ended), and with writes that
+// reject once end() has run, as on a real transport whose channel end()
+// destroyed. Optionally delays writes (to race a missing await) or hangs them
+// forever (for the write-budget tests).
 function makeAbortTestClient(opts?: {
   writeDelayMs?: number;
   hangWrite?: boolean;
@@ -48,98 +45,13 @@ function makeAbortTestClient(opts?: {
   files: Map<string, Buffer>;
   ops: string[];
 } {
-  const files = new Map<string, Buffer>();
   const ops: string[] = [];
-  let ended = false;
-  const writeDelayMs = opts?.writeDelayMs ?? 0;
-
-  const baseName = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
-  const delay = (ms: number) =>
-    new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-  const client: FileTransportClient = {
-    connect: async () => {},
-    end: async () => {
-      ops.push("end");
-      ended = true;
-    },
-    list: async (dir: string): Promise<FileInfo[]> => {
-      const prefix = dir.endsWith("/") ? dir : `${dir}/`;
-      return [...files.entries()]
-        .filter(
-          ([p]) =>
-            p.startsWith(prefix) && !p.slice(prefix.length).includes("/"),
-        )
-        .map(([p, buf]) => ({
-          name: p.slice(prefix.length),
-          modifyTime: 0,
-          size: buf.length,
-        }));
-    },
-    get: async (path: string) => {
-      ops.push(`get:${baseName(path)}`);
-      const data = files.get(path);
-      if (!data)
-        throw Object.assign(new Error(`${path}: not found`), {
-          code: "ENOENT",
-        });
-      return data as Buffer<ArrayBufferLike>;
-    },
-    put: async (src, dest) => {
-      ops.push(`put-start:${baseName(dest)}`);
-      if (opts?.hangWrite) return new Promise<void>(() => {});
-      if (writeDelayMs > 0) await delay(writeDelayMs);
-      // The transport was ended while this write was in flight: a real
-      // (SFTP/filedrop) transport would have destroyed the channel.
-      if (ended) throw new Error(`${dest}: transport ended mid-write`);
-      // Match the real adapter contract: put() takes a Buffer or a
-      // [header, payload] chunk list (or a stream) body, never a string --
-      // LocalFSClient throws on a string src, and ssh2-sftp-client reads a
-      // string as a local file PATH. The mock rejects a string too, or it
-      // would mask a marker-body regression the production best-effort
-      // write would swallow. Join a chunk list defensively so the mock
-      // stores the same on-disk bytes a real transport would.
-      if (typeof src === "string")
-        throw new Error(
-          `${dest}: put expects a Buffer body, not a string (real adapters ` +
-            `reject or misread a string src)`,
-        );
-      files.set(
-        dest,
-        Array.isArray(src) ? Buffer.concat(src) : (src as Buffer),
-      );
-      ops.push(`put-done:${baseName(dest)}`);
-    },
-    delete: async (path: string) => {
-      files.delete(path);
-    },
-    safeDelete: async (path: string) => {
-      files.delete(path);
-    },
-    rename: async (from: string, to: string) => {
-      if (writeDelayMs > 0) await delay(writeDelayMs);
-      if (ended) throw new Error(`${to}: transport ended mid-rename`);
-      const data = files.get(from);
-      if (data === undefined) throw new Error(`${from}: no such file`);
-      files.delete(from);
-      files.set(to, data);
-      ops.push(`rename:${baseName(to)}`);
-    },
-    createExclusive: async (path: string) => {
-      if (files.has(path))
-        throw Object.assign(new Error(`${path}: exists`), { code: "EEXIST" });
-      files.set(path, Buffer.alloc(0));
-    },
-    exists: async (path: string) => files.has(path),
-    // A session-holding transport uses this to exempt a teardown re-dial from its
-    // mid-exchange reconnection cap; record the call so the wiring test can assert
-    // close() and the marker write both signal it (and the write signals BEFORE its
-    // put, so a catch-path write racing close() is still exempt).
-    beginTeardown: () => {
-      ops.push("beginTeardown");
-    },
-  };
-
+  const { client, files } = makeMockClient({
+    ...opts,
+    ops,
+    rejectWritesAfterEnd: true,
+    withBeginTeardown: true,
+  });
   return { client, files, ops };
 }
 

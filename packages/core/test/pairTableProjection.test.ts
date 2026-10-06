@@ -8,13 +8,14 @@ import {
   projectPairTable,
 } from "../src/pairTableProjection";
 import { MAX_RECORD_COUNT } from "../src/connection/frameSize";
-import { prepareForExchange, runExchange } from "../src/exchange";
+import { runExchange } from "../src/exchange";
 import { createMessagePipe } from "../src/connection/messageConnection";
 import { parseLinkageTerms } from "../src/config/linkageTermsSchema";
 
 import type { ResolvedRunShape } from "../src/pairTableProjection";
 import type { ExchangeResult, PreparedExchange } from "../src/exchange";
 import type { CSVRow } from "../src/file";
+import { bothOutput, firstNameTerms, prepared } from "./utils/support";
 
 // The run's resolved cardinality and its projected pair table are named for the
 // operator at the post-terms, pre-round boundary. Core composes both strings
@@ -303,16 +304,6 @@ test("the advisory refuses nothing and says so", () => {
 
 const psiLibrary = await PSI();
 
-const termsBase = {
-  version: "1.0.0",
-  date: "2026-01-01",
-  algorithm: "psi" as const,
-  linkageStrategy: "cascade" as const,
-  output: { expectsOutput: true, shareWithPartner: true },
-  linkageFields: [{ name: "firstName", type: "first_name" as const }],
-  linkageKeys: [{ name: "firstName", elements: [{ field: "firstName" }] }],
-};
-
 // `overrides` holds the terms a configuration under test differs by -- the
 // output entitlement pair and the linkage strategy -- which the two parties must
 // still mirror between them, `validateCompatibility` refusing an unmirrored pair
@@ -323,19 +314,15 @@ function preparedFor(
   deduplicate: boolean,
   overrides: Record<string, unknown> = {},
 ): PreparedExchange {
-  return prepareForExchange(
-    {
-      linkageTerms: parseLinkageTerms({
-        ...termsBase,
-        identity,
-        deduplicate,
-        ...overrides,
-      }),
-    },
-    identity,
-    rows,
-    ["first_name"],
-  );
+  return prepared(identity, rows, {
+    linkageTerms: parseLinkageTerms({
+      ...firstNameTerms,
+      output: bothOutput,
+      identity,
+      deduplicate,
+      ...overrides,
+    }),
+  });
 }
 
 /** The mirrored `output` pair of a one-sided exchange: only the party this is
