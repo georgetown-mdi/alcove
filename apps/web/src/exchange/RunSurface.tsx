@@ -131,7 +131,7 @@ function previewFor(value: string): string {
 
 /**
  * A labelled, copy-to-clipboard view of one shareable artifact -- the
- * invitation link/code on the share screen and the save surface. The DOM
+ * invitation (as a link or as text) on the share screen and the save surface. The DOM
  * holds only a head/tail preview of the value; Copy puts the full value on
  * the clipboard (announced through a polite status region), and a
  * disclosure toggle reveals the full value in a readonly textarea for when
@@ -167,7 +167,7 @@ export function CopyRow({
       COPY_STATUS_CLEAR_MS,
     );
   }
-  // "link" / "code", for the reveal toggle's name.
+  // The last word of the label ("link" or "text"), for the reveal toggle's name.
   const revealNoun = noun ?? label.split(" ").at(-1)?.toLowerCase() ?? "value";
   return (
     <div className={styles.copyRow}>

@@ -1004,7 +1004,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .element(page.getByText("Is the certificate you supplied as your own"))
       .toBeInTheDocument();
     // The record's own section stops claiming signatures went unchecked when a
-    // dual-signed verdict is on screen beside it.
+    // signed-receipt verdict is on screen beside it.
     await expect
       .element(
         page.getByText("checked separately below", { exact: false }).first(),

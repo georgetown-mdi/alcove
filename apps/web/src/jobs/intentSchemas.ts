@@ -301,7 +301,7 @@ function wholeSecondFlagMs(field: string) {
     .max(
       MAX_TIMEOUT_SECONDS * 1000,
       `${field} must not exceed ${MAX_TIMEOUT_SECONDS / 86_400} days on a ` +
-        "zero-setup exchange: the duration flag it is carried on refuses a " +
+        "quick exchange: the duration flag it is carried on refuses a " +
         "longer value",
     )
     .refine((ms) => ms % 1000 === 0, {

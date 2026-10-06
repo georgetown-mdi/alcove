@@ -551,8 +551,8 @@ const SIGNATURE_NOTE_WITH_SIGNED_RECORD =
  * the association table appears only when the record holds it. The result-size
  * row follows the same rule -- shown only where the record records a size.
  *
- * Pass `signedRecordVerified` when the same run also verified a dual-signed
- * record, so the standing caveat points at that verdict rather than telling the
+ * Pass `signedRecordVerified` when the same run also verified a signed
+ * receipt, so the standing caveat points at that verdict rather than telling the
  * reader signatures went unchecked beside a verdict that checked them. Pass
  * `receiptHoldsNoPartnerTerms` when a signed receipt is loaded whose
  * unsigned envelope holds no terms, so a not-checked agreed-terms hash names

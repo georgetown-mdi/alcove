@@ -214,8 +214,8 @@ function readTextFile(pathValue: string, kind: string): string {
 }
 
 // The receipt format's version family, taken from the literal this build reads
-// so the two cannot drift apart. A file whose version is in it is a dual-signed
-// record of another format -- the case the remedy below speaks to.
+// so the two cannot drift apart. A file whose version is in it is a signed
+// receipt of another format -- the case the remedy below speaks to.
 const RECEIPT_VERSION_FAMILY = SIGNED_RECEIPT_VERSION.slice(
   0,
   SIGNED_RECEIPT_VERSION.lastIndexOf("/") + 1,
@@ -324,7 +324,7 @@ export type VerifiableArtifact =
   | { kind: "signed"; signed: DualSignedRecord };
 
 /** What the version refusal states behind the signed receipt's version. */
-const DUAL_SIGNED_VERSION_NOTE = " (a signed receipt)";
+const SIGNED_RECEIPT_VERSION_NOTE = " (a signed receipt)";
 
 /**
  * Read the positional artifact, dispatching on its format `version`: the
@@ -343,7 +343,7 @@ export function readVerifiableArtifact(pathValue: string): VerifiableArtifact {
     pathValue,
   )} has an unrecognized version (${
     typeof version === "string" ? version : "missing"
-  }); this build recognizes ${EXCHANGE_RECORD_VERSION} (an exchange record) and ${SIGNED_RECEIPT_VERSION}${DUAL_SIGNED_VERSION_NOTE}${otherReceiptFormatRemedy(
+  }); this build recognizes ${EXCHANGE_RECORD_VERSION} (an exchange record) and ${SIGNED_RECEIPT_VERSION}${SIGNED_RECEIPT_VERSION_NOTE}${otherReceiptFormatRemedy(
     version,
   )}`;
   throw keepOperatorSuppliedText(new UsageError(message.text), message);
@@ -432,8 +432,8 @@ export interface SuppliedVerificationInputs {
   configFile?: string;
   /** Whether that config defined `linkage_terms`. */
   localTerms: boolean;
-  /** Whether the partner's terms were in hand: carried by the dual-signed
-   * record, or supplied on `--partner-terms`. */
+  /** Whether the partner's terms were in hand: carried by the signed
+   * receipt, or supplied on `--partner-terms`. */
   partnerTerms: boolean;
   /** Whether this section includes the note explaining a config that defines no
    * `linkage_terms`. A run reporting both artifacts prints it once, under the
@@ -656,7 +656,7 @@ function signedTermsWord(
 
 // What pairing this receipt to one run says. The `not-checked` remediation names
 // the one invocation that supplies the pairing: the exchange record has to be the
-// positional, since --signed-record is refused beside a dual-signed positional.
+// positional, since --signed-record is refused beside a signed-receipt positional.
 const RUN_BINDING_WORD: Record<RunBindingStatus, string> = {
   verified: "this receipt and this exchange record are the same run",
   mismatch:

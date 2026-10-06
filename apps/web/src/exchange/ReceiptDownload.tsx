@@ -62,7 +62,7 @@ export const RECEIPT_DOWNLOAD_LABEL =
   "Download signed receipt (holds your partner's linkage terms)";
 
 /**
- * The dual-signed receipt a console server-job run produced, offered on every
+ * The signed receipt a console server-job run produced, offered on every
  * console server-job seat (invite, accept, Direct, and strand recovery) whenever
  * the console holds one. Renders nothing for a run that signed nothing, so a seat
  * mounts it unconditionally and an ordinary run shows no trace of it.
