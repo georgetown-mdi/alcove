@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  BUILD_COMMAND,
   BUILD_OUTPUT,
   DEPLOY_WORKFLOW,
   RECORDER_MODULE,
@@ -422,6 +423,44 @@ describe("wiring", () => {
         (step.run ?? "").includes("npm run build -w apps/web"),
       ),
     ).toBe(true);
+  });
+
+  // The Pages deploy job holds the Cloudflare token, so it runs after the web
+  // suite, builds nothing and checks nothing out: it uploads the site the build
+  // job left as an artifact.
+  it("uploads to Pages only after the web suite, from a job that checks nothing out", () => {
+    const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
+    const jobs = Object.entries(workflow.jobs);
+    const deployers = jobs.filter(([, job]) =>
+      (job.steps ?? []).some((step) =>
+        (step.uses ?? "").startsWith("cloudflare/wrangler-action@"),
+      ),
+    );
+    expect(deployers).toHaveLength(1);
+    const [, deploy] = deployers[0];
+    const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
+    expect(gate).toBeDefined();
+    expect(deploy.needs).toContain(gate);
+    const usesOf = (job) => (job.steps ?? []).map((step) => step.uses ?? "");
+    expect(
+      usesOf(deploy).every((uses) => !uses.startsWith("actions/checkout@")),
+    ).toBe(true);
+    expect(deploy.steps.every((step) => step.run === undefined)).toBe(true);
+    const builder = jobs.find(([, job]) =>
+      (job.steps ?? []).some((step) =>
+        (step.run ?? "").includes(BUILD_COMMAND),
+      ),
+    );
+    expect(builder).toBeDefined();
+    expect(deploy.needs).toContain(builder[0]);
+    const upload = builder[1].steps.find((step) =>
+      (step.uses ?? "").startsWith("actions/upload-artifact@"),
+    );
+    const download = deploy.steps.find((step) =>
+      (step.uses ?? "").startsWith("actions/download-artifact@"),
+    );
+    expect(upload.with.path).toBe(BUILD_OUTPUT);
+    expect(download.with.name).toBe(upload.with.name);
   });
 
   // The check reads the deploy filter, so a pull request editing only that file

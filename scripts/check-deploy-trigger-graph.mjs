@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Deploy-trigger coverage check, run by eb_build_and_test.yaml.
 //
-// .github/workflows/eb_deploy.yaml redeploys the Elastic Beanstalk environment
-// on a push whose changed paths match a hand-written filter. That filter is
+// .github/workflows/pages_deploy.yaml redeploys the hosted site on a push
+// whose changed paths match a hand-written filter. That filter is
 // narrower than the trees it names -- most pointedly
 // `packages/peerjs-broker/src/contrib/**`, which by design omits the sibling
 // `src/standalone.ts` on the assumption that the local `npm start` entry is in no
@@ -36,7 +36,7 @@
 //     the change.
 //   - The reverse direction. A filter entry that matches nothing in the graph is
 //     not a finding: the filter legitimately covers files no module graph reads
-//     (package.json, tsconfig.json, the deploy/aws_eb payload, public assets).
+//     (package.json, tsconfig.json, public assets).
 //   - Anything a build does not resolve as a module. A file read at runtime by
 //     path, or copied into the artifact by a plugin (public/, the per-route
 //     documents' template), is not in the record.
@@ -57,7 +57,7 @@ import { fileURLToPath } from "node:url";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
 /** The workflow whose push filter decides when a deploy runs. */
-export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/eb_deploy.yaml`;
+export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
 /** The build output the deployed artifact is packaged from. */
 export const BUILD_OUTPUT = "apps/web/dist/hosted";

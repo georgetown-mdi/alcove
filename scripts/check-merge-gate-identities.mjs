@@ -98,7 +98,7 @@ export const GATING_WORKFLOWS = [
  * The gating workflows rule 2 does not require to run on push to staging.
  * Dependency review compares a pull request's dependency changes, and a merged
  * tip adds no dependency that neither pull request added. The web build and
- * test already runs on push to staging through eb_deploy.yaml, which calls it.
+ * test already runs on push to staging through pages_deploy.yaml, which calls it.
  */
 export const PUSH_EXEMPT_WORKFLOWS = [
   `${WORKFLOW_DIR}/dependency_review.yaml`,

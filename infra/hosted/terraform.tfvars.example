@@ -21,6 +21,11 @@ origin_security_group = {
 }
 
 cloudflare_zone_id = "<Cloudflare zone id>"
+cloudflare_account_id = "<Cloudflare account id>"
+pages_project_name    = "<CLOUDFLARE_PAGES_PROJECT>"
+
+# Set to "pages" at cutover, after the preview deployment is verified.
+production_origin = "elastic_beanstalk"
 
 # Each description must be the environment's live one, from
 # aws elasticbeanstalk describe-environments --environment-names <name>

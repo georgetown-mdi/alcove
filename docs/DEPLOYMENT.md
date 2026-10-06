@@ -120,9 +120,37 @@ The project runs one public deployment of the web application, for evaluation an
 
 Two environments run the same application, a staging one and a production one, each a single Elastic Beanstalk instance behind a Cloudflare front. Their environment configuration is kept in the repository as one exported file per environment -- `production.json` and `staging.json` under [`apps/web/deploy/aws_eb_saved_configurations/`](../apps/web/deploy/aws_eb_saved_configurations/README.md) -- so a console change that nobody wrote down is a diff rather than a discovery. Each file is an `aws elasticbeanstalk describe-configuration-settings` response rewritten by the `redact.mjs` script beside it, which replaces the account id, the application and environment names, the notification address and the EC2 key name and keeps every other value as exported; that directory's README holds the refresh commands, what each placeholder replaces, and the form the inbound rules take. The settings no export carries -- everything on the Cloudflare side, and the rule list of the shared security group -- are recorded below instead.
 
-### The deploy artifact
+### Deploying to Cloudflare Pages
 
-The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). The deploy workflow's artifact is that directory with the `apps/web/deploy/aws_eb/` payload and an empty `.env` copied over it. The payload's `Procfile` starts `node server/index.mjs`, which the static build does not write, so the artifact has no process for Elastic Beanstalk to start, and an environment it is deployed to does not serve the application. The site is meant for a static host instead. The artifact therefore deploys nowhere until the static host (Cloudflare Pages) is live and DNS points at it; until then the maintainer holds the merge of the change that made the build static-only, or pauses the Elastic Beanstalk deploy trigger.
+The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to a Cloudflare Pages project by direct upload:
+
+- **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch.
+- **Gate:** it runs the web build and test workflow and uploads only when every suite in it passes.
+- **Build:** a job of its own builds the site with `VITE_SIGNALING_SERVER_URL` set from the repository variable of that name. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
+- **Upload:** a second job, which checks out nothing, runs `wrangler pages deploy` on the built site with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`).
+
+It reads two secrets and two variables:
+
+| Name | Kind | What it is |
+| ---- | ---- | ---------- |
+| `CLOUDFLARE_API_TOKEN` | Secret | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else |
+| `CLOUDFLARE_ACCOUNT_ID` | Secret | The Cloudflare account the project is in |
+| `CLOUDFLARE_PAGES_PROJECT` | Variable | The Pages project's name |
+| `VITE_SIGNALING_SERVER_URL` | Variable | The peer-coordination broker's `wss:` address, built into the site |
+
+The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). The Pages project and its custom domain are in the [OpenTofu root](../infra/hosted/README.md).
+
+#### Moving the production name to Pages
+
+The production public name keeps pointing at its Elastic Beanstalk environment until the preview deployment has been checked on the real edge. In order:
+
+1. Deploy `staging` by dispatching the workflow, and check the preview deployment: the four security headers and HSTS on documents and assets; the `/accept` deep link with a fragment and a `/saved/<id>` deep link; offline navigation, after the first load, to routes not yet visited; a missing `/assets/` file; and one browser exchange through the broker.
+2. Set `production_origin` to `pages` in the OpenTofu root and apply, which points the production record at the project's `pages.dev` name ([the root's README](../infra/hosted/README.md#moving-the-production-name-to-pages)).
+3. Push `main`, which deploys production.
+
+### The paused Elastic Beanstalk deploy
+
+[`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml) runs only by manual dispatch, until the Elastic Beanstalk environments are retired. Its artifact is the static site with the `apps/web/deploy/aws_eb/` payload and an empty `.env` copied over it. The payload's `Procfile` starts `node server/index.mjs`, which the static build does not write, so the artifact has no process for Elastic Beanstalk to start, and an environment it is deployed to does not serve the application. The sections below on the environments describe them as they run until they are retired.
 
 Beside the exports, an OpenTofu root, [`infra/hosted/`](../infra/hosted/README.md), describes both environments, the one security group their instances attach, and the Cloudflare zone, and the maintainer applies it from outside the container. Its README holds where its state and credentials live, how it is applied, and how a plan is read for drift. It is applied to both environments and the zone, first on 2026-09-23 UTC; its README records what that run found and the hazard to check before an apply that changes an environment's security groups.
 
@@ -135,8 +163,9 @@ Two sources in the repository state the environment's settings, and each setting
 | The option settings `infra/hosted/environments.tf` declares: capacity and instance types, VPC and subnet, the attached security group and `DisableDefaultEC2SecurityGroup`, log streaming and retention, health reporting, the proxy server, the deployment and managed-update policy, the service roles, the notification address, and the application's environment variables | The OpenTofu root | The exported configuration files, re-exported after each apply |
 | The option settings the root leaves out: the machine image, the platform's template parameters and launch-control values, the notification topic, the EC2 key pair (absent), and options with no value -- listed in [the root's README](../infra/hosted/README.md#option-settings-it-leaves-out) | The exported configuration files, applied as [below](#applying-a-saved-configuration) | The same files |
 | The instances' inbound rules: one security group, `:443` from Cloudflare's published ranges and nothing else. The root declares `DisableDefaultEC2SecurityGroup` `true`, so the platform attaches no group of its own, as the "Security groups" row below records | The OpenTofu root, which reads the ranges from Cloudflare at plan time | `recorded-origin.json` beside the exports, compared daily by [the drift check](#checking-for-certificate-and-range-drift) |
-| Cloudflare: the proxy on both public names, SSL/TLS mode, Always Use HTTPS, HSTS | The OpenTofu root | [The recorded values below](#recorded-settings-and-their-source) |
-| The application version an environment runs | [`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml); the root ignores it | Neither |
+| Cloudflare: the proxy on both public names and what each points at, SSL/TLS mode, Always Use HTTPS, HSTS, the Pages project and its custom domain | The OpenTofu root | [The recorded values below](#recorded-settings-and-their-source) |
+| The application version an environment runs | [`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml), paused; the root ignores it | Neither |
+| The site the Pages project serves | [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) | Neither |
 | The origin certificate | The `cert/` prefix of the deployment bucket, installed by [the route below](#reinstalling-the-origin-certificate) | `recorded-origin.json` and the recorded values below |
 | The instance profile's policies (the Session Manager route), the application version lifecycle rule, and the other rows below that neither source expresses | The account, changed by hand | The recorded values below |
 

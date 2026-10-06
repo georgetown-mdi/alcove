@@ -6,8 +6,13 @@ resource "cloudflare_dns_record" "public_name" {
   zone_id = var.cloudflare_zone_id
   name    = each.value.public_name
   type    = "CNAME"
-  # Elastic Beanstalk reports the name in mixed case; the live record holds it lowercase.
-  content = lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
+  # Elastic Beanstalk reports the name in mixed case; the live record holds it
+  # lowercase. production_origin moves the production name to Pages.
+  content = (
+    each.key == "production" && var.production_origin == "pages"
+    ? cloudflare_pages_project.hosted.subdomain
+    : lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
+  )
   proxied = true
   ttl     = 1
 
@@ -40,4 +45,26 @@ resource "cloudflare_zone_setting" "hsts" {
       nosniff            = false
     }
   }
+}
+
+# Direct upload: the project has no Git source, and pages_deploy.yaml uploads
+# each build with wrangler. A deployment to the production branch is the
+# production deployment; one to any other branch, staging included, is a
+# preview on that branch's alias.
+resource "cloudflare_pages_project" "hosted" {
+  account_id        = var.cloudflare_account_id
+  name              = var.pages_project_name
+  production_branch = "main"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The production public name on the project. It verifies once the record above
+# points at the project's pages.dev name.
+resource "cloudflare_pages_domain" "production" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.hosted.name
+  name         = var.environments["production"].public_name
 }

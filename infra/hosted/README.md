@@ -1,6 +1,6 @@
 # The project's hosted environment, as OpenTofu
 
-This root describes the project's own hosted deployment of the web application -- the staging and production Elastic Beanstalk environments and the Cloudflare zone in front of them -- so the inbound rules and the edge settings are code a reviewer reads, and a drift is a plan that is not empty. It is about that deployment alone; an agency hosting the web application itself starts from [the reference payload](../../apps/web/deploy/aws_eb/) and [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#coordination-server) instead.
+This root describes the project's own hosted deployment of the web application -- the staging and production Elastic Beanstalk environments, the Cloudflare Pages project that replaces them, and the Cloudflare zone in front of both -- so the inbound rules and the edge settings are code a reviewer reads, and a drift is a plan that is not empty. It is about that deployment alone; an agency hosting the web application itself starts from [the reference payload](../../apps/web/deploy/aws_eb/) and [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#coordination-server) instead.
 
 Nothing in the repository runs it: no workflow, script or package manifest invokes `tofu`. The maintainer applies it from a machine holding credentials for the AWS account and the Cloudflare zone.
 
@@ -10,10 +10,10 @@ Nothing in the repository runs it: no workflow, script or package manifest invok
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `environments.tf`   | Both environments (`aws_elastic_beanstalk_environment.hosted["production"]` and `["staging"]`), their platform version, and the option settings both take                                                                                                                  |
 | `security_group.tf` | The one security group both instances attach: `:443` from Cloudflare's published ranges, read at plan time from the Cloudflare provider's `cloudflare_ip_ranges` data source, and no other inbound rule                                                                    |
-| `cloudflare.tf`     | A proxied DNS record for each public name, and three zone settings: SSL/TLS mode `Full (strict)` (`ssl = strict`), Always Use HTTPS, and HSTS at `max-age=15552000` without `includeSubDomains` or preload -- the values [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#recorded-settings-and-their-source) records |
-| `variables.tf`      | Every account-specific value -- the account id, application and environment names, VPC and subnet ids, the notification address, the zone id and the public names -- with no default                                                                                   |
+| `cloudflare.tf`     | A proxied DNS record for each public name, and three zone settings: SSL/TLS mode `Full (strict)` (`ssl = strict`), Always Use HTTPS, and HSTS at `max-age=15552000` without `includeSubDomains` or preload -- the values [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#recorded-settings-and-their-source) records. The Pages project (`cloudflare_pages_project.hosted`, direct upload, production branch `main`) and the production public name as its custom domain (`cloudflare_pages_domain.production`). `production_origin` points the production record at the environment (`elastic_beanstalk`, the default) or at the project's `pages.dev` name (`pages`) |
+| `variables.tf`      | Every account-specific value -- the account id, application and environment names, VPC and subnet ids, the notification address, the zone id, the Cloudflare account id, the Pages project name and the public names -- with no default; and `production_origin`, whose default leaves the live record as it is |
 
-The environments, the security group and the DNS records have `prevent_destroy`, so a plan that would replace one fails instead of proposing it. The environments ignore `version_label`: the deploy workflow ([`eb_deploy.yaml`](../../.github/workflows/eb_deploy.yaml)) owns the application version, and an apply here does not roll it back.
+The environments, the security group, the DNS records and the Pages project have `prevent_destroy`, so a plan that would replace one fails instead of proposing it. The environments ignore `version_label`: the deploy workflow ([`eb_deploy.yaml`](../../.github/workflows/eb_deploy.yaml), paused) owns the application version, and an apply here does not roll it back. The Pages project's deployments are likewise outside this root: [`pages_deploy.yaml`](../../.github/workflows/pages_deploy.yaml) uploads them.
 
 ### Option settings it leaves out
 
@@ -38,7 +38,7 @@ Nothing this root reads or writes as a secret is in the repository:
 
 - **State** is in an S3 bucket the operator chooses, configured by a gitignored `backend.hcl` passed at `tofu init` (template: `backend.hcl.example`). Keep the bucket private, versioned and encrypted at rest: the state holds every value in `terraform.tfvars`, the notification address and the account id included. A local backend is an acceptable choice for a single maintainer, as long as its state file lives outside the repository checkout: put `terraform { backend "local" { path = "<a path outside the checkout>" } }` in an `override.tf` in this directory, which is gitignored and replaces the backend block, and run `tofu init` without `-backend-config`.
 - **Values** are in a gitignored `terraform.tfvars` (template: `terraform.tfvars.example`), which `tofu` reads from this directory by default.
-- **Credentials** come from the environment and are never variables: the AWS provider's default chain (`AWS_PROFILE`, or the `AWS_*` variables) and `CLOUDFLARE_API_TOKEN`. The AWS provider refuses to run against any account other than `aws_account_id`. The Cloudflare token needs Zone -> Zone Settings -> Read and Zone -> DNS -> Read on the one zone to import and plan. An apply that changes a zone setting needs Zone Settings Edit, with DNS left at Read; one that changes a record is expected to need DNS Edit, which is not measured. Without Zone Settings Read, the zone-setting imports fail with `403`. The permission list `GET /zones` returns is the account member's, not the token's, so it does not show what the token holds; the AWS principal needs to update both environments and write the one security group (unverified: the `AdministratorAccess-AWSElasticBeanstalk` managed policy is expected to cover the environment half).
+- **Credentials** come from the environment and are never variables: the AWS provider's default chain (`AWS_PROFILE`, or the `AWS_*` variables) and `CLOUDFLARE_API_TOKEN`. The AWS provider refuses to run against any account other than `aws_account_id`. The Cloudflare token needs Zone -> Zone Settings -> Read and Zone -> DNS -> Read on the one zone to import and plan, and Account -> Cloudflare Pages -> Read on the account to plan the Pages project (Edit to create it or add its domain; not measured). An apply that changes a zone setting needs Zone Settings Edit, with DNS left at Read; one that changes a record is expected to need DNS Edit, which is not measured. Without Zone Settings Read, the zone-setting imports fail with `403`. The permission list `GET /zones` returns is the account member's, not the token's, so it does not show what the token holds; the AWS principal needs to update both environments and write the one security group (unverified: the `AdministratorAccess-AWSElasticBeanstalk` managed policy is expected to cover the environment half).
 
 `.gitignore` in this directory keeps `.terraform/`, state, plan files, tfvars and `backend.hcl` out of a commit. Commit `.terraform.lock.hcl`, which `tofu init` writes: it pins the provider builds a later run installs.
 
@@ -69,6 +69,10 @@ tofu apply hosted.tfplan
 
 An apply that changes no Cloudflare resource -- the plan lists none -- runs with the Read-only token that imports and plans; Edit is needed only when the plan changes a record or a zone setting.
 
+### Moving the production name to Pages
+
+After the preview deployment is checked ([the cutover order](../../docs/DEPLOYMENT.md#moving-the-production-name-to-pages)), set `production_origin = "pages"` in `terraform.tfvars`, plan, and apply. The plan is expected to change one resource in place: the `content` of `cloudflare_dns_record.public_name["production"]`, from the environment's name to the project's `pages.dev` name. Anything else in it is a reason to stop and read. The apply changes a record, so the token needs DNS Edit. Setting `production_origin` back to `elastic_beanstalk` and applying reverses it while the environment exists.
+
 ### Before an apply that changes an environment's security groups
 
 An update that sets `DisableDefaultEC2SecurityGroup` to `true` on an environment that still has the platform's own group deletes that group as part of the environment's CloudFormation stack update. Anything else attached to the group -- an EC2 instance launched outside Elastic Beanstalk, say -- blocks the deletion: CloudFormation retries it for about 17 minutes and then fails with `has a dependent object`, and `tofu apply` exits `1` at its 20-minute `wait_for_ready_timeout` (`timeout while waiting for state to become 'Ready'`), although the settings change has landed on the environment.
@@ -91,6 +95,13 @@ tofu import 'cloudflare_dns_record.public_name["production"]' '<zone-id>/<record
 tofu import cloudflare_zone_setting.ssl '<zone-id>/ssl'
 tofu import cloudflare_zone_setting.always_use_https '<zone-id>/always_use_https'
 tofu import cloudflare_zone_setting.hsts '<zone-id>/security_header'
+```
+
+A Pages project created in the dashboard rather than by an apply is imported the same way, under the same name; the import ids are not measured:
+
+```sh
+tofu import cloudflare_pages_project.hosted '<account-id>/<project-name>'
+tofu import cloudflare_pages_domain.production '<account-id>/<project-name>/<production public name>'
 ```
 
 The group id is the one both committed configuration files name in `SecurityGroups`. An environment id is `aws elasticbeanstalk describe-environments --environment-names <name> --query 'Environments[0].EnvironmentId'`. A record id is the `id` of `GET https://api.cloudflare.com/client/v4/zones/<zone-id>/dns_records?name=<public name>`.

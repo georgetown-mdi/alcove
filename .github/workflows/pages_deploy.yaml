@@ -1,0 +1,107 @@
+name: Deploy to Cloudflare Pages
+
+# Uploads the hosted static build (apps/web/dist/hosted) to the Cloudflare
+# Pages project by direct upload. A push to main is the production deployment;
+# a push to staging is a preview deployment on the `staging` branch alias.
+# The two secrets and two variables it reads, and the cutover order:
+# docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
+on:
+  push:
+    branches: [main, staging]
+    # Deploy-affecting sources only: apps/web/test/** is left out so a
+    # test-only push does not redeploy, while the PR gate
+    # (eb_build_and_test.yaml) globs apps/web/**. That every source the build
+    # reads matches this list is held by scripts/check-deploy-trigger-graph.mjs.
+    paths:
+      - "lib/**"
+      - "package-lock.json"
+      - "tsconfig.base.json"
+      - "apps/web/hosted/**"
+      - "apps/web/public/**"
+      - "apps/web/server/**"
+      - "apps/web/src/**"
+      - "apps/web/package.json"
+      - "apps/web/postcss.config.cjs"
+      - "apps/web/tsconfig.json"
+      - "apps/web/vite.config.ts"
+      - "apps/web/vite.hosted.config.ts"
+      - "packages/core/src/**"
+      - "packages/core/package.json"
+      - "packages/core/rollup.config.ts"
+      - "packages/core/tsconfig.json"
+      - "packages/core/tsconfig.rollup.json"
+      - "packages/cli-contract/src/**"
+      - "packages/cli-contract/package.json"
+      - "packages/cli-contract/tsconfig.json"
+      - "packages/cli-contract/tsconfig.build.json"
+      - "packages/peerjs-broker/src/contrib/**"
+      - "packages/peerjs-broker/src/diagnostics.ts"
+      - "packages/peerjs-broker/src/standaloneUpgradeBounds.ts"
+      - "packages/peerjs-broker/package.json"
+      - "packages/peerjs-broker/tsconfig.json"
+      - ".github/actions/setup/**"
+      - ".github/workflows/pages_deploy.yaml"
+
+  workflow_dispatch:
+
+# One deploy per branch at a time; an upload in progress finishes before the
+# next starts rather than being cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/eb_build_and_test.yaml
+
+  build:
+    name: Build the hosted static site
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      - name: Set up and build core
+        uses: ./.github/actions/setup
+      # The build refuses to run when VITE_SIGNALING_SERVER_URL is unset
+      # (apps/web/vite.config.ts), so a missing variable fails this step.
+      - name: Build web app
+        env:
+          VITE_SIGNALING_SERVER_URL: ${{ vars.VITE_SIGNALING_SERVER_URL }}
+        run: npm run build -w apps/web
+      - name: Upload the site
+        uses: actions/upload-artifact@v7
+        with:
+          name: hosted-site-${{ github.sha }}
+          path: apps/web/dist/hosted
+          retention-days: 1
+          if-no-files-found: error
+
+  # The only job given the Cloudflare credentials. It checks out nothing and
+  # runs no repository code: it downloads the built site and uploads it.
+  deploy:
+    name: Upload to Cloudflare Pages
+    needs: [build-and-test, build]
+    if: github.ref_name == 'main' || github.ref_name == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
+    permissions: {}
+    steps:
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: hosted-site-${{ github.sha }}
+          path: site
+      # Pinned to a commit because the step holds the deploy token, and to an
+      # exact wrangler so the step does not install the newest wrangler 4.
+      - name: Deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}

@@ -72,3 +72,24 @@ variable "environments" {
     error_message = "environments must have exactly the keys production and staging."
   }
 }
+
+variable "cloudflare_account_id" {
+  type        = string
+  description = "The Cloudflare account the Pages project is in: the deploy workflow's CLOUDFLARE_ACCOUNT_ID secret."
+}
+
+variable "pages_project_name" {
+  type        = string
+  description = "The Cloudflare Pages project the hosted site is uploaded to: the deploy workflow's CLOUDFLARE_PAGES_PROJECT variable."
+}
+
+variable "production_origin" {
+  type        = string
+  default     = "elastic_beanstalk"
+  description = "What the production public name points at: elastic_beanstalk, its environment's name, or pages, the Pages project's pages.dev name. The default leaves the live record as it is."
+
+  validation {
+    condition     = contains(["elastic_beanstalk", "pages"], var.production_origin)
+    error_message = "production_origin must be elastic_beanstalk or pages."
+  }
+}

@@ -1,57 +1,10 @@
 name: Deploy to Elastic Beanstalk
 
+# Paused until Elastic Beanstalk is retired: the hosted build is a static site
+# with no server process, so an environment this deploys to has nothing to
+# start. The hosted app deploys through pages_deploy.yaml; this runs only by
+# manual dispatch.
 on:
-  # No dev entry: there is no Elastic Beanstalk environment for dev yet, so a
-  # dev push must not trigger a deploy.
-  push:
-    branches: [main, staging]
-    # Scoped to deploy-affecting sources only: apps/web/test/** is intentionally
-    # excluded so a test-only push to staging/main does not trigger a rebuild and
-    # redeploy of unchanged behavior. The PR gate (eb_build_and_test.yaml) uses
-    # apps/web/** instead to catch test-only PRs; the two filters diverge on
-    # test/** by design -- see the comment in eb_build_and_test.yaml.
-    paths:
-      - "lib/**"
-      - "package-lock.json"
-      - "tsconfig.base.json"
-      - "apps/web/deploy/aws_eb/**"
-      - "apps/web/hosted/**"
-      - "apps/web/public/**"
-      - "apps/web/server/**"
-      - "apps/web/src/**"
-      - "apps/web/package.json"
-      - "apps/web/postcss.config.cjs"
-      - "apps/web/tsconfig.json"
-      - "apps/web/vite.config.ts"
-      - "apps/web/vite.hosted.config.ts"
-      - "packages/core/src/**"
-      - "packages/core/package.json"
-      - "packages/core/rollup.config.ts"
-      - "packages/core/tsconfig.json"
-      - "packages/core/tsconfig.rollup.json"
-      - "packages/cli-contract/src/**"
-      - "packages/cli-contract/package.json"
-      - "packages/cli-contract/tsconfig.json"
-      - "packages/cli-contract/tsconfig.build.json"
-      # Only the broker sources the deployed server bundles: the web app reaches
-      # this workspace through `@alcove/peerjs-broker`, whose "." export is
-      # src/contrib/index.ts. Its sibling src/standalone.ts is the local
-      # `npm start` entry, which no deployed import graph reaches -- an
-      # assumption eb_build_and_test.yaml's deploy-trigger coverage step holds
-      # against a real build, for this list as a whole rather than this entry
-      # alone. The two PR gates keep the broad packages/peerjs-broker/** glob,
-      # so an edit there is still built and tested -- it just does not redeploy
-      # an unchanged server. src/diagnostics.ts sits outside contrib but is
-      # imported by contrib/instance.ts, and the web server imports its
-      # upgrade bounds from src/standaloneUpgradeBounds.ts, so both are in the
-      # deployed graph.
-      - "packages/peerjs-broker/src/contrib/**"
-      - "packages/peerjs-broker/src/diagnostics.ts"
-      - "packages/peerjs-broker/src/standaloneUpgradeBounds.ts"
-      - "packages/peerjs-broker/package.json"
-      - "packages/peerjs-broker/tsconfig.json"
-      - ".github/actions/setup/**"
-
   workflow_dispatch:
 
 concurrency:
