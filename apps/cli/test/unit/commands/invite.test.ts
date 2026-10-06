@@ -3778,7 +3778,10 @@ test("handler: online invite whose config write failed keeps exit 73 and says so
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockImplementation(async () => {
     process.exitCode = 73;
-    return { configWriteError: new Error("permission denied") };
+    return {
+      outcome: "completed",
+      configWriteError: new Error("permission denied"),
+    };
   });
   const exit = vi
     .spyOn(process, "exit")
@@ -3827,7 +3830,7 @@ test("handler: a clean config write leaves the exchange's own exit 73 in place",
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockImplementation(async () => {
     process.exitCode = 73;
-    return { configWriteError: undefined };
+    return { outcome: "completed", configWriteError: undefined };
   });
   const exit = vi
     .spyOn(process, "exit")
@@ -3862,6 +3865,38 @@ test("handler: a clean config write leaves the exchange's own exit 73 in place",
   }
 });
 
+test("handler: an interrupted online invite prints no completion line", async () => {
+  const { input, options } = onlineFixture();
+  const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+  runOnlineBootstrapMock.mockResolvedValue({ outcome: "interrupted" });
+  const exit = vi
+    .spyOn(process, "exit")
+    .mockImplementation((() => undefined) as never);
+  const stdio = captureStdio();
+  try {
+    await inviteHandler({
+      _: [],
+      $0: "alcove",
+      identity: "Agency A",
+      args: ["sftp://host/drop", input],
+      "config-file": options.configFile,
+      "key-file": options.keyFile,
+      "log-level": "info",
+      record: true,
+    } as unknown as Arguments);
+    const stderr = stdio.stderrWrites.join("");
+    expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+    expect(stderr).not.toContain("exchange complete");
+    expect(stderr).not.toContain("saved config");
+    expect(stderr).not.toContain("rotated key");
+    expect(stderr).not.toContain("the saved configuration records");
+  } finally {
+    stdio.restore();
+    exit.mockRestore();
+    runOnlineBootstrapMock.mockReset();
+  }
+});
+
 test("handler: online hands the accept budget to the run and reports what was saved", async () => {
   // The two ends of the split, at the boundary where they part: the accept
   // timeout reaches the bootstrap as this run's budget alone, and the summary
@@ -3869,7 +3904,9 @@ test("handler: online hands the accept budget to the run and reports what was sa
   // it without opening the file.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -3909,7 +3946,9 @@ test("handler: a webrtc online invite reports the webrtc peer-budget defaults, n
   // a rendezvous that gives up after ten minutes.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -3943,6 +3982,7 @@ test("handler: a failed config write reports no saved peer budget", async () => 
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
     configWriteError: new Error("permission denied"),
   }));
   const exit = vi
@@ -3979,6 +4019,7 @@ test("handler: a failed config write leaves --peer-timeout's warning unfalsified
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
   runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
     configWriteError: new Error("permission denied"),
   }));
   const exit = vi
@@ -4019,7 +4060,9 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
   // refuses it.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -4061,7 +4104,9 @@ test("handler: the server-URL accept template names the identity too", async () 
   // are pinned against.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -4095,7 +4140,9 @@ test("handler: a web app invite prints the accept link for either partner", asyn
   // which opens the link, or on the command line, which takes the same link.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -4152,7 +4199,9 @@ test("handler: an online file-drop accept template names the partner's folder by
   const drop = fs.mkdtempSync(path.join(tmpdir(), "alcove-invite-drop-"));
   tmpDirs.push(drop);
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({}));
+  runOnlineBootstrapMock.mockImplementation(async () => ({
+    outcome: "completed",
+  }));
   const exit = vi
     .spyOn(process, "exit")
     .mockImplementation((() => undefined) as never);
@@ -4451,7 +4500,10 @@ describe("handler: the --server-provision credential file on an online invite", 
       const tokenFile = path.join(path.dirname(input), "wake.token");
       if (kind === "empty") fs.writeFileSync(tokenFile, "");
       const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      runOnlineBootstrapMock.mockResolvedValue({
+        outcome: "completed",
+        configWriteError: undefined,
+      });
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const exit = vi
         .spyOn(process, "exit")
@@ -4479,7 +4531,10 @@ describe("handler: the --server-provision credential file on an online invite", 
     const tokenFile = path.join(path.dirname(input), "wake.token");
     fs.writeFileSync(tokenFile, "wake-token\n");
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const printed: string[] = [];
     const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
       printed.push(args.map(String).join(" "));
@@ -4543,7 +4598,10 @@ describe("handler: an @path connection credential on an online invite", () => {
       const secretFile = path.join(path.dirname(input), "credential.secret");
       if (kind === "empty") fs.writeFileSync(secretFile, "");
       const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      runOnlineBootstrapMock.mockResolvedValue({
+        outcome: "completed",
+        configWriteError: undefined,
+      });
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const exit = vi
         .spyOn(process, "exit")
@@ -4581,7 +4639,10 @@ describe("handler: an @path connection credential on an online invite", () => {
     const passwordFile = path.join(path.dirname(input), "server.password");
     fs.writeFileSync(passwordFile, "file-password\n");
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const printed: string[] = [];
     const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
       printed.push(args.map(String).join(" "));
@@ -4612,7 +4673,10 @@ describe("handler: an @path connection credential on an online invite", () => {
   test("a literal password is passed through as the value read", async () => {
     const { input, options } = onlineFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const exit = vi
       .spyOn(process, "exit")
@@ -4639,7 +4703,10 @@ describe("handler: an @path connection credential on an online invite", () => {
   test("a webrtc invitation, which drops the credential flag, reads no file", async () => {
     const { input, options } = onlineFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const exit = vi
       .spyOn(process, "exit")

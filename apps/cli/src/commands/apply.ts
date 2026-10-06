@@ -67,9 +67,22 @@ import {
   refuseSurplusPositionals,
 } from "../util/positionals";
 import { configureLogging, logLevelFlag } from "../util/logging";
-import { promptConfirm } from "../util/prompt";
+import { promptConfirmOrClosed } from "../util/prompt";
 
 const APPLY_USAGE = "[options] UPDATE";
+
+/**
+ * The refusal an apply gets when it would ask for consent to an update's
+ * terms and standard input is not a terminal to ask at.
+ */
+const APPLY_CONSENT_REMEDY =
+  "Run it at a terminal (with docker, add -it) to review the terms and " +
+  "answer, or pass --consent-to-terms to consent to them in advance for an " +
+  "unattended run.";
+
+export const APPLY_NEEDS_TERMINAL =
+  "apply asks you to confirm the update's terms, and standard input is not " +
+  `a terminal to ask at, so nothing was changed. ${APPLY_CONSENT_REMEDY}`;
 
 export function builder(cmd: Argv): Argv {
   return addLoggingOptions(
@@ -465,6 +478,9 @@ export async function handler(argv: Arguments): Promise<void> {
         return;
       }
 
+      if (!consentToTerms && process.stdin.isTTY !== true)
+        throw new UsageError(APPLY_NEEDS_TERMINAL);
+
       const consentSurface = consentSurfaceSink({
         log,
         logFile,
@@ -487,12 +503,18 @@ export async function handler(argv: Arguments): Promise<void> {
             "without the confirmation prompt.",
         );
       } else {
-        const confirmed = await promptConfirm(
+        const answer = await promptConfirmOrClosed(
           `Apply this update to ${redactAndRenderOperatorSuppliedText(
             operatorSuppliedText(configPath),
           )}?`,
         );
-        if (!confirmed) {
+        if (answer === "closed")
+          throw new UsageError(
+            "standard input ended at the question above, so it was not " +
+              "answered and the configuration was not changed. " +
+              APPLY_CONSENT_REMEDY,
+          );
+        if (answer === "no") {
           consentSurface("update declined; the configuration was not changed");
           return;
         }

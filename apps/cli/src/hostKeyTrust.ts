@@ -14,7 +14,8 @@ import type { ConnectionConfig, PresentedHostKey } from "@alcove/core";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { persistHostKeyFingerprint } from "./config";
 import { exitCodeForError, firstLinkBehindTransportWraps } from "./util/exit";
-import { promptConfirm } from "./util/prompt";
+import { logFileInUse } from "./util/logging";
+import { promptConfirm, writePromptLine } from "./util/prompt";
 
 /**
  * How a confirmed first-use pin is persisted. Every connect path mutates the
@@ -263,15 +264,18 @@ export async function establishHostKeyTrust(
   // presented.keyType is the server's choice within the bound core's
   // keyTypeFromBlob applies, so escape it before it reaches the operator's
   // terminal/log (the same treatment fileSyncConnection's verifiers give it).
-  // The fingerprint is base64.
-  log.warn(
+  // The fingerprint is base64. The question is answered against this line, so
+  // it goes where the question is asked whatever the log level and sink; a
+  // `--log-file` also gets a copy.
+  const presentedKeyLine =
     `The authenticity of host ${hostDisplay} cannot be established: no ` +
-      `host_key_fingerprint is pinned. It presented a ` +
-      `${redactAndSanitizeForDisplay(presented.keyType)} host key with ` +
-      `fingerprint ${presented.fingerprint}. Verify this matches the server's ` +
-      `published fingerprint out-of-band if you can; confirming pins it for ` +
-      `this connection.`,
-  );
+    `host_key_fingerprint is pinned. It presented a ` +
+    `${redactAndSanitizeForDisplay(presented.keyType)} host key with ` +
+    `fingerprint ${presented.fingerprint}. Verify this matches the server's ` +
+    `published fingerprint out-of-band if you can; confirming pins it for ` +
+    `this connection.`;
+  if (logFileInUse()) log.warn(presentedKeyLine);
+  writePromptLine(presentedKeyLine);
   const trusted = await deps.confirm(`Trust this host key for ${hostDisplay}?`);
   if (!trusted)
     throw hostKeyRefusal(

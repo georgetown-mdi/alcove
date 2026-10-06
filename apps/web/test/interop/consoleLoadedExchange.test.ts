@@ -705,8 +705,9 @@ describe("a partner's terms change, met by a console run of the opened configura
     expect(refused.termsProposal).toBe("available");
 
     // The same proposal applied on the command line without
-    // --consent-to-terms and nothing to answer the question: declined.
-    const declined = await startCli({
+    // --consent-to-terms and nothing to answer the question: refused, and
+    // the configuration is not changed.
+    const refusedApply = await startCli({
       args: [
         "apply",
         `--config-file=${workspace.mountedConfig}`,
@@ -716,10 +717,8 @@ describe("a partner's terms change, met by a console run of the opened configura
       cwd: workspace.mount,
       timeoutMs: CLI_DEADLINE_MS,
     });
-    expectCliSucceeded(declined, "apply");
-    expect(declined.output).toContain(
-      "update declined; the configuration was not changed",
-    );
+    expect(refusedApply.exitCode).toBe(64);
+    expect(refusedApply.output).toContain("--consent-to-terms");
     expect(readFileSync(workspace.mountedConfig, "utf8")).toBe(beforeApply);
   });
 });

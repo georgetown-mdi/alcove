@@ -21,7 +21,7 @@ vi.mock("../../../src/util/prompt", async () => {
   const actual = await vi.importActual<
     typeof import("../../../src/util/prompt")
   >("../../../src/util/prompt");
-  return { ...actual, promptConfirm: vi.fn() };
+  return { ...actual, promptConfirmOrClosed: vi.fn() };
 });
 
 import { handler as applyHandler } from "../../../src/commands/apply";
@@ -29,11 +29,11 @@ import { handler as updateHandler } from "../../../src/commands/update";
 import { saveConfig } from "../../../src/config";
 import { saveKeyFile } from "../../../src/keyFile";
 import { termsProposalPath } from "../../../src/termsChange";
-import { promptConfirm } from "../../../src/util/prompt";
+import { promptConfirmOrClosed } from "../../../src/util/prompt";
 import { captureProcessExit } from "../../exitCapture";
 import { captureStdio } from "../../loggingTestSupport";
 
-const promptConfirmMock = vi.mocked(promptConfirm);
+const promptConfirmMock = vi.mocked(promptConfirmOrClosed);
 
 const LINKAGE_COLUMNS = ["first_name", "last_name", "dob", "ssn"];
 
@@ -186,15 +186,34 @@ async function runApply(
   return { stderr: stdio.stderrWrites.join(""), exit };
 }
 
+let stdinIsTTY: PropertyDescriptor | undefined;
+
 beforeEach(() => {
   partnership = establishPartnership();
   promptConfirmMock.mockReset();
+  // apply asks only at a terminal; a test of the unattended refusal sets it
+  // back to undefined.
+  stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+  Object.defineProperty(process.stdin, "isTTY", {
+    value: true,
+    configurable: true,
+  });
 });
 
 afterEach(() => {
   fs.rmSync(partnership.dir, { recursive: true, force: true });
   vi.restoreAllMocks();
+  if (stdinIsTTY !== undefined)
+    Object.defineProperty(process.stdin, "isTTY", stdinIsTTY);
+  else delete (process.stdin as { isTTY?: boolean }).isTTY;
 });
+
+function stdinIsNotATerminal(): void {
+  Object.defineProperty(process.stdin, "isTTY", {
+    value: undefined,
+    configurable: true,
+  });
+}
 
 describe("alcove update", () => {
   test("prints the edited terms and disclosed columns, authenticated under the key file's secret", async () => {
@@ -325,7 +344,7 @@ describe("alcove apply", () => {
   test("rewrites the linkage terms and refreshes the record in one write", async () => {
     const edited = editAgencyA();
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(true);
+    promptConfirmMock.mockResolvedValue("yes");
 
     const { exit } = await runApply(update);
     expect(exit).toBeUndefined();
@@ -350,7 +369,7 @@ describe("alcove apply", () => {
       linkageTerms: edited,
     });
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(true);
+    promptConfirmMock.mockResolvedValue("yes");
 
     const { exit, stderr } = await runApply(update);
     expect(exit).toBeUndefined();
@@ -363,7 +382,7 @@ describe("alcove apply", () => {
   test("neither rotates the shared secret nor touches the connection block", async () => {
     editAgencyA();
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(true);
+    promptConfirmMock.mockResolvedValue("yes");
     const keyBefore = fs.readFileSync(partnership.b.key, "utf8");
     const connectionBefore = readSpec(partnership.b.config).connection;
 
@@ -376,7 +395,7 @@ describe("alcove apply", () => {
   test("states a disclosed-column change in its own section, apart from the other terms", async () => {
     editAgencyA();
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -394,7 +413,7 @@ describe("alcove apply", () => {
       metadata: metadataWith("notes", "county"),
     });
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -436,7 +455,7 @@ describe("alcove apply", () => {
       linkageTerms: uncited,
     });
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     const before = fs.readFileSync(partnership.b.config, "utf8");
 
     const { exit, stderr } = await runApply(update);
@@ -463,7 +482,7 @@ describe("alcove apply", () => {
       (await decodeTermsUpdate(update, partnership.secret)).linkageTerms.payload
         ?.receive,
     ).toBeUndefined();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -480,7 +499,7 @@ describe("alcove apply", () => {
     const { payload: _payload, ...withoutPayload } = spec.linkageTerms;
     saveConfig(partnership.b.config, { ...spec, linkageTerms: withoutPayload });
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -496,7 +515,7 @@ describe("alcove apply", () => {
     );
     saveConfig(partnership.a.config, withoutMetadata);
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -516,7 +535,7 @@ describe("alcove apply", () => {
     );
     saveConfig(partnership.b.config, unrecorded);
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
 
     const { stderr } = await runApply(update);
     const lines = stderr.split("\n");
@@ -531,7 +550,7 @@ describe("alcove apply", () => {
       linkageTerms: { ...partnership.aTerms, payload: { receive: [] } },
     });
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(true);
+    promptConfirmMock.mockResolvedValue("yes");
 
     const { exit } = await runApply(update);
     expect(exit).toBeUndefined();
@@ -543,7 +562,7 @@ describe("alcove apply", () => {
   test("declining leaves the configuration byte-identical", async () => {
     editAgencyA();
     const update = await runUpdate();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     const before = fs.readFileSync(partnership.b.config, "utf8");
 
     const { exit, stderr } = await runApply(update);
@@ -551,6 +570,58 @@ describe("alcove apply", () => {
     expect(stderr).toContain(
       "update declined; the configuration was not changed",
     );
+    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test("with no terminal on stdin, apply is refused before it shows the terms, changing nothing", async () => {
+    editAgencyA();
+    const update = await runUpdate();
+    stdinIsNotATerminal();
+    const before = fs.readFileSync(partnership.b.config, "utf8");
+
+    const { exit, stderr } = await runApply(update);
+    expect(exit).toBe("exit:64");
+    expect(promptConfirmMock).not.toHaveBeenCalled();
+    expect(stderr).toContain("standard input is not a terminal");
+    expect(stderr).toContain("with docker, add -it");
+    expect(stderr).toContain("--consent-to-terms");
+    expect(stderr).not.toContain("update declined");
+    expect(stderr).not.toContain("Changes this update makes");
+    expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
+  });
+
+  test("with no terminal on stdin, a description-only update is still applied", async () => {
+    saveConfig(partnership.a.config, {
+      ...readSpec(partnership.a.config),
+      linkageTerms: {
+        ...partnership.aTerms,
+        payload: {
+          send: [{ name: "notes", description: "case notes, reworded" }],
+        },
+      },
+    });
+    const update = await runUpdate();
+    stdinIsNotATerminal();
+
+    const { exit, stderr } = await runApply(update);
+    expect(exit).toBeUndefined();
+    expect(stderr).toContain("changes no linkage term");
+    expect(
+      readSpec(partnership.b.config).linkageTerms.payload?.receive,
+    ).toEqual([{ name: "notes", description: "case notes, reworded" }]);
+  });
+
+  test("stdin closing at the question is refused, not taken as a decline", async () => {
+    editAgencyA();
+    const update = await runUpdate();
+    promptConfirmMock.mockResolvedValue("closed");
+    const before = fs.readFileSync(partnership.b.config, "utf8");
+
+    const { exit, stderr } = await runApply(update);
+    expect(exit).toBe("exit:64");
+    expect(stderr).toContain("standard input ended at the question above");
+    expect(stderr).toContain("with docker, add -it");
+    expect(stderr).not.toContain("update declined");
     expect(fs.readFileSync(partnership.b.config, "utf8")).toBe(before);
   });
 

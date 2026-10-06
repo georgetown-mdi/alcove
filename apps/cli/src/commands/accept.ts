@@ -1231,7 +1231,7 @@ export async function handler(argv: Arguments): Promise<void> {
       // validateAccept. Everything from here (the config, key file, record,
       // result, and every consent record below) is written identically.
       if (ready.mode === "online" || ready.mode === "endpointRun") {
-        const { configWriteError } = await runOnlineBootstrap({
+        const { outcome, configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,
           dataSpec: ready.dataSpec,
           prepared: ready.prepared,
@@ -1267,6 +1267,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.
         logOnlineBootstrapOutcome(log, {
+          outcome,
           configFile: options.configFile,
           keyFile: options.keyFile,
           configWriteError,

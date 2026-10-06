@@ -3432,7 +3432,10 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // two-command acceptance would have written.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
@@ -3481,7 +3484,10 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
 
   test("handler: a webrtc acceptance given an input file runs the exchange; one without only writes its files", async () => {
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
@@ -3533,7 +3539,10 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // passed, which is what keeps the two the same value.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
@@ -3574,7 +3583,10 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // opens no connection.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     promptConfirmMock.mockResolvedValue(false);
     const stdio = captureStdio();
     const exit = vi
@@ -4124,7 +4136,10 @@ describe("handler: an acceptance names the directories its invitation supplies",
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
     runOnlineBootstrapMock.mockImplementation(() => {
       process.stderr.write(`${runStarted}\n`);
-      return Promise.resolve({ configWriteError: undefined });
+      return Promise.resolve({
+        outcome: "completed",
+        configWriteError: undefined,
+      });
     });
     try {
       const encoded = await encodeInvitation(
@@ -4229,7 +4244,10 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     // past a screen.
     const fixture = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     try {
       const encoded = await encodeInvitation(
         sampleToken(FUTURE(), WEBRTC_ENDPOINT),
@@ -4283,7 +4301,10 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     // One character short of it leaves that case undriven.
     const fixture = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const host = `${"h".repeat(MAX_ENDPOINT_HOST_LENGTH - 4)}.org`;
     expect(host).toHaveLength(MAX_ENDPOINT_HOST_LENGTH);
     try {
@@ -4322,7 +4343,10 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     const fixture = offlineAcceptFixture();
     const logFile = path.join(fixture.dir, "accept.log");
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     try {
       const encoded = await encodeInvitation(
         sampleToken(FUTURE(), WEBRTC_ENDPOINT),
@@ -4852,7 +4876,10 @@ describe("handler: online accept-reuse forwards the acceptance record", () => {
     // acceptance's value.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
@@ -5136,7 +5163,10 @@ describe("the acceptance's terms-side commitment reaches the config", () => {
     // exchanges unbound. Mocked, so no connection is opened.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);
@@ -5188,7 +5218,10 @@ describe("handler: an online acceptance whose configuration write fails", () => 
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
     runOnlineBootstrapMock.mockImplementation(async () => {
       process.exitCode = 73;
-      return { configWriteError: new Error("permission denied") };
+      return {
+        outcome: "completed",
+        configWriteError: new Error("permission denied"),
+      };
     });
     const exit = vi
       .spyOn(process, "exit")
@@ -5240,7 +5273,7 @@ describe("handler: an online acceptance whose configuration write fails", () => 
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
     runOnlineBootstrapMock.mockImplementation(async () => {
       process.exitCode = 73;
-      return { configWriteError: undefined };
+      return { outcome: "completed", configWriteError: undefined };
     });
     const exit = vi
       .spyOn(process, "exit")
@@ -5271,6 +5304,40 @@ describe("handler: an online acceptance whose configuration write fails", () => 
       expect(stderr).toContain(`saved config to ${configFile}`);
     } finally {
       process.exitCode = previousExitCode;
+      stdio.restore();
+      exit.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("handler: an interrupted online accept prints no completion line", async () => {
+    const { dir, input, configFile, keyFile } = offlineAcceptFixture();
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockResolvedValue({ outcome: "interrupted" });
+    const exit = vi
+      .spyOn(process, "exit")
+      .mockImplementation((() => undefined) as never);
+    const stdio = captureStdio();
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      await acceptHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency B",
+        args: ["sftp://host/drop", encoded, input],
+        "consent-to-terms": true,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "info",
+        record: true,
+      } as unknown as Arguments);
+      const stderr = stdio.stderrWrites.join("");
+      expect(runOnlineBootstrapMock).toHaveBeenCalledTimes(1);
+      expect(stderr).not.toContain("exchange complete");
+      expect(stderr).not.toContain("saved config");
+      expect(stderr).not.toContain("rotated key");
+    } finally {
       stdio.restore();
       exit.mockRestore();
       runOnlineBootstrapMock.mockReset();
@@ -5531,7 +5598,10 @@ describe("--server-provision on an acceptance", () => {
       const tokenFile = path.join(fixture.dir, "wake.token");
       if (kind === "empty") fs.writeFileSync(tokenFile, "");
       const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-      runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+      runOnlineBootstrapMock.mockResolvedValue({
+        outcome: "completed",
+        configWriteError: undefined,
+      });
       const exit = vi
         .spyOn(process, "exit")
         .mockImplementation((() => undefined) as never);
@@ -5558,7 +5628,10 @@ describe("--server-provision on an acceptance", () => {
     const tokenFile = path.join(fixture.dir, "wake.token");
     fs.writeFileSync(tokenFile, "wake-token\n");
     const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-    runOnlineBootstrapMock.mockResolvedValue({ configWriteError: undefined });
+    runOnlineBootstrapMock.mockResolvedValue({
+      outcome: "completed",
+      configWriteError: undefined,
+    });
     const exit = vi
       .spyOn(process, "exit")
       .mockImplementation((() => undefined) as never);

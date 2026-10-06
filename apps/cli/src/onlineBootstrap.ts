@@ -67,6 +67,7 @@ import {
   runProtocol,
   type AuthPersist,
   type ProtocolConnectionConfig,
+  type RunProtocolResult,
 } from "./protocol";
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
@@ -756,6 +757,14 @@ const CONFIG_APPEARED_LATE_REMEDY =
   "pass --config-file), then rerun 'alcove exchange' to recover without " +
   "re-inviting.";
 
+/** What {@link runOnlineBootstrap} resolves with. */
+export interface OnlineBootstrapResult {
+  /** The run's outcome, as {@link RunProtocolResult.outcome} states it. */
+  outcome: RunProtocolResult["outcome"];
+  /** The config write's failure, when the hook could not write it. */
+  configWriteError?: unknown;
+}
+
 /**
  * Run the connect -> key exchange -> exchange path shared by online invite
  * and online accept, persisting the config at the moment the handshake
@@ -784,6 +793,8 @@ const CONFIG_APPEARED_LATE_REMEDY =
  * exchange error (the handler's error path reports the error itself). The note
  * is logged only when the config write actually succeeded, so a hook failure
  * followed by an exchange failure never claims a config that is not there.
+ * A run a signal cut short resolves with `outcome: "interrupted"` after the
+ * same note, and the caller writes no completion summary for it.
  *
  * The persisted config holds the plain `connection` (no `authentication`);
  * `saveConfig` strips any shared-secret material regardless. A budget that
@@ -900,7 +911,7 @@ export async function runOnlineBootstrap(params: {
    * or the `--log-file` at every `--log-level`.
    */
   writePlainLine: (line: string) => void;
-}): Promise<{ configWriteError?: unknown }> {
+}): Promise<OnlineBootstrapResult> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
   // own parameter rather than embedded in the connection config.
@@ -997,6 +1008,18 @@ export async function runOnlineBootstrap(params: {
   // succeeded (key saved) from one that failed pre-handshake (no key) -- and
   // would falsely promise `alcove exchange` recovery in the latter.
   let keyPersisted = false;
+  const logRecoveryNoteIfOnDisk = (): void => {
+    if (configWritten || (params.reuseExistingConfig && keyPersisted))
+      getLogger(params.loggerName).error(
+        `the configuration at ${redactAndRenderOperatorSuppliedText(
+          operatorSuppliedText(params.configPath),
+        )} and the rotated key at ` +
+          `${redactAndRenderOperatorSuppliedText(
+            operatorSuppliedText(params.keyPath),
+          )} are on disk; retry with 'alcove exchange' to ` +
+          `recover without re-inviting.`,
+      );
+  };
   try {
     const runResult = await runProtocol({
       connection: liveConnection,
@@ -1150,10 +1173,17 @@ export async function runOnlineBootstrap(params: {
       }),
     });
 
+    if (runResult.outcome === "interrupted") {
+      logRecoveryNoteIfOnDisk();
+      return { outcome: "interrupted" };
+    }
     // onAuthenticatedError is the config-write failure, if any: the acceptance
     // hook is just the saveConfig call above, so report it under a name the
     // caller speaks.
-    return { configWriteError: runResult.onAuthenticatedError };
+    return {
+      outcome: "completed",
+      configWriteError: runResult.onAuthenticatedError,
+    };
   } catch (err) {
     // The exchange failed after a successful handshake. When BOTH the config and
     // the rotated key are on disk, tell the user so they retry with `alcove
@@ -1164,16 +1194,7 @@ export async function runOnlineBootstrap(params: {
     // (onlineBootstrap.test.ts, "runOnlineBootstrap with reuseExistingConfig
     // does not log a recovery note when the handshake fails before the key is
     // saved").
-    if (configWritten || (params.reuseExistingConfig && keyPersisted))
-      getLogger(params.loggerName).error(
-        `the configuration at ${redactAndRenderOperatorSuppliedText(
-          operatorSuppliedText(params.configPath),
-        )} and the rotated key at ` +
-          `${redactAndRenderOperatorSuppliedText(
-            operatorSuppliedText(params.keyPath),
-          )} are on disk; retry with 'alcove exchange' to ` +
-          `recover without re-inviting.`,
-      );
+    logRecoveryNoteIfOnDisk();
     throw err;
   }
 }
@@ -1189,6 +1210,9 @@ export async function runOnlineBootstrap(params: {
  * summary and points back to it. The failure summary is logged at `error`, not
  * `warn`, so it stays visible alongside the error it references.
  *
+ * An interrupted run gets no summary: the signal handler reports it, and
+ * nothing here may say a file was saved that the run did not write.
+ *
  * This is the human summary only: it moves no process state. The exit code a
  * wrapper gates on to catch a half-provisioned setup (a rotated key with no
  * configuration) is `PERSISTENCE_LOSS_EXIT_CODE`, set by `runProtocol` at the
@@ -1197,12 +1221,14 @@ export async function runOnlineBootstrap(params: {
 export function logOnlineBootstrapOutcome(
   log: ReturnType<typeof getLogger>,
   params: {
+    outcome: OnlineBootstrapResult["outcome"];
     configFile: string;
     keyFile: string;
     configWriteError?: unknown;
     reuseExistingConfig?: boolean;
   },
 ): void {
+  if (params.outcome === "interrupted") return;
   if (params.reuseExistingConfig && params.configWriteError === undefined) {
     // Reuse skips the config write, so there is normally no configWriteError; the
     // existing config stands and only the rotated key was saved. The

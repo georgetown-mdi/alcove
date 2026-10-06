@@ -28,7 +28,11 @@ import {
 import { applyConnectionOverrides } from "../../src/config";
 import { connectionOverridesFrom } from "../../src/optionDefinitions";
 import { exitCodeForError } from "../../src/util/exit";
-import { snapshotDiagnosticSinkAndLevel } from "../loggingTestSupport";
+import { configureLogging } from "../../src/util/logging";
+import {
+  captureStdio,
+  snapshotDiagnosticSinkAndLevel,
+} from "../loggingTestSupport";
 
 snapshotDiagnosticSinkAndLevel();
 
@@ -512,8 +516,12 @@ function hostKeyBlobNaming(keyType: string): Uint8Array {
   return blob;
 }
 
-/** Collect every diagnostic line the callback's run emits, sink restored after. */
-async function withCapturedDiagnostics(
+/**
+ * Collect every line the callback's run shows the operator: each diagnostic
+ * line, and each line written to the prompt stream (stderr). Sink and stderr
+ * are restored after.
+ */
+async function withCapturedOperatorLines(
   run: () => Promise<void>,
 ): Promise<string[]> {
   const lines: string[] = [];
@@ -521,11 +529,14 @@ async function withCapturedDiagnostics(
   setDiagnosticSink((_method, prefix, args) =>
     lines.push([prefix, ...args.map((arg) => String(arg))].join(" ")),
   );
+  const stdio = captureStdio();
   try {
     await run();
   } finally {
+    stdio.restore();
     setDiagnosticSink(previous);
   }
+  for (const chunk of stdio.stderrWrites) lines.push(chunk.replace(/\n$/, ""));
   return lines;
 }
 
@@ -541,7 +552,7 @@ test("the trust prompt names the bounded key type, never the server's bytes", as
     keyType: keyTypeFromBlob(hostKeyBlobNaming("ssh-\x1b[31mevil\r\nINJECTED")),
   });
   process.stdin.isTTY = true;
-  const lines = await withCapturedDiagnostics(() =>
+  const lines = await withCapturedOperatorLines(() =>
     establishHostKeyTrust(
       conn,
       {
@@ -564,6 +575,87 @@ test("the trust prompt names the bounded key type, never the server's bytes", as
   expect(prompt).toContain(FP);
 });
 
+/**
+ * Run a first-use trust under the operator's real logging setup, answering yes,
+ * and return what was on stderr by the time the question was asked.
+ */
+async function stderrWhenAsked(logging: {
+  logLevel: logLibrary.LogLevelNumbers;
+  logFile: string | undefined;
+}): Promise<string> {
+  const loggerName = "host-key-prompt-routing";
+  const configured = configureLogging({ ...logging, name: loggerName });
+  const stdio = captureStdio();
+  let atQuestion: string | undefined;
+  process.stdin.isTTY = true;
+  try {
+    await establishHostKeyTrust(
+      sftpConn(),
+      { verbosity: -1, loggerName, persistence: { mode: "ephemeral" } },
+      {
+        probe: () =>
+          Promise.resolve({ fingerprint: FP, keyType: "ssh-ed25519" }),
+        confirm: () => {
+          atQuestion = stdio.stderrWrites.join("");
+          return Promise.resolve(true);
+        },
+      },
+    );
+  } finally {
+    stdio.restore();
+    configured.close();
+  }
+  expect(atQuestion).toBeDefined();
+  return atQuestion ?? "";
+}
+
+test("the presented key is on stderr before the question at --log-level error", async () => {
+  const shown = await stderrWhenAsked({
+    logLevel: logLibrary.levels.ERROR,
+    logFile: undefined,
+  });
+  expect(shown).toContain("The authenticity of host sftp.example.org");
+  expect(shown).toContain(`fingerprint ${FP}`);
+});
+
+test("the presented key is on stderr before the question under --log-file, and in the file", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-hkt-logfile-"));
+  try {
+    const logFile = path.join(dir, "run.log");
+    const shown = await stderrWhenAsked({
+      logLevel: logLibrary.levels.INFO,
+      logFile,
+    });
+    expect(shown).toContain(`fingerprint ${FP}`);
+    expect(shown).not.toContain("[WARN]");
+    expect(fs.readFileSync(logFile, "utf8")).toContain(`fingerprint ${FP}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the presented key is on stderr before the question under --log-file at --log-level error", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-hkt-logfile-"));
+  try {
+    const shown = await stderrWhenAsked({
+      logLevel: logLibrary.levels.ERROR,
+      logFile: path.join(dir, "run.log"),
+    });
+    expect(shown).toContain(`fingerprint ${FP}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the presented key is shown once at the default level, with no log prefix", async () => {
+  const shown = await stderrWhenAsked({
+    logLevel: logLibrary.levels.INFO,
+    logFile: undefined,
+  });
+  expect(shown.split(`fingerprint ${FP}`)).toHaveLength(2);
+  expect(shown).not.toContain("[WARN]");
+});
+
 test("the trust prompt names a conforming key type verbatim", async () => {
   const keyType = "ecdsa-sha2-nistp521-cert-v01@openssh.com";
   const conn = sftpConn();
@@ -572,7 +664,7 @@ test("the trust prompt names a conforming key type verbatim", async () => {
     keyType: keyTypeFromBlob(hostKeyBlobNaming(keyType)),
   });
   process.stdin.isTTY = true;
-  const lines = await withCapturedDiagnostics(() =>
+  const lines = await withCapturedOperatorLines(() =>
     establishHostKeyTrust(
       conn,
       {
@@ -1036,7 +1128,7 @@ test("a marker in the configured host cannot delete the verify step or the promp
   };
   process.stdin.isTTY = true;
   logLibrary.setDefaultLevel(logLibrary.levels.INFO);
-  const lines = await withCapturedDiagnostics(() =>
+  const lines = await withCapturedOperatorLines(() =>
     establishHostKeyTrust(
       conn,
       {
@@ -1075,7 +1167,7 @@ test("a marker in the config path cannot delete the pin line's assurance", async
     const deps = makeDeps({ confirm: true });
     process.stdin.isTTY = true;
     logLibrary.setDefaultLevel(logLibrary.levels.INFO);
-    const lines = await withCapturedDiagnostics(() =>
+    const lines = await withCapturedOperatorLines(() =>
       establishHostKeyTrust(
         conn,
         {

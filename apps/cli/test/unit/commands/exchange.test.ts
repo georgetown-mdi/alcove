@@ -1670,7 +1670,7 @@ test("handler suppresses the advisory when a successful exchange refreshes the t
       sharedSecret: TOKEN_B,
       expires: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     });
-    return {};
+    return { outcome: "completed" };
   });
   const exitSpy = captureProcessExit();
   try {
@@ -1717,7 +1717,7 @@ async function delimiterReachingTheRun(
   fs.writeFileSync(input, `ssn${separator}note\n123456789${separator}hello\n`);
 
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler({
     _: [],
     $0: "alcove",
@@ -1767,7 +1767,7 @@ async function logOfFillingRun(
   vi.mocked(runProtocol).mockImplementationOnce(async (options) => {
     await options.recordPayloadReceiveFill?.(columns);
     options.payloadReceiveFillNotice?.(columns);
-    return {};
+    return { outcome: "completed" };
   });
   await withStdin(stdin, () =>
     handler({
@@ -2073,7 +2073,7 @@ test("handler exits 64 on a divergent signing identity, before runProtocol", asy
 test("handler runs the exchange when the signing identity matches the terms identity", async () => {
   const argv = await signedExchangeRun("Test Party");
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler(argv);
   expect(
     mockState.errors.some((m) => m.includes("linkage_terms.identity")),
@@ -2115,7 +2115,7 @@ test("handler takes the run's identity from the configuration", async () => {
   fs.writeFileSync(input, "ssn\n123456789\n");
   vi.mocked(prepareForExchange).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler({
     _: [],
     $0: "alcove",
@@ -2137,7 +2137,7 @@ test("handler treats a blank --identity as absent, falling back to the config", 
   fs.writeFileSync(input, "ssn\n123456789\n");
   vi.mocked(prepareForExchange).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler({
     _: [],
     $0: "alcove",
@@ -2198,7 +2198,7 @@ test("handler runs a configuration with no identity, sending none", async () => 
   fs.writeFileSync(input, "ssn\n123456789\n");
   vi.mocked(prepareForExchange).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler({
     _: [],
     $0: "alcove",
@@ -2220,7 +2220,7 @@ test("handler trims a supplied --identity before using it", async () => {
   fs.writeFileSync(input, "ssn\n123456789\n");
   vi.mocked(prepareForExchange).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   await handler({
     _: [],
     $0: "alcove",
@@ -2266,7 +2266,7 @@ test("handler: --invitation provisions the key file when none exists and the exc
   expect(fs.existsSync(keyFile)).toBe(false);
 
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -2489,7 +2489,7 @@ test("handler: the prepare-time guard completes before runProtocol on an sftp co
   vi.mocked(prepareForExchange).mockClear();
   vi.mocked(establishHostKeyTrust).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -2734,7 +2734,7 @@ test("handler: an unnamed party that signs nothing runs unchanged", async () => 
 
   vi.mocked(prepareForExchange).mockImplementationOnce(core.prepareForExchange);
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -2786,7 +2786,7 @@ test("handler: dataset preparation runs before host-key trust", async () => {
     return stubbedPreparation!(...args);
   });
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -2959,7 +2959,7 @@ test("handler: the signing identity resolves before host-key trust", async () =>
   vi.mocked(loadSigningIdentity).mockClear();
   vi.mocked(establishHostKeyTrust).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -3092,7 +3092,7 @@ test.each([
     vi.mocked(prepareForExchange).mockClear();
     vi.mocked(establishHostKeyTrust).mockClear();
     vi.mocked(runProtocol).mockReset();
-    vi.mocked(runProtocol).mockResolvedValueOnce({});
+    vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
     const exitSpy = captureProcessExit();
     try {
       await handler(argv);
@@ -3132,7 +3132,7 @@ test("handler: the wake call follows the signing-identity load", async () => {
   const fetch = stubProvisionFetch(204);
   vi.mocked(loadSigningIdentity).mockClear();
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler(argv);
@@ -3180,7 +3180,7 @@ test.each(["sftp", "webrtc"])(
     );
     const fetch = stubProvisionFetch(200);
     vi.mocked(runProtocol).mockReset();
-    vi.mocked(runProtocol).mockResolvedValueOnce({});
+    vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
     const exitSpy = captureProcessExit();
     try {
       await handler(argv);
@@ -3201,7 +3201,7 @@ test("handler: a config with no provision block sends no wake call", async () =>
   fs.writeFileSync(input, "ssn\n123456789\n");
   const fetch = stubProvisionFetch(200);
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({
@@ -3760,7 +3760,7 @@ test("handler: --server-provision replaces the config's block, its @path bearer 
   fs.writeFileSync(flagToken, "flag-token\n");
   const fetch = stubProvisionFetch(200);
   vi.mocked(runProtocol).mockReset();
-  vi.mocked(runProtocol).mockResolvedValueOnce({});
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
   const exitSpy = captureProcessExit();
   try {
     await handler({

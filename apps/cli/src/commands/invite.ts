@@ -1218,7 +1218,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // run.
         log.info(onlineWaitInvalidationNotice(acceptTimeout));
         log.info("waiting for the partner to accept...");
-        const { configWriteError } = await runOnlineBootstrap({
+        const { outcome, configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,
           credentials: ready.credentials,
           dataSpec: ready.dataSpec,
@@ -1247,6 +1247,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.
         logOnlineBootstrapOutcome(log, {
+          outcome,
           configFile: options.configFile,
           keyFile: options.keyFile,
           configWriteError,
@@ -1255,7 +1256,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // actually on disk: the accept timeout this run waited on is not it, and
         // an operator who never reads the file would otherwise have to infer
         // what a later recurring run is bounded by.
-        if (configWriteError === undefined)
+        if (outcome === "completed" && configWriteError === undefined)
           log.info(
             persistedPeerBudgetNotice(
               options.peerTimeout,

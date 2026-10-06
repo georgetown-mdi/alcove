@@ -33,7 +33,11 @@ vi.mock("../../src/util/prompt", async () => {
   const actual = await vi.importActual<typeof import("../../src/util/prompt")>(
     "../../src/util/prompt",
   );
-  return { ...actual, promptConfirm: vi.fn() };
+  return {
+    ...actual,
+    promptConfirm: vi.fn(),
+    promptConfirmOrClosed: vi.fn(),
+  };
 });
 
 import { handler as applyHandler } from "../../src/commands/apply";
@@ -42,7 +46,7 @@ import { buildErrorEvent, classifyTerminalError } from "../../src/eventStream";
 import { saveKeyFile } from "../../src/keyFile";
 import { termsChangeHandler, termsProposalPath } from "../../src/termsChange";
 import { exitCodeForError } from "../../src/util/exit";
-import { promptConfirm } from "../../src/util/prompt";
+import { promptConfirm, promptConfirmOrClosed } from "../../src/util/prompt";
 import { captureProcessExit } from "../exitCapture";
 import { captureStdio } from "../loggingTestSupport";
 
@@ -246,8 +250,14 @@ describe("an unattended run", () => {
     );
     expect(fs.readFileSync(setup.config, "utf8")).toBe(before);
 
-    // The command the refusal names applies the proposal.
-    promptConfirmMock.mockResolvedValue(true);
+    // The command the refusal names applies the proposal, answered at a
+    // terminal.
+    vi.mocked(promptConfirmOrClosed).mockResolvedValue("yes");
+    const stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
+    Object.defineProperty(process.stdin, "isTTY", {
+      value: true,
+      configurable: true,
+    });
     const exitSpy = captureProcessExit();
     const stdio = captureStdio();
     try {
@@ -262,6 +272,9 @@ describe("an unattended run", () => {
     } finally {
       stdio.restore();
       exitSpy.mockRestore();
+      if (stdinIsTTY !== undefined)
+        Object.defineProperty(process.stdin, "isTTY", stdinIsTTY);
+      else delete (process.stdin as { isTTY?: boolean }).isTTY;
     }
     const applied = readSpec(setup.config);
     expect(receivedColumns(applied)).toEqual(["notes", "county"]);

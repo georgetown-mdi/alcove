@@ -523,7 +523,7 @@ describe("inputs that change the shape of the run", () => {
     for (const call of probeDeps.calls) expect(call.args).not.toContain("-D");
   });
 
-  test("an oversized exchange folder has the entry-count advisory", async () => {
+  test("an oversized exchange folder fails the subdirectory check", async () => {
     const report = await runProbe(
       INPUT,
       deps((args) =>
@@ -533,15 +533,16 @@ describe("inputs that change the shape of the run", () => {
       ),
     );
     const check = checkById(report, "subdirectory");
-    expect(check.status).toBe("warn");
+    expect(check.status).toBe("fail");
     expect(check.meaning).toContain(
       `holding more than ${MAX_DIRECTORY_ENTRIES} entries, so an exchange here will fail`,
     );
     expect(check.action).toBe("use a folder dedicated to the exchange.");
-    expect(overallOf(report)).toBe("ok");
+    expect(overallOf(report)).toBe("fix_and_retry");
+    expect(verdictLines(report).join("\n")).not.toContain("ALL CHECKS PASSED");
   });
 
-  test("an oversized share root has the same advisory", async () => {
+  test("an oversized share root fails the same way", async () => {
     const report = await runProbe(
       { ...INPUT, subdirectory: "" },
       deps((args) =>
@@ -551,9 +552,9 @@ describe("inputs that change the shape of the run", () => {
       ),
     );
     const check = checkById(report, "subdirectory");
-    expect(check.status).toBe("warn");
+    expect(check.status).toBe("fail");
     expect(check.action).toContain("dedicated to the exchange");
-    expect(overallOf(report)).toBe("ok");
+    expect(overallOf(report)).toBe("fix_and_retry");
   });
 
   test("a listing the output cap cut short of the bound leaves the count open and has no free-space figure", async () => {

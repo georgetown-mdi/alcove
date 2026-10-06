@@ -3525,11 +3525,59 @@ describe("runOnlineBootstrap", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("resolves interrupted, with the recovery note, when a signal cuts the run short after the handshake", async () => {
+    vi.mocked(runProtocol).mockImplementation((async (
+      ...callArgs: unknown[]
+    ) => {
+      const onAuthenticated = onAuthenticatedArg(callArgs);
+      await onAuthenticated();
+      return { outcome: "interrupted" };
+    }) as never);
+
+    const log = getLogger("bootstrap-recovery-test");
+    log.setLevel("silent");
+    const errorSpy = vi.spyOn(log, "error");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-bootstrap-"));
+    const configPath = path.join(dir, "alcove.yaml");
+    try {
+      const result = await runOnlineBootstrap({
+        ...onlineBootstrapParams(configPath),
+        loggerName: "bootstrap-recovery-test",
+      });
+      expect(result).toEqual({ outcome: "interrupted" });
+      expect(fs.existsSync(configPath)).toBe(true);
+      expect(
+        errorSpy.mock.calls.some(
+          (c) => typeof c[0] === "string" && c[0].includes(RECOVERY_NOTE),
+        ),
+      ).toBe(true);
+    } finally {
+      errorSpy.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // --- logOnlineBootstrapOutcome ----------------------------------------------
 
 describe("logOnlineBootstrapOutcome", () => {
+  test("an interrupted run reports nothing", () => {
+    const log = {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    } as unknown as ReturnType<typeof getLogger>;
+    logOnlineBootstrapOutcome(log, {
+      outcome: "interrupted",
+      configFile: "/tmp/alcove.yaml",
+      keyFile: "/tmp/.alcove.key",
+    });
+    expect(log.info).not.toHaveBeenCalled();
+    expect(log.warn).not.toHaveBeenCalled();
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
   test("a clean run reports both files saved", () => {
     const log = {
       info: vi.fn(),
@@ -3537,6 +3585,7 @@ describe("logOnlineBootstrapOutcome", () => {
       error: vi.fn(),
     } as unknown as ReturnType<typeof getLogger>;
     logOnlineBootstrapOutcome(log, {
+      outcome: "completed",
       configFile: "alcove.yaml",
       keyFile: ".alcove.key",
     });
@@ -3556,6 +3605,7 @@ describe("logOnlineBootstrapOutcome", () => {
     } as unknown as ReturnType<typeof getLogger>;
     const exitCodeBefore = process.exitCode;
     logOnlineBootstrapOutcome(log, {
+      outcome: "completed",
       configFile: "alcove.yaml",
       keyFile: ".alcove.key",
       configWriteError: new Error("permission denied"),
@@ -3583,6 +3633,7 @@ describe("logOnlineBootstrapOutcome", () => {
       error: vi.fn(),
     } as unknown as ReturnType<typeof getLogger>;
     logOnlineBootstrapOutcome(log, {
+      outcome: "completed",
       configFile: "alcove.yaml",
       keyFile: ".alcove.key",
       reuseExistingConfig: true,
