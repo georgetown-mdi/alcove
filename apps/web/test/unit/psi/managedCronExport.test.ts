@@ -543,7 +543,7 @@ describe("a webrtc connection outside the credential-free locator subset", () =>
     const message = exportRefusal(record);
     // The whole list, in one deterministic order, and nothing else named.
     expect(message).toContain(
-      "command line: provider_options, server.key, turn. Remove them",
+      "command line: provider_options, server.key, turn. Import this exchange again",
     );
     for (const value of [
       "@/home/other/peerjs.key",

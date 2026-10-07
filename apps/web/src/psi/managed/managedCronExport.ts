@@ -174,14 +174,9 @@ export interface ManagedCronExport extends ManagedCommandLineConfig {
   key: ManagedCronExportFile;
 }
 
-/** What to do about stored content only an imported file could have put
- * there, naming that content as `pronoun`. */
-function removeAndImportAgain(pronoun: "it" | "them"): string {
-  return (
-    `Remove ${pronoun} from the file you imported this exchange from, ` +
-    "import it again, and then export again."
-  );
-}
+/** The next step after any refusal of a stored exchange's settings. */
+const IMPORT_AGAIN_THEN_EXPORT =
+  "Import this exchange again from its configuration file, then export again.";
 
 /**
  * Narrow a record's stored connection to what a configuration on its channel
@@ -198,16 +193,16 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
     throw new Error(
       "This exchange's connection settings include fields this app does " +
         `not export to the command line: ${outside.join(", ")}. ` +
-        removeAndImportAgain("them"),
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   const literal = literalCredentialFields(connection);
   if (literal.length > 0)
     throw new Error(
       "This exchange's connection settings state a credential as a value, " +
-        "and the command-line export writes a credential only as a file " +
-        `reference beginning with @: ${literal.join(", ")}. Replace each ` +
-        "with a file reference in the file you imported this exchange from, " +
-        "import it again, and then export again.",
+        "which the command-line export cannot write. These fields hold a " +
+        "literal value where a file reference beginning with @ is needed: " +
+        `${literal.join(", ")}. ` +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   return connection;
 }
@@ -268,9 +263,10 @@ function exportedConnection(
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
     throw new Error(
-      "This exchange does not record whether you are the inviter or the " +
-        "acceptor, so it cannot be exported to the command line. Import " +
-        "this exchange again, and then export again.",
+      "This exchange's stored settings are damaged: they do not record " +
+        "whether you are the inviter or the acceptor, which the command " +
+        "line needs. " +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   return {
     ...connection,
@@ -316,9 +312,10 @@ function assertNoReinviteRegistrationPending(
 function assertNoStoredAuthentication(exchangeFile: ExchangeSpec): void {
   if (exchangeFile.authentication !== undefined)
     throw new Error(
-      "This exchange's settings include an authentication block, which " +
-        "this app does not export to the command line. " +
-        removeAndImportAgain("it"),
+      "This exchange's stored settings are damaged: they include an " +
+        "authentication block, which this app does not export to the " +
+        "command line. " +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
 }
 
@@ -334,7 +331,7 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
     throw new Error(
       "This exchange's settings include fields this app does not export " +
         `to the command line: ${outside.join(", ")}. ` +
-        removeAndImportAgain("them"),
+        IMPORT_AGAIN_THEN_EXPORT,
     );
 }
 

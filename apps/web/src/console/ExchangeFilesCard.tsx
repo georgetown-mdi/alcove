@@ -108,8 +108,9 @@ export function ExchangeFilesCard({
             "where the exchange runs: in the remote directory on the SFTP " +
             "server, which you may not administer, or in the shared folder, " +
             "which your partner keeps a synced copy of. Nothing clears them " +
-            "afterwards. Also switches on timestamped filenames and the " +
-            "lockless rendezvous, which it requires."
+            "afterwards. Also switches on timestamped filenames and " +
+            "connecting with acknowledgement files (Lockless rendezvous " +
+            "below), which keeping every file requires."
           }
         />
 
