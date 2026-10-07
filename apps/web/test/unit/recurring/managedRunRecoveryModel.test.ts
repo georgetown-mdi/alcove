@@ -17,6 +17,11 @@ import {
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "@recurring/managedRunRecoveryModel";
+import {
+  MANAGED_RUN_SURFACE_INITIAL,
+  managedRunLiveFailure,
+  managedRunSurfaceReducer,
+} from "@recurring/managedRunSurfaceModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 
 import type {
@@ -462,5 +467,38 @@ describe("a failure that holds the re-invite", () => {
   test("is no other failure, and no failure at all", () => {
     expect(managedFailureHoldsReinvite(RETRY_FAILURE)).toBe(false);
     expect(managedFailureHoldsReinvite(undefined)).toBe(false);
+  });
+});
+
+describe("a confirmation through the composed surface reducer", () => {
+  test("does not carry from run 1's failure to run 2's", () => {
+    const failAt = (runNumber: number) =>
+      ({
+        type: "run-failed",
+        failure: { alert: CONFIRM_FAILURE, runNumber },
+      }) as const;
+    let state = managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
+      type: "run-started",
+    });
+    state = managedRunSurfaceReducer(state, failAt(1));
+    state = managedRunSurfaceReducer(state, {
+      type: "confirmation-granted",
+      runNumber: 1,
+    });
+    expect(
+      managedConfirmationGranted(
+        state.recovery,
+        managedRunLiveFailure(state.run),
+      ),
+    ).toBe(true);
+
+    state = managedRunSurfaceReducer(state, { type: "run-started" });
+    state = managedRunSurfaceReducer(state, failAt(2));
+    expect(
+      managedConfirmationGranted(
+        state.recovery,
+        managedRunLiveFailure(state.run),
+      ),
+    ).toBe(false);
   });
 });
