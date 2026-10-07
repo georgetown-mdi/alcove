@@ -293,8 +293,11 @@ export function ManagedCronExportPanel({
                 {state.fromAgreedSchedule
                   ? "These files do not include the schedule you agreed with " +
                     "your partner. On the command line, the cron entry or " +
-                    "scheduled task sets the schedule, and the lines above " +
-                    "use the agreed one. Each run waits for your partner until " +
+                    "scheduled task sets the schedule" +
+                    (state.lines.kind === "shown"
+                      ? ", and the lines above use the agreed one"
+                      : "") +
+                    ". Each run waits for your partner until " +
                     "the agreed window closes, then stops."
                   : "These files do not include the schedule you agreed with " +
                     "your partner. On the command line, the cron entry or " +

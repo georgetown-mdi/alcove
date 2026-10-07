@@ -261,6 +261,7 @@ describe("a panel whose lines are withheld", () => {
         })
         .query(),
     ).toBe(null);
+    expect(page.getByText("lines above", { exact: false }).query()).toBe(null);
     expect(
       page
         .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
