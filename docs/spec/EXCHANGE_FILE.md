@@ -712,7 +712,15 @@ been confirmed at the relay registrar a run registers at
 
 The handler loads and validates the configuration first, without reading the
 key file, and makes every refusal the configuration alone decides, so a
-configuration that fails stops the run with nothing written.
+configuration that fails stops the run with nothing written. That includes the
+connection's own refusals, which the run makes again where it dials: a webrtc
+connection with no `role`, a `server` block the broker location cannot be
+resolved from, or an `ice_provision` block, and a `server.provision` block that
+cannot form its wake call. A refusal that also depends on something besides the
+configuration -- the input file, the signing identity file, the output folder,
+or whether stdin is a terminal -- comes after the key file is written; the key
+file left behind is the provisioned one, and the run is retried without
+`--invitation`.
 `provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is then the
 ordering authority for the key file, and it is fail-closed at each step:
 

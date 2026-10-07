@@ -42,7 +42,10 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../hostKeyTrust";
-import { wakeProvisionedServer } from "../serverProvision";
+import {
+  assertWakeCallFormable,
+  wakeProvisionedServer,
+} from "../serverProvision";
 import { reportPersistenceLoss } from "../eventStream";
 import {
   relayRegistrarForRun,
@@ -105,6 +108,7 @@ import {
   RUN_BLOCK_CONSEQUENCE,
 } from "./linkagePreflight";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
+import { assertWebRtcConnectionResolvable } from "../run/prepare";
 import {
   preflightRun,
   runProtocol,
@@ -1110,13 +1114,12 @@ export async function handler(argv: Arguments): Promise<void> {
       const { connection, specAuthentication, ...exchangeDataSpec } =
         loadExchangeSpec(options);
 
-      // A certificate-mode run naming no signing identity is unrunnable from the
-      // parsed configuration alone, so it is refused before the key file is
-      // written, ahead of the dataset preparation, and ahead of the first-use
-      // host-key step that opens a probe transport to the server and writes an
-      // accepted pin into alcove.yaml. Neither should happen on the way to telling
-      // an operator the run could never have finished. Beside it, the first contact whose configuration file cannot take the pin
-      // it would record: same inputs, same point, same exit code.
+      // A certificate-mode run naming no signing identity is unrunnable from
+      // the parsed configuration alone, so it is refused before the key file
+      // is written, the dataset is prepared, and the first-use host-key step
+      // opens a probe transport and writes an accepted pin into alcove.yaml.
+      // Beside it, the first contact whose configuration file cannot take the
+      // pin it would record: same inputs, same point, same exit code.
       assertSigningIdentityNamed(exchangeDataSpec.signing);
       assertPartnerFingerprintRecordable(
         exchangeDataSpec.signing,
@@ -1153,10 +1156,15 @@ export async function handler(argv: Arguments): Promise<void> {
             : undefined,
       });
 
-      // Written only after every refusal the configuration alone decides, so a
-      // refused configuration leaves no key file. It decodes the code (fail-closed
-      // on checksum, schema, or expiry) and writes this party's key-file copy; a
-      // bad code or an existing key file exits 64 with nothing written.
+      // The connection's own refusals, made again where the run dials and
+      // wakes the server, so that a refused configuration leaves no key file.
+      assertWebRtcConnectionResolvable(connection);
+      assertWakeCallFormable(connection);
+
+      // Written only after every refusal the configuration alone decides. It
+      // decodes the code (fail-closed on checksum, schema, or expiry) and
+      // writes this party's key-file copy; a bad code or an existing key file
+      // exits 64 with nothing written.
       if (invitation !== undefined)
         await provisionKeyFileFromInvitation(invitation, options.keyFile);
 
@@ -1214,16 +1222,17 @@ export async function handler(argv: Arguments): Promise<void> {
         warn: (message) => log.warn(message),
       });
 
-      // Token expiry advisory baseline: was the token expiring soon at load time?
-      // This recheck uses a fresh clock just after loadAuthentication's hard stop,
-      // so in the (sub-millisecond) gap a token can tip from "expiring-soon" to
-      // "expired". That is handled, not guaranteed away: the advisory below is
-      // keyed on "expiring-soon" and self-skips on "expired", and runProtocol's
-      // pre-handshake assertSharedSecretReadyForHandshake aborts an expired token
-      // with the re-invite message before any handshake. The threshold comes from the max-age policy;
-      // without a policy it is undefined and the status is "ok" (never
-      // "expiring-soon"). Re-evaluated after the exchange to decide whether to warn
-      // (see shouldWarnTokenExpiring).
+      // Token expiry advisory baseline: was the token expiring soon at load
+      // time? This recheck uses a fresh clock just after loadAuthentication's
+      // hard stop, so in the (sub-millisecond) gap a token can tip from
+      // "expiring-soon" to "expired". That is handled, not guaranteed away: the
+      // advisory below is keyed on "expiring-soon" and self-skips on "expired",
+      // and runProtocol's pre-handshake assertSharedSecretReadyForHandshake
+      // aborts an expired token with the re-invite message before any
+      // handshake. The threshold comes from the max-age policy; without a
+      // policy it is undefined and the status is "ok" (never "expiring-soon").
+      // Re-evaluated after the exchange to decide whether to warn (see
+      // shouldWarnTokenExpiring).
       const warnThresholdDays = warnThresholdDaysForPolicy(
         authentication.tokenMaxAgeDays,
       );

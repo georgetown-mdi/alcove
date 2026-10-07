@@ -2392,6 +2392,8 @@ test("handler: --invitation with a malformed code fails closed (exit 64), writin
   }
 });
 
+const WEBRTC_SERVER = { host: "peers.example.org" };
+
 const RETIRED_SETTINGS = [
   "outbound_payload_consent",
   "disclosed_payload_columns",
@@ -2465,6 +2467,93 @@ test.each([
         }),
       ),
     says: "placeholder as linkage_terms.identity",
+    code: 64,
+  },
+  {
+    name: "whose webrtc connection has no role",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          connection: { channel: "webrtc", server: WEBRTC_SERVER },
+          linkageTerms: minimalLinkageTerms,
+        }),
+      ),
+    says: "this webrtc connection has no `role`",
+    code: 64,
+  },
+  {
+    name: "whose webrtc server port is not dialable",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          connection: {
+            channel: "webrtc",
+            role: "acceptor",
+            server: { ...WEBRTC_SERVER, port: 0 },
+          },
+          linkageTerms: minimalLinkageTerms,
+        }),
+      ),
+    says: "server port (0) is not a dialable port",
+    code: 64,
+  },
+  {
+    name: "whose webrtc server path could move the signaling socket",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          connection: {
+            channel: "webrtc",
+            role: "acceptor",
+            server: { ...WEBRTC_SERVER, path: "@evil.example.org/" },
+          },
+          linkageTerms: minimalLinkageTerms,
+        }),
+      ),
+    says: "server `path` could move the signaling socket",
+    code: 64,
+  },
+  {
+    name: "whose webrtc connection sets ice_provision",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          connection: {
+            channel: "webrtc",
+            role: "acceptor",
+            server: WEBRTC_SERVER,
+            iceProvision: { host: "ice.example.org" },
+          },
+          linkageTerms: minimalLinkageTerms,
+        }),
+      ),
+    says: "configures `ice_provision`, which the CLI does not support",
+    code: 64,
+  },
+  {
+    name: "whose server.provision cannot form its wake call",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          connection: {
+            ...minimalSFTPConfig.connection,
+            server: {
+              ...minimalSFTPConfig.connection.server,
+              provision: {
+                host: "wake.example.org",
+                auth: { bearer: "two words" },
+              },
+            },
+          },
+          linkageTerms: minimalLinkageTerms,
+        }),
+      ),
+    says: "connection.server.provision.auth.bearer is empty or holds a space",
     code: 64,
   },
 ])(

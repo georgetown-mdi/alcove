@@ -508,14 +508,28 @@ export function brokerLocationFromConnection(
 }
 
 /**
+ * Refuse a connection that configures `iceProvision` rather than ignore it: it
+ * names servers the operator meant to use, and falling back to the built-in
+ * default would be a downgrade they never chose.
+ *
+ * @throws {UsageError} if the connection configures `iceProvision`.
+ */
+export function assertNoIceProvision(
+  connection: Pick<WebRTCConnectionConfig, "iceProvision">,
+): void {
+  if (connection.iceProvision !== undefined)
+    throw new UsageError(
+      "this webrtc connection configures `ice_provision`, which the CLI does " +
+        "not support: list the servers directly under `stun` and `turn` instead",
+    );
+}
+
+/**
  * Resolve a webrtc connection's relay servers into the ICE server list the
  * peer connection is built with: the invitation's relay where it names one,
  * else the connection's own `stun`/`turn` entries, per kind
- * (`selectRunRelay`).
- *
- * An `iceProvision` block is refused rather than ignored: it names servers the
- * operator meant to use, and silently falling back to the built-in default
- * would be a downgrade they never chose.
+ * (`selectRunRelay`). An `iceProvision` block is refused
+ * ({@link assertNoIceProvision}).
  *
  * @param runRelayCredential The credential minted for this run
  *   (`relayCredentialForRun`), presented to every TURN url the invitation's
@@ -532,12 +546,7 @@ export function iceServersFromConnection(
   >,
   runRelayCredential?: RelayCredential,
 ): Array<RTCIceServer> {
-  if (connection.iceProvision !== undefined) {
-    throw new UsageError(
-      "this webrtc connection configures `ice_provision`, which the CLI does " +
-        "not support: list the servers directly under `stun` and `turn` instead",
-    );
-  }
+  assertNoIceProvision(connection);
   const { stun, turn } = selectRunRelay(connection);
   const servers: Array<RTCIceServer> = [];
   if (stun !== undefined && stun.urls.length > 0) {
