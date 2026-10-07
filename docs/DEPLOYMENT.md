@@ -138,6 +138,25 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 - **Every response carries `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential, so a page on another origin reading one reads nothing it could not fetch itself.
 - **A missing `/assets/` file answers with the root document,** with status 200 and the `/assets/*` rule's one-year `immutable` `Cache-Control`. Asset names carry a content hash, so a URL that misses never becomes valid later, and the service worker refuses to cache a response whose content type is not the asset's ([notes/hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
 
+### What the deployment logs
+
+Verified 2026-10-07 on the Cloudflare account, the AWS account and the host. [PRIVACY.md](../PRIVACY.md#hosted-web-application) states the same for a reader outside the project.
+
+- **The project keeps no log of page requests.** The Pages project has no Functions, so nothing it runs writes a log, and Cloudflare Web Analytics is off. The zone has no Logpush job. Cloudflare's own request analytics and any request log it keeps are under Cloudflare's retention, not the project's.
+- **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which carries the broker, its nginx TLS front and the relay.
+- **That host's system journal is the deployment's one log.** A journald drop-in keeps it on disk (`Storage=persistent`), deletes archived files older than 90 days (`MaxRetentionSec=90day`) and archives the active file daily (`MaxFileSec=1day`), so an entry is deleted within 91 days; journald's size limit can only delete sooner. Nothing ships the journal off the host. The containers log to it with Docker's `journald` driver, so no container log file is written beside it.
+
+| Source | What a line holds |
+| ------ | ----------------- |
+| nginx front, access log (`log_format` `'$time_iso8601 $remote_addr "$request_method $uri $server_protocol" $status upgrade=$http_upgrade bytes=$bytes_sent dur=$request_time'`) | Time, client IP address, method, request path without the query string, status, Upgrade header, bytes sent, duration. No user agent and no rendezvous identifier |
+| nginx front, error log | Warnings and errors |
+| Broker | Start-up and service lines; no client IP address and no rendezvous identifier |
+| TURN relay (coturn) | On a failed connection, the client's IP address and port and a session number; on a failed authentication, the credential's username, an expiry time and a fixed label |
+
+The nginx configuration and the units live on the host, not in this repository. Access log lines written before 2026-10-07 hold the full request line, query string included, and are deleted on the same bound.
+
+Until the Elastic Beanstalk teardown deletes them, that deployment's CloudWatch log groups in us-west-2 hold its request and process logs at 90-day retention per line. None belongs to the coordination server's host.
+
 ## Diagnosing web connection failures
 
 By default the web client logs PeerJS connection activity at errors-only, so a normal exchange prints no connection-diagnostic detail to the browser console. This is deliberate: PeerJS's warning-level logs interpolate the remote peer id, and a web exchange's peer ids are rendezvous addresses derived from the invitation secret, which the app keeps out of its logs (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)).
