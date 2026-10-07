@@ -1,63 +1,37 @@
-// Routes the SSH stack's own diagnostic lines into Alcove's logger, so an
-// operator diagnosing a failed dial reads the peer's identification string, both
-// sides' algorithm offers, the negotiated algorithms and the packet flow from
-// Alcove itself instead of from a separate `ssh -vvv`. ssh2 and
-// ssh2-sftp-client both emit through the one `debug` connect option, at a
-// per-packet volume, which is why the callback is withheld entirely below the
-// trace level rather than installed and filtered at the logger.
-//
-// Every line holds text the remote server chose, so this module is a display
-// sink and escapes what it emits (CONTRIBUTING.md, Operator-facing escaping).
-// What each side of the stack escapes first is measured, not assumed:
-// docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack".
+// Routes the SSH stack's diagnostic lines (identification strings, algorithm
+// offers, packet flow) into Alcove's logger at the trace level. Every line holds
+// text the remote server chose, so this module is a display sink and escapes what
+// it emits (CONTRIBUTING.md, Operator-facing escaping; what the stack escapes
+// first: docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack").
 
 import logLibrary from "loglevel";
 
 import { redactAndSanitizeForDisplay } from "@alcove/core";
 
 /**
- * Name of the logger the SSH stack's lines reach the operator under. One of its
- * own rather than the adapter's, for the level: this trace answers for the
- * connection, so it follows the level the operator set with `--log-level` and
- * not the `-v`-floored one the adapter's logger holds. It is also what tells
- * the two apart in the rendered `[LEVEL] [CONTEXT]` prefix, so a line needs no
- * marker of its own.
+ * Name of the SSH trace logger. Separate from the adapter's logger so it follows
+ * `--log-level` rather than the `-v`-floored adapter level.
  */
 export const SSH_WIRE_TRACE_LOGGER_NAME = "ssh";
 
 /**
- * Cap on the escaped characters one traced line emits, above the 256-character
- * per-value default `sanitizeForDisplay` would apply. A traced line is not a
- * value interpolated into a sentence but a whole rendering the stack composed,
- * and the algorithm name-lists that make the trace worth reading are its
- * longest emissions: measured against the pinned stack, one dial's longest
- * first-party line is ssh2-sftp-client's version banner, whose length tracks
- * the Node build it runs on but stays well under the cap, and its longest
- * name-list line is 361, so the default would cut the negotiated offer out of
- * the answer the operator dialed for.
- *
- * The cap still binds a server that pads its name-lists: the lists arrive
- * verbatim (see the module header), so without one a peer could spend an
- * operator's log on a single KEXINIT.
+ * Cap on the escaped characters one traced line emits. Above the 256-character
+ * `sanitizeForDisplay` default, which would cut the algorithm name-lists (361
+ * characters against the pinned stack); still bounded so a server padding its
+ * name-lists cannot fill the operator's log.
  */
 export const SSH_WIRE_TRACE_MAX_DISPLAY_LENGTH = 1024;
 
-/**
- * What {@link sshWireTrace} needs of a logger: its level, and the trace
- * sink it emits on. Structural rather than loglevel's `Logger`, so a caller can
- * hold it to what this module uses.
- */
+/** What {@link sshWireTrace} needs of a logger. */
 export interface WireTraceLogger {
   getLevel: () => number;
   trace: (message: string) => void;
 }
 
 /**
- * Render one line the SSH stack emitted as operator-safe display text. The
- * escape is what keeps the bytes a server chose -- an ANSI sequence in an
- * algorithm name it offered, a CR/LF pair that would forge a second log line --
- * from reaching a terminal or a `--log-file` as written; the private-key strip
- * is the same last-resort safety check the connect log applies.
+ * One SSH stack line as operator-safe display text: escapes server-chosen bytes
+ * (ANSI sequences, a CR/LF forging a log line) and strips private keys as the
+ * connect log does.
  */
 export const sshWireTraceLine = (line: string): string =>
   redactAndSanitizeForDisplay(line, {
@@ -72,25 +46,17 @@ export interface SshWireTrace {
   /** The `debug` connect option, one call per line the stack renders. */
   emit: (line: string) => void;
   /**
-   * Emit nothing further; idempotent. The caller detaches where the connection
-   * is done, because an application's diagnostic sink does not outlive its
-   * command: a line emitted past that sink falls through to the logger's raw
-   * console method, which for a trace-level logger prints a stack dump the
-   * `--log-file` never sees.
+   * Emit nothing further; idempotent. Detach when the connection is done: a line
+   * emitted after the command's log sink is gone falls through to the raw console
+   * and prints a stack dump the `--log-file` never sees.
    */
   detach: () => void;
 }
 
 /**
- * The trace to install on a connection, or `undefined` when `log` is not at the
- * trace level -- which is what installs nothing at all, leaving a dial below
- * that level byte-identical to one made without this module. The callback is
- * withheld rather than installed and dropped at the logger because the stack
- * renders every line before calling back, so a no-op sink would still pay the
- * per-packet formatting on every run.
- *
- * `log`'s level decides once, where the caller resolves this: the trace rides
- * the level the caller's logger held then, not one applied later.
+ * The trace to install on a connection, or `undefined` below the trace level, so
+ * the stack skips its per-packet formatting entirely. The level is read once,
+ * here; a later level change does not apply.
  */
 export const sshWireTrace = (
   log: WireTraceLogger,

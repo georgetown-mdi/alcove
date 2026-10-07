@@ -14,95 +14,53 @@ import type {
 } from "@alcove/core";
 
 /**
- * The shared data model of the inviter's authoring console: the draft the editor
- * holds, the seed it opens from, and the direction/output mapping the two share.
- * No React, no I/O. The draft-editing operations, the terms mapping, and the
- * validation gate each build on these; keeping them here lets those three siblings
- * depend on one leaf rather than each other.
+ * The data model of the inviter's authoring console: the draft the editor holds,
+ * the seed it opens from, and the output-direction mapping. A leaf module, so the
+ * draft operations, terms mapping and validation depend on it rather than on each
+ * other.
  *
- * Scope: the guided editor reviews and reorders the metadata-derived default
- * keys, edits the per-party column metadata (semantic type and disclosure),
- * chooses who receives the matched results (the 3-way output direction -- see
- * {@link OutputDirection}), and attaches identity, lifetime, and an optional legal
- * agreement. An expert tier additionally authors linkage keys element-by-element
- * (a field reference chosen from the declared list, a per-element transform
- * pipeline, and a two-of-N swap) and imports/exports the whole terms document.
- *
- * A fan-out transform step is gated against core's own list: the step editor
- * offers no fan-out family, and an imported document holding one -- in a
- * cleaning step or a key-element transform -- is refused at the mint; this
- * editor authors none at any strategy, wider than core's own single-pass
- * allowance.
- *
- * No payload block is authored into the terms. The output direction is settable
- * end-to-end (the acceptor mirrors the inviter's output; the exchange withholds
- * the result from a non-receiving party). Column METADATA is threaded into the
- * inviter's own `prepareForExchange`, never the token.
+ * The editor authors no fan-out transform step at any strategy, and an imported
+ * document holding one is refused at the mint. It authors no payload block, and
+ * column metadata goes to the inviter's own `prepareForExchange`, never the token.
  */
 
-/** The per-element fuzzy-comparison expansion, derived from the core element type
- * (core does not export the bare union). `undefined` means no expansion. */
+/** The per-element fuzzy-comparison expansion (core does not export the bare union). */
 export type FuzzyComparison = NonNullable<
   LinkageKeyElement["generateFuzzyComparisons"]
 >;
 
 /**
- * What an IMPORTED terms document said about the rule set its rules came from:
- * either the set it cited, held with the rules it cited them over, or the
- * explicit statement that it cited none.
- *
- * The uncited case is its own state rather than an absent field: a document
- * citing nothing re-exports citing nothing, while a draft never imported earns
- * the built-in citation its own rules earn -- reading absence as "decide it
- * fresh" would hand an uncited import a provenance claim its source declined.
- *
- * `honoredAtImport` is fixed at import, never re-derived: whether the citation
- * survived the editor's arrival-time narrowing, so a later drop attributes to
- * an edit (reversible) rather than the document's own rules (not).
+ * What an imported terms document said about its rule set: the set it cited, or
+ * that it cited none. Uncited is a state of its own so an uncited import is not
+ * given a citation on export. `honoredAtImport` is fixed at import, so a later
+ * drop is attributed to an edit rather than to the document.
  */
 type ImportedRuleSetCitation =
   | { kind: "cited"; ruleSet: BuiltInLinkageRuleSet; honoredAtImport: boolean }
   | { kind: "uncited" };
 
-/** One linkage key in the editor, paired with whether it is active. Display and
- * match order is the array position (linkage keys are applied most-precise-first);
- * a disabled key is dropped from the built terms.
- *
- * The list holds both the built-in rule set's keys and what `optInLinkageKeys`
- * offers beside it, with no mark distinguishing them -- a caller that must tell
- * them apart asks `isOptInDraftKey`, not a flag a rename or import could
- * falsify. */
+/** One linkage key in the editor and whether it is enabled. Array position is
+ * match order; a disabled key is dropped from the built terms. Built-in and opt-in
+ * keys are not marked apart: ask `isOptInDraftKey`. */
 export interface DraftKey {
   key: LinkageKey;
   enabled: boolean;
 }
 
 /**
- * Who receives the matched results, from the INVITER's point of view:
- * - `"both"`   -- both parties receive (the default, symmetric exchange).
- * - `"inviter"` -- only the inviter ("me") receives; the partner is the helper.
- * - `"partner"` -- only the partner receives; the inviter is the helper.
- *
- * The editor's representation of the {@link Output} pair: a 3-value choice
- * rather than two independent booleans, so the forbidden "neither party
- * receives" combination -- `{ expectsOutput: false, shareWithPartner: false }`,
- * which `validateCompatibility` rejects -- has no direction to map to.
+ * Who receives the matched results, from the inviter's point of view: `"both"`,
+ * `"inviter"` or `"partner"`. A 3-value choice rather than two booleans, so the
+ * "neither party receives" {@link Output} pair has no direction to map to.
  */
 export type OutputDirection = "both" | "inviter" | "partner";
 
 /**
- * The date-of-birth input format a server-side profile inferred for each
- * column it could infer one for, keyed by column name. The console reads its
- * file server-side and holds no rows, so the format of whichever column the
- * operator binds as the date of birth is looked up here rather than inferred
- * in the browser.
+ * The date-of-birth input format a server-side profile inferred, keyed by column
+ * name. The console holds no rows, so the browser looks the format up here.
  */
 export type ProfiledDateInputFormats = ReadonlyMap<string, string>;
 
-/** Map an {@link OutputDirection} to the inviter's {@link Output} pair. The three
- * cases are exactly the three valid (non-"neither") combinations, so no choice can
- * yield a forbidden pair. The acceptor derives its own (mirrored) output from
- * these terms at accept time (see `deriveAcceptedLinkageTerms` in core). */
+/** Map an {@link OutputDirection} to the inviter's {@link Output} pair. */
 export function outputForDirection(direction: OutputDirection): Output {
   switch (direction) {
     case "both":
@@ -114,12 +72,9 @@ export function outputForDirection(direction: OutputDirection): Output {
   }
 }
 
-/** Inverse of {@link outputForDirection}: map an {@link Output} pair to the 3-way
- * direction for an imported terms set. The "neither receives" pair
- * (`{ expectsOutput: false, shareWithPartner: false }`) is not rejected by
- * `safeParseLinkageTerms` -- that check runs later, in `validateCompatibility` --
- * so an imported set could hold it; the final branch maps it to the safe
- * `"both"` default rather than loading a forbidden state silently. */
+/** Inverse of {@link outputForDirection}, for an imported terms set. The schema
+ * does not reject the "neither receives" pair (`validateCompatibility` does), so
+ * an import could hold it; it maps to `"both"`. */
 export function directionForOutput(output: Output): OutputDirection {
   if (output.expectsOutput && output.shareWithPartner) return "both";
   if (output.expectsOutput) return "inviter";
@@ -127,9 +82,8 @@ export function directionForOutput(output: Output): OutputDirection {
   return "both";
 }
 
-/** The optional legal-agreement block, as the editor holds it before validation.
- * Free text is NFC-normalized and trimmed when the terms are built (see
- * {@link buildAdvancedTerms}); the expiry check lives in
+/** The optional legal-agreement block before validation. Free text is
+ * NFC-normalized and trimmed by {@link buildAdvancedTerms}; the expiry check is in
  * {@link validateAdvancedInvite}, not the core schema. */
 export interface DraftLegalAgreement {
   reference: string;
@@ -138,122 +92,85 @@ export interface DraftLegalAgreement {
   expirationDate: string;
 }
 
-/** The editor's in-progress state. `identity` and `lifetimeSeconds` and the
- * optional `legalAgreement` are author-controlled; `keys` contains the seed's
- * linkage keys with their enabled flags, reorderable in place. */
+/** The editor's in-progress state. */
 export interface AdvancedInviteDraft {
   identity: string;
-  /** Invitation lifetime in seconds; threaded into `generateInvitation`, not the
-   * linkage terms. Bounded in {@link validateAdvancedInvite}. */
+  /** Invitation lifetime in seconds, for `generateInvitation`, not the terms.
+   * Bounded in {@link validateAdvancedInvite}. */
   lifetimeSeconds: number;
-  /** Who receives the matched results (see {@link OutputDirection}); applied to
-   * the built terms' `output` by {@link buildAdvancedTerms}. Defaults to `"both"`
-   * (the symmetric exchange). The forbidden "neither receives" pair is
-   * unrepresentable -- it has no `OutputDirection`. */
+  /** Who receives the matched results, applied to the built terms' `output`. */
   outputDirection: OutputDirection;
-  /** The matching algorithm. `psi` reveals matched identifiers; `psi-c` reveals
-   * only the count. A count-only draft outside the shape the specification
-   * admits is refused by the count-only rules at validation. */
+  /** The matching algorithm: `psi` reveals matched identifiers, `psi-c` only the
+   * count. */
   algorithm: Algorithm;
-  /** Whether more than one of the holder's records may match the same partner
-   * record -- deduplication of the holder's OWN inputs, which lets multiple of its
-   * inputs map to the same matched output (see EXCHANGE_REFERENCE
-   * `linkage_terms.deduplicate`). */
+  /** Whether more than one of the holder's own records may match the same
+   * partner record (EXCHANGE_REFERENCE `linkage_terms.deduplicate`). */
   deduplicate: boolean;
   /** How the agreed linkage keys are exchanged (see {@link LinkageStrategy}).
-   * `cascade` (the default) matches keys one round at a time; `single-pass`
-   * batches them into one exchange at the cost of disclosing the sender's full
-   * per-key value structure to the receiver. The consent tradeoff shows at the
-   * control. Seeded from the default terms (`cascade`) and reflected from an
-   * imported document. */
+   * `single-pass` discloses the sender's per-key value structure to the receiver,
+   * which the control states. */
   linkageStrategy: LinkageStrategy;
   legalAgreement?: DraftLegalAgreement;
-  /** The inviter's per-party column metadata (semantic type + disclosure role),
-   * editable in the grid. Editing a column's type re-derives which keys are
-   * offerable (see {@link setDraftMetadata}); the disclosure choice governs what
-   * the inviter sends and is threaded into its exchange spec. Seeded from
-   * {@link inferMetadata}, normalized so the collapsed disclosure control is
-   * faithful. */
+  /** The inviter's per-party column metadata. A type edit re-derives the
+   * offerable keys ({@link setDraftMetadata}); the disclosure choice governs what
+   * the inviter sends. */
   metadata: Metadata;
   /**
-   * The inviter's per-party standardization: the ordered cleaning steps and the
-   * input-column binding for each field. Seeded from
-   * `inviterDefaultStandardization`, so with no edits `authoredLinkageFields`
-   * over it declares the same fields as over the metadata alone, keeping the
-   * cross-party terms byte-identical. {@link buildAdvancedTerms} derives the
-   * linkage FIELDS from it via `authoredLinkageFields`, letting two
-   * transformations of one semantic type bind to distinct columns. Threaded
-   * into the inviter's own `prepareForExchange`, never the token. Reconciled
-   * against a metadata edit by {@link setDraftMetadata}. */
+   * The inviter's per-party standardization: cleaning steps and the input column
+   * bound to each field. Seeded from `inviterDefaultStandardization` so an
+   * unedited draft builds byte-identical cross-party terms. Goes to the
+   * inviter's own `prepareForExchange`, never the token. */
   standardization: Standardization;
   /**
-   * Which of this party's OWN input columns its result file holds beside the
-   * partner's values -- the local `include_own_columns` key, whose absence is
-   * the default (the file the partner's values alone make up). Per-party and
-   * local like {@link metadata}: never embedded in the token, never compared
-   * with the partner, and no part of what either party consents to. Emitted
-   * only where the built terms give this party a result table to write into
-   * (`ownColumnsField`, `@psi/ownColumnsModel`).
+   * Which of this party's own input columns its result file holds beside the
+   * partner's values (local `include_own_columns`). Local only: never in the
+   * token, never compared with the partner, and not part of either party's
+   * consent.
    */
   includeOwnColumns?: OwnColumnSelection;
   keys: Array<DraftKey>;
   /**
-   * The `linkageFields` declaration of an IMPORTED terms document, held verbatim
-   * for round-trip fidelity. Set only by {@link draftFromTerms}; absent for the seed,
-   * guided, and expert paths. When present, {@link buildAdvancedTerms} governs how
-   * the rebuild reconciles it.
+   * An imported terms document's `linkageFields`, held verbatim for round-trip
+   * fidelity. Set only by {@link draftFromTerms}.
    */
   importedLinkageFields?: Array<LinkageField>;
   /**
-   * An IMPORTED terms document's rule-set citation state, held so
-   * {@link buildAdvancedTerms} re-emits what the document claimed rather than
-   * re-deciding it. Set by {@link draftFromTerms} on every import, cited or not;
-   * absent for the seed, guided, and expert paths, which earn the built-in
-   * citation on content.
-   *
-   * A cited import has the rules it cited: an import narrowed by disabling
-   * keys still builds rules drawn from the imported document, while one whose
-   * keys were edited, reordered, or added to does not.
+   * An imported terms document's rule-set citation, so
+   * {@link buildAdvancedTerms} re-emits what the document claimed. Set by
+   * {@link draftFromTerms} on every import. An import narrowed only by disabling
+   * keys still builds rules drawn from the document; one with keys edited,
+   * reordered or added does not.
    */
   importedRuleSetCitation?: ImportedRuleSetCitation;
   /**
-   * The terms settings a configuration opened in the console states that no
-   * control here edits, held so {@link buildAdvancedTerms} writes them back as
-   * the file states them. Set only by that load; absent on every other path,
-   * including the terms import, which refuses a field constraint it would
-   * otherwise have to hold.
+   * Terms settings a configuration opened in the console states that no control
+   * here edits, so {@link buildAdvancedTerms} writes them back unchanged. Set
+   * only by that load.
    */
   heldTermsSettings?: HeldTermsSettings;
 }
 
 /**
- * What {@link AdvancedInviteDraft.heldTermsSettings} holds. The fields' own
- * constraints are read from {@link AdvancedInviteDraft.importedLinkageFields},
- * so only the payload lists are held here.
+ * What {@link AdvancedInviteDraft.heldTermsSettings} holds; field constraints are
+ * read from {@link AdvancedInviteDraft.importedLinkageFields} instead.
  */
 export interface HeldTermsSettings {
-  /** The document's `payload`: each sent column's description, keyed by the
-   * column's name, and the list of columns this party expects back. */
+  /** The document's `payload`. */
   payload?: Payload;
 }
 
-/** The fixed starting point for an editor session: the auto-derived terms the
- * draft seeds from, plus the columns those terms were derived from (kept for the
- * live satisfiability check, which is over column shape). */
+/** The fixed starting point for an editor session. */
 export interface AdvancedInviteSeed {
-  /** The metadata-aware auto-derived terms (`getDefaultLinkageTerms` over
-   * the file's inferred metadata) -- the same terms the quick path would embed for
-   * these columns, so the editor opens on a known-good valid state. */
+  /** The auto-derived terms for the file's inferred metadata, the same terms
+   * the quick path embeds. */
   terms: LinkageTerms;
-  /** The inferred, normalized starting metadata -- the reset anchor for the grid
-   * (the draft's `metadata` opens equal to this). */
+  /** The inferred, normalized starting metadata, the grid's reset point. */
   metadata: Metadata;
   /** The inviter's CSV column names. */
   columns: Array<string>;
 }
 
-/** A control an editor error attaches to, so the component can render the message
- * inline beside the offending input rather than as a page-level alert. */
+/** The control an editor error is shown beside. */
 export type AdvancedField =
   | "identity"
   | "lifetime"
@@ -265,15 +182,14 @@ export type AdvancedField =
   | "keys"
   | "standardization";
 
-/** The result of validating a draft: whether Generate may proceed, the built
- * terms when they parse cleanly, and per-control error messages. */
+/** The result of validating a draft. */
 export interface AdvancedValidation {
-  /** True only when the draft parses through the core schema, every non-schema
-   * gate (lifetime bounds, a future legal-agreement expiry, at least one
-   * column-satisfiable key) passes, and the terms canonically encode. */
+  /** True only when the draft parses, every non-schema check (lifetime bounds,
+   * a future legal-agreement expiry, a column-satisfiable key) passes, and the
+   * terms canonically encode. */
   canGenerate: boolean;
-  /** The terms the draft represents, present only when {@link canGenerate}. The
-   * component passes these to `generateInvitation` verbatim. */
+  /** The terms, present only when {@link canGenerate}; passed to
+   * `generateInvitation` verbatim. */
   terms?: LinkageTerms;
   /** Per-control error messages; an absent field has no error. */
   errors: Partial<Record<AdvancedField, string>>;

@@ -1,31 +1,21 @@
 /**
- * The pure name-shape admission rules for mounted work inputs and mount browsing,
- * shared so their callers cannot drift: the directory listing ({@link @jobs/workInputs})
- * and the job intent's `inputFile` reference apply {@link isAdmissibleInputName};
- * the secrets-mount browse ({@link @jobs/mountBrowse}) applies {@link browseSegment}.
- * Both derive from one single-segment shape predicate and differ only on the
- * leading-dot rule. Kept free of any filesystem dependency: the intent schema
- * reuses the predicate without pulling `node:fs` into its import graph, and the
- * modules avoid a circular import. A name is never trusted from these rules alone
- * -- every by-name file operation re-resolves the name under the server-anchored
- * mount and confirms the target (a `statSync`/`realpathSync`); this only bounds
- * the shape a name may take.
+ * Name-shape rules for mounted work inputs ({@link isAdmissibleInputName}, used by
+ * {@link @jobs/workInputs} and the job intent's `inputFile`) and mount browsing
+ * ({@link browseSegment}, used by {@link @jobs/mountBrowse}). Free of filesystem
+ * imports so the intent schema can use them. These bound only a name's shape:
+ * every by-name file operation re-resolves the name under the mount.
  */
 
 /** The maximum length of an admissible input file name (a single path segment). */
 export const MAX_INPUT_NAME_LENGTH = 255;
 
-// C0 controls (which include NUL) and DEL: an operator-controlled name is still
-// rendered through the UI, and a control character has no place in a file name.
+// C0 controls (which include NUL) and DEL.
 // eslint-disable-next-line no-control-regex
 const CONTROL_CHAR_PATTERN = /[\u0000-\u001f\u007f]/;
 
 /**
- * The single-segment shape rule shared by {@link isAdmissibleInputName} and
- * {@link browseSegment}: a single path segment (no `/`, `\`, or NUL), not
- * `.`/`..`, no control characters, length 1..255. The two callers share this
- * predicate so they cannot drift; they differ ONLY in the leading-dot rule
- * applied on top of it.
+ * A single path segment (no `/`, `\`, or NUL), not `.`/`..`, no control
+ * characters, length 1..255. Its two callers differ only in the leading-dot rule.
  */
 function hasAdmissibleSegmentShape(name: string): boolean {
   if (name.length === 0 || name.length > MAX_INPUT_NAME_LENGTH) return false;
@@ -36,11 +26,8 @@ function hasAdmissibleSegmentShape(name: string): boolean {
 }
 
 /**
- * Whether `name` is an admissible input file name: the shared single-segment
- * shape ({@link hasAdmissibleSegmentShape}) plus no leading dot, so a
- * `.alcove.key`-shaped file is excluded by construction. The listing admits
- * only a regular file (a plain `statSync` + `isFile`, which follows a symlink);
- * this predicate bounds only the name shape.
+ * Whether `name` is an admissible input file name: the segment shape plus no
+ * leading dot, so a `.alcove.key`-shaped file is excluded by construction.
  */
 export function isAdmissibleInputName(name: string): boolean {
   if (!hasAdmissibleSegmentShape(name)) return false;
@@ -49,14 +36,8 @@ export function isAdmissibleInputName(name: string): boolean {
 }
 
 /**
- * Whether `name` is an admissible mount-browse segment: the shared single-segment
- * shape ({@link hasAdmissibleSegmentShape}) with NO leading-dot ban, so a
- * dot-prefixed directory or file (`.ssh`, `.ssh/id_ed25519`) is navigable -- SSH
- * key material lives under such names. Differs from {@link isAdmissibleInputName}
- * only on the leading dot; every returned listing entry passes this rule, so
- * each is itself a valid next segment. A name is never trusted from the shape
- * alone -- {@link @jobs/mountBrowse} re-resolves it under the server-anchored mount
- * root and re-confines the realpath.
+ * Whether `name` is an admissible mount-browse segment: the segment shape with
+ * no leading-dot ban, since SSH key material lives under names like `.ssh`.
  */
 export function browseSegment(name: string): boolean {
   return hasAdmissibleSegmentShape(name);
