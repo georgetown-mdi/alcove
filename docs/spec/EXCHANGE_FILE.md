@@ -559,7 +559,7 @@ The CLI then refuses, before any display, an update whose terms name the applyin
 
 ### What applying writes
 
-Applying rewrites `linkage_terms`, and `expected_partner_deduplicate` to the update's `deduplicate`, in one atomic write (`persistTermsUpdate`, `apps/cli/src/config.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged. The columns this party receives are the update's `payload.send`, mirrored into `payload.receive` by `deriveAcceptedLinkageTerms`.
+Applying rewrites `linkage_terms`, and `expected_partner_deduplicate` to the update's `deduplicate`, in one atomic write (`persistTermsUpdate`, `apps/cli/src/config/termsUpdate.ts`), after reading the edited document back through `parseExchangeSpec`; a document that would not load is refused and the file left unchanged. The columns this party receives are the update's `payload.send`, mirrored into `payload.receive` by `deriveAcceptedLinkageTerms`.
 
 Minting an update states `payload.send` on the rule an invitation minted from the same configuration follows ([The send side is in the agreed terms](#the-send-side-is-in-the-agreed-terms)). Neither command writes the key file or any key of the connection block.
 
