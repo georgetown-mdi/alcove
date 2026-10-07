@@ -150,8 +150,7 @@ export function singlePassExchangeExceedsCap(
  * The accepted byte size of the single-pass reply, identical on both parties:
  * the receiver's read gate and the sender's send-time check. Its terms and integer
  * arithmetic are fixed in docs/spec/PROTOCOL.md (The single-pass dataset ceiling).
- * Call only for an in-cap exchange; the per-transport clamp is a safety check
- * that does not bind at the current ceiling.
+ * Call only for an in-cap exchange.
  */
 export function singlePassReplyByteCap(
   keyCount: number,
