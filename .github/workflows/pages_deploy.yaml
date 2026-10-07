@@ -70,16 +70,17 @@ jobs:
     timeout-minutes: 10
     environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
     permissions: {}
-    env:
-      PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
-      PAGES_BRANCH: ${{ github.ref_name }}
-      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Download the site
         uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build-and-test.outputs.artifactName }}
           path: site
+      # The action hands the command to wrangler as arguments with no shell, so
+      # environment variables are never expanded and the values go in as
+      # expressions; the project name is a variable only a repository admin
+      # sets, the branch is main or staging under the job's gate, and the sha
+      # is hex, so none can add an argument.
       # Pinned to a commit because the step holds the deploy token, and to an
       # exact wrangler so the step does not install the newest wrangler 4.
       - name: Deploy
@@ -88,4 +89,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy site --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH" --commit-hash="$COMMIT_SHA"
+          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
