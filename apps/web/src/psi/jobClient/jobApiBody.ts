@@ -2,84 +2,47 @@ import { readBoundedJsonBody } from "@alcove/core";
 
 /**
  * Body-shape helpers shared by the same-origin job-API clients: the one bounded
- * read every client answer goes through, the per-endpoint byte caps that read
- * takes, and the narrowing both the work-input and SFTP-authoring clients apply
- * before reading fields off a body.
- *
- * The bound holds what an answer that is not this endpoint's -- a proxy's error
- * page, a truncated stream, a console at a different version -- can cost the
- * operator's tab: a bounded read and the client's own malformed-body state,
- * never an unbounded buffer. Every whole-body read -- `Response.json()`,
- * `.text()` and `.arrayBuffer()` -- is banned across src/ and server/ so a new
- * client cannot read one unbounded (apps/web/eslint.config.js;
- * scripts/eslint-web-json-parse-ban.test.mjs for its reach). What fixes each cap
- * below: docs/spec/SERVER_JOB_API.md, Size caps.
+ * read every answer goes through, its per-endpoint byte caps, and the narrowing
+ * applied before reading fields. Whole-body reads are banned by lint
+ * (apps/web/eslint.config.js). What fixes each cap:
+ * docs/spec/SERVER_JOB_API.md, Size caps.
  */
 
 /**
  * The cap on a fixed-shape status body: `GET /api/jobs/:jobId`, the `{ id }` of
  * a created or busy `POST /api/jobs`, `GET /api/jobs/slot`,
  * `GET /api/jobs/rendezvous`, `POST /api/jobs/signing/fingerprint`,
- * `POST /api/jobs/sftp/probe`, and the `{ error }` body a 400 carries. Every
- * field in these is a boolean, a number, a closed-set member, a job id, a
- * fingerprint, or one bounded path or fixed-text message, so the widest of them
- * is a few hundred bytes; 16 KiB is headroom over that, not a shape check.
+ * `POST /api/jobs/sftp/probe`, and a 400's `{ error }` body. Headroom over a few
+ * hundred bytes, not a shape check.
  */
 export const MAX_JOB_STATUS_RESPONSE_BYTES = 16 * 1024;
 
 /**
- * The cap on the SFTP connection projection (`GET`/`PUT /api/jobs/sftp`). Its
- * host, paths, and credential warnings are echoes of the connection the operator
- * authored, whose request body the route already caps at
- * `MAX_SFTP_AUTHOR_BODY_BYTES` (64 KiB), so the projection cannot outgrow that
- * cap and this one matches it.
+ * The cap on the SFTP connection projection (`GET`/`PUT /api/jobs/sftp`), equal
+ * to `MAX_SFTP_AUTHOR_BODY_BYTES`, the authoring body it echoes.
  */
 export const MAX_SFTP_CONNECTION_RESPONSE_BYTES = 64 * 1024;
 
 /**
- * The cap on the recurring-run hand-off (`GET /api/jobs/:jobId/handoff`), whose
- * `template` is the `alcove.yaml` text or the argv of the command the operator
- * would schedule. The config template recomposes the create intent's own blocks,
- * so the intent schema's caps decide its length: `metadata` at
- * `MAX_METADATA_COLUMNS` entries each holding a
- * `MAX_METADATA_DESCRIPTION_LENGTH` description accounts for about 18 MB of it,
- * and the standardization outputs and inputs at `MAX_NAME_LENGTH` for about
- * 3 MB more; 32 MiB is the next power of two above
- * that sum, and its margin holds the linkage terms, connection, signing block,
- * tuning options, and the standardization steps, which core's compose refuses
- * past its node budget rather than serializing. A step's `function` name and
- * `params` record are the one part no field-level cap bounds, so an intent that
- * inflates them past this cap reads as no hand-off.
- * jobHandoffResponseCap.unit.test.ts mints the widest template the compose
- * admits and pins the derivation against those constants.
+ * The cap on the recurring-run hand-off (`GET /api/jobs/:jobId/handoff`), derived
+ * from the create intent's field caps; an intent inflating a standardization
+ * step's `function` or `params` past it gets no hand-off.
+ * jobHandoffResponseCap.unit.test.ts pins the derivation.
  */
 export const MAX_JOB_HANDOFF_RESPONSE_BYTES = 32 * 1024 ** 2;
 
 /**
- * The cap on the variable-length bodies: the mounted-input listing
- * (`GET /api/jobs/inputs`), the secrets-mount entries
- * (`GET /api/jobs/mounts/secrets/entries`), one file's profile
- * (`GET /api/jobs/inputs/profile`), the coverage rates
- * (`POST /api/jobs/inputs/coverage`), and the mounted configuration
- * (`GET /api/jobs/config`). What decides the length of each is the operator's
- * own mount contents, CSV header, or configuration file, which no code bound
- * fixes -- the configuration's own file cap (1 MB, `MAX_CONFIGURATION_FILE_BYTES`
- * in `@jobs/configLoad`) bounds the source of that one but not its JSON
- * projection -- so 8 MiB is headroom, far above any directory, header, or
- * configuration a console prototype runs against, and far below what buffering
- * an unbounded stream would cost.
+ * The cap on the variable-length bodies: `GET /api/jobs/inputs`,
+ * `GET /api/jobs/mounts/secrets/entries`, `GET /api/jobs/inputs/profile`,
+ * `POST /api/jobs/inputs/coverage`, and `GET /api/jobs/config`. No code bound
+ * fixes their length, so this is headroom rather than a derived bound.
  */
 export const MAX_JOB_LISTING_RESPONSE_BYTES = 8 * 1024 ** 2;
 
 /**
- * Thrown by {@link readBoundedJson} when a console answer cannot be read: it
- * exceeded its byte cap, or it was absent, failed part-way through the stream,
- * not valid UTF-8, not valid JSON, or past the structural bound
- * `parseBoundedJson` enforces. The message is fixed text holding no body bytes.
- * Most callers catch it into their own
- * "unanswered"/"error" state; the two that let it propagate (`createJob` and
- * `fetchFinalRunStatus` in serverJobExchangeDriver) already handle the
- * `SyntaxError` an unreadable body threw before, and classify this the same way.
+ * Thrown by {@link readBoundedJson} when a console answer is over its cap or
+ * unreadable (absent, cut off, not UTF-8 or JSON, or past `parseBoundedJson`'s
+ * structural bound). The message is fixed text with no body bytes.
  */
 export class JobApiBodyError extends Error {
   constructor(kind: "too-large" | "invalid") {
@@ -95,8 +58,7 @@ export class JobApiBodyError extends Error {
 /**
  * Read a console answer's body as JSON under `maxBytes`, the one route every
  * job-API client takes to a decoded body. Throws {@link JobApiBodyError} on an
- * over-cap or unreadable body, where `Response.json()` threw a `SyntaxError`, so
- * a caller's existing catch keeps mapping it to the same state.
+ * over-cap or unreadable body.
  */
 export async function readBoundedJson(
   response: Response,

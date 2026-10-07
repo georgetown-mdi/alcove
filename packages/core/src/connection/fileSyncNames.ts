@@ -1,16 +1,7 @@
-// Filename grammar for the file-sync wire protocol: the pure predicates and
-// name constructors over the on-disk names the `sftp` and `filedrop`
-// channels exchange (messages, hellos, locks, joining sentinels, ack
-// markers, abort markers, and in-flight temp files). Everything here is a
-// pure function of its string/constant inputs, so the recognizers and
-// builders live in one place and cannot diverge between enforcement sites.
-//
-// The normative filename grammar is owned by the overview-tier
-// docs/EXCHANGE_REFERENCE.md ("Filename grammar"). The state machine that
-// consumes these predicates -- the directory-as-state-machine, the
-// enforcement sites, and the invariants -- is docs/spec/FILE_SYNC.md, a
-// recorded tier inversion (overview owns the grammar, spec owns the state
-// machine): see docs/spec/README.md.
+// Filename grammar for the file-sync wire protocol: pure predicates and name
+// builders for the files the `sftp` and `filedrop` channels exchange, kept in one
+// place so enforcement sites cannot diverge. The grammar: docs/EXCHANGE_REFERENCE.md
+// (Filename grammar); the state machine that consumes it: docs/spec/FILE_SYNC.md.
 
 import {
   v4 as uuidv4,
@@ -20,36 +11,22 @@ import {
 
 export const HELLO_SUFFIX = "-hello.json";
 
-// Suffix of the lock-mode tiebreaker file (`<peer1>-<peer2>-lock.json`). Named
-// for parity with HELLO_SUFFIX/JOINING_SUFFIX so the endsWith filter and both
-// name-construction sites stay in sync under a future rename. Its terminal
-// segment is the type word `lock` (never a `.lock` extension), so the grammar
-// discriminant excludes it from the message scan -- not all-digits -- the same
-// way it excludes hello and joining files.
+// The lock-mode tiebreaker, `<peer1>-<peer2>-lock.json`. Its terminal segment is
+// the type word `lock`, not digits, so the message scan excludes it.
 export const LOCK_SUFFIX = "-lock.json";
 
-// Suffix of the lock-path joiner-arrival sentinel (`<id>-joining.json`). The
-// joiner publishes it before deleting the peer hello and renames it to its
-// own hello once that delete lands, so the peer can tell "joiner
-// mid-arrival" from "joiner crashed" across the window where the peer hello
-// is gone but the joiner hello is not yet written. The terminal segment is
-// the type word `joining`, so the grammar discriminant excludes it from the
-// message scan (not all-digits).
+// The lock-path joiner-arrival sentinel, `<id>-joining.json`, which lets the peer
+// tell a joiner mid-arrival from a crashed one (docs/spec/FILE_SYNC.md, Phase 1 --
+// rendezvous, lock path). Its type word `joining` keeps it out of the message scan.
 export const JOINING_SUFFIX = "-joining.json";
 
-// Suffix of the authenticated cross-party abort marker (`<writerId>-abort.json`).
-// The terminal segment before `.json` is the type word `abort`, which is not
-// all-digits, so parseMessageByteCount returns undefined and the marker can
-// never be mis-consumed as a message -- an additive-grammar correctness
-// invariant. Named for parity with HELLO_SUFFIX/LOCK_SUFFIX/JOINING_SUFFIX.
+// The authenticated cross-party abort marker, `<writerId>-abort.json`. Its type
+// word `abort` is not all digits, so it is never consumed as a message.
 export const ABORT_SUFFIX = "-abort.json";
 
-// Extracts the declared byte count from a message filename by reading the last
-// `-`-delimited segment before `.json`. Parsing is right-anchored so an id
-// containing hyphens (a UUID, or a configured peer id) cannot corrupt the
-// result regardless of how many segments precede the count. Returns undefined
-// when the name has no `-` (so it has no `<id>-` part) or that segment is not
-// a non-negative integer.
+// The declared byte count of a message filename: the last `-` segment before
+// `.json`, parsed right-anchored so an id containing hyphens cannot corrupt it.
+// Undefined when the name has no `-` or that segment is not a non-negative integer.
 /** @internal */
 export const parseMessageByteCount = (name: string): number | undefined => {
   const stem = name.slice(0, -".json".length);
@@ -60,17 +37,10 @@ export const parseMessageByteCount = (name: string): number | undefined => {
   return Number(lastSegment);
 };
 
-// Right-anchored parse of the NNN (per-session sequence counter) from a
-// timestamped message filename (<id>-<ts>-<NNN>-<byteCount>.json). NNN is the
-// segment immediately before the terminal byte-count segment. Returns undefined
-// when the segment is not a non-negative integer.
-//
-// Caller contract: only meaningful for a timestamped filename (retain mode,
-// where timestampInFilename is always true). On a non-timestamped name the
-// segment before the byte count is part of the id, so this returns a wrong
-// value rather than undefined -- there is no runtime guard (the sole
-// caller, poll() in retain mode, satisfies the contract); a new caller
-// outside retain mode must check timestampInFilename itself.
+// The NNN sequence counter of a timestamped message filename
+// (`<id>-<ts>-<NNN>-<byteCount>.json`), parsed right-anchored. Only meaningful
+// for a timestamped name (retain mode): on any other name the segment is part of
+// the id and the result is wrong, not undefined, and nothing guards it at runtime.
 /** @internal */
 export const parseTimestampedMessageNNN = (
   name: string,
@@ -82,36 +52,18 @@ export const parseTimestampedMessageNNN = (
   return Number(nnnStr);
 };
 
-// Builds the acknowledgment-marker name for the file `<originalName>.json`:
-// `<writerId>-<originalName>-ack.json`. The marker is the single construct
-// that signals "I durably received your file" on transports that cannot
-// delete -- the lockless rendezvous ack and the retain-mode message ack.
-// `originalName` is the acknowledged file's name minus the `.json`
-// extension.
-//
-// Construct-and-match only: ids may contain `-`, so a two-id marker name is
-// not reverse-parseable into its ids, and never needs to be -- both ends
-// already hold the exact name of the acknowledged file (the receiver from
-// its listing, the author from its own write). The waiter builds the
-// expected name and tests it against the listing; routing keys only on the
-// terminal `ack` segment, so the name is safe even when an id contains `-`
-// or equals the word "ack".
+// The acknowledgment marker for `<originalName>.json`:
+// `<writerId>-<originalName>-ack.json`, used where a transport cannot delete.
+// Construct-and-match only: ids may contain `-`, so the name is never parsed back
+// into its ids; both ends already know the acknowledged file's exact name.
 /** @internal */
 export const ackMarkerName = (writerId: string, originalName: string): string =>
   `${writerId}-${originalName}-ack.json`;
 
-// Recovers the peer id from a `<id><suffix>` rendezvous control name (a
-// hello or a joining sentinel), returning undefined for any name that does
-// not end with `suffix` or whose recovered id is empty (a bare `<suffix>`,
-// e.g. `-hello.json`). An empty recovered id is never a usable peer
-// identity: adopting it would commit rendezvous to peerId="", after which
-// poll() treats every "-"-prefixed file as a peer message and the lockless
-// ack barrier waits for an ack no honest peer writes -- a hang/abort an
-// unauthenticated transport would otherwise let any writer induce by
-// planting a `-hello.json` mid-flight. This is the single notion of
-// "recovered peer id" shared by the entry guard and every in-flight
-// rendezvous scan, so the non-empty check cannot be present at one slicing
-// site while omitted at another.
+// The peer id of a `<id><suffix>` hello or joining sentinel, or undefined when
+// the name lacks the suffix or the id is empty. A bare `-hello.json` is never a
+// peer identity: adopting "" would let any writer on an unauthenticated transport
+// stall rendezvous (docs/spec/FILE_SYNC.md, The five enforcement sites, site 5).
 /** @internal */
 export const peerIdFromControlName = (
   name: string,
@@ -122,46 +74,30 @@ export const peerIdFromControlName = (
   return id.length > 0 ? id : undefined;
 };
 
-// Prefix of the generic in-flight temp name send() and writeAck() write.
 const TEMP_PREFIX = "temp-";
 
-// Prefix of the rendezvous hello's in-flight temp name. A distinct prefix,
-// not a distinct extension, so a hello temp is still recognized by
-// isProtocolTempName (and so by the protocol grammar, the mid-loop
-// recognizer, and the SFTP adapter's deferred cleanup) while the entry
-// sweep can tell it apart from the message/ack temps, whose
-// orphan-by-construction assumption it does not share.
+// A hello temp keeps the `temp-` prefix, so it is still a protocol temp, but the
+// entry sweep can tell it apart and spare it (docs/spec/FILE_SYNC.md, Hello temp
+// disposition).
 const HELLO_TEMP_PREFIX = "temp-hello-";
 
-// Accepts only the canonical lowercase v4 UUID uuidv4() emits. The uuid
-// package's validate() has the /i flag, so without the case guard a foreign
-// temp-<UPPERCASE-but-valid-v4>.tmp would be accepted and swept -- a
-// residual slice of the namespace-collision data loss the stem validation
-// removes. uuidv4() always emits lowercase, so this rejects no name this
-// protocol's own writes produce. toLowerCase() is locale-independent for a
-// UUID's ASCII hex/hyphen, so there is no Turkish-I hazard; uuidVersion()
-// throws on a non-UUID stem, so the uuidValidate() short-circuit must
-// precede it.
+// Only the lowercase v4 UUID uuidv4() emits: the uuid package's validate() is
+// case-insensitive, and an uppercase foreign temp must not be swept.
+// uuidVersion() throws on a non-UUID, so uuidValidate() must run first.
 const isUuidV4Stem = (stem: string): boolean => {
   if (stem !== stem.toLowerCase()) return false;
   return uuidValidate(stem) && uuidVersion(stem) === 4;
 };
 
-// Builds the in-flight temp name for a rendezvous hello publish:
-// `temp-hello-<uuidv4()>.tmp`. The single producer of the shape isHelloTempName
-// recognizes, so the publish sites and the entry sweep's exclusion cannot drift.
+// The in-flight temp name of a rendezvous hello publish,
+// `temp-hello-<uuidv4()>.tmp`; the only producer of what isHelloTempName matches.
 /** @internal */
 export const helloTempName = (): string =>
   `${HELLO_TEMP_PREFIX}${uuidv4()}.tmp`;
 
-// True only for a rendezvous hello's in-flight temp write, the shape
-// helloTempName builds. The entry sweep uses it to exclude hello temps from
-// its unconditional delete: the orphan-by-construction assumption that
-// licenses deleting a message or ack temp does not extend to them, since
-// writing either of those requires having seen this party's hello, while
-// publishing a hello requires nothing from this party -- a peer starting at
-// the same instant can have one in flight while this party scans, and
-// deleting it would break that peer's rename.
+// True only for the shape helloTempName builds. The entry sweep spares it: a peer
+// starting at the same instant may have one in flight, and deleting it would break
+// that peer's rename (docs/spec/FILE_SYNC.md, Hello temp disposition).
 /** @internal */
 export const isHelloTempName = (name: string): boolean =>
   name.startsWith(HELLO_TEMP_PREFIX) &&
@@ -169,22 +105,11 @@ export const isHelloTempName = (name: string): boolean =>
   isUuidV4Stem(name.slice(HELLO_TEMP_PREFIX.length, -".tmp".length));
 
 /**
- * True only for the protocol's own in-flight temp files: `temp-<uuidv4()>.tmp`,
- * the exact shape `send()` and `writeAck()` write, and
- * `temp-hello-<uuidv4()>.tmp`, the shape a rendezvous hello publish writes
- * ({@link helloTempName}).
- *
- * Validating the stem as a v4 UUID lets every other `temp-*.tmp` -- a
- * foreign `temp-export.tmp`, an unrelated sync-tool scratch file -- fall
- * through to the foreign-file policy (tolerated) instead of being deleted
- * by the entry sweep, keeping this module's notion of "foreign" in
- * agreement with the foreign-file snapshot's.
- *
- * Public because a `FileTransportClient` implementation may need to tell
- * this protocol's own in-flight write apart from a durable protocol file or
- * the peer's: the CLI's SFTP adapter defers and re-issues a cleanup delete
- * only for this shape, whose per-file v4 UUID keeps a deferred re-issue
- * from reaching any file other than the one it was issued for.
+ * True only for the protocol's own in-flight temp files, `temp-<uuidv4()>.tmp`
+ * and `temp-hello-<uuidv4()>.tmp`. Any other `temp-*.tmp` is foreign and is
+ * tolerated, not swept. Public so a `FileTransportClient` can tell its own
+ * in-flight write apart: the CLI's SFTP adapter re-issues a deferred cleanup
+ * delete only for this shape, whose per-file UUID keeps it on the one file.
  */
 export const isProtocolTempName = (name: string): boolean => {
   if (isHelloTempName(name)) return true;
@@ -193,32 +118,18 @@ export const isProtocolTempName = (name: string): boolean => {
 };
 
 /**
- * Grammar-level abort-marker recognizer: true for any `<id>-abort.json` by
- * suffix, under any id.
- *
- * Used by the entry guard's isProtocolGrammarName so a leftover abort
- * marker classifies as a protocol file, handled by the recognize-and-sweep,
- * rather than failing the directory-clean check as foreign. Broader than
- * isExpectedAbortName by design; every name isExpectedAbortName accepts
- * also satisfies this (subset invariant, pinned by a unit test). Like the
- * sibling suffix checks in isProtocolGrammarName, this is a bare endsWith
- * with no minimum-prefix guard, so the empty-prefix form `-abort.json` is
- * also grammar-recognized -- but not sweepable, since isExpectedAbortName
- * and the entry sweep both require a non-empty id, so it fails closed as an
- * unexpected protocol file (exit 64), the same fate as a bare
- * `-hello.json`, and never a usable identity any honest party writes.
+ * True for any `<id>-abort.json` under any id, so the entry guard sweeps a
+ * leftover marker rather than refusing it as foreign. Every name
+ * {@link isExpectedAbortName} accepts also matches. A bare `-abort.json` matches
+ * too but is never swept, so it fails closed as an unexpected protocol file.
  */
 export const isAbortMarkerName = (name: string): boolean =>
   name.endsWith(ABORT_SUFFIX);
 
 /**
- * Exact-name abort-marker recognizer: true only for this party's or the
- * peer's marker (`<selfId>-abort.json` or `<peerId>-abort.json`).
- *
- * Used by the poll loop's isRecognizedLoopFile so the two expected markers
- * are tolerated while a foreign `<other>-abort.json` an admin might plant
- * still hits the unexpected-files policy -- exact-name keeps that exemption
- * from silencing a planted foreign marker.
+ * True only for this party's or the peer's abort marker. The poll loop tolerates
+ * these two by exact name, so a planted `<other>-abort.json` still meets the
+ * unexpected-files policy.
  */
 export const isExpectedAbortName = (
   name: string,
@@ -227,18 +138,9 @@ export const isExpectedAbortName = (
 ): boolean =>
   name === `${selfId}${ABORT_SUFFIX}` || name === `${peerId}${ABORT_SUFFIX}`;
 
-// Classifies a filename against the protocol filename grammar: true for
-// any protocol artifact (an in-flight temp write, a hello, a lock, a
-// joining sentinel, an ack marker, an abort marker, or a message whose
-// terminal segment is a byte count), false for a "foreign" name that fails
-// the grammar (a conflict copy, a partial download, an unrelated file).
-// This is the single inverse of "foreign" the entry guard and the
-// foreign-file snapshot share, so a name cannot be both snapshotted as
-// foreign and recognized as a protocol file. A message-shaped
-// <id>-<digits>.json matches here and is therefore a protocol file, never
-// foreign: at the no-flag entry guard it is unexpected (rejected), and
-// under --sweep-exchange-files it is swept. A `temp-*.tmp` whose stem is
-// not a v4 UUID fails the grammar here and is treated as foreign.
+// The single inverse of "foreign" the entry guard and the foreign-file snapshot
+// share, so no name is both. A message-shaped `<id>-<digits>.json` is a protocol
+// file: refused at the no-flag entry guard, swept under --sweep-exchange-files.
 /** Whether a filename is in the exchange's protocol filename grammar rather than
  * foreign; the console's start-of-run preflight shares this classification. */
 export const isProtocolGrammarName = (name: string): boolean => {
@@ -248,46 +150,24 @@ export const isProtocolGrammarName = (name: string): boolean => {
     name.endsWith(HELLO_SUFFIX) ||
     name.endsWith(LOCK_SUFFIX) ||
     name.endsWith(JOINING_SUFFIX) ||
-    // Any -abort.json counts (isAbortMarkerName), under any id: a leftover abort
-    // marker is a protocol file, so the entry guard's recognize-and-sweep can
-    // handle it rather than the directory-clean check rejecting it as foreign.
     isAbortMarkerName(name) ||
-    // Any -ack.json counts, broad by design: a foreign name that happens to
-    // end -ack.json is conservatively treated as a protocol file (rejected
-    // at the no-flag guard, swept under the flag) rather than tolerated as
-    // foreign -- the inverse would let a stray ack-shaped name slip past
-    // the entry guard. (isRetainMessageAck below is the narrower,
-    // retain-signal-only test over this same suffix.)
+    // Broad by design: a foreign name ending -ack.json is refused or swept as a
+    // protocol file rather than tolerated, so no ack-shaped name slips past.
     name.endsWith("-ack.json")
   )
     return true;
   return parseMessageByteCount(name) !== undefined;
 };
 
-// True for a name shaped like a retain-only message ack. A retain message
-// is always timestamped (<id>-<ts>-<NNN>-<byteCount>.json, since retain
-// requires timestamp_in_filename), so a genuine ack
-// <writerId>-<id>-<ts>-<NNN>-<byteCount>-ack.json ends in two all-digit
-// dash segments (the NNN and the byte count). Requiring both, not just the
-// byte count, trims common foreign collisions (notes-5-ack.json,
-// report-2024-ack.json) and excludes a rendezvous hello-ack.
-//
-// A conservative heuristic by design, not a precise classifier: a filename
-// alone cannot prove writer-id structure, so a contrived foreign name with
-// two trailing digit segments (e.g. backup-100-200-ack.json) still
-// matches. That is acceptable -- it errs toward refusing a destructive
-// sweep, which the operator clears with --force-retain-sweep, and the
-// authoritative retain signal is the peer hello's retain_files flag (read
-// below), which a retain directory always has (I4b). A miss here is
-// harmless and a false match only over-asks for confirmation; neither
-// risks data.
+// True for a name shaped like a retain-mode message ack, whose two trailing
+// segments (NNN and byte count) are both digits. A heuristic: a contrived foreign
+// name can match, which only refuses a sweep the operator clears with
+// --force-retain-sweep; the peer hello's retain_files flag is the authoritative
+// signal (docs/spec/FILE_SYNC.md, Invariants, I0).
 /** @internal */
 export const isRetainMessageAck = (name: string): boolean => {
   if (!name.endsWith("-ack.json")) return false;
-  // Require at least two dash-separated segments and both trailing ones all
-  // digits. Split rather than walk lastIndexOf back twice: on a single-segment
-  // inner ("100") the arithmetic form mis-slices (slice(0, -1) -> "10") and
-  // wrongly matches; split yields ["100"], length < 2, correctly rejected.
+  // split, not lastIndexOf arithmetic, which mis-slices a single segment ("100").
   const segments = name.slice(0, -"-ack.json".length).split("-");
   if (segments.length < 2) return false;
   const nnn = segments[segments.length - 2];

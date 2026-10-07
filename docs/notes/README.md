@@ -20,6 +20,7 @@ stands, from a direction still open to a decision taken and built.
 | [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | Decided and built; what each spawn type receives, the orchestrator-only share under two partitions, and the split taken against it. |
 | [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | Decided on the maintainer's ruling and built, after a real-broker measurement. |
 | [cli-webrtc-stack.md](cli-webrtc-stack.md) | Decided and built. |
+| [column-name-display.md](column-name-display.md) | Decided and built; why the operator's own column names are isolated rather than escaped, and what isolation leaves open. |
 | [comment-history-narration-check.md](comment-history-narration-check.md) | Decided and built; the corpus measurement and the false-positive rate behind the check's phrase list. |
 | [connect-timeout-prior-art.md](connect-timeout-prior-art.md) | Decided and built; what curl and OpenSSH bound, measured, and the three decisions taken on it. |
 | [connection-error-kind-taxonomy.md](connection-error-kind-taxonomy.md) | Decided and built; each classification records the condition that would reopen it. |

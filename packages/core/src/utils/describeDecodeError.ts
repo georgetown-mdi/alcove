@@ -9,16 +9,10 @@ import {
 import type { Displayable } from "./sanitizeForDisplay";
 
 /**
- * One Zod issue-path segment, or any other object key a message names, fitted
- * to what a single value may render to.
- *
- * A segment can be an object key the inviting party wrote -- Zod's
- * `invalid_key` puts a rejected record key in the path verbatim -- and the path
- * LEADS the description, so an unfitted segment spends the whole budget of the
- * link that shows it and the refusal reason behind it is cut. On the wire
- * linkage-terms route the segment is a partner-chosen `transform.params` key
- * bounded only by the transport's frame cap, so the raw cut ahead of the fit
- * ({@link redactAndFitUnescaped}) is required there.
+ * One Zod issue-path segment, or any other object key a message names, fitted to
+ * a single value's display budget. A segment can be a partner-written key bounded
+ * only by the frame cap, and the path leads the description, so an unfitted one
+ * would cut the refusal reason behind it.
  *
  * @internal not a stable public API.
  */
@@ -26,33 +20,14 @@ export const fittedPathSegment = (segment: PropertyKey): string =>
   redactAndFitUnescaped(String(segment), DEFAULT_MAX_DISPLAY_LENGTH);
 
 /**
- * Render an invitation decode/validation failure concisely, composed RAW for
- * interpolation into an `Error` message or `cause`. {@link decodeInvitation}
- * (and the invitation schema it runs) throws a `ZodError` on schema-validation
- * failure, whose `.message` is a multi-line JSON dump of every issue; show the
- * first issue as `<path>: <message>` with an `(and N more)` suffix instead.
- * Other failures (checksum, JSON, base64) are plain `Error`s, whose `.message`
- * passes through unchanged; any other thrown value renders as `String(err)`.
- *
- * It escapes nothing. A Zod path can name a partner-controlled object key (the
- * invitation is crafted by the inviting party) and the unrecognized-endpoint-key
- * message echoes the rejected key names, so this description can hold
- * control/ANSI, bidi-override or zero-width bytes and reaches an operator only
- * through a boundary that escapes it: `sanitizeErrorForDisplay` where the
- * composed error is rendered, which is the assignment for a fragment bound for
- * an `Error` (CONTRIBUTING.md, Operator-facing escaping). A caller showing the
- * description WITHOUT composing an error takes {@link describeDecodeError}
- * instead, which escapes it once at that sink.
- *
- * What it does own is the FIT: each path segment is bounded by
- * {@link fittedPathSegment}, and the rejected key names in the
- * unrecognized-endpoint-key message by `endpointKeyError`
- * (`config/invitation.ts`), so no fragment the inviting party chose can spend
- * the display budget the first-party reason beside it needs.
- *
- * A caller that also redacts (`redactPrivateKeyMaterial`) does so where it
- * interpolates this, before the sink's fail-closed dangling rule can consume
- * the first-party text composed behind a planted marker.
+ * An invitation decode or validation failure, composed raw for an `Error`
+ * message or `cause`: a `ZodError` as its first issue, `<path>: <message>` plus
+ * `(and N more)`; any other `Error` as its message; anything else as `String(err)`.
+ * It escapes nothing (the rendered error is escaped once where shown) but fits
+ * each partner-chosen fragment, so none spends the budget of the reason beside
+ * it. A caller that redacts does so where it interpolates this. The split between
+ * this and {@link describeDecodeError}: docs/spec/CHANNEL_SECURITY.md, Display
+ * sanitization escape format.
  */
 export function rawDecodeErrorDescription(err: unknown): string {
   if (err !== null && typeof err === "object" && "issues" in err) {
@@ -73,29 +48,11 @@ export function rawDecodeErrorDescription(err: unknown): string {
 }
 
 /**
- * {@link rawDecodeErrorDescription} escaped once, for a consumer whose own
- * render is the display sink: the web accept screen, which puts the result
- * straight into a React text node with no further pass. React neutralizes HTML
- * markup but not terminal-control, bidi-override or zero-width bytes, so the
- * escape has to happen here for that route.
- *
- * The {@link Displayable} brand is what keeps the two routes apart at compile
- * time: a display field declared as the brand cannot be filled from the raw
- * form, and a caller composing an `Error` takes the raw form because escaping
- * here and again at the renderer doubles every literal backslash on the way to
- * the operator.
- *
- * Capped at {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH} rather than the
- * per-value default: the description is a COMPOSITION -- first-party guidance
- * (the endpoint-locator rejection above all) around the fragments it names --
- * and the per-value budget would cut that guidance short.
- *
- * Redacts as well as escapes, the pairing every display sink takes
- * ({@link redactAndSanitizeForDisplay}), applied here uniformly rather than on
- * a reading of which of today's decode failures can hold a file-derived value.
- * Each fragment the description names is redacted at its own fit, so the
- * fail-closed dangling rule has no partner-planted marker left to consume the
- * first-party text behind.
+ * {@link rawDecodeErrorDescription} redacted and escaped once, as a
+ * {@link Displayable}, for a consumer whose render is the sink (the web accept
+ * screen's React text node, which does not neutralize control or bidi bytes).
+ * Capped at {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}: the description is a
+ * composition, and the per-value budget would cut its first-party guidance.
  */
 export function describeDecodeError(err: unknown): Displayable {
   return redactAndSanitizeForDisplay(rawDecodeErrorDescription(err), {

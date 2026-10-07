@@ -1,32 +1,11 @@
 /**
- * Defense-in-depth response headers. The hosted static site sends them from the
- * generated `_headers` file, which `apps/web/hosted/headersFile.ts` writes from
- * this one; the console server sets them itself on every response it sends
- * (`apps/web/server/console/app.ts`).
- *
- * The confidential invitation token rides in the URL fragment, which browsers
- * already withhold from `Referer`; `Referrer-Policy: no-referrer` extends that
- * to older clients and to any future surface that is not the fragment, and the
- * app never needs to send a referrer of its own. `X-Frame-Options: DENY` and the
- * CSP `frame-ancestors 'none'` both deny framing (clickjacking): the CSP form for
- * modern clients, the legacy header for older ones. The CSP holds only the
- * framing directive, so it imposes no other content policy; if a fuller CSP is
- * ever added, `frame-ancestors 'none'` subsumes `X-Frame-Options: DENY`. Extend
- * this one value to add such a policy rather than setting a second
- * `Content-Security-Policy` header: a browser enforces the intersection of
- * multiple CSP headers, which can silently tighten and break the page. The app
- * runs a same-origin module Web Worker (the off-main-thread CSV parse,
- * `apps/web/src/psi/workers/csvParse.worker.ts`); the current CSP sets no
- * `default-src`/`script-src`/`child-src`/`worker-src`, so it does not restrict
- * workers and needs no change to permit it. If a worker-restricting directive is
- * ever added here, it must include `worker-src 'self'` -- the worker is a bundled
- * same-origin asset, NOT the `blob:` a PapaParse self-hosted worker would have
- * needed.
- *
- * `X-Content-Type-Options: nosniff` stops a browser from MIME-sniffing a
- * response away from its declared `Content-Type`, so a response cannot be
- * reinterpreted as a different, executable type. No route reflects untrusted
- * bytes back over HTTP today, so this too is defense-in-depth.
+ * Defense-in-depth response headers, stated once: the hosted build writes them to
+ * `_headers` (`apps/web/hosted/headersFile.ts`) and the console server sets them
+ * on every response (`apps/web/server/console/app.ts`). What each guards:
+ * docs/SECURITY_DESIGN.md, Channel security. Extend the one CSP value rather than
+ * adding a second `Content-Security-Policy` header, since browsers enforce the
+ * intersection; a worker-restricting directive must allow `worker-src 'self'` for
+ * the bundled CSV-parse worker.
  */
 export const securityResponseHeaders: Readonly<Record<string, string>> = {
   "Referrer-Policy": "no-referrer",
@@ -36,13 +15,10 @@ export const securityResponseHeaders: Readonly<Record<string, string>> = {
 };
 
 /**
- * Applies {@link securityResponseHeaders} to `response`, returning a new response
- * with the original's status, statusText, body, and headers plus the security
- * headers. It rebuilds rather than mutating the original in place, since a
- * redirect or `fetch`-derived response has immutable headers; this consumes the
- * original's body stream, so do not reuse `response` after calling. A status
- * outside the 200-599 range the Response constructor accepts (a status-0
- * `Response.error()`, or a 1xx) is returned unchanged rather than thrown on.
+ * Applies {@link securityResponseHeaders} to a rebuilt copy of `response`, since a
+ * redirect or `fetch`-derived response has immutable headers. This consumes the
+ * original's body. A status the Response constructor refuses (0, or 1xx) is
+ * returned unchanged.
  */
 export function withSecurityHeaders(response: Response): Response {
   if (response.status < 200 || response.status > 599) return response;
