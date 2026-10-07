@@ -145,14 +145,14 @@ describe("the run command names the minted config file", () => {
   test("interpolates the exact filename with --config-file, ahead of --invitation", () => {
     expect(runCommand("alcove-exchange-2026-07-10.yaml")).toBe(
       "alcove exchange your-data.csv --config-file " +
-        "alcove-exchange-2026-07-10.yaml --invitation @invitation-code.txt",
+        "alcove-exchange-2026-07-10.yaml --invitation @invitation.txt",
     );
   });
 
   test("a re-save's new date-derived filename flows straight through", () => {
     expect(runCommand(exchangeFileName(new Date(2026, 11, 25)))).toBe(
       "alcove exchange your-data.csv --config-file " +
-        "alcove-exchange-2026-12-25.yaml --invitation @invitation-code.txt",
+        "alcove-exchange-2026-12-25.yaml --invitation @invitation.txt",
     );
   });
 });

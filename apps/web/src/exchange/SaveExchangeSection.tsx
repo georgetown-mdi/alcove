@@ -33,7 +33,7 @@ export interface SavedExchange {
  * operator authors the locator, presses Save, and the handler mints the
  * invitation code and the CLI config YAML together and triggers the download.
  * Before a save the surface shows the fields and the Save button; after one it
- * adds the file card, the invitation-code copy row, the expiry, and the operator
+ * adds the file card, the invitation copy row, the expiry, and the operator
  * instructions. The linkage terms are sealed exactly as the browser path seals
  * them, so this surface authors WHERE the exchange runs and nothing about WHAT
  * is disclosed.
@@ -181,10 +181,10 @@ export function SaveExchangeSection({
           <p className={styles.small}>{saveClosingCopy(fields, transport)}</p>
           <p className={styles.small}>
             Run it with this one command. Save the invitation into a file named{" "}
-            <span className={styles.mono}>invitation-code.txt</span> beside the
+            <span className={styles.mono}>invitation.txt</span> beside the
             exchange file - this keeps it out of your shell history, and the
             command below reads it back with{" "}
-            <span className={styles.mono}>@invitation-code.txt</span>.
+            <span className={styles.mono}>@invitation.txt</span>.
           </p>
           <div className={`${styles.codeBlock} ${styles.mono}`}>
             {runCommand(saved.fileName)}

@@ -2609,7 +2609,7 @@ describe("inviter screen", () => {
       await expect.element(save).toBeEnabled();
       await save.click();
 
-      // The file card and the invitation-code copy row appear together.
+      // The file card and the invitation copy row appear together.
       await expect
         .element(page.getByText("Saved to your downloads"))
         .toBeInTheDocument();
@@ -2627,7 +2627,7 @@ describe("inviter screen", () => {
         .element(
           page.getByText(
             `alcove exchange your-data.csv --config-file ${fileName} ` +
-              "--invitation @invitation-code.txt",
+              "--invitation @invitation.txt",
           ),
         )
         .toBeInTheDocument();

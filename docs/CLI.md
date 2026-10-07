@@ -51,7 +51,7 @@ The invitation expires one hour after it is created. If Agency B cannot accept a
 ### 3. Agency B: accept it
 
 ```sh
-alcove accept --identity "Agency B" INVITATION_CODE input.csv
+alcove accept --identity "Agency B" INVITATION input.csv
 ```
 
 Alcove shows what the exchange will disclose -- the columns each party sends, who receives the result -- and asks you to confirm. Read it before answering. On yes, it writes `alcove.yaml` and `.alcove.key`; on no, it writes nothing. Giving `input.csv` checks that your file has the columns the agreed terms need.
