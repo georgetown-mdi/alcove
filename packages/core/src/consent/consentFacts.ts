@@ -281,7 +281,8 @@ export const CONSENT_FACTS = {
       "a partner whose metadata discloses a column against this party's " +
       "declared-empty `payload.receive` refuses BOTH parties before the " +
       "linkage round, the association table and the payload " +
-      "(`resolveBothDirectionsDisclosePayload`, exchange.ts). Either the " +
+      "(`resolveBothDirectionsDisclosePayload`, exchange/termsRefusals.ts). " +
+      "Either the " +
       "partner's half is withheld or the exchange stops before it could " +
       "move, which is what `enforced` means here. It stays a fact of its own " +
       "rather than folding into `partnerOwnMembershipWithheld` because an " +

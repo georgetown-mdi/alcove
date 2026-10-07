@@ -1421,7 +1421,7 @@ export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
  * while its metadata transmits a column passes that check, so this reading
  * predicts a withheld table for a pair the run itself refuses outright, once
  * both parties' terms are agreed and before any linkage round
- * (`resolveDirectionDisclosesPayload`, exchange.ts).
+ * (`resolveDirectionDisclosesPayload`, exchange/termsRefusals.ts).
  */
 export function withholdsPartnerAssociationTable(terms: LinkageTerms): boolean {
   if (terms.linkageStrategy !== "single-pass") return false;
