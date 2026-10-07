@@ -1,7 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
 import logLibrary from "loglevel";
 
+import { AUTHENTICATION_FAILED_EXIT_CODE } from "@alcove/cli-contract";
 import {
+  AuthenticationError,
   ConnectionError,
   deriveRendezvousPeerId,
   failureCauseOf,
@@ -16,10 +18,14 @@ import {
   BROKER_MESSAGE,
   BROKER_OPEN_TIMEOUT_MS,
   ID_TAKEN_MESSAGE,
+  SIGNALING_CERTIFICATE_FAILED_MESSAGE,
 } from "../../../src/connection/webrtc/brokerClient";
 import { ICE_STATS_TIMEOUT_MS } from "../../../src/connection/webrtc/iceDiagnostics";
 import { webRtcDialFrom } from "../../../src/run/prepare";
-import { renderFailureForOperator } from "../../../src/util/exit";
+import {
+  exitCodeForError,
+  renderFailureForOperator,
+} from "../../../src/util/exit";
 import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
   DEFAULT_UNREPORTED_OFFER_RESEND_MS,
@@ -41,6 +47,7 @@ import type {
   WebRtcPeerSession,
   WeriftPeerConfiguration,
 } from "../../../src/connection/webrtc/weriftPeer";
+import type { SignalingCertificateProbe } from "../../../src/connection/webrtc/signalingTls";
 import type { RTCPeerConnection } from "werift";
 import { waitFor } from "../../support";
 
@@ -301,6 +308,10 @@ async function startRendezvous(options: {
    */
   laterRegistration?: (socket: ScriptedSocket, index: number) => void;
   attemptIceServers?: AttemptIceServers;
+  /** Whether the coordination server is dialed over `wss://`; absent is `ws://`. */
+  secure?: boolean;
+  /** What a failed registration's certificate check answers. */
+  certificateProbe?: SignalingCertificateProbe;
   /** Shared with another rendezvous so the two derive the same pair of ids. */
   sharedSecret?: string;
 }): Promise<{
@@ -335,7 +346,7 @@ async function startRendezvous(options: {
       port: 9000,
       path: "/api",
       key: "peerjs",
-      secure: false,
+      secure: options.secure ?? false,
     },
     role: options.role,
     sharedSecret,
@@ -359,6 +370,7 @@ async function startRendezvous(options: {
         ? teardown.signal
         : AbortSignal.any([options.signal, teardown.signal]),
     attemptIceServers: options.attemptIceServers,
+    certificateProbe: options.certificateProbe,
     peerConnectionFactory: (configuration) => {
       const built = peers.length === 0 ? peer : new ScriptedPeer();
       peers.push(built);
@@ -1992,6 +2004,65 @@ test("a re-registration whose socket fails before the server answers is retried"
   await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
   await settleRegistration(sockets, 2);
   expect(await settlementOf(session)).toBe("waiting");
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
+  await settleRegistration(sockets, 3);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(sockets[2].closeCalls).toBe(0);
+});
+
+test("a re-registration whose certificate does not verify ends the wait at once", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    secure: true,
+    certificateProbe: () => Promise.resolve("DEPTH_ZERO_SELF_SIGNED_CERT"),
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.fail();
+      else socket.register();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  const failure = await session.then(
+    () => expect.unreachable("the wait should have failed"),
+    (err: unknown) => err,
+  );
+  expect(failure).toBeInstanceOf(AuthenticationError);
+  expect((failure as Error).message).toBe(SIGNALING_CERTIFICATE_FAILED_MESSAGE);
+  expect(exitCodeForError(failure)).toBe(AUTHENTICATION_FAILED_EXIT_CODE);
+  expect(
+    lines.some((line) => line.includes("trying again until the wait")),
+  ).toBe(false);
+  await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_MAX_DELAY_MS);
+  expect(sockets).toHaveLength(2);
+  expect(sockets.every((socket) => socket.closeCalls === 1)).toBe(true);
+});
+
+test("a re-registration over wss whose certificate verified is retried", async () => {
+  const lines = captureDiagnostics();
+  holdAttemptClock();
+  const { sockets, session } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    secure: true,
+    certificateProbe: () => Promise.resolve(undefined),
+    laterRegistration: (socket, index) => {
+      if (index === 1) socket.fail();
+      else socket.register();
+    },
+  });
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(await settlementOf(session)).toBe("waiting");
+  expect(
+    lines.find((line) =>
+      line.includes("the connection to the coordination server failed"),
+    ),
+  ).toContain("trying again until the wait for the partner ends");
   await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
   await settleRegistration(sockets, 3);
   expect(await settlementOf(session)).toBe("waiting");

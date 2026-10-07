@@ -41,6 +41,7 @@ import type {
   BrokerMessage,
 } from "./brokerClient";
 import type { IceTransportPolicy } from "./iceDiagnostics";
+import type { SignalingCertificateProbe } from "./signalingTls";
 import type {
   RelayCredential,
   RendezvousRole,
@@ -398,6 +399,8 @@ export interface WebRtcPeerOptions {
    * against a scripted broker.
    */
   socketFactory?: (url: string) => WebSocket;
+  /** Forwarded to {@link connectToBroker}, as `socketFactory` is. */
+  certificateProbe?: SignalingCertificateProbe;
 }
 
 /**
@@ -874,6 +877,7 @@ export async function openWebRtcPeerSession(
     signal,
     peerConnectionFactory,
     socketFactory,
+    certificateProbe,
   } = options;
 
   const [inviterId, acceptorId] = await Promise.all([
@@ -965,6 +969,7 @@ export async function openWebRtcPeerSession(
         openTimeoutMs,
         signal,
         socketFactory,
+        certificateProbe,
       });
     if (!reregistration) return await connect();
     // A re-registration follows one that succeeded in this run, so a refusal
@@ -972,6 +977,7 @@ export async function openWebRtcPeerSession(
     // deadline rather than read as the misconfiguration it is on a first
     // registration. The broker holds the id of a socket that vanished without
     // closing until its liveness timeout, so `ID-TAKEN` gets its own window.
+    // A certificate that did not verify is neither, and ends the wait at once.
     let refusedSince: number | undefined;
     let unreachableReported = false;
     let delayMs = ID_TAKEN_RETRY_FIRST_DELAY_MS;

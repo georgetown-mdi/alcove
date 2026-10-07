@@ -53,7 +53,8 @@ export const PARTNER_REFUSED_EXIT_CODE = 76;
 /**
  * The process exit code for an authentication failure: `EX_NOPERM` (77). Held
  * by core's `AuthenticationError` -- the key exchange rejecting the
- * shared secret or the peer, or an SFTP host key other than the pinned one --
+ * shared secret or the peer, an SFTP host key other than the pinned one, or a
+ * coordination-server TLS certificate that did not verify --
  * and set on the refusal for a rotated shared secret this party could not
  * save, after which every later key exchange fails the same way.
  *
