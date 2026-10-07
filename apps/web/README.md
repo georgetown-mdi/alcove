@@ -10,15 +10,16 @@ Most users do not need this: the hosted web app at [https://psi.data-bridge.org]
 2. Install Node.js 26 or later, with npm.
    * On a Mac: install [Homebrew](https://brew.sh/) and run `brew install node`.
    * Elsewhere, see [the Node.js download page](https://nodejs.org/en/download/package-manager/all), and check that `node --version` reports 26 or later: a distribution's own package can be older.
-3. From the repository root, run `npm install . -w packages/core -w apps/web`.
-4. Run `npm run -w packages/core build`.
-5. Start the development server:
+3. From the repository root, run `npm install`.
+4. From the repository root, start the development server:
 
    ```sh
-   npm run -w apps/web dev
+   npm run dev
    ```
 
-6. Visit [http://localhost:3000](http://localhost:3000).
+   This builds `packages/core` and starts the coordination server two browsers connect through, beside the web app. Run from `apps/web` alone, the web app starts without it and no exchange can connect.
+
+5. Visit [http://localhost:3000](http://localhost:3000).
 
 An invitation created on this server carries `localhost` as its address, so it only works on this computer, and the share screen says so. To practice a full exchange, play both parties in two browser windows on the same machine, each with one of the files in [`test_data/`](../../test_data/).
 

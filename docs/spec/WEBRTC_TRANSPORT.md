@@ -232,6 +232,12 @@ names the `port` only when the page's is not the scheme's default. With the
 setting set, the endpoint always names the `port`, the scheme's default
 included, so the port an acceptor dials never depends on its own page.
 
+The console build (`VITE_DEPLOYMENT_PROFILE=console`) resolves no signaling
+address, whatever the setting holds: its server serves no signaling and its
+origin is loopback. It mints no webrtc invitation; a webrtc mint there is
+refused before any token is built, and its SFTP and shared-folder invitations
+name no signaling address.
+
 ### Connection attempts
 
 A CLI party waits for its partner in connection attempts. Each is a fresh

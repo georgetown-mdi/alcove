@@ -1,3 +1,5 @@
+import { isConsoleBuild } from "@utils/clientConfig";
+
 import { ownSignalingAddress } from "./transport/signalingAddress";
 
 import type { InvitationLocation } from "@psi/invitation";
@@ -8,12 +10,15 @@ import type { InvitationLocation } from "@psi/invitation";
  * from the client and throws when `window` is absent rather than return a
  * server-side value. The inviter console's create and save-exchange-file paths
  * both use it so they build the locator identically.
+ *
+ * A console build names no signaling address: its server serves no signaling,
+ * and its own origin is loopback, which a partner cannot reach.
  */
 export function invitationLocation(): InvitationLocation {
   if (typeof window === "undefined")
     throw new Error("invitationLocation must be called in the browser");
   return {
     origin: window.location.origin,
-    signaling: ownSignalingAddress(),
+    signaling: isConsoleBuild() ? undefined : ownSignalingAddress(),
   };
 }

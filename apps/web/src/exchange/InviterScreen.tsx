@@ -19,8 +19,10 @@ import {
 
 import {
   InvitationFileError,
+  NoSignalingAddressError,
   generateInvitation,
   invitationDeclaresRetainedFiles,
+  invitationSignalingAddress,
   webrtcEndpointFromAddress,
 } from "@psi/invitation";
 import {
@@ -752,7 +754,9 @@ export function InviterScreen() {
     dispatch({ type: "manage-offer-started" });
     try {
       const connection = webrtcLocatorFromEndpoint(
-        webrtcEndpointFromAddress(invitationLocation().signaling),
+        webrtcEndpointFromAddress(
+          invitationSignalingAddress(invitationLocation()),
+        ),
       );
       await createManagedExchange(
         buildManagedDeposit(
@@ -1280,6 +1284,14 @@ export function InviterScreen() {
         dispatch({
           type: "mint-failed",
           alert: invitationFileAlert(error.failure),
+        });
+      } else if (error instanceof NoSignalingAddressError) {
+        dispatch({
+          type: "mint-failed",
+          alert: {
+            title: "Could not create the invitation",
+            message: error.message,
+          },
         });
       } else {
         // The tag is read after the class test rather than before it: the read

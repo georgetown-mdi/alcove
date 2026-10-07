@@ -22,8 +22,10 @@ import { MAX_RAW_INVITATION_LENGTH } from "@alcove/core/testing";
 import {
   ACCEPT_ROUTE_PATH,
   InvitationFileError,
+  NoSignalingAddressError,
   deepLinkFor,
   generateInvitation,
+  invitationSignalingAddress,
   invitationWebrtcEndpoint,
   tokenFromInput,
   webrtcEndpointFromAddress,
@@ -34,14 +36,22 @@ import { writeOwnRelaySetting } from "../../../src/psi/transport/ownRelaySetting
 import type { LinkageTerms, Metadata } from "@alcove/core";
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
 
+const signaling = {
+  host: "example.org",
+  port: 8443,
+  path: "/api/",
+  secure: true,
+};
+
 const location: InvitationLocation = {
   origin: "https://example.org:8443",
-  signaling: {
-    host: "example.org",
-    port: 8443,
-    path: "/api/",
-    secure: true,
-  },
+  signaling,
+};
+
+/** A console's location: its loopback origin and no signaling address. */
+const consoleLocation: InvitationLocation = {
+  origin: "http://127.0.0.1:3000",
+  signaling: undefined,
 };
 
 // A CSV containing every default linkage column, so the file-derived terms keep all
@@ -126,6 +136,41 @@ describe("generateInvitation", () => {
       port: 8443,
       path: "/api/",
     });
+  });
+
+  describe("with no signaling address", () => {
+    test("refuses a webrtc invitation", async () => {
+      await expect(
+        generateInvitation({
+          inviterName: "County Health Dept",
+          file: csvStream(),
+          location: consoleLocation,
+        }),
+      ).rejects.toBeInstanceOf(NoSignalingAddressError);
+    });
+
+    test("tells the operator which transports to use instead", () => {
+      expect(() => invitationSignalingAddress(consoleLocation)).toThrow(
+        "Run the exchange over SFTP or a shared folder, or create the invitation in the Alcove web app.",
+      );
+    });
+
+    test.each([
+      { channel: "sftp", host: "sftp.example.org", path: "/exchanges/drop" },
+      { channel: "filedrop", path: "/mnt/share/drop" },
+    ] as const)(
+      "still mints a $channel invitation, which names no signaling address",
+      async (connectionEndpoint) => {
+        const { encoded } = await generateInvitation({
+          inviterName: "County Health Dept",
+          file: csvStream(),
+          location: consoleLocation,
+          connectionEndpoint,
+        });
+        const token = await decodeInvitation(encoded);
+        expect(token.connectionEndpoint).toStrictEqual(connectionEndpoint);
+      },
+    );
   });
 
   describe("with this browser's own relay set", () => {
@@ -1540,7 +1585,7 @@ describe("webrtcEndpointFromAddress", () => {
 describe("invitationWebrtcEndpoint", () => {
   test("with no own relay, is this app's signaling locator alone", () => {
     expect(invitationWebrtcEndpoint(location, undefined)).toStrictEqual(
-      webrtcEndpointFromAddress(location.signaling),
+      webrtcEndpointFromAddress(signaling),
     );
   });
 
@@ -1550,7 +1595,7 @@ describe("invitationWebrtcEndpoint", () => {
       stun: ["stun:relay.example.org:3478"],
     });
     expect(endpoint).toStrictEqual({
-      ...webrtcEndpointFromAddress(location.signaling),
+      ...webrtcEndpointFromAddress(signaling),
       relay: {
         turn: ["turns:relay.example.org:443?transport=tcp"],
         stun: ["stun:relay.example.org:3478"],

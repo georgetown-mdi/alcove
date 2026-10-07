@@ -238,7 +238,7 @@ npm run typecheck
 npm run test:integration -w apps/cli                          # in-process SFTP
 ALCOVE_SFTP_BACKEND=native npm run test:integration -w apps/cli   # native sshd
 npm run test:integration:webrtc -w apps/cli                   # loopback WebRTC transport
-npm run dev -w apps/web            # web dev server on localhost:3000
+npm run dev                        # web dev server on localhost:3000, with core's watcher and the signaling broker
 ```
 
 With a `GH_TOKEN` set in `.env` (see Prerequisites) a session can push feature
