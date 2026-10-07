@@ -3,7 +3,7 @@
 
 variable "aws_account_id" {
   type        = string
-  description = "The AWS account that holds both environments. The AWS provider refuses to run against any other account."
+  description = "The AWS account that holds the state bucket. The AWS provider refuses to run against any other account."
 
   validation {
     condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
@@ -13,40 +13,7 @@ variable "aws_account_id" {
 
 variable "aws_region" {
   type        = string
-  description = "The region both environments run in, as their platform ARN states it."
-}
-
-variable "application_name" {
-  type        = string
-  description = "The Elastic Beanstalk application both environments belong to: the deploy workflow's EB_APPLICATION_NAME variable."
-}
-
-variable "platform_arn" {
-  type        = string
-  description = "The platform version ARN both environments run, as the committed configuration files state it. Changing it is a platform update."
-}
-
-variable "vpc_id" {
-  type        = string
-  description = "The VPC the environments and the origin security group are in (aws:ec2:vpc VPCId)."
-}
-
-variable "subnet_id" {
-  type        = string
-  description = "The public subnet each single instance is launched in (aws:ec2:vpc Subnets)."
-}
-
-variable "notification_endpoint" {
-  type        = string
-  description = "The address environment health notifications are sent to (aws:elasticbeanstalk:sns:topics Notification Endpoint)."
-}
-
-variable "origin_security_group" {
-  type = object({
-    name        = string
-    description = string
-  })
-  description = "The one security group both instances attach. When adopting a live group, name and description must be its own: changing either replaces the group."
+  description = "The region the AWS provider runs in."
 }
 
 variable "cloudflare_zone_id" {
@@ -54,22 +21,13 @@ variable "cloudflare_zone_id" {
   description = "The Cloudflare zone both public names are in. Its settings apply to every name in the zone, not only these two."
 }
 
-variable "environments" {
-  type = map(object({
-    name        = string
-    description = optional(string)
-    public_name = string
-  }))
-  description = <<-EOT
-    One entry per environment, keyed production and staging like the committed
-    configuration files. name is the deploy workflow's EB_ENVIRONMENT_NAME for
-    that environment; public_name is the fully qualified name Cloudflare serves
-    it on.
-  EOT
+variable "public_names" {
+  type        = map(string)
+  description = "The fully qualified name Cloudflare serves each deployment on, keyed production and staging."
 
   validation {
-    condition     = toset(keys(var.environments)) == toset(["production", "staging"])
-    error_message = "environments must have exactly the keys production and staging."
+    condition     = toset(keys(var.public_names)) == toset(["production", "staging"])
+    error_message = "public_names must have exactly the keys production and staging."
   }
 }
 
@@ -81,21 +39,4 @@ variable "cloudflare_account_id" {
 variable "pages_project_name" {
   type        = string
   description = "The Cloudflare Pages project the hosted site is uploaded to: the deploy workflow's CLOUDFLARE_PAGES_PROJECT variable."
-}
-
-variable "hosted_origin" {
-  type = map(string)
-  default = {
-    production = "elastic_beanstalk"
-    staging    = "elastic_beanstalk"
-  }
-  description = "What each public name points at, keyed like environments: elastic_beanstalk, the environment's name, or pages, the Pages project's pages.dev name for production and its staging branch alias for staging. The default leaves the live records as they are."
-
-  validation {
-    condition = (
-      toset(keys(var.hosted_origin)) == toset(keys(var.environments))
-      && alltrue([for v in values(var.hosted_origin) : contains(["elastic_beanstalk", "pages"], v)])
-    )
-    error_message = "hosted_origin needs one entry per environment, each elastic_beanstalk or pages."
-  }
 }

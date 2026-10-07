@@ -55,9 +55,6 @@ logs.us-west-2.amazonaws.com
 monitoring.us-west-2.amazonaws.com
 cloudformation.us-west-2.amazonaws.com
 catalog.marketplace.us-west-2.amazonaws.com
-# infra/hosted still manages the Elastic Beanstalk environments; this line goes
-# when they are retired.
-elasticbeanstalk.us-west-2.amazonaws.com
 ssm.us-west-2.amazonaws.com
 route53.amazonaws.com
 

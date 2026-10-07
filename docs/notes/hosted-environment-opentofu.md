@@ -9,15 +9,13 @@ confirmed through a rebuild of each environment, 2026-09-23. This note
 records how the OpenTofu root under
 [`infra/hosted/`](../../infra/hosted/README.md) holds the inbound rules of the
 project's own Elastic Beanstalk environments, and the two alternatives weighed
-against it. The operational steps -- adopting the live resources, applying,
-reading a plan for drift, and the first run -- are in
-[`infra/hosted/README.md`](../../infra/hosted/README.md). See
-[docs/notes/README.md](README.md)._
+against it. See [docs/notes/README.md](README.md)._
 
 _The hosted web app is served from Cloudflare Pages
-([docs/DEPLOYMENT.md](../DEPLOYMENT.md#the-projects-hosted-web-deployment)),
-and the Elastic Beanstalk environments and security group this note describes
-are retired by a change to the root of their own._
+([docs/DEPLOYMENT.md](../DEPLOYMENT.md#the-projects-hosted-web-deployment)).
+The environments and the security group this note describes are no longer in
+the root or the account; the note stays as the record of the decision taken
+while they ran._
 
 ## The posture to hold
 
