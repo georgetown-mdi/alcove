@@ -6,6 +6,7 @@ import {
   MAX_NAME_LENGTH,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMEOUT_SECONDS,
+  MAX_TIMER_MS,
   MAX_TOKEN_MAX_AGE_DAYS,
   disclosedColumnNames,
   parseSftpUrl,
@@ -811,6 +812,21 @@ describe("the sftp intent arm", () => {
         expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(false);
   });
 
+  test("pollIntervalMs is admitted at core's timer ceiling and refused above it", () => {
+    for (const make of [validSftpIntent, validIntent]) {
+      expect(
+        jobExchangeIntentSchema.safeParse(
+          make({ options: { pollIntervalMs: MAX_TIMER_MS } }),
+        ).success,
+      ).toBe(true);
+      expect(
+        jobExchangeIntentSchema.safeParse(
+          make({ options: { pollIntervalMs: MAX_TIMER_MS + 1 } }),
+        ).success,
+      ).toBe(false);
+    }
+  });
+
   test("connectionPerPoll is admitted on sftp and refused on filedrop", () => {
     expect(
       jobExchangeIntentSchema.safeParse(
@@ -1584,6 +1600,23 @@ describe("jobZeroSetupIntentSchema is injection-closed and strict", () => {
         validZeroSetupSftpIntent({ options: { pollIntervalMs: 0 } }),
       ).success,
     ).toBe(false);
+  });
+});
+
+describe("the zero-setup arms bound the poll interval at core's timer ceiling", () => {
+  test("a poll interval at the ceiling is admitted and one past it is refused", () => {
+    for (const make of [validZeroSetupIntent, validZeroSetupSftpIntent]) {
+      expect(
+        jobZeroSetupIntentSchema.safeParse(
+          make({ options: { pollIntervalMs: MAX_TIMER_MS } }),
+        ).success,
+      ).toBe(true);
+      expect(
+        jobZeroSetupIntentSchema.safeParse(
+          make({ options: { pollIntervalMs: MAX_TIMER_MS + 1 } }),
+        ).success,
+      ).toBe(false);
+    }
   });
 });
 
