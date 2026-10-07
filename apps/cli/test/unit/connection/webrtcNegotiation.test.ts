@@ -2423,15 +2423,11 @@ test("an inviter offered a new connection after answering answers it in a new at
   const { socket, sockets, peers, session, acceptorId } = await startRendezvous(
     {
       role: "inviter",
-      attemptIceServers: (waitedMs, reason) => {
+      attemptIceServers: (reason) => {
         reasons.push(reason);
         return Promise.resolve({
           iceServers: ATTEMPT_RELAY,
-          notice: relayCredentialAttemptNotice(
-            ATTEMPT_CREDENTIAL,
-            waitedMs,
-            reason,
-          ),
+          notice: relayCredentialAttemptNotice(ATTEMPT_CREDENTIAL, reason),
         });
       },
     },
@@ -2460,7 +2456,7 @@ test("an inviter offered a new connection after answering answers it in a new at
   channel.open();
   expect((await session).channel).toBe(channel);
 
-  expect(reasons).toEqual(["partner-reconnected"]);
+  expect(reasons).toEqual([{ kind: "partner-reconnected" }]);
   expect(
     lines.some((line) =>
       line.includes("the exchange partner started a new connection"),
@@ -2482,7 +2478,8 @@ test("a later attempt of an inviter whose partner never offered names the wait",
   expect(
     lines.some((line) =>
       line.includes(
-        "the exchange partner has not connected; starting connection attempt 2",
+        "the exchange partner has not connected within 1 minute; starting " +
+          "connection attempt 2",
       ),
     ),
   ).toBe(true);
@@ -2569,17 +2566,14 @@ const ATTEMPT_NOTICE = "a new connection attempt starts with a new relay";
 
 test("each attempt after the first is built from freshly resolved ICE servers", async () => {
   const lines = captureDiagnostics();
-  const waits: Array<number> = [];
-  const attemptIceServers = vi.fn(
-    (waitedMs: number, reason: AttemptStartReason) => {
-      expect(reason).toBe("partner-not-connected");
-      waits.push(waitedMs);
-      return Promise.resolve({
-        iceServers: ATTEMPT_RELAY,
-        notice: ATTEMPT_NOTICE,
-      });
-    },
-  );
+  const reasons: Array<AttemptStartReason> = [];
+  const attemptIceServers = vi.fn((reason: AttemptStartReason) => {
+    reasons.push(reason);
+    return Promise.resolve({
+      iceServers: ATTEMPT_RELAY,
+      notice: ATTEMPT_NOTICE,
+    });
+  });
   holdAttemptClock();
   const { sockets, configurations } = await startRendezvous({
     role: "acceptor",
@@ -2596,6 +2590,13 @@ test("each attempt after the first is built from freshly resolved ICE servers", 
   expect(
     configurations.map((configuration) => configuration.iceServers),
   ).toEqual([[{ urls: "stun:127.0.0.1:3478" }], ATTEMPT_RELAY, ATTEMPT_RELAY]);
+  expect(reasons).toEqual([
+    { kind: "partner-not-connected", waitedMs: expect.any(Number) },
+    { kind: "partner-not-connected", waitedMs: expect.any(Number) },
+  ]);
+  const waits = reasons.map((reason) =>
+    reason.kind === "partner-not-connected" ? reason.waitedMs : 0,
+  );
   expect(waits[0]).toBeGreaterThanOrEqual(ONE_MINUTE_MS);
   expect(waits[1]).toBeGreaterThanOrEqual(2 * ONE_MINUTE_MS);
   expect(lines.filter((line) => line.includes(ATTEMPT_NOTICE))).toHaveLength(2);
@@ -2635,4 +2636,71 @@ test("an attempt whose ICE servers cannot be resolved fails the wait", async () 
     /could not be started with a fresh relay credential/,
   );
   expect(sockets).toHaveLength(1);
+});
+
+/** Resolve each later attempt's servers with the real notice, recording why it started. */
+function recordingAttemptIceServers(
+  reasons: Array<AttemptStartReason>,
+): AttemptIceServers {
+  return (reason) => {
+    reasons.push(reason);
+    return Promise.resolve({
+      iceServers: ATTEMPT_RELAY,
+      notice: relayCredentialAttemptNotice(ATTEMPT_CREDENTIAL, reason),
+    });
+  };
+}
+
+test("an attempt started by a broker drop under a minute in names the drop, not a wait", async () => {
+  const lines = captureDiagnostics();
+  const reasons: Array<AttemptStartReason> = [];
+  holdAttemptClock();
+  const { socket, sockets } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    attemptIceServers: recordingAttemptIceServers(reasons),
+  });
+  await vi.advanceTimersByTimeAsync(10_000);
+  socket.drop();
+  await settleRegistration(sockets, 2);
+  expect(reasons).toEqual([{ kind: "signaling-dropped" }]);
+  expect(
+    lines.filter((line) => line.includes("a new connection attempt starts")),
+  ).toEqual([
+    "the connection to the coordination server was lost, so a new " +
+      "connection attempt starts with a new relay credential that expires " +
+      "at 2026-01-01T01:00:00.000Z",
+  ]);
+  expect(lines.some((line) => line.includes("has not connected"))).toBe(false);
+});
+
+test("an attempt started by an unopened channel under a minute in names the channel, not a wait", async () => {
+  const lines = captureDiagnostics();
+  const reasons: Array<AttemptStartReason> = [];
+  holdAttemptClock();
+  const { socket, sockets, peers, inviterId } = await startRendezvous({
+    role: "acceptor",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    channelOpenTimeoutMs: 10_000,
+    attemptIceServers: recordingAttemptIceServers(reasons),
+  });
+  answer(socket, inviterId, offeredConnectionIds(socket)[0]);
+  await waitFor(
+    () => peers[0].remoteDescriptions.length === 1,
+    NEGOTIATION_POLL,
+  );
+  await vi.advanceTimersByTimeAsync(11_000);
+  await settleRegistration(sockets, 2);
+  expect(reasons).toEqual([{ kind: "channel-not-opened" }]);
+  expect(
+    lines.some((line) =>
+      line.startsWith(
+        "the connection to the exchange partner did not open, so a new " +
+          "connection attempt starts with a new relay credential",
+      ),
+    ),
+  ).toBe(true);
+  expect(lines.some((line) => line.includes("has not connected"))).toBe(false);
 });
