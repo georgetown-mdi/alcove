@@ -47,9 +47,9 @@ export const GATING_WORKFLOWS = [
   `${WORKFLOW_DIR}/cli_build_and_test.yaml`,
   `${WORKFLOW_DIR}/codeql.yaml`,
   `${WORKFLOW_DIR}/dependency_review.yaml`,
-  `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
   `${WORKFLOW_DIR}/native_alpine.yaml`,
   `${WORKFLOW_DIR}/static_checks.yaml`,
+  `${WORKFLOW_DIR}/web_build_and_test.yaml`,
 ];
 
 /**
@@ -60,7 +60,7 @@ export const GATING_WORKFLOWS = [
  */
 export const PUSH_EXEMPT_WORKFLOWS = [
   `${WORKFLOW_DIR}/dependency_review.yaml`,
-  `${WORKFLOW_DIR}/eb_build_and_test.yaml`,
+  `${WORKFLOW_DIR}/web_build_and_test.yaml`,
 ];
 
 /**

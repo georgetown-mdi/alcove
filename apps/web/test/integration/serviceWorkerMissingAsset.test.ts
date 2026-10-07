@@ -13,7 +13,7 @@ import type { Browser } from "playwright";
 import type { Server } from "node:http";
 
 // The integration project rather than the unit one: this launches a real
-// Chromium, which CI installs before this project runs (eb_build_and_test.yaml).
+// Chromium, which CI installs before this project runs (web_build_and_test.yaml).
 //
 // The origin here behaves as a static host with a single-page fallback does:
 // every path it has no file for answers 200 with the app document as

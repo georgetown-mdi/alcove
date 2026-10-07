@@ -3,14 +3,14 @@ name: Deploy to Cloudflare Pages
 # Uploads the hosted static build (apps/web/dist/hosted) to the Cloudflare
 # Pages project by direct upload. A push to main is the production deployment;
 # a push to staging is a preview deployment on the `staging` branch alias.
-# The two secrets and two variables it reads, and the cutover order:
+# The two secrets and two variables it reads:
 # docs/DEPLOYMENT.md, "Deploying to Cloudflare Pages".
 on:
   push:
     branches: [main, staging]
     # Deploy-affecting sources only: apps/web/test/** is left out so a
     # test-only push does not redeploy, while the PR gate
-    # (eb_build_and_test.yaml) globs apps/web/**. That every source the build
+    # (web_build_and_test.yaml) globs apps/web/**. That every source the build
     # reads matches this list is held by scripts/check-deploy-trigger-graph.mjs.
     paths:
       - "lib/**"
@@ -59,7 +59,7 @@ jobs:
   # nothing deploys.
   build-and-test:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
-    uses: ./.github/workflows/eb_build_and_test.yaml
+    uses: ./.github/workflows/web_build_and_test.yaml
 
   # The only job given the Cloudflare credentials. It checks out nothing and
   # runs no repository code: it downloads the site the gate built and tested,

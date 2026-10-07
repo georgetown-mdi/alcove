@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   BUILD_COMMAND,
   BUILD_OUTPUT,
+  DEPLOY_ACTION,
   DEPLOY_WORKFLOW,
   RECORDER_MODULE,
   RECORD_ENV,
@@ -14,7 +15,9 @@ import {
   classifyGraph,
   collectGraph,
   compileFilter,
+  deployCredentialFindings,
   moduleIdToPath,
+  parsedWorkflows,
   readTriggerPaths,
   toRepoPath,
   trackedFiles,
@@ -33,7 +36,7 @@ import { readFileSync } from "node:fs";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
 const readRepo = (path) => readFileSync(resolve(repoRoot, path), "utf8");
-const GATE_WORKFLOW = ".github/workflows/eb_build_and_test.yaml";
+const GATE_WORKFLOW = ".github/workflows/web_build_and_test.yaml";
 const gateScope = () =>
   pathScope(workflowDocument(repoRoot, GATE_WORKFLOW), GATE_WORKFLOW);
 
@@ -107,7 +110,7 @@ describe("compiling a path filter", () => {
   it("excludes an extension under a prefix a negated /**/*.ext pattern names", () => {
     const filter = compileFilter(["apps/web/**", "!apps/web/**/*.md"]);
     expect(filter.matches("apps/web/README.md")).toBe(false);
-    expect(filter.matches("apps/web/deploy/aws_eb/README.md")).toBe(false);
+    expect(filter.matches("apps/web/hosted/docs/README.md")).toBe(false);
     expect(filter.matches("apps/web/src/main.tsx")).toBe(true);
     // Unmatched by the earlier positive pattern in the first place.
     expect(filter.matches("packages/core/README.md")).toBe(false);
@@ -128,7 +131,7 @@ describe("compiling a path filter", () => {
 
   it("finds the workflows that call the path-scope action", () => {
     expect(scopedWorkflows.map(([path]) => path)).toContain(
-      ".github/workflows/eb_build_and_test.yaml",
+      ".github/workflows/web_build_and_test.yaml",
     );
   });
 
@@ -147,7 +150,7 @@ describe("compiling a path filter", () => {
     },
   );
 
-  it("compiles every pattern eb_build_and_test.yaml's path scope declares", () => {
+  it("compiles every pattern web_build_and_test.yaml's path scope declares", () => {
     const filter = compileFilter(gateScope());
     expect(filter.patterns.length).toBeGreaterThan(0);
   });
@@ -163,7 +166,7 @@ describe("compiling a path filter", () => {
 });
 
 describe("holding the markdown negation against what the gate reads", () => {
-  // eb_build_and_test.yaml's path scope negates markdown under each
+  // web_build_and_test.yaml's path scope negates markdown under each
   // positive prefix on the claim that no suite this gate runs reads one as a
   // fixture or input. This is that claim as a check: no tracked non-markdown
   // file under a tree the gate builds or tests may name a negated markdown
@@ -175,7 +178,7 @@ describe("holding the markdown negation against what the gate reads", () => {
     .map((pattern) => /^!(.+)\/\*\*\/\*\.md$/.exec(pattern)?.[1])
     .filter((prefix) => prefix !== undefined);
 
-  // The cross-runtime suite (matrix.build-cli in eb_build_and_test.yaml) builds
+  // The cross-runtime suite (matrix.build-cli in web_build_and_test.yaml) builds
   // apps/cli even though the filter carries no apps/cli entry of its own.
   const builtPrefixes = [
     ...gateFilterPaths
@@ -462,5 +465,93 @@ describe("wiring", () => {
   it("triggers that workflow on a change to the deploy filter itself", () => {
     const filter = compileFilter(gateScope());
     expect(filter.matches(DEPLOY_WORKFLOW)).toBe(true);
+  });
+});
+
+describe("the single-deploy rule", () => {
+  const uploadJob = (overrides = {}) => ({
+    "runs-on": "ubuntu-latest",
+    environment: "Production",
+    steps: [
+      { uses: "actions/download-artifact@v8" },
+      {
+        uses: `${DEPLOY_ACTION}abc`,
+        with: { apiToken: "${{ secrets.CLOUDFLARE_API_TOKEN }}" },
+      },
+    ],
+    ...overrides,
+  });
+  const deployWorkflow = (job = uploadJob()) => ({
+    path: DEPLOY_WORKFLOW,
+    document: { jobs: { gate: { uses: "./gate.yaml" }, deploy: job } },
+  });
+  const other = (jobs, extra = {}) => ({
+    path: ".github/workflows/other.yaml",
+    document: { jobs, ...extra },
+  });
+
+  it("holds on the real tree", () => {
+    expect(deployCredentialFindings(parsedWorkflows(repoRoot))).toEqual([]);
+  });
+
+  it("passes one credential-free upload job in the deploy workflow", () => {
+    expect(deployCredentialFindings([deployWorkflow()])).toEqual([]);
+  });
+
+  it.each([
+    ["the upload action", { steps: [{ uses: `${DEPLOY_ACTION}abc` }] }],
+    [
+      "a Cloudflare secret",
+      { steps: [{ run: "echo", env: { T: "${{ secrets.CLOUDFLARE_X }}" } }] },
+    ],
+    ["a GitHub environment", { environment: "Staging", steps: [] }],
+  ])("refuses a second job holding %s", (_label, job) => {
+    const findings = deployCredentialFindings([
+      deployWorkflow(),
+      other({ leak: job }),
+    ]);
+    expect(findings.join("\n")).toMatch(/Exactly one job.*found 2/);
+  });
+
+  it("refuses an upload job outside the deploy workflow", () => {
+    expect(
+      deployCredentialFindings([other({ deploy: uploadJob() })]).join("\n"),
+    ).toMatch(/Exactly one job.*other\.yaml job deploy/);
+  });
+
+  it.each([
+    ["a run step", { run: "npm ci" }, /has a run step/],
+    ["a checkout", { uses: "actions/checkout@v7" }, /checks out/],
+    ["a local action", { uses: "./.github/actions/setup" }, /local action/],
+  ])("refuses the upload job carrying %s", (_label, step, message) => {
+    const job = uploadJob();
+    job.steps = [step, ...job.steps];
+    expect(deployCredentialFindings([deployWorkflow(job)]).join("\n")).toMatch(
+      message,
+    );
+  });
+
+  it("refuses the upload job calling a workflow", () => {
+    expect(
+      deployCredentialFindings([
+        deployWorkflow({ uses: "./x.yaml", environment: "Production" }),
+      ]).join("\n"),
+    ).toMatch(/calls \.\/x\.yaml/);
+  });
+
+  it("refuses secrets: inherit, toJSON(secrets) and a workflow-level secret", () => {
+    const findings = deployCredentialFindings([
+      deployWorkflow(),
+      other(
+        {
+          a: { uses: "./x.yaml", secrets: "inherit" },
+          b: { steps: [{ run: "echo ${{ toJSON(secrets) }}" }] },
+        },
+        { env: { T: "${{ secrets.CLOUDFLARE_API_TOKEN }}" } },
+      ),
+    ]).join("\n");
+    expect(findings).toMatch(/secrets: inherit/);
+    expect(findings).toMatch(/toJSON\(secrets\)/);
+    expect(findings).toMatch(/workflow-level env/);
   });
 });

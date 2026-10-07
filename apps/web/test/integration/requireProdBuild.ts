@@ -13,7 +13,7 @@ import {
 // server. The suites that drive the console server gate on hasConsoleBuild and
 // those that serve the hosted static site on hasHostedBuild, so without this
 // guard a build-free run reports a PASS with the built surface unexercised. CI
-// builds both first (eb_build_and_test.yaml), so this only fires on a local run
+// builds both first (web_build_and_test.yaml), so this only fires on a local run
 // against a fresh clone.
 //
 // The opt-out restores the skip for a dev-server-only run. The guard cannot

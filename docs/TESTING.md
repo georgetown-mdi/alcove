@@ -384,7 +384,7 @@ forwards to whichever broker started with it.
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server
 ```
 
-It runs in CI as part of the web build-and-test gate (`eb_build_and_test.yaml`),
+It runs in CI as part of the web build-and-test gate (`web_build_and_test.yaml`),
 which provisions Chromium on the runner; run it locally too when changing the web
 PSI exchange, the cross-implementation vectors, or a web UI component it covers
 (such as the accept consent gate).
@@ -485,7 +485,7 @@ Everything else is each runtime's own: the CLI's argv, configuration, key file,
 PSI backend and result CSV; the web app's acceptor assembly, its invitation creation
 and inviter spec assembly, and its browser WASM PSI engine.
 
-It runs on both `cli_build_and_test.yaml` and `eb_build_and_test.yaml`. That is
+It runs on both `cli_build_and_test.yaml` and `web_build_and_test.yaml`. That is
 by design rather than redundant: the drift it exists to catch can land on
 either runtime, and each workflow's path scope sees only its own.
 

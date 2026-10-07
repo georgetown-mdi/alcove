@@ -1,8 +1,8 @@
 name: CLI Build and Test
 
 # Pull-request gate for the CLI (apps/cli), kept separate from
-# eb_build_and_test.yaml -- which builds and tests only the web app for its
-# Elastic Beanstalk deploy. It catches a dependency bump breaking the ssh2
+# web_build_and_test.yaml -- which builds and tests only the web app for its
+# Cloudflare Pages deploy. It catches a dependency bump breaking the ssh2
 # SFTPWrapper coupling the SFTP adapter relies on (see
 # docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack"); the same
 # integration suite also runs in release.yaml as the ship gate before publish.
@@ -134,7 +134,7 @@ jobs:
           # may import apps/web/src, but the drift it catches lands as readily
           # on this side of the wire, so it runs on this workflow's path scope
           # as well as on the web app's own
-          # (.github/workflows/eb_build_and_test.yaml). It stands up no server
+          # (.github/workflows/web_build_and_test.yaml). It stands up no server
           # and no browser, and it spawns the CLI from apps/cli/dist
           # (apps/web/test/interop/cliParty.ts), so this leg builds it.
           - suite: cross-runtime interop

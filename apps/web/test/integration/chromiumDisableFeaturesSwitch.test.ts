@@ -4,7 +4,7 @@ import { chromium } from "playwright";
 import viteConfig from "../../vite.config.ts";
 
 // The integration project rather than the unit one: every case here launches a
-// real Chromium, and CI installs the browser (eb_build_and_test.yaml) before
+// real Chromium, and CI installs the browser (web_build_and_test.yaml) before
 // this project runs and after the unit project has finished. A case moved back
 // to unit would have no browser to launch on the automated gate.
 

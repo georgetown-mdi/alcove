@@ -1,4 +1,4 @@
-name: Build and Test for Elastic Beanstalk
+name: Build and Test the Web App
 
 # Yoinked from here:
 # https://blog.danskingdom.com/Multiple-ways-to-setup-your-CI-CD-pipelines-in-GitHub-Actions/#approach-5-deploy-workflow-includes-build-workflow-and-uses-template-for-deployments-include-approach-with-reusable-workflows
@@ -34,7 +34,7 @@ on:
 # off pull_request), so cancel-in-progress is inert there and never cancels a
 # deploy; on a PR, head_ref groups the PR's runs so a newer commit supersedes.
 concurrency:
-  group: eb-build-and-test-${{ github.head_ref || github.run_id }}
+  group: web-build-and-test-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 # Least privilege: this build/test gate only needs to read the repo.
@@ -92,7 +92,7 @@ jobs:
             packages/testkit/**
             .github/actions/setup/**
             .github/actions/path-scope/**
-            .github/workflows/eb_build_and_test.yaml
+            .github/workflows/web_build_and_test.yaml
             .github/workflows/pages_deploy.yaml
             !lib/**/*.md
             !apps/web/**/*.md
@@ -105,7 +105,7 @@ jobs:
   # The deploy artifact's producer: the hosted static site, `_headers`
   # included, as pages_deploy.yaml uploads it. A job of its own rather than a
   # leg of the suite matrix below because it carries the workflow_call output
-  # the deploy workflows read, and because the matrix legs run in parallel with
+  # the deploy workflow reads, and because the matrix legs run in parallel with
   # it rather than behind it.
   #
   # The upload does not wait on the suite legs, so an artifact exists for a sha

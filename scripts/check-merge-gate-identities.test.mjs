@@ -567,7 +567,7 @@ ${push}jobs:
   it("names only gating workflows as exempt from the push trigger", () => {
     expect(PUSH_EXEMPT_WORKFLOWS).toEqual([
       ".github/workflows/dependency_review.yaml",
-      ".github/workflows/eb_build_and_test.yaml",
+      ".github/workflows/web_build_and_test.yaml",
     ]);
     for (const file of PUSH_EXEMPT_WORKFLOWS) {
       expect(GATING_WORKFLOWS).toContain(file);
@@ -816,9 +816,9 @@ describe("the real repository tree", () => {
       ".github/workflows/cli_build_and_test.yaml",
       ".github/workflows/codeql.yaml",
       ".github/workflows/dependency_review.yaml",
-      ".github/workflows/eb_build_and_test.yaml",
       ".github/workflows/native_alpine.yaml",
       ".github/workflows/static_checks.yaml",
+      ".github/workflows/web_build_and_test.yaml",
     ]);
   });
 
@@ -827,7 +827,7 @@ describe("the real repository tree", () => {
   // would hold the requirement to the second declarer as well.
   it.each([
     ["CLI Build and Test", ".github/workflows/cli_build_and_test.yaml"],
-    ["Web Build and Test", ".github/workflows/eb_build_and_test.yaml"],
+    ["Web Build and Test", ".github/workflows/web_build_and_test.yaml"],
   ])("declares the %s job in %s alone", (name, file) => {
     expect(workflowJobIndex(repoRoot).literal.get(name)).toEqual([file]);
   });
@@ -853,7 +853,7 @@ describe("the real repository tree", () => {
     );
     expect(output).toContain("neither GH_TOKEN nor GITHUB_TOKEN is set");
     expect(output).toContain(
-      "Gating-workflow trigger rule passed: .github/workflows/cli_build_and_test.yaml, .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml declare no pull_request path filter, and all but .github/workflows/dependency_review.yaml, .github/workflows/eb_build_and_test.yaml run on push to staging",
+      "Gating-workflow trigger rule passed: .github/workflows/cli_build_and_test.yaml, .github/workflows/codeql.yaml, .github/workflows/dependency_review.yaml, .github/workflows/native_alpine.yaml, .github/workflows/static_checks.yaml, .github/workflows/web_build_and_test.yaml declare no pull_request path filter, and all but .github/workflows/dependency_review.yaml, .github/workflows/web_build_and_test.yaml run on push to staging",
     );
     expect(output).not.toContain("Merge gate identities check passed");
   });

@@ -35,7 +35,7 @@
 # `*.compute.amazonaws.com` -- the public DNS name of every AWS customer's EC2
 # instance -- and so re-open by name exactly the shared-tenant channel the IP
 # allowlist cannot close. Each service endpoint is named instead. The region is
-# us-west-2, matching infra/hosted and apps/web/deploy/aws_eb.
+# us-west-2, matching infra/hosted.
 #
 # Every hostname down to route53 below is what `aws <service> <op> --region
 # us-west-2 --debug` resolved, not what the service is called: the CLI puts
@@ -55,7 +55,6 @@ logs.us-west-2.amazonaws.com
 monitoring.us-west-2.amazonaws.com
 cloudformation.us-west-2.amazonaws.com
 catalog.marketplace.us-west-2.amazonaws.com
-elasticbeanstalk.us-west-2.amazonaws.com
 ssm.us-west-2.amazonaws.com
 route53.amazonaws.com
 
