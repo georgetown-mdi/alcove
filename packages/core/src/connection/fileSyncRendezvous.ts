@@ -861,17 +861,20 @@ export class FileSyncRendezvous {
             break;
           }
         } catch (err) {
-          // A close() aborts the read with ConnectionClosedError (exit 69).
           if (deps.signal().aborted) throw err;
-          // A refusal of the hello itself is terminal (I5b) unless the
-          // operator forced the sweep and the refusal is one the force flag
-          // clears; a stalled read stays terminal either way.
+          // Terminal unless the force flag clears this refusal.
           const reason = unreadableHelloReason(err);
           if (
             err instanceof UsageError &&
             (reason === undefined || !deps.options().forceRetainSweep)
-          )
+          ) {
+            if (reason !== undefined)
+              err.message +=
+                ` Peer hello ${hello.name} could not be read, so retain ` +
+                "mode cannot be ruled out. Re-run with --force-retain-sweep " +
+                "to delete it anyway.";
             throw err;
+          }
           // Sticky: a later hello reading retain_files=false does not clear
           // it, since this one could be a retain hello.
           unreadableHello = {

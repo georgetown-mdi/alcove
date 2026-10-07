@@ -3248,6 +3248,11 @@ for (const hello of UNREADABLE_HELLOS) {
   test(`synchronize() --sweep-exchange-files: still refuses a peer hello that is ${hello.kind} without --force-retain-sweep`, async () => {
     const run = await sweepUnreadableHello(hello.body, false);
     expect(run.err).toBeInstanceOf(hello.bareError);
+    expect((run.err as Error).message).toContain(
+      `Peer hello ${run.peerHelloName} could not be read, so retain mode ` +
+        "cannot be ruled out. Re-run with --force-retain-sweep to delete it " +
+        "anyway.",
+    );
     expect(run.deleted).toHaveLength(0);
     expect(run.files.has(`/test/${run.peerHelloName}`)).toBe(true);
     expect(run.files.has(`/test/${run.staleLock}`)).toBe(true);
