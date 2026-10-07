@@ -14,7 +14,7 @@ import type { ConnectionConfig, PresentedHostKey } from "@alcove/core";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { persistHostKeyFingerprint } from "./config";
 import { exitCodeForError, withExitCode } from "./util/exit";
-import { logFileInUse } from "./util/logging";
+import { logFileSeparateFromStderr } from "./util/logging";
 import { promptConfirm, writePromptLine } from "./util/prompt";
 
 /**
@@ -265,7 +265,7 @@ export async function establishHostKeyTrust(
   // terminal/log (the same treatment fileSyncConnection's verifiers give it).
   // The fingerprint is base64. The question is answered against this line, so
   // it goes where the question is asked whatever the log level and sink; a
-  // `--log-file` also gets a copy.
+  // `--log-file` other than stderr also gets a copy.
   const presentedKeyLine =
     `The authenticity of host ${hostDisplay} cannot be established: no ` +
     `host_key_fingerprint is pinned. It presented a ` +
@@ -273,7 +273,7 @@ export async function establishHostKeyTrust(
     `fingerprint ${presented.fingerprint}. Verify this matches the server's ` +
     `published fingerprint out-of-band if you can; confirming pins it for ` +
     `this connection.`;
-  if (logFileInUse()) log.warn(presentedKeyLine);
+  if (logFileSeparateFromStderr()) log.warn(presentedKeyLine);
   writePromptLine(presentedKeyLine);
   const trusted = await deps.confirm(`Trust this host key for ${hostDisplay}?`);
   if (!trusted)

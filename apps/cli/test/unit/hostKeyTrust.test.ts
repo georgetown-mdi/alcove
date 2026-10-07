@@ -3,7 +3,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import logLibrary from "loglevel";
 import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -643,6 +643,31 @@ test("the presented key is on stderr before the question under --log-file at --l
     });
     expect(shown).toContain(`fingerprint ${FP}`);
   } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the presented key is shown once under a --log-file that is stderr itself", async () => {
+  // `--log-file /dev/stderr` opens the descriptor stderr already holds; the
+  // descriptor identity is faked, since the runner owns this process's fd 2.
+  // What lands in the file stands in for what that run prints on stderr.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-hkt-logfile-"));
+  const realFstat = fs.fstatSync;
+  const fstat = vi
+    .spyOn(fs, "fstatSync")
+    .mockImplementation(((fd: number) =>
+      Object.assign(realFstat(fd), { dev: 1, ino: 1 })) as typeof fs.fstatSync);
+  try {
+    const logFile = path.join(dir, "stderr.log");
+    const shown = await stderrWhenAsked({
+      logLevel: logLibrary.levels.INFO,
+      logFile,
+    });
+    const printed = shown + fs.readFileSync(logFile, "utf8");
+    expect(printed.split(`fingerprint ${FP}`)).toHaveLength(2);
+    expect(printed).not.toContain("[WARN]");
+  } finally {
+    fstat.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
