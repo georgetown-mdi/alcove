@@ -450,8 +450,8 @@ export class FrameSizeExceededError extends UsageError {
   constructor(message: string, options?: TransportRefusalOptions) {
     super(message, {
       cause: refusalCauseChain(
-        `Confirm the rendezvous directory is dedicated to a single exchange ` +
-          `and contact your partner, who may be sending a malformed or ` +
+        `Confirm the shared folder is dedicated to a single exchange and ` +
+          `contact your partner, who may be sending a malformed or ` +
           `oversized frame.`,
         options?.details ?? [],
       ),
@@ -473,9 +473,9 @@ export class DirectoryListingBoundsError extends UsageError {
   constructor(message: string, options?: TransportRefusalOptions) {
     super(message, {
       cause: refusalCauseChain(
-        `Confirm the rendezvous directory is dedicated to a single exchange ` +
-          `between exactly two parties and is not shared or contaminated; ` +
-          `clear any foreign entries or use a fresh directory.`,
+        `Confirm the shared folder is dedicated to a single exchange ` +
+          `between exactly two parties and holds no other files; clear any ` +
+          `foreign entries or use a fresh folder.`,
         options?.details ?? [],
       ),
     });

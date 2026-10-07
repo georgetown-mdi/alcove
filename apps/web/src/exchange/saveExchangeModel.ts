@@ -242,11 +242,11 @@ export function exchangeFileInputFor(
  * CLI's default `./alcove.yaml`. Takes the filename rather than a `Date` so a
  * re-save's new date always flows through {@link exchangeFileName} once, at
  * the mint site, rather than being recomputed (and risking drift) here.
- * Saving the invitation code to a file keeps it out of the shell history (the
+ * Saving the invitation to a file keeps it out of the shell history (the
  * `@file` reference reads it back). */
 export function runCommand(fileName: string): string {
   return (
     `alcove exchange your-data.csv --config-file ${fileName} ` +
-    "--invitation @invitation-code.txt"
+    "--invitation @invitation.txt"
   );
 }

@@ -77,6 +77,7 @@ describe("terminal transport/directory error taxonomy", () => {
     expect(err.name).toBe("FrameSizeExceededError");
     expect(err.alcoveRecoveryHintEmitted).toBe(true);
     expect(err.message).toBe("inbound frame exceeds the cap");
+    expect(recoveryStepOf(err)).toContain("Confirm the shared folder");
     expect(recoveryStepOf(err)).toContain("contact your partner");
   });
 
@@ -88,7 +89,9 @@ describe("terminal transport/directory error taxonomy", () => {
     expect(err.name).toBe("DirectoryListingBoundsError");
     expect(err.alcoveRecoveryHintEmitted).toBe(true);
     expect(err.message).toBe("directory has too many entries");
-    expect(recoveryStepOf(err)).toContain("dedicated to a single exchange");
+    expect(recoveryStepOf(err)).toContain(
+      "Confirm the shared folder is dedicated to a single exchange",
+    );
   });
 
   test("TransportOperationStalledError tags the recovery hint and puts a next step on its own link", () => {

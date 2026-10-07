@@ -51,7 +51,7 @@ The invitation expires one hour after it is created. If Agency B cannot accept a
 ### 3. Agency B: accept it
 
 ```sh
-alcove accept --identity "Agency B" INVITATION_CODE input.csv
+alcove accept --identity "Agency B" INVITATION input.csv
 ```
 
 Alcove shows what the exchange will disclose -- the columns each party sends, who receives the result -- and asks you to confirm. Read it before answering. On yes, it writes `alcove.yaml` and `.alcove.key`; on no, it writes nothing. Giving `input.csv` checks that your file has the columns the agreed terms need.
@@ -650,7 +650,7 @@ The connection block and every other key keep their values and order, every line
 ## Recurring exchange
 
 ```sh
-alcove exchange [--invitation CODE] [--sweep-exchange-files [--force-retain-sweep]] INPUT_FILE [OUTPUT_FOLDER]
+alcove exchange [--invitation INVITATION] [--sweep-exchange-files [--force-retain-sweep]] INPUT_FILE [OUTPUT_FOLDER]
 ```
 
 The application loads configuration and key files and conducts the exchange without further coordination. The shared secret is rotated after each successful authentication handshake, before the data exchange begins; if the data exchange subsequently fails, both parties already hold the rotated token and can retry without re-inviting. If `OUTPUT_FOLDER` is given, the results of the exchange are written in that folder; otherwise, they are written to `stdout` ([The result file](#the-result-file)).
@@ -659,7 +659,7 @@ Topics this command shares with the rest of the CLI have a section apiece below:
 
 ### Provisioning the key file from an invitation
 
-`--invitation CODE` provisions the key file from an invitation (the same one `alcove accept` takes) and then runs the exchange, so a party holding a configuration that has no secret completes local provisioning and exchanges in one command. It is the offline route for the party that composed the exchange in the web application and downloaded that configuration (see [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md)); it is also how a re-invited party re-provisions without going back through `accept` (see [Recovery](#recovery)).
+`--invitation INVITATION` provisions the key file from an invitation (the same one `alcove accept` takes) and then runs the exchange, so a party holding a configuration that has no secret completes local provisioning and exchanges in one command. It is the offline route for the party that composed the exchange in the web application and downloaded that configuration (see [EXCHANGE_FILE.md](spec/EXCHANGE_FILE.md)); it is also how a re-invited party re-provisions without going back through `accept` (see [Recovery](#recovery)).
 
 `@path` is supported: `--invitation @invitation.txt` keeps the invitation out of shell history. The invitation is decoded and validated (checksum, schema, expiry) before anything is written, so a malformed or expired invitation fails with nothing written. A key file already at the key path is an error rather than an overwrite: the secret rotates after the first exchange, so the original invitation must not resurrect a stale one.
 
