@@ -11,9 +11,17 @@ import type { ScheduledRunLines } from "./managedCronExportModel";
 /**
  * The schedule lines of a managed exchange's command-line export: the image's
  * cron and Task Scheduler lines where every path can be mounted, the cron line
- * for an installed Alcove, and what to set and check in them.
+ * for an installed Alcove, and what to set and check in them. The caller
+ * renders it only where the installed line is shown, since every other line is
+ * withheld with it.
  */
-export function ScheduledRunLinesView({ lines }: { lines: ScheduledRunLines }) {
+export function ScheduledRunLinesView({
+  lines,
+  installedCronLine,
+}: {
+  lines: ScheduledRunLines;
+  installedCronLine: string;
+}) {
   const dockerShown = lines.dockerCronLine !== undefined;
   return (
     <>
@@ -49,7 +57,7 @@ export function ScheduledRunLinesView({ lines }: { lines: ScheduledRunLines }) {
             "Alcove from the exchange folder:"}
       </p>
       <CopyableCode
-        code={lines.installedCronLine}
+        code={installedCronLine}
         ariaLabel="cron schedule line for an installed Alcove"
       />
       <p className={styles.small}>

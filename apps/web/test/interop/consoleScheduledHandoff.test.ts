@@ -278,6 +278,8 @@ describe("the console's recurring-run hand-off, run as given", () => {
       image: "ghcr.io/georgetown-mdi/alcove:latest",
     };
     const handedOffLine = installedCronLine(source);
+    if (handedOffLine === undefined)
+      throw new Error("the hand-off withheld the installed cron line");
     expect(handedOffLine).not.toContain("$(");
     expect(handedOffLine).not.toContain("%");
     const line = handedOffLine

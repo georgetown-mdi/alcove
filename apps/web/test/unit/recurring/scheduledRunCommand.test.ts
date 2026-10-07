@@ -130,6 +130,7 @@ describe("the console hand-off's command lines", () => {
           "r.csv",
         ],
       });
+      if (line === undefined) throw new Error("no installed cron line");
       const command = line
         .slice(line.indexOf("&& ") + 3)
         .replaceAll("\\%", "%");
@@ -159,6 +160,9 @@ describe("the console hand-off's command lines", () => {
       expect(dockerTaskSchedulerLine(source)).toBeUndefined();
       expect(installedRunCommand(source)).toBe(
         "alcove exchange --log-file=exchange.log clients.csv ./",
+      );
+      expect(installedCronLine(source)).toContain(
+        "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
       );
     }
     expect(
@@ -209,9 +213,12 @@ describe("the console hand-off's command lines", () => {
     expect(dockerRunCommand(source)).toBeUndefined();
     expect(dockerCronLine(source)).toBeUndefined();
     expect(dockerTaskSchedulerLine(source)).toBeUndefined();
+    expect(installedRunCommand(source)).toBeUndefined();
+    expect(installedCronLine(source)).toBeUndefined();
     const notice = unmountableBindPathsNotice(
       unmountableBindPaths(source.bindPaths),
     );
+    expect(notice).toMatch(/^No command to run or schedule this exchange/);
     expect(notice).toContain("Move that folder to a path without");
     // eslint-disable-next-line no-control-regex
     expect(notice).not.toMatch(/[\u0000-\u001f\u202a-\u202e\u2066-\u2069]/);
@@ -224,11 +231,12 @@ describe("the console hand-off's command lines", () => {
       { path, reason: "control" },
     ]);
     expect(dockerCronLine(source)).toBeUndefined();
-    expect(installedCronLine(source)).not.toContain("pwned");
+    expect(installedCronLine(source)).toBeUndefined();
     expect(
       unmountableBindPathsNotice(unmountableBindPaths(source.bindPaths)),
     ).toBe(
-      "The Docker commands are not shown because /x\\x0a* * * * * touch " +
+      "No command to run or schedule this exchange is shown because " +
+        "/x\\x0a* * * * * touch " +
         "/tmp/pwned # contains a line break, another control character, or " +
         "a text-direction character, which a scheduled command cannot hold. " +
         "Move that folder to a path without such a character, and set the " +

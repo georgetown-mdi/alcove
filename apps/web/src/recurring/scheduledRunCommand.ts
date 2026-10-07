@@ -9,6 +9,7 @@ import {
   CONTAINER_WORK_FOLDER,
   alcoveArgs,
   dockerRunArgv,
+  unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
 import {
@@ -69,9 +70,25 @@ export function dockerRunCommand(
   return argv === undefined ? undefined : shellJoinCommand(argv);
 }
 
+/** Whether a bind path holds a control or text-direction character, which
+ * withholds every line, the installed `alcove` ones included: the operator
+ * moves that folder rather than running against a path they cannot read. */
+function bindPathHoldsControlCharacter(
+  bindPaths: ReadonlyArray<HandoffBindPath>,
+): boolean {
+  return unmountableBindPaths(bindPaths).some(
+    ({ reason }) => reason === "control",
+  );
+}
+
 /** The command a person runs once by hand from the exchange folder with an
- * installed `alcove`. */
-export function installedRunCommand({ argv }: ScheduledRunSource): string {
+ * installed `alcove`. Undefined when a bind path holds a control or
+ * text-direction character. */
+export function installedRunCommand({
+  argv,
+  bindPaths,
+}: ScheduledRunSource): string | undefined {
+  if (bindPathHoldsControlCharacter(bindPaths)) return undefined;
   return shellJoinCommand(["alcove", ...alcoveArgs(argv)]);
 }
 
@@ -92,11 +109,13 @@ export function dockerCronLine(
 }
 
 /** The crontab line running an installed `alcove` from the exchange folder on
- * `schedule`. */
+ * `schedule`. Undefined when a bind path holds a control or text-direction
+ * character. */
 export function installedCronLine(
-  { argv }: ScheduledRunSource,
+  { argv, bindPaths }: ScheduledRunSource,
   schedule?: RunSchedule,
-): string {
+): string | undefined {
+  if (bindPathHoldsControlCharacter(bindPaths)) return undefined;
   return cronLine(
     `cd ${EXCHANGE_FOLDER_PLACEHOLDER} && ` +
       shellJoinCommand([INSTALLED_ALCOVE_PLACEHOLDER, ...alcoveArgs(argv)]),
@@ -144,7 +163,9 @@ const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
   workFolder: `is inside ${CONTAINER_WORK_FOLDER}, where the image mounts the exchange folder`,
 };
 
-/** The panel's sentence naming each path the Docker lines cannot mount and why. */
+/** The panel's sentence naming each path the lines cannot use and why: the
+ * Docker lines alone, or every line where a path holds a control or
+ * text-direction character. */
 export function unmountableBindPathsNotice(
   unmountable: ReadonlyArray<UnmountableBindPath>,
 ): string {
@@ -155,13 +176,17 @@ export function unmountableBindPathsNotice(
         UNMOUNTABLE_REASON_TEXT[reason],
     )
     .join("; ");
-  const remedy = unmountable.some(({ reason }) => reason === "control")
-    ? "Move that folder to a path without such a character, and set the " +
-      "new path in the configuration."
-    : "To run Alcove from its image, write the docker run command yourself " +
-      "and mount that path by hand, or run an installed Alcove with the " +
-      "commands below.";
-  return `The Docker commands are not shown because ${named}. ${remedy}`;
+  if (unmountable.some(({ reason }) => reason === "control"))
+    return (
+      "No command to run or schedule this exchange is shown because " +
+      `${named}. Move that folder to a path without such a character, and ` +
+      "set the new path in the configuration."
+    );
+  return (
+    `The Docker commands are not shown because ${named}. To run Alcove from ` +
+    "its image, write the docker run command yourself and mount that path " +
+    "by hand, or run an installed Alcove with the commands below."
+  );
 }
 
 /**

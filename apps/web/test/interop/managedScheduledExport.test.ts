@@ -238,6 +238,8 @@ describe("the managed exchange's command-line export, run as given", () => {
     chmodSync(installedAlcove, 0o755);
 
     expect(state.installedCronLine).toMatch(/^\d+ \d+ \* \* \* \[ /);
+    if (state.installedCronLine === undefined)
+      throw new Error("the export withheld the installed cron line");
     const line = state.installedCronLine
       .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
       .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);

@@ -20,7 +20,7 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
-  exportRunCommand,
+  exportRun,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
 import {
@@ -37,6 +37,7 @@ import type {
   ManagedCronExportDispatch,
   ManagedHandoffRefusal,
 } from "@psi/managed/managedExchangeExport";
+import type { ExportRun } from "./managedCronExportModel";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /** The key file's custody rules, cited rather than restated here. */
@@ -86,8 +87,9 @@ export function ManagedCronExportPanel({
    * at the click, since {@link runInFlight} is a poll's last reading. */
   recheckRunInFlight: () => Promise<boolean>;
   /** The operator attested the files landed and the source is spent, so the host
-   * takes down the run affordances. Passes the command to run instead. */
-  onHandedOff: (command: string) => void;
+   * takes down the run affordances. Passes the command to run instead, or why
+   * none is shown. */
+  onHandedOff: (run: ExportRun) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -151,7 +153,7 @@ export function ManagedCronExportPanel({
         if (await recheckRunInFlight()) return;
         await dispatch.confirm(new Date());
         setDispatch(undefined);
-        onHandedOff(exportRunCommand(composed));
+        onHandedOff(exportRun(composed));
       } catch (error) {
         if (error instanceof ManagedHandoffRefusedError)
           setRefusal(error.refusal);
@@ -280,19 +282,26 @@ export function ManagedCronExportPanel({
                 {state.unmountableNotice !== undefined && (
                   <p className={styles.small}>{state.unmountableNotice}</p>
                 )}
-                <CopyableCode
-                  code={state.runCommand}
-                  ariaLabel="exchange command"
-                />
+                {state.runCommand !== undefined && (
+                  <CopyableCode
+                    code={state.runCommand}
+                    ariaLabel="exchange command"
+                  />
+                )}
               </li>
-              <li>
-                <p className={styles.handoffStepLabel}>
-                  {state.fromAgreedSchedule
-                    ? "Schedule it (set the folder)"
-                    : "Schedule it (adjust the times and the folder)"}
-                </p>
-                <ScheduledRunLinesView lines={state} />
-              </li>
+              {state.installedCronLine !== undefined && (
+                <li>
+                  <p className={styles.handoffStepLabel}>
+                    {state.fromAgreedSchedule
+                      ? "Schedule it (set the folder)"
+                      : "Schedule it (adjust the times and the folder)"}
+                  </p>
+                  <ScheduledRunLinesView
+                    lines={state}
+                    installedCronLine={state.installedCronLine}
+                  />
+                </li>
+              )}
             </ol>
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
             <ul className={styles.small}>

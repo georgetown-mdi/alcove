@@ -70,16 +70,19 @@ export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 /** The command and schedule lines running a composed export. */
 export interface ScheduledRunLines {
   /** The command running the export once: the image over the folder, or an
-   * installed `alcove` where a path cannot be mounted. */
-  runCommand: string;
+   * installed `alcove` where a path cannot be mounted. Undefined where a path
+   * holds a control or text-direction character. */
+  runCommand: string | undefined;
   /** The cron line running the image, undefined where a path cannot be
    * mounted. */
   dockerCronLine: string | undefined;
   /** The Task Scheduler command running the image, undefined where a path
    * cannot be mounted. */
   dockerTaskSchedulerLine: string | undefined;
-  /** The cron line running an installed `alcove` from the folder. */
-  installedCronLine: string;
+  /** The cron line running an installed `alcove` from the folder. Undefined
+   * where a path holds a control or text-direction character, which withholds
+   * every line. */
+  installedCronLine: string | undefined;
   /** When the lines run, as a phrase ("daily at 2am"). */
   schedule: string;
   /** Whether the lines run on the record's agreed schedule, rather than a
@@ -87,7 +90,8 @@ export interface ScheduledRunLines {
   fromAgreedSchedule: boolean;
   /** What to check about the schedule's times, where the record has one. */
   scheduleNote: string | undefined;
-  /** Why the image lines are not shown, where a path cannot be mounted. */
+  /** Why the image lines, or every line, are not shown, where a path cannot
+   * be mounted. */
   unmountableNotice: string | undefined;
   /** The paths the image lines mount besides the folder, where there are
    * any and the lines are shown. */
@@ -115,14 +119,31 @@ type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
       reason: string;
     };
 
-/** The command running `composed` once: `image` over the folder, or an
- * installed `alcove` where a path it names cannot be mounted. */
-export function exportRunCommand(
+/** The command running `composed` once, and why lines are withheld where a
+ * path it names cannot be mounted. */
+export interface ExportRun {
+  /** `image` over the folder, or an installed `alcove` where a path cannot be
+   * mounted; undefined where a path holds a control or text-direction
+   * character. */
+  runCommand: string | undefined;
+  unmountableNotice: string | undefined;
+}
+
+/** The command running `composed` once from `image`, and why lines are
+ * withheld where a path it names cannot be mounted. */
+export function exportRun(
   composed: ManagedCommandLineConfig,
   image: string = buildImageReference(),
-): string {
+): ExportRun {
   const source = { argv: composed.argv, bindPaths: composed.bindPaths, image };
-  return dockerRunCommand(source) ?? installedRunCommand(source);
+  const unmountable = unmountableBindPaths(composed.bindPaths);
+  return {
+    runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
+    unmountableNotice:
+      unmountable.length > 0
+        ? unmountableBindPathsNotice(unmountable)
+        : undefined,
+  };
 }
 
 /** The lines running `composed` on `record`'s agreed schedule, from `image`. */
@@ -140,17 +161,13 @@ function scheduledRunLines(
     record.schedule === undefined ? undefined : runScheduleFor(record.schedule);
   const unmountable = unmountableBindPaths(composed.bindPaths);
   return {
-    runCommand: exportRunCommand(composed, image),
+    ...exportRun(composed, image),
     dockerCronLine: dockerCronLine(source, schedule),
     dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
     installedCronLine: installedCronLine(source, schedule),
     schedule: scheduleDescription(schedule),
     fromAgreedSchedule: schedule !== undefined,
     scheduleNote: scheduleNote(schedule),
-    unmountableNotice:
-      unmountable.length > 0
-        ? unmountableBindPathsNotice(unmountable)
-        : undefined,
     bindPathsCaveat:
       unmountable.length === 0 && composed.bindPaths.length > 0
         ? bindPathsCaveat(composed.bindPaths)

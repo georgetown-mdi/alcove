@@ -19,7 +19,7 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  exportRunCommand,
+  exportRun,
   managedConfigurationExportState,
   managedCronExportPanelState,
 } from "@recurring/managedCronExportModel";
@@ -208,7 +208,10 @@ describe("what the panel gets to render", () => {
   test("the handed-off command is the image's one-off run", () => {
     const record = managedRecord();
     const state = exportableState(record);
-    expect(exportRunCommand(state.composed, IMAGE)).toBe(state.runCommand);
+    expect(exportRun(state.composed, IMAGE)).toEqual({
+      runCommand: state.runCommand,
+      unmountableNotice: undefined,
+    });
   });
 
   test("the exported connection names no ICE server, as the panel's copy says", () => {
@@ -318,6 +321,33 @@ describe("a configuration naming paths outside the export folder", () => {
     );
     expect(state.unmountableNotice).toContain("contains a comma");
     expect(state.bindPathsCaveat).toBeUndefined();
+    expect(state.installedCronLine).toContain(
+      "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
+    );
+  });
+
+  test("a path with a line break withholds every line and says what to do", () => {
+    const state = managedConfigurationExportState(
+      sftpConfiguration("/home/county/keys\nold/id_ed25519"),
+      IMAGE,
+    );
+    if (state.kind !== "exportable") throw new Error(state.reason);
+    expect(state.runCommand).toBeUndefined();
+    expect(state.dockerCronLine).toBeUndefined();
+    expect(state.dockerTaskSchedulerLine).toBeUndefined();
+    expect(state.installedCronLine).toBeUndefined();
+    expect(state.bindPathsCaveat).toBeUndefined();
+    expect(state.unmountableNotice).toBe(
+      "No command to run or schedule this exchange is shown because " +
+        "/home/county/keys\\x0aold/id_ed25519 contains a line break, " +
+        "another control character, or a text-direction character, which a " +
+        "scheduled command cannot hold. Move that folder to a path without " +
+        "such a character, and set the new path in the configuration.",
+    );
+    expect(exportRun(state.composed, IMAGE)).toEqual({
+      runCommand: undefined,
+      unmountableNotice: state.unmountableNotice,
+    });
   });
 });
 

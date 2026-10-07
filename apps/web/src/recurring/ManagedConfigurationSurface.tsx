@@ -229,19 +229,26 @@ function ConfigurationExportPanel({
       {state.unmountableNotice !== undefined && (
         <p className={styles.small}>{state.unmountableNotice}</p>
       )}
-      <CopyableCode code={state.runCommand} ariaLabel="exchange command" />
-      <DisclosureSection
-        label={
-          state.fromAgreedSchedule
-            ? "Schedule it (set the folder)"
-            : "Schedule it (adjust the times and the folder)"
-        }
-        open={scheduleLinesOpen}
-        onToggle={setScheduleLinesOpen}
-        headingOrder={3}
-      >
-        <ScheduledRunLinesView lines={state} />
-      </DisclosureSection>
+      {state.runCommand !== undefined && (
+        <CopyableCode code={state.runCommand} ariaLabel="exchange command" />
+      )}
+      {state.installedCronLine !== undefined && (
+        <DisclosureSection
+          label={
+            state.fromAgreedSchedule
+              ? "Schedule it (set the folder)"
+              : "Schedule it (adjust the times and the folder)"
+          }
+          open={scheduleLinesOpen}
+          onToggle={setScheduleLinesOpen}
+          headingOrder={3}
+        >
+          <ScheduledRunLinesView
+            lines={state}
+            installedCronLine={state.installedCronLine}
+          />
+        </DisclosureSection>
+      )}
       {record.exchangeFile.connection.channel === "webrtc" && (
         <p className={`${styles.small} ${styles.sub}`}>
           This exchange names no STUN server, so every run uses the built-in

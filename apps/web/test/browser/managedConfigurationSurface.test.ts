@@ -347,6 +347,48 @@ describe("the surface of a configuration on a channel this app does not run", ()
       )
       .toBeInTheDocument();
   });
+
+  test("withholds every command for a credential path holding a line break", async () => {
+    const connection = connectionFromLocator({
+      channel: "sftp",
+      host: "sftp.example.org",
+      path: "/exchange",
+    });
+    if (connection.channel !== "sftp") throw new Error("not an sftp locator");
+    const created = await createManagedExchange({
+      label: "Riverbend quarterly",
+      exchangeFile: assembleExchangeSpec({
+        connection: {
+          ...connection,
+          server: { ...connection.server, password: "@/secrets/a\nb" },
+        },
+        linkageTerms,
+      }),
+    });
+
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+
+    await expect
+      .element(
+        page.getByText(
+          "No command to run or schedule this exchange is shown because " +
+            "/secrets/a\\x0ab contains a line break",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    expect(
+      page.getByText("alcove exchange --log-file", { exact: false }).query(),
+    ).toBe(null);
+    expect(page.getByText("Schedule it", { exact: false }).query()).toBe(null);
+    expect(
+      page
+        .getByRole("button", {
+          name: `Download ${CRON_EXPORT_CONFIG_FILE_NAME}`,
+        })
+        .query(),
+    ).not.toBe(null);
+  });
 });
 
 describe("the list row of an imported configuration", () => {

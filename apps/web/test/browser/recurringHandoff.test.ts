@@ -268,6 +268,45 @@ describe("RecurringHandoff panel", () => {
     );
   });
 
+  test.each([
+    ["a Direct run", SPACED_COMMAND_HANDOFF],
+    ["an invitation run", CONFIG_HANDOFF],
+  ])(
+    "withholds every command for %s whose path holds a line break",
+    async (_name, handoff) => {
+      stubHandoff({
+        ...handoff,
+        bindPaths: [{ path: "/srv/a\nb", readOnly: false }],
+      } satisfies JobHandoff);
+      app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+
+      await expect
+        .element(page.getByRole("heading", { name: HANDOFF_HEADING }))
+        .toBeInTheDocument();
+
+      const text = () => app.container.textContent;
+      expect(text()).toContain(
+        "No command to run or schedule this exchange is shown because " +
+          "/srv/a\\x0ab contains a line break",
+      );
+      expect(text()).toContain(
+        "Move that folder to a path without such a character, and set the " +
+          "new path in the configuration.",
+      );
+      expect(text()).not.toContain("docker run --rm");
+      expect(text()).not.toContain("schtasks /Create");
+      expect(text()).not.toContain("/path/to/alcove");
+      expect(text()).not.toContain("input.csv ./");
+      expect(text()).not.toContain("Schedule it");
+      expect(text()).not.toContain("Run the exchange");
+      expect(text()).not.toContain(
+        "Run this command on the scheduling machine",
+      );
+      expect(text()).toContain("Put your input file in that folder");
+      expect(text()).toContain("recurring exchange reference");
+    },
+  );
+
   test("renders nothing for a hand-off whose argv is not an alcove command", async () => {
     stubHandoff({
       ...COMMAND_HANDOFF,
