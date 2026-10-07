@@ -3,13 +3,16 @@ import { displayText } from "@alcove/core";
 
 import {
   MANAGED_RUN_INITIAL,
+  MANAGED_RUN_SURFACE_INITIAL,
   managedRunCompletion,
   managedRunInProgress,
   managedRunInputSource,
   managedRunLiveFailure,
   managedRunReducer,
+  managedRunSurfaceReducer,
   managedSurfaceView,
 } from "@recurring/managedRunSurfaceModel";
+import { MANAGED_RECOVERY_INITIAL } from "@recurring/managedRunRecoveryModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
@@ -17,9 +20,12 @@ import type {
   ManagedRunAction,
   ManagedRunInputChoices,
   ManagedRunState,
+  ManagedRunSurfaceAction,
+  ManagedRunSurfaceState,
   ManagedSurfaceViewInputs,
 } from "@recurring/managedRunSurfaceModel";
 import type { ResolvedMatching, TermsChange } from "@alcove/core";
+import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { RunOutputs } from "@psi/runOutputs";
 
 const OUTPUTS: RunOutputs = {
@@ -460,5 +466,108 @@ describe("the surface's view", () => {
     expect(
       managedSurfaceView({ ...base, migrationAwaitingConfirm: true }),
     ).toBe("confirm-move");
+  });
+});
+
+const REINVITE: ManagedReinvite = {
+  encoded: "encoded-invitation",
+  deepLink: "https://example.org/accept#encoded-invitation",
+  sharedSecret: "fresh-secret",
+  tokenExpires: "2026-10-08T12:00:00.000Z",
+  rotation: { sharedSecret: "fresh-secret", expires: null },
+};
+
+function foldSurface(
+  actions: ReadonlyArray<ManagedRunSurfaceAction>,
+  from: ManagedRunSurfaceState = MANAGED_RUN_SURFACE_INITIAL,
+): ManagedRunSurfaceState {
+  return actions.reduce(managedRunSurfaceReducer, from);
+}
+
+const failedVisit = foldSurface([
+  { type: "run-started" },
+  failedRun(1),
+  { type: "run-settled" },
+]);
+
+describe("the surface's reducer", () => {
+  test("starts with no run and no recovery", () => {
+    expect(MANAGED_RUN_SURFACE_INITIAL.run).toBe(MANAGED_RUN_INITIAL);
+    expect(MANAGED_RUN_SURFACE_INITIAL.recovery).toBe(MANAGED_RECOVERY_INITIAL);
+  });
+
+  test("a run start begins the run and resets the last run's recovery", () => {
+    const recovered = foldSurface(
+      [
+        { type: "confirmation-granted", runNumber: 1 },
+        { type: "reinvite-started", site: "recovery" },
+        { type: "reinvite-composed", reinvite: REINVITE },
+      ],
+      failedVisit,
+    );
+    const restarted = foldSurface([{ type: "run-started" }], recovered);
+    expect(managedRunInProgress(restarted.run)).toBe(true);
+    expect(restarted.recovery.confirmationGrantedFor).toBeUndefined();
+    expect(restarted.recovery.reinvite.composed).toBeUndefined();
+  });
+
+  test("a composed re-invite takes the failure down and keeps the invitation", () => {
+    const composed = foldSurface(
+      [
+        { type: "reinvite-started", site: "recovery" },
+        { type: "reinvite-composed", reinvite: REINVITE },
+      ],
+      failedVisit,
+    );
+    expect(managedRunLiveFailure(composed.run)).toBeUndefined();
+    expect(managedRunInProgress(composed.run)).toBe(false);
+    expect(composed.recovery.reinvite.composed).toBe(REINVITE);
+  });
+
+  test("a composed re-invite during a run leaves the run in progress", () => {
+    const composed = foldSurface([
+      { type: "reinvite-started", site: "detail" },
+      { type: "run-started" },
+      { type: "reinvite-composed", reinvite: REINVITE },
+    ]);
+    expect(managedRunInProgress(composed.run)).toBe(true);
+    expect(composed.recovery.reinvite.composed).toBe(REINVITE);
+  });
+
+  test("a recovery event leaves the run as it was", () => {
+    for (const action of [
+      { type: "confirmation-granted", runNumber: 1 },
+      { type: "compromise-answer-started", gate: { kind: "standing" } },
+      { type: "standing-clear-started", pastResponse: false },
+      { type: "standing-cleared" },
+      { type: "reinvite-failed" },
+    ] satisfies ReadonlyArray<ManagedRunSurfaceAction>)
+      expect(managedRunSurfaceReducer(failedVisit, action).run).toBe(
+        failedVisit.run,
+      );
+  });
+
+  test("a run event leaves the recovery as it was", () => {
+    const recovered = foldSurface(
+      [{ type: "confirmation-granted", runNumber: 1 }],
+      failedVisit,
+    );
+    for (const action of [
+      { type: "warning-raised", escapedWarning: displayText`notice` },
+      { type: "failure-cleared" },
+      failedRun(1),
+      { type: "run-settled" },
+    ] satisfies ReadonlyArray<ManagedRunSurfaceAction>)
+      expect(managedRunSurfaceReducer(recovered, action).recovery).toBe(
+        recovered.recovery,
+      );
+  });
+
+  test("a run event that changes nothing returns the same state", () => {
+    expect(
+      managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
+        type: "failure-cleared",
+      }),
+    ).toBe(MANAGED_RUN_SURFACE_INITIAL);
   });
 });

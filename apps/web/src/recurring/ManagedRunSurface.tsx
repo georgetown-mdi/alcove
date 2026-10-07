@@ -69,7 +69,6 @@ import { retakeManagedExchange } from "@psi/managed/managedRetake";
 import {
   runnableManagedExchange,
   runnableManagedExchangeOrRefuse,
-  standingCompromiseResponse,
 } from "@psi/managed/managedExchangeRecord";
 import { MANAGED_EXCHANGE_ARTIFACT_MIME } from "@psi/managed/managedExchangeArtifact";
 import { ManagedExchangeLockUnavailableError } from "@psi/managed/managedExchangeLock";
@@ -164,14 +163,23 @@ import {
 import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 
 import {
-  MANAGED_RUN_INITIAL,
+  MANAGED_RUN_SURFACE_INITIAL,
   managedRunCompletion,
   managedRunInProgress,
   managedRunInputSource,
   managedRunLiveFailure,
-  managedRunReducer,
+  managedRunSurfaceReducer,
   managedSurfaceView,
 } from "./managedRunSurfaceModel";
+import {
+  managedCompromiseResponseActive,
+  managedConfirmationGranted,
+  managedFailureHoldsReinvite,
+  managedReinviteFailedAt,
+  managedReinviteInFlight,
+  managedRunHoldsReinvite,
+  managedStandingConditionShown,
+} from "./managedRunRecoveryModel";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { RunLines } from "./scheduledRunCommand";
@@ -196,6 +204,7 @@ import type {
   ManagedSpentState,
 } from "@psi/managed/managedLocalState";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
+import type { ManagedCompromiseGate } from "./managedRunRecoveryModel";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRetakeRefusal } from "./managedRetakeModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
@@ -305,10 +314,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // here, and the surface names what runs in its place.
   const [commandLineHandoff, setCommandLineHandoff] = useState<RunLines>();
   const [reselected, setReselected] = useState<File>();
-  const [runState, dispatchRun] = useReducer(
-    managedRunReducer,
-    MANAGED_RUN_INITIAL,
+  const [surfaceState, dispatchSurface] = useReducer(
+    managedRunSurfaceReducer,
+    MANAGED_RUN_SURFACE_INITIAL,
   );
+  const { run: runState, recovery } = surfaceState;
   const running = managedRunInProgress(runState);
   const runCompletion = managedRunCompletion(runState);
   const outputs = runCompletion?.outputs;
@@ -348,63 +358,21 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const runsStarted = useRef(0);
   // The Tier-2 confirmation gate: once the operator confirms a real partner-side
   // failure, the surface proceeds to re-invite; a "does not add up" reply routes to
-  // the compromise-response copy instead. The grant names the failure it was given
-  // for, so a later failure the operator has answered nothing about still gets the
-  // gate.
-  const [confirmationGrantedFor, setConfirmationGrantedFor] =
-    useState<number>();
-  const confirmationGated =
-    liveFailure !== undefined &&
-    confirmationGrantedFor === liveFailure.runNumber;
+  // the compromise-response copy instead.
+  const confirmationGated = managedConfirmationGranted(recovery, liveFailure);
   // The compromise response is the record's own, written at whichever gate the
   // operator answered and read back off the record this page holds, so one answer
-  // covers both gates and stands at the next visit as it does here. A write this
-  // device refused leaves it standing until the page is left or a run starts,
-  // which is the side to fail to; the panel states that where the operator reads
-  // it.
-  const [respondingCompromise, setRespondingCompromise] = useState(false);
-  const [compromiseWriteFailed, setCompromiseWriteFailed] = useState(false);
-  // The store refused this page's mint because the record it holds has an answer
-  // this page had not read -- another tab's, written after this one mounted. The
-  // response stands on the exchange, so the page reads as it would have had it
-  // mounted after the answer.
-  const [reinviteWithheld, setReinviteWithheld] = useState(false);
-  // Which failure's own gate the answer was given at, where it was given on this
-  // visit. Clearing the response grants the confirmation for that failure alone: a
-  // response given at the standing condition's gate, or at an earlier visit, has no
-  // live failure behind it and grants none.
-  const [compromiseAnsweredFor, setCompromiseAnsweredFor] = useState<number>();
-  // Every state in which an answer holds this page: one the record holds, one
-  // being written (whose two outcomes both keep the withhold, so no control is live
-  // across the write), one this device refused, and one the store refused a mint
-  // over.
-  const compromiseResponse =
-    respondingCompromise ||
-    compromiseWriteFailed ||
-    reinviteWithheld ||
-    (record !== undefined && standingCompromiseResponse(record) !== undefined);
-  // The standing condition's own clearance, held apart from the live failure's gate
-  // above: the two states can stand at once (a no-show this visit over a condition an
-  // earlier run raised), and clearing one must not move the other.
-  const [standingSettled, setStandingSettled] = useState(false);
-  const [clearingStanding, setClearingStanding] = useState(false);
-  const [clearStandingFailed, setClearStandingFailed] = useState(false);
-  // A fresh re-invite the operator forwards out-of-band. Present once a re-invite is
-  // composed and the fresh secret persisted onto the record.
-  const [reinvite, setReinvite] = useState<ManagedReinvite>();
-  const [reinviting, setReinviting] = useState(false);
-  const [reinviteFailed, setReinviteFailed] = useState(false);
-  // The mint's own write refused this click: a run held the record's lock at it,
-  // which the poll's last reading was too old to see. It states the reason; it does
-  // not disable the control, which the poll gives back when the run ends.
-  const [reinviteRefusedByRun, setReinviteRefusedByRun] = useState(false);
-  // A run holds the mint back: the polled reading, or that refusal.
-  const runHoldsReinvite = runInFlight || reinviteRefusedByRun;
-  // Which entry point triggered the in-flight (or last) re-invite: the failure-path
-  // recovery near the top, or the detail configuration section far below. The failed
-  // alert renders only at the triggering site (so the two on-screen sites do not both
-  // show it), and a detail-triggered mint scrolls its result panel into view.
-  const [reinviteSource, setReinviteSource] = useState<"recovery" | "detail">();
+  // covers both gates and is still in force at the next visit.
+  const compromiseResponse = managedCompromiseResponseActive(recovery, record);
+  const respondingCompromise = recovery.compromise.write.kind === "writing";
+  const compromiseWriteFailed = recovery.compromise.write.kind === "failed";
+  const standingSettled = recovery.standing.settled;
+  const clearingStanding = recovery.standing.clear.kind === "clearing";
+  const clearStandingFailed = recovery.standing.clear.kind === "failed";
+  const reinvite = recovery.reinvite.composed;
+  const reinviting = managedReinviteInFlight(recovery);
+  const runHoldsReinvite = managedRunHoldsReinvite(recovery, runInFlight);
+  const reinviteSource = recovery.reinvite.site;
 
   // A single AbortController per in-flight run, aborted on unmount so a torn-down
   // surface stops the rendezvous, the connection, and the exchange.
@@ -587,11 +555,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     abortRef.current = controller;
     runsStarted.current += 1;
     const runNumber = runsStarted.current;
-    dispatchRun({ type: "run-started" });
-    setConfirmationGrantedFor(undefined);
-    setCompromiseWriteFailed(false);
-    setReinvite(undefined);
-    setReinviteFailed(false);
+    dispatchSurface({ type: "run-started" });
     // This run's phase boundary, read by the failure classification below: a state
     // whose copy says nothing left this device is only accurate before it, and the
     // record's own bookkeeping cannot stand in (its write is best-effort, and the
@@ -642,10 +606,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
           },
           onWarning: (message) => {
             const [escapedWarning] = appendSanitizedRunWarning([], message);
-            dispatchRun({ type: "warning-raised", escapedWarning });
+            dispatchSurface({ type: "warning-raised", escapedWarning });
           },
           onResolvedMatching: (resolved) =>
-            dispatchRun({ type: "matching-resolved", matching: resolved }),
+            dispatchSurface({ type: "matching-resolved", matching: resolved }),
           // Asked in a dialog while the partner's run waits at the terms
           // exchange. Tearing the run down answers no, so the exchange never
           // waits on a question nobody can see.
@@ -656,12 +620,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 if (answered) return;
                 answered = true;
                 controller.signal.removeEventListener("abort", onAbort);
-                dispatchRun({ type: "terms-change-answered" });
+                dispatchSurface({ type: "terms-change-answered" });
                 resolve(accept);
               };
               const onAbort = () => answer(false);
               controller.signal.addEventListener("abort", onAbort);
-              dispatchRun({
+              dispatchSurface({
                 type: "terms-change-asked",
                 question: { change, answer },
               });
@@ -672,7 +636,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // models the getter as a literal, hence the disable).
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
-        dispatchRun({
+        dispatchSurface({
           type: "run-completed",
           outputs: result.exchange,
           finishedAt: new Date(),
@@ -694,7 +658,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           );
           return;
         }
-        dispatchRun({
+        dispatchSurface({
           type: "folder-write-started",
           directoryName: directory.name,
         });
@@ -708,12 +672,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
         if (delivery.kind === "no-folder") {
-          dispatchRun({ type: "folder-write-skipped" });
+          dispatchSurface({ type: "folder-write-skipped" });
           return;
         }
         if (delivery.kind === "write-failed")
           whenDiagnostic(() => console.error(delivery.error));
-        dispatchRun({
+        dispatchSurface({
           type: "folder-write-finished",
           write: { directoryName: directory.name, delivery },
         });
@@ -758,7 +722,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
           if (reloaded !== undefined && runnableManagedExchange(reloaded))
             setRecord(reloaded);
           setRecordReads((reads) => reads + 1);
-          dispatchRun({
+          dispatchSurface({
             type: "run-failed",
             failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber },
           });
@@ -786,12 +750,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
           setLoadFailure("spent");
           return;
         }
-        dispatchRun({
+        dispatchSurface({
           type: "run-failed",
           failure: { alert: failed, runNumber },
         });
       } finally {
-        if (!controller.signal.aborted) dispatchRun({ type: "run-settled" });
+        if (!controller.signal.aborted)
+          dispatchSurface({ type: "run-settled" });
         abortRef.current = undefined;
       }
     })();
@@ -915,35 +880,35 @@ export function ManagedRunSurface({ id }: { id: string }) {
     // reads and the lock a run holds rather than on this page's copy.
     if (record === undefined || reinviting || compromiseResponse || runInFlight)
       return;
-    setReinviteSource(source);
-    setReinviting(true);
-    setReinviteFailed(false);
-    setReinviteRefusedByRun(false);
+    dispatchSurface({ type: "reinvite-started", site: source });
     void (async () => {
       try {
         // The controls above render from a poll, so a run started since the last
         // reading is still news here; re-reading also puts the reason on screen. A
         // run this reading still misses is refused by the mint's own write, which
         // takes the run's lock.
-        if (await recheckLock()) return;
+        if (await recheckLock()) {
+          dispatchSurface({ type: "reinvite-held-by-run" });
+          return;
+        }
         const result = await reinviteManagedExchange(record);
         adoptRecord(result.record);
-        dispatchRun({ type: "failure-cleared" });
-        setReinvite(result.reinvite);
+        dispatchSurface({
+          type: "reinvite-composed",
+          reinvite: result.reinvite,
+        });
       } catch (error) {
         // The store refuses the rotation over an answer this page has not read, and
         // that is not a failure to retry: the page adopts the withhold and offers the
         // acknowledgement instead.
         if (error instanceof ManagedReinviteWithheldError) {
-          setReinviteWithheld(true);
+          dispatchSurface({ type: "reinvite-withheld" });
         } else if (error instanceof ManagedExchangeLockUnavailableError) {
-          setReinviteRefusedByRun(true);
+          dispatchSurface({ type: "reinvite-refused-by-run" });
         } else {
           whenDiagnostic(() => console.error(error));
-          setReinviteFailed(true);
+          dispatchSurface({ type: "reinvite-failed" });
         }
-      } finally {
-        setReinviting(false);
       }
     })();
   }
@@ -951,19 +916,21 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // Write the operator's answer that nothing adds up onto the record, so the mint
   // stays withheld past this visit. Both gates route here; the record the store
   // holds is what the write attaches the answer to, and the page adopts it.
-  function respondCompromise() {
+  function respondCompromise(gate: ManagedCompromiseGate) {
     if (record === undefined || respondingCompromise) return;
-    setRespondingCompromise(true);
+    dispatchSurface({ type: "compromise-answer-started", gate });
     void recordManagedExchangeCompromiseResponse(
       record.id,
       new Date().toISOString(),
     )
-      .then(adoptRecord)
+      .then((updated) => {
+        adoptRecord(updated);
+        dispatchSurface({ type: "compromise-answer-written" });
+      })
       .catch((error) => {
         whenDiagnostic(() => console.error(error));
-        setCompromiseWriteFailed(true);
-      })
-      .finally(() => setRespondingCompromise(false));
+        dispatchSurface({ type: "compromise-answer-failed" });
+      });
   }
 
   // The two-outcome gate: a confirmed real partner-side failure proceeds to re-invite;
@@ -978,11 +945,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
     // standing condition's gate: that channel is the one the operator flagged.
     if (compromiseResponse) return;
     if (routeConfirmationReply(outcome) === "compromise-response") {
-      setCompromiseAnsweredFor(liveFailure?.runNumber);
-      respondCompromise();
+      respondCompromise({ kind: "failure", runNumber: liveFailure?.runNumber });
       return;
     }
-    setConfirmationGrantedFor(liveFailure?.runNumber);
+    dispatchSurface({
+      type: "confirmation-granted",
+      runNumber: liveFailure?.runNumber,
+    });
     if (record !== undefined && canReinviteFromRecord(record))
       reinviteNow("recovery");
   }
@@ -999,25 +968,20 @@ export function ManagedRunSurface({ id }: { id: string }) {
     // already settled.
     if (record === undefined || clearingStanding || respondingCompromise)
       return;
-    setClearingStanding(true);
-    setClearStandingFailed(false);
+    // The gate is not put again to an operator who answered it and then settled
+    // it out-of-band: the failure they answered offers the mint again. Only that
+    // failure -- a run since then raised one they have answered nothing about,
+    // and it keeps its own gate.
+    dispatchSurface({ type: "standing-clear-started", pastResponse });
     clearManagedExchangeStandingCondition(record.id)
       .then((updated) => {
         adoptRecord(updated);
-        setStandingSettled(true);
-        setCompromiseWriteFailed(false);
-        setReinviteWithheld(false);
-        // The gate is not put again to an operator who answered it and then settled
-        // it out-of-band: the failure they answered offers the mint they can now
-        // take. Only that failure -- a run since then raised one they have answered
-        // nothing about, and it keeps its own gate.
-        if (pastResponse) setConfirmationGrantedFor(compromiseAnsweredFor);
+        dispatchSurface({ type: "standing-cleared" });
       })
       .catch((error) => {
         whenDiagnostic(() => console.error(error));
-        setClearStandingFailed(true);
-      })
-      .finally(() => setClearingStanding(false));
+        dispatchSurface({ type: "standing-clear-failed" });
+      });
   }
 
   // The standing condition's two-outcome gate, the same routing the live Tier-2
@@ -1030,7 +994,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     // or mints on a channel the operator has already flagged.
     if (compromiseResponse) return;
     if (routeConfirmationReply(outcome) === "compromise-response") {
-      respondCompromise();
+      respondCompromise({ kind: "standing" });
       return;
     }
     clearStanding(false);
@@ -1046,19 +1010,18 @@ export function ManagedRunSurface({ id }: { id: string }) {
     record !== undefined
       ? managedStandingConditionView(record, localState)
       : undefined;
-  const showStanding =
-    reinvite === undefined &&
-    (standingSettled ||
-      (standingView !== undefined && standingView.tier !== failure?.kind));
+  const showStanding = managedStandingConditionShown(
+    recovery,
+    standingView,
+    failure,
+  );
 
   // Whether the live failure holds the re-invite: it offers the mint directly, or it
   // holds the confirmation gate, whose two outcomes decide whether one happens at
   // all. Both mint from this record, so the standing section keeps its status and
   // its clear control and adds no button of its own -- neither a second copy of the
   // offer, whose failed mint would alert twice, nor a way around the gate.
-  const failureHoldsReinvite =
-    failure !== undefined &&
-    (managedRunReinvites(failure) || failure.recovery === "confirm");
+  const failureHoldsReinvite = managedFailureHoldsReinvite(failure);
 
   // Persist an in-place edit to the local fields (label, max-token-age policy)
   // through the single-transaction store path, then adopt the returned record so
@@ -1155,7 +1118,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
       if (apply)
         await applyManagedTermsProposal(record.id, proposal.proposedAt);
       else await declineManagedTermsProposal(record.id);
-      dispatchRun({ type: "failure-cleared" });
+      dispatchSurface({ type: "failure-cleared" });
       setRecordReads((reads) => reads + 1);
     } catch (error) {
       whenDiagnostic(() => console.error(error));
@@ -1462,9 +1425,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
                       runHoldsReinvite={runHoldsReinvite}
                       // The failed alert renders only at the site that triggered the
                       // mint, so the recovery and the detail section do not both show it.
-                      reinviteFailed={
-                        reinviteFailed && reinviteSource === "recovery"
-                      }
+                      reinviteFailed={managedReinviteFailedAt(
+                        recovery,
+                        "recovery",
+                      )}
                       onReinvite={() => reinviteNow("recovery")}
                       onResolveConfirmation={resolveConfirmation}
                     />
@@ -1492,7 +1456,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 reinviting={reinviting}
                 runInFlight={runInFlight}
                 runHoldsReinvite={runHoldsReinvite}
-                reinviteFailed={reinviteFailed && reinviteSource === "recovery"}
+                reinviteFailed={managedReinviteFailedAt(recovery, "recovery")}
                 reinviteHeldByFailure={failureHoldsReinvite}
                 onReinvite={() => reinviteNow("recovery")}
                 onClear={() => clearStanding(false)}
@@ -1604,7 +1568,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               reinviting={reinviting}
               // The failed alert renders here only when the detail section triggered
               // the mint, so it and the failure-path recovery do not both show it.
-              reinviteFailed={reinviteFailed && reinviteSource === "detail"}
+              reinviteFailed={managedReinviteFailedAt(recovery, "detail")}
             />
             <div className={styles.workFoot}>
               <DeleteExchangeButton
