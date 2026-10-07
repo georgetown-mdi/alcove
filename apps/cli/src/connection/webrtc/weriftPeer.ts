@@ -404,20 +404,28 @@ export interface WebRtcPeerOptions {
 }
 
 /**
- * Why a connection attempt after the first starts: the partner has not
- * connected within the attempt before it, or the partner, having been
- * answered, offered a new connection that this attempt meets.
+ * Why a connection attempt after the first starts, recorded as the attempt
+ * before it ended:
+ * - `partner-not-connected`: that attempt reached its bound with no session
+ *   description from the partner; `waitedMs` is the wait so far.
+ * - `partner-reconnected`: the partner, having been answered, offered a new
+ *   connection that this attempt meets.
+ * - `signaling-dropped`: the coordination server connection closed or failed
+ *   before the partner sent its session description.
+ * - `channel-not-opened`: the partner sent its session description, but the
+ *   data channel did not open within the channel-open budget.
  */
 export type AttemptStartReason =
-  "partner-not-connected" | "partner-reconnected";
+  | { kind: "partner-not-connected"; waitedMs: number }
+  | { kind: "partner-reconnected" }
+  | { kind: "signaling-dropped" }
+  | { kind: "channel-not-opened" };
 
 /**
  * Resolves the ICE server list a connection attempt after the first is built
- * with, and the line logged when it starts. `waitedMs` is how long the run has
- * waited for its partner so far.
+ * with, and the line logged when it starts.
  */
 export type AttemptIceServers = (
-  waitedMs: number,
   reason: AttemptStartReason,
 ) => Promise<AttemptIceServerList>;
 
@@ -635,34 +643,56 @@ export function relayCredentialPerAttempt(
   sharedSecret: string,
   now: () => Date = () => new Date(),
 ): AttemptIceServers {
-  return async (waitedMs, reason) => {
+  return async (reason) => {
     const credential = await mintRunRelayCredential(sharedSecret, now());
     return {
       iceServers: iceServersFromConnection(connection, credential),
-      notice: relayCredentialAttemptNotice(credential, waitedMs, reason),
+      notice: relayCredentialAttemptNotice(credential, reason),
     };
   };
 }
 
 /**
  * The line a run prints when a connection attempt after the first starts with
- * a new credential, `waitedMs` into the wait.
+ * a new credential: why it starts, and the credential's expiry.
  */
 export function relayCredentialAttemptNotice(
   credential: RelayCredential,
-  waitedMs: number,
   reason: AttemptStartReason,
 ): string {
-  const why =
-    reason === "partner-reconnected"
-      ? "the exchange partner started a new connection, so a new connection " +
-        "attempt starts to meet it"
-      : "the exchange partner has not connected within " +
-        `${Math.round(waitedMs / 60_000)} minutes, so a new connection attempt ` +
-        "starts";
   return (
-    `${why} with a new relay credential that expires at ` +
-    credential.expiresAt.toISOString()
+    `${attemptStartCause(reason)}, so a new connection attempt starts` +
+    `${reason.kind === "partner-reconnected" ? " to meet it" : ""} with a ` +
+    `new relay credential that expires at ${credential.expiresAt.toISOString()}`
+  );
+}
+
+/** What ended the attempt before one that starts for `reason`, as a clause. */
+function attemptStartCause(reason: AttemptStartReason): string {
+  switch (reason.kind) {
+    case "partner-not-connected":
+      return (
+        "the exchange partner has not connected within " +
+        waitSoFar(reason.waitedMs)
+      );
+    case "partner-reconnected":
+      return "the exchange partner started a new connection";
+    case "signaling-dropped":
+      return "the connection to the coordination server was lost";
+    case "channel-not-opened":
+      return "the connection to the exchange partner did not open";
+  }
+}
+
+/**
+ * A wait in whole minutes once it reaches one, else in whole seconds and at
+ * least one, so a short wait is never stated as zero.
+ */
+function waitSoFar(ms: number): string {
+  return formatWaitDuration(
+    ms >= 60_000
+      ? Math.floor(ms / 60_000) * 60_000
+      : Math.max(1, Math.floor(ms / 1000)) * 1000,
   );
 }
 
@@ -924,22 +954,19 @@ export async function openWebRtcPeerSession(
 
   const serversForAttempt = async (
     attempt: number,
-    reason: AttemptStartReason,
+    reason: AttemptStartReason | undefined,
   ): Promise<Array<RTCIceServer> | undefined> => {
-    if (attempt === 0) return iceServers;
+    if (reason === undefined) return iceServers;
     if (attemptIceServers === undefined) {
       log.debug(
-        reason === "partner-reconnected"
-          ? "the exchange partner started a new connection; starting " +
-              `connection attempt ${attempt + 1} to meet it`
-          : "the exchange partner has not connected; starting connection " +
-              `attempt ${attempt + 1}`,
+        `${attemptStartCause(reason)}; starting connection attempt ` +
+          `${attempt + 1}${reason.kind === "partner-reconnected" ? " to meet it" : ""}`,
       );
       return iceServers;
     }
     let next: AttemptIceServerList;
     try {
-      next = await attemptIceServers(Date.now() - startedAt, reason);
+      next = await attemptIceServers(reason);
     } catch (err) {
       throw err instanceof ConnectionError
         ? err
@@ -1028,14 +1055,9 @@ export async function openWebRtcPeerSession(
 
   const runAttempt = async (
     attempt: number,
-    partnerRestart: PartnerRestart | undefined,
+    previous: NextAttempt | undefined,
   ): Promise<AttemptOutcome> => {
-    const servers = await serversForAttempt(
-      attempt,
-      partnerRestart === undefined
-        ? "partner-not-connected"
-        : "partner-reconnected",
-    );
+    const servers = await serversForAttempt(attempt, previous?.reason);
     // The first build already warned about the same configured list.
     const peer = await buildPeer(servers, attempt === 0 ? undefined : () => {});
     const negotiation = new Negotiation({
@@ -1046,7 +1068,7 @@ export async function openWebRtcPeerSession(
       unreportedOfferResendMs,
       iceTransportPolicy,
       arrivalTimeout,
-      partnerRestart,
+      partnerRestart: previous?.partnerRestart,
       signal,
     });
     let broker: BrokerClient | undefined;
@@ -1061,15 +1083,16 @@ export async function openWebRtcPeerSession(
       broker = await register(negotiation, attempt > 0);
       const remainingMs = deadline - Date.now();
       const finalAttempt = remainingMs <= attemptMs * FINAL_ATTEMPT_STRETCH;
-      const channel = await negotiation.run(broker, {
+      const result = await negotiation.run(broker, {
         boundMs: finalAttempt ? Math.max(remainingMs, 0) : attemptMs,
         finalAttempt,
         offerQuietMs: attemptOfferQuietMs,
       });
-      if (channel === ATTEMPT_UNMET) {
+      if ("ended" in result) {
         await teardown();
-        return { partnerRestart: negotiation.partnerRestart };
+        return { next: nextAttemptAfter(result.ended, Date.now() - startedAt) };
       }
+      const channel = result.opened;
       assertSctpDrainSupported(peer);
       await logSelectedCandidatePair(peer, signal);
       // Take the state hook back off the negotiation, whose interest in it
@@ -1099,15 +1122,28 @@ export async function openWebRtcPeerSession(
     }
   };
 
-  let partnerRestart: PartnerRestart | undefined;
+  let next: NextAttempt | undefined;
   for (let attempt = 0; ; attempt += 1) {
     if (attempt > 0) {
       if (signal?.aborted) throw cancelled();
       if (Date.now() >= deadline) throw arrivalTimeout();
     }
-    const outcome = await runAttempt(attempt, partnerRestart);
+    const outcome = await runAttempt(attempt, next);
     if ("session" in outcome) return outcome.session;
-    partnerRestart = outcome.partnerRestart;
+    next = outcome.next;
+  }
+}
+
+/** The attempt that follows one that ended unmet `waitedMs` into the wait. */
+function nextAttemptAfter(end: AttemptEnd, waitedMs: number): NextAttempt {
+  switch (end.cause) {
+    case "partner-not-connected":
+      return { reason: { kind: end.cause, waitedMs } };
+    case "partner-reconnected":
+      return { reason: { kind: end.cause }, partnerRestart: end.restart };
+    case "signaling-dropped":
+    case "channel-not-opened":
+      return { reason: { kind: end.cause } };
   }
 }
 
@@ -1179,9 +1215,6 @@ interface AttemptPlan {
   offerQuietMs: number;
 }
 
-/** What {@link Negotiation.run} resolves with when an attempt ends with no partner. */
-const ATTEMPT_UNMET = Symbol("attempt unmet");
-
 /**
  * The offer of a new connection a partner made to an inviter that had
  * answered its last one. The broker delivered it, so it sends no `EXPIRE` and
@@ -1191,10 +1224,27 @@ interface PartnerRestart {
   offer: BrokerMessage;
 }
 
+/**
+ * Why an attempt ended with no partner met, latched as it ends; see
+ * {@link AttemptStartReason} for each cause.
+ */
+type AttemptEnd =
+  | { cause: "partner-not-connected" }
+  | { cause: "partner-reconnected"; restart: PartnerRestart }
+  | { cause: "signaling-dropped" }
+  | { cause: "channel-not-opened" };
+
+/** What {@link Negotiation.run} resolves with: the open channel, or why the attempt ended. */
+type NegotiationResult = { opened: RTCDataChannel } | { ended: AttemptEnd };
+
+/** Why the next attempt starts, and the partner's offer it answers, if any. */
+interface NextAttempt {
+  reason: AttemptStartReason;
+  partnerRestart?: PartnerRestart;
+}
+
 /** How one connection attempt ended: the partner met, or the next attempt to start. */
-type AttemptOutcome =
-  | { session: WebRtcPeerSession }
-  | { partnerRestart: PartnerRestart | undefined };
+type AttemptOutcome = { session: WebRtcPeerSession } | { next: NextAttempt };
 
 /**
  * Hold a remote candidate until a remote description can apply it. Bounded,
@@ -1254,15 +1304,13 @@ class Negotiation {
   private engagedGraceTimer: ReturnType<typeof setTimeout> | undefined;
   /** Set by {@link run}; absent before it, when no timer can have fired. */
   private plan: AttemptPlan | undefined;
-  /** The partner's new connection this attempt ended on, for the next to answer. */
-  partnerRestart: PartnerRestart | undefined;
   /** Set once the run has settled, after which nothing is left to time out. */
   private finished = false;
   /** Set once the attempt ended unmet, which may precede {@link run}. */
-  private unmet = false;
+  private ended: AttemptEnd | undefined;
   private settle:
     | {
-        resolve: (outcome: RTCDataChannel | typeof ATTEMPT_UNMET) => void;
+        resolve: (outcome: NegotiationResult) => void;
         reject: (err: unknown) => void;
       }
     | undefined;
@@ -1317,13 +1365,14 @@ class Negotiation {
   }
 
   /**
-   * End this attempt with no partner met, so the wait starts the next one.
-   * A no-op once the attempt has settled either way.
+   * End this attempt with no partner met, so the wait starts the next one for
+   * the cause latched first. A no-op once the attempt has settled either way.
    */
-  private endUnmet(): void {
-    if (this.finished || this.failure !== undefined) return;
-    this.unmet = true;
-    this.settle?.resolve(ATTEMPT_UNMET);
+  private endUnmet(end: AttemptEnd): void {
+    if (this.finished || this.failure !== undefined || this.ended !== undefined)
+      return;
+    this.ended = end;
+    this.settle?.resolve({ ended: end });
   }
 
   /**
@@ -1345,7 +1394,7 @@ class Negotiation {
     log.warn(
       `${sanitizeErrorForDisplay(error)}; starting a new connection attempt`,
     );
-    this.endUnmet();
+    this.endUnmet({ cause: "signaling-dropped" });
   }
 
   /**
@@ -1395,33 +1444,32 @@ class Negotiation {
       return;
     }
     const diagnosis = await this.iceDiagnosis(summary);
-    if (this.finished || this.failure !== undefined) return;
+    if (this.finished || this.failure !== undefined || this.ended !== undefined)
+      return;
     log.warn(
       `${sanitizeErrorForDisplay(diagnosis)}; starting a new connection attempt`,
     );
-    this.endUnmet();
+    this.endUnmet({ cause: "channel-not-opened" });
   }
 
   /**
    * Run the attempt until the channel opens, resolving with it, or until the
-   * attempt ends unmet, resolving {@link ATTEMPT_UNMET}.
+   * attempt ends unmet, resolving with why it ended.
    */
   async run(
     broker: BrokerClient,
     plan: AttemptPlan,
-  ): Promise<RTCDataChannel | typeof ATTEMPT_UNMET> {
+  ): Promise<NegotiationResult> {
     this.broker = broker;
     this.plan = plan;
     const { role, signal, partnerRestart } = this.options;
     this.attachPeer();
 
-    const opened = new Promise<RTCDataChannel | typeof ATTEMPT_UNMET>(
-      (resolve, reject) => {
-        this.settle = { resolve, reject };
-        if (this.failure !== undefined) reject(this.failure);
-        else if (this.unmet) resolve(ATTEMPT_UNMET);
-      },
-    );
+    const opened = new Promise<NegotiationResult>((resolve, reject) => {
+      this.settle = { resolve, reject };
+      if (this.failure !== undefined) reject(this.failure);
+      else if (this.ended !== undefined) resolve({ ended: this.ended });
+    });
     // Keep the rejection handled from the instant the promise exists, before
     // the acceptor's `await this.offer()` below yields the turn: a failure
     // latched through fail() in that window rejects `opened` while nothing is
@@ -1483,12 +1531,12 @@ class Negotiation {
   private attemptBoundReached(finalAttempt: boolean): void {
     if (!this.partnerEngaged()) {
       if (finalAttempt) this.fail(this.options.arrivalTimeout());
-      else this.endUnmet();
+      else this.endUnmet({ cause: "partner-not-connected" });
       return;
     }
     this.engagedGraceTimer = setTimeout(() => {
       if (!finalAttempt) {
-        this.endUnmet();
+        this.endUnmet({ cause: "channel-not-opened" });
         return;
       }
       void this.failWithIceDiagnosis(
@@ -1572,8 +1620,10 @@ class Negotiation {
       // A new id means the dialer abandoned the connection this side
       // answered and started another. This attempt ends and the next one
       // answers this offer: a browser dialer never sends it again.
-      this.partnerRestart = { offer: message };
-      this.endUnmet();
+      this.endUnmet({
+        cause: "partner-reconnected",
+        restart: { offer: message },
+      });
       return;
     }
     const { peer } = this;
@@ -1837,7 +1887,7 @@ class Negotiation {
     this.channel = channel;
     const settleOpen = (): void => {
       this.stopChannelOpenDeadline();
-      this.settle?.resolve(channel);
+      this.settle?.resolve({ opened: channel });
     };
     if (channel.readyState === "open") {
       settleOpen();

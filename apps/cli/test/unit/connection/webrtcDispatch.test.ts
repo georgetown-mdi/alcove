@@ -951,10 +951,10 @@ test("a minting run dials each later connection attempt with a fresh credential"
   vi.useFakeTimers({ toFake: ["Date"], now: nextAttemptAt });
   let next: { iceServers: Array<{ username?: string }>; notice: string };
   try {
-    next = (await options.attemptIceServers?.(
-      WEBRTC_ATTEMPT_MS,
-      "partner-not-connected",
-    )) ?? {
+    next = (await options.attemptIceServers?.({
+      kind: "partner-not-connected",
+      waitedMs: WEBRTC_ATTEMPT_MS,
+    })) ?? {
       iceServers: [],
       notice: "",
     };

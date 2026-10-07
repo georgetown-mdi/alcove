@@ -258,32 +258,63 @@ test("the minted credential's notice names the relay, its lifetime, and its expi
 
 test("a later attempt's credential notice names the wait and the new expiry", () => {
   expect(
-    relayCredentialAttemptNotice(
-      RUN_CREDENTIAL,
-      30 * 60_000 + 7,
-      "partner-not-connected",
-    ),
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, {
+      kind: "partner-not-connected",
+      waitedMs: 30 * 60_000 + 7,
+    }),
   ).toBe(
     "the exchange partner has not connected within 30 minutes, so a new " +
       "connection attempt starts with a new relay credential that expires " +
       "at 2026-01-01T01:00:00.000Z",
   );
   expect(
-    relayCredentialAttemptNotice(
-      RUN_CREDENTIAL,
-      60 * 60_000,
-      "partner-not-connected",
-    ),
-  ).toMatch(/^the exchange partner has not connected within 60 minutes,/);
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, {
+      kind: "partner-not-connected",
+      waitedMs: 60 * 60_000,
+    }),
+  ).toMatch(/^the exchange partner has not connected within 1 hour,/);
+});
+
+test("a wait under a minute is stated in seconds, never as zero", () => {
+  const within = (waitedMs: number): string =>
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, {
+      kind: "partner-not-connected",
+      waitedMs,
+    });
+  expect(within(20_400)).toMatch(/ within 20 seconds, /);
+  expect(within(59_999)).toMatch(/ within 59 seconds, /);
+  expect(within(60_000)).toMatch(/ within 1 minute, /);
+  expect(within(400)).toMatch(/ within 1 second, /);
+  expect(within(0)).toMatch(/ within 1 second, /);
+});
+
+test("an attempt that follows a lost coordination server connection says so", () => {
+  expect(
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, { kind: "signaling-dropped" }),
+  ).toBe(
+    "the connection to the coordination server was lost, so a new " +
+      "connection attempt starts with a new relay credential that expires " +
+      "at 2026-01-01T01:00:00.000Z",
+  );
+});
+
+test("an attempt that follows an unopened data channel says so", () => {
+  expect(
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, {
+      kind: "channel-not-opened",
+    }),
+  ).toBe(
+    "the connection to the exchange partner did not open, so a new " +
+      "connection attempt starts with a new relay credential that expires " +
+      "at 2026-01-01T01:00:00.000Z",
+  );
 });
 
 test("an attempt that meets a partner's new connection says so rather than naming the wait", () => {
   expect(
-    relayCredentialAttemptNotice(
-      RUN_CREDENTIAL,
-      30 * 60_000,
-      "partner-reconnected",
-    ),
+    relayCredentialAttemptNotice(RUN_CREDENTIAL, {
+      kind: "partner-reconnected",
+    }),
   ).toBe(
     "the exchange partner started a new connection, so a new connection " +
       "attempt starts to meet it with a new relay credential that expires " +
