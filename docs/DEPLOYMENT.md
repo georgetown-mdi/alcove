@@ -148,8 +148,6 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 - **The access log records the request path without the query string,** so the rendezvous identifier and client token in a signaling URL are not written to it.
 - **Retention is bounded by the host's journald configuration.** That configuration, the nginx configuration and the units live on the host, not in this repository.
 
-Until the Elastic Beanstalk teardown deletes them, that deployment's CloudWatch log groups in us-west-2 hold its request and process logs. None belongs to the coordination server's host.
-
 ## Diagnosing web connection failures
 
 By default the web client logs PeerJS connection activity at errors-only, so a normal exchange prints no connection-diagnostic detail to the browser console. This is deliberate: PeerJS's warning-level logs interpolate the remote peer id, and a web exchange's peer ids are rendezvous addresses derived from the invitation secret, which the app keeps out of its logs (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)).
