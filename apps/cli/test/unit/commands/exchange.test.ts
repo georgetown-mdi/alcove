@@ -2278,12 +2278,13 @@ test("handler trims a supplied --identity before using it", async () => {
 });
 
 // --- handler: --invitation provisioning --------------------------------------
-// These drive the handler's provisioning step, which runs before the key file is
-// read: --invitation decodes an invitation code and writes the composing party's
-// key-file copy (secret AND expiry), then the exchange proceeds as usual. The
-// full decode/write path is unit-tested in keyFile.test.ts; these cover the
-// handler wiring -- that provisioning happens ahead of loadConfig, that the run
-// then proceeds, and the pre-existing-key and fail-closed exit paths.
+// These drive the handler's provisioning step, which runs after the
+// configuration loads and before the key file is read: --invitation decodes an
+// invitation code and writes the composing party's key-file copy (secret AND
+// expiry), then the exchange proceeds as usual. The full decode/write path is
+// unit-tested in keyFile.test.ts; these cover the handler wiring -- that a
+// configuration failing to load stops the run with no key file written, that
+// the run then proceeds, and the pre-existing-key and fail-closed exit paths.
 
 // A 43-char base64url secret distinct from TOKEN_A/TOKEN_B, to prove the
 // provisioned key has the invitation's secret.
@@ -2391,39 +2392,118 @@ test("handler: --invitation with a malformed code fails closed (exit 64), writin
   }
 });
 
-test.each([
+const RETIRED_SETTINGS = [
   "outbound_payload_consent",
   "disclosed_payload_columns",
   "expected_payload_columns",
+];
+
+test.each([
+  ...RETIRED_SETTINGS.map((key) => ({
+    name: `holding ${key}`,
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({ ...minimalFiledropConfig, [key]: ["notes"] }),
+      ),
+    says: `the setting "${key}" is retired; delete it from the file`,
+    code: 64,
+  })),
+  {
+    name: "that does not exist",
+    seed: () => undefined,
+    says: "does not exist; to create one",
+    code: 64,
+  },
+  {
+    name: "that is not YAML",
+    seed: () => fs.writeFileSync(configFile, "connection: [unclosed\n"),
+    says: "could not be parsed as YAML",
+    code: 64,
+  },
+  {
+    name: "with no linkage_terms",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({ connection: minimalFiledropConfig.connection }),
+      ),
+    says: "is not a valid exchange spec",
+    code: 64,
+  },
+  {
+    name: "with a placeholder SSH username",
+    seed: () =>
+      fs.writeFileSync(configFile, YAML.stringify(placeholderUsernameConfig)),
+    says: "placeholder as connection.server.username",
+    code: 64,
+  },
+  {
+    name: "that signs receipts and names no signing identity",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          ...minimalFiledropConfig,
+          signing: { mode: "certificate" },
+        }),
+      ),
+    says: "names no signing identity",
+    code: 64,
+  },
+  {
+    name: "with a placeholder identity",
+    seed: () =>
+      fs.writeFileSync(
+        configFile,
+        YAML.stringify({
+          ...minimalFiledropConfig,
+          linkageTerms: {
+            ...minimalLinkageTerms,
+            identity: "REPLACE_WITH_YOUR_IDENTITY",
+          },
+        }),
+      ),
+    says: "placeholder as linkage_terms.identity",
+    code: 64,
+  },
 ])(
-  "handler: --invitation on a configuration holding %s exits 64 with the refusal and writes no key file",
-  async (key) => {
-    const encoded = await encodeInvitation(inviteToken());
-    fs.writeFileSync(
-      configFile,
-      YAML.stringify({ ...minimalFiledropConfig, [key]: ["notes"] }),
-    );
+  "handler: --invitation on a configuration $name exits as the run without it does and writes no key file",
+  async ({ seed, says, code }) => {
     const input = path.join(dir, "in.csv");
     fs.writeFileSync(input, "ssn\n123456789\n");
+    seed();
+    const argv = {
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+    } as unknown as Arguments;
 
     vi.mocked(runProtocol).mockReset();
+    vi.mocked(provisionKeyFileFromInvitation).mockClear();
     const exitSpy = captureProcessExit();
     try {
+      await expect(handler(argv)).rejects.toThrow(/^exit:/);
+      const [configFailureCode] = exitSpy.mock.calls[0];
+      const configFailure = mockState.errors.join("\n");
+      expect(configFailure).toContain(says);
+      expect(configFailureCode).toBe(code);
+      exitSpy.mockClear();
+      mockState.errors.length = 0;
+
       await expect(
         handler({
-          _: [],
-          $0: "alcove",
-          input,
-          "config-file": configFile,
-          "key-file": keyFile,
-          invitation: encoded,
-          "log-level": "silent",
-        } as unknown as Arguments),
-      ).rejects.toThrow("exit:64");
-      expect(mockState.errors.join("\n")).toContain(
-        `the setting "${key}" is retired; delete it from the file`,
-      );
+          ...argv,
+          invitation: await encodeInvitation(inviteToken()),
+        } as Arguments),
+      ).rejects.toThrow(`exit:${configFailureCode}`);
+      expect(exitSpy).toHaveBeenCalledExactlyOnceWith(configFailureCode);
+      expect(mockState.errors.join("\n")).toBe(configFailure);
       expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+      expect(vi.mocked(provisionKeyFileFromInvitation)).not.toHaveBeenCalled();
       expect(fs.existsSync(keyFile)).toBe(false);
     } finally {
       exitSpy.mockRestore();

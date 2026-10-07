@@ -710,23 +710,27 @@ been confirmed at the relay registrar a run registers at
 
 ### `exchange --invitation` fail-closed ordering
 
-`provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is the ordering
-authority for that path, and it is fail-closed at each step:
+The handler loads and validates the configuration first, without reading the
+key file, and makes every refusal the configuration alone decides (a
+certificate-mode run naming no signing identity or unable to record a partner
+pin, a placeholder left in the file), so a configuration that fails stops the
+run with nothing written. `provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is then
+the ordering authority for the key file, and it is fail-closed at each step:
 
 1. **Refuse if a key file already exists.** A key file present at the key path is
    a `UsageError` (exit 64), never an overwrite. After the first exchange the
    secret rotates, so re-supplying the original code must not resurrect a stale
    secret; provisioning is a first-time step, re-established only by re-inviting.
-   This check runs first, before the code is even decoded.
+   This check runs before the code is even decoded.
 2. **Decode and validate before any write.** The code is decoded and validated
    for checksum, schema, and expiry (`decodeAndValidateInvitation`) before
    anything is written, so a malformed or expired code raises its `UsageError`
    and leaves the filesystem untouched -- nothing is written and no connection
    is attempted.
-3. **Write the key file, then load the config.** Only on success is the key file
-   written (with the token's shared secret and expiry). The handler runs this
-   provisioning step ahead of `loadConfig`, so the config load then finds the
-   provisioned key and the exchange proceeds as a normal recurring `exchange`.
+3. **Write the key file, then read it.** Only on success is the key file
+   written (with the token's shared secret and expiry). The handler then reads
+   the provisioned key into the configuration it already loaded, and the
+   exchange proceeds as a normal recurring `exchange`.
    The `--invitation` value is never `@`-resolved into `argv`; its `@`-file form
    (`--invitation @code.txt`) is read at decode time, keeping the code out of
    shell history and the process argument list.
