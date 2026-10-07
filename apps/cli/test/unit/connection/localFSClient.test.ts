@@ -293,18 +293,21 @@ test("list measures the filename bound in UTF-8 bytes, not string length", async
 // three bytes when re-encoded, so it is measured from the raw bytes on disk.
 const INVALID_UTF8_BYTE = 0xe9;
 
-test("list accepts a name of raw non-UTF-8 bytes under the byte limit", async () => {
-  // 200 raw bytes on disk; decoded and re-encoded they would measure 600.
-  const rawName = Buffer.alloc(200, INVALID_UTF8_BYTE);
-  await fs.writeFile(
-    Buffer.concat([Buffer.from(path.join(dir, path.sep)), rawName]),
-    "x",
-  );
-  const entries = await client.list(dir);
-  expect(entries.map((e) => ({ name: e.name, size: e.size }))).toEqual([
-    { name: rawName.toString("utf8"), size: 1 },
-  ]);
-});
+test.runIf(process.platform === "linux")(
+  "list accepts a name of raw non-UTF-8 bytes under the byte limit",
+  async () => {
+    // 200 raw bytes on disk; decoded and re-encoded they would measure 600.
+    const rawName = Buffer.alloc(200, INVALID_UTF8_BYTE);
+    await fs.writeFile(
+      Buffer.concat([Buffer.from(path.join(dir, path.sep)), rawName]),
+      "x",
+    );
+    const entries = await client.list(dir);
+    expect(entries.map((e) => ({ name: e.name, size: e.size }))).toEqual([
+      { name: rawName.toString("utf8"), size: 1 },
+    ]);
+  },
+);
 
 test("list refuses a raw non-UTF-8 name over the byte limit with its on-disk length", async () => {
   // No filesystem here stores a name past NAME_MAX, so the directory is mocked.

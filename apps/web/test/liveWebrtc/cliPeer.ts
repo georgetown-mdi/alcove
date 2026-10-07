@@ -1,9 +1,19 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
-import { cliEntry, pairsFromResultCsv } from "../interop/cliParty.ts";
+import {
+  cliEntry,
+  pairsFromResultCsv,
+  resultFileIn,
+} from "../interop/cliParty.ts";
 import { trackChild } from "../utils/childProcess.ts";
 
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
@@ -85,8 +95,8 @@ function loggedAt(output: string, fragment: string): number | null {
 }
 
 /**
- * The matched pairs the CLI party's result file holds, or null when it wrote
- * none.
+ * The matched pairs in the result file of the CLI party's output folder, or
+ * null when the folder does not exist or holds no result file.
  *
  * Read only from a run that exited 0 within its deadline: a killed or failing
  * run can leave a truncated file, and the parse error that file raises would be
@@ -95,17 +105,23 @@ function loggedAt(output: string, fragment: string): number | null {
  * raised with the run's own output beside it, which is what diagnoses it.
  */
 function readPairs(
-  resultPath: string,
+  outputFolder: string,
   output: string,
 ): Array<MatchedPair> | null {
-  if (!existsSync(resultPath)) return null;
+  if (
+    !existsSync(outputFolder) ||
+    !readdirSync(outputFolder).some(
+      (name) => name.startsWith("alcove-results-") && name.endsWith(".csv"),
+    )
+  )
+    return null;
   try {
-    return pairsFromResultCsv(resultPath);
+    return pairsFromResultCsv(resultFileIn(outputFolder));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `the CLI party exited 0, but its result file at ${resultPath} did not ` +
-        `parse: ${reason}\n${output}`,
+      `the CLI party exited 0, but no parsable result file in ` +
+        `${outputFolder}: ${reason}\n${output}`,
     );
   }
 }
@@ -136,7 +152,7 @@ export async function startCliInviter(
 
   const work = mkdtempSync(path.join(tmpdir(), "alcove-live-webrtc-"));
   const inputPath = path.join(work, "input.csv");
-  const outputPath = path.join(work, "result.csv");
+  const outputPath = path.join(work, "results");
   writeFileSync(inputPath, CLI_CSV);
 
   const child = spawn(

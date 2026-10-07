@@ -972,7 +972,7 @@ test("signing.receipt_output is accepted and warned about, naming where the rece
   const result = loadConfig(baseOptions());
   expect(result.signing?.mode).toBe("none");
   expect(mockState.warnings).toEqual([
-    `${pathAsDisplayed(configFile)}: the setting "signing.receipt_output" is ` +
+    `${configFile}: the setting "signing.receipt_output" is ` +
       "ignored: a signed run writes its receipt into the output folder as " +
       "alcove-receipt-<time>.json, with the same time stamp as the run's " +
       "result and record. Delete the setting from the file.",
