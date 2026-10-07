@@ -755,7 +755,7 @@ async function receivePayload(
     conn,
     participantId,
     PAYLOAD_WHAT,
-    maxPartnerRows,
+    { entries: maxPartnerRows },
     (value) => {
       const part = parseOrProtocolError(payloadWireSchema, value);
       return { part, entries: part.hasData ? part.rows.length : 0 };

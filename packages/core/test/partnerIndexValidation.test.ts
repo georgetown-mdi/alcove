@@ -632,8 +632,26 @@ test("cascade refuses a returned mapped-element list of the wrong length", async
   );
 });
 
+// A partner row is three digits at this size, as long as the fractional 1.5, so
+// the part's byte bound admits it and the whole-number check is what refuses.
+async function cascadeWithManyRows(deviate: Deviation): Promise<unknown> {
+  const padding = Array.from({ length: 98 }, (_, i) => `Pad${i}`);
+  const run = await runCascade({
+    library: psiLibrary,
+    starterKeys: [["Alice", "Bob", "Carol", ...padding]],
+    joinerKeys: [["Zed", "Bob", "Carol", ...padding.map((p) => `J${p}`)]],
+    keyWidths: [1],
+    elementBounds: psiElementBounds(
+      { effectiveKeyCount: 1, recordCount: 101 },
+      { effectiveKeyCount: 1, recordCount: 101 },
+    ),
+    deviate: { party: "starter", deviation: deviate },
+  });
+  return run.starter instanceof Error ? run.starter : undefined;
+}
+
 test("cascade refuses a returned mapped-element list with a fractional partner row", async () => {
-  const err = await cascadeWithDeviation(
+  const err = await cascadeWithManyRows(
     onMappedElementList(2, (list) =>
       list.map((e) => ({ ...e, theirIndex: 1.5 })),
     ),
@@ -641,6 +659,18 @@ test("cascade refuses a returned mapped-element list with a fractional partner r
   expectProtocolRefusal(
     err,
     /returned mapped-element list has an entry that is not a whole number/,
+  );
+});
+
+test("cascade refuses a returned mapped-element list part longer than its byte bound", async () => {
+  const err = await cascadeWithDeviation(
+    onMappedElementList(2, (list) =>
+      list.map((e) => ({ ...e, theirIndex: 1.5 })),
+    ),
+  );
+  expectProtocolRefusal(
+    err,
+    /returned mapped-element list part 0 is over the 80 bytes this party admits for it/,
   );
 });
 

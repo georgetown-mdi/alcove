@@ -255,7 +255,7 @@ The rest of the part is its body, UTF-8 JSON. Known-answer vectors: `packages/co
 
 **The part body.** A mapped-element list's part is a JSON array of the part's entries, in list order; each array element is one entry. A payload's part is a payload message (`hasData`, `columns`, `rowIndices`, `rows`) holding the part's rows and their row indices, every part naming the same columns; each row is one entry. A payload with no data (`{"hasData": false}`) is one part of no entries, and an empty mapped-element list one part holding `[]`.
 
-**The part size.** A sender fills each part's body to the bytes one part of a PSI set holds on the same connection (`psiSetPartPayloadBytes`): on SFTP or a synced folder, a message file of `MAX_FRAME_SIZE_BYTES` inside the AEAD envelope; on WebRTC, the data-channel bound ([The part size](#a-psi-set-is-sent-in-parts)). It cuts the list before the entry that would take the body past that, or past `MAX_JSON_ARRAY_ELEMENTS` entries, measuring each entry as its UTF-8 JSON with its separator. A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, and each body to the JSON structure bounds.
+**The part size.** A sender fills each part's body to the bytes one part of a PSI set holds on the same connection (`psiSetPartPayloadBytes`): on SFTP or a synced folder, a message file of `MAX_FRAME_SIZE_BYTES` inside the AEAD envelope; on WebRTC, the data-channel bound ([The part size](#a-psi-set-is-sent-in-parts)). It cuts the list before the entry that would take the body past that, or past `MAX_JSON_ARRAY_ELEMENTS` entries, measuring each entry as its UTF-8 JSON with its separator. A receiver requires no part size: each part's frame is held to that receiver's own per-frame bound at its transport, each body to the JSON structure bounds, and a mapped-element list's part to the byte bound below.
 
 **The entries a receiver admits.** The first part's declared entry count is held, before any part's body is parsed, to a bound read from the agreed terms and this party's own result:
 
@@ -263,12 +263,21 @@ The rest of the part is its body, UTF-8 JSON. Known-answer vectors: `packages/co
 - the returned list: the count this party already holds for it ([Deriving one table from the exchanged association maps](#deriving-one-table-from-the-exchanged-association-maps)), one entry per record it matched, or the rows its own list named where the partner keeps its duplicates;
 - the partner's payload: the pairs in this party's matched table, the partner sending one row per distinct record of its own the table pairs; 0 for a party holding no table, a count-only run's.
 
+**The bytes a receiver admits.** A part of either mapped-element list -- the partner's own, and the one it returns -- is held to a byte bound (`matchedListPartByteBound`, `packages/core/src/psi/matchedListParts.ts`): the 16-byte header, 2 bytes for the array's brackets, and one longest entry with its separator for each entry the list still has to send. That count is the declared entry count less the entries the earlier parts held, at most `MAX_JSON_ARRAY_ELEMENTS`. Limit: the declared count comes from the first part's own header, so a partner that declares more entries than it sends raises that part's bound up to the count this party agreed to accept, and such a part is parsed before it is refused as ending short; the bound for the whole list never exceeds what this party's own state allows. The longest entry is `{"theirIndex":...,"iteration":...}` as `JSON.stringify` writes it, with no whitespace between tokens and each number at the digits of the largest value an honest party sends there (`mappedElementEntryBytes`, `packages/core/src/psi/link.ts`):
+
+- the partner's mapped-element list: a list of as many positions as one of the partner's records may own in the round (the width the agreed terms declare for the key, times 20), each below the count of this party's own candidate positions in that round, taking the round that gives the longest entry;
+- the returned list: one row below the record count the partner declared on the terms exchange;
+- in both, a round below the number of linkage keys.
+
+A payload's part has no byte bound of this kind: its rows hold the partner's column values, which no agreed term bounds.
+
 **What the receiver refuses, from the headers.** Each refusal is a `protocol` `ConnectionError` naming the list and the condition, raised before the refused part's body is parsed:
 
 - On the first part, a declared entry count over the bound above; and a part count of 0, or above the entry count (above 1 for an empty list).
 - A part shorter than its header, or with no body.
 - A part whose index is below the one expected (a repeated part) or above it (a missing part).
 - On a later part, a part count or entry count that differs from the first part's.
+- On a mapped-element list's part, a part longer than the byte bound above. The refusal names the bound, and the part's own length is on a cause link of its own.
 
 **What the receiver refuses, parsing the parts.** Each body is parsed as its part arrives, through `parseBoundedJson` and the list's own schema, before the next part is read, and refused as a `protocol` `ConnectionError`: a body that is not JSON, the refusal naming no byte of it; a body the list's schema refuses; a part holding no entries in a list that is not empty; and a part running past the declared entry count. Once the last part has arrived, parts ending short of the declared entry count are refused, and, for a payload, a part naming other columns than the first part, or a row index repeated across parts. No part reaches the matching path before every part of the list has passed these checks.
 

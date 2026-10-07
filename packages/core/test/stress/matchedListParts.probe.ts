@@ -20,6 +20,7 @@ import {
   associationAndIterationArray,
   exchangeMappedElements,
   mappedElementArray,
+  mappedElementEntryBytes,
 } from "../../src/psi/link";
 import { makeRendezvousPair } from "../utils/fileSyncConnectionFixture";
 
@@ -108,6 +109,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
     theirIndex: i,
     iteration: i & 1,
   }));
+  const bound = { entries, entryBytes: mappedElementEntryBytes(entries, 1, 2) };
   const [atA, atB] = await Promise.all([
     exchangeMappedElements(
       "a",
@@ -116,7 +118,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
       true,
       list,
       "list",
-      entries,
+      bound,
       mappedElementArray,
     ),
     exchangeMappedElements(
@@ -126,7 +128,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
       false,
       list,
       "list",
-      entries,
+      bound,
       mappedElementArray,
     ),
   ]);
@@ -145,7 +147,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
       true,
       list,
       "returned list",
-      entries,
+      bound,
       associationAndIterationArray,
     ),
     exchangeMappedElements(
@@ -155,7 +157,7 @@ async function mappedElements(pair: Pair, entries: number): Promise<void> {
       false,
       list,
       "returned list",
-      entries,
+      bound,
       associationAndIterationArray,
     ),
   ]);
