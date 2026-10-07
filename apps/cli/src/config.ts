@@ -76,13 +76,13 @@ export {
   reconcileConflictMessage,
   reconcileDiffValue,
   reconcileValueClause,
-} from "./config/reconcile";
+} from "./config/reconcileDiffs";
 export type {
   ReconcileClause,
   ReconcileDiff,
   ReconcileDiffFit,
   ReconcileSideFit,
-} from "./config/reconcile";
+} from "./config/reconcileDiffs";
 
 /**
  * Default path for the exchange config file written by the provisioning
