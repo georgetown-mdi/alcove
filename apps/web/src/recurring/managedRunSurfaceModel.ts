@@ -1,8 +1,7 @@
-import type { ResolvedMatching, TermsChange } from "@alcove/core";
+import type { Displayable, ResolvedMatching, TermsChange } from "@alcove/core";
 
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
-import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
@@ -60,10 +59,9 @@ export type ManagedRunPhase =
 /** The attended run's whole state on the surface. */
 export interface ManagedRunState {
   phase: ManagedRunPhase;
-  /** The run's non-fatal notices, in arrival order, each already escaped for
-   * display. Shown beside the outputs, or beside the failure of a run that
-   * stopped after raising one. */
-  warnings: ReadonlyArray<string>;
+  /** The run's non-fatal notices, in arrival order. Shown beside the outputs, or
+   * beside the failure of a run that stopped after raising one. */
+  warnings: ReadonlyArray<Displayable>;
   /** What the agreed `deduplicate` values resolved to, reported once the terms
    * are agreed, so the running copy can state the pair. */
   matching: ResolvedMatching | undefined;
@@ -81,9 +79,9 @@ export const MANAGED_RUN_INITIAL: ManagedRunState = {
 /** The events of an attended run, in the order a run reports them. */
 export type ManagedRunAction =
   | { type: "run-started" }
-  /** `warnings` were escaped at the seat by `appendSanitizedRunWarning`, the one
+  /** Escaped by `appendSanitizedRunWarning` at the `onWarning` call, the one
    * display boundary every driver `onWarning` slot folds through. */
-  | { type: "warning-raised"; warnings: ReadonlyArray<string> }
+  | { type: "warning-raised"; escapedWarning: Displayable }
   | { type: "matching-resolved"; matching: ResolvedMatching }
   | { type: "terms-change-asked"; question: ManagedTermsChangeQuestion }
   | { type: "terms-change-answered" }
@@ -112,7 +110,9 @@ function withFolderWrite(
   };
 }
 
-/** Fold one run event into the run state. */
+/** An event that does not apply to the current phase returns `state` itself: a
+ * failure once outputs are on screen, a folder-write event outside a completion,
+ * a settle or a clear with nothing to end. */
 export function managedRunReducer(
   state: ManagedRunState,
   action: ManagedRunAction,
@@ -126,7 +126,7 @@ export function managedRunReducer(
         matching: undefined,
       };
     case "warning-raised":
-      return { ...state, warnings: [...state.warnings, ...action.warnings] };
+      return { ...state, warnings: [...state.warnings, action.escapedWarning] };
     case "matching-resolved":
       return { ...state, matching: action.matching };
     case "terms-change-asked":
@@ -192,25 +192,32 @@ export function managedRunLiveFailure(
   return state.phase.kind === "failed" ? state.phase.failure : undefined;
 }
 
+/** What {@link managedRunInputSource} chooses from. */
+export interface ManagedRunInputChoices {
+  recordLoaded: boolean;
+  /** The record's working folder where this browser can use it, else undefined. */
+  usableFolder: FileSystemDirectoryHandle | undefined;
+  folderGrantable: boolean;
+  chosenFile: File | undefined;
+}
+
 /**
- * Where the next run reads its input: the working folder where the record holds
- * one this browser can use, or the operator's chosen file on a browser that
- * cannot grant a folder. `undefined` -- and the Run control disabled -- while
- * neither is available.
+ * Where the next run reads its input: the record's usable working folder, or the
+ * operator's chosen file on a browser that cannot grant a folder. `undefined` --
+ * and the Run control disabled -- while neither is available.
  */
 export function managedRunInputSource(
-  record:
-    Pick<RunnableManagedExchangeRecord, "workingDirectoryHandle"> | undefined,
-  folderUsable: boolean,
-  folderGrantable: boolean,
-  chosenFile: File | undefined,
+  choices: ManagedRunInputChoices,
 ): ManagedInputSource | undefined {
-  if (record === undefined) return undefined;
-  const folder = record.workingDirectoryHandle;
-  if (folderUsable && folder !== undefined)
-    return { kind: "folder", directory: folder, attendance: "attended" };
-  if (!folderGrantable && chosenFile !== undefined)
-    return { kind: "file", file: chosenFile };
+  if (!choices.recordLoaded) return undefined;
+  if (choices.usableFolder !== undefined)
+    return {
+      kind: "folder",
+      directory: choices.usableFolder,
+      attendance: "attended",
+    };
+  if (!choices.folderGrantable && choices.chosenFile !== undefined)
+    return { kind: "file", file: choices.chosenFile };
   return undefined;
 }
 

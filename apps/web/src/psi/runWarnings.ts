@@ -3,7 +3,8 @@ import {
   describeUndeclaredColumns,
   sanitizeForDisplay,
 } from "@alcove/core";
-import type { PreparedExchange } from "@alcove/core";
+
+import type { Displayable, PreparedExchange } from "@alcove/core";
 
 /**
  * Fold one driver `onWarning` message into a seat's accumulated run warnings.
@@ -17,10 +18,10 @@ import type { PreparedExchange } from "@alcove/core";
  * whole-message composition budget, not the per-value default -- see
  * docs/spec/CHANNEL_SECURITY.md, "Display sanitization escape format".
  */
-export function appendSanitizedRunWarning(
-  current: ReadonlyArray<string>,
+export function appendSanitizedRunWarning<TWarning extends string>(
+  current: ReadonlyArray<TWarning>,
   message: string,
-): Array<string> {
+): Array<TWarning | Displayable> {
   return [
     ...current,
     sanitizeForDisplay(message, {

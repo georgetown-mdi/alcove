@@ -566,15 +566,18 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // runs from one and asks for it until it is chosen; one that cannot has the
   // operator choose the file each run.
   const folder = record?.workingDirectoryHandle;
-  const hasFolder = storedWorkingDirectoryUsable(folder);
+  const usableFolder = storedWorkingDirectoryUsable(folder)
+    ? folder
+    : undefined;
+  const hasFolder = usableFolder !== undefined;
   const folderGrantable = workingDirectoryGrantSupported();
 
-  const runInputSource = managedRunInputSource(
-    record,
-    hasFolder,
+  const runInputSource = managedRunInputSource({
+    recordLoaded: record !== undefined,
+    usableFolder,
     folderGrantable,
-    reselected,
-  );
+    chosenFile: reselected,
+  });
 
   function run() {
     const source = runInputSource;
@@ -636,11 +639,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
               dataExchangeStarted = true;
             },
           },
-          onWarning: (message) =>
-            dispatchRun({
-              type: "warning-raised",
-              warnings: appendSanitizedRunWarning([], message),
-            }),
+          onWarning: (message) => {
+            const [escapedWarning] = appendSanitizedRunWarning([], message);
+            dispatchRun({ type: "warning-raised", escapedWarning });
+          },
           onResolvedMatching: (resolved) =>
             dispatchRun({ type: "matching-resolved", matching: resolved }),
           // Asked in a dialog while the partner's run waits at the terms

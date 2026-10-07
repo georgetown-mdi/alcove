@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { displayText } from "@alcove/core";
 
 import {
   MANAGED_RUN_INITIAL,
@@ -13,6 +14,7 @@ import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel"
 
 import type {
   ManagedRunAction,
+  ManagedRunInputChoices,
   ManagedRunState,
   ManagedSurfaceViewInputs,
 } from "@recurring/managedRunSurfaceModel";
@@ -241,8 +243,8 @@ describe("what the driver reports along the way", () => {
   test("notices accumulate in arrival order and stand beside a failure", () => {
     const state = fold([
       { type: "run-started" },
-      { type: "warning-raised", warnings: ["first"] },
-      { type: "warning-raised", warnings: ["second"] },
+      { type: "warning-raised", escapedWarning: displayText`first` },
+      { type: "warning-raised", escapedWarning: displayText`second` },
       failedRun(1),
       { type: "run-settled" },
     ]);
@@ -253,7 +255,7 @@ describe("what the driver reports along the way", () => {
     const state = fold([
       { type: "run-started" },
       completed,
-      { type: "warning-raised", warnings: ["late"] },
+      { type: "warning-raised", escapedWarning: displayText`late` },
       { type: "run-settled" },
     ]);
     expect(state.warnings).toEqual(["late"]);
@@ -262,7 +264,7 @@ describe("what the driver reports along the way", () => {
   test("a new run starts with no notices and no resolved matching", () => {
     const state = fold([
       { type: "run-started" },
-      { type: "warning-raised", warnings: ["first"] },
+      { type: "warning-raised", escapedWarning: displayText`first` },
       { type: "matching-resolved", matching: MATCHING },
       failedRun(1),
       { type: "run-settled" },
@@ -302,51 +304,61 @@ describe("what the driver reports along the way", () => {
 describe("the run's input", () => {
   const folder = { name: "work" } as FileSystemDirectoryHandle;
   const file = new File(["a,b\n"], "input.csv");
+  const loaded: ManagedRunInputChoices = {
+    recordLoaded: true,
+    usableFolder: undefined,
+    folderGrantable: true,
+    chosenFile: undefined,
+  };
 
   test("there is none before the record loads", () => {
-    expect(managedRunInputSource(undefined, true, true, file)).toBeUndefined();
+    expect(
+      managedRunInputSource({
+        ...loaded,
+        recordLoaded: false,
+        usableFolder: folder,
+        folderGrantable: false,
+        chosenFile: file,
+      }),
+    ).toBeUndefined();
   });
 
   test("a usable folder is read, attended", () => {
-    expect(
-      managedRunInputSource(
-        { workingDirectoryHandle: folder },
-        true,
-        true,
-        undefined,
-      ),
-    ).toEqual({ kind: "folder", directory: folder, attendance: "attended" });
+    expect(managedRunInputSource({ ...loaded, usableFolder: folder })).toEqual({
+      kind: "folder",
+      directory: folder,
+      attendance: "attended",
+    });
   });
 
   test("a usable folder outranks a chosen file", () => {
     expect(
-      managedRunInputSource(
-        { workingDirectoryHandle: folder },
-        true,
-        false,
-        file,
-      ),
+      managedRunInputSource({
+        ...loaded,
+        usableFolder: folder,
+        folderGrantable: false,
+        chosenFile: file,
+      }),
     ).toEqual({ kind: "folder", directory: folder, attendance: "attended" });
   });
 
   test("a browser that can grant a folder asks for one rather than taking a file", () => {
-    expect(managedRunInputSource({}, false, true, file)).toBeUndefined();
     expect(
-      managedRunInputSource(
-        { workingDirectoryHandle: folder },
-        false,
-        true,
-        file,
-      ),
+      managedRunInputSource({ ...loaded, chosenFile: file }),
     ).toBeUndefined();
   });
 
   test("a browser that cannot grant a folder runs from the chosen file, once chosen", () => {
-    expect(managedRunInputSource({}, false, false, file)).toEqual({
-      kind: "file",
-      file,
-    });
-    expect(managedRunInputSource({}, false, false, undefined)).toBeUndefined();
+    expect(
+      managedRunInputSource({
+        ...loaded,
+        folderGrantable: false,
+        chosenFile: file,
+      }),
+    ).toEqual({ kind: "file", file });
+    expect(
+      managedRunInputSource({ ...loaded, folderGrantable: false }),
+    ).toBeUndefined();
   });
 });
 
