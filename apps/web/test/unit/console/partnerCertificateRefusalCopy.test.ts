@@ -97,8 +97,8 @@ describe("the console's copy states the cause and a step the operator holds", ()
 
   test("it states that none of the operator's data was sent", () => {
     // Every one of the five fires at the terms exchange, before a linkage key
-    // or a payload row moves (packages/core/src/exchange.ts, the terms-time pin
-    // resolution).
+    // or a payload row moves (packages/core/src/exchange/signingChecks.ts, the
+    // terms-time pin resolution).
     for (const [kind, message] of REFUSALS)
       expect(
         consolePartnerCertificateRefusal(message),

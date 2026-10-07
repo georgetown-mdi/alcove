@@ -4,11 +4,13 @@ import {
   prepareForExchange,
   runExchange,
   assertAlgorithmImplemented,
+} from "../../src/exchange";
+import {
   assertCertificateModeNamesLocalParty,
   assertCertificateModePinsPartner,
   assertSignedReceiptNamesBothParties,
   assertSigningModeImplemented,
-} from "../../src/exchange";
+} from "../../src/exchange/signingChecks";
 import {
   assertPartnerCertificateTrusted,
   generateSigningIdentity,

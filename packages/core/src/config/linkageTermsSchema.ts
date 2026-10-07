@@ -178,8 +178,9 @@ export const PRIVATE_KEY_IDENTITY_MESSAGE =
  * that reconciles an ordinary divergence is closed to the certificate's holder,
  * and a re-key is the exit -- the CLI's warning and refusal
  * (`apps/cli/src/signingIdentityDivergence.ts`) and core's own
- * (`assertLocalCertificateAuthorizesAgreedIdentity`, exchange.ts), which read
- * this one answer so they cannot come to disagree about which labels have one.
+ * (`assertLocalCertificateAuthorizesAgreedIdentity`, exchange/signingChecks.ts),
+ * which read this one answer so they cannot come to disagree about which labels
+ * have one.
  *
  * It asks every rule this document holds the `identity` field to. Three are
  * the field's own CONTENT rules: the control characters

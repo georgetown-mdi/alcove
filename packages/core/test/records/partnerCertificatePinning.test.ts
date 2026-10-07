@@ -2,11 +2,11 @@ import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
+import { runExchange } from "../../src/exchange";
 import {
   PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
   resolvePartnerCertificateOrAbort,
-  runExchange,
-} from "../../src/exchange";
+} from "../../src/exchange/signingChecks";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ReceiptVerificationError } from "../../src/records/signedReceipt";
 import {
@@ -18,10 +18,8 @@ import { MAX_TEXT_LENGTH } from "../../src/config/linkageTermsSchema";
 
 import type { HandshakeRole } from "../../src/types";
 import type { MessageConnection } from "../../src/connection/messageConnection";
-import type {
-  PartnerCertificateRefusalKind,
-  RunExchangeOptions,
-} from "../../src/exchange";
+import type { RunExchangeOptions } from "../../src/exchange";
+import type { PartnerCertificateRefusalKind } from "../../src/exchange/signingChecks";
 import { firstNameTerms, prepared } from "../utils/support";
 
 // The partner-certificate pin resolved at the terms exchange: both parties
