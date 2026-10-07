@@ -327,7 +327,8 @@ export function addSweepOptions(cmd: Argv): Argv {
       type: "boolean",
       describe:
         "DANGEROUS. Permit --sweep-exchange-files to delete a retain-mode audit " +
-        "transcript (a directory that you or your partner run in retain mode); the " +
+        "transcript (a directory that you or your partner run in retain mode, " +
+        "or one whose partner hello cannot be read); the " +
         "prior transcript is permanently lost. Requires --sweep-exchange-files; " +
         "on its own it is rejected. Only use when you intend to discard the " +
         "transcript",
