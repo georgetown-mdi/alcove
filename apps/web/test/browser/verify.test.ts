@@ -749,6 +749,51 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .toBeEnabled();
   });
 
+  // A rejected read is named in the slot's alert, not left unhandled.
+  test.each([
+    { label: "Exchange record", title: "This record could not be used" },
+    { label: "Verification keys", title: "These keys could not be used" },
+    { label: "Signed receipt", title: "This signed receipt could not be used" },
+    {
+      label: "Your exported certificate",
+      title: "This certificate could not be used",
+    },
+  ])(
+    "an unreadable file in the $label slot is named, with the remedy",
+    async ({ label, title }) => {
+      const unreadableName = "unreadable.json";
+      const realText = Blob.prototype.text;
+      const textSpy = vi
+        .spyOn(Blob.prototype, "text")
+        .mockImplementation(function (this: Blob) {
+          return this instanceof File && this.name === unreadableName
+            ? Promise.reject(new DOMException("gone", "NotReadableError"))
+            : realText.call(this);
+        });
+      onTestFinished(() => {
+        textSpy.mockRestore();
+      });
+      await mountVerifyScreen();
+      if (label !== "Exchange record" && label !== "Verification keys")
+        await userEvent.click(
+          page.getByRole("button", {
+            name: "Check the partner's signatures with the signed receipt",
+          }),
+        );
+
+      await uploadTo(label, jsonFile(unreadableName, "{}"));
+
+      await expect
+        .element(page.getByRole("alert").filter({ hasText: title }))
+        .toHaveTextContent(
+          `${title}Could not read the file "${unreadableName}". Check that it still exists and that you can open it, then choose it again.`,
+        );
+      await expect
+        .element(page.getByRole("button", { name: "Verify", exact: true }))
+        .toBeDisabled();
+    },
+  );
+
   test("re-supplying only one of the input/result CSVs disables the top Verify button and warns", async () => {
     const { record, keys } = await buildFixture();
     await mountVerifyScreen();
