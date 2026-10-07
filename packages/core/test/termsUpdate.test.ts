@@ -12,7 +12,12 @@ import {
 import { inferMetadata } from "../src/config/metadata";
 import type { Metadata } from "../src/config/metadata";
 import { getDefaultLinkageTerms } from "../src/defaults/builtInLinkageTerms";
-import { fromBase64Url, toBase64Url } from "../src/utils/crypto";
+import {
+  fromBase64Url,
+  hkdfDerive,
+  hmacSha256,
+  toBase64Url,
+} from "../src/utils/crypto";
 
 const terms = getDefaultLinkageTerms("Agency A");
 
@@ -40,6 +45,19 @@ function reencode(content: unknown, mac: string): string {
   return `${toBase64Url(
     new TextEncoder().encode(JSON.stringify(content)),
   )}.${mac}`;
+}
+
+async function authenticated(
+  content: unknown,
+  secret: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(JSON.stringify(content));
+  const macKey = await hkdfDerive(
+    fromBase64Url(secret),
+    "alcove-terms-update-v2:mac",
+    32,
+  );
+  return `${toBase64Url(bytes)}.${toBase64Url(await hmacSha256(macKey, bytes))}`;
 }
 
 describe("terms update", () => {
@@ -154,19 +172,54 @@ describe("terms update", () => {
     const secret = generateSharedSecret();
     const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
     const content = { ...body(encoded), sharedSecret: secret };
-    const bytes = new TextEncoder().encode(JSON.stringify(content));
-    const { hkdfDerive, hmacSha256 } = await import("../src/utils/crypto");
-    const macKey = await hkdfDerive(
-      fromBase64Url(secret),
-      "alcove-terms-update-v2:mac",
-      32,
-    );
-    const forged = `${toBase64Url(bytes)}.${toBase64Url(
-      await hmacSha256(macKey, bytes),
-    )}`;
-    const err = await refusal(forged, secret);
+    const err = await refusal(await authenticated(content, secret), secret);
     expect(err.check).toBe("format");
   });
+
+  test("an authenticated update on a newer format version says it needs a newer Alcove", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    const content = { ...body(encoded), version: "2", addedLater: true };
+    const err = await refusal(await authenticated(content, secret), secret);
+    expect(err.check).toBe("format");
+    expect(err.message).toBe(
+      "this terms update was made by a newer version of Alcove than this " +
+        "one; update Alcove, then try the terms update again",
+    );
+  });
+
+  test("an unauthenticated update on a newer format version is refused by the MAC check", async () => {
+    const secret = generateSharedSecret();
+    const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+    const content = { ...body(encoded), version: "2" };
+    const err = await refusal(
+      reencode(content, toBase64Url(new Uint8Array(32))),
+      secret,
+    );
+    expect(err.check).toBe("authentication");
+    expect(err.message).not.toMatch(/newer version/);
+  });
+
+  test.each([
+    ["an older version", { version: "0" }],
+    ["a non-decimal version", { version: "2a" }],
+    ["a numeric version", { version: 2 }],
+    ["another kind", { kind: "invitation", version: "2" }],
+    ["the current version with a field outside the format", { extra: 1 }],
+  ])(
+    "an authenticated body with %s is not an Alcove terms update",
+    async (_label, change) => {
+      const secret = generateSharedSecret();
+      const encoded = await encodeTermsUpdate({ linkageTerms: terms }, secret);
+      const content = { ...body(encoded), ...change };
+      const err = await refusal(await authenticated(content, secret), secret);
+      expect(err.check).toBe("format");
+      expect(err.message).toBe(
+        "this is not an Alcove terms update: its content does not match " +
+          "the terms update format",
+      );
+    },
+  );
 });
 
 describe("termsUpdateFor", () => {

@@ -553,7 +553,7 @@ The partnership identifier is a one-way function of the secret both parties hold
 
 1. **Format**: the length bound, the `BODY.MAC` shape, no `=` padding, base64url, and a 32-byte MAC.
 2. **MAC**: the tag is recomputed over the body bytes and compared in constant time, before the body is validated or anything in it is returned. Where it fails, the body is read only far enough to find a `partnership` string: one that differs from the local identifier is refused as `partnership` (another partnership, or a secret replaced since), anything else as `authentication` (altered content).
-3. **Schema**: the authenticated body is validated as above; a failure is refused as `format`. An authenticated body whose `partnership` differs from the local identifier is refused as `partnership`.
+3. **Schema**: the authenticated body is validated as above; a failure is refused as `format`. Where the failing body states `kind` `terms-update` and a decimal `version` above `"1"`, the refusal says the update was made by a newer Alcove; this reading is gated on the MAC having verified, so an unauthenticated body is never reported that way. An authenticated body whose `partnership` differs from the local identifier is refused as `partnership`.
 
 The CLI then refuses, before any display, an update whose terms name the applying party's own identity, since that is the applying party's own update.
 

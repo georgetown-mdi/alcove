@@ -2617,9 +2617,12 @@ function maximallyConflictingTerms(): {
     expirationDate: "2031-01-01",
   };
 
+  // A description alone is no conflict; the empty receive list makes one whose
+  // name summaries read alike, so the description reaches the full-JSON form.
   existing.payload = { send: [{ name: "note", description: "short" }] };
   incoming.payload = {
     send: [{ name: "note", description: widestAtSchemaBound(MAX_TEXT_LENGTH) }],
+    receive: [],
   };
 
   return { existing, incoming };
@@ -3149,6 +3152,7 @@ test("a payload description at the free-text bound cannot crowd out the refusal"
   existing.payload = { send: [{ name: "note", description: "short" }] };
   incoming.payload = {
     send: [{ name: "note", description: widestAtSchemaBound(MAX_TEXT_LENGTH) }],
+    receive: [],
   };
   incoming.legalAgreement = {
     reference: "MOU-2025-0042",
@@ -3820,17 +3824,22 @@ describe("diffLinkageTerms", () => {
     expect(nameRendered).not.toContain(composed);
     expect(nameRendered).not.toContain(decomposed);
 
-    // The same pair in a payload column's description, where both sides summarize
-    // to the same column names and the diff falls back to the full detail: the
-    // fallback passes the twins to that boundary too, rather than collapsing them.
-    const describing = (description: string): LinkageTerms => {
+    // The same pair in a payload column's description, beside an empty receive
+    // list that is the conflict: both sides summarize to the same column names
+    // and the diff falls back to the full detail, which passes the twins to that
+    // boundary too, rather than collapsing them.
+    const describing = (
+      description: string,
+      statesEmptyReceive: boolean,
+    ): LinkageTerms => {
       const terms = cloneTerms(getDefaultLinkageTerms("Org"));
       terms.payload = { send: [{ name: "note", description }] };
+      if (statesEmptyReceive) terms.payload.receive = [];
       return terms;
     };
     const detailTwins = diffLinkageTerms(
-      describing(composed),
-      describing(decomposed),
+      describing(composed, false),
+      describing(decomposed, true),
     );
     expect(detailTwins.conflicts.map((c) => c.field)).toEqual(["payload"]);
     const detailRendered = renderedAcceptReconcileError(detailTwins.conflicts);
@@ -3966,16 +3975,33 @@ describe("diffLinkageTerms", () => {
   test("a payload sub-field difference under matching names renders the detail", () => {
     const existing = cloneTerms(getDefaultLinkageTerms("Org"));
     const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
-    // Same column name on both sides, differing only in description: a names-only
-    // render would print identical send=/receive= summaries, so the detail
-    // fallback must show what actually differs.
-    existing.payload = { send: [{ name: "note", description: "old" }] };
-    incoming.payload = { send: [{ name: "note", description: "new" }] };
+    // Same column names on both sides, one stating an empty receive list: a
+    // names-only render would print identical send=/receive= summaries, so the
+    // detail fallback must show what actually differs.
+    existing.payload = { send: [{ name: "note" }] };
+    incoming.payload = { send: [{ name: "note" }], receive: [] };
     const { conflicts } = diffLinkageTerms(existing, incoming);
     const payloadConflict = conflicts.find((c) => c.field === "payload");
     expect(payloadConflict).toBeDefined();
     expect(payloadConflict?.existing).not.toBe(payloadConflict?.incoming);
-    expect(payloadConflict?.incoming).toContain("new");
+    expect(payloadConflict?.incoming).toContain("receive");
+  });
+
+  test("a payload column description edit is not a conflict", () => {
+    const existing = cloneTerms(getDefaultLinkageTerms("Org"));
+    const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
+    existing.payload = {
+      send: [{ name: "note", description: "old" }],
+      receive: [{ name: "score" }],
+    };
+    incoming.payload = {
+      send: [{ name: "note", description: "new" }],
+      receive: [{ name: "score", description: "added" }],
+    };
+    expect(diffLinkageTerms(existing, incoming)).toEqual({
+      conflicts: [],
+      warnings: [],
+    });
   });
 });
 

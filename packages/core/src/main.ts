@@ -462,6 +462,7 @@ export {
   compareTerms,
   deriveAcceptedLinkageTerms,
   partnerBoundTerms,
+  payloadWithoutColumnDescriptions,
   termsDeltaIsEmpty,
   validateCompatibility,
 } from "./linkageTermsNegotiation";
