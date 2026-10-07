@@ -161,9 +161,9 @@ test("authentication throws for an expired token without opening a connection", 
 
 test("authentication marks a pre-handshake-expiry error as stating its own next step", async () => {
   const mc = fromEventConnection(makeConn());
-  // Direct tag assertion, symmetric with the malformed-secret and post-
+  // Direct mark assertion, symmetric with the malformed-secret and post-
   // handshake-expiry paths: the pre-handshake expiry error (checked before any
-  // network activity) holds the recovery-hint tag so the CLI shows its
+  // network activity) holds the recovery-hint mark so the CLI shows its
   // specific "re-invite" instruction instead of the generic advisory.
   const err = await authenticateConnection(
     mc,
@@ -209,7 +209,7 @@ test("authentication throws for a token with valid base64url characters but wron
 
 test("authentication marks a malformed-secret error as stating its own next step", async () => {
   const mc = fromEventConnection(makeConn());
-  // The secret-format error holds the recovery-hint tag so the CLI shows
+  // The secret-format error holds the recovery-hint mark so the CLI shows
   // its specific "re-invite" instruction instead of stacking the generic
   // transport-failure advisory on top (see runProtocol's catch).
   const err = await authenticateConnection(
@@ -319,7 +319,7 @@ test("authentication marks post-handshake-expiry errors as stating their own nex
   const [resultA, resultB] = await Promise.allSettled([pA, pB]);
   expect(resultA.status).toBe("rejected");
   expect(resultB.status).toBe("rejected");
-  // Tagged so the CLI shows a re-invite hint instead of the generic
+  // Marked so the CLI shows a re-invite hint instead of the generic
   // transport-failure advisory.
   for (const result of [resultA, resultB] as PromiseRejectedResult[]) {
     expect(result.reason.message).toContain("during the key exchange");

@@ -2416,7 +2416,7 @@ describe("inviter screen", () => {
     );
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
-    // The tagged expiry error core's guards raise (the tag marks its message
+    // The marked expiry error core's guards raise (the mark flags its message
     // as locally-composed recovery guidance, safe to show).
     lifecycleCall(0).onError({
       category: "security",

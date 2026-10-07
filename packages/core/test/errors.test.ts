@@ -65,15 +65,15 @@ const countingCauseCycle = (): {
 };
 
 // These assertions guard the operator-facing-error audit: the terminal
-// transport/directory UsageError family holds a recovery-hint tag and a
+// transport/directory UsageError family holds a recovery-hint mark and a
 // concrete operator next step, so the CLI's hint-walker suppresses its
-// generic "retry without re-inviting" advisory. Each test pins the tag, the
+// generic "retry without re-inviting" advisory. Each test pins the mark, the
 // call site's own message on `.message`, and a stable fragment of the step
 // on its own cause link, plus the exit-64 classification (instanceof
 // UsageError) neither may disturb -- the link's own budget is measured in
 // test/connection/transportRefusalBudget.test.ts.
 describe("terminal transport/directory error taxonomy", () => {
-  test("FrameSizeExceededError tags the recovery hint and puts a next step on its own link", () => {
+  test("FrameSizeExceededError marks the recovery hint and puts a next step on its own link", () => {
     const err = new FrameSizeExceededError("inbound frame exceeds the cap");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("FrameSizeExceededError");
@@ -83,7 +83,7 @@ describe("terminal transport/directory error taxonomy", () => {
     expect(recoveryStepOf(err)).toContain("contact your partner");
   });
 
-  test("DirectoryListingBoundsError tags the recovery hint and puts a next step on its own link", () => {
+  test("DirectoryListingBoundsError marks the recovery hint and puts a next step on its own link", () => {
     const err = new DirectoryListingBoundsError(
       "directory has too many entries",
     );
@@ -96,7 +96,7 @@ describe("terminal transport/directory error taxonomy", () => {
     );
   });
 
-  test("TransportOperationStalledError tags the recovery hint and puts a next step on its own link", () => {
+  test("TransportOperationStalledError marks the recovery hint and puts a next step on its own link", () => {
     const err = new TransportOperationStalledError("SFTP read stalled");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("TransportOperationStalledError");
@@ -107,12 +107,12 @@ describe("terminal transport/directory error taxonomy", () => {
 });
 
 describe("errors left without a recovery hint", () => {
-  test("BilateralModeMismatchError stays untagged and leaves its message intact", () => {
+  test("BilateralModeMismatchError stays unmarked and leaves its message intact", () => {
     // A terminal UsageError that holds its fix in the call-site message ("both
     // parties must use the same setting"), so the constructor appends nothing.
-    // It is not tagged, by design: the tag only suppresses the post-handshake
+    // It is not marked, by design: the mark only suppresses the post-handshake
     // generic advisory, and a mismatch is detected pre-handshake where that
-    // advisory never fires, so a tag would suppress nothing.
+    // advisory never fires, so a mark would suppress nothing.
     const message =
       "retain_files mismatch: this party has retain_files=true but the peer " +
       "has retain_files=false; both parties must use the same setting";
@@ -150,14 +150,14 @@ describe("the internal fault's recovery hint", () => {
 });
 
 describe("errors whose recovery hint is per instance, not per class", () => {
-  test("TransportPublishIndeterminateError sets no class-level tag and is not a UsageError", () => {
+  test("TransportPublishIndeterminateError sets no class-level mark and is not a UsageError", () => {
     // Not a UsageError, which the poll loop treats as terminal; what that
     // distinction buys is measured in fileSyncConnection.test.ts, not argued
-    // here. The tag is absent from the CLASS because a transport raises this
+    // here. The mark is absent from the CLASS because a transport raises this
     // for several publishes at once -- a message, an ack, a rendezvous hello,
     // an abort marker -- which share no recovery, so the transport's own
     // instance holds no next step and suppresses nothing. The one caller
-    // whose recovery is established re-raises the class tagged and holding
+    // whose recovery is established re-raises the class marked and holding
     // it; that instance is pinned in fileSyncMessageLoop.test.ts.
     const cause = new Error("_rename: No such file or directory");
     const err = new TransportPublishIndeterminateError("publish torn", {

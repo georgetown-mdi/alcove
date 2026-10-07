@@ -646,7 +646,7 @@ function failureContentFor(
         };
   }
   // A failure whose own message states the cause and the next step -- relayed
-  // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised tagged in this
+  // with `recoveryHint` (docs/spec/CLI_EVENTS.md) or raised marked in this
   // browser, such as core's reply-cap fault: "report it; retrying will not
   // help". The transport copy below would contradict that step, so a sentence
   // pointing at the report replaces it. The report stays in the labeled block:

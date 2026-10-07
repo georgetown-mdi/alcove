@@ -1192,7 +1192,7 @@ test("a partner presenting a deduplicate its invitation did not declare is refus
   // The refusal names the two booleans and no partner-controlled value: the
   // identity the partner authored is the string most likely to be reached for.
   expect(reason?.message).not.toContain("Presented Partner Identity");
-  // The advisory tag the CLI's hint-walker reads: this refusal is terminal
+  // The advisory mark the CLI's hint-walker reads: this refusal is terminal
   // against the invitation this party holds, so the generic "retry without
   // re-inviting" line would prescribe a retry that repeats the refusal.
   expect(statesItsOwnNextStep(reason, { ownOnly: true })).toBe(true);

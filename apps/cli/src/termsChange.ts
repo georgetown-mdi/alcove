@@ -172,7 +172,7 @@ function proposalRefusal(
 }
 
 /**
- * `refusal`, recorded as ending its run on `delta`, and tagged as stating its
+ * `refusal`, recorded as ending its run on `delta`, and marked as stating its
  * own next step: a terms change is settled by the operator or the partner, so
  * the retry the generic post-rotation advisory prescribes cannot succeed.
  */

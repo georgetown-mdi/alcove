@@ -432,8 +432,8 @@ export function cycleRedialDeclinedWarning(
  * Names the publish rather than a message, and prescribes no next step:
  * rename() is shared machinery, and the four publishes reaching it -- the
  * message loop's send(), its ack, the rendezvous joining->hello rename, and the
- * abort marker -- share no remedy, so this holds no recovery-hint tag either.
- * The one caller whose remedy is established re-raises this as its own tagged
+ * abort marker -- share no remedy, so this holds no recovery-hint mark either.
+ * The one caller whose remedy is established re-raises this as its own marked
  * error holding this one as the `cause` (FileSyncMessageLoop's send()).
  *
  * Written to survive the display boundary, which caps each error in a rendered

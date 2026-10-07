@@ -340,7 +340,7 @@ inProcessOnly(
         expect(publishLink).toContain(
           "the message may or may not have reached the partner",
         );
-        // The rejection holds the recovery, and is tagged so the CLI's generic
+        // The rejection holds the recovery, and is marked so the CLI's generic
         // advisory does not print a contradicting one beside it -- which makes
         // this the only next step the operator gets, and makes its survival of
         // the cap critical.

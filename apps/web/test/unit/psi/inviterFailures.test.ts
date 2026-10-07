@@ -107,7 +107,7 @@ describe("failureFor", () => {
     );
   });
 
-  test("a tagged security error shows its own recovery guidance", () => {
+  test("a marked security error shows its own recovery guidance", () => {
     const failure = failureFor(
       "security",
       markStatesItsOwnNextStep(
@@ -138,14 +138,14 @@ describe("failureFor", () => {
     expect(failure.title).toBe("The exchange stopped on a trust check");
     expect(failure.message).toContain("is not the one pinned in");
     // Not the invitation-expiry title, whose copy would misname a certificate
-    // refusal even though the tag it reads is the same one.
+    // refusal even though the mark it reads is the same one.
     expect(failure.title).not.toBe("This invitation can no longer be used");
   });
 
   test("a relayed failure making no such claim keeps the fixed copy", () => {
     // The marker is an assurance, never a denial: a relayed terminal without it
     // is a failure the CLI said nothing about, and takes the same copy an
-    // untagged browser-raised one does.
+    // unmarked browser-raised one does.
     const failure = failureFor(
       "security",
       new RelayedTerminalError("kex transcript diverged"),
@@ -154,7 +154,7 @@ describe("failureFor", () => {
     expect(failure.message).not.toContain("kex transcript diverged");
   });
 
-  test("an untagged security error keeps the fixed non-oracular copy", () => {
+  test("an unmarked security error keeps the fixed non-oracular copy", () => {
     const failure = failureFor(
       "security",
       new Error("kex transcript diverged"),
@@ -333,8 +333,8 @@ describe("failureFor", () => {
       expect(failure.message).toContain("temporary connection problem");
     });
 
-    test("an untagged plain error keeps the fixed copy and the retry affordance", () => {
-      // Neither a relayed terminal nor a tagged recovery hint: this is the
+    test("an unmarked plain error keeps the fixed copy and the retry affordance", () => {
+      // Neither a relayed terminal nor a marked recovery hint: this is the
       // generic transport/exchange case, and the retry control in the
       // sections is gated on its category, so both channels this browser
       // runs must land here and not on the report-only arm above.

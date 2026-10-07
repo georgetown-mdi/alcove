@@ -214,7 +214,7 @@ export function assertSharedSecretReadyForHandshake(
  * optional only for parse-time intermediate states (e.g. a config file
  * loaded before the key file is injected). By the time this function runs
  * it must be a string matching {@link SHARED_SECRET_REGEX}, or this function
- * throws synchronously, before any network activity, with a tagged recovery
+ * throws synchronously, before any network activity, with a marked recovery
  * error. A library consumer that bypasses the CLI's config loader is
  * responsible for ensuring the secret is present.
  *

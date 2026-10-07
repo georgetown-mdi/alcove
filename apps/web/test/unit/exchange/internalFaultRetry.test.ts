@@ -138,7 +138,7 @@ describe("a relayed internal fault withholds the retry", () => {
     expect(failure.retry).toBe("withheld");
   });
 
-  test("a tagged transport stall keeps its retry", async () => {
+  test("a marked transport stall keeps its retry", async () => {
     const relayed = await relayFromChild(
       {
         v: 1,
@@ -196,7 +196,7 @@ describe("failureFor's retry disposition", () => {
   test.each<[string, unknown]>([
     ["an unmarked relayed failure", new RelayedTerminalError("peer went away")],
     [
-      "a tagged transport stall",
+      "a marked transport stall",
       new RelayedSelfExplainingError(TAGGED_STALL_MESSAGE),
     ],
     ["a failure raised in this browser", new Error("socket closed")],
@@ -208,7 +208,7 @@ describe("failureFor's retry disposition", () => {
 describe("an internal fault raised in this browser withholds the retry", () => {
   test.each<[string, Error]>([
     [
-      "an untagged fault",
+      "an unmarked fault",
       new InternalConsistencyError("partner indices disagree"),
     ],
     [

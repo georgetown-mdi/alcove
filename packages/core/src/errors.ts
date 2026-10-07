@@ -457,7 +457,7 @@ export class FrameSizeExceededError extends UsageError {
  * A directory listing over its entry-count or filename-length bound, refused while
  * the adapter enumerates it, before the listing is held in memory. The bounds live
  * where they are enforced, `apps/cli/src/connection/listingGuard.ts`. Classified,
- * tagged and composed as {@link FrameSizeExceededError} is; call sites pass the
+ * marked and composed as {@link FrameSizeExceededError} is; call sites pass the
  * directory path and the offending entry name as `details` fragments.
  */
 export class DirectoryListingBoundsError extends UsageError {
@@ -479,7 +479,7 @@ export class DirectoryListingBoundsError extends UsageError {
  * A server-driven transport operation that made no progress within its liveness
  * bound: a hung or progress-free `list()`, `get()` or `createExclusive()` on the
  * SFTP adapter, bounded in `apps/cli/src/connection/sftpLivenessGuard.ts`.
- * Classified, tagged and composed as {@link FrameSizeExceededError} is, but its
+ * Classified, marked and composed as {@link FrameSizeExceededError} is, but its
  * next step is a retry, since the server may recover. Call sites pass how the
  * operation stalled, its path, and any server message as `details` fragments.
  */
@@ -502,7 +502,7 @@ export class TransportOperationStalledError extends UsageError {
  * quantity disagreeing, an exhaustiveness branch reached, or a precondition its
  * own callers guarantee broken. Core and CLI guards throw it rather than a plain
  * `Error` (`scripts/check-internal-fault-throws.mjs`). The CLI exits 70, not 64 or
- * the retried 69, and supplies the next step beneath an untagged instance
+ * the retried 69, and supplies the next step beneath an unmarked instance
  * (docs/spec/CLI_EVENTS.md, The internal-fault code).
  */
 export class InternalConsistencyError extends Error {

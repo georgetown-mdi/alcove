@@ -60,7 +60,7 @@ import { INACTIVITY_TIMEOUT_KEY } from "../config/connection";
 // The single remedy for a message publish the transport could not settle,
 // shared by the two places send() prescribes it: the publish's own rejection,
 // and the refusal of the next send() over the seq slot it spent. Both messages
-// are tagged, which suppresses the CLI's generic post-handshake advisory, so
+// are marked, which suppresses the CLI's generic post-handshake advisory, so
 // this sentence must clear the display boundary's per-error cap on its own.
 const CLEAN_DIRECTORY_RESTART_REMEDY =
   "Re-run the exchange in a clean directory; both parties must start the new " +
@@ -390,7 +390,7 @@ export class FileSyncMessageLoop {
     // seq -- in delete mode it emits it as the next message. Which of the two
     // happened is not knowable from here, so the session cannot continue.
     //
-    // Tagged (unlike its untagged siblings in errors.ts), which suppresses
+    // Marked (unlike its unmarked siblings in errors.ts), which suppresses
     // the CLI's generic post-handshake advisory, so the restart prescribed
     // here is the only next step an operator gets and must clear the display
     // boundary's per-error cap on its own; the transport's error is hung off
@@ -579,7 +579,7 @@ export class FileSyncMessageLoop {
         this.indeterminatePublish = { seq, error: renameErr };
         // The transport's own rejection is caller-neutral (it names a publish
         // and prescribes nothing, since the several publishes reaching it
-        // share no remedy). This one has a remedy, restated here and tagged
+        // share no remedy). This one has a remedy, restated here and marked
         // to suppress the CLI's generic advisory; the transport's error
         // stays as the `cause`, rendered on its own line under its own cap.
         throw markStatesItsOwnNextStep(

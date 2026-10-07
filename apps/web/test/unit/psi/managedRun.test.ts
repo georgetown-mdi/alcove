@@ -928,7 +928,7 @@ describe("rerunFailureLastRun: the runner's failure bookkeeping", () => {
 describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
   const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 
-  /** Core's expiry errors have the recovery-hint tag (preserved across the
+  /** Core's expiry errors have the recovery-hint mark (preserved across the
    * security re-wrap). */
   function taggedExpiryError(): Error {
     return markStatesItsOwnNextStep(
@@ -936,7 +936,7 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
     );
   }
 
-  test("a tagged handshake failure on a now-lapsed record re-maps to the benign expiry error", () => {
+  test("a marked handshake failure on a now-lapsed record re-maps to the benign expiry error", () => {
     const remapped = remapLapsedRunFailure(
       taggedExpiryError(),
       { expires: "2026-07-14T11:59:00.000Z" },
@@ -946,7 +946,7 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
     expect(remapped?.expires).toBe("2026-07-14T11:59:00.000Z");
   });
 
-  test("a tagged failure with a still-live bound does not re-map", () => {
+  test("a marked failure with a still-live bound does not re-map", () => {
     expect(
       remapLapsedRunFailure(
         taggedExpiryError(),
@@ -956,7 +956,7 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
     ).toBeUndefined();
   });
 
-  test("an untagged trust failure never re-maps, even on a lapsed record", () => {
+  test("an unmarked trust failure never re-maps, even on a lapsed record", () => {
     expect(
       remapLapsedRunFailure(
         new ConnectionError("key exchange authentication failed", "security"),
@@ -967,9 +967,9 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
   });
 
   test("an internal fault on a lapsed record is not re-mapped to the expiry", () => {
-    // Core's single-pass reply-cap safety check raises a tagged
+    // Core's single-pass reply-cap safety check raises a marked
     // InternalConsistencyError mid-data-exchange -- so a bound that lapses
-    // during a long run satisfies the tag and the lapse alike, unlike the
+    // during a long run satisfies the mark and the lapse alike, unlike the
     // handshake-time expiry the re-map exists for. Re-mapping it would report a
     // defect in Alcove as a benign expiry and offer a fresh invitation, which
     // cannot fix it.

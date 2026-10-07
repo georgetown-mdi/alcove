@@ -238,8 +238,8 @@ export const WEBRTC_ENDPOINT_PATH_REFUSED =
 /**
  * An endpoint refusal in the shape the run's alert reads as an invitation
  * fault: a `security`-kind {@link ConnectionError} marked as stating its own
- * next step (`markStatesItsOwnNextStep`); the two together show the refusal's own text
- * and remedy with no retry control (`failureFor` in
+ * next step (`markStatesItsOwnNextStep`); the two together show the refusal's
+ * own text and remedy with no retry control (`failureFor` in
  * `apps/web/src/exchange/useInviterExchange.ts`). A plain `Error` takes the
  * generic retryable copy instead, and every retry refuses identically, since
  * the endpoint alone decides it. The mark's contract holds here: both refusals
