@@ -1,5 +1,3 @@
-# The Cloudflare token comes from the operator's environment as
-# CLOUDFLARE_API_TOKEN. It is not a variable of this root, so it cannot land in
-# a tfvars file.
+# The Cloudflare provider; it reads CLOUDFLARE_API_TOKEN from the environment.
 
 provider "cloudflare" {}
