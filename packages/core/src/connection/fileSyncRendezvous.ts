@@ -845,21 +845,15 @@ export class FileSyncRendezvous {
             break;
           }
         } catch (err) {
-          // A fully-synced hello that fails the schema is a terminal
-          // UsageError (I5b) -- let it propagate. A close() during
-          // inspection aborts the gate read with ConnectionClosedError;
-          // propagate that as a clean shutdown (exit 69), not a
-          // retain-uncertain UsageError. Any other failure is an unresolved
-          // read within the bounded budget: treat it as retain-uncertain,
-          // and sticky -- a later hello reading retain_files=false does not
-          // clear it, since the unreadable hello could itself be an unsynced
-          // retain hello, and wiping it without --force-retain-sweep is the
-          // data loss the guard prevents.
-          if (err instanceof UsageError) throw err;
+          // A close() aborts the read with ConnectionClosedError (exit 69).
+          // A terminal refusal of the hello (oversized, malformed, stalled)
+          // is a UsageError (I5b) on the bare flag; under --force-retain-sweep
+          // the inspection can only change the warning, so it is
+          // retain-uncertain like any unresolved read. Uncertainty is sticky,
+          // so the first unreadable hello ends the inspection.
           if (deps.signal().aborted) throw err;
-          // Stop at the first unreadable hello: uncertainty is sticky and
-          // already forces refuse (bare flag) or the danger warning (force), so
-          // further reads cannot change the outcome and only add latency.
+          if (err instanceof UsageError && !deps.options().forceRetainSweep)
+            throw err;
           retainUncertain = true;
           break;
         }
@@ -1533,6 +1527,7 @@ export class FileSyncRendezvous {
       deps.responsibleFiles.add(`${deps.id()}${HELLO_SUFFIX}`);
     let lockPath: string | undefined;
     let ackPath: string | undefined;
+    let ackedPeerHelloName: string | undefined;
 
     // Deadline for the bounded recovery window on an entry-present peer hello,
     // armed only when one predated this run (see run()) and the remaining
@@ -1589,6 +1584,18 @@ export class FileSyncRendezvous {
           const peerHello = peerHellos[0];
           const peerId = peerHello.name.slice(0, -HELLO_SUFFIX.length);
 
+          // The checks below ran on the hello this party acked; a different
+          // one in a later listing was neither read nor acked.
+          if (
+            ackedPeerHelloName !== undefined &&
+            peerHello.name !== ackedPeerHelloName
+          )
+            throw new UsageError(
+              "the peer hello changed during the rendezvous in " +
+                `${redactPrivateKeyMaterial(scope.inboundPath)} - are ` +
+                "there other sessions using this path?",
+            );
+
           // Write our ack once on the first sighting of the peer's hello.
           if (ackPath === undefined) {
             // I5: read the peer hello body through the partial-sync gate
@@ -1636,6 +1643,7 @@ export class FileSyncRendezvous {
               );
             const ackName = await deps.writeAck(outboundPath, peerHelloStem);
             ackPath = joinFileSyncPath(outboundPath, ackName);
+            ackedPeerHelloName = peerHello.name;
             // Track after the durable rename (delete mode only) so
             // cleanup() removes it at close(), exactly as the message write
             // in send() does: the final name appears only at the atomic
@@ -2292,8 +2300,8 @@ export class FileSyncRendezvous {
       // "-"-prefixed file as a peer message and the lockless ack barrier
       // wait on an ack no honest peer writes, so fail closed here rather
       // than proceed. Each peer-hello read checks the id pair before its
-      // write; the check here covers a peer id the lockless barrier commits
-      // from a later listing than the hello it read.
+      // write, and the lockless barrier commits only the hello it acked, so
+      // the prefix check here is a safety check on the committed id.
       if (deps.peerId()!.length === 0)
         throw new UsageError(
           "rendezvous recovered an empty peer id; a bare " +

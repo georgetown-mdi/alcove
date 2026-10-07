@@ -213,6 +213,23 @@ for (const retainFiles of [false, true]) {
   );
 }
 
+test("a close() entered after the write decision still waits for the marker write in flight", async () => {
+  const { client, files, ops } = makeAbortTestClient({ writeDelayMs: 20 });
+  const conn = await makeArmedConn(client);
+
+  // The write resolves the decision as it starts, so this close() finds it
+  // already resolved while the write is still in flight.
+  const write = conn.writeAbortMarker().catch(() => {});
+  await conn.close();
+  await write;
+
+  expect(files.has(markerPath(conn))).toBe(true);
+  const renameIdx = ops.indexOf(`rename:${markerName(conn)}`);
+  const endIdx = ops.indexOf("end");
+  expect(renameIdx).toBeGreaterThanOrEqual(0);
+  expect(renameIdx).toBeLessThan(endIdx);
+});
+
 // --- teardown signal: exempt the teardown re-dial from the reconnection cap ---
 
 test("teardown is signaled to the transport before the marker write's put, and at close()", async () => {

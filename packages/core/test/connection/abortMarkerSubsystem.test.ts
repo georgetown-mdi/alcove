@@ -55,7 +55,7 @@ function makeDeps(overrides: Partial<Deps> = {}) {
       new TransportOperationStalledError(`${operation} (${budgetMs} ms)`),
   );
   const deps: Deps = {
-    log: { debug } as unknown as Deps["log"],
+    log: () => ({ debug }) as unknown as ReturnType<Deps["log"]>,
     role: () => "sender",
     runBudgeted: (op) => op,
     stalledError,
@@ -199,6 +199,24 @@ test("writeMarker puts the envelope to a temp file, renames it into place, and l
     `${DIR}/${SELF_ID}-abort.json`,
   );
   expect(debug).toHaveBeenCalledWith(
+    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+  );
+});
+
+test("writeMarker logs through the logger current at the write, not the one at construction", async () => {
+  const client = makeClient();
+  const constructionDebug = vi.fn();
+  const writeDebug = vi.fn();
+  let current = constructionDebug;
+  const { subsystem } = armed(client, {
+    deps: {
+      log: () => ({ debug: current }) as unknown as ReturnType<Deps["log"]>,
+    },
+  });
+  current = writeDebug;
+  await subsystem.writeMarker();
+  expect(constructionDebug).not.toHaveBeenCalled();
+  expect(writeDebug).toHaveBeenCalledWith(
     `[sender] wrote abort marker ${SELF_ID}-abort.json`,
   );
 });

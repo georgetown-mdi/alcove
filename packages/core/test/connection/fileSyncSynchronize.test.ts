@@ -3170,6 +3170,59 @@ test("synchronize() --sweep-exchange-files --force-retain-sweep: an earlier unre
   ).toBe(true);
 });
 
+const REFUSED_HELLO_BODIES = [
+  { label: "malformed", body: Buffer.from("{}") },
+  { label: "oversized", body: Buffer.alloc(2048, 0x20) },
+];
+
+for (const { label, body } of REFUSED_HELLO_BODIES) {
+  test(`synchronize() --sweep-exchange-files: a ${label} peer hello refuses the bare flag (exit 64) without deleting`, async () => {
+    const { client, files } = makeMockClient();
+    const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
+    conn.id = "me";
+    conn.options.sweepExchangeFiles = true;
+    files.set("/test/peerA-hello.json", body);
+
+    const err = await conn.synchronize().then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(UsageError);
+    expect(files.has("/test/peerA-hello.json")).toBe(true);
+  });
+
+  test(`synchronize() --sweep-exchange-files --force-retain-sweep: a ${label} peer hello is retain-uncertain and the forced sweep deletes it`, async () => {
+    const deleted: string[] = [];
+    const [err, logs] = await withCapturedLogs(async () => {
+      const { client, files } = makeMockClient();
+      const conn = await makeConnectedConn(client, {
+        pollingFrequency: 10,
+        timeToLiveMs: 120,
+      });
+      conn.id = "me";
+      conn.options.sweepExchangeFiles = true;
+      conn.options.forceRetainSweep = true;
+      files.set("/test/peerA-hello.json", body);
+      const origDelete = client.delete.bind(client);
+      client.delete = async (p: string) => {
+        deleted.push(p);
+        return origDelete(p);
+      };
+      return conn.synchronize().then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+    });
+    // Swept, then the initiator times out waiting for a peer on the clean
+    // directory: not the hello's own refusal.
+    expect(err).not.toBeInstanceOf(UsageError);
+    expect(deleted).toContain("/test/peerA-hello.json");
+    expect(
+      logs.some((l) => /destructive and irreversible/i.test(l.message)),
+    ).toBe(true);
+  });
+}
+
 test("synchronize() --sweep-exchange-files: sweeps a second peer hello, overriding the I1 concurrent-session guard", async () => {
   const { client, files } = makeMockClient();
   const conn = await makeConnectedConn(client, {

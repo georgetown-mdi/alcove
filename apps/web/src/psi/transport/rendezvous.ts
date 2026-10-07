@@ -618,6 +618,10 @@ export async function dialAsAcceptor(
     buildIceServers(options?.relay, sharedSecret, new Date()),
   ]);
   const loc = acceptorLocationFromEndpoint(endpoint);
+  // As for the inviter: no peer is constructed, and no derived id registered,
+  // when the caller already aborted.
+  if (signal?.aborted)
+    throw new Error("connecting to the coordination server was aborted");
   // Derived ids are rendezvous addresses that correlate exchanges; keep them
   // out of default (info) logs and show them only at debug for connection
   // triage. The host/port come from the partner's invitation endpoint

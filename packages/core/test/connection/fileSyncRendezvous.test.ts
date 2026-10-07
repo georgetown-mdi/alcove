@@ -873,9 +873,9 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
-  test("prefix-at-dash at the hello-exchange final gate resets committed identity", async () => {
-    // The barrier acks one hello, then commits the peer id of a different one
-    // a later listing shows with its ack; only the final gate sees that id.
+  test("a lockless peer hello other than the acked one is refused before any identity commits", async () => {
+    // The barrier acks one hello; a later listing shows a different one, with
+    // its ack of this party's hello, whose flags and id were never read.
     const files = new Map<string, Buffer>();
     const flags = { locklessRendezvous: true, retainFiles: false };
     placePeerHello(files, "zzz", flags);
@@ -895,13 +895,10 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     });
 
     await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
-      message: expect.stringContaining("are too alike"),
+      message: expect.stringContaining("peer hello changed"),
     });
-    // waitForPeer committed identity; the final prefix guard rolls it back.
     expectResetToPreSync(p.state);
-    expect(p.state.clearCount).toBe(1);
     expect(p.state.resetCount).toBe(1);
-    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
   test("TTL timeout resets identity and is not blocked on a second run", async () => {
