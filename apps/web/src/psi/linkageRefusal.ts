@@ -1,27 +1,15 @@
 /**
  * The console's one reading of core's linkage-terms verdict: whether a pre-launch
- * seat may proceed, and which refusal it states when it may not.
- *
- * Every console pre-launch moment -- the direct-exchange confirm screen, both
- * inviter mint gates, the advanced-invite editor's Generate gate, the acceptor's
- * columns step, and the managed run's input guard -- grades its own input through
- * core's `decideLinkageTermsVerdict` and refuses on the rule the run boundary
- * enforces inside `prepareForExchange`: at least one linkage key declared, and
- * every declared key satisfiable and live. No seat holds a threshold of its own,
- * so none can come to admit a file the run refuses.
- *
- * {@link linkageRefusalFor} returns the refusal or `undefined`, so a seat's gate
- * and the explanation it shows are one derivation rather than two that agree: the
- * seat has a refusal exactly when it blocks, and every refusal shape has copy
- * (`@components/UnlinkableFileAlert` for the seats that render an alert, the
- * seat's own blocked-reason sentence where the gate is a disabled button).
+ * screen may proceed, and which refusal it states when it may not. Every
+ * pre-launch gate grades through core's `decideLinkageTermsVerdict`, the rule
+ * `prepareForExchange` enforces, so no gate can admit a file the run refuses. A
+ * screen blocks exactly when {@link linkageRefusalFor} returns a refusal.
  */
 
 import type { LinkageField, LinkageTermsVerdict } from "@alcove/core";
 
-/** Carried by every refusal shape, since a file separated by something other than
- * the delimiter it was read by reaches either of them: it reads as one column,
- * which satisfies no key and can narrow derived terms to none. */
+/** Part of every refusal: a file read by the wrong delimiter parses as one column,
+ * which satisfies no key. */
 interface SingleColumnReading {
   /** Whether the graded read yielded exactly one column, so the copy adds the
    * delimiter remedy ({@link ../components/csvDelimiterChoice.ts}). */
@@ -29,47 +17,35 @@ interface SingleColumnReading {
 }
 
 /**
- * Why a seat refuses to launch, discriminated so its copy is total over the
- * blocking shapes:
+ * Why a screen refuses to launch:
  *
- * - `"no-linkable-key"` -- the terms this input would run under declare no
- *   linkage key at all. Reached where the terms are DERIVED from the operator's
- *   own columns (the direct spine and the quick mint, which narrow the built-in
- *   rule set to the keys the columns support and can narrow all the way to none),
- *   so the remedy is a file holding the field types the built-in keys need.
- * - `"shortfall"` -- keys are declared, and this input falls short of at least one
- *   of them: a key whose fields the columns cannot produce, or one whose declared
- *   cleaning drops every record. The remedy is a conforming input or terms fixed
- *   with the partner out of band.
+ * - `"no-linkable-key"` -- the terms declare no linkage key, reached where they
+ *   are derived from the operator's columns and narrowed to none; the remedy is a
+ *   file holding the field types the built-in keys need.
+ * - `"shortfall"` -- the input cannot satisfy a declared key (missing fields, or
+ *   cleaning drops every record); the remedy is a conforming input or terms fixed
+ *   with the partner.
  */
 export type LinkageRefusal = SingleColumnReading &
   (
     | {
         kind: "no-linkable-key";
-        /** The linkage fields to name as missing, so the copy can say which field
-         * types a conforming file holds. */
+        /** The linkage fields to name as missing. */
         missingFields: ReadonlyArray<LinkageField>;
       }
     | {
         kind: "shortfall";
-        /** The verdict the shortfall is phrased from, so the counts a seat states
-         * come from core's grading rather than a re-derivation. */
+        /** The verdict the shortfall is phrased from, so stated counts come
+         * from core. */
         verdict: LinkageTermsVerdict;
       }
   );
 
 /**
  * The refusal a verdict holds, or `undefined` when it permits the run.
- *
- * `missingFields` is not always the fields of the verdict's own
- * `unsatisfiedFieldColumns`: a seat
- * whose terms are narrowed to the keys its columns support declares no field it
- * cannot produce, so the verdict reports none, and the seat passes the fields the
- * UNNARROWED rule set declares -- the field types a conforming file would hold.
- * A seat grading terms it did not derive passes those fields.
- *
- * `columns` are the columns the verdict was graded over, read for the
- * {@link SingleColumnReading} the copy states the delimiter remedy on.
+ * `missingFields` comes from the caller: a screen whose terms were narrowed to its
+ * columns passes the unnarrowed rule set's fields, since its verdict reports none.
+ * `columns` are those the verdict was graded over.
  */
 export function linkageRefusalFor(
   verdict: LinkageTermsVerdict,
