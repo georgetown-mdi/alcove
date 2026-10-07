@@ -21,23 +21,12 @@
 import { sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
-  buildImageReference,
-  unmountableBindPaths,
-} from "@psi/dockerRunCommand";
-import {
   composeManagedCronExport,
   composeManagedCronExportConfig,
 } from "@psi/managed/managedCronExport";
+import { buildImageReference } from "@psi/dockerRunCommand";
 
-import {
-  bindPathsCaveat,
-  dockerCronLine,
-  dockerRunCommand,
-  dockerTaskSchedulerLine,
-  installedCronLine,
-  installedRunCommand,
-  unmountableBindPathsNotice,
-} from "./scheduledRunCommand";
+import { bindPathsCaveat, runLines } from "./scheduledRunCommand";
 import {
   runScheduleFor,
   scheduleDescription,
@@ -52,7 +41,13 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+import type {
+  RunLines,
+  ShownRunLines,
+  WithheldRunLines,
+} from "./scheduledRunCommand";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
+import type { RunSchedule } from "./scheduleTemplates";
 
 /**
  * The STUN server the exported invocation falls back to, disclosed on the panel
@@ -67,34 +62,18 @@ import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
  */
 export const CLI_BUILT_IN_STUN_URI = "stun:stun.l.google.com:19302";
 
-/** The command and schedule lines running a composed export. */
-export interface ScheduledRunLines {
-  /** The command running the export once: the image over the folder, or an
-   * installed `alcove` where a path cannot be mounted. Undefined where a path
-   * holds a control or text-direction character. */
-  runCommand: string | undefined;
-  /** The cron line running the image, undefined where a path cannot be
-   * mounted. */
-  dockerCronLine: string | undefined;
-  /** The Task Scheduler command running the image, undefined where a path
-   * cannot be mounted. */
-  dockerTaskSchedulerLine: string | undefined;
-  /** The cron line running an installed `alcove` from the folder. Undefined
-   * where a path holds a control or text-direction character, which withholds
-   * every line. */
-  installedCronLine: string | undefined;
+/** The command and schedule lines running a composed export, or why none is
+ * shown ({@link RunLines}). */
+export type ScheduledRunLines = WithheldRunLines | ShownScheduledRunLines;
+
+/** The lines of a composed export where they are shown, and their schedule. */
+export interface ShownScheduledRunLines extends ShownRunLines {
   /** When the lines run, as a phrase ("daily at 2am"). */
   schedule: string;
-  /** Whether the lines run on the record's agreed schedule, rather than a
-   * daily example. */
-  fromAgreedSchedule: boolean;
   /** What to check about the schedule's times, where the record has one. */
   scheduleNote: string | undefined;
-  /** Why the image lines, or every line, are not shown, where a path cannot
-   * be mounted. */
-  unmountableNotice: string | undefined;
   /** The paths the image lines mount besides the folder, where there are
-   * any and the lines are shown. */
+   * any and the image lines are shown. */
   bindPathsCaveat: string | undefined;
 }
 
@@ -106,11 +85,15 @@ export interface ScheduledRunLines {
  * decides.
  */
 type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
-  | ({
+  | {
       kind: "exportable";
       /** What the composer produced. */
       composed: TComposed;
-    } & ScheduledRunLines)
+      /** Whether the lines run on the record's agreed schedule, rather than a
+       * daily example. */
+      fromAgreedSchedule: boolean;
+      lines: ScheduledRunLines;
+    }
   | {
       kind: "refused";
       /** The composer's reason, escaped for display: it names the stored fields
@@ -119,57 +102,35 @@ type ManagedCronExportPanelState<TComposed extends ManagedCommandLineConfig> =
       reason: string;
     };
 
-/** The command running `composed` once, and why lines are withheld where a
- * path it names cannot be mounted. */
-export interface ExportRun {
-  /** `image` over the folder, or an installed `alcove` where a path cannot be
-   * mounted; undefined where a path holds a control or text-direction
-   * character. */
-  runCommand: string | undefined;
-  unmountableNotice: string | undefined;
-}
-
-/** The command running `composed` once from `image`, and why lines are
- * withheld where a path it names cannot be mounted. */
+/** The lines running `composed` once from `image`, or why none is shown. */
 export function exportRun(
   composed: ManagedCommandLineConfig,
   image: string = buildImageReference(),
-): ExportRun {
-  const source = { argv: composed.argv, bindPaths: composed.bindPaths, image };
-  const unmountable = unmountableBindPaths(composed.bindPaths);
-  return {
-    runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
-    unmountableNotice:
-      unmountable.length > 0
-        ? unmountableBindPathsNotice(unmountable)
-        : undefined,
-  };
-}
-
-/** The lines running `composed` on `record`'s agreed schedule, from `image`. */
-function scheduledRunLines(
-  composed: ManagedCommandLineConfig,
-  record: ManagedExchangeRecord,
-  image: string,
-): ScheduledRunLines {
-  const source = {
+): RunLines {
+  return runLines({
     argv: composed.argv,
     bindPaths: composed.bindPaths,
     image,
-  };
-  const schedule =
-    record.schedule === undefined ? undefined : runScheduleFor(record.schedule);
-  const unmountable = unmountableBindPaths(composed.bindPaths);
+  });
+}
+
+/** The lines running `composed` on `schedule`, from `image`. */
+function scheduledRunLines(
+  composed: ManagedCommandLineConfig,
+  schedule: RunSchedule | undefined,
+  image: string,
+): ScheduledRunLines {
+  const lines = runLines(
+    { argv: composed.argv, bindPaths: composed.bindPaths, image },
+    schedule,
+  );
+  if (lines.kind === "withheld") return lines;
   return {
-    ...exportRun(composed, image),
-    dockerCronLine: dockerCronLine(source, schedule),
-    dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
-    installedCronLine: installedCronLine(source, schedule),
+    ...lines,
     schedule: scheduleDescription(schedule),
-    fromAgreedSchedule: schedule !== undefined,
     scheduleNote: scheduleNote(schedule),
     bindPathsCaveat:
-      unmountable.length === 0 && composed.bindPaths.length > 0
+      lines.dockerLinesNotice === undefined && composed.bindPaths.length > 0
         ? bindPathsCaveat(composed.bindPaths)
         : undefined,
   };
@@ -188,10 +149,13 @@ function exportPanelState<TComposed extends ManagedCommandLineConfig>(
   } catch (error) {
     return { kind: "refused", reason: sanitizeErrorForDisplay(error) };
   }
+  const schedule =
+    record.schedule === undefined ? undefined : runScheduleFor(record.schedule);
   return {
     kind: "exportable",
     composed,
-    ...scheduledRunLines(composed, record, image),
+    fromAgreedSchedule: schedule !== undefined,
+    lines: scheduledRunLines(composed, schedule, image),
   };
 }
 

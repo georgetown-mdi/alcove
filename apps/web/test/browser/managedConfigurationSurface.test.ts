@@ -383,6 +383,11 @@ describe("the surface of a configuration on a channel this app does not run", ()
     expect(page.getByText("Schedule it", { exact: false }).query()).toBe(null);
     expect(
       page
+        .getByText("change the name in the command", { exact: false })
+        .query(),
+    ).toBe(null);
+    expect(
+      page
         .getByRole("button", {
           name: `Download ${CRON_EXPORT_CONFIG_FILE_NAME}`,
         })

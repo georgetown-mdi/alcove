@@ -8,28 +8,21 @@ import {
 } from "@psi/managed/recurringHandoff";
 
 import { CopyableCode } from "@components/CopyableCode";
+import { DisclosureSection } from "@components/DisclosureSection";
 import styles from "@styles/app.module.css";
 
-import {
-  buildImageReference,
-  unmountableBindPaths,
-} from "@psi/dockerRunCommand";
-import { DisclosureSection } from "../components/DisclosureSection";
+import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   bindPathsCaveat,
-  dockerCronLine,
-  dockerRunCommand,
-  dockerTaskSchedulerLine,
   handoffInputName,
-  installedCronLine,
-  installedRunCommand,
-  unmountableBindPathsNotice,
+  runLines,
 } from "./scheduledRunCommand";
 
 import type { JobHandoff } from "@jobs/handoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
+import type { ShownRunLines } from "./scheduledRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
 const RECURRING_EXCHANGE_DOC_URL =
@@ -114,12 +107,10 @@ function HandoffBody({
     bindPaths: handoff.bindPaths,
     image: buildImageReference(),
   };
-  const dockerCommand = dockerRunCommand(source);
-  const runCommand = dockerCommand ?? installedRunCommand(source);
-  const cronCommand = dockerCronLine(source);
-  const taskSchedulerCommand = dockerTaskSchedulerLine(source);
-  const installedCronCommand = installedCronLine(source);
-  const unmountable = unmountableBindPaths(handoff.bindPaths);
+  const lines = runLines(source);
+  const shown = lines.kind === "shown" ? lines : undefined;
+  const notice =
+    lines.kind === "withheld" ? lines.notice : lines.dockerLinesNotice;
   const inputName = handoffInputName(handoff.template.argv);
 
   return (
@@ -130,16 +121,12 @@ function HandoffBody({
         Scheduler (Windows). The settings from this run are filled in below; set
         the file paths for the machine that will run the schedule.
       </p>
-      {unmountable.length > 0 && (
-        <p className={styles.small}>
-          {unmountableBindPathsNotice(unmountable)}
-        </p>
-      )}
+      {notice !== undefined && <p className={styles.small}>{notice}</p>}
 
       {handoff.template.kind === "config" ? (
         <ConfigSteps
           yaml={handoff.template.yaml}
-          command={runCommand}
+          command={shown?.runCommand}
           inputName={inputName}
           usedKeyFile={handoff.usedKeyFile}
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
@@ -147,20 +134,16 @@ function HandoffBody({
           runFolder={jobId}
         />
       ) : (
-        <CommandSteps command={runCommand} inputName={inputName} />
+        <CommandSteps command={shown?.runCommand} inputName={inputName} />
       )}
 
-      {installedCronCommand !== undefined && (
-        <ScheduleLines
-          cronCommand={cronCommand}
-          taskSchedulerCommand={taskSchedulerCommand}
-          installedCronCommand={installedCronCommand}
-        />
-      )}
+      {shown !== undefined && <ScheduleLines lines={shown} />}
 
       <Caveats
         handoff={handoff}
-        dockerLinesShown={dockerCommand !== undefined}
+        dockerLinesShown={
+          shown !== undefined && shown.dockerLinesNotice === undefined
+        }
       />
 
       <p className={styles.small}>
@@ -181,15 +164,11 @@ function HandoffBody({
 
 /** The schedule lines: the image's cron and Task Scheduler lines where every
  * path can be mounted, and the cron line for an installed Alcove. */
-function ScheduleLines({
-  cronCommand,
-  taskSchedulerCommand,
-  installedCronCommand,
-}: {
-  cronCommand: string | undefined;
-  taskSchedulerCommand: string | undefined;
-  installedCronCommand: string;
-}) {
+function ScheduleLines({ lines }: { lines: ShownRunLines }) {
+  const {
+    dockerCronLine: cronCommand,
+    dockerTaskSchedulerLine: taskSchedulerCommand,
+  } = lines;
   const dockerShown = cronCommand !== undefined;
   return (
     <>
@@ -225,7 +204,7 @@ function ScheduleLines({
             "from the exchange folder:"}
       </p>
       <CopyableCode
-        code={installedCronCommand}
+        code={lines.installedCronLine}
         ariaLabel="cron schedule line for an installed Alcove"
       />
       <p className={styles.small}>
@@ -255,7 +234,6 @@ function ConfigSteps({
   runFolder,
 }: {
   yaml: string;
-  /** Undefined where no command is shown ({@link unmountableBindPathsNotice}). */
   command: string | undefined;
   inputName: string;
   usedKeyFile: boolean;
@@ -349,7 +327,6 @@ function CommandSteps({
   command,
   inputName,
 }: {
-  /** Undefined where no command is shown ({@link unmountableBindPathsNotice}). */
   command: string | undefined;
   inputName: string;
 }) {

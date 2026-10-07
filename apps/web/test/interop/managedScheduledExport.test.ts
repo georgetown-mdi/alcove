@@ -237,10 +237,10 @@ describe("the managed exchange's command-line export, run as given", () => {
     );
     chmodSync(installedAlcove, 0o755);
 
-    expect(state.installedCronLine).toMatch(/^\d+ \d+ \* \* \* \[ /);
-    if (state.installedCronLine === undefined)
-      throw new Error("the export withheld the installed cron line");
-    const line = state.installedCronLine
+    if (state.lines.kind !== "shown")
+      throw new Error(`the export withheld its lines: ${state.lines.notice}`);
+    expect(state.lines.installedCronLine).toMatch(/^\d+ \d+ \* \* \* \[ /);
+    const line = state.lines.installedCronLine
       .replace(EXCHANGE_FOLDER_PLACEHOLDER, workspace.scheduleDir)
       .replace(INSTALLED_ALCOVE_PLACEHOLDER, installedAlcove);
 
@@ -307,7 +307,7 @@ describe("the managed exchange's command-line export, run as given", () => {
       `type=bind,src=${workspace.dropDir},dst=${workspace.dropDir}`,
     ]);
     expect(dockerArgv?.slice(8)).toEqual(state.composed.argv.slice(1));
-    expect(state.dockerCronLine).toContain(
+    expect(state.lines.dockerCronLine).toContain(
       "/usr/bin/docker run --rm --mount " +
         `type=bind,src=${EXCHANGE_FOLDER_PLACEHOLDER},dst=/work`,
     );

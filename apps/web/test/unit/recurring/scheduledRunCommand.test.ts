@@ -7,8 +7,7 @@ import {
   dockerRunCommand,
   dockerTaskSchedulerLine,
   handoffInputName,
-  installedCronLine,
-  installedRunCommand,
+  runLines,
   unmountableBindPathsNotice,
 } from "@recurring/scheduledRunCommand";
 import {
@@ -42,6 +41,14 @@ const MOUNTS =
   "--mount type=bind,src=/path/to/your/signing-identity.json," +
   "dst=/path/to/your/signing-identity.json,readonly";
 
+/** The lines for `source`, failing the test where they are withheld. */
+function shownLines(source: ScheduledRunSource) {
+  const lines = runLines(source);
+  if (lines.kind !== "shown")
+    throw new Error(`the lines were withheld: ${lines.notice}`);
+  return lines;
+}
+
 /** The source with `path` as its one bind path. */
 function sourceBinding(path: string): ScheduledRunSource {
   return { ...SOURCE, bindPaths: [{ path, readOnly: false }] };
@@ -65,7 +72,7 @@ describe("the console hand-off's command lines", () => {
   });
 
   test("the installed-program cron line runs from the exchange folder", () => {
-    const line = installedCronLine(SOURCE);
+    const line = shownLines(SOURCE).installedCronLine;
     expect(line).toBe(
       "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
         "exchange --log-file=exchange.log clients.csv ./",
@@ -74,10 +81,10 @@ describe("the console hand-off's command lines", () => {
   });
 
   test("a percent sign in an argument is escaped for cron as well", () => {
-    const line = installedCronLine({
+    const line = shownLines({
       ...SOURCE,
       argv: ["alcove", "exchange", "--identity=50% Agency", "in.csv", "r.csv"],
-    });
+    }).installedCronLine;
     expect(line).toContain("'--identity=50\\% Agency'");
   });
 
@@ -120,7 +127,7 @@ describe("the console hand-off's command lines", () => {
   test.each(["/srv/$HOME dir", "/srv/it's here"])(
     "a path %s stays one argument in the installed cron command",
     (path) => {
-      const line = installedCronLine({
+      const line = shownLines({
         ...SOURCE,
         argv: [
           "alcove",
@@ -129,8 +136,7 @@ describe("the console hand-off's command lines", () => {
           "in.csv",
           "r.csv",
         ],
-      });
-      if (line === undefined) throw new Error("no installed cron line");
+      }).installedCronLine;
       const command = line
         .slice(line.indexOf("&& ") + 3)
         .replaceAll("\\%", "%");
@@ -158,11 +164,15 @@ describe("the console hand-off's command lines", () => {
       expect(dockerRunCommand(source)).toBeUndefined();
       expect(dockerCronLine(source)).toBeUndefined();
       expect(dockerTaskSchedulerLine(source)).toBeUndefined();
-      expect(installedRunCommand(source)).toBe(
+      const lines = shownLines(source);
+      expect(lines.runCommand).toBe(
         "alcove exchange --log-file=exchange.log clients.csv ./",
       );
-      expect(installedCronLine(source)).toContain(
+      expect(lines.installedCronLine).toContain(
         "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
+      );
+      expect(lines.dockerLinesNotice).toBe(
+        unmountableBindPathsNotice([{ path, reason }]),
       );
     }
     expect(
@@ -213,11 +223,10 @@ describe("the console hand-off's command lines", () => {
     expect(dockerRunCommand(source)).toBeUndefined();
     expect(dockerCronLine(source)).toBeUndefined();
     expect(dockerTaskSchedulerLine(source)).toBeUndefined();
-    expect(installedRunCommand(source)).toBeUndefined();
-    expect(installedCronLine(source)).toBeUndefined();
     const notice = unmountableBindPathsNotice(
       unmountableBindPaths(source.bindPaths),
     );
+    expect(runLines(source)).toEqual({ kind: "withheld", notice });
     expect(notice).toMatch(/^No command to run or schedule this exchange/);
     expect(notice).toContain("Move that folder to a path without");
     // eslint-disable-next-line no-control-regex
@@ -231,10 +240,9 @@ describe("the console hand-off's command lines", () => {
       { path, reason: "control" },
     ]);
     expect(dockerCronLine(source)).toBeUndefined();
-    expect(installedCronLine(source)).toBeUndefined();
-    expect(
-      unmountableBindPathsNotice(unmountableBindPaths(source.bindPaths)),
-    ).toBe(
+    const lines = runLines(source);
+    if (lines.kind !== "withheld") throw new Error("the lines were shown");
+    expect(lines.notice).toBe(
       "No command to run or schedule this exchange is shown because " +
         "/x\\x0a* * * * * touch " +
         "/tmp/pwned # contains a line break, another control character, or " +

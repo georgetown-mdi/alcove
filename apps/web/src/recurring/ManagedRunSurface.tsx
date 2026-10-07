@@ -164,7 +164,7 @@ import {
 import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
-import type { ExportRun } from "./managedCronExportModel";
+import type { RunLines } from "./scheduledRunCommand";
 
 import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { Ref } from "react";
@@ -307,7 +307,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // The invocation a confirmed command-line export handed over, present once this
   // browser's copy is spent that way: like a migration, the record no longer runs
   // here, and the surface names what runs in its place.
-  const [commandLineHandoff, setCommandLineHandoff] = useState<ExportRun>();
+  const [commandLineHandoff, setCommandLineHandoff] = useState<RunLines>();
   const [reselected, setReselected] = useState<File>();
   const [running, setRunning] = useState(false);
   // The record, its detail, and the backup affordances all read the browser's own
@@ -1317,7 +1317,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         ) : commandLineHandoff !== undefined ? (
           <>
             <h1 tabIndex={-1}>Handed off to the command line</h1>
-            {commandLineHandoff.runCommand !== undefined ? (
+            {commandLineHandoff.kind === "shown" ? (
               <>
                 <p className={styles.sub}>
                   You exported this exchange&apos;s alcove.yaml and .alcove.key,
@@ -1332,9 +1332,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   You exported this exchange&apos;s alcove.yaml and .alcove.key,
                   so it no longer runs here.
                 </p>
-                <p className={styles.small}>
-                  {commandLineHandoff.unmountableNotice}
-                </p>
+                <p className={styles.small}>{commandLineHandoff.notice}</p>
               </>
             )}
             <p className={styles.small}>

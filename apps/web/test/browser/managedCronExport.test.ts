@@ -34,6 +34,7 @@ import { captureDownloads } from "./captureDownloads";
 
 import type { DownloadCapture } from "./captureDownloads";
 import type { NewManagedExchange } from "@psi/managed/managedExchangeRecord";
+import type { managedCronExportPanelState } from "@recurring/managedCronExportModel";
 
 // The command-line export panel on the run surface, against real Chromium: real
 // IndexedDB stores, a real export, nothing stubbed. Pinned here: the hand-off
@@ -49,6 +50,33 @@ vi.mock("@tanstack/react-router", async () =>
 vi.mock("@psi/transport/rendezvous", async () =>
   (await import("./moduleMocks")).rendezvousMock(),
 );
+
+// A record built here names no bind path, so a test that needs the lines
+// withheld sets this notice and the panel's state carries it in their place.
+const withheldLines = vi.hoisted(() => ({
+  notice: undefined as string | undefined,
+}));
+
+vi.mock("@recurring/managedCronExportModel", async (importOriginal) => {
+  type PanelState = typeof managedCronExportPanelState;
+  const actual = await importOriginal<{
+    managedCronExportPanelState: PanelState;
+  }>();
+  return {
+    ...actual,
+    managedCronExportPanelState: (
+      ...args: Parameters<PanelState>
+    ): ReturnType<PanelState> => {
+      const state = actual.managedCronExportPanelState(...args);
+      if (withheldLines.notice === undefined || state.kind !== "exportable")
+        return state;
+      return {
+        ...state,
+        lines: { kind: "withheld", notice: withheldLines.notice },
+      };
+    },
+  };
+});
 
 const linkageTerms = getDefaultLinkageTerms("County Health Dept");
 
@@ -193,6 +221,51 @@ describe("the command-line export hands over two files", () => {
     await expect
       .element(page.getByText("schtasks /Create", { exact: false }))
       .toBeInTheDocument();
+  });
+});
+
+describe("a panel whose lines are withheld", () => {
+  afterEach(() => {
+    withheldLines.notice = undefined;
+  });
+
+  test("shows the notice and no command, input step, or schedule", async () => {
+    const notice = "No command to run or schedule this exchange is shown.";
+    withheldLines.notice = notice;
+    const created = await createManagedExchange(newExchange());
+    app.render(createElement(ManagedRunSurface, { id: created.id }));
+    await openExportPanel();
+
+    await expect.element(page.getByText(notice)).toBeInTheDocument();
+    expect(
+      page
+        .getByText("change the name in the command", { exact: false })
+        .query(),
+    ).toBe(null);
+    expect(
+      page
+        .getByText("Put your input file in that folder", { exact: true })
+        .query(),
+    ).toBe(null);
+    expect(
+      page
+        .getByText("Schedule it (adjust the times and the folder)", {
+          exact: true,
+        })
+        .query(),
+    ).toBe(null);
+    expect(
+      page
+        .getByText("exchange --log-file=exchange.log input.csv ./", {
+          exact: false,
+        })
+        .query(),
+    ).toBe(null);
+    expect(
+      page
+        .getByRole("button", { name: "Download alcove.yaml and .alcove.key" })
+        .query(),
+    ).not.toBe(null);
   });
 });
 
