@@ -28,7 +28,8 @@ import { MAX_ERROR_CAUSE_DEPTH } from "./utils/sanitizeErrorForDisplay";
  * - `receipt-not-verified`: the partner's receipt or certificate did not
  *   verify. A {@link ReceiptVerificationError}.
  * - `authentication-failed`: the shared secret, the SFTP host key, or the
- *   relay registrar refused this party. An {@link AuthenticationError}.
+ *   relay registrar refused this party, or the coordination server's TLS
+ *   certificate did not verify. An {@link AuthenticationError}.
  * - `trust-check-failed`: any other `security`-kind {@link ConnectionError},
  *   such as a frame that failed its integrity or ordering check.
  * - `cancelled`: a local close cancelled the wait. A `closed`-kind

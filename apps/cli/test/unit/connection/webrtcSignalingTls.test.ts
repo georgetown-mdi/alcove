@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
-import { sanitizeErrorForDisplay } from "@alcove/core";
+import {
+  AUTHENTICATION_FAILED_EXIT_CODE,
+  UNAVAILABLE_EXIT_CODE,
+} from "@alcove/cli-contract";
+import { AuthenticationError, sanitizeErrorForDisplay } from "@alcove/core";
 
 import {
+  BrokerUnreachableError,
   SIGNALING_CERTIFICATE_FAILED_MESSAGE,
   SIGNALING_PROXIED_FAILED_MESSAGE,
   SIGNALING_SOCKET_FAILED_MESSAGE,
@@ -12,6 +17,11 @@ import {
   environmentProxyingConfigured,
   probeSignalingCertificate,
 } from "../../../src/connection/webrtc/signalingTls";
+import {
+  buildErrorEvent,
+  classifyTerminalError,
+} from "../../../src/eventStream";
+import { exitCodeForError } from "../../../src/util/exit";
 
 import type {
   BrokerLocation,
@@ -135,6 +145,13 @@ function countingProbe(answer: Promise<string | undefined>): {
 async function failureBeforeRegistration(
   certificateProblem: string | undefined,
 ): Promise<string> {
+  return sanitizeErrorForDisplay(await registrationFailure(certificateProblem));
+}
+
+/** The error a registration whose socket fails before the broker confirms it rejects with. */
+async function registrationFailure(
+  certificateProblem: string | undefined,
+): Promise<unknown> {
   const socket = new FakeSocket();
   const closes: Array<unknown> = [];
   const failure = await connectToBroker({
@@ -156,7 +173,7 @@ async function failureBeforeRegistration(
   // A registration that never opened reports through its own rejection; the
   // handlers belong to the phase after it.
   expect(closes).toHaveLength(0);
-  return sanitizeErrorForDisplay(failure);
+  return failure;
 }
 
 test("a failed socket whose certificate verified reports only the failure", async () => {
@@ -173,6 +190,24 @@ test("a certificate that did not verify is named, with the remedy", async () => 
   expect(rendered).toContain(
     "certificate check reported: DEPTH_ZERO_SELF_SIGNED_CERT",
   );
+});
+
+test("a certificate that did not verify fails as an authentication failure stating its own remedy", async () => {
+  const failure = await registrationFailure("DEPTH_ZERO_SELF_SIGNED_CERT");
+  expect(failure).toBeInstanceOf(AuthenticationError);
+  expect(exitCodeForError(failure)).toBe(AUTHENTICATION_FAILED_EXIT_CODE);
+  expect(buildErrorEvent(failure, "run")).toMatchObject({
+    category: "security",
+    recoveryHint: true,
+    exitCode: AUTHENTICATION_FAILED_EXIT_CODE,
+  });
+});
+
+test("a failure the certificate check did not explain stays a retryable transport failure", async () => {
+  const failure = await registrationFailure(undefined);
+  expect(failure).toBeInstanceOf(BrokerUnreachableError);
+  expect(exitCodeForError(failure)).toBe(UNAVAILABLE_EXIT_CODE);
+  expect(classifyTerminalError(failure, "run")).toBe("exchange");
 });
 
 test("a hostile verification code cannot drive the operator's terminal", async () => {

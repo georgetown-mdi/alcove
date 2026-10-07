@@ -1,8 +1,10 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  AuthenticationError,
   chainDetailCauses,
   ConnectionError,
+  markStatesItsOwnNextStep,
   parseBoundedJson,
   UsageError,
 } from "@alcove/core";
@@ -274,6 +276,11 @@ const CERTIFICATE_PROBLEM_LINK_LABEL = "certificate check reported: ";
  * The error a failed signaling socket reports, given what it was told about
  * the same endpoint's certificate.
  *
+ * A certificate that did not verify is an {@link AuthenticationError}, as an
+ * SFTP host key other than the pinned one is: every later dial meets the same
+ * certificate until this machine's trust changes, so the run ends at once,
+ * a re-registration included, rather than registering again.
+ *
  * The code is a fixed OpenSSL or Node token, but it is reached through a
  * certificate the far end chose, so it takes a labelled cause link of its own
  * rather than the summary, and is escaped where the chain is rendered.
@@ -285,11 +292,13 @@ function signalingSocketError(
     return new BrokerUnreachableError(SIGNALING_SOCKET_FAILED_MESSAGE);
   if (certificate.kind === "not-checked-proxied")
     return new BrokerUnreachableError(SIGNALING_PROXIED_FAILED_MESSAGE);
-  return new BrokerUnreachableError(SIGNALING_CERTIFICATE_FAILED_MESSAGE, {
-    cause: chainDetailCauses([
-      fittedCauseLink(CERTIFICATE_PROBLEM_LINK_LABEL, certificate.code),
-    ]),
-  });
+  return markStatesItsOwnNextStep(
+    new AuthenticationError(SIGNALING_CERTIFICATE_FAILED_MESSAGE, {
+      cause: chainDetailCauses([
+        fittedCauseLink(CERTIFICATE_PROBLEM_LINK_LABEL, certificate.code),
+      ]),
+    }),
+  );
 }
 
 /**
