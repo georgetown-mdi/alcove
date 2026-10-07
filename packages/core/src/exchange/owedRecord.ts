@@ -10,9 +10,6 @@ import type { PartnerPayload, PayloadWireMessage } from "../payloadExchange.js";
 import type { BuiltExchangeRecord } from "../records/exchangeRecord.js";
 import type { AssociationTable } from "../types.js";
 
-// The build of the self-attested record a run owes once its payload send
-// reported, and the warning a failed build leaves in place of the record.
-
 /**
  * Build the record once the run's outcome is decided, so it can state it. It
  * is a secondary audit artifact, so a failure to build it (e.g. an unexpected
