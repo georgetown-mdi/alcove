@@ -121,14 +121,14 @@ import {
   warnIfCommandLineHoldsLiteralCredential,
 } from "../literalCredentials";
 
-/**
- * The refusal an acceptance gets when it can neither ask for consent to the
- * invitation's terms (no terminal on stdin) nor was given it in advance.
- */
 const ACCEPT_CONSENT_REMEDY =
   "Run it at a terminal to review the terms and answer, or pass " +
   "--consent-to-terms to consent to them in advance for an unattended run.";
 
+/**
+ * The refusal an acceptance gets when it can neither ask for consent to the
+ * invitation's terms (no terminal on stdin) nor was given it in advance.
+ */
 export const ACCEPT_NEEDS_TERMINAL =
   "accept asks you to confirm the invitation's terms, and standard input is " +
   `not a terminal to ask at. ${ACCEPT_CONSENT_REMEDY}`;
@@ -555,9 +555,10 @@ export async function validateAccept(params: {
       log,
     });
     // accept reads its y/N confirmation from stdin (promptConfirmOrClosed), so
-    // it cannot also take the CSV there -- unless `--consent-to-terms` skips that prompt,
-    // which frees stdin for the CSV. Gate `-` on it: rejected when the prompt
-    // would run, allowed when it is bypassed (see the consentToTerms doc above).
+    // it cannot also take the CSV there -- unless `--consent-to-terms` skips
+    // that prompt, which frees stdin for the CSV. Gate `-` on it: rejected when
+    // the prompt would run, allowed when it is bypassed (see the consentToTerms
+    // doc above).
     const rows = await loadInputRows(input, {
       allowStdin: consentToTerms,
       csvDelimiter,
