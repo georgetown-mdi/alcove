@@ -298,11 +298,12 @@ export function configureLogFile(logFilePath: string): LogSink {
   }
 
   const loss: LogFileLoss = { path: normalized, lost: 0, reported: 0 };
-  activeLogFileLoss = loss;
-  const copyErrorsToStderr = !isSameFileAsStderr(fd);
+  const isStderr = isSameFileAsStderr(fd);
+  const active: ActiveLogFile = { loss, isStderr };
+  activeLogFile = active;
   return installLogSink(
     (line, methodName) => {
-      if (methodName === "error" && copyErrorsToStderr) writeStderrLine(line);
+      if (methodName === "error" && !isStderr) writeStderrLine(line);
       try {
         writeAll(fd, line);
       } catch (err) {
@@ -326,7 +327,7 @@ export function configureLogFile(logFilePath: string): LogSink {
       // lines lost since the last report goes to stderr; release the fd last.
       // A double close throws EBADF, which is swallowed.
       summarizeLogFileLoss(loss);
-      if (activeLogFileLoss === loss) activeLogFileLoss = undefined;
+      if (activeLogFile === active) activeLogFile = undefined;
       try {
         fs.closeSync(fd);
       } catch {
@@ -337,7 +338,8 @@ export function configureLogFile(logFilePath: string): LogSink {
 }
 
 // A `--log-file` naming stderr itself (`/dev/stderr`, or a path stderr is
-// redirected to) would print each error-level line twice.
+// redirected to) would print twice each error-level line and each prompt-stream
+// line the log copies.
 function isSameFileAsStderr(fd: number): boolean {
   try {
     const file = fs.fstatSync(fd);
@@ -448,7 +450,12 @@ interface LogFileLoss {
   reported: number;
 }
 
-let activeLogFileLoss: LogFileLoss | undefined;
+interface ActiveLogFile {
+  loss: LogFileLoss;
+  isStderr: boolean;
+}
+
+let activeLogFile: ActiveLogFile | undefined;
 
 /**
  * The lines the installed `--log-file` sink could not write since the last
@@ -460,9 +467,9 @@ let activeLogFileLoss: LogFileLoss | undefined;
  */
 export function takeLogFileLossReport():
   { notice: string; lostLines: number } | undefined {
-  return activeLogFileLoss === undefined
+  return activeLogFile === undefined
     ? undefined
-    : summarizeLogFileLoss(activeLogFileLoss);
+    : summarizeLogFileLoss(activeLogFile.loss);
 }
 
 function summarizeLogFileLoss(
@@ -481,13 +488,15 @@ function summarizeLogFileLoss(
 }
 
 /**
- * Whether a {@link configureLogFile} sink is installed and not yet closed, so
- * diagnostic lines are going to a `--log-file` rather than the terminal. A
- * line the operator must see whatever the routing goes to the prompt stream,
- * and a caller asks this to decide whether the log also needs its copy.
+ * Whether a {@link configureLogFile} sink is installed, not yet closed, and
+ * writing somewhere other than stderr. A line the operator must see whatever
+ * the routing goes to the prompt stream (stderr), and a caller asks this to
+ * decide whether the log also needs its copy: false with no file sink, and
+ * false for a file that is stderr itself (`--log-file /dev/stderr`), where the
+ * copy would print the line a second time.
  */
-export function logFileInUse(): boolean {
-  return activeLogFileLoss !== undefined;
+export function logFileSeparateFromStderr(): boolean {
+  return activeLogFile !== undefined && !activeLogFile.isStderr;
 }
 
 /**
