@@ -234,7 +234,7 @@ function isAtPath(value: string): boolean {
 
 /** The direct-exchange refusal of a remote directory with a `.` or `..` part. */
 export const DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT =
-  "A direct exchange cannot use . or .. in this directory. Enter the path " +
+  "A quick exchange cannot use . or .. in this directory. Enter the path " +
   "without them, like /exchange/in.";
 
 /** The direct-exchange refusal of `/`; a split pair's inbound half cannot be
@@ -245,7 +245,7 @@ export function directDirectoryRootRequirement(splitInbound: boolean): string {
     : "like /exchange, or leave this blank to use the account's home " +
       "directory.";
   return (
-    "A direct exchange cannot use / as this directory. Enter a directory " +
+    "A quick exchange cannot use / as this directory. Enter a directory " +
     `under it, ${alternative}`
   );
 }
