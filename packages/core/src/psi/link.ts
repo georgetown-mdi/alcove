@@ -1404,8 +1404,6 @@ export async function linkViaPSI(
     `${participant.id}: sending match map indexed by round, receiving ` +
       "partner's",
   );
-  // The partner states one entry per record it accepted, so a list declaring
-  // more entries than its declared record count is refused at its first part.
   // An entry names positions of this party's round, at most as many as one of
   // the partner's records may own.
   let mappedEntryBytes = 0;
@@ -1418,6 +1416,8 @@ export async function linkViaPSI(
         candidatesByIter.length,
       ),
     );
+  // The partner states one entry per record it accepted, so a list declaring
+  // more entries than its declared record count is refused at its first part.
   const theirIdentifiedIndexIterationMap = await exchangeMappedElements(
     participant.id,
     conn,
