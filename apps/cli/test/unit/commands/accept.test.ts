@@ -52,7 +52,7 @@ vi.mock("../../../src/util/prompt", async () => {
   const actual = await vi.importActual<
     typeof import("../../../src/util/prompt")
   >("../../../src/util/prompt");
-  return { ...actual, promptConfirm: vi.fn(), promptFreeText: vi.fn() };
+  return { ...actual, promptConfirmOrClosed: vi.fn(), promptFreeText: vi.fn() };
 });
 
 // Mock only runOnlineBootstrap, so the online-handler wiring can be asserted
@@ -93,7 +93,10 @@ import {
 import { saveConfig } from "../../../src/config";
 import { webRtcDialFrom } from "../../../src/protocol";
 import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
-import { promptConfirm, promptFreeText } from "../../../src/util/prompt";
+import {
+  promptConfirmOrClosed,
+  promptFreeText,
+} from "../../../src/util/prompt";
 import { captureProcessExit } from "../../exitCapture";
 import {
   FUTURE,
@@ -114,7 +117,7 @@ import {
 } from "../../platformPaths";
 import { encodeRawInvitation } from "../../support";
 
-const promptConfirmMock = vi.mocked(promptConfirm);
+const promptConfirmMock = vi.mocked(promptConfirmOrClosed);
 const promptFreeTextMock = vi.mocked(promptFreeText);
 
 // Beside the ESC, RLO and BEL the shared fixtures hold: an invisible character
@@ -400,9 +403,9 @@ describe("decode + validate (the gate before the prompt)", () => {
 // --- validateAccept (the no-commit phase, before the prompt) -----------------
 
 // accept reads its y/N confirmation from stdin, so it cannot also take the CSV
-// there. validateAccept runs before promptConfirm, so a `-` input is rejected up
+// there. validateAccept runs before the prompt, so a `-` input is rejected up
 // front (a UsageError naming a file path) instead of a stdin CSV starving the
-// prompt into a silent EOF decline. Both positional modes pass allowStdin: false.
+// prompt into an EOF refusal. Both positional modes pass allowStdin: false.
 async function expectStdinRejection(
   resolved: Parameters<typeof validateAccept>[0]["resolved"],
 ): Promise<void> {
@@ -3090,7 +3093,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // the terms and their y/N -- so the consent prompt is answered too.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     promptFreeTextMock.mockResolvedValue("Agency B, Health Dept");
-    promptConfirmMock.mockResolvedValue(true);
+    promptConfirmMock.mockResolvedValue("yes");
     const exit = captureProcessExit();
     const stdio = captureStdio();
     try {
@@ -3166,6 +3169,75 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     }
   });
 
+  test("handler: stdin closing at the question is refused, not taken as a decline", async () => {
+    const { dir, input, configFile, keyFile } = offlineAcceptFixture();
+    promptConfirmMock.mockResolvedValue("closed");
+    const exit = captureProcessExit();
+    const { stderrWrites, restore } = captureStdio();
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      await expect(
+        acceptHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency B",
+          args: [encoded, input],
+          "config-file": configFile,
+          "key-file": keyFile,
+          "log-level": "error",
+          record: false,
+        } as unknown as Arguments),
+      ).rejects.toThrow("exit:64");
+      restore();
+      expect(exit).toHaveBeenCalledWith(64);
+      expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+      const stderr = stderrWrites.join("");
+      expect(stderr).toContain(
+        "standard input ended at the question above, so it was not answered " +
+          "and no files were written.",
+      );
+      expect(stderr).toContain("--consent-to-terms");
+      expect(stderr).not.toContain(DECLINE_LINE);
+      expect(fs.existsSync(configFile)).toBe(false);
+      expect(fs.existsSync(keyFile)).toBe(false);
+    } finally {
+      restore();
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("handler: an explicit no at the question declines, exiting 0", async () => {
+    const { dir, input, configFile, keyFile } = offlineAcceptFixture();
+    promptConfirmMock.mockResolvedValue("no");
+    const exit = captureProcessExit();
+    const { stderrWrites, restore } = captureStdio();
+    try {
+      const encoded = await encodeInvitation(sampleToken(FUTURE()));
+      await acceptHandler({
+        _: [],
+        $0: "alcove",
+        identity: "Agency B",
+        args: [encoded, input],
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "error",
+        record: false,
+      } as unknown as Arguments);
+      restore();
+      expect(exit).not.toHaveBeenCalled();
+      expect(promptConfirmMock).toHaveBeenCalledTimes(1);
+      expect(stderrWrites.join("")).toContain(DECLINE_LINE);
+      expect(stderrWrites.join("")).not.toContain("standard input ended");
+      expect(fs.existsSync(configFile)).toBe(false);
+      expect(fs.existsSync(keyFile)).toBe(false);
+    } finally {
+      restore();
+      exit.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("handler: --consent-to-terms asks nothing, identity question included", async () => {
     // The flag declares the run unattended and frees stdin for a `-` CSV, so
     // neither question may read it: an acceptance with no label takes the standing
@@ -3205,12 +3277,12 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
   });
 
   test("handler: --consent-to-terms skips the confirmation prompt and writes the config and key", async () => {
-    // With --consent-to-terms the prompt is never consulted (promptConfirm is not
-    // called, so stdin is not read for a confirmation) and the offline acceptance
+    // With --consent-to-terms the prompt is never consulted (it is not called,
+    // so stdin is not read for a confirmation) and the offline acceptance
     // proceeds to write both files, on the recorded advance consent.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     // afterEach resets the shared mock, so it starts clean here; this test needs no
-    // implementation because it asserts promptConfirm is never called.
+    // implementation because it asserts the prompt is never called.
     const exit = captureProcessExit();
     try {
       const encoded = await encodeInvitation(
@@ -3569,7 +3641,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
       outcome: "completed",
       configWriteError: undefined,
     });
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     const stdio = captureStdio();
     const exit = captureProcessExit();
     try {
@@ -3706,7 +3778,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     // which an EOF/non-TTY stdin also produces) leaves both files unwritten.
     const { dir, input, configFile, keyFile } = offlineAcceptFixture();
     // afterEach reset the mock to a clean slate; set the decline impl this test needs.
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     // A prompting run at a level that drops info shows the terms at the prompt
     // regardless (the surface tests below measure that); capture stdio so they land
     // here rather than in the suite's own output.
@@ -3747,7 +3819,7 @@ describe("handler: '--consent-to-terms' gates the confirmation prompt", () => {
     const planted = "# authored while the prompt was open\n";
     promptConfirmMock.mockImplementation(async () => {
       fs.writeFileSync(configFile, planted);
-      return true;
+      return "yes";
     });
     const exit = captureProcessExit();
     const { stderrWrites, restore } = captureStdio();
@@ -3944,7 +4016,7 @@ async function runOfflineAcceptCapturingStdio(params: {
   const stdio = captureStdio();
   if (onPrompt !== undefined)
     promptConfirmMock.mockImplementation(() =>
-      Promise.resolve(onPrompt(stdio.stderrWrites)),
+      Promise.resolve(onPrompt(stdio.stderrWrites) ? "yes" : "no"),
     );
   try {
     await acceptHandler({
@@ -4151,7 +4223,7 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
   test("handler: nothing reaches the operator between the terms and the question", async () => {
     // The repeated decision block is the last thing printed, so the y/N is answered
     // against those facts rather than the tail of the key list. A line added between
-    // displayInvitation and promptConfirm would push the block off a short terminal
+    // displayInvitation and the prompt would push the block off a short terminal
     // with nothing turning red -- so the property is a check rather than a comment.
     //
     // It reads what the OPERATOR saw, not what one route emitted: on every routing
@@ -4394,7 +4466,7 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     // them: the file for the operator's record, the terminal for the decision.
     const fixture = offlineAcceptFixture();
     const logFile = path.join(fixture.dir, "accept.log");
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
       const expected = await expectedConsentSurface(encoded);
@@ -4427,7 +4499,7 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
       // Each level that drops info drops the surface from the log; the prompt asks
       // either way, so the surface reaches the prompt's own sink either way.
       const fixture = offlineAcceptFixture();
-      promptConfirmMock.mockResolvedValue(false);
+      promptConfirmMock.mockResolvedValue("no");
       try {
         const encoded = await encodeInvitation(sampleToken(FUTURE()));
         const expected = await expectedConsentSurface(encoded);
@@ -4456,7 +4528,7 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     // turns the log up -- which holds only while no copy of it has the log's
     // own prefix at any of them.
     const fixture = offlineAcceptFixture();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
       const expected = await expectedConsentSurface(encoded);
@@ -4493,7 +4565,7 @@ describe("handler: the consent surface reaches wherever the prompt asks", () => 
     // appears exactly as many times as the renderer emitted it -- twice for the
     // decision facts it repeats, once for everything else.
     const fixture = offlineAcceptFixture();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     try {
       const encoded = await encodeInvitation(sampleToken(FUTURE()));
       const expected = await expectedConsentSurface(encoded);
@@ -4642,7 +4714,7 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
     // operator's transcript. A field composed with a plain escape instead fails
     // here rather than putting key material on a terminal.
     const fixture = armoredFixture();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     try {
       const encoded = await encodeInvitation(armoredToken());
       const { stderrWrites, stdoutWrites } =
@@ -4780,7 +4852,7 @@ describe("handler: the prompt's copy has the redaction on its own", () => {
     // is measured on this route too. --log-level silent leaves the mirrored copy as
     // the only thing on stderr, so every line asserted here came through it.
     const fixture = offlineAcceptFixture();
-    promptConfirmMock.mockResolvedValue(false);
+    promptConfirmMock.mockResolvedValue("no");
     try {
       // Unlike the render-boundary walk, this route goes through the token's own
       // validation, so the hostile code points ride the one field a decoded token

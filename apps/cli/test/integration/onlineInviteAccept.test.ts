@@ -57,13 +57,14 @@ import { inProcessOnly } from "../sftpBackendGate";
 // call.
 //
 // The stub declines by default; the first-use test alone opts into confirming,
-// restoring the decline afterward. accept.ts also calls promptConfirm for the
-// invitation-acceptance prompt with no isTTY guard, and no current test reaches
-// that path -- declining by default means a test that started exercising it
-// unnoticed would abort loudly instead of auto-confirming unseen.
+// restoring the decline afterward, so no test confirms a host key unseen.
 vi.mock("../../src/util/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/util/prompt")>();
-  return { ...actual, promptConfirm: vi.fn(async () => false) };
+  return {
+    ...actual,
+    promptConfirm: vi.fn(async () => false),
+    promptConfirmOrClosed: vi.fn(async () => "no" as const),
+  };
 });
 
 // Why validate* -> runOnlineBootstrap and not the yargs handlers: invite/accept's handlers wrap their
