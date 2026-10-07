@@ -3149,8 +3149,6 @@ test("a payload description at the free-text bound cannot crowd out the refusal"
   // display boundary can spend a whole link.
   const existing = cloneTerms(getDefaultLinkageTerms("Org"));
   const incoming = cloneTerms(getDefaultLinkageTerms("Org"));
-  // A description alone is no conflict; the empty receive list makes one whose
-  // name summaries read alike, so the description reaches the full-JSON form.
   existing.payload = { send: [{ name: "note", description: "short" }] };
   incoming.payload = {
     send: [{ name: "note", description: widestAtSchemaBound(MAX_TEXT_LENGTH) }],

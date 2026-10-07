@@ -223,8 +223,7 @@ function statedPartnership(body: Uint8Array<ArrayBuffer>): string | undefined {
 
 /**
  * Whether an authenticated body states the terms update `kind` under a
- * format `version` above the one this build reads. Called only after the MAC
- * verifies, so only a holder of the shared secret can have made the claim.
+ * format `version` above the one this build reads.
  */
 function statesNewerVersion(json: unknown): boolean {
   if (typeof json !== "object" || json === null) return false;
