@@ -488,12 +488,8 @@ function summarizeLogFileLoss(
 }
 
 /**
- * Whether a {@link configureLogFile} sink is installed, not yet closed, and
- * writing somewhere other than stderr. A line the operator must see whatever
- * the routing goes to the prompt stream (stderr), and a caller asks this to
- * decide whether the log also needs its copy: false with no file sink, and
- * false for a file that is stderr itself (`--log-file /dev/stderr`), where the
- * copy would print the line a second time.
+ * False for a `--log-file` that is stderr itself, where a log copy of a line
+ * already written to stderr would print it a second time.
  */
 export function logFileSeparateFromStderr(): boolean {
   return activeLogFile !== undefined && !activeLogFile.isStderr;
