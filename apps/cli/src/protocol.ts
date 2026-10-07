@@ -165,18 +165,6 @@ import {
   UNNAMED_PARTNER_ACCOUNTING_NOTE,
 } from "./run/notices";
 
-export {
-  BOTH_SWEPT_GUIDANCE,
-  entryHelloResidueGuidance,
-  payloadSendBeyondConfigurationNotice,
-  peerSilenceGuidance,
-  SIGNING_WITHOUT_RECORD_WARNING,
-  TERMINATED_RECORD_UNBUILT_WARNING,
-  UNDECLARED_COLUMNS_CONFIG_REMEDY,
-  undeclaredColumnsNotice,
-  UNNAMED_PARTNER_ACCOUNTING_NOTE,
-} from "./run/notices";
-
 import type { WebRtcMessageConnectionOptions } from "./connection/webrtc/webrtcMessageConnection";
 import type { WebRtcPeerOptions } from "./connection/webrtc/weriftPeer";
 

@@ -48,9 +48,9 @@ import { PLACEHOLDER_IDENTITY } from "../../../src/partyIdentity";
 import {
   checkRunMemoryBudget,
   runProtocol,
-  undeclaredColumnsNotice,
   warnUndeclaredColumns,
 } from "../../../src/protocol";
+import { undeclaredColumnsNotice } from "../../../src/run/notices";
 import type { RunProtocolOptions } from "../../../src/protocol";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import {

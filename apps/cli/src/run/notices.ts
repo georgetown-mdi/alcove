@@ -9,8 +9,8 @@ import { raiseInactivityLimit } from "../connection/timeoutGuidance";
 
 /**
  * Operator guidance appended to the file-sync peer-silence timeout error, used
- * when no valid cross-party abort marker (`<id>-abort.json`, armed below
- * post-handshake) is present to upgrade the failure to a definitive
+ * when no valid cross-party abort marker (`<id>-abort.json`, armed in the run loop
+ * after the handshake) is present to upgrade the failure to a definitive
  * {@link PeerAbortError}. The marker holds no cause and cannot exist for a
  * peer whose exchange directory has gone unwritable (the same condition that
  * stops it writing the marker) or that was hard-killed, so this text states

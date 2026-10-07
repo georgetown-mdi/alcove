@@ -404,6 +404,11 @@ import type {
 import {
   runProtocol,
   preflightRun,
+  fileSyncInactivityTimeoutMs,
+  type RunProtocolResult,
+  type SigningPersist,
+} from "../../src/protocol";
+import {
   peerSilenceGuidance,
   BOTH_SWEPT_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
@@ -412,10 +417,7 @@ import {
   entryHelloResidueGuidance,
   undeclaredColumnsNotice,
   payloadSendBeyondConfigurationNotice,
-  fileSyncInactivityTimeoutMs,
-  type RunProtocolResult,
-  type SigningPersist,
-} from "../../src/protocol";
+} from "../../src/run/notices";
 import {
   reportPersistenceLoss,
   type EventStreamEmitter,

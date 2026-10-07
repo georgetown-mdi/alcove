@@ -10,7 +10,7 @@ import type { ExchangeSpec } from "@alcove/core";
 
 import { buildCli } from "../../../src/cliParser";
 import { saveConfig } from "../../../src/config";
-import { UNNAMED_PARTNER_ACCOUNTING_NOTE } from "../../../src/protocol";
+import { UNNAMED_PARTNER_ACCOUNTING_NOTE } from "../../../src/run/notices";
 import { saveKeyFile } from "../../../src/keyFile";
 import {
   agreedTermsPathFor,
