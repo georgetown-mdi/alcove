@@ -77,12 +77,10 @@ updates:
           - "@vitest/browser-playwright"
           - "@vitest/coverage-v8"
           # canonicalize is inlined into a built @alcove/core artifact rather
-          # than resolved at runtime; re2js and yaml are excluded with it so
-          # each bump is an individual, reviewable PR instead of riding along
-          # in this batch -- see "Inlined dependencies and their remediation
-          # path" in docs/spec/DEPENDENCY_PINS.md.
-          - "re2js"
-          - "yaml"
+          # than resolved at runtime, so each bump is an individual,
+          # reviewable PR instead of riding along in this batch -- see
+          # "Inlined dependencies and their remediation path" in
+          # docs/spec/DEPENDENCY_PINS.md.
           - "canonicalize"
     ignore:
       # The OpenMined PSI module is vendored; updates require manual review
