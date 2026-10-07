@@ -1,68 +1,21 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a Bash command that writes to a path under /tmp which
-// does not resolve where it is written, but into a git worktree.
+// PreToolUse hook on Bash: refuse a command that writes to a path spelled under
+// /tmp when something below the scratch root redirects it, such as a stale
+// symlink, and it resolves inside a git worktree. A `mktemp -d` directory
+// resolves to itself and never matches, and a /tmp that is itself a symlink
+// (macOS) is resolved before the comparison. A destination not spelled under
+// /tmp passes.
 //
-// Why this exists: a session created its scratch directory under a fixed /tmp
-// name instead of the one `mktemp -d` prints. An earlier session had left that
-// same name behind as a symlink into a checkout of this repository, so the write
-// followed the link and landed on repository content -- a tracked file
-// overwritten by scratch output, silently, because every command involved
-// succeeded and reported what it was asked to report. Nothing catches that at
-// the time: the author wrote a /tmp path, read a /tmp path back, and the damage
-// showed up only when a later check read the file that had been replaced.
+// A write is a redirection target or a path operand of a command in
+// WRITING_COMMANDS below. Removing the link itself (`rm /tmp/<name>`) is allowed,
+// since that is the fix; a removal through it (a deeper operand, or a trailing
+// slash) is a write. It reads a plain command line, so composition, paths known
+// only at runtime, `xargs`, prefix words outside COMMAND_PREFIX_WORDS, and
+// programs that write files of their own accord are not seen.
 //
-// WHAT DECIDES IS RESOLUTION, NOT THE NAME. A fixed name is the habit that walks
-// into this, and the message says so, but a hook cannot tell a fixed name from a
-// generated one by looking at it -- and the damage needs no fixed name, only a
-// scratch path that resolves somewhere it was not written. So the two conditions
-// are that the path is REDIRECTED -- something below /tmp sends it elsewhere --
-// and that where it lands is inside a git worktree. A directory `mktemp -d` made
-// is a real directory and resolves to itself, so it never matches; neither does
-// any other scratch path nothing has redirected, the detached worktree a rebase
-// is done in under /tmp included, which is a git worktree standing exactly where
-// it was written. A platform whose /tmp is itself a symlink (macOS, /private/tmp)
-// redirects every scratch path alike, so the scratch root is resolved before the
-// comparison and only what lies BELOW it counts as a redirect.
-//
-// A PATH THE COMMAND DID NOT WRITE AS /tmp IS NOT THIS HOOK'S BUSINESS. A
-// deliberate `cp /tmp/scratch/report.md <repo path>` names its destination in the
-// repository and passes untouched; what is refused is only a destination the
-// author spelled as scratch.
-//
-// WHAT IT READS as a write: a redirection target, and the path operands of the
-// writing commands in WRITING_COMMANDS below. Reading through such a path is
-// left alone, and so is removing the stale link itself (`rm /tmp/<name>`, which
-// takes the link and not what it points at) -- removing the link is the fix, and
-// blocking it would leave the session no way to clear what it just tripped over.
-// A removal that reaches THROUGH the link is a write like any other: a deeper
-// operand (`rm /tmp/<name>/file`), or a trailing slash, which makes `rm -rf
-// /tmp/<name>/` empty the checkout and leave the link standing.
-//
-// STATED LIMITS. This reads a plain command line, so each of these reaches a
-// worktree. They are recorded rather than closed: closing them means a
-// shell-syntax-aware parser, a larger and more fragile thing than the accident
-// this guards against. What it binds is that accident, not a determined bypass.
-//   - Composition is not unwrapped: a subshell, a command substitution, `bash -c
-//     "..."`, an alias, a shell function. A heredoc body and a quoted string are
-//     read as command text of their own, which over-refuses -- in the guarded
-//     direction, and only where the path they hold resolves into a worktree.
-//   - A path that only exists at runtime is not seen: one held in a variable,
-//     produced by a glob, or read from a file.
-//   - A writing command reached through a prefix word outside lib/shell.mjs's
-//     COMMAND_PREFIX_WORDS (`timeout 5 cp ...`), or through `xargs` or
-//     `find -exec`, is not read.
-//   - A program that writes files of its own accord -- an interpreter given a
-//     script, a build tool handed an output directory -- names no write here.
-//   - A `cd` on the line does not move what a relative path resolves against;
-//     only the directory the call itself was made from does.
-//   - Resolution is read at the time of the call. A link created later on the
-//     same line is not the link this saw.
-//   - A path operand that starts with `-`, including one after `--`, is not read
-//     as a write target: isPathOperand drops it, so such a write passes.
-//
-// Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude. Any
-// unexpected failure here falls through to exit 0 (fail open) so a bug in this
-// hook can never wedge every Bash command.
+// Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude. An
+// unexpected failure exits 0 (fail open). The incident and the full limits:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { statSync } from "node:fs";
 import { tmpdir } from "node:os";

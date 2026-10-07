@@ -1,79 +1,25 @@
 #!/usr/bin/env node
-// Additive-test-delta verifier, run by an agent re-attesting a review whose head
-// moved by adding tests.
+// Additive-test-delta verifier, run by an agent re-attesting a review
+// (.claude/commands/assess-review.md, Step 4): decides mechanically whether a
+// head's diff against the attested sha only inserts lines in test files.
 //
-// `.claude/commands/assess-review.md`, Step 4, lets a round-attested head be
-// re-attested with no fresh round when its diff against the attested sha only
-// INSERTS lines in test files. This decides that property, mechanically, for the
-// reason the sibling verifier's header states: nothing in CI can catch a false
-// claim, since `npm run check:pr-checklist` compares the sha on the checklist
-// line against the head and has no view of whether the claimed property holds.
-//
-// The general test-only case is NOT this property and stays refused. A test
-// change can weaken a control -- a deleted assertion, a loosened expectation, a
-// mock that bypasses a check -- so the only delta admitted here is one that
-// leaves every line the round already read exactly where it was, and adds
-// nothing that reaches past the statement holding it.
-//
-// What counts as a test file is a list of directories, not a guess:
-// `apps/<app>/test/` and `packages/<package>/test/`, each holding only code the
-// suites run. Every other path is refused, `scripts/*.test.mjs` among them --
-// those are the tests OF the repository's checks, and several hold the check's
-// own pin data, where one inserted entry widens a control rather than testing
-// it (`scripts/sftp-tracked-round-trips.test.mjs` holds
-// `ALLOWED_OUTSIDE_THE_BRACKET`, a list of call sites exempted from the bracket
-// the check enforces). Inside those directories a path is read only when it is
-// TypeScript or JavaScript by extension and is not a dotfile or a tool
-// configuration file: a fixture, a vector, or a binary is content this verifier
-// cannot read as test code, and a configuration file decides how other code is
-// linted, built, or run.
-//
-// Insertion-only is read off git's own patch rather than a line count, because
-// the count alone cannot tell an inserted line from a replaced one. Each changed
-// path is diffed by itself under `--unified=0 --inter-hunk-context=0`, so every
-// line in a hunk body is part of the change, and the path is admitted only when
-// every one of them is an insertion. What that refuses was measured against real
-// git rather than assumed, and the colocated test pins each: a replaced line
-// arrives as a deletion beside its insertion, so a modification is refused; a
-// deleted line is refused; appending to a file that lacked a trailing newline
-// rewrites its last line, so it too arrives as a deletion and is refused; a
-// binary change produces no hunks at all and is refused; and a rename, with
-// rename detection off, arrives as a delete plus an add, so the delete refuses
-// it. A diff algorithm is free to choose which lines it calls inserted, but it
-// cannot represent a removed line as anything but a deletion, so the choice can
-// only make this verifier refuse more.
-//
-// The patch is read per path, under `:(literal)` magic, so no file name is
-// parsed out of a patch header and a path holding a glob character matches
-// itself. Inside a hunk body every line has its own prefix, so an inserted
-// line that reads like a patch header is still an insertion.
-//
-// Two classes of inserted line are refused by content, because each reaches past
-// the statement that holds it and can change what an existing test measures:
-//
-//   - a lint or type-check suppression, which turns off a rule for code the
-//     round read under it;
-//   - a call into the test runner's module registry, globals, environment,
-//     clock, or configuration -- `vi.mock` and its neighbours, listed below.
-//     `vi.spyOn` is among them because a spy is not restored at the end of the
-//     test that set it unless the suite says so, and this verifier does not read
-//     each workspace's runner configuration to find out.
-//
-// Not covered: whether an inserted test is any good. A round reads tests for
-// what they assert, and no reading happens here -- this path attests only that
-// nothing the round read changed, which is why a single deleted line sends the
-// head back to the paths Step 4 states.
-//
-// Which tree the verdict is about: git runs in the worktree the process was
-// invoked from, never the one holding this file, and the run names that worktree
-// above its verdicts. Name full shas -- a per-worktree ref (`HEAD`, `HEAD~n`,
-// `ORIG_HEAD`) means a different commit in each linked tree.
+// Usage: node .claude/scripts/verify-additive-test-delta.mjs <attested-sha>
+// <head-sha>, run from the worktree the refs belong to, naming full shas; git
+// runs at that worktree's top level, and the run names it above its verdicts.
+// A changed path is admitted only when it is under `apps/<app>/test/` or
+// `packages/<package>/test/` (so `scripts/*.test.mjs` is refused), is
+// TypeScript or JavaScript by extension, is neither a dotfile nor a tool
+// configuration file, and its own `--unified=0` patch, read under `:(literal)`,
+// contains only insertions. A modified, deleted, binary or renamed path is
+// refused, as is an inserted lint or type-check suppression or call into the
+// test runner's module registry, globals, environment, clock or configuration
+// (`vi.mock`, `vi.spyOn` and the rest of the list below).
 //
 // Exit codes: 0 the property holds; 1 it is violated or a changed path could not
 // be read; 2 usage, an invocation from outside a git worktree, or a git error;
-// 3 the verifier failed its own soundness probes. The probes drive the installed
-// git over throwaway files before every run, so an attestation rests on what
-// that git does rather than on what this file says it does.
+// 3 the verifier failed its own soundness probes, which drive the installed git
+// over throwaway files before every run. Rationale and limits:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

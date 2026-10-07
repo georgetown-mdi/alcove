@@ -164,3 +164,148 @@ Within a pair, a `--head` no ref resolves is skipped rather than counted from th
   A literal `gh pr create` inside one, such as a PR body quoting the command, counts as another create:
   a single create then goes through the pairing path, its reminder unchanged while the lists pair and dropped when they do not.
 - The hook fails open on every error, an unreadable event, missing git, or an unresolvable `origin/staging`, since a reminder must never disrupt the session.
+
+## Additive-test-delta verifier
+
+[`.claude/scripts/verify-additive-test-delta.mjs`](../../.claude/scripts/verify-additive-test-delta.mjs)
+
+### Why insertions only
+
+A test change can weaken a control: a deleted assertion, a loosened expectation, a mock that bypasses a check.
+So the general test-only case is refused, and the only delta admitted leaves every line the round read where it was and adds nothing that reaches past its own statement.
+Nothing in CI can catch a false claim of that property, for the reason the [non-executable-delta verifier](#why-it-is-mechanical) gives.
+
+### Which paths count as tests
+
+A list of directories, `apps/<app>/test/` and `packages/<package>/test/`, each containing only code the suites run.
+`scripts/*.test.mjs` is refused: those are the tests of the repository's checks, and several contain the check's own pin data,
+where one inserted entry widens a control rather than testing it
+(`scripts/sftp-tracked-round-trips.test.mjs` lists, in `ALLOWED_OUTSIDE_THE_BRACKET`, call sites exempt from the bracket that check enforces).
+A fixture, a vector or a binary is content the verifier cannot read as test code,
+and a configuration file decides how other code is linted, built or run.
+
+### Reading git's own patch
+
+A line count cannot tell an inserted line from a replaced one, so each changed path is diffed by itself under `--unified=0 --inter-hunk-context=0`,
+where every line in a hunk body is part of the change.
+What that refuses was measured against real git, and the colocated test pins each case:
+
+- a replaced line arrives as a deletion beside its insertion;
+- appending to a file that lacked a trailing newline rewrites its last line, so it arrives as a deletion;
+- a binary change produces no hunks;
+- a rename, with rename detection off, arrives as a delete plus an add.
+
+A diff algorithm may choose which lines it calls inserted, but it cannot represent a removed line as anything but a deletion, so that choice can only make the verifier refuse more.
+The patch is read per path under `:(literal)`, so no file name is parsed out of a patch header and a path containing a glob character matches itself;
+inside a hunk body every line has its own prefix, so an inserted line that looks like a patch header is still an insertion.
+
+### Inserted lines refused by content
+
+A lint or type-check suppression turns off a rule for code the round read under it.
+A call into the test runner's module registry, globals, environment, clock or configuration can change what an existing test measures.
+`vi.spyOn` is on that list because a spy is not restored at the end of the test that set it unless the suite says so,
+and the verifier does not read each workspace's runner configuration to find out.
+
+### Limits
+
+Whether an inserted test is any good is not read.
+The verdict attests only that nothing the round read changed, which is why one deleted line sends the head back to the paths [`assess-review.md`](../../.claude/commands/assess-review.md), Step 4, states.
+
+## Rebase-invariance verifier
+
+[`.claude/scripts/verify-rebase-invariance.mjs`](../../.claude/scripts/verify-rebase-invariance.mjs)
+
+Why the path exists, why it needs both comparisons, and the shape check that separates a rebase from a base sync are in [rebase-reattestation.md](rebase-reattestation.md).
+The comparison, its soundness probes and the primitives measured wrong are the [non-executable-delta verifier](#non-executable-delta-verifier)'s, reused rather than reimplemented.
+
+### Path collection fails closed
+
+A diff record whose shape the verifier does not model leaves the run with no verdict,
+rather than a path set one short, because a path missing from the set is a path nothing compares.
+
+### Limits
+
+Beyond the non-executable-delta verifier's: markdown content wholesale, including a conflict resolved inside a governing document,
+and every path outside the branch's own diff, which is the unread content the path in Step 4 admits.
+
+## Scratch-symlink write guard
+
+[`.claude/hooks/block-tmp-symlink-worktree-writes.mjs`](../../.claude/hooks/block-tmp-symlink-worktree-writes.mjs)
+
+### The incident
+
+A session created its scratch directory under a fixed /tmp name instead of the one `mktemp -d` prints.
+An earlier session had left that name behind as a symlink into a checkout of this repository,
+so the write followed the link and overwrote a tracked file with scratch output.
+Every command involved succeeded, and the damage showed up only when a later check read the replaced file.
+
+### Resolution decides, not the name
+
+A hook cannot tell a fixed name from a generated one by looking at it, and the damage needs no fixed name,
+only a scratch path that resolves somewhere it was not written.
+So the conditions are that something below /tmp redirects the path, and that it lands inside a git worktree.
+A path nothing redirects never matches, including the detached worktree a rebase is done in under /tmp,
+which is a git worktree exactly where it was written.
+A path the command did not spell under /tmp is outside the hook's scope: `cp /tmp/scratch/report.md <repo path>` names its destination in the repository.
+
+Removing the stale link is the fix, so blocking it would leave the session no way to clear what it just hit;
+`rm /tmp/<name>` takes the link, not its target.
+A trailing slash is different: `rm -rf /tmp/<name>/` empties the checkout and leaves the link in place.
+
+### Stated limits
+
+Closing these would need a shell-syntax-aware parser, larger and more fragile than the accident guarded against.
+The hook binds that accident, not a determined bypass.
+
+- Composition is not unwrapped: a subshell, command substitution, `bash -c "..."`, an alias, a shell function.
+  A heredoc body and a quoted string are read as command text of their own, which over-refuses, and only where the path they name resolves into a worktree.
+- A path that exists only at runtime is not seen: one in a variable, produced by a glob, or read from a file.
+- A writing command behind a prefix word outside `lib/shell.mjs`'s `COMMAND_PREFIX_WORDS` (`timeout 5 cp ...`), or through `xargs` or `find -exec`, is not read.
+- A program that writes files of its own accord, an interpreter given a script or a build tool given an output directory, names no write.
+- A `cd` on the line does not move what a relative path resolves against; only the call's own directory does.
+- Resolution is read at the time of the call, so a link created later on the same line is not the one seen.
+- A path operand starting with `-`, including one after `--`, is not read as a write target.
+
+## Other-checkout write guard
+
+[`.claude/hooks/block-primary-checkout-writes.mjs`](../../.claude/hooks/block-primary-checkout-writes.mjs)
+
+### Why it exists
+
+Review and fixing run by ref.
+The orchestrating session stays in the primary checkout and never enters a branch's tree,
+while every branch lives in its own worktree under `.claude/worktrees/` and every writing spawn is pointed at that tree by absolute path.
+A write landing in the primary checkout puts the edit on whatever branch it has checked out, typically staging,
+where no review round sees it and no PR includes it.
+The sibling case is the same loss by another route:
+the file tools take a literal absolute path and every unmodified tracked file is byte-identical across trees,
+so reusing a path read from context succeeds, reads back correctly, and shows up only as an unexplained diff on another branch.
+
+### Why the two rules differ in scope
+
+The main-worktree refusal is path-scoped, since no session writes that content.
+The sibling refusal binds only a session already inside a linked worktree,
+because pointing a spawn at a tree by absolute path from the primary checkout is how work is dispatched.
+
+### Why ignored-ness
+
+The only legitimate writes to a checkout the session is not working in are to paths git ignores.
+A new source file created there lands on its branch exactly as an edit to a tracked file does, and `git check-ignore` answers for both.
+A tracked file is reported as not ignored whatever the exclude patterns say, since the check consults the index,
+and a path whose answer changes between the check and the write is answered as git sees it at the call.
+
+### Why fail open
+
+The opposite of `require-clean-tree-for-review.mjs`: this guard shapes where work is written, and neither correctness nor disclosure depends on it,
+while a bug that failed closed would block every edit in every tree.
+
+### The override
+
+It follows the idiom of `block-model-drop-sendmessage.mjs`'s `[accept-model-drop]` marker.
+Edit and Write have no free-text field a marker could go in, so the opt-in is a file.
+Like that marker it is self-applicable: what it buys is an override that is named, visible in the tree, and reversible, not one that cannot be forged.
+
+### Limits
+
+A tool naming its target under a key other than `file_path` or `notebook_path` is not seen.
+The session's tree is read from the event's cwd, where the harness says the session is working, so a cwd that silently reverted out of an entered worktree is treated as the tree it reverted to.

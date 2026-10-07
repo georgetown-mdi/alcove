@@ -1,63 +1,24 @@
 #!/usr/bin/env node
 // Rebase-invariance verifier, run by an agent re-attesting a review across a
-// rebase.
+// rebase (.claude/commands/assess-review.md, Step 4): decides whether the rebase
+// left the branch's own diff unchanged -- the same paths, each the same program
+// at both ends once comments are removed and markdown is excluded.
 //
-// `.claude/commands/assess-review.md`, Step 4, lets a round-attested head be
-// re-attested with no fresh round when a rebase onto a moved base left the
-// branch's own effective diff unchanged: the same paths, holding the same
-// programs at both ends, once comments are removed and markdown is excluded.
-// This decides that property. A reading of the two diffs is never the
-// verification, for the reason the sibling verifier states -- nothing in CI can
-// catch a false claim, since `npm run check:pr-checklist` compares the sha on
-// the checklist line against the head and has no view of whether the property
-// holds.
-//
-// The comparison is the sibling's, run twice over the paths the branch's diff
-// touches: once between the two bases and once between the two heads. A path is
-// invariant when both comparisons report exempt or comment-only, which is what
-// `verify-nonexecutable-delta.mjs` decides -- markdown by its path, source by
-// parsing each side and printing it back with comments suppressed, YAML by
-// materializing each side, and everything else UNVERIFIABLE, which fails the
-// run. That module holds the whole comparison, its soundness probes, and the
-// two cheaper primitives measured wrong; none of it is reimplemented here.
-//
-// Both comparisons are needed, and each catches a different way a rebase moves
-// the branch's diff. A conflict resolution that invents an executable line
-// shows up between the two heads. A staging range that changed a file the
-// branch also changed shows up between the two bases, and the head comparison
-// sees it too, since the rebased head holds both changes. A file staging
-// changed that the branch did not touch is in neither diff and is not compared:
-// that unread content is what the path in Step 4 admits, on the ground it
-// argues there, and it is the reason a verdict here is about the branch's own
-// change rather than about the tree it now sits on.
-//
-// Path collection fails closed the same way the comparison does. A diff record
-// whose shape this verifier does not model leaves the run with no verdict at
-// all rather than a path set quietly one short, because a path missing from the
-// set is a path nothing compares.
-//
-// The shape the path applies to is checked rather than assumed, since Step 4
-// routes a base sync and a rebase differently: each base must be an ancestor of
-// its own head, the new base must descend from the old one, and the attested
-// head must NOT be an ancestor of the new head. That last check is what
-// separates the two -- a base sync leaves a merge commit whose first parent is
-// the attested head, so the attested head is an ancestor of it, while a rebase
-// re-authors the branch's commits and leaves it none. A head this verifier
-// refuses on shape takes the rules Step 4 already states.
-//
-// Not covered, beyond what the sibling's header lists: markdown content
-// wholesale, including a conflict resolved inside a governing document, and
-// every path outside the branch's own diff.
-//
-// Which tree the verdict is about: git runs in the worktree the process was
-// invoked from, never the one holding this file, and the run names that
-// worktree above its verdicts. Name full shas -- a per-worktree ref (`HEAD`,
-// `HEAD~n`, `ORIG_HEAD`) means a different commit in each linked tree.
+// Usage: node .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
+// <pre-rebase-head> <post-rebase-base> <post-rebase-head>, run from the worktree
+// the refs belong to, naming full shas; the run names that worktree above its
+// verdicts. Runs verify-nonexecutable-delta.mjs's comparison over the paths the
+// branch's diff touches, once between the two bases and once between the two
+// heads; a path is invariant when both report exempt or comment-only. Refuses on
+// shape unless each base is an ancestor of its own head, the new base descends
+// from the old, and the pre-rebase head is not an ancestor of the new head. A
+// diff record it does not model fails the run.
 //
 // Exit codes: 0 the property holds; 1 it is violated or a changed path could
 // not be verified; 2 usage, a shape this path does not apply to, an invocation
 // from outside a git worktree, or a git error; 3 the verifier failed the
-// sibling's soundness probes.
+// sibling's soundness probes. Rationale: docs/notes/rebase-reattestation.md;
+// limits: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
