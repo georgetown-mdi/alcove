@@ -57,7 +57,7 @@ jobs:
   # A dispatch from any other branch ends here rather than building a site
   # nothing deploys.
   build-and-test:
-    if: github.ref_name == 'main' || github.ref_name == 'staging'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
     uses: ./.github/workflows/eb_build_and_test.yaml
 
   # The only job given the Cloudflare credentials. It checks out nothing and
@@ -68,7 +68,7 @@ jobs:
     needs: build-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
     permissions: {}
     env:
       PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}

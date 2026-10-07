@@ -124,7 +124,7 @@ Two environments run the same application, a staging one and a production one, e
 
 The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to a Cloudflare Pages project by direct upload:
 
-- **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building.
+- **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building. The gate tests the full branch ref, so a tag named like a branch does not deploy; as a second guard, give each environment a deployment branch rule allowing only its branch under Settings -> Environments.
 - **Gate:** it runs the web build and test workflow and uploads only when every suite in it passes.
 - **Build:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps it as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
 - **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`).
