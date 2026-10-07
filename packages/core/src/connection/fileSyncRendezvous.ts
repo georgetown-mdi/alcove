@@ -2305,9 +2305,7 @@ export class FileSyncRendezvous {
       // depth: a peerId="" slipping through would make poll() treat every
       // "-"-prefixed file as a peer message and the lockless ack barrier
       // wait on an ack no honest peer writes, so fail closed here rather
-      // than proceed. Each peer-hello read checks the id pair before its
-      // write, and the lockless barrier commits only the hello it acked, so
-      // the prefix check here is a safety check on the committed id.
+      // than proceed. The prefix check repeats each peer-hello read's check.
       if (deps.peerId()!.length === 0)
         throw new UsageError(
           "rendezvous recovered an empty peer id; a bare " +

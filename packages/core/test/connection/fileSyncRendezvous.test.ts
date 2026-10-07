@@ -518,6 +518,7 @@ interface Party {
   controller: AbortController;
   client: FileTransportClient;
   files: Map<string, Buffer>;
+  deps: RendezvousDeps;
   rdv: FileSyncRendezvous;
   scope: RendezvousScope;
 }
@@ -613,6 +614,7 @@ function makeParty(
     controller,
     client,
     files,
+    deps,
     rdv: new FileSyncRendezvous(deps),
     scope: {
       inboundPath: dir,
@@ -899,6 +901,35 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     });
     expectResetToPreSync(p.state);
     expect(p.state.resetCount).toBe(1);
+  });
+
+  test("the final gate refuses a committed id that extends this party's at a dash", async () => {
+    // Every commit site checks the id it commits, so the gate's input is
+    // supplied by a setPeerId that commits a different id from the one checked.
+    const files = new Map<string, Buffer>();
+    const flags = { locklessRendezvous: true, retainFiles: false };
+    placePeerHello(files, "zzz", flags);
+    placePeerAckOf(files, "zzz", "aaa");
+    const p = makeParty("aaa", flags, files, {
+      hideAtEntry: [ackMarkerName("zzz", helloStem("aaa"))],
+    });
+    const committedIds: (string | undefined)[] = [];
+    const rdv = new FileSyncRendezvous({
+      ...p.deps,
+      setPeerId: (peerId) => {
+        committedIds.push(peerId);
+        p.state.peerId = peerId === undefined ? undefined : "aaa-2";
+      },
+    });
+
+    await expect(rdv.run(p.scope)).rejects.toMatchObject({
+      message: expect.stringContaining("are too alike"),
+    });
+    expect(committedIds).toEqual(["zzz", undefined]);
+    expectResetToPreSync(p.state);
+    expect(p.state.resetCount).toBe(1);
+    // Skip-sweep: this party's hello stays for the partner to read.
+    expect(files.has(`${DIR}/${helloName("aaa")}`)).toBe(true);
   });
 
   test("TTL timeout resets identity and is not blocked on a second run", async () => {

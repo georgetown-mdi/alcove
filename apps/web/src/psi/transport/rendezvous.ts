@@ -336,6 +336,14 @@ function waitForPeerOpen(
   });
 }
 
+// Called after the (fast) async id derivation, so an abort during it is still
+// caught: no peer is constructed and no derived id registered when the caller
+// already aborted.
+function throwIfAbortedBeforeBrokerContact(signal?: AbortSignal): void {
+  if (signal?.aborted)
+    throw new Error("connecting to the coordination server was aborted");
+}
+
 /**
  * Connect to the signaling server and listen on the inviter's derived id,
  * resolving the registered {@link Peer}. The caller then awaits the inbound
@@ -373,11 +381,7 @@ export async function listenAsInviter(
     buildIceServers(options?.relay, sharedSecret, new Date()),
   ]);
   const loc = inviterSignalingLocation();
-  // Short-circuit before any broker contact. Placed after the (fast) async
-  // derivation above so an abort during it is still caught: no peer is
-  // constructed and no derived id registered when the caller already aborted.
-  if (signal?.aborted)
-    throw new Error("connecting to the coordination server was aborted");
+  throwIfAbortedBeforeBrokerContact(signal);
   // The derived id is a rendezvous address that correlates exchanges, so keep it
   // out of default (info) logs; show it only at debug for connection triage.
   log.info(`listening as inviter at ${loc.host}:${loc.port}`);
@@ -618,10 +622,7 @@ export async function dialAsAcceptor(
     buildIceServers(options?.relay, sharedSecret, new Date()),
   ]);
   const loc = acceptorLocationFromEndpoint(endpoint);
-  // As for the inviter: no peer is constructed, and no derived id registered,
-  // when the caller already aborted.
-  if (signal?.aborted)
-    throw new Error("connecting to the coordination server was aborted");
+  throwIfAbortedBeforeBrokerContact(signal);
   // Derived ids are rendezvous addresses that correlate exchanges; keep them
   // out of default (info) logs and show them only at debug for connection
   // triage. The host/port come from the partner's invitation endpoint
