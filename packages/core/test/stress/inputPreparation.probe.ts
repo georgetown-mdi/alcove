@@ -15,10 +15,8 @@ import { performance } from "node:perf_hooks";
 
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { RoundSetLimitError } from "../../src/errors";
-import {
-  assertFirstRoundWithinSetMaximum,
-  prepareForExchange,
-} from "../../src/exchange";
+import { prepareForExchange } from "../../src/exchange";
+import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import { loadCSVFile } from "../../src/file";
 import { summarizeDatasetConstraintViolations } from "../../src/valueConstraints";
 

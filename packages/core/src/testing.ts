@@ -104,7 +104,7 @@ export { createMessagePipe } from "./connection/messageConnection.js";
 export {
   ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
   roundOneSetOverPartnerCeilingMessage,
-} from "./exchange.js";
+} from "./exchange/firstRoundCapacity.js";
 
 // The sender-side WebRTC frame check's arithmetic, so each WebRTC transport's
 // suite can hold its own receive path to the charge the check weighs. It stays

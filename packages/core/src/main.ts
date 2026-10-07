@@ -802,7 +802,6 @@ export {
   CONFIRMING_PROTOCOL_STAGE_ID,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,
-  assertFirstRoundWithinSetMaximum,
   assertTermsRunnable,
   countIsPartnerReported,
   describeExchangeStages,
@@ -821,7 +820,6 @@ export type {
   ExchangeDataSpec,
   ExchangeResult,
   ExchangeStageDefinition,
-  FirstRoundCheckOptions,
   PayloadReceiveFillAnswer,
   PreparedExchange,
   RunExchangeOptions,
@@ -832,6 +830,8 @@ export {
   assertSigningModeImplemented,
 } from "./exchange/signingChecks";
 export type { PartnerCertificateRefusalKind } from "./exchange/signingChecks";
+export { assertFirstRoundWithinSetMaximum } from "./exchange/firstRoundCapacity";
+export type { FirstRoundCheckOptions } from "./exchange/firstRoundCapacity";
 export {
   describeResolvedMatching,
   describeResolvedRunShape,
