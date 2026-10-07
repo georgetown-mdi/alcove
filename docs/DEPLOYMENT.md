@@ -145,8 +145,9 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 Both public names keep pointing at their Elastic Beanstalk environments until the preview deployment has been checked on the real edge. In order:
 
 1. Deploy `staging` by dispatching the workflow, and check the preview deployment: the four security headers and HSTS on documents and assets; the `/accept` deep link with a fragment and a `/saved/<id>` deep link; offline navigation, after the first load, to routes not yet visited; a missing `/assets/` file; and one browser exchange through the broker.
-2. Set the `staging` entry of `hosted_origin` to `pages` in the OpenTofu root and apply, which points the staging record at the `staging` branch alias; switch the `production` entry the same way once staging checks out, which points the production record at the project's `pages.dev` name ([the root's README](../infra/hosted/README.md#moving-the-public-names-to-pages)).
-3. Push `main`, which deploys production.
+2. Set the `staging` entry of `hosted_origin` to `pages` in the OpenTofu root and apply, which points the staging record at the `staging` branch alias ([the root's README](../infra/hosted/README.md#moving-the-public-names-to-pages)).
+3. Push `main`, which deploys production to the project's `pages.dev` name while the production public name still serves from Elastic Beanstalk. Check that the `pages.dev` name serves that deployment: the project has no production deployment before this push, and its `pages.dev` name answers 404 until the deploy finishes.
+4. Set the `production` entry of `hosted_origin` to `pages` and apply, which points the production record at the project's `pages.dev` name.
 
 ### The paused Elastic Beanstalk deploy
 
