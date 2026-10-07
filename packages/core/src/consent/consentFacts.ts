@@ -844,8 +844,9 @@ export const COUNT_ONLY_DISCLOSURE_STATEMENT =
  * reaches the accepting party; the sole-receiver shape takes
  * {@link DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT}. Drawn from
  * docs/spec/PROTOCOL.md (The disclosure delta a deduplicating match pays). The
- * closing unverified-count clause is the integrity limit and must stay. Written in
- * party names so it reads correctly from either side.
+ * closing unverified-count clause is the integrity limit and must stay. Rendering
+ * it for a sole-receiver invitation would state a disclosure that client does
+ * not make. Written in party names so it reads correctly from either side.
  */
 export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
   "For each of the accepting party's matched records, that party learns how " +
@@ -861,7 +862,9 @@ export const DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT =
  * acceptance no association table (packages/core/test/config/linkageCardinality.test.ts).
  * What the wire does with the grouping is a separate fact,
  * `duplicateGroupingWithheld` or `duplicateGroupingDisplayLimit`, selected by
- * {@link withholdsAcceptorAssociationTable}.
+ * {@link withholdsAcceptorAssociationTable}. It must not carry the shared-result
+ * statement's count and row-position claims or its unverified-count clause: the
+ * sole receiver discloses none of them.
  */
 export const DEDUPLICATE_SOLE_RECEIVER_DISCLOSURE_STATEMENT =
   "Only the inviting party sees the grouping under this invitation. The " +
