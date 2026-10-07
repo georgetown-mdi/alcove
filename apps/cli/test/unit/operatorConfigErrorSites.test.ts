@@ -305,7 +305,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "The rest is fixed prose naming the command that writes one.",
   },
   {
-    file: "apps/cli/src/config.ts",
+    file: "apps/cli/src/config/persist.ts",
     anchor: "assertPartnerFingerprintRecordable",
     raises: "OperatorConfigError",
     interpolates: ["configPath"],
@@ -317,7 +317,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "resolves through, quoting no value at all.",
   },
   {
-    file: "apps/cli/src/config.ts",
+    file: "apps/cli/src/config/persist.ts",
     anchor: "persistFilledPayloadReceive",
     raises: "OperatorConfigError",
     interpolates: ["String(err)", "configPath", "err.message"],
@@ -340,7 +340,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "prose; the partner's column names are never quoted.",
   },
   {
-    file: "apps/cli/src/config.ts",
+    file: "apps/cli/src/config/persist.ts",
     anchor: "persistPartnerFingerprint",
     raises: "OperatorConfigError",
     interpolates: ["String(err)", "configPath", "err.message", "fingerprint"],

@@ -17,7 +17,7 @@ import type { Arguments } from "yargs";
 
 // The refusal of a first authenticated contact whose configuration directory
 // cannot take the pin it would record (assertPartnerFingerprintRecordable,
-// ../../../src/config.ts), driven through the command as an operator runs it:
+// ../../../src/config/persist.ts), driven through the command as an operator runs it:
 // nothing here is mocked but `process.exit` and fd 3 itself, so what the run
 // reaches is what production reaches.
 //
