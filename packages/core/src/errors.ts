@@ -533,33 +533,12 @@ export class UnknownStandardizationFunctionError extends UsageError {
 }
 
 /**
- * A {@link UsageError} subclass marking a bilateral-mode mismatch detected
- * at rendezvous: the peer advertised a `lockless_rendezvous` or
- * `retain_files` setting in its hello payload that differs from this
- * party's. These flags are bilateral agreements with no negotiation (see
- * FILE_SYNC.md "Bilateral configuration"), so a difference is fatal and is
- * reported fast on both parties rather than stalling until the peer
- * timeout.
- *
- * It is a distinct type, not a plain `UsageError`, so the rendezvous
- * cleanup paths can branch on it deterministically: on a mismatch the
- * detecting party leaves its own advertised hello (and the peer's) in the
- * directory as the terminal state -- skipping the on-disk sweep so the
- * peer reads the advertisement and fails too -- while still being
- * classified as a usage error (CLI exit 64) by the `instanceof UsageError`
- * check at the CLI catch sites.
- *
- * Unlike its terminal {@link UsageError} siblings it holds no
- * `alcoveRecoveryHintEmitted` tag and appends no next step. Its call-site
- * message already names each side's setting and the concrete fix ("both
- * parties must use the same setting"), so there is no missing step to
- * add. The tag is omitted rather than set for family symmetry: it exists
- * only to make the CLI suppress its generic post-handshake "retry without
- * re-inviting" advisory, and a mode mismatch is detected at rendezvous,
- * before authentication starts, so there is no advisory to suppress -- it
- * would read as critical while suppressing nothing (the untagged shape is
- * pinned in errors.test.ts). Were detection ever to move after the
- * handshake, this class is where the tag would belong.
+ * The peer's hello advertised a `lockless_rendezvous` or `retain_files` setting
+ * different from this party's. Both are bilateral with no negotiation
+ * (docs/spec/FILE_SYNC.md, Bilateral configuration), so both parties fail fast and
+ * the cleanup paths leave both hellos in place. It sets no
+ * `alcoveRecoveryHintEmitted`: detection precedes the handshake, so there is no
+ * advisory to suppress (pinned in errors.test.ts).
  */
 export class BilateralModeMismatchError extends UsageError {
   constructor(message: string) {
@@ -569,42 +548,12 @@ export class BilateralModeMismatchError extends UsageError {
 }
 
 /**
- * Thrown when a transport read encounters an inbound file larger than the
- * maximum frame size ({@link MAX_FRAME_SIZE_BYTES}). Raised at the
- * transport read layer -- the poll loop and rendezvous gate's pre-`get()`
- * size check, and the hard per-read byte cap inside each
- * {@link FileTransportClient} adapter -- so an oversized file is refused
- * before it is ingested into memory rather than exhausting it (see
- * docs/spec/CHANNEL_SECURITY.md).
- *
- * A {@link UsageError} subclass: {@link FileSyncConnection}'s poller stops
- * on a `UsageError` (re-reading an over-cap file cannot help and would
- * re-incur the very allocation this guards against) and reschedules on
- * any other error, so deriving from `UsageError` makes the refusal
- * terminal. An over-cap file is also the same family as the other
- * directory-state conditions `UsageError` already covers (a stray,
- * malformed, or foreign file), so it shares the exit-64 (EX_USAGE)
- * classification that tells the operator to inspect the directory or peer
- * rather than retry as if the transport were merely flaky.
- *
- * Adapters in `apps/` throw this class (re-exported on the package's
- * public exports) from their capped `get()` so a server that
- * under-reports a file's size in its directory listing -- evading the
- * pre-`get()` check -- still reports the same terminal, typed failure
- * once the read itself crosses the cap.
- *
- * Every instance holds `alcoveRecoveryHintEmitted`, and the constructor
- * puts a uniform, class-wide operator next step on a cause link of its
- * own -- this fault always means a peer- or admin-supplied frame crossed
- * the cap, so the step lives here rather than at each throw site, which
- * supplies only the specific fault detail. Its own link gives it its own
- * display budget, rather than sharing one capped link with the call
- * site's prose and the path it names. The tag makes the CLI's hint-walker
- * suppress its generic "retry without re-inviting" advisory, since
- * re-reading the same over-cap frame cannot help. Call-site messages must
- * not end with terminal punctuation, and pass every value somebody else
- * chose as a `details` fragment rather than composing it into the
- * summary.
+ * An inbound file over {@link MAX_FRAME_SIZE_BYTES}, refused at the transport read
+ * layer (the pre-`get()` size check and each adapter's per-read cap) before it is
+ * held in memory. A {@link UsageError}, so the poller stops instead of re-reading
+ * it. The class-wide next step takes a cause link of its own; call sites pass a
+ * message with no terminal punctuation and every value someone else chose as a
+ * `details` fragment (docs/spec/CHANNEL_SECURITY.md).
  */
 export class FrameSizeExceededError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
@@ -623,44 +572,11 @@ export class FrameSizeExceededError extends UsageError {
 }
 
 /**
- * Thrown when a transport directory listing violates a size bound: either
- * the directory holds more entries than the configured maximum, or one
- * entry's filename exceeds the configured maximum length. Raised at the
- * transport `list()` layer in each {@link FileTransportClient} adapter --
- * while the directory is being enumerated, before the full listing is
- * materialized -- so a hostile rendezvous directory cannot mount a
- * memory-exhaustion denial of service through directory enumeration
- * (entry count or name length), independent of file contents (see
- * docs/spec/CHANNEL_SECURITY.md). This is the directory-enumeration
- * sibling of the per-frame {@link FrameSizeExceededError}: that bound
- * guards the per-file body read; this one guards the listing that
- * precedes it.
- *
- * A {@link UsageError} subclass, like {@link FrameSizeExceededError}:
- * {@link FileSyncConnection}'s poller stops on a `UsageError` (re-listing
- * the same hostile directory cannot help and would re-incur the very
- * enumeration this guards against) and reschedules on any other error, so
- * deriving from `UsageError` makes the refusal terminal. An oversized or
- * hostile shared directory is also the same family as the other
- * directory-state conditions `UsageError` already covers (a stray,
- * malformed, or foreign file), so it shares the exit-64 (EX_USAGE)
- * classification that tells the operator to inspect the directory rather
- * than retry as if the transport were merely flaky.
- *
- * The concrete bound values and their derivation live with the
- * enforcement sites in the CLI adapters
- * (`apps/cli/src/connection/listingGuard.ts`), not here: unlike the
- * frame-size cap, no `packages/core` code pre-checks a listing size, so
- * the constants belong where they are enforced.
- *
- * Holds `alcoveRecoveryHintEmitted` and puts a uniform operator next
- * step on its own cause link, on the same reasoning as
- * {@link FrameSizeExceededError}: a listing that breaches its bound is
- * terminal, so the CLI's generic "retry" advisory is suppressed and
- * replaced with the specific "the directory is shared or contaminated"
- * guidance. Call-site messages supply the specific bound detail, must not
- * end with terminal punctuation, and pass the directory path and the
- * offending entry name as `details` fragments.
+ * A directory listing over its entry-count or filename-length bound, refused while
+ * the adapter enumerates it, before the listing is held in memory. The bounds live
+ * where they are enforced, `apps/cli/src/connection/listingGuard.ts`. Classified,
+ * tagged and composed as {@link FrameSizeExceededError} is; call sites pass the
+ * directory path and the offending entry name as `details` fragments.
  */
 export class DirectoryListingBoundsError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
@@ -679,58 +595,12 @@ export class DirectoryListingBoundsError extends UsageError {
 }
 
 /**
- * Thrown when a server-driven transport operation fails to make progress
- * within its liveness bound -- the withheld-response / never-terminating
- * class on the SFTP {@link FileTransportClient} adapter, where every read
- * awaits a callback the server controls. A hostile (or dead) server admin
- * can hang an operation indefinitely: a `list()` that keeps returning
- * empty, non-EOF readdir batches (advancing no entry, never signalling
- * end-of-directory) or whose readdir/close callback never fires; a
- * `get()` whose transfer withholds data or never ends; an exclusive
- * `createExclusive()` whose open/close callback never fires. Each is
- * bounded -- by a round-trip cap, a per-chunk idle window, or a
- * whole-operation wall-clock deadline as the operation allows -- and
- * reports this error rather than awaiting forever (and, for a directory
- * or file handle opened before the stall, leaking it). See
- * docs/spec/CHANNEL_SECURITY.md.
- *
- * This is the liveness sibling of the memory bounds
- * {@link DirectoryListingBoundsError} and {@link FrameSizeExceededError}:
- * those cap what a hostile directory or file can allocate; this caps the
- * time and round-trips a hostile server can make an operation consume.
- * The memory bounds do not cover this vector -- a progress-free stream
- * never grows an allocation, and a withheld callback accumulates nothing
- * at all.
- *
- * A {@link UsageError} subclass, like its siblings:
- * {@link FileSyncConnection}'s poller stops on a `UsageError` (retrying
- * the same hung operation cannot help and would re-incur the stall) and
- * reschedules on any other error, so deriving from `UsageError` makes the
- * refusal terminal -- it fails the exchange rather than spinning retries
- * into the same hang. A hung or progress-free server is also the same
- * family as the other directory-state conditions `UsageError` already
- * covers, so it shares the exit-64 (EX_USAGE) classification that tells
- * the operator to inspect the directory or peer rather than retry as if
- * the transport were merely flaky.
- *
- * The concrete bound values and their derivation live with the
- * enforcement sites in the CLI adapter
- * (`apps/cli/src/connection/sftpLivenessGuard.ts` and
- * `listingGuard.ts`), alongside the size bounds, for the same reason: no
- * `packages/core` code drives these reads, so the constants belong where
- * they are enforced.
- *
- * Holds `alcoveRecoveryHintEmitted` and puts a uniform operator next
- * step on its own cause link, on the same reasoning as
- * {@link FrameSizeExceededError}: the operation is failed rather than
- * retried into the same hang, so the CLI's generic advisory is suppressed
- * and replaced with the specific "check the endpoint and the peer, then
- * retry" guidance -- the one terminal-transport fault where re-running
- * the command can succeed once the server recovers. Call-site messages
- * name the stalled operation and the refusal, must not end with terminal
- * punctuation, and pass every value beyond that label -- how the
- * operation stalled, the path it named, and any message the server
- * itself reported -- as `details` fragments.
+ * A server-driven transport operation that made no progress within its liveness
+ * bound: a hung or progress-free `list()`, `get()` or `createExclusive()` on the
+ * SFTP adapter, bounded in `apps/cli/src/connection/sftpLivenessGuard.ts`.
+ * Classified, tagged and composed as {@link FrameSizeExceededError} is, but its
+ * next step is a retry, since the server may recover. Call sites pass how the
+ * operation stalled, its path, and any server message as `details` fragments.
  */
 export class TransportOperationStalledError extends UsageError {
   readonly alcoveRecoveryHintEmitted = true;
@@ -748,48 +618,12 @@ export class TransportOperationStalledError extends UsageError {
 }
 
 /**
- * Thrown when a check on this implementation's own state fails -- two
- * derivations of the same quantity inside one party disagreeing, an
- * exhaustiveness branch reached, or a precondition its own callers
- * guarantee broken: a fault in this implementation rather than in anything
- * an operator, a partner, or a transport supplied. Every such guard in
- * core and the CLI throws this class rather than a plain `Error`, which
- * `scripts/check-internal-fault-throws.mjs` holds for the two shapes it
- * can read. The worked case below is the single-pass send-time reply-cap
- * check: the reply this party built
- * outgrew the byte cap both parties derive from their declared sizes, on
- * an exchange whose declared sizes the over-ceiling gate has already
- * cleared, so no dataset either operator controls and no transport
- * condition is what stopped the send.
- *
- * A plain `Error` rather than a {@link UsageError}: exit 64 (EX_USAGE)
- * tells the operator that their input or configuration is what to fix,
- * and here their declared sizes are the very thing already found within
- * budget. The CLI's error->exit boundary maps this class to EX_SOFTWARE
- * (70) instead of the 69 (EX_UNAVAILABLE) any other plain `Error` takes
- * there, because 69 is treated as a transport blip an unattended
- * supervisor retries, and a retry re-runs the whole exchange -- re-sending
- * this party's records -- only to rebuild the same reply and refuse it
- * again. The remedy is to report it, and 70 is the code that shows that
- * to a supervisor reading nothing else.
- *
- * On the CLI's machine-readable event stream the terminal `error` event's
- * category is `exchange`, the default bucket, since that classification
- * keys on the run phase and on `OperatorConfigError` / `ConnectionError`
- * membership, neither of which this class joins. The exit code, not the
- * category, is where an internal fault is observable -- the mirror of the
- * `security` category, which is observable only in the category (see
- * docs/spec/CLI_EVENTS.md).
- *
- * The class sets no `alcoveRecoveryHintEmitted` tag: most raise sites
- * state only the condition that failed. The CLI supplies the next step
- * centrally -- report the fault, do not retry -- beneath any untagged
- * instance, and suppresses its generic "retry the exchange without
- * re-inviting" advisory for every instance, since that advisory prescribes
- * the retry the EX_SOFTWARE mapping exists to stop. A raise site whose
- * message already states that step tags its instance, the per-instance
- * shape {@link TransportPublishIndeterminateError} describes, so the step
- * is not shown twice.
+ * A failed check on this implementation's own state: two derivations of one
+ * quantity disagreeing, an exhaustiveness branch reached, or a precondition its
+ * own callers guarantee broken. Core and CLI guards throw it rather than a plain
+ * `Error` (`scripts/check-internal-fault-throws.mjs`). The CLI exits 70, not 64 or
+ * the retried 69, and supplies the next step beneath an untagged instance
+ * (docs/spec/CLI_EVENTS.md, The internal-fault code).
  */
 export class InternalConsistencyError extends Error {
   constructor(message: string) {
@@ -799,21 +633,10 @@ export class InternalConsistencyError extends Error {
 }
 
 /**
- * Thrown where the partner or the agreed terms refused the run: the terms
- * exchange found the two parties' terms incompatible or the partner's
- * build on another protocol version, the partner aborted it, or the
- * partner sent a frame or payload this party cannot read -- including a
- * payload, received after the exchange completed, that does not fit the
- * agreed result shape. A retry meets the same partner and the same terms,
- * so it reaches the same refusal; the remedy is to contact the partner.
- *
- * The CLI's error->exit boundary maps this class to `EX_PROTOCOL` (76),
- * the code it also gives a `protocol`-kind {@link ConnectionError}, a
- * {@link PeerAbortError}, and a partner receipt or certificate refusal
- * (see docs/CLI.md, Exit codes). A plain `Error` rather than a
- * {@link ConnectionError} or a {@link UsageError}, so a consumer that
- * classifies on those types -- the web's alerts and the event stream's
- * category -- treats it as it treats a plain `Error`.
+ * A refusal by the partner or the agreed terms: incompatible terms or protocol
+ * version, a partner abort, or a frame or payload this party cannot read. A retry
+ * reaches the same refusal; the CLI exits 76 (docs/CLI.md, Exit codes). A plain
+ * `Error`, so the web's alerts and the event category treat it as one.
  */
 export class ProtocolRefusalError extends Error {
   constructor(message: string, options?: ErrorOptions) {
@@ -823,47 +646,13 @@ export class ProtocolRefusalError extends Error {
 }
 
 /**
- * Thrown by a transport whose publish of a file was torn by a session
- * drop and whose outcome the transport cannot settle: the operation is
- * rejected, and whether the peer received what was published is
- * undetermined. It is the distinguishable middle between a publish
- * confirmed to have landed (the operation resolves) and one determined
- * not to have (the operation rejects with the failure the server
- * reported).
- *
- * A rejection, never a resolution: a caller that treats this as success
- * would be reporting an unpublished message as sent. What it changes is
- * the character of the rejection, so a caller that must not act on a
- * message the peer may already hold -- {@link FileSyncMessageLoop}'s send
- * path, whose `seq` slot is not reusable once the peer may have consumed
- * a message under that name -- can tell the two apart. The `cause` holds
- * the transport's original error, so the status and paths it names render
- * on their own line of the operator-facing cause chain rather than inside
- * this message.
- *
- * A plain `Error` rather than a {@link UsageError}, the classification
- * the poll loop treats as terminal. What that distinction buys is
- * measured in `fileSyncConnection.test.ts`, on the one publish this class
- * can reach from `poll()` -- the retain-mode ack, whose name the next
- * cycle re-derives identically. In isolation the loop reschedules,
- * republishes the ack, and delivers the message; under the CLI's
- * composition, where `fromEventConnection` fails the connection on the
- * first emitted poll error, the same staging ends the exchange with the
- * ack never republished. So the classification buys the loop's own
- * retry, not a surviving exchange.
- *
- * The `alcoveRecoveryHintEmitted` tag is a per-instance property here,
- * not a class field, and the class itself sets none. A transport raises
- * it for any of several publishes -- a message, an ack, a rendezvous
- * hello, an abort marker -- which share no recovery, so the transport's
- * instance names the publish, adds no next step, and suppresses nothing.
- * {@link FileSyncMessageLoop}'s send path re-raises the class for the one
- * publish whose recovery is established, holding the transport's
- * instance as its `cause`; that instance names the message, holds the
- * recovery, and is tagged, so the generic advisory -- which prescribes a
- * plain retry -- is suppressed rather than printed alongside a
- * contradicting step. The convention stays two-state: an error is tagged
- * exactly when it holds its own next step.
+ * A publish torn by a session drop whose outcome the transport cannot determine:
+ * the operation rejects, and whether the peer holds the file is unknown
+ * (docs/spec/CHANNEL_SECURITY.md). {@link FileSyncMessageLoop}'s send path, which
+ * must not reuse a name the peer may have consumed, tells it apart from a
+ * determined failure. A plain `Error`, so the poll loop reschedules
+ * (`fileSyncConnection.test.ts`); only an instance whose message states the
+ * recovery sets `alcoveRecoveryHintEmitted`.
  */
 export class TransportPublishIndeterminateError extends Error {
   constructor(message: string, options: { cause: unknown }) {
@@ -873,15 +662,9 @@ export class TransportPublishIndeterminateError extends Error {
 }
 
 /**
- * Whether `error`, or anything in its `cause` chain, is a
- * {@link TransportPublishIndeterminateError}.
- *
- * Asked of the chain rather than of the value handed over because a send's
- * rejection reaches an application caller wrapped: `MessageConnection.send`
- * re-raises whatever the transport threw as a `transport`
- * {@link ConnectionError} holding it as the `cause`, and
- * {@link FileSyncMessageLoop}'s send path has already re-raised the class once
- * over the transport's own instance.
+ * Whether `error` or any link in its `cause` chain is a
+ * {@link TransportPublishIndeterminateError}: a send's rejection reaches callers
+ * wrapped by `MessageConnection.send` and by the message loop.
  */
 export function isTransportPublishIndeterminate(error: unknown): boolean {
   return causeChainSome(
@@ -891,29 +674,10 @@ export function isTransportPublishIndeterminate(error: unknown): boolean {
 }
 
 /**
- * Thrown into an in-flight {@link FileSyncConnection} wait when the
- * connection is closed mid-rendezvous or mid-send. `close()` aborts a
- * shared `AbortController` whose `reason` is an instance of this class,
- * so any wait parked between polls/retries rejects promptly instead of
- * resuming against a connection that is tearing down.
- *
- * Unlike {@link UsageError}, this is a plain `Error`: a local teardown is
- * a transport-availability condition, so the CLI's `instanceof
- * UsageError` check classifies it as exit 69 (EX_UNAVAILABLE), not the 64
- * (EX_USAGE) reserved for caller misconfiguration. In practice it almost
- * never appears as the process exit code -- `close()` only races an
- * in-flight wait under a signal, where `signalReceived` owns the code
- * (130/143) and this rejection is logged and swallowed.
- *
- * Treat this class as an internal teardown signal, not a stability contract
- * -- the plain-`Error`/exit-69 classification above is the contract;
- * consumers should not depend on catching it by type.
- *
- * It holds no `alcoveRecoveryHintEmitted` tag and no operator next
- * step. It is a local teardown signal that almost never reaches the
- * process exit code (the signal handler owns 130/143 and this rejection
- * is logged and swallowed), so there is no actionable step to report and
- * nothing for the generic CLI advisory to contradict.
+ * The abort reason an in-flight {@link FileSyncConnection} wait rejects with when
+ * the connection closes mid-rendezvous or mid-send. A plain `Error`, so the CLI
+ * exits 69 rather than the 64 of a misconfiguration; consumers should not catch it
+ * by type. It states no next step.
  */
 export class ConnectionClosedError extends Error {
   constructor(message = "connection closed during wait") {
@@ -923,43 +687,12 @@ export class ConnectionClosedError extends Error {
 }
 
 /**
- * Thrown on the waiting side when the peer signals that it terminated the
- * exchange. It is definitive -- not an inactivity timeout or a slow
- * dataset -- so the waiting party fails fast instead of waiting out its
- * full peer-inactivity budget and then printing the generic peer-silence
- * hedge. Two signals raise it, each authenticated by the channel it
- * arrives on:
- *
- * - The file-sync abort marker (`<peerId>-abort.json`), whose token
- *   verifies against this party's locally-derived peer abort token.
- * - The peer's abort decision frame arriving at any receive past the terms
- *   exchange (`throwIfPartnerAbort`, `partnerAbortFrame.ts`). A refusal
- *   that sends an abort past the terms exchange is one-sided (see
- *   `sendAbort`), so the frame reaches a partner parked on its next receive.
- *
- * Either way this party holds no reason of its own, which is why the
- * message sends the operator to the partner rather than stating a cause.
- *
- * It extends {@link ConnectionError} with kind `"transport"` by design.
- * The error crosses two {@link asConnectionError} call sites on its way
- * to `runProtocol`'s catch -- the `fromEventConnection` bridge's
- * `onError` and the `EncryptedMessageConnection` decorator's `receive`
- * catch -- each of which passes an existing `ConnectionError` through
- * unchanged but wraps anything else as `{ cause }`. As a
- * `ConnectionError("transport")` it survives both intact and arrives
- * top-level, so the catch's echo gate (which must not write a marker in
- * response to a `PeerAbortError`, or the waiting party would reflect one
- * back) recognizes it. The CLI's exit-code check reads the class rather
- * than the kind and yields 76 (EX_PROTOCOL): the partner ended the
- * exchange, possibly on a fault on its own side such as a transport stall,
- * and a retry alone does not help until the partner runs again.
- *
- * It holds no partner-controlled bytes: the marker token never decodes to
- * display text, the message is fixed, and `partnerReason` is one of this
- * build's own fixed abort reasons, set only where the abort frame states
- * exactly that one reason, so the display-boundary sanitizer is only
- * belt-and-suspenders here. Its message says the partner stopped the
- * exchange and that the partner's run shows the reason.
+ * The peer terminated the exchange, signalled by a verified file-sync abort marker
+ * or by its abort frame at a receive past the terms exchange
+ * (`throwIfPartnerAbort`), so the waiting party fails fast. A `transport`
+ * {@link ConnectionError}, so the {@link asConnectionError} wraps pass it through
+ * and the catch's echo gate recognizes it; the CLI reads the class and exits 76.
+ * Its message is fixed and contains no partner bytes.
  */
 export class PeerAbortError extends ConnectionError {
   /**
