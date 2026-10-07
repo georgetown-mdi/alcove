@@ -123,7 +123,7 @@ It reads two secrets and two variables. The upload job runs in the GitHub enviro
 
 ### Custom domains and zone settings
 
-Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
+Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias, as the OpenTofu root's `hosted_origin` entries hold until the Elastic Beanstalk environments are retired. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
 
 | Setting | Value |
 | ------- | ----- |
