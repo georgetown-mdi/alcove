@@ -218,8 +218,7 @@ interface ExchangeArgs extends CommonBootstrapOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   // The invitation code that provisions the key file before it is read. Excluded
-  // from ExchangeOptions so it never reaches loadConfig; the handler consumes it
-  // between the configuration load and the key-file read.
+  // from ExchangeOptions so it never reaches loadConfig.
   invitation?: string;
 }
 
@@ -1112,13 +1111,11 @@ export async function handler(argv: Arguments): Promise<void> {
         loadExchangeSpec(options);
 
       // A certificate-mode run naming no signing identity is unrunnable from the
-      // parsed configuration alone, so it is refused here: ahead of the dataset
-      // preparation, and ahead of the first-use host-key step that opens a probe
-      // transport to the server and writes an accepted pin into alcove.yaml.
-      // Neither should happen on the way to telling an operator the run could
-      // never have finished.
-
-      // Beside it, the first contact whose configuration file cannot take the pin
+      // parsed configuration alone, so it is refused before the key file is
+      // written, ahead of the dataset preparation, and ahead of the first-use
+      // host-key step that opens a probe transport to the server and writes an
+      // accepted pin into alcove.yaml. Neither should happen on the way to telling
+      // an operator the run could never have finished. Beside it, the first contact whose configuration file cannot take the pin
       // it would record: same inputs, same point, same exit code.
       assertSigningIdentityNamed(exchangeDataSpec.signing);
       assertPartnerFingerprintRecordable(
@@ -1156,11 +1153,10 @@ export async function handler(argv: Arguments): Promise<void> {
             : undefined,
       });
 
-      // --invitation writes the key file after every refusal the configuration
-      // alone decides and before the key file is read, so a configuration that
-      // fails leaves none behind. It decodes the code (fail-closed on checksum,
-      // schema, or expiry) and writes this party's key-file copy; a bad code or
-      // an existing key file exits 64 with nothing written.
+      // Written only after every refusal the configuration alone decides, so a
+      // refused configuration leaves no key file. It decodes the code (fail-closed
+      // on checksum, schema, or expiry) and writes this party's key-file copy; a
+      // bad code or an existing key file exits 64 with nothing written.
       if (invitation !== undefined)
         await provisionKeyFileFromInvitation(invitation, options.keyFile);
 
@@ -1222,9 +1218,9 @@ export async function handler(argv: Arguments): Promise<void> {
       // This recheck uses a fresh clock just after loadAuthentication's hard stop,
       // so in the (sub-millisecond) gap a token can tip from "expiring-soon" to
       // "expired". That is handled, not guaranteed away: the advisory below is
-      // keyed on "expiring-soon" and self-skips on "expired", and runProtocol's pre-handshake
-      // assertSharedSecretReadyForHandshake aborts an expired token with the re-invite
-      // message before any handshake. The threshold comes from the max-age policy;
+      // keyed on "expiring-soon" and self-skips on "expired", and runProtocol's
+      // pre-handshake assertSharedSecretReadyForHandshake aborts an expired token
+      // with the re-invite message before any handshake. The threshold comes from the max-age policy;
       // without a policy it is undefined and the status is "ok" (never
       // "expiring-soon"). Re-evaluated after the exchange to decide whether to warn
       // (see shouldWarnTokenExpiring).

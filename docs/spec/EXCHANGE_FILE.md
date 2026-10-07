@@ -711,11 +711,10 @@ been confirmed at the relay registrar a run registers at
 ### `exchange --invitation` fail-closed ordering
 
 The handler loads and validates the configuration first, without reading the
-key file, and makes every refusal the configuration alone decides (a
-certificate-mode run naming no signing identity or unable to record a partner
-pin, a placeholder left in the file), so a configuration that fails stops the
-run with nothing written. `provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is then
-the ordering authority for the key file, and it is fail-closed at each step:
+key file, and makes every refusal the configuration alone decides, so a
+configuration that fails stops the run with nothing written.
+`provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is then the
+ordering authority for the key file, and it is fail-closed at each step:
 
 1. **Refuse if a key file already exists.** A key file present at the key path is
    a `UsageError` (exit 64), never an overwrite. After the first exchange the
