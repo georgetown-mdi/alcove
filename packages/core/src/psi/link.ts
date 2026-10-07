@@ -77,6 +77,7 @@ import {
   ProtocolRefusalError,
   UsageError,
   ConnectionError,
+  markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { receiveAfterTerms } from "../partnerAbortFrame";
@@ -2205,7 +2206,7 @@ export async function linkViaSinglePassPSI(
       receiverSize,
     );
     if (reply.byteLength > replyCap) {
-      throw Object.assign(
+      throw markStatesItsOwnNextStep(
         new InternalConsistencyError(
           singlePassReplyOverCapMessage(
             participant.id,
@@ -2213,7 +2214,6 @@ export async function linkViaSinglePassPSI(
             replyCap,
           ),
         ),
-        { alcoveRecoveryHintEmitted: true },
       );
     }
 

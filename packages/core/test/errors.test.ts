@@ -20,6 +20,8 @@ import {
   markStatesItsOwnNextStep,
   statesItsOwnNextStep,
   RoundSetLimitError,
+  RoundCapacityError,
+  InvitationTermDivergenceError,
   ConnectionError,
 } from "../src/errors";
 import { MAX_ERROR_CAUSE_DEPTH } from "../src/failureAnnotation";
@@ -75,7 +77,7 @@ describe("terminal transport/directory error taxonomy", () => {
     const err = new FrameSizeExceededError("inbound frame exceeds the cap");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("FrameSizeExceededError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("inbound frame exceeds the cap");
     expect(recoveryStepOf(err)).toContain("Confirm the shared folder");
     expect(recoveryStepOf(err)).toContain("contact your partner");
@@ -87,7 +89,7 @@ describe("terminal transport/directory error taxonomy", () => {
     );
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("DirectoryListingBoundsError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("directory has too many entries");
     expect(recoveryStepOf(err)).toContain(
       "Confirm the shared folder is dedicated to a single exchange",
@@ -98,7 +100,7 @@ describe("terminal transport/directory error taxonomy", () => {
     const err = new TransportOperationStalledError("SFTP read stalled");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("TransportOperationStalledError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("SFTP read stalled");
     expect(recoveryStepOf(err)).toContain("then retry");
   });
@@ -117,10 +119,7 @@ describe("errors left without a recovery hint", () => {
     const err = new BilateralModeMismatchError(message);
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("BilateralModeMismatchError");
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
     expect(err.message).toBe(message);
   });
 
@@ -131,10 +130,7 @@ describe("errors left without a recovery hint", () => {
     const err = new ConnectionClosedError();
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UsageError);
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
@@ -149,10 +145,7 @@ describe("the internal fault's recovery hint", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UsageError);
     expect(err.name).toBe("InternalConsistencyError");
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
@@ -174,10 +167,7 @@ describe("errors whose recovery hint is per instance, not per class", () => {
     expect(err).not.toBeInstanceOf(UsageError);
     expect(err.name).toBe("TransportPublishIndeterminateError");
     expect(err.cause).toBe(cause);
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
@@ -364,30 +354,44 @@ describe("statesItsOwnNextStep", () => {
     );
   });
 
-  test("reads the alcoveRecoveryHintEmitted property alongside the mark", () => {
-    const tagged = Object.assign(new Error("expired"), {
+  test("reads no property of the error, only the mark", () => {
+    const withProperty = Object.assign(new Error("expired"), {
       alcoveRecoveryHintEmitted: true,
     });
-    const wrapped = new Error("the run failed", { cause: tagged });
-    expect(statesItsOwnNextStep(tagged)).toBe(true);
-    expect(statesItsOwnNextStep(wrapped)).toBe(true);
-    expect(statesItsOwnNextStep(wrapped, { ownOnly: true })).toBe(false);
+    expect(statesItsOwnNextStep(withProperty)).toBe(false);
+    expect(
+      statesItsOwnNextStep(
+        new Error("the run failed", { cause: withProperty }),
+      ),
+    ).toBe(false);
     expect(statesItsOwnNextStep(new Error("plain"))).toBe(false);
     expect(statesItsOwnNextStep(undefined)).toBe(false);
   });
 
-  test("reads both the mark and the property to the same depth", () => {
+  test("reads the mark to the cause-chain depth bound", () => {
     const marked = markStatesItsOwnNextStep(new Error("save failed"));
-    const tagged = Object.assign(new Error("expired"), {
-      alcoveRecoveryHintEmitted: true,
-    });
-    for (const inner of [marked, tagged]) {
-      expect(
-        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH, inner)),
-      ).toBe(true);
-      expect(
-        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, inner)),
-      ).toBe(false);
+    expect(statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH, marked))).toBe(
+      true,
+    );
+    expect(
+      statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, marked)),
+    ).toBe(false);
+  });
+
+  test("each class stating its own next step is marked, with no own property", () => {
+    const classMarked = [
+      new InvitationTermDivergenceError("refused"),
+      new RoundSetLimitError("too many", "over-set-maximum"),
+      new RoundCapacityError("too many", "terms-exchange"),
+      new FrameSizeExceededError("too large"),
+      new DirectoryListingBoundsError("too many entries"),
+      new TransportOperationStalledError("stalled"),
+    ];
+    for (const err of classMarked) {
+      expect(statesItsOwnNextStep(err, { ownOnly: true }), err.name).toBe(true);
+      expect(Object.keys(err), err.name).not.toContain(
+        "alcoveRecoveryHintEmitted",
+      );
     }
   });
 

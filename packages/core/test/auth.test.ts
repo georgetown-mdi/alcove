@@ -1,4 +1,4 @@
-import { ConnectionError } from "../src/errors";
+import { ConnectionError, statesItsOwnNextStep } from "../src/errors";
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
@@ -115,10 +115,7 @@ test("both pre-handshake refusals tag themselves as having emitted a recovery hi
     } catch (err) {
       thrown = err;
     }
-    expect(
-      (thrown as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(thrown, { ownOnly: true })).toBe(true);
   }
 });
 

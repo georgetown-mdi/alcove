@@ -6,6 +6,7 @@ import {
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
   generateSharedSecret,
+  markStatesItsOwnNextStep,
   prepareForExchange,
   sanitizeForDisplay,
 } from "@alcove/core";
@@ -109,11 +110,10 @@ describe("failureFor", () => {
   test("a tagged security error shows its own recovery guidance", () => {
     const failure = failureFor(
       "security",
-      Object.assign(
+      markStatesItsOwnNextStep(
         new Error(
           "shared secret expired at 2026-07-08T19:32:00.000Z; obtain a new invitation",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
     );
     expect(failure.category).toBe("security");
@@ -292,11 +292,8 @@ describe("failureFor", () => {
     );
 
     test("the reply-cap fault raised in this browser shows its report", () => {
-      const raised = Object.assign(
+      const raised = markStatesItsOwnNextStep(
         new InternalConsistencyError(replyCapFault),
-        {
-          alcoveRecoveryHintEmitted: true,
-        },
       );
       const failure = failureFor("exchange", raised, undefined, "browser");
       expect(failure.title).toBe("Exchange failed");

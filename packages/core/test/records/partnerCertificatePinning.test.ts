@@ -9,6 +9,7 @@ import {
 } from "../../src/exchange/signingChecks";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ReceiptVerificationError } from "../../src/records/signedReceipt";
+import { statesItsOwnNextStep } from "../../src/errors";
 import {
   computeCertificateFingerprint,
   generateSigningIdentity,
@@ -619,7 +620,7 @@ describe("a run that does not sign in band presents no certificate", () => {
 });
 
 describe("every terms-time pin refusal states its own next step and condition", () => {
-  // Each of the five is raised with core's `alcoveRecoveryHintEmitted` tag,
+  // Each of the five is raised with core's `markStatesItsOwnNextStep` mark,
   // whose two-state convention is that an error holds it exactly when its
   // message holds the step to take. What the tag buys is a display layer
   // showing the refusal instead of fixed copy for its category -- the CLI's
@@ -698,10 +699,7 @@ describe("every terms-time pin refusal states its own next step and condition", 
       (reason: unknown) => reason,
     );
     expect(raised).toBeInstanceOf(ReceiptVerificationError);
-    expect(
-      (raised as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(raised, { ownOnly: true })).toBe(true);
     // The claim the tag makes: the message names what to do, not only what
     // went wrong. Every one of the five ends in an instruction.
     expect((raised as Error).message).toMatch(

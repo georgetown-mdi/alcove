@@ -5,7 +5,10 @@ import type { HandshakeRole } from "./types.js";
 import type { MessageConnection } from "./connection/messageConnection.js";
 import { SHARED_SECRET_REGEX } from "./config/connection.js";
 import type { Authentication } from "./config/connection.js";
-import { InternalConsistencyError } from "./errors.js";
+import {
+  InternalConsistencyError,
+  markStatesItsOwnNextStep,
+} from "./errors.js";
 
 /** The remedy sentence every refusal of an unusable shared secret ends with. */
 export const NEW_INVITATION_REMEDY =
@@ -163,14 +166,14 @@ function isExpired(expires: string, now: number): boolean {
  * of docs/spec/PROTOCOL.md ("Enforcement sites"), which enumerates all four
  * and states what each covers.
  *
- * Both throws are tagged `alcoveRecoveryHintEmitted: true`, since their
+ * Both throws are marked {@link markStatesItsOwnNextStep}, since their
  * messages already include specific recovery instructions; a higher-level
- * catch checks the tag and suppresses its own generic advisory.
+ * catch checks the mark and suppresses its own generic advisory.
  *
  * Narrows `authentication.sharedSecret` to a non-optional `string` on
  * success.
  *
- * @throws {Error} (tagged with `alcoveRecoveryHintEmitted`) if `sharedSecret`
+ * @throws {Error} (marked {@link markStatesItsOwnNextStep}) if `sharedSecret`
  *                 is absent or not a base64url-encoded 32-byte value, or if
  *                 `expires` is set and in the past.
  */
@@ -180,22 +183,20 @@ export function assertSharedSecretReadyForHandshake(
   const { sharedSecret, expires } = authentication;
 
   if (!sharedSecret || !SHARED_SECRET_REGEX.test(sharedSecret)) {
-    throw Object.assign(
+    throw markStatesItsOwnNextStep(
       new Error(
         "the key file's sharedSecret must be a base64url-encoded 32-byte " +
           "value (43 base64url characters; the final character must be in " +
           `[AEIMQUYcgkosw048]). ${NEW_INVITATION_REMEDY}`,
       ),
-      { alcoveRecoveryHintEmitted: true },
     );
   }
 
   if (expires !== undefined && isExpired(expires, Date.now())) {
-    throw Object.assign(
+    throw markStatesItsOwnNextStep(
       new Error(
         `the shared secret expired at ${expires}. ${NEW_INVITATION_REMEDY}`,
       ),
-      { alcoveRecoveryHintEmitted: true },
     );
   }
 }
@@ -221,10 +222,10 @@ export function assertSharedSecretReadyForHandshake(
  * completes (docs/spec/PROTOCOL.md, "Enforcement sites").
  *
  * This function's own validation errors (secret format, pre- and
- * post-handshake expiry) are tagged `alcoveRecoveryHintEmitted: true`,
+ * post-handshake expiry) are marked {@link markStatesItsOwnNextStep},
  * since their messages already include recovery instructions; higher-level
- * code should check the tag and suppress its own generic advisory when it
- * is set. A key-exchange failure from `runKex` is not tagged: its message
+ * code should check the mark and suppress its own generic advisory when it
+ * is set. A key-exchange failure from `runKex` is not marked: its message
  * is generic by design.
  *
  * @param conn            An open, ready-to-use connection.
@@ -276,12 +277,11 @@ export async function authenticateConnection(
   // Post-handshake expiry check: catches a secret that expires during the
   // key-exchange round-trip (docs/spec/PROTOCOL.md, "Enforcement sites").
   if (expires !== undefined && isExpired(expires, Date.now())) {
-    throw Object.assign(
+    throw markStatesItsOwnNextStep(
       new Error(
         `the shared secret expired at ${expires}, during the key exchange. ` +
           NEW_INVITATION_REMEDY,
       ),
-      { alcoveRecoveryHintEmitted: true },
     );
   }
 

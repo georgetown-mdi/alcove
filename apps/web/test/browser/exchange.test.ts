@@ -17,6 +17,7 @@ import {
   decodeInvitation,
   describeResolvedMatching,
   getDefaultLinkageTerms,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { minimalPreparedExchange } from "@alcove/core/testing";
 
@@ -2419,11 +2420,10 @@ describe("inviter screen", () => {
     // as locally-composed recovery guidance, safe to show).
     lifecycleCall(0).onError({
       category: "security",
-      error: Object.assign(
+      error: markStatesItsOwnNextStep(
         new Error(
           "shared secret expired at 2026-07-08T19:32:00.000Z; obtain a new invitation",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
     });
 

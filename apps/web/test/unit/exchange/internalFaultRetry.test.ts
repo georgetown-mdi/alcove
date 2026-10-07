@@ -2,7 +2,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { InternalConsistencyError } from "@alcove/core";
+import {
+  InternalConsistencyError,
+  markStatesItsOwnNextStep,
+} from "@alcove/core";
 
 import {
   RelayedSelfExplainingError,
@@ -210,11 +213,10 @@ describe("an internal fault raised in this browser withholds the retry", () => {
     ],
     [
       "the reply-cap fault, which states its own step",
-      Object.assign(
+      markStatesItsOwnNextStep(
         new InternalConsistencyError(
           "reply exceeds the cap; report it with this message",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
     ],
   ])("withholds the retry on %s", (_label, error) => {

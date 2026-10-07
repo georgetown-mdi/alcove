@@ -31,6 +31,7 @@ import {
   PeerAbortError,
   FrameSizeExceededError,
   TransportPublishIndeterminateError,
+  statesItsOwnNextStep,
 } from "../../src/errors";
 import { getLoggerForVerbosity } from "../../src/utils/logger";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
@@ -486,10 +487,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
     // tagged to suppress the CLI's generic "retry without re-inviting"
     // advisory. This remedy is the only next step printed, so it must end
     // inside the renderer's per-link cap.
-    expect(
-      (rejected as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(rejected, { ownOnly: true })).toBe(true);
     const publishRender = sanitizeErrorForDisplay(rejected);
     const [publishLink, ...publishCauseLinks] =
       publishRender.split("\ncaused by: ");
@@ -520,10 +518,7 @@ describe("FileSyncMessageLoop counter commit points", () => {
     // The refusal prescribes a clean-directory restart, so it is tagged to
     // suppress the CLI's generic "retry without re-inviting" advisory: the two
     // would otherwise print together and contradict each other.
-    expect(
-      (refused as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(refused, { ownOnly: true })).toBe(true);
     // Asserted where the operator reads it, not on the raw .message: the tag
     // above is what makes this the only next step printed, and the renderer caps
     // each link of the cause chain, so a refusal whose remedy falls past that cap

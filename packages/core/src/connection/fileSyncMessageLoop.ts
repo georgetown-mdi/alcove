@@ -30,6 +30,7 @@ import {
   ProtocolRefusalError,
   TransportPublishIndeterminateError,
   errorMessage,
+  markStatesItsOwnNextStep,
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -395,17 +396,14 @@ export class FileSyncMessageLoop {
     // boundary's per-error cap on its own; the transport's error is hung off
     // `cause`, rendered under its own cap.
     if (this.indeterminatePublish !== undefined)
-      throw Object.assign(
+      throw markStatesItsOwnNextStep(
         new UsageError(
           `cannot send: sequence number ${this.indeterminatePublish.seq} was ` +
             `spent on a publish the transport could not confirm, so the partner ` +
             `may already hold a message under it. ` +
             CLEAN_DIRECTORY_RESTART_REMEDY,
+          { cause: this.indeterminatePublish.error },
         ),
-        {
-          cause: this.indeterminatePublish.error,
-          alcoveRecoveryHintEmitted: true,
-        },
       );
 
     if (this.seq > MAX_MESSAGE_SEQ)
@@ -584,14 +582,13 @@ export class FileSyncMessageLoop {
         // share no remedy). This one has a remedy, restated here and tagged
         // to suppress the CLI's generic advisory; the transport's error
         // stays as the `cause`, rendered on its own line under its own cap.
-        throw Object.assign(
+        throw markStatesItsOwnNextStep(
           new TransportPublishIndeterminateError(
             `the message may or may not have reached the partner: the publish ` +
               `was cut off mid-operation and could not be confirmed ` +
               `afterwards. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
             { cause: renameErr },
           ),
-          { alcoveRecoveryHintEmitted: true },
         );
       }
       if (!deps.options().retainFiles) deps.responsibleFiles.add(outName);

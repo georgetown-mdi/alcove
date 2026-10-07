@@ -1,7 +1,11 @@
 import { expect, test } from "vitest";
 
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
-import { RoundSetLimitError, UsageError } from "../../src/errors";
+import {
+  RoundSetLimitError,
+  UsageError,
+  statesItsOwnNextStep,
+} from "../../src/errors";
 import {
   assertFirstRoundWithinSetMaximum,
   roundOneSetOverMaximumMessage,
@@ -81,7 +85,7 @@ test("the check refuses one value over the bound and admits one under and at it"
   expect(await refusalOf(preparedWith(rows(300)), bound)).toBeUndefined();
   const refusal = await refusalOf(preparedWith(rows(301)), bound);
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
-  expect((refusal as RoundSetLimitError).alcoveRecoveryHintEmitted).toBe(true);
+  expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
   expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
   expect((refusal as Error).message).toMatch(
     /^Too large to send: .*at least 301 values to send, over the 300 one PSI set can hold\. Nothing was sent\. Split the input/,

@@ -5,6 +5,7 @@ import {
   ConnectionError,
   generateSharedSecret,
   getDefaultLinkageTerms,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
@@ -331,11 +332,10 @@ describe("runManagedRerun: the runner's failure bookkeeping", () => {
           handshake: () => {
             clock = Date.parse("2026-07-14T12:10:00.000Z");
             return Promise.reject(
-              Object.assign(
+              markStatesItsOwnNextStep(
                 new Error(
                   `shared secret expired at ${expires} during the round-trip`,
                 ),
-                { alcoveRecoveryHintEmitted: true },
               ),
             );
           },

@@ -8,7 +8,10 @@ import type {
   ClosureBlock,
   EntityClusterSummary,
 } from "../../src/psi/entityClosure";
-import { InternalConsistencyError } from "../../src/errors";
+import {
+  InternalConsistencyError,
+  statesItsOwnNextStep,
+} from "../../src/errors";
 import type { AssociationTable } from "../../src/types";
 
 // The closure step a party runs locally over the table the cascade left
@@ -123,10 +126,7 @@ describe("assertRoundDiagonalClosure", () => {
     // The message states its own next step, so the instance is tagged and the
     // CLI adds no second one.
     expect((thrown as Error).message).toMatch(/report it with this message/);
-    expect(
-      (thrown as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(thrown, { ownOnly: true })).toBe(true);
     return thrown as InternalConsistencyError;
   };
 

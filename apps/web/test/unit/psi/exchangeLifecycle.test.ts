@@ -15,6 +15,7 @@ import {
   generateSharedSecret,
   getDefaultLinkageTerms,
   runExchange,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 
 import {
@@ -618,9 +619,10 @@ describe("runExchangeLifecycle", () => {
             field === "host"
               ? WEBRTC_ENDPOINT_HOST_REFUSED
               : WEBRTC_ENDPOINT_PATH_REFUSED,
-          alcoveRecoveryHintEmitted: true,
         }),
       });
+      const [{ error }] = s.onError.mock.calls[0] as [{ error: unknown }];
+      expect(statesItsOwnNextStep(error, { ownOnly: true })).toBe(true);
       expect(mockedOpen).not.toHaveBeenCalled();
     },
   );

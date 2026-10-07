@@ -36,6 +36,7 @@ import {
   PeerAbortError,
   UsageError,
   InvitationTermDivergenceError,
+  statesItsOwnNextStep,
 } from "../../src/errors";
 
 import type { PreparedExchange, ExchangeResult } from "../../src/exchange";
@@ -1194,10 +1195,7 @@ test("a partner presenting a deduplicate its invitation did not declare is refus
   // The advisory tag the CLI's hint-walker reads: this refusal is terminal
   // against the invitation this party holds, so the generic "retry without
   // re-inviting" line would prescribe a retry that repeats the refusal.
-  expect(
-    (reason as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted,
-  ).toBe(true);
+  expect(statesItsOwnNextStep(reason, { ownOnly: true })).toBe(true);
 
   await connAcceptor.close();
   const [inviter] = await inviterRun;

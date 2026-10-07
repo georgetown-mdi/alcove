@@ -8,6 +8,7 @@ import {
   TransportPublishIndeterminateError,
   UsageError,
   sanitizeErrorForDisplay,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
@@ -344,8 +345,7 @@ inProcessOnly(
         // this the only next step the operator gets, and makes its survival of
         // the cap critical.
         expect(
-          (outcome.sendRejection as { alcoveRecoveryHintEmitted?: unknown })
-            .alcoveRecoveryHintEmitted,
+          statesItsOwnNextStep(outcome.sendRejection, { ownOnly: true }),
         ).toBe(true);
         expect(publishLink).toContain(REMEDY);
         expect(publishLink).not.toContain(DISPLAY_TRUNCATION_MARKER);

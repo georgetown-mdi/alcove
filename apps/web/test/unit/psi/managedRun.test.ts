@@ -7,6 +7,7 @@ import {
   generateSharedSecret,
   getDefaultLinkageTerms,
   getLogger,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
@@ -930,9 +931,8 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
   /** Core's expiry errors have the recovery-hint tag (preserved across the
    * security re-wrap). */
   function taggedExpiryError(): Error {
-    return Object.assign(
+    return markStatesItsOwnNextStep(
       new Error("shared secret expired during the key-exchange round-trip"),
-      { alcoveRecoveryHintEmitted: true },
     );
   }
 
@@ -975,12 +975,11 @@ describe("remapLapsedRunFailure: a bound that lapses mid-run", () => {
     // cannot fix it.
     expect(
       remapLapsedRunFailure(
-        Object.assign(
+        markStatesItsOwnNextStep(
           new InternalConsistencyError(
             "server: single-pass built a reply above the byte cap both parties " +
               "derive from their declared sizes; report it with this message.",
           ),
-          { alcoveRecoveryHintEmitted: true },
         ),
         { expires: "2026-07-14T11:59:00.000Z" },
         NOW,

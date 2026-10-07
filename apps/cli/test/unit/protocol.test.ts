@@ -134,7 +134,7 @@ async function waitForBothKeysRotated(
 }
 
 // Assert none of runProtocol's generic recovery-advisory lines was logged. A
-// tagged (alcoveRecoveryHintEmitted) error must suppress each, since each would
+// marked (markStatesItsOwnNextStep) error must suppress each, since each would
 // contradict the error's own specific hint.
 function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
   expect(errors.every((m) => !m.includes("key exchange was in progress"))).toBe(
@@ -384,6 +384,7 @@ import {
   RoundSetLimitError,
   AGREED_TERMS_VERSION,
   parseAgreedTerms,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import {
   AEAD_ENVELOPE_VERSION,
@@ -2350,7 +2351,7 @@ test("runProtocol rejects an expired token without rotating, and the tagged reco
   // (assertSharedSecretReadyForHandshake) before opening any connection, so
   // each party trips the same check independently with no rendezvous I/O and
   // both reject deterministically with the "expired" hint. The error holds
-  // `alcoveRecoveryHintEmitted: true` (set in auth.ts), so the runProtocol
+  // the markStatesItsOwnNextStep mark (set in auth.ts), so the runProtocol
   // catch must NOT log either generic advisory line - both would contradict
   // the specific "obtain a new invitation" message. Also verifies no token
   // rotation occurred: key file contents are unchanged after the failure.
@@ -4956,7 +4957,7 @@ test(
 // in runProtocol that logs the recovery hint.
 
 test("runProtocol suppresses the generic advisory when a tagged error is wrapped via `cause`", async () => {
-  // The `alcoveRecoveryHintEmitted` tag is sometimes attached to an inner
+  // The markStatesItsOwnNextStep mark is sometimes attached to an inner
   // error that a later catch wraps with `new Error(..., { cause: innerErr })`.
   // The runProtocol catch walks the cause chain so the wrap does not lose the
   // suppression. This test simulates that wrap by having runExchange throw a
@@ -4968,9 +4969,7 @@ test("runProtocol suppresses the generic advisory when a tagged error is wrapped
 
   async function waitForRotationThenThrowWrapped(): Promise<never> {
     await waitForBothKeysRotated(keyFileA, keyFileB);
-    const inner = Object.assign(new Error("inner tagged failure"), {
-      alcoveRecoveryHintEmitted: true,
-    });
+    const inner = markStatesItsOwnNextStep(new Error("inner tagged failure"));
     throw new Error(`outer wrap: ${inner.message}`, { cause: inner });
   }
   vi.mocked(runExchange)
@@ -5081,9 +5080,9 @@ test("runProtocol suppresses the generic advisory for a terminal FrameSizeExceed
   // reaches the catch with tokenRotated=true, where the generic "retry without
   // re-inviting" advisory would otherwise fire and contradict the error's own
   // terminal refusal. FrameSizeExceededError has a class-level
-  // alcoveRecoveryHintEmitted tag, so the hint-walker must suppress the generic
-  // advisory -- this pins that the class tag is honored end to end, not just the
-  // Object.assign tags the other tests cover.
+  // markStatesItsOwnNextStep mark, so the hint-walker must suppress the generic
+  // advisory -- this pins that the class-level mark is honored end to end, not
+  // just the per-instance marks the other tests cover.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -5134,13 +5133,12 @@ test.each([
   {
     fault: "the reply-cap check, whose message states its step",
     raise: () =>
-      Object.assign(
+      markStatesItsOwnNextStep(
         new InternalConsistencyError(
           "server: single-pass built a reply of 4096 byte(s), above the 2048 " +
             "byte(s) both parties derive from their declared sizes. The " +
             "exchange cannot proceed; report it with this message.",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
   },
   {
@@ -5582,7 +5580,7 @@ test.skipIf(process.platform === "win32")(
     // but the updated token could not be saved...". The generic authStarted
     // advisory ("the partner may have already derived...while this side did
     // not") contradicts this: it understates a definite local rotation. The
-    // wrapped error sets `alcoveRecoveryHintEmitted: true` to suppress it.
+    // wrapped error is marked with markStatesItsOwnNextStep to suppress it.
     //
     // To force saveKeyFile to fail AFTER the key exchange rotates (not at the
     // pre-flight in runProtocol), this uses a keyFilePath pre-flight accepts (a

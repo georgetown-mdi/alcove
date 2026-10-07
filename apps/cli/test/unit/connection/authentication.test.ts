@@ -8,6 +8,7 @@ import {
   fromEventConnection,
   authenticateConnection,
   SHARED_SECRET_REGEX,
+  statesItsOwnNextStep,
 } from "@alcove/core";
 import { createMessagePipe } from "@alcove/core/testing";
 import type { HandshakeRole, MessageConnection } from "@alcove/core";
@@ -158,7 +159,7 @@ test("authentication throws for an expired token without opening a connection", 
   ).rejects.toThrow("shared secret expired");
 });
 
-test("authentication tags a pre-handshake-expiry error with alcoveRecoveryHintEmitted", async () => {
+test("authentication marks a pre-handshake-expiry error as stating its own next step", async () => {
   const mc = fromEventConnection(makeConn());
   // Direct tag assertion, symmetric with the malformed-secret and post-
   // handshake-expiry paths: the pre-handshake expiry error (checked before any
@@ -170,9 +171,7 @@ test("authentication tags a pre-handshake-expiry error with alcoveRecoveryHintEm
     "initiator",
     true,
   ).catch((e: unknown) => e);
-  expect(
-    (err as { alcoveRecoveryHintEmitted?: unknown }).alcoveRecoveryHintEmitted,
-  ).toBe(true);
+  expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
 });
 
 test("authentication throws for a token that is not 43 base64url characters", async () => {
@@ -208,7 +207,7 @@ test("authentication throws for a token with valid base64url characters but wron
   );
 });
 
-test("authentication tags a malformed-secret error with alcoveRecoveryHintEmitted", async () => {
+test("authentication marks a malformed-secret error as stating its own next step", async () => {
   const mc = fromEventConnection(makeConn());
   // The secret-format error holds the recovery-hint tag so the CLI shows
   // its specific "re-invite" instruction instead of stacking the generic
@@ -219,9 +218,7 @@ test("authentication tags a malformed-secret error with alcoveRecoveryHintEmitte
     "initiator",
     true,
   ).catch((e: unknown) => e);
-  expect(
-    (err as { alcoveRecoveryHintEmitted?: unknown }).alcoveRecoveryHintEmitted,
-  ).toBe(true);
+  expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
 });
 
 // --- Authentication failure --------------------------------------------------
@@ -297,7 +294,7 @@ test("a legacy SPAKE2-shaped reply fails a new initiator with a clean error", as
 // starting both authenticateConnection calls and awaiting them -- strictly
 // after both pre-handshake checks and before both post-handshake checks.
 
-test("authentication tags post-handshake-expiry errors with alcoveRecoveryHintEmitted", async () => {
+test("authentication marks post-handshake-expiry errors as stating their own next step", async () => {
   const expires = "2030-01-01T00:00:00.000Z";
   vi.useFakeTimers({
     toFake: ["Date"],
@@ -326,6 +323,6 @@ test("authentication tags post-handshake-expiry errors with alcoveRecoveryHintEm
   // transport-failure advisory.
   for (const result of [resultA, resultB] as PromiseRejectedResult[]) {
     expect(result.reason.message).toContain("during the key exchange");
-    expect(result.reason.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(result.reason, { ownOnly: true })).toBe(true);
   }
 });

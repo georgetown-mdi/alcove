@@ -129,17 +129,16 @@ export class PayloadDisclosureDivergenceError extends ConnectionError {
  *
  * A {@link ConnectionError} of kind `protocol`, not {@link UsageError}:
  * the contradiction is between two documents the partner authored (CLI
- * exit 76, not 64). Has `alcoveRecoveryHintEmitted` so the CLI's
+ * exit 76, not 64). Marked by {@link markStatesItsOwnNextStep} so the CLI's
  * hint-walker suppresses the generic "retry without re-inviting" advisory
  * -- this refusal is terminal against the held invitation and would
  * otherwise loop an unattended recurring exchange.
  */
 export class InvitationTermDivergenceError extends ConnectionError {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string) {
     super(message, "protocol");
     this.name = "InvitationTermDivergenceError";
+    markStatesItsOwnNextStep(this);
   }
 }
 
@@ -175,23 +174,16 @@ export function markStatesItsOwnNextStep<E extends object>(error: E): E {
 }
 
 /**
- * Whether `error` states its own next step: annotated by
- * {@link markStatesItsOwnNextStep}, or holding the `alcoveRecoveryHintEmitted:
- * true` property the error classes and raise sites in this package set. Read
- * along the `cause` chain, so a wrap of such an error still states the step,
- * unless `options.ownOnly` asks for `error` itself.
+ * Whether `error` states its own next step, annotated by
+ * {@link markStatesItsOwnNextStep}. Read along the `cause` chain, so a wrap of
+ * such an error still states the step, unless `options.ownOnly` asks for
+ * `error` itself.
  */
 export function statesItsOwnNextStep(
   error: unknown,
   options: AnnotationReadOptions = {},
 ): boolean {
-  const states = (link: object): true | undefined =>
-    annotationOf(link, STATES_OWN_NEXT_STEP, { ownOnly: true }) === true ||
-    (link as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted === true
-      ? true
-      : undefined;
-  return findInCauseChain(error, states, options) === true;
+  return annotationOf(error, STATES_OWN_NEXT_STEP, options) === true;
 }
 
 /**
@@ -316,11 +308,11 @@ export type RoundSetLimitReason =
  * in any round, a set over either bound, with the partner sent an abort in its
  * place (docs/spec/PROTOCOL.md, "The receive ceiling"). `reason` states which.
  * The message names the count, the bound, and the remedy, and is composed only
- * from counts and fixed constants. Holds `alcoveRecoveryHintEmitted`: a retry
- * refuses identically, so the CLI's generic retry advisory is suppressed.
+ * from counts and fixed constants. States its own next step
+ * ({@link markStatesItsOwnNextStep}): a retry refuses identically, so the
+ * CLI's generic retry advisory is suppressed.
  */
 export class RoundSetLimitError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
   readonly reason: RoundSetLimitReason;
 
   constructor(
@@ -330,6 +322,7 @@ export class RoundSetLimitError extends UsageError {
   ) {
     super(message, options);
     this.name = "RoundSetLimitError";
+    markStatesItsOwnNextStep(this);
     this.reason = reason;
   }
 }
@@ -350,12 +343,12 @@ export type RoundCapacityStage = "terms-exchange" | "set-first-part";
  * record count (`checkPartnerRoundCapacity` in exchange.ts), or at the first
  * part of a partner's set over this party's receive ceiling (`receivePsiSet`);
  * `stage` states which. The message names the count, this party's limit, and
- * the remedy, and is composed only from counts and fixed text. Holds
- * `alcoveRecoveryHintEmitted`: a retry against the same partner input refuses
- * identically, so the CLI's generic retry advisory is suppressed.
+ * the remedy, and is composed only from counts and fixed text. States its own
+ * next step ({@link markStatesItsOwnNextStep}): a retry against the same
+ * partner input refuses identically, so the CLI's generic retry advisory is
+ * suppressed.
  */
 export class RoundCapacityError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
   readonly stage: RoundCapacityStage;
 
   constructor(
@@ -365,6 +358,7 @@ export class RoundCapacityError extends UsageError {
   ) {
     super(message, options);
     this.name = "RoundCapacityError";
+    markStatesItsOwnNextStep(this);
     this.stage = stage;
   }
 }
@@ -425,9 +419,9 @@ export class UnknownStandardizationFunctionError extends UsageError {
  * The peer's hello advertised a `lockless_rendezvous` or `retain_files` setting
  * different from this party's. Both are bilateral with no negotiation
  * (docs/spec/FILE_SYNC.md, Bilateral configuration), so both parties fail fast and
- * the cleanup paths leave both hellos in place. It sets no
- * `alcoveRecoveryHintEmitted`: detection precedes the handshake, so there is no
- * advisory to suppress (pinned in errors.test.ts).
+ * the cleanup paths leave both hellos in place. It is not marked
+ * {@link markStatesItsOwnNextStep}: detection precedes the handshake, so there
+ * is no advisory to suppress (pinned in errors.test.ts).
  */
 export class BilateralModeMismatchError extends UsageError {
   constructor(message: string) {
@@ -445,8 +439,6 @@ export class BilateralModeMismatchError extends UsageError {
  * `details` fragment (docs/spec/CHANNEL_SECURITY.md).
  */
 export class FrameSizeExceededError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string, options?: TransportRefusalOptions) {
     super(message, {
       cause: refusalCauseChain(
@@ -457,6 +449,7 @@ export class FrameSizeExceededError extends UsageError {
       ),
     });
     this.name = "FrameSizeExceededError";
+    markStatesItsOwnNextStep(this);
   }
 }
 
@@ -468,8 +461,6 @@ export class FrameSizeExceededError extends UsageError {
  * directory path and the offending entry name as `details` fragments.
  */
 export class DirectoryListingBoundsError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string, options?: TransportRefusalOptions) {
     super(message, {
       cause: refusalCauseChain(
@@ -480,6 +471,7 @@ export class DirectoryListingBoundsError extends UsageError {
       ),
     });
     this.name = "DirectoryListingBoundsError";
+    markStatesItsOwnNextStep(this);
   }
 }
 
@@ -492,8 +484,6 @@ export class DirectoryListingBoundsError extends UsageError {
  * operation stalled, its path, and any server message as `details` fragments.
  */
 export class TransportOperationStalledError extends UsageError {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string, options?: TransportRefusalOptions) {
     super(message, {
       cause: refusalCauseChain(
@@ -503,6 +493,7 @@ export class TransportOperationStalledError extends UsageError {
       ),
     });
     this.name = "TransportOperationStalledError";
+    markStatesItsOwnNextStep(this);
   }
 }
 
@@ -541,7 +532,7 @@ export class ProtocolRefusalError extends Error {
  * must not reuse a name the peer may have consumed, tells it apart from a
  * determined failure. A plain `Error`, so the poll loop reschedules
  * (`fileSyncConnection.test.ts`); only an instance whose message states the
- * recovery sets `alcoveRecoveryHintEmitted`.
+ * recovery is marked {@link markStatesItsOwnNextStep}.
  */
 export class TransportPublishIndeterminateError extends Error {
   constructor(message: string, options: { cause: unknown }) {

@@ -7,7 +7,6 @@ import {
   comparableVerdict,
   packValue,
   preScanVerdict,
-  unpackFrame,
 } from "@alcove/testkit/webrtcInboundFrames";
 
 import { boundChunkReassembly } from "../../../src/psi/transport/boundedReassembly.js";
@@ -43,14 +42,6 @@ interface ChunkEnvelope {
   data: ArrayBuffer | Uint8Array;
 }
 
-function isChunkEnvelope(value: unknown): value is ChunkEnvelope {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    Boolean((value as { __peerData?: unknown }).__peerData)
-  );
-}
-
 function sliceBytes(data: ChunkEnvelope["data"]): Uint8Array {
   return data instanceof ArrayBuffer
     ? new Uint8Array(data)
@@ -75,7 +66,9 @@ function concatSlices(slices: Array<Uint8Array>): Uint8Array {
  * `_handleChunk`, which reassembles and recurses back through `this._handleDataMessage`
  * -- so a reassembled frame re-enters the wrap's replacement of that method. That
  * puts the structural scan on both the chunk envelope and the assembled frame,
- * matching the CLI reassembler's two chokepoints.
+ * matching the CLI reassembler's two chokepoints. The wrap decodes and routes each
+ * frame itself -- a chunk envelope to `_handleChunk`, anything else to `emit` --
+ * so this double's own `_handleDataMessage` is never reached.
  */
 class FakePeerJsConnection {
   _chunkedData: Record<
@@ -85,11 +78,16 @@ class FakePeerJsConnection {
   /** Each unpacked frame that reached the application. */
   delivered: Array<unknown> = [];
 
-  _handleDataMessage = (message: { data: Uint8Array | ArrayBuffer }): void => {
-    const value = unpackFrame(message.data);
-    if (isChunkEnvelope(value)) this._handleChunk(value);
-    else this.delivered.push(value);
+  _handleDataMessage = (_message: { data: Uint8Array | ArrayBuffer }): void => {
+    throw new Error("the wrap replaces _handleDataMessage");
   };
+
+  emit(event: string, value: unknown): boolean {
+    if (event === "data") this.delivered.push(value);
+    return true;
+  }
+
+  close(): void {}
 
   _handleChunk = (chunk: ChunkEnvelope): void => {
     const id = chunk.__peerData;

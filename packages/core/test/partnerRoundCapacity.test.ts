@@ -9,6 +9,7 @@ import {
   RoundCapacityError,
   RoundSetLimitError,
   UsageError,
+  statesItsOwnNextStep,
 } from "../src/errors";
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
@@ -265,7 +266,7 @@ test("a sender partner over this party's stated ceiling refuses its first round 
   const refusal = (partner as PromiseRejectedResult).reason as Error;
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as RoundSetLimitError).reason).toBe("over-partner-ceiling");
-  expect((refusal as RoundSetLimitError).alcoveRecoveryHintEmitted).toBe(true);
+  expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
   expect(refusal.message).toBe(roundOneSetOverPartnerCeilingMessage(12, 11));
   expect(binaryFrames(partnerSent)).toEqual([]);
   expect(partnerSent.at(-1)).toEqual({

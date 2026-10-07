@@ -5,6 +5,7 @@ import {
   failureCauseFromUntrusted,
   getLogger,
   joinErrorCauseChain,
+  markStatesItsOwnNextStep,
   parseBoundedJson,
   recordFileStamp,
   sanitizeForDisplay,
@@ -399,7 +400,7 @@ export function relayedTermsChangeOf(
 /**
  * The relayed terminal failure whose own message states the next step, built
  * for an `error` event carrying `recoveryHint` (docs/spec/CLI_EVENTS.md). It
- * holds core's `alcoveRecoveryHintEmitted` tag, so {@link hasRecoveryHint}
+ * is marked by core's `markStatesItsOwnNextStep`, so {@link hasRecoveryHint}
  * answers for a relayed failure exactly as it does for one this browser raised,
  * and the seat shows the message rather than fixed copy that would contradict
  * it.
@@ -408,11 +409,10 @@ export function relayedTermsChangeOf(
  * values, and the relay escapes every one before it crosses.
  */
 export class RelayedSelfExplainingError extends RelayedTerminalError {
-  readonly alcoveRecoveryHintEmitted = true;
-
   constructor(message: string, internalFault = false) {
     super(message, internalFault);
     this.name = "RelayedSelfExplainingError";
+    markStatesItsOwnNextStep(this);
   }
 }
 
