@@ -217,7 +217,7 @@ function partialRotationNotice(
     body:
       `${name}: a run stopped during its key exchange before it saved the ` +
       `updated secret on this device, and a scheduled run since then did not ` +
-      `meet your partner. Your partner probably saved a secret this device ` +
+      `connect to your partner. Your partner probably saved a secret this device ` +
       `does not have. Open this app and re-invite your partner.`,
     tag: noticeTag(record.id, "partial-rotation"),
   };

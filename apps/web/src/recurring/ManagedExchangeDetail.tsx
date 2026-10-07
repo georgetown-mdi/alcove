@@ -460,7 +460,7 @@ function ConfigurationView({
           Only your partner can re-invite, and your partner cannot re-invite you
           onto different terms. What you can change here is under{" "}
           {CHANGE_TERMS_TITLE} below. To change anything else, your partner sets
-          up a new exchange with those terms and sends you its invitation --
+          up a new exchange with those terms and sends you its invitation -
           accept it and you can save it as a new recurring exchange, then delete
           this one if you no longer want it.
         </p>
@@ -1688,7 +1688,7 @@ function EmptyAccountingNotice({
     return (
       <p className={styles.small}>
         This browser&apos;s copy of the accounting is empty, while the run
-        history above records a completed run -- so it is not an account of
+        history above records a completed run - so it is not an account of
         everything this exchange has disclosed. Records filed here are destroyed
         by &quot;Start a fresh accounting&quot;, and an exchange restored from
         an export or backup file arrives without the accounting kept on the
@@ -1902,8 +1902,8 @@ function UnreadableAccountingRecovery({
         {stored !== undefined ? (
           <p>
             The records themselves are still stored, in the form the app that
-            wrote them used. Download them first -- that is the only way to keep
-            them -- and then start a fresh accounting, which destroys them and
+            wrote them used. Download them first - that is the only way to keep
+            them - and then start a fresh accounting, which destroys them and
             lets this exchange file its disclosures again.
           </p>
         ) : (

@@ -740,7 +740,7 @@ function credentialContainmentWarning(
   if (exclusion.kind === "rendezvous")
     return (
       `The ${fieldLabel} credential file is inside ${exclusion.label}, which you ` +
-      "sync with your partner -- so they could read it -- and which Alcove also " +
+      "sync with your partner - so they could read it - and which Alcove also " +
       `writes exchange files into. ${remediation}`
     );
   return (

@@ -69,8 +69,8 @@ export const PARKED_RESULTS_SCHEDULE_NOTE =
   `Whenever the folder you chose cannot be written to, a scheduled run keeps ` +
   `its results in this browser and this exchange's page offers them at your ` +
   `next visit. Those results ` +
-  `are the matched rows themselves -- the identifiers that matched and the ` +
-  `values your partner disclosed -- kept unencrypted in browser storage, where ` +
+  `are the matched rows themselves - the identifiers that matched and the ` +
+  `values your partner disclosed - kept unencrypted in browser storage, where ` +
   `any script running on this site and anyone who can read this machine's disk ` +
   `can read them. After ${RETENTION_PHRASE} they are no longer offered, and ` +
   `your next visit to this page deletes them, as does a later run that leaves ` +
@@ -112,7 +112,7 @@ export const UNREADABLE_PARKED_RESULTS_NOTE =
   "Something is stored here for this exchange that this browser cannot read, " +
   "so it cannot tell you whether any results are in it. The retention that " +
   "would otherwise remove it does not apply, and while it is here a scheduled " +
-  "run cannot leave its results or record that it could not -- the runs " +
+  "run cannot leave its results or record that it could not - the runs " +
   "themselves still complete and file their disclosures. Clearing what is kept " +
   "here removes it without reading it, as does deleting the exchange.";
 
@@ -204,7 +204,7 @@ function tooLargeSummary(entry: TooLargeRunResults): string {
       ? `This run's results were ${size}`
       : `${matched}, ${size} of results`;
   return (
-    `${opening} -- more than the ${PARKED_SIZE_PHRASE} this browser keeps, so ` +
+    `${opening} - more than the ${PARKED_SIZE_PHRASE} this browser keeps, so ` +
     `none of them were kept here and none were cut down to fit. The run itself ` +
     `completed and filed its disclosure. ` +
     TOO_LARGE_FOLDER_REMEDY[entry.fallback ?? "none"]

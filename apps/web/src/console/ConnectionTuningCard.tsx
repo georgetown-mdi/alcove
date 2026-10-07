@@ -190,7 +190,7 @@ export function ConnectionTuningCard({
           label="How many times to retry a failed connection"
           description={
             "Raise it for a link that drops often. The command-line " +
-            "reference for --max-reconnect-attempts explains how this budget " +
+            "reference for --max-reconnect-attempts explains how this number " +
             "interacts with opening a new connection for each check."
           }
           inputMode="numeric"
@@ -212,8 +212,9 @@ export function ConnectionTuningCard({
               "Connect to the SFTP server afresh for each check and disconnect " +
               "in between, instead of holding one connection for the whole " +
               "exchange. Use it when the server limits how long a connection " +
-              "may stay open and your exchange spans long waits. This side's " +
-              "choice alone -- your partner neither sees it nor has to match it."
+              "may stay open and your exchange spans long waits. This is your " +
+              "side's choice alone. Your partner neither sees it nor has to " +
+              "match it."
             }
           />
         )}

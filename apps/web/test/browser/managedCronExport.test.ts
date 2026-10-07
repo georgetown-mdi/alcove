@@ -573,7 +573,7 @@ describe("a record this app could not have composed", () => {
       )
       .toBeInTheDocument();
     await expect
-      .element(page.getByText("Remove: turn", { exact: false }))
+      .element(page.getByText("to the command line: turn.", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(
@@ -600,7 +600,7 @@ describe("a record this app could not have composed", () => {
         spendIfCurrent: spendManagedExchangeIfCurrent,
         readOwn: () => ({ kind: "none" }),
       }),
-    ).rejects.toThrow(/Remove: turn/);
+    ).rejects.toThrow(/to the command line: turn\./);
 
     expect(downloaded).toEqual([]);
     expect(await getManagedLocalState(created.id)).toBeUndefined();

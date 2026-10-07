@@ -48,7 +48,7 @@ export const RETAKE_LEAD =
 export const RETAKE_KEY_FILE_NOTE =
   "If that machine has run this exchange since you handed it off, choose the " +
   "alcove.yaml and the .alcove.key beside it, both at once, from the folder " +
-  "you saved them to there -- each run changes the shared secret and writes it " +
+  "you saved them to there - each run changes the shared secret and writes it " +
   "to the .alcove.key, so it holds the one your partner expects. Files for " +
   "other terms or the other side are refused. The key file you choose " +
   "replaces the only copy of the secret this browser has for this exchange, " +
@@ -121,8 +121,8 @@ const RETAKE_MISMATCH_REASON: Record<"terms" | "side", string> = {
     "these are another exchange's files and nothing was taken back. Choose " +
     "the two files from the folder this exchange was handed off to.",
   side:
-    "The alcove.yaml you chose is for the other side of this exchange -- your " +
-    "partner's files state the same terms from their side -- so nothing was " +
+    "The alcove.yaml you chose is for the other side of this exchange - your " +
+    "partner's files state the same terms from their side - so nothing was " +
     "taken back. Choose the two files you saved when you handed it off.",
 };
 
@@ -146,15 +146,15 @@ const RETAKE_REFUSALS: Record<
   "run-in-flight": {
     title: RUN_IN_FLIGHT_HANDOFF_TITLE,
     reason:
-      "This exchange is running right now -- in this browser, in another tab, " +
+      "This exchange is running right now - in this browser, in another tab, " +
       "or on its schedule. That run changes the shared secret, so nothing was " +
       "taken back. When it finishes, choose take it back again.",
   },
   gone: {
     title: "This exchange is no longer here",
     reason:
-      "This exchange is no longer in this browser -- it was deleted, or " +
-      "cleared along with the browser's storage -- so there is nothing here to " +
+      "This exchange is no longer in this browser - it was deleted, or " +
+      "cleared along with the browser's storage - so there is nothing here to " +
       "take back. It still runs from the alcove.yaml and .alcove.key you " +
       "saved; set the exchange up again with your partner if you do not have " +
       "them.",
@@ -163,7 +163,7 @@ const RETAKE_REFUSALS: Record<
     title: "This exchange is not handed off",
     reason:
       "This browser's copy of this exchange is not waiting on a command-line " +
-      "hand-off -- another tab may have taken it back already. Nothing " +
+      "hand-off - another tab may have taken it back already. Nothing " +
       "changed. Reload this page to see where it stands.",
   },
 };

@@ -27,7 +27,7 @@ export const RECEIPT_MISSING_NOTICE =
   "it, so there is nothing to download here. A receipt is written once both " +
   "parties have exchanged signatures, so a run that stopped before that point " +
   "produced none at all. Running the exchange again produces a receipt for " +
-  "that run, not this one -- a receipt covers the run that produced it, and " +
+  "that run, not this one - a receipt covers the run that produced it, and " +
   "neither party can recreate one afterwards.";
 
 /**
@@ -47,7 +47,7 @@ export const RECEIPT_UNANSWERED_LEAD =
 export const RECEIPT_UNANSWERED_NOTICE =
   "This page asked several times whether this run has a signed receipt and got " +
   "no answer back, so it has stopped asking. If this exchange signed one it may " +
-  "still be with the run's files on this console -- reload this page to ask " +
+  "still be with the run's files on this console - reload this page to ask " +
   "again, and keep the run until you have the file, because discarding the run " +
   "removes the receipt along with the results.";
 

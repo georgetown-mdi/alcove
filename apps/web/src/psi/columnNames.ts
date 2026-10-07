@@ -61,21 +61,21 @@ export function unnameableColumnsAlert(
     strippedEmpty.length === 0
       ? `A trailing comma, a blank cell, or a leading delimiter in the header ` +
         `row produces an unnamed column, which cannot be used for matching or ` +
-        `sent to your partner. Fix the header row -- name the ` +
+        `sent to your partner. Fix the header row - name the ` +
         `column${plural ? "s" : ""} or remove the empty ` +
-        `field${plural ? "s" : ""} -- and choose the file again.`
+        `field${plural ? "s" : ""} - and choose the file again.`
       : strippedEmpty.length === positions.length
         ? `${plural ? "Those names held" : "That name held"} nothing but ` +
           `invisible control characters, which this read removes, leaving no ` +
           `name to match on or send to your partner. Fix the header ` +
-          `row -- give ${plural ? "those columns names" : "that column a name"} ` +
-          `made of ordinary characters -- and choose the file again.`
+          `row - give ${plural ? "those columns names" : "that column a name"} ` +
+          `made of ordinary characters - and choose the file again.`
         : `Column${strippedPlural ? "s" : ""} ${strippedEmpty.join(", ")} held ` +
           `nothing but invisible control characters, which this read ` +
           `removes; a trailing comma, a blank cell, or a leading delimiter in ` +
           `the header row produces the rest. An unnamed column cannot be used ` +
-          `for matching or sent to your partner. Fix the header row -- give ` +
-          `every column a name made of ordinary characters -- and choose the ` +
+          `for matching or sent to your partner. Fix the header row - give ` +
+          `every column a name made of ordinary characters - and choose the ` +
           `file again.`;
   return {
     title: plural

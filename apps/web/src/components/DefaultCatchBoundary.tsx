@@ -43,7 +43,7 @@ export function DefaultCatchBoundary({ error }: ErrorComponentProps) {
         {!online && (
           <p>
             This device is offline. A part of Alcove this browser has not stored
-            yet cannot be opened without a connection -- reconnect and open it
+            yet cannot be opened without a connection - reconnect and open it
             once, and it will open offline after that.
           </p>
         )}

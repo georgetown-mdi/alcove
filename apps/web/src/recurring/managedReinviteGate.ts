@@ -18,7 +18,7 @@
  * because the operator reading this may not be the one who started it.
  */
 export const REINVITE_RUN_IN_FLIGHT_REASON =
-  "This exchange is running right now -- in this browser, in another tab, or on " +
+  "This exchange is running right now - in this browser, in another tab, or on " +
   "its schedule. A fresh invitation replaces its shared secret, which would " +
   "break the run in progress. When it finishes, re-invite again.";
 

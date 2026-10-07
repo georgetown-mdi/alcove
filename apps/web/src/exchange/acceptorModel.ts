@@ -579,7 +579,7 @@ export function acceptUnsupported(
       message:
         "This invitation runs over one shared folder, but this console is " +
         "mounted with separate inbound and outbound folders and has no single " +
-        "folder to meet in. Ask your partner for an invitation over separate " +
+        "shared folder to use. Ask your partner for an invitation over separate " +
         "inbound and outbound folders instead.",
     };
   return undefined;

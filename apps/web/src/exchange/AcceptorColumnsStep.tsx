@@ -379,7 +379,7 @@ export function AcceptorColumnsStep({
               title={verdict.title}
             >
               Some linkage keys cannot be satisfied by your columns, and an
-              exchange runs the keys both parties agreed on -- so it will refuse
+              exchange runs the keys both parties agreed on - so it will refuse
               to run on these terms with this file. Map more columns below to
               cover the missing keys, or agree terms with your partner over the
               keys both files can supply.

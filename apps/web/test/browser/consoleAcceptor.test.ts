@@ -927,7 +927,7 @@ describe("console acceptor re-attaches on a busy create", () => {
     await expect
       .element(
         page.getByText(
-          "This exchange was already running here -- from another tab or an earlier visit -- so you are watching it rather than starting a new one.",
+          "This exchange was already running here - from another tab or an earlier visit - so you are watching it rather than starting a new one.",
         ),
       )
       .toBeVisible();

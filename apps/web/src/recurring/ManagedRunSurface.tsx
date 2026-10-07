@@ -2067,7 +2067,7 @@ function ReinvitePanel({
       <p className={styles.small}>
         Send this to your partner over your usual trusted channel (for example,
         secure email). It carries a new one-time secret, so treat it as
-        confidential -- every re-invite puts a fresh secret on that channel, so
+        confidential - every re-invite puts a fresh secret on that channel, so
         it must stay trusted each time. Your partner accepts it by opening the
         link.
       </p>
@@ -2159,7 +2159,7 @@ function BackupPanel({
       <p className={styles.small}>
         The backup file is the one this browser restores from: import it here to
         bring this exchange back. It holds this exchange&apos;s secret in plain
-        text -- keep it somewhere only you can read, and never send it over an
+        text - keep it somewhere only you can read, and never send it over an
         unencrypted channel.
       </p>
       {failed && (
@@ -2257,8 +2257,8 @@ function SpentSurface({
         <h1 tabIndex={-1}>This exchange was handed off</h1>
         <p className={styles.sub}>
           This browser&apos;s copy of this exchange was handed off, so it no
-          longer runs here. It runs where you handed it over to -- the device
-          you moved it to, or the machine running it from the command line.
+          longer runs here. It runs where you handed it over to - the device you
+          moved it to, or the machine running it from the command line.
         </p>
         {refused}
         {parked}

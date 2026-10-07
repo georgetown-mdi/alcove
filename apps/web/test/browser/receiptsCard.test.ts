@@ -553,25 +553,25 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
       )
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "Replacing it is a command-line action -- docker run --rm --mount " +
+      "Replacing it is a command-line action - docker run --rm --mount " +
         "type=bind,src=/path/to/your/working-folder,dst=/work ",
     );
     expect(app.container.textContent).toContain(
       " fingerprint --identity-file .alcove-signing-identity.json --force " +
-        "--identity NAME, with NAME your name -- ",
+        "--identity NAME, with NAME your name - ",
     );
 
     await pickIdentityLocation(PICKED_IDENTITY);
 
     await expect
       .element(
-        page.getByText("and FILE the file you picked -- because", {
+        page.getByText("and FILE the file you picked - because", {
           exact: false,
         }),
       )
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "Replacing it is a command-line action -- docker run --rm --mount " +
+      "Replacing it is a command-line action - docker run --rm --mount " +
         "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
         "type=bind,src=/path/to/your/secrets-folder," +
         "dst=/path/to/your/secrets-folder ",
@@ -579,7 +579,7 @@ describe("ReceiptsCard: asking the console for this party's fingerprint", () => 
     expect(app.container.textContent).toContain(
       " fingerprint --identity-file /path/to/your/secrets-folder/FILE " +
         "--force --identity NAME, with NAME your name and FILE the file you " +
-        "picked -- because",
+        "picked - because",
     );
     expect(app.container.textContent).not.toContain(" -it ");
   });
@@ -707,7 +707,7 @@ describe("ReceiptsCard: a failed request", () => {
       .element(page.getByText(REFUSED_DEFAULT, { exact: false }))
       .toBeInTheDocument();
     expect(app.container.textContent).toContain(
-      "-- running docker run --rm --mount " +
+      "- running docker run --rm --mount " +
         "type=bind,src=/path/to/your/working-folder,dst=/work ",
     );
     expect(app.container.textContent).not.toContain(" -it ");
@@ -763,7 +763,7 @@ describe("ReceiptsCard: a failed request", () => {
       "Check that file at the location you picked, or pick another one.",
     );
     expect(app.container.textContent).toContain(
-      "-- running docker run --rm --mount " +
+      "- running docker run --rm --mount " +
         "type=bind,src=/path/to/your/working-folder,dst=/work --mount " +
         "type=bind,src=/path/to/your/secrets-folder," +
         "dst=/path/to/your/secrets-folder,readonly ",

@@ -447,8 +447,8 @@ function CountOnlyResultInset({
       <p className={styles.small} style={{ margin: 0 }}>
         <span className={styles.mono}>{formatCount(count)}</span> records in
         common. This exchange reported the size of the overlap and nothing else
-        -- no records were matched to each other and no columns were shared --
-        so there is no result table to download.
+        - no records were matched to each other and no columns were shared - so
+        there is no result table to download.
       </p>
       {countReportedByPartner && (
         <p className={styles.small} style={{ marginBottom: 0 }}>
@@ -1151,14 +1151,14 @@ function ReattachedRunNotice({ state }: { state: ReattachedRunState }) {
       <p className={styles.calloutLead}>{REATTACHED_RUN_LEAD}</p>
       <p className={styles.small}>
         {state === "finished"
-          ? "This exchange was already running here -- from another tab or an earlier visit -- and has finished. Its results are below."
+          ? "This exchange was already running here - from another tab or an earlier visit - and has finished. Its results are below."
           : state === "stopped"
-            ? "This exchange was already running here -- from another tab or an earlier visit -- and has stopped. The reason is below."
-            : "This exchange was already running here -- from another tab or an earlier visit -- so you are watching it rather than starting a new one."}
+            ? "This exchange was already running here - from another tab or an earlier visit - and has stopped. The reason is below."
+            : "This exchange was already running here - from another tab or an earlier visit - so you are watching it rather than starting a new one."}
       </p>
       {state === "running" && (
         <p className={styles.small}>
-          You can leave this page -- the exchange keeps running here. Return to
+          You can leave this page - the exchange keeps running here. Return to
           this console to pick it up or discard it.
         </p>
       )}
@@ -1235,7 +1235,7 @@ const CONSOLE_LEAVE_CONFIRM = {
   title: "Start another exchange?",
   body:
     "Starting another exchange removes this one's results from this " +
-    "console -- download anything you need first.",
+    "console - download anything you need first.",
 };
 
 /** The workfoot link out to a fresh exchange, shown at completion and after

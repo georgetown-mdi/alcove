@@ -151,12 +151,12 @@ describe("ReviewCreateSection: the name this console signs under", () => {
       "set 'Your name' for this exchange to",
     );
     expect(app.container.textContent).toContain(
-      "at the command line -- docker run --rm --mount " +
+      "at the command line - docker run --rm --mount " +
         "type=bind,src=/path/to/your/working-folder,dst=/work ",
     );
     expect(app.container.textContent).toContain(
       " fingerprint --identity-file .alcove-signing-identity.json --force " +
-        "--identity NAME, with NAME that name -- then send",
+        "--identity NAME, with NAME that name - then send",
     );
     expect(app.container.textContent).not.toContain(" -it ");
   });

@@ -57,7 +57,7 @@ const PROFILE_UNAVAILABLE_COPY: Record<
   },
   not_a_csv: {
     title: "This does not look like a CSV",
-    body: "It has no columns to read -- it may be empty or may not be a CSV. Choose a CSV file with a header row.",
+    body: "It has no columns to read - it may be empty or may not be a CSV. Choose a CSV file with a header row.",
   },
   parse_failed: {
     title: "Could not read this file as a CSV",

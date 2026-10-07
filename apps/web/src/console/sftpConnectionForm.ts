@@ -218,7 +218,7 @@ export function hostPasted(
 
 // What the console says when the host field holds more than a bare host.
 const BARE_HOST_REQUIREMENT =
-  "Enter just the server address (like sftp.example.org) -- not a full URL " +
+  "Enter just the server address (like sftp.example.org) - not a full URL " +
   "or login details.";
 
 /** What the console says when a pasted address could not be read and the host
@@ -648,7 +648,7 @@ function fingerprintEntryError(fingerprint: string): string | undefined {
     return (
       "This looks like a signing fingerprint (43 characters, no prefix), not " +
       "the server's identity fingerprint. A server identity fingerprint starts " +
-      "with SHA256: -- ask whoever runs the SFTP server for it."
+      "with SHA256: - ask whoever runs the SFTP server for it."
     );
   return (
     "Enter the server's identity fingerprint in SHA256: form (SHA256: " +

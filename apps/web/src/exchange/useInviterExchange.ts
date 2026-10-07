@@ -295,10 +295,10 @@ function failureContentFor(
           "with your partner: either the location you picked, or the " +
           "console's default in your working folder, which picking " +
           "a location leaves behind. Whoever reads a signing key there can " +
-          "sign receipts in your name -- for every exchange, with every " +
+          "sign receipts in your name - for every exchange, with every " +
           "partner. Move the file at the location you picked out of every " +
           "folder you share with a partner, and move the file left at the " +
-          "console's default path to the location you picked -- or remove it, " +
+          "console's default path to the location you picked - or remove it, " +
           "if that key is not one you use, knowing that a replacement has a " +
           "new fingerprint every partner who pinned the old one must be sent " +
           "before their verification works again. You can also give the " +
@@ -308,7 +308,7 @@ function failureContentFor(
         : "The console did not start it. A file sits at your signing " +
           "identity's path, in a folder this exchange shares with your " +
           "partner. Whoever reads a signing key there can sign receipts in " +
-          "your name -- for every exchange, with every partner. Move that " +
+          "your name - for every exchange, with every partner. Move that " +
           "file out of every folder you share with a partner, or give the " +
           "shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate " +
           "from the folder holding your key, input, and results, then run the " +
@@ -358,8 +358,8 @@ function failureContentFor(
       title: "The saved SFTP connection uses one of the console's own files",
       message:
         "The console did not start this exchange. The saved SFTP connection " +
-        "names a credential file that is one of the console's own -- your " +
-        "signing identity, the exchange's key file, or its configuration -- " +
+        "names a credential file that is one of the console's own - your " +
+        "signing identity, the exchange's key file, or its configuration - " +
         "and none of them is a server credential. Start over, choose Edit " +
         "connection on the SFTP connection, and choose the file that holds " +
         "your SFTP password or private key.",

@@ -75,8 +75,8 @@ export function AcceptorSftpConnectionCard({
           </Text>
         </Group>
         <Text size="sm" c="dimmed">
-          The connection is not verified until the exchange runs -- Alcove
-          checks the server against the fingerprint you gave and signs in then.
+          The connection is not verified until the exchange runs - Alcove checks
+          the server against the fingerprint you gave and signs in then.
           Credentials stay on this machine.
         </Text>
         <SftpCredentialWarnings
@@ -101,7 +101,7 @@ export function AcceptorSftpConnectionCard({
           <span className={styles.mono}>
             {sanitizeForDisplay(sftpConnectionLabel(locator))}
           </span>
-          . Set up your connection before you start -- you sign in with your own
+          . Set up your connection before you start - you sign in with your own
           account and confirm the server&apos;s identity fingerprint.
         </Text>
         <Button

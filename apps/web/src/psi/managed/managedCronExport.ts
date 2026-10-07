@@ -174,6 +174,10 @@ export interface ManagedCronExport extends ManagedCommandLineConfig {
   key: ManagedCronExportFile;
 }
 
+/** The next step after any refusal of a stored exchange's settings. */
+const IMPORT_AGAIN_THEN_EXPORT =
+  "Import this exchange again from its configuration file, then export again.";
+
 /**
  * Narrow a record's stored connection to what a configuration on its channel
  * holds, refusing any field outside it -- the exchange-file schema alone
@@ -187,19 +191,18 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
   const outside = connectionFieldsNotHeld(connection);
   if (outside.length > 0)
     throw new Error(
-      "a managed exchange is exported to the command line only from the " +
-        `connection settings this app holds on ${connection.channel}; the ` +
-        "stored connection carries field(s) outside them, which the exported " +
-        "alcove.yaml would republish for the CLI to resolve. Remove: " +
-        outside.join(", "),
+      "This exchange's connection settings include fields this app does " +
+        `not export to the command line: ${outside.join(", ")}. ` +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   const literal = literalCredentialFields(connection);
   if (literal.length > 0)
     throw new Error(
-      "a managed exchange's exported alcove.yaml names a credential only as " +
-        "an @path reference; the stored connection states one as a value. " +
-        "Remove: " +
-        literal.join(", "),
+      "This exchange's connection settings state a credential as a value, " +
+        "which the command-line export cannot write. These fields hold a " +
+        "literal value where a file reference beginning with @ is needed: " +
+        `${literal.join(", ")}. ` +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   return connection;
 }
@@ -260,8 +263,10 @@ function exportedConnection(
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
     throw new Error(
-      "a managed webrtc exchange is exported with the side it runs as; the " +
-        "stored record holds none",
+      "This exchange's stored settings are damaged: they do not record " +
+        "whether you are the inviter or the acceptor, which the command " +
+        "line needs. " +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
   return {
     ...connection,
@@ -307,10 +312,10 @@ function assertNoReinviteRegistrationPending(
 function assertNoStoredAuthentication(exchangeFile: ExchangeSpec): void {
   if (exchangeFile.authentication !== undefined)
     throw new Error(
-      "a managed exchange's stored document carries no authentication block; " +
-        "the exported configuration's block is composed from the local " +
-        "max-age policy alone, so a stored one is refused rather than " +
-        "republished",
+      "This exchange's stored settings are damaged: they include an " +
+        "authentication block, which this app does not export to the " +
+        "command line. " +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
 }
 
@@ -324,11 +329,9 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
   const outside = fieldsOutsideComposableDocument(document);
   if (outside.length > 0)
     throw new Error(
-      "a managed exchange is exported to the command line only from the " +
-        "document fields a command-line configuration holds here; the stored " +
-        "document carries field(s) outside them, which the exported " +
-        "alcove.yaml would republish. Remove: " +
-        outside.join(", "),
+      "This exchange's settings include fields this app does not export " +
+        `to the command line: ${outside.join(", ")}. ` +
+        IMPORT_AGAIN_THEN_EXPORT,
     );
 }
 
@@ -377,7 +380,11 @@ const PEER_TIMEOUT_UNITS: ReadonlyArray<[string, number]> = [
  * largest unit that states it exactly. */
 function durationFlagValue(seconds: number): string {
   if (!Number.isInteger(seconds))
-    throw new Error("a --peer-timeout value must be a whole number of seconds");
+    throw new Error(
+      `This exchange's run window is ${seconds} seconds, and the command ` +
+        "line waits only a whole number of seconds. Change the schedule's " +
+        "run window, and then export again.",
+    );
   for (const [unit, size] of PEER_TIMEOUT_UNITS)
     if (seconds % size === 0) return `${seconds / size}${unit}`;
   return `${seconds}s`;

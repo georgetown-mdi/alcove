@@ -710,7 +710,7 @@ describe("acceptUnsupported (runnability by endpoint shape)", () => {
     expect(unsupported?.message).toContain("JOB_RENDEZVOUS_OUTBOUND_DIR");
   });
 
-  test("a single-directory filedrop on a split console says it has no folder to meet in", () => {
+  test("a single-directory filedrop on a split console says it has no single shared folder", () => {
     const unsupported = acceptUnsupported(SINGLE_DIR_FILEDROP, SPLIT_MOUNT);
     expect(unsupported?.message).toContain("no single");
   });

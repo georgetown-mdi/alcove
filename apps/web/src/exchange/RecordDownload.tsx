@@ -43,7 +43,7 @@ export const TERMINATED_RECORD_KEYS_NOTICE =
   "The verification keys are offered beside it, but this run left them nothing " +
   "to open: opening one of the record's commitments takes that run's result " +
   "file, and a run that stopped here wrote none. The record still states what " +
-  "you disclosed and still pairs with any receipt your partner holds -- what " +
+  "you disclosed and still pairs with any receipt your partner holds - what " +
   "this pair cannot do is demonstrate that by opening a commitment. Keep the " +
   "keys private all the same.";
 
@@ -53,8 +53,8 @@ export const TERMINATED_RECORD_KEYS_NOTICE =
  * leaving the page or starting another run on it.
  */
 export const TERMINATED_RECORD_PAGE_NOTICE =
-  "The record states what this run disclosed -- to whom, under which agreement, " +
-  "over what categories of data, and how many of your records went into it -- " +
+  "The record states what this run disclosed - to whom, under which agreement, " +
+  "over what categories of data, and how many of your records went into it - " +
   "which is what a disclosure accounting is written from. Download it now: " +
   "this page holds the only copy, and trying again, starting over, or leaving " +
   "the page discards it, while the disclosure it records still happened.";

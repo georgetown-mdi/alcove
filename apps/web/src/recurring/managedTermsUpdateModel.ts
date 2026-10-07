@@ -79,7 +79,7 @@ export const TERMS_UPDATE_WITHHELD_TEXT = {
     "This exchange's terms name no identity for you, so it cannot make or " +
     "apply a terms update. Start a new exchange that names your agency.",
   "run-in-flight":
-    "This exchange is running right now -- in this browser, in another tab, " +
+    "This exchange is running right now - in this browser, in another tab, " +
     "or on its schedule. The run replaces the shared secret a terms update " +
     "is made and checked under, so make or apply one when it finishes.",
 } as const satisfies Record<ManagedTermsUpdateRefusal, string>;

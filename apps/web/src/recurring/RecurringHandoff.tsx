@@ -266,8 +266,8 @@ function ConfigSteps({
                 "which discarding the run deletes."}{" "}
             Copy that file into the same folder as alcove.yaml, readable only by
             you (chmod 600 on Linux/macOS). The secret rotates at each run's
-            handshake, before any data moves -- even a run that later failed has
-            usually rotated it -- so take your copy from the file as it stands
+            handshake, before any data moves - even a run that later failed has
+            usually rotated it - so take your copy from the file as it stands
             after your last run here, never from an earlier one.
           </p>
         </li>
@@ -282,7 +282,7 @@ function ConfigSteps({
             you chose on the console: your working folder, or the file you
             picked in your secrets folder. Copy that file to the scheduling
             machine, readable only by you (chmod 600 on Linux/macOS), and set
-            signing.identity_file to where you put it -- the path in the
+            signing.identity_file to where you put it - the path in the
             configuration above is a placeholder. Copy it; do not run alcove
             fingerprint there to make a new one. That mints a different key with
             a different fingerprint, and your partner has pinned the old one.

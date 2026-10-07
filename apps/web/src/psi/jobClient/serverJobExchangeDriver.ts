@@ -773,7 +773,7 @@ const EVENT_STREAM_RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
 /** What the operator is told when the reconnects are exhausted: the console's
  * run is not known to have failed, only unobservable from here. */
 const EVENT_STREAM_LOST_MESSAGE =
-  "the connection to the exchange event stream was lost; the run may still be in progress on the console -- reload to re-attach";
+  "the connection to the exchange event stream was lost; the run may still be in progress on the console - reload to re-attach";
 
 /**
  * The longest event-stream frame this page reads, in UTF-16 code units, and so
