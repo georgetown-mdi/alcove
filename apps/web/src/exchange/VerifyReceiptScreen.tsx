@@ -160,15 +160,15 @@ function toneIcon(tone: VerdictTone): ReactNode {
   return <IconAlertTriangle aria-hidden />;
 }
 
-/** A chosen file's text, or the message the page shows when the read
- * rejects, in the shape the parse outcomes share. */
-async function readChosenFile(
+/** Reads a chosen file and parses its text, or returns the message the page
+ * shows when the read rejects, in the shape the parse outcomes share. */
+async function readAndParse<T>(
   file: File,
-): Promise<
-  { kind: "ok"; content: string } | { kind: "unreadable"; message: string }
-> {
+  parse: (content: string) => T | Promise<T>,
+): Promise<T | { kind: "unreadable"; message: string }> {
+  let content: string;
   try {
-    return { kind: "ok", content: await file.text() };
+    content = await file.text();
   } catch (error) {
     log.warn(
       "a chosen file could not be read:",
@@ -176,6 +176,7 @@ async function readChosenFile(
     );
     return { kind: "unreadable", message: unreadableFileMessage(file.name) };
   }
+  return parse(content);
 }
 
 /** A labelled JSON dropzone: a parameterized copy of the console's CSV intake
@@ -447,9 +448,7 @@ export function VerifyReceiptScreen() {
   async function onRecordFile(file: File) {
     const read = recordReads.next();
     invalidateVerdicts();
-    const contents = await readChosenFile(file);
-    const parsed =
-      contents.kind === "ok" ? parseRecordDocument(contents.content) : contents;
+    const parsed = await readAndParse(file, parseRecordDocument);
     if (!recordReads.isCurrent(read)) return;
     clearExchangeScopedInputs();
     const chosen = { name: file.name };
@@ -462,9 +461,7 @@ export function VerifyReceiptScreen() {
   async function onKeysFile(file: File) {
     const read = keysReads.next();
     invalidateVerdicts();
-    const contents = await readChosenFile(file);
-    const parsed =
-      contents.kind === "ok" ? parseKeysDocument(contents.content) : contents;
+    const parsed = await readAndParse(file, parseKeysDocument);
     if (!keysReads.isCurrent(read)) return;
     clearExchangeScopedInputs();
     const chosen = { name: file.name };
@@ -476,11 +473,7 @@ export function VerifyReceiptScreen() {
   async function onSignedRecordFile(file: File) {
     const read = signedRecordReads.next();
     invalidateVerdicts();
-    const contents = await readChosenFile(file);
-    const parsed =
-      contents.kind === "ok"
-        ? parseSignedRecordDocument(contents.content)
-        : contents;
+    const parsed = await readAndParse(file, parseSignedRecordDocument);
     if (!signedRecordReads.isCurrent(read)) return;
     const chosen = { name: file.name };
     if (parsed.kind === "ok")
@@ -492,11 +485,7 @@ export function VerifyReceiptScreen() {
   async function onCertificateFile(file: File) {
     const read = certificateReads.next();
     invalidateVerdicts();
-    const contents = await readChosenFile(file);
-    const parsed =
-      contents.kind === "ok"
-        ? await parseCertificateDocument(contents.content)
-        : contents;
+    const parsed = await readAndParse(file, parseCertificateDocument);
     if (!certificateReads.isCurrent(read)) return;
     const chosen = { name: file.name };
     if (parsed.kind === "ok")

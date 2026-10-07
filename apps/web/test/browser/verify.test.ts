@@ -749,9 +749,7 @@ describe("verify receipt screen", { timeout: 40_000 }, () => {
       .toBeEnabled();
   });
 
-  // A read that rejects (the file moved, deleted, or its permission withdrawn
-  // after it was chosen) is named in the slot's alert; an unhandled rejection
-  // would fail the test run.
+  // A rejected read is named in the slot's alert, not left unhandled.
   test.each([
     { label: "Exchange record", title: "This record could not be used" },
     { label: "Verification keys", title: "These keys could not be used" },
