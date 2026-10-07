@@ -3,7 +3,11 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 
-import { cliEntry, pairsFromResultCsv } from "../interop/cliParty.ts";
+import {
+  cliEntry,
+  pairsFromResultCsv,
+  resultFileIn,
+} from "../interop/cliParty.ts";
 import { trackChild } from "../utils/childProcess.ts";
 
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
@@ -85,8 +89,8 @@ function loggedAt(output: string, fragment: string): number | null {
 }
 
 /**
- * The matched pairs the CLI party's result file holds, or null when it wrote
- * none.
+ * The matched pairs in the result file of the CLI party's output folder, or
+ * null when it wrote none.
  *
  * Read only from a run that exited 0 within its deadline: a killed or failing
  * run can leave a truncated file, and the parse error that file raises would be
@@ -100,7 +104,7 @@ function readPairs(
 ): Array<MatchedPair> | null {
   if (!existsSync(resultPath)) return null;
   try {
-    return pairsFromResultCsv(resultPath);
+    return pairsFromResultCsv(resultFileIn(resultPath));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(
@@ -136,7 +140,7 @@ export async function startCliInviter(
 
   const work = mkdtempSync(path.join(tmpdir(), "alcove-live-webrtc-"));
   const inputPath = path.join(work, "input.csv");
-  const outputPath = path.join(work, "result.csv");
+  const outputPath = path.join(work, "results");
   writeFileSync(inputPath, CLI_CSV);
 
   const child = spawn(
