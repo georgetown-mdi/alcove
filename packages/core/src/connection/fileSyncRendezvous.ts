@@ -39,7 +39,9 @@ import {
   UsageError,
   BilateralModeMismatchError,
   FrameSizeExceededError,
+  chainDetailCauses,
   markPeerWaitTimeout,
+  markStatesItsOwnNextStep,
   errorMessage,
 } from "../errors";
 import { failureCauseError } from "../failureCause";
@@ -134,6 +136,28 @@ const unreadableHelloReason = (err: unknown): string | undefined => {
   if (err instanceof MalformedHelloError)
     return "its contents are not a valid hello";
   return undefined;
+};
+
+// The unforced refusal's next step for a peer hello the force flag clears.
+const FORCE_RETAIN_SWEEP_STEP =
+  "A peer hello could not be read, so retain mode cannot be ruled out and " +
+  "--sweep-exchange-files will not delete anything. If no other exchange " +
+  "uses this folder, re-run with --force-retain-sweep to delete this " +
+  "exchange's files in it, including any retained transcript.";
+
+// Chains the step as a cause link of its own, so the display cap on a link
+// holding partner-chosen text cannot cut it: behind the class's own next step
+// (its first cause link) and ahead of every detail fragment.
+const chainForceRetainSweepStep = (err: UsageError): void => {
+  if (err instanceof FrameSizeExceededError && err.cause instanceof Error) {
+    err.cause.cause = chainDetailCauses(
+      [FORCE_RETAIN_SWEEP_STEP],
+      err.cause.cause,
+    );
+    return;
+  }
+  err.cause = chainDetailCauses([FORCE_RETAIN_SWEEP_STEP], err.cause);
+  markStatesItsOwnNextStep(err);
 };
 
 // Reads the hello control file through the I5 partial-sync gate: refuses a
@@ -868,11 +892,7 @@ export class FileSyncRendezvous {
             err instanceof UsageError &&
             (reason === undefined || !deps.options().forceRetainSweep)
           ) {
-            if (reason !== undefined)
-              err.message +=
-                ` Peer hello ${hello.name} could not be read, so retain ` +
-                "mode cannot be ruled out. Re-run with --force-retain-sweep " +
-                "to delete it anyway.";
+            if (reason !== undefined) chainForceRetainSweepStep(err);
             throw err;
           }
           // Sticky: a later hello reading retain_files=false does not clear
