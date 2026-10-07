@@ -33,6 +33,7 @@ import {
   pinnedFingerprintProblem,
   signedVerdictViewModel,
   statedTermsForVerification,
+  unreadableFileMessage,
   verdictViewModel,
   verifySignedRecord,
 } from "@exchange/verifyReceiptModel";
@@ -857,6 +858,22 @@ describe("parseCertificateDocument", () => {
     const parsed = await parseCertificateDocument(`{"x": ${esc}[31m`);
     expect(parsed.kind).toBe("malformed");
     if (parsed.kind === "malformed") expect(parsed.message).not.toContain(esc);
+  });
+});
+
+describe("unreadableFileMessage", () => {
+  test("names the file and says to choose it again", () => {
+    const message = unreadableFileMessage("alcove-record-1.json");
+    expect(message).toContain('"alcove-record-1.json"');
+    expect(message).toMatch(/could not read/i);
+    expect(message).toContain("choose it again");
+  });
+
+  test("escapes control bytes in the file name", () => {
+    const esc = String.fromCharCode(0x1b);
+    const message = unreadableFileMessage(`a${esc}[31m.json`);
+    expect(message).not.toContain(esc);
+    expect(message).toContain(sanitizeForDisplay(`a${esc}[31m.json`));
   });
 });
 

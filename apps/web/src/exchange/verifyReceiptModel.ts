@@ -163,6 +163,18 @@ const SIGNING_IDENTITY_MESSAGE =
   "certificate with 'alcove fingerprint --export-certificate <path>' and load " +
   "that instead.";
 
+/**
+ * The message for a chosen file whose read failed -- moved, deleted, or its
+ * permission withdrawn after it was chosen -- naming the file, escaped, and
+ * the remedy.
+ */
+export function unreadableFileMessage(fileName: string): string {
+  return (
+    `Could not read the file "${sanitizeForDisplay(fileName)}". Check that it ` +
+    `still exists and that you can open it, then choose it again.`
+  );
+}
+
 const RECOGNIZED_VERSIONS = {
   record: { what: "record", version: EXCHANGE_RECORD_VERSION },
   keys: { what: "verification-keys", version: EXCHANGE_KEYS_VERSION },
