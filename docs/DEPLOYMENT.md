@@ -138,6 +138,16 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 - **Every response carries `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential, so a page on another origin reading one reads nothing it could not fetch itself. On the project's `pages.dev` names, Pages also adds `x-robots-tag: noindex`; it does not add it on the custom domains.
 - **A missing `/assets/` file answers with the root document,** with status 200 and the `/assets/*` rule's one-year `immutable` `Cache-Control`. Asset names carry a content hash, so a URL that misses never becomes valid later, and the service worker refuses to cache a response whose content type is not the asset's ([notes/hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
 
+### What the deployment logs
+
+[PRIVACY.md](../PRIVACY.md#hosted-web-application) lists each log's fields and how long each is kept.
+
+- **The project keeps no log of page requests.** The Pages project has no Functions, Cloudflare Web Analytics is off, and the zone has no Logpush job. Cloudflare's own request records are under Cloudflare's retention, not the project's.
+- **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which runs the broker, its nginx TLS front and the relay (coturn).
+- **Their logs are in that host's system journal:** the nginx front's access log and error log, the broker's output and coturn's output. The containers write to it through Docker's `journald` log driver, and nothing ships the journal off the host.
+- **The access log records the request path without the query string,** so the rendezvous identifier and client token in a signaling URL are not written to it.
+- **Retention is bounded by the host's journald configuration.** That configuration, the nginx configuration and the units live on the host, not in this repository.
+
 ## Diagnosing web connection failures
 
 By default the web client logs PeerJS connection activity at errors-only, so a normal exchange prints no connection-diagnostic detail to the browser console. This is deliberate: PeerJS's warning-level logs interpolate the remote peer id, and a web exchange's peer ids are rendezvous addresses derived from the invitation secret, which the app keeps out of its logs (see [SECURITY_DESIGN.md](SECURITY_DESIGN.md#channel-security)).
