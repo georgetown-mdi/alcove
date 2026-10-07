@@ -903,6 +903,40 @@ describe("FileSyncRendezvous identity reset per rejected path", () => {
     expect(p.state.resetCount).toBe(1);
   });
 
+  test("a changed lockless peer hello rolls back this party's own files and leaves the partner's", async () => {
+    const files = new Map<string, Buffer>();
+    const flags = { locklessRendezvous: true, retainFiles: false };
+    placePeerHello(files, "zzz", flags);
+    placePeerHello(files, "aaa-2", flags);
+    const otherAck = ackMarkerName("aaa-2", helloStem("aaa"));
+    files.set(`${DIR}/${otherAck}`, Buffer.alloc(0));
+    const lateNames = [helloName("aaa-2"), otherAck];
+    const ownAck = ackMarkerName("aaa", helloStem("zzz"));
+    const ops: string[] = [];
+    const p = makeParty("aaa", flags, files, {
+      ops,
+      listScript: (entries, call) =>
+        call < 2
+          ? entries.filter((e) => !lateNames.includes(e.name))
+          : entries.filter((e) => e.name !== helloName("zzz")),
+    });
+
+    await expect(p.rdv.run(p.scope)).rejects.toMatchObject({
+      message: expect.stringContaining("peer hello changed"),
+    });
+    expect(ops).toEqual(
+      expect.arrayContaining([
+        `rename:${helloName("aaa")}`,
+        `rename:${ownAck}`,
+      ]),
+    );
+    expect([...files.keys()].sort()).toEqual(
+      [helloName("zzz"), helloName("aaa-2"), otherAck]
+        .map((name) => `${DIR}/${name}`)
+        .sort(),
+    );
+  });
+
   test("the final gate refuses a committed id that extends this party's at a dash", async () => {
     // Every commit site checks the id it commits, so the gate's input is
     // supplied by a setPeerId that commits a different id from the one checked.
