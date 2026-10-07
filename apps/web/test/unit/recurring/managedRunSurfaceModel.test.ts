@@ -11,6 +11,7 @@ import {
   managedSurfaceView,
 } from "@recurring/managedRunSurfaceModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
+import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
 import type {
   ManagedRunAction,
@@ -259,6 +260,19 @@ describe("what the driver reports along the way", () => {
       { type: "run-settled" },
     ]);
     expect(state.warnings).toEqual(["late"]);
+  });
+
+  test("a notice holds the seat's single escape of the driver's message", () => {
+    const message = '<b>&amp; "x" \\ \u0007';
+    const [escapedWarning] = appendSanitizedRunWarning([], message);
+    const state = fold([
+      { type: "run-started" },
+      { type: "warning-raised", escapedWarning },
+    ]);
+    expect(state.warnings).toEqual(['<b>&amp; "x" \\\\ \\x07']);
+    expect(state.warnings[0]).not.toBe(message);
+    const [escapedTwice] = appendSanitizedRunWarning([], state.warnings[0]);
+    expect(escapedTwice).not.toBe(state.warnings[0]);
   });
 
   test("a new run starts with no notices and no resolved matching", () => {
