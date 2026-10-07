@@ -786,13 +786,13 @@ const KEY_FILE_CHOOSER_NOTE =
  * ({@link custodyUnreadableImportReason}).
  *
  * An import that could not bring the source's working folder stops here
- * with that notice and a button onward, rather than taking the operator straight to
- * the exchange ({@link oneFileImportedNotice}): the folder is what they have to
- * choose again, and the notice is only read where it is shown. A pair import stops
- * the same way to say the exchange now runs here, to name the settings it keeps
- * without a control, and to name the relay urls this browser's relay settings
- * stand in for ({@link pairImportedNotice}). Either names a setting the
- * configuration states that Alcove no longer reads. An import with nothing to say goes
+ * with that notice and a button onward, rather than taking the operator
+ * straight to the exchange ({@link oneFileImportedNotice}): the folder is
+ * what they have to choose again, and the notice is only read where it is
+ * shown. A pair import stops the same way to say the exchange now runs
+ * here, to name the settings it keeps without a control, and to name the
+ * relay urls this browser's relay settings stand in for
+ * ({@link pairImportedNotice}). An import with nothing to say goes
  * straight through. */
 function ImportExchangeFile() {
   const {
