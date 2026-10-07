@@ -1156,10 +1156,12 @@ export async function handler(argv: Arguments): Promise<void> {
             : undefined,
       });
 
-      // The connection's own refusals, made again where the run dials and
-      // wakes the server, so that a refused configuration leaves no key file.
-      assertWebRtcConnectionResolvable(connection);
-      assertWakeCallFormable(connection);
+      // With --invitation, the connection's own refusals run before the key
+      // file is written; preflightRun repeats them for every run.
+      if (invitation !== undefined) {
+        assertWebRtcConnectionResolvable(connection);
+        assertWakeCallFormable(connection);
+      }
 
       // Written only after every refusal the configuration alone decides. It
       // decodes the code (fail-closed on checksum, schema, or expiry) and

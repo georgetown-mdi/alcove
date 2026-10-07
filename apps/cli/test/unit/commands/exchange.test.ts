@@ -2575,7 +2575,9 @@ test.each([
     vi.mocked(provisionKeyFileFromInvitation).mockClear();
     const exitSpy = captureProcessExit();
     try {
+      saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
       await expect(handler(argv)).rejects.toThrow(/^exit:/);
+      fs.rmSync(keyFile);
       const [configFailureCode] = exitSpy.mock.calls[0];
       const configFailure = mockState.errors.join("\n");
       expect(configFailure).toContain(says);
@@ -3665,6 +3667,55 @@ test("handler: a local refusal under --event-stream emits its terminal error eve
     expect(events[1]).toMatchObject({
       category: "exchange",
       message: "shared secret expired at 2020-01-01T00:00:00Z",
+    });
+  } finally {
+    fstat.mockRestore();
+    write.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: a webrtc config with no role refuses as the event stream's terminal error event without --invitation", async () => {
+  const argv = provisionedRun({
+    channel: "webrtc",
+    server: { host: "peers.example.org" },
+  });
+  const lines: string[] = [];
+  const realFstatSync = fs.fstatSync;
+  const realWriteSync = fs.writeSync;
+  const fstat = vi
+    .spyOn(fs, "fstatSync")
+    .mockImplementation(((fd: number, ...rest: unknown[]) =>
+      fd === 3
+        ? ({} as fs.Stats)
+        : (realFstatSync as (...args: unknown[]) => fs.Stats)(
+            fd,
+            ...rest,
+          )) as typeof fs.fstatSync);
+  const write = vi.spyOn(fs, "writeSync").mockImplementation(((
+    fd: number,
+    buffer: Uint8Array | string,
+    ...rest: unknown[]
+  ) => {
+    if (fd !== 3)
+      return (realWriteSync as (...args: unknown[]) => number)(
+        fd,
+        buffer,
+        ...rest,
+      );
+    const text = Buffer.from(buffer).toString("utf8");
+    if (text.length > 0) lines.push(...text.split("\n").filter(Boolean));
+    return Buffer.byteLength(text);
+  }) as typeof fs.writeSync);
+  stubProvisionFetch(200);
+  try {
+    await expectExchangeExit({ ...argv, "event-stream": true }, 64);
+    const events = lines.map((line) => JSON.parse(line) as { type: string });
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[events.length - 1]).toMatchObject({
+      type: "error",
+      category: "exchange",
+      message: expect.stringContaining("this webrtc connection has no `role`"),
     });
   } finally {
     fstat.mockRestore();
