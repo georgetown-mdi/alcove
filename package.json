@@ -76,7 +76,7 @@
     "node": ">=26"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^5.0.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^10.11.0",
     "prettier": "^3.9.9",
     "semver": "^7.8.5",
