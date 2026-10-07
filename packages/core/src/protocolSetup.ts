@@ -826,7 +826,6 @@ export async function exchangeTerms(
     const msg = parseOrProtocolError(termsWithDecisionMessage, rawMsg);
 
     if (msg.decision === "abort") {
-      // The responder's abort contains the terms it compared against ours.
       const abortTerms = safeParseLinkageTerms(msg.linkageTerms);
       throw partnerAbortError(
         msg.abortReasons,
