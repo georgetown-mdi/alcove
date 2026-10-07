@@ -56,8 +56,8 @@ export interface ManagedRecoveryState {
     /** The store refused this page's mint over an answer the page had not read
      * (another tab's), so the page shows the response as if it had read it. */
     withheldByStore: boolean;
-    /** The run number of the failure whose gate the answer was given at on this
-     * visit; an answer given at the standing condition's gate names none. */
+    /** The run number of the failure whose gate the answer was last given at on
+     * this visit; an answer at the standing condition's gate leaves it unchanged. */
     answeredFor: number | undefined;
   };
   /** Kept apart from the live failure's gate: both can show at once, and clearing
