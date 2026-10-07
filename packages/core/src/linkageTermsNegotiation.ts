@@ -368,7 +368,7 @@ export type PartnerBoundTerms = Omit<
  * An edit that leaves the projection's canonical encoding unchanged changes
  * nothing {@link validateCompatibility} compares, nor the `deduplicate` an
  * accepted invitation binds (`assertPresentedDeduplicateMatchesInvitation`,
- * exchange.ts).
+ * exchange/termsRefusals.ts).
  */
 export function partnerBoundTerms(terms: LinkageTerms): PartnerBoundTerms {
   const { identity: _identity, date: _date, ...bound } = terms;

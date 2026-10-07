@@ -473,7 +473,7 @@ per-party and local -- never exchanged, cross-checked, or folded into the
 agreed-terms hash -- and it is enforced at run time rather than merely recorded.
 
 `runExchange` holds the value the partner presents at the terms exchange to it
-(`assertPresentedDeduplicateMatchesInvitation`, `packages/core/src/exchange.ts`)
+(`assertPresentedDeduplicateMatchesInvitation`, `packages/core/src/exchange/termsRefusals.ts`)
 and aborts on a contradiction as an `InvitationTermDivergenceError` -- a
 `ConnectionError` of kind `protocol`, CLI exit 76 -- before any key or payload
 moves. The refusal is one-sided by construction: only the accepting party holds
