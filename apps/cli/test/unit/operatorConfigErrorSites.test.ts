@@ -374,9 +374,9 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
     interpolates: ["configPath", "invalidTerm"],
     provenance:
       "`configPath` is the operator's own path, as below. `invalidTerm` " +
-      "(termsUpdateInvalidTerm in config.ts) is the top-level key of the " +
-      "operator's configuration a schema issue sits under -- a key the " +
-      "operator wrote or one of the fixed keys the terms write sets -- " +
+      "(termsUpdateInvalidTerm in config/termsUpdate.ts) is the top-level key " +
+      "of the operator's configuration a schema issue sits under -- a key " +
+      "the operator wrote or one of the fixed keys the terms write sets -- " +
       "joined, under linkage_terms, to a field name only when it is on that " +
       "function's fixed list. No partner-chosen text reaches it.",
   },
