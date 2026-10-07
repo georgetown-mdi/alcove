@@ -2311,6 +2311,46 @@ describe("fetchSftpConnection", () => {
     });
   });
 
+  test.each(["sftp-url-directory", "sftp-fingerprint-list"])(
+    "keeps the quick-exchange refusal %s",
+    async (zeroSetupRefusal) => {
+      await expect(
+        fetchSftpConnection(
+          jsonResponse({
+            configured: true,
+            host: "sftp.example.gov",
+            credentialWarnings: [],
+            zeroSetupRefusal,
+          }),
+        ),
+      ).resolves.toEqual({
+        connection: {
+          host: "sftp.example.gov",
+          credentialWarnings: [],
+          zeroSetupRefusal,
+        },
+      });
+    },
+  );
+
+  test.each(["signing-identity-in-rendezvous", "unknown-token", 7])(
+    "drops a quick-exchange refusal it does not know (%s)",
+    async (zeroSetupRefusal) => {
+      await expect(
+        fetchSftpConnection(
+          jsonResponse({
+            configured: true,
+            host: "sftp.example.gov",
+            credentialWarnings: [],
+            zeroSetupRefusal,
+          }),
+        ),
+      ).resolves.toEqual({
+        connection: { host: "sftp.example.gov", credentialWarnings: [] },
+      });
+    },
+  );
+
   test("GETs the sftp route", async () => {
     const urls: Array<string> = [];
     await fetchSftpConnection((input: RequestInfo | URL) => {

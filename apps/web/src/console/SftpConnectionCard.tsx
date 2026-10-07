@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import styles from "@styles/app.module.css";
 
@@ -14,6 +15,7 @@ import {
 } from "./sftpConnectionChoice";
 import { SftpAuthoringForm } from "./SftpAuthoringForm";
 import { SftpCredentialWarnings } from "./SftpCredentialWarnings";
+import { quickExchangeSftpRefusal } from "./quickExchangeSftpRefusal";
 
 import type { ProbeCeremony } from "./SftpAuthoringForm";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
@@ -27,7 +29,8 @@ import type { SftpConnectionProjection } from "@jobs/jobManager";
  * With a connection: edit/clear affordances and the accurate "Ready to try"
  * label (authored, not yet verified), plus any non-blocking credential
  * warnings; a split-directory connection whose retain mode has since been
- * turned off is labelled as needing it back instead. Without one: the empty
+ * turned off is labelled as needing it back instead, and on the direct path a
+ * connection a quick exchange refuses shows that refusal. Without one: the empty
  * state invites authoring, or a switch to save-a-file for the operator's own
  * command-line tool.
  *
@@ -66,8 +69,9 @@ export function SftpConnectionCard({
    * forwarded to {@link SftpAuthoringForm} (default `exchange`; `direct` on the
    * direct-exchange path). */
   probeCeremony?: ProbeCeremony;
-  /** Hold the connection to what a direct exchange can run, forwarded to
-   * {@link SftpAuthoringForm} (true on the direct-exchange path). */
+  /** Hold the connection to what a direct exchange can run: forwarded to
+   * {@link SftpAuthoringForm}, and a saved connection one refuses shows that
+   * refusal (true on the direct-exchange path). */
   directExchange?: boolean;
   /** Whether to offer the save-a-file alternative at all. True (the default) on the
    * inviter path, which can mint an exchange file for the command-line tool. False
@@ -90,35 +94,64 @@ export function SftpConnectionCard({
   // this connection was authored, so the summary re-asks the split-directory
   // precondition rather than calling a connection the run would refuse ready.
   const retainProblem = splitDirectoryRetainProblem(connection, retainFiles);
+  // A connection saved for an exchange can hold what a quick exchange refuses,
+  // so the direct path states job create's refusal here instead of calling it
+  // ready.
+  const directRefusal = directExchange
+    ? quickExchangeSftpRefusal(connection)
+    : undefined;
+  const ready = directRefusal === undefined && retainProblem === undefined;
 
   if (connection !== null && !formOpen)
     return (
       <Stack gap="xs" mt="xs">
         <Group gap="xs" align="center">
           <Badge
-            color={retainProblem === undefined ? "teal" : "orange"}
+            color={
+              directRefusal !== undefined
+                ? "red"
+                : retainProblem !== undefined
+                  ? "orange"
+                  : "teal"
+            }
             variant="light"
           >
-            {retainProblem === undefined ? "Ready to try" : "Needs retain mode"}
+            {directRefusal !== undefined
+              ? "Needs a change"
+              : retainProblem !== undefined
+                ? "Needs retain mode"
+                : "Ready to try"}
           </Badge>
           <Text size="sm">
-            {retainProblem === undefined
-              ? "Runs through "
-              : "Set up on this machine, through "}
+            {ready ? "Runs through " : "Set up on this machine, through "}
             <span className={styles.mono}>
               {sftpConnectionLabel(connection)}
             </span>
-            {retainProblem === undefined ? ", set up on this machine." : "."}
+            {ready ? ", set up on this machine." : "."}
           </Text>
         </Group>
-        {retainProblem !== undefined && (
-          <Text size="sm">{SPLIT_DIRECTORY_RETAIN_SUMMARY}</Text>
+        {directRefusal !== undefined ? (
+          <Alert
+            role="alert"
+            color="red"
+            icon={<IconAlertTriangle aria-hidden />}
+            title={directRefusal.title}
+          >
+            {directRefusal.message}
+          </Alert>
+        ) : (
+          <>
+            {retainProblem !== undefined && (
+              <Text size="sm">{SPLIT_DIRECTORY_RETAIN_SUMMARY}</Text>
+            )}
+            <Text size="sm" c="dimmed">
+              The connection is not verified until the exchange runs. Alcove
+              checks the server's host key and signs in then. Credentials stay
+              on this machine; the invitation contains only the server and
+              directory.
+            </Text>
+          </>
         )}
-        <Text size="sm" c="dimmed">
-          The connection is not verified until the exchange runs. Alcove checks
-          the server's host key and signs in then. Credentials stay on this
-          machine; the invitation contains only the server and directory.
-        </Text>
         <SftpCredentialWarnings
           warnings={connection.credentialWarnings ?? []}
         />

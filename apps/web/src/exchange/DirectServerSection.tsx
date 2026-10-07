@@ -19,6 +19,7 @@ import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
 import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
+import { quickExchangeSftpRefusal } from "@console/quickExchangeSftpRefusal";
 import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
@@ -121,6 +122,11 @@ export function DirectServerSection({
     splitDirectoryBlocked: splitDirectoryProblem !== undefined,
   });
   const canContinue = blockedReason === undefined;
+  // The SFTP card states job create's refusal of a saved connection; the step
+  // offers no way toward a run it would refuse.
+  const connectionRefused =
+    transport === "sftp" &&
+    quickExchangeSftpRefusal(sftpConnection) !== undefined;
 
   return (
     <Stack gap="lg">
@@ -251,13 +257,15 @@ export function DirectServerSection({
       )}
 
       <Group>
-        <Button
-          onClick={onContinue}
-          disabled={!canContinue}
-          aria-describedby={canContinue ? undefined : blockedReasonId}
-        >
-          Continue to confirm and run
-        </Button>
+        {!connectionRefused && (
+          <Button
+            onClick={onContinue}
+            disabled={!canContinue}
+            aria-describedby={canContinue ? undefined : blockedReasonId}
+          >
+            Continue to confirm and run
+          </Button>
+        )}
         <Button variant="default" onClick={onBack}>
           Back
         </Button>
@@ -266,7 +274,7 @@ export function DirectServerSection({
           appears mid-session is an empty -> non-empty transition assistive tech
           announces, rather than a region mounting with its text already set. */}
       <Text id={blockedReasonId} size="sm" c="dimmed" role="status">
-        {blockedReason}
+        {connectionRefused ? undefined : blockedReason}
       </Text>
     </Stack>
   );

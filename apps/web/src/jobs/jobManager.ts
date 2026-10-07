@@ -18,6 +18,7 @@ import {
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
+import { zeroSetupSftpRefusal } from "@jobContract/jobCreateRefusal";
 
 import {
   zeroSetupFiledropArgv,
@@ -118,6 +119,7 @@ import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
 import type { SftpProbeResult } from "./sftpProbe";
 import type { SigningFingerprintResult } from "./signingIdentity";
+import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
 /**
  * Thrown by {@link JobManager.createJob} when an sftp intent arrives but no
@@ -581,8 +583,9 @@ interface JobManagerOptions {
  * The public, credential-free projection of the authored SFTP connection
  * served by `GET /api/jobs/sftp`: the locator fields plus any non-blocking
  * credential warnings (each naming a field and a directory only, never a
- * secret). Constructed field-by-field from the entry -- never by spreading it
- * -- so no credential reference, fingerprint, or future field can ride along.
+ * secret), and the refusal a direct run would raise over it. Constructed
+ * field-by-field from the entry -- never by spreading it -- so no credential
+ * reference, fingerprint, or future field can ride along.
  */
 export interface SftpConnectionProjection {
   host: string;
@@ -596,6 +599,10 @@ export interface SftpConnectionProjection {
    * connection. */
   outboundPath?: string;
   credentialWarnings?: Array<string>;
+  /** The token job create refuses a direct (zero-setup) run of this connection
+   * with, absent when it would run. An exchange-mode run is not refused over
+   * it. */
+  zeroSetupRefusal?: ZeroSetupSftpRefusalReason;
 }
 
 /**
@@ -1020,8 +1027,8 @@ export class JobManager {
    * The credential-free projection of the authored SFTP connection for
    * `GET /api/jobs/sftp`, or null when none is authored. Explicitly mapped
    * field-by-field (never a spread) so only the locator fields {host, port, and
-   * whichever remote-directory form the entry holds} can ever cross the
-   * response boundary.
+   * whichever remote-directory form the entry holds}, the warnings, and the
+   * direct-run refusal token can ever cross the response boundary.
    */
   sftpProjection(): SftpConnectionProjection | null {
     const entry = this.authoredSftpServer;
@@ -1034,6 +1041,9 @@ export class JobManager {
     if (entry.outboundPath !== undefined)
       projection.outboundPath = entry.outboundPath;
     projection.credentialWarnings = this.authoredCredentialWarnings;
+    const zeroSetupRefusal = zeroSetupSftpRefusal(entry);
+    if (zeroSetupRefusal !== undefined)
+      projection.zeroSetupRefusal = zeroSetupRefusal;
     return projection;
   }
 

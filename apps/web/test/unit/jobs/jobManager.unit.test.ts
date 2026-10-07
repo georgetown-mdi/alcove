@@ -42,10 +42,18 @@ import {
   MAX_MOUNTED_KEY_FILE_BYTES,
   MountedKeyFileRefusedError,
 } from "@jobs/mountedKeyFile";
+import {
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
+  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+} from "@jobContract/jobCreateRefusal";
+import {
+  ZeroSetupFingerprintListError,
+  ZeroSetupRemoteDirectoryError,
+} from "@jobs/intentArgv";
 import { generateJobId, writeJobFile } from "@jobs/workdir";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { SIGNING_IDENTITY_FILE_NAME } from "@jobContract/intentSchemas";
-import { SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL } from "@jobContract/jobCreateRefusal";
 import { failureFor } from "@exchange/useInviterExchange";
 import { runArtifactNames } from "@jobContract/runArtifactNames";
 
@@ -1078,6 +1086,48 @@ describe("the in-app authored sftp connection", () => {
     });
     expect(manager.sftpProjection()).toEqual(projection);
   });
+
+  test.each([
+    [
+      "a dot-segment directory",
+      { path: "/exchange/../in" },
+      SFTP_URL_DIRECTORY_REFUSAL,
+      ZeroSetupRemoteDirectoryError,
+    ],
+    [
+      "the root directory",
+      { path: "/" },
+      SFTP_URL_DIRECTORY_REFUSAL,
+      ZeroSetupRemoteDirectoryError,
+    ],
+    [
+      "a split pair whose inbound half has a dot segment",
+      { path: undefined, inboundPath: "./in", outboundPath: "/out" },
+      SFTP_URL_DIRECTORY_REFUSAL,
+      ZeroSetupRemoteDirectoryError,
+    ],
+    [
+      "two host-key fingerprints",
+      {
+        hostKeyFingerprint: [
+          TEST_HOST_KEY_FINGERPRINT,
+          `SHA256:${"B".repeat(42)}A`,
+        ],
+      },
+      SFTP_FINGERPRINT_LIST_REFUSAL,
+      ZeroSetupFingerprintListError,
+    ],
+  ])(
+    "%s: the projection names the refusal quick-exchange job create raises",
+    async (_label, overrides, reason, refusalError) => {
+      const manager = makeManager({});
+      manager.authorSftpServer({ ...authoredBody(), ...overrides });
+      expect(manager.sftpProjection()?.zeroSetupRefusal).toBe(reason);
+      await expect(
+        manager.createJob(validZeroSetupSftpIntent()),
+      ).rejects.toThrow(refusalError);
+    },
+  );
 
   test("a credential inside the data root raises a non-blocking warning", () => {
     const manager = makeManager({});

@@ -22,11 +22,14 @@ import {
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
 import {
+  isJobCreateRefusalReason,
+  isZeroSetupSftpRefusalReason,
+} from "@jobContract/jobCreateRefusal";
+import {
   runArtifactNames,
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
 import { SWEEP_CONTROL_LABEL } from "@psi/runDiagnosticsModel";
-import { isJobCreateRefusalReason } from "@jobContract/jobCreateRefusal";
 import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 import { jobRecordDownloads } from "@psi/jobClient/jobExchangeRecord";
 import { refusedColumnNames } from "@psi/columnNames";
@@ -696,7 +699,8 @@ export async function fetchSftpConnection(
  * the operator did not provision. The non-blocking `credentialWarnings`
  * default to an empty array: a missing or malformed field is treated as "no
  * warnings" rather than dropping the connection (a warning is advisory, not
- * critical).
+ * critical). An unknown `zeroSetupRefusal` token is dropped the same way: job
+ * create still refuses the run it names.
  *
  * The remote directory is admitted in exactly one of its two forms: the
  * single shared `path`, or a COMPLETE `inboundPath`/`outboundPath` pair. A
@@ -721,6 +725,7 @@ export function sftpConnectionProjectionOf(
     inboundPath,
     outboundPath,
     credentialWarnings,
+    zeroSetupRefusal,
   } = body as Record<string, unknown>;
   if (configured !== true) return null;
   if (typeof host !== "string" || host.length === 0) return null;
@@ -758,6 +763,8 @@ export function sftpConnectionProjectionOf(
         (entry): entry is string => typeof entry === "string",
       )
     : [];
+  if (isZeroSetupSftpRefusalReason(zeroSetupRefusal))
+    connection.zeroSetupRefusal = zeroSetupRefusal;
   return connection;
 }
 
