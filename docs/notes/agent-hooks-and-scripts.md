@@ -608,7 +608,7 @@ The readback keeps the end of the file for the same reason; the file stays on di
 
 An unanchored search matches output that merely contains the notice, which is common:
 printing the hook, grepping the hooks directory or catting a transcript all quote it,
-and the hook then chased a path built out of the quoted line and warned about a file that was never supposed to exist.
+and the hook must not treat a quoted line as a path to warn about, because quoted text is output, not a file the agent named.
 Only the harness writes that sentence at position zero, so the anchored match is structural rather than lexical.
 
 ### What it does not cover
