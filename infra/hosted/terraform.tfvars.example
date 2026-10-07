@@ -1,8 +1,5 @@
 # Copy to terraform.tfvars, which is gitignored, and replace every <...> value.
 
-aws_account_id = "<12-digit account id>"
-aws_region     = "us-west-2"
-
 cloudflare_zone_id    = "<Cloudflare zone id>"
 cloudflare_account_id = "<Cloudflare account id>"
 pages_project_name    = "<CLOUDFLARE_PAGES_PROJECT>"
