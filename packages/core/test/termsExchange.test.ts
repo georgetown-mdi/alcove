@@ -1208,8 +1208,8 @@ test("a lone END marker in an abort reason deletes nothing", async () => {
 test("a field one party declares and the other does not is named on both sides", async () => {
   // Each side of a zero-setup run infers its terms from its own header, so a
   // file without an SSN column yields terms without the ssn field. The
-  // responder states the difference; the initiator reads it as the reasons on
-  // the responder's abort, each on a line of its own.
+  // responder refuses on the difference, and each party states it from its own
+  // side.
   const dobOnly: LinkageTerms = {
     ...termsB,
     linkageFields: [{ name: "dob", type: "date_of_birth" }],
@@ -1226,13 +1226,13 @@ test("a field one party declares and the other does not is named on both sides",
 
   expect(rendered(b)).toBe(
     "linkage terms are incompatible: " +
-      'linkage fields do not match: "ssn" is declared by one party only; ' +
-      'linkage keys do not match: "SSN" is declared by one party only',
+      'linkage fields do not match: only your partner declares "ssn"; ' +
+      'linkage keys do not match: only your partner declares "SSN"',
   );
   expect(rendered(a)).toBe(
-    `Your partner stopped the exchange at the linkage terms${REASON_LINK}` +
-      'linkage fields do not match: "ssn" is declared by one party only' +
-      `${PACKED_REASON}linkage keys do not match: "SSN" is declared by one party only`,
+    "Your partner stopped the exchange because the linkage terms differ: " +
+      'linkage fields do not match: only you declare "ssn"; ' +
+      'linkage keys do not match: only you declare "SSN"',
   );
   expect(rendered(a)).not.toContain("\\x0a");
 });
@@ -1247,8 +1247,8 @@ test("a plain abort reason displays as its own text", async () => {
 
 /**
  * Both parties' renders of a payload-column mismatch: the responder weighs the
- * terms and throws the incompatibility, and the initiator meets the same
- * errors as the reasons on the responder's abort.
+ * terms and throws the incompatibility, and the initiator words the same
+ * difference from its own copy of both documents.
  */
 async function columnMismatchRenders(
   name: string,
@@ -1264,26 +1264,227 @@ async function columnMismatchRenders(
 
 test("a marker in a partner column name leaves the diagnostic it names", async () => {
   const { initiator, responder } = await columnMismatchRenders(BEGIN_MARKER);
-  for (const rendered of [initiator, responder]) {
-    expect(rendered).toContain(REDACTION);
-    expect(rendered).toContain("do not match partner send columns");
-  }
-  expect(responder).toContain(
-    'linkage terms are incompatible: payload mismatch: local receive columns ["[redacted private key]"]',
+  expect(responder).toBe(
+    "linkage terms are incompatible: payload mismatch: your receive columns " +
+      `["${REDACTION}"] do not match your partner's send columns []`,
   );
-  expect(initiator).toContain(
-    `Your partner stopped the exchange at the linkage terms${REASON_LINK}payload mismatch:`,
+  expect(initiator).toBe(
+    "Your partner stopped the exchange because the linkage terms differ: " +
+      "payload mismatch: your send columns [] do not match your partner's " +
+      `receive columns ["${REDACTION}"]`,
   );
 });
 
 test("a plain partner column name displays as its own text", async () => {
   const { initiator, responder } = await columnMismatchRenders("email");
   expect(responder).toBe(
-    'linkage terms are incompatible: payload mismatch: local receive columns ["email"] do not match partner send columns []',
+    `linkage terms are incompatible: payload mismatch: your receive columns ["email"] do not match your partner's send columns []`,
   );
   expect(initiator).toBe(
-    `Your partner stopped the exchange at the linkage terms${REASON_LINK}payload mismatch: ` +
-      'local receive columns ["email"] do not match partner send columns []',
+    "Your partner stopped the exchange because the linkage terms differ: " +
+      `payload mismatch: your send columns [] do not match your partner's receive columns ["email"]`,
+  );
+});
+
+// --- Each party words a terms refusal from its own side -----------------------
+
+const PARTNER_REFUSED =
+  "Your partner stopped the exchange because the linkage terms differ: ";
+const REFUSED = "linkage terms are incompatible: ";
+
+/** Each party's rendered failure: the initiator's first. */
+function bothRenders(settled: PromiseSettledResult<unknown>[]): string[] {
+  return settled.map((outcome) => {
+    if (outcome.status !== "rejected") throw new Error("expected a refusal");
+    return sanitizeErrorForDisplay(outcome.reason);
+  });
+}
+
+const ruleSet = (version: string): LinkageTerms["linkageRuleSet"] => ({
+  keySet: { name: "hmis-keys", version },
+  fieldSet: { name: "baseline-pii", version: "1.0.0" },
+});
+const agreement = {
+  reference: "MOU-001",
+  purpose: "Care coordination",
+  expirationDate: "2099-01-01",
+};
+
+// One case per kind of term the responder refuses on, with the sentence each
+// party reads: the initiator, which the responder's abort reached, and the
+// responder, which refused.
+const RESPONDER_REFUSALS: ReadonlyArray<{
+  kind: string;
+  responderTerms: LinkageTerms;
+  initiator: string;
+  responder: string;
+}> = [
+  {
+    kind: "version",
+    responderTerms: { ...termsB, version: "2.0.0" },
+    initiator: "version mismatch: yours is 1.0.0, your partner's is 2.0.0",
+    responder: "version mismatch: yours is 2.0.0, your partner's is 1.0.0",
+  },
+  {
+    kind: "algorithm",
+    responderTerms: { ...termsB, algorithm: "psi-c" },
+    initiator: `algorithm mismatch: yours is "psi", your partner's is "psi-c"`,
+    responder: `algorithm mismatch: yours is "psi-c", your partner's is "psi"`,
+  },
+  {
+    kind: "linkage strategy",
+    responderTerms: { ...termsB, linkageStrategy: "single-pass" },
+    initiator: `linkage strategy mismatch: yours is "cascade", your partner's is "single-pass"`,
+    responder: `linkage strategy mismatch: yours is "single-pass", your partner's is "cascade"`,
+  },
+  {
+    kind: "output",
+    responderTerms: {
+      ...termsB,
+      output: { expectsOutput: false, shareWithPartner: true },
+    },
+    initiator:
+      "output mismatch: you will share output with your partner, but your partner does not expect output",
+    responder:
+      "output mismatch: you do not expect output, but your partner will share it",
+  },
+  {
+    kind: "linkage fields",
+    responderTerms: {
+      ...termsB,
+      linkageFields: [{ name: "ssn", type: "ssn4" }],
+    },
+    initiator:
+      'linkage fields do not match: you and your partner declare "ssn" differently',
+    responder:
+      'linkage fields do not match: you and your partner declare "ssn" differently',
+  },
+  {
+    kind: "linkage keys",
+    responderTerms: {
+      ...termsB,
+      linkageKeys: [{ name: "SSN-only", elements: [{ field: "ssn" }] }],
+    },
+    initiator:
+      'linkage keys do not match: only you declare "SSN"; only your partner declares "SSN-only"',
+    responder:
+      'linkage keys do not match: only you declare "SSN-only"; only your partner declares "SSN"',
+  },
+  {
+    kind: "linkage rule set",
+    responderTerms: { ...termsB, linkageRuleSet: ruleSet("2.0.0") },
+    initiator:
+      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over "baseline-pii" 1.0.0, ' +
+      `your partner's names "hmis-keys" 2.0.0 over "baseline-pii" 1.0.0`,
+    responder:
+      'linkage rule set mismatch: yours names "hmis-keys" 2.0.0 over "baseline-pii" 1.0.0, ' +
+      `your partner's names "hmis-keys" 1.0.0 over "baseline-pii" 1.0.0`,
+  },
+  {
+    kind: "legal agreement",
+    responderTerms: { ...termsB, legalAgreement: agreement },
+    initiator: "your partner has a legal agreement but you do not",
+    responder: "you have a legal agreement but your partner does not",
+  },
+  {
+    kind: "payload columns",
+    responderTerms: { ...termsB, payload: { receive: [{ name: "email" }] } },
+    initiator: `payload mismatch: your send columns [] do not match your partner's receive columns ["email"]`,
+    responder: `payload mismatch: your receive columns ["email"] do not match your partner's send columns []`,
+  },
+];
+
+test.each(RESPONDER_REFUSALS)(
+  "a $kind refusal is worded from each party's own side",
+  async ({ kind, responderTerms, initiator, responder }) => {
+    const initiatorTerms: LinkageTerms =
+      kind === "linkage rule set"
+        ? { ...termsA, linkageRuleSet: ruleSet("1.0.0") }
+        : termsA;
+    const [connA, connB] = makeConnections();
+    const { conn: recordingB, sent } = recordingConnection(connB);
+    const [initiatorRender, responderRender] = bothRenders(
+      await Promise.allSettled([
+        exchangeTerms(connA, "initiator", initiatorTerms, 100),
+        exchangeTerms(recordingB, "responder", responderTerms, 200),
+      ]),
+    );
+    expect(initiatorRender).toBe(PARTNER_REFUSED + initiator);
+    expect(responderRender).toBe(REFUSED + responder);
+    // The abort names the term, not the responder's wording of it.
+    expect(sent[0]).toMatchObject({
+      decision: "abort",
+      abortReasons: [`the linkage terms differ in ${kind}`],
+    });
+  },
+);
+
+test("a refusal by the initiator is worded from each party's own side", async () => {
+  // The initiator refuses on the columns it receives, after the responder has
+  // proceeded, so its abort reaches the responder at message 3.
+  const [initiatorRender, responderRender] = bothRenders(
+    await runExchange(
+      { ...termsA, payload: { receive: [{ name: "email" }] } },
+      termsB,
+    ),
+  );
+  expect(initiatorRender).toBe(
+    REFUSED +
+      `payload mismatch: your receive columns ["email"] do not match your partner's send columns []`,
+  );
+  expect(responderRender).toBe(
+    PARTNER_REFUSED +
+      `payload mismatch: your send columns [] do not match your partner's receive columns ["email"]`,
+  );
+});
+
+test("a deduplicate refusal is worded from each party's own side", async () => {
+  // Only the refusing party knows the value it holds its partner to; the
+  // partner reads it as the other value from its own.
+  const [connA, connB] = makeConnections();
+  const [initiatorRender, responderRender] = bothRenders(
+    await Promise.allSettled([
+      exchangeTerms(connA, "initiator", termsA, 100),
+      exchangeTerms(
+        connB,
+        "responder",
+        termsB,
+        200,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { expectedPartnerDeduplicate: true },
+      ),
+    ]),
+  );
+  expect(initiatorRender).toBe(
+    PARTNER_REFUSED +
+      "deduplicate mismatch: your partner expects yours to be true, yours is false",
+  );
+  expect(responderRender).toBe(
+    REFUSED +
+      "deduplicate mismatch: you expect your partner's to be true, your partner's is false",
+  );
+});
+
+test("a refusal naming a term is stated without values where the partner's terms do not parse", async () => {
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: { not: "terms" },
+    decision: "abort",
+    protocolVersion: PROTOCOL_VERSION,
+    abortReasons: [
+      "the linkage terms differ in algorithm",
+      "the operator declined the terms",
+    ],
+  });
+  expect(
+    sanitizeErrorForDisplay(await initiator.catch((err: unknown) => err)),
+  ).toBe(
+    `${PARTNER_REFUSED}algorithm mismatch${REASON_LINK}the operator declined the terms`,
   );
 });
 

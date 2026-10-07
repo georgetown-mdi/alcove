@@ -196,7 +196,7 @@ describe("termsDeltaSections against adopting the partner's terms", () => {
         kind: "otherTerms",
         label: "other terms that differ",
         differences: [
-          "output mismatch: local will share with partner, but partner does not expect output",
+          "output mismatch: you will share output with your partner, but your partner does not expect output",
         ],
       },
     ]);
@@ -299,7 +299,7 @@ describe("termsDeltaSections for terms other than payload columns", () => {
     const differences =
       section?.kind === "otherTerms" ? section.differences : [];
     expect(differences).toEqual([
-      "output mismatch: local expects output, but partner will not share",
+      "output mismatch: you expect output, but your partner will not share it",
       expect.stringMatching(/^linkage fields do not match.*differently/),
       expect.stringMatching(/^linkage keys do not match.*differently/),
     ]);

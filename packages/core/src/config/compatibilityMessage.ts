@@ -92,7 +92,7 @@ export function quoteTermsValueList(
 /**
  * Tagged template composing fixed first-party copy with fragments, keeping the
  * brand that concatenation would drop:
- * ``compatibilityMessage`version mismatch: local is ${bareTermsValue(v)}` ``.
+ * ``compatibilityMessage`version mismatch: yours is ${bareTermsValue(v)}` ``.
  * It stops accidental omission only; a hand-built `TemplateStringsArray` or an
  * `as` assertion bypasses it.
  */

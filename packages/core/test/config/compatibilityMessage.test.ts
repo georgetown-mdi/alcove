@@ -356,7 +356,7 @@ test("no connective or label the diagnostics are built from is bare-shaped", () 
     expect.arrayContaining([
       "over",
       "names",
-      "local",
+      "yours",
       "is",
       "do",
       "not",
@@ -958,7 +958,7 @@ const SWEPT: readonly SweptDiagnostic[] = [
       ),
   },
   {
-    id: "partner linkage keys cannot be canonically encoded",
+    id: "your partner's linkage keys cannot be canonically encoded",
     benign: "big",
     verbatim: false,
     compose: (value) =>
@@ -983,8 +983,8 @@ const SWEPT: readonly SweptDiagnostic[] = [
             },
           ],
         },
-        "partner linkage keys cannot be canonically encoded",
-        "partner linkage keys cannot be canonically encoded",
+        "your partner's linkage keys cannot be canonically encoded",
+        "your partner's linkage keys cannot be canonically encoded",
       ),
   },
 ];
@@ -1265,23 +1265,23 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     ],
   };
   expect(validateCompatibility(withDob, base).errors).toEqual([
-    'linkage fields do not match: "dob" is declared by one party only',
-    'linkage keys do not match: "SSN + DOB" is declared by one party only',
+    'linkage fields do not match: only you declare "dob"',
+    'linkage keys do not match: only you declare "SSN + DOB"',
   ]);
-  // The same words from either side: a reason is relayed to the other party.
-  expect(validateCompatibility(base, withDob).errors).toEqual(
-    validateCompatibility(withDob, base).errors,
-  );
+  expect(validateCompatibility(base, withDob).errors).toEqual([
+    'linkage fields do not match: only your partner declares "dob"',
+    'linkage keys do not match: only your partner declares "SSN + DOB"',
+  ]);
 
   const withSsn4: LinkageTerms = {
     ...base,
     linkageFields: [...sharedFields, { name: "ssn4", type: "ssn4" }],
   };
   expect(validateCompatibility(withDob, withSsn4).errors[0]).toBe(
-    'linkage fields do not match: "dob","ssn4" are declared by one party only',
+    'linkage fields do not match: only you declare "dob"; only your partner declares "ssn4"',
   );
-  expect(validateCompatibility(withSsn4, withDob).errors).toEqual(
-    validateCompatibility(withDob, withSsn4).errors,
+  expect(validateCompatibility(withSsn4, withDob).errors[0]).toBe(
+    'linkage fields do not match: only you declare "ssn4"; only your partner declares "dob"',
   );
 
   const retyped: LinkageTerms = {
@@ -1290,7 +1290,7 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     linkageKeys: [{ name: "SSN", elements: [{ field: "ssn" }] }],
   };
   expect(validateCompatibility(base, retyped).errors).toEqual([
-    'linkage fields do not match: local and partner declare "ssn" differently',
+    'linkage fields do not match: you and your partner declare "ssn" differently',
   ]);
 
   const reordered: LinkageTerms = {
@@ -1298,7 +1298,7 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     linkageKeys: [...withDob.linkageKeys].reverse(),
   };
   expect(validateCompatibility(withDob, reordered).errors).toEqual([
-    "linkage keys do not match: local and partner declare the same keys in a different order",
+    "linkage keys do not match: you and your partner declare the same keys in a different order",
   ]);
 
   // A name that spells the clause structure stays inside its own run.
@@ -1306,11 +1306,11 @@ test("a field or key mismatch names, delimited, each entry that differs", () => 
     ...base,
     linkageFields: [
       ...sharedFields,
-      { name: 'x" is declared by one party only; "y', type: "first_name" },
+      { name: 'x"; only your partner declares "y', type: "first_name" },
     ],
   };
   expect(validateCompatibility(forged, base).errors[0]).toBe(
-    'linkage fields do not match: "x"" is declared by one party only; ""y" is declared by one party only',
+    'linkage fields do not match: only you declare "x""; only your partner declares ""y"',
   );
 });
 
@@ -1323,7 +1323,7 @@ test("a name at the length ceiling holding a quote and a backslash is quoted as 
   };
   expect(() => parseLinkageTerms(withHostile)).not.toThrow();
   const [message] = validateCompatibility(withHostile, base).errors;
-  expect(message).toContain("is declared by one party only");
+  expect(message).toContain("only you declare");
   expect(readMessage(message!).values).toEqual([hostile]);
   expect(message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
 });
@@ -1346,7 +1346,7 @@ test("each output-mismatch branch displays as a whole sentence", () => {
       { expectsOutput: false, shareWithPartner: true },
     ),
   ).toEqual([
-    "output mismatch: local will share with partner, but partner does not expect output",
+    "output mismatch: you will share output with your partner, but your partner does not expect output",
   ]);
   expect(
     outputErrors(
@@ -1354,7 +1354,7 @@ test("each output-mismatch branch displays as a whole sentence", () => {
       { expectsOutput: true, shareWithPartner: true },
     ),
   ).toEqual([
-    "output mismatch: local will not share with partner, but partner expects output",
+    "output mismatch: you will not share output with your partner, but your partner expects output",
   ]);
   expect(
     outputErrors(
@@ -1362,7 +1362,7 @@ test("each output-mismatch branch displays as a whole sentence", () => {
       { expectsOutput: true, shareWithPartner: false },
     ),
   ).toEqual([
-    "output mismatch: local expects output, but partner will not share",
+    "output mismatch: you expect output, but your partner will not share it",
   ]);
   expect(
     outputErrors(
@@ -1370,6 +1370,6 @@ test("each output-mismatch branch displays as a whole sentence", () => {
       { expectsOutput: true, shareWithPartner: true },
     ),
   ).toEqual([
-    "output mismatch: local does not expect output, but partner will share",
+    "output mismatch: you do not expect output, but your partner will share it",
   ]);
 });

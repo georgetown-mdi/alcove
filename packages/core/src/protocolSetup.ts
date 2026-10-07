@@ -4,17 +4,25 @@ import { maxCodeUnits } from "./utils/maxCodeUnits";
 import type { HandshakeRole, PsiRole } from "./types";
 import type { LinkageTerms, Output } from "./config/linkageTermsSchema";
 import type { PresentedHostKey } from "./connection/fileSyncConnection";
-import { parseLinkageTerms } from "./config/linkageTermsSchema";
+import {
+  parseLinkageTerms,
+  safeParseLinkageTerms,
+} from "./config/linkageTermsSchema";
 import {
   adoptableWithoutPreparing,
   compareTerms,
+  partnerRefusalDifferences,
+  refusedTermKinds,
+  TERMS_DIFFERENCE_KINDS,
   termsAdoptingPartnerTerms,
+  termsDifferenceReason,
   termsReceivingPartnerSend,
 } from "./linkageTermsNegotiation";
 import type {
   TermsBaselines,
   TermsComparison,
   TermsDelta,
+  TermsDifferenceKind,
 } from "./linkageTermsNegotiation";
 import { SHARED_SECRET_REGEX } from "./config/connection";
 import {
@@ -223,18 +231,45 @@ const termsMessage = z.object({
   certificate: certificateField,
 });
 
+/**
+ * A terms-exchange abort's reasons as decoded: each reason equal to a
+ * {@link termsDifferenceReason} as the term it names, and every other reason
+ * as partner-chosen text.
+ */
+interface PartnerAbortReasons {
+  differingTerms: TermsDifferenceKind[];
+  others: PartnerOriginTextList;
+}
+
+const TERMS_DIFFERENCE_BY_REASON: ReadonlyMap<string, TermsDifferenceKind> =
+  new Map(
+    TERMS_DIFFERENCE_KINDS.map((kind) => [termsDifferenceReason(kind), kind]),
+  );
+
+function partnerAbortReasons(reasons: string[]): PartnerAbortReasons {
+  const differingTerms: TermsDifferenceKind[] = [];
+  const others: string[] = [];
+  for (const reason of reasons) {
+    const kind = TERMS_DIFFERENCE_BY_REASON.get(reason);
+    if (kind === undefined) others.push(reason);
+    else if (!differingTerms.includes(kind)) differingTerms.push(kind);
+  }
+  return { differingTerms, others: partnerOriginTextList(others) };
+}
+
 // Branded at the decode, so a reason reaches the operator only behind the
 // label errorWithPartnerCauseLinks puts on it (utils/partnerOriginText.ts):
 // the reasons are partner-written free text, and a plain `string[]` leaves
 // every composition site free to join them into first-party copy, where one
 // reason's planted marker or unbounded length spends the display budget the
-// sentence beside it needs.
+// sentence beside it needs. A reason naming a differing term is kept as this
+// build's own kind instead, and the text is dropped.
 const abortReasonsField = boundedArray(
   z.string(),
   MAX_ABORT_REASONS,
   `abortReasons must not exceed ${MAX_ABORT_REASONS} entries`,
 )
-  .transform(partnerOriginTextList)
+  .transform(partnerAbortReasons)
   .optional();
 
 // `recordCount` is optional here (unlike message 1) because this frame
@@ -287,29 +322,49 @@ const sharedSecretMessage = z.object({
   sharedSecret: z.string().regex(SHARED_SECRET_REGEX),
 });
 
-// The abort both slots of the terms exchange throw: the same first-party
-// sentence from either side, with each of the partner's reasons labelled and
-// bounded on the cause links behind it. The sentence holds no partner byte, so
-// a reason can neither delete it nor spend another reason's display budget.
+// The abort both slots of the terms exchange throw: a first-party sentence,
+// with each of the partner's free-text reasons labelled and bounded on the
+// cause links behind it, so a reason can neither delete the sentence nor spend
+// another reason's display budget. Where the partner names terms that differ,
+// the sentence states them as this party's own comparison of the two terms
+// documents words them (`partnerRefusalDifferences`), each value delimited and
+// redacted where it is composed, as this party's own refusal is.
 const PARTNER_ABORT_MESSAGE =
   "Your partner stopped the exchange at the linkage terms";
+const PARTNER_TERMS_REFUSAL_MESSAGE =
+  "Your partner stopped the exchange because the linkage terms differ";
 const PARTNER_ABORT_REASON_LABEL = "reason your partner gave: ";
 
+/**
+ * The error for a partner's abort at the terms exchange. `presented` is the
+ * terms this party sent the partner, and `partnerTerms` the partner's, where
+ * this party has them.
+ */
 const partnerAbortError = (
-  reasons: PartnerOriginTextList | undefined,
-): ProtocolRefusalError =>
-  new ProtocolRefusalError(
-    PARTNER_ABORT_MESSAGE,
-    reasons === undefined
-      ? undefined
-      : {
-          cause: errorWithPartnerCauseLinks(
-            PARTNER_ABORT_MESSAGE,
-            PARTNER_ABORT_REASON_LABEL,
-            reasons,
-          ).cause,
-        },
+  reasons: PartnerAbortReasons | undefined,
+  presented: LinkageTerms,
+  partnerTerms: LinkageTerms | undefined,
+): ProtocolRefusalError => {
+  if (reasons === undefined)
+    return new ProtocolRefusalError(PARTNER_ABORT_MESSAGE);
+  const message =
+    reasons.differingTerms.length === 0
+      ? PARTNER_ABORT_MESSAGE
+      : `${PARTNER_TERMS_REFUSAL_MESSAGE}: ${partnerRefusalDifferences(
+          reasons.differingTerms,
+          presented,
+          partnerTerms,
+        ).join("; ")}`;
+  const { cause } = errorWithPartnerCauseLinks(
+    message,
+    PARTNER_ABORT_REASON_LABEL,
+    reasons.others,
   );
+  return new ProtocolRefusalError(
+    message,
+    cause === undefined ? undefined : { cause },
+  );
+};
 
 // --- Terms exchange ----------------------------------------------------------
 
@@ -613,20 +668,25 @@ async function settleTermsChange(params: {
   const { conn, localTerms, partnerTerms, comparison, adopted, abortTerms } =
     params;
   const onTermsChange = params.options?.onTermsChange;
-  const refuse = async (reasons: string[]): Promise<never> => {
-    await sendAbort(conn, reasons, abortTerms);
+  // The partner is sent the terms that differ, not this party's wording of
+  // them: it words the same difference from its own side.
+  const refuse = async (): Promise<never> => {
+    await sendAbort(
+      conn,
+      refusedTermKinds(comparison).map(termsDifferenceReason),
+      abortTerms,
+    );
     throw new TermsChangeRefusedError(
-      `linkage terms are incompatible: ${reasons.join("; ")}`,
+      `linkage terms are incompatible: ${refusalsOf(comparison).join("; ")}`,
       comparison.delta,
     );
   };
-  const refusals = refusalsOf(comparison);
   if (
     onTermsChange === undefined ||
     adopted === undefined ||
     refusalsOf(compareTerms(adopted, partnerTerms)).length > 0
   )
-    return refuse(refusals);
+    return refuse();
   const continuable =
     adoptableWithoutPreparing(localTerms, adopted) &&
     comparison.delta.partnerDeduplicate === undefined;
@@ -643,7 +703,7 @@ async function settleTermsChange(params: {
     throw err;
   }
   const settled = compareTerms(terms, partnerTerms);
-  if (!continuable || refusalsOf(settled).length > 0) return refuse(refusals);
+  if (!continuable || refusalsOf(settled).length > 0) return refuse();
   return { terms, comparison: settled };
 }
 
@@ -765,7 +825,14 @@ export async function exchangeTerms(
 
     const msg = parseOrProtocolError(termsWithDecisionMessage, rawMsg);
 
-    if (msg.decision === "abort") throw partnerAbortError(msg.abortReasons);
+    if (msg.decision === "abort") {
+      const abortTerms = safeParseLinkageTerms(msg.linkageTerms);
+      throw partnerAbortError(
+        msg.abortReasons,
+        localTerms,
+        abortTerms.success ? abortTerms.data : undefined,
+      );
+    }
 
     // A `proceed` frame always holds the partner's record count (only the
     // abort frame omits it; see termsWithDecisionMessage). Its absence here
@@ -940,7 +1007,8 @@ export async function exchangeTerms(
     });
 
     const msg = await receiveParsed(conn, decisionMessage);
-    if (msg.decision === "abort") throw partnerAbortError(msg.abortReasons);
+    if (msg.decision === "abort")
+      throw partnerAbortError(msg.abortReasons, agreed.terms, partnerTerms!);
 
     return {
       partnerTerms: partnerTerms!,
