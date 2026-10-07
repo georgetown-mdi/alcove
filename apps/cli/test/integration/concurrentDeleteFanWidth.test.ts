@@ -186,7 +186,7 @@ function protocolLeftoverNames(prefix: string, count: number): string[] {
 
 type Party = ConnectedParty;
 
-/** One connected party over a directory of its own, as protocol.ts dials. */
+/** One connected party over a directory of its own, as run/prepare.ts dials. */
 function connectFanParty(srv: InProcessSftpServer): Promise<Party> {
   return connectParty(srv.handle, {
     dirPrefix: "fan-",

@@ -4337,7 +4337,7 @@ test("composed via fromEventConnection: the first transient poll() error is term
   // The isolation test directly above proves a transient list() failure is
   // retryable: poll() reschedules and delivers on a later cycle, a property
   // of poll() STANDALONE. In the CLI a FileSyncConnection is never consumed
-  // directly -- apps/cli/src/protocol.ts bridges it through
+  // directly -- apps/cli/src/run/prepare.ts bridges it through
   // fromEventConnection (-> conn.start() -> mc.receive()), whose error
   // listener routes every emitted poll() error into
   // QueuedMessageConnection.fail(), which synchronously calls hooks.close()

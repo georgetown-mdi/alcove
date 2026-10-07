@@ -173,7 +173,7 @@ export interface SigningPersist {
 /**
  * The connection configs {@link runProtocol} can run. `Extract` names the
  * channels explicitly rather than aliasing {@link ConnectionConfig}, so a new
- * channel is rejected here until it is dispatched below (the allowlist
+ * channel is rejected here until run/prepare.ts dispatches it (the allowlist
  * convention in CONTRIBUTING.md). Authentication is a separate `auth`
  * parameter, not part of this connection union.
  */
