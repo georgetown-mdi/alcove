@@ -221,7 +221,7 @@ test.each(SINK_PROBES)(
 // The other shape a sink must deliver whole: a first-party block whose
 // structure IS the line break -- a conflict list under the step the operator
 // acts on -- marked the way its composition site marks it
-// (`reconcileConflictError` in src/config.ts).
+// (`reconcileConflictError` in src/config/reconcile.ts).
 const BLOCK_LINES = [
   "the configuration file disagrees with the invitation. Resolve the " +
     "differences below, then retry with the same invitation. The differences:",
