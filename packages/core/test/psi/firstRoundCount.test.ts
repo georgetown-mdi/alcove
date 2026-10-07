@@ -1,10 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 
 import { RoundSetLimitError, UsageError } from "../../src/errors";
-import {
-  assertFirstRoundWithinSetMaximum,
-  prepareForExchange,
-} from "../../src/exchange";
+import { prepareForExchange } from "../../src/exchange";
+import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import {
   fanOutReachedMatchingRefusal,
   StandardizedDataset,

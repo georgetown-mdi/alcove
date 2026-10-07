@@ -5,7 +5,7 @@ import { RoundSetLimitError, UsageError } from "../../src/errors";
 import {
   assertFirstRoundWithinSetMaximum,
   roundOneSetOverMaximumMessage,
-} from "../../src/exchange";
+} from "../../src/exchange/firstRoundCapacity";
 import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { DISPLAY_TRUNCATION_MARKER } from "../../src/utils/sanitizeForDisplay";
 import {

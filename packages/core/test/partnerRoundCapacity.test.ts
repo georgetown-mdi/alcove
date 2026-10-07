@@ -13,9 +13,9 @@ import {
 import {
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   partnerRoundValues,
-  roundOneSetOverPartnerCeilingMessage,
   runExchange,
 } from "../src/exchange";
+import { roundOneSetOverPartnerCeilingMessage } from "../src/exchange/firstRoundCapacity";
 import {
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
