@@ -122,6 +122,20 @@ type PeerHelloProvenance = "presentAtEntry" | "appearedAfterEntry";
 /** @internal */
 export const HELLO_MAX_BYTES = 1024;
 
+// A fully read hello whose body is not a valid hello. Typed so the forced
+// pre-sweep inspection can tell it from a stalled read, which stays terminal.
+class MalformedHelloError extends UsageError {}
+
+// Why the pre-sweep inspection could not read a peer hello, for the forced
+// sweep's warning; undefined for any error the force flag does not clear.
+const unreadableHelloReason = (err: unknown): string | undefined => {
+  if (err instanceof FrameSizeExceededError)
+    return `it is larger than the ${HELLO_MAX_BYTES}-byte limit for a hello`;
+  if (err instanceof MalformedHelloError)
+    return "its contents are not a valid hello";
+  return undefined;
+};
+
 // Reads the hello control file through the I5 partial-sync gate: refuses a
 // file listed over HELLO_MAX_BYTES before any read, then retries a
 // transient get() or JSON-parse failure until timeToLive expires, then
@@ -186,7 +200,7 @@ export async function readControlFileWithGate(
       // the peer timeout. A genuine partial write fails the parse (never the
       // structural bound) and still retries.
       if (err instanceof JsonStructureBoundError)
-        throw new UsageError(
+        throw new MalformedHelloError(
           `control file at ${redactPrivateKeyMaterial(filePath)} has a ` +
             `malformed payload: structure exceeds the permitted bound`,
         );
@@ -196,7 +210,7 @@ export async function readControlFileWithGate(
     }
     const result = schema.safeParse(parsed);
     if (!result.success) {
-      throw new UsageError(
+      throw new MalformedHelloError(
         `control file at ${redactPrivateKeyMaterial(filePath)} has a ` +
           `malformed payload: ${result.error.message}`,
       );
@@ -204,9 +218,9 @@ export async function readControlFileWithGate(
     return result.data;
   } while (Date.now() <= timeToLive.getTime());
   // A plain Error, not a UsageError: the pre-sweep retain inspection
-  // classifies a UsageError from this gate as terminal (I5b) and anything
-  // else as retain-uncertain, so a UsageError here would turn a bounded
-  // read into a hard refusal.
+  // treats anything but a UsageError from this gate as retain-uncertain and
+  // refuses a UsageError on the bare flag (I5b), so a UsageError here would
+  // turn a bounded read into a hard refusal.
   //
   // Leads with the operative sentence and recovery step, trailing the
   // path, because sanitizeErrorForDisplay truncates each cause-chain link;
@@ -762,8 +776,9 @@ export class FileSyncRendezvous {
   //       has written no ack yet.
   //   (b) the peer hello's `retain_files` flag, read through the I5a gate,
   //       bounded to RETAIN_INSPECTION_POLL_CYCLES (never the full peer
-  //       timeout); an unresolved or unparseable body is retain-uncertain
-  //       and refuses the bare flag.
+  //       timeout); an unresolved body is retain-uncertain. An oversized or
+  //       malformed body is a terminal refusal on the bare flag and
+  //       retain-uncertain under --force-retain-sweep.
   // Local retain mode is a signal too. When any signal is present the bare
   // flag refuses (exit 64); --force-retain-sweep permits the wipe after a
   // loud warning.
@@ -792,7 +807,8 @@ export class FileSyncRendezvous {
     const dirsDisplay = composeDirsDisplay(inboundPath, deps.outbound());
 
     const signals: string[] = [];
-    let retainUncertain = false;
+    let unreadableHello:
+      { name: string; size: number; reason: string } | undefined;
 
     if (deps.options().retainFiles)
       signals.push("this party is in retain mode");
@@ -816,7 +832,7 @@ export class FileSyncRendezvous {
       // One deadline shared across all peer hellos, bounding the total
       // inspection even in the all-readable case (a readable hello returns
       // as soon as its body resolves). The first hello that cannot be read
-      // sets retainUncertain and breaks out: uncertainty is sticky and
+      // is recorded and breaks out: uncertainty is sticky and
       // already forces the refuse-or-force decision, so reading the rest
       // cannot change the outcome, and breaking caps the work a pile of
       // unreadable hellos (a hostile directory under --sweep-exchange-files)
@@ -845,33 +861,32 @@ export class FileSyncRendezvous {
             break;
           }
         } catch (err) {
-          // A fully-synced hello that fails the schema is a terminal
-          // UsageError (I5b) -- let it propagate. A close() during
-          // inspection aborts the gate read with ConnectionClosedError;
-          // propagate that as a clean shutdown (exit 69), not a
-          // retain-uncertain UsageError. Any other failure is an unresolved
-          // read within the bounded budget: treat it as retain-uncertain,
-          // and sticky -- a later hello reading retain_files=false does not
-          // clear it, since the unreadable hello could itself be an unsynced
-          // retain hello, and wiping it without --force-retain-sweep is the
-          // data loss the guard prevents.
-          if (err instanceof UsageError) throw err;
+          // A close() aborts the read with ConnectionClosedError (exit 69).
           if (deps.signal().aborted) throw err;
-          // Stop at the first unreadable hello: uncertainty is sticky and
-          // already forces refuse (bare flag) or the danger warning (force), so
-          // further reads cannot change the outcome and only add latency.
-          retainUncertain = true;
+          // A refusal of the hello itself is terminal (I5b) unless the
+          // operator forced the sweep and the refusal is one the force flag
+          // clears; a stalled read stays terminal either way.
+          const reason = unreadableHelloReason(err);
+          if (
+            err instanceof UsageError &&
+            (reason === undefined || !deps.options().forceRetainSweep)
+          )
+            throw err;
+          // Sticky: a later hello reading retain_files=false does not clear
+          // it, since this one could be a retain hello.
+          unreadableHello = {
+            name: hello.name,
+            size: hello.size,
+            reason: reason ?? "it did not become readable in the time allowed",
+          };
           break;
         }
       }
     }
 
-    const retainInPlay = signals.length > 0 || retainUncertain;
+    const retainInPlay = signals.length > 0 || unreadableHello !== undefined;
 
     if (retainInPlay && !deps.options().forceRetainSweep) {
-      // Prefer a concrete signal in the diagnostic: retainUncertain can coexist
-      // with a definitive one (an earlier hello read failed, a later resolved to
-      // retain_files=true), and the concrete cause is the more useful report.
       const reason =
         signals.length > 0
           ? signals.join("; ")
@@ -903,7 +918,7 @@ export class FileSyncRendezvous {
     // Entry-time logs use the party id, not the role: the sweep runs before
     // rendezvous, so the role is still the "unknown role" sentinel. For the
     // destructive-wipe warning especially, the party id is the useful identifier.
-    if (retainInPlay && deps.options().forceRetainSweep)
+    if (deps.options().forceRetainSweep && signals.length > 0)
       deps
         .log()
         .warn(
@@ -913,6 +928,22 @@ export class FileSyncRendezvous {
             `irreversible; the prior ` +
             "transcript will be lost. Only use --force-retain-sweep when you " +
             "intend to discard it.",
+        );
+    else if (deps.options().forceRetainSweep && unreadableHello !== undefined)
+      deps
+        .log()
+        .warn(
+          `[${deps.id()}] --force-retain-sweep: permanently deleting ` +
+            `${toDelete.length} protocol file(s) in ` +
+            `${redactAndSanitizeForDisplay(dirsDisplay)}, which may be a ` +
+            "retain-mode audit transcript. The peer hello " +
+            redactAndSanitizeForDisplay(
+              joinFileSyncPath(inboundPath, unreadableHello.name),
+            ) +
+            ` (${unreadableHello.size} bytes) could not be read because ` +
+            `${unreadableHello.reason}, so retain mode could not be ruled ` +
+            "out. This is destructive and irreversible. Only use " +
+            "--force-retain-sweep when you intend to discard these files.",
         );
 
     // A close() may have raced the inspection; do not dispatch deletes against a

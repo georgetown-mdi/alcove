@@ -3163,11 +3163,123 @@ test("synchronize() --sweep-exchange-files --force-retain-sweep: an earlier unre
   });
   expect(deleted.some((p) => p.endsWith(peerA))).toBe(true);
   expect(deleted.some((p) => p.endsWith(peerB))).toBe(true);
-  expect(
-    logs.some((l) =>
-      /force-retain-sweep|destructive and irreversible/i.test(l.message),
-    ),
-  ).toBe(true);
+  const warning = logs.find((l) =>
+    /force-retain-sweep|destructive and irreversible/i.test(l.message),
+  );
+  expect(warning?.message).toContain(`/test/${peerA}`);
+  expect(warning?.message).toContain("did not become readable");
+  expect(warning?.message).not.toContain(peerB);
+});
+
+// A peer hello the pre-sweep inspection refuses outright: listed over the
+// hello cap, or fully read and failing the hello schema.
+const UNREADABLE_HELLOS = [
+  {
+    kind: "oversized",
+    body: Buffer.alloc(HELLO_MAX_BYTES + 1, 0x20),
+    reason: `larger than the ${HELLO_MAX_BYTES}-byte limit for a hello`,
+    bareError: FrameSizeExceededError,
+  },
+  {
+    kind: "malformed",
+    body: Buffer.from("{}"),
+    reason: "its contents are not a valid hello",
+    bareError: UsageError,
+  },
+] as const;
+
+const sweepUnreadableHello = async (
+  body: Buffer,
+  forceRetainSweep: boolean,
+) => {
+  const peerHelloName = "peer-uuid-hello.json";
+  const staleLock = "x-y-lock.json";
+  const deleted: string[] = [];
+  let files = new Map<string, Buffer>();
+  const [err, logs] = await withCapturedLogs(async () => {
+    const mock = makeMockClient();
+    const { client } = mock;
+    files = mock.files;
+    const conn = await makeConnectedConn(client, {
+      pollingFrequency: 10,
+      timeToLiveMs: 120,
+    });
+    conn.id = "me";
+    conn.options.sweepExchangeFiles = true;
+    conn.options.forceRetainSweep = forceRetainSweep;
+    files.set(`/test/${peerHelloName}`, body);
+    files.set(`/test/${staleLock}`, Buffer.alloc(0));
+    const origDelete = client.delete.bind(client);
+    client.delete = async (p: string) => {
+      deleted.push(p);
+      return origDelete(p);
+    };
+    return conn.synchronize().then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+  });
+  return { err, logs, deleted, files, peerHelloName, staleLock };
+};
+
+for (const hello of UNREADABLE_HELLOS) {
+  test(`synchronize() --sweep-exchange-files --force-retain-sweep: sweeps a peer hello that is ${hello.kind}, with a warning naming it`, async () => {
+    const run = await sweepUnreadableHello(hello.body, true);
+    // The sweep proceeds; the delete-mode party then waits out its peer
+    // timeout on the cleared directory, a transport Error.
+    expect(run.err).not.toBeInstanceOf(UsageError);
+    expect(run.files.has(`/test/${run.peerHelloName}`)).toBe(false);
+    expect(run.files.has(`/test/${run.staleLock}`)).toBe(false);
+    expect(run.deleted).toContain(`/test/${run.peerHelloName}`);
+
+    const warning = run.logs.find(
+      (l) => l.level === "WARN" && l.message.includes("--force-retain-sweep"),
+    );
+    expect(warning).toBeDefined();
+    const message = warning!.message;
+    expect(message).toContain("[me]");
+    expect(message).toContain(`/test/${run.peerHelloName}`);
+    expect(message).toContain(`(${hello.body.length} bytes)`);
+    expect(message).toContain(hello.reason);
+    expect(message).toContain("retain mode could not be ruled out");
+    expect(message).toContain("2 protocol file(s)");
+  });
+
+  test(`synchronize() --sweep-exchange-files: still refuses a peer hello that is ${hello.kind} without --force-retain-sweep`, async () => {
+    const run = await sweepUnreadableHello(hello.body, false);
+    expect(run.err).toBeInstanceOf(hello.bareError);
+    expect(run.deleted).toHaveLength(0);
+    expect(run.files.has(`/test/${run.peerHelloName}`)).toBe(true);
+    expect(run.files.has(`/test/${run.staleLock}`)).toBe(true);
+    expect(
+      run.logs.some((l) => l.message.includes("retain mode could not")),
+    ).toBe(false);
+  });
+}
+
+test("synchronize() --sweep-exchange-files --force-retain-sweep: a stalled peer-hello read stays terminal and deletes nothing", async () => {
+  const peerHelloName = "peer-uuid-hello.json";
+  const { client, files } = makeMockClient();
+  const conn = await makeConnectedConn(client, { pollingFrequency: 10 });
+  conn.id = "me";
+  conn.options.sweepExchangeFiles = true;
+  conn.options.forceRetainSweep = true;
+  files.set(`/test/${peerHelloName}`, RETAIN_HELLO_BODY);
+  const origGet = client.get.bind(client);
+  client.get = async (p: string, options: GetOptions) => {
+    if (p.endsWith(peerHelloName))
+      throw new TransportOperationStalledError("hello read made no progress");
+    return origGet(p, options);
+  };
+  const deleted: string[] = [];
+  client.delete = async (p: string) => {
+    deleted.push(p);
+  };
+
+  await expect(conn.synchronize()).rejects.toBeInstanceOf(
+    TransportOperationStalledError,
+  );
+  expect(deleted).toHaveLength(0);
 });
 
 test("synchronize() --sweep-exchange-files: sweeps a second peer hello, overriding the I1 concurrent-session guard", async () => {
