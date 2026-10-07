@@ -1,43 +1,13 @@
 import * as z from "zod";
 
 /**
- * An array schema whose elements are validated in a SINGLE pass that emits at
- * most ONE issue, rather than Zod's default one-issue-per-invalid-element.
- *
- * Why this exists, not a plain `z.array(element)` or a count `.max()`: a
- * partner-controlled post-handshake wire message can hold an array of millions
- * of INVALID elements. Under `z.array(element)` Zod accumulates one issue per
- * element, which raises one of TWO distinct `RangeError`s (both verified on Zod
- * 4.5.4), depending on the array's framing:
- *
- * - Nested under >=2 array/record/tuple frames (a tuple-of-arrays, a doubly
- *   nested `rows`): Zod overflows its own call stack spreading that issue array
- *   up through the frames -- `Maximum call stack size exceeded`, at ~130k
- *   elements (the same mechanism the `transform.params` bound forestalls in
- *   config/linkageTermsSchema.ts).
- * - A single/root flat array (the residual the call-stack analysis missed): no
- *   frame to overflow, but at ~3.3M issues Zod throws `Invalid string length`
- *   building its error string (`JSON.stringify` of the issues exceeds V8's max
- *   string length), after a ~4.5s CPU burn.
- *
- * A count `.max()` fixes neither and is not even reached in time for the nested
- * case: Zod v4 validates every element BEFORE the array length check. And these
- * collections (PSI association-table indices, payload rows, matched-record
- * counts) are legitimately in the millions -- a single frame holds on the order
- * of 6 million elements (docs/spec/CHANNEL_SECURITY.md) -- so any count bound low
- * enough to forestall either RangeError would reject a real exchange.
- *
- * Validating the element TYPE in one `every` pass caps issue accumulation at one
- * regardless of count: an arbitrarily large VALID message still parses, while a
- * hostile one fails as a clean, bounded rejection -- reported as a
- * `ConnectionError("protocol")` by `receiveParsed` (or `parseOrProtocolError` at
- * a send-before-parse site) -- instead of an uncaught `RangeError`. The receive
- * path already caught the `RangeError` harmlessly; this turns that ungraceful
- * internal exception into a clean validation failure.
- *
- * `isElement` must mirror exactly the element schema it replaces, so the set of
- * accepted messages is unchanged. The `T` type parameter is the element type and
- * is not inferred from `isElement` -- pass it explicitly.
+ * An array schema validating its elements in one pass that emits at most one
+ * issue, for partner-controlled arrays legitimately in the millions: Zod's
+ * one-issue-per-element accumulation throws a `RangeError` on millions of invalid
+ * elements, and a count `.max()` runs after the elements and would reject a real
+ * exchange (docs/spec/CHANNEL_SECURITY.md, Application-layer parsed-input bounds).
+ * `isElement` must mirror exactly the element schema it replaces. Pass `T`
+ * explicitly; it is not inferred from `isElement`.
  */
 export function singleIssueArray<T>(
   isElement: (value: unknown) => boolean,

@@ -1,45 +1,23 @@
 import * as z from "zod";
 
 /**
- * Hello payload envelope: the two bilateral mode flags each party advertises
- * at rendezvous. The peer compares them at every site it reads a peer hello
- * and fails fast on a mismatch, so a divergent pairing never stalls silently
- * until a peer wait times out.
- *
- * The hello is the only payload-bearing control file; the acknowledgment
- * marker is a zero-length file matched by name, with no body to envelope.
- *
- * Both flags are required, with no `protocol_version` and no defaulting: a
- * hello missing either, or holding an out-of-type value, fails
- * {@link HelloEnvelopeSchema} as a terminal `UsageError`.
- *
- * Field names are camelCase on disk, since a control file is a protocol
- * message rather than user-facing schema, so there is no `camelizeKeys`
- * conversion; a later field added here must also stay camelCase.
+ * The hello body: the two bilateral mode flags each party advertises at
+ * rendezvous, compared by the peer so a mismatch fails fast. Both are required
+ * with no defaulting. Fields are camelCase on disk with no `camelizeKeys`
+ * conversion, since a control file is a protocol message; a new field must be
+ * camelCase too. The ack marker is zero-length and has no envelope.
  */
 export interface HelloEnvelope {
-  /**
-   * This party's `lockless_rendezvous` setting. Bilateral: the peer must
-   * advertise the same value or rendezvous fails fast.
-   */
+  /** This party's `lockless_rendezvous` setting; the peer's must match. */
   locklessRendezvous: boolean;
-  /**
-   * This party's `retain_files` setting. Bilateral: the peer must advertise
-   * the same value or rendezvous fails fast.
-   */
+  /** This party's `retain_files` setting; the peer's must match. */
   retainFiles: boolean;
 }
 
 /**
- * Zod schema for {@link HelloEnvelope}. Both flags are required -- a missing
- * or out-of-type flag is a terminal validation failure -- while unknown
- * fields are stripped for forward tolerance: a newer peer may add a field
- * without breaking an older build. `.strip()` is explicit, though it is
- * `z.object`'s default, so the contract is visible at the call site.
- *
- * This is forward tolerance only, not a compatibility guarantee: a body
- * missing a required field still fails, the intended result when builds
- * diverge on a required field (see FILE_SYNC.md "Matching builds").
+ * Zod schema for {@link HelloEnvelope}. Unknown fields are stripped so a newer
+ * peer may add one; a missing required field still fails (docs/spec/FILE_SYNC.md,
+ * Matching builds).
  */
 export const HelloEnvelopeSchema: z.ZodType<HelloEnvelope> = z
   .object({
@@ -49,11 +27,8 @@ export const HelloEnvelopeSchema: z.ZodType<HelloEnvelope> = z
   .strip();
 
 /**
- * Serializes a {@link HelloEnvelope} to a `Buffer` for writing via
- * `FileTransportClient.put`. The body is written verbatim with no key-case
- * conversion: control-file fields are already camelCase on disk. The hello is
- * the only control file with a body -- the ack marker is zero-length and is
- * never serialized through here.
+ * Serializes a {@link HelloEnvelope} for `FileTransportClient.put`, verbatim with
+ * no key-case conversion.
  */
 export const serializeEnvelope = (envelope: HelloEnvelope): Buffer =>
   Buffer.from(JSON.stringify(envelope));

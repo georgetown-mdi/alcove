@@ -1,92 +1,57 @@
 import { largestOneFramePsiSetElements } from "./webrtcOutboundBound";
 
 /**
- * Maximum size, in bytes, of a single inbound frame the transport will read
- * into memory: the static ceiling for every frame, and the upper clamp for the
- * per-exchange single-pass cap below. What it defends against, why the value
- * is what it is, where it is enforced, and why it is not configurable:
- * docs/spec/CHANNEL_SECURITY.md ("Inbound frame-size bound").
- *
- * The literal is hard-coded rather than read from `buffer.constants` so this
- * module stays platform-neutral: it is imported by the transport-agnostic AEAD
- * decorator, which must not pull in Node's `buffer` module.
+ * Maximum size, in bytes, of a single inbound frame the transport reads into
+ * memory, and the upper clamp for the single-pass cap below
+ * (docs/spec/CHANNEL_SECURITY.md, Inbound frame-size bound). A literal rather than
+ * `buffer.constants`, so the AEAD decorator importing it needs no Node `buffer`.
  */
 export const MAX_FRAME_SIZE_BYTES = 536_870_888;
 
 /**
- * The protocol's per-set element maximum: the most encrypted elements one PSI
- * set may hold, 2^24. A sender refuses its own set over it before sending any
- * part, and a receiver holds an inbound set's declared byte length and its
- * wire-format element scan (see {@link countDeclaredPsiElements} in
- * connection/psiElementScan.ts) to it before deserialization. It is the
- * per-side target the command-line application's heap ceiling is sized to,
- * and it caps the worst-case deserialize allocation: docs/spec/PROTOCOL.md
- * ("A PSI set is sent in parts"). Fixed, not operator-configurable, for the
- * same reason as the frame-size bound.
+ * The most encrypted elements one PSI set may contain. A sender refuses its own
+ * set over it before sending any part; a receiver checks an inbound set's declared
+ * length and element scan against it before deserialization. Fixed, not configurable
+ * (docs/spec/PROTOCOL.md, A PSI set is sent in parts).
  */
 export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
 /**
- * The most elements a PSI set a browser party receives from its partner may
- * hold: the most one WebRTC frame holds, so the browser tab's one-frame
- * envelope bounds the joined set (docs/spec/PROTOCOL.md, "What a browser tab
- * can match"). A browser party states it as its receive ceiling on the terms
- * exchange, and holds a partner's set to it when the set's first part arrives
- * and at its element scan.
+ * The most elements a browser party accepts in a partner's PSI set: what one
+ * WebRTC frame can contain. Stated as its receive ceiling on the terms exchange
+ * (docs/spec/PROTOCOL.md, What a browser tab can match).
  */
 export const BROWSER_PSI_SET_MAX_ELEMENTS = largestOneFramePsiSetElements();
 
 /**
- * The single-pass dataset ceiling, expressed as a per-party budget on the value
- * slot count `effectiveKeyCount * recordCount` (NOT a bare row count). It is
- * the real ceiling; the byte cap below is a tightening derived from the same
- * quantity. Its value, the measurement it was derived from, what the terms
- * "cell" and "value slot" mean, and the constraint that binds it are in
- * docs/spec/PROTOCOL.md ("The single-pass dataset ceiling: receiver memory and
- * masking compute").
- *
- * Fixed, NOT operator-configurable: a configurable maximum reintroduces the
- * memory-exhaustion denial of service the bound exists for. Raising it means
- * re-deriving it from a fresh measurement against the conditions that spec
- * section states, never editing this literal alone.
+ * The single-pass dataset ceiling, a per-party budget on value slots
+ * (`effectiveKeyCount * recordCount`, not rows). Fixed, not configurable: a
+ * configurable maximum reopens the memory-exhaustion denial of service. Raise it
+ * only by re-deriving it from a fresh measurement (docs/spec/PROTOCOL.md, The
+ * single-pass dataset ceiling: receiver memory and masking compute).
  */
 export const MAX_SINGLE_PASS_CELLS = 3_000_000;
 
 /**
- * The explicit upper bound on a decoded record count, enforced at the wire
- * schema (`recordCountField` on the terms-exchange envelope in
- * protocolSetup.ts). It makes the exact-integer-product dependency of
- * {@link singlePassDatasetExceedsCap} and {@link psiElementBounds} a check
- * rather than a silent reliance on the schema's `.int()` safe-integer ceiling.
- * The headroom this value leaves, and why the `frameSize.test.ts` invariant
- * pins it against the EFFECTIVE key count, are in docs/spec/PROTOCOL.md ("The
- * exact-integer precision of the cell-count gate is a check").
+ * Upper bound on a decoded record count, enforced by `recordCountField` in
+ * protocolSetup.ts, so the products in {@link singlePassDatasetExceedsCap} and
+ * {@link psiElementBounds} are exact integers by check (docs/spec/PROTOCOL.md, The
+ * exact-integer precision of the cell-count gate is a check).
  */
 export const MAX_RECORD_COUNT = 1_000_000_000_000;
 
-// The per-slot, per-cell, and fixed byte weights the reply cap is derived
-// from, tabulated with what each term covers in docs/spec/PROTOCOL.md ("The
-// single-pass dataset ceiling: receiver memory and masking compute"). Each is
-// an UPPER bound on the real serialized cost: the derived value is a read
-// gate, so undershooting would reject a legitimate frame while overshooting
-// only loosens defense in depth. The byte layout they weigh is
-// `encodeSinglePassReply` in link.ts.
+// Byte weights of the reply cap, each an upper bound on the serialized cost of
+// `encodeSinglePassReply` (link.ts): undershooting rejects a legitimate frame
+// (docs/spec/PROTOCOL.md, The single-pass dataset ceiling).
 const SINGLE_PASS_BYTES_PER_MASKED_VALUE = 40;
 const SINGLE_PASS_BYTES_PER_INDEX_WORD = 4;
 const SINGLE_PASS_REPLY_OVERHEAD_BYTES = 256;
 
 /**
- * One party's authenticated single-pass size, as the two quantities every derived
- * bound below is a function of: the `effectiveKeyCount` both parties derive from
- * the agreed terms (the sum of the per-key declared widths) and the party's
- * declared record count, included in the terms exchange. Their product is the
- * party's **value slot** count -- the worst-case upper bound on its distinct
- * linkage-key value count.
- *
- * Named rather than positional because both parties compute every bound below from
- * the SAME pair in the SAME roles, and a swapped sender/receiver pair silently
- * yields a different cap on one side (the sender sends the index table, so the
- * two are not interchangeable).
+ * One party's authenticated single-pass size: the effective key count both
+ * parties derive from the agreed terms and the party's declared record count.
+ * Their product is its value slot count. Named fields, because a swapped sender
+ * and receiver yield a different cap on one side.
  */
 export interface SinglePassPartySize {
   /**
@@ -94,37 +59,23 @@ export interface SinglePassPartySize {
    * the same number on both parties.
    */
   readonly effectiveKeyCount: number;
-  /**
-   * The party's declared record count -- its row count times its own local
-   * fan-out factor -- as included in the terms exchange.
-   */
+  /** The party's row count times its own fan-out factor, as declared. */
   readonly recordCount: number;
 }
 
 /**
- * One party's **value slot** count: its declared effective key count times its
- * record count. This is the exact product every gate below weighs, exported so an
- * operator-facing diagnosis states the quantity the gate multiplied rather than a
- * neighbouring pair (the agreed key count and the record counts) whose product can
- * sit under a ceiling the same exchange exceeds.
+ * One party's value slot count, the product every gate below weighs, exported so
+ * a diagnosis states that product rather than a neighbouring pair of counts.
  */
 export function valueSlots(party: SinglePassPartySize): number {
   return party.effectiveKeyCount * party.recordCount;
 }
 
 /**
- * Does this party fan out -- is its declared effective key count above the agreed
- * key count? The single discriminant every layout-dependent decision reads: the
- * sender's index-table encoder and the receiver's decoder pick (link.ts), the
- * ragged count-prefix term of {@link singlePassReplyByteCap} below, and whether
- * the over-ceiling guidance offers removing a fan-out as a remedy.
- *
- * Written once because a divergence between those is not a cosmetic one: a read
- * gate sized for the fixed-width layout while the frame holds the ragged one
- * rejects a legitimate reply mid-exchange, and the opposite pairing admits a frame
- * the decoder then reads under the wrong shape. The party is passed as an object
- * rather than a second bare count so the two numbers cannot be transposed at a
- * call site.
+ * Whether the party's effective key count exceeds the agreed key count: the one
+ * discriminant for the index-table layout (link.ts), the ragged term of
+ * {@link singlePassReplyByteCap}, and the fan-out remedy. A divergence between
+ * them rejects a legitimate reply or misreads a frame.
  */
 export function partyFansOut(
   agreedKeyCount: number,
@@ -134,17 +85,9 @@ export function partyFansOut(
 }
 
 /**
- * Does a single party's own dataset alone exceed the single-pass ceiling? True
- * when `effectiveKeyCount * recordCount > MAX_SINGLE_PASS_CELLS`. This is the
- * coarse one-party gate the {@link prepareForExchange} pre-flight uses, when only
- * this party's row count is known: if a party's own contribution already exceeds
- * the budget, single-pass cannot succeed whatever the partner's size. The
- * two-party check production runs post-handshake, once both counts are exchanged,
- * is {@link singlePassCeilingBreach}; {@link singlePassExchangeExceedsCap} is the
- * boolean convenience over it.
- *
- * A party declaring no fan-out passes its plain key count, for which this is the
- * cell-count gate unchanged.
+ * Whether one party's own value slots exceed {@link MAX_SINGLE_PASS_CELLS}: the
+ * one-party pre-flight in {@link prepareForExchange}. The two-party gate is
+ * {@link singlePassCeilingBreach}.
  */
 export function singlePassDatasetExceedsCap(
   effectiveKeyCount: number,
@@ -154,17 +97,9 @@ export function singlePassDatasetExceedsCap(
 }
 
 /**
- * What a party whose own declared size reached the ceiling can do about it, as
- * both over-ceiling refusals state it -- the coarse prepare-time pre-flight and
- * the authoritative two-party gate -- so the advance notice and the refusal that
- * follows it cannot offer different remedies.
- *
- * The record count and the batching are that party's own to change. The linkage
- * keys are not: they are an agreed term, held identically by both sides, so an
- * acceptor cannot narrow a set its invitation held and an inviter's own
- * narrowing is terms the partner has to run under. Naming that as a
- * renegotiation rather than as an edit is what keeps the remedy true on the seat
- * that did not choose the keys.
+ * The remedy both over-ceiling refusals state, so the pre-flight and the gate
+ * cannot differ. The linkage keys are an agreed term, so the remedy names new
+ * terms with the partner rather than an edit.
  */
 export const SINGLE_PASS_LOCAL_REMEDY =
   "Reduce the record count or split the dataset into smaller batches, or " +
@@ -177,19 +112,9 @@ export const SINGLE_PASS_LOCAL_REMEDY =
 export type SinglePassCeilingBreach = "local" | "partner" | "both";
 
 /**
- * Which side of an exchange breached the single-pass ceiling, as the two parties
- * named from the point of view of the party asking: `"local"` when only the asking
- * party's own value slot count is over the budget, `"partner"` when only the other
- * party's is, `"both"` when each is, and `undefined` when the exchange is within
- * it.
- *
- * The two parties reach MIRRORED verdicts, never conflicting ones: the per-party
- * predicate is {@link singlePassDatasetExceedsCap} over authenticated session state
- * both hold, so a `"partner"` breach on one side is a `"local"` breach on the
- * other and `"both"`/`undefined` are the same on each. That is what lets an
- * over-ceiling diagnosis name the side whose declaration reached the ceiling while
- * the abort itself stays symmetric -- {@link singlePassExchangeExceedsCap} is this
- * verdict with the orientation dropped.
+ * Which side breached the single-pass ceiling, from the asking party's view, or
+ * `undefined` within it. Computed from authenticated state both parties have, so
+ * the two verdicts mirror each other and the abort stays symmetric.
  */
 export function singlePassCeilingBreach(
   local: SinglePassPartySize,
@@ -210,13 +135,9 @@ export function singlePassCeilingBreach(
 }
 
 /**
- * Does this exchange exceed the single-pass ceiling? True when EITHER party's
- * value slot count exceeds {@link MAX_SINGLE_PASS_CELLS}.
- * Computed identically on both parties from authenticated session state alone --
- * the two record counts and the two declared effective key counts exchanged over
- * the encrypted channel after the handshake -- so both reach the same verdict and
- * abort in lockstep without either reading the inbound frame. Reads no bytes,
- * name, or transport-listed size from the inbound file.
+ * Whether either party's value slots exceed {@link MAX_SINGLE_PASS_CELLS}. Both
+ * parties compute it from authenticated session state alone, never from the
+ * inbound file, so they abort in lockstep.
  */
 export function singlePassExchangeExceedsCap(
   sender: SinglePassPartySize,
@@ -226,25 +147,11 @@ export function singlePassExchangeExceedsCap(
 }
 
 /**
- * The accepted byte size of the single-pass reply frame, derived deterministically
- * from the agreed key count and the two parties' authenticated sizes -- identical
- * on both parties. It is the value the receiver's transport read gate enforces
- * (replacing the static {@link MAX_FRAME_SIZE_BYTES} for that one read) and the
- * value the sender's send-time check compares its built reply against, so the two
- * become one computation.
- *
- * The term order below, its coefficients, and the exact integer arithmetic are
- * fixed so two independent implementations produce the same value; they are
- * specified in docs/spec/PROTOCOL.md ("The single-pass dataset ceiling:
- * receiver memory and masking compute"), which also states why the
- * candidate-count prefix term is charged unconditionally.
- *
- * Call only for an in-cap exchange, guarded with
- * {@link singlePassCeilingBreach} or its boolean convenience
- * {@link singlePassExchangeExceedsCap}. The per-transport clamp the read gate
- * applies -- min with {@link MAX_FRAME_SIZE_BYTES} for file-sync, with
- * `MAX_WEBRTC_FRAME_BYTES` (connection/binaryPackBounds.ts) for WebRTC -- is a
- * safety check that does not bind at the current ceiling.
+ * The accepted byte size of the single-pass reply, identical on both parties:
+ * the receiver's read gate and the sender's send-time check. Its terms and integer
+ * arithmetic are fixed in docs/spec/PROTOCOL.md (The single-pass dataset ceiling).
+ * Call only for an in-cap exchange; the per-transport clamp is a safety check
+ * that does not bind at the current ceiling.
  */
 export function singlePassReplyByteCap(
   keyCount: number,
@@ -261,13 +168,9 @@ export function singlePassReplyByteCap(
 }
 
 /**
- * Per-message upper bounds on the encrypted-element count a received PSI frame may
- * declare, one field per message kind that holds the partner's own set. Derived
- * only from the two parties' authenticated sizes -- never from the inbound frame's
- * own bytes -- and enforced at the `deserializeBinary` call site in participant.ts
- * before the element list drives curve-point materialization in the library. A
- * response is held to the request this party sent instead (participant.ts). See
- * {@link psiElementBounds}.
+ * Upper bounds on the encrypted-element count a received PSI setup or request may
+ * declare, from authenticated sizes only, enforced before `deserializeBinary` in
+ * participant.ts. A response is held to the request this party sent instead.
  */
 export interface PsiElementBounds {
   /** Max elements a received server setup (the sender's masked set) may declare. */
@@ -277,23 +180,10 @@ export interface PsiElementBounds {
 }
 
 /**
- * Derive the per-message element-count bounds from authenticated session state:
- * the two exchanged record counts and the two declared effective key counts. Both
- * parties compute the SAME bounds, and each enforces only the one for the message
- * it receives (the sender checks the request; the receiver checks the setup).
- *
- * The bound is the same value slot count the single-pass frame cap sizes against --
- * the worst-case upper bound on a party's distinct-value count, reached only when
- * every slot holds a value seen nowhere else -- so it upper-bounds any legitimate
- * frame and never rejects one. It applies to both the single-pass and cascade
- * decode paths: single-pass pools each party's distinct values across all keys (at
- * most its slot count), and the cascade sends one key's values per round (at most
- * `recordCount` times that key's width, within the same bound).
- *
- * The setup holds the SENDER's masked set; the request holds the RECEIVER's
- * masked set. Inputs are non-negative integers well below 2^53 (record counts are
- * bounded by {@link MAX_RECORD_COUNT}, effective key counts by
- * MAX_EFFECTIVE_KEY_COUNT), so the products are exact.
+ * Each party's value slot count, the most distinct values it can send, so no
+ * legitimate frame is rejected on either the single-pass or the cascade path.
+ * Each party enforces the bound for the message it receives. The products are
+ * exact: record counts are bounded by {@link MAX_RECORD_COUNT}.
  */
 export function psiElementBounds(
   sender: SinglePassPartySize,

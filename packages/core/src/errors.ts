@@ -7,31 +7,17 @@ import {
 import type { AnnotationReadOptions } from "./failureAnnotation";
 
 /**
- * Classifies a terminal {@link ConnectionError} so a consumer can decide how to
- * respond:
- * - `transport`: the link failed after the transport's own retries were
- *   exhausted (peer unreachable, dropped, inactivity timeout). Retrying the
- *   whole exchange is reasonable.
- * - `security`: an authentication/replay/ordering check failed. Must not be
- *   silently retried; report it loudly as possible tampering. The
- *   authentication subset is the `AuthenticationError` subclass, which the
- *   CLI's error->exit boundary maps to 77 (EX_NOPERM).
- * - `usage`: the connection was misconfigured or used incorrectly (e.g. a send
- *   after close, a path shared by another session). The caller must fix
- *   something before retrying. The CLI's error->exit boundary maps this kind
- *   to 64 (EX_USAGE) alongside `UsageError`, as it does a `transport` wrap
- *   whose cause is either. `transport`, `closed`, and the other `security`
- *   failures take 69.
- * - `protocol`: the peer violated the message protocol (e.g. sent out of turn).
- *   A retry meets the same partner, so the CLI's error->exit boundary maps
- *   this kind to 76 (EX_PROTOCOL).
- * - `closed`: a parked operation was cancelled by a local
- *   `MessageConnection.close` (e.g. a signal-driven shutdown). Nothing
- *   went wrong; it is distinct from `usage` (not a programming error) and from
- *   `transport` (not a peer-timeout diagnostic). A clean *remote* close stays
- *   `transport`; a future consumer needing to act on it separately should add
- *   a dedicated kind (e.g. `peer-closed`). See docs/COMMUNICATION.md ("Error
- *   handling").
+ * Classifies a terminal {@link ConnectionError}, with the CLI exit code in
+ * parentheses.
+ * - `transport`: the link failed after the transport's own retries; retrying the
+ *   exchange is reasonable (69).
+ * - `security`: an authentication, replay or ordering check failed; never retry
+ *   it silently (77 for `AuthenticationError`).
+ * - `usage`: misconfigured or misused, such as a send after close; fix something
+ *   before retrying (64, as is a `transport` wrap of a usage fault).
+ * - `protocol`: the peer violated the message protocol (76).
+ * - `closed`: a local `MessageConnection.close` cancelled a parked operation (69);
+ *   a clean remote close stays `transport` (docs/COMMUNICATION.md, Error handling).
  */
 export type ConnectionErrorKind =
   "transport" | "security" | "usage" | "protocol" | "closed";
@@ -298,56 +284,12 @@ function refusalCauseChain(
 }
 
 /**
- * The family of local-configuration faults whose message is composed
- * solely of the local operator's own content, so it is both actionable to
- * that operator and safe to show to them verbatim. Raised from the
- * pre-exchange boundaries -- {@link prepareForExchange} and the CLI's
- * pre-mint invite validation -- before any credential, terms, or data are
- * sent, and from the local certificate/terms gate the terms exchange and
- * the receipt swap both apply, mid-exchange: a consumer keying on this
- * class must not infer phase from membership. The CLI's
- * `classifyTerminalError` reads the class alone for its `config` category,
- * so a member raised at any point before the output stage lands there; the
- * web's `exchangeLifecycle`/`classifyExchangeFailure` additionally
- * requires its `prepare` phase.
- *
- * This base type is the membership rule for the web's actionable "config"
- * alert, which renders the error's message: the web classifies a
- * prepare-phase failure as `config` only when it is an
- * `OperatorConfigError`, not any {@link UsageError}. The distinction is
- * security-relevant: a sibling prepare-time `UsageError` whose message can
- * embed partner-influenced text must stay a plain `UsageError`, so its
- * message is swallowed by the generic alert rather than echoed into the
- * operator's own UI. Membership is a structural property of the type, not
- * of which check happened to fire, so each member is responsible for
- * holding only local content in its message.
- *
- * That per-member responsibility is enforced by a check, not a promise
- * made here: `apps/cli/test/unit/operatorConfigErrorSites.test.ts`
- * enumerates every construction site of this type and its subclasses,
- * records what each message interpolates and why that value is local, and
- * fails on a site or an interpolation it does not account for. Its reach
- * is syntactic and bounded to what it scans: `packages/core/src`,
- * `apps/cli/src`, and `apps/web/src`, for classes written as
- * `class X extends <member>` and constructions written as
- * `new <Identifier>(...)`, so a member or a construction reached through a
- * factory, an alias, or a variable is outside it.
- *
- * Extend it from -- or raise it directly in -- any check that fails closed on
- * the operator's own configuration and whose message names only local content.
- * What that content rule excludes is text another party authored, so a refusal
- * built from fixed prose over counts alone has nothing to exclude, whichever
- * document the counts were read off. {@link StandardizationTermsError} is a
- * member by subclass; a check whose refusal meets the contract without needing
- * a narrower type raises the base class directly. The payload-SEND disclosure
- * check (`assertPayloadSendDisclosed`) is not a member: on the accept side its
- * `payload.send` names are adopted from the partner's invitation, and the check
- * cannot tell its role at the throw site, so it stays out and its message stays
- * swallowed.
- *
- * Being a {@link UsageError} subclass, the CLI's `instanceof UsageError`
- * check still classifies every member as a configuration error (exit 64,
- * EX_USAGE).
+ * A local-configuration fault whose message contains only this operator's own
+ * content, so the web's actionable "config" alert may show it verbatim. The alert
+ * keys on this type, not on any {@link UsageError}: a refusal whose message can
+ * contain partner-influenced text stays outside it, as `assertPayloadSendDisclosed`
+ * does. Membership does not imply phase. Every construction site is enumerated by
+ * `apps/cli/test/unit/operatorConfigErrorSites.test.ts` (docs/spec/CLI_EVENTS.md).
  */
 export class OperatorConfigError extends UsageError {
   constructor(message: string) {
@@ -439,32 +381,11 @@ export function isSetTooLargeError(
 }
 
 /**
- * The refusal raised, before any credential, terms, or data are sent, when
- * this party's input cannot fully satisfy the linkage terms the two
- * parties agreed to -- a declared key whose fields the columns cannot
- * produce, a key whose own declared cleaning drops every record, or terms
- * declaring no key at all. One grading decides it
- * (`decideLinkageTermsVerdict`) and one boundary enforces it
- * ({@link prepareForExchange}); a front end that grades earlier gives
- * advance notice of this same refusal rather than holding a threshold of
- * its own.
- *
- * Not a transport fault: it fires before anything is sent, and a caller
- * that retries the same input refuses identically, so a UI offering a
- * retry would loop an unattended run on a deterministic local fault. It is
- * a distinct type rather than a plain {@link UsageError} so a caller
- * keeping per-failure bookkeeping can branch on it deterministically (the
- * web's managed re-run records it in the benign input tier), while the
- * CLI's `instanceof UsageError` check still classifies it as a
- * configuration error (exit 64, EX_USAGE).
- *
- * Not an {@link OperatorConfigError}: the field and key names it
- * enumerates are the agreed terms' own, adopted from the partner's
- * invitation on every accept path, so its message is not composed solely
- * of local content and stays out of the message-rendering contract that
- * base type holds. The names ride capped cause links of their own, so a
- * renderer walking the chain spends their budget on them alone and
- * reaches the summary and its remedy first.
+ * This party's input cannot satisfy the agreed linkage terms, graded by
+ * `decideLinkageTermsVerdict` and refused by {@link prepareForExchange} before
+ * anything is sent; a front end grading earlier uses no threshold of its own.
+ * Not an {@link OperatorConfigError}: on the accept path the field and key names it
+ * lists come from the partner's invitation, each on a capped cause link of its own.
  */
 export class LinkageTermsUnsatisfiableError extends UsageError {
   constructor(message: string, options?: ErrorOptions) {
@@ -474,23 +395,11 @@ export class LinkageTermsUnsatisfiableError extends UsageError {
 }
 
 /**
- * The specific {@link OperatorConfigError} for an authored ("authoritative")
- * standardization that contradicts its own linkage terms -- a transform
- * output naming no declared linkage field, or an unknown standardization
- * function (see `validateStandardizationAgainstTerms`). Thrown only by
- * {@link prepareForExchange}, and only for an authored standardization;
- * its message interpolates that standardization's transform outputs and
- * step functions. On the web the only party that reaches this throw is
- * the inviter, with its own authored standardization (local content): the
- * acceptor's standardization is derived from its adopted terms via
- * `getDefaultStandardization`, whose outputs are exactly those terms'
- * field names, so it is consistent with them by construction and does not
- * reach this throw (pinned in linkageSatisfiability.test.ts). Adopted,
- * partner-origin field names therefore never appear here -- every message
- * this type holds is the authoring party's own local content. See
- * {@link OperatorConfigError} for why the web keys its actionable
- * "config" alert on that base type rather than on any prepare-phase
- * {@link UsageError}.
+ * An authored standardization that contradicts its own linkage terms, found by
+ * `validateStandardizationAgainstTerms` in {@link prepareForExchange}. Its message
+ * contains only the author's content: an acceptor's standardization is derived from
+ * the adopted terms and never reaches this throw (pinned in
+ * linkageSatisfiability.test.ts).
  */
 export class StandardizationTermsError extends OperatorConfigError {
   constructor(message: string) {
@@ -500,30 +409,10 @@ export class StandardizationTermsError extends OperatorConfigError {
 }
 
 /**
- * The refusal for a standardization step naming a function this build does
- * not recognize, raised where the step is compiled rather than where a
- * configuration is validated: the agreed terms' linkage-key element
- * transforms (compiled as a key's fate is classified, before its first row
- * is read), a party's own standardization pipeline, and the public
- * `runPipeline` entry point. It is the compile-time counterpart of
- * {@link StandardizationTermsError}, which covers the same fault where an
- * authored standardization is validated against its own terms, before an
- * exchange runs.
- *
- * A {@link UsageError} subclass, so the CLI's error->exit boundary
- * classifies it as a configuration error (exit 64) rather than the 69
- * that invites an unattended supervisor to retry: an element the agreed
- * terms declare and this build cannot run is a fault in the terms,
- * deterministic in them, and every retry reaches the same refusal (see
- * docs/spec/CHANNEL_SECURITY.md).
- *
- * Not an {@link OperatorConfigError}, unlike its authored-config
- * counterpart: an element transform is adopted verbatim from the
- * partner's invitation on the accept path, so this refusal is not always
- * about the operator's own content, and its message stays swallowed by
- * the web's generic alert. The raise site narrows the offending name to a
- * literal this build recognizes before interpolating it, so no partner
- * free text reaches the message either way.
+ * A standardization step naming a function this build does not recognize, raised
+ * where the step is compiled. Deterministic in the terms, so a {@link UsageError}
+ * (exit 64) rather than the retryable 69. Not an {@link OperatorConfigError}: an
+ * element transform comes from the partner's invitation on the accept path.
  */
 export class UnknownStandardizationFunctionError extends UsageError {
   constructor(message: string) {
