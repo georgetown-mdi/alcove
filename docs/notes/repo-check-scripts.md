@@ -521,3 +521,148 @@ Across both parties the curve work is `c_enc*(D_send + D_recv) + c_re*(2*D_recv)
 each party's first encryption plus the sender's re-encryption and the receiver's match, where `D` is the count of distinct values a party pools across all keys.
 The masking steps share one PSI client key between the receiver's request and its match,
 so the sweep relays a live exchange rather than building a reply offline in an independent process.
+
+## Web config loadability
+
+[`scripts/check-web-config-native-load.mjs`](../../scripts/check-web-config-native-load.mjs) and [`scripts/check-web-config-image-load.mjs`](../../scripts/check-web-config-image-load.mjs), sharing the child-process harness in [`scripts/lib/configLoadHarness.mjs`](../../scripts/lib/configLoadHarness.mjs)
+
+### Why each is a check
+
+Two paths evaluate `apps/web/vite.config.ts` with no transform in front: Vite's `configLoader: "native"` and a plain `node` import.
+Both hand it to Node's strip-only type stripping, which erases annotations and nothing else,
+so a construct that needs code generated for it is refused with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`.
+Driven against Node 26.7, that is a constructor parameter property, an `enum` (`const` or not), a non-`declare` `namespace`, and an `import x = require(...)` alias;
+modifiers that erase, such as `private`, `readonly`, `abstract` and `declare`, load.
+That list is for a reader; what the check enforces is the measurement.
+The refusal is a parse error in the module holding the construct, so it fires anywhere in the config's import graph,
+and the graph reaches app source (`src/utils/serverConfig.ts` to `src/utils/configManager.ts`) that nothing else holds to erasable syntax.
+Typecheck, lint and a bundling `vite build` all run a real TypeScript transform and do not see it.
+
+The Dockerfile builder stage copies apps/web's config, `src/`, `server/` and `public/` and no test tree,
+and `npm run build:console -w apps/web` there is the first thing that evaluates `vite.console.config.ts`, and the `vite.config.ts` it imports, against that subset.
+Vite's config loader bundles the config rather than importing it, so it resolves every literal specifier the file holds, inside a dynamic import too, whether or not the branch is taken.
+One import of a test-tree module fails the image build while every local command stays green, because each runs from a tree that has the test files.
+
+### Measured, not modelled
+
+Neither check parses TypeScript, resolves a specifier, or predicts what a loader would do; both spawn the real loaders and read the outcome,
+under [CLAUDE.md](../../CLAUDE.md)'s rule on settling an external tool's behavior by driving it.
+The image check reads its copy list out of the Dockerfile, so the two cannot drift.
+
+### Why a control fixture
+
+A check that only loaded the real config would pass forever, detecting nothing, if the measurement stopped being one:
+a future Vite making "native" a transforming loader, Node growing a transform of its own, the replicated tree quietly carrying the test tree in, or the loader no longer resolving relative imports.
+So each check first loads a control the measurement must refuse, and a control that loads fails the check rather than licensing the result below it.
+The native check asserts the control's rejection rather than assuming it because a TypeScript loader installed by a means it does not scrub, a `node --import` in a wrapper or a hook in another inherited variable, would still transform the config.
+
+### Why both native loaders
+
+Vite's native loader imports the config through Node, so today the plain-import leg is the narrower of the two.
+It is driven anyway, since that overlap is a property of the current Vite:
+if a later "native" grows a transform, the plain leg still measures Node's own behavior, and it is what `node apps/web/vite.config.ts` gets.
+
+### What they do not cover
+
+- Another version of Vite or Node than the installed ones.
+- A construct reached only from a branch a command other than `serve` takes.
+- Whether a config that loads is correct for the dev server or the build.
+- The build past the config: a module under `apps/web/src` importing the test tree does not fail the image check.
+  A full `vite build` is the minutes `check:deploy-trigger-graph` pays for and the merge path does not have.
+- The image's own `npm ci`: the replicated tree borrows this checkout's installed dependencies through a symlink,
+  so it measures the repository file subset, not the installed tree the image resolves bare specifiers from.
+- `.dockerignore`, which keeps build outputs and node_modules out of the build context.
+  The check copies from the working tree, where a stray build output under a copied source directory is reachable to the load and would not be in the image.
+
+## Route tree freshness
+
+[`scripts/check-routetree-fresh.mjs`](../../scripts/check-routetree-fresh.mjs)
+
+### Why it is a check
+
+`apps/web/src/routeTree.gen.ts` is written by the TanStack Router codegen and checked in by design:
+typecheck, lint, build and the web test suites all read it, so a fresh clone must have it before any generation step runs.
+The price is that every web-tooling invocation rewrites it,
+so a copy that has drifted behind the pinned generator shows up as an unrelated modification in a branch that touched no route,
+noise in a diff and a dirty tree where a clean one is required.
+The check turns that drift into a failure, so a refresh lands as its own commit instead of going in with someone else's.
+
+### Non-mutating
+
+A check that left a regenerated file behind would recreate the hazard it exists to remove,
+so the working-tree bytes are restored whatever the outcome.
+The signal handlers restore too, since an ordinary teardown does not run on a signal, and a backup outside the repository covers the restore itself failing.
+
+The probe is appended rather than the file being moved aside, so the path never stops existing:
+a repo-wide reader running at the same time, such as the egress scan over `git ls-files`, an editor or a typecheck, sees a valid file with one extra trailing comment instead of an ENOENT.
+
+### Why a probe line
+
+`vitest list` is the cheapest invocation that loads the web config and so runs the codegen, about seven seconds.
+A check that only diffed the file afterwards would pass forever, detecting nothing, if a future TanStack or vitest release stopped generating on config load.
+The generator was measured to overwrite a probe-marked file whole, so a probe left behind means the codegen did not run.
+
+### What it does not cover
+
+- Another version of `@tanstack/router-generator`.
+  It compares against the locally installed generator, so it is only as good as the lockfile pin, and a node_modules out of step with the lockfile makes it disagree with CI.
+  A stale copy and a generator that changed its output format both read as "differs" and are answered the same way, by committing the regenerated bytes.
+- Route correctness: that the tree is what the app needs, that no route file is missing or misnamed, that the routes resolve.
+- Another entry point reaching the codegen with a different plugin configuration.
+- A stale route tree against a broken web config: an invocation failing for another reason, such as an uncollectable test file or a missing `@alcove/core` build,
+  is reported as a codegen failure with the command's own output.
+
+## Built-in rule set version bump
+
+[`scripts/check-built-in-set-versions.mjs`](../../scripts/check-built-in-set-versions.mjs)
+
+### Why it is a check
+
+[What the versions mean](default-linkage-rule-set.md#what-the-versions-mean) states the rule in prose:
+an edit to the built-in field set bumps its version, and an edit to the key set bumps the key set's,
+a reorder included, because the order is cascade order and moving a key changes which one claims a record more than one would match.
+The recorded validation attaches to a name and a version together,
+so an edited set holding the old version leaves that note describing rules nobody ran.
+A future obligation written as prose fails silently when it is forgotten; the check is that obligation.
+
+### Reading choices
+
+- Every set the registry declares is read, not the default alone, so a set added to it is pinned from its first commit.
+- The digest is over the evaluated declarations rather than the file text, so a cosmetic edit leaves a version alone, the case the note names.
+- Unlike the protocol-version pin, this rule binds from the outset rather than from a first publication, so the ledger ships populated.
+- The ledger is keyed by set name and then version, and is append-only: a bump adds an entry, so a legitimate bump and an in-place rewrite of a recorded pin are different diffs.
+  The check cannot tell a legitimate re-pin from a rewrite that dodges the bump, the same limit the pull-request checklist's security-review sha has, so an edit to a recorded entry is a reviewer's call.
+- One name and version identify one content, which the ledger's keying takes for granted.
+  A shared set is one declaration read twice, but two different contents under one name and version fail rather than being pinned to whichever entry comes first.
+
+### What it does not cover
+
+- Whether the version decision was right: it fails moved content with no bump and a bump with no pin, but cannot judge which semver component a change deserved, or a bump that was not needed.
+- A content change against a cosmetic one below the property level.
+  Renaming a key or reordering a constraint's `exclude` list moves the digest, which fails toward taking the version decision.
+  A key's name is not cosmetic between the parties: the terms cross-check encodes the key list whole, so two builds spelling a key differently cancel the exchange.
+- A declaration that is not a plain literal, which fails rather than being guessed at, since the sets are read by evaluating their source initializers.
+
+## Zero-setup key fields
+
+[`scripts/check-zero-setup-keys.mjs`](../../scripts/check-zero-setup-keys.mjs)
+
+### Why it is a check
+
+The property and its failure modes are in [What zero-setup rests on](default-linkage-rule-set.md#what-zero-setup-rests-on).
+Held by review, it is the shape that goes stale, because the edit that breaks it is one nobody would recognize as touching zero-setup at all.
+Holding only the default set would leave a later set covered by nothing until someone remembered.
+
+### Why rule B
+
+The satisfiability filter compares an element's `field` against the semantic types the input file supplies,
+so a built-in field whose name is not its type names a type no file can offer,
+and every key referencing it is dropped from a zero-setup party's terms whatever columns that party brings.
+
+### What it does not cover
+
+- Whether a declared field is one a party really always holds.
+  Widening the field set is not silent, since its content is pinned by [the version bump check](#built-in-rule-set-version-bump) and a widening takes a bump there,
+  but whether the wider set is still guaranteed is a judgment no check makes.
+- The terms builder itself: that the filter binds an element by semantic type, which is what makes rule B matter, is covered by the core suite.
+- A file that supplies a column of the right type but no usable value: the property is that the keys stay inside the guaranteed fields, not that a given file matches on them.

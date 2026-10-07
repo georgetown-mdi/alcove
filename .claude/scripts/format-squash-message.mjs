@@ -1,63 +1,18 @@
 #!/usr/bin/env node
+// Squash-message body normalizer:
+// `node .claude/scripts/format-squash-message.mjs [<draft-path>] [--fenced]`.
+// Reads a draft body from the path or stdin (`-` or no path) and prints it
+// normalized to stdout: paragraphs rewrapped at BODY_WRAP_COLUMNS, markdown
+// markers dropped with their text kept, list items turned into paragraphs.
+// A block holding an indented line is left verbatim. What cannot be fixed
+// without changing the words, `refusals` below, is refused, and so is output
+// that fails `violations`, the check squash-message.mjs also runs. `--fenced`
+// wraps the body in a code fence, the form posted as a pull-request comment.
+// The draft is the body alone; GitHub takes the subject from the PR title.
 //
-// Normalize the body of a squash-and-merge commit message, and refuse what a
-// machine cannot fix without rewriting it. Reads the draft body from a path or
-// stdin and writes the normalized body to stdout; `--fenced` wraps it in a code
-// fence, the form posted as a pull-request comment.
-//
-// Usage:
-//   node format-squash-message.mjs [<draft-path>] [--fenced]
-//
-// Why this exists: the body posted on a pull request is pasted verbatim into
-// the merge box's body field, so whatever it holds is what lands in the
-// history. GitHub fills the subject from the pull request's title, whose budget
-// ../../scripts/lib/squashSubjectBudget.mjs holds for the title hook and the
-// PR checklist check, so a draft here is a body and nothing else. Prose
-// restating `CONTRIBUTING.md`, Commit Messages, at each producer -- the
-// remind-squash-message.mjs reminder, squash-message.mjs's prompt -- checks
-// nothing, and a 120-column body line reaches the maintainer intact. This is
-// where those rules are executable. The wrap column below is the only copy of
-// that number outside CONTRIBUTING.md's own statement of the rule.
-//
-// THE SPLIT BETWEEN NORMALIZING AND REFUSING is whether the fix keeps the words.
-// Rewrapping a paragraph, dropping a markdown marker, and turning a list item
-// into a paragraph all leave the text saying what it said, so they happen
-// silently. A fix that would not keep them is refused instead: reflowing an
-// over-wide line inside an indented block destroys the shape it was indented
-// for. `refusals` below is the enumeration.
-//
-// WHAT A CHECK OVER AN ALREADY-WRITTEN BODY ASKS. `violations` is empty exactly
-// when no refusal fires and the body is what this script produces from it,
-// character for character. A body wrapped by hand at some other column is not
-// what it produces; the fix is one run of this script. Both entry points --
-// this one and squash-message.mjs -- run `violations` over what normalizing
-// produced and refuse to hand on output it rejects, so a shape the normalizer
-// mangles is a failed run rather than a mangled message the maintainer pastes.
-//
-// WHAT NORMALIZING DOES TO MARKDOWN. Emphasis and an inline code span lose their
-// markers and keep the text. A heading marker, a code fence line, and a
-// blockquote marker are dropped, and a heading's text becomes a paragraph of its
-// own. `[text](url)` becomes `text` with the url in parentheses after it, unless
-// the text already holds the url. A list item becomes its own paragraph with its
-// marker removed, its continuation lines joined into it, and an indented item
-// riding with the item above it.
-//
-// THE FENCE IS FOR THE COMMENT, NOT THE MESSAGE. GitHub renders a comment as
-// markdown, which would reflow the wrapped lines the maintainer copies; a fenced
-// block shows them as written. The fence is longer than any run of backticks in
-// the body, so nothing inside it can close it early.
-//
-// AN INDENTED BLOCK IS LEFT VERBATIM. Rewrapping indented text would destroy the
-// shape someone indented it for, so a block holding an indented line is not
-// touched -- and an over-wide line inside one is refused rather than fixed,
-// which keeps the wrap guarantee total. A block holding a list marker at column
-// 0 is a list rather than indented text, whatever its items are indented by.
-//
-// STATED LIMITS. A single word longer than the column budget occupies a line of
-// its own, over budget: breaking it would change the text, and `violations`
-// exempts exactly that line. A subject line written at the top of the draft is
-// not told apart from a one-line opening paragraph, so it is kept as one; the
-// draft is the body alone.
+// Exit 0 printed, 1 the draft could not be read, 2 on a usage error or a
+// refusal, with nothing printed. Rationale and limits:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

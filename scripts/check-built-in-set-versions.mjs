@@ -1,60 +1,24 @@
 #!/usr/bin/env node
-// Built-in rule set version bump check, run by static_checks.yaml on every PR.
+// Built-in rule set version bump check: `npm run check:built-in-set-versions
+// [-- --root <tree>]`, run by static_checks.yaml on every pull request. Holds
+// docs/notes/default-linkage-rule-set.md's "What the versions mean": an edit to
+// a built-in field set or key set, a reorder of the keys included, takes a
+// version bump. Reads every set the registry in
+// packages/core/src/defaults/builtInLinkageTerms.ts declares, digests each one's
+// evaluated declarations (fields with constraints; keys with elements,
+// transforms, swaps and order), and fails unless:
 //
-// docs/notes/default-linkage-rule-set.md's "What the versions mean" states the
-// rule in prose: an edit to the built-in FIELD set bumps the field set's
-// version, and an edit to the built-in KEY set bumps the key set's -- a reorder
-// of the keys included, because the order is cascade order and moving a key
-// changes which one claims a record more than one would match. The recorded
-// validation attaches to a name and a version together, so an edited set
-// holding the old version leaves that note describing rules nobody ran, which
-// is the exact failure the naming exists to prevent. A future obligation written
-// as prose is the shape that rots: nothing fails when it is forgotten. This is
-// that obligation as a check.
+//   1. each set's digest matches the pin scripts/built-in-set-pins.json records
+//      for the name and version the source declares, so moved content with no
+//      bump fails and a bump must record its pin;
+//   2. no two registry entries declare different contents under one name and
+//      version.
 //
-// Two parts, each read from the tree alone:
-//
-//   A. THE SET CONTENT, digested per named set out of
-//      packages/core/src/defaults/builtInLinkageTerms.ts: the fields with their
-//      constraints, and the keys with their elements, transforms, swaps, and the
-//      order they are applied in. Every set the registry declares is read, not
-//      the default alone, so a set added to it is pinned from its first commit.
-//      The digest is taken over the evaluated declarations rather than the file
-//      text, so a comment, a reflow, a move within the file, or a property
-//      written in another order moves nothing -- the "leaves a version alone"
-//      case the note names.
-//
-//   B. THE PIN LEDGER, scripts/built-in-set-pins.json: the digest recorded for
-//      each version of each named set. Unlike the protocol-version pin, this
-//      rule binds from the outset rather than from a first publication, so the
-//      ledger ships populated and every run holds the tree to it.
-//
-// The ledger is keyed by set name and then by version, and is append-only: a
-// bump ADDS an entry, so a legitimate bump and an in-place rewrite of a recorded
-// version's pin are different diffs. This check cannot tell a legitimate re-pin
-// from a rewrite that dodges the bump -- the same limit the pull-request
-// checklist's security-review sha has -- so an edit to an already-recorded
-// entry is a reviewer's call, not this check's.
-//
-// One name and version identify one content, which the ledger's own keying
-// takes for granted: two registry entries may share a set, and a shared set is
-// one declaration read twice, but two DIFFERENT contents under one name and
-// version fail here rather than being pinned to whichever entry comes first.
-//
-// What this check cannot see:
-//   - Whether the version decision taken was the RIGHT one. It fails content
-//     that has moved without a bump, and it fails a bump that records no pin; it
-//     cannot judge which semver component a change deserved, nor a bump that was
-//     not needed.
-//   - The difference between a content change and a cosmetic one below the
-//     property level. Renaming a key, or reordering a constraint's `exclude`
-//     list, moves the digest. Both fail toward taking the version decision
-//     rather than away from it, and a key's name is not cosmetic between the
-//     parties: the terms cross-check canonically encodes the key list whole, so
-//     two parties whose builds spell a key differently cancel the exchange.
-//   - A declaration that is not a literal. The sets are read by evaluating their
-//     source initializers, and a declaration that stopped being a plain literal
-//     fails rather than being guessed at.
+// A comment, a reflow, a move within the file or a reordered property moves no
+// digest; a renamed key or a reordered `exclude` list does. A declaration that
+// is not a literal fails. The ledger is append-only by review, not by this
+// check. Exit 0 clean, 1 on a finding or a set it cannot read, 2 on a usage
+// error. Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -1,55 +1,17 @@
 #!/usr/bin/env node
-// apps/web build-input check: the web config loads from the file subset the
-// image's builder stage copies, run by static_checks.yaml on every PR.
+// Web config image-load check: `npm run check:web-config-image-load`, run by
+// static_checks.yaml on every pull request. apps/web's config must load from
+// the file subset the Dockerfile builder stage copies. The stage's COPY lines
+// are read from the Dockerfile and replayed into a temporary tree, with this
+// checkout's node_modules symlinked in, and the config is loaded there through
+// Vite's own `loadConfigFromFile`. A control config whose only import is an
+// apps/web/test module is loaded first, and a control that loads fails the
+// check. A COPY shape other than a literal path or a `*` filename glob (a flag,
+// the JSON-array form, a rename onto a file) throws rather than being replayed.
 //
-// The Dockerfile builder stage copies apps/web's config, src/, server/ and
-// public/ and no test tree, and `npm run build:console -w apps/web` there is the
-// first thing that evaluates vite.console.config.ts -- and vite.config.ts, which
-// it imports -- against that subset. Vite's config loader
-// BUNDLES the config rather than importing it, so it resolves every literal
-// specifier the file holds -- inside a dynamic import as much as a static one,
-// and whether or not the branch holding it is ever taken. A single import of a
-// test-tree module therefore fails the image build with an unresolved import,
-// while every local command (dev server, vitest, typecheck, lint) stays green,
-// because each of those runs from a tree that has the test files.
-//
-// So the claim "the config's import graph resolves from what the image copies"
-// is driven here instead of asserted: the builder stage's COPY lines are
-// replayed into a temporary tree and the real config is loaded there.
-//
-// Two properties the implementation is built around:
-//
-//   1. MEASURED, NOT MODELLED. The copy list is read out of the Dockerfile, so
-//      the two cannot drift, and the load is Vite's own `loadConfigFromFile`
-//      through the Vite the web app resolves. Nothing here parses the config,
-//      resolves a specifier, or predicts what the loader would do with one.
-//   2. FAILS CLOSED when the replication stopped being a measurement. A check
-//      that only loaded the config from a copied tree would pass forever if the
-//      replication quietly carried the test tree in, or if the loader stopped
-//      resolving relative imports. So a CONTROL config -- one whose only import
-//      is a module of apps/web/test -- is loaded in the replicated tree first,
-//      and a control that LOADS fails the check rather than licensing the
-//      result below it.
-//
-// WHAT THIS CHECK DOES NOT COVER:
-//
-//   - The build past the config. It loads the config and stops; it does not
-//     bundle the app, so a module under apps/web/src that imported the test
-//     tree would not fail here. A full `vite build` is the minutes
-//     check:deploy-trigger-graph pays for and the merge path does not have.
-//   - The image's own `npm ci`. The replicated tree borrows this checkout's
-//     installed dependencies through a symlink, so what it measures is the
-//     repository FILE subset, not the installed tree the image resolves bare
-//     specifiers from.
-//   - COPY shapes past the two the builder stage is written in: a literal path,
-//     and a `*` glob in a filename. Anything else -- a flag such as `--from=`, a
-//     JSON-array form, a rename onto a file destination -- THROWS rather than
-//     being replicated approximately, so a Dockerfile this cannot replay stops
-//     the check instead of quietly measuring the wrong tree.
-//   - .dockerignore. Its entries keep build outputs and node_modules out of the
-//     build context; this check provides node_modules itself and copies from the
-//     working tree, where a stray build output under a copied source directory
-//     is reachable to the load and would not be in the image.
+// Loads the config only, not the app build, and ignores .dockerignore and the
+// image's own `npm ci`. Exit 0 clean, 1 when the config or the control fails.
+// Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import {
   cpSync,

@@ -1,57 +1,22 @@
 #!/usr/bin/env node
+// Squash-message drafter: `node .claude/scripts/squash-message.mjs <pr-number>`.
+// Drafts the body of a pull request's squash-and-merge commit message with
+// one `claude -p` run pinned to sonnet, over the branch's commits, the PR body
+// and CONTRIBUTING.md, and prints it to stdout through format-squash-message.mjs.
+// The maintainer's side of the remind-squash-message.mjs hook.
 //
-// Draft the body of the squash-and-merge commit message for a pull request and
-// print it to stdout. Companion to the remind-squash-message.mjs hook, which
-// raises the same need at `gh pr create` time; this is the maintainer's side of
-// it, run against a pull request that already exists.
+// Refuses a pull request holding one commit, counted by `gh pr view --json
+// commits`; a `gh` that cannot answer is reported on stderr and the draft runs
+// anyway. The run gets only ALLOWED_TOOLS, all read-only, and DISALLOWED_TOOLS
+// denies merging, editing and pushing; nothing here merges, edits or pushes.
+// The prompt goes in on stdin and each tool list is one comma-joined token,
+// since the CLI's tool-list flags are variadic and would swallow a trailing
+// prompt argument.
 //
-// Alcove squash-merges, so the message GitHub proposes -- the PR title plus a
-// bullet list of commit subjects -- is what lands in the history unless someone
-// writes a better one. Writing that message is a fixed, repeated prompt, so it
-// is a script rather than a habit: one `claude -p` run, pinned to sonnet, over
-// the branch's commits, the PR body, and CONTRIBUTING.md. Only the body is
-// drafted: GitHub fills the merge box's subject from the PR title, so the
-// output pastes into the body field unchanged.
-//
-// Usage:
-//   node squash-message.mjs <pr-number>
-//
-// A pull request holding ONE commit is refused rather than drafted for: GitHub
-// squash-merges it with that commit's own message, so a drafted one is discarded
-// on merge and the writing belongs in the commit instead. The count is `gh pr
-// view --json commits`, the list GitHub squashes, rather than a local revision
-// walk that would depend on which checkout the script ran from. A `gh` that
-// cannot answer -- absent, unauthenticated, offline -- leaves the count unknown,
-// which says so on stderr and drafts anyway: the guard is defense in depth for a
-// manual run, not the reason the script exists.
-//
-// GENERATION ONLY. The run is given a read-only tool allowance -- reading files,
-// `git log`, `git show`, `gh pr view`, and `gh pr diff` -- and `gh pr merge`,
-// `gh pr edit`, and `git push` are named on the deny list besides. Nothing here
-// merges, edits, or pushes anything: the message goes to stdout and the
-// maintainer decides what to do with it. The colocated test pins that property
-// of the argv this builds.
-//
-// The prompt is left in the maintainer's own words rather than elaborated, but
-// for the one sentence that keeps a subject line out. It names CONTRIBUTING.md
-// with an `@` mention because that is what the interactive ritual does, and the
-// conventions it must follow (prose body, no markdown) live there rather than
-// being restated into the prompt where they would drift from the document.
-//
-// THE DRAFT GOES OUT THROUGH THE NORMALIZER. format-squash-message.mjs rewraps
-// the body at the column CONTRIBUTING.md sets and strips the markdown a `claude
-// -p` run wraps its answer in, a code fence included. It reports what it cannot
-// fix without rewriting the message, and a draft that trips one of those is
-// printed as the run produced it, with the reasons on stderr and a nonzero exit,
-// rather than half-fixed into something that reads finished. What normalizing
-// does produce goes back through the normalizer's own check, so output that
-// check rejects fails the run instead of reaching stdout.
-//
-// The prompt goes in on STDIN, and each tool list is one comma-joined token.
-// Both are what the real CLI needs rather than preferences: `--allowedTools` and
-// `--disallowedTools` are variadic, so they keep consuming argv and swallow a
-// trailing prompt argument -- which then arrives as a pile of one-word deny
-// rules and the run dies asking for input it was given.
+// Exit 0 printed. Exit 2 on a usage error, a one-commit pull request, or a
+// draft the normalizer refuses, which is printed as drafted with the reasons on
+// stderr; 1 or claude's own status when the run fails. Rationale:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";

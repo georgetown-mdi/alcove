@@ -1,62 +1,36 @@
 #!/usr/bin/env node
-// Review-ledger disposition check, run by the session at merge-ready
-// (`.claude/commands/assess-review.md`, Step 4 readiness).
+// Review-ledger disposition check, run at merge-ready
+// (`.claude/commands/assess-review.md`, Step 4 readiness). Usage is USAGE below.
+// Tests each disposition in a rounds ledger
+// (`scratch/review-rounds/<key>.jsonl`, rows in
+// `.claude/commands/light-review.md`, Step 3) against the PR head, refusing:
 //
-// A branch's rounds ledger (`scratch/review-rounds/<key>.jsonl`, row shape in
-// `.claude/commands/light-review.md`, Step 3) records how each finding was
-// disposed of. Three of those dispositions assert something outside the
-// ledger, and this check tests each against the PR head:
+// - a `fixed` entry whose `"commit": "<sha>"` is not contained in the head: not
+//   an ancestor, and no head commit with the same patch identity as
+//   `git cherry` decides it;
+// - a `deferred` entry naming neither `"board": "<board>/<itemId>"` nor
+//   `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`, a board
+//   value not of that shape, a limits file absent at the head, or a quoted
+//   phrase that file does not hold (an anchor is not resolved, a board item is
+//   checked for shape only);
+// - a `limit` entry whose `"surface"` is `"reachable"` or absent and which names
+//   no `limitsLine` passing the `deferred` rules, or whose `surface` is any
+//   value other than those two. `"surface": "internal"` passes.
 //
-// - A `fixed` entry names its fix commit as `"commit": "<sha>"`. It is refused
-//   when that fix is not contained in the head. Contained means the commit is
-//   an ancestor of the head, or the head holds a commit with the same patch
-//   identity, as `git cherry` decides it (`git patch-id --stable` over each
-//   commit reachable from the head but not from the fix). Patch identity is
-//   what lets a fix survive a rebase, which re-authors every commit id.
-// - A `deferred` entry names a home: `"board": "<board>/<itemId>"`, or
-//   `"limitsLine": "docs/spec/<path>#<anchor or \"quoted phrase\">"`. It is
-//   refused when it names neither, when the board value is not of that shape,
-//   or when the limits file does not exist at the head. A quoted phrase must
-//   appear in that file at the head; an anchor is not resolved, and a board
-//   item is checked for shape only, since the boards are not reachable offline.
-// - A `limit` entry states whether a user or partner can reach what it limits,
-//   as `"surface": "reachable"` or `"surface": "internal"`. A reachable limit is
-//   promoted to a spec limits line at merge-ready
-//   (`.claude/orchestration/ruleset.md`, Review flow), so it is refused unless
-//   it names a `limitsLine` that passes the `deferred` rules above. An internal
-//   one stays in the ledger alone and passes. An entry with no `surface` is
-//   held as reachable, so leaving the field off cannot pass a reachable limit;
-//   any other value is refused. Reachability is a field the disposing session
-//   writes, not something read off the finding's file, because one file can
-//   hold both a partner-facing message and an internal helper.
+// `--remap` rewrites each `fixed` entry's commit in place to the commit a rebase
+// made from it, paired by author, author date and message; a fix the rebase
+// squashed or reworded stays unpaired and keeps its old id.
 //
-// A conflict resolution that edits a fix's hunk changes its patch identity, so
-// patch identity alone would refuse a correct fix after such a rebase. The
-// rebase re-attestation step closes that: `--remap` rewrites each `fixed`
-// entry's commit in place to the commit the rebase made from it, paired by
-// author, author date, and message, which a rebase preserves and a conflict
-// resolution does not touch. A rebase that squashes or rewords the fix commit
-// leaves it unpaired, and its entry keeps the old id for the check to refuse.
+// A row is skipped as legacy when its `date` is before LEGACY_CUTOFF_DATE, no
+// `fixed` entry in it has a `commit`, no `deferred` entry a `board` or
+// `limitsLine`, no `limit` entry a `surface` or `limitsLine`, and no earlier
+// row in the ledger has any of those fields. A row dated before
+// LIMIT_RULE_DATE is exempt from the `limit` rule. Git runs in the worktree the
+// process was invoked from; name full shas, not a per-worktree ref.
 //
-// Legacy rows. Rows written before these fields existed name no commit and no
-// home, so the check skips a row, reporting it as skipped, when all three
-// hold: its `date` is before LEGACY_CUTOFF_DATE; no `fixed` entry in it has a
-// `commit`, no `deferred` entry has a `board` or `limitsLine`, and no `limit`
-// entry has a `surface` or `limitsLine`; and no earlier row in the same ledger
-// has any of those fields. A row that fails any of the three is held to the
-// rules above.
-//
-// Which tree the verdict is about: git runs in the worktree the process was
-// invoked from, never the one holding this file. Name full shas -- a
-// per-worktree ref (`HEAD`, `ORIG_HEAD`) means a different commit in each
-// linked tree.
-//
-// Limit rule date. A row dated before LIMIT_RULE_DATE is exempt from the
-// `limit` check above.
-//
-// Exit codes: 0 every held entry passes (legacy rows skipped); 1 an entry is
-// refused; 2 usage, an unreadable ledger line, an invocation from outside a
-// git worktree, or a git error.
+// Exit 0 every held entry passes; 1 an entry is refused; 2 usage, an
+// unreadable ledger line, an invocation outside a git worktree, or a git error.
+// Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

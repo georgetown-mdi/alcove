@@ -1,58 +1,21 @@
 #!/usr/bin/env node
-// Zero-setup key-field check, run by static_checks.yaml on every PR.
+// Zero-setup key-field check: `npm run check:zero-setup-keys
+// [-- --root <tree>]`, run by static_checks.yaml on every pull request. Holds
+// docs/notes/default-linkage-rule-set.md's "What zero-setup rests on": every
+// built-in key is built from the guaranteed-minimum fields both parties bring.
+// Reads each set the registry in
+// packages/core/src/defaults/builtInLinkageTerms.ts declares, not the default
+// alone, and fails unless, for each element of each key:
 //
-// A zero-setup exchange authors no linkage terms. Each party derives them from
-// its own input file: getDefaultLinkageTerms keeps a built-in key only when the
-// file supplies every field the key's elements name, and the two parties then
-// cross-check the terms they derived. So the built-in keys work with no
-// authoring for exactly one reason -- every one of them is built from the
-// guaranteed-minimum PII both parties are sure to bring, which is what the
-// built-in FIELD set is. A key over a field outside that set strands the party
-// whose file does not contain it: either the two parties derive different key
-// lists and the terms cross-check cancels the exchange, or the key survives over
-// a field the terms never declare and the terms are invalid. Neither failure
-// names its cause at the point it happens, and both arrive at run time on an
-// operator who authored nothing.
+//   A. its `field` names a field its own set declares, so a key over
+//      `phone_number`, `email_address` or `zip_code` fails; and
+//   B. that field's `name` equals its `type`, since the satisfiability filter
+//      matches an element's `field` against the semantic types a file supplies.
 //
-// docs/notes/default-linkage-rule-set.md's "What zero-setup rests on" states
-// the property, and cites this check for it: held by review, it is the shape
-// that rots, because the edit that breaks it is one nobody would recognize as
-// touching zero-setup at all.
-//
-// Zero-setup derives the DEFAULT set and no other, but the property is held
-// over every set the registry declares, each set's keys against its own fields:
-// a set chosen by name is derived through the same filter, so the same edit
-// breaks it the same way, and holding only the default would leave a later set
-// covered by nothing until someone remembered.
-//
-// Two things are read from packages/core/src/defaults/builtInLinkageTerms.ts
-// per set and nothing is restated: the field set, which IS the guaranteed
-// minimum, and the keys held to it. For each element of each key:
-//
-//   A. Its `field` must name a field the field set declares. This is the
-//      invariant proper: a key over `phone_number`, `email_address`, or
-//      `zip_code` -- matchable semantic types no built-in field covers -- fails
-//      here.
-//
-//   B. That field's `name` must equal its `type`. The satisfiability filter
-//      compares an element's `field` against the semantic TYPES the input file
-//      supplies, so a built-in field whose name is not its type names a type no
-//      file can offer: every key referencing it is dropped from a zero-setup
-//      party's terms no matter which columns that party brings.
-//
-// What this check cannot see:
-//   - Whether a field the set declares is one a party really always holds. It
-//     reads the declared set as the guaranteed minimum; widening that set is not
-//     silent, because the set's content is pinned by
-//     check-built-in-set-versions.mjs and a widening takes a version bump there,
-//     but whether the wider set is still guaranteed is a judgment no check
-//     makes.
-//   - The emitter itself. It reads the declared sets, not the terms builder
-//     over them; that the filter binds an element by semantic type
-//     -- which is what makes B critical -- is covered by the core suite.
-//   - A file that supplies a column of the right type but no usable value. The
-//     property here is that the KEYS stay inside the substrate, not that any
-//     given file matches on them.
+// Takes the declared field set as the guaranteed minimum, and reads the sets,
+// not the terms builder over them. Exit 0 clean, 1 on a finding or a set it
+// cannot read, 2 on a usage error. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
