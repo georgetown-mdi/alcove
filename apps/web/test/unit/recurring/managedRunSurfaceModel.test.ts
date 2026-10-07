@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { displayText } from "@alcove/core";
+import { displayText, getDefaultLinkageTerms } from "@alcove/core";
 
+import {
+  MANAGED_EXCHANGE_SCHEMA_VERSION,
+  NO_STANDING_CONDITION,
+  composeManagedExchangeFile,
+} from "@psi/managed/managedExchangeRecord";
 import {
   MANAGED_RUN_INITIAL,
   MANAGED_RUN_SURFACE_INITIAL,
@@ -12,10 +17,15 @@ import {
   managedRunSurfaceReducer,
   managedSurfaceView,
 } from "@recurring/managedRunSurfaceModel";
+import { MANAGED_LOAD_INITIAL } from "@recurring/managedRunLoadModel";
 import { MANAGED_RECOVERY_INITIAL } from "@recurring/managedRunRecoveryModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
+import type {
+  ManagedLoadState,
+  ManagedRunnableLoad,
+} from "@recurring/managedRunLoadModel";
 import type {
   ManagedRunAction,
   ManagedRunInputChoices,
@@ -27,6 +37,32 @@ import type {
 import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { RunOutputs } from "@psi/runOutputs";
+import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+
+function runnableRecord(sharedSecret: string): RunnableManagedExchangeRecord {
+  return {
+    schemaVersion: MANAGED_EXCHANGE_SCHEMA_VERSION,
+    id: "abc",
+    label: "Riverbend quarterly",
+    exchangeFile: composeManagedExchangeFile({
+      connection: { channel: "webrtc", host: "signaling.example.org" },
+      linkageTerms: getDefaultLinkageTerms("County Health Dept"),
+    }),
+    side: "inviter",
+    sharedSecret,
+    standingCondition: NO_STANDING_CONDITION,
+  };
+}
+
+const RUNNABLE_LOAD: ManagedLoadState & ManagedRunnableLoad = {
+  kind: "runnable",
+  record: runnableRecord("loaded-secret"),
+  localState: undefined,
+  backupMarker: undefined,
+  reads: 1,
+};
+
+const ROTATED = runnableRecord("fresh-secret");
 
 const OUTPUTS: RunOutputs = {
   kind: "matched",
@@ -384,9 +420,7 @@ describe("the run's input", () => {
 
 describe("the surface's view", () => {
   const base: ManagedSurfaceViewInputs = {
-    loadFailure: undefined,
-    configurationLoaded: false,
-    recordLoaded: true,
+    load: RUNNABLE_LOAD,
     run: MANAGED_RUN_INITIAL,
     commandLineHandedOff: false,
     migrated: false,
@@ -399,28 +433,45 @@ describe("the surface's view", () => {
   });
 
   test("is loading until a record or a configuration loads", () => {
-    expect(managedSurfaceView({ ...base, recordLoaded: false })).toBe(
+    expect(managedSurfaceView({ ...base, load: MANAGED_LOAD_INITIAL })).toBe(
       "loading",
     );
   });
 
   test("a load failure outranks everything", () => {
-    for (const loadFailure of ["missing", "unloadable", "spent"] as const)
+    for (const load of [
+      { kind: "missing", heldBefore: RUNNABLE_LOAD, reads: 0 },
+      { kind: "unloadable", heldBefore: RUNNABLE_LOAD, reads: 0 },
+      {
+        kind: "spent",
+        spent: undefined,
+        byRefusedRun: true,
+        heldBefore: RUNNABLE_LOAD,
+        reads: 0,
+      },
+    ] satisfies ReadonlyArray<ManagedLoadState>)
       expect(
         managedSurfaceView({
           ...base,
-          loadFailure,
-          configurationLoaded: true,
+          load,
           run: finished,
           commandLineHandedOff: true,
         }),
-      ).toBe(loadFailure);
+      ).toBe(load.kind);
   });
 
-  test("a configuration outranks a held record", () => {
-    expect(managedSurfaceView({ ...base, configurationLoaded: true })).toBe(
-      "configuration",
-    );
+  test("a configuration has its own view, whatever the run holds", () => {
+    expect(
+      managedSurfaceView({
+        ...base,
+        load: {
+          kind: "configuration",
+          configuration: RUNNABLE_LOAD.record,
+          reads: 0,
+        },
+        run: finished,
+      }),
+    ).toBe("configuration");
   });
 
   test("a run's outputs outrank a hand-off, from the moment they arrive", () => {
@@ -501,7 +552,7 @@ describe("the surface's reducer", () => {
       [
         { type: "confirmation-granted", runNumber: 1 },
         { type: "reinvite-started", site: "recovery" },
-        { type: "reinvite-composed", reinvite: REINVITE },
+        { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
       ],
       failedVisit,
     );
@@ -515,7 +566,7 @@ describe("the surface's reducer", () => {
     const composed = foldSurface(
       [
         { type: "reinvite-started", site: "recovery" },
-        { type: "reinvite-composed", reinvite: REINVITE },
+        { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
       ],
       failedVisit,
     );
@@ -528,7 +579,7 @@ describe("the surface's reducer", () => {
     const composed = foldSurface([
       { type: "reinvite-started", site: "detail" },
       { type: "run-started" },
-      { type: "reinvite-composed", reinvite: REINVITE },
+      { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
     ]);
     expect(managedRunInProgress(composed.run)).toBe(true);
     expect(composed.recovery.reinvite.composed).toBe(REINVITE);
@@ -539,7 +590,7 @@ describe("the surface's reducer", () => {
       { type: "confirmation-granted", runNumber: 1 },
       { type: "compromise-answer-started", gate: { kind: "standing" } },
       { type: "standing-clear-started", pastResponse: false },
-      { type: "standing-cleared" },
+      { type: "standing-cleared", record: ROTATED },
       { type: "reinvite-failed" },
     ] satisfies ReadonlyArray<ManagedRunSurfaceAction>)
       expect(managedRunSurfaceReducer(failedVisit, action).run).toBe(
@@ -567,6 +618,101 @@ describe("the surface's reducer", () => {
     expect(
       managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
         type: "failure-cleared",
+      }),
+    ).toBe(MANAGED_RUN_SURFACE_INITIAL);
+  });
+});
+
+describe("the surface's reducer and the record load", () => {
+  const loadedVisit: ManagedRunSurfaceState = {
+    ...MANAGED_RUN_SURFACE_INITIAL,
+    load: RUNNABLE_LOAD,
+  };
+
+  test("starts with the first read under way", () => {
+    expect(MANAGED_RUN_SURFACE_INITIAL.load).toBe(MANAGED_LOAD_INITIAL);
+    expect(
+      managedSurfaceView({
+        load: MANAGED_RUN_SURFACE_INITIAL.load,
+        run: MANAGED_RUN_SURFACE_INITIAL.run,
+        commandLineHandedOff: false,
+        migrated: false,
+        migrationAwaitingConfirm: false,
+      }),
+    ).toBe("loading");
+  });
+
+  test("a composed re-invite adopts the rotated record", () => {
+    const composed = foldSurface(
+      [
+        { type: "run-started" },
+        failedRun(1),
+        { type: "run-settled" },
+        { type: "reinvite-started", site: "recovery" },
+        { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
+      ],
+      loadedVisit,
+    );
+    expect(composed.load).toEqual({ ...RUNNABLE_LOAD, record: ROTATED });
+    expect(managedRunLiveFailure(composed.run)).toBeUndefined();
+  });
+
+  test("a standing clear adopts the record it wrote and leaves the run alone", () => {
+    const cleared = foldSurface(
+      [
+        { type: "standing-clear-started", pastResponse: false },
+        { type: "standing-cleared", record: ROTATED },
+      ],
+      { ...failedVisit, load: RUNNABLE_LOAD },
+    );
+    expect(cleared.load).toEqual({ ...RUNNABLE_LOAD, record: ROTATED });
+    expect(cleared.run).toBe(failedVisit.run);
+    expect(cleared.recovery.standing.settled).toBe(true);
+  });
+
+  test("a run the hand-off refused settles with the copy spent and no failure", () => {
+    const spent = { spentAt: "2026-07-14T09:00:00.000Z" };
+    const handedOff = foldSurface(
+      [{ type: "run-started" }, { type: "run-handed-off", spent }],
+      loadedVisit,
+    );
+    expect(handedOff.load).toEqual({
+      kind: "spent",
+      spent,
+      byRefusedRun: true,
+      heldBefore: {
+        kind: "runnable",
+        record: RUNNABLE_LOAD.record,
+        localState: undefined,
+        backupMarker: undefined,
+      },
+      reads: RUNNABLE_LOAD.reads,
+    });
+    expect(managedRunInProgress(handedOff.run)).toBe(false);
+    expect(managedRunLiveFailure(handedOff.run)).toBeUndefined();
+    expect(managedRunSurfaceReducer(handedOff, { type: "run-settled" })).toBe(
+      handedOff,
+    );
+  });
+
+  test("a load event leaves the run and the recovery as they were", () => {
+    for (const action of [
+      { type: "record-read-requested" },
+      { type: "record-adopted", record: ROTATED },
+      { type: "local-state-reloaded", localState: undefined },
+      { type: "record-read-failed" },
+    ] satisfies ReadonlyArray<ManagedRunSurfaceAction>) {
+      const next = managedRunSurfaceReducer(failedVisit, action);
+      expect(next.run).toBe(failedVisit.run);
+      expect(next.recovery).toBe(failedVisit.recovery);
+    }
+  });
+
+  test("a load event that changes nothing returns the same state", () => {
+    expect(
+      managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
+        type: "record-adopted",
+        record: ROTATED,
       }),
     ).toBe(MANAGED_RUN_SURFACE_INITIAL);
   });
