@@ -84,12 +84,18 @@ variable "pages_project_name" {
 }
 
 variable "hosted_origin" {
-  type        = string
-  default     = "elastic_beanstalk"
-  description = "What both public names point at: elastic_beanstalk, each environment's name, or pages, the Pages project's pages.dev name for production and its staging branch alias for staging. The default leaves the live records as they are."
+  type = map(string)
+  default = {
+    production = "elastic_beanstalk"
+    staging    = "elastic_beanstalk"
+  }
+  description = "What each public name points at, keyed like environments: elastic_beanstalk, the environment's name, or pages, the Pages project's pages.dev name for production and its staging branch alias for staging. The default leaves the live records as they are."
 
   validation {
-    condition     = contains(["elastic_beanstalk", "pages"], var.hosted_origin)
-    error_message = "hosted_origin must be elastic_beanstalk or pages."
+    condition = (
+      toset(keys(var.hosted_origin)) == toset(keys(var.environments))
+      && alltrue([for v in values(var.hosted_origin) : contains(["elastic_beanstalk", "pages"], v)])
+    )
+    error_message = "hosted_origin needs one entry per environment, each elastic_beanstalk or pages."
   }
 }

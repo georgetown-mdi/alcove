@@ -16,7 +16,7 @@ resource "cloudflare_dns_record" "public_name" {
   # Elastic Beanstalk reports the name in mixed case; the live record holds it
   # lowercase.
   content = (
-    var.hosted_origin == "pages"
+    var.hosted_origin[each.key] == "pages"
     ? local.pages_names[each.key]
     : lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
   )
