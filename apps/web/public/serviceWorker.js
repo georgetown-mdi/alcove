@@ -134,9 +134,9 @@ const ASSET_CONTENT_TYPES = new Map([
  */
 const SKIP_WAITING_MESSAGE = "alcove-skip-waiting";
 
-/** The message a client running as an INSTALLED app posts to have every route's
- * code cached ({@link SHELL_ROUTES}), rather than only the shell's own. Mirrored
- * by the client registration in `apps/web/src/utils/appShellUpdate.ts`. */
+/** The message a client posts to have every route's code cached
+ * ({@link SHELL_ROUTES}), rather than only the shell's own. Mirrored by the
+ * client registration in `apps/web/src/utils/appShellUpdate.ts`. */
 const WARM_ROUTES_MESSAGE = "alcove-warm-routes";
 
 /**
@@ -144,12 +144,10 @@ const WARM_ROUTES_MESSAGE = "alcove-warm-routes";
  * code. Warming reads each one's asset graph, which is how a route the operator
  * has not visited yet still opens with no network.
  *
- * Warming is NOT part of install, because it is not free: the routes that can
- * run an exchange pull in the exchange machinery, several megabytes a visitor
- * who only opens the front page never asks for. So the shell's own graph is what
- * installs, an installed app warms the rest at launch, and an ordinary tab fills
- * the rest in as the operator visits routes. The cost and the two paths are
- * argued in docs/notes/app-shell-service-worker.md.
+ * Warming is NOT part of install: install takes the shell's own graph, which the
+ * page has just loaded, and every page load asks for the rest once this worker
+ * controls it, after the page's own requests. The cost is argued in
+ * docs/notes/app-shell-service-worker.md.
  *
  * `apps/web/test/unit/serviceWorkerRoutes.test.ts` fails when a route file
  * exists that no entry here covers, so a new route cannot silently ship
@@ -277,15 +275,15 @@ async function precacheShell() {
 }
 
 /**
- * Cache the code behind every route in {@link SHELL_ROUTES}, so an installed app
- * opens each of them with no network rather than only the ones its operator has
+ * Cache the code behind every route in {@link SHELL_ROUTES}, so the app opens
+ * each of them with no network rather than only the ones its operator has
  * happened to visit. Each route's served document names that route's assets; the
  * documents themselves are read and discarded (only the origin root's is ever
  * stored -- see {@link SHELL_PATH}).
  *
- * Already-cached assets are skipped, so a launch after the first costs one small
- * document per route and nothing else, and a warm that runs into a dead network
- * stops rather than working through the list failing.
+ * Already-cached assets are skipped, so a page load after the first costs one
+ * small document per route and nothing else, and a warm that runs into a dead
+ * network stops rather than working through the list failing.
  */
 async function warmRouteAssets() {
   for (const route of SHELL_ROUTES) {
@@ -434,8 +432,8 @@ async function refreshInBackground(cache, request) {
  * individual precache and is skipped.
  *
  * Matching NOTHING is the failure that would not announce itself -- the
- * precache and the warm would both succeed, holding nothing, and installed apps
- * would stop opening unvisited routes offline. What the pattern reads out of the
+ * precache and the warm would both succeed, holding nothing, and the app would
+ * stop opening unvisited routes offline. What the pattern reads out of the
  * markup the build really emits is therefore held against the built server in
  * `apps/web/test/integration/appShellWarm.test.ts`.
  */
@@ -476,9 +474,9 @@ async function addAllIndividually(cache, paths) {
 /**
  * Store `paths` in the asset cache, then bring it back within
  * {@link MAX_ASSET_ENTRIES}. The trim belongs to every writer of that cache
- * rather than the fetch path alone: an installed app warms every route's code at
- * each launch, so a writer that added without trimming would let a continuously
- * deployed origin accumulate past deployments' chunks whatever the cap says.
+ * rather than the fetch path alone: every page load warms every route's code,
+ * so a writer that added without trimming would let a continuously deployed
+ * origin accumulate past deployments' chunks whatever the cap says.
  *
  * The trim runs after the batch, not before it, so nothing this batch just wrote
  * is dropped while an older entry survives: first to go is what has been stored

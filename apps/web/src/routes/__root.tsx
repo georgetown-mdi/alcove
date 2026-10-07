@@ -26,7 +26,16 @@ export const Route = createRootRoute({
     meta: [...rootDocumentHead.meta],
     links: [...rootDocumentHead.links],
   }),
-  errorComponent: DefaultCatchBoundary,
+  // The root's error component replaces RootComponent, so it is rendered
+  // outside RootDocument's provider and needs its own.
+  errorComponent: (props) => (
+    <MantineProvider
+      theme={mantineTheme}
+      cssVariablesResolver={cssVariablesResolver}
+    >
+      <DefaultCatchBoundary {...props} />
+    </MantineProvider>
+  ),
   notFoundComponent: () => <NotFound />,
   component: RootComponent,
 });

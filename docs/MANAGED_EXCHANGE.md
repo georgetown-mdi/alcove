@@ -175,14 +175,11 @@ connection at all the app still opens and reads the browser's own store:
   authoring an exchange file for the command-line tool reach no partner from
   here.
 
-How much of the app is offline-ready depends on how it is being used, and this is
-one of the concrete reasons to install it:
-
-- **Installed**, every screen is cached at launch, so all of them open offline
-  whether or not the operator has visited them.
-- **In an ordinary browser tab**, a screen becomes offline-ready once it has been
-  opened with a connection. One that has not says so and names the recovery --
-  open it once online -- rather than failing silently.
+Every screen is cached each time the app loads with a connection, in an ordinary
+browser tab or the installed app, so all of them open offline afterwards whether
+or not the operator has visited them. A screen whose code is still missing -- the
+connection went before the caching finished, or the browser refused the storage
+-- says so and names the recovery: open it once online.
 
 The worker is shell-only. It caches the app document and its build assets and
 nothing else -- no exchange traffic passes through it, and no exchange work

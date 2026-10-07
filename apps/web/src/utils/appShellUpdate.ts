@@ -18,8 +18,6 @@
  * the operator is ready.
  */
 
-import { isInstalledRuntime as installedRuntime } from "./installedRuntime";
-
 /** The worker's URL. It is served from `public/`, so its scope is the origin
  * root -- which is what lets it handle navigations to every route. */
 const SERVICE_WORKER_URL = "/serviceWorker.js";
@@ -97,10 +95,6 @@ export function subscribeAppShellUpdate(listener: () => void): () => void {
 interface RegisterAppShellOptions {
   /** Reload onto newly activated code. Defaults to the page's own reload. */
   reload?: () => void;
-  /** Whether this page is running as an INSTALLED app rather than a browser
-   * tab. Defaults to the display-mode media query the manifest's `standalone`
-   * display produces. */
-  isInstalledRuntime?: () => boolean;
   /** Call `listener` when this page is going away for good. Defaults to a
    * `pagehide` listener that ignores a persisted one: that is the back/forward
    * cache freezing the page, which can be restored still running this code. */
@@ -108,9 +102,9 @@ interface RegisterAppShellOptions {
 }
 
 /**
- * Register the worker, watch for a newer one, and -- in an installed app --
- * have it cache every route's code. Resolves whether or not the registration
- * succeeded, so the call site can fire it and move on.
+ * Register the worker, watch for a newer one, and have it cache every route's
+ * code. Resolves whether or not the registration succeeded, so the call site
+ * can fire it and move on.
  *
  * `updateViaCache: "none"` keeps the browser's HTTP cache out of the worker
  * script's own update check, so a redeployed worker is seen on the next check.
@@ -118,9 +112,9 @@ interface RegisterAppShellOptions {
  * A newly `installed` worker is only an UPDATE when a controller is already
  * running this page; without one it is the first install.
  *
- * The route warm runs from an installed app alone, and again on a controller
- * change so a first install is not missed. Cost and rationale: the worker's
- * `SHELL_ROUTES`.
+ * The route warm is asked for at registration, and again on a controller change
+ * so a first install, which has no controller at registration, is not missed.
+ * Cost and rationale: the worker's `SHELL_ROUTES`.
  */
 export async function registerAppShell(
   container: ShellContainer,
@@ -131,7 +125,6 @@ export async function registerAppShell(
     (() => {
       window.location.reload();
     });
-  const isInstalledRuntime = options.isInstalledRuntime ?? installedRuntime;
   const onPageUnloading =
     options.onPageUnloading ??
     ((listener: () => void) => {
@@ -140,7 +133,6 @@ export async function registerAppShell(
       });
     });
   function warmRoutes(): void {
-    if (!isInstalledRuntime()) return;
     container.controller?.postMessage(WARM_ROUTES_MESSAGE);
   }
   container.addEventListener("controllerchange", () => {

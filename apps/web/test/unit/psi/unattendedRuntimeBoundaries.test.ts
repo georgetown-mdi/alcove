@@ -232,7 +232,6 @@ describe("a scheduled run and a waiting app-shell update", () => {
     const reload = vi.fn();
     await registerAppShell(containerWithWaitingUpdate(), {
       reload,
-      isInstalledRuntime: () => true,
       onPageUnloading: () => undefined,
     });
     expect(appShellUpdateReady()).toBe(true);
@@ -256,7 +255,6 @@ describe("a scheduled run and a waiting app-shell update", () => {
     const reload = vi.fn();
     await registerAppShell(containerWithWaitingUpdate(), {
       reload,
-      isInstalledRuntime: () => true,
       onPageUnloading: () => undefined,
     });
 
