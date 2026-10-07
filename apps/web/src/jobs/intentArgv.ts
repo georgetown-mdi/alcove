@@ -5,7 +5,7 @@ import { formatSftpUrl } from "@alcove/core";
 import {
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
-  zeroSetupSftpRefusal,
+  zeroSetupSftpCheck,
 } from "@jobContract/jobCreateRefusal";
 import { isAdmissiblePeerId } from "@jobContract/intentSchemas";
 
@@ -80,14 +80,10 @@ export class ZeroSetupRemoteDirectoryError extends Error {
 export function zeroSetupSftpArgv(
   serverEntry: JobSftpServerEntry,
 ): Array<string> {
-  const refusal = zeroSetupSftpRefusal(serverEntry);
-  if (refusal === SFTP_URL_DIRECTORY_REFUSAL)
+  const check = zeroSetupSftpCheck(serverEntry);
+  if (check.refusal === SFTP_URL_DIRECTORY_REFUSAL)
     throw new ZeroSetupRemoteDirectoryError();
-  const fingerprint = serverEntry.hostKeyFingerprint;
-  if (
-    refusal === SFTP_FINGERPRINT_LIST_REFUSAL ||
-    typeof fingerprint !== "string"
-  )
+  if (check.refusal === SFTP_FINGERPRINT_LIST_REFUSAL)
     throw new ZeroSetupFingerprintListError();
   const urlPath = serverEntry.inboundPath ?? serverEntry.path;
   const argv: Array<string> = [
@@ -111,7 +107,7 @@ export function zeroSetupSftpArgv(
     );
   if (serverEntry.keyboardInteractive === true)
     argv.push("--server-keyboard-interactive");
-  argv.push(`--server-host-key-fingerprint=${fingerprint}`);
+  argv.push(`--server-host-key-fingerprint=${check.hostKeyFingerprint}`);
   return argv;
 }
 

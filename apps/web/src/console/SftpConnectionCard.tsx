@@ -21,6 +21,19 @@ import type { ProbeCeremony } from "./SftpAuthoringForm";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
 
+/** Where a saved connection stands for the run this card serves: a quick
+ * exchange refuses it, the run needs retain mode back on, or it is ready. */
+type ConnectionStatus = "refused" | "retain-problem" | "ready";
+
+const STATUS_BADGES: Record<
+  ConnectionStatus,
+  { color: string; label: string }
+> = {
+  refused: { color: "red", label: "Needs a change" },
+  "retain-problem": { color: "orange", label: "Needs retain mode" },
+  ready: { color: "teal", label: "Ready to try" },
+};
+
 /**
  * The console's SFTP connection surface under the SFTP transport card: shows
  * whichever connection is effective and, when the operator may author one,
@@ -100,27 +113,20 @@ export function SftpConnectionCard({
   const directRefusal = directExchange
     ? quickExchangeSftpRefusal(connection)
     : undefined;
-  const ready = directRefusal === undefined && retainProblem === undefined;
+  const status: ConnectionStatus =
+    directRefusal !== undefined
+      ? "refused"
+      : retainProblem !== undefined
+        ? "retain-problem"
+        : "ready";
+  const ready = status === "ready";
 
   if (connection !== null && !formOpen)
     return (
       <Stack gap="xs" mt="xs">
         <Group gap="xs" align="center">
-          <Badge
-            color={
-              directRefusal !== undefined
-                ? "red"
-                : retainProblem !== undefined
-                  ? "orange"
-                  : "teal"
-            }
-            variant="light"
-          >
-            {directRefusal !== undefined
-              ? "Needs a change"
-              : retainProblem !== undefined
-                ? "Needs retain mode"
-                : "Ready to try"}
+          <Badge color={STATUS_BADGES[status].color} variant="light">
+            {STATUS_BADGES[status].label}
           </Badge>
           <Text size="sm">
             {ready ? "Runs through " : "Set up on this machine, through "}
@@ -130,7 +136,7 @@ export function SftpConnectionCard({
             {ready ? ", set up on this machine." : "."}
           </Text>
         </Group>
-        {directRefusal !== undefined ? (
+        {directRefusal !== undefined && (
           <Alert
             role="alert"
             color="red"
@@ -139,19 +145,15 @@ export function SftpConnectionCard({
           >
             {directRefusal.message}
           </Alert>
-        ) : (
-          <>
-            {retainProblem !== undefined && (
-              <Text size="sm">{SPLIT_DIRECTORY_RETAIN_SUMMARY}</Text>
-            )}
-            <Text size="sm" c="dimmed">
-              The connection is not verified until the exchange runs. Alcove
-              checks the server's host key and signs in then. Credentials stay
-              on this machine; the invitation contains only the server and
-              directory.
-            </Text>
-          </>
         )}
+        {retainProblem !== undefined && (
+          <Text size="sm">{SPLIT_DIRECTORY_RETAIN_SUMMARY}</Text>
+        )}
+        <Text size="sm" c="dimmed">
+          The connection is not verified until the exchange runs. Alcove checks
+          the server's host key and signs in then. Credentials stay on this
+          machine; the invitation contains only the server and directory.
+        </Text>
         <SftpCredentialWarnings
           warnings={connection.credentialWarnings ?? []}
         />

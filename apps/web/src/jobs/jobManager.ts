@@ -18,7 +18,7 @@ import {
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
-import { zeroSetupSftpRefusal } from "@jobContract/jobCreateRefusal";
+import { zeroSetupSftpCheck } from "@jobContract/jobCreateRefusal";
 
 import {
   zeroSetupFiledropArgv,
@@ -1041,9 +1041,8 @@ export class JobManager {
     if (entry.outboundPath !== undefined)
       projection.outboundPath = entry.outboundPath;
     projection.credentialWarnings = this.authoredCredentialWarnings;
-    const zeroSetupRefusal = zeroSetupSftpRefusal(entry);
-    if (zeroSetupRefusal !== undefined)
-      projection.zeroSetupRefusal = zeroSetupRefusal;
+    const { refusal } = zeroSetupSftpCheck(entry);
+    if (refusal !== undefined) projection.zeroSetupRefusal = refusal;
     return projection;
   }
 

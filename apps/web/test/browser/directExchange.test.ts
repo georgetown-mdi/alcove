@@ -40,6 +40,7 @@ import {
 } from "@exchange/directExchangeModel";
 import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
+import { SPLIT_DIRECTORY_RETAIN_SUMMARY } from "@console/sftpConnectionForm";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { UNDESCRIBABLE_RECORD_LEAD } from "@exchange/RecordDownload";
 import { useDirectExchange } from "@exchange/useDirectExchange";
@@ -1665,6 +1666,41 @@ describe("direct exchange saved connection a quick exchange refuses", () => {
         .toBeInTheDocument();
     },
   );
+
+  test("a refused split connection keeps its retain-mode guidance", async () => {
+    stubJobApi({
+      sftp: {
+        ...CONFIGURED_SFTP,
+        inboundPath: "/exchange/in",
+        outboundPath: "/exchange/out",
+        zeroSetupRefusal: "sftp-fingerprint-list",
+      },
+    });
+    app.render(createElement(DirectExchangeScreen));
+    await reachServerStep();
+
+    await expect
+      .element(
+        page.getByRole("alert").filter({
+          hasText: "The saved SFTP connection holds more than one fingerprint",
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(SPLIT_DIRECTORY_RETAIN_SUMMARY))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "The connection is not verified until the exchange runs",
+          {
+            exact: false,
+          },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(page.getByText("Needs a change")).toBeInTheDocument();
+  });
 
   test("a connection a quick exchange runs stays ready to try", async () => {
     stubJobApi({ sftp: { ...CONFIGURED_SFTP, path: "/exchange/in" } });

@@ -86,23 +86,33 @@ export interface ZeroSetupSftpRefusalInput {
   hostKeyFingerprint: string | ReadonlyArray<string>;
 }
 
+/** A direct (zero-setup) sftp run's verdict on a saved connection: the
+ * refusal, or the single fingerprint the run pins when it runs. */
+export type ZeroSetupSftpCheck =
+  | { refusal: typeof SFTP_URL_DIRECTORY_REFUSAL }
+  | { refusal: typeof SFTP_FINGERPRINT_LIST_REFUSAL }
+  | { refusal: undefined; hostKeyFingerprint: string };
+
 /**
- * Why a direct (zero-setup) sftp run refuses this saved connection, or
- * undefined when it runs: a remote directory (the inbound half, for a split
- * pair) with no `sftp://` URL form, then a fingerprint list, which the run's
+ * Whether a direct (zero-setup) sftp run takes this saved connection: refused
+ * for a remote directory (the inbound half, for a split pair) with no
+ * `sftp://` URL form, then for a fingerprint list, which the run's
  * single-valued fingerprint flag cannot pass on. Job create throws on the
- * result and the connection's projection states it, so the quick-exchange step
- * refuses exactly the connections a run would.
+ * refusal and the connection's projection states it, so the quick-exchange
+ * step refuses exactly the connections a run would.
  */
-export function zeroSetupSftpRefusal(
+export function zeroSetupSftpCheck(
   connection: ZeroSetupSftpRefusalInput,
-): ZeroSetupSftpRefusalReason | undefined {
+): ZeroSetupSftpCheck {
   const urlPath = connection.inboundPath ?? connection.path;
   if (urlPath !== undefined && sftpUrlDirectoryFault(urlPath) !== undefined)
-    return SFTP_URL_DIRECTORY_REFUSAL;
+    return { refusal: SFTP_URL_DIRECTORY_REFUSAL };
   if (typeof connection.hostKeyFingerprint !== "string")
-    return SFTP_FINGERPRINT_LIST_REFUSAL;
-  return undefined;
+    return { refusal: SFTP_FINGERPRINT_LIST_REFUSAL };
+  return {
+    refusal: undefined,
+    hostKeyFingerprint: connection.hostKeyFingerprint,
+  };
 }
 
 /** Whether a value read off a connection projection is a direct-run refusal
