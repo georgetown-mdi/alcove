@@ -1,17 +1,12 @@
 /**
- * The localStorage key a tester or support engineer sets to opt a single browser
- * into diagnostic logging against a deployed client. Set it from the devtools
- * console (`localStorage.setItem("alcove:diagnostics", "1")`), reload, and
- * reproduce; clear it (`localStorage.removeItem("alcove:diagnostics")`) to
- * return to the secure default. Namespaced so it cannot collide with another
- * app's key on a shared origin.
+ * The localStorage key that opts one browser into diagnostic logging against a
+ * deployed client: set it to `"1"` from the devtools console and reload.
  */
 export const DIAGNOSTICS_STORAGE_KEY = "alcove:diagnostics";
 
 /**
- * Whether the stored flag value engages diagnostic mode. Any value other than
- * the explicit off-values counts as on, so a tester who types `"1"`, `"true"`,
- * or `"on"` all work; `null` (unset), `""`, `"0"`, and `"false"` stay off.
+ * Whether the stored flag value engages diagnostic mode: anything but unset,
+ * `""`, `"0"`, `"false"` or `"off"`.
  *
  * @internal exported for unit tests; production code calls {@link isDiagnosticMode}.
  */
@@ -23,12 +18,7 @@ export function isDiagnosticsFlagValue(raw: string | null): boolean {
 
 /**
  * Gates raised-verbosity logging across the web app: a development build, or a
- * deployed client whose operator set {@link DIAGNOSTICS_STORAGE_KEY}. Every
- * diagnostic-only sink reads verbosity through this one predicate.
- *
- * localStorage access is wrapped: it throws when storage is disabled
- * (private-browsing quotas, blocked third-party storage) and is absent during
- * SSR; both resolve to the secure-by-default off.
+ * deployed client with {@link DIAGNOSTICS_STORAGE_KEY} set.
  */
 export function isDiagnosticMode(): boolean {
   if (import.meta.env.DEV) return true;
@@ -43,13 +33,9 @@ export function isDiagnosticMode(): boolean {
 }
 
 /**
- * Runs `emit` only under {@link isDiagnosticMode}. The one gate for a
- * console/devtools sink that would otherwise put raw partner-/server-influenced
- * bytes (a hostile message/cause, a partner-supplied endpoint host) into a
- * production browser console.
- *
- * Pass a closure, not a pre-stringified value, so devtools keeps the live
- * `Error` object (expandable stack, `.cause`) and the message is never built
+ * Runs `emit` only under {@link isDiagnosticMode}: the gate for a devtools sink
+ * that would put partner- or server-influenced bytes into a production browser
+ * console. A closure keeps the live `Error` in devtools and builds nothing
  * outside diagnostic mode.
  */
 export function whenDiagnostic(emit: () => void): void {

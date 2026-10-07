@@ -1,17 +1,8 @@
 /**
- * The pure, platform-free lapsed-`expires` check the managed re-run applies
- * BEFORE any connection: a record whose `expires` instant is in the past must
- * not run, and the check happens before rendezvous so the lapse is unambiguous
- * -- it is treated as its own benign expiry state with plain re-invite copy,
- * never routed through the desync/attack framing (see docs/MANAGED_EXCHANGE.md,
- * "Expiry is its own state"). `now` is injected so the decision is pure and the
- * moment of evaluation is the caller's, matching the run+rotate module's clock
- * discipline.
- *
- * The age bound is optional and off by default (an absent `expires` is no bound
- * in force); a record with no bound never lapses. The instant comparison itself
- * is core's, shared with the invitation acceptors so a bound cannot mean one
- * thing on one surface and another elsewhere.
+ * The lapsed-`expires` check a managed re-run applies before any connection,
+ * so a lapse is its own benign expiry state with re-invite copy, never the
+ * desync/attack framing (docs/MANAGED_EXCHANGE.md, "Expiry is its own state").
+ * The instant comparison is core's, shared with the invitation acceptors.
  */
 
 import { hasExpiryInstantPassed } from "@alcove/core";
@@ -19,17 +10,8 @@ import { hasExpiryInstantPassed } from "@alcove/core";
 import type { ManagedExchangeRecord } from "./managedExchangeRecord";
 
 /**
- * Whether the record's stored secret has lapsed as of `now`: `true` when the
- * record has an `expires` bound whose instant is at or before `now`. A
- * record with no bound (`expires` absent) never lapses. The comparison is
- * at-or-before, matching the spec's "the instant after which `sharedSecret` must
- * not be used" -- the boundary instant itself is already lapsed.
- *
- * Fails closed on a value the comparison cannot parse: an unreadable `expires`
- * stops the secret being used rather than letting it run unbounded. A stored
- * record cannot hold one -- the schema validates `expires` as an ISO datetime
- * on every read -- so the direction only decides what an unreachable value
- * would do.
+ * Whether the record's `expires` instant is at or before `now`; a record with
+ * no bound never lapses, and an unparseable bound fails closed.
  */
 export function managedExchangeLapsed(
   record: Pick<ManagedExchangeRecord, "expires">,
@@ -41,11 +23,9 @@ export function managedExchangeLapsed(
 }
 
 /**
- * Raised when a managed re-run is launched against a record whose stored secret
- * has lapsed, detected before any connection. Distinct from a handshake or
- * input failure so the run driver records the benign expiry bookkeeping and the
- * surface shows the plain re-invite copy, never the desync/attack framing. The
- * lapsed instant rides the error so the surface can name it.
+ * Raised when a managed re-run starts against a lapsed record, before any
+ * connection, so the run driver records expiry rather than a handshake or input
+ * failure.
  */
 export class ManagedExchangeExpiredError extends Error {
   /** The lapsed `expires` instant (ISO 8601 UTC) the record held. */

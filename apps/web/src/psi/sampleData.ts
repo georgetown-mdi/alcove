@@ -1,29 +1,11 @@
 /**
- * The two synthetic CSVs behind the sample-data walkthrough: invented records
- * that let a visitor drive the real exchange spine without their own file. This
- * module is the single source of truth for the client-side download, the
- * in-place seed, and the console's copy into its folder -- there is no fetch
- * and nothing bundled beyond these strings.
+ * The two synthetic CSVs behind the sample-data walkthrough, the single source
+ * for the download, the in-place seed, and the console's copy into its folder.
  *
- * Header row on both files: `first_name,last_name,dob,ssn,zip,member_id`.
- * `inferMetadata` reads these as four linkage columns (first_name, last_name,
- * date_of_birth, zip_code), one linkage SSN column, and a `_id`-suffixed
- * identifier, so the default terms infer every column and several default keys
- * fire with zero customization.
- *
- * The records are structurally synthetic, not annotated: every SSN has
- * area 900, which the SSA has never issued and which core's
- * `isStructurallyValidSsn` treats as structurally INVALID (`area < 900`). That
- * check runs only under the `validOnly` constraint, which the default SSN
- * pipeline does not enforce -- the sample relies on that, so these values
- * standardize and match under default cleaning while avoiding the placeholder
- * values the pipeline does drop. The names are plainly invented, and the dates
- * and ZIPs are made up. Seven pairs are engineered to match across the two
- * files under default cleaning -- including near-misses the default pipeline
- * resolves
- * (case, whitespace, accents, an affix, SSN punctuation) -- and two pairs look
- * close to a reader but do not match once cleaned. Every other row is unique to
- * its side.
+ * Every SSN has area 900, never issued and structurally invalid to
+ * `isStructurallyValidSsn`; the sample relies on the default SSN pipeline not
+ * enforcing `validOnly`, so these values standardize and match while avoiding
+ * the placeholders the pipeline drops.
  */
 
 /** The filename the inviter's sample downloads and seeds under. */
@@ -75,25 +57,14 @@ export const SAMPLE_INVITER_CSV = [
  */
 export const SAMPLE_PARTNER_CSV = [
   SAMPLE_HEADER,
-  // 1. Exact match.
   "Maria,Alvarez,03/07/1988,900-31-2245,60614,PTR-2001",
-  // 2. Lowercase and padded with whitespace.
   " james , whitfield ,11/23/1975,900-52-8830,10023,PTR-2002",
-  // 3. Accented spelling of the inviter's ASCII names.
   "Renée,Étienne,07/14/1992,900-19-4471,94110,PTR-2003",
-  // 4. Has the Jr. affix the default cleaning strips.
   "Harold,Brooks Jr.,02/09/1969,900-63-7712,30303,PTR-2004",
-  // 5. Same SSN without punctuation.
   "Priya,Natarajan,05/30/1983,900456789,02139,PTR-2005",
-  // 6. Spaced spelling of the inviter's hyphenated name.
   "Mary Jane,Kowalski,09/18/1990,900-77-3391,48104,PTR-2006",
-  // 7. Exact match.
   "Devon,Osei,12/02/2001,900-28-5566,77004,PTR-2007",
-  // 8. The correctly spelled Nguyen, with a different SSN from the inviter's
-  //    transposed row: they do not share a cleaned key.
   "Linh,Nguyen,04/22/1986,900-70-6624,95112,PTR-2008",
-  // 9. Same name as the inviter's Sullivan row but a different birth year and
-  //    a different SSN.
   "Grace,Sullivan,08/15/1991,900-88-2210,19104,PTR-2009",
   // 10-12. Unique to the partner.
   "Naomi,Petrov,03/19/1972,900-84-5501,33101,PTR-2010",

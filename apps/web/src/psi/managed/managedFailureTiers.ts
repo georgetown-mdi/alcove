@@ -1,17 +1,8 @@
 /**
- * The pure derivation of a managed exchange's failure tier from the record's own
- * evidence -- `lastRun.failureKind`, the standing condition beside it, a lapsed
- * `expires`, and the local `imported` marker -- never the live error, so an
- * unattended run's failure tiers the same way at the next visit as it would at
- * the moment it failed.
- * Design rationale for the desync-versus-attack tiering:
- * docs/notes/managed-exchange-design.md, "Telling a desync from an attack".
- *
- * Pure and platform-free: it reads a record and its import marker and returns a
- * tier. The confirmation MESSAGE and the two-outcome GATE are composed in the
- * sibling modules {@link ./managedFailureConfirmation.ts} and the display copy
- * in {@link ../recurring/managedRunLaunchModel.ts}; this module decides only which
- * tier.
+ * A managed exchange's failure tier, derived from the record's own evidence
+ * (never the live error), so an unattended failure tiers the same at the next
+ * visit as when it failed. Rationale: docs/notes/managed-exchange-design.md,
+ * "Telling a desync from an attack".
  */
 
 import {
@@ -28,68 +19,38 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
 
 /**
  * The failure tier a record's bookkeeping resolves to. Each benign tier names a
- * specific recovery; only `"unexplained"` has the out-of-band confirmation.
+ * recovery; only `"unexplained"` has the out-of-band confirmation. A tier whose
+ * cause recurs identically at the next window offers no retry.
  *
- * - `"expired"` -- the stored secret's age bound has lapsed (its own benign state;
- *   recovery: re-invite). Detected before any connection, so a live launch reaches it
- *   through the pre-connection check; kept here for a next-visit read of a record
- *   whose bound lapsed while dormant.
- * - `"input"` -- a benign pre-run input problem the last run recorded: the file was
- *   missing, unreadable, or gone from under its handle (recovery: put the file back
- *   and retry).
- * - `"terms-shortfall"` -- the last run read its input and refused before connecting
- *   because the file cannot supply every linkage key the standing terms declare
- *   (recovery: a file covering every agreed key, or terms re-agreed with the
- *   partner; never a retry or a bare re-pick, since the same file refuses
- *   identically at the next window).
- * - `"too-large"` -- the last run refused to send a set of its own over the most
- *   values the partner can receive, before connecting or at a round (recovery:
- *   split the input into smaller exchanges; never a retry, since the same files
- *   refuse identically at the next window).
- * - `"terms-change"` -- the last run met the partner's changed linkage terms at
- *   the terms exchange and did not take them on, before any linkage key or data
- *   moved (recovery: apply or decline the change; never a retry, since the same
- *   terms refuse identically at the next window).
- * - `"partner-set-too-large"` -- the last run stopped because the partner's set
- *   for a linkage key holds more values than this browser can match: the
- *   partner refused to send it, or this browser refused its first part
- *   (recovery: run the exchange with the command-line application, or the
- *   partner splits their input; never a retry, since the same partner input
- *   stops identically at the next window).
- * - `"partner-refused-set"` -- the last run stopped because the partner's run
- *   refused to send its first set for a cause other than its size (recovery:
- *   ask the partner, whose own run reported the cause; never a retry, since
- *   their run refuses identically at the next window).
- * - `"handed-off"` -- the last run met a copy an export had handed off and refused
- *   before reading the input or connecting (recovery: none here; the exchange runs
- *   wherever the hand-off took it, and every later run on this device refuses the
- *   same way).
- * - `"missed"` -- the wait for the partner spent its whole budget with nobody
- *   arriving: an attended run's own wait expiring, or an agreed window passing without
- *   a completed handshake (recovery: the next window's automatic retry, or running the
- *   exchange again once the partner is ready).
- * - `"custody-unreadable"` -- the last run could not read the local entry recording
- *   whether this device's copy was handed off, or found the stored record itself
- *   gone, invalid, or holding a configuration only, and refused before reading the
- *   input or connecting (recovery: none here; nothing rotated and nothing desynced,
- *   and every later run refuses the same way while that reading stands).
- * - `"storage"` -- a rotation the last run could not persist (recovery: re-invite; a
- *   one-sided persist failure may have desynced the two parties).
- * - `"partial-rotation"` -- a key exchange began and did not save its rotated
- *   secret (the record's rotation-in-flight marker stands), and a run since then
- *   did not meet the partner: the partner probably saved a secret this device
- *   does not hold (recovery: re-invite). Read only beside that no-show, the
- *   failure a one-sided rotation predicts, and never over a standing condition,
- *   so it cannot stand in for an unexplained handshake failure.
- * - `"imported"` -- a restore-from-backup, migration import, or take-back of a
- *   command-line hand-off since the last successful run (recovery: re-invite; a
- *   copy from any of those can hold a secret the partnership has rotated past).
- * - `"transport"` -- a connection or data-exchange drop that is not a failed-closed
- *   handshake (recovery: retry; a temporary connection problem, not a trust failure).
- * - `"unexplained"` -- a handshake that failed closed (`auth`) with no recorded
- *   benign explanation: the full out-of-band confirmation and the two-outcome gate.
- * - `"none"` -- the record records no failure to tier (never run, or last run
- *   succeeded).
+ * - `"expired"` -- the secret's age bound lapsed (re-invite).
+ * - `"input"` -- the file was missing or unreadable (put it back and retry).
+ * - `"terms-shortfall"` -- the file cannot supply every agreed linkage key (a
+ *   covering file, or terms re-agreed with the partner).
+ * - `"too-large"` -- this run's set exceeds what the partner can receive (split
+ *   the input).
+ * - `"terms-change"` -- the partner's changed terms were not taken on, before any
+ *   key or data moved (apply or decline the change).
+ * - `"partner-set-too-large"` -- the partner's set exceeds what this browser can
+ *   match (the command-line application, or the partner splits their input).
+ * - `"partner-refused-set"` -- the partner's run refused to send its set for a
+ *   cause other than size (ask the partner).
+ * - `"handed-off"` -- an export handed this copy off (none here).
+ * - `"missed"` -- the partner never arrived within the wait (the next window, or
+ *   run again once the partner is ready).
+ * - `"custody-unreadable"` -- the hand-off entry or the stored record could not be
+ *   read, before anything rotated (none here).
+ * - `"storage"` -- a rotation could not be persisted and may have desynced the
+ *   parties (re-invite).
+ * - `"partial-rotation"` -- a rotation never saved and a later run met no partner,
+ *   who probably saved a secret this device lacks (re-invite). Read only beside
+ *   that no-show, so it cannot stand in for an unexplained handshake failure.
+ * - `"imported"` -- a restore, import, or take-back since the last success
+ *   (re-invite).
+ * - `"transport"` -- a connection drop that is not a failed-closed handshake, or a
+ *   cancelled run (retry).
+ * - `"unexplained"` -- a failed-closed (`auth`) handshake with no benign
+ *   explanation.
+ * - `"none"` -- no failure recorded.
  */
 export type ManagedFailureTier =
   | "expired"
@@ -110,13 +71,9 @@ export type ManagedFailureTier =
   | "none";
 
 /**
- * Whether a record's secret came from a restore or a take-back and has not succeeded
- * since -- the `imported` sibling marker's meaning. It is stamped at install/revive
- * and by every take-back of a command-line hand-off, and cleared on the first
- * rotation after one (a completed handshake proves the parties held the same
- * secret), so its mere presence is the "import since the last success" evidence
- * the desync tiering reads -- no timestamp comparison is needed, because a success
- * would have consumed it.
+ * Whether a record's secret came from a restore or a take-back and has not
+ * succeeded since: the `imported` marker is cleared by the first rotation after
+ * one, so its presence alone is the evidence.
  */
 export function importedSinceLastSuccess(
   local: ManagedLocalState | undefined,
@@ -125,11 +82,9 @@ export function importedSinceLastSuccess(
 }
 
 /**
- * Whether a key exchange on this record began and did not save its rotated
- * secret before the run stamped in `lastRun` -- the marker predates that run,
- * so the run that stamped it did not set it and a run since has passed without
- * clearing it. A marker set after the stamp belongs to a run still in flight,
- * or to the interrupted run itself, and has no later run beside it yet.
+ * Whether a rotation began and was not saved before the run stamped in
+ * `lastRun`, so a later run has passed without clearing it. A marker set after
+ * the stamp belongs to a run still in flight or the interrupted run itself.
  */
 export function rotationInFlightBeforeLastRun(
   record: ManagedExchangeRecord,
@@ -141,12 +96,9 @@ export function rotationInFlightBeforeLastRun(
 }
 
 /**
- * Whether a run launched on `atLaunch` that met no partner reads as the
- * partial-rotation state: a rotation-in-flight marker stands, no standing
- * condition is raised, and no outcome recorded since the marker supersedes it
- * ({@link answersRotationInFlight}). The launch record precedes this run's own
- * stamp, so a marker with no later outcome is the interrupted run's; a later
- * no-show is read through {@link rotationInFlightBeforeLastRun} instead.
+ * Whether a run launched on `atLaunch` that met no partner is the
+ * partial-rotation state: a rotation-in-flight marker with no standing condition
+ * and no later outcome ({@link answersRotationInFlight}).
  */
 export function rotationInFlightUnansweredAtLaunch(
   atLaunch: ManagedExchangeRecord,
@@ -158,35 +110,21 @@ export function rotationInFlightUnansweredAtLaunch(
   return lastRun === undefined || !answersRotationInFlight(lastRun, since);
 }
 
-/** A record's failure tier and where the evidence for it came from: the run
- * bookkeeping the record currently holds, or the standing condition beside it.
- * Surfaces read `standing` to phrase the state accurately -- a condition raised
- * by an earlier run is not a statement about the last one, which may have been a
- * no-show or a success. */
+/** A record's failure tier and whether the standing condition, rather than the
+ * last run, supplied it: an earlier run's condition says nothing about the last
+ * one. */
 export interface ManagedFailureReading {
   /** The tier the record's evidence resolves to. */
   tier: ManagedFailureTier;
-  /** Whether the standing condition supplied the tier rather than the record's
-   * current run bookkeeping. */
   standing: boolean;
 }
 
-/** The tiers a standing condition can resolve to -- the three whose recovery is
- * re-invite or the out-of-band confirmation. A narrower union than
- * {@link ManagedFailureTier} so a surface phrasing a standing condition is
- * exhaustive over what one can actually say. */
+/** The tiers a standing condition can resolve to. */
 export type ManagedStandingTier = "storage" | "imported" | "unexplained";
 
-/** The tier a standing condition resolves to: a persist failure is the benign
- * Tier-1 storage state, and a failed-closed handshake is the benign import state
- * while a restore since the last success explains it and the Tier-2 unexplained
- * state otherwise -- the same reading {@link deriveManagedFailureTier} makes of
- * the equivalent `lastRun` entry, so a condition tiers identically whether it was
- * raised by the last run or five no-shows ago.
- *
- * Exported for the surface that shows the condition on its own, which must name
- * the state whether or not the record's current bookkeeping happens to be
- * showing it (see {@link ../../recurring/managedStandingConditionModel.ts}). */
+/** The tier a standing condition resolves to, the same reading
+ * {@link deriveManagedFailureTier} makes of the equivalent `lastRun` entry, so a
+ * condition tiers identically however many runs ago it was raised. */
 export function managedStandingConditionTier(
   condition: ManagedStandingCondition,
   local: ManagedLocalState | undefined,
@@ -196,27 +134,11 @@ export function managedStandingConditionTier(
 }
 
 /**
- * Read a record's failure tier and its source from the structured bookkeeping and
- * the local sibling state as of `now`. The recorded reading is
- * {@link recordedFailureTier}; the standing condition supplies the tier in two
- * places:
- *
- * - where the recorded reading has no failure to show (`"none"` from a success, a
- *   record never run, or a window the schedule skipped, and `"missed"` from a
- *   no-show), which is what keeps a condition visible across the stamps that
- *   would otherwise consume it;
- * - where the recorded reading is `"unexplained"` and a standing persist failure
- *   explains it, which is Tier 1's "the record holds a benign explanation" made
- *   durable (docs/MANAGED_EXCHANGE.md, "Telling a desync from an attack").
- *
- * With no condition standing, a `"missed"` reading beside a rotation-in-flight
- * marker that predates it reads as `"partial-rotation"`
- * ({@link rotationInFlightBeforeLastRun}). Only a no-show is read that way: a
- * failed-closed handshake stays `"unexplained"` whatever the marker says.
- *
- * It does not displace a recorded benign cause: an input problem or a linkage
- * shortfall is this run's own actionable state, and the condition stands until
- * something clears it, so nothing is lost by showing that state first.
+ * Read a record's failure tier and its source as of `now`. The standing
+ * condition supplies the tier where the last run shows no failure or a no-show
+ * (so later stamps do not hide it), and where a persist failure explains an
+ * `"unexplained"` reading. It never displaces a recorded benign cause, which is
+ * this run's own actionable state.
  */
 export function readManagedFailure(
   record: ManagedExchangeRecord,
@@ -244,11 +166,7 @@ export function readManagedFailure(
   return { tier: recorded, standing: false };
 }
 
-/**
- * Derive the failure tier for a record from its structured bookkeeping and its
- * local sibling state as of `now` -- {@link readManagedFailure} without the
- * source, for a caller that only maps a tier to copy.
- */
+/** {@link readManagedFailure} without the source. */
 export function deriveManagedFailureTier(
   record: ManagedExchangeRecord,
   local: ManagedLocalState | undefined,
@@ -258,12 +176,9 @@ export function deriveManagedFailureTier(
 }
 
 /**
- * The tier the record's CURRENT run bookkeeping resolves to, in precedence
- * order: a recorded benign `lastRun` cause, then a restore since the last
- * success, and only then `"unexplained"` for a failed-closed (`auth`) handshake
- * with none of those. The lapse check is its caller's, mirroring the
- * pre-connection check's own position. Rationale for the ordering and the
- * secret-farming caveat: docs/notes/managed-exchange-design.md, "Telling a
+ * The tier the record's last-run bookkeeping resolves to: a recorded benign
+ * cause, then a restore since the last success, and only then `"unexplained"`.
+ * Rationale for the order: docs/notes/managed-exchange-design.md, "Telling a
  * desync from an attack" and "Recovery: fast re-invite".
  */
 function recordedFailureTier(
@@ -272,64 +187,31 @@ function recordedFailureTier(
 ): ManagedFailureTier {
   const lastRun = record.lastRun;
   if (lastRun === undefined || lastRun.outcome === "succeeded") return "none";
-  // A window the schedule skipped is neither a run nor a failure: it records
-  // that nothing was attempted, and the condition the operator's answer rides on
-  // is what the surfaces read across it.
+  // A skipped window attempted nothing; the standing condition is read across
+  // it.
   if (lastRun.outcome === "skipped") return "none";
   if (lastRun.outcome === "missed") return "missed";
 
-  // A recorded benign pre-run input problem: its own tier, never desync/attack.
   if (lastRun.failureKind === "input") return "input";
-  // A recorded pre-run linkage shortfall: benign like the input tier and equally
-  // far from desync/attack, but held apart from it because re-picking the file the
-  // input tier offers is not its remedy -- the same file refuses identically, so
-  // this tier's copy names a conforming file or terms re-agreed with the partner.
   if (lastRun.failureKind === "terms-shortfall") return "terms-shortfall";
-  // A recorded refusal of a set too large to send: benign, and held out of the
-  // transport bucket because reconnecting sends the same set.
   if (lastRun.failureKind === "too-large") return "too-large";
-  // A recorded refusal of the partner's changed terms: benign, and out of the
-  // transport bucket because reconnecting meets the same terms; its remedy is
-  // the operator's decision on the change.
   if (lastRun.failureKind === "terms-change") return "terms-change";
-  // A recorded refusal of a partner's set too large for this browser: benign,
-  // and out of the transport bucket because reconnecting meets the same set.
   if (lastRun.failureKind === "partner-set-too-large")
     return "partner-set-too-large";
-  // A recorded refusal by the partner's run to send its set: benign, and out of
-  // the transport bucket because their run refuses the same way again.
   if (lastRun.failureKind === "partner-refused-set")
     return "partner-refused-set";
-  // A recorded hand-off refusal: the copy this device held was given away, so the
-  // failure is the single-owner invariant holding rather than anything to recover
-  // from here -- and nothing about it is a desync or an attack.
   if (lastRun.failureKind === "handed-off") return "handed-off";
-  // A recorded custody reading that did not complete: the run refused before the
-  // handshake, so nothing rotated and nothing here is a desync signal. Held apart
-  // from the storage tier below, whose copy and re-invite recovery both rest on a
-  // rotation this device failed to save.
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
-  // A recorded persist failure on the last run: the rotation did not land, so a
-  // one-sided persist may have desynced the parties and the recovery is re-invite
-  // -- Tier 1, no attack checklist.
   if (lastRun.failureKind === "storage") return "storage";
 
-  // A restore since the last success benignly explains only a failed-CLOSED
-  // `auth` handshake -- a stale-secret restore does not bear on a transport
-  // drop, which stays the retryable transport tier regardless of the marker.
-  // Rationale and the secret-farming caveat: docs/notes/managed-exchange-design.md,
-  // "Telling a desync from an attack" and "Recovery: fast re-invite".
+  // A restore explains only a failed-closed `auth` handshake, never a
+  // transport drop.
   if (lastRun.failureKind === "auth" && importedSinceLastSuccess(local))
     return "imported";
 
-  // A connection or data-exchange drop that is not a failed-closed handshake: a
-  // temporary transport problem, retried, never attack framing.
   if (lastRun.failureKind === "transport") return "transport";
 
-  // A cancelled run is the operator's own doing, not a failure to tier: retry.
   if (lastRun.failureKind === "cancelled") return "transport";
 
-  // A handshake that failed closed (`auth`) with no recorded benign explanation: the
-  // one failure that needs the operator's out-of-band confirmation work.
   return "unexplained";
 }
