@@ -377,9 +377,11 @@ test("neither party expects output is an error", () => {
     { ...termsA, output: noOutput },
     { ...termsB, output: noOutput },
   );
-  expect(errors.some((e) => e.includes("neither party expects output"))).toBe(
-    true,
-  );
+  expect(
+    errors.some((e) =>
+      e.includes("neither you nor your partner expects output"),
+    ),
+  ).toBe(true);
 });
 
 test("output cross-check: I will share but partner does not expect is an error", () => {
@@ -467,7 +469,7 @@ test("a non-canonical linkage-key param is reported, not thrown", () => {
   expect(runLocalBad).not.toThrow();
   expect(
     runLocalBad().errors.some((e) =>
-      e.includes("local linkage keys cannot be canonically encoded"),
+      e.includes("your linkage keys cannot be canonically encoded"),
     ),
   ).toBe(true);
 
@@ -477,7 +479,7 @@ test("a non-canonical linkage-key param is reported, not thrown", () => {
   expect(runPartnerBad).not.toThrow();
   expect(
     runPartnerBad().errors.some((e) =>
-      e.includes("partner linkage keys cannot be canonically encoded"),
+      e.includes("your partner's linkage keys cannot be canonically encoded"),
     ),
   ).toBe(true);
 });
@@ -770,7 +772,7 @@ test("an explicit empty receive: [] is strict and aborts a partner that sends co
     validateCompatibility(local, partner).errors.some(
       (e) =>
         e.includes("payload mismatch") &&
-        e.includes("local declared an empty payload.receive") &&
+        e.includes("you declared an empty payload.receive") &&
         e.includes("remove payload.receive"),
     ),
   ).toBe(true);
@@ -789,7 +791,7 @@ test("an explicit empty receive: [] is strict and aborts a partner that sends co
     validateCompatibility(local, partner).errors.some(
       (e) =>
         e.includes("payload mismatch") &&
-        e.includes("partner declared an empty payload.receive"),
+        e.includes("your partner declared an empty payload.receive"),
     ),
   ).toBe(true);
 });
@@ -968,7 +970,7 @@ test("the empty-receive diagnostic neutralizes a partner-supplied send column na
   );
   const msg = errors.find((e) => e.includes("payload mismatch"));
   expect(msg).toBeDefined();
-  expect(msg).toContain("local declared an empty payload.receive");
+  expect(msg).toContain("you declared an empty payload.receive");
   expect(rendered(msg!)).not.toContain("\x1b");
   expect(rendered(msg!)).not.toContain("\\x1b");
   expect(rendered(msg!)).toContain(controlCharacterMarker(0x1b));

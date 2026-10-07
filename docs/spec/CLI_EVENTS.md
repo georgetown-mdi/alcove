@@ -96,7 +96,7 @@ A run that disclosed and then terminated in the signed-receipt swap still writes
 | `unescapedMessage` | string | The same warning text before the escape `message` takes: redacted and fitted so that one escape of it stays within the warning budget, but NOT escaped. A consumer that escapes what it shows reads this field instead of `message`, so the text takes that one pass and no more. Present on every warning except `payloadReceiveTaken`, whose partner text is in `columns` ([Payload columns taken without asking](#payload-columns-taken-without-asking)). Additive under the same schema version. |
 
 ```json
-{"v":1,"type":"warning","source":"termsExchange","message":"date mismatch: local is 2026-01-01, partner is 2026-02-01; one party may have a stale copy of the linkage terms","unescapedMessage":"date mismatch: local is 2026-01-01, partner is 2026-02-01; one party may have a stale copy of the linkage terms"}
+{"v":1,"type":"warning","source":"termsExchange","message":"date mismatch: yours is 2026-01-01, your partner's is 2026-02-01; one of you may have a stale copy of the linkage terms","unescapedMessage":"date mismatch: yours is 2026-01-01, your partner's is 2026-02-01; one of you may have a stale copy of the linkage terms"}
 ```
 
 A partner payload whose columns differ from the partner's agreed `payload.send` raises no warning: the receiving run ends on an `error` event with exit code 76 ([The partner-refusal code](#the-partner-refusal-code)), and its message names none of the columns.

@@ -3797,8 +3797,8 @@ describe("linkageRuleSet", () => {
     });
     const { errors } = validateCompatibility(local, partner);
     expect(errors).toEqual([
-      'linkage rule set mismatch: local names "hmis-keys" 1.0.0 over ' +
-        '"baseline-pii" 1.0.0, partner names "hmis-keys" 2.0.0 over ' +
+      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over ' +
+        `"baseline-pii" 1.0.0, your partner's names "hmis-keys" 2.0.0 over ` +
         '"baseline-pii" 1.0.0',
     ]);
     // Symmetric: both parties reach the same verdict from their own copy.
@@ -3820,8 +3820,8 @@ describe("linkageRuleSet", () => {
       },
     });
     expect(validateCompatibility(local, partner).errors).toEqual([
-      'linkage rule set mismatch: local names "hmis-keys" 1.0.0 over ' +
-        '"baseline-pii" 1.0.0, partner names ' +
+      'linkage rule set mismatch: yours names "hmis-keys" 1.0.0 over ' +
+        `"baseline-pii" 1.0.0, your partner's names ` +
         '"hmis-keys 9.9.9 over baseline-pii" 1.0.0 over "baseline-pii" 1.0.0',
     ]);
   });

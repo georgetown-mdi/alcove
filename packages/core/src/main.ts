@@ -472,6 +472,8 @@ export type {
   TermsComparison,
   PayloadColumnsChange,
   TermsDelta,
+  TermsDifference,
+  TermsDifferenceKind,
   PartnerDeduplicateChange,
 } from "./linkageTermsNegotiation";
 export {

@@ -656,7 +656,7 @@ test("a receive list the partner's stated send differs from is refused at the te
   ]);
   expect(initResult.status).toBe("rejected");
   expect(String((initResult as PromiseRejectedResult).reason)).toMatch(
-    /payload mismatch: local receive columns/,
+    /payload mismatch: your receive columns/,
   );
   expect(respResult.status).toBe("rejected");
 });

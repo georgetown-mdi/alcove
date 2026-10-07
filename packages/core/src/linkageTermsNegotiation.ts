@@ -270,8 +270,9 @@ const linkageFieldsByName = (a: LinkageField, b: LinkageField): number =>
 
 /**
  * The clause naming how two lists of named terms entries -- linkage fields or
- * linkage keys -- differ: the names only one party declares, then the names
- * both declare with different content, each list opened by `: ` and separated
+ * linkage keys -- differ, worded from this party's side: the names only it
+ * declares, the names only its partner declares, then the names both declare
+ * with different content, each list opened by `: ` and separated
  * by `; `. Empty where no name differs; for two lists holding the same entries
  * in a different order, it says so, which only the ordered keys can reach.
  *
@@ -302,13 +303,15 @@ function namedEntryDifferences(
   };
   const localByName = byName(local);
   const partnerByName = byName(partner);
-  // Names are listed in code-unit order so both parties render the same text.
+  // Names are listed in code-unit order, which no locale changes.
   const byCodeUnit = (a: string, b: string): number =>
     a < b ? -1 : a > b ? 1 : 0;
-  const oneSideOnly = [
-    ...[...localByName.keys()].filter((name) => !partnerByName.has(name)),
-    ...[...partnerByName.keys()].filter((name) => !localByName.has(name)),
-  ].sort(byCodeUnit);
+  const onlyLocal = [...localByName.keys()]
+    .filter((name) => !partnerByName.has(name))
+    .sort(byCodeUnit);
+  const onlyPartner = [...partnerByName.keys()]
+    .filter((name) => !localByName.has(name))
+    .sort(byCodeUnit);
   const differing = [...localByName.keys()]
     .filter((name) => {
       if (!partnerByName.has(name)) return false;
@@ -320,16 +323,17 @@ function namedEntryDifferences(
     })
     .sort(byCodeUnit);
   const clauses: CompatibilityMessageFragment[] = [];
-  // A reason is relayed to the other party, so a clause holds from either side.
-  if (oneSideOnly.length > 0)
+  if (onlyLocal.length > 0)
     clauses.push(
-      oneSideOnly.length === 1
-        ? compatibilityMessage`${quoteTermsValueList(oneSideOnly)} is declared by one party only`
-        : compatibilityMessage`${quoteTermsValueList(oneSideOnly)} are declared by one party only`,
+      compatibilityMessage`only you declare ${quoteTermsValueList(onlyLocal)}`,
+    );
+  if (onlyPartner.length > 0)
+    clauses.push(
+      compatibilityMessage`only your partner declares ${quoteTermsValueList(onlyPartner)}`,
     );
   if (differing.length > 0)
     clauses.push(
-      compatibilityMessage`local and partner declare ${quoteTermsValueList(differing)} differently`,
+      compatibilityMessage`you and your partner declare ${quoteTermsValueList(differing)} differently`,
     );
   if (
     clauses.length === 0 &&
@@ -338,7 +342,7 @@ function namedEntryDifferences(
     partnerByName.size === partner.length
   )
     clauses.push(
-      compatibilityMessage`local and partner declare the same ${noun} in a different order`,
+      compatibilityMessage`you and your partner declare the same ${noun} in a different order`,
     );
   if (clauses.length === 0) return compatibilityMessage``;
   return clauses
@@ -500,10 +504,65 @@ interface CompatibilityResult {
 }
 
 /**
+ * The term a refusal at the terms exchange is over. `payload` is the columns
+ * the refusing party receives, and `deduplicate` the partner's `deduplicate`
+ * against the value the refusing party holds it to.
+ */
+export type TermsDifferenceKind =
+  | "version"
+  | "algorithm"
+  | "linkage-strategy"
+  | "output"
+  | "linkage-fields"
+  | "linkage-keys"
+  | "linkage-rule-set"
+  | "legal-agreement"
+  | "payload"
+  | "deduplicate";
+
+const TERMS_DIFFERENCE_NAMES: Readonly<
+  Record<TermsDifferenceKind, CompatibilityMessageFragment>
+> = {
+  version: compatibilityMessage`version`,
+  algorithm: compatibilityMessage`algorithm`,
+  "linkage-strategy": compatibilityMessage`linkage strategy`,
+  output: compatibilityMessage`output`,
+  "linkage-fields": compatibilityMessage`linkage fields`,
+  "linkage-keys": compatibilityMessage`linkage keys`,
+  "linkage-rule-set": compatibilityMessage`linkage rule set`,
+  "legal-agreement": compatibilityMessage`legal agreement`,
+  payload: compatibilityMessage`payload columns`,
+  deduplicate: compatibilityMessage`deduplicate`,
+};
+
+/** Every {@link TermsDifferenceKind}. */
+export const TERMS_DIFFERENCE_KINDS = Object.keys(
+  TERMS_DIFFERENCE_NAMES,
+) as ReadonlyArray<TermsDifferenceKind>;
+
+/**
+ * The sentence naming `kind` without either party's value, which reads the
+ * same from both sides: the abort reason a refusing party sends for it.
+ */
+export function termsDifferenceReason(
+  kind: TermsDifferenceKind,
+): CompatibilityMessageFragment {
+  return compatibilityMessage`the linkage terms differ in ${TERMS_DIFFERENCE_NAMES[kind]}`;
+}
+
+/** One diagnostic in {@link TermsDelta.otherTerms}, with the term it is over. */
+export interface TermsDifference {
+  kind: TermsDifferenceKind;
+  message: string;
+}
+
+/**
  * {@link validateCompatibility}'s findings with each payload direction kept
  * apart from the other terms: `receivedMessage` and `sentMessage` are the
- * diagnostics for the two directions `delta` describes, and
- * `partnerDeduplicateMessage` the one for its `partnerDeduplicate`.
+ * diagnostics for the two directions `delta` describes,
+ * `partnerDeduplicateMessage` the one for its `partnerDeduplicate`, and
+ * `otherTermDifferences` the `delta.otherTerms` diagnostics with their kinds.
+ * Each is worded from this party's side.
  */
 export interface TermsComparison {
   delta: TermsDelta;
@@ -511,6 +570,65 @@ export interface TermsComparison {
   receivedMessage: string | undefined;
   sentMessage: string | undefined;
   partnerDeduplicateMessage: string | undefined;
+  otherTermDifferences: TermsDifference[];
+}
+
+/**
+ * The terms `comparison` refuses on, each once, in the order its diagnostics
+ * come: every other term, the partner's `deduplicate`, then the received
+ * columns. The sent columns are not among them, being the partner's to refuse.
+ */
+export function refusedTermKinds(
+  comparison: TermsComparison,
+): TermsDifferenceKind[] {
+  const kinds: TermsDifferenceKind[] = comparison.otherTermDifferences.map(
+    ({ kind }) => kind,
+  );
+  if (comparison.partnerDeduplicateMessage !== undefined)
+    kinds.push("deduplicate");
+  if (comparison.receivedMessage !== undefined) kinds.push("payload");
+  return [...new Set(kinds)];
+}
+
+/**
+ * The partner's refusal over `kinds`, worded from this party's side: for each
+ * kind, the diagnostics this party's own comparison of `local` against
+ * `partner` finds for it, the partner's received columns being this party's
+ * sent ones. A kind the comparison does not reach -- `partner` undefined, or a
+ * difference only the partner can see -- is named without values. `local` is
+ * the terms this party presented to the partner.
+ */
+export function partnerRefusalDifferences(
+  kinds: ReadonlyArray<TermsDifferenceKind>,
+  local: LinkageTerms,
+  partner: LinkageTerms | undefined,
+): string[] {
+  const comparison =
+    partner === undefined ? undefined : compareTerms(local, partner);
+  const ownSide = (kind: TermsDifferenceKind): string[] => {
+    // The partner refuses a boolean that differs from the one it expects, so
+    // it expects the other value.
+    if (kind === "deduplicate")
+      return [
+        local.deduplicate
+          ? compatibilityMessage`deduplicate mismatch: your partner expects yours to be false, yours is true`
+          : compatibilityMessage`deduplicate mismatch: your partner expects yours to be true, yours is false`,
+      ];
+    if (comparison === undefined) return [];
+    if (kind === "payload")
+      return comparison.sentMessage === undefined
+        ? []
+        : [comparison.sentMessage];
+    return comparison.otherTermDifferences
+      .filter((difference) => difference.kind === kind)
+      .map(({ message }) => message);
+  };
+  return kinds.flatMap((kind) => {
+    const found = ownSide(kind);
+    return found.length > 0
+      ? found
+      : [compatibilityMessage`${TERMS_DIFFERENCE_NAMES[kind]} mismatch`];
+  });
 }
 
 /**
@@ -578,12 +696,21 @@ export function compareTerms(
   // message here, or a mismatch check added later -- does not compile. Both
   // lists are returned as the `string[]` of CompatibilityResult, which the
   // brand is transparent to.
-  const errors: CompatibilityMessageFragment[] = [];
+  const errors: Array<{
+    kind: TermsDifferenceKind;
+    message: CompatibilityMessageFragment;
+  }> = [];
+  const differ = (
+    kind: TermsDifferenceKind,
+    message: CompatibilityMessageFragment,
+  ): void => {
+    errors.push({ kind, message });
+  };
   const warnings: CompatibilityMessageFragment[] = [];
 
   // Both arrays below answer the same threat: a mutually-distrusting
   // partner controls reference/purpose/set/column names, and controls them
-  // on the side these messages call "local" too, since
+  // on the side these messages call "yours" too, since
   // deriveAcceptedLinkageTerms adopts the inviter's legalAgreement and
   // linkageRuleSet verbatim.
   //
@@ -604,14 +731,16 @@ export function compareTerms(
   // transformed forms could mask a genuine mismatch.
   if (local.version !== partner.version) {
     // TODO: implement migration when new versions exist
-    errors.push(
-      compatibilityMessage`version mismatch: local is ${bareTermsValue(local.version)}, partner is ${bareTermsValue(partner.version)}`,
+    differ(
+      "version",
+      compatibilityMessage`version mismatch: yours is ${bareTermsValue(local.version)}, your partner's is ${bareTermsValue(partner.version)}`,
     );
   }
 
   if (local.algorithm !== partner.algorithm) {
-    errors.push(
-      compatibilityMessage`algorithm mismatch: local is ${bareTermsValue(local.algorithm)}, partner is ${bareTermsValue(partner.algorithm)}`,
+    differ(
+      "algorithm",
+      compatibilityMessage`algorithm mismatch: yours is ${bareTermsValue(local.algorithm)}, your partner's is ${bareTermsValue(partner.algorithm)}`,
     );
   }
 
@@ -619,8 +748,9 @@ export function compareTerms(
   // or they would compute different matches. The schema fills in "cascade" when
   // omitted, so the value is always present and compared directly.
   if (local.linkageStrategy !== partner.linkageStrategy) {
-    errors.push(
-      compatibilityMessage`linkage strategy mismatch: local is ${bareTermsValue(local.linkageStrategy)}, partner is ${bareTermsValue(partner.linkageStrategy)}`,
+    differ(
+      "linkage-strategy",
+      compatibilityMessage`linkage strategy mismatch: yours is ${bareTermsValue(local.linkageStrategy)}, your partner's is ${bareTermsValue(partner.linkageStrategy)}`,
     );
   }
 
@@ -630,26 +760,31 @@ export function compareTerms(
   // message in this function without a `string` step for a first-party fragment
   // to slip through.
   if (local.output.shareWithPartner !== partner.output.expectsOutput) {
-    errors.push(
+    differ(
+      "output",
       local.output.shareWithPartner
-        ? compatibilityMessage`output mismatch: local will share with partner, but partner does not expect output`
-        : compatibilityMessage`output mismatch: local will not share with partner, but partner expects output`,
+        ? compatibilityMessage`output mismatch: you will share output with your partner, but your partner does not expect output`
+        : compatibilityMessage`output mismatch: you will not share output with your partner, but your partner expects output`,
     );
   }
   if (local.output.expectsOutput !== partner.output.shareWithPartner) {
-    errors.push(
+    differ(
+      "output",
       local.output.expectsOutput
-        ? compatibilityMessage`output mismatch: local expects output, but partner will not share`
-        : compatibilityMessage`output mismatch: local does not expect output, but partner will share`,
+        ? compatibilityMessage`output mismatch: you expect output, but your partner will not share it`
+        : compatibilityMessage`output mismatch: you do not expect output, but your partner will share it`,
     );
   }
   if (!local.output.expectsOutput && !partner.output.expectsOutput) {
-    errors.push(compatibilityMessage`neither party expects output`);
+    differ(
+      "output",
+      compatibilityMessage`neither you nor your partner expects output`,
+    );
   }
 
   if (local.date !== partner.date) {
     warnings.push(
-      compatibilityMessage`date mismatch: local is ${bareTermsValue(redactAndSanitizeForDisplay(local.date))}, partner is ${bareTermsValue(redactAndSanitizeForDisplay(partner.date))}; one party may have a stale copy of the linkage terms`,
+      compatibilityMessage`date mismatch: yours is ${bareTermsValue(redactAndSanitizeForDisplay(local.date))}, your partner's is ${bareTermsValue(redactAndSanitizeForDisplay(partner.date))}; one of you may have a stale copy of the linkage terms`,
     );
   }
 
@@ -680,13 +815,15 @@ export function compareTerms(
   // the encoder's own message is delimited, naming the offending JSON path.
   const canonicalOrError = (
     value: unknown,
+    kind: TermsDifferenceKind,
     label: CompatibilityMessageFragment,
   ): string | null => {
     try {
       return canonicalString(value);
     } catch (err) {
       if (err instanceof CanonicalEncodingError) {
-        errors.push(
+        differ(
+          kind,
           compatibilityMessage`${label} cannot be canonically encoded: ${quoteTermsValue(err.message)}`,
         );
         return null;
@@ -699,18 +836,21 @@ export function compareTerms(
   const partnerFields = [...partner.linkageFields].sort(linkageFieldsByName);
   const localFieldsCanonical = canonicalOrError(
     localFields,
-    compatibilityMessage`local linkage fields`,
+    "linkage-fields",
+    compatibilityMessage`your linkage fields`,
   );
   const partnerFieldsCanonical = canonicalOrError(
     partnerFields,
-    compatibilityMessage`partner linkage fields`,
+    "linkage-fields",
+    compatibilityMessage`your partner's linkage fields`,
   );
   if (
     localFieldsCanonical !== null &&
     partnerFieldsCanonical !== null &&
     localFieldsCanonical !== partnerFieldsCanonical
   ) {
-    errors.push(
+    differ(
+      "linkage-fields",
       compatibilityMessage`linkage fields do not match${namedEntryDifferences(
         localFields,
         partnerFields,
@@ -721,18 +861,21 @@ export function compareTerms(
 
   const localKeysCanonical = canonicalOrError(
     local.linkageKeys,
-    compatibilityMessage`local linkage keys`,
+    "linkage-keys",
+    compatibilityMessage`your linkage keys`,
   );
   const partnerKeysCanonical = canonicalOrError(
     partner.linkageKeys,
-    compatibilityMessage`partner linkage keys`,
+    "linkage-keys",
+    compatibilityMessage`your partner's linkage keys`,
   );
   if (
     localKeysCanonical !== null &&
     partnerKeysCanonical !== null &&
     localKeysCanonical !== partnerKeysCanonical
   ) {
-    errors.push(
+    differ(
+      "linkage-keys",
       compatibilityMessage`linkage keys do not match${namedEntryDifferences(
         local.linkageKeys,
         partner.linkageKeys,
@@ -758,19 +901,22 @@ export function compareTerms(
   ) {
     const localRuleSet = canonicalOrError(
       local.linkageRuleSet,
-      compatibilityMessage`local linkage rule set`,
+      "linkage-rule-set",
+      compatibilityMessage`your linkage rule set`,
     );
     const partnerRuleSet = canonicalOrError(
       partner.linkageRuleSet,
-      compatibilityMessage`partner linkage rule set`,
+      "linkage-rule-set",
+      compatibilityMessage`your partner's linkage rule set`,
     );
     if (
       localRuleSet !== null &&
       partnerRuleSet !== null &&
       localRuleSet !== partnerRuleSet
     ) {
-      errors.push(
-        compatibilityMessage`linkage rule set mismatch: local names ${describeRuleSet(local.linkageRuleSet)}, partner names ${describeRuleSet(partner.linkageRuleSet)}`,
+      differ(
+        "linkage-rule-set",
+        compatibilityMessage`linkage rule set mismatch: yours names ${describeRuleSet(local.linkageRuleSet)}, your partner's names ${describeRuleSet(partner.linkageRuleSet)}`,
       );
     }
   }
@@ -780,35 +926,41 @@ export function compareTerms(
     partner.legalAgreement !== undefined
   ) {
     if (local.legalAgreement === undefined) {
-      errors.push(
-        compatibilityMessage`partner has a legal agreement but local does not`,
+      differ(
+        "legal-agreement",
+        compatibilityMessage`your partner has a legal agreement but you do not`,
       );
     } else if (partner.legalAgreement === undefined) {
-      errors.push(
-        compatibilityMessage`local has a legal agreement but partner does not`,
+      differ(
+        "legal-agreement",
+        compatibilityMessage`you have a legal agreement but your partner does not`,
       );
     } else {
       if (local.legalAgreement.reference !== partner.legalAgreement.reference) {
-        errors.push(
-          compatibilityMessage`legal agreement reference mismatch: local is ${quoteTermsValue(local.legalAgreement.reference)}, partner is ${quoteTermsValue(partner.legalAgreement.reference)}`,
+        differ(
+          "legal-agreement",
+          compatibilityMessage`legal agreement reference mismatch: yours is ${quoteTermsValue(local.legalAgreement.reference)}, your partner's is ${quoteTermsValue(partner.legalAgreement.reference)}`,
         );
       }
       if (local.legalAgreement.purpose !== partner.legalAgreement.purpose) {
-        errors.push(
-          compatibilityMessage`legal agreement purpose mismatch: local is ${quoteTermsValue(local.legalAgreement.purpose)}, partner is ${quoteTermsValue(partner.legalAgreement.purpose)}`,
+        differ(
+          "legal-agreement",
+          compatibilityMessage`legal agreement purpose mismatch: yours is ${quoteTermsValue(local.legalAgreement.purpose)}, your partner's is ${quoteTermsValue(partner.legalAgreement.purpose)}`,
         );
       }
       if (
         local.legalAgreement.expirationDate !==
         partner.legalAgreement.expirationDate
       ) {
-        errors.push(
-          compatibilityMessage`legal agreement expiration date mismatch: local is ${bareTermsValue(local.legalAgreement.expirationDate)}, partner is ${bareTermsValue(partner.legalAgreement.expirationDate)}`,
+        differ(
+          "legal-agreement",
+          compatibilityMessage`legal agreement expiration date mismatch: yours is ${bareTermsValue(local.legalAgreement.expirationDate)}, your partner's is ${bareTermsValue(partner.legalAgreement.expirationDate)}`,
         );
       }
       const today = new Date().toISOString().slice(0, 10);
       if (local.legalAgreement.expirationDate < today) {
-        errors.push(
+        differ(
+          "legal-agreement",
           compatibilityMessage`legal agreement expired on ${bareTermsValue(local.legalAgreement.expirationDate)}`,
         );
       }
@@ -890,9 +1042,9 @@ export function compareTerms(
             // out rather than printing an empty bracket pair that reads like
             // a rendering glitch.
             emptyReceiveMessage: (localShown) =>
-              compatibilityMessage`payload mismatch: partner declared an empty payload.receive (asserting local sends no payload columns), but local sends [${localShown}]`,
+              compatibilityMessage`payload mismatch: your partner declared an empty payload.receive (asserting you send no payload columns), but you send [${localShown}]`,
             mismatchMessage: (partnerShown, localShown) =>
-              compatibilityMessage`payload mismatch: local send columns [${localShown}] do not match partner receive columns [${partnerShown}]`,
+              compatibilityMessage`payload mismatch: your send columns [${localShown}] do not match your partner's receive columns [${partnerShown}]`,
           },
         );
 
@@ -909,9 +1061,9 @@ export function compareTerms(
           // alternative, since a hand-authored `receive: []` is the most
           // likely way to land here.
           emptyReceiveMessage: (partnerShown) =>
-            compatibilityMessage`payload mismatch: local declared an empty payload.receive (asserting partner sends no payload columns), but partner sends [${partnerShown}]. To receive the partner's columns, remove payload.receive: a recurring exchange sets it from the partner's declared columns on its next run and holds the partner to them after that.`,
+            compatibilityMessage`payload mismatch: you declared an empty payload.receive (asserting your partner sends no payload columns), but your partner sends [${partnerShown}]. To receive your partner's columns, remove payload.receive: a recurring exchange sets it from your partner's declared columns on its next run and holds your partner to them after that.`,
           mismatchMessage: (localShown, partnerShown) =>
-            compatibilityMessage`payload mismatch: local receive columns [${localShown}] do not match partner send columns [${partnerShown}]`,
+            compatibilityMessage`payload mismatch: your receive columns [${localShown}] do not match your partner's send columns [${partnerShown}]`,
         });
 
   const expectedDeduplicate = baselines.partnerDeduplicate;
@@ -926,7 +1078,7 @@ export function compareTerms(
       received: received?.change,
       sent: sent?.change,
       partnerDeduplicate,
-      otherTerms: errors,
+      otherTerms: errors.map(({ message }) => message),
     },
     warnings,
     receivedMessage: received?.message,
@@ -934,7 +1086,10 @@ export function compareTerms(
     partnerDeduplicateMessage:
       partnerDeduplicate === undefined
         ? undefined
-        : compatibilityMessage`partner deduplicate mismatch: local expects ${bareTermsValue(String(partnerDeduplicate.expected))}, partner is ${bareTermsValue(String(partnerDeduplicate.presented))}`,
+        : partnerDeduplicate.expected
+          ? compatibilityMessage`deduplicate mismatch: you expect your partner's to be true, your partner's is false`
+          : compatibilityMessage`deduplicate mismatch: you expect your partner's to be false, your partner's is true`,
+    otherTermDifferences: errors,
   };
 }
 
