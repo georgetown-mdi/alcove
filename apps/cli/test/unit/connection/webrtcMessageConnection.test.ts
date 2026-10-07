@@ -20,7 +20,7 @@ import {
   sendWindowWake,
   webRtcMessageConnection,
 } from "../../../src/connection/webrtc/webrtcMessageConnection";
-import { webRtcDialFrom } from "../../../src/protocol";
+import { webRtcDialFrom } from "../../../src/run/prepare";
 
 import type { WebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
 import type { RTCDataChannel } from "werift";

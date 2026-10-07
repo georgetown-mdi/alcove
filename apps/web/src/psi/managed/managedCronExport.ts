@@ -18,7 +18,7 @@
  * - It INJECTS a webrtc `connection.role` from the record's local `side`, at
  *   export time only: the stored document holds none (the spec's "Role: a
  *   local `side` field, not the document"), while the CLI derives its
- *   rendezvous peer id from `role` (`apps/cli/src/protocol.ts`). The sftp and
+ *   rendezvous peer id from `role` (`apps/cli/src/run/prepare.ts`). The sftp and
  *   filedrop connections have no `role`, and their records no `side`. Nothing
  *   here writes back.
  * - It INCLUDES the max-age policy in the document as

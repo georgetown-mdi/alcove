@@ -1122,7 +1122,7 @@ test("a webrtc config loads, passing its role and server through", () => {
 test("a webrtc config with no role still loads; the transport refuses it", () => {
   // The role is read at dispatch, not at load: keeping the loader out of it means
   // one refusal, in one place, for a hand-authored config and for a saved one
-  // alike (see webRtcDialFrom in protocol.ts).
+  // alike (see webRtcDialFrom in run/prepare.ts).
   fs.writeFileSync(
     configFile,
     YAML.stringify({

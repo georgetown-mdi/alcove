@@ -403,11 +403,13 @@ import type {
 } from "@alcove/core";
 import {
   runProtocol,
-  preflightRun,
-  fileSyncInactivityTimeoutMs,
   type RunProtocolResult,
   type SigningPersist,
 } from "../../src/protocol";
+import {
+  preflightRun,
+  fileSyncInactivityTimeoutMs,
+} from "../../src/run/prepare";
 import {
   peerSilenceGuidance,
   BOTH_SWEPT_GUIDANCE,
