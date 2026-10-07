@@ -1569,25 +1569,49 @@ describe("direct exchange file-handling gate", () => {
   });
 });
 
-describe("direct exchange host-key probe (direct ceremony)", () => {
-  /** Reach the agreed-server step with SFTP unconfigured, then open the authoring
-   * form and fill host + username so the probe can run. */
-  async function openDirectServerForm() {
-    await page.getByRole("button", { name: "Select clients.csv" }).click();
-    await page.getByRole("button", { name: "Use this file" }).click();
-    await expect
-      .element(
-        page.getByRole("heading", { level: 1, name: "The agreed server" }),
-      )
-      .toBeInTheDocument();
-    await page.getByRole("button", { name: "Add connection" }).click();
-    await userEvent.fill(
-      page.getByLabelText("SFTP server address"),
-      "sftp.agreed.example",
-    );
-    await userEvent.fill(page.getByLabelText("Username"), "linkage");
-  }
+/** Reach the agreed-server step with SFTP unconfigured, then open the authoring
+ * form and fill host + username so the probe can run. */
+async function openDirectServerForm() {
+  await page.getByRole("button", { name: "Select clients.csv" }).click();
+  await page.getByRole("button", { name: "Use this file" }).click();
+  await expect
+    .element(page.getByRole("heading", { level: 1, name: "The agreed server" }))
+    .toBeInTheDocument();
+  await page.getByRole("button", { name: "Add connection" }).click();
+  await userEvent.fill(
+    page.getByLabelText("SFTP server address"),
+    "sftp.agreed.example",
+  );
+  await userEvent.fill(page.getByLabelText("Username"), "linkage");
+}
 
+describe("direct exchange remote directory", () => {
+  test.each([
+    ["a . segment", "/exchange/./in", "cannot use . or .. in this directory"],
+    ["a .. segment", "exchange/../in", "cannot use . or .. in this directory"],
+    ["the root /", "/", "cannot use / as this directory"],
+  ])(
+    "%s is refused at the field and saves nothing",
+    async (_label, directory, message) => {
+      const api = stubJobApi({ sftp: { configured: false } });
+      app.render(createElement(DirectExchangeScreen));
+      await openDirectServerForm();
+      await userEvent.fill(page.getByLabelText("Remote directory"), directory);
+      await page.getByRole("button", { name: "Save connection" }).click();
+      await expect
+        .element(page.getByRole("alert").filter({ hasText: message }))
+        .toBeInTheDocument();
+      expect(
+        api.captured.some(
+          (request) =>
+            request.url === "/api/jobs/sftp" && request.method === "PUT",
+        ),
+      ).toBe(false);
+    },
+  );
+});
+
+describe("direct exchange host-key probe (direct ceremony)", () => {
   test("the interstitial and out-of-band affirmation gate the fill", async () => {
     // SFTP unconfigured so the authoring form (with its probe) is reachable.
     stubJobApi({ sftp: { configured: false } });

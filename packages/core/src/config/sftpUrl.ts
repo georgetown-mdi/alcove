@@ -218,6 +218,26 @@ export interface SftpUrlLocator {
   path?: string;
 }
 
+/**
+ * Why a remote directory has no `sftp://` URL form that reads back unchanged:
+ * `dot-segment` for a `.` or `..` segment, which URL parsing removes, and
+ * `root` for `/`, which a URL states as the login directory.
+ */
+export type SftpUrlDirectoryFault = "dot-segment" | "root";
+
+/**
+ * The reason {@link formatSftpUrl} cannot write `path` into a URL, or
+ * undefined when it can. An empty path is the login directory and has a form.
+ */
+export function sftpUrlDirectoryFault(
+  path: string,
+): SftpUrlDirectoryFault | undefined {
+  if (path === "/") return "root";
+  return path.split("/").some((segment) => segment === "." || segment === "..")
+    ? "dot-segment"
+    : undefined;
+}
+
 // The placeholder host the URL is seeded with, distinguished from a real host so
 // a setter no-op (which leaves this value in place) is detectable. `.invalid` is
 // a reserved TLD (RFC 6761), so it is never a legitimately authored server.
@@ -247,8 +267,8 @@ function urlPathForRemoteDirectory(path: string): string {
  *
  * @throws {Error} when the host is not a bare address or does not survive the
  *   URL's host parser, the port is outside 1-65535, or the directory has no
- *   URL form that reads back unchanged (a `.` or `..` segment, which URL
- *   parsing removes, or the root `/`, which reads back as the login directory).
+ *   URL form that reads back unchanged ({@link sftpUrlDirectoryFault} names
+ *   the shapes, so a caller can refuse them before calling this).
  */
 export function formatSftpUrl(locator: SftpUrlLocator): string {
   if (!isBareSftpHost(locator.host))

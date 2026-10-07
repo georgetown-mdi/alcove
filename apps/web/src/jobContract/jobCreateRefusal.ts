@@ -21,6 +21,11 @@ export const SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL =
  * pass on. */
 export const SFTP_FINGERPRINT_LIST_REFUSAL = "sftp-fingerprint-list";
 
+/** The token for a direct (zero-setup) sftp run refused because the saved
+ * connection's remote directory is `/` or has a `.` or `..` segment, which
+ * the run's `sftp://` URL cannot state. */
+export const SFTP_URL_DIRECTORY_REFUSAL = "sftp-url-directory";
+
 /** The token for a run of the opened configuration refused because the
  * working folder holds no `.alcove.key` beside it. */
 export const MOUNTED_KEY_FILE_ABSENT_REFUSAL = "mounted-key-file-absent";
@@ -44,6 +49,7 @@ export const SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL =
 export type JobCreateRefusalReason =
   | typeof SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL
   | typeof SFTP_FINGERPRINT_LIST_REFUSAL
+  | typeof SFTP_URL_DIRECTORY_REFUSAL
   | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
   | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
   | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
@@ -58,6 +64,7 @@ export function isJobCreateRefusalReason(
   return (
     value === SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL ||
     value === SFTP_FINGERPRINT_LIST_REFUSAL ||
+    value === SFTP_URL_DIRECTORY_REFUSAL ||
     value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||

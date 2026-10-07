@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { formatSftpUrl } from "@alcove/core";
+import { formatSftpUrl, sftpUrlDirectoryFault } from "@alcove/core";
 
 import { isAdmissiblePeerId } from "@jobContract/intentSchemas";
 
@@ -27,6 +27,22 @@ export class ZeroSetupFingerprintListError extends Error {
 }
 
 /**
+ * Thrown by {@link zeroSetupSftpArgv} when the authored connection's remote
+ * directory (its inbound half, for a split pair) has no `sftp://` URL form:
+ * it is `/` or has a `.` or `..` segment. The job create route maps it to a
+ * 400 naming the refusal, as for {@link ZeroSetupFingerprintListError}.
+ */
+export class ZeroSetupRemoteDirectoryError extends Error {
+  constructor() {
+    super(
+      "a quick exchange cannot state a remote directory that is / or has a " +
+        ". or .. segment in its sftp:// URL",
+    );
+    this.name = "ZeroSetupRemoteDirectoryError";
+  }
+}
+
+/**
  * Map the operator-authored SFTP server entry to the connection portion of a
  * zero-setup CLI argv: the `sftp://` URL positional plus the `--server-*` flags.
  * The argv analog of {@link composeSftpConfigDocument} -- it draws every field from
@@ -43,6 +59,7 @@ export class ZeroSetupFingerprintListError extends Error {
  * toggle alongside.
  *
  * The `sftp://` URL is core's `formatSftpUrl`: docs/spec/SERVER_JOB_API.md.
+ * A remote directory it cannot write is a {@link ZeroSetupRemoteDirectoryError}.
  *
  * A split-directory entry adds `--outbound-path`, the CLI's own name for
  * the same split: the URL holds the inbound half and this flag the
@@ -61,6 +78,8 @@ export function zeroSetupSftpArgv(
   serverEntry: JobSftpServerEntry,
 ): Array<string> {
   const urlPath = serverEntry.inboundPath ?? serverEntry.path;
+  if (urlPath !== undefined && sftpUrlDirectoryFault(urlPath) !== undefined)
+    throw new ZeroSetupRemoteDirectoryError();
   const argv: Array<string> = [
     formatSftpUrl({
       host: serverEntry.host,

@@ -16,6 +16,7 @@ import {
 
 import {
   ZeroSetupFingerprintListError,
+  ZeroSetupRemoteDirectoryError,
   zeroSetupFiledropArgv,
   zeroSetupOptionsArgv,
   zeroSetupSftpArgv,
@@ -1689,14 +1690,35 @@ describe("zeroSetupSftpArgv maps the effective connection to argv", () => {
     },
   );
 
-  test("refuses a remote directory the URL would change", () => {
-    expect(() =>
-      zeroSetupSftpArgv({
-        host: "sftp.example.org",
-        path: "exchange/../in",
-        hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
-      }),
-    ).toThrow(/reads back/);
+  test.each([
+    ["a . segment", { path: "/exchange/./in" }],
+    ["a .. segment", { path: "exchange/../in" }],
+    ["the root /", { path: "/" }],
+    [
+      "a split's root inbound half",
+      { inboundPath: "/", outboundPath: "/exchange/out" },
+    ],
+  ])(
+    "refuses a remote directory with %s with the classified refusal",
+    (_label, directory) => {
+      expect(() =>
+        zeroSetupSftpArgv({
+          host: "sftp.example.org",
+          ...directory,
+          hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+        }),
+      ).toThrow(ZeroSetupRemoteDirectoryError);
+    },
+  );
+
+  test("a split's outbound half keeps a . segment", () => {
+    const argv = zeroSetupSftpArgv({
+      host: "sftp.example.org",
+      inboundPath: "/exchange/in",
+      outboundPath: "/exchange/./out",
+      hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+    });
+    expect(argv).toContain("--outbound-path=/exchange/./out");
   });
 
   test("a split entry puts the inbound half on the URL and flags the outbound", () => {

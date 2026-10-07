@@ -8,6 +8,7 @@ import {
   parseSftpServerAddress,
   parseSftpUrl,
   sftpDialHost,
+  sftpUrlDirectoryFault,
 } from "../../src/config/sftpUrl";
 import { joinFileSyncPath } from "../../src/connection/fileSyncPath";
 import { UsageError } from "../../src/errors";
@@ -238,10 +239,31 @@ describe("formatSftpUrl", () => {
     );
   });
 
-  test("refuses a directory with no URL form that reads back unchanged", () => {
-    for (const path of ["./drop", "a/../b", "/", "drop/."])
-      expect(() => formatSftpUrl({ host: "h", path })).toThrow(/reads back/);
-  });
+  test.each([
+    ["./drop", "dot-segment"],
+    ["a/../b", "dot-segment"],
+    ["drop/.", "dot-segment"],
+    ["..", "dot-segment"],
+    ["/srv/..", "dot-segment"],
+    ["/", "root"],
+    ["", undefined],
+    ["/srv/drop", undefined],
+    ["drop", undefined],
+    ["...", undefined],
+    [".hidden/a.", undefined],
+    ["%2e/%2E%2E", undefined],
+    ["a//b", undefined],
+    ["//", undefined],
+    ["/~", undefined],
+  ] as const)(
+    "names the fault of %j exactly when the URL would change it",
+    (path, fault) => {
+      expect(sftpUrlDirectoryFault(path)).toBe(fault);
+      const write = () => formatSftpUrl({ host: "h", path });
+      if (fault === undefined) expect(write).not.toThrow();
+      else expect(write).toThrow(/reads back/);
+    },
+  );
 
   test("refuses a host that is not bare, and port 0", () => {
     expect(() => formatSftpUrl({ host: "foo#bar" })).toThrow(/bare/);

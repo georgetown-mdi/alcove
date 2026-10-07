@@ -4,6 +4,7 @@ import {
   isBareSftpHost,
   isSftpPort,
   parseSftpUrl,
+  sftpUrlDirectoryFault,
   withRetainModeImplications,
 } from "@alcove/core";
 import type { SftpUrlFields } from "@alcove/core";
@@ -229,6 +230,49 @@ export const UNREADABLE_HOST_PASTE =
 /** Whether a typed credential/passphrase reference is an `@`-prefixed path. */
 function isAtPath(value: string): boolean {
   return value.startsWith("@") && value.length > 1;
+}
+
+/** What the console says when a direct exchange's remote directory has a
+ * `.` or `..` part, which its `sftp://` URL cannot state. */
+export const DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT =
+  "A direct exchange cannot use . or .. in this directory. Enter the path " +
+  "without them, like /exchange/in.";
+
+/** What the console says when a direct exchange's single remote directory is
+ * `/`, which its `sftp://` URL states as the account's home directory. */
+export const DIRECT_DIRECTORY_ROOT_REQUIREMENT =
+  "A direct exchange cannot use / as this directory. Enter a directory " +
+  "under it, like /exchange, or leave this blank to use the account's home " +
+  "directory.";
+
+/** {@link DIRECT_DIRECTORY_ROOT_REQUIREMENT} for the inbound half of a split
+ * pair, which cannot be left blank. */
+export const DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT =
+  "A direct exchange cannot use / as this directory. Enter a directory " +
+  "under it, like /exchange/in.";
+
+/**
+ * The direct-exchange refusal of a remote directory its `sftp://` URL cannot
+ * state, or undefined when it has a URL form. Only the remote-directory field
+ * is asked: the outbound half of a split pair travels as a flag, not in the
+ * URL.
+ */
+function directDirectoryError(
+  remoteDirectory: string,
+  split: boolean,
+): SftpFormError | undefined {
+  if (remoteDirectory === "") return undefined;
+  const fault = sftpUrlDirectoryFault(remoteDirectory);
+  if (fault === undefined) return undefined;
+  return {
+    field: "remoteDirectory",
+    message:
+      fault === "dot-segment"
+        ? DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT
+        : split
+          ? DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT
+          : DIRECT_DIRECTORY_ROOT_REQUIREMENT,
+  };
 }
 
 /**
@@ -457,13 +501,14 @@ function credentialCoherenceError(
  * only for the split-directory precondition: naming an outbound directory without
  * it is refused here rather than by the job the connection would later compose.
  *
- * `singleFingerprint` holds the field to one fingerprint, for a direct exchange:
- * its run passes the pin as a command-line flag, which takes one value.
+ * `directExchange` holds the connection to what a direct exchange's command
+ * line can state: one fingerprint, since the pin is a single-valued flag, and
+ * a remote directory with an `sftp://` URL form ({@link directDirectoryError}).
  */
 export function sftpFormError(
   values: SftpConnectionFormValues,
   retainFiles: boolean,
-  singleFingerprint = false,
+  directExchange = false,
 ): SftpFormError | undefined {
   if (values.host.trim() === "" && values.hostPasteUnreadable === true)
     return { field: "host", message: UNREADABLE_HOST_PASTE };
@@ -476,9 +521,15 @@ export function sftpFormError(
       field: "username",
       message: "Enter the username for the SFTP account.",
     };
-  // Both directory rules are the split's alone: naming no outbound directory
-  // leaves the single shared remote directory exactly as unvalidated as it was.
   const outboundDirectory = values.outboundDirectory.trim();
+  if (directExchange) {
+    const directoryError = directDirectoryError(
+      values.remoteDirectory.trim(),
+      outboundDirectory !== "",
+    );
+    if (directoryError !== undefined) return directoryError;
+  }
+  // The split rules apply only when an outbound directory is named.
   if (outboundDirectory !== "") {
     if (!retainFiles)
       return {
@@ -502,7 +553,7 @@ export function sftpFormError(
   }
   const fingerprintError = fingerprintErrorFor(
     values.hostKeyFingerprint,
-    singleFingerprint,
+    directExchange,
   );
   if (fingerprintError !== undefined)
     return { field: "hostKeyFingerprint", message: fingerprintError };
@@ -631,9 +682,9 @@ function fingerprintEntryError(fingerprint: string): string | undefined {
 export function buildAuthoringRequest(
   values: SftpConnectionFormValues,
   retainFiles: boolean,
-  singleFingerprint = false,
+  directExchange = false,
 ): AuthoredSftpConnectionRequest | undefined {
-  if (sftpFormError(values, retainFiles, singleFingerprint) !== undefined)
+  if (sftpFormError(values, retainFiles, directExchange) !== undefined)
     return undefined;
   const source = values.source;
   // sftpFormError guarantees a defined source; narrow for the type system.

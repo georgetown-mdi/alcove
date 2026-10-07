@@ -44,7 +44,7 @@ export function SftpConnectionCard({
   retainFiles,
   offerSaveFile = true,
   probeCeremony = "exchange",
-  singleFingerprint = false,
+  directExchange = false,
   onAuthored,
   onCleared,
   onUseCli,
@@ -66,9 +66,9 @@ export function SftpConnectionCard({
    * forwarded to {@link SftpAuthoringForm} (default `exchange`; `direct` on the
    * direct-exchange path). */
   probeCeremony?: ProbeCeremony;
-  /** Hold the fingerprint field to one fingerprint, forwarded to
+  /** Hold the connection to what a direct exchange can run, forwarded to
    * {@link SftpAuthoringForm} (true on the direct-exchange path). */
-  singleFingerprint?: boolean;
+  directExchange?: boolean;
   /** Whether to offer the save-a-file alternative at all. True (the default) on the
    * inviter path, which can mint an exchange file for the command-line tool. False
    * on the direct-exchange path, which always runs here on the console -- there
@@ -177,7 +177,7 @@ export function SftpConnectionCard({
       isEdit={connection !== null}
       retainFiles={retainFiles}
       probeCeremony={probeCeremony}
-      singleFingerprint={singleFingerprint}
+      directExchange={directExchange}
       onAuthored={(authored) => {
         setFormOpen(false);
         onAuthored(authored);
