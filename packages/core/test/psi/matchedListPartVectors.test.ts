@@ -49,10 +49,16 @@ async function received(
 ): Promise<Array<unknown>> {
   const [a, b] = createMessagePipe();
   for (const part of partsHex) await a.send(fromHex(part));
-  return receiveMatchedArray(b, "client", "list", maxEntries, (value) => {
-    if (!Array.isArray(value)) throw new Error("not an array");
-    return value as Array<unknown>;
-  });
+  return receiveMatchedArray(
+    b,
+    "client",
+    "list",
+    { entries: maxEntries },
+    (value) => {
+      if (!Array.isArray(value)) throw new Error("not an array");
+      return value as Array<unknown>;
+    },
+  );
 }
 
 test("the header length is the one the vectors state", () => {

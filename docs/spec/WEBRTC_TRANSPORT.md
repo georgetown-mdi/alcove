@@ -355,7 +355,11 @@ each party's mapped-element list, the list it returns with the partner's rows,
 and its payload rows -- go in parts on WebRTC as on file-sync, each part's
 frame sized to the partner's data-channel bound
 ([PROTOCOL.md, A list of matched records is sent in parts](PROTOCOL.md#a-list-of-matched-records-is-sent-in-parts)).
-No list is bounded by one frame.
+No list is bounded by one frame. A part of either mapped-element list is
+refused past the byte bound PROTOCOL.md derives from the agreed terms, before
+its body is parsed; the data channel has reassembled the part by then, up to
+`MAX_WEBRTC_FRAME_BYTES`, since no receive on this transport reads a frame
+under a tighter bound.
 
 A cascade round's association table and original-index list are one frame
 each, sent as BinaryPack with no AEAD wrap. Their index lists fit one frame at
@@ -978,6 +982,13 @@ frame over 256 KiB of UTF-8 is refused unparsed, the peer reporting a
 silently, counted across every pending connection id together where the
 CLI's held-candidate cap above is per connection. The two apps define both
 values separately.
+
+The browser peer has no counterpart to the CLI's cap on applied candidates:
+PeerJS hands every `CANDIDATE` it reads to the peer connection's
+`addIceCandidate` as it arrives, and capping that means wrapping a PeerJS
+internal, so it is a stated limit rather than a bound. Each candidate is held
+to the signaling frame bound; how many are applied is left to the browser's
+own ICE agent.
 
 ## See also
 

@@ -11,6 +11,7 @@ import {
   arraySource,
   joinMatchedArrayParts,
   MATCHED_LIST_PART_HEADER_BYTES,
+  matchedListPartByteBound,
   matchedListParts,
   receiveMatchedArray,
   receiveMatchedListParts,
@@ -68,7 +69,7 @@ async function refusalOf(
     conn,
     "client",
     "mapped-element list",
-    maxEntries,
+    { entries: maxEntries },
     parsePart,
   ).catch((error: unknown) => error);
   return { outcome, parsed: parsePart.mock.calls.length };
@@ -136,7 +137,7 @@ describe("sending", () => {
       receiver,
       "client",
       "mapped-element list",
-      entries.length,
+      { entries: entries.length },
       arrayPart(asArray),
     );
     await sending;
@@ -229,7 +230,7 @@ describe("each part is parsed as it arrives", () => {
       receiver,
       "client",
       "list",
-      100,
+      { entries: 100 },
       asArray,
     ).catch((error: unknown) => error);
     expect(outcome).toBeInstanceOf(ConnectionError);
@@ -245,7 +246,7 @@ describe("each part is parsed as it arrives", () => {
       receiver,
       "client",
       "list",
-      100,
+      { entries: 100 },
       asArray,
     ).catch((error: unknown) => error);
     expect((outcome as Error).message).toBe(
@@ -265,7 +266,7 @@ describe("each part is parsed as it arrives", () => {
       receiver,
       "client",
       "list",
-      100,
+      { entries: 100 },
       parsePart,
     ).finally(() => {
       settled = true;
@@ -278,12 +279,98 @@ describe("each part is parsed as it arrives", () => {
   });
 });
 
+describe("a part's byte bound", () => {
+  const source = arraySource(entries);
+  const entryBytes = Math.max(
+    ...entries.map((_, index) => source.entryBytes(index)),
+  );
+  const bound = { entries: entries.length, entryBytes };
+
+  async function receivedUnder(frames: Array<unknown>) {
+    const parsePart = vi.fn(asArray);
+    const conn = await deliver(frames);
+    const outcome = await receiveMatchedArray(
+      conn,
+      "client",
+      "list",
+      bound,
+      parsePart,
+    ).catch((error: unknown) => error);
+    return { outcome, parsed: parsePart.mock.calls.length };
+  }
+
+  test("is the most bytes a part of that many entries can take", () => {
+    expect(matchedListPartByteBound(0, entryBytes)).toBe(
+      MATCHED_LIST_PART_HEADER_BYTES + 2,
+    );
+    expect(matchedListPartByteBound(3, entryBytes)).toBe(
+      MATCHED_LIST_PART_HEADER_BYTES + 2 + 3 * entryBytes,
+    );
+  });
+
+  test("admits every part of a list sent within it", async () => {
+    const parts = [...matchedListParts(source, 200)];
+    expect(parts.length).toBeGreaterThan(1);
+    const { outcome } = await receivedUnder(parts);
+    expect(outcome).toEqual(entries);
+  });
+
+  test.each([
+    [
+      "a first part longer than the list's entries can be",
+      () => [
+        partFrame(
+          [{ theirIndex: 0, iteration: 0, padding: "x".repeat(4096) }],
+          {
+            entries: 1,
+          },
+        ),
+      ],
+      0,
+      MATCHED_LIST_PART_HEADER_BYTES + 2 + entryBytes,
+    ],
+    [
+      "a later part longer than the entries still to come can be",
+      () => {
+        const [first] = [...matchedListParts(source, 1 << 20, 16)];
+        const rest = entries
+          .slice(16)
+          .map((entry) => ({ ...entry, padding: "x".repeat(entryBytes) }));
+        return [first, partFrame(rest, { index: 1, count: 3, entries: 40 })];
+      },
+      1,
+      MATCHED_LIST_PART_HEADER_BYTES + 2 + 24 * entryBytes,
+    ],
+  ] as Array<[string, () => Array<Uint8Array>, number, number]>)(
+    "refuses %s before parsing it",
+    async (_name, frames, index, maxPartBytes) => {
+      const sent = frames();
+      const { outcome, parsed } = await receivedUnder(sent);
+      expect(outcome).toBeInstanceOf(ConnectionError);
+      expect((outcome as ConnectionError).kind).toBe("protocol");
+      expect((outcome as Error).message).toBe(
+        `client protocol error: inbound list part ${index} is over the ` +
+          `${maxPartBytes} bytes this party admits for it`,
+      );
+      expect(((outcome as Error).cause as Error).message).toBe(
+        "size of the part the partner sent: " +
+          `${sent[index].byteLength} bytes`,
+      );
+      expect(parsed).toBe(index);
+    },
+  );
+});
+
 describe("what a receiver refuses parsing a part's body", () => {
   async function joined(frames: Array<unknown>): Promise<unknown> {
     const conn = await deliver(frames);
-    return receiveMatchedArray(conn, "client", "list", 100, asArray).catch(
-      (error: unknown) => error,
-    );
+    return receiveMatchedArray(
+      conn,
+      "client",
+      "list",
+      { entries: 100 },
+      asArray,
+    ).catch((error: unknown) => error);
   }
 
   test.each([
@@ -339,11 +426,18 @@ describe("what a receiver refuses parsing a part's body", () => {
   test("each part is validated by the caller's parse", async () => {
     const conn = await deliver([partFrame([1, "two"])]);
     await expect(
-      receiveMatchedListParts(conn, "client", "list", 100, (value) => {
-        const part = asArray(value);
-        if (!part.every(Number.isFinite)) throw new Error("not a number list");
-        return { part, entries: part.length };
-      }),
+      receiveMatchedListParts(
+        conn,
+        "client",
+        "list",
+        { entries: 100 },
+        (value) => {
+          const part = asArray(value);
+          if (!part.every(Number.isFinite))
+            throw new Error("not a number list");
+          return { part, entries: part.length };
+        },
+      ),
     ).rejects.toThrow("not a number list");
   });
 });

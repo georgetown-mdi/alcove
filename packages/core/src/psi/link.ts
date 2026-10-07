@@ -88,6 +88,7 @@ import {
   receiveMatchedArray,
   receiveMatchedListParts,
   sendMatchedList,
+  type MatchedListBound,
 } from "./matchedListParts";
 import { DistinctValues } from "../utils/distinctValues";
 import {
@@ -694,6 +695,28 @@ function keyWidthBound(bounds: SessionBounds, key: number): number {
       `a linkage round needs a declared width for key ${key + 1}`,
     );
   return width * FAN_OUT_CANDIDATES_PER_ELEMENT;
+}
+
+/**
+ * The most UTF-8 bytes one `{theirIndex, iteration}` entry of a mapped-element
+ * list adds to a part's body as `JSON.stringify` writes it, its separator
+ * included: `theirIndex` a list of at most `positions` whole numbers below
+ * `indexBound`, or one such number, and `iteration` a round below `rounds`.
+ *
+ * @internal
+ */
+export function mappedElementEntryBytes(
+  indexBound: number,
+  positions: number,
+  rounds: number,
+): number {
+  const digits = (bound: number): number =>
+    String(Math.max(0, bound - 1)).length;
+  const index = digits(indexBound);
+  const theirIndex = positions <= 1 ? index : positions * (index + 1) + 1;
+  return (
+    '{"theirIndex":,"iteration":}'.length + theirIndex + digits(rounds) + 1
+  );
 }
 
 // A side is held to one accepted pair per round exactly when it is NOT the
@@ -1383,6 +1406,18 @@ export async function linkViaPSI(
   );
   // The partner states one entry per record it accepted, so a list declaring
   // more entries than its declared record count is refused at its first part.
+  // An entry names positions of this party's round, at most as many as one of
+  // the partner's records may own.
+  let mappedEntryBytes = 0;
+  for (let j = 0; j < candidatesByIter.length; ++j)
+    mappedEntryBytes = Math.max(
+      mappedEntryBytes,
+      mappedElementEntryBytes(
+        candidatePositionCount(candidatesByIter[j]),
+        keyWidthBound(bounds, j),
+        candidatesByIter.length,
+      ),
+    );
   const theirIdentifiedIndexIterationMap = await exchangeMappedElements(
     participant.id,
     conn,
@@ -1390,7 +1425,7 @@ export async function linkViaPSI(
     sendFirst,
     identifiedIndexIterationMap,
     "mapped-element list",
-    partnerRecordCount,
+    { entries: partnerRecordCount, entryBytes: mappedEntryBytes },
     mappedElementArray,
   );
 
@@ -1563,7 +1598,17 @@ export async function linkViaPSI(
     sendFirst,
     expanded,
     "returned mapped-element list",
-    sides.partnerKeepsDuplicates ? returnedEntries : numMappedElements,
+    {
+      entries: sides.partnerKeepsDuplicates
+        ? returnedEntries
+        : numMappedElements,
+      // Each entry names one of the partner's rows.
+      entryBytes: mappedElementEntryBytes(
+        partnerRecordCount,
+        1,
+        candidatesByIter.length,
+      ),
+    },
     associationAndIterationArray,
   );
 
@@ -3302,8 +3347,9 @@ export async function exchangeMappedElements<T>(
   sendFirst: boolean,
   values: ReadonlyArray<unknown>,
   what: string,
-  // The most entries the inbound list may declare, checked at its first part.
-  maxEntries: number,
+  // The most entries the inbound list may declare, checked at its first part,
+  // and the most bytes one of them may take, checked at every part.
+  bound: MatchedListBound,
   // The schema each inbound part is read under: the first pass admits an entry
   // naming a set of positions, the second one row per accepted pair.
   schema: { parse(value: unknown): Array<T> },
@@ -3314,13 +3360,7 @@ export async function exchangeMappedElements<T>(
     log.debug(`${id}: sending own mapped elements`);
     await sendMatchedList(conn, arraySource(values));
     log.debug(`${id}: waiting for response`);
-    const result = await receiveMatchedArray(
-      conn,
-      id,
-      what,
-      maxEntries,
-      parsePart,
-    );
+    const result = await receiveMatchedArray(conn, id, what, bound, parsePart);
     log.debug(`${id}: received other mapped elements`);
     return result;
   } else {
@@ -3334,7 +3374,7 @@ export async function exchangeMappedElements<T>(
         conn,
         id,
         what,
-        maxEntries,
+        bound,
         arrayPart(parsePart),
       );
     } catch (error) {

@@ -10,6 +10,7 @@ import {
   associationAndIterationArray,
   exchangeMappedElements,
   mappedElementArray,
+  mappedElementEntryBytes,
   encodeInt32LE,
   decodeInt32LE,
   encodeSinglePassReply,
@@ -735,6 +736,11 @@ test.each([
     partFrame([{ theirIndex: 0, iteration: 0 }], { entries: 5 }),
     "declares 5 entries, over the 4 this party admits",
   ],
+  [
+    "a part longer than its entries can be",
+    partFrame([{ theirIndex: 0, iteration: 0, padding: "x".repeat(64) }]),
+    "part 0 is over the 49 bytes this party admits for it",
+  ],
 ])(
   "the joiner sends its own list before refusing %s",
   async (_label, frame, detail) => {
@@ -748,7 +754,7 @@ test.each([
       false,
       own,
       "mapped-element list",
-      4,
+      { entries: 4, entryBytes: mappedElementEntryBytes(10, 1, 1) },
       associationAndIterationArray,
     ).catch((error: unknown) => error);
     expect(outcome).toBeInstanceOf(ConnectionError);
@@ -756,6 +762,22 @@ test.each([
       `client protocol error: inbound mapped-element list ${detail}`,
     );
     expect(readPartFrame(await partnerConn.receive(1000))?.body).toEqual(own);
+  },
+);
+
+// The per-entry byte bound an index list's parts are held to is the length of
+// the longest entry an honest party writes, so no honest part is refused.
+test.each([
+  [10, 1, 1, { theirIndex: 9, iteration: 0 }],
+  [1000, 1, 12, { theirIndex: 999, iteration: 11 }],
+  [1000, 3, 2, { theirIndex: [997, 998, 999], iteration: 1 }],
+  [1, 20, 1, { theirIndex: Array<number>(20).fill(0), iteration: 0 }],
+] as Array<[number, number, number, unknown]>)(
+  "mappedElementEntryBytes(%i, %i, %i) is the longest such entry and its separator",
+  (indexBound, positions, rounds, longest) => {
+    expect(mappedElementEntryBytes(indexBound, positions, rounds)).toBe(
+      JSON.stringify(longest).length + 1,
+    );
   },
 );
 

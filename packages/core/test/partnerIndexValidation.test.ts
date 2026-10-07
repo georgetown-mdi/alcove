@@ -638,9 +638,11 @@ test("cascade refuses a returned mapped-element list with a fractional partner r
       list.map((e) => ({ ...e, theirIndex: 1.5 })),
     ),
   );
+  // Below three rows a fractional row is longer than any whole one, so the
+  // part's byte bound refuses it before the whole-number check reads it.
   expectProtocolRefusal(
     err,
-    /returned mapped-element list has an entry that is not a whole number/,
+    /returned mapped-element list part 0 is over the 80 bytes this party admits for it/,
   );
 });
 
