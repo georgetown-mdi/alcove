@@ -53,7 +53,7 @@ import {
 // parser is reached the way the console reaches it: as a subprocess of the built
 // binary. That real spawn is why this suite lives in the interop project rather
 // than the unit project: the CLI is built in CI ahead of `test:interop`
-// (.github/workflows/cli_build_and_test.yaml, .github/workflows/eb_build_and_test.yaml),
+// (.github/workflows/cli_build_and_test.yaml, .github/workflows/web_build_and_test.yaml),
 // never inside a test here.
 
 /** The built CLI the console spawns in production -- resolved through the driver's

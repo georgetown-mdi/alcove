@@ -9,7 +9,7 @@ import { chromium } from "playwright";
 import type { ChildProcess } from "node:child_process";
 
 // The integration project rather than the unit one: the case launches a real
-// Chromium, which CI installs (eb_build_and_test.yaml) before this project
+// Chromium, which CI installs (web_build_and_test.yaml) before this project
 // runs. It builds the console client and server itself, into a directory of
 // its own, through the package scripts an operator runs.
 

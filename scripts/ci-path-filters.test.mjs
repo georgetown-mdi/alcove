@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { WORKFLOW_DIR, pathScope, workflowDocument } from "./lib/workflows.mjs";
 
 // Drift guard for the two web/core path filters. The pull-request gate
-// (eb_build_and_test.yaml) globs each guarded root -- apps/web/**,
+// (web_build_and_test.yaml) globs each guarded root -- apps/web/**,
 // packages/core/** -- while the deploy gate (pages_deploy.yaml) enumerates
 // individual subtrees, because a deploy must not rebuild+redeploy unchanged
 // runtime behavior on a test-only push. That asymmetry is by design, but it is
@@ -30,7 +30,7 @@ import { WORKFLOW_DIR, pathScope, workflowDocument } from "./lib/workflows.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-const PR_WORKFLOW = `${WORKFLOW_DIR}/eb_build_and_test.yaml`;
+const PR_WORKFLOW = `${WORKFLOW_DIR}/web_build_and_test.yaml`;
 const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
 // Roots whose tracked top-level subdirectories must each be deploy-covered or
@@ -43,13 +43,11 @@ const GUARDED_ROOTS = ["apps/web", "packages/core"];
 // "this directory does not ship" decision, not a way to mute a failure. The live
 // tests below assert each entry still exists, so a removed/renamed tree cannot rot
 // the list. apps/web/eslint-rules holds lint-time custom rules that never ship in
-// the artifact. apps/web/deploy holds the Elastic Beanstalk payload and saved
-// configurations, which the Pages upload does not contain.
+// the artifact.
 const DEPLOY_EXCLUDED = new Set([
   "apps/web/test",
   "packages/core/test",
   "apps/web/eslint-rules",
-  "apps/web/deploy",
 ]);
 
 // Inputs that feed the shipped artifact but live OUTSIDE the guarded roots, so
@@ -111,8 +109,8 @@ function trackedTopLevelDirs(root) {
 }
 
 // A deploy paths entry covers dir D if, ignoring its glob, it points at D, at
-// something inside D (an enumerated subtree like apps/web/deploy/aws_eb/**
-// covers apps/web/deploy at directory granularity), or at an ancestor of D (a
+// something inside D (an enumerated subtree like apps/web/server/routes/**
+// covers apps/web/server at directory granularity), or at an ancestor of D (a
 // broad glob like apps/web/** would cover apps/web/src). A "!negation" entry
 // keeps its leading "!", so it never equals or prefixes a real dir -- negations
 // never falsely mark a directory covered.
@@ -134,7 +132,7 @@ function uncoveredDirs(realDirs, deployEntries, excluded) {
 describe("ci path-filter drift guard (logic)", () => {
   const deploy = [
     "lib/**",
-    "apps/web/deploy/aws_eb/**",
+    "apps/web/server/routes/**",
     "apps/web/public/**",
     "apps/web/src/**",
     "packages/core/src/**",
@@ -142,8 +140,8 @@ describe("ci path-filter drift guard (logic)", () => {
 
   it("treats an enumerated subtree as covered, at directory granularity", () => {
     expect(uncoveredDirs(["apps/web/src"], deploy, new Set())).toEqual([]);
-    // apps/web/deploy is covered via the deeper apps/web/deploy/aws_eb/** entry.
-    expect(uncoveredDirs(["apps/web/deploy"], deploy, new Set())).toEqual([]);
+    // apps/web/server is covered via the deeper apps/web/server/routes/** entry.
+    expect(uncoveredDirs(["apps/web/server"], deploy, new Set())).toEqual([]);
   });
 
   it("flags a new top-level dir the deploy filter does not enumerate", () => {

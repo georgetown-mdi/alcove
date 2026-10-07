@@ -1,46 +1,23 @@
 #!/usr/bin/env node
-// Deploy-trigger coverage check, run by eb_build_and_test.yaml.
+// Deploy-trigger check: `npm run check:deploy-trigger-graph`, run by
+// `npm run check:all` in static_checks.yaml. It fails unless:
 //
-// .github/workflows/pages_deploy.yaml redeploys the hosted site on a push whose
-// changed paths match a hand-written filter. That filter is narrower than the
-// trees it names -- most pointedly
-// `packages/peerjs-broker/src/contrib/**`, which by design omits the sibling
-// `src/standalone.ts` on the assumption that the local `npm start` entry is in no
-// deployed import graph. An assumption like that is invisible when it breaks: let
-// standalone.ts (or any other unfiltered source) into the deployed site and
-// edits to it stop triggering a deploy, production quietly serves the previous
-// build, and no run anywhere goes red. So the assumption is encoded here instead of
-// asserted in a comment: every repository source the deployed build actually
-// reads has to match the filter that redeploys it.
+//   - pages_deploy.yaml holds the only deploy. Across every workflow exactly one
+//     job uploads with DEPLOY_ACTION, names a Cloudflare secret or runs in a
+//     GitHub environment; that job is in pages_deploy.yaml and runs no
+//     repository code (no `run` step, no checkout, no local action, no called
+//     workflow); and no workflow passes `secrets: inherit` or `toJSON(secrets)`.
+//   - Every tracked source the hosted static build reads matches a push filter of
+//     pages_deploy.yaml. The graph is the module ids rolldown resolves in the page
+//     and worker bundles of a real `npm run build -w apps/web`, recorded by
+//     RECORDER_MODULE under RECORD_ENV. It must reach every REQUIRED_GRAPH_ROOTS
+//     tree, and an untracked entry must sit under a BUILD_PRODUCTS prefix whose
+//     tracked sources the filter matches.
+//   - Every filter pattern it reads is a literal path, `prefix/**` or
+//     `!prefix/**/*.ext`; any other shape throws.
 //
-// The graph is read out of a real build rather than predicted from the sources.
-// Nothing here resolves an import, expands an alias, or models what rolldown or
-// the router plugin would do with a specifier; the build runs and reports what
-// it read. The deployed artifact is the hosted static build, so the graph is the
-// module ids rolldown resolves in its page bundle and in each worker bundle,
-// recorded by apps/web/hosted/deployGraphRecorder.ts when this check sets
-// ALCOVE_DEPLOY_GRAPH_RECORD. REQUIRED_GRAPH_ROOTS fails the check when the
-// record stops reaching a tree it must, so a recorder that goes quiet in either
-// bundle cannot be treated as a clean graph.
-//
-// WHAT THIS CHECK DOES NOT COVER:
-//
-//   - Filter syntax past three shapes. GitHub's path filters are a glob
-//     language; modelling it here would be predicting a tool's parser rather
-//     than driving it. compileFilter reads a literal path, `prefix/**`, and the
-//     negated `!prefix/**/*.ext` markdown-exclusion shape eb_build_and_test.yaml
-//     also carries in its path scope -- and THROWS on anything else, so a
-//     pattern it cannot model fails the check rather than being silently over-
-//     or under-matched. Adding another glob or negated pattern to either
-//     workflow's list means teaching this check the shape, or the check stops
-//     the change.
-//   - The reverse direction. A filter entry that matches nothing in the graph is
-//     not a finding: the filter legitimately covers files no module graph reads
-//     (package.json, tsconfig.json, public assets).
-//   - Anything a build does not resolve as a module. A file read at runtime by
-//     path, or copied into the artifact by a plugin (public/, the per-route
-//     documents' template), is not in the record.
-//   - Whether a deploy that IS triggered succeeds. This is about the trigger.
+// Exit 0 clean, 1 on a finding. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import {
@@ -54,7 +31,12 @@ import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
+import {
+  WORKFLOW_DIR,
+  parseWorkflow,
+  readWorkflows,
+  workflowDocument,
+} from "./lib/workflows.mjs";
 
 /** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
@@ -143,6 +125,79 @@ export const BUILD_PRODUCTS = [
       "the hosted build generates its route tree there from the route files (apps/web/vite.hosted.config.ts), so the bundler reads the generated tree and the route files it names",
   },
 ];
+
+/** The action that uploads a Pages deployment. */
+export const DEPLOY_ACTION = "cloudflare/wrangler-action@";
+
+const DEPLOY_SECRET = /\bsecrets\.CLOUDFLARE_/;
+const ALL_SECRETS = /\btoJSON\(\s*secrets\s*\)/;
+
+/**
+ * Findings against the single-deploy rule (see the header), as strings, over
+ * `[{path, document}]` parsed workflows. Empty when the rule holds.
+ */
+export function deployCredentialFindings(workflows) {
+  const findings = [];
+  const holders = [];
+  for (const { path, document } of workflows) {
+    if (ALL_SECRETS.test(JSON.stringify(document ?? null))) {
+      findings.push(
+        `${path} expands toJSON(secrets), which hands every secret the run can read to whatever reads the value.`,
+      );
+    }
+    if (DEPLOY_SECRET.test(JSON.stringify(document?.env ?? null))) {
+      findings.push(
+        `${path} names a Cloudflare secret in its workflow-level env, which every job of the workflow inherits.`,
+      );
+    }
+    for (const [id, job] of Object.entries(document?.jobs ?? {})) {
+      if (job?.secrets === "inherit") {
+        findings.push(
+          `${path} job ${id} passes secrets: inherit, which hands every secret the caller can read to the called workflow.`,
+        );
+      }
+      const steps = Array.isArray(job?.steps) ? job.steps : [];
+      const holds =
+        job?.environment !== undefined ||
+        DEPLOY_SECRET.test(JSON.stringify(job ?? null)) ||
+        steps.some((step) =>
+          String(step?.uses ?? "").startsWith(DEPLOY_ACTION),
+        );
+      if (holds) holders.push({ path, id, job, steps });
+    }
+  }
+  const named = holders.map(({ path, id }) => `${path} job ${id}`);
+  if (holders.length !== 1 || holders[0].path !== DEPLOY_WORKFLOW) {
+    findings.push(
+      `Exactly one job, in ${DEPLOY_WORKFLOW}, may upload with ${DEPLOY_ACTION}, name a Cloudflare secret or run in a GitHub environment; found ${holders.length}${named.length > 0 ? `: ${named.join(", ")}` : ""}.`,
+    );
+  }
+  for (const { path, id, job, steps } of holders) {
+    const code = [];
+    if (job?.uses !== undefined) code.push(`calls ${job.uses}`);
+    for (const step of steps) {
+      const uses = String(step?.uses ?? "");
+      if (step?.run !== undefined) code.push("has a run step");
+      if (uses.startsWith("./")) code.push(`uses the local action ${uses}`);
+      if (uses.startsWith("actions/checkout@"))
+        code.push("checks out the repository");
+    }
+    if (code.length > 0) {
+      findings.push(
+        `${path} job ${id} holds the deploy credentials and runs repository code: it ${[...new Set(code)].join(", ")}.`,
+      );
+    }
+  }
+  return findings;
+}
+
+/** Every workflow in the tree, parsed, as `deployCredentialFindings` reads them. */
+export function parsedWorkflows(repoRoot) {
+  return readWorkflows(repoRoot).map(({ path, source }) => ({
+    path,
+    document: parseWorkflow(path, source),
+  }));
+}
 
 const WILDCARD_SUFFIX = "/**";
 const GLOB_CHARACTERS = /[*?[\]{}!+@()|]/;
@@ -361,6 +416,16 @@ export function trackedFiles(repoRoot) {
 // functions without paying for a build.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
+  const credentialFindings = deployCredentialFindings(
+    parsedWorkflows(repoRoot),
+  );
+  if (credentialFindings.length > 0) {
+    console.error(
+      "Deploy trigger check failed: the deploy credentials reach more than the one upload job.\n",
+    );
+    for (const finding of credentialFindings) console.error(`  ${finding}`);
+    process.exit(1);
+  }
   const filter = compileFilter(
     readTriggerPaths(workflowDocument(repoRoot, DEPLOY_WORKFLOW)),
   );
@@ -415,6 +480,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}.`,
+    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}, and its upload job is the one job holding the deploy credentials.`,
   );
 }

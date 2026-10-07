@@ -53,9 +53,8 @@ and the two Dockerfiles, which reach a different class (what the image build fet
 scanned anyway because a `RUN curl` or `ADD https://...` pulling a third party into the image is what a reviewer of that claim wants shown.
 
 Outside both, by design:
-the build and test configuration at each workspace root, the sibling `test/` trees,
-and `apps/web/deploy`, whose nginx and platform-hook files configure the Elastic Beanstalk host and address the instance itself (127.0.0.1, the EC2 metadata service).
-Tests and deploy files reach no user; build configuration does, through what it emits, which is why it is listed below as a gap rather than a safe exclusion.
+the build and test configuration at each workspace root, and the sibling `test/` trees.
+Tests reach no user; build configuration does, through what it emits, which is why it is listed below as a gap rather than a safe exclusion.
 A tree that starts shipping is added to the roots, so an exclusion stays a decision rather than an oversight.
 
 Test files are not excluded by name.
@@ -925,6 +924,42 @@ Reading the JSON and the config source would be a second implementation of two r
 - The count of test files a project collects, beyond one: pinning a count churns on every test file added.
 - Any other config a run reads (eslint, rollup, vite's build half).
   They fail loudly on their own: a lost rollup or vite config breaks the build rather than passing a smaller one.
+
+## Deploy trigger
+
+[`scripts/check-deploy-trigger-graph.mjs`](../../scripts/check-deploy-trigger-graph.mjs)
+
+### Why it is a check
+
+`pages_deploy.yaml` redeploys the hosted site on a push whose changed paths match a hand-written filter, narrower than the trees it names:
+`packages/peerjs-broker/src/contrib/**`, for one, omits the sibling `src/standalone.ts` on the assumption that the broker's own entry is in no deployed import graph.
+An assumption like that is invisible when it breaks.
+Let an unfiltered source into the deployed site and edits to it stop triggering a deploy: production serves the previous build and no run goes red.
+So every source the deployed build reads has to match the filter that redeploys it.
+
+The deploy holds a Cloudflare token able to replace the public site, and a job holding it that also ran repository code would hand that token to whatever a pull request merged into that code.
+So the upload job checks nothing out and only uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.
+A second deploy path, or a build step moved into the upload job, would hold the same token without that separation, and nothing but review would notice; the check turns either into a failure.
+
+### Why the graph is read from a real build
+
+Nothing in the check resolves an import, expands an alias or models what rolldown or the router plugin would do with a specifier: the build runs and reports what it read.
+A prediction from the sources can disagree with the bundler; the record cannot.
+`REQUIRED_GRAPH_ROOTS` exists because a recorder that stops producing in one bundle leaves a shrunken graph that trivially satisfies the filter, so each entry names the bundle whose silence it catches.
+Build products are declared rather than inferred: a push carries sources, never an untracked build product, so the filter has to name the sources a product is built from.
+
+### What it does not cover
+
+- Filter syntax past three shapes.
+  GitHub's path filters are a glob language, and modelling it would be predicting a tool's parser rather than driving it.
+  A pattern of another shape throws, so it fails the check rather than being matched wrongly; adding one means teaching the check the shape.
+- The reverse direction.
+  A filter entry matching nothing in the graph is not a finding: the filter covers files no module graph reads (package.json, tsconfig.json, public assets).
+- Anything a build does not resolve as a module.
+  A file read at runtime by path, or copied into the artifact by a plugin (`public/`, the per-route documents' template), is not in the record.
+- Whether a triggered deploy succeeds.
+- Credentials outside the workflow files.
+  A secret set at repository level rather than on the two environments is readable by any job naming it, and the check sees only the names a workflow writes.
 
 ## Action pin drift
 

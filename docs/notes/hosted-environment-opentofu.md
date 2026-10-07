@@ -14,6 +14,11 @@ reading a plan for drift, and the first run -- are in
 [`infra/hosted/README.md`](../../infra/hosted/README.md). See
 [docs/notes/README.md](README.md)._
 
+_The hosted web app is served from Cloudflare Pages
+([docs/DEPLOYMENT.md](../DEPLOYMENT.md#the-projects-hosted-web-deployment)),
+and the Elastic Beanstalk environments and security group this note describes
+are retired by a change to the root of their own._
+
 ## The posture to hold
 
 One security group per instance, admitting `:443` from Cloudflare's published

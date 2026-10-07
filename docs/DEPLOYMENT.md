@@ -94,42 +94,25 @@ location ^~ /api/peerjs {
 }
 ```
 
-The web application serves no signaling, so on its own deployment that location reaches no coordination server; the controls belong in front of the standalone broker. The bundled AWS Elastic Beanstalk reference under `apps/web/deploy/aws_eb/` applies the per-address `limit_req`/`limit_conn` on `/api/peerjs` by default -- with the illustrative numbers above, to tune to your load -- and ships the Origin allowlist as a commented-out template you enable by uncommenting the `map` and its matching `if` and setting your public origin (it cannot ship active, because the map defaults to deny and would otherwise reject every client). On a load-balanced environment nginx sees the load balancer's address rather than the client's, so the per-address limits need the real client address recovered from `X-Forwarded-For` to throttle per client instead of collapsing onto one bucket; the reference ships a commented `real_ip` template you scope to the load balancer's subnet(s) -- not the whole VPC, which would let any host in it forge `X-Forwarded-For` -- for that. Confirm the limits suit your load, recover the real client address if you run load-balanced, and enable Origin enforcement if you want it, before exposing a deployment publicly.
-
-#### TLS posture of the bundled reference
-
-The same reference curates the TLS posture of the terminator it ships. The reasoning behind each choice is stated inline in `apps/web/deploy/aws_eb/.platform/nginx/conf.d/https.conf`'s own comments; what an operator has to decide is below.
-
-- **Cipher list -- active.** On top of the TLS 1.2+ floor, an explicit forward-secrecy, AEAD-only `ssl_ciphers` list (ECDHE with AES-GCM / ChaCha20-Poly1305) constrains the TLS 1.2 handshake; TLS 1.3 selects from its own AEAD suites. The floor refuses pre-2014 clients with no ECDHE-AEAD suite (Internet Explorer 11 on Windows 7, Android 4.x, Java 7). If you must serve such a population, widen the list rather than leaving it at this default.
-- **Session resumption disabled -- active.** `ssl_session_tickets off` with `ssl_session_cache off`, so every session is a full ECDHE handshake and no resumed session can undercut that forward secrecy. The cost is the resumption round-trip saving, negligible for this low-volume two-party coordination surface. Re-enabling it takes on a rotated, cross-instance-shared `ssl_session_ticket_key` file, which is itself the long-term secret that disabling tickets keeps off disk: keep it owner-only, distribute it only over a secured channel, and rotate it, or the exposure is back.
-- **Curve list pinned -- active.** `ssl_ecdh_curve X25519:prime256v1`. Every connection runs a full ECDHE key agreement, so the curve list is pinned explicitly rather than left to the platform default. Unlike the cipher list it applies to both the TLS 1.2 key agreement and the TLS 1.3 key-share. No operator edit is needed.
-- **HSTS -- commented opt-in.** It ships inactive because the reference is commonly run with a test or self-signed certificate, and an active `Strict-Transport-Security` header pins HTTPS in the browser: a pinned host cannot be reached over plain HTTP to recover, and a bad certificate cannot be click-through-accepted. For a production deployment with a valid certificate, uncomment the header, start from a short `max-age` and raise it once verified, and leave `preload` off unless you have committed the host to the browser preload list (a one-way step). HSTS is honored only on an HTTPS response, so configure the plain-HTTP redirect at the Elastic Beanstalk load balancer (an ALB HTTP listener that 301s to HTTPS) rather than adding a `:80` server to this nginx config, which would conflict with the platform's own default `:80` server.
-- **OCSP stapling -- commented opt-in.** It cannot work on a self-signed certificate, which has no CA-published responder to query, and it further needs infrastructure this config cannot assume: a `resolver` to reach the responder's hostname, and an `ssl_trusted_certificate` issuer chain for `ssl_stapling_verify`. The template holds those directives commented with inline notes on each. Stapling is best-effort, so a misconfiguration serves an unstapled handshake with a logged warning rather than failing to start; after enabling it, confirm it actually staples with `openssl s_client -status` rather than assuming it took.
-
-The forward secrecy above is a property of the TLS hop to this terminator; the PSI exchange's own end-to-end protections do not depend on it.
-
-#### Log retention on the instance
-
-The Elastic Beanstalk platform rotates the nginx logs and the application's stdout and stderr on size alone, so a log that fills slowly keeps its rotated copies for an unbounded time. The reference bounds that: `apps/web/deploy/aws_eb/.platform/hooks/postdeploy/bound_log_retention.sh` rewrites the rotation directives of the platform's logrotate fragments on each deployment to add a daily trigger, a kept-copy count and a maximum age, and leaves the log paths and the rest of each fragment alone. The window is the `RETENTION_DAYS` constant at the top of that script, and the same script is deployed twice, once for an application deployment and once for a configuration-only one.
-
-These are the instance's own disk copies. A deployment that streams the same logs to a log service sets the window there as well, and the two have to agree.
+The web application serves no signaling, so the controls belong in front of the standalone broker. Behind a load balancer, nginx sees the balancer's address rather than the client's, so the per-address limits need the real client address recovered from `X-Forwarded-For` (nginx's `real_ip` module, with `set_real_ip_from` scoped to the balancer's subnets -- not the whole VPC, which would let any host in it forge `X-Forwarded-For`) to throttle per client instead of collapsing onto one bucket. Confirm the limits suit your load, recover the real client address if you run load-balanced, and keep the Origin allowlist only with your public origins in it, before exposing a deployment publicly.
 
 ## The project's hosted web deployment
 
-The project runs one public deployment of the web application, for evaluation and demonstration rather than production exchanges of real records; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. This section is about that deployment alone. An agency deploying the web application itself configures the reference above and owns every setting in it.
+The project runs one public deployment of the web application, for evaluation and demonstration rather than production exchanges of real records; [SHARED_RESPONSIBILITY.md](SHARED_RESPONSIBILITY.md#responsibility-split-hosted-web-application) states what operating it takes on. This section is about that deployment alone. An agency deploying the web application itself serves the same static build from a host of its own and owns every setting described here.
 
-Two environments run the same application, a staging one and a production one, each a single Elastic Beanstalk instance behind a Cloudflare front. Their environment configuration is kept in the repository as one exported file per environment -- `production.json` and `staging.json` under [`apps/web/deploy/aws_eb_saved_configurations/`](../apps/web/deploy/aws_eb_saved_configurations/README.md) -- so a console change that nobody wrote down is a diff rather than a discovery. Each file is an `aws elasticbeanstalk describe-configuration-settings` response rewritten by the `redact.mjs` script beside it, which replaces the account id, the application and environment names, the notification address and the EC2 key name and keeps every other value as exported; that directory's README holds the refresh commands, what each placeholder replaces, and the form the inbound rules take. The settings no export carries -- everything on the Cloudflare side, and the rule list of the shared security group -- are recorded below instead.
+The site is served by a Cloudflare Pages project with no Git source: GitHub Actions builds it and uploads each build. The Pages project, its custom domains and the zone settings below are declared in the [OpenTofu root](../infra/hosted/README.md), which the maintainer applies from outside the container and nothing in the repository runs.
 
 ### Deploying to Cloudflare Pages
 
-The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to a Cloudflare Pages project by direct upload:
+The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to the Pages project by direct upload:
 
 - **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building. The gate tests the full branch ref, so a tag named like a branch does not deploy; as a second guard, give each environment a deployment branch rule allowing only its branch under Settings -> Environments.
-- **Gate:** it runs the web build and test workflow and uploads only when every suite in it passes.
-- **Build:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps it as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
-- **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`).
+- **Path filter:** the push trigger lists the sources the build reads and leaves out the test trees and documentation, so a push changing nothing under those paths deploys nothing. [`scripts/check-deploy-trigger-graph.mjs`](../scripts/check-deploy-trigger-graph.mjs) builds the site and fails when a source the build reads matches no entry of the list.
+- **Gate:** it runs the web build and test workflow, [`web_build_and_test.yaml`](../.github/workflows/web_build_and_test.yaml), and uploads only when every suite in it passes.
+- **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps `apps/web/dist/hosted/` as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
+- **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). It is the one job in any workflow that holds the deploy credentials, and it runs no repository code; the same check holds both.
 
-It reads two secrets and two variables. The deploy job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` is read by the gate's build, which runs in no environment, so it is a repository variable, under Settings -> Secrets and variables -> Actions.
+It reads two secrets and two variables. The upload job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` is read by the gate's build, which runs in no environment, so it is a repository variable, under Settings -> Secrets and variables -> Actions.
 
 | Name | Kind | Set on | What it is |
 | ---- | ---- | ------ | ---------- |
@@ -138,188 +121,22 @@ It reads two secrets and two variables. The deploy job runs in the GitHub enviro
 | `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
 | `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site |
 
-The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). The Pages project and its custom domains are in the [OpenTofu root](../infra/hosted/README.md).
+### Custom domains and zone settings
 
-#### Moving the public names to Pages
+Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias, as the OpenTofu root's `hosted_origin` entries hold until the Elastic Beanstalk environments are retired. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
 
-Both public names keep pointing at their Elastic Beanstalk environments until the preview deployment has been checked on the real edge. In order:
+| Setting | Value |
+| ------- | ----- |
+| SSL/TLS mode | `Full (strict)` |
+| Always Use HTTPS | On, so plain HTTP to either public name is answered `301` at the edge |
+| HSTS | On, `max-age=15552000`, without `includeSubDomains` and without preload |
 
-1. Deploy `staging` by dispatching the workflow, and check the preview deployment: the four security headers and HSTS on documents and assets; the `/accept` deep link with a fragment and a `/saved/<id>` deep link; offline navigation, after the first load, to routes not yet visited; a missing `/assets/` file; and one browser exchange through the broker.
-2. Set the `staging` entry of `hosted_origin` to `pages` in the OpenTofu root and apply, which points the staging record at the `staging` branch alias ([the root's README](../infra/hosted/README.md#moving-the-public-names-to-pages)).
-3. Push `main`, which deploys production to the project's `pages.dev` name while the production public name still serves from Elastic Beanstalk. Check that the `pages.dev` name serves that deployment: the project has no production deployment before this push, and its `pages.dev` name answers 404 until the deploy finishes.
-4. Set the `production` entry of `hosted_origin` to `pages` and apply, which points the production record at the project's `pages.dev` name.
+### Headers, caching and the fallback document
 
-### The paused Elastic Beanstalk deploy
+The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). Two limits of Pages, measured on the deployment:
 
-[`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml) runs only by manual dispatch, until the Elastic Beanstalk environments are retired. It packages its own artifact in a job of its own: the gate's static site with the `apps/web/deploy/aws_eb/` payload and an empty `.env` copied over it. The payload's `Procfile` starts `node server/index.mjs`, which the static build does not write, so the artifact has no process for Elastic Beanstalk to start, and an environment it is deployed to does not serve the application. The sections below on the environments describe them as they run until they are retired.
-
-Beside the exports, an OpenTofu root, [`infra/hosted/`](../infra/hosted/README.md), describes both environments, the one security group their instances attach, and the Cloudflare zone, and the maintainer applies it from outside the container. Its README holds where its state and credentials live, how it is applied, and how a plan is read for drift. It is applied to both environments and the zone, first on 2026-09-23 UTC; its README records what that run found and the hazard to check before an apply that changes an environment's security groups.
-
-### Which source governs each setting
-
-Two sources in the repository state the environment's settings, and each setting has one that governs it -- the one a change is made in -- while the other records it.
-
-| Setting | Governed by | Recorded in |
-| ------- | ----------- | ----------- |
-| The option settings `infra/hosted/environments.tf` declares: capacity and instance types, VPC and subnet, the attached security group and `DisableDefaultEC2SecurityGroup`, log streaming and retention, health reporting, the proxy server, the deployment and managed-update policy, the service roles, the notification address, and the application's environment variables | The OpenTofu root | The exported configuration files, re-exported after each apply |
-| The option settings the root leaves out: the machine image, the platform's template parameters and launch-control values, the notification topic, the EC2 key pair (absent), and options with no value -- listed in [the root's README](../infra/hosted/README.md#option-settings-it-leaves-out) | The exported configuration files, applied as [below](#applying-a-saved-configuration) | The same files |
-| The instances' inbound rules: one security group, `:443` from Cloudflare's published ranges and nothing else. The root declares `DisableDefaultEC2SecurityGroup` `true`, so the platform attaches no group of its own, as the "Security groups" row below records | The OpenTofu root, which reads the ranges from Cloudflare at plan time | `recorded-origin.json` beside the exports, compared daily by [the drift check](#checking-for-certificate-and-range-drift) |
-| Cloudflare: the proxy on both public names and what each points at, SSL/TLS mode, Always Use HTTPS, HSTS, the Pages project and its custom domain | The OpenTofu root | [The recorded values below](#recorded-settings-and-their-source) |
-| The application version an environment runs | [`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml), paused; the root ignores it | Neither |
-| The site the Pages project serves | [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) | Neither |
-| The origin certificate | The `cert/` prefix of the deployment bucket, installed by [the route below](#reinstalling-the-origin-certificate) | `recorded-origin.json` and the recorded values below |
-| The instance profile's policies (the Session Manager route), the application version lifecycle rule, and the other rows below that neither source expresses | The account, changed by hand | The recorded values below |
-
-A change to a setting the root governs is made in the root and applied; one made in a console is undone by the next apply. The re-export that follows either is the record, not the change.
-
-### Refreshing the configuration after a console change
-
-A setting changed in a console, or by an `update-environment` call, is invisible to the repository until someone exports it. So a console change is finished when the repository states it:
-
-1. If the setting is one [the OpenTofu root governs](#which-source-governs-each-setting), make the change in the root and apply it, or apply the root unchanged to put the setting back; `tofu plan` shows which the console change was.
-2. Re-export every environment the change touched, run it through `redact.mjs`, commit the result, and read the diff -- the commands are in that README. A change to something the two environments share -- the instance profile, the shared security group, the certificate objects -- touches both.
-3. Update the recorded values below for anything an export does not carry, and move its measurement date to the date the change landed.
-4. For a Cloudflare-side change there is nothing to export: the recorded values below are the whole record, and updating them is the step.
-
-### Applying a saved configuration
-
-Applying means replaying a checked-in configuration onto an environment -- after recreating one, or to put a drifted one back. For the settings the OpenTofu root governs, applying is `tofu apply` from [`infra/hosted/`](../infra/hosted/README.md#applying); replaying an export is for the settings the root leaves out, and one that replays a setting the root declares is overwritten by the next apply. It is a separate path from deploying the application: [`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml) creates an application version from the pushed commit and calls `update-environment --version-label`, and reads nothing from the saved-configuration directory.
-
-- The option settings of a committed file are applied either as a configuration template for the application that the environment is then updated against, or as the option settings of an `update-environment` call. No apply has been run from this repository yet, so the first one is also the verification of the exact commands: run it against staging, and correct the README with what the tool accepted.
-- Substitute the replaced identifiers back before applying. A committed file states them as placeholders, which no AWS call accepts.
-- Read the file before applying it. An export is a snapshot of the whole environment configuration, so applying an older one replays every other setting that has changed since as well.
-- Applying a configuration is a configuration deployment, which does not reinstall the origin certificate. That route is below.
-
-### Reinstalling the origin certificate
-
-The instance serves TLS on `:443` from `/etc/pki/tls/certs`, which the prebuild hook `apps/web/deploy/aws_eb/.platform/hooks/prebuild/download_certificates.sh` fills from the `cert/` prefix of the environment's deployment bucket. Replacing the objects in that prefix installs nothing by itself, and the two routes differ:
-
-- **An application deployment installs what is in the prefix.** When no code change is due, redeploy the version label the environment already runs: `aws elasticbeanstalk update-environment --application-name <application-name> --environment-name <environment-name> --version-label <the label already in place>`. Elastic Beanstalk accepts a label already in place, and the deployment runs the prebuild hook. Measured 2026-09-17 on both environments, about 50 seconds each.
-- **A configuration-only deployment does not.** An `update-environment --option-settings` call completed cleanly and left the origin serving the certificate it had before the objects were replaced (measured 2026-09-17, staging).
-
-Both environments read the same `cert/` prefix and the certificate covers both public names, so one upload serves both -- but each environment needs its own redeploy. Upload the replacement, redeploy staging, check the certificate the staging public name serves, then redeploy production.
-
-That measured behavior bounds what the second copy of the hook is good for. `download_certificates.sh` ships twice and byte-identical, as `.platform/hooks/prebuild/` and `.platform/confighooks/prebuild/`, because an application deployment and a configuration deployment run separate hook trees, and a deployment of either kind onto an instance with no certificate on disk fails in the proxy step without it. The measurement above says the configuration-deployment copy does not end with a replaced certificate installed; which part of that path accounts for it is unmeasured. So the confighooks copy stays -- it covers the certificate-load failure that is the reason the hook exists -- and it is not the route for installing a replacement. Both copies stay identical, which `scripts/eb-cert-hook-parity.test.mjs` holds.
-
-### Checking for certificate and range drift
-
-Two values the exports do not carry decide whether the origin keeps answering the edge: the certificate it serves, an expired one answering `Full (strict)` with a 526 on both public names, and its port-443 rule list, a range Cloudflare adds and the rules do not admit showing as an intermittent edge error. `check-origin-drift.mjs` in the saved-configuration directory compares the deployed certificate against a margin and the rules against Cloudflare's published lists; that directory's [README](../apps/web/deploy/aws_eb_saved_configurations/README.md#checking-the-origin-certificate-and-the-cloudflare-ranges) holds its arguments, its exit codes, the read permissions it needs and the recorded values it compares against.
-
-Cloudflare changes its published ranges without notice, so the reconciliation runs daily rather than on a person's cadence: [`origin_drift.yaml`](../.github/workflows/origin_drift.yaml) runs the check at 06:23 UTC and on manual dispatch, assuming a read-only role through GitHub's OIDC token. Its exit code is the result, so a difference or a value it could not read reds the run; a red scheduled run reaches the maintainer the way every other one here does, and nothing else reports drift.
-
-Run it by hand after any change to the origin certificate, the shared security group, or the Cloudflare configuration, and whenever the daily run is red for a reason other than drift -- a throttled AWS call, an unreachable `cloudflare.com`, a role that will not assume -- since a red run for one of those states nothing about the two values. Where that condition outlasts the day it appeared, the by-hand run is the reconciliation until it is fixed, monthly at the least:
-
-```sh
-node apps/web/deploy/aws_eb_saved_configurations/check-origin-drift.mjs
-```
-
-A run by hand needs read credentials for the AWS account, which no development container holds, so it is the maintainer's to run outside the container. What to do with each result, from the daily run or by hand:
-
-- **A comparison found a difference.** Correct the account first where it is the account that is wrong: issue a replacement Origin CA certificate and install it by the route above when the expiry is inside the margin. When the rules and the published ranges differ, apply [the OpenTofu root](../infra/hosted/README.md#reading-a-plan-for-drift): it reads the ranges from Cloudflare at plan time, so its plan is the list of rules to add and remove. A rule authorized or revoked by hand is removed or put back by the next apply. Then re-run the check and commit the record it prints, which is what the account and Cloudflare now hold. Where the account is already right, the record alone is stale, and committing that block is the whole fix.
-- **A comparison could not run.** The run had no credentials for the account, no route to `cloudflare.com`, or an answer it could not read, so a value it compares was never read. It exits 2 rather than 0 and compares nothing in place of what it could not read, so fix the run and repeat it rather than reading a 2 as agreement.
-
-#### Creating the role the scheduled run assumes
-
-The workflow holds no AWS key. It assumes `alcove-origin-drift-check`, a role with the three read calls the check makes and nothing else, which the account holder creates once. The role's recorded values are in the saved-configuration [README](../apps/web/deploy/aws_eb_saved_configurations/README.md#the-scheduled-run-and-the-role-it-assumes); these are the steps that create it. Substitute the account id and the region, and run them with credentials that can write IAM:
-
-1. Confirm the account has GitHub's OIDC provider, which the deploy role already uses: `aws iam list-open-id-connect-providers` states an ARN ending `token.actions.githubusercontent.com`. Create it if it is absent -- `aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com`.
-
-2. Write the trust policy. The condition admits this repository's default branch and nothing else, so a dispatch from any other branch, and any other repository, cannot assume the role:
-
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Effect": "Allow",
-         "Principal": {
-           "Federated": "arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com"
-         },
-         "Action": "sts:AssumeRoleWithWebIdentity",
-         "Condition": {
-           "StringEquals": {
-             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
-             "token.actions.githubusercontent.com:sub": "repo:georgetown-mdi@50965319/alcove@1011394533:ref:refs/heads/main"
-           }
-         }
-       }
-     ]
-   }
-   ```
-
-3. Write the permission policy. Each statement is one call the check makes: the account id it reads to name the deployment bucket, the one certificate object in it, and the security group both environments attach. `ec2:DescribeSecurityGroups` names `*` because a Describe call's resource is the whole account; narrow it to the group's ARN where IAM accepts one.
-
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Sid": "ReadTheAccountId",
-         "Effect": "Allow",
-         "Action": "sts:GetCallerIdentity",
-         "Resource": "*"
-       },
-       {
-         "Sid": "ReadTheOriginCertificate",
-         "Effect": "Allow",
-         "Action": "s3:GetObject",
-         "Resource": "arn:aws:s3:::elasticbeanstalk-<region>-<account-id>/cert/public.crt"
-       },
-       {
-         "Sid": "ReadThePort443Rules",
-         "Effect": "Allow",
-         "Action": "ec2:DescribeSecurityGroups",
-         "Resource": "*"
-       }
-     ]
-   }
-   ```
-
-4. Create the role and attach the policy:
-
-   ```sh
-   aws iam create-role --role-name alcove-origin-drift-check \
-     --assume-role-policy-document file://trust-policy.json
-   aws iam put-role-policy --role-name alcove-origin-drift-check \
-     --policy-name origin-drift-reads --policy-document file://permission-policy.json
-   ```
-
-5. Set the role's ARN as the `AWS_ORIGIN_DRIFT_ROLE_ARN` repository secret, and confirm `AWS_REGION_NAME`, which the deploy workflow already reads, is set as a repository variable.
-
-6. Dispatch the workflow from the default branch once and read the run. A role that will not assume, a permission the policy misses, or a region that does not match the one the committed configuration files state all end as a red run naming what it could not read.
-
-### Recorded settings and their source
-
-Three measurement passes on 2026-09-17 established the values this document and the assurance documents rest on: a pass that measured the environment against the responsibility rows, a pass that took the public path to HTTPS end to end, and a pass that put the log window in force. Their records are maintainer notes held outside this repository; each row below names its source -- one of those passes, or a later change to the environment with the date it landed -- and a later measurement replaces the row rather than being added beside it.
-
-The identifiers the deploy workflow keeps as a secret or a variable -- the AWS account id, the application and environment names, and the public names -- are not recorded here, and the committed configuration files replace the account id and the two names wherever an export states them. What the assurance documents rest on is the settings.
-
-| Setting                | Recorded value                                                                                                                                                                                                                                                                                                                                                                                            | Source                                         |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Environment type       | `SingleInstance`, one `t4g.nano` instance with a public address, on the Node.js 24 Amazon Linux 2023 platform. No load balancer on either environment.                                                                                                                                                                                                                                                    | responsibility rows                            |
-| On-instance proxy      | `ProxyServer: nginx`, serving the configuration under `apps/web/deploy/aws_eb/.platform/nginx/`.                                                                                                                                                                                                                                                                                                          | responsibility rows                            |
-| Public TLS front       | Both public names are proxied through Cloudflare on its Free plan, and public TLS terminates on a Cloudflare-managed edge certificate for the zone.                                                                                                                                                                                                                                                       | responsibility rows, HTTPS                     |
-| Edge settings          | Cloudflare SSL/TLS mode `Full (strict)`; Always Use HTTPS on, so plain HTTP to either public name is answered `301` at the edge; HSTS on with `max-age=15552000`, without `includeSubDomains` and without preload.                                                                                                                                                                                        | HTTPS                                          |
-| Origin certificate     | A Cloudflare Origin CA certificate covering the zone apex and its wildcard, RSA 2048, valid 2026-09-17 to 2041-09-13, read by both environments from one `cert/` prefix. Nothing triggers its renewal, which is why the expiry is written down here and in `recorded-origin.json` beside the configuration files, where [the drift check](#checking-for-certificate-and-range-drift) reads it.                                                                                                                                                      | HTTPS                                          |
-| Origin inbound         | `:443` only, and only from Cloudflare's published ranges as fetched during that pass (15 IPv4 and 7 IPv6). No inbound `:80` and no inbound `:22` from anywhere. [The drift check](#checking-for-certificate-and-range-drift) reconciles the rule against Cloudflare's current list.                                                                                                                                                                            | HTTPS                                          |
-| Security groups        | One group, shared by both instances and owned by the OpenTofu root, carries the `:443` rule and is the only group either instance attaches. `DisableDefaultEC2SecurityGroup` is `true` on both environments, so neither has a platform-created group, and a `rebuild-environment` creates none. | OpenTofu apply and rebuild, 2026-09-23 UTC |
-| Shell access           | AWS Systems Manager Session Manager is the only route, through `AmazonSSMManagedInstanceCore` attached to the shared instance-profile role `aws-elasticbeanstalk-ec2-role` -- so any later environment on that profile inherits the same access. Neither environment sets an EC2 key pair -- the committed configuration files record the option with no value -- so the platform creates no SSH ingress. | host-side change and re-export, 2026-09-19 UTC |
-| Record of shell access | Session logging to S3 or CloudWatch Logs is not configured, so CloudTrail's API records are the only record that a session was opened and by which principal.                                                                                                                                                                                                                                             | HTTPS                                          |
-| Log streaming          | `aws:elasticbeanstalk:cloudwatch:logs` with `StreamLogs=true`, `RetentionInDays=90`, `DeleteOnTerminate=false`, on both environments. Leaving deletion off is deliberate: streamed logs outlive a teardown of the environment and expire on the 90-day clock.                                                                                                                                             | log window                                     |
-| Streamed files         | Seven log groups per environment, every one at 90 days. The nginx access and error logs, `web.stdout.log`, `eb-engine.log` and `eb-hooks.log` receive lines; the `httpd` pair exists but never receives one on an nginx platform; `web.stderr.log` has no group.                                                                                                                                          | log window                                     |
-| Health streaming       | Off (`HealthStreamingEnabled=false`), and the health namespace carries its own `RetentionInDays` of 7, so turning it on streams under a 7-day window until that namespace is set deliberately.                                                                                                                                                                                                            | log window                                     |
-| Instance-disk window   | The `RETENTION_DAYS` constant of the postdeploy hook, at 90 days, matching the streamed window ([Log retention on the instance](#log-retention-on-the-instance)). Streaming follows the live file only, so the rotated archives are bounded by this alone.                                                                                                                                                | log window                                     |
-| Other AWS log classes  | None: no S3 log publication, no load-balancer logs, no VPC flow logs, no WAF, no CloudFront distribution, and DNS is not in Route 53.                                                                                                                                                                                                                                                                     | responsibility rows                            |
-| Deployment artifacts   | Application versions expire after 21 days under the application's own age rule; the deployment logs in the bucket have no lifecycle rule and expire under nothing.                                                                                                                                                                                                                                        | responsibility rows                            |
-
-Values these passes did not measure, unrecorded rather than assumed:
-
-- Cloudflare's retention for the sampled request logs and security analytics it holds on the Free plan. Cloudflare holds request metadata for everything it forwards, under its own policy; the period is not measured.
-- Whether Cloudflare caches any response. Every probed path answered as dynamic; static assets were not probed.
-- Whether the inbound rules survive a managed platform update. They survive a configuration deployment, and a `rebuild-environment` on each environment, measured 2026-09-23 UTC after [the OpenTofu root's first apply](../infra/hosted/README.md#the-first-run-against-the-live-account).
-- The volume and cost of the streamed logs. The stored-bytes figure lagged far behind ingestion at measurement time and was not a usable number.
-- Whether an environment recreated under its old name streams into the same log groups. The group names derive from the environment name, but confirming it means tearing an environment down.
-- Instance internals -- the rotation fragments and disk use -- on the staging environment. Those were read on production, and staging runs the same platform version.
+- **Every response carries `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential, so a page on another origin reading one reads nothing it could not fetch itself.
+- **A missing `/assets/` file answers with the root document,** with status 200 and the `/assets/*` rule's one-year `immutable` `Cache-Control`. Asset names carry a content hash, so a URL that misses never becomes valid later, and the service worker refuses to cache a response whose content type is not the asset's ([notes/hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
 
 ## Diagnosing web connection failures
 
