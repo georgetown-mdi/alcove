@@ -76,7 +76,7 @@ partner to.
 
 ## The three readers
 
-**The CLI's config load** (`apps/cli/src/config.ts`, `loadConfig` in
+**The CLI's config load** (`apps/cli/src/config/loaders.ts`, `loadConfig` in
 `apps/cli/src/commands/exchange.ts`). It honors what it reads or refuses loudly:
 an algorithm, a deduplicate shape, or a signing mode this build does not implement
 is already its own refusal, and a runtime-injected `authentication` field is warned
@@ -108,7 +108,7 @@ whichever block holds it.
 
 That application reads the same file a second way, which is one reader's other
 path rather than a fourth reader (`readConfigLinkageSource`,
-`apps/cli/src/config.ts`). `alcove invite` and `alcove verify-receipt` do not
+`apps/cli/src/config/loaders.ts`). `alcove invite` and `alcove verify-receipt` do not
 load the whole file: they read `linkage_terms`, `standardization`, and
 `metadata` block by block, leaving the connection out so a still-placeholder one
 does not fail the read. Each block has its own parse entry point, and those
