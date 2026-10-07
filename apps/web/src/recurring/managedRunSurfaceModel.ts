@@ -1,8 +1,17 @@
+import {
+  MANAGED_RECOVERY_INITIAL,
+  managedRecoveryReducer,
+} from "./managedRunRecoveryModel";
+
 import type { Displayable, ResolvedMatching, TermsChange } from "@alcove/core";
 
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
 
+import type {
+  ManagedRecoveryAction,
+  ManagedRecoveryState,
+} from "./managedRunRecoveryModel";
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 
@@ -166,6 +175,65 @@ export function managedRunReducer(
       return state.phase.kind === "failed"
         ? { ...state, phase: { kind: "idle" } }
         : state;
+  }
+}
+
+/** The surface's state: the attended run and the failure recovery. */
+export interface ManagedRunSurfaceState {
+  run: ManagedRunState;
+  recovery: ManagedRecoveryState;
+}
+
+/** No run and no recovery this visit. */
+export const MANAGED_RUN_SURFACE_INITIAL: ManagedRunSurfaceState = {
+  run: MANAGED_RUN_INITIAL,
+  recovery: MANAGED_RECOVERY_INITIAL,
+};
+
+/** Every event the surface reports. */
+export type ManagedRunSurfaceAction = ManagedRunAction | ManagedRecoveryAction;
+
+function withRun(
+  state: ManagedRunSurfaceState,
+  run: ManagedRunState,
+): ManagedRunSurfaceState {
+  return run === state.run ? state : { ...state, run };
+}
+
+/** The surface's reducer. A run start moves both the run and the recovery; a
+ * composed re-invite replaces the failure it recovers from. */
+export function managedRunSurfaceReducer(
+  state: ManagedRunSurfaceState,
+  action: ManagedRunSurfaceAction,
+): ManagedRunSurfaceState {
+  switch (action.type) {
+    case "run-started":
+      return {
+        run: managedRunReducer(state.run, action),
+        recovery: managedRecoveryReducer(state.recovery, action),
+      };
+    case "reinvite-composed":
+      return {
+        run: managedRunReducer(state.run, { type: "failure-cleared" }),
+        recovery: managedRecoveryReducer(state.recovery, action),
+      };
+    case "warning-raised":
+    case "matching-resolved":
+    case "terms-change-asked":
+    case "terms-change-answered":
+    case "run-completed":
+    case "folder-write-started":
+    case "folder-write-finished":
+    case "folder-write-skipped":
+    case "run-failed":
+    case "run-settled":
+    case "failure-cleared":
+      return withRun(state, managedRunReducer(state.run, action));
+    default:
+      return {
+        ...state,
+        recovery: managedRecoveryReducer(state.recovery, action),
+      };
   }
 }
 
