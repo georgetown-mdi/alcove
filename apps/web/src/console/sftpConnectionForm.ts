@@ -232,24 +232,23 @@ function isAtPath(value: string): boolean {
   return value.startsWith("@") && value.length > 1;
 }
 
-/** What the console says when a direct exchange's remote directory has a
- * `.` or `..` part, which its `sftp://` URL cannot state. */
+/** The direct-exchange refusal of a remote directory with a `.` or `..` part. */
 export const DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT =
   "A direct exchange cannot use . or .. in this directory. Enter the path " +
   "without them, like /exchange/in.";
 
-/** What the console says when a direct exchange's single remote directory is
- * `/`, which its `sftp://` URL states as the account's home directory. */
-export const DIRECT_DIRECTORY_ROOT_REQUIREMENT =
-  "A direct exchange cannot use / as this directory. Enter a directory " +
-  "under it, like /exchange, or leave this blank to use the account's home " +
-  "directory.";
-
-/** {@link DIRECT_DIRECTORY_ROOT_REQUIREMENT} for the inbound half of a split
- * pair, which cannot be left blank. */
-export const DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT =
-  "A direct exchange cannot use / as this directory. Enter a directory " +
-  "under it, like /exchange/in.";
+/** The direct-exchange refusal of `/`; a split pair's inbound half cannot be
+ * left blank, so it is offered no blank alternative. */
+export function directDirectoryRootRequirement(splitInbound: boolean): string {
+  const alternative = splitInbound
+    ? "like /exchange/in."
+    : "like /exchange, or leave this blank to use the account's home " +
+      "directory.";
+  return (
+    "A direct exchange cannot use / as this directory. Enter a directory " +
+    `under it, ${alternative}`
+  );
+}
 
 /**
  * The direct-exchange refusal of a remote directory its `sftp://` URL cannot
@@ -269,9 +268,7 @@ function directDirectoryError(
     message:
       fault === "dot-segment"
         ? DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT
-        : split
-          ? DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT
-          : DIRECT_DIRECTORY_ROOT_REQUIREMENT,
+        : directDirectoryRootRequirement(split),
   };
 }
 
@@ -529,7 +526,6 @@ export function sftpFormError(
     );
     if (directoryError !== undefined) return directoryError;
   }
-  // The split rules apply only when an outbound directory is named.
   if (outboundDirectory !== "") {
     if (!retainFiles)
       return {

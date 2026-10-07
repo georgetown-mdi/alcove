@@ -2,8 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
   DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT,
-  DIRECT_DIRECTORY_ROOT_REQUIREMENT,
-  DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT,
   EMPTY_SFTP_FORM,
   KEYBOARD_INTERACTIVE_REQUIRES_PASSWORD,
   PASSPHRASE_REQUIRES_PRIVATE_KEY,
@@ -12,6 +10,7 @@ import {
   SPLIT_DIRECTORY_RETAIN_REQUIREMENT,
   UNREADABLE_HOST_PASTE,
   buildAuthoringRequest,
+  directDirectoryRootRequirement,
   hostPasted,
   hostTyped,
   sftpFormError,
@@ -488,7 +487,7 @@ describe("sftpFormError (a direct exchange's remote directory)", () => {
       "exchange/../in",
       DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT,
     ],
-    ["the root /", " / ", DIRECT_DIRECTORY_ROOT_REQUIREMENT],
+    ["the root /", " / ", directDirectoryRootRequirement(false)],
   ])(
     "refuses %s on the remote-directory field and builds no request",
     (_label, remoteDirectory, message) => {
@@ -520,7 +519,7 @@ describe("sftpFormError (a direct exchange's remote directory)", () => {
     });
     expect(sftpFormError(values, true, true)).toEqual({
       field: "remoteDirectory",
-      message: DIRECT_INBOUND_DIRECTORY_ROOT_REQUIREMENT,
+      message: directDirectoryRootRequirement(true),
     });
   });
 

@@ -243,6 +243,11 @@ export function sftpUrlDirectoryFault(
 // a reserved TLD (RFC 6761), so it is never a legitimately authored server.
 const SENTINEL_HOST = "host.invalid";
 
+const UNWRITABLE_DIRECTORY_MESSAGE =
+  "could not write the remote directory into an sftp URL that reads " +
+  "back unchanged; remove any . or .. segments, or name a directory " +
+  "other than /";
+
 function encodeUrlPathSegments(segments: ReadonlyArray<string>): string {
   return segments.map((segment) => encodeURIComponent(segment)).join("/");
 }
@@ -268,7 +273,7 @@ function urlPathForRemoteDirectory(path: string): string {
  * @throws {Error} when the host is not a bare address or does not survive the
  *   URL's host parser, the port is outside 1-65535, or the directory has no
  *   URL form that reads back unchanged ({@link sftpUrlDirectoryFault} names
- *   the shapes, so a caller can refuse them before calling this).
+ *   the shapes it refuses).
  */
 export function formatSftpUrl(locator: SftpUrlLocator): string {
   if (!isBareSftpHost(locator.host))
@@ -290,13 +295,13 @@ export function formatSftpUrl(locator: SftpUrlLocator): string {
     locator.path === undefined || locator.path === ""
       ? undefined
       : locator.path;
-  if (path !== undefined) url.pathname = urlPathForRemoteDirectory(path);
+  if (path !== undefined) {
+    if (sftpUrlDirectoryFault(path) !== undefined)
+      throw new Error(UNWRITABLE_DIRECTORY_MESSAGE);
+    url.pathname = urlPathForRemoteDirectory(path);
+  }
   const readBack = parseSftpUrl(url);
   if (readBack.path !== path || readBack.port !== locator.port)
-    throw new Error(
-      "could not write the remote directory into an sftp URL that reads " +
-        "back unchanged; remove any . or .. segments, or name a directory " +
-        "other than /",
-    );
+    throw new Error(UNWRITABLE_DIRECTORY_MESSAGE);
   return url.href;
 }
