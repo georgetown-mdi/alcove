@@ -66,7 +66,7 @@ import {
   refuseSurplusPositionals,
 } from "../util/positionals";
 import { configureLogging } from "../util/logging";
-import { promptConfirm } from "../util/prompt";
+import { promptConfirmOrClosed } from "../util/prompt";
 import {
   checkLinkageSatisfiability,
   RUN_BLOCK_CONSEQUENCE,
@@ -125,11 +125,13 @@ import {
  * The refusal an acceptance gets when it can neither ask for consent to the
  * invitation's terms (no terminal on stdin) nor was given it in advance.
  */
+const ACCEPT_CONSENT_REMEDY =
+  "Run it at a terminal to review the terms and answer, or pass " +
+  "--consent-to-terms to consent to them in advance for an unattended run.";
+
 export const ACCEPT_NEEDS_TERMINAL =
   "accept asks you to confirm the invitation's terms, and standard input is " +
-  "not a terminal to ask at. Run it at a terminal to review the terms and " +
-  "answer, or pass --consent-to-terms to consent to them in advance for an " +
-  "unattended run.";
+  `not a terminal to ask at. ${ACCEPT_CONSENT_REMEDY}`;
 
 const ACCEPT_OFFLINE_USAGE =
   "--identity IDENTITY INVITATION [INPUT_FILE] [OUTPUT_FOLDER]";
@@ -552,8 +554,8 @@ export async function validateAccept(params: {
       target: connection,
       log,
     });
-    // accept reads its y/N confirmation from stdin (promptConfirm), so it cannot
-    // also take the CSV there -- unless `--consent-to-terms` skips that prompt,
+    // accept reads its y/N confirmation from stdin (promptConfirmOrClosed), so
+    // it cannot also take the CSV there -- unless `--consent-to-terms` skips that prompt,
     // which frees stdin for the CSV. Gate `-` on it: rejected when the prompt
     // would run, allowed when it is bypassed (see the consentToTerms doc above).
     const rows = await loadInputRows(input, {
@@ -1193,7 +1195,7 @@ export async function handler(argv: Arguments): Promise<void> {
         // the terms run past a screen, so the locator stated above them has
         // scrolled away by the time the question arrives, and this is the line
         // that has not.
-        confirmed = await promptConfirm(
+        const answer = await promptConfirmOrClosed(
           runsExchangeThrough !== undefined
             ? "Accept this invitation and run the exchange now, through " +
                 `${renderDialedBroker(runsExchangeThrough)}?`
@@ -1204,6 +1206,13 @@ export async function handler(argv: Arguments): Promise<void> {
                 : "Accept this invitation and run the exchange now?"
               : "Accept this invitation and write configuration?",
         );
+        if (answer === "closed")
+          throw new UsageError(
+            "standard input ended at the question above, so it was not " +
+              "answered and no files were written. " +
+              ACCEPT_CONSENT_REMEDY,
+          );
+        confirmed = answer === "yes";
       }
       if (!confirmed) {
         // The answer goes back through the surface's own sink rather than the
