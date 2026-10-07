@@ -180,7 +180,6 @@ import {
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
-import { managedRunnableLoad } from "./managedRunLoadModel";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 import type { RunLines } from "./scheduledRunCommand";
@@ -274,7 +273,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
     MANAGED_RUN_SURFACE_INITIAL,
   );
   const { load, run: runState, recovery } = surfaceState;
-  const runnable = managedRunnableLoad(load);
+  const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
   // Every store write this surface makes keeps the secret the record it read

@@ -11,7 +11,6 @@ import {
   classifyManagedRecordRead,
   managedLoadFailed,
   managedLoadReducer,
-  managedRunnableLoad,
 } from "@recurring/managedRunLoadModel";
 
 import type {
@@ -110,19 +109,16 @@ describe("a read of the store", () => {
 describe("the first read", () => {
   test("is under way at the start, with nothing to run from", () => {
     expect(MANAGED_LOAD_INITIAL).toEqual({ kind: "loading", reads: 0 });
-    expect(managedRunnableLoad(MANAGED_LOAD_INITIAL)).toBeUndefined();
     expect(managedLoadFailed(MANAGED_LOAD_INITIAL)).toBe(false);
   });
 
   test("lands on what it found", () => {
     expect(runnable).toEqual({ ...heldRunnable, reads: 0 });
-    expect(managedRunnableLoad(runnable)?.record).toBe(RECORD);
     expect(configuration).toEqual({
       kind: "configuration",
       configuration: CONFIGURATION,
       reads: 0,
     });
-    expect(managedRunnableLoad(configuration)).toBeUndefined();
     expect(fold([read(undefined)])).toEqual({
       kind: "missing",
       heldBefore: undefined,
@@ -249,7 +245,6 @@ describe("a run the hand-off refused", () => {
       heldBefore: heldRunnable,
       reads: 0,
     });
-    expect(managedRunnableLoad(state)).toBeUndefined();
     expect(managedLoadFailed(state)).toBe(true);
   });
 

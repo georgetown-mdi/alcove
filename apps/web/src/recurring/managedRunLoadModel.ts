@@ -11,14 +11,10 @@ import type {
 import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
 
 /**
- * What the managed run surface last read of its record, and the events that move
- * it. No I/O -- the surface reads the record and its local sibling state from the
- * store and reports the outcome here.
- *
- * A load failure stays on screen until a re-take of a spent copy reads the record
- * again; a read landing under it replaces it only with another failure. The record
- * held when the failure arrived is kept behind it, and a re-take shows that record
- * again until its own read answers.
+ * The managed run surface's record load. A load failure stays on screen until a
+ * re-take of a spent copy reads again; a read landing under it replaces it only
+ * with another failure. The record held when the failure arrived is kept behind
+ * it, so a re-take shows that record until its own read answers.
  */
 
 /** A record this browser can run, with what the load read beside it. */
@@ -138,16 +134,9 @@ export function managedLoadFailed(
 
 function heldRecord(state: ManagedLoadState): ManagedLoadedRecord | undefined {
   if (managedLoadFailed(state)) return state.heldBefore;
-  if (state.kind === "runnable")
-    return {
-      kind: "runnable",
-      record: state.record,
-      localState: state.localState,
-      backupMarker: state.backupMarker,
-    };
-  if (state.kind === "configuration")
-    return { kind: "configuration", configuration: state.configuration };
-  return undefined;
+  if (state.kind === "loading") return undefined;
+  const { reads: _reads, ...held } = state;
+  return held;
 }
 
 function readLanded(
@@ -176,9 +165,7 @@ function readLanded(
   return { kind: read.kind, heldBefore, reads };
 }
 
-/** The record load's reducer. An event that applies only to a runnable record --
- * an adopted write, a reloaded sibling state, a backup -- changes nothing on any
- * other page. */
+/** The record load's reducer. */
 export function managedLoadReducer(
   state: ManagedLoadState,
   action: ManagedLoadAction,
@@ -200,6 +187,8 @@ export function managedLoadReducer(
             reads: state.reads + 1,
           }
         : { ...state, reads: state.reads + 1 };
+    // A write that lands after the record left the runnable state has no record
+    // on screen to update.
     case "record-adopted":
       return state.kind === "runnable"
         ? { ...state, record: action.record }
@@ -225,11 +214,4 @@ export function managedLoadReducer(
         reads: state.reads,
       };
   }
-}
-
-/** The runnable record's load, where the surface holds one. */
-export function managedRunnableLoad(
-  state: ManagedLoadState,
-): (ManagedLoadState & ManagedRunnableLoad) | undefined {
-  return state.kind === "runnable" ? state : undefined;
 }
