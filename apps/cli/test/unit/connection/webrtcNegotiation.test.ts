@@ -2010,7 +2010,33 @@ test("a re-registration whose socket fails before the server answers is retried"
   expect(sockets[2].closeCalls).toBe(0);
 });
 
+const STARTED_UNDER = process.execArgv;
+const PROXY_VARIABLES = [
+  "NODE_OPTIONS",
+  "NODE_USE_ENV_PROXY",
+  "HTTPS_PROXY",
+  "https_proxy",
+  "HTTP_PROXY",
+  "http_proxy",
+  "ALL_PROXY",
+  "all_proxy",
+  "npm_config_proxy",
+];
+const STARTED_WITH = PROXY_VARIABLES.map(
+  (variable) => [variable, process.env[variable]] as const,
+);
+
+afterEach(() => {
+  process.execArgv = STARTED_UNDER;
+  for (const [variable, value] of STARTED_WITH) {
+    if (value === undefined) delete process.env[variable];
+    else process.env[variable] = value;
+  }
+});
+
 test("a re-registration whose certificate does not verify ends the wait at once", async () => {
+  for (const variable of PROXY_VARIABLES) delete process.env[variable];
+  process.execArgv = [];
   const lines = captureDiagnostics();
   holdAttemptClock();
   const { sockets, session } = await startRendezvous({
