@@ -1,20 +1,9 @@
 /**
- * The pure, platform-free half of the managed (recurring) exchange's run-start
- * input guard: deciding whether a read input's columns can back the standing
- * terms, and classifying a rejection into the benign bookkeeping kind that names
- * its remedy -- so both decisions are unit-testable in Node without a file handle,
- * a permission prompt, or a database. The platform half (reading the file from the
- * persisted working folder by its one name, and the read/query permission layer)
- * is in {@link ./managedInputHandle.ts}.
- *
- * Both decisions run BEFORE any connection on every run path -- unattended,
- * one-action, and re-selection -- and each produces a benign pre-run failure,
- * never the desync/attack framing (see docs/MANAGED_EXCHANGE.md, "The
- * input file each run", and docs/spec/MANAGED_EXCHANGE_RECORD.md, the
- * `workingDirectoryHandle` and `lastRun` rows). The column check reuses core's
- * {@link decideLinkageTermsVerdict} rather than re-deriving the verdict, and holds
- * it to core's own rule rather than a threshold of this guard's (see
- * {@link assessManagedInputColumns}).
+ * The platform-free half of the managed exchange's run-start input guard:
+ * whether a read input's columns can back the standing terms, and which benign
+ * failure kind a rejection records. Both run before any connection on every run
+ * path, never with desync/attack framing (docs/MANAGED_EXCHANGE.md, "The input
+ * file each run"). The file-reading half is {@link ./managedInputHandle.ts}.
  */
 
 import { decideLinkageTermsVerdict } from "@alcove/core";
@@ -25,53 +14,33 @@ import type { ExchangeSpec, LinkageField } from "@alcove/core";
 import type { ManagedExchangeLastRun } from "./managedExchangeRecord";
 
 /**
- * Why the run-start input could not back the standing terms. Both variants are a
- * benign pre-run problem, recorded as their own failure kind
- * ({@link managedInputFailureKind}) and never routed through desync/attack framing:
- *
- * - `"acquire"` -- the file could not be read at run start: the entry is missing
- *   (deleted, moved, or renamed away), the read permission is gone, no handle is
- *   held where one is required, or the file is unreadable or malformed (the CSV
- *   parse fails). The underlying error is included for the caller to display
- *   (sanitized) and log.
- * - `"columns"` -- the file was read, but it cannot satisfy every linkage key the
- *   standing terms declare, so an exchange would match on fewer keys than both
- *   parties agreed to while its record still named every field the terms declare.
- *   The linkage fields the columns cannot produce are included so the caller can
- *   name the missing field types.
+ * Why the run-start input could not back the standing terms; each is a benign
+ * pre-run problem ({@link managedInputFailureKind}).
  */
 type ManagedInputRejection =
   | {
-      /** The input could not be read at run start (missing file, gone permission,
-       * an absent required handle, or an unreadable/malformed file the CSV parse
-       * rejects). */
+      /** The file could not be read: missing, permission gone, no handle, or a
+       * failed CSV parse. */
       reason: "acquire";
       /** The underlying acquisition error, for the caller to display and log. */
       cause: unknown;
     }
   | {
-      /** The input was read but cannot satisfy every linkage key the standing
-       * terms declare. */
+      /** The file cannot satisfy every linkage key the standing terms declare. */
       reason: "columns";
-      /** The standing terms' linkage fields the read columns cannot produce, so
-       * the caller can name the missing field types. */
+      /** The linkage fields the read columns cannot produce. */
       unsatisfied: Array<LinkageField>;
-      /** Whether the read yielded exactly one column -- the shape a file
-       * separated by something other than the delimiter this record reads it by
-       * comes out as -- so the caller states the delimiter remedy rather than
-       * sending the operator to renegotiate terms. */
+      /** Whether the read yielded exactly one column, the shape of a file using a
+       * different delimiter, so the caller states that remedy rather than
+       * renegotiating terms. */
       singleColumn: boolean;
     };
 
 /**
- * Raised when the run-start input cannot back the standing terms, holding the
- * {@link ManagedInputRejection} that discriminates the benign cause. Distinct from
- * a handshake or data-exchange failure so the runner records the kind
- * {@link managedInputFailureKind} derives from the rejection and knows no
- * connection was ever attempted. Its base `message` is a
- * fixed, non-sensitive summary suitable for a log line; the partner-influenced
- * detail (the unsatisfied field names) rides {@link rejection} for the caller to
- * sanitize before display.
+ * Raised when the run-start input cannot back the standing terms, before any
+ * connection. Its `message` is fixed, non-sensitive text; the
+ * partner-influenced field names are in {@link rejection}, to be sanitized
+ * before display.
  */
 export class ManagedInputError extends Error {
   /** The discriminated benign cause. */
@@ -89,16 +58,11 @@ export class ManagedInputError extends Error {
 }
 
 /**
- * The `lastRun` failure kind a rejection records, and the single place the two
- * benign pre-run input states are told apart. An `"acquire"` rejection is the
- * retryable `"input"` state -- putting the file back clears it -- while a
- * `"columns"` rejection is the `"terms-shortfall"` state: the same file falls the
- * same way short of the same agreed keys however many times it runs, so its remedy
- * is a conforming file or terms re-agreed with the partner, never another attempt.
- *
- * Both the bookkeeping stamp the critical section writes and the live launch's
- * benign-outcome classification read this one function, so a record's tier at the
- * next visit cannot diverge from what the operator saw at the moment of failure.
+ * The `lastRun` failure kind a rejection records: `"acquire"` is the retryable
+ * `"input"` state, `"columns"` the `"terms-shortfall"` state, which the same
+ * file repeats on every attempt. The bookkeeping stamp and the live launch's
+ * classification both read this, so the next visit's tier matches what the
+ * operator saw.
  */
 export function managedInputFailureKind(
   rejection: ManagedInputRejection,
@@ -107,12 +71,9 @@ export function managedInputFailureKind(
 }
 
 /**
- * The `lastRun` bookkeeping a rejection records: the kind
- * {@link managedInputFailureKind} derives, plus the one-column reading where the
- * columns rejection holds it. The reading is stamped because the record is all a
- * later visit has -- the launch error that held it is gone by then -- and without
- * it the next visit's summary and the between-visit notice send the operator to
- * renegotiate terms over what is a delimiter the file does not use.
+ * The `lastRun` bookkeeping a rejection records, including the one-column
+ * reading: a later visit has only the record, and without it would send the
+ * operator to renegotiate terms over a delimiter problem.
  */
 export function managedInputLastRun(
   rejection: ManagedInputRejection,
@@ -125,27 +86,12 @@ export function managedInputLastRun(
 }
 
 /**
- * Grade a read input's `columns` against a record's standing terms, the guard every
- * run path applies before any connection. Reuses core's
- * {@link decideLinkageTermsVerdict} over the persisted document's linkage terms,
- * standardization, and metadata, so the verdict matches an exchange that would run
- * from exactly those terms, never a re-derivation.
- *
- * This guard holds core's own rule rather than a threshold of its own: a run is
- * refused unless the terms declare at least one linkage key and the input can
- * satisfy every one of them. That is the rule `assertLinkageTermsSatisfiable`
- * enforces at the run boundary inside `prepareForExchange`, whose refusal
- * `managedRun.ts` routes to this same benign `"terms-shortfall"` failure tier -- so
- * this is advance notice of the same decision, before any connection, rather than a
- * looser pre-check the boundary can still overturn.
- *
- * Returns `undefined` when the input may run; returns a `"columns"`
- * {@link ManagedInputRejection} holding the unproducible linkage fields and
- * whether the read came out as one column otherwise.
- * The grade is over column SHAPE, not row values, with the one value-independent
- * exception core's dead-key detection covers (see
- * {@link decideLinkageTermsVerdict}): it can only over-accept a same-shaped wrong
- * file, never wrongly block a conforming one.
+ * Grade a read input's `columns` against a record's standing terms through
+ * core's {@link decideLinkageTermsVerdict}: refused unless the terms declare at
+ * least one linkage key and the input satisfies every one, the same rule
+ * `prepareForExchange` enforces later, so this is advance notice of that
+ * decision, never a looser pre-check. Graded on column shape, so it can
+ * over-accept a same-shaped wrong file but never block a conforming one.
  */
 export function assessManagedInputColumns(
   exchangeFile: ExchangeSpec,
