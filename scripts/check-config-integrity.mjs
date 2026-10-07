@@ -19,26 +19,33 @@ import { existsSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+const SHARED_PACKAGE_STRICTNESS = {
+  strict: true,
+  strictNullChecks: true,
+  noUnusedLocals: true,
+  noUnusedParameters: true,
+  noFallthroughCasesInSwitch: true,
+  noUncheckedSideEffectImports: true,
+  forceConsistentCasingInFileNames: true,
+};
+
 /**
  * The tsconfigs this check holds, each with the compiler options that must
  * resolve at the stated value and the source directory its file list must
- * cover. packages/core lists its whole strictness set: it is the package both
- * apps and every suite compile against. The others list `strict`, the option
- * whose loss silences the most.
+ * cover. packages/core and packages/cli-contract list their whole strictness
+ * set: they are the packages both apps compile against. The others list
+ * `strict`, the option whose loss silences the most.
  */
 export const GUARDED_TSCONFIGS = [
   {
     tsconfig: "packages/core/tsconfig.json",
     sourceDirectory: "packages/core/src",
-    options: {
-      strict: true,
-      strictNullChecks: true,
-      noUnusedLocals: true,
-      noUnusedParameters: true,
-      noFallthroughCasesInSwitch: true,
-      noUncheckedSideEffectImports: true,
-      forceConsistentCasingInFileNames: true,
-    },
+    options: SHARED_PACKAGE_STRICTNESS,
+  },
+  {
+    tsconfig: "packages/cli-contract/tsconfig.json",
+    sourceDirectory: "packages/cli-contract/src",
+    options: SHARED_PACKAGE_STRICTNESS,
   },
   {
     tsconfig: "apps/cli/tsconfig.json",
@@ -71,6 +78,7 @@ export const GUARDED_VITEST_CONFIGS = [
     directory: ".",
     projects: [
       "@alcove/core (unit)",
+      "@alcove/cli-contract (unit)",
       "alcove (unit)",
       "alcove-web (unit)",
       "harness",
@@ -80,6 +88,7 @@ export const GUARDED_VITEST_CONFIGS = [
     ],
   },
   { directory: "packages/core", projects: ["unit", "stress"] },
+  { directory: "packages/cli-contract", projects: ["unit"] },
   {
     directory: "apps/cli",
     projects: ["unit", "integration", "webrtc", "backend-agnostic", "stress"],

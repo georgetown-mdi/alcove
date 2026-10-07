@@ -53,7 +53,7 @@ export default defineConfig([
     // every `exports` condition at dist/core.*, dist/testing.* and
     // dist/untrusted-text.*. A manifest rename that left these alone is caught
     // by the dist freshness guard, which derives the files it looks for from
-    // that exports map (scripts/lib/coreDistFreshness.mjs). The chunk name is
+    // that exports map (scripts/lib/distFreshness.mjs). The chunk name is
     // fixed rather than hashed so a rebuild overwrites the shared chunk instead
     // of leaving the previous one behind in a published dist.
     output: [

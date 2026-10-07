@@ -11,9 +11,9 @@
 import { beforeAll, expect, test, vi } from "vitest";
 
 import {
-  describeCoreDistStaleness,
-  formatCoreDistStaleness,
-} from "../../../scripts/lib/coreDistFreshness.mjs";
+  CORE_PACKAGE,
+  requireFreshDists,
+} from "../../../scripts/lib/distFreshness.mjs";
 
 import {
   StandardizedDataset,
@@ -27,8 +27,7 @@ import {
 } from "@alcove/core/testing";
 
 beforeAll(() => {
-  const staleness = describeCoreDistStaleness();
-  if (staleness !== null) throw new Error(formatCoreDistStaleness(staleness));
+  requireFreshDists({ packages: [CORE_PACKAGE] });
 });
 
 const KEY = {

@@ -16,7 +16,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 // driving vitest, and the guards' behavior is covered by their own suites.
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const DIST_GUARD = resolve(REPO_ROOT, "scripts/lib/coreDistFreshness.mjs");
+const DIST_GUARD = resolve(REPO_ROOT, "scripts/lib/distFreshness.mjs");
 const SKIPPED_LEG_REPORTER = resolve(
   REPO_ROOT,
   "scripts/lib/skippedLegReporter.mjs",
@@ -46,9 +46,10 @@ async function loadTestConfig(configPath) {
 
 const WEB_CONFIG = "apps/web/vite.config.ts";
 
-// Every config that owns a run. The apps import the built @alcove/core, so
-// they hold the dist guard; packages/core builds its own dist in `pretest` and
-// tests its sources, and the root config runs no suite of its own.
+// Every config that owns a run. The apps import the built @alcove/core and
+// @alcove/cli-contract, so they hold the dist guard; packages/core builds its
+// own dist in `pretest` and tests its sources, and the root config runs no suite
+// of its own.
 const CONFIGS = [
   { path: "vitest.config.mts", distGuard: false },
   { path: "packages/core/vitest.config.ts", distGuard: false },
@@ -90,7 +91,7 @@ describe.each(CONFIGS)("$path", ({ path, distGuard }) => {
     expect(reporters).toContain(SKIPPED_LEG_REPORTER);
   });
 
-  test(`${distGuard ? "guards" : "does not need a guard for"} the core dist`, () => {
+  test(`${distGuard ? "guards" : "does not need a guard for"} the built dists`, () => {
     const { globalSetup } = loadedConfig(path);
     expect(globalSetup.includes(DIST_GUARD)).toBe(distGuard);
   });
