@@ -139,16 +139,17 @@ import {
   assertPresentedDeduplicateOrAbort,
   resolvePayloadDisclosureOrAbort,
 } from "./exchange/termsRefusals.js";
+import type {
+  DualSignedRecord,
+  ReceiptContent,
+} from "./records/signedReceipt.js";
+
 export {
   assertPresentedDeduplicateMatchesInvitation,
   resolveBothDirectionsDisclosePayload,
   resolveDirectionDisclosesPayload,
 } from "./exchange/termsRefusals.js";
 export type { PayloadDisclosureDirections } from "./exchange/termsRefusals.js";
-import type {
-  DualSignedRecord,
-  ReceiptContent,
-} from "./records/signedReceipt.js";
 
 /**
  * The subset of an exchange specification that governs data preparation.
