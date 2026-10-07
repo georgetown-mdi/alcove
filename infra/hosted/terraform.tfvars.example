@@ -24,9 +24,12 @@ cloudflare_zone_id = "<Cloudflare zone id>"
 cloudflare_account_id = "<Cloudflare account id>"
 pages_project_name    = "<CLOUDFLARE_PAGES_PROJECT>"
 
-# Set to "pages" at cutover, after the preview deployment is verified. It
-# moves both public names.
-hosted_origin = "elastic_beanstalk"
+# Set a name to "pages" at cutover, after the preview deployment is verified;
+# each name moves on its own entry, staging first.
+hosted_origin = {
+  production = "elastic_beanstalk"
+  staging    = "elastic_beanstalk"
+}
 
 # Each description must be the environment's live one, from
 # aws elasticbeanstalk describe-environments --environment-names <name>
