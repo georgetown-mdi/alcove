@@ -439,8 +439,8 @@ describe("the relayed first-contact failure states no container path", () => {
     expect(PARTNER_PIN_UNRECORDABLE_FAILURE).toMatch(/alcove fingerprint/);
     expect(PARTNER_PIN_UNRECORDABLE_FAILURE).toMatch(/run the exchange again/);
     // The run stopped at or before the terms exchange, so no row of the
-    // operator's file moved (packages/core/src/exchange.ts, the terms-time pin
-    // resolution).
+    // operator's file moved (packages/core/src/exchange/signingChecks.ts, the
+    // terms-time pin resolution).
     expect(PARTNER_PIN_UNRECORDABLE_FAILURE).toMatch(/sent none of your data/);
   });
 });

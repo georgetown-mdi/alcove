@@ -632,7 +632,7 @@ export {
   retiredSigningSetting,
   retiredSigningSettingNotice,
 } from "./config/signing";
-export type { SigningConfig } from "./config/signing";
+export type { SigningConfig, SigningMode } from "./config/signing";
 export {
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
@@ -648,6 +648,7 @@ export {
 export type {
   CertificateBody,
   P256PrivateJwk,
+  PartnerCertificateCondition,
   SigningCertificate,
   SigningIdentity,
 } from "./records/signingIdentity";
@@ -799,12 +800,9 @@ export {
 } from "./utils/sshHostKey.js";
 export {
   CONFIRMING_PROTOCOL_STAGE_ID,
-  PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
   PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
   assertAlgorithmImplemented,
   assertFirstRoundWithinSetMaximum,
-  assertLocalCertificateAuthorizesAgreedIdentity,
-  assertSigningModeImplemented,
   assertTermsRunnable,
   countIsPartnerReported,
   describeExchangeStages,
@@ -824,11 +822,16 @@ export type {
   ExchangeResult,
   ExchangeStageDefinition,
   FirstRoundCheckOptions,
-  PartnerCertificateRefusalKind,
   PayloadReceiveFillAnswer,
   PreparedExchange,
   RunExchangeOptions,
 } from "./exchange";
+export {
+  PARTNER_CERTIFICATE_REFUSAL_MESSAGES,
+  assertLocalCertificateAuthorizesAgreedIdentity,
+  assertSigningModeImplemented,
+} from "./exchange/signingChecks";
+export type { PartnerCertificateRefusalKind } from "./exchange/signingChecks";
 export {
   describeResolvedMatching,
   describeResolvedRunShape,

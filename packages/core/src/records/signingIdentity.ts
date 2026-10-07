@@ -496,9 +496,10 @@ export function assertCertificateAuthorizesIdentity(
  * that it is not the pinned identity.
  *
  * Keyed rather than listed, on the pattern `PARTNER_CERTIFICATE_REFUSAL_MESSAGES`
- * (../exchange.ts) follows: a condition added here without a verdict beside it
- * does not compile, rather than falling through to `false` and leaving a
- * disclosure record silent about an authentication failure the run observed.
+ * (../exchange/signingChecks.ts) follows: a condition added here without a
+ * verdict beside it does not compile, rather than falling through to `false`
+ * and leaving a disclosure record silent about an authentication failure the
+ * run observed.
  *
  * The three `true` rows are the run holding the partner's certificate body and
  * finding it wrong. `unpinned` is about this party's own configuration and says

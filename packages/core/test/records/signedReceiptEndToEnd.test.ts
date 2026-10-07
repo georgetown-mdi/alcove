@@ -5,6 +5,8 @@ import PSI from "@openmined/psi.js";
 import {
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertReceiptBindingsOrAbort,
+} from "../../src/exchange/signingChecks";
+import {
   exchangeDisclosedWithoutPartnerPayload,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,

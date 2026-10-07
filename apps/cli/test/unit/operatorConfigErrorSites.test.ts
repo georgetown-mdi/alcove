@@ -122,7 +122,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "partner's disclosed column list, which never becomes local metadata.",
   },
   {
-    file: "packages/core/src/exchange.ts",
+    file: "packages/core/src/exchange/signingChecks.ts",
     anchor: "assertSigningModeImplemented",
     raises: "OperatorConfigError",
     interpolates: [],
@@ -130,7 +130,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose over the signing.mode enum literals; no value is quoted.",
   },
   {
-    file: "packages/core/src/exchange.ts",
+    file: "packages/core/src/exchange/signingChecks.ts",
     anchor: "assertCertificateModePinsPartner",
     raises: "OperatorConfigError",
     interpolates: [],
@@ -138,7 +138,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose about this party's own signing block; no value is quoted.",
   },
   {
-    file: "packages/core/src/exchange.ts",
+    file: "packages/core/src/exchange/signingChecks.ts",
     anchor: "assertCertificateModeNamesLocalParty",
     raises: "OperatorConfigError",
     interpolates: [],
@@ -146,7 +146,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "fixed prose about this party's own terms identity; no value is quoted.",
   },
   {
-    file: "packages/core/src/exchange.ts",
+    file: "packages/core/src/exchange/signingChecks.ts",
     anchor: "assertLocalCertificateAuthorizesAgreedIdentity",
     raises: "OperatorConfigError",
     interpolates: ["agreedIdentity", "unstatable"],
@@ -159,7 +159,7 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "at all.",
   },
   {
-    file: "packages/core/src/exchange.ts",
+    file: "packages/core/src/exchange/signingChecks.ts",
     anchor: "assertLocalCertificateAuthorizesAgreedIdentity",
     raises: "OperatorConfigError",
     interpolates: ["agreedIdentity", "certificate.identity"],
