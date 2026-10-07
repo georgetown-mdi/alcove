@@ -140,22 +140,15 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 
 ### What the deployment logs
 
-Verified 2026-10-07 on the Cloudflare account, the AWS account and the host. [PRIVACY.md](../PRIVACY.md#hosted-web-application) states the same for a reader outside the project.
+[PRIVACY.md](../PRIVACY.md#hosted-web-application) lists each log's fields and how long each is kept.
 
-- **The project keeps no log of page requests.** The Pages project has no Functions, so nothing it runs writes a log, and Cloudflare Web Analytics is off. The zone has no Logpush job. Cloudflare's own request analytics and any request log it keeps are under Cloudflare's retention, not the project's.
-- **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which carries the broker, its nginx TLS front and the relay.
-- **That host's system journal is the deployment's one log.** A journald drop-in keeps it on disk (`Storage=persistent`), deletes archived files older than 90 days (`MaxRetentionSec=90day`) and archives the active file daily (`MaxFileSec=1day`), so an entry is deleted within 91 days; journald's size limit can only delete sooner. Nothing ships the journal off the host. The containers log to it with Docker's `journald` driver, so no container log file is written beside it.
+- **The project keeps no log of page requests.** The Pages project has no Functions, Cloudflare Web Analytics is off, and the zone has no Logpush job. Cloudflare's own request records are under Cloudflare's retention, not the project's.
+- **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which runs the broker, its nginx TLS front and the relay (coturn).
+- **Their logs are in that host's system journal:** the nginx front's access log and error log, the broker's output and coturn's output. The containers write to it through Docker's `journald` log driver, and nothing ships the journal off the host.
+- **The access log records the request path without the query string,** so the rendezvous identifier and client token in a signaling URL are not written to it.
+- **Retention is bounded by the host's journald configuration.** That configuration, the nginx configuration and the units live on the host, not in this repository.
 
-| Source | What a line holds |
-| ------ | ----------------- |
-| nginx front, access log (`log_format` `'$time_iso8601 $remote_addr "$request_method $uri $server_protocol" $status upgrade=$http_upgrade bytes=$bytes_sent dur=$request_time'`) | Time, client IP address, method, request path without the query string, status, Upgrade header, bytes sent, duration. No user agent and no rendezvous identifier |
-| nginx front, error log | Warnings and errors |
-| Broker | Start-up and service lines; no client IP address and no rendezvous identifier |
-| TURN relay (coturn) | On a failed connection, the client's IP address and port and a session number; on a failed authentication, the credential's username, an expiry time and a fixed label |
-
-The nginx configuration and the units live on the host, not in this repository. Access log lines written before 2026-10-07 hold the full request line, query string included, and are deleted on the same bound.
-
-Until the Elastic Beanstalk teardown deletes them, that deployment's CloudWatch log groups in us-west-2 hold its request and process logs at 90-day retention per line. None belongs to the coordination server's host.
+Until the Elastic Beanstalk teardown deletes them, that deployment's CloudWatch log groups in us-west-2 hold its request and process logs. None belongs to the coordination server's host.
 
 ## Diagnosing web connection failures
 
