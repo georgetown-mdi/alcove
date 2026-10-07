@@ -1,44 +1,18 @@
 #!/usr/bin/env node
-// Verification-config integrity check, run by static_checks.yaml on every PR.
-//
-// Typecheck and test are only evidence while the configs under them still say
-// what they are believed to say. A tsconfig that loses its strictness options
-// type-checks the same tree and reports nothing; a vitest config that loses its
-// `projects` list runs a fraction of the suites, or none, and exits 0. Both
-// failures are silent: the gates stay green, and every later gate on that tree
-// stays green with them. This check states the invariants those gates rest on
-// so a truncated, emptied, or half-written config fails loudly instead.
-//
-// It drives the real tools rather than reading the config files. `tsc
-// --showConfig` resolves `extends`, so a strictness option is checked where the
-// compiler actually sees it, wherever it is written; `vitest list --filesOnly`
-// resolves the project graph the way a run does, without importing a test file.
-// Reading the JSON and the config source here would be a second implementation
-// of two resolvers, and a check that models a tool can disagree with it.
-//
-// WHAT IT HOLDS:
+// Verification-config integrity check: `npm run check:config-integrity`, run
+// by static_checks.yaml on every pull request. It drives `tsc --showConfig` and
+// `vitest list --filesOnly` rather than reading the config files, and fails
+// unless:
 //
 //   - Every tsconfig in GUARDED_TSCONFIGS resolves with its listed compiler
 //     options at the listed values.
 //   - Every one of them resolves over a file list covering every source file on
-//     disk in its workspace's src/, so a config that keeps `strict` but loses
-//     its `include` does not pass by checking nothing.
+//     disk in its workspace's src/.
 //   - Every vitest config in GUARDED_VITEST_CONFIGS still declares the named
-//     projects, each with at least one test file. A project with no files is
-//     absent from the listing entirely, which is the shape a lost `include`
-//     takes.
+//     projects, each with at least one test file.
 //
-// WHAT IT DOES NOT COVER:
-//
-//   - Whether an option or a project SHOULD be there. The tables below are the
-//     decision; review makes it, and moving a line here is the deliberate edit
-//     a reviewer sees. Every option a config sets is not listed either: what is
-//     listed is what a silent loss would cost.
-//   - The count of test files a project collects, beyond one. Pinning a count
-//     churns on every test file added.
-//   - Any other config a run reads (eslint, rollup, vite's build half). They
-//     fail loudly on their own: a lost rollup or vite config breaks the build
-//     rather than passing a smaller one.
+// Exit 0 clean, 1 on a finding. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";

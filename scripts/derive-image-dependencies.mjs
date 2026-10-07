@@ -1,42 +1,22 @@
 #!/usr/bin/env node
 // What the shipped file-drop support scripts ask of the Alcove image, read out
-// of the scripts themselves rather than kept in a list beside them.
+// of the scripts themselves. A module, not a command:
+// scripts/assert-image-capabilities.mjs exercises the set it derives against a
+// real image, and `npm run check:image-capabilities` checks on every pull
+// request, without a Docker daemon, that each derived dependency has a recipe.
+// Two derivations:
 //
-// Those scripts delegate every check they make to a capability of the image:
-// they hand a container an Alcove subcommand, or they pipe one of their helper
-// scripts into a shell inside it and depend on the tools that shell can resolve.
-// Nothing in the repository connects the two, so a script can ask for a
-// capability the image does not have and the mismatch shows only on an
-// operator's PC. scripts/assert-image-capabilities.mjs exercises the set this
-// module derives against a real image; the derivation lives apart from it so a
-// new call site can be noticed on every pull request, without a Docker daemon.
+//   - An Alcove subcommand: a run of literal argument tokens beginning with a
+//     name docker-entrypoint.sh routes on or apps/cli/src/cliParser.ts
+//     registers, on a logical line that also names the image (a
+//     `ghcr.io/georgetown-mdi/alcove` reference or a launcher helper) or an
+//     argument-vector parameter (`-Args`, `_ARGUMENTS`) before it.
+//   - A helper script: one cmd_Setup-AlcoveFileDrop.cmd redirects into a shell
+//     in the image, with the environment and mounts that call site gives it.
 //
-// The two derivations and their anchors:
-//
-//   - An Alcove subcommand is a run of literal argument tokens beginning with a
-//     name the image answers to, on a logical line that also names the image (a
-//     `ghcr.io/georgetown-mdi/alcove` reference, or one of the helpers the launchers resolve
-//     it through) or an argument-vector parameter (`-Args`, `_ARGUMENTS`) before
-//     it. The names come from the image's own two dispatchers -- the words
-//     docker-entrypoint.sh routes on, and the commands apps/cli/src/cliParser.ts
-//     registers -- so a command that ships without being registered, or a call
-//     site that invokes one this never saw, changes the derived set rather than
-//     going unnoticed.
-//   - A helper script is one cmd_Setup-AlcoveFileDrop.cmd redirects into a
-//     shell in the image, together with the environment and mounts that call
-//     site gives it. Running the script is what resolves the tools it needs, so
-//     no list of tool names is kept anywhere: a helper that gains a dependency
-//     on another in-image binary is covered by the run it already has.
-//
-// What it does not reach:
-//
-//   - The subcommand-less invocation (`<image> file:///sync input.csv out.csv`),
-//     which names no registered command. image_smoke.yaml runs a full exchange
-//     over a bind mount, which is that shape.
-//   - A call site that splits an argument vector across logical lines, or builds
-//     one from values this cannot see. Both fail closed only insofar as the
-//     capability then goes underived, so the tripwires below assert that each
-//     derivation found something at all.
+// Tripwires assert that each derivation found something. Rationale and
+// limits: docs/notes/repo-check-scripts.md; the contract:
+// docs/spec/CONTAINER_IMAGES.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

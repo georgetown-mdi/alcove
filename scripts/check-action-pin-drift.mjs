@@ -1,44 +1,15 @@
 #!/usr/bin/env node
-// GitHub Action pin drift check, run by static_checks.yaml on every PR.
+// GitHub Action pin drift check: `npm run check:action-pin-drift`, run by
+// static_checks.yaml on every pull request. Reads every `uses:` reference under
+// .github/workflows and .github/actions and fails on any of three rules:
 //
-// The `github-actions` Dependabot block in .github/dependabot.yml is configured
-// against .github/workflows. The shared CI prologue composite
-// (.github/actions/setup/action.yml) pins actions of its own, on a path this
-// repo does not rely on being scanned. Coverage reaches it transitively instead:
-// every pin a composite holds is identical to a pin a workflow holds, so a
-// release or advisory showing on the workflow occurrence covers the composite
-// one, and the bump that answers it cannot land on the workflow and leave the
-// composite behind.
+//   A. An action named in both trees has a differing ref anywhere it appears.
+//   B. A pin under .github/actions names an action no workflow uses.
+//   C. A remote `uses:` reference names no ref.
 //
-// Three rules, over .github/workflows and .github/actions:
-//
-//   A. An action named in both trees has the same ref everywhere it appears.
-//      A bump applied to some occurrences and not others -- the shape a
-//      single-file dependency pull request has -- fails here instead of leaving a
-//      silently stale composite.
-//   B. A pin under .github/actions names an action some workflow also uses. A
-//      composite-only action has no occurrence on the configured path for a
-//      release or advisory to show on, so the check fails closed on it rather
-//      than passing a gap.
-//   C. Every remote `uses:` reference names a ref. One that names none fixes no
-//      version, so nothing here determines which code the step runs and no
-//      release or advisory has an occurrence to show on: neither guarded tree
-//      may hold one, and rule A's mirror cannot be satisfied by one. Whether
-//      GitHub itself rejects the shape is unverified and the rule does not rest
-//      on it -- if GitHub does, this simply never fires.
-//
-// What this check cannot see:
-//   - It compares refs as text. `@v7` agrees with `@v7` whatever the tag resolves
-//     to, so a floating major moving under both occurrences, or one spelling
-//     denoting different commits in different places, is outside it -- as is
-//     whether a ref is a tag, a branch, or a sha.
-//   - It says nothing about which paths Dependabot in fact scans. It enforces the
-//     mirror invariant this repo relies on, and confirms no tool's coverage.
-//   - It reads `uses:` references only. An action reached another way -- a `run:`
-//     line that fetches a release, an image named in `container:` or `services:`
-//     -- is invisible to it.
-//   - Rule A binds only actions appearing in both trees. Two workflows may pin an
-//     action no composite uses at differing refs without failing anything here.
+// Refs are compared as text. Exit 0 clean, 1 on a finding. The mirror
+// invariant it enforces: docs/spec/DEPENDENCY_PINS.md. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
