@@ -6,8 +6,8 @@ import PSI from "@openmined/psi.js";
 import {
   exchangeDisclosedWithoutPartnerPayload,
   exchangeRecordFromFailure,
-  runExchange,
-} from "../../src/exchange";
+} from "../../src/exchange/failureRecords";
+import { runExchange } from "../../src/exchange";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 
 import type { MessageConnection } from "../../src/connection/messageConnection";
