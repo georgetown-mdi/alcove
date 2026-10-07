@@ -55,6 +55,7 @@ import {
   ProtocolRefusalError,
   UsageError,
   ConnectionError,
+  statesItsOwnNextStep,
 } from "../../src/errors";
 import { sortAssociationTable } from "../../src/testing";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
@@ -1245,10 +1246,7 @@ test("the single-pass sender refuses a built reply above the derived cap", async
   expect(error).not.toBeInstanceOf(UsageError);
   // The message ends in its own report-it step, so the instance is tagged and
   // the CLI adds no second one.
-  expect(
-    (error as { alcoveRecoveryHintEmitted?: unknown })
-      .alcoveRecoveryHintEmitted,
-  ).toBe(true);
+  expect(statesItsOwnNextStep(error, { ownOnly: true })).toBe(true);
   const message = (error as InternalConsistencyError).message;
   const replyCap = singlePassReplyByteCap(
     keyCount,

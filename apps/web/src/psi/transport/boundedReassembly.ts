@@ -6,6 +6,8 @@
 // (connection/binaryPackBounds.ts), so every WebRTC transport enforces one
 // implementation of them.
 
+import { unpack } from "peerjs-js-binarypack";
+
 import {
   ConnectionError,
   MAX_CHUNKS_PER_REASSEMBLY,
@@ -14,6 +16,7 @@ import {
   MAX_WEBRTC_REASSEMBLY_DEPTH,
   MAX_WEBRTC_STRING_BYTES,
   MIN_CHUNK_RESIDENT_BYTES,
+  asConnectionError,
   describeFrameStructureRefusal,
   scanFrameStructure,
 } from "@alcove/core";
@@ -36,9 +39,9 @@ interface PeerChunk {
 }
 
 /** A message handed to PeerJS's `_handleDataMessage`, the sole point at which an
- * inbound (or reassembled) frame is `unpack`ed. `data` is what the data channel
- * delivered: binary for a PeerJS sender, but a data channel types each message on
- * its own, so a peer can send text on it too. */
+ * inbound (or reassembled) frame is `unpack`ed, and which this guard replaces.
+ * `data` is what the data channel delivered: binary for a PeerJS sender, but a
+ * data channel types each message on its own, so a peer can send text on it too. */
 interface PeerDataMessage {
   data: unknown;
 }
@@ -48,8 +51,9 @@ interface PeerDataMessage {
  * a chunked binary frame in `_handleChunk` (accumulating slices into
  * `_chunkedData` keyed by message id, deleting the entry on completion), and
  * `unpack`s every frame -- unchunked, or the reassembled buffer on completion
- * -- in `_handleDataMessage`. None is part of the public `DataConnection`
- * type, so this is a documented dependency assumption;
+ * -- in `_handleDataMessage`, which the guard replaces with its own decode and
+ * dispatch ({@link dispatchDecodedFrame}). None is part of the public
+ * `DataConnection` type, so this is a documented dependency assumption;
  * {@link assertChunkReassemblySupported} checks all three exist, so a
  * `peerjs` upgrade that renames or restructures them fails loud.
  */
@@ -134,6 +138,34 @@ function malformedDatagramError(detail: string): ConnectionError {
     `the peer sent a malformed WebRTC frame: ${detail}`,
     "protocol",
   );
+}
+
+/**
+ * Routes one decoded frame as PeerJS's `_handleDataMessage` does after its
+ * `unpack`: a truthy `__peerData` is the in-band close sentinel or a chunk
+ * envelope, and anything else is delivered to the `data` listeners. A frame
+ * that decodes to `null` or `undefined` is delivered too, as the CLI's receive
+ * dispatch delivers it (`classifyInboundValue`,
+ * apps/cli/src/connection/webrtc/peerjsWire.ts), where PeerJS itself throws.
+ */
+function dispatchDecodedFrame(
+  conn: DataConnection,
+  internals: ChunkedDataConnection,
+  decoded: unknown,
+): void {
+  const peerData: unknown =
+    typeof decoded === "object" && decoded !== null
+      ? (decoded as { __peerData?: unknown }).__peerData
+      : undefined;
+  if (peerData) {
+    if ((peerData as { type?: unknown }).type === "close") {
+      conn.close();
+      return;
+    }
+    internals._handleChunk(decoded);
+    return;
+  }
+  conn.emit("data", decoded);
 }
 
 /** A terminal refusal, shared by every enforcement point: `predicate` says what
@@ -224,10 +256,15 @@ export function assertChunkReassemblySupported(conn: DataConnection): void {
  *   unchunked frame and a completed reassembly flow through it): one walk of
  *   the frame's BinaryPack bytes enforces the nesting depth, the per-string
  *   cap, the byte-backed-elements check, the cumulative element rule and the
- *   map-key rule before PeerJS unpacks it.
+ *   map-key rule before it is unpacked.
  * - The datagram itself, in `_handleDataMessage` before the scan: a text or
- *   empty datagram is refused, and so is a frame PeerJS's unpack throws on,
- *   each in the words the CLI's receive path uses.
+ *   empty datagram is refused, and so is a frame BinaryPack's unpack throws
+ *   on, each in the words the CLI's receive path uses.
+ *
+ * A throw while handling a decoded frame -- from a `data` listener or from
+ * PeerJS's close -- also fails the connection, with that error behind a
+ * `transport` wrap, so it keeps its own class and is never reported as a frame
+ * the peer sent.
  *
  * @param conn   The PeerJS data connection (open or not yet open).
  * @param fail   Latches a terminal failure (the connection's `controls.fail`).
@@ -260,8 +297,6 @@ export function boundChunkReassembly(
   assertChunkReassemblySupported(conn);
   const internals = conn as unknown as ChunkedDataConnection;
   const originalHandleChunk = internals._handleChunk.bind(internals);
-  const originalHandleDataMessage =
-    internals._handleDataMessage.bind(internals);
 
   // Per-id accumulated state, in arrival order (Map preserves insertion order,
   // so the first key is the oldest partial to evict).
@@ -360,9 +395,8 @@ export function boundChunkReassembly(
     }
   };
 
-  // A throw anywhere in chunk handling -- the checks above, PeerJS's own
-  // reassembly, or the completed frame's unpack -- fails the connection
-  // rather than leaving it open to handle the next chunk.
+  // A throw in the checks above or in PeerJS's own reassembly fails the
+  // connection rather than leaving it open to handle the next chunk.
   internals._handleChunk = (received: unknown): void => {
     if (failed) return;
     try {
@@ -374,8 +408,8 @@ export function boundChunkReassembly(
 
   // Bounds the DESERIALIZED structure at the unpack chokepoint, which both an
   // unchunked frame (direct call) and a completed reassembly (recursive call from
-  // `_handleChunk`) flow through. Scanning here, before the original unpacks,
-  // covers a tiny unchunked frame that never reaches `_handleChunk` at all.
+  // `_handleChunk`) flow through. Scanning here, before the unpack, covers a
+  // tiny unchunked frame that never reaches `_handleChunk` at all.
   // A text or empty datagram is refused before the scan: BinaryPack decodes
   // either to the number 0, which would reach the application as a frame.
   internals._handleDataMessage = (message: PeerDataMessage): void => {
@@ -395,13 +429,20 @@ export function boundChunkReassembly(
       return;
     }
     // PeerJS calls this from the data channel's message handler, where a throw
-    // from `unpack` would be dropped and leave the connection waiting.
+    // would be dropped and leave the connection waiting.
+    let decoded: unknown;
     try {
-      originalHandleDataMessage(message);
+      decoded = unpack(message.data as ArrayBuffer);
     } catch {
       failClosed(
         malformedDatagramError("its BinaryPack body could not be decoded"),
       );
+      return;
+    }
+    try {
+      dispatchDecodedFrame(conn, internals, decoded);
+    } catch (error) {
+      failClosed(asConnectionError(error, "transport"));
     }
   };
 }

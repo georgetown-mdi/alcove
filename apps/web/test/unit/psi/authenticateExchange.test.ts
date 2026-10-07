@@ -283,7 +283,7 @@ describe("authenticateExchange", () => {
       // Re-tagged as the non-retryable trust failure, not a transport drop.
       expect((reason as ConnectionError).kind).toBe("security");
       // The original cause's message (holding the round-trip wording) survives
-      // the re-wrap, as does its recovery-hint tag.
+      // the re-wrap, as does its recovery-hint mark.
       expect((reason as ConnectionError).message).toContain(
         "during the key exchange",
       );

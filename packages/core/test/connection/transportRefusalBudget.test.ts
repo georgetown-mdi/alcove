@@ -13,6 +13,7 @@ import {
   DirectoryListingBoundsError,
   FrameSizeExceededError,
   TransportOperationStalledError,
+  statesItsOwnNextStep,
 } from "../../src/errors";
 import {
   COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -399,9 +400,6 @@ for (const refusal of REFUSAL_CLASSES) {
     // what they read today; the step is delivered by the chain instead.
     expect(error.message).toBe("the refusal summary");
     expect(error.message).not.toContain(refusal.recoveryStep);
-    expect(
-      (error as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(error, { ownOnly: true })).toBe(true);
   });
 }

@@ -1,4 +1,4 @@
-import { ConnectionError } from "../src/errors";
+import { ConnectionError, statesItsOwnNextStep } from "../src/errors";
 import { afterEach, expect, test, vi } from "vitest";
 
 import {
@@ -100,10 +100,10 @@ test("a malformed shared secret is refused as malformed even when it is also exp
   ).toThrow(/base64url-encoded 32-byte value/);
 });
 
-test("both pre-handshake refusals tag themselves as having emitted a recovery hint", () => {
+test("both pre-handshake refusals mark themselves as having emitted a recovery hint", () => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW_MS);
-  // A higher-level catch suppresses its own generic advisory on this tag, so a
+  // A higher-level catch suppresses its own generic advisory on this mark, so a
   // refusal that lost it would show the user two contradictory messages.
   for (const authentication of [
     { sharedSecret: "" },
@@ -115,10 +115,7 @@ test("both pre-handshake refusals tag themselves as having emitted a recovery hi
     } catch (err) {
       thrown = err;
     }
-    expect(
-      (thrown as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
+    expect(statesItsOwnNextStep(thrown, { ownOnly: true })).toBe(true);
   }
 });
 

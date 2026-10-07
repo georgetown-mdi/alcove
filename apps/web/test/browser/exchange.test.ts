@@ -17,6 +17,7 @@ import {
   decodeInvitation,
   describeResolvedMatching,
   getDefaultLinkageTerms,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import { minimalPreparedExchange } from "@alcove/core/testing";
 
@@ -2415,15 +2416,14 @@ describe("inviter screen", () => {
     );
     await createSealedInvitation();
     lifecycleCall(0).onStage("waiting for peer");
-    // The tagged expiry error core's guards raise (the tag marks its message
+    // The marked expiry error core's guards raise (the mark flags its message
     // as locally-composed recovery guidance, safe to show).
     lifecycleCall(0).onError({
       category: "security",
-      error: Object.assign(
+      error: markStatesItsOwnNextStep(
         new Error(
           "shared secret expired at 2026-07-08T19:32:00.000Z; obtain a new invitation",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
     });
 

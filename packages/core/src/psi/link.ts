@@ -77,6 +77,7 @@ import {
   ProtocolRefusalError,
   UsageError,
   ConnectionError,
+  markStatesItsOwnNextStep,
 } from "../errors";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
 import { receiveAfterTerms } from "../partnerAbortFrame";
@@ -1834,7 +1835,7 @@ function singlePassOverCapMessage(
 // so it names the two byte counts and withholds the dataset remedies, which
 // cannot move it. Raised as an InternalConsistencyError, whose
 // classification denotes the remedy: report it, rather than fix an input or
-// retry a transport. The message states that step, so its instance is tagged.
+// retry a transport. The message states that step, so its instance is marked.
 function singlePassReplyOverCapMessage(
   id: string,
   replyBytes: number,
@@ -2205,7 +2206,7 @@ export async function linkViaSinglePassPSI(
       receiverSize,
     );
     if (reply.byteLength > replyCap) {
-      throw Object.assign(
+      throw markStatesItsOwnNextStep(
         new InternalConsistencyError(
           singlePassReplyOverCapMessage(
             participant.id,
@@ -2213,7 +2214,6 @@ export async function linkViaSinglePassPSI(
             replyCap,
           ),
         ),
-        { alcoveRecoveryHintEmitted: true },
       );
     }
 

@@ -9,6 +9,7 @@ import {
 } from "../../src/exchange/signingChecks";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { ReceiptVerificationError } from "../../src/records/signedReceipt";
+import { statesItsOwnNextStep } from "../../src/errors";
 import {
   computeCertificateFingerprint,
   generateSigningIdentity,
@@ -619,9 +620,9 @@ describe("a run that does not sign in band presents no certificate", () => {
 });
 
 describe("every terms-time pin refusal states its own next step and condition", () => {
-  // Each of the five is raised with core's `alcoveRecoveryHintEmitted` tag,
+  // Each of the five is raised with core's `markStatesItsOwnNextStep` mark,
   // whose two-state convention is that an error holds it exactly when its
-  // message holds the step to take. What the tag buys is a display layer
+  // message holds the step to take. What the mark buys is a display layer
   // showing the refusal instead of fixed copy for its category -- the CLI's
   // stderr advisory, and the console seat's failed-partner-check alert, both
   // of which would misname a certificate that does not match the pin.
@@ -686,7 +687,7 @@ describe("every terms-time pin refusal states its own next step and condition", 
     },
   ];
 
-  test.each(refusals)("$label is raised tagged", async ({ resolution }) => {
+  test.each(refusals)("$label is raised marked", async ({ resolution }) => {
     const [conn] = createMessagePipe();
     const raised = await resolvePartnerCertificateOrAbort(
       conn,
@@ -698,11 +699,8 @@ describe("every terms-time pin refusal states its own next step and condition", 
       (reason: unknown) => reason,
     );
     expect(raised).toBeInstanceOf(ReceiptVerificationError);
-    expect(
-      (raised as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBe(true);
-    // The claim the tag makes: the message names what to do, not only what
+    expect(statesItsOwnNextStep(raised, { ownOnly: true })).toBe(true);
+    // The claim the mark makes: the message names what to do, not only what
     // went wrong. Every one of the five ends in an instruction.
     expect((raised as Error).message).toMatch(
       /Ask your partner |Confirm your partner's fingerprint/,
@@ -736,7 +734,7 @@ describe("every terms-time pin refusal states its own next step and condition", 
     },
   );
 
-  test("an adopted first contact raises nothing to tag", async () => {
+  test("an adopted first contact raises nothing to mark", async () => {
     const [conn] = createMessagePipe();
     const adopted = await resolvePartnerCertificateOrAbort(conn, {
       partnerCertificate: identityB.certificate,

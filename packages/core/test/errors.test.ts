@@ -20,6 +20,8 @@ import {
   markStatesItsOwnNextStep,
   statesItsOwnNextStep,
   RoundSetLimitError,
+  RoundCapacityError,
+  InvitationTermDivergenceError,
   ConnectionError,
 } from "../src/errors";
 import { MAX_ERROR_CAUSE_DEPTH } from "../src/failureAnnotation";
@@ -63,64 +65,61 @@ const countingCauseCycle = (): {
 };
 
 // These assertions guard the operator-facing-error audit: the terminal
-// transport/directory UsageError family holds a recovery-hint tag and a
+// transport/directory UsageError family holds a recovery-hint mark and a
 // concrete operator next step, so the CLI's hint-walker suppresses its
-// generic "retry without re-inviting" advisory. Each test pins the tag, the
+// generic "retry without re-inviting" advisory. Each test pins the mark, the
 // call site's own message on `.message`, and a stable fragment of the step
 // on its own cause link, plus the exit-64 classification (instanceof
 // UsageError) neither may disturb -- the link's own budget is measured in
 // test/connection/transportRefusalBudget.test.ts.
 describe("terminal transport/directory error taxonomy", () => {
-  test("FrameSizeExceededError tags the recovery hint and puts a next step on its own link", () => {
+  test("FrameSizeExceededError marks the recovery hint and puts a next step on its own link", () => {
     const err = new FrameSizeExceededError("inbound frame exceeds the cap");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("FrameSizeExceededError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("inbound frame exceeds the cap");
     expect(recoveryStepOf(err)).toContain("Confirm the shared folder");
     expect(recoveryStepOf(err)).toContain("contact your partner");
   });
 
-  test("DirectoryListingBoundsError tags the recovery hint and puts a next step on its own link", () => {
+  test("DirectoryListingBoundsError marks the recovery hint and puts a next step on its own link", () => {
     const err = new DirectoryListingBoundsError(
       "directory has too many entries",
     );
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("DirectoryListingBoundsError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("directory has too many entries");
     expect(recoveryStepOf(err)).toContain(
       "Confirm the shared folder is dedicated to a single exchange",
     );
   });
 
-  test("TransportOperationStalledError tags the recovery hint and puts a next step on its own link", () => {
+  test("TransportOperationStalledError marks the recovery hint and puts a next step on its own link", () => {
     const err = new TransportOperationStalledError("SFTP read stalled");
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("TransportOperationStalledError");
-    expect(err.alcoveRecoveryHintEmitted).toBe(true);
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(true);
     expect(err.message).toBe("SFTP read stalled");
     expect(recoveryStepOf(err)).toContain("then retry");
   });
 });
 
 describe("errors left without a recovery hint", () => {
-  test("BilateralModeMismatchError stays untagged and leaves its message intact", () => {
+  test("BilateralModeMismatchError stays unmarked and leaves its message intact", () => {
     // A terminal UsageError that holds its fix in the call-site message ("both
     // parties must use the same setting"), so the constructor appends nothing.
-    // It is not tagged, by design: the tag only suppresses the post-handshake
+    // It is not marked, by design: the mark only suppresses the post-handshake
     // generic advisory, and a mismatch is detected pre-handshake where that
-    // advisory never fires, so a tag would suppress nothing.
+    // advisory never fires, so a mark would suppress nothing.
     const message =
       "retain_files mismatch: this party has retain_files=true but the peer " +
       "has retain_files=false; both parties must use the same setting";
     const err = new BilateralModeMismatchError(message);
     expect(err).toBeInstanceOf(UsageError);
     expect(err.name).toBe("BilateralModeMismatchError");
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
     expect(err.message).toBe(message);
   });
 
@@ -131,10 +130,7 @@ describe("errors left without a recovery hint", () => {
     const err = new ConnectionClosedError();
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UsageError);
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
@@ -149,22 +145,19 @@ describe("the internal fault's recovery hint", () => {
     expect(err).toBeInstanceOf(Error);
     expect(err).not.toBeInstanceOf(UsageError);
     expect(err.name).toBe("InternalConsistencyError");
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
 describe("errors whose recovery hint is per instance, not per class", () => {
-  test("TransportPublishIndeterminateError sets no class-level tag and is not a UsageError", () => {
+  test("TransportPublishIndeterminateError sets no class-level mark and is not a UsageError", () => {
     // Not a UsageError, which the poll loop treats as terminal; what that
     // distinction buys is measured in fileSyncConnection.test.ts, not argued
-    // here. The tag is absent from the CLASS because a transport raises this
+    // here. The mark is absent from the CLASS because a transport raises this
     // for several publishes at once -- a message, an ack, a rendezvous hello,
     // an abort marker -- which share no recovery, so the transport's own
     // instance holds no next step and suppresses nothing. The one caller
-    // whose recovery is established re-raises the class tagged and holding
+    // whose recovery is established re-raises the class marked and holding
     // it; that instance is pinned in fileSyncMessageLoop.test.ts.
     const cause = new Error("_rename: No such file or directory");
     const err = new TransportPublishIndeterminateError("publish torn", {
@@ -174,10 +167,7 @@ describe("errors whose recovery hint is per instance, not per class", () => {
     expect(err).not.toBeInstanceOf(UsageError);
     expect(err.name).toBe("TransportPublishIndeterminateError");
     expect(err.cause).toBe(cause);
-    expect(
-      (err as { alcoveRecoveryHintEmitted?: unknown })
-        .alcoveRecoveryHintEmitted,
-    ).toBeUndefined();
+    expect(statesItsOwnNextStep(err, { ownOnly: true })).toBe(false);
   });
 });
 
@@ -364,30 +354,44 @@ describe("statesItsOwnNextStep", () => {
     );
   });
 
-  test("reads the alcoveRecoveryHintEmitted property alongside the mark", () => {
-    const tagged = Object.assign(new Error("expired"), {
+  test("reads no property of the error, only the mark", () => {
+    const withProperty = Object.assign(new Error("expired"), {
       alcoveRecoveryHintEmitted: true,
     });
-    const wrapped = new Error("the run failed", { cause: tagged });
-    expect(statesItsOwnNextStep(tagged)).toBe(true);
-    expect(statesItsOwnNextStep(wrapped)).toBe(true);
-    expect(statesItsOwnNextStep(wrapped, { ownOnly: true })).toBe(false);
+    expect(statesItsOwnNextStep(withProperty)).toBe(false);
+    expect(
+      statesItsOwnNextStep(
+        new Error("the run failed", { cause: withProperty }),
+      ),
+    ).toBe(false);
     expect(statesItsOwnNextStep(new Error("plain"))).toBe(false);
     expect(statesItsOwnNextStep(undefined)).toBe(false);
   });
 
-  test("reads both the mark and the property to the same depth", () => {
+  test("reads the mark to the cause-chain depth bound", () => {
     const marked = markStatesItsOwnNextStep(new Error("save failed"));
-    const tagged = Object.assign(new Error("expired"), {
-      alcoveRecoveryHintEmitted: true,
-    });
-    for (const inner of [marked, tagged]) {
-      expect(
-        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH, inner)),
-      ).toBe(true);
-      expect(
-        statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, inner)),
-      ).toBe(false);
+    expect(statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH, marked))).toBe(
+      true,
+    );
+    expect(
+      statesItsOwnNextStep(wrappedIn(MAX_ERROR_CAUSE_DEPTH + 1, marked)),
+    ).toBe(false);
+  });
+
+  test("each class stating its own next step is marked, with no own property", () => {
+    const classMarked = [
+      new InvitationTermDivergenceError("refused"),
+      new RoundSetLimitError("too many", "over-set-maximum"),
+      new RoundCapacityError("too many", "terms-exchange"),
+      new FrameSizeExceededError("too large"),
+      new DirectoryListingBoundsError("too many entries"),
+      new TransportOperationStalledError("stalled"),
+    ];
+    for (const err of classMarked) {
+      expect(statesItsOwnNextStep(err, { ownOnly: true }), err.name).toBe(true);
+      expect(Object.keys(err), err.name).not.toContain(
+        "alcoveRecoveryHintEmitted",
+      );
     }
   });
 

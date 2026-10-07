@@ -5,8 +5,10 @@ import { Peer } from "peerjs";
 
 import {
   ConnectionError,
+  InternalConsistencyError,
   MAX_WEBRTC_FRAME_BYTES,
   MAX_WEBRTC_STRING_BYTES,
+  classifyFailure,
 } from "@alcove/core";
 
 import { MAX_CSV_FILE_BYTES } from "@components/csvIntake";
@@ -48,21 +50,39 @@ function concatSlices(slices: Array<Uint8Array>): Uint8Array {
  * is the completion recursion this guard depends on: `_handleChunk` accumulates
  * slices keyed by message id (storing the chunk total from the first chunk) and,
  * on completion, concatenates and recurses into `_handleDataMessage`, the unpack
- * point. `delivered` records each frame that reached it (i.e. was not refused).
+ * point the guard replaces. `delivered` records each decoded frame the guard
+ * handed to the `data` listeners (i.e. did not refuse), after `onData` runs.
  */
 class FakeChunkedConnection {
   _chunkedData: Record<
     number,
     { data: Array<Uint8Array>; count: number; total: number }
   > = {};
-  delivered: Array<Uint8Array> = [];
+  delivered: Array<unknown> = [];
   /** Chunks that reached PeerJS's handler, where it runs
    * `new Uint8Array(chunk.data)`: a refused chunk must leave this unchanged. */
   handledChunks = 0;
+  closes = 0;
+  /** A `data` listener of the test's own, run before the frame is recorded. */
+  onData: (value: unknown) => void = () => {};
+  onClose: () => void = () => {};
 
-  _handleDataMessage = (message: { data: Uint8Array }): void => {
-    this.delivered.push(message.data);
+  _handleDataMessage = (_message: { data: Uint8Array }): void => {
+    throw new Error("the guard replaces _handleDataMessage");
   };
+
+  emit(event: string, value: unknown): boolean {
+    if (event === "data") {
+      this.onData(value);
+      this.delivered.push(value);
+    }
+    return true;
+  }
+
+  close(): void {
+    this.closes++;
+    this.onClose();
+  }
 
   _handleChunk = (chunk: Chunk): void => {
     this.handledChunks++;
@@ -485,6 +505,35 @@ describe("boundChunkReassembly: chunk envelope shape", () => {
     expect(conn.handledChunks).toBe(1);
   });
 
+  test("reports a data listener's throw on a reassembled frame as itself, not as a reassembly failure", () => {
+    const conn = new FakeChunkedConnection();
+    const listenerFault = new InternalConsistencyError("a listener fault");
+    conn.onData = () => {
+      throw listenerFault;
+    };
+    const fail = install(conn);
+
+    conn._handleChunk({
+      __peerData: 1,
+      n: 0,
+      total: 2,
+      data: new Uint8Array([0x92, 0x01]),
+    });
+    conn._handleChunk({
+      __peerData: 1,
+      n: 1,
+      total: 2,
+      data: new Uint8Array([0x02]),
+    });
+
+    expect(fail).toHaveBeenCalledTimes(1);
+    const err = fail.mock.calls[0][0] as ConnectionError;
+    expect(err.kind).toBe("transport");
+    expect(err.cause).toBe(listenerFault);
+    expect(classifyFailure(err)).toBe("internal-fault");
+    expect(conn.partialCount).toBe(0);
+  });
+
   test.each([
     ["typed-array view", new Uint8Array(0)],
     ["ArrayBuffer", new ArrayBuffer(0)],
@@ -516,6 +565,154 @@ describe("boundChunkReassembly: chunk envelope shape", () => {
     expect(fail).not.toHaveBeenCalled();
     expect(conn.handledChunks).toBe(1);
   });
+});
+
+describe("boundChunkReassembly: decoding and dispatch", () => {
+  function packed(value: unknown): Uint8Array {
+    const bytes = pack(value as never);
+    if (bytes instanceof Promise) throw new Error("packed asynchronously");
+    return new Uint8Array(bytes);
+  }
+
+  test("delivers a decoded frame to the data listeners", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn);
+
+    conn._handleDataMessage({ data: packed({ step: "hello", n: 2 }) });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.delivered).toEqual([{ step: "hello", n: 2 }]);
+  });
+
+  test("refuses a frame the unpacker throws on as one that could not be decoded", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn);
+
+    // A str32 declaring five bytes with one behind it: the scan admits the read
+    // past the end, and BinaryPack's unpack throws on it.
+    conn._handleDataMessage({
+      data: new Uint8Array([0xd9, 0x00, 0x00, 0x00, 0x05, 0x61]),
+    });
+
+    expect(fail).toHaveBeenCalledTimes(1);
+    const err = fail.mock.calls[0][0] as ConnectionError;
+    expect(err.kind).toBe("protocol");
+    expect(err.message).toBe(
+      "the peer sent a malformed WebRTC frame: its BinaryPack body could not " +
+        "be decoded",
+    );
+    expect(conn.delivered).toEqual([]);
+  });
+
+  test.each([
+    ["a plain error", new TypeError("a listener bug"), "unavailable"],
+    [
+      "an internal fault",
+      new InternalConsistencyError("a listener fault"),
+      "internal-fault",
+    ],
+  ] as const)(
+    "fails the connection with a data listener's throw of %s as itself, not as an undecodable frame",
+    (_label, thrown, failureClass) => {
+      const conn = new FakeChunkedConnection();
+      conn.onData = () => {
+        throw thrown;
+      };
+      const fail = install(conn);
+
+      conn._handleDataMessage({ data: packed([1, 2]) });
+      conn._handleDataMessage({ data: packed([3, 4]) });
+
+      expect(fail).toHaveBeenCalledTimes(1);
+      const err = fail.mock.calls[0][0] as ConnectionError;
+      expect(err.kind).toBe("transport");
+      expect(err.cause).toBe(thrown);
+      expect(err.message).not.toContain("malformed");
+      expect(classifyFailure(err)).toBe(failureClass);
+    },
+  );
+
+  test("passes a listener's own ConnectionError through unchanged", () => {
+    const conn = new FakeChunkedConnection();
+    const refusal = new ConnectionError(
+      "the frame is out of order",
+      "security",
+    );
+    conn.onData = () => {
+      throw refusal;
+    };
+    const fail = install(conn);
+
+    conn._handleDataMessage({ data: packed([1]) });
+
+    expect(fail).toHaveBeenCalledWith(refusal);
+  });
+
+  test("closes the connection on the in-band close sentinel and delivers nothing", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn);
+
+    conn._handleDataMessage({
+      data: packed({ __peerData: { type: "close" } }),
+    });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.closes).toBe(1);
+    expect(conn.delivered).toEqual([]);
+  });
+
+  test("reports a throw from the close as itself, not as an undecodable frame", () => {
+    const conn = new FakeChunkedConnection();
+    const closeFault = new TypeError("close failed");
+    conn.onClose = () => {
+      throw closeFault;
+    };
+    const fail = install(conn);
+
+    conn._handleDataMessage({
+      data: packed({ __peerData: { type: "close" } }),
+    });
+
+    expect(fail).toHaveBeenCalledTimes(1);
+    const err = fail.mock.calls[0][0] as ConnectionError;
+    expect(err.kind).toBe("transport");
+    expect(err.cause).toBe(closeFault);
+  });
+
+  test("routes a decoded chunk envelope to reassembly", () => {
+    const conn = new FakeChunkedConnection();
+    const fail = install(conn);
+
+    conn._handleDataMessage({
+      data: packed({
+        __peerData: 7,
+        n: 0,
+        data: new Uint8Array([1, 2]),
+        total: 2,
+      }),
+    });
+
+    expect(fail).not.toHaveBeenCalled();
+    expect(conn.handledChunks).toBe(1);
+    expect(conn.partialCount).toBe(1);
+    expect(conn.delivered).toEqual([]);
+  });
+
+  test.each([
+    ["null", [0xc0], null],
+    ["undefined", [0xc1], undefined],
+  ] as const)(
+    "delivers a frame that decodes to %s, as the CLI's receive path does",
+    (_label, bytes, value) => {
+      const conn = new FakeChunkedConnection();
+      const fail = install(conn);
+
+      conn._handleDataMessage({ data: new Uint8Array(bytes) });
+
+      expect(fail).not.toHaveBeenCalled();
+      expect(conn.delivered).toEqual([value]);
+    },
+  );
 });
 
 describe("boundChunkReassembly: deserialized-structure bound at the unpack chokepoint", () => {
@@ -689,8 +886,8 @@ describe("boundChunkReassembly: deserialized-structure bound at the unpack choke
  * A connection whose `_handleChunk` is the installed PeerJS binary
  * connection's own method. The class is not exported, so it is read from a
  * `Peer`'s serializer table; in Node the `Peer` aborts as browser-incompatible
- * before opening its server socket. `_handleDataMessage` records the frames
- * the reassembler completes instead of unpacking them.
+ * before opening its server socket. `emit` records each decoded frame the
+ * guard delivers.
  */
 function realPeerJsReassembler() {
   const peer = new Peer("reassembly-probe", {
@@ -708,12 +905,13 @@ function realPeerJsReassembler() {
   const conn = Object.create(binaryConnection.prototype) as {
     _chunkedData: Record<number, unknown>;
     _handleChunk: (chunk: unknown) => void;
-    _handleDataMessage: (message: { data: Uint8Array }) => void;
+    emit: (event: string, value: unknown) => boolean;
   };
-  const delivered: Array<Uint8Array> = [];
+  const delivered: Array<unknown> = [];
   conn._chunkedData = {};
-  conn._handleDataMessage = (message) => {
-    delivered.push(message.data);
+  conn.emit = (event, value) => {
+    if (event === "data") delivered.push(value);
+    return true;
   };
   const fail = vi.fn();
   boundChunkReassembly(conn as unknown as DataConnection, fail);
@@ -726,11 +924,14 @@ describe("boundChunkReassembly over the real PeerJS reassembler", () => {
   test("reassembles a frame whose chunks arrive out of order", () => {
     const { conn, delivered, fail } = realPeerJsReassembler();
 
-    conn._handleChunk({ __peerData: 1, n: 1, total: 2, data: slice(2) });
-    conn._handleChunk({ __peerData: 1, n: 0, total: 2, data: slice(1) });
+    // A fixarray of three fixints, cut after its first element.
+    const head = new Uint8Array([0x93, 0x01]);
+    const tail = new Uint8Array([0x02, 0x03]);
+    conn._handleChunk({ __peerData: 1, n: 1, total: 2, data: tail });
+    conn._handleChunk({ __peerData: 1, n: 0, total: 2, data: head });
 
     expect(fail).not.toHaveBeenCalled();
-    expect(delivered).toEqual([new Uint8Array([1, 1, 2, 2])]);
+    expect(delivered).toEqual([[1, 2, 3]]);
     expect(conn._chunkedData).toEqual({});
   });
 

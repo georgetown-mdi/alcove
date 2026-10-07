@@ -265,10 +265,10 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
  * Re-map a run failure caused by the bound lapsing MID-RUN -- after the
  * pre-connection expiry check passed but before the handshake completed -- to
  * the benign {@link ManagedExchangeExpiredError}, or `undefined` when the
- * failure is not that case. Core's expiry guards throw errors tagged
- * `alcoveRecoveryHintEmitted` (the tag survives the security re-wrap; see
+ * failure is not that case. Core's expiry guards throw errors marked as
+ * stating their own next step (the mark survives the security re-wrap; see
  * {@link hasRecoveryHint}); the re-map additionally requires the record's bound
- * has in fact lapsed by `now`, since the tag alone also covers a
+ * has in fact lapsed by `now`, since the mark alone also covers a
  * malformed-secret error (which cannot arise here: a stored secret is
  * regex-validated on every read).
  *
@@ -277,7 +277,7 @@ export async function runManagedRerun<TInput, THandshake, TExchange>(
  * lapsing during a long run as readily as with a real expiry, and re-mapping it
  * would report a defect in Alcove as a benign expiry that a fresh invitation
  * cannot fix. A set too large to send ({@link isSetTooLargeError}) is excluded
- * the same way: it holds the tag too, and a fresh invitation leaves the set it
+ * the same way: it holds the mark too, and a fresh invitation leaves the set it
  * refused as large. So is a partner's set too large for this browser
  * ({@link RoundCapacityError}), for the same reason.
  */

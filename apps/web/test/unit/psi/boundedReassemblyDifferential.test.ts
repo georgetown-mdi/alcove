@@ -98,20 +98,29 @@ function concatSlices(slices: Array<Uint8Array>): Uint8Array {
  * A test double for the PeerJS binary connection's reassembly/unpack surface,
  * reassembling exactly as real PeerJS does (accumulate slices keyed by message id,
  * store the total from the first chunk, and on completion concatenate and recurse
- * into `_handleDataMessage`). `_handleDataMessage` records the delivered wire bytes
- * so the differential can `unpack` them and compare against the real unpacker's
- * result on the original frame.
+ * into `_handleDataMessage`, which the guard replaces). `reassembled` records the
+ * wire bytes each completion hands on, and `delivered` each value the guard
+ * decoded from them, so the differential can compare both against the real
+ * unpacker's result on the original frame.
  */
 class FakeChunkedConnection {
   _chunkedData: Record<
     number,
     { data: Array<Uint8Array>; count: number; total: number }
   > = {};
-  delivered: Array<Uint8Array> = [];
+  reassembled: Array<Uint8Array> = [];
+  delivered: Array<unknown> = [];
 
-  _handleDataMessage = (message: { data: Uint8Array }): void => {
-    this.delivered.push(message.data);
+  _handleDataMessage = (_message: { data: Uint8Array }): void => {
+    throw new Error("the guard replaces _handleDataMessage");
   };
+
+  emit(event: string, value: unknown): boolean {
+    if (event === "data") this.delivered.push(value);
+    return true;
+  }
+
+  close(): void {}
 
   _handleChunk = (chunk: Chunk): void => {
     const id = chunk.__peerData;
@@ -125,7 +134,9 @@ class FakeChunkedConnection {
     this._chunkedData[id] = info;
     if (info.count === info.total) {
       delete this._chunkedData[id];
-      this._handleDataMessage({ data: concatSlices(info.data) });
+      const frame = concatSlices(info.data);
+      this.reassembled.push(frame);
+      this._handleDataMessage({ data: frame });
     }
   };
 }
@@ -424,13 +435,12 @@ describe("boundedReassembly differential: real peerjs-js-binarypack", () => {
           `${label}: not delivered exactly once`,
         ).toHaveLength(1);
 
-        const delivered = conn.delivered[0];
         expect(
-          Array.from(delivered),
+          Array.from(conn.reassembled[0]),
           `${label}: reassembled bytes diverge from the packed frame`,
         ).toEqual(Array.from(packed));
 
-        const reassembledValue = normalizeBinary(unpackFrame(delivered));
+        const reassembledValue = normalizeBinary(conn.delivered[0]);
         const referenceValue = normalizeBinary(unpackFrame(packed));
         expect(
           reassembledValue,
@@ -459,8 +469,8 @@ describe("boundedReassembly differential: real peerjs-js-binarypack", () => {
 
     expect(fail).not.toHaveBeenCalled();
     expect(conn.delivered).toHaveLength(1);
-    expect(Array.from(conn.delivered[0])).toEqual(Array.from(packed));
-    expect(unpackFrame(conn.delivered[0])).toEqual(unpackFrame(packed));
+    expect(Array.from(conn.reassembled[0])).toEqual(Array.from(packed));
+    expect(conn.delivered[0]).toEqual(unpackFrame(packed));
   });
 
   test("splits at every byte boundary without changing the outcome", async () => {
@@ -489,13 +499,12 @@ describe("boundedReassembly differential: real peerjs-js-binarypack", () => {
       ).not.toHaveBeenCalled();
       expect(conn.delivered, `mtu=${mtu}: not delivered once`).toHaveLength(1);
       expect(
-        Array.from(conn.delivered[0]),
+        Array.from(conn.reassembled[0]),
         `mtu=${mtu}: reassembled bytes diverge`,
       ).toEqual(Array.from(packed));
-      expect(
-        unpackFrame(conn.delivered[0]),
-        `mtu=${mtu}: unpacks differently`,
-      ).toEqual(reference);
+      expect(conn.delivered[0], `mtu=${mtu}: unpacks differently`).toEqual(
+        reference,
+      );
     }
   });
 });
@@ -577,7 +586,7 @@ describe("boundedReassembly on the shapes the wire size understates", () => {
 
     expect(fail).not.toHaveBeenCalled();
     expect(conn.delivered).toHaveLength(1);
-    expect(unpackFrame(conn.delivered[0])).toHaveLength(700_000);
+    expect(conn.delivered[0]).toHaveLength(700_000);
   });
 
   test("delivers a frame of declared bin/raw views far under the wire cap", async () => {
@@ -596,7 +605,7 @@ describe("boundedReassembly on the shapes the wire size understates", () => {
     expect(fail).not.toHaveBeenCalled();
     expect(conn.delivered).toHaveLength(1);
 
-    const decoded = unpackFrame(conn.delivered[0]) as Array<unknown>;
+    const decoded = conn.delivered[0] as Array<unknown>;
     expect(decoded).toHaveLength(count);
     expect(ArrayBuffer.isView(decoded[0])).toBe(true);
   });

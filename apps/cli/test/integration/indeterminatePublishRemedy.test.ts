@@ -49,7 +49,7 @@ const INITIAL_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 // default.
 const PEER_TIMEOUT_MS = 45_000;
 
-// The advisory runProtocol emits for an untagged post-handshake failure. It
+// The advisory runProtocol emits for an unmarked post-handshake failure. It
 // prescribes a plain retry, which the retry attempt below measures against this
 // condition, so the failing attempt must not print it.
 const GENERIC_RETRY_ADVISORY = "Retry the exchange with the same key file";
@@ -274,7 +274,7 @@ inProcessOnly(
       expect(first.logs.join("\n")).not.toContain(GENERIC_RETRY_ADVISORY);
 
       // The remedy reaches the operator whole. Asserted at the rendering
-      // boundary, which caps each link of the cause chain: the tag above is what
+      // boundary, which caps each link of the cause chain: the mark above is what
       // makes this the only next step printed, so a remedy falling past the cap
       // would leave no next step at all.
       const [publishLink, ...causeLinks] =

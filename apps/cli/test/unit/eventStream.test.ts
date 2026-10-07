@@ -20,6 +20,7 @@ import {
   assertLocalCertificateAuthorizesAgreedIdentity,
   assertSigningModeImplemented,
   renderedDisplayCost,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import type { Displayable } from "@alcove/core";
 
@@ -565,22 +566,19 @@ test("marks a terminal error that states its own next step", () => {
   // copy for the first.
   const nonOracular = new ConnectionError("wrong secret", "security");
   expect(buildErrorEvent(nonOracular, "run").recoveryHint).toBeUndefined();
-  const selfExplaining = Object.assign(
+  const selfExplaining = markStatesItsOwnNextStep(
     new ConnectionError(
       "the partner's certificate is not the pinned one; " +
         "confirm the fingerprint out-of-band",
       "security",
     ),
-    { alcoveRecoveryHintEmitted: true },
   );
   expect(buildErrorEvent(selfExplaining, "run").recoveryHint).toBe(true);
 });
 
 test("the marker survives a wrap, since the wrapped message still states it", () => {
   const wrapped = new Error("the exchange stopped", {
-    cause: Object.assign(new Error("re-share an identity"), {
-      alcoveRecoveryHintEmitted: true,
-    }),
+    cause: markStatesItsOwnNextStep(new Error("re-share an identity")),
   });
   expect(buildErrorEvent(wrapped, "run").recoveryHint).toBe(true);
 });
@@ -609,12 +607,11 @@ test("an internal fault with a bare message gets one next step, marked", () => {
 });
 
 test("an internal fault whose message states its step gets no second one", () => {
-  const selfExplaining = Object.assign(
+  const selfExplaining = markStatesItsOwnNextStep(
     new InternalConsistencyError(
       "server: the reply outgrew the cap. The exchange cannot proceed; " +
         "report it with this message.",
     ),
-    { alcoveRecoveryHintEmitted: true },
   );
   const event = buildErrorEvent(selfExplaining, "run");
   expect(event.recoveryHint).toBe(true);
@@ -635,9 +632,8 @@ test.each([
   },
   {
     failure: "an internal fault that states its own step",
-    err: Object.assign(
+    err: markStatesItsOwnNextStep(
       new InternalConsistencyError("the reply outgrew the cap; report it."),
-      { alcoveRecoveryHintEmitted: true },
     ),
   },
 ])("$failure exits 70 and is marked an internal fault", ({ err }) => {

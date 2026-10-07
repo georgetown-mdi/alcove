@@ -2109,7 +2109,7 @@ export async function runProtocol(
     // it contradicts. Marked wherever that holds: the saveKeyFile-failure
     // path below, authenticateConnection's own validation errors (token
     // format, pre- and post-handshake expiry -- see auth.ts), and core's
-    // terminal transport refusals. For an untagged internal fault or
+    // terminal transport refusals. For an unmarked internal fault or
     // partner refusal the command boundary shows its fixed step
     // (fixedNextStep), which rules out a retry, so that step replaces the
     // post-rotation lines, both of which prescribe one. The authStarted

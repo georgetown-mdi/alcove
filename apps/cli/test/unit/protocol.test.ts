@@ -134,7 +134,7 @@ async function waitForBothKeysRotated(
 }
 
 // Assert none of runProtocol's generic recovery-advisory lines was logged. A
-// tagged (alcoveRecoveryHintEmitted) error must suppress each, since each would
+// marked (markStatesItsOwnNextStep) error must suppress each, since each would
 // contradict the error's own specific hint.
 function expectNoGenericRecoveryAdvisory(errors: readonly string[]): void {
   expect(errors.every((m) => !m.includes("key exchange was in progress"))).toBe(
@@ -384,6 +384,7 @@ import {
   RoundSetLimitError,
   AGREED_TERMS_VERSION,
   parseAgreedTerms,
+  markStatesItsOwnNextStep,
 } from "@alcove/core";
 import {
   AEAD_ENVELOPE_VERSION,
@@ -2345,12 +2346,12 @@ test("caveats a count-only count the partner reported rather than computed", asy
 
 // --- Expired token via runProtocol -------------------------------------------
 
-test("runProtocol rejects an expired token without rotating, and the tagged recovery hint suppresses the generic catch advisory", async () => {
+test("runProtocol rejects an expired token without rotating, and the marked recovery hint suppresses the generic catch advisory", async () => {
   // runProtocol checks the pre-handshake expiry
   // (assertSharedSecretReadyForHandshake) before opening any connection, so
   // each party trips the same check independently with no rendezvous I/O and
   // both reject deterministically with the "expired" hint. The error holds
-  // `alcoveRecoveryHintEmitted: true` (set in auth.ts), so the runProtocol
+  // the markStatesItsOwnNextStep mark (set in auth.ts), so the runProtocol
   // catch must NOT log either generic advisory line - both would contradict
   // the specific "obtain a new invitation" message. Also verifies no token
   // rotation occurred: key file contents are unchanged after the failure.
@@ -2409,7 +2410,7 @@ test("runProtocol rejects an expired token without rotating, and the tagged reco
   );
 
   // Neither generic advisory line in runProtocol's catch must fire: both
-  // would contradict the tagged "obtain a new invitation" recovery hint.
+  // would contradict the marked "obtain a new invitation" recovery hint.
   expectNoGenericRecoveryAdvisory(mockState.errors);
 
   // Token must remain unchanged on both sides.
@@ -2456,7 +2457,7 @@ test("runProtocol rejects an already-expired token before opening any connection
 
   // The rendezvous was never entered: nothing was written to the drop directory.
   expect(fs.readdirSync(dropDir)).toEqual([]);
-  // The tagged hint means runProtocol emits neither generic catch advisory, and
+  // The marked hint means runProtocol emits neither generic catch advisory, and
   // the credential is left untouched (no rotation on a pre-connect failure).
   expectNoGenericRecoveryAdvisory(mockState.errors);
   expect(loadKeyFile(keyFile)?.sharedSecret).toBe(TOKEN_A);
@@ -4955,12 +4956,12 @@ test(
 // transport error after the key exchange has rotated the secret, exercising the catch block
 // in runProtocol that logs the recovery hint.
 
-test("runProtocol suppresses the generic advisory when a tagged error is wrapped via `cause`", async () => {
-  // The `alcoveRecoveryHintEmitted` tag is sometimes attached to an inner
+test("runProtocol suppresses the generic advisory when a marked error is wrapped via `cause`", async () => {
+  // The markStatesItsOwnNextStep mark is sometimes attached to an inner
   // error that a later catch wraps with `new Error(..., { cause: innerErr })`.
   // The runProtocol catch walks the cause chain so the wrap does not lose the
   // suppression. This test simulates that wrap by having runExchange throw a
-  // wrapped error whose `cause` holds the tag.
+  // wrapped error whose `cause` holds the mark.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -4968,9 +4969,7 @@ test("runProtocol suppresses the generic advisory when a tagged error is wrapped
 
   async function waitForRotationThenThrowWrapped(): Promise<never> {
     await waitForBothKeysRotated(keyFileA, keyFileB);
-    const inner = Object.assign(new Error("inner tagged failure"), {
-      alcoveRecoveryHintEmitted: true,
-    });
+    const inner = markStatesItsOwnNextStep(new Error("inner tagged failure"));
     throw new Error(`outer wrap: ${inner.message}`, { cause: inner });
   }
   vi.mocked(runExchange)
@@ -5006,7 +5005,7 @@ test("runProtocol suppresses the generic advisory when a tagged error is wrapped
   expect(resultA.status).toBe("rejected");
   expect(resultB.status).toBe("rejected");
 
-  // Neither generic advisory should fire: the tag is on the inner error,
+  // Neither generic advisory should fire: the mark is on the inner error,
   // not the outer wrap, but the cause walker finds it anyway.
   expectNoGenericRecoveryAdvisory(mockState.errors);
 }, 20_000);
@@ -5081,9 +5080,9 @@ test("runProtocol suppresses the generic advisory for a terminal FrameSizeExceed
   // reaches the catch with tokenRotated=true, where the generic "retry without
   // re-inviting" advisory would otherwise fire and contradict the error's own
   // terminal refusal. FrameSizeExceededError has a class-level
-  // alcoveRecoveryHintEmitted tag, so the hint-walker must suppress the generic
-  // advisory -- this pins that the class tag is honored end to end, not just the
-  // Object.assign tags the other tests cover.
+  // markStatesItsOwnNextStep mark, so the hint-walker must suppress the generic
+  // advisory -- this pins that the class-level mark is honored end to end, not
+  // just the per-instance marks the other tests cover.
   const keyFileA = path.join(tmpDir, "a.key");
   const keyFileB = path.join(tmpDir, "b.key");
   saveKeyFile(keyFileA, { sharedSecret: TOKEN_A });
@@ -5126,7 +5125,7 @@ test("runProtocol suppresses the generic advisory for a terminal FrameSizeExceed
   expect(resultA.status).toBe("rejected");
   expect(resultB.status).toBe("rejected");
 
-  // The terminal error's class tag suppresses both generic advisory lines.
+  // The terminal error's class mark suppresses both generic advisory lines.
   expectNoGenericRecoveryAdvisory(mockState.errors);
 }, 20_000);
 
@@ -5134,13 +5133,12 @@ test.each([
   {
     fault: "the reply-cap check, whose message states its step",
     raise: () =>
-      Object.assign(
+      markStatesItsOwnNextStep(
         new InternalConsistencyError(
           "server: single-pass built a reply of 4096 byte(s), above the 2048 " +
             "byte(s) both parties derive from their declared sizes. The " +
             "exchange cannot proceed; report it with this message.",
         ),
-        { alcoveRecoveryHintEmitted: true },
       ),
   },
   {
@@ -5582,7 +5580,7 @@ test.skipIf(process.platform === "win32")(
     // but the updated token could not be saved...". The generic authStarted
     // advisory ("the partner may have already derived...while this side did
     // not") contradicts this: it understates a definite local rotation. The
-    // wrapped error sets `alcoveRecoveryHintEmitted: true` to suppress it.
+    // wrapped error is marked with markStatesItsOwnNextStep to suppress it.
     //
     // To force saveKeyFile to fail AFTER the key exchange rotates (not at the
     // pre-flight in runProtocol), this uses a keyFilePath pre-flight accepts (a
@@ -6997,7 +6995,7 @@ test("an expired shared secret under --event-stream emits exactly one terminal e
   // The expired-secret rejection (assertSharedSecretReadyForHandshake) fires in
   // the pre-connection prepare block, BEFORE the main try whose catch is the
   // other emission site; this pins that the prepare block's own catch emits the
-  // terminal event for it. The error is a plain tagged Error (not an
+  // terminal event for it. The error is a plain marked Error (not an
   // OperatorConfigError, not a security-kind ConnectionError), so the category
   // is "exchange" per the classification rules.
   mockFd3Open();

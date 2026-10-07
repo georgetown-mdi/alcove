@@ -1,4 +1,4 @@
-import { OperatorConfigError } from "../errors.js";
+import { OperatorConfigError, markStatesItsOwnNextStep } from "../errors.js";
 import { reasonTermsCannotStateIdentity } from "../config/linkageTermsSchema.js";
 import { partnerPinIsPresent } from "../config/signing.js";
 import { sendAbort } from "../protocolSetup.js";
@@ -349,15 +349,15 @@ export type PartnerCertificateRefusalKind = PartnerCertificateConditionKey<
 
 /**
  * Send the partner the abort `condition` calls for and return the refusal to
- * raise for it, tagged `alcoveRecoveryHintEmitted` per instance on the
+ * raise for it, marked {@link markStatesItsOwnNextStep} per instance on the
  * convention `TransportPublishIndeterminateError` (`./errors.ts`) states: an
- * error is tagged exactly when it holds its own next step, and each of these
- * messages ends in one. The tag suppresses the CLI's generic advisory and lets
+ * error is marked exactly when it holds its own next step, and each of these
+ * messages ends in one. The mark suppresses the CLI's generic advisory and lets
  * a display layer show the message instead of fixed copy -- which is what
  * keeps a divergent pin from being reported as an ordinary failed partner
  * check.
  *
- * The tag is per instance rather than on {@link ReceiptVerificationError}: the
+ * The mark is per instance rather than on {@link ReceiptVerificationError}: the
  * receipt step raises that class for a signature that does not verify too, and
  * that message prescribes no step of its own.
  *
@@ -379,9 +379,7 @@ async function refusePartnerCertificate(
   const { abortReason, message } = PARTNER_CERTIFICATE_REFUSALS[condition];
   await sendAbort(conn, [abortReason]);
   return withPartnerCertificateCondition(
-    Object.assign(new ReceiptVerificationError(message), {
-      alcoveRecoveryHintEmitted: true,
-    }),
+    markStatesItsOwnNextStep(new ReceiptVerificationError(message)),
     condition,
   );
 }

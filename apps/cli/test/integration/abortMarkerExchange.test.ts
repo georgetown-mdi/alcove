@@ -250,7 +250,7 @@ function expectFastPeerAbort(outcome: AbortScenarioOutcome): void {
   // Exactly one intended WARN/ERROR fired: the faulting party's recovery
   // advisory (its token rotated before the synthetic fault, so it tells the
   // operator to retry without re-inviting). The waiting peer's PeerAbortError is
-  // hint-tagged and emits none. Asserting the captured set proves intent and
+  // hint-marked and emits none. Asserting the captured set proves intent and
   // guards against a different, genuine error slipping through unsuppressed.
   expect(outcome.capturedLogs).toHaveLength(1);
   expect(outcome.capturedLogs[0]).toContain(
