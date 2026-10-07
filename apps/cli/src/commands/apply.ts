@@ -483,7 +483,6 @@ export async function handler(argv: Arguments): Promise<void> {
 
       const consentSurface = consentSurfaceSink({
         log,
-        logFile,
         toPromptStream: !consentToTerms,
       });
       displayChanges(consentSurface, configPath, changes);

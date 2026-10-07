@@ -60,35 +60,29 @@ export type ConsentSurfaceLevel = "info" | "warn";
  *
  * When `toPromptStream`, every line goes to {@link writePromptLine}
  * unformatted, regardless of `--log-level` and whether a terminal is
- * attached, plus the log at `level` when `logFile` is set and the installed
- * file sink is not stderr itself (so the run's record gets a copy without a
- * second print to the terminal; a log file that is stderr already has the
- * printed line). That copy is
- * an ordinary log line, so a `--log-level` above `level` leaves the file
- * without one while the printed copy stays whole -- a caller whose surface
- * prints at every level picks `level` accordingly. Otherwise lines are
+ * attached, plus the log at `level` when {@link logFileSeparateFromStderr}
+ * (so the run's record gets a copy without a second print to the terminal).
+ * That copy is an ordinary log line, so a `--log-level` above `level` leaves
+ * the file without one while the printed copy stays whole -- a caller whose
+ * surface prints at every level picks `level` accordingly. Otherwise lines are
  * ordinary diagnostic output at `level`, filtered by `--log-level` as usual.
  *
  * A caller passes it true for a surface a prompt is answered against, so
  * consent is never asked for terms this run did not show, and for one the
  * operator is owed on every run whatever they set.
- *
- * Pass the resolved `--log-file` value, the same one fed to
- * `configureLogging`.
  */
 export function consentSurfaceSink(params: {
   log: ReturnType<typeof getLogger>;
-  logFile: string | undefined;
   toPromptStream: boolean;
   level?: ConsentSurfaceLevel;
 }): ConsentSurfaceSink {
-  const { log, logFile, toPromptStream, level = "info" } = params;
+  const { log, toPromptStream, level = "info" } = params;
   return (line: string) => {
     if (!toPromptStream) {
       log[level](line);
       return;
     }
-    if (logFile !== undefined && logFileSeparateFromStderr()) log[level](line);
+    if (logFileSeparateFromStderr()) log[level](line);
     writePromptLine(line);
   };
 }

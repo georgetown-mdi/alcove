@@ -137,7 +137,6 @@ async function settle(
     keyPath: setup.key,
     interactive,
     log: getLogger("exchange"),
-    logFile: undefined,
   });
   const stdio = captureStdio();
   try {
@@ -360,7 +359,6 @@ async function exchangeWithPartner(
           keyPath: setup.key,
           interactive,
           log: getLogger("exchange"),
-          logFile: undefined,
         }),
       }),
     ]);

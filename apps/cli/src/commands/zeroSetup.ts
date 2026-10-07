@@ -980,7 +980,6 @@ export async function handler(argv: Arguments): Promise<void> {
           configSavedAfterExchange: options.save,
           interactive,
           log,
-          logFile,
         }),
         undeclaredColumnsWarned,
         memoryBudgetReported,

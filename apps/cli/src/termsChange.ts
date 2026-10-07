@@ -209,13 +209,11 @@ export function termsChangeHandler(params: {
   keyPath: string;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
-  logFile: string | undefined;
 }): (change: TermsChange) => Promise<void> {
-  const { configPath, keyPath, interactive, log, logFile } = params;
+  const { configPath, keyPath, interactive, log } = params;
   return async (change) => {
     const emit = consentSurfaceSink({
       log,
-      logFile,
       toPromptStream: interactive,
       level: interactive ? "info" : "warn",
     });
@@ -301,13 +299,12 @@ export function payloadReceiveFillConfirmation(params: {
   configSavedAfterExchange?: boolean;
   interactive: boolean;
   log: ReturnType<typeof getLogger>;
-  logFile: string | undefined;
 }): ((columns: string[]) => Promise<PayloadReceiveFillAnswer>) | undefined {
-  const { configPath, interactive, log, logFile } = params;
+  const { configPath, interactive, log } = params;
   const savedAfterExchange = params.configSavedAfterExchange === true;
   if (!interactive) return undefined;
   return async (columns) => {
-    const emit = consentSurfaceSink({ log, logFile, toPromptStream: true });
+    const emit = consentSurfaceSink({ log, toPromptStream: true });
     const delta: TermsDelta = {
       received: { added: columns, removed: [] },
       sent: undefined,

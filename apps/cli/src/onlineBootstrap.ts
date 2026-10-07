@@ -1170,7 +1170,6 @@ export async function runOnlineBootstrap(params: {
         configPath: params.configPath,
         interactive: params.interactive === true,
         log: getLogger(params.loggerName),
-        logFile: params.logFile,
       }),
     });
 

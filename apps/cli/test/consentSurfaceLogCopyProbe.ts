@@ -21,7 +21,7 @@ const { log, close } = configureLogging({
   name: "consent-probe",
 });
 try {
-  consentSurfaceSink({ log, logFile, toPromptStream: true })(line);
+  consentSurfaceSink({ log, toPromptStream: true })(line);
 } finally {
   close();
 }
