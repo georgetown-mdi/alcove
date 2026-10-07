@@ -286,7 +286,10 @@ describe("applying an update", () => {
 
     expect(reloads).toBe(1);
     expect(unloading.armed).toBe(0);
-    expect(controller.messages).not.toContain(SKIP_WAITING_MESSAGE);
+    expect(controller.messages).toEqual([
+      WARM_ROUTES_MESSAGE,
+      WARM_ROUTES_MESSAGE,
+    ]);
     expect(await shipped.takeovers()).toBe(0);
   });
 

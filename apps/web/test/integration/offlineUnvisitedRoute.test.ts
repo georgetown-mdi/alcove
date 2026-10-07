@@ -9,7 +9,7 @@ import {
 
 import { deployments } from "./deployments";
 
-import type { Browser } from "playwright";
+import type { Browser, Page } from "playwright";
 import type { Served } from "./deployments";
 
 // An ordinary tab that has loaded only the front page, then lost its network,
@@ -30,6 +30,19 @@ const hashedAssetPathsIn = serviceWorkerAssetExtractor();
 const unvisitedRoutes = shellRoutes
   .filter((route) => route !== shellPath)
   .map((route) => route.replace(/\/_$/, "/abc123"));
+
+/** Resolves once a service worker controls the page. */
+async function untilControlled(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    if (navigator.serviceWorker.controller !== null) return;
+    await new Promise((claimed) =>
+      navigator.serviceWorker.addEventListener("controllerchange", claimed, {
+        once: true,
+      }),
+    );
+  });
+}
 
 describe.each(deployments)(
   "offline navigation to a route not yet visited, over $name",
@@ -68,17 +81,7 @@ describe.each(deployments)(
         });
 
         await page.goto(`${base}/`);
-        await page.evaluate(async () => {
-          await navigator.serviceWorker.ready;
-          if (navigator.serviceWorker.controller !== null) return;
-          await new Promise((claimed) =>
-            navigator.serviceWorker.addEventListener(
-              "controllerchange",
-              claimed,
-              { once: true },
-            ),
-          );
-        });
+        await untilControlled(page);
 
         expect(routeAssets.size).toBeGreaterThan(0);
         await expect
@@ -126,17 +129,7 @@ describe.each(deployments)(
         );
         const page = await context.newPage();
         await page.goto(`${base}/`);
-        await page.evaluate(async () => {
-          await navigator.serviceWorker.ready;
-          if (navigator.serviceWorker.controller !== null) return;
-          await new Promise((claimed) =>
-            navigator.serviceWorker.addEventListener(
-              "controllerchange",
-              claimed,
-              { once: true },
-            ),
-          );
-        });
+        await untilControlled(page);
 
         await context.setOffline(true);
         const route = unvisitedRoutes[0];

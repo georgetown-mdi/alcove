@@ -38,7 +38,7 @@ Caching only the root's own response is also the more conservative choice. A dee
 
 Caching the shell's own asset graph is not enough for the app to open offline: every route past the front page loads its own code chunk, and a chunk never fetched is a chunk not cached. Measured against the hosted static build on 2026-10-06, the shell's graph is 28 files and 4.1 MB; the union across every route is 50 files and 4.8 MB (uncompressed). The exchange machinery is already in the shell's graph, so the other routes add 0.7 MB.
 
-An earlier build put the exchange machinery outside the shell's graph (19 files and 1.5 MB against 43 files and 4.2 MB), and the warm then ran only in an installed app, leaving a tab to fill the rest in as the operator visited routes. Measured on the static host, that left a tab unable to open any route it had not visited once its network went, which is the case an operator meets first. So the split is by timing, not by how the app is being used:
+Measured on the static host, a tab that warms nothing cannot open a route it has not visited once its network goes, which is the case an operator meets first. So the warm runs in a tab as well as in an installed app, and the split is by timing, not by how the app is being used:
 
 - **Install** caches the shell's graph only, which the page has just loaded anyway.
 - **Every page load**, in a tab or an installed app, asks the worker to cache every route's code once the worker controls the page. Already-cached assets are skipped, so after the first warm of a deployment a load costs one small document per route.
