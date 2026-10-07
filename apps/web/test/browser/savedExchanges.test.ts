@@ -43,6 +43,7 @@ import {
 import {
   KEY_FILE_ALONE_REASON,
   PAIR_IMPORTED_NOTICE,
+  RETIRED_SETTING_IMPORT_TITLE,
 } from "@recurring/managedImportFiles";
 import { Lobby } from "@exchange/Lobby";
 import { RESTORED_WITH_SAME_TERMS_TITLE } from "@recurring/managedImportGrantNotice";
@@ -810,6 +811,41 @@ describe("saved list route: a populated list imports a command-line configuratio
     expect(imported).toHaveLength(1);
     expect(imported[0].side).toBe("acceptor");
     expect(imported[0].id).not.toBe(listed.id);
+  });
+
+  test("an alcove.yaml stating receipt_output lands and warns, naming the key and the output folder", async () => {
+    await createRunnableExchange(newExchange());
+    const configuration =
+      composeManagedCronExport(
+        await createRunnableExchange(
+          newExchange({ label: "Exported", side: "acceptor" }),
+        ),
+      ).config.text +
+      "signing:\n  mode: none\n  receipt_output: ./receipts/r.json\n";
+    app.render(createElement(SavedExchanges));
+    await expect
+      .element(page.getByRole("button", { name: "Import a file" }))
+      .toBeInTheDocument();
+
+    await chooseFile(configuration, "alcove.yaml");
+
+    const notice = page
+      .getByRole("status")
+      .filter({ hasText: RETIRED_SETTING_IMPORT_TITLE });
+    await expect.element(notice).toBeInTheDocument();
+    await expect
+      .element(notice)
+      .toMatchTextContent(
+        /In your alcove\.yaml, the setting "signing\.receipt_output" is ignored: a signed run writes its receipt into the output folder/,
+      );
+    await expect
+      .element(page.getByRole("button", { name: "Open this exchange" }))
+      .toBeInTheDocument();
+    const imported = (await listManagedExchanges()).filter(
+      (record) => record.sharedSecret === undefined,
+    );
+    expect(imported).toHaveLength(1);
+    expect(imported[0].exchangeFile.signing).toEqual({ mode: "none" });
   });
 
   test("a backup of a handed-off exchange meets the handed-off refusal there", async () => {

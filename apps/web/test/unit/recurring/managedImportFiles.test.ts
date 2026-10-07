@@ -19,8 +19,10 @@ import {
   KEY_FILE_ALONE_REASON,
   NOT_A_PAIR_REASON,
   PAIR_IMPORTED_NOTICE,
+  RETIRED_SETTING_IMPORT_TITLE,
   TOO_MANY_FILES_REASON,
   managedImportFileChoice,
+  oneFileImportedNotice,
   pairImportedNotice,
 } from "@recurring/managedImportFiles";
 import {
@@ -34,6 +36,7 @@ import {
 } from "@recurring/managedHandoffGate";
 import { ManagedImportBackupNotConfigurationError } from "@psi/managed/managedExchangeImport";
 import { composeManagedExchangeFile } from "@psi/managed/managedExchangeRecord";
+import { managedImportGrantNotice } from "@recurring/managedImportGrantNotice";
 
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
@@ -92,6 +95,44 @@ describe("sorting the chosen files", () => {
       cause: "too-many-files",
       reason: TOO_MANY_FILES_REASON,
     });
+  });
+});
+
+/** The warning a retired receipt path draws, naming the key as the file
+ * writes it and the output folder that replaces it. */
+const RECEIPT_OUTPUT_WARNING =
+  'In your alcove.yaml, the setting "signing.receipt_output" is ignored: a ' +
+  "signed run writes its receipt into the output folder as " +
+  "alcove-receipt-<time>.json, with the same time stamp as the run's result " +
+  "and record. Delete the setting from the file.";
+
+describe("what a one-file import says", () => {
+  test("a configuration stating receipt_output warns, naming the key and the output folder", () => {
+    expect(oneFileImportedNotice([], ["signing.receipt_output"])).toEqual({
+      title: RETIRED_SETTING_IMPORT_TITLE,
+      lead:
+        "This configuration states a setting Alcove no longer reads, so the " +
+        "exchange was imported without it.",
+      consequences: [RECEIPT_OUTPUT_WARNING],
+    });
+  });
+
+  test("the warning follows any grant the import has to take again", () => {
+    const grantNotice = managedImportGrantNotice(["working-folder"]);
+    expect(
+      oneFileImportedNotice(["working-folder"], ["signing.receipt_output"]),
+    ).toEqual({
+      ...grantNotice,
+      consequences: [
+        ...(grantNotice?.consequences ?? []),
+        RECEIPT_OUTPUT_WARNING,
+      ],
+    });
+  });
+
+  test("an import with neither says nothing", () => {
+    expect(oneFileImportedNotice([], [])).toBeUndefined();
+    expect(oneFileImportedNotice([])).toBeUndefined();
   });
 });
 
@@ -202,6 +243,15 @@ describe("what the pair import says", () => {
         "secret's expiry, rename it to expires in the key file and import " +
         "the two files again.",
     ]);
+  });
+
+  test("a configuration stating receipt_output warns, naming the key and the output folder", () => {
+    const notice = pairImportedNotice(
+      importedPair({}),
+      { retiredSettings: ["signing.receipt_output"] },
+      noOwnRelay,
+    );
+    expect(notice.consequences).toEqual([RECEIPT_OUTPUT_WARNING]);
   });
 
   test("says nothing of the key file when it holds only fields it reads", () => {

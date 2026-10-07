@@ -72,6 +72,7 @@ import {
   parseExchangeSpec,
   parseSensitiveJson,
   parseSensitiveYaml,
+  retiredSigningSetting,
 } from "@alcove/core";
 
 import {
@@ -466,17 +467,14 @@ export function refuseDocumentNotHeld(
 /**
  * The record fields a command-line `alcove.yaml` supplies: parsed, and refused
  * where this app cannot hold it. Holds no secret; one is added only from a key
- * file read on its own terms ({@link readManagedCommandLineKeyFile}).
+ * file read on its own terms ({@link readManagedCommandLineKeyFile}). Returned
+ * beside them: the `turn` urls the file names beside a relay registrar, and
+ * the retired settings the file states, neither of which the record keeps.
  */
-function commandLineExchangeFields(source: string): NewManagedExchange {
-  return commandLineExchange(source).fields;
-}
-
-/** {@link commandLineExchangeFields}, with the `turn` urls the file names
- * beside a relay registrar, which the record does not keep. */
 function commandLineExchange(source: string): {
   fields: NewManagedExchange;
   droppedTurnUrls: Array<string>;
+  retiredSettings: Array<string>;
 } {
   const raw = parseSensitiveYaml(source, "command-line exchange configuration");
   const document = importedDocument(raw);
@@ -486,6 +484,7 @@ function commandLineExchange(source: string): {
   const relayRegistrar = importedRelayRegistrar(connection);
   const exchangeFile = storedDocument(document, connection);
   refuseFieldsOutsideComposableDocument(exchangeFile, "command line");
+  const retiredSetting = retiredSigningSetting(raw);
   return {
     fields: {
       label: IMPORTED_CONFIGURATION_LABEL,
@@ -495,6 +494,7 @@ function commandLineExchange(source: string): {
       ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
     },
     droppedTurnUrls: turnUrlsBesideRegistrar(connection),
+    retiredSettings: retiredSetting === undefined ? [] : [retiredSetting],
   };
 }
 
@@ -517,7 +517,26 @@ function commandLineExchange(source: string): {
 export function readManagedCommandLineConfiguration(
   source: string,
 ): ManagedExchangeRecord {
-  const fields = commandLineExchangeFields(source);
+  return readManagedCommandLineConfigurationImport(source).record;
+}
+
+/** A command-line configuration read into a record
+ * ({@link readManagedCommandLineConfiguration}), with the retired settings the
+ * file states, which the record does not keep. */
+export interface ManagedCommandLineConfigurationRead {
+  record: ManagedExchangeRecord;
+  /** Each as the file writes it (`signing.receipt_output`); empty where the
+   * file states none. */
+  retiredSettings: Array<string>;
+}
+
+/** {@link readManagedCommandLineConfiguration}, also returning the retired
+ * settings the file states, so the import can name them. Throws what that
+ * function throws. */
+export function readManagedCommandLineConfigurationImport(
+  source: string,
+): ManagedCommandLineConfigurationRead {
+  const { fields, retiredSettings } = commandLineExchange(source);
   if (fields.relayRegistrar !== undefined)
     throw new ManagedConfigurationRefusedError(
       "This configuration registers its relay key at a relay registrar " +
@@ -526,7 +545,7 @@ export function readManagedCommandLineConfiguration(
         "the exchange here, or remove connection.relay_registrar and " +
         "connection.turn and import it again.",
     );
-  return buildManagedExchangeRecord(fields);
+  return { record: buildManagedExchangeRecord(fields), retiredSettings };
 }
 
 /**
@@ -707,16 +726,21 @@ export interface ManagedCommandLinePairRead {
   /** The names of the fields the key file holds that the read dropped, as
    * the file states them; empty where it holds none. Never a value. */
   unreadKeyFileFields: Array<string>;
+  /** The retired settings the configuration states, as
+   * {@link ManagedCommandLineConfigurationRead} names them. */
+  retiredSettings: Array<string>;
 }
 
 /** {@link readManagedCommandLinePair}, also returning the `turn` urls the
- * record does not keep and the key-file fields it did not read, so the import
- * can name them. Throws what that function throws. */
+ * record does not keep, the key-file fields it did not read, and the retired
+ * settings the configuration states, so the import can name them. Throws
+ * what that function throws. */
 export function readManagedCommandLinePairImport(
   configurationSource: string,
   keySource: string,
 ): ManagedCommandLinePairRead {
-  const { fields, droppedTurnUrls } = commandLineExchange(configurationSource);
+  const { fields, droppedTurnUrls, retiredSettings } =
+    commandLineExchange(configurationSource);
   const channel = channelThisAppDoesNotRun(fields.exchangeFile);
   if (channel !== undefined)
     throw new ManagedConfigurationRefusedError(
@@ -746,5 +770,10 @@ export function readManagedCommandLinePairImport(
         : {}),
     }),
   );
-  return { record, droppedTurnUrls, unreadKeyFileFields: unreadFieldNames };
+  return {
+    record,
+    droppedTurnUrls,
+    unreadKeyFileFields: unreadFieldNames,
+    retiredSettings,
+  };
 }

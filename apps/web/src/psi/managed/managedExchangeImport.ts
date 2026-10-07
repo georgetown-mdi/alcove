@@ -90,7 +90,7 @@ import {
 } from "./managedExchangeArtifact";
 import {
   MAX_CONFIGURATION_IMPORT_BYTES,
-  readManagedCommandLineConfiguration,
+  readManagedCommandLineConfigurationImport,
   readManagedCommandLinePairImport,
 } from "./managedCommandLineImport";
 import {
@@ -309,6 +309,10 @@ export interface ManagedImportResult {
   /** On a pair import, the names of the fields its key file holds that the
    * import did not read ({@link readManagedCommandLinePairImport}). */
   unreadKeyFileFields?: Array<string>;
+  /** On a command-line import, the retired settings its configuration
+   * states, which the record does not keep
+   * ({@link readManagedCommandLineConfigurationImport}). */
+  retiredSettings?: Array<string>;
 }
 
 /** The grants the artifact's source held that the imported record does not, which is
@@ -472,7 +476,7 @@ export class ManagedImportBackupNotConfigurationError extends Error {
  * Import a file the operator chose, whichever of the two it is: the app's own
  * backup artifact ({@link importManagedExchange}), or a command-line
  * `alcove.yaml` installed as a configuration-only record
- * ({@link readManagedCommandLineConfiguration}). Nothing is written on a
+ * ({@link readManagedCommandLineConfigurationImport}). Nothing is written on a
  * refusal by either leg.
  *
  * A configuration import always installs a fresh record. It holds no secret to
@@ -525,10 +529,14 @@ async function installConfiguration(
   source: string,
   deps: Pick<ManagedImportDeps, "install">,
 ): Promise<ManagedImportResult> {
-  const record = await deps.install(
-    readManagedCommandLineConfiguration(source),
-  );
-  return { record, missingGrants: [] };
+  const { record: read, retiredSettings } =
+    readManagedCommandLineConfigurationImport(source);
+  const record = await deps.install(read);
+  return {
+    record,
+    missingGrants: [],
+    ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
+  };
 }
 
 /**
@@ -683,12 +691,14 @@ export async function importManagedCommandLinePair(
     record: imported,
     droppedTurnUrls,
     unreadKeyFileFields,
+    retiredSettings,
   } = readManagedCommandLinePairImport(configurationSource, keySource);
   const landed = (record: ManagedExchangeRecord): ManagedImportResult => ({
     record,
     missingGrants: [],
     ...(droppedTurnUrls.length > 0 ? { droppedTurnUrls } : {}),
     ...(unreadKeyFileFields.length > 0 ? { unreadKeyFileFields } : {}),
+    ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
   });
   const at = deps.now().toISOString();
   const reconciled = await deps.reconcile(imported, at, options);

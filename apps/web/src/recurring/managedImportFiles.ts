@@ -8,15 +8,21 @@
  * chosen alone.
  */
 
-import { relayRegistrarLabel, sanitizeForDisplay } from "@alcove/core";
+import {
+  relayRegistrarLabel,
+  retiredSettingNotice,
+  sanitizeForDisplay,
+} from "@alcove/core";
 
 import { managedExchangeRelaysThroughPartner } from "@psi/managed/managedExchangeRecord";
 import { readOwnRelaySetting } from "@psi/transport/ownRelaySetting";
 
 import { heldSettingsSentence } from "./managedConfigurationModel";
+import { managedImportGrantNotice } from "./managedImportGrantNotice";
 
 import type { ManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 import type { ManagedImportGrantNotice } from "./managedImportGrantNotice";
+import type { ManagedPlatformGrant } from "@psi/managed/managedExchangeArtifact";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
 
 /** The file extension that marks a chosen file as the key file. */
@@ -100,6 +106,45 @@ function unreadKeyFileFieldsSentence(
   );
 }
 
+/** The line each retired setting a command-line configuration states draws:
+ * core's own warning, prefixed as the console's, so the two apps name the
+ * setting and where the receipt goes in the same words. */
+export function retiredSettingsSentences(
+  retiredSettings: ReadonlyArray<string>,
+): Array<string> {
+  return retiredSettings.map(
+    (setting) => `In your alcove.yaml, ${retiredSettingNotice(setting)}`,
+  );
+}
+
+/** The heading of the notice a one-file import shows when its configuration
+ * states a retired setting and no grant is missing. */
+export const RETIRED_SETTING_IMPORT_TITLE = "A setting was not imported";
+
+/** The notice a landed one-file import shows: the grants it did not bring
+ * ({@link managedImportGrantNotice}), and a line for each retired setting its
+ * configuration states, or `undefined` where it has neither to name. */
+export function oneFileImportedNotice(
+  missingGrants: ReadonlyArray<ManagedPlatformGrant>,
+  retiredSettings: ReadonlyArray<string> = [],
+): ManagedImportGrantNotice | undefined {
+  const grantNotice = managedImportGrantNotice(missingGrants);
+  const retired = retiredSettingsSentences(retiredSettings);
+  if (retired.length === 0) return grantNotice;
+  if (grantNotice !== undefined)
+    return {
+      ...grantNotice,
+      consequences: [...grantNotice.consequences, ...retired],
+    };
+  return {
+    title: RETIRED_SETTING_IMPORT_TITLE,
+    lead:
+      "This configuration states a setting Alcove no longer reads, so the " +
+      "exchange was imported without it.",
+    consequences: retired,
+  };
+}
+
 /** What a pair import read from its files and did not keep, for
  * {@link pairImportedNotice} to name. */
 export interface PairImportDropped {
@@ -108,6 +153,9 @@ export interface PairImportDropped {
   turnUrls?: ReadonlyArray<string>;
   /** The names of the key-file fields the import did not read. */
   keyFileFields?: ReadonlyArray<string>;
+  /** The retired settings the configuration states, as the file writes
+   * them. */
+  retiredSettings?: ReadonlyArray<string>;
 }
 
 /** The line saying a pair naming a relay registrar registers nothing from
@@ -133,8 +181,9 @@ function noOwnTurnSentence(
 /** The notice a landed pair import shows: {@link PAIR_IMPORTED_NOTICE}, and a
  * line each for the settings the imported document states that this app
  * keeps unchanged without a control, the `connection.turn` urls it did not
- * keep, the key-file fields it did not read, and a relay registrar this
- * browser's relay settings give no TURN url to register for. */
+ * keep, the key-file fields it did not read, a relay registrar this
+ * browser's relay settings give no TURN url to register for, and each retired
+ * setting the configuration states. */
 export function pairImportedNotice(
   record: ManagedExchangeRecord,
   dropped: PairImportDropped = {},
@@ -149,6 +198,7 @@ export function pairImportedNotice(
     ),
     unreadKeyFileFieldsSentence(dropped.keyFileFields ?? []),
     noOwnTurnSentence(record, own),
+    ...retiredSettingsSentences(dropped.retiredSettings ?? []),
   ].filter((line) => line !== undefined);
   return { ...PAIR_IMPORTED_NOTICE, consequences: lines };
 }

@@ -1169,9 +1169,9 @@ What the import accepts is what this app can hold:
   `partner_fingerprint` are kept exactly as the file writes them -- an `@` in
   a path is text, and this browser opens no file it names -- with no editor
   here, and the exported configuration states the block as the imported one
-  did. A `receipt_output`, which Alcove no longer reads, is dropped: a signed
-  run writes its receipt into the output folder. The exchange runs with
-  Alcove.
+  did. A `receipt_output`, which Alcove no longer reads, is dropped, and the
+  import names it and says to delete it from the file: a signed run writes its
+  receipt into the output folder. The exchange runs with Alcove.
 - **Credentials as `@path` references, never as values.** An sftp `password`,
   `private_key`, or `private_key_passphrase`, the `bearer` or `password` of a
   `provision` block's `auth`, and a `password`, `passphrase`,
