@@ -1,21 +1,6 @@
 # Every account-specific value is a variable with no default, so a missing
 # terraform.tfvars fails the plan rather than falling back to a guess.
 
-variable "aws_account_id" {
-  type        = string
-  description = "The AWS account that holds the state bucket. The AWS provider refuses to run against any other account."
-
-  validation {
-    condition     = can(regex("^[0-9]{12}$", var.aws_account_id))
-    error_message = "aws_account_id must be the 12-digit account id."
-  }
-}
-
-variable "aws_region" {
-  type        = string
-  description = "The region the AWS provider runs in."
-}
-
 variable "cloudflare_zone_id" {
   type        = string
   description = "The Cloudflare zone both public names are in. Its settings apply to every name in the zone, not only these two."
