@@ -20,6 +20,7 @@ import {
 
 import { singlePassDisclosureNotice } from "./onlineBootstrap";
 import type { EndpointDirectories } from "./onlineBootstrap";
+import { logFileSeparateFromStderr } from "./util/logging";
 import { writePromptLine } from "./util/prompt";
 
 import type { DialedBrokerHostAndPort } from "./connection/webrtc/brokerClient";
@@ -59,8 +60,10 @@ export type ConsentSurfaceLevel = "info" | "warn";
  *
  * When `toPromptStream`, every line goes to {@link writePromptLine}
  * unformatted, regardless of `--log-level` and whether a terminal is
- * attached, plus the log at `level` when `logFile` is set (so the run's
- * record gets a copy without a second print to the terminal). That copy is
+ * attached, plus the log at `level` when `logFile` is set and the installed
+ * file sink is not stderr itself (so the run's record gets a copy without a
+ * second print to the terminal; a log file that is stderr already has the
+ * printed line). That copy is
  * an ordinary log line, so a `--log-level` above `level` leaves the file
  * without one while the printed copy stays whole -- a caller whose surface
  * prints at every level picks `level` accordingly. Otherwise lines are
@@ -70,8 +73,7 @@ export type ConsentSurfaceLevel = "info" | "warn";
  * consent is never asked for terms this run did not show, and for one the
  * operator is owed on every run whatever they set.
  *
- * Pass the resolved `--log-file` value: the installed log sink cannot be
- * asked where it writes, so a caller must feed the same value to
+ * Pass the resolved `--log-file` value, the same one fed to
  * `configureLogging`.
  */
 export function consentSurfaceSink(params: {
@@ -86,7 +88,7 @@ export function consentSurfaceSink(params: {
       log[level](line);
       return;
     }
-    if (logFile !== undefined) log[level](line);
+    if (logFile !== undefined && logFileSeparateFromStderr()) log[level](line);
     writePromptLine(line);
   };
 }
