@@ -582,23 +582,37 @@ every workspace config and in the root `vitest.config.mts` as well, since
 reporters belong to the config that starts a run rather than to a project it
 reaches.
 
-### A stale `@alcove/core` dist fails the run
+### A stale `@alcove/core` or `@alcove/cli-contract` dist fails the run
 
-The apps import the built package, never `packages/core/src`, so a run whose
+The apps import the built packages, never a package's `src`, so a run whose
 `dist/` is older than the sources it was built from exercises yesterday's
 library and reports failures that belong to the build. Before any app suite
-runs, the `dist/` entries `packages/core/package.json` publishes are compared
-against `packages/core/src` and `rollup.config.ts`; a dist that is missing or
-older fails the run, naming the file that outran it and the rebuild:
+runs, the `dist/` entries each package's `package.json` publishes are compared
+against what its build reads -- `packages/core/src` and `rollup.config.ts`;
+`packages/cli-contract/src`, `tsconfig.build.json` and the `tsconfig.json` it
+extends, leaving out the shared `tsconfig.base.json` since it sits outside the
+package directory -- and a dist that is missing or older fails the run, naming
+the file that outran it and the rebuild, core first since the cli-contract build
+reads core's declarations:
 
 ```sh
 npm run build -w packages/core
+npm run build -w packages/cli-contract
 ```
 
-Set `ALCOVE_ALLOW_STALE_CORE_DIST=1` to run against the dist as it stands.
-`packages/core`'s own suite has no such guard: `pretest` rebuilds, and those
-tests import `src`. A run that selects no app project pays nothing either --
-`npm run test:scripts` needs no build and never asks for one.
+`packages/cli-contract`'s own suite imports its `src` but reaches
+`@alcove/core` through core's dist, and has no `pretest` to rebuild it, so it
+runs the same guard over core's dist alone. `packages/core`'s suite needs none:
+`pretest` rebuilds, and its tests import `src`. A run that selects no app
+project and not the cli-contract one pays nothing -- `npm run test:scripts`
+needs no build and never asks for one.
+
+Set `ALCOVE_ALLOW_STALE_DIST=1` to run the app suites and the cli-contract suite
+against the dists as they stand. The opt-out does not reach the two core tests
+that assert properties of the built dist itself
+(`builtEntryPointsShareState.test.mjs`, `builtEntryPointsShareTypes.test.mjs`):
+they fail on a stale or missing dist regardless, since running them would
+assert a known-stale artifact.
 
 The comparison is over modification times, so it catches the ordinary staleness
 -- an edited source, or a checkout that rewound one -- and not a dist built from

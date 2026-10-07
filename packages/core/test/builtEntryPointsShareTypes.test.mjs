@@ -16,10 +16,9 @@ import { join } from "node:path";
 import { beforeAll, expect, test } from "vitest";
 
 import {
-  CORE_DIR,
-  describeCoreDistStaleness,
-  formatCoreDistStaleness,
-} from "../../../scripts/lib/coreDistFreshness.mjs";
+  CORE_PACKAGE,
+  requireFreshDists,
+} from "../../../scripts/lib/distFreshness.mjs";
 
 // The types both published entries reach, whose identity the shared declaration
 // build holds.
@@ -29,7 +28,7 @@ const SHARED_TYPES = [
   "StandardizedDataset",
 ];
 
-const DIST_DIR = join(CORE_DIR, "dist");
+const DIST_DIR = join(CORE_PACKAGE.dir, "dist");
 
 /** Every declaration file the build emits, by file name. */
 function emittedDeclarations() {
@@ -66,8 +65,7 @@ function relativeImports(source) {
 }
 
 beforeAll(() => {
-  const staleness = describeCoreDistStaleness();
-  if (staleness !== null) throw new Error(formatCoreDistStaleness(staleness));
+  requireFreshDists({ packages: [CORE_PACKAGE], allowOptOut: false });
 });
 
 test("each type both entries reach is declared once across the built declarations", () => {

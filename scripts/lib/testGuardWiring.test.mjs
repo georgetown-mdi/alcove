@@ -16,7 +16,8 @@ import { beforeAll, describe, expect, test } from "vitest";
 // driving vitest, and the guards' behavior is covered by their own suites.
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
-const DIST_GUARD = resolve(REPO_ROOT, "scripts/lib/coreDistFreshness.mjs");
+const DIST_GUARD = resolve(REPO_ROOT, "scripts/lib/distFreshness.mjs");
+const CORE_DIST_GUARD = resolve(REPO_ROOT, "scripts/lib/coreDistFreshness.mjs");
 const SKIPPED_LEG_REPORTER = resolve(
   REPO_ROOT,
   "scripts/lib/skippedLegReporter.mjs",
@@ -46,17 +47,24 @@ async function loadTestConfig(configPath) {
 
 const WEB_CONFIG = "apps/web/vite.config.ts";
 
-// Every config that owns a run. The apps import the built @alcove/core, so
-// they hold the dist guard; packages/core builds its own dist in `pretest` and
-// tests its sources, and the root config runs no suite of its own.
+// Every config that owns a run. The apps import the built @alcove/core and
+// @alcove/cli-contract, so they hold the dist guard; packages/cli-contract tests
+// its own sources against core's built dist, so it holds the core-only guard;
+// packages/core builds its own dist in `pretest` and tests its sources, and the
+// root config runs no suite of its own.
 const CONFIGS = [
   { path: "vitest.config.mts", distGuard: false },
   { path: "packages/core/vitest.config.ts", distGuard: false },
+  {
+    path: "packages/cli-contract/vitest.config.ts",
+    distGuard: true,
+    guardModule: CORE_DIST_GUARD,
+  },
   { path: "apps/cli/vitest.config.mts", distGuard: true },
   { path: WEB_CONFIG, distGuard: true },
 ];
 
-// The budget for loading all four configs, vitest's 5s default being the wrong
+// The budget for loading every config, vitest's 5s default being the wrong
 // scale for it: importing the web config pulls the app's server modules through
 // vite's loader and is essentially the whole cost of this file -- 1.3s of the
 // 1.4s an idle container spends, and 56s at worst with twenty-four competing
@@ -83,16 +91,19 @@ function loadedConfig(path) {
   return config;
 }
 
-describe.each(CONFIGS)("$path", ({ path, distGuard }) => {
+describe.each(CONFIGS)("$path", ({ path, distGuard, guardModule }) => {
   test("registers the skipped-leg reporter alongside the default one", () => {
     const { reporters } = loadedConfig(path);
     expect(reporters).toContain("default");
     expect(reporters).toContain(SKIPPED_LEG_REPORTER);
   });
 
-  test(`${distGuard ? "guards" : "does not need a guard for"} the core dist`, () => {
+  test(`${distGuard ? "guards" : "does not need a guard for"} the built dists`, () => {
     const { globalSetup } = loadedConfig(path);
-    expect(globalSetup.includes(DIST_GUARD)).toBe(distGuard);
+    const guards = globalSetup.filter(
+      (entry) => entry === DIST_GUARD || entry === CORE_DIST_GUARD,
+    );
+    expect(guards).toEqual(distGuard ? [guardModule ?? DIST_GUARD] : []);
   });
 });
 

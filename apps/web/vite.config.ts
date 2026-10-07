@@ -192,15 +192,15 @@ export default defineConfig((configEnv) => {
       // than per project, so every project below -- and every project added
       // later -- is covered without registering anything of its own.
       //
-      // The dist guard fails the run when the built @alcove/core these suites
-      // import is older than its sources, instead of letting the run report
-      // failures that belong to the build. The prerequisite guard names (and, in
-      // CI, fails on) an environment tool a suite would otherwise skip over
-      // silently. The reporter names every skipped test at the end of the run,
-      // so a leg that quietly stopped running is visible rather than folded into
-      // a count.
+      // The dist guard fails the run when the built @alcove/core or
+      // @alcove/cli-contract these suites import is older than its sources,
+      // instead of letting the run report failures that belong to the build. The
+      // prerequisite guard names (and, in CI, fails on) an environment tool a
+      // suite would otherwise skip over silently. The reporter names every
+      // skipped test at the end of the run, so a leg that quietly stopped
+      // running is visible rather than folded into a count.
       globalSetup: [
-        "../../scripts/lib/coreDistFreshness.mjs",
+        "../../scripts/lib/distFreshness.mjs",
         "./test/requireTestPrerequisites.ts",
       ],
       reporters: ["default", "../../scripts/lib/skippedLegReporter.mjs"],

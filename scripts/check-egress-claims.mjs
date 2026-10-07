@@ -27,6 +27,7 @@ export const SCANNED_ROOTS = [
   "apps/web/src",
   "apps/cli/src",
   "packages/core/src",
+  "packages/cli-contract/src",
   "packages/peerjs-broker/src",
   "apps/web/public",
   "apps/web/server",

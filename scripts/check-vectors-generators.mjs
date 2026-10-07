@@ -28,10 +28,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  CORE_BUILD_COMMAND,
-  describeCoreDistStaleness,
-} from "./lib/coreDistFreshness.mjs";
+import { CORE_PACKAGE, describeDistStaleness } from "./lib/distFreshness.mjs";
 import {
   firstDifference,
   withRestoreOnSignal,
@@ -274,7 +271,7 @@ export async function checkVectorsGenerators({
   ungenerated = UNGENERATED_VECTORS,
   runGenerator = spawnGenerator,
   format = formatWithPrettier,
-  coreDistStaleness = describeCoreDistStaleness,
+  coreDistStaleness = (dir) => describeDistStaleness({ ...CORE_PACKAGE, dir }),
 } = {}) {
   const dir = resolve(root, directory);
   const coverage = classifyDirectory(
@@ -492,7 +489,7 @@ function formatReport({
         .map((entry) => entry.generator)
         .join(
           ", ",
-        )} import that dist, so regenerating against it would compare the committed vectors with yesterday's library. Build first:\n\n  ${CORE_BUILD_COMMAND}`,
+        )} import that dist, so regenerating against it would compare the committed vectors with yesterday's library. Build first:\n\n  ${CORE_PACKAGE.buildCommand}`,
     );
   }
 
