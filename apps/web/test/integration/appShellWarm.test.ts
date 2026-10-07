@@ -29,7 +29,7 @@ import type { Served } from "./deployments";
 
 const READY_TIMEOUT_MS = 30_000;
 
-/** What an installed app asks the worker to warm, and where the shell's own
+/** What a page asks the worker to warm, and where the shell's own
  * install-time graph comes from -- both read from the shipped worker. */
 const shellRoutes = serviceWorkerStringArray("SHELL_ROUTES");
 const shellPath = serviceWorkerString("SHELL_PATH");

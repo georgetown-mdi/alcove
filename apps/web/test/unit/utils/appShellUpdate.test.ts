@@ -286,7 +286,7 @@ describe("applying an update", () => {
 
     expect(reloads).toBe(1);
     expect(unloading.armed).toBe(0);
-    expect(controller.messages).toEqual([]);
+    expect(controller.messages).not.toContain(SKIP_WAITING_MESSAGE);
     expect(await shipped.takeovers()).toBe(0);
   });
 
@@ -321,10 +321,7 @@ describe("applying an update", () => {
         if (type === "pagehide") pageHidden.push(listener);
       },
     });
-    await registerAppShell(fake.container, {
-      reload: () => undefined,
-      isInstalledRuntime: () => false,
-    });
+    await registerAppShell(fake.container, { reload: () => undefined });
 
     applyAppShellUpdate();
     for (const listener of pageHidden) listener({ persisted: true });
@@ -341,11 +338,11 @@ describe("applying an update", () => {
 });
 
 describe("warming every route's code", () => {
-  test("is asked for from an installed app, at registration and on a claim", async () => {
+  test("is asked for at registration and on a claim", async () => {
     const controller = fakeWorker("activated");
     const fake = fakeContainer({ controller: controller.worker });
 
-    await registerAppShell(fake.container, { isInstalledRuntime: () => true });
+    await registerAppShell(fake.container);
     expect(controller.messages).toEqual([WARM_ROUTES_MESSAGE]);
 
     fake.changeController();
@@ -354,16 +351,6 @@ describe("warming every route's code", () => {
       WARM_ROUTES_MESSAGE,
       WARM_ROUTES_MESSAGE,
     ]);
-  });
-
-  test("is not asked for from an ordinary browser tab", async () => {
-    const controller = fakeWorker("activated");
-    const fake = fakeContainer({ controller: controller.worker });
-
-    await registerAppShell(fake.container, { isInstalledRuntime: () => false });
-    fake.changeController();
-
-    expect(controller.messages).toEqual([]);
   });
 
   test("is not asked for once this page has asked for a takeover", async () => {
@@ -375,7 +362,6 @@ describe("warming every route's code", () => {
     });
     await registerAppShell(fake.container, {
       reload: () => undefined,
-      isInstalledRuntime: () => true,
       onPageUnloading: fakePageUnloading().onPageUnloading,
     });
     controller.messages.length = 0;
