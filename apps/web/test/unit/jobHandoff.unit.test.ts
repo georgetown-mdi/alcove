@@ -21,8 +21,7 @@ import {
   dockerCronLine,
   dockerRunCommand,
   dockerTaskSchedulerLine,
-  installedCronLine,
-  installedRunCommand,
+  runLines,
 } from "@recurring/scheduledRunCommand";
 import {
   handoffCaveats,
@@ -225,10 +224,10 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(dockerRunCommand(rootSource)).toBeUndefined();
     expect(dockerCronLine(rootSource)).toBeUndefined();
     expect(dockerTaskSchedulerLine(rootSource)).toBeUndefined();
-    expect(installedRunCommand(rootSource)).toBe(
-      "alcove exchange in.csv out.csv",
-    );
-    expect(installedCronLine(rootSource)).toContain("alcove exchange in.csv");
+    const lines = runLines(rootSource);
+    if (lines.kind !== "shown") throw new Error(lines.notice);
+    expect(lines.runCommand).toBe("alcove exchange in.csv out.csv");
+    expect(lines.installedCronLine).toContain("alcove exchange in.csv");
   });
 
   test("an sftp exchange placeholders a private-key passphrase distinctly", () => {

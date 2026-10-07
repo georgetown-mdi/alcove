@@ -189,7 +189,7 @@ function ConfigurationExportPanel({
         {state.reason}
       </Alert>
     );
-  const { composed } = state;
+  const { composed, lines } = state;
   const configFile = composed.config;
   const credentialNote = sftpCredentialNote(record);
   const referenceNote = fileReferenceExportNote(record);
@@ -220,28 +220,35 @@ function ConfigurationExportPanel({
       >
         Download {configFile.fileName}
       </Button>
-      <p className={styles.small}>
-        The command reads input.csv from the folder it runs in and writes each
-        run&apos;s result into that folder as alcove-results-&lt;time&gt;.csv,
-        with the same time as that run&apos;s exchange record. Name your file to
-        match, or change the name in the command.
-      </p>
-      {state.unmountableNotice !== undefined && (
-        <p className={styles.small}>{state.unmountableNotice}</p>
+      {lines.kind === "withheld" ? (
+        <p className={styles.small}>{lines.notice}</p>
+      ) : (
+        <>
+          <p className={styles.small}>
+            The command reads input.csv from the folder it runs in and writes
+            each run&apos;s result into that folder as
+            alcove-results-&lt;time&gt;.csv, with the same time as that
+            run&apos;s exchange record. Name your file to match, or change the
+            name in the command.
+          </p>
+          {lines.dockerLinesNotice !== undefined && (
+            <p className={styles.small}>{lines.dockerLinesNotice}</p>
+          )}
+          <CopyableCode code={lines.runCommand} ariaLabel="exchange command" />
+          <DisclosureSection
+            label={
+              state.fromAgreedSchedule
+                ? "Schedule it (set the folder)"
+                : "Schedule it (adjust the times and the folder)"
+            }
+            open={scheduleLinesOpen}
+            onToggle={setScheduleLinesOpen}
+            headingOrder={3}
+          >
+            <ScheduledRunLinesView lines={lines} />
+          </DisclosureSection>
+        </>
       )}
-      <CopyableCode code={state.runCommand} ariaLabel="exchange command" />
-      <DisclosureSection
-        label={
-          state.fromAgreedSchedule
-            ? "Schedule it (set the folder)"
-            : "Schedule it (adjust the times and the folder)"
-        }
-        open={scheduleLinesOpen}
-        onToggle={setScheduleLinesOpen}
-        headingOrder={3}
-      >
-        <ScheduledRunLinesView lines={state} />
-      </DisclosureSection>
       {record.exchangeFile.connection.channel === "webrtc" && (
         <p className={`${styles.small} ${styles.sub}`}>
           This exchange names no STUN server, so every run uses the built-in

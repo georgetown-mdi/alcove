@@ -19,7 +19,7 @@ import {
   runnableManagedExchangeOrRefuse,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  exportRunCommand,
+  exportRun,
   managedConfigurationExportState,
   managedCronExportPanelState,
 } from "@recurring/managedCronExportModel";
@@ -30,6 +30,7 @@ import type {
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import type { OwnRelayRead } from "@psi/transport/ownRelaySetting";
+import type { ScheduledRunLines } from "@recurring/managedCronExportModel";
 
 /** A record built from `fields` and narrowed to the runnable shape: every fixture
  * here is built with a shared secret, and the export paths take the record type
@@ -94,6 +95,14 @@ function exportableState(record: RunnableManagedExchangeRecord) {
   return state;
 }
 
+/** The lines where they are shown, failing the test where they are
+ * withheld. */
+function shownLines(lines: ScheduledRunLines) {
+  if (lines.kind !== "shown")
+    throw new Error(`the model withheld the lines: ${lines.notice}`);
+  return lines;
+}
+
 describe("what the panel gets to render", () => {
   test("the two files have their CLI names, contents, and media types", () => {
     const record = managedRecord();
@@ -120,31 +129,32 @@ describe("what the panel gets to render", () => {
     expect(state.composed.command).toBe(
       "alcove exchange --log-file=exchange.log input.csv ./",
     );
-    expect(state.runCommand).toBe(
+    const lines = shownLines(state.lines);
+    expect(lines.runCommand).toBe(
       "docker run --rm --mount " +
         "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
-    expect(state.dockerCronLine).toBe(
+    expect(lines.dockerCronLine).toBe(
       "0 2 * * * /usr/bin/docker run --rm --mount " +
         "type=bind,src=/path/to/your/exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
-    expect(state.installedCronLine).toBe(
+    expect(lines.installedCronLine).toBe(
       "0 2 * * * cd /path/to/your/exchange-folder && /path/to/alcove " +
         "exchange --log-file=exchange.log input.csv ./",
     );
-    expect(state.dockerTaskSchedulerLine).toContain("/SC DAILY /ST 02:00 ");
-    expect(state.dockerTaskSchedulerLine).toContain(
+    expect(lines.dockerTaskSchedulerLine).toContain("/SC DAILY /ST 02:00 ");
+    expect(lines.dockerTaskSchedulerLine).toContain(
       "cmd /c cd /d C:\\path\\to\\your\\exchange-folder && docker run --rm " +
         "--mount type=bind,src=C:\\path\\to\\your\\exchange-folder,dst=/work " +
         `${IMAGE} exchange --log-file=exchange.log input.csv ./`,
     );
     expect(state.fromAgreedSchedule).toBe(false);
-    expect(state.schedule).toBe("daily at 2am");
-    expect(state.scheduleNote).toBeUndefined();
-    expect(state.unmountableNotice).toBeUndefined();
-    expect(state.bindPathsCaveat).toBeUndefined();
+    expect(lines.schedule).toBe("daily at 2am");
+    expect(lines.scheduleNote).toBeUndefined();
+    expect(lines.dockerLinesNotice).toBeUndefined();
+    expect(lines.bindPathsCaveat).toBeUndefined();
   });
 
   test("the lines run on the agreed schedule and wait the agreed window", () => {
@@ -161,19 +171,20 @@ describe("what the panel gets to render", () => {
       "input.csv",
       "./",
     ]);
+    const lines = shownLines(state.lines);
     // 2026-10-06T14:30Z is a Tuesday.
-    expect(state.dockerCronLine).toMatch(
+    expect(lines.dockerCronLine).toMatch(
       /^30 14 \* \* 2 \/usr\/bin\/docker run --rm /,
     );
-    expect(state.installedCronLine).toMatch(
+    expect(lines.installedCronLine).toMatch(
       /^30 14 \* \* 2 cd \/path\/to\/your\/exchange-folder && \/path\/to\/alcove /,
     );
-    expect(state.dockerTaskSchedulerLine).toContain(
+    expect(lines.dockerTaskSchedulerLine).toContain(
       "/SC WEEKLY /D TUE /ST 14:30 ",
     );
     expect(state.fromAgreedSchedule).toBe(true);
-    expect(state.schedule).toBe("every Tuesday at 14:30 UTC");
-    expect(state.scheduleNote).toMatch(/UTC/);
+    expect(lines.schedule).toBe("every Tuesday at 14:30 UTC");
+    expect(lines.scheduleNote).toMatch(/UTC/);
   });
 
   test.each([
@@ -193,14 +204,15 @@ describe("what the panel gets to render", () => {
     const state = exportableState(
       managedRecord({ schedule: { ...SCHEDULE, intervalDays: 3 } }),
     );
+    const lines = shownLines(state.lines);
     const anchorDay = Math.floor(Date.parse(SCHEDULE.anchor) / 86_400_000);
-    expect(state.installedCronLine).toBe(
+    expect(lines.installedCronLine).toBe(
       "30 14 * * * [ $(( (($(date +\\%s) - 9000) / 86400 - " +
         `${anchorDay}) \\% 3 )) -eq 0 ] && cd /path/to/your/exchange-folder ` +
         "&& /path/to/alcove exchange --log-file=exchange.log " +
         "--peer-timeout=1h input.csv ./",
     );
-    expect(state.dockerTaskSchedulerLine).toContain(
+    expect(lines.dockerTaskSchedulerLine).toContain(
       "/SC DAILY /MO 3 /SD 10/06/2026 /ST 14:30 ",
     );
   });
@@ -208,7 +220,10 @@ describe("what the panel gets to render", () => {
   test("the handed-off command is the image's one-off run", () => {
     const record = managedRecord();
     const state = exportableState(record);
-    expect(exportRunCommand(state.composed, IMAGE)).toBe(state.runCommand);
+    const handedOff = exportRun(state.composed, IMAGE);
+    if (handedOff.kind !== "shown") throw new Error(handedOff.notice);
+    expect(handedOff.runCommand).toBe(shownLines(state.lines).runCommand);
+    expect(handedOff.dockerLinesNotice).toBeUndefined();
   });
 
   test("the exported connection names no ICE server, as the panel's copy says", () => {
@@ -297,12 +312,13 @@ describe("a configuration naming paths outside the export folder", () => {
     expect(state.composed.bindPaths).toEqual([
       { path: "/home/county/.ssh/id_ed25519", readOnly: true },
     ]);
-    expect(state.runCommand).toContain(
+    const lines = shownLines(state.lines);
+    expect(lines.runCommand).toContain(
       "--mount type=bind,src=/home/county/.ssh/id_ed25519," +
         "dst=/home/county/.ssh/id_ed25519,readonly",
     );
-    expect(state.bindPathsCaveat).toContain("/home/county/.ssh/id_ed25519");
-    expect(state.unmountableNotice).toBeUndefined();
+    expect(lines.bindPathsCaveat).toContain("/home/county/.ssh/id_ed25519");
+    expect(lines.dockerLinesNotice).toBeUndefined();
   });
 
   test("a path a mount cannot state drops the image lines and says why", () => {
@@ -311,13 +327,36 @@ describe("a configuration naming paths outside the export folder", () => {
       IMAGE,
     );
     if (state.kind !== "exportable") throw new Error(state.reason);
-    expect(state.dockerCronLine).toBeUndefined();
-    expect(state.dockerTaskSchedulerLine).toBeUndefined();
-    expect(state.runCommand).toBe(
+    const lines = shownLines(state.lines);
+    expect(lines.dockerCronLine).toBeUndefined();
+    expect(lines.dockerTaskSchedulerLine).toBeUndefined();
+    expect(lines.runCommand).toBe(
       "alcove exchange --log-file=exchange.log input.csv ./",
     );
-    expect(state.unmountableNotice).toContain("contains a comma");
-    expect(state.bindPathsCaveat).toBeUndefined();
+    expect(lines.dockerLinesNotice).toContain("contains a comma");
+    expect(lines.bindPathsCaveat).toBeUndefined();
+    expect(lines.installedCronLine).toContain(
+      "cd /path/to/your/exchange-folder && /path/to/alcove exchange",
+    );
+  });
+
+  test("a path with a line break withholds every line and says what to do", () => {
+    const state = managedConfigurationExportState(
+      sftpConfiguration("/home/county/keys\nold/id_ed25519"),
+      IMAGE,
+    );
+    if (state.kind !== "exportable") throw new Error(state.reason);
+    const withheld = {
+      kind: "withheld",
+      notice:
+        "No command to run or schedule this exchange is shown because " +
+        "/home/county/keys\\x0aold/id_ed25519 contains a line break, " +
+        "another control character, or a text-direction character, which a " +
+        "scheduled command cannot hold. Move that folder to a path without " +
+        "such a character, and set the new path in the configuration.",
+    };
+    expect(state.lines).toEqual(withheld);
+    expect(exportRun(state.composed, IMAGE)).toEqual(withheld);
   });
 });
 

@@ -9,6 +9,7 @@ import {
   CONTAINER_WORK_FOLDER,
   alcoveArgs,
   dockerRunArgv,
+  unmountableBindPaths,
 } from "@psi/dockerRunCommand";
 
 import {
@@ -71,7 +72,7 @@ export function dockerRunCommand(
 
 /** The command a person runs once by hand from the exchange folder with an
  * installed `alcove`. */
-export function installedRunCommand({ argv }: ScheduledRunSource): string {
+function installedRunCommand({ argv }: ScheduledRunSource): string {
   return shellJoinCommand(["alcove", ...alcoveArgs(argv)]);
 }
 
@@ -93,7 +94,7 @@ export function dockerCronLine(
 
 /** The crontab line running an installed `alcove` from the exchange folder on
  * `schedule`. */
-export function installedCronLine(
+function installedCronLine(
   { argv }: ScheduledRunSource,
   schedule?: RunSchedule,
 ): string {
@@ -125,6 +126,61 @@ export function dockerTaskSchedulerLine(
     : taskSchedulerLine(windowsJoinCommand(argv), schedule);
 }
 
+/**
+ * The lines running an invocation, or why none is shown. A bind path holding a
+ * control or text-direction character withholds every line, the installed
+ * `alcove` ones included, since the operator moves that folder rather than run
+ * against a path they cannot read; any other unmountable path withholds the
+ * Docker lines alone.
+ */
+export type RunLines = WithheldRunLines | ShownRunLines;
+
+/** No line is shown ({@link RunLines}). */
+export interface WithheldRunLines {
+  kind: "withheld";
+  /** Why no line is shown, and what to do. */
+  notice: string;
+}
+
+/** The lines are shown ({@link RunLines}). */
+export interface ShownRunLines {
+  kind: "shown";
+  /** The command running it once: the image over the folder, or an installed
+   * `alcove` where a path cannot be mounted. */
+  runCommand: string;
+  /** Undefined where a path cannot be mounted. */
+  dockerCronLine: string | undefined;
+  /** Undefined where a path cannot be mounted. */
+  dockerTaskSchedulerLine: string | undefined;
+  installedCronLine: string;
+  /** Why the Docker lines are not shown, where a path cannot be mounted. */
+  dockerLinesNotice: string | undefined;
+}
+
+/** The lines running `source` on `schedule`, or why none is shown. */
+export function runLines(
+  source: ScheduledRunSource,
+  schedule?: RunSchedule,
+): RunLines {
+  const unmountable = unmountableBindPaths(source.bindPaths);
+  if (unmountable.some(({ reason }) => reason === "control"))
+    return {
+      kind: "withheld",
+      notice: unmountableBindPathsNotice(unmountable),
+    };
+  return {
+    kind: "shown",
+    runCommand: dockerRunCommand(source) ?? installedRunCommand(source),
+    dockerCronLine: dockerCronLine(source, schedule),
+    dockerTaskSchedulerLine: dockerTaskSchedulerLine(source, schedule),
+    installedCronLine: installedCronLine(source, schedule),
+    dockerLinesNotice:
+      unmountable.length > 0
+        ? unmountableBindPathsNotice(unmountable)
+        : undefined,
+  };
+}
+
 /** The input file the hand-off's command reads, which the panel asks the
  * operator to put in the exchange folder: the positional before the output,
  * less the `./` a name starting with `-` is given. */
@@ -144,7 +200,8 @@ const UNMOUNTABLE_REASON_TEXT: Record<UnmountableReason, string> = {
   workFolder: `is inside ${CONTAINER_WORK_FOLDER}, where the image mounts the exchange folder`,
 };
 
-/** The panel's sentence naming each path the Docker lines cannot mount and why. */
+/** The panel's sentence naming each path the lines cannot use and why
+ * ({@link RunLines}). */
 export function unmountableBindPathsNotice(
   unmountable: ReadonlyArray<UnmountableBindPath>,
 ): string {
@@ -155,13 +212,17 @@ export function unmountableBindPathsNotice(
         UNMOUNTABLE_REASON_TEXT[reason],
     )
     .join("; ");
-  const remedy = unmountable.some(({ reason }) => reason === "control")
-    ? "Move that folder to a path without such a character, and set the " +
-      "new path in the configuration."
-    : "To run Alcove from its image, write the docker run command yourself " +
-      "and mount that path by hand, or run an installed Alcove with the " +
-      "commands below.";
-  return `The Docker commands are not shown because ${named}. ${remedy}`;
+  if (unmountable.some(({ reason }) => reason === "control"))
+    return (
+      "No command to run or schedule this exchange is shown because " +
+      `${named}. Move that folder to a path without such a character, and ` +
+      "set the new path in the configuration."
+    );
+  return (
+    `The Docker commands are not shown because ${named}. To run Alcove from ` +
+    "its image, write the docker run command yourself and mount that path " +
+    "by hand, or run an installed Alcove with the commands below."
+  );
 }
 
 /**

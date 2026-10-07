@@ -6,14 +6,18 @@ import {
   INSTALLED_ALCOVE_PLACEHOLDER,
 } from "./scheduledRunCommand";
 
-import type { ScheduledRunLines } from "./managedCronExportModel";
+import type { ShownScheduledRunLines } from "./managedCronExportModel";
 
 /**
  * The schedule lines of a managed exchange's command-line export: the image's
  * cron and Task Scheduler lines where every path can be mounted, the cron line
  * for an installed Alcove, and what to set and check in them.
  */
-export function ScheduledRunLinesView({ lines }: { lines: ScheduledRunLines }) {
+export function ScheduledRunLinesView({
+  lines,
+}: {
+  lines: ShownScheduledRunLines;
+}) {
   const dockerShown = lines.dockerCronLine !== undefined;
   return (
     <>

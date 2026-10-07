@@ -8,28 +8,21 @@ import {
 } from "@psi/managed/recurringHandoff";
 
 import { CopyableCode } from "@components/CopyableCode";
+import { DisclosureSection } from "@components/DisclosureSection";
 import styles from "@styles/app.module.css";
 
-import {
-  buildImageReference,
-  unmountableBindPaths,
-} from "@psi/dockerRunCommand";
-import { DisclosureSection } from "../components/DisclosureSection";
+import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
   EXCHANGE_FOLDER_PLACEHOLDER,
   bindPathsCaveat,
-  dockerCronLine,
-  dockerRunCommand,
-  dockerTaskSchedulerLine,
   handoffInputName,
-  installedCronLine,
-  installedRunCommand,
-  unmountableBindPathsNotice,
+  runLines,
 } from "./scheduledRunCommand";
 
 import type { JobHandoff } from "@jobs/handoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
+import type { ShownRunLines } from "./scheduledRunCommand";
 
 /** The full CLI reference the panel points at for the recurring-run details. */
 const RECURRING_EXCHANGE_DOC_URL =
@@ -114,11 +107,10 @@ function HandoffBody({
     bindPaths: handoff.bindPaths,
     image: buildImageReference(),
   };
-  const dockerCommand = dockerRunCommand(source);
-  const runCommand = dockerCommand ?? installedRunCommand(source);
-  const cronCommand = dockerCronLine(source);
-  const taskSchedulerCommand = dockerTaskSchedulerLine(source);
-  const unmountable = unmountableBindPaths(handoff.bindPaths);
+  const lines = runLines(source);
+  const shown = lines.kind === "shown" ? lines : undefined;
+  const notice =
+    lines.kind === "withheld" ? lines.notice : lines.dockerLinesNotice;
   const inputName = handoffInputName(handoff.template.argv);
 
   return (
@@ -129,16 +121,12 @@ function HandoffBody({
         Scheduler (Windows). The settings from this run are filled in below; set
         the file paths for the machine that will run the schedule.
       </p>
-      {unmountable.length > 0 && (
-        <p className={styles.small}>
-          {unmountableBindPathsNotice(unmountable)}
-        </p>
-      )}
+      {notice !== undefined && <p className={styles.small}>{notice}</p>}
 
       {handoff.template.kind === "config" ? (
         <ConfigSteps
           yaml={handoff.template.yaml}
-          command={runCommand}
+          command={shown?.runCommand}
           inputName={inputName}
           usedKeyFile={handoff.usedKeyFile}
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
@@ -146,9 +134,44 @@ function HandoffBody({
           runFolder={jobId}
         />
       ) : (
-        <CommandSteps command={runCommand} inputName={inputName} />
+        <CommandSteps command={shown?.runCommand} inputName={inputName} />
       )}
 
+      {shown !== undefined && <ScheduleLines lines={shown} />}
+
+      <Caveats
+        handoff={handoff}
+        dockerLinesShown={
+          shown !== undefined && shown.dockerLinesNotice === undefined
+        }
+      />
+
+      <p className={styles.small}>
+        See the{" "}
+        <Anchor
+          inherit
+          href={RECURRING_EXCHANGE_DOC_URL}
+          target="_blank"
+          rel="noreferrer"
+        >
+          recurring exchange reference
+        </Anchor>{" "}
+        for the full command-line details.
+      </p>
+    </>
+  );
+}
+
+/** The schedule lines: the image's cron and Task Scheduler lines where every
+ * path can be mounted, and the cron line for an installed Alcove. */
+function ScheduleLines({ lines }: { lines: ShownRunLines }) {
+  const {
+    dockerCronLine: cronCommand,
+    dockerTaskSchedulerLine: taskSchedulerCommand,
+  } = lines;
+  const dockerShown = cronCommand !== undefined;
+  return (
+    <>
       <h3 className={styles.handoffHeading}>
         Schedule it (set the time you agreed with your partner)
       </h3>
@@ -174,14 +197,14 @@ function HandoffBody({
         </>
       )}
       <p className={styles.small}>
-        {dockerCommand !== undefined
+        {dockerShown
           ? "If Alcove is installed on the scheduling machine rather than run " +
             "from its image, cron runs it from the exchange folder:"
           : "cron (Linux/macOS), daily at 2am, running an installed Alcove " +
             "from the exchange folder:"}
       </p>
       <CopyableCode
-        code={installedCronLine(source)}
+        code={lines.installedCronLine}
         ariaLabel="cron schedule line for an installed Alcove"
       />
       <p className={styles.small}>
@@ -191,27 +214,9 @@ function HandoffBody({
         result there as alcove-results-&lt;time&gt;.csv, with the same time as
         that run&apos;s exchange record alcove-record-&lt;time&gt;.json, and
         adds to exchange.log in that folder.
-        {dockerCommand !== undefined &&
+        {dockerShown &&
           " A scheduled job does not use your shell's PATH, so check that " +
             "/usr/bin/docker is where Docker is installed (command -v docker)."}
-      </p>
-
-      <Caveats
-        handoff={handoff}
-        dockerLinesShown={dockerCommand !== undefined}
-      />
-
-      <p className={styles.small}>
-        See the{" "}
-        <Anchor
-          inherit
-          href={RECURRING_EXCHANGE_DOC_URL}
-          target="_blank"
-          rel="noreferrer"
-        >
-          recurring exchange reference
-        </Anchor>{" "}
-        for the full command-line details.
       </p>
     </>
   );
@@ -229,7 +234,7 @@ function ConfigSteps({
   runFolder,
 }: {
   yaml: string;
-  command: string;
+  command: string | undefined;
   inputName: string;
   usedKeyFile: boolean;
   keyFileBesideConfiguration: boolean;
@@ -284,17 +289,19 @@ function ConfigSteps({
           </p>
         </li>
       )}
-      <li>
-        <p className={styles.handoffStepLabel}>Run the exchange</p>
-        <CopyableCode code={command} ariaLabel="recurring exchange command" />
-        {usedSigningIdentity && (
-          <p className={styles.small}>
-            Each scheduled run writes its own timestamped receipt into the
-            folder it runs in, beside its result, so the schedule accumulates a
-            trail rather than overwriting one file.
-          </p>
-        )}
-      </li>
+      {command !== undefined && (
+        <li>
+          <p className={styles.handoffStepLabel}>Run the exchange</p>
+          <CopyableCode code={command} ariaLabel="recurring exchange command" />
+          {usedSigningIdentity && (
+            <p className={styles.small}>
+              Each scheduled run writes its own timestamped receipt into the
+              folder it runs in, beside its result, so the schedule accumulates
+              a trail rather than overwriting one file.
+            </p>
+          )}
+        </li>
+      )}
     </ol>
   );
 }
@@ -320,7 +327,7 @@ function CommandSteps({
   command,
   inputName,
 }: {
-  command: string;
+  command: string | undefined;
   inputName: string;
 }) {
   return (
@@ -333,13 +340,17 @@ function CommandSteps({
         </li>
         <InputStep inputName={inputName} />
       </ol>
-      <h3 className={styles.handoffHeading}>
-        Run this command on the scheduling machine
-      </h3>
-      <CopyableCode
-        code={command}
-        ariaLabel="recurring quick exchange command"
-      />
+      {command !== undefined && (
+        <>
+          <h3 className={styles.handoffHeading}>
+            Run this command on the scheduling machine
+          </h3>
+          <CopyableCode
+            code={command}
+            ariaLabel="recurring quick exchange command"
+          />
+        </>
+      )}
       <p className={styles.small}>
         A quick exchange has no shared secret, so the server or shared folder is
         all that protects it. It infers the linkage terms from your file on each

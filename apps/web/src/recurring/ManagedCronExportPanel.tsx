@@ -20,7 +20,7 @@ import styles from "@styles/app.module.css";
 
 import {
   CLI_BUILT_IN_STUN_URI,
-  exportRunCommand,
+  exportRun,
   managedCronExportPanelState,
 } from "./managedCronExportModel";
 import {
@@ -37,7 +37,9 @@ import type {
   ManagedCronExportDispatch,
   ManagedHandoffRefusal,
 } from "@psi/managed/managedExchangeExport";
+import type { RunLines } from "./scheduledRunCommand";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
+import type { ShownScheduledRunLines } from "./managedCronExportModel";
 
 /** The key file's custody rules, cited rather than restated here. */
 const KEY_FILE_SECURITY_DOC_URL =
@@ -86,8 +88,9 @@ export function ManagedCronExportPanel({
    * at the click, since {@link runInFlight} is a poll's last reading. */
   recheckRunInFlight: () => Promise<boolean>;
   /** The operator attested the files landed and the source is spent, so the host
-   * takes down the run affordances. Passes the command to run instead. */
-  onHandedOff: (command: string) => void;
+   * takes down the run affordances. Passes the command to run instead, or why
+   * none is shown. */
+  onHandedOff: (run: RunLines) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -151,7 +154,7 @@ export function ManagedCronExportPanel({
         if (await recheckRunInFlight()) return;
         await dispatch.confirm(new Date());
         setDispatch(undefined);
-        onHandedOff(exportRunCommand(composed));
+        onHandedOff(exportRun(composed));
       } catch (error) {
         if (error instanceof ManagedHandoffRefusedError)
           setRefusal(error.refusal);
@@ -263,36 +266,17 @@ export function ManagedCronExportPanel({
                   <p className={styles.small}>{RUN_IN_FLIGHT_HANDOFF_REASON}</p>
                 )}
               </li>
-              <li>
-                <p className={styles.handoffStepLabel}>
-                  Put your input file in that folder
-                </p>
-                <p className={styles.small}>
-                  The command below reads input.csv from the folder it runs in
-                  and writes each run&apos;s result into that folder as
-                  alcove-results-&lt;time&gt;.csv, with the same time as that
-                  run&apos;s exchange record. Name your file to match, or change
-                  the name in the command.
-                </p>
-              </li>
-              <li>
-                <p className={styles.handoffStepLabel}>Run it there</p>
-                {state.unmountableNotice !== undefined && (
-                  <p className={styles.small}>{state.unmountableNotice}</p>
-                )}
-                <CopyableCode
-                  code={state.runCommand}
-                  ariaLabel="exchange command"
+              {state.lines.kind === "withheld" ? (
+                <li>
+                  <p className={styles.handoffStepLabel}>Run it there</p>
+                  <p className={styles.small}>{state.lines.notice}</p>
+                </li>
+              ) : (
+                <ShownRunSteps
+                  lines={state.lines}
+                  fromAgreedSchedule={state.fromAgreedSchedule}
                 />
-              </li>
-              <li>
-                <p className={styles.handoffStepLabel}>
-                  {state.fromAgreedSchedule
-                    ? "Schedule it (set the folder)"
-                    : "Schedule it (adjust the times and the folder)"}
-                </p>
-                <ScheduledRunLinesView lines={state} />
-              </li>
+              )}
             </ol>
             <h3 className={styles.handoffHeading}>Before you schedule it</h3>
             <ul className={styles.small}>
@@ -309,8 +293,11 @@ export function ManagedCronExportPanel({
                 {state.fromAgreedSchedule
                   ? "These files do not include the schedule you agreed with " +
                     "your partner. On the command line, the cron entry or " +
-                    "scheduled task sets the schedule, and the lines above " +
-                    "use the agreed one. Each run waits for your partner until " +
+                    "scheduled task sets the schedule" +
+                    (state.lines.kind === "shown"
+                      ? ", and the lines above use the agreed one"
+                      : "") +
+                    ". Each run waits for your partner until " +
                     "the agreed window closes, then stops."
                   : "These files do not include the schedule you agreed with " +
                     "your partner. On the command line, the cron entry or " +
@@ -401,5 +388,47 @@ export function ManagedCronExportPanel({
         )}
       </DisclosureSection>
     </div>
+  );
+}
+
+/** The steps after the download where the lines are shown: put the input file
+ * in the folder, run the command, and schedule it. */
+function ShownRunSteps({
+  lines,
+  fromAgreedSchedule,
+}: {
+  lines: ShownScheduledRunLines;
+  fromAgreedSchedule: boolean;
+}) {
+  return (
+    <>
+      <li>
+        <p className={styles.handoffStepLabel}>
+          Put your input file in that folder
+        </p>
+        <p className={styles.small}>
+          The command below reads input.csv from the folder it runs in and
+          writes each run&apos;s result into that folder as
+          alcove-results-&lt;time&gt;.csv, with the same time as that run&apos;s
+          exchange record. Name your file to match, or change the name in the
+          command.
+        </p>
+      </li>
+      <li>
+        <p className={styles.handoffStepLabel}>Run it there</p>
+        {lines.dockerLinesNotice !== undefined && (
+          <p className={styles.small}>{lines.dockerLinesNotice}</p>
+        )}
+        <CopyableCode code={lines.runCommand} ariaLabel="exchange command" />
+      </li>
+      <li>
+        <p className={styles.handoffStepLabel}>
+          {fromAgreedSchedule
+            ? "Schedule it (set the folder)"
+            : "Schedule it (adjust the times and the folder)"}
+        </p>
+        <ScheduledRunLinesView lines={lines} />
+      </li>
+    </>
   );
 }

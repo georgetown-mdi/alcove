@@ -22,7 +22,7 @@ import {
   INSTALLED_ALCOVE_PLACEHOLDER,
   dockerCronLine,
   handoffInputName,
-  installedCronLine,
+  runLines,
 } from "@recurring/scheduledRunCommand";
 import { HANDOFF_SHARED_DIRECTORY_PLACEHOLDER } from "@jobs/handoff";
 import { JobManager } from "@jobs/jobManager";
@@ -277,7 +277,10 @@ describe("the console's recurring-run hand-off, run as given", () => {
       bindPaths: handoff.bindPaths,
       image: "ghcr.io/georgetown-mdi/alcove:latest",
     };
-    const handedOffLine = installedCronLine(source);
+    const lines = runLines(source);
+    if (lines.kind !== "shown")
+      throw new Error(`the hand-off withheld its lines: ${lines.notice}`);
+    const handedOffLine = lines.installedCronLine;
     expect(handedOffLine).not.toContain("$(");
     expect(handedOffLine).not.toContain("%");
     const line = handedOffLine
