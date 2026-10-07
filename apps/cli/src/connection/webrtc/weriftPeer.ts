@@ -662,9 +662,13 @@ export function relayCredentialAttemptNotice(
 ): string {
   return (
     `${attemptStartCause(reason)}, so a new connection attempt starts` +
-    `${reason.kind === "partner-reconnected" ? " to meet it" : ""} with a ` +
+    `${attemptPurposeSuffix(reason)} with a ` +
     `new relay credential that expires at ${credential.expiresAt.toISOString()}`
   );
+}
+
+function attemptPurposeSuffix(reason: AttemptStartReason): string {
+  return reason.kind === "partner-reconnected" ? " to meet it" : "";
 }
 
 /** What ended the attempt before one that starts for `reason`, as a clause. */
@@ -960,7 +964,7 @@ export async function openWebRtcPeerSession(
     if (attemptIceServers === undefined) {
       log.debug(
         `${attemptStartCause(reason)}; starting connection attempt ` +
-          `${attempt + 1}${reason.kind === "partner-reconnected" ? " to meet it" : ""}`,
+          `${attempt + 1}${attemptPurposeSuffix(reason)}`,
       );
       return iceServers;
     }
@@ -1368,9 +1372,14 @@ class Negotiation {
    * End this attempt with no partner met, so the wait starts the next one for
    * the cause latched first. A no-op once the attempt has settled either way.
    */
+  private get settled(): boolean {
+    return (
+      this.finished || this.failure !== undefined || this.ended !== undefined
+    );
+  }
+
   private endUnmet(end: AttemptEnd): void {
-    if (this.finished || this.failure !== undefined || this.ended !== undefined)
-      return;
+    if (this.settled) return;
     this.ended = end;
     this.settle?.resolve({ ended: end });
   }
@@ -1444,8 +1453,7 @@ class Negotiation {
       return;
     }
     const diagnosis = await this.iceDiagnosis(summary);
-    if (this.finished || this.failure !== undefined || this.ended !== undefined)
-      return;
+    if (this.settled) return;
     log.warn(
       `${sanitizeErrorForDisplay(diagnosis)}; starting a new connection attempt`,
     );
