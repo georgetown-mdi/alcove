@@ -357,7 +357,7 @@ export async function writeExchangeOutputs(params: {
 }
 
 /** What {@link writeExchangeOutputs} delivered, for the run's outcome line. */
-interface ExchangeOutputs {
+export interface ExchangeOutputs {
   /** Whether every artifact the stage owed reached disk. */
   everyArtifactOnDisk: boolean;
   /** Where this party's result went. */
