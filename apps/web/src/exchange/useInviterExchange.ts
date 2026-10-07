@@ -327,7 +327,7 @@ function failureContentFor(
       title: "The saved SFTP connection holds more than one fingerprint",
       message:
         "The console did not start this exchange. The saved SFTP connection " +
-        "holds more than one server identity fingerprint, and a direct " +
+        "holds more than one server identity fingerprint, and a quick " +
         "exchange pins one. Start over, choose Edit connection on the server " +
         "step, and keep only the fingerprint the server presents now.",
     };
