@@ -17,9 +17,9 @@ import type { Arguments } from "yargs";
 
 // The refusal of a first authenticated contact whose configuration directory
 // cannot take the pin it would record (assertPartnerFingerprintRecordable,
-// ../../../src/config/persist.ts), driven through the command as an operator runs it:
-// nothing here is mocked but `process.exit` and fd 3 itself, so what the run
-// reaches is what production reaches.
+// ../../../src/config/persist.ts), driven through the command as an operator
+// runs it: nothing here is mocked but `process.exit` and fd 3 itself, so what
+// the run reaches is what production reaches.
 //
 // A supervisor watching the machine channel is told nothing by this refusal,
 // which is what docs/spec/SERVER_JOB_API.md rests its statement that the console
