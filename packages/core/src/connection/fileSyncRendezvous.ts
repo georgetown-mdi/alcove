@@ -845,15 +845,21 @@ export class FileSyncRendezvous {
             break;
           }
         } catch (err) {
-          // A close() aborts the read with ConnectionClosedError (exit 69).
-          // A terminal refusal of the hello (oversized, malformed, stalled)
-          // is a UsageError (I5b) on the bare flag; under --force-retain-sweep
-          // the inspection can only change the warning, so it is
-          // retain-uncertain like any unresolved read. Uncertainty is sticky,
-          // so the first unreadable hello ends the inspection.
+          // A fully-synced hello that fails the schema is a terminal
+          // UsageError (I5b) -- let it propagate. A close() during
+          // inspection aborts the gate read with ConnectionClosedError;
+          // propagate that as a clean shutdown (exit 69), not a
+          // retain-uncertain UsageError. Any other failure is an unresolved
+          // read within the bounded budget: treat it as retain-uncertain,
+          // and sticky -- a later hello reading retain_files=false does not
+          // clear it, since the unreadable hello could itself be an unsynced
+          // retain hello, and wiping it without --force-retain-sweep is the
+          // data loss the guard prevents.
+          if (err instanceof UsageError) throw err;
           if (deps.signal().aborted) throw err;
-          if (err instanceof UsageError && !deps.options().forceRetainSweep)
-            throw err;
+          // Stop at the first unreadable hello: uncertainty is sticky and
+          // already forces refuse (bare flag) or the danger warning (force), so
+          // further reads cannot change the outcome and only add latency.
           retainUncertain = true;
           break;
         }
