@@ -632,7 +632,7 @@ export {
   retiredSigningSetting,
   retiredSigningSettingNotice,
 } from "./config/signing";
-export type { SigningConfig } from "./config/signing";
+export type { SigningConfig, SigningMode } from "./config/signing";
 export {
   SIGNING_CERTIFICATE_VERSION,
   SIGNING_IDENTITY_VERSION,
@@ -648,6 +648,7 @@ export {
 export type {
   CertificateBody,
   P256PrivateJwk,
+  PartnerCertificateCondition,
   SigningCertificate,
   SigningIdentity,
 } from "./records/signingIdentity";
