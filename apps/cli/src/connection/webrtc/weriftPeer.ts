@@ -977,7 +977,6 @@ export async function openWebRtcPeerSession(
     // deadline rather than read as the misconfiguration it is on a first
     // registration. The broker holds the id of a socket that vanished without
     // closing until its liveness timeout, so `ID-TAKEN` gets its own window.
-    // A certificate that did not verify is neither, and ends the wait at once.
     let refusedSince: number | undefined;
     let unreachableReported = false;
     let delayMs = ID_TAKEN_RETRY_FIRST_DELAY_MS;

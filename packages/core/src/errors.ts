@@ -599,10 +599,10 @@ export class PeerAbortError extends ConnectionError {
 /**
  * An authentication failure: the key exchange rejected the shared secret or
  * the peer, the SFTP server presented a host key other than the pinned
- * one, or the WebRTC coordination server presented a TLS certificate that did
- * not verify. A retry against the same secret or the same server reaches the same
- * refusal, so the CLI gives this class `EX_NOPERM` (77) rather than the
- * retryable 69 (see docs/CLI.md, Exit codes).
+ * one, or the WebRTC coordination server presented a TLS certificate that
+ * did not verify. A retry against the same secret or the same server
+ * reaches the same refusal, so the CLI gives this class `EX_NOPERM` (77)
+ * rather than the retryable 69 (see docs/CLI.md, Exit codes).
  *
  * A {@link ConnectionError} of kind `"security"`, so a consumer classifying
  * on the kind still treats it as a trust-boundary failure. Not every
