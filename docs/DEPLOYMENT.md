@@ -107,7 +107,7 @@ The site is served by a Cloudflare Pages project with no Git source: GitHub Acti
 The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to the Pages project by direct upload:
 
 - **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building. The gate tests the full branch ref, so a tag named like a branch does not deploy; as a second guard, give each environment a deployment branch rule allowing only its branch under Settings -> Environments.
-- **Path filter:** the push trigger lists the sources the build reads and leaves out the test trees and documentation, so a push changing nothing under those paths deploys nothing. [`scripts/check-deploy-trigger-graph.mjs`](../scripts/check-deploy-trigger-graph.mjs) builds the site and fails when a source the build reads matches no entry of the list.
+- **Path filter:** the push trigger lists the sources the build reads and leaves out the test trees and documentation, so a push changing nothing under those paths deploys nothing: a merge that touches only scripts, documentation, tests or `infra/` leaves both deployments on the last build uploaded. A manual dispatch on the branch uploads its current tip. [`scripts/check-deploy-trigger-graph.mjs`](../scripts/check-deploy-trigger-graph.mjs) builds the site and fails when a source the build reads matches no entry of the list.
 - **Gate:** it runs the web build and test workflow, [`web_build_and_test.yaml`](../.github/workflows/web_build_and_test.yaml), and uploads only when every suite in it passes.
 - **Build and artifact:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps `apps/web/dist/hosted/` as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
 - **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`). It is the one job in any workflow that holds the deploy credentials, and it runs no repository code; the same check holds both.
@@ -123,7 +123,7 @@ It reads two secrets and two variables. The upload job runs in the GitHub enviro
 
 ### Custom domains and zone settings
 
-Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias, as the OpenTofu root's `hosted_origin` entries hold until the Elastic Beanstalk environments are retired. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
+Both public names are custom domains of the Pages project, each a proxied DNS record in the Cloudflare zone: the production name points at the project's `pages.dev` name, and the staging name at the `staging` branch alias. Public TLS terminates on a Cloudflare-managed edge certificate for the zone. The zone settings the root declares:
 
 | Setting | Value |
 | ------- | ----- |
@@ -135,7 +135,7 @@ Both public names are custom domains of the Pages project, each a proxied DNS re
 
 The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). Two limits of Pages, measured on the deployment:
 
-- **Every response carries `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential, so a page on another origin reading one reads nothing it could not fetch itself.
+- **Every response carries `access-control-allow-origin: *`.** Pages adds it, and `_headers` does not remove it. The site serves public static files and no response depends on a credential, so a page on another origin reading one reads nothing it could not fetch itself. On the project's `pages.dev` names, Pages also adds `x-robots-tag: noindex`; it does not add it on the custom domains.
 - **A missing `/assets/` file answers with the root document,** with status 200 and the `/assets/*` rule's one-year `immutable` `Cache-Control`. Asset names carry a content hash, so a URL that misses never becomes valid later, and the service worker refuses to cache a response whose content type is not the asset's ([notes/hosted-static-build.md](notes/hosted-static-build.md#the-host-configuration-file)).
 
 ## Diagnosing web connection failures

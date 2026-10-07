@@ -4,20 +4,19 @@ title: "Holding the Hosted Environment's Inbound Rules"
 
 # Holding the hosted environment's inbound rules in OpenTofu
 
-_Status: decided and written, 2026-09-22; applied to the live account and
-confirmed through a rebuild of each environment, 2026-09-23. This note
-records how the OpenTofu root under
-[`infra/hosted/`](../../infra/hosted/README.md) holds the inbound rules of the
-project's own Elastic Beanstalk environments, and the two alternatives weighed
-against it. The operational steps -- adopting the live resources, applying,
-reading a plan for drift, and the first run -- are in
-[`infra/hosted/README.md`](../../infra/hosted/README.md). See
-[docs/notes/README.md](README.md)._
+_Status: decided and written, 2026-09-22. This note is the record of a
+decision taken for resources the OpenTofu root under
+[`infra/hosted/`](../../infra/hosted/README.md) no longer declares: it held
+the inbound rules of the project's own Elastic Beanstalk environments, and
+the two alternatives are the ones weighed against it. The environments and
+the security group were removed from the root and destroyed by the owner's
+apply. See [docs/notes/README.md](README.md)._
 
 _The hosted web app is served from Cloudflare Pages
-([docs/DEPLOYMENT.md](../DEPLOYMENT.md#the-projects-hosted-web-deployment)),
-and the Elastic Beanstalk environments and security group this note describes
-are retired by a change to the root of their own._
+([docs/DEPLOYMENT.md](../DEPLOYMENT.md#the-projects-hosted-web-deployment)).
+The environments and the security group this note describes are no longer in
+the root or the account; the note stays as the record of the decision taken
+while they ran._
 
 ## The posture to hold
 
