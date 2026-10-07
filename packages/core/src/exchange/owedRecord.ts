@@ -14,9 +14,9 @@ import type { AssociationTable } from "../types.js";
  * Build the record once the run's outcome is decided, so it can state it. It
  * is a secondary audit artifact, so a failure to build it (e.g. an unexpected
  * non-canonical value) must not fail a run that otherwise succeeded or
- * discard its result: catch, warn, and continue without a record. Never
- * throws; `recordOwedButUnbuilt` is the completed path's report of the loss
- * the terminated path marks on its failure (carryingExchangeRecord).
+ * discard its result: catch, warn, and continue without a record.
+ * `recordOwedButUnbuilt` is the completed path's report of the loss the
+ * terminated path marks on its failure (carryingExchangeRecord).
  */
 export async function buildOwedExchangeRecord(p: {
   localTerms: LinkageTerms;
