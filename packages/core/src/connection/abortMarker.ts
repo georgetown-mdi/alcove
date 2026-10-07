@@ -85,7 +85,7 @@ interface AbortWriteInputs {
 // connection. `runBudgeted` is withTransportBudget; `stalledError` is
 // transportBudgetExceededError.
 interface AbortMarkerDeps {
-  log: ReturnType<typeof getLoggerForVerbosity>;
+  log: () => ReturnType<typeof getLoggerForVerbosity>;
   role: () => string;
   runBudgeted: <T>(
     op: Promise<T>,
@@ -145,7 +145,7 @@ export class AbortMarkerSubsystem {
   }
 
   // The memoized bounded marker write, or undefined when none has been issued.
-  // close() awaits it in full on the "write" decision.
+  // close() awaits it in full whenever it is defined.
   get pendingWrite(): Promise<void> | undefined {
     return this.pendingAbortWrite;
   }
@@ -280,9 +280,9 @@ export class AbortMarkerSubsystem {
         ),
     );
     this.abortMarkerWritten = true;
-    this.deps.log.debug(
-      `[${this.deps.role()}] wrote abort marker ${inputs.finalName}`,
-    );
+    this.deps
+      .log()
+      .debug(`[${this.deps.role()}] wrote abort marker ${inputs.finalName}`);
   }
 
   /**
@@ -365,10 +365,12 @@ export class AbortMarkerSubsystem {
     // The marker is re-read every cycle, so a large read here would be the
     // availability vector ABORT_MARKER_MAX_BYTES exists to bound.
     if (listed.size > ABORT_MARKER_MAX_BYTES) {
-      this.deps.log.debug(
-        `[${this.deps.role()}] ignoring oversized abort marker ` +
-          `${redactAndSanitizeForDisplay(markerName)} (${listed.size} bytes)`,
-      );
+      this.deps
+        .log()
+        .debug(
+          `[${this.deps.role()}] ignoring oversized abort marker ` +
+            `${redactAndSanitizeForDisplay(markerName)} (${listed.size} bytes)`,
+        );
       return false;
     }
     try {

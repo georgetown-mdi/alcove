@@ -694,7 +694,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     // subsystem holds the rest of the abort state itself. `role` is read live so
     // a post-construction role assignment is reflected in the marker's log lines.
     this.abortMarker = new AbortMarkerSubsystem({
-      log: this.log,
+      log: () => this.log,
       role: () => this.role,
       runBudgeted: withTransportBudget,
       stalledError: transportBudgetExceededError,
@@ -1327,34 +1327,15 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     // it waits for is made locally, and a poll during that wait would consume
     // a peer message nothing will receive.
     this.stop();
-    // Abort-marker decision gate -- before the drain/client.end()
-    // and before identity/token fields are cleared. On a connection-originated
-    // fault the bridge fire-and-forgets this close() BEFORE the error reaches
-    // the orchestrator's catch, so a marker write issued from the catch would
-    // race its own teardown. If armed and the decision is still unresolved,
-    // wait for whichever of {the decision resolving, the fallback grace}
-    // comes first; on "write", await the bounded marker write IN FULL
-    // (rejection-safe -- close() must stay non-throwing). The grace bounds
-    // only the wait for the decision above, never this write -- the write has
-    // its own per-op budget. The await MUST precede client.end(): the marker
-    // write rides the same underlying transport, so an earlier end() would
-    // kill it -- the write inputs captured at arm time immunize only against
-    // the path/config nulling, not against end(). Gated on abortArmed &&
-    // decision-unresolved so the idempotent second/third close() from
-    // doCleanup re-enters as a clean no-op: the orchestrator's catch awaits
-    // writeAbortMarker() to completion before its finally runs doCleanup, so
-    // by the second close() the write has already settled. This delays
-    // teardown only in the fault window; the clean/echo/signal paths seal the
-    // decision in doCleanup before this runs, so they proceed without the
-    // grace delay.
-    if (this.abortArmed && !this.abortMarker.decisionResolved) {
-      const decision = await this.abortMarker.awaitDecisionOrGrace();
-      const pendingWrite = this.abortMarker.pendingWrite;
-      if (decision === "write" && pendingWrite !== undefined)
-        await pendingWrite.catch(() => {
-          /* best-effort; teardown proceeds regardless of write outcome */
-        });
-    }
+    // Abort-marker gate, before the drain and client.end(), which would kill a
+    // marker write on the same transport. A fault fire-and-forgets close()
+    // before the orchestrator's catch decides, so an undecided close() waits
+    // for the decision or the fallback grace. Any marker write in flight is
+    // then awaited in full, however the decision stood when close() began;
+    // the write has its own budget, and close() stays non-throwing.
+    if (this.abortArmed && !this.abortMarker.decisionResolved)
+      await this.abortMarker.awaitDecisionOrGrace();
+    await this.abortMarker.pendingWrite?.catch(() => {});
 
     // Cancel any in-flight wait (a rendezvous/send sleep parked between polls)
     // so it rejects promptly instead of resuming against a connection that is

@@ -1533,6 +1533,7 @@ export class FileSyncRendezvous {
       deps.responsibleFiles.add(`${deps.id()}${HELLO_SUFFIX}`);
     let lockPath: string | undefined;
     let ackPath: string | undefined;
+    let ackedPeerHelloName: string | undefined;
 
     // Deadline for the bounded recovery window on an entry-present peer hello,
     // armed only when one predated this run (see run()) and the remaining
@@ -1589,6 +1590,18 @@ export class FileSyncRendezvous {
           const peerHello = peerHellos[0];
           const peerId = peerHello.name.slice(0, -HELLO_SUFFIX.length);
 
+          // The checks below ran on the hello this party acked; a different
+          // one in a later listing was neither read nor acked.
+          if (
+            ackedPeerHelloName !== undefined &&
+            peerHello.name !== ackedPeerHelloName
+          )
+            throw new UsageError(
+              "the peer hello changed during the rendezvous in " +
+                `${redactPrivateKeyMaterial(scope.inboundPath)} - are ` +
+                "there other sessions using this path?",
+            );
+
           // Write our ack once on the first sighting of the peer's hello.
           if (ackPath === undefined) {
             // I5: read the peer hello body through the partial-sync gate
@@ -1636,6 +1649,7 @@ export class FileSyncRendezvous {
               );
             const ackName = await deps.writeAck(outboundPath, peerHelloStem);
             ackPath = joinFileSyncPath(outboundPath, ackName);
+            ackedPeerHelloName = peerHello.name;
             // Track after the durable rename (delete mode only) so
             // cleanup() removes it at close(), exactly as the message write
             // in send() does: the final name appears only at the atomic
@@ -2291,9 +2305,7 @@ export class FileSyncRendezvous {
       // depth: a peerId="" slipping through would make poll() treat every
       // "-"-prefixed file as a peer message and the lockless ack barrier
       // wait on an ack no honest peer writes, so fail closed here rather
-      // than proceed. Each peer-hello read checks the id pair before its
-      // write; the check here covers a peer id the lockless barrier commits
-      // from a later listing than the hello it read.
+      // than proceed. The prefix check repeats each peer-hello read's check.
       if (deps.peerId()!.length === 0)
         throw new UsageError(
           "rendezvous recovered an empty peer id; a bare " +

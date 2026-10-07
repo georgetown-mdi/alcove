@@ -187,6 +187,24 @@ describe("dialAsAcceptor", () => {
     expect(fake.destroy).not.toHaveBeenCalled();
   });
 
+  test("rejects before constructing a peer when already aborted", async () => {
+    stubWindow();
+    const controller = new AbortController();
+    controller.abort();
+    const fake = new FakePeer();
+    const cap = captureFactory(fake);
+
+    await expect(
+      dialAsAcceptor(generateSharedSecret(), endpoint, {
+        signal: controller.signal,
+        peerFactory: cap.factory,
+      }),
+    ).rejects.toThrow(/aborted/i);
+
+    expect(() => cap.id()).toThrow("peer not constructed");
+    expect(fake.destroy).not.toHaveBeenCalled();
+  });
+
   test("retries when the inviter is not yet available, then connects", async () => {
     stubWindow();
     const secret = generateSharedSecret();
