@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import {
   Alert,
@@ -163,9 +163,18 @@ import {
 } from "./scheduleEntryModel";
 import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 
+import {
+  MANAGED_RUN_INITIAL,
+  managedRunCompletion,
+  managedRunInProgress,
+  managedRunInputSource,
+  managedRunLiveFailure,
+  managedRunReducer,
+  managedSurfaceView,
+} from "./managedRunSurfaceModel";
+
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
 
-import type { ResolvedMatching, TermsChange } from "@alcove/core";
 import type { Ref } from "react";
 
 import type {
@@ -186,27 +195,14 @@ import type {
   ManagedSpentState,
 } from "@psi/managed/managedLocalState";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
-import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRetakeRefusal } from "./managedRetakeModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
-import type { RunOutputs } from "@psi/runOutputs";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 const log = getLogger("ManagedRunSurface");
-
-/** The classified failure on screen, with the number of the run that produced it.
- * Each tier's copy is a shared constant, so two runs failing the same way yield the
- * same alert object; the run number is what tells one failure from another, and it
- * is what a confirmation the operator gave at a gate is granted for. */
-interface LiveManagedRunFailure {
-  /** The classified failure the surface renders. */
-  alert: ManagedRunFailureAlert;
-  /** Which of this visit's runs produced it, counting from one. */
-  runNumber: number;
-}
 
 /**
  * The attended re-run surface: open a stored managed exchange, confirm the input,
@@ -308,7 +304,21 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // here, and the surface names what runs in its place.
   const [commandLineHandoff, setCommandLineHandoff] = useState<string>();
   const [reselected, setReselected] = useState<File>();
-  const [running, setRunning] = useState(false);
+  const [runState, dispatchRun] = useReducer(
+    managedRunReducer,
+    MANAGED_RUN_INITIAL,
+  );
+  const running = managedRunInProgress(runState);
+  const runCompletion = managedRunCompletion(runState);
+  const outputs = runCompletion?.outputs;
+  const folderWrite = runCompletion?.folderWrite;
+  const finishedAt = runCompletion?.finishedAt;
+  const runOutcomeUnsavedReason = runCompletion?.unsavedReason;
+  // The hand-off has no failure copy of its own and never lands here: reaching it
+  // moves the surface to the spent state below.
+  const liveFailure = managedRunLiveFailure(runState);
+  const failure = liveFailure?.alert;
+  const { warnings: runWarnings, matching, termsChangeQuestion } = runState;
   // The record, its detail, and the backup affordances all read the browser's own
   // store and render offline; a run is a live two-party session and cannot. Gating
   // the action names that rather than letting the operator press it into an opaque
@@ -331,35 +341,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // run.
   const staleMigration =
     migrationRefusal !== undefined && migrationRefusal !== "run-in-flight";
-  const [outputs, setOutputs] = useState<RunOutputs>();
-  // The copy of a completed run's results written into the working folder,
-  // absent where the record holds no folder grant or the run left no file.
-  const [folderWrite, setFolderWrite] = useState<AttendedFolderWrite>();
-  const [finishedAt, setFinishedAt] = useState<Date>();
-  // The store refused the completed run's success stamp.
-  const [runOutcomeUnsavedReason, setRunOutcomeUnsavedReason] = useState<
-    string | undefined
-  >(undefined);
-  // This holds alert copy alone: the hand-off state has no copy of its own and
-  // never lands here, because reaching it moves the surface to the spent state below.
-  const [liveFailure, setLiveFailure] = useState<LiveManagedRunFailure>();
-  const failure = liveFailure?.alert;
-  const [termsChangeQuestion, setTermsChangeQuestion] = useState<{
-    change: TermsChange;
-    answer: (accept: boolean) => void;
-  }>();
   const [termsProposalBusy, setTermsProposalBusy] = useState(false);
   const [termsProposalFailure, setTermsProposalFailure] = useState<string>();
   // How many runs this visit has started, so each failure gets a number of its own.
   const runsStarted = useRef(0);
-  // The run's non-fatal notices, in arrival order. The driver raises one only for
-  // a run that produced its outputs, and its close resolves after those outputs
-  // reach here, so a notice lands on the completion surface beside the results.
-  const [runWarnings, setRunWarnings] = useState<ReadonlyArray<string>>([]);
-  // What the agreed `deduplicate` values resolved to, reported by the driver
-  // once the terms are agreed: the running copy states the pair while the run
-  // is still going, and the completion panel restates it from the outputs.
-  const [matching, setMatching] = useState<ResolvedMatching>();
   // The Tier-2 confirmation gate: once the operator confirms a real partner-side
   // failure, the surface proceeds to re-invite; a "does not add up" reply routes to
   // the compromise-response copy instead. The grant names the failure it was given
@@ -584,27 +569,21 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const hasFolder = storedWorkingDirectoryUsable(folder);
   const folderGrantable = workingDirectoryGrantSupported();
 
-  function inputSource(): ManagedInputSource | undefined {
-    if (record === undefined) return undefined;
-    if (hasFolder && folder !== undefined)
-      return { kind: "folder", directory: folder, attendance: "attended" };
-    if (!folderGrantable && reselected !== undefined)
-      return { kind: "file", file: reselected };
-    return undefined;
-  }
+  const runInputSource = managedRunInputSource(
+    record,
+    hasFolder,
+    folderGrantable,
+    reselected,
+  );
 
   function run() {
-    const source = inputSource();
+    const source = runInputSource;
     if (record === undefined || source === undefined || running) return;
     const controller = new AbortController();
     abortRef.current = controller;
     runsStarted.current += 1;
     const runNumber = runsStarted.current;
-    setRunning(true);
-    setLiveFailure(undefined);
-    setRunWarnings([]);
-    setRunOutcomeUnsavedReason(undefined);
-    setMatching(undefined);
+    dispatchRun({ type: "run-started" });
     setConfirmationGrantedFor(undefined);
     setCompromiseWriteFailed(false);
     setReinvite(undefined);
@@ -658,10 +637,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
             },
           },
           onWarning: (message) =>
-            setRunWarnings((current) =>
-              appendSanitizedRunWarning(current, message),
-            ),
-          onResolvedMatching: setMatching,
+            dispatchRun({
+              type: "warning-raised",
+              warnings: appendSanitizedRunWarning([], message),
+            }),
+          onResolvedMatching: (resolved) =>
+            dispatchRun({ type: "matching-resolved", matching: resolved }),
           // Asked in a dialog while the partner's run waits at the terms
           // exchange. Tearing the run down answers no, so the exchange never
           // waits on a question nobody can see.
@@ -672,12 +653,15 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 if (answered) return;
                 answered = true;
                 controller.signal.removeEventListener("abort", onAbort);
-                setTermsChangeQuestion(undefined);
+                dispatchRun({ type: "terms-change-answered" });
                 resolve(accept);
               };
               const onAbort = () => answer(false);
               controller.signal.addEventListener("abort", onAbort);
-              setTermsChangeQuestion({ change, answer });
+              dispatchRun({
+                type: "terms-change-asked",
+                question: { change, answer },
+              });
             }),
         });
         // The run can resolve after the surface unmounts; the getter can flip true
@@ -685,11 +669,14 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // models the getter as a literal, hence the disable).
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
-        setOutputs(result.exchange);
-        setFinishedAt(new Date());
-        setRunOutcomeUnsavedReason(
-          result.lastRunSaved ? undefined : result.lastRunNotSavedReason,
-        );
+        dispatchRun({
+          type: "run-completed",
+          outputs: result.exchange,
+          finishedAt: new Date(),
+          unsavedReason: result.lastRunSaved
+            ? undefined
+            : result.lastRunNotSavedReason,
+        });
         if (result.exchange.kind !== "matched") return;
         const directory = launched.workingDirectoryHandle;
         if (directory === undefined || !storedWorkingDirectoryUsable(directory))
@@ -704,7 +691,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
           );
           return;
         }
-        setFolderWrite({ directoryName: directory.name });
+        dispatchRun({
+          type: "folder-write-started",
+          directoryName: directory.name,
+        });
         // Once started, the write completes even if the surface is torn down:
         // every run's results reach the folder. Only what follows it is gated.
         const delivery = await writeRunResultsToWorkingFolder(
@@ -715,12 +705,15 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
         if (delivery.kind === "no-folder") {
-          setFolderWrite(undefined);
+          dispatchRun({ type: "folder-write-skipped" });
           return;
         }
         if (delivery.kind === "write-failed")
           whenDiagnostic(() => console.error(delivery.error));
-        setFolderWrite({ directoryName: directory.name, delivery });
+        dispatchRun({
+          type: "folder-write-finished",
+          write: { directoryName: directory.name, delivery },
+        });
       } catch (error) {
         if (controller.signal.aborted) return;
         // The raw error can embed partner-/server-controlled bytes and displays as an
@@ -762,7 +755,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
           if (reloaded !== undefined && runnableManagedExchange(reloaded))
             setRecord(reloaded);
           setRecordReads((reads) => reads + 1);
-          setLiveFailure({ alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber });
+          dispatchRun({
+            type: "run-failed",
+            failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber },
+          });
           return;
         }
         const failed = classifyManagedRunFailure(
@@ -787,9 +783,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
           setLoadFailure("spent");
           return;
         }
-        setLiveFailure({ alert: failed, runNumber });
+        dispatchRun({
+          type: "run-failed",
+          failure: { alert: failed, runNumber },
+        });
       } finally {
-        if (!controller.signal.aborted) setRunning(false);
+        if (!controller.signal.aborted) dispatchRun({ type: "run-settled" });
         abortRef.current = undefined;
       }
     })();
@@ -926,7 +925,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         if (await recheckLock()) return;
         const result = await reinviteManagedExchange(record);
         adoptRecord(result.record);
-        setLiveFailure(undefined);
+        dispatchRun({ type: "failure-cleared" });
         setReinvite(result.reinvite);
       } catch (error) {
         // The store refuses the rotation over an answer this page has not read, and
@@ -1153,7 +1152,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
       if (apply)
         await applyManagedTermsProposal(record.id, proposal.proposedAt);
       else await declineManagedTermsProposal(record.id);
-      setLiveFailure(undefined);
+      dispatchRun({ type: "failure-cleared" });
       setRecordReads((reads) => reads + 1);
     } catch (error) {
       whenDiagnostic(() => console.error(error));
@@ -1189,21 +1188,15 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // incoming h1 (each has tabIndex -1) rather than staying on a control that no
   // longer exists. The first settle out of loading is the page arriving, not a
   // step, so it leaves focus at the top of the document.
-  const surfaceView =
-    loadFailure ??
-    (configuration !== undefined
-      ? "configuration"
-      : record === undefined
-        ? "loading"
-        : outputs !== undefined
-          ? "complete"
-          : commandLineHandoff !== undefined
-            ? "command-line"
-            : migrated
-              ? "migrated"
-              : migrationDispatch !== undefined
-                ? "confirm-move"
-                : "run");
+  const surfaceView = managedSurfaceView({
+    loadFailure,
+    configurationLoaded: configuration !== undefined,
+    recordLoaded: record !== undefined,
+    run: runState,
+    commandLineHandedOff: commandLineHandoff !== undefined,
+    migrated,
+    migrationAwaitingConfirm: migrationDispatch !== undefined,
+  });
   const surfaceRef = useRef<HTMLElement>(null);
   const previousSurfaceView = useRef(surfaceView);
   useEffect(() => {
@@ -1535,7 +1528,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               <Button
                 onClick={run}
                 loading={running}
-                disabled={inputSource() === undefined || !online}
+                disabled={runInputSource === undefined || !online}
               >
                 Run exchange
               </Button>
