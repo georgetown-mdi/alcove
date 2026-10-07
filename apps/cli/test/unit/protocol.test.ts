@@ -5294,7 +5294,6 @@ test("runProtocol after rotation prints no retry line beneath a terms-change ref
         keyPath,
         interactive: false,
         log: getLogger("terms-change"),
-        logFile: undefined,
       })({
         delta: {
           received: { added: ["county"], removed: [] },

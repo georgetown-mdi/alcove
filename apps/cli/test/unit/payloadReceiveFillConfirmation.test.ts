@@ -148,7 +148,6 @@ async function firstRun(interactive: boolean) {
     configPath: config,
     interactive,
     log: getLogger("exchange"),
-    logFile: undefined,
   });
   const stdio = captureStdio();
   try {

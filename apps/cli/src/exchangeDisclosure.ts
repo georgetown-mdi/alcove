@@ -384,7 +384,6 @@ function showDisclosure(params: {
     ? (line) => log.warn(line)
     : consentSurfaceSink({
         log,
-        logFile,
         toPromptStream: true,
         level: "warn",
       });

@@ -455,12 +455,11 @@ export async function validateAccept(params: {
           supplied: options.identity,
           configPath: options.configFile,
           // The same sink resolution the terms display below takes, on the same
-          // two inputs: acceptance prompts exactly where `--consent-to-terms`
+          // input: acceptance prompts exactly where `--consent-to-terms`
           // did not declare the run unattended, so the notice reaches the
           // terminal the y/N is asked on wherever the operator routed the log.
           notify: consentSurfaceSink({
             log,
-            logFile: options.logFile,
             toPromptStream: !consentToTerms,
             level: "warn",
           }),
@@ -1168,7 +1167,6 @@ export async function handler(argv: Arguments): Promise<void> {
       // surface stays plain diagnostic output on the routing the operator chose.
       const consentSurface = consentSurfaceSink({
         log,
-        logFile: options.logFile,
         toPromptStream: !consentToTerms,
       });
       displayInvitation({
