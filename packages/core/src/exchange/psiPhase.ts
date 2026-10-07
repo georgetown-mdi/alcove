@@ -89,17 +89,10 @@ export async function runPsiPhase(p: {
   // and the index-table layout, identically on both parties (see
   // linkViaSinglePassPSI and frameSize.ts).
   //
-  // Build the crypto engine, then the participant, INSIDE the disposing try.
-  // The engine psiEngineFactory returns is a worker (worker_threads in the CLI,
-  // a Web Worker in the browser) that must be terminated on every exit path.
-  // Evaluating the factory as a constructor argument would spawn that worker
-  // BEFORE the PSIParticipant constructor runs, so a throw in the constructor
-  // would orphan it; building the engine first and disposing it in the finally
-  // when the participant never took ownership makes "the worker is never
-  // orphaned" a structural guarantee. The default in-process engine is built
-  // here too, from `library`, so the engine the finally disposes is always real
-  // -- it holds the library's server or client objects (the secret key among
-  // them) whether or not the participant took ownership.
+  // The engine is built before the disposing try, so a throw in the
+  // PSIParticipant constructor still reaches the finally that terminates its
+  // worker; only the participant is built inside. The default in-process engine
+  // is built from `psiLibrary` too, since it holds the secret key.
   const psiRole = isReceiver ? "joiner" : "starter";
   const psiId = isReceiver ? "client" : "server";
   // The disclosure this round is built for, fixed once from the agreed
