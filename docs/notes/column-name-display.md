@@ -63,11 +63,10 @@ the partner's parse of the payload frame refuses a longer name, as does `ColumnM
 This screen's metadata comes from `inferMetadata` over the file's own unbounded header, so an oversized name still renders cut, but cannot leave the machine.
 
 The cut counts code points, so it never splits a surrogate pair, and an override it leaves open is closed by the isolate around it.
-The wire's ceilings count UTF-16 units.
-The two disagree in one direction only:
+The wire's ceilings count UTF-16 units, so the two units disagree in one direction only:
 a name long enough to cut is always past the wire ceiling too, so the mark never elides a name that transmits.
-The reverse is silent: a header of `MAX_NAME_LENGTH` astral characters is twice that many units,
-renders whole and unmarked, and is still refused on the wire.
+The reverse case is silent, and the browser tests pin it.
+The wire limit is stated in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
 
 ## The isolate's residual
 

@@ -22,9 +22,10 @@ const CAUSE_LINK_VALUE_BUDGET = DEFAULT_MAX_DISPLAY_LENGTH;
 /**
  * Compose one labelled cause link, `fragment` redacted and then fitted to
  * {@link CAUSE_LINK_VALUE_BUDGET} with the label's cost included. Bounded here
- * because nothing upstream bounds it (a peer or configured path, server text). Redact before
- * clipping, or a kept `BEGIN` marker meets {@link clipToRenderedCost}'s
- * fail-closed dangling rule. The result stays raw, escaped once where rendered.
+ * because the input can be a peer-supplied or configured path or server text,
+ * and nothing upstream bounds its length. Redact before clipping, or a kept
+ * `BEGIN` marker meets {@link clipToRenderedCost}'s fail-closed dangling rule.
+ * The result stays raw, escaped once where rendered.
  */
 export function fittedCauseLink(label: string, fragment: string): string {
   return `${label}${clipToRenderedCost(
