@@ -327,3 +327,58 @@ test("a partner lost while the sender processes its request reports the lost con
   expect(lossNotices(warn)).toHaveLength(1);
   expect(held.isDisposed()).toBe(true);
 });
+
+test("an engine is disposed when building its participant throws", async () => {
+  const refusal = new Error("progress observer refused");
+  const disposed: Array<"starter" | "joiner"> = [];
+  // The participant registers the progress observer in its constructor, so an
+  // engine that refuses it makes that constructor throw.
+  const factory = (role: "starter" | "joiner"): PsiEngine => {
+    const inner = new InProcessPsiEngine(
+      psiLibrary,
+      role,
+      role === "starter" ? "server" : "client",
+      "identifier-revealing",
+    );
+    return {
+      createServerSetup: (values) => inner.createServerSetup(values),
+      processClientRequest: (bytes) => inner.processClientRequest(bytes),
+      createClientRequest: (values) => inner.createClientRequest(values),
+      receiveServerSetup: (bytes) => inner.receiveServerSetup(bytes),
+      computeAssociationTable: (bytes) => inner.computeAssociationTable(bytes),
+      computeIntersectionCardinality: (bytes) =>
+        inner.computeIntersectionCardinality(bytes),
+      observeProcessedElements: () => {
+        throw refusal;
+      },
+      dispose: () => {
+        disposed.push(role);
+        inner.dispose();
+      },
+    };
+  };
+  const [connInitiator, connResponder] = createMessagePipe();
+  const run = (
+    conn: MessageConnection,
+    role: "initiator" | "responder",
+    identity: string,
+  ) =>
+    runExchange(
+      conn,
+      role,
+      prepareForExchange({ linkageTerms: terms(identity) }, identity, rows, [
+        "first_name",
+      ]),
+      { psiLibrary, psiEngineFactory: factory, onPsiProgress: () => {} },
+    );
+
+  const settled = await Promise.allSettled([
+    run(connInitiator, "initiator", "Initiator Co"),
+    run(connResponder, "responder", "Responder Co"),
+  ]);
+  for (const outcome of settled) {
+    expect(outcome.status).toBe("rejected");
+    expect((outcome as PromiseRejectedResult).reason).toBe(refusal);
+  }
+  expect(disposed.sort()).toEqual(["joiner", "starter"]);
+});
