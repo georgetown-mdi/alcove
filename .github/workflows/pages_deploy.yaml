@@ -44,11 +44,12 @@ on:
 
   workflow_dispatch:
 
-# One deploy per branch at a time; an upload in progress finishes before the
-# next starts rather than being cancelled.
+# One run per branch: a newer push cancels an older run of the same branch, so
+# only the newest commit deploys. Safe because a Pages deployment exists only
+# once its upload completes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
