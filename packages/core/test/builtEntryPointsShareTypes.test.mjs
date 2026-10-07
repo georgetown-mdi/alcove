@@ -65,7 +65,7 @@ function relativeImports(source) {
 }
 
 beforeAll(() => {
-  requireFreshDists({ packages: [CORE_PACKAGE] });
+  requireFreshDists({ packages: [CORE_PACKAGE], allowOptOut: false });
 });
 
 test("each type both entries reach is declared once across the built declarations", () => {

@@ -27,7 +27,7 @@ import {
 } from "@alcove/core/testing";
 
 beforeAll(() => {
-  requireFreshDists({ packages: [CORE_PACKAGE] });
+  requireFreshDists({ packages: [CORE_PACKAGE], allowOptOut: false });
 });
 
 const KEY = {

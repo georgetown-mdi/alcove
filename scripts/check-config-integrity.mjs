@@ -40,12 +40,12 @@ export const GUARDED_TSCONFIGS = [
   {
     tsconfig: "packages/core/tsconfig.json",
     sourceDirectory: "packages/core/src",
-    options: SHARED_PACKAGE_STRICTNESS,
+    options: { ...SHARED_PACKAGE_STRICTNESS },
   },
   {
     tsconfig: "packages/cli-contract/tsconfig.json",
     sourceDirectory: "packages/cli-contract/src",
-    options: SHARED_PACKAGE_STRICTNESS,
+    options: { ...SHARED_PACKAGE_STRICTNESS },
   },
   {
     tsconfig: "apps/cli/tsconfig.json",

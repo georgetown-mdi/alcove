@@ -75,7 +75,12 @@ beforeEach(() => {
   contract = fixturePackage(
     CLI_CONTRACT_PACKAGE,
     { ".": { types: "./dist/index.d.ts", default: "./dist/index.js" } },
-    ["src/index.ts", "src/warningSources.ts", "tsconfig.build.json"],
+    [
+      "src/index.ts",
+      "src/warningSources.ts",
+      "tsconfig.build.json",
+      "tsconfig.json",
+    ],
     ["dist/index.d.ts", "dist/index.js"],
   );
 });
@@ -139,6 +144,7 @@ describe("describeDistStaleness", () => {
   test.each([
     ["core", () => core, "rollup.config.ts"],
     ["cli-contract", () => contract, "tsconfig.build.json"],
+    ["cli-contract", () => contract, "tsconfig.json"],
   ])("%s's build config counts as a source", (_, pkg, config) => {
     write(pkg(), config, AFTER_BUILD);
     expect(describeDistStaleness(pkg())).toMatchObject({
@@ -223,6 +229,19 @@ describe("requireFreshDists", () => {
     write(core, "src/main.ts", AFTER_BUILD);
     write(contract, "src/index.ts", AFTER_BUILD);
     expect(run({ [ALLOW_STALE_ENV]: "1" })).not.toThrow();
+  });
+
+  test("a suite that asserts the dist itself ignores the opt-out", () => {
+    write(core, "src/main.ts", AFTER_BUILD);
+    const message = thrownMessage(() =>
+      requireFreshDists({
+        packages: [core],
+        env: { [ALLOW_STALE_ENV]: "1" },
+        allowOptOut: false,
+      }),
+    );
+    expect(message).toContain(CORE_PACKAGE.buildCommand);
+    expect(message).not.toContain(ALLOW_STALE_ENV);
   });
 
   test("only the exact opt-out value opts out", () => {

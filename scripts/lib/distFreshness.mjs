@@ -7,7 +7,8 @@
 //
 // It is registered at the ROOT `test` block of each app's vitest config, which
 // vitest runs once per run rather than per project, so a project added later is
-// covered without touching it.
+// covered without touching it. packages/cli-contract's config registers
+// coreDistFreshness.mjs instead, which guards core's dist alone.
 //
 // Freshness is an mtime comparison, which reads the filesystem's clock rather
 // than the build's inputs: it detects the ordinary staleness (an edited or
@@ -37,11 +38,15 @@ export const CORE_PACKAGE = {
   buildCommand: "npm run build -w packages/core",
 };
 
-/** `packages/cli-contract`: `tsc -p tsconfig.build.json` over `src`. */
+/**
+ * `packages/cli-contract`: `tsc -p tsconfig.build.json` over `src`, with the
+ * `tsconfig.json` that config extends. The shared `../../tsconfig.base.json`
+ * is left out: it sits outside the package directory.
+ */
 export const CLI_CONTRACT_PACKAGE = {
   name: "@alcove/cli-contract",
   dir: packageDir("cli-contract"),
-  sources: ["src", "tsconfig.build.json"],
+  sources: ["src", "tsconfig.build.json", "tsconfig.json"],
   buildCommand: "npm run build -w packages/cli-contract",
 };
 
@@ -154,9 +159,14 @@ function describeCause(staleness, pkg, cwd) {
 /**
  * The operator-facing error text for the packages whose dist is not fresh,
  * each `{ pkg, staleness }` with `staleness` a {@link describeDistStaleness}
- * result. The rebuilds are listed in the order given.
+ * result. The rebuilds are listed in the order given; the opt-out is offered
+ * only where `allowOptOut` says the caller honors it.
  */
-export function formatDistStaleness(findings, cwd = process.cwd()) {
+export function formatDistStaleness(
+  findings,
+  cwd = process.cwd(),
+  { allowOptOut = true } = {},
+) {
   const causes = findings
     .map(({ pkg, staleness }) => describeCause(staleness, pkg, cwd))
     .join("\n");
@@ -166,25 +176,32 @@ export function formatDistStaleness(findings, cwd = process.cwd()) {
   return (
     `${causes}\nThe suites import the built package, so this run would report ` +
     `failures that belong to the build rather than to the code under test. ` +
-    `Rebuild first:\n\n${rebuilds}\n\n` +
-    `Set ${ALLOW_STALE_ENV}=1 to run against the dist as it stands.`
+    `Rebuild first:\n\n${rebuilds}` +
+    (allowOptOut
+      ? `\n\nSet ${ALLOW_STALE_ENV}=1 to run against the dist as it stands.`
+      : "")
   );
 }
 
 /**
  * Throws, before any test runs, when the dist of any of `packages` is missing
- * or older than its sources.
+ * or older than its sources. `allowOptOut: false` is for a suite that asserts
+ * properties of the dist itself, where running against a stale one would
+ * assert a known-stale artifact.
  */
 export function requireFreshDists({
   packages = BUILT_PACKAGES,
   env = process.env,
+  allowOptOut = true,
 } = {}) {
-  if (env[ALLOW_STALE_ENV] === "1") return;
+  if (allowOptOut && env[ALLOW_STALE_ENV] === "1") return;
   const findings = packages
     .map((pkg) => ({ pkg, staleness: describeDistStaleness(pkg) }))
     .filter(({ staleness }) => staleness !== null);
   if (findings.length === 0) return;
-  throw new Error(formatDistStaleness(findings));
+  throw new Error(
+    formatDistStaleness(findings, process.cwd(), { allowOptOut }),
+  );
 }
 
 /**
