@@ -1,60 +1,27 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a Bash wait that can run forever, and a Bash call that
-// is nothing but a long `sleep`, the shape a session takes when it polls for a
-// background run to finish.
+// PreToolUse hook on Bash: refuse a wait that can run forever, and a call that
+// is nothing but a long `sleep`, the shapes a session takes when it polls for
+// a background run to finish. Three shapes are refused:
 //
-// Why this exists: a poll is not cheap. Every one is a fresh tool round trip
-// that re-bills the polling session's whole context, and the waiting session
-// learns nothing it would not have been told -- a background run notifies on
-// exit, and a foreground command is waited on by the tool itself. A wait inside
-// one call does not re-bill, so a loop is fine; what is refused is a wait with
-// no upper bound, since it keeps running after the session that started it has
-// returned. Bounding is judged on the loop's shape, not on what it waits for:
-// an unbounded wait on `ps aux | grep "[e]slint"` matched an editor extension's
-// command line for hours after the lint it watched had finished.
-//
-// Three shapes are refused:
-//
-// - A naked sleep: a command that is exactly `sleep <duration>` with nothing
-//   else on the line, when that duration is at least five seconds. A shorter
-//   sleep is a settle, not a poll, and a sleep that is part of a larger command
-//   line is judged by the two rules below.
+// - A naked sleep: a command that is exactly `sleep <duration>`, when the
+//   duration is at least MINIMUM_BLOCKED_SECONDS. A sleep inside a larger
+//   command line is judged by the two rules below.
 // - An unbounded wait loop: an `until` or `while` loop that sleeps, in its
-//   condition or its body, whatever its condition tests. It counts as bounded
-//   when a `timeout ... sh -c` wrapper encloses it, or when its condition or body
-//   does shell arithmetic (`$((n+=1))`, `((...))`, `let`, `expr`), reads
-//   `SECONDS`, or reads the clock with `date +%s` -- an iteration counter or a
-//   deadline. A `for` loop over a finite list is bounded by its list and is not
-//   read.
+//   condition or its body. It is bounded when a `timeout ... sh -c` wrapper
+//   encloses it, or when its condition or body does shell arithmetic
+//   (`$((n+=1))`, `((...))`, `let`, `expr`), reads `SECONDS`, or reads
+//   `date +%s`. A `for` loop over a finite list is not read.
 // - An unbounded background command: a `run_in_background` call must open with
-//   `timeout <N>` (or `gtimeout <N>`, the name Homebrew's coreutils installs it
-//   under), N not zero -- GNU `timeout 0` disables the limit, measured against
-//   coreutils 9.1 -- and hold no later `;`, `&&`, `||`, lone `&`, or newline
-//   outside quotes, since a command after one of those runs outside the
-//   bound. The Bash tool's own timeout does not apply to a background run, so
-//   the wrapper is its only bound. Any non-zero N is accepted: the rule is that the run
-//   ends, and a background run is used precisely for work longer than the
-//   foreground ceiling, so a hook-enforced cap would be a number with nothing
-//   behind it. A host with no `timeout` on PATH (macOS without coreutils) can
-//   run the command in the foreground instead.
+//   `timeout <N>` or `gtimeout <N>`, N not zero, and hold no later `;`, `&&`,
+//   `||`, lone `&` or newline outside quotes. Any non-zero N is accepted.
 //
-// What the background rule rests on: a subagent the Agent tool spawned that
-// starts a background command and ends its turn is resumed by the harness when
-// the command finishes. Its caller is notified twice: first with the turn-end
-// message, flagged "This agent stopped with background work of its own still
-// running ... the result below may be interim", then with the resumed result
-// under the same task id. First observed 2026-09-24; re-run 2026-09-25 on Claude
-// Code 2.1.282 on a macOS host, where the probe's command ran unwrapped because
-// no `timeout` was on PATH. The prompt is block-sleep-poll.probe.md beside this
-// file; re-run it after a harness upgrade. A `Workflow` `agent()` call was not
-// probed.
+// Probe: block-sleep-poll.probe.md beside this file, last run 2026-09-25 on
+// Claude Code 2.1.282 (macOS host); a `Workflow` `agent()` call was not probed.
 //
-// None of this is a shell parser (see lib/shell.mjs): a loop hidden in a
-// variable, a function, or an `eval` string is not seen.
-//
-// Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude. Any
-// unexpected failure here falls through to exit 0 (fail open) so a bug in this
-// hook can never wedge every Bash command.
+// Not a shell parser (see lib/shell.mjs): a loop in a variable, a function or
+// an `eval` string is not seen. Exit 0 allows the call; exit 2 blocks it and
+// feeds stderr back to Claude. An unexpected failure allows (fail open).
+// Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { commandOf, eventForTools } from "./lib/event.mjs";
 import { tokenizeRaw } from "./lib/shell.mjs";

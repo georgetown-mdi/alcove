@@ -135,7 +135,7 @@ and the hook raises that need right after the pull request opens rather than lea
 A message printed into the reply is gone by merge time: the session keeps working and the maintainer merging later has nowhere to look it up.
 A comment has a stable address on the page holding the merge button, readable from any machine, and never becomes repository content.
 The fence keeps GitHub from rendering the body as markdown, so what is copied is what was written.
-The format rules are not restated in the hook; [`format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs) states them.
+The format rules are not restated in the hook; [`format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs) enforces them, as [the drafter and normalizer](#squash-message-drafter-and-normalizer) explains.
 
 ### Which branch is counted
 
@@ -164,6 +164,63 @@ Within a pair, a `--head` no ref resolves is skipped rather than counted from th
   A literal `gh pr create` inside one, such as a PR body quoting the command, counts as another create:
   a single create then goes through the pairing path, its reminder unchanged while the lists pair and dropped when they do not.
 - The hook fails open on every error, an unreadable event, missing git, or an unresolvable `origin/staging`, since a reminder must never disrupt the session.
+
+## Squash-message drafter and normalizer
+
+[`.claude/scripts/squash-message.mjs`](../../.claude/scripts/squash-message.mjs) and [`.claude/scripts/format-squash-message.mjs`](../../.claude/scripts/format-squash-message.mjs)
+
+### Why the rules are executable
+
+The body posted on a pull request is pasted verbatim into the merge box's body field, so whatever it holds is what lands in the history.
+GitHub fills the subject from the pull request's title, whose budget [`scripts/lib/squashSubjectBudget.mjs`](../../scripts/lib/squashSubjectBudget.mjs) holds for the title hook and the PR checklist check,
+so a draft here is a body and nothing else.
+Restating [CONTRIBUTING.md](../../CONTRIBUTING.md), Commit Messages, at each producer checks nothing, and a 120-column body line reaches the maintainer intact.
+The normalizer is where those rules are executable, and its wrap column is the only copy of that number outside CONTRIBUTING.md.
+
+### Normalizing against refusing
+
+The split is whether the fix keeps the words.
+Rewrapping a paragraph, dropping a markdown marker and turning a list item into a paragraph leave the text saying what it said, so they happen silently.
+A fix that would not keep them is refused: reflowing an over-wide line inside an indented block destroys the shape it was indented for.
+Leaving an indented block verbatim and refusing an over-wide line inside it keeps the wrap guarantee total.
+A block holding a list marker at column 0 is a list rather than indented text, whatever its items are indented by.
+
+What normalizing does to markdown:
+emphasis and an inline code span lose their markers and keep the text;
+a heading marker, a code fence line and a blockquote marker are dropped, and a heading's text becomes a paragraph of its own;
+`[text](url)` becomes `text` with the url in parentheses after it, unless the text already holds the url;
+a list item becomes its own paragraph, its continuation lines joined into it, and an indented item goes with the item above it.
+
+`violations` is empty exactly when no refusal fires and the body is what the normalizer produces from it, character for character.
+A body wrapped by hand at another column is not, and the fix is one run of the script.
+Both entry points run `violations` over what normalizing produced and refuse to hand on output it rejects,
+so a shape the normalizer mangles is a failed run rather than a mangled message the maintainer pastes.
+
+### Why the comment is fenced
+
+GitHub renders a comment as markdown, which would reflow the wrapped lines the maintainer copies; a fenced block shows them as written.
+The fence is longer than any run of backticks in the body, so nothing inside it can close it early.
+
+### Why the drafter is a script
+
+Alcove squash-merges, so the message GitHub proposes, the PR title plus a list of commit subjects, lands in the history unless someone writes a better one.
+Writing it is a fixed, repeated prompt, so it is a script rather than a habit.
+The prompt is left in the maintainer's own words except for the one sentence that keeps a subject line out,
+and it names CONTRIBUTING.md with an `@` mention, as the interactive ritual does, rather than restating conventions that would drift from the document.
+
+A one-commit pull request is refused because GitHub squash-merges it with that commit's own message, so a drafted one is discarded on merge and the writing belongs in the commit.
+The count comes from `gh pr view`, the list GitHub squashes, rather than a local revision walk that would depend on which checkout the script ran from.
+An unknown count drafts anyway: the guard is defense in depth for a manual run, not the reason the script exists.
+
+A draft the normalizer refuses is printed as the run produced it, with a nonzero exit, rather than half-fixed into something that reads finished.
+The colocated test pins the read-only tool allowance and the deny list of the argv the drafter builds.
+`--allowedTools` and `--disallowedTools` are variadic, so a trailing prompt argument would arrive as a pile of one-word deny rules and the run would die asking for input it was given;
+hence the prompt on stdin and each list as one token.
+
+### Stated limits
+
+- A single word longer than the column budget occupies a line of its own, over budget: breaking it would change the text, and `violations` exempts exactly that line.
+- A subject line written at the top of the draft is not told apart from a one-line opening paragraph, so it is kept as one.
 
 ## Additive-test-delta verifier
 
@@ -309,3 +366,102 @@ Like that marker it is self-applicable: what it buys is an override that is name
 
 A tool naming its target under a key other than `file_path` or `notebook_path` is not seen.
 The session's tree is read from the event's cwd, where the harness says the session is working, so a cwd that silently reverted out of an entered worktree is treated as the tree it reverted to.
+
+## Review-ledger disposition check
+
+[`.claude/scripts/check-review-ledger-dispositions.mjs`](../../.claude/scripts/check-review-ledger-dispositions.mjs)
+
+### Why it is mechanical
+
+A rounds ledger records how each review finding was disposed of, and three dispositions assert something outside the ledger:
+that a fix reached the head, that a deferral has a home, and that a reachable limit is written into the spec.
+Each is a claim a session can make by typing, so the merge-ready step tests it against the head instead.
+
+### Why patch identity, and why `--remap`
+
+A rebase re-authors every commit id, so ancestry alone would refuse every fix after one; patch identity lets a fix survive it.
+A conflict resolution that edits a fix's hunk changes its patch identity, though, and would refuse a correct fix.
+`--remap`, run at the rebase re-attestation step, closes that by pairing on author, author date and message,
+which a rebase preserves and a conflict resolution does not touch.
+
+### Why reachability is a written field
+
+Reachability is written by the disposing session rather than read off the finding's file, because one file can hold both a partner-facing message and an internal helper.
+A reachable limit is promoted to a spec limits line at merge-ready ([`.claude/orchestration/ruleset.md`](../../.claude/orchestration/ruleset.md), Review flow),
+and an entry with no `surface` is taken as reachable, so leaving the field off cannot pass a reachable limit.
+
+### Legacy rows and dates
+
+Rows written before these fields existed name no commit and no home, so they are skipped under the header's three conditions and reported as skipped rather than refused.
+`LIMIT_RULE_DATE` exempts rounds from before the `limit` rule, whose limits stay ledger-only.
+
+### Which tree is read
+
+Git runs in the worktree the process was invoked from, never the one holding the script,
+and a per-worktree ref such as `HEAD` or `ORIG_HEAD` names a different commit in each linked tree, hence full shas.
+A board item is checked for shape only because the boards are not reachable offline.
+
+## Clean-tree review gate
+
+[`.claude/hooks/require-clean-tree-for-review.mjs`](../../.claude/hooks/require-clean-tree-for-review.mjs)
+
+### Why it exists
+
+Reviewers diff `git diff origin/staging...<ref>`, which sees only commits, so an uncommitted change is invisible and a round over a dirty tree returns a false clean.
+A review's clean verdict is what the orchestration process trusts, with no later check to catch the miss.
+
+### Why both trees
+
+The orchestrating session stays in the primary checkout while the branch under review lives in its own worktree, so statusing the caller's cwd alone would be vacuous.
+A ref no worktree holds passes because with no working tree there is no uncommitted state to hide.
+Matching a tree by HEAD sha as well as branch name statuses a tree holding the ref detached,
+and also one that only sits at the same commit, an over-refusal in the guarded direction.
+
+### Why a lock with an age-out
+
+A round takes tens of minutes and no hook can observe a background Workflow finishing, so concurrency is bounded by a lock file the round's own bookkeeping deletes.
+The age-out is sized well above the longest observed round:
+a crashed round that wedged its branch forever is the worse failure, and a rare double round after the age-out is the accepted cost.
+The lock does not stop an implementer committing into the target tree while a round reads it; the round's diff is by ref, and the ledger records the sha.
+
+### Why fail closed
+
+The opposite default from [`block-protected-push.mjs`](../../.claude/hooks/block-protected-push.mjs), which fails open because GitHub branch protection catches a push it misses.
+Nothing catches a false clean, so every state where a target cannot be confirmed clean blocks.
+The gate covers every Workflow call rather than review scripts alone:
+a clean-tree precondition is harmless for any workflow, committing is always available,
+and scoping by script text would fail open on the scriptPath and resume forms.
+A Workflow form naming the light-review script in none of the three fields, a resume for instance, falls back to the caller's-cwd check.
+
+## Sleep-poll guard
+
+[`.claude/hooks/block-sleep-poll.mjs`](../../.claude/hooks/block-sleep-poll.mjs), with its harness probe in [`block-sleep-poll.probe.md`](../../.claude/hooks/block-sleep-poll.probe.md)
+
+### Why it exists
+
+A poll is not cheap: every one is a fresh tool round trip that re-bills the polling session's whole context,
+and the session learns nothing it would not have been told, since a background run notifies on exit and the tool itself waits on a foreground command.
+A wait inside one call does not re-bill, so a loop is fine; what is refused is a wait with no upper bound,
+which keeps running after the session that started it has returned.
+
+### Why shape, not target
+
+Bounding is judged on the loop's shape, not on what it waits for:
+an unbounded wait on `ps aux | grep "[e]slint"` matched an editor extension's command line for hours after the lint it watched had finished.
+A sleep under `MINIMUM_BLOCKED_SECONDS` is a settle, not a poll.
+
+### Why the background rule takes any bound
+
+The Bash tool's own timeout does not apply to a background run, so the `timeout` wrapper is its only bound.
+`gtimeout` is the name Homebrew's coreutils installs it under.
+GNU `timeout 0` disables the limit, measured against coreutils 9.1, so zero is refused.
+A command after a separator runs outside the bound, so none may follow.
+Any non-zero N is accepted: a background run is used precisely for work longer than the foreground ceiling, so a hook-enforced cap would be a number with nothing behind it.
+A host with no `timeout` on PATH, macOS without coreutils, can run the command in the foreground instead.
+
+### What the probe showed
+
+A subagent the Agent tool spawned that starts a background command and ends its turn is resumed by the harness when the command finishes.
+Its caller is notified twice: first with the turn-end message, flagged as possibly interim because background work is still running, then with the resumed result under the same task id.
+First observed 2026-09-24 and re-run 2026-09-25 on a macOS host, where the probe's command ran unwrapped because no `timeout` was on PATH.
+Re-run the probe after a harness upgrade and record the date and build in the hook's header.

@@ -1,61 +1,29 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a Workflow (review/panel) call whose review target has
-// uncommitted work, and refuse a second concurrent round against a target one is
-// already running against.
+// PreToolUse hook on Workflow: refuse a call whose review target has
+// uncommitted work, and a second concurrent round against a target one is
+// already running against. Reviewers diff by ref and see only commits, so a
+// round over a dirty tree would return a false clean.
 //
-// Why this exists: reviewers diff `git diff origin/staging...<ref>`, which sees
-// only commits. An uncommitted change is invisible to that diff, so a review run
-// against a dirty tree returns a FALSE clean -- and a review's clean verdict is
-// what the orchestration process trusts, with no downstream safety check to catch
-// the miss.
+// Trees inspected: the caller's cwd tree, the whole check for a call naming no
+// `args.targetRef`, and every worktree holding a named target, matched by branch
+// name or by HEAD sha. A target ref no worktree holds passes; one that does not
+// resolve blocks. A call naming the light-review script in scriptPath,
+// workflow or `name` must name its targets; any other form gets the cwd check.
+// `scratch/` is gitignored, so a round's own artifacts never dirty a tree.
 //
-// WHICH TREE IS INSPECTED. A round names the ref it reviews in the Workflow's
-// own `args.targetRef`, and the orchestrating session stays in the primary
-// checkout while the branch under review lives in its own worktree, so statusing
-// the caller's cwd alone would be vacuous. Both are inspected: the caller's cwd
-// tree, which is the whole check for a Workflow naming no target, and every
-// worktree holding a named target. A ref no worktree holds PASSES -- with no
-// working tree there is no uncommitted state to hide -- while a ref that does not
-// RESOLVE is unconfirmable and blocks.
+// Round lock: a target that passes gets a branch-keyed lock file under the
+// primary checkout's `scratch/review-rounds/`, keyed by the transform
+// light-review's Step 1 uses to name the round's artifacts, and deleted by
+// light-review's Step 3 when the round is booked. A lock younger than
+// ROUND_LOCK_TTL_MS refuses the target; an older one is stale and ignored. The
+// lock bounds concurrent rounds, not commits into the target tree.
 //
-// THE IN-FLIGHT ROUND LOCK. A round takes tens of minutes and no hook can observe
-// a background Workflow finishing, so concurrency is bounded by a branch-keyed
-// lock under the primary checkout's `scratch/review-rounds/`, written here when a
-// target passes and deleted by light-review's own bookkeeping when the round is
-// booked. A lock younger than ROUND_LOCK_TTL_MS refuses the target; an older one
-// is stale and ignored. The TTL is sized well above the longest observed round: a
-// crashed round that wedged its branch forever is the worse failure, and a rare
-// post-TTL double round is the accepted cost. The lock key comes from the target
-// ref by the same transform light-review's Step 1 applies to name the round's
-// artifacts, so the key locked here is the key that round's bookkeeping deletes.
-//
-// FAIL CLOSED, the OPPOSITE default from block-protected-push.mjs, which fails
-// open because GitHub branch protection catches a push it misses. Nothing catches
-// a false clean, so every state where a target cannot be CONFIRMED clean exits 2:
-// a non-git cwd, a git error, a missing cwd, an unreadable `args`, a ref that does
-// not resolve, a dirty status, a lock that cannot be written, and a payload that
-// parses to a JSON value other than an object, which names no tool. Only an event
-// stdin held nothing parseable for, or one naming a tool other than Workflow,
-// exits 0. That covers every Workflow call rather than review scripts alone: a
-// clean-tree precondition is benign for any workflow, committing is always
-// available, and scoping by script text would fail open on the scriptPath and
-// resume forms. `scratch/` and the round artifacts under it are gitignored, so a
-// round's own artifacts never appear in `git status --porcelain`.
-//
-// STATED LIMITS.
-//   - The by-ref REQUIREMENT is keyed on the call naming the light-review script
-//     in any of the three fields that can hold it -- scriptPath, workflow, or the
-//     `name` a saved workflow is invoked by. A Workflow form holding none of
-//     them, a resume say, falls back to the caller's-cwd check.
-//   - A target is matched to a worktree by branch name or by that worktree's HEAD
-//     sha, so a tree holding the ref detached is still statused, and so is a tree
-//     that merely sits at the same commit -- an over-refusal in the guarded
-//     direction.
-//   - The lock bounds concurrent rounds, not concurrent WRITERS. Nothing here
-//     stops an implementer committing into the target tree while a round reads
-//     it; the round's own diff is by ref, and the ledger records the sha.
-//
-// Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
+// Fails closed: every state where a target cannot be confirmed clean blocks (a
+// non-git or missing cwd, a git error, unreadable `args`, an unresolvable ref, a
+// dirty status, an unwritable lock, a non-object payload). Only an unparseable
+// event or one naming another tool passes. Exit 0 allows the call; exit 2
+// blocks it and feeds stderr back to Claude. Rationale:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import {
   mkdirSync,

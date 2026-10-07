@@ -73,7 +73,8 @@ and no other, but a set chosen by name is derived through the same filter, so
 the property is held over the registry rather than over the default alone.
 Widening a field set stays possible and stays an explicit decision: its content
 is pinned, so widening it takes the version decision below. What the check
-covers, and what it cannot see, are in the script's own header.
+covers, and what it cannot see, are in
+[repo-check-scripts.md](repo-check-scripts.md#zero-setup-key-fields).
 
 ## Why the fields and the keys are named apart
 
@@ -271,7 +272,7 @@ with their elements and their cascade order -- and holds each to the pin
 `scripts/built-in-set-pins.json` records for the version the source declares.
 Content that moved under a recorded version fails, and a bump is asked to record
 the pin it ships. What moves the digest, and what the check cannot see, are in
-the script's own header.
+[repo-check-scripts.md](repo-check-scripts.md#built-in-rule-set-version-bump).
 
 One name and one version identify one content, which the same check holds over
 the registry: two rule sets may share a set, and a shared set is one declaration

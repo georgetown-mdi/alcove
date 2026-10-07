@@ -1,62 +1,18 @@
 #!/usr/bin/env node
-// apps/web/vite.config.ts native-loadability check, run by static_checks.yaml on
-// every PR.
+// Web config native-load check: `npm run check:web-config-native-load`, run by
+// static_checks.yaml on every pull request. apps/web/vite.config.ts and every
+// module it imports must load under Node's strip-only type stripping, which
+// refuses TypeScript needing generated code (a parameter property, an `enum`,
+// a non-`declare` `namespace`, an `import x = require(...)` alias). Two loaders
+// are driven, each in a child process: Vite's `configLoader: "native"` and a
+// plain `node` import, both with `command: "serve"` and with NODE_OPTIONS and
+// VITEST scrubbed. Each is first driven against a control fixture holding only
+// a parameter property, and a control that loads fails the check: the loader
+// is no longer strip-only, so nothing is measured.
 //
-// The web config is TypeScript, and two paths evaluate it with no transform in
-// front: Vite's `configLoader: "native"`, and a plain `node` import of the file.
-// Both hand it to Node's strip-only type stripping, which erases annotations and
-// nothing else -- so any TypeScript construct that needs code GENERATED for it is
-// refused outright with ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX. Driven against Node
-// 26.7, that is: a constructor parameter property, an `enum` (`const` or not), a
-// non-`declare` `namespace`, and an `import x = require(...)` alias. Modifiers
-// that erase -- `private`, `readonly`, `abstract`, `declare` -- do not, which is
-// why the rewrite below is a rewrite and not a deletion. That list is written
-// for a reader; what the check enforces is the measurement, not the list.
-//
-// The refusal is a parse error in the module that holds the construct, so it
-// fires for anything anywhere in the config's transitive import graph, not just
-// the config file itself -- and the graph reaches app source
-// (`src/utils/serverConfig.ts` -> `src/utils/configManager.ts`), which
-// nothing else holds to erasable syntax. Neither
-// typecheck nor lint nor a bundling `vite build` sees it, since every one of
-// those runs a real TypeScript transform.
-//
-// So this check drives the two load paths themselves and fails when either one
-// refuses the config.
-//
-// Two properties the implementation is built around:
-//
-//   1. FAILS CLOSED when the load path stopped being strip-only. A check that
-//      only loaded the real config would pass forever, detecting nothing, if a
-//      future Vite made "native" a transforming loader or Node grew a transform
-//      of its own. So each loader is first driven against a CONTROL fixture that
-//      is nothing but a parameter property, and a control that LOADS is a
-//      failure rather than a pass: the measurement is gone, and the check says
-//      so instead of reporting a result it did not make.
-//   2. MEASURED, NOT MODELLED. Nothing here parses TypeScript or predicts what
-//      Node would refuse (CLAUDE.md, Agent conventions). It spawns the real
-//      loaders in child processes and reads their exit status.
-//
-// The two loaders overlap: Vite's native loader imports the config through Node,
-// so today the plain-import leg is the narrower of the two. It is driven anyway,
-// because that overlap is a property of the current Vite and not a guarantee --
-// if a later "native" grows a transform, the plain leg is the one still
-// measuring Node's own behavior, and it is what a contributor running
-// `node apps/web/vite.config.ts` gets.
-//
-// What this check cannot see:
-//   - It measures the LOCALLY INSTALLED Vite and the running Node. It says
-//     nothing about another version of either.
-//   - It loads the config with `command: "serve"`. A construct reached only from
-//     a branch some other command takes is outside what this drives.
-//   - It is about SYNTAX Node refuses, not about the config being correct: a
-//     config that loads here can still be wrong for the dev server or the build.
-//   - It scrubs NODE_OPTIONS and VITEST from the child environment so the
-//     measurement does not depend on who invoked it. A TypeScript loader
-//     installed by any other means -- a `node --import` in a wrapper, a
-//     registered hook in an inherited env var this does not name -- would still
-//     transform the config out from under the control fixture, which is why the
-//     control's rejection is asserted rather than assumed.
+// Measures the installed Vite and the running Node only. Exit 0 clean, 1 when
+// either loader refuses the config or a control misbehaves. Rationale and
+// limits: docs/notes/repo-check-scripts.md.
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
