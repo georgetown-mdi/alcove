@@ -1,47 +1,18 @@
 #!/usr/bin/env node
-// Dependabot ignore-shape check, run by static_checks.yaml on every PR.
+// Dependabot ignore-shape check: `npm run check:dependabot-ignore-shape`, run
+// by static_checks.yaml on every pull request. Reads the `github-actions`
+// block's `ignore` entries in .github/dependabot.yml and every action pin
+// under .github/workflows and .github/actions, and fails unless:
 //
-// The `github-actions` block in .github/dependabot.yml ignores within-major
-// updates for several orgs. That suppression is only sound over pins that float
-// within their major: an exact pin (actions/checkout@v7.0.1), a commit sha, or a
-// branch name under a covered org sits under an ignore that suppresses every
-// update it could ever receive, so it freezes with no pull request to expose a
-// fix. This fails the build on that pairing instead.
+//   A pin whose name is covered by a `github-actions` `ignore` entry that
+//   suppresses within-major updates names a bare floating major tag.
 //
-// The rule:
-//
-//   A pin under .github/workflows or .github/actions whose name is covered by a
-//   `github-actions` `ignore` entry that suppresses within-major updates must
-//   name a bare floating major tag.
-//
-// The entries are read out of the config, so editing the ignore list changes
-// what is enforced without a second edit here. An entry suppresses within-major
-// updates when its `update-types` names `version-update:semver-minor` or
-// `version-update:semver-patch`, or names no update type at all; one that
-// suppresses neither imposes no shape requirement on the pins it covers.
-//
-// This is a coherence property of this repository's configuration, not a
-// prediction of Dependabot's behavior: whether those ignores in fact suppress a
-// v7.0.1 -> v7.0.2 bump has not been driven against the real tool, and the rule
-// does not rest on it. A pin the config's own stated rationale assumes to be
-// floating is worth holding to that shape either way.
-//
-// Glob reading: `*` matches across `/`, so `github/*` covers the subpath action
-// `github/codeql-action/init`. Whether that is Dependabot's own reading is
-// unsettled -- see the open assumption in docs/spec/DEPENDENCY_PINS.md. The
-// inclusive reading is the fail-closed one: it requires more pins to be bare
-// majors, so the rule stays correct if the narrower reading turns out to be
-// Dependabot's.
-//
-// What this check does not cover:
-//   - A bare-major pin from an org NO ignore entry names. Whether the ignore
-//     list is complete is unchecked; only the direction that fails silently is.
-//   - A reference naming no ref at all. Rule C of check-action-pin-drift.mjs
-//     owns that shape, and a test here holds that delegation.
-//   - The npm and docker Dependabot blocks, whose ignore and exclude-patterns
-//     lists contain different rationales.
-//   - What `@v7` resolves to. The ref is read as text, so a tag named like a
-//     bare major that in fact points at a frozen commit is outside this.
+// An entry suppresses within-major updates when its `update-types` names
+// `version-update:semver-minor` or `version-update:semver-patch`, or names no
+// update type. An entry's `*` matches across `/`. Exit 0 clean, 1 on a finding
+// or when no github-actions block or no workflow action reference is found.
+// Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

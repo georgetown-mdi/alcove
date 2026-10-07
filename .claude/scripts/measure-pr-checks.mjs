@@ -1,49 +1,21 @@
 #!/usr/bin/env node
 //
 // Measure the wall clock a pull request pays for its checks, and name the
-// critical path that gates a merge.
+// critical path that gates a merge:
 //
-// Usage:
-//   node measure-pr-checks.mjs [runs] [--base BRANCH] [--repo OWNER/REPO]
-//                              [--json] [--cache DIR] [--offline]
+//   npm run measure:pr-checks -- [runs] [--base BRANCH] [--repo OWNER/REPO]
+//                                [--json] [--cache DIR] [--offline]
 //
-// A bare command line prints this usage rather than starting a measurement:
-// the run makes several hundred API calls and takes minutes, so it is asked
-// for explicitly. `runs` is how many pull-request workflow runs against --base
-// to sample, newest first, defaulting to DEFAULT_RUN_SAMPLE.
-//
-// Four measurements, from two sources that answer different questions:
-//
-//   - Per workflow and per job, queue time and wall clock, from
-//     `actions/runs` plus each run's `jobs`. This is where the minutes go.
-//   - Per step inside each long job, from the same payload. A job's own median
-//     says how long it takes and not which of its serial steps to attack, so a
-//     trim proposal that names no step is not a measurement.
-//   - The set of check contexts that gate a merge, read from the LIVE branch
-//     ruleset (`repos/{repo}/rules/branches/{base}`) rather than a list
-//     transcribed into this file, so the measurement cannot claim a gate the
-//     repository stopped enforcing.
-//   - The critical path per pull-request head sha, from that sha's
-//     `check-runs`. Contexts, not job names, are what a required status check
-//     names, and not every context is an Actions job -- code scanning posts
-//     its own -- so a job-only view cannot see the whole gate. Measured from
-//     the earliest run creation on the sha, which is when the contributor
-//     starts waiting.
-//
-// Reruns are counted per sha and reported separately. A rerun does not create
-// a new run id, it raises `run_attempt`, so a sample read only from the runs
-// list sees the last attempt's clock and none of the wall clock the earlier
-// attempts cost. Each attempt below its own is fetched and measured.
-//
-// --cache DIR writes every API response under DIR and reads them back on a
-// later run, so re-analyzing a sample (or changing the output) costs no API
-// calls. --offline makes no request at all and fails on a cache miss, which is
-// how a re-analysis proves it re-read the recorded sample rather than quietly
-// measuring today's runs instead.
-//
-// The computation is pure and lives above the fetch layer, so the colocated
-// test drives it on a fixture. Run it with the rest of the scripts project:
-// `npx vitest run --project scripts` (or `npm run test:scripts`).
+// A bare command line prints the usage and exits 2 instead of measuring.
+// `runs` is how many pull-request workflow runs against --base to sample,
+// newest first, DEFAULT_RUN_SAMPLE when omitted. Reports queue time and wall
+// clock per workflow, job and long-job step from `actions/runs`; the contexts
+// that gate a merge, from the live branch ruleset; the critical path per head
+// sha, from its `check-runs`; and reruns per sha, each earlier attempt
+// measured. --cache DIR records every API response and replays it on a later
+// run; --offline makes no request and fails on a cache miss. Exit 0 on a
+// report, 1 on a failure, 2 on a usage error. Tests: `npm run test:scripts`.
+// Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";

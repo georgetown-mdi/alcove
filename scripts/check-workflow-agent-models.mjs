@@ -1,53 +1,16 @@
 #!/usr/bin/env node
-// Workflow agent model-pin check, run by static_checks.yaml on every PR.
-//
-// A Workflow script's `agent(prompt, {...})` call that omits `model` does not
-// fall back to the agent definition's pinned tier -- it inherits the session
-// model, silently, wherever the script happens to be run from. The tiering rule
-// in CLAUDE.md is therefore only as good as the pins written into the scripts
-// themselves, and prose cannot assert that every call has one.
-//
-// The PreToolUse hooks that gate the Agent tool see none of this: the model lives
-// inside a script string, not a top-level tool input. So the pin is encoded as a
-// check over the committed scripts. Those come in two shapes, both scanned here:
-// a fenced js block under .claude/commands/, .claude/agents/, or .claude/skills/,
-// and a checked-in Workflow script a command invokes by path
-// (.claude/scripts/*-workflow.mjs, whose whole file is the block -- it is a script
-// body, not a module, so it is not linted and cannot be imported). Every `agent(`
-// call in either must pass a literal `model:` from the tier set in its own options
-// object, and Fable (which requires the owner's per-spawn approval and is never
-// inherited) may not be pinned in a committed script at all. That options object
-// is spelled out in the call: a spread into it can include a `model` of its own and
-// decide the tier at run time, so the spread is itself a violation whether or not
-// a literal sits beside it.
-//
-// The lexer, the block reader, and the file listing are the shared ones in
-// scripts/lib/workflowScripts.mjs, which check-workflow-args-resolve.mjs also
-// reads for its own rule over the same two script shapes.
-//
-// The scan lexes a block rather than pattern-matching it: strings, template
-// literals, regex literals, and comments are read as tokens, so a `model: 'opus'`
-// sitting in a prompt template or a comment is not a pin, and a parenthesis inside
-// a string cannot run one call's extent into the next. A pin counts only at the
-// top level of the call's own options object, so a nested call's pin cannot stand
-// in for its caller's.
-//
-// What the scan cannot see, exactly:
-//   - a computed model value (`model: tier`) resolves only at run time; it is
-//     treated as no pin at all and is reported as one. A hoisted options const is
-//     treated the same way, by design -- the convention is an inline literal in
-//     the call.
-//   - `agent` reached under another name. A non-call use of the identifier is
-//     itself reported, because the scan cannot follow it; but a binding taken off
-//     a property (`const spawn = deps.agent`) is a member access, which this check
-//     leaves alone, and a call through that binding is invisible -- as is a call
-//     made straight through the member access (`deps.agent(...)`).
-//   - a js fence nested inside another fence. The outer fence's info string decides
-//     the block, so js nested in a markdown block -- documentation whose examples
-//     are themselves Workflow scripts -- is not scanned at all.
-//   - a script that is neither shape: an ad-hoc inline Workflow script, or a file
-//     passed by scriptPath from outside .claude/scripts/*-workflow.mjs. The
-//     require-workflow-fable-approval.mjs hook covers the inline form for Fable.
+// Workflow agent model-pin check: `npm run check:workflow-agent-models`, run
+// by static_checks.yaml on every pull request. Scans the committed Workflow
+// scripts in both shapes: a fenced js block under .claude/commands/,
+// .claude/agents/ or .claude/skills/, and a whole
+// .claude/scripts/*-workflow.mjs file. Fails unless every `agent(` call passes
+// a literal `model:` from ALLOWED_TIERS at the top level of its own inline
+// options object; a spread into that object, a computed or hoisted value, a
+// non-call use of `agent`, and a pinned Fable each fail. The lexer, block
+// reader and file listing are shared with check-workflow-args-resolve.mjs in
+// scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when no
+// `agent(` call is found at all. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

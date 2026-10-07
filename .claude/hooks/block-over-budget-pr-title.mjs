@@ -1,47 +1,21 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a `gh pr create` or `gh pr edit` call whose `--title`
-// is longer than the squash-merge subject budget, before it reaches GitHub.
-//
-// Why this exists: Alcove squash-merges, so a pull request's title becomes the
-// commit subject with GitHub's " (#NNNN)" appended, and the subject limit in
-// `CONTRIBUTING.md`, Commit Messages, counts that suffix. The other reading of
-// that budget comes after the fact -- the PR Checklist workflow fails the open
-// pull request -- so a session reusing a board item's own title pays a red
-// run and a retitle for it. This is the same rule at the moment the title is
-// written.
+// PreToolUse hook on Bash: refuse a `gh pr create` or `gh pr edit` call whose
+// `--title` is longer than the squash-merge subject budget. A pull request's
+// title becomes the commit subject with GitHub's " (#NNNN)" appended, and the
+// subject limit in `CONTRIBUTING.md`, Commit Messages, counts that suffix.
 //
 // THE BUDGET IS NOT A NUMBER HERE. `subjectBudget` in
 // ../../scripts/lib/squashSubjectBudget.mjs is the one source, so the suffix
 // width, the limit it is subtracted from, and the digits assumed for an unknown
-// pull request all move together with the checklist check that fails the open
-// pull request.
-//
-// THE PULL-REQUEST NUMBER, where the call carries one. `gh pr edit` names the
-// pull request first, so a number or a pull-request URL written there gives the
-// exact suffix; a branch name, an absent argument, and every `gh pr create` call
-// leave it unknown, where the assumed four-digit suffix applies.
-//
-// STATED LIMITS.
-//   - A title this hook cannot see stays the PR Checklist workflow's to catch: one
-//     typed at `gh`'s prompt, written in the editor `--editor` opens, taken from
-//     the commits by `--fill`, or set in GitHub's web interface.
-//   - At create time the suffix is an estimate, since the pull request has no
-//     number yet. Four digits is what every pull request in this repository has;
-//     past #9999 the real budget is one character tighter than the one checked
-//     here, and the checklist run on the open pull request measures it against
-//     the number GitHub assigned.
-//   - The flag is read as `--title V`, `--title=V`, `-t V`, `-t=V` or `-tV`. A
-//     `-t` riding inside a combined shorthand cluster (`-dt V`) is left alone,
-//     because which flag in the cluster takes the value depends on gh's own
-//     shorthand table.
-//   - Quotes are removed the way a shell removes them, but nothing is expanded
-//     and no backslash escape is honored: a title holding a variable or a command
-//     substitution is measured as the literal text written, and a title escaped
-//     word by word rather than quoted measures as its first word.
+// pull request move together with the checklist check that fails the open
+// pull request. A number or pull-request URL as `gh pr edit`'s first argument
+// gives the exact suffix; any other `gh pr edit` and every `gh pr create`
+// assume a four-digit number. The flag is read as `--title V`, `--title=V`,
+// `-t V`, `-t=V` or `-tV`, with quotes removed and nothing expanded.
 //
 // Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude. Any
-// unexpected failure here falls through to exit 0 (fail open) so a bug in this
-// hook can never wedge every Bash command.
+// unexpected failure falls through to exit 0 (fail open). Rationale and limits:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import {
   SUBJECT_LIMIT,

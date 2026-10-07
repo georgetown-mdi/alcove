@@ -1,48 +1,32 @@
 #!/usr/bin/env node
-// PR-body checklist guard, run by pr_checklist.yaml on every PR (including a
-// body edit, so fixing the description re-runs the check without a new commit).
-// The body it judges is the one the API holds when the run reaches this script,
-// not the copy on the event payload -- see the CLI entry at the foot of the
-// file.
+// PR-body checklist guard: `npm run check:pr-checklist`, run by
+// pr_checklist.yaml on every pull request, a body edit included. On the runner
+// it judges the pull request the workflow fetched into PR_JSON, not the event
+// payload; locally the body comes from PR_BODY or a file argument. HTML
+// comments are stripped first, so a template example can neither satisfy nor
+// trip a rule, and only the first `## Checklist` section is read.
 //
 //   1. The `## Checklist` section must exist (the template ships one).
 //   2. No box may be left unchecked: `- [ ]` means unresolved.
 //   3. The three required lines (Docs, CHANGELOG.md, Security review) must each
-//      open a line of their own -- the template says "Do not delete lines here"
-//      -- so prose naming one inside another line cannot stand in for it.
-//   4. Every checked line must contain a `-- <resolution>` clause with real text.
+//      open a line of their own, so prose naming one inside another line
+//      cannot stand in for it.
+//   4. Every checked line must contain a `-- <resolution>` clause with real
+//      text.
 //   5. An n/a resolution must be `n/a: <reason>` with a non-empty reason; a bare
-//      "n/a" (or "n/a" plus punctuation only) earns nothing.
+//      "n/a", or "n/a" plus punctuation only, does not count.
 //   6. The Security review line must name the sha it reviewed, and that sha must
-//      be the PR head: a commit pushed after a review turns the PR red until the
-//      new head is reviewed and the line updated.
-//   7. The PR title must fit the commit-subject limit once GitHub's own
-//      `(#<number>)` squash-merge suffix is appended. Both come from
-//      lib/squashSubjectBudget.mjs, which the hook refusing an over-budget
-//      `gh pr create --title` reads too, so the two cannot disagree. This rule
-//      runs on the runner only, where PR_NUMBER is required and the budget is
-//      derived from it; titleBudget()'s fallback for an unnumbered pull request
-//      serves a direct call with no number, not reachable through this CLI.
+//      be the PR head.
+//   7. On the runner only, the PR title must fit the commit-subject limit once
+//      GitHub's `(#<number>)` squash-merge suffix is appended. Both come from
+//      lib/squashSubjectBudget.mjs, which block-over-budget-pr-title.mjs reads
+//      too.
 //
-// These limits are by design. This is a mechanical SAFETY CHECK for the tells
-// that a checklist was left unresolved, or resolved with a clause that answers
-// nothing; whether a stated reason is true stays a review call, the same
-// philosophy as check-contributing-scope.mjs, and an author who edits the sha
-// without re-reading the diff passes rule 6, which reads a string and not a
-// review. Only the first `## Checklist` section is read, so a line in a second
-// one is not.
-//
-// Rule 7's own limit: CONTRIBUTING.md lets a pull request holding a single
-// commit skip a hand-written squash message, since GitHub takes that commit's
-// own message as the squash subject -- so for a single-commit PR, the title
-// checked here is not necessarily the subject that lands. This check enforces
-// the title regardless: it is the one field the workflow can see, and the
-// maintainer can align the two at merge. It does not branch on commit count to
-// guess GitHub's squash behavior.
-//
-// The template's guidance comments contain example checklist lines, so HTML
-// comments are stripped before parsing -- an example can never satisfy or trip
-// a rule.
+// It catches the mechanical tells only: whether a stated reason is true, and
+// whether the named sha was really reviewed, stay review calls. Exit 0 clean,
+// 1 on a violation, 2 when the body, or on the runner the head sha, title or
+// number, cannot be read. Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

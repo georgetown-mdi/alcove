@@ -465,3 +465,49 @@ A subagent the Agent tool spawned that starts a background command and ends its 
 Its caller is notified twice: first with the turn-end message, flagged as possibly interim because background work is still running, then with the resumed result under the same task id.
 First observed 2026-09-24 and re-run 2026-09-25 on a macOS host, where the probe's command ran unwrapped because no `timeout` was on PATH.
 Re-run the probe after a harness upgrade and record the date and build in the hook's header.
+
+## Pull-request check timing
+
+[`.claude/scripts/measure-pr-checks.mjs`](../../.claude/scripts/measure-pr-checks.mjs)
+
+### Why a bare command prints usage
+
+A run makes several hundred API calls and takes minutes, so it is asked for explicitly.
+
+### Why four measurements
+
+- Per workflow and per job, queue time and wall clock show where the minutes go.
+- Per step inside each long job, because a job's median says how long it takes and not which of its serial steps to attack; a trim proposal that names no step is not a measurement.
+- The gating contexts are read from the live branch ruleset (`repos/{repo}/rules/branches/{base}`) rather than a list in the script, so the measurement cannot claim a gate the repository stopped enforcing.
+- The critical path per head sha comes from that sha's `check-runs`: a required status check names a context, not a job, and not every context is an Actions job, code scanning posts its own.
+  It is measured from the earliest run creation on the sha, which is when the contributor starts waiting.
+
+### Why reruns are fetched per attempt
+
+A rerun raises `run_attempt` rather than creating a new run id,
+so a sample read only from the runs list sees the last attempt's clock and none of the wall clock the earlier attempts cost.
+
+### Why a cache and an offline mode
+
+Re-analyzing a recorded sample, or changing the output, then costs no API calls.
+`--offline` fails on a cache miss, so a re-analysis shows it re-read the recorded sample rather than quietly measuring today's runs.
+The computation sits above the fetch layer so the colocated test drives it on a fixture.
+
+## Over-budget pull-request title guard
+
+[`.claude/hooks/block-over-budget-pr-title.mjs`](../../.claude/hooks/block-over-budget-pr-title.mjs)
+
+### Why it exists
+
+The PR Checklist workflow fails an open pull request whose title is over budget, but only after the fact,
+so a session reusing a board item's own title pays a red run and a retitle.
+The hook applies the same rule when the title is written.
+
+### What it does not cover
+
+- A title the hook cannot see stays the PR Checklist workflow's to catch: one typed at `gh`'s prompt, written in the editor `--editor` opens, taken from the commits by `--fill`, or set in GitHub's web interface.
+- At create time the suffix is an estimate, since the pull request has no number yet.
+  Four digits is what every pull request in this repository has; past #9999 the real budget is one character tighter, and the checklist run measures it against the number GitHub assigned.
+- A `-t` inside a combined shorthand cluster (`-dt V`) is left alone, because which flag in the cluster takes the value depends on gh's own shorthand table.
+- No variable, command substitution or backslash escape is expanded:
+  such a title is measured as the literal text written, and a title escaped word by word rather than quoted measures as its first word.

@@ -1,54 +1,18 @@
 #!/usr/bin/env node
-// Mutation-testing legs, run nightly through
-// .github/workflows/nightly_mutation.yaml: `npm run test:mutation` over the
-// core security-bearing files in packages/core/stryker.config.mjs, and `npm
-// run test:mutation:cli` over the CLI accept command in
-// apps/cli/stryker.config.mjs. The leg's name is the one argument (`core` when
-// omitted); LEGS below maps it to its configuration.
+// Mutation-testing legs: `npm run test:mutation` (the `core` leg, the default)
+// and `npm run test:mutation:cli` (the `cli` leg), run nightly by
+// .github/workflows/nightly_mutation.yaml. The one argument names the leg, and
+// LEGS maps it to its Stryker configuration.
 //
-// It runs Stryker over the files listed in the leg's configuration, then fails
-// when any one of them scores below the floor committed beside it there. A
-// per-file gate rather than Stryker's own `thresholds.break`, which is
-// whole-run: a file whose tests were gutted can be offset by the others, and
-// the score this leg exists to defend is each file's own.
-//
-// Mutation score, per file, is the mutation-testing report definition:
-// (killed + timeout) / (killed + timeout + survived + no coverage). Mutants
-// Stryker could not run -- compile errors, runtime errors, ignored -- are
-// outside both sides of the ratio.
-//
-// Stryker is NOT a repository dependency. It is installed on demand into a
-// private prefix under the work directory (below), never into the repository's
-// node_modules, because it drags in a second copy of vitest and its own
-// typescript; a devDependency here would put both in every contributor's and
-// every CI job's install for a leg that runs nightly. The prefix is reused
-// across runs when it already holds the pinned versions.
-//
-// Two things the leg does need from the repository tree, so it must run against
-// a provisioned checkout (`npm ci` plus the core build):
-//   - vitest. Stryker's vitest runner resolves vitest through the working
-//     directory's package.json, so this runs Stryker with the repository root as
-//     its working directory and the runner picks up the pinned vitest there.
-//   - typescript, whose version is read from the installed copy so the private
-//     prefix gets the same one the repository resolves. Stryker's own
-//     configuration step needs it at runtime, no checker plugin involved.
-//
-// What it cannot see:
-//   - A mutant is only killed by a test that reaches the mutated source. Each
-//     leg's files are exercised through its own workspace's unit tier alone
-//     (the vitest configuration its Stryker configuration names): coverage
-//     that lives in another workspace's suites or an integration tier does not
-//     count here, and a file whose only tests are there scores as uncovered.
-//   - The score answers whether a test distinguishes the mutated behavior, not
-//     whether the behavior is correct. A survivor whose only observable effect
-//     is message text is a real survivor; it is not necessarily worth a test.
-//   - The floors are compared per file, so a corpus file that stops being
-//     mutated at all -- renamed, deleted, or dropped from the configuration --
-//     is a hard failure here rather than a silently vacuous pass.
-//   - A runner change that stops tests from executing per mutant leaves
-//     survivors Stryker still counts against the score, which may stay above
-//     its floor. A surviving mutant with zero tests completed is therefore a
-//     hard failure naming its file, whatever the score.
+// Runs Stryker over the files the leg's configuration lists and fails when a
+// file scores below the floor committed beside it in `scoreFloors`, when a
+// listed file is not mutated at all, or when a surviving mutant completed zero
+// tests. A file's score is (killed + timeout) / (killed + timeout + survived +
+// no coverage). Stryker is installed on demand into a private prefix under the
+// work directory, never into the repository's node_modules, and the run needs a
+// provisioned checkout (`npm ci` plus the core build) for vitest and
+// typescript. Exit 0 when every file meets its floor, 1 otherwise.
+// Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";

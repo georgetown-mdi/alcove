@@ -1,49 +1,17 @@
 #!/usr/bin/env node
-// The OS-layer attribution list for each image this repository builds: every
-// package the image's own package manager records, with its version and the
-// license string that manager declares.
+// OS-layer attribution list for the default and FIPS images: every package the
+// image's package manager records, with its version and the license string it
+// declares, written beside NOTICE. Arguments: usage() below.
 //
-// NOTICE covers the npm tree by construction and `npm sbom` reaches no OS
-// package, so the lists this writes beside NOTICE are where a reviewer reads
-// the image's OS layer. Each is generated from a built image rather than from a
-// Dockerfile: the base image's own packages ship as surely as the ones an
-// install instruction names, and no instruction names them.
-//
-// Two sources, one output. `--query-output` reads the package manager's raw
-// stdout, which is what the tests beside this file feed it from captured files;
-// `--image` runs the query itself against a tag, which is what
-// image_smoke.yaml does against the image that job just built. `--check`
-// compares the result against the committed list and names every package that
-// differs. It fails on a package added or removed and on a license string that
-// moved; a version that moved it reports without failing, because the runtime
-// stage's package install resolves its versions against a live index that moves
-// under a digest-pinned base.
-//
-// The queries below were run against both built images at both architectures.
-// They query the image by tag because neither Dockerfile names its final stage:
-// a `--target` query would measure a stage that predates the runtime stage's
-// own installs, which on the default image is where `samba-client` arrives. The
-// rpm query runs under the FIPS variant's fips-only OpenSSL configuration
-// unchanged -- rpm reads its database in C, and the configuration reaches only
-// what dnf's Python hashes with.
-//
-// rpm exits 0 when its format string names a tag that does not exist, printing
-// nothing at all, so a run that parses no row fails here rather than reporting
-// an empty package set.
-//
-// A row naming a Node.js runtime package fails the run. docs/COMPLIANCE.md's
-// Section 889 paragraph and docs/spec/CONTAINER_IMAGES.md both state that
-// neither the release SBOM nor these lists cover the Node.js runtime, each image
-// installing it outside its package manager; a list holding such a row would
-// falsify both.
-//
-// A license string is recorded exactly as declared. A disjunction is a
-// licensing call rather than a measurement and nothing here resolves one, and
-// the two distributions mix notations -- legacy Fedora shorthand beside SPDX
-// expressions -- which is the other reason no string is rewritten. A package
-// that records no license fails the run naming the package, rather than landing
-// in the list with an empty cell; rpm renders an absent tag as the literal
-// "(none)", which is the same absence in a different shape.
+// `--image <tag>` runs the query against a built image, as image_smoke.yaml
+// does against the image that job built; `--query-output` reads the manager's
+// captured stdout. `--check` writes nothing and compares the result with the
+// committed list: a package added or removed, or a license string that moved,
+// fails, and a moved version is reported without failing. A run that parses no
+// row, a row naming a Node.js runtime package, and a package recording no
+// license, rpm's "(none)" included, each fail. A license string is recorded
+// exactly as declared. Exit 0 on success, 1 on a failure, 2 on a usage error.
+// Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";

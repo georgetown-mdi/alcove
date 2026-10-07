@@ -1,54 +1,15 @@
 #!/usr/bin/env node
-// Nested root-package check, run by static_checks.yaml on every PR.
-//
-// A workspace manifest bump can leave a second copy of a package the root
-// already has: npm 11.17 does not hoist a later range bump incrementally
-// while a root `overrides` block stands, so the stale hoisted copy is kept and
-// the raised version is nested under the workspace that asked for it. Nothing
-// at install time reports that split: a build plugin can resolve the root copy
-// while the dev server runs the nested one, and a suite that fails on it does
-// not name the split as the cause. `@dependabot rebase` and
-// `@dependabot recreate` each reproduce it. The measurements and the remedy are
-// in docs/spec/DEPENDENCY_PINS.md, "What a root overrides block changes about
-// later installs".
-//
-// So this fails on any package the committed lockfile installs at the top level
-// of BOTH the root node_modules and a workspace's, naming the package and both
-// entries. Every package rather than a named list: the mechanism is the
-// overrides block's presence and not any one dependency, so a list would only
-// ever cover the recurrences that already happened. NESTED_BY_DESIGN is where a
-// split that is meant to stand is recorded, and is what keeps this from crying
-// wolf over one.
-//
-// What it reads: the committed package-lock.json. Files only -- no install, no
-// registry, no network.
-//
-// What it cannot see:
-//   - It reports the split the committed lockfile RECORDS, not one npm would
-//     resolve. Only npm can answer the latter, so a lockfile edit this check
-//     greenlights is still confirmed by reinstalling from it.
-//   - Its scope is the top level of the root node_modules against the top level
-//     of each workspace's. A copy nested deeper -- under another package's
-//     node_modules, at the root or inside a workspace -- is ordinary conflict
-//     resolution, which the committed tree holds dozens of; the class above
-//     was measured nesting directly under the workspace that raised its range.
-//     Out of scope too is a workspace-nested package the root does not have:
-//     with no root copy there is no root instance to be split against.
-//   - It does not tell a stale hoist from a split some declared range requires.
-//     The lockfile records neither the override nor which edge each copy
-//     serves, so which of the two a split is stays a reading of the bump that
-//     produced it; NESTED_BY_DESIGN is where that reading is recorded, with its
-//     reason.
-//   - It matches a copy by the directory it installs under, which is what a
-//     bare specifier resolves through, and reads each copy's own identity from
-//     the entry's `name` field to confirm both directories hold the same
-//     package. Where the two disagree -- an npm alias pointing one of them at
-//     another package -- it REFUSES by name rather than reporting a duplicate
-//     of a package only one of them is. An alias standing anywhere else is none
-//     of this check's business.
-//   - Workspace directories come from the lockfile's own keys that sit outside
-//     every node_modules, which is npm's record of the directories it resolved.
-//     The manifest's `workspaces` globs are not re-expanded here.
+// Nested root-package check: `npm run check:nested-root-package`, run by
+// static_checks.yaml on every pull request. Reads the committed
+// package-lock.json only, with no install and no network, and fails on any
+// package installed at the top level of both the root node_modules and a
+// workspace's, naming the package and both entries, unless NESTED_BY_DESIGN
+// records the nested entry with its reason. A pair whose two entries' `name`
+// fields disagree, an npm alias, is refused by name. Workspace directories are
+// the lockfile's own keys outside every node_modules. Exit 0 clean, 1 on a
+// finding. The mechanism and remedy: docs/spec/DEPENDENCY_PINS.md, "What a root
+// overrides block changes about later installs". Rationale and limits:
+// docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

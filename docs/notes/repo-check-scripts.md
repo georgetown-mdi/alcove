@@ -666,3 +666,233 @@ and every key referencing it is dropped from a zero-setup party's terms whatever
   but whether the wider set is still guaranteed is a judgment no check makes.
 - The terms builder itself: that the filter binds an element by semantic type, which is what makes the name-equals-type rule matter, is covered by the core suite.
 - A file that supplies a column of the right type but no usable value: the property is that the keys stay inside the guaranteed fields, not that a given file matches on them.
+
+## Mutation score floors
+
+[`scripts/stryker-security.mjs`](../../scripts/stryker-security.mjs)
+
+### Why a per-file floor
+
+Stryker's own `thresholds.break` is whole-run, so a file whose tests were gutted can be offset by the others,
+and the score this leg exists to defend is each file's own.
+The score follows the mutation-testing report definition; mutants Stryker could not run, compile errors, runtime errors and ignored ones, are outside both sides of the ratio.
+
+### Why an on-demand install
+
+Stryker drags in a second copy of vitest and its own typescript,
+so a devDependency would put both in every contributor's and every CI job's install for a leg that runs nightly.
+The private prefix is reused across runs when it already holds the pinned versions.
+Stryker's vitest runner resolves vitest through the working directory's package.json, so Stryker runs with the repository root as its working directory and picks up the pinned vitest there.
+The typescript version is read from the installed copy so the prefix gets the one the repository resolves; Stryker's configuration step needs it at runtime, with no checker plugin involved.
+
+### What it does not cover
+
+- A mutant is killed only by a test that reaches the mutated source.
+  Each leg's files are exercised through its own workspace's unit tier alone, the vitest configuration its Stryker configuration names,
+  so coverage in another workspace's suites or an integration tier does not count, and a file whose only tests are there scores as uncovered.
+- The score answers whether a test distinguishes the mutated behavior, not whether the behavior is correct.
+  A survivor whose only observable effect is message text is a real survivor, though not necessarily worth a test.
+- A file that stops being mutated, renamed, deleted or dropped from the configuration, fails rather than passing vacuously, because floors are compared per file.
+- A runner change that stops tests executing per mutant leaves survivors that may keep the score above its floor,
+  so a surviving mutant with zero tests completed fails naming its file, whatever the score.
+
+## Nested root packages
+
+[`scripts/check-nested-root-package.mjs`](../../scripts/check-nested-root-package.mjs)
+
+### Why it is a check
+
+A workspace manifest bump can leave a second copy of a package the root already has:
+npm 11.17 does not hoist a later range bump incrementally while a root `overrides` block stands, so the stale hoisted copy is kept and the raised version is nested under the workspace that asked for it.
+Nothing at install time reports the split.
+A build plugin can resolve the root copy while the dev server runs the nested one, and a suite that fails on it does not name the split as the cause.
+`@dependabot rebase` and `@dependabot recreate` each reproduce it.
+The measurements and the remedy are in [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md), "What a root overrides block changes about later installs".
+
+### Why every package
+
+The mechanism is the overrides block's presence, not any one dependency, so a named list would only ever cover the recurrences that already happened.
+`NESTED_BY_DESIGN` records a split meant to stand, which keeps the check from failing on one.
+An entry there that is no longer a split fails too, so a fixed split cannot leave its excuse behind.
+
+### What it does not cover
+
+- It reports the split the committed lockfile records, not one npm would resolve; a lockfile edit it passes is still confirmed by reinstalling from it.
+- A copy nested deeper, under another package's node_modules, is ordinary conflict resolution, which the committed tree holds dozens of;
+  the class above was measured nesting directly under the workspace that raised its range.
+- A workspace-nested package the root does not have: with no root copy there is nothing to be split against.
+- A stale hoist against a split some declared range requires.
+  The lockfile records neither the override nor which edge each copy serves, so which one a split is stays a reading of the bump, recorded with its reason in `NESTED_BY_DESIGN`.
+- A copy is matched by the directory it installs under, which is what a bare specifier resolves through, and its identity is read from the entry's `name`.
+  Where the two disagree, an npm alias, the check refuses by name rather than reporting a duplicate of a package only one of them is; an alias anywhere else is out of scope.
+- The manifest's `workspaces` globs are not re-expanded: the lockfile's keys are npm's record of the directories it resolved.
+
+## Workflow agent model pins
+
+[`scripts/check-workflow-agent-models.mjs`](../../scripts/check-workflow-agent-models.mjs)
+
+### Why it is a check
+
+A Workflow script's `agent(prompt, {...})` call that omits `model` does not fall back to the agent definition's pinned tier;
+it inherits the session model silently, wherever the script runs from.
+The tiering rule in [CLAUDE.md](../../CLAUDE.md) is only as good as the pins written into the scripts, and prose cannot assert that every call has one.
+The PreToolUse hooks that gate the Agent tool see none of this, since the model lives inside a script string rather than a top-level tool input.
+A `.claude/scripts/*-workflow.mjs` file is a script body, not a module, so it is not linted and cannot be imported; the check reads it whole as one block.
+Fable requires the owner's per-spawn approval and is never inherited, so it may not be pinned in a committed script at all.
+
+### Why the options object is spelled out
+
+A spread into the options object can carry a `model` of its own and decide the tier at run time, so a spread fails whether or not a literal sits beside it.
+A hoisted options constant is treated as no pin, by design: the convention is an inline literal in the call.
+
+### Why a lexer
+
+The scan reads strings, template literals, regex literals and comments as tokens,
+so a `model: 'opus'` in a prompt template or a comment is not a pin, and a parenthesis inside a string cannot run one call's extent into the next.
+A pin counts only at the top level of the call's own options object, so a nested call's pin cannot stand in for its caller's.
+
+### What it does not cover
+
+- `agent` reached under another name.
+  A non-call use of the identifier is reported, but a binding taken off a property (`const spawn = deps.agent`) is a member access the check leaves alone,
+  and a call through that binding, or straight through the member access (`deps.agent(...)`), is invisible.
+- A js fence nested inside another fence: the outer fence's info string decides the block, so js inside a markdown example is not scanned.
+- A script of neither shape: an ad-hoc inline Workflow script, or a file passed by `scriptPath` from elsewhere.
+  `require-workflow-fable-approval.mjs` covers the inline form for Fable.
+
+## OS-layer attribution lists
+
+[`scripts/generate-os-package-attribution.mjs`](../../scripts/generate-os-package-attribution.mjs)
+
+### Why generated from a built image
+
+NOTICE covers the npm tree by construction and `npm sbom` reaches no OS package, so these lists are where a reviewer reads an image's OS layer.
+They come from a built image rather than a Dockerfile: the base image's own packages ship as surely as the ones an install instruction names, and no instruction names them.
+The query runs against the tag because neither Dockerfile names its final stage,
+and a `--target` query would measure a stage that predates the runtime stage's own installs, which on the default image is where `samba-client` arrives.
+The queries were run against both images at both architectures.
+The rpm query runs unchanged under the FIPS variant's fips-only OpenSSL configuration: rpm reads its database in C, and the configuration reaches only what dnf's Python hashes with.
+
+### Why a moved version only reports
+
+The runtime stage's package install resolves versions against a live index that moves under a digest-pinned base,
+so failing on a version would fail builds nobody changed; a package set or license string that moved still fails.
+
+### Why each refusal
+
+- rpm exits 0 when its format string names a tag that does not exist, printing nothing, so a run that parses no row fails rather than reporting an empty package set.
+- [COMPLIANCE.md](../COMPLIANCE.md)'s Section 889 paragraph and [CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md) state that neither the release SBOM nor these lists cover the Node.js runtime,
+  which each image installs outside its package manager, so a row naming it would falsify both.
+- A license disjunction is a licensing call, not a measurement, and the two distributions mix legacy Fedora shorthand with SPDX expressions, so no string is rewritten.
+- A package recording no license fails rather than landing with an empty cell; rpm's literal "(none)" is the same absence in another shape.
+
+## Pull-request checklist
+
+[`scripts/check-pr-checklist.mjs`](../../scripts/check-pr-checklist.mjs)
+
+### Why it reads the fetched pull request
+
+A push and a body edit landing seconds apart leave the push-triggered run holding a body that no longer exists, and a re-run is handed the same stale payload.
+So the workflow fetches the pull request from the API and the check reads that copy.
+On the runner an unreadable head sha, title or number exits 2 rather than passing, since each would otherwise skip or weaken a rule silently.
+
+### What it does not cover
+
+The rules are a mechanical check for the tells that a checklist was left unresolved, or resolved with a clause that answers nothing,
+the same approach as [`check-contributing-scope.mjs`](../../scripts/check-contributing-scope.mjs).
+
+- Whether a stated reason is true is a review call.
+- An author who edits the sha without re-reading the diff passes the Security review rule, which reads a string, not a review.
+- A line in a second `## Checklist` section is not read.
+- A single-commit pull request may skip a hand-written squash message, since GitHub takes that commit's own message as the subject,
+  so the title checked is not necessarily the subject that lands.
+  The check enforces the title anyway, as the one field the workflow can see, and the maintainer can align the two at merge; it does not branch on commit count to guess GitHub's squash behavior.
+- `titleBudget()`'s fallback for an unnumbered pull request serves a direct call; the CLI requires `PR_NUMBER` on the runner.
+
+## Dependabot ignore shape
+
+[`scripts/check-dependabot-ignore-shape.mjs`](../../scripts/check-dependabot-ignore-shape.mjs)
+
+### Why it is a check
+
+The `github-actions` block in `.github/dependabot.yml` ignores within-major updates for several organizations.
+That suppression is sound only over pins that float within their major:
+an exact pin such as `actions/checkout@v7.0.1`, a commit sha, or a branch name under a covered organization sits under an ignore that suppresses every update it could receive,
+so it freezes with no pull request to expose a fix.
+The entries are read from the config, so editing the ignore list changes what is enforced with no second edit.
+
+### A property of the config, not a prediction
+
+Whether those ignores in fact suppress a v7.0.1 to v7.0.2 bump has not been driven against Dependabot, and the rule does not rest on it.
+A pin the config's own stated rationale assumes to be floating is worth holding to that shape either way.
+
+### Why `*` matches across `/`
+
+Under that reading `github/*` covers the subpath action `github/codeql-action/init`.
+Whether that is Dependabot's reading is unsettled; see the open assumption in [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md).
+The inclusive reading is the fail-closed one: it requires more pins to be bare majors, so the rule stays correct if the narrower reading is Dependabot's.
+
+### What it does not cover
+
+- A bare-major pin from an organization no ignore entry names: whether the ignore list is complete is unchecked, only the direction that fails silently is.
+- A reference naming no ref at all, which rule C of [`check-action-pin-drift.mjs`](../../scripts/check-action-pin-drift.mjs) owns; a test holds that delegation.
+- The npm and docker Dependabot blocks, whose ignore and exclude-patterns lists rest on different rationales.
+- What `@v7` resolves to: the ref is read as text, so a tag named like a bare major that points at a frozen commit is out of scope.
+
+## Built-in STUN default claims
+
+[`scripts/check-stun-default-claims.mjs`](../../scripts/check-stun-default-claims.mjs)
+
+### Why it is a check
+
+A run that configures no STUN or TURN server gathers ICE against the WebRTC library's built-in default, disclosing the host's public address to whoever operates it.
+Three surfaces name that endpoint to an operator, one right before they hand a recurring exchange's secret to a scheduler:
+the CLI's warning, the web app's command-line export panel, and the docs.
+An app may not import from another app and a document imports nothing, so the rest are hand-written copies of a value the library decides.
+A copy left behind by a bump is a confidentiality statement gone false, which prose cannot hold true.
+
+### Where the value is measured
+
+The CLI owns the werift dependency, and its WebRTC integration suite (`apps/cli/test/integration/webrtc/transport.test.ts`) drives a real peer with no configured list,
+resolves the hostname to loopback, and watches the STUN binding request arrive on that port.
+It is re-run on every werift bump per [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md).
+This check holds the copies to the constant and says nothing about whether the constant is right.
+Reading the library's source to predict its default would be a second implementation of it, which this repository does not accept.
+
+### What it does not cover
+
+- The web app's own ICE list (`apps/web/src/psi/transport/rendezvous.ts`, described in [PRIVACY.md](../../PRIVACY.md)).
+  It is a different list for exchanges a browser runs itself, which happens to include the same Google server;
+  tying it here would fuse two independent decisions, so those files are not listed, by design.
+- A copy in a file no list names: a new surface is covered only once it is added to `CODE_COPIES` or `CLAIM_TEXTS`.
+- Prose describing the default without writing the endpoint: nothing there can drift, though each `stated` file must still hold one claim that writes it.
+- A claim split across two sentences: a claim is read from "built-in" to the end of its sentence, so the endpoint must sit in that sentence.
+
+## Merge gate identities
+
+[`scripts/check-merge-gate-identities.mjs`](../../scripts/check-merge-gate-identities.mjs)
+
+### Why it is a check
+
+A branch ruleset names each required status check by a bare context string, which GitHub matches against the check runs a pull request produces.
+Three ordinary edits break that match with nothing red to show for it,
+leaving the requirement pending and every pull request unmergeable until branch protection is edited, and a fourth drops a check the merge gate relies on after a merge:
+
+- Renaming a job whose `name:` is a required context: the check run the ruleset waits for is never created under that name again.
+- Adding a `paths:` or `paths-ignore:` filter to a gating workflow: a pull request touching nothing the filter matches skips the workflow, so its check runs are never created.
+- Requiring a context whose job a workflow outside `GATING_WORKFLOWS` declares: the path-filter rule reads only the listed files, so the previous hazard goes unwatched on that workflow.
+- Dropping a gating workflow's push trigger on staging.
+  A pull request merges without being brought up to date with staging, so the push run is what tests two independently green pull requests together.
+
+The declaring-workflow rule holds `GATING_WORKFLOWS` to the merge gate's own contexts rather than leaving it a hand-kept list nothing measures.
+Reading per protected branch rather than per ruleset name means renaming a ruleset does not drop coverage, and the branch endpoint reports what every active ruleset contributes.
+
+### What it does not cover
+
+- A templated job name: resolving a `${{ }}` expression means reimplementing the expansion GitHub performs, so a context only such a job satisfies fails rather than passing on a guess.
+- Whether a job with the right name runs on a pull request to the protected branch, or succeeds: the context rule matches names, not runs.
+  The trigger rule covers that for the listed workflows, and the declaring-workflow rule holds the list to every workflow declaring a required job.
+- A job calling a reusable workflow produces composed check-run names (`caller / callee`); only the caller's own name is collected.
+- Which of two identically named jobs satisfies a context.
+  Nothing constrains a job name to one file, and which check run GitHub matches is its call to make, so a context is held to all of its declarers,
+  and one unlisted file fails the rule even when another declarer is listed.
