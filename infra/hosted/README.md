@@ -14,7 +14,7 @@ Nothing in the repository runs it: no workflow, script or package manifest invok
 
 The DNS records and the Pages project have `prevent_destroy`, so a plan that would replace one fails instead of proposing it. The Pages project's deployments are outside this root: [`pages_deploy.yaml`](../../.github/workflows/pages_deploy.yaml) uploads them.
 
-The root declares no AWS resource. The AWS provider stays while the state still holds AWS resources, so the apply that destroys them runs with the provider's account refusal in force; once the state holds no AWS resource, the provider, `aws_account_id` and `aws_region` can go, and the state bucket remains the only AWS dependency.
+The root declares no AWS resource, but the AWS provider, `aws_account_id` and `aws_region` stay until the destroy has run, because the state still names the AWS resources and the account refusal must hold for that apply. They are removed afterwards, leaving the state bucket as the only AWS dependency.
 
 ## State and credentials
 
@@ -81,5 +81,5 @@ Planning and applying this root against the live account and zone settles these 
 - **Confirmed:** OpenTofu 1.10 or later (1.12.6), and the S3 backend with `use_lockfile`.
 - **Confirmed:** the Cloudflare provider's v5 schema. In 5.25.0, `cloudflare_zone_setting` takes `setting_id` and `value`, and `cloudflare_dns_record` requires `ttl`. The HSTS `security_header` value as a `strict_transport_security` object imports with no difference, and the zone-setting import id is `<zone-id>/<setting_id>`.
 - **Confirmed:** the zone settings. SSL/TLS mode `strict`, Always Use HTTPS on, and HSTS with no `includeSubDomains`, no preload and `nosniff` `false` all import with no difference.
-- **Confirmed:** each public name is a proxied `CNAME` with automatic TTL, the production name to the project's `pages.dev` name and the staging name to `staging.<project>.pages.dev`, and a custom domain on the `staging` branch alias serves the latest `staging` deployment.
+- **Confirmed:** each public name is a proxied `CNAME` with automatic TTL, the production name to the project's `pages.dev` name and the staging name to `staging.<project>.pages.dev`, and the staging name is a custom domain on the `staging` branch alias; whether it serves the newest `staging` deployment or tracks production is checked on the next staging deploy that changes a web file.
 - **Confirmed:** the Read-only token, with Cloudflare Pages Read added, plans the root with no change.
