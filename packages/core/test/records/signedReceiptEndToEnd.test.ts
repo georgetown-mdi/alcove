@@ -10,9 +10,8 @@ import {
   exchangeDisclosedWithoutPartnerPayload,
   exchangeRecordFromFailure,
   exchangeRecordOwedButUnbuilt,
-  prepareForExchange,
-  runExchange,
-} from "../../src/exchange";
+} from "../../src/exchange/failureRecords";
+import { prepareForExchange, runExchange } from "../../src/exchange";
 import { createMessagePipe } from "../../src/connection/messageConnection";
 import { withHostilePayload } from "../utils/hostilePayload";
 import {

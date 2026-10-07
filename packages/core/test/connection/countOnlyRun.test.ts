@@ -8,11 +8,8 @@ import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import {
-  exchangeRecordFromFailure,
-  resolveCountOnlyRun,
-  runExchange,
-} from "../../src/exchange";
+import { exchangeRecordFromFailure } from "../../src/exchange/failureRecords";
+import { resolveCountOnlyRun, runExchange } from "../../src/exchange";
 import { receiveCountReport } from "../../src/protocolSetup";
 import { verifyCommitmentOpening } from "../../src/records/exchangeRecord";
 import {

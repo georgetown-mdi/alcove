@@ -805,9 +805,6 @@ export {
   assertTermsRunnable,
   countIsPartnerReported,
   describeExchangeStages,
-  exchangeDisclosedWithoutPartnerPayload,
-  exchangeRecordFromFailure,
-  exchangeRecordOwedButUnbuilt,
   matchedPairCount,
   prepareForExchange,
   resolveExchangeInputs,
@@ -832,6 +829,11 @@ export {
 export type { PartnerCertificateRefusalKind } from "./exchange/signingChecks";
 export { assertFirstRoundWithinSetMaximum } from "./exchange/firstRoundCapacity";
 export type { FirstRoundCheckOptions } from "./exchange/firstRoundCapacity";
+export {
+  exchangeDisclosedWithoutPartnerPayload,
+  exchangeRecordFromFailure,
+  exchangeRecordOwedButUnbuilt,
+} from "./exchange/failureRecords";
 export {
   describeResolvedMatching,
   describeResolvedRunShape,
