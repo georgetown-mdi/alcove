@@ -1,42 +1,17 @@
 #!/usr/bin/env node
-// Workflow args-resolve check, run by static_checks.yaml on every PR.
-//
-// The Workflow harness injects a script's arguments as `args`, either as the
-// object the caller passed or as JSON text of it. Every other delivery -- an
-// array, a bare scalar, null, nothing at all -- has no named field, and a
-// script that reads one off it gets `undefined` rather than an error: the round
-// runs, the agents are spawned, and the caller's arguments are simply missing
-// from the prompts. That is a silent degradation, so a committed script resolves
-// `args` exactly once, through `resolveWorkflowArgs(args)`, which fails closed on
-// a shape it cannot use, and reads every field off what that call returns.
-//
-// A convention nothing enforces is one edit from gone, and the reads that break
-// it -- `args.role`, `const {role} = args`, `{...args}`, `args[k]` -- all look
-// ordinary. So it is encoded as a check over the same two committed script shapes
-// check-workflow-agent-models.mjs scans, read through the block reader and
-// lexer in scripts/lib/workflowScripts.mjs: a fenced js block under .claude/commands/, .claude/agents/, or
-// .claude/skills/, and a checked-in Workflow script a command invokes by path
-// (.claude/scripts/*-workflow.mjs, whose whole file is the block).
-//
-// Reading the block through that lexer is what makes the rule exact: an `args`
-// inside a string, a template, a comment, or a prose sentence outside every fence
-// is not a read of the binding, and the word appears in all four in these files.
-//
-// What the scan cannot see, exactly:
-//   - what `resolveWorkflowArgs` itself does. This check holds every read of
-//     `args` to that call and nothing more; the guard's own behavior is pinned by
-//     .claude/scripts/light-review-script.test.mjs and
-//     .claude/scripts/panel-script.test.mjs, which compile and run the real script
-//     files. A new Workflow script that defined a lax resolver under that name
-//     would pass this check with no test behind it.
-//   - `args` reached under another name. Taking the alias is itself a read and is
-//     reported (`const a = args`), so the alias cannot be introduced quietly; but
-//     a binding taken off a property (`const a = deps.args`) is a member access,
-//     which this leaves alone, and reads through it are invisible.
-//   - a js fence nested inside another fence. The outer fence's info string
-//     decides the block, so js nested in a markdown block is not scanned at all.
-//   - a script that is neither shape: an ad-hoc inline Workflow script, or a file
-//     passed by scriptPath from outside .claude/scripts/*-workflow.mjs.
+// Workflow args-resolve check: `npm run check:workflow-args-resolve`, run by
+// static_checks.yaml on every pull request. Scans the committed Workflow
+// scripts in the two shapes check-workflow-agent-models.mjs scans, through the
+// block reader and lexer in scripts/lib/workflowScripts.mjs: a fenced js block
+// under .claude/commands/, .claude/agents/ or .claude/skills/, and a whole
+// .claude/scripts/*-workflow.mjs file. Fails on any read of the injected
+// `args` binding other than `resolveWorkflowArgs(args)`, taking an alias of it
+// included, so every field is read off what that call returns. An `args` in a
+// string, template, comment or prose is not a read. The resolver's own
+// behavior is pinned by .claude/scripts/light-review-script.test.mjs and
+// .claude/scripts/panel-script.test.mjs. Exit 0 clean, 1 on a finding or
+// when no `resolveWorkflowArgs(args)` call is found at all. Rationale and
+// limits: docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";

@@ -1,45 +1,20 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a role round whose claims quote text that does not
-// occur in the tree at the ref the round reviews.
+// PreToolUse hook on Workflow: refuse a role round whose claims quote text that
+// does not occur in the tree at the ref the round reviews.
 //
-// Why this exists: a claim naming a fixed message, error class, or UI state
-// nobody measured cannot be refuted on its merits. The role reviewer measures
-// the wording instead of the property, returns REFUTED or COULD-NOT-VERIFY on
-// the wording, and the round is spent -- three of six refutations in the
-// 2026-09-02 review program were of that kind, one role round each. The rule is
-// already prose in `.claude/commands/light-review.md`, and prose does not fail.
+// The quoting rule: a double-quoted span in a claim asserts that this exact text
+// occurs in the tree at the target ref, and each one is looked up with
+// `git grep -F` at that ref. Anything else a claim quotes, a string the round
+// feeds the surface, a paraphrase or a term of art, goes in single quotes or
+// backticks, which this hook does not read; the refusal names the single-quote
+// form. A message the source assembles from fragments has no contiguous
+// occurrence, so a claim quotes a fragment that does occur or states the
+// property. The claims read are the ones in the Workflow's `args`.
 //
-// WHAT COUNTS AS A QUOTED LITERAL. Double quotes, and nothing else. A
-// double-quoted span in a claim asserts that this exact text occurs in the tree
-// at the target ref, and each one is looked up here with `git grep -F` at that
-// ref. Every other thing a claim quotes -- a string the round FEEDS the surface,
-// a paraphrase, a term of art -- is written in single quotes or backticks, which
-// this hook does not read. That convention is one rule with no marker to forget,
-// and it fails loudly rather than silently: an input written in double quotes is
-// refused, with the single-quote form named in the refusal, so the author is
-// told the way through at the moment they need it.
-//
-// A message the source assembles from concatenated fragments has no contiguous
-// occurrence to find, so a claim about one quotes a fragment that does occur, or
-// states the property instead. The refusal says so.
-//
-// STATED LIMITS.
-//   - Occurrence is anywhere in the tree at the ref: source, tests, docs, a
-//     changelog. This refuses a literal that was measured NOWHERE, not one
-//     measured in the wrong place.
-//   - The claims read are the ones delivered in the Workflow's `args`, which is
-//     what the round actually runs on. A claims file on disk whose lines never
-//     reach a round is not this hook's to police.
-//   - A target that is not a single resolvable ref passes: the round cannot be
-//     placed against a tree, and require-clean-tree-for-review.mjs already
-//     blocks a review round whose target does not resolve.
-//
-// Fail-open scaffolding follows require-review-contract.mjs: JSON event on
-// stdin, exit 0 allows, exit 2 blocks and feeds stderr back to Claude. A missed
-// refusal costs one role round, the same thing this gate is saving, while a
-// stray failure that wedged every Workflow call would cost the whole review
-// flow -- so every state in which a literal cannot be CONFIRMED absent allows
-// the call.
+// Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
+// Fail open: every state in which a literal cannot be confirmed absent,
+// including a target that is not a single resolvable ref, allows the call.
+// Rationale and limits: docs/notes/agent-hooks-and-scripts.md.
 
 import { execFileSync } from "node:child_process";
 

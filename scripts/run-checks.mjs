@@ -1,41 +1,18 @@
 #!/usr/bin/env node
 // The repository-wide check runner behind `npm run check:all`, and the one list
-// the checks are named on.
+// the checks are named on. static_checks.yaml's `repo-guards` job is a single
+// step invoking it. CHECKS has a line per check saying what it checks; each
+// check's reasons are reached from its own script header. OUT_OF_CHECK_ALL
+// lists the checks that stay off the list, each with what puts it there.
 //
-// static_checks.yaml's `repo-guards` job is where a repository-wide obligation
-// gets gated: it has no path filter, and the merge-gating workflows beside
-// it are each scoped to one concern (code scanning, dependency review, the
-// Alpine native build). So the set only grows. CHECKS below is that set, a line
-// per check, and the job is a single step invoking this runner -- which is also
-// the command a contributor runs before pushing, rather than meeting a check
-// when CI reddens. Each check's reasoning is reached from its own script
-// header; the line here says what the check holds, not why.
-//
-// Serial, and it does not stop at the first failure. Serial because two of the
-// checks regenerate a file in the working tree and restore it (check:routetree
-// rewrites apps/web/src/routeTree.gen.ts, check:vectors the known-answer
-// vectors), so nothing else may read those paths while they run. It runs past a
-// failure so one red check does not hide the state of the rest: the summary
-// names every failure, and the exit code is 1 if there was one.
-//
-// The typecheck/lint/format trio is not here by design. It has its own
-// required-status-check identity (`Typecheck, Lint, Format`), kept separate so
-// the context on the merge gate's critical path is the one a contributor
-// iterates on; CONTRIBUTING.md names it beside this command.
-//
-// OUT_OF_CHECK_ALL holds the checks that stay off the list, each with what puts
-// it there: a check needing the network, a token, a release trigger, or CI's own
-// install cannot run from a plain checkout, and one whose cost is measured in
-// minutes does not belong on the unfiltered merge path.
-//
-// A check that needs the production web build marks it with `usesBuild`: the
-// run clears apps/web/dist/hosted first, so no check reads a build from before
-// the run started. One that reads another's build without building names it in
-// `buildFrom`, and is skipped with a line saying so when that build fails.
-// scripts/run-checks.test.mjs holds every `check:*` script in the root
-// package.json to one list or the other, so a new check cannot be added without
-// being classified, and holds the repo-guards job to this one step plus the
-// dependency audit.
+// Runs serially and past a failure: the summary names every failure, and the
+// exit code is 1 if there was one. A check marked `usesBuild` needs the
+// production web build, and the run clears apps/web/dist/hosted first; one
+// naming another in `buildFrom` reads that build and is skipped with a line
+// saying so when the build fails. scripts/run-checks.test.mjs holds every
+// `check:*` script in the root package.json to one list or the other, and the
+// repo-guards job to this one step plus the dependency audit. Rationale:
+// docs/notes/repo-check-scripts.md.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";

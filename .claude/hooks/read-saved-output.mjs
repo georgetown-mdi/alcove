@@ -1,44 +1,13 @@
 #!/usr/bin/env node
-// PostToolUse hook: when the harness persists an oversized Bash result to a file
-// and shows the session only a preview, read that file back into context.
-//
-// Why this exists: a long build, test, or log command routinely exceeds the
-// inline result budget. The harness then writes the whole output to a file under
-// the session's tool-results directory and renders a short notice plus the first
-// couple of kilobytes. A session that acts on the preview alone reasons from the
-// beginning of a run whose verdict is at its end -- the failing assertion, the
-// summary line, the exit status -- and an agent with no next turn cannot go and
-// read the file after the fact. Reading it back at the moment of truncation puts
-// the verdict where the decision is made.
-//
-// THE ANCHOR, and the misfire it closes. The notice is matched only at the START
-// of a candidate field, optionally behind the harness's own <persisted-output>
-// wrapper line -- never anywhere inside the text. An unanchored search matches
-// output that merely CONTAINS the notice, which is not exotic: printing this
-// file, grepping the hooks directory, or catting a transcript all quote it, and
-// the hook then chases a path built out of the quoted line and warns about a file
-// that was never supposed to exist. Anchoring makes the match structural rather
-// than lexical: only the harness writes that sentence at position zero.
-//
-// STATED LIMITS.
-//   - The anchor is strict by design, so a change to the notice's wording or
-//     framing makes this hook SILENT rather than noisy. That is the direction to
-//     fail in: the session still sees the harness's own notice and can read the
-//     file itself, while a loosened match resumes misfiring on quoted text.
-//   - What a PostToolUse payload holds for a persisted result is the harness's
-//     business and is not asserted here: every string-valued candidate field is
-//     tried, and no field containing the notice means no readback. Measured on the
-//     2026-08-31 harness by running a command with 60KB of output, the rendered
-//     notice reads `Output too large (60.5KB). Full output saved to: <path>`
-//     inside a <persisted-output> element; the payload's own shape was not
-//     observable from inside a session, so a payload that never contains it
-//     leaves this hook inert rather than wrong.
-//   - The readback holds the LAST READBACK_BYTES bytes of the file and says so
-//     when there was more, since the verdict it exists to deliver sits at the
-//     end. The file itself stays on disk for a targeted read of the rest.
-//
-// PostToolUse cannot block -- the command has already run -- so the only outcomes
-// are an additionalContext message or silence. Fail open on every error.
+// PostToolUse hook on Bash: when the harness persists an oversized result to a
+// file and shows the session only a preview, read that file back into context.
+// The harness's notice is matched only at the start of a candidate field,
+// optionally behind its <persisted-output> wrapper line, never inside the text,
+// so output that quotes the notice triggers nothing. Every string-valued
+// payload field is tried. The readback keeps the last READBACK_BYTES bytes of
+// the file and says so when there was more. The hook cannot block: the outcome
+// is an additionalContext message or silence, and every error fails open.
+// Rationale and limits: docs/notes/agent-hooks-and-scripts.md.
 
 import { readFileSync, statSync } from "node:fs";
 

@@ -1,45 +1,16 @@
 #!/usr/bin/env node
-// Build-provenance check for the vendored @openmined/psi.js prebuild tarball,
-// run by .github/actions/setup ahead of `npm ci` and by release.yaml's publish
-// job ahead of the shipped image build.
-//
-// The tarball contains native N-API .node prebuilds that are dlopen'd with full
-// process privilege into the PSI crypto pipeline, and it is built in another
-// repository (the fork's native-prebuilds.yml) and copied here by hand. The
-// committed `.sha256` sidecar cannot close that hop: it is written in the same
-// Alcove commit as the bytes it describes, so a writer who controls lib/
-// controls both. It detects a truncated checkout, a corrupt download, or a
-// stale re-vendor -- accident and availability -- and it is the only check that
-// works with no network, no token, and no extra tooling. Tamper resistance
-// across the fork boundary needs a claim made outside any Alcove commit, which
-// is what a GitHub artifact attestation stored against the PRODUCING repository
-// is; `gh attestation verify` is how this reads it.
-//
-// ARMING. Enforcement arms per artifact, because attestation coverage is a
-// property of the run that packed a given tarball rather than of the fork: one
-// packed by a run predating the producing workflow's attest step holds
-// nothing to verify. The marker file beside the tarball
-// (`<tarball>.provenance.json`) holds the switch:
-//
-//   attestation_expected: false -> report, warn, and pass. The sidecar is then
-//     the whole control.
-//   attestation_expected: true  -> run `gh attestation verify` against the
-//     recorded producer identity and source commit, and fail on any non-zero
-//     exit.
-//
-// The marker is NOT optional in either state. A missing or malformed marker
-// fails, and its recorded digest is held against the tarball's real bytes in
-// both states, offline. So the marker cannot be deleted to disarm the check,
-// and it cannot describe bytes other than the ones vendored: re-pointing it at
-// substituted bytes is what makes the armed attestation lookup fail, and the
-// only remaining way out is flipping the boolean back to false -- a one-line
-// diff in `lib/` that a reviewer reads, rather than a silent absence.
-//
-// What this check does NOT establish, and the runbook
-// (docs/PREBUILD_REVENDOR.md) states as the reviewer's own step: that the
-// attested build is correct. An attestation binds bytes to a workflow run in the
-// producer repo; whether that run built what its source says is the fork's
-// problem, not this one.
+// Build-provenance check for the vendored @openmined/psi.js prebuild tarball:
+// `npm run check:prebuild-provenance`, run by .github/actions/setup ahead of
+// `npm ci` and by release.yaml's publish job ahead of the shipped image build.
+// Each tarball in lib/ needs a marker beside it, `<tarball>.provenance.json`,
+// whose recorded digest is held against the tarball's bytes offline; a missing
+// or malformed marker fails. `attestation_expected: false` warns and passes, the
+// `.sha256` sidecar then being the whole control; `true` runs
+// `gh attestation verify` against the recorded producer identity and source
+// commit and fails on any non-zero exit. It does not establish that the
+// attested build is correct: docs/PREBUILD_REVENDOR.md makes that the
+// reviewer's step. Exit 0 clean, 1 on a failure. Rationale and limits:
+// docs/notes/prebuild-provenance.md.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";

@@ -511,3 +511,110 @@ The hook applies the same rule when the title is written.
 - A `-t` inside a combined shorthand cluster (`-dt V`) is left alone, because which flag in the cluster takes the value depends on gh's own shorthand table.
 - No variable, command substitution or backslash escape is expanded:
   such a title is measured as the literal text written, and a title escaped word by word rather than quoted measures as its first word.
+
+## Orchestration ruleset read gate
+
+[`.claude/hooks/require-orchestration-ruleset-read.mjs`](../../.claude/hooks/require-orchestration-ruleset-read.mjs)
+
+### Why it exists
+
+The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn and SendMessage mechanics, where a decision goes.
+A pointer in CLAUDE.md and seven front doors load it, and nothing else confirms the session doing the conducting has it.
+A session that starts spawning without it runs the flow from whatever it remembers of an earlier one,
+and the rules it skips are the ones no later check catches: a round dispatched wrongly is a wasted round, not a red test.
+
+### Why nothing is added to a spawn's context
+
+A spawned agent is told not to read the ruleset, and paying for its rules on every spawn is the cost this gate exists to avoid.
+
+### Why a subagent's own spawns pass
+
+A subagent spawning under the session's id finds the session's own record.
+What a payload contains inside a subagent could not be observed from within a session, so a subagent transcript path is an explicit pass as well:
+on this harness, measured 2026-09-11, a subagent's transcript is `<project>/<session-id>/subagents/agent-<agent-id>.jsonl`, beside the session's own `<session-id>.jsonl`,
+and a payload naming one of those is a spawned agent's call whatever session id it came with.
+Gating it would demand of that agent the read the ruleset's own text forbids it.
+A payload with no transcript path passes for the same reason: without one the gate cannot tell a spawned agent's call from a session's own.
+
+### Why fail open
+
+This is the direction `require-agent-model.mjs` takes and the opposite of `require-clean-tree-for-review.mjs`.
+What this gate enforces is a reading discipline, so a miss costs a session that reasons from memory,
+while a refusal that fires wrongly stops every spawn in every session at once.
+
+## Measured claim literals
+
+[`.claude/hooks/require-measured-claim-literals.mjs`](../../.claude/hooks/require-measured-claim-literals.mjs)
+
+### Why it exists
+
+A claim naming a fixed message, error class or UI state nobody measured cannot be refuted on its merits.
+The role reviewer measures the wording instead of the property, returns REFUTED or COULD-NOT-VERIFY on the wording, and the round is spent:
+three of six refutations in the 2026-09-02 review program were of that kind, one role round each.
+The rule was already prose in [`light-review.md`](../../.claude/commands/light-review.md), and prose does not fail.
+
+### Why double quotes and nothing else
+
+The convention is one rule with no marker to forget, and it fails loudly rather than silently:
+an input written in double quotes is refused with the single-quote form named, so the author is told the way through when they need it.
+
+### Why fail open
+
+The scaffolding follows `require-review-contract.mjs`.
+A missed refusal costs one role round, the same thing this gate saves,
+while a stray failure that blocked every Workflow call would cost the whole review flow.
+
+### What it does not cover
+
+- Occurrence is anywhere in the tree at the ref: source, tests, docs, a changelog.
+  It refuses a literal measured nowhere, not one measured in the wrong place.
+- A claims file on disk whose lines never reach a round: the claims read are the ones delivered in the Workflow's `args`, which is what the round runs on.
+- A target that is not a single resolvable ref passes, since the round cannot be placed against a tree;
+  `require-clean-tree-for-review.mjs` already blocks a review round whose target does not resolve.
+
+## Draft issue editor
+
+[`.claude/scripts/edit-issue.mjs`](../../.claude/scripts/edit-issue.mjs)
+
+### Why it exists
+
+Editing items by hand through gh is the Projects API operation with the most opaque IDs:
+setting a field value needs the item node ID, the project node ID, the field ID and, for a single-select, the option ID,
+none of which is the numeric ID the URL shows.
+The script resolves all of them from the numeric ID and human-readable field and option names.
+A `PVTI_` node ID is decoded back to its numeric ID, so a listed item can be edited without decoding it by hand,
+and one from a different board is refused rather than remapped.
+
+### Why edits are verified
+
+An edit whose value equals the stored one, ignoring trailing newlines, makes no API call,
+and an edit that runs is re-fetched and compared with what was sent, so an unchanged write cannot report success.
+Iteration and other field types are reported as unsupported rather than guessed at.
+
+## Saved-output readback
+
+[`.claude/hooks/read-saved-output.mjs`](../../.claude/hooks/read-saved-output.mjs)
+
+### Why it exists
+
+A long build, test or log command routinely exceeds the inline result budget.
+The harness then writes the whole output to a file under the session's tool-results directory and renders a short notice plus the first couple of kilobytes.
+A session that acts on the preview alone reasons from the beginning of a run whose verdict is at its end, the failing assertion, the summary line, the exit status,
+and an agent with no next turn cannot read the file after the fact.
+Reading it back at the moment of truncation puts the verdict where the decision is made.
+The readback keeps the end of the file for the same reason; the file stays on disk for a targeted read of the rest.
+
+### Why the match is anchored
+
+An unanchored search matches output that merely contains the notice, which is common:
+printing the hook, grepping the hooks directory or catting a transcript all quote it,
+and the hook must not treat a quoted line as a path to warn about, because quoted text is output, not a file the agent named.
+Only the harness writes that sentence at position zero, so the anchored match is structural rather than lexical.
+
+### What it does not cover
+
+- A change to the notice's wording or framing makes the hook silent rather than noisy.
+  That is the direction to fail in: the session still sees the harness's notice and can read the file itself, while a looser match resumes misfiring on quoted text.
+- What a PostToolUse payload contains for a persisted result is not asserted.
+  Measured on the 2026-08-31 harness with a command printing 60KB, the rendered notice is `Output too large (60.5KB). Full output saved to: <path>` inside a `<persisted-output>` element;
+  the payload's own shape was not observable from inside a session, so a payload that never contains the notice leaves the hook inert rather than wrong.

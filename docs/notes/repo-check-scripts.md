@@ -896,3 +896,143 @@ Reading per protected branch rather than per ruleset name means renaming a rules
 - Which of two identically named jobs satisfies a context.
   Nothing constrains a job name to one file, and which check run GitHub matches is its call to make, so a context is held to all of its declarers,
   and one unlisted file fails the rule even when another declarer is listed.
+
+## Verification-config integrity
+
+[`scripts/check-config-integrity.mjs`](../../scripts/check-config-integrity.mjs)
+
+### Why it is a check
+
+Typecheck and test are only evidence while the configs under them still say what they are believed to say.
+A tsconfig that loses its strictness options type-checks the same tree and reports nothing;
+a vitest config that loses its `projects` list runs a fraction of the suites, or none, and exits 0.
+Both failures are silent: the gates stay green, and every later gate on that tree stays green with them.
+The check states the invariants those gates rest on so a truncated, emptied or half-written config fails loudly.
+The file-list rule exists so a config that keeps `strict` but loses its `include` does not pass by checking nothing.
+A project with no files is absent from the vitest listing entirely, which is the shape a lost `include` takes.
+
+### Why it drives the tools
+
+`tsc --showConfig` resolves `extends`, so a strictness option is checked where the compiler sees it, wherever it is written;
+`vitest list --filesOnly` resolves the project graph the way a run does, without importing a test file.
+Reading the JSON and the config source would be a second implementation of two resolvers, and a check that models a tool can disagree with it.
+
+### What it does not cover
+
+- Whether an option or a project should be there.
+  The tables are the decision; review makes it, and moving a line there is an edit a reviewer sees.
+  Not every option a config sets is listed: what is listed is what a silent loss would cost.
+- The count of test files a project collects, beyond one: pinning a count churns on every test file added.
+- Any other config a run reads (eslint, rollup, vite's build half).
+  They fail loudly on their own: a lost rollup or vite config breaks the build rather than passing a smaller one.
+
+## Action pin drift
+
+[`scripts/check-action-pin-drift.mjs`](../../scripts/check-action-pin-drift.mjs)
+
+### Why it is a check
+
+The `github-actions` Dependabot block is configured against `.github/workflows`.
+The shared CI prologue composite, `.github/actions/setup/action.yml`, pins actions of its own on a path this repository does not rely on being scanned.
+Coverage reaches it transitively instead: every pin a composite has is identical to a pin a workflow has,
+so a release or advisory showing on the workflow occurrence covers the composite one, and the bump answering it cannot land on the workflow and leave the composite behind.
+
+### Why each rule
+
+- Rule A: a bump applied to some occurrences and not others, the shape a single-file dependency pull request has, fails rather than leaving a stale composite.
+- Rule B: a composite-only action has no occurrence on the configured path for a release or advisory to show on, so the check fails closed on it rather than passing a gap.
+- Rule C: a reference naming no ref fixes no version, so nothing determines which code the step runs and no release or advisory has an occurrence to show on;
+  neither tree may hold one, and rule A's mirror cannot be satisfied by one.
+  Whether GitHub itself rejects the shape is unverified and the rule does not rest on it: if GitHub does, the rule never fires.
+
+### What it does not cover
+
+- What a ref resolves to: `@v7` agrees with `@v7` whatever the tag points at,
+  so a floating major moving under both occurrences, one spelling denoting different commits in different places, and whether a ref is a tag, a branch or a sha are outside it.
+- Which paths Dependabot in fact scans: it enforces the mirror invariant and confirms no tool's coverage.
+- An action reached other than by `uses:`: a `run:` line that fetches a release, or an image named in `container:` or `services:`.
+- Two workflows pinning an action no composite uses at differing refs: rule A binds only actions appearing in both trees.
+
+## Image dependencies of the support scripts
+
+[`scripts/derive-image-dependencies.mjs`](../../scripts/derive-image-dependencies.mjs)
+
+### Why derived rather than listed
+
+The shipped file-drop support scripts delegate every check they make to a capability of the image:
+they hand a container an Alcove subcommand, or pipe a helper script into a shell inside it and depend on the tools that shell can resolve.
+Nothing else in the repository connects the two, so a script can ask for a capability the image does not have and the mismatch shows only on an operator's PC.
+The derivation lives apart from the probe so a new call site is noticed on every pull request without a Docker daemon.
+
+### Why each anchor
+
+- The subcommand names come from the image's own two dispatchers,
+  so a command that ships without being registered, or a call site invoking one never seen, changes the derived set rather than going unnoticed.
+- Running a helper script is what resolves the tools it needs, so no list of tool names is kept:
+  a helper that gains a dependency on another in-image binary is covered by the run it already has.
+
+### What it does not cover
+
+- The subcommand-less invocation (`<image> file:///sync input.csv out.csv`), which names no registered command.
+  `image_smoke.yaml` runs a full exchange over a bind mount, which is that shape.
+- A call site that splits an argument vector across logical lines, or builds one from values the derivation cannot see.
+  Both fail closed only insofar as the capability then goes underived, which is why the tripwires assert that each derivation found something.
+
+## Workflow args resolution
+
+[`scripts/check-workflow-args-resolve.mjs`](../../scripts/check-workflow-args-resolve.mjs)
+
+### Why it is a check
+
+The Workflow harness injects a script's arguments as `args`, either as the object the caller passed or as JSON text of it.
+Every other delivery, an array, a bare scalar, null or nothing at all, has no named field,
+and a script that reads one off it gets `undefined` rather than an error: the round runs, the agents are spawned, and the caller's arguments are missing from the prompts.
+So a committed script resolves `args` once, through `resolveWorkflowArgs(args)`, which fails closed on a shape it cannot use.
+The reads that break that convention, `args.role`, `const {role} = args`, `{...args}`, `args[k]`, all look ordinary, so prose cannot hold it.
+
+### Why a lexer
+
+The word `args` appears inside strings, templates, comments and prose outside every fence in these files, and none of those is a read of the binding.
+Reading each block through the shared lexer is what makes the rule exact.
+
+### What it does not cover
+
+- What `resolveWorkflowArgs` itself does: the check holds every read of `args` to that call and nothing more.
+  The two script tests compile and run the real script files; a new Workflow script that defined a lax resolver under that name would pass with no test behind it.
+- `args` reached under another name.
+  Taking the alias is itself a read and is reported (`const a = args`), but a binding taken off a property (`const a = deps.args`) is a member access the check leaves alone, and reads through it are invisible.
+- A js fence nested inside another fence: the outer fence's info string decides the block, so js inside a markdown block is not scanned.
+- A script of neither shape: an ad-hoc inline Workflow script, or a file passed by `scriptPath` from outside `.claude/scripts/*-workflow.mjs`.
+
+## Check runner
+
+[`scripts/run-checks.mjs`](../../scripts/run-checks.mjs)
+
+### Why one job and one list
+
+`static_checks.yaml`'s `repo-guards` job is where a repository-wide obligation is gated:
+it has no path filter, and the merge-gating workflows beside it are each scoped to one concern (code scanning, dependency review, the Alpine native build).
+So the set only grows.
+The job is a single step invoking the runner, which is also the command a contributor runs before pushing rather than meeting a check when CI fails.
+
+### Why serial and past a failure
+
+Two checks regenerate a file in the working tree and restore it:
+`check:routetree` rewrites `apps/web/src/routeTree.gen.ts`, and `check:vectors` the known-answer vectors,
+so nothing else may read those paths while they run.
+It runs past a failure so one red check does not hide the state of the rest.
+
+### Why the typecheck, lint and format trio is not listed
+
+It has its own required status check (`Typecheck, Lint, Format`), kept separate so the context on the merge gate's critical path is the one a contributor iterates on;
+CONTRIBUTING.md names it beside this command.
+
+### Why some checks stay off the list
+
+A check needing the network, a token, a release trigger or CI's own install cannot run from a plain checkout,
+and one whose cost is measured in minutes does not belong on the unfiltered merge path.
+
+### Why the build is cleared
+
+A `usesBuild` check's run clears the hosted build output first, so no check reads a build from before the run started.
+The test classifying every `check:*` script means a new check cannot be added without being classified.

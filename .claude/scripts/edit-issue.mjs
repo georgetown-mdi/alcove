@@ -1,44 +1,15 @@
 #!/usr/bin/env node
-//
 // Edit a GitHub Projects v2 draft issue by its numeric item ID (the `?itemId=N`
-// value from the project web UI URL). Companion to fetch-issues.mjs.
-//
-// Editing items by hand through gh is the highest opaque-ID operation in the
-// Projects API: setting a field value needs the item node ID, the project node
-// ID, the field ID, and (for single-selects) the option ID -- none of which are
-// the numeric ID you have from the URL. This script resolves all of them from
-// the numeric ID plus human-readable field/option names, so callers never juggle
-// node IDs or look up option IDs by hand.
-//
-// The <itemId> may be EITHER a numeric ID (the `?itemId=N` value) OR a
-// `PVTI_...` global node ID as printed by `list-issues.mjs`; the node ID is
-// decoded back to its numeric ID, so a listed item can be edited without
-// hand-decoding it. A node ID from a different board than <project-number> is
-// rejected rather than silently remapped.
-//
-// Usage:
-//   node edit-issue.mjs <project-number> <itemId|PVTI_...> [edits...]
-//
-// Edits (any combination, applied in one run):
-//   --title "..."                 set the draft title
-//   --body  "..."                 set the draft body
-//   --body-file PATH              set the draft body from a file
-//   --status "In Progress"        shortcut for --field Status --value "In Progress"
-//   --field NAME --value VALUE     set a field by name (repeatable)
-//   --diff                         print a unified diff of the body, then apply
-//                                  (body edits only; ignored without --body/--body-file)
-//   --dry-run, -n                  resolve and report what would change, but make no
-//                                  edits; implies a body diff when a body edit is given
-//
-// Title/body edits are round-trip-safe: an edit whose new value is identical to
-// the stored value (ignoring trailing newlines) is skipped (no API call), and
-// after an edit actually runs the stored value is re-fetched and verified
-// against what was sent. This guards against silent no-op "successes" on
-// unchanged content.
-//
-// Field/option names are matched case-insensitively. Supported field types:
-// single-select (option resolved by name), text, number, and date. Iteration
-// and other field types are reported as unsupported rather than guessed at.
+// value from the project web UI URL) or a `PVTI_...` node ID as list-issues.mjs
+// prints it; a node ID from a board other than <project-number> is refused.
+// Field and option names are matched case-insensitively and resolved to node
+// IDs here. Supported field types: single-select, text, number and date.
+// `--status S` is `--field Status --value S`; `--diff` prints a body diff, then
+// applies it; `--dry-run` (-n) reports what would change and edits nothing. A
+// title or body equal to the stored value is skipped, and one that is sent is
+// re-fetched and verified. Run with no arguments for usage. Exit 0 on success,
+// 1 on any other failure, 2 on a usage error. Rationale:
+// docs/notes/agent-hooks-and-scripts.md.
 
 import { readFileSync } from "node:fs";
 import {

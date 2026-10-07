@@ -1,46 +1,18 @@
 #!/usr/bin/env node
-// PreToolUse hook: refuse a session's first Agent spawn or Workflow call until
-// that session has read .claude/orchestration/ruleset.md.
-//
-// Why this exists: the ruleset holds the rules for CONDUCTING an orchestration --
-// the review contracts and round caps, how a fix is dispatched, the spawn and
-// SendMessage mechanics, where a decision goes. A prose pointer in CLAUDE.md and
-// seven front doors load it, and nothing else confirms the session doing the
-// conducting has it: a session that starts spawning without it runs the flow
-// from whatever it remembers of an earlier one, and the rules it skips are
-// exactly the ones no later check catches -- a round dispatched wrongly is a
-// wasted round, not a red test.
-//
-// NOTHING IS ADDED TO A SPAWN'S CONTEXT. The refusal is the whole mechanism.
-// The ruleset's text never enters a spawn prefix or an agent's prompt, which is
-// the point: a spawned agent is told not to read this file, and paying for its
-// rules on every spawn is the cost this gate exists to avoid, not to impose.
-//
-// A SUBAGENT'S OWN SPAWNS ARE NOT GATED. The read is keyed on the session id the
-// payload carries, so a subagent spawning under the session's id finds the
-// session's own record. What a payload carries inside a subagent could not be
-// observed from within a session, so a subagent transcript path is an explicit
-// pass as well: on this harness (measured 2026-09-11) a subagent's transcript is
-// <project>/<session-id>/subagents/agent-<agent-id>.jsonl, beside the session's
-// own <session-id>.jsonl, and a payload naming one of those is a spawned agent's
-// call whatever session id it came with. Gating it would demand of that agent
-// the read the ruleset's own text forbids it. A payload carrying no transcript
-// path passes for the same reason: without one the gate cannot tell a spawned
-// agent's call from a session's own, so only a call it can confirm is a
-// session's is refused.
-//
-// FAIL OPEN, the direction require-agent-model.mjs takes and the opposite of
-// require-clean-tree-for-review.mjs: what this gate holds is a reading
-// discipline, so a miss costs a session that reasons from memory, while a
-// refusal that fires wrongly stops every spawn in every session at once. So an
-// unreadable event, a payload naming no session or no transcript, and any
-// unexpected error allow the call; only a readable Agent or Workflow call under
-// a session with no fresh record is refused.
+// PreToolUse hook on Agent and Workflow: refuse a session's first Agent spawn
+// or Workflow call until that session has read .claude/orchestration/ruleset.md.
+// The refusal is the whole mechanism: the ruleset's text never enters a spawn's
+// context. The read is keyed on the payload's session id. A call whose
+// transcript path is a subagent's (<project>/<session-id>/subagents/
+// agent-<agent-id>.jsonl), or that names no transcript path, passes. FAIL OPEN:
+// an unreadable event, a payload naming no session, and any unexpected error
+// allow the call; only a confirmed session call with no fresh read is refused.
 //
 // The marker path, the session key and the freshness window: lib/rulesetRead.mjs.
 // The read is recorded by record-orchestration-ruleset-read.mjs.
 //
 // Exit 0 allows the call; exit 2 blocks it and feeds stderr back to Claude.
+// Rationale and limits: docs/notes/agent-hooks-and-scripts.md.
 
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
