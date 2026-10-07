@@ -7,7 +7,7 @@ import { WORKFLOW_DIR, pathScope, workflowDocument } from "./lib/workflows.mjs";
 
 // Drift guard for the two web/core path filters. The pull-request gate
 // (eb_build_and_test.yaml) globs each guarded root -- apps/web/**,
-// packages/core/** -- while the deploy gate (eb_deploy.yaml) enumerates
+// packages/core/** -- while the deploy gate (pages_deploy.yaml) enumerates
 // individual subtrees, because a deploy must not rebuild+redeploy unchanged
 // runtime behavior on a test-only push. That asymmetry is by design, but it is
 // also a trap: a NEW top-level directory under a guarded root (say
@@ -31,7 +31,7 @@ import { WORKFLOW_DIR, pathScope, workflowDocument } from "./lib/workflows.mjs";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const PR_WORKFLOW = `${WORKFLOW_DIR}/eb_build_and_test.yaml`;
-const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/eb_deploy.yaml`;
+const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
 // Roots whose tracked top-level subdirectories must each be deploy-covered or
 // explicitly excluded below.
@@ -43,13 +43,13 @@ const GUARDED_ROOTS = ["apps/web", "packages/core"];
 // "this directory does not ship" decision, not a way to mute a failure. The live
 // tests below assert each entry still exists, so a removed/renamed tree cannot rot
 // the list. apps/web/eslint-rules holds lint-time custom rules that never ship in
-// the artifact. apps/web/hosted feeds the hosted static build
-// (vite.hosted.config.ts), which this deploy does not build or ship.
+// the artifact. apps/web/deploy holds the Elastic Beanstalk payload and saved
+// configurations, which the Pages upload does not contain.
 const DEPLOY_EXCLUDED = new Set([
   "apps/web/test",
   "packages/core/test",
   "apps/web/eslint-rules",
-  "apps/web/hosted",
+  "apps/web/deploy",
 ]);
 
 // Inputs that feed the shipped artifact but live OUTSIDE the guarded roots, so

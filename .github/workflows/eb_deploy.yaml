@@ -1,68 +1,16 @@
 name: Deploy to Elastic Beanstalk
 
+# Paused until Elastic Beanstalk is retired: the hosted build is a static site
+# with no server process, so an environment this deploys to has nothing to
+# start. The hosted app deploys through pages_deploy.yaml; this runs only by
+# manual dispatch.
 on:
-  # No dev entry: there is no Elastic Beanstalk environment for dev yet, so a
-  # dev push must not trigger a deploy.
-  push:
-    branches: [main, staging]
-    # Scoped to deploy-affecting sources only: apps/web/test/** is intentionally
-    # excluded so a test-only push to staging/main does not trigger a rebuild and
-    # redeploy of unchanged behavior. The PR gate (eb_build_and_test.yaml) uses
-    # apps/web/** instead to catch test-only PRs; the two filters diverge on
-    # test/** by design -- see the comment in eb_build_and_test.yaml.
-    paths:
-      - "lib/**"
-      - "package-lock.json"
-      - "tsconfig.base.json"
-      - "apps/web/deploy/aws_eb/**"
-      - "apps/web/hosted/**"
-      - "apps/web/public/**"
-      - "apps/web/server/**"
-      - "apps/web/src/**"
-      - "apps/web/package.json"
-      - "apps/web/postcss.config.cjs"
-      - "apps/web/tsconfig.json"
-      - "apps/web/vite.config.ts"
-      - "apps/web/vite.hosted.config.ts"
-      - "packages/core/src/**"
-      - "packages/core/package.json"
-      - "packages/core/rollup.config.ts"
-      - "packages/core/tsconfig.json"
-      - "packages/core/tsconfig.rollup.json"
-      - "packages/cli-contract/src/**"
-      - "packages/cli-contract/package.json"
-      - "packages/cli-contract/tsconfig.json"
-      - "packages/cli-contract/tsconfig.build.json"
-      # Only the broker sources the deployed server bundles: the web app reaches
-      # this workspace through `@alcove/peerjs-broker`, whose "." export is
-      # src/contrib/index.ts. Its sibling src/standalone.ts is the local
-      # `npm start` entry, which no deployed import graph reaches -- an
-      # assumption eb_build_and_test.yaml's deploy-trigger coverage step holds
-      # against a real build, for this list as a whole rather than this entry
-      # alone. The two PR gates keep the broad packages/peerjs-broker/** glob,
-      # so an edit there is still built and tested -- it just does not redeploy
-      # an unchanged server. src/diagnostics.ts sits outside contrib but is
-      # imported by contrib/instance.ts, and the web server imports its
-      # upgrade bounds from src/standaloneUpgradeBounds.ts, so both are in the
-      # deployed graph.
-      - "packages/peerjs-broker/src/contrib/**"
-      - "packages/peerjs-broker/src/diagnostics.ts"
-      - "packages/peerjs-broker/src/standaloneUpgradeBounds.ts"
-      - "packages/peerjs-broker/package.json"
-      - "packages/peerjs-broker/tsconfig.json"
-      - ".github/actions/setup/**"
-
   workflow_dispatch:
 
 concurrency:
-  # Serialize deploys to the same Elastic Beanstalk environment: two pushes to
-  # the same branch must never race `update-environment` against one environment.
-  # github.ref keys the group so it lines up with the branch -> environment
-  # mapping in eb_deploy_reusable_action.yaml (main -> Production, staging ->
-  # Staging); different environments still deploy in parallel. cancel-in-progress
-  # is false -- unlike the PR test gates, cancelling a deploy mid-update can leave
-  # the environment inconsistent, so an in-flight run finishes before the next
-  # one starts rather than being superseded.
+  # One dispatched deploy per branch at a time. cancel-in-progress is false:
+  # cancelling a deploy mid-update can leave the environment inconsistent, so
+  # an in-flight run finishes before the next one starts.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
@@ -70,13 +18,49 @@ jobs:
   build-and-test:
     uses: ./.github/workflows/eb_build_and_test.yaml
 
-  deploy:
+  # The Elastic Beanstalk source bundle: the gate's static site with the
+  # apps/web/deploy/aws_eb/ payload and an empty .env copied over it.
+  package:
+    name: Package for Elastic Beanstalk
     needs: build-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      ARTIFACT_NAME: ${{ format('{0}-{1}', vars.EB_APPLICATION_NAME, github.sha) }}
+    outputs:
+      artifactName: ${{ steps.artifact-name.outputs.artifactName }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build-and-test.outputs.artifactName }}
+          path: bundle
+      - name: Package for Elastic Beanstalk
+        run: |
+          cp -a apps/web/deploy/aws_eb/. bundle
+          touch bundle/.env
+          (cd bundle && zip -r "../${GITHUB_SHA}.zip" .)
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ github.sha }}.zip
+          compression-level: 0
+      - name: Output artifact name
+        id: artifact-name
+        run: echo "artifactName=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: package
     permissions:
       id-token: write
       contents: read
     uses: ./.github/workflows/eb_deploy_reusable_action.yaml
     with:
-      artifactName: ${{needs.build-and-test.outputs.artifactName}}
-      branchName: ${{github.ref_name}}
+      artifactName: ${{ needs.package.outputs.artifactName }}
+      branchName: ${{ github.ref_name }}
     secrets: inherit

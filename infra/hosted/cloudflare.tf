@@ -1,3 +1,10 @@
+locals {
+  pages_names = {
+    production = cloudflare_pages_project.hosted.subdomain
+    staging    = "staging.${cloudflare_pages_project.hosted.subdomain}"
+  }
+}
+
 # Each public name is proxied, so a visitor reaches Cloudflare's edge and only
 # the edge reaches the origin.
 resource "cloudflare_dns_record" "public_name" {
@@ -6,8 +13,13 @@ resource "cloudflare_dns_record" "public_name" {
   zone_id = var.cloudflare_zone_id
   name    = each.value.public_name
   type    = "CNAME"
-  # Elastic Beanstalk reports the name in mixed case; the live record holds it lowercase.
-  content = lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
+  # Elastic Beanstalk reports the name in mixed case; the live record holds it
+  # lowercase.
+  content = (
+    var.hosted_origin == "pages"
+    ? local.pages_names[each.key]
+    : lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
+  )
   proxied = true
   ttl     = 1
 
@@ -40,4 +52,34 @@ resource "cloudflare_zone_setting" "hsts" {
       nosniff            = false
     }
   }
+}
+
+# Direct upload: the project has no Git source, and pages_deploy.yaml uploads
+# each build with wrangler. A deployment to the production branch is the
+# production deployment; one to any other branch, staging included, is a
+# preview on that branch's alias.
+resource "cloudflare_pages_project" "hosted" {
+  account_id        = var.cloudflare_account_id
+  name              = var.pages_project_name
+  production_branch = "main"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The production public name on the project. It verifies once the record above
+# points at the project's pages.dev name.
+resource "cloudflare_pages_domain" "production" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.hosted.name
+  name         = var.environments["production"].public_name
+}
+
+# The staging public name on the project, served from the staging branch alias
+# its record points at.
+resource "cloudflare_pages_domain" "staging" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.hosted.name
+  name         = var.environments["staging"].public_name
 }

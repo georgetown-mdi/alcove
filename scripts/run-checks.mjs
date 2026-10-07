@@ -287,7 +287,7 @@ export const CHECKS = [
     usesBuild: true,
     expiresOn: "2026-12-31",
     description:
-      "Every repository source the hosted static web build reads matches a push filter of eb_deploy.yaml, so an edit to the deployed site always triggers a deploy.",
+      "Every repository source the hosted static web build reads matches a push filter of pages_deploy.yaml, so an edit to the deployed site always triggers a deploy.",
   },
   {
     script: "test:scripts",

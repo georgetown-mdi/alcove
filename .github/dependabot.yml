@@ -151,8 +151,9 @@ updates:
       default-days: 7
 
   # GitHub Actions used by the workflows in .github/workflows. Every action is
-  # tag-pinned (e.g. actions/checkout@v7), and this block is configured against
-  # that path.
+  # tag-pinned (e.g. actions/checkout@v7) except cloudflare/wrangler-action,
+  # which holds the Pages deploy token and is pinned to a commit with its
+  # release tag in a trailing comment. This block is configured against that path.
   #
   # A pin that also appears in a composite action under .github/actions is not
   # relied upon to be tracked there. Coverage reaches it through the workflow

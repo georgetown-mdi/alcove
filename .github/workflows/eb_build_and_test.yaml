@@ -11,7 +11,7 @@ name: Build and Test for Elastic Beanstalk
 # without them. The merge-gate identities check, run by static_checks.yaml,
 # fails this file carrying a path filter under on.pull_request.
 on:
-  # Pull-request validation. Deploys build through eb_deploy.yaml's
+  # Pull-request validation. Deploys build through pages_deploy.yaml's
   # workflow_call, so there is no standalone push trigger here -- it would
   # double-run with the pull_request event on a feature branch that already has
   # an open PR.
@@ -21,14 +21,14 @@ on:
   workflow_call:
     outputs:
       artifactName:
-        description: "Name of the uploaded artifact"
+        description: "Name of the uploaded hosted static site artifact"
         value: ${{jobs.package.outputs.artifactName}}
 
 # Cancel a superseded PR run when a newer commit lands on the same PR/branch.
 # NOT keyed on github.workflow: in a workflow_call invocation the github context
-# is the caller's, so github.workflow resolves to eb_deploy.yaml's name and this
-# block would share eb_deploy.yaml's concurrency group, self-cancelling the
-# deploy on a single push (a GitHub Actions reusable-workflow hazard). A literal
+# is the caller's, so github.workflow resolves to the deploy workflow's name and
+# this block would share its concurrency group, self-cancelling the deploy on a
+# single push (a GitHub Actions reusable-workflow hazard). A literal
 # prefix keeps this group independent of any caller. The || github.run_id
 # fallback gives the deploy leg's reused build a unique group (head_ref is empty
 # off pull_request), so cancel-in-progress is inert there and never cancels a
@@ -42,7 +42,7 @@ permissions:
   contents: read
 
 env:
-  ARTIFACT_NAME: ${{format('{0}-{1}', vars.EB_APPLICATION_NAME, github.sha)}}
+  ARTIFACT_NAME: hosted-site-${{ github.sha }}
 
 jobs:
   scope:
@@ -59,7 +59,7 @@ jobs:
         with:
           # Full history so the diff can reach the pull request's merge base.
           fetch-depth: 0
-      # This scope diverges from the push filter in eb_deploy.yaml on test
+      # This scope diverges from the push filter in pages_deploy.yaml on test
       # sources: it uses the broad apps/web/** and packages/core/** globs so a
       # test-only PR (deleting or weakening assertions, or changing vitest
       # config) still runs the full suite, including the core tests on the
@@ -70,9 +70,9 @@ jobs:
       # run the standalone broker from that workspace, and packages/testkit/**
       # because the web unit suite is driven by fixtures it holds, and
       # packages/cli-contract/** because the console imports the event schema
-      # it declares. eb_deploy.yaml
-      # is here because the deploy-trigger coverage step reads its push filter,
-      # and narrowing that filter is the change the step exists to catch.
+      # it declares. pages_deploy.yaml is here because the deploy-trigger
+      # coverage step reads its push filter, and narrowing that filter is the
+      # change the step exists to catch.
       #
       # The `!` entries exclude markdown under the directory globs. The claim
       # that no suite this gate runs reads one as a fixture or input is held by
@@ -93,7 +93,7 @@ jobs:
             .github/actions/setup/**
             .github/actions/path-scope/**
             .github/workflows/eb_build_and_test.yaml
-            .github/workflows/eb_deploy.yaml
+            .github/workflows/pages_deploy.yaml
             !lib/**/*.md
             !apps/web/**/*.md
             !packages/core/**/*.md
@@ -102,26 +102,24 @@ jobs:
             !packages/testkit/**/*.md
             !.github/actions/setup/**/*.md
 
-  # The deploy artifact's producer. A job of its own rather than a leg of the
-  # suite matrix below because it carries the workflow_call output eb_deploy.yaml
-  # reads, and because the matrix legs run in parallel with it rather than behind
-  # it.
+  # The deploy artifact's producer: the hosted static site, `_headers`
+  # included, as pages_deploy.yaml uploads it. A job of its own rather than a
+  # leg of the suite matrix below because it carries the workflow_call output
+  # the deploy workflows read, and because the matrix legs run in parallel with
+  # it rather than behind it.
   #
   # The upload does not wait on the suite legs, so an artifact exists for a sha
-  # whose tests went red. Nothing deploys such an artifact: eb_deploy.yaml's
-  # deploy job needs the caller job wrapping this whole workflow, every job of it
-  # included.
+  # whose tests went red. Nothing deploys such an artifact: a deploy job needs
+  # the caller job wrapping this whole workflow, every job of it included.
   package:
     name: Package the deploy artifact
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
-    # Bound the job: eb_deploy.yaml gates its deploy on this workflow through
-    # workflow_call, so a stalled install or build here holds a production deploy
-    # rather than only a pull request. 15 min sits far above a normal run
-    # (install + the web build + the zip) yet cuts a true hang short.
-    #
-    # What the artifact holds: docs/DEPLOYMENT.md, "The deploy artifact".
+    # Bound the job: pages_deploy.yaml gates its deploy on this workflow through
+    # workflow_call, so a stalled install or build here holds a production
+    # deploy rather than only a pull request. 15 min sits far above a normal
+    # run (install + the web build) yet cuts a true hang short.
     timeout-minutes: 15
     outputs:
       artifactName: ${{steps.artifact-name.outputs.artifactName}}
@@ -131,27 +129,22 @@ jobs:
       # Pins Node, installs from the lockfile, and builds @alcove/core.
       - name: Set up and build core
         uses: ./.github/actions/setup
-      # The hosted static build this job packages below. The deploy-trigger
-      # coverage check (check:deploy-trigger-graph) runs in the repo-wide
-      # static checks, not here. The build refuses to run without the
-      # signaling broker's address, a repository variable.
+      # The deploy-trigger coverage check (check:deploy-trigger-graph) runs in
+      # the repo-wide static checks, not here. The build refuses to run without
+      # the signaling broker's address, a repository variable.
       - name: Build web app
         env:
           # A pull request build is a check, not a deploy; the push build
           # must refuse without the real address.
           VITE_SIGNALING_SERVER_URL: ${{ github.event_name == 'pull_request' && (vars.VITE_SIGNALING_SERVER_URL || 'wss://signaling.example.invalid/api/') || vars.VITE_SIGNALING_SERVER_URL }}
         run: npm run build -w apps/web
-      - name: Package for Elastic Beanstalk
-        run: |
-          cp -a apps/web/deploy/aws_eb/. apps/web/dist/hosted
-          touch apps/web/dist/hosted/.env
-          (cd apps/web/dist/hosted && zip -r ../../../../${{github.sha}}.zip .)
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{env.ARTIFACT_NAME}}
-          path: ${{github.sha}}.zip
-          compression-level: 0
+          path: apps/web/dist/hosted
+          retention-days: 1
+          if-no-files-found: error
       - name: Output artifact name
         id: artifact-name
         run: echo "artifactName=${{env.ARTIFACT_NAME}}" >> "$GITHUB_OUTPUT"
@@ -173,17 +166,17 @@ jobs:
     needs: scope
     if: needs.scope.outputs.run == 'true'
     runs-on: ubuntu-latest
-    # Bound every leg: the integration and browser leg drives a real browser and
-    # a live WebRTC exchange through a spawned dev server -- workloads that can
-    # wedge in ways the suite's own 60s timeouts do not all catch (a stuck
-    # browser or teardown, a stalled data channel). Without this the default 6h
-    # timeout applies, and since eb_deploy.yaml gates its deploy on this workflow
-    # via workflow_call, a hang would also stall a production deploy. 30 min sits
-    # far above a normal leg yet cuts a true hang short. It must also clear the
-    # worst case the browser provisioning step below is allowed: its 22 min plus
-    # the few minutes the rest of that leg measures, so an upstream stall there
-    # ends on that step's own named failure rather than on this cap, which GitHub
-    # reports as a cancellation.
+    # Bound every leg: the integration and browser leg drives a real browser and a
+    # live WebRTC exchange through a spawned dev server -- workloads that can
+    # wedge in ways the suite's own 60s timeouts do not all catch (a stuck browser
+    # or teardown, a stalled data channel). Without this the default 6h timeout
+    # applies, and since pages_deploy.yaml gates its deploy on this workflow via
+    # workflow_call, a hang would also stall a production deploy. 30 min sits far
+    # above a normal leg yet cuts a true hang short. It must also clear the worst
+    # case the browser provisioning step below is allowed: its 22 min plus the few
+    # minutes the rest of that leg measures, so an upstream stall there ends on
+    # that step's own named failure rather than on this cap, which GitHub reports
+    # as a cancellation.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -382,8 +375,8 @@ jobs:
   # without it a failed job leaves this one skipped, and a skipped required check
   # stays pending rather than red, so the pull request would be unmergeable with
   # nothing red to show for it. The name is unique across the workflow tree, so
-  # the required context matches this job alone; eb_deploy.yaml's caller job
-  # shares the bare id.
+  # the required context matches this job alone; the deploy workflows' caller
+  # jobs share the bare id.
   build-and-test:
     name: Web Build and Test
     runs-on: ubuntu-latest
