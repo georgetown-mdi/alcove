@@ -1017,6 +1017,17 @@ describe("the relay key registration across the command-line files", () => {
     expect(result).not.toHaveProperty("droppedTurnUrls");
   });
 
+  test("a pair import returns the retired receipt_output its configuration states", async () => {
+    const { configuration, key } = exportedPair();
+    const result = await importManagedCommandLinePair(
+      configuration + "signing:\n  mode: none\n  receipt_output: ./r.json\n",
+      key,
+      recordingDeps(),
+    );
+    expect(result.retiredSettings).toEqual(["signing.receipt_output"]);
+    expect(result.record.exchangeFile.signing).toEqual({ mode: "none" });
+  });
+
   test("a pair import whose key file misspells expires lands without it and names the field, never a value", async () => {
     const { record, configuration } = exportedPair();
     const misspelledBound = "2026-12-31T00:00:00.000Z";

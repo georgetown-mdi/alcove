@@ -438,6 +438,28 @@ describe("importManagedExchangeFile routes by what the file is", () => {
     expect(deps.markImported).not.toHaveBeenCalled();
   });
 
+  test("a configuration stating receipt_output installs, naming the setting", async () => {
+    const deps = recordingDeps();
+
+    const { retiredSettings } = await importManagedExchangeFile(
+      configurationBytes() +
+        "signing:\n  mode: none\n  receipt_output: ./receipts/r.json\n",
+      deps,
+    );
+
+    expect(retiredSettings).toEqual(["signing.receipt_output"]);
+    expect(deps.installed).toHaveLength(1);
+  });
+
+  test("a configuration without it names no setting", async () => {
+    const result = await importManagedExchangeFile(
+      configurationBytes(),
+      recordingDeps(),
+    );
+
+    expect(result).not.toHaveProperty("retiredSettings");
+  });
+
   test("a configuration this app cannot hold installs nothing", async () => {
     const deps = recordingDeps();
 

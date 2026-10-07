@@ -18,7 +18,9 @@ import { ZodError } from "zod";
 import {
   ManagedConfigurationRefusedError,
   readManagedCommandLineConfiguration,
+  readManagedCommandLineConfigurationImport,
   readManagedCommandLinePair,
+  readManagedCommandLinePairImport,
 } from "@psi/managed/managedCommandLineImport";
 import {
   applyManagedExchangeLocalEdits,
@@ -1182,5 +1184,60 @@ describe("the configuration-only record shape", () => {
         }),
       ),
     ).not.toThrow();
+  });
+});
+
+describe("a retired receipt_output", () => {
+  const keyText = (): string =>
+    JSON.stringify({ sharedSecret: generateSharedSecret() });
+
+  test.each([
+    [
+      "signing.receipt_output",
+      { mode: "certificate", receipt_output: "./r.json" },
+    ],
+    ["signing.receiptOutput", { mode: "none", receiptOutput: "./r.json" }],
+  ] as const)(
+    "%s is dropped from the record and named as the file writes it",
+    (setting, signingInFile) => {
+      const source = stringifyYaml({
+        ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
+        signing: signingInFile,
+      });
+      const { record, retiredSettings } =
+        readManagedCommandLineConfigurationImport(source);
+
+      expect(retiredSettings).toEqual([setting]);
+      expect(record.exchangeFile.signing).toEqual({
+        mode: signingInFile.mode,
+      });
+    },
+  );
+
+  test("is named by a pair import too", () => {
+    const source = stringifyYaml({
+      ...(snakeizeKeys(commandLineDocument()) as Record<string, unknown>),
+      signing: { mode: "none", receipt_output: "./r.json" },
+    });
+    const { record, retiredSettings } = readManagedCommandLinePairImport(
+      source,
+      keyText(),
+    );
+
+    expect(retiredSettings).toEqual(["signing.receipt_output"]);
+    expect(record.exchangeFile.signing).toEqual({ mode: "none" });
+  });
+
+  test("a file without it names none", () => {
+    const source = configText(
+      commandLineDocument({ signing: { mode: "none" } }),
+    );
+
+    expect(
+      readManagedCommandLineConfigurationImport(source).retiredSettings,
+    ).toEqual([]);
+    expect(
+      readManagedCommandLinePairImport(source, keyText()).retiredSettings,
+    ).toEqual([]);
   });
 });

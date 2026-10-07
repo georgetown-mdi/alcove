@@ -75,15 +75,13 @@ import {
 } from "./managedHandoffGate";
 import {
   managedImportFileChoice,
+  oneFileImportedNotice,
   pairImportedNotice,
 } from "./managedImportFiles";
-import {
-  managedImportGrantNotice,
-  restoredWithSameTermsNotice,
-} from "./managedImportGrantNotice";
 import { BetweenVisitNotifications } from "./BetweenVisitNotifications";
 import { loadSavedExchanges } from "./savedExchangesLoad";
 import { recoveryRows } from "./savedExchangesRecovery";
+import { restoredWithSameTermsNotice } from "./managedImportGrantNotice";
 
 import type {
   ManagedPairImportOptions,
@@ -789,11 +787,12 @@ const KEY_FILE_CHOOSER_NOTE =
  *
  * An import that could not bring the source's working folder stops here
  * with that notice and a button onward, rather than taking the operator straight to
- * the exchange ({@link managedImportGrantNotice}): the folder is what they have to
+ * the exchange ({@link oneFileImportedNotice}): the folder is what they have to
  * choose again, and the notice is only read where it is shown. A pair import stops
  * the same way to say the exchange now runs here, to name the settings it keeps
  * without a control, and to name the relay urls this browser's relay settings
- * stand in for ({@link pairImportedNotice}). An import with nothing to say goes
+ * stand in for ({@link pairImportedNotice}). Either names a setting the
+ * configuration states that Alcove no longer reads. An import with nothing to say goes
  * straight through. */
 function ImportExchangeFile() {
   const {
@@ -1027,6 +1026,7 @@ function useImportFile({
           sameTermsAs,
           droppedTurnUrls,
           unreadKeyFileFields,
+          retiredSettings,
         } =
           keySource === undefined
             ? await importFile(source, besideIds)
@@ -1038,10 +1038,11 @@ function useImportFile({
               );
         const grantNotice =
           keySource === undefined
-            ? managedImportGrantNotice(missingGrants)
+            ? oneFileImportedNotice(missingGrants, retiredSettings)
             : pairImportedNotice(record, {
                 turnUrls: droppedTurnUrls,
                 keyFileFields: unreadKeyFileFields,
+                retiredSettings,
               });
         const notice =
           sameTermsAs === undefined
