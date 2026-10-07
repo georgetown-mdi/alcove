@@ -36,6 +36,9 @@ export default defineConfig({
   plugins: [widenStrykerTestNamePattern],
   test: {
     include: ["apps/cli/test/unit/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
+    // Carry every setup file the unit project runs: a reporter one test leaves
+    // behind fails the next file's fd 3 assertion.
+    setupFiles: ["apps/cli/test/terminalFailureReporter.setup.ts"],
     // Stryker's vitest runner forces the threads pool, where process.chdir
     // and process.umask throw and a worker's os.homedir() ignores a changed
     // process.env.HOME. Each file below calls chdir or umask, except
