@@ -26,7 +26,7 @@ export interface ConnectPartyOptions {
   dirPrefix: string;
   /**
    * The adapter to dial with, for a case that instruments it before the dial;
-   * by default a quiet one built as protocol.ts builds it.
+   * by default a quiet one built as run/prepare.ts builds it.
    */
   adapter?: SSH2SFTPClientAdapter;
   pollingFrequency?: number;

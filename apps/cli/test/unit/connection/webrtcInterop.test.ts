@@ -10,7 +10,7 @@ import {
 import { decodeAndValidateInvitation } from "../../../src/invitationDecode";
 import { inviterConnectionFromURL } from "../../../src/connectionFromUrl";
 import { openWebRtcPeerSession } from "../../../src/connection/webrtc/weriftPeer";
-import { webRtcDialFrom } from "../../../src/protocol";
+import { webRtcDialFrom } from "../../../src/run/prepare";
 import { withWebRTCPeerRole } from "../../../src/webrtcPeerRole";
 
 import type { RTCPeerConnection } from "werift";

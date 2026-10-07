@@ -139,12 +139,12 @@ vi.mock("../../../src/connection/ssh2SftpAdapter", () => ({
 
 const { openWebRtcMessageConnection } =
   await import("../../../src/connection/webrtc/webrtcMessageConnection");
+const { runProtocol } = await import("../../../src/protocol");
 const {
-  runProtocol,
   webRtcDialFrom,
   WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
   WEBRTC_ROLE_REQUIRED,
-} = await import("../../../src/protocol");
+} = await import("../../../src/run/prepare");
 const { WEBRTC_URL_REFUSED, WEBRTC_URL_EXTRAS_REFUSED } =
   await import("../../../src/connectionFromUrl");
 const { BROKER_ADDRESS_REFUSED, ID_TAKEN_MESSAGE } =

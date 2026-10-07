@@ -850,7 +850,8 @@ export async function runOnlineBootstrap(params: {
   eventStream?: boolean;
   /**
    * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
-   * needs more memory than the process has (protocol.checkRunMemoryBudget).
+   * needs more memory than the process has (see checkRunMemoryBudget in
+   * run/prepare.ts).
    */
   allowMemoryShortfall?: boolean;
   /**

@@ -359,7 +359,7 @@ function importedRelayRegistrar(
  * any other channel. A webrtc file that names none is refused rather than
  * guessed: the role decides which rendezvous id each party registers under,
  * and the CLI refuses a roleless webrtc connection on the same grounds
- * (`apps/cli/src/protocol.ts`).
+ * (`apps/cli/src/run/prepare.ts`).
  */
 function importedSide(
   connection: ConnectionConfig,

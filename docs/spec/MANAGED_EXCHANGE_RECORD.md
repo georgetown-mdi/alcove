@@ -432,7 +432,7 @@ used for this: no web path reads it, and the record does not change that -- the
 document is persisted untouched. The field is not inert everywhere, which is why
 the local `side` is not redundant with it: on the CLI, `role` is what a webrtc
 run derives its own rendezvous peer id from, and `alcove exchange` refuses a
-webrtc connection that has none (`apps/cli/src/protocol.ts`). A document the
+webrtc connection that has none (`apps/cli/src/run/prepare.ts`). A document the
 web composes has no `role` at all -- the locator expansion writes only
 `host`/`port`/`path` (see [EXCHANGE_FILE.md](EXCHANGE_FILE.md)) -- so the side a
 browser record runs is knowable only from `side`.

@@ -91,7 +91,7 @@ import {
   PLACEHOLDER_IDENTITY,
 } from "../../../src/partyIdentity";
 import { saveConfig } from "../../../src/config";
-import { webRtcDialFrom } from "../../../src/protocol";
+import { webRtcDialFrom } from "../../../src/run/prepare";
 import { exitCodeForError, InputNotFoundError } from "../../../src/util/exit";
 import {
   promptConfirmOrClosed,

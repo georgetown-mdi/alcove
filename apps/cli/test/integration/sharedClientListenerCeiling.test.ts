@@ -263,7 +263,7 @@ test("silencing and restoring leaves the same 'warning' listeners, one-shot wrap
 });
 
 // ---------------------------------------------------------------------------
-// One connected party, constructed as apps/cli/src/protocol.ts constructs the
+// One connected party, constructed as apps/cli/src/run/prepare.ts constructs the
 // adapter: no stallDeadlineMs hook, and no listener ceiling raised by the test.
 // ---------------------------------------------------------------------------
 

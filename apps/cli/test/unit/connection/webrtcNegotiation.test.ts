@@ -18,7 +18,7 @@ import {
   ID_TAKEN_MESSAGE,
 } from "../../../src/connection/webrtc/brokerClient";
 import { ICE_STATS_TIMEOUT_MS } from "../../../src/connection/webrtc/iceDiagnostics";
-import { webRtcDialFrom } from "../../../src/protocol";
+import { webRtcDialFrom } from "../../../src/run/prepare";
 import { renderFailureForOperator } from "../../../src/util/exit";
 import {
   DEFAULT_CHANNEL_OPEN_TIMEOUT_MS,
