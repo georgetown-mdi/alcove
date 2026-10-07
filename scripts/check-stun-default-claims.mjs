@@ -1,46 +1,13 @@
 #!/usr/bin/env node
-// Built-in STUN default claim check, run by static_checks.yaml on every PR.
-//
-// An Alcove run that configures no STUN or TURN server gathers ICE against the
-// WebRTC library's built-in default, disclosing the running host's public
-// address to whoever operates it. Three surfaces name that endpoint to an
-// operator, one of them right before they hand a recurring exchange's secret to
-// a scheduler: the CLI's own warning, the web app's command-line export panel,
-// and the docs. Only one of them can be derived from another -- an app may not
-// import from another app, and a document imports nothing -- so the rest are
-// hand-written copies of a value the library, not Alcove, decides. A copy left
-// behind by a bump is not a typo: it is a confidentiality statement that has
-// gone false, and prose cannot hold it true. So the agreement is a check.
-//
-// SOURCE is the one place the value is decided, and it is where the value is
-// also MEASURED: the CLI owns the werift dependency, and its WebRTC integration
-// suite drives a real peer with no configured list, resolves that hostname to
-// loopback and watches the real STUN binding request arrive on that port. This
-// check holds the copies to that constant; it says nothing about whether the
-// constant is right, which only driving the library can.
-//
-// WHAT THIS CHECK DOES NOT COVER:
-//
-//   - Whether the value matches what the library does. That is the integration
-//     suite's measurement (apps/cli/test/integration/webrtc/transport.test.ts),
-//     re-run on every werift bump per docs/spec/DEPENDENCY_PINS.md. A check
-//     reading the library's source to predict its default would be a second
-//     implementation of it, which this repository does not accept.
-//   - The web app's OWN ICE list (apps/web/src/psi/transport/rendezvous.ts, described in
-//     PRIVACY.md). It is a different list, for exchanges a browser runs itself,
-//     and it happens to include the same Google server. Tying it here would fuse
-//     two independent decisions -- what the hosted app configures, and what the
-//     command-line tool falls back to -- so those files are not enumerated, by
-//     design.
-//   - A copy in a file no list below names. A new surface that states the
-//     default is covered only once it is added to CODE_COPIES or CLAIM_TEXTS.
-//   - Prose that describes the default without writing the endpoint ("the
-//     built-in default STUN server"). Nothing there can drift, so nothing is
-//     read; each `stated` entry must still hold at least one claim that does
-//     write it, so the claim cannot be quietly dropped.
-//   - A claim split across two sentences ("the built-in default is used. It is
-//     `host:19302`."). A claim is read from the word "built-in" to the end of
-//     its sentence, so the endpoint must sit in that sentence to be seen.
+// Built-in STUN default claim check: `npm run check:stun-default-claims`, run
+// by static_checks.yaml on every pull request. SOURCE is the one place the
+// default endpoint is decided, and the CLI's WebRTC integration suite measures
+// it against the library. This check fails unless every hand-written copy
+// agrees with SOURCE: each CODE_COPIES constant, and each claim in a
+// CLAIM_TEXTS file, read from the word "built-in" to the end of its sentence.
+// It also fails when SOURCE or a copy is not found, and when a `stated` file
+// holds no claim writing the endpoint. Exit 0 clean, 1 on a finding.
+// Rationale and limits: docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -109,7 +76,6 @@ export function declaredStringConstant(source, name) {
  */
 const CLAIM_WINDOW_CHARS = 200;
 
-/** The 1-based line `index` falls on in `text`. */
 /**
  * Every endpoint `text` presents AS a built-in default, with its line, as
  * `{line, endpoint}` pairs normalized to the `host:port` authority. A claim is

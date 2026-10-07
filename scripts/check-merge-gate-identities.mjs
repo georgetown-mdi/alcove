@@ -1,67 +1,25 @@
 #!/usr/bin/env node
-// Merge gate identity check, run by static_checks.yaml on every PR and on every
-// push to staging.
-//
-// A branch ruleset names each required status check by a bare context string,
-// which GitHub matches against the check runs a pull request produces. Three
-// ordinary edits break that match with nothing red to show for it, leaving the
-// requirement pending forever and every pull request unmergeable until branch
-// protection is edited (A-C), and one more drops the check the merge gate
-// leans on after a merge (D):
-//
-//   A. Renaming a job whose `name:` is a required context. The check run the
-//      ruleset waits for is never created under that name again.
-//   B. Adding a `paths:` / `paths-ignore:` filter to a gating workflow. A pull
-//      request touching nothing the filter globs skips the workflow, so its
-//      check runs are never created on that pull request at all.
-//   C. Requiring a context whose job a workflow outside GATING_WORKFLOWS
-//      declares. Rule 2 reads only the files that list names, so hazard B is
-//      unwatched on the workflow the requirement just added to the merge gate.
-//   D. Dropping a gating workflow's push trigger on staging. A pull request
-//      merges without being brought up to date with staging, so the push run
-//      is what tests two independently green pull requests together; a gating
-//      workflow that stops running on push silently reopens that gap.
-//
-// Three rules; rule 2 holds both B and D:
+// Merge gate identity check: `npm run check:merge-gate-identities`, run by
+// static_checks.yaml on every pull request and every push to staging. Three
+// rules:
 //
 //   1. Every required status-check context on main and staging matches a job
-//      name under .github/workflows. Reading the rules needs a token, so this
-//      rule states a skip -- naming the reason, and raising a run annotation
-//      under Actions -- when it has none or the read fails. It never passes
-//      silently: a skip says which half did not run.
-//   2. The gating workflows in GATING_WORKFLOWS declare no `paths:` or
-//      `paths-ignore:` under `on.pull_request`, and do declare that trigger.
-//      Each one not in PUSH_EXEMPT_WORKFLOWS also declares `on.push` with
-//      `branches` listing staging. No API, so this rule runs on every
-//      invocation including rule 1's skips.
+//      name under .github/workflows. Reading the branch rules needs a token, so
+//      without one, or when the read fails, this rule states a skip naming the
+//      reason and raises a run annotation; it never passes silently.
+//   2. Each workflow in GATING_WORKFLOWS declares `on.pull_request` with no
+//      `paths:` or `paths-ignore:`, and each one not in PUSH_EXEMPT_WORKFLOWS
+//      also declares `on.push` with `branches` listing staging. No API, so this
+//      rule runs on every invocation.
 //   3. Every workflow declaring a job one of those contexts names is in
-//      GATING_WORKFLOWS, so rule 2's scope is the merge gate's own rather than
-//      a hand-held list nothing measures against it. It reads the branch rules
-//      rule 1 reads, and states the same skip when they cannot be read.
+//      GATING_WORKFLOWS. It reads the branch rules rule 1 reads, and states the
+//      same skip when they cannot be read.
 //
-// The rules are read per protected branch rather than per ruleset name, so
-// renaming a ruleset does not drop coverage, and the branch endpoint reports
-// what every active ruleset contributes to that branch.
-//
-// What this check cannot see:
-//   - Rule 1 compares literal text. A job whose `name:` contains a `${{ }}`
-//     expression -- a matrix leg -- is collected but never matched, because
-//     resolving one means reimplementing the expansion GitHub performs. A
-//     required context satisfied by such a job fails here rather than passing
-//     on a guess; the failure names the templated jobs so the reason is clear.
-//   - It matches names, not runs. That a job with the right name exists says
-//     nothing about whether the workflow holding it runs on a pull request to
-//     the protected branch, or whether the run succeeds. Rule 2 covers that
-//     question for the workflows GATING_WORKFLOWS names, and rule 3 holds that
-//     list to every workflow declaring a required job.
-//   - A job calling a reusable workflow produces composed check-run names
-//     (`caller / callee`); only the caller's own name is collected here.
-//   - Rule 3 maps a context to every workflow declaring a job of that name, not
-//     to the one whose check run satisfies it: nothing constrains a job name to
-//     one file, and which of two identically named check runs GitHub matches is
-//     its resolution to make rather than one to infer here. So a context is
-//     held to all of its declarers, and one unlisted file fails the rule even
-//     when another declarer is listed.
+// The rules are read per protected branch, not per ruleset name. A job name
+// holding a `${{ }}` expression is never matched, and a required context it
+// alone would satisfy fails, naming the templated jobs. Exit 0 clean or
+// skipped, 1 on a finding or when no workflow job is found. Rationale and
+// limits: docs/notes/repo-check-scripts.md.
 
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
