@@ -76,11 +76,8 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../../src/hostKeyTrust";
-import {
-  preflightRun,
-  runProtocol,
-  undeclaredColumnsNotice,
-} from "../../src/protocol";
+import { preflightRun, runProtocol } from "../../src/protocol";
+import { undeclaredColumnsNotice } from "../../src/run/notices";
 import type { RunProtocolOptions } from "../../src/protocol";
 import { captureFd3 } from "../eventStreamTestSupport";
 import { streamOf, ttyStream, withStdin } from "../stdinStream";
@@ -97,7 +94,6 @@ vi.mock("../../src/protocol", async (importActual) => {
   return {
     preflightRun: vi.fn(actual.preflightRun),
     runProtocol: vi.fn(),
-    undeclaredColumnsNotice: actual.undeclaredColumnsNotice,
   };
 });
 
