@@ -551,9 +551,11 @@ export {
   parseSftpServerAddress,
   parseSftpUrl,
   sftpDialHost,
+  sftpUrlDirectoryFault,
 } from "./config/sftpUrl";
 export type {
   SftpServerAddress,
+  SftpUrlDirectoryFault,
   SftpUrlFields,
   SftpUrlLocator,
 } from "./config/sftpUrl";

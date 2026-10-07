@@ -21,6 +21,7 @@ import {
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
 import {
   WEBRTC_ENDPOINT_HOST_REFUSED,
@@ -512,6 +513,29 @@ describe("failureFor", () => {
     expect(failure.message).toContain("Edit connection");
     expect(failure.message).toContain("keep only the fingerprint");
     expect(failure.message).not.toContain("file");
+  });
+
+  test("a direct sftp run refused over its remote directory names the saved connection", () => {
+    const failure = failureFor(
+      "config",
+      new JobApiRequestError(
+        400,
+        "POST /api/jobs failed with status 400",
+        undefined,
+        SFTP_URL_DIRECTORY_REFUSAL,
+      ),
+      WORK_FILE,
+      "sftp",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(
+      "The saved SFTP connection's remote directory cannot be used",
+    );
+    expect(failure.message).toContain("Edit connection");
+    expect(failure.message).toContain(". or ..");
+    expect(failure.message).toContain("quick exchange");
+    expect(failure.message).not.toContain("blank");
+    expect(failure.message).not.toContain("status 400");
   });
 
   test("an sftp run refused over a console file as its credential names the saved connection", () => {

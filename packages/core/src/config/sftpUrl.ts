@@ -218,16 +218,42 @@ export interface SftpUrlLocator {
   path?: string;
 }
 
+/**
+ * Why a remote directory has no `sftp://` URL form that reads back unchanged:
+ * `dot-segment` for a `.` or `..` segment, which URL parsing removes, and
+ * `root` for `/`, which a URL states as the login directory.
+ */
+export type SftpUrlDirectoryFault = "dot-segment" | "root";
+
+/**
+ * The reason {@link formatSftpUrl} cannot write `path` into a URL, or
+ * undefined when it can. An empty path is the login directory and has a form.
+ */
+export function sftpUrlDirectoryFault(
+  path: string,
+): SftpUrlDirectoryFault | undefined {
+  if (path === "/") return "root";
+  return path.split("/").some((segment) => segment === "." || segment === "..")
+    ? "dot-segment"
+    : undefined;
+}
+
 // The placeholder host the URL is seeded with, distinguished from a real host so
 // a setter no-op (which leaves this value in place) is detectable. `.invalid` is
 // a reserved TLD (RFC 6761), so it is never a legitimately authored server.
 const SENTINEL_HOST = "host.invalid";
 
+const UNWRITABLE_DIRECTORY_MESSAGE =
+  "could not write the remote directory into an sftp URL that reads " +
+  "back unchanged; remove any . or .. segments, or name a directory " +
+  "other than /";
+
 function encodeUrlPathSegments(segments: ReadonlyArray<string>): string {
   return segments.map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-function urlPathForRemoteDirectory(path: string): string {
+/** @internal */
+export function urlPathForRemoteDirectory(path: string): string {
   if (!path.startsWith("/"))
     return `/${LOGIN_DIRECTORY_SEGMENT}/${encodeUrlPathSegments(path.split("/"))}`;
   const [, first, ...rest] = path.split("/");
@@ -247,8 +273,8 @@ function urlPathForRemoteDirectory(path: string): string {
  *
  * @throws {Error} when the host is not a bare address or does not survive the
  *   URL's host parser, the port is outside 1-65535, or the directory has no
- *   URL form that reads back unchanged (a `.` or `..` segment, which URL
- *   parsing removes, or the root `/`, which reads back as the login directory).
+ *   URL form that reads back unchanged ({@link sftpUrlDirectoryFault} names
+ *   the shapes it refuses).
  */
 export function formatSftpUrl(locator: SftpUrlLocator): string {
   if (!isBareSftpHost(locator.host))
@@ -270,13 +296,13 @@ export function formatSftpUrl(locator: SftpUrlLocator): string {
     locator.path === undefined || locator.path === ""
       ? undefined
       : locator.path;
-  if (path !== undefined) url.pathname = urlPathForRemoteDirectory(path);
+  if (path !== undefined) {
+    if (sftpUrlDirectoryFault(path) !== undefined)
+      throw new Error(UNWRITABLE_DIRECTORY_MESSAGE);
+    url.pathname = urlPathForRemoteDirectory(path);
+  }
   const readBack = parseSftpUrl(url);
   if (readBack.path !== path || readBack.port !== locator.port)
-    throw new Error(
-      "could not write the remote directory into an sftp URL that reads " +
-        "back unchanged; remove any . or .. segments, or name a directory " +
-        "other than /",
-    );
+    throw new Error(UNWRITABLE_DIRECTORY_MESSAGE);
   return url.href;
 }

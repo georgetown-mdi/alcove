@@ -160,7 +160,7 @@ export function DirectServerSection({
           retainFiles={exchangeFiles.retainFiles}
           offerSaveFile={false}
           probeCeremony="direct"
-          singleFingerprint
+          directExchange
           onAuthored={onAuthorConnection}
           onCleared={onClearConnection}
         />

@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import { formatSftpUrl } from "@alcove/core";
+import { formatSftpUrl, sftpUrlDirectoryFault } from "@alcove/core";
 
 import { isAdmissiblePeerId } from "@jobContract/intentSchemas";
 
@@ -23,6 +23,21 @@ export class ZeroSetupFingerprintListError extends Error {
         "the CLI --server-host-key-fingerprint flag is single-valued",
     );
     this.name = "ZeroSetupFingerprintListError";
+  }
+}
+
+/**
+ * Thrown by {@link zeroSetupSftpArgv} when the authored connection's remote
+ * directory (its inbound half, for a split pair) has no `sftp://` URL form:
+ * it is `/` or has a `.` or `..` segment.
+ */
+export class ZeroSetupRemoteDirectoryError extends Error {
+  constructor() {
+    super(
+      "a quick exchange cannot state a remote directory that is / or has a " +
+        ". or .. segment in its sftp:// URL",
+    );
+    this.name = "ZeroSetupRemoteDirectoryError";
   }
 }
 
@@ -61,6 +76,8 @@ export function zeroSetupSftpArgv(
   serverEntry: JobSftpServerEntry,
 ): Array<string> {
   const urlPath = serverEntry.inboundPath ?? serverEntry.path;
+  if (urlPath !== undefined && sftpUrlDirectoryFault(urlPath) !== undefined)
+    throw new ZeroSetupRemoteDirectoryError();
   const argv: Array<string> = [
     formatSftpUrl({
       host: serverEntry.host,

@@ -3013,6 +3013,40 @@ describe("POST /api/jobs and a saved fingerprint list", () => {
   });
 });
 
+describe("POST /api/jobs and a saved remote directory the URL cannot state", () => {
+  test.each([
+    ["a . segment", "/exchange/./in"],
+    ["a .. segment", "exchange/../in"],
+    ["the root /", "/"],
+  ])(
+    "a direct sftp run with %s is a 400 naming the refusal, and frees the slot",
+    async (_label, directory) => {
+      const { manager, credentialRef } = enableJobApiWithSftpServer();
+      const author = (remotePath: string) =>
+        manager.authorSftpServer({
+          host: "sftp.example.org",
+          path: remotePath,
+          hostKeyFingerprint: TEST_HOST_KEY_FINGERPRINT,
+          credential: { kind: "ref", ref: credentialRef, credType: "password" },
+        });
+      author(directory);
+      const response = (await handlersOf(CreateRoute).POST({
+        request: createRequest(validZeroSetupSftpIntent()),
+        params: {},
+      })) as Response;
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ reason: "sftp-url-directory" });
+
+      author("/exchange");
+      const retried = (await handlersOf(CreateRoute).POST({
+        request: createRequest(validZeroSetupSftpIntent()),
+        params: {},
+      })) as Response;
+      expect(retried.status).toBe(201);
+    },
+  );
+});
+
 describe("POST /api/jobs and the signing identity in the rendezvous", () => {
   /** The single-mount console with an identity already created: JOB_RENDEZVOUS_DIR
    * falls back to the data root, so the folder the partner writes into is the

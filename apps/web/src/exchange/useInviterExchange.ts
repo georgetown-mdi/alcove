@@ -36,6 +36,7 @@ import {
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
 import {
@@ -326,9 +327,24 @@ function failureContentFor(
       title: "The saved SFTP connection holds more than one fingerprint",
       message:
         "The console did not start this exchange. The saved SFTP connection " +
-        "holds more than one server identity fingerprint, and a direct " +
+        "holds more than one server identity fingerprint, and a quick " +
         "exchange pins one. Start over, choose Edit connection on the server " +
         "step, and keep only the fingerprint the server presents now.",
+    };
+  // A direct sftp run refused over the saved connection's remote directory,
+  // which its sftp:// URL cannot state. Classified `config`, as above.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === SFTP_URL_DIRECTORY_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "The saved SFTP connection's remote directory cannot be used",
+      message:
+        "The console did not start this quick exchange because its remote " +
+        "directory must be a directory under / with no . or .. parts. Start " +
+        "over, choose Edit connection on the server step, and enter a " +
+        "directory like /exchange/in.",
     };
   // An sftp run refused because the saved connection's credential file is one
   // of the console's own. Above the mounted-file branch: the input is not at

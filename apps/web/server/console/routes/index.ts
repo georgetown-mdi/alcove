@@ -20,13 +20,17 @@ import {
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
+import {
+  ZeroSetupFingerprintListError,
+  ZeroSetupRemoteDirectoryError,
+} from "@jobs/intentArgv";
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { MountedKeyFileRefusedError } from "@jobs/mountedKeyFile";
 import { SigningIdentityLocationError } from "@jobs/signingIdentity";
-import { ZeroSetupFingerprintListError } from "@jobs/intentArgv";
 import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
@@ -66,7 +70,9 @@ import { defineJobRoute } from "../jobRoute";
  * intent refused because a rendezvous directory holds this party's signing
  * identity answers `{ "reason": "signing-identity-in-rendezvous" }`, a
  * zero-setup sftp intent refused because the saved connection pins more than one
- * host-key fingerprint answers `{ "reason": "sftp-fingerprint-list" }`, and a
+ * host-key fingerprint answers `{ "reason": "sftp-fingerprint-list" }`, one
+ * whose saved remote directory is `/` or has a `.` or `..` segment answers
+ * `{ "reason": "sftp-url-directory" }`, and a
  * run of the opened configuration refused over the `.alcove.key` beside it
  * answers `{ "reason": "mounted-key-file-absent" }` or
  * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
@@ -120,6 +126,8 @@ export const route = defineJobRoute({
             { reason: SFTP_FINGERPRINT_LIST_REFUSAL },
             400,
           );
+        if (error instanceof ZeroSetupRemoteDirectoryError)
+          return jobJsonResponse({ reason: SFTP_URL_DIRECTORY_REFUSAL }, 400);
         if (error instanceof JobSftpCredentialConsoleOwnedError)
           return jobJsonResponse(
             { reason: SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL },

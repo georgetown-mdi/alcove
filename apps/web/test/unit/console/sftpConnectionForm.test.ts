@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT,
   EMPTY_SFTP_FORM,
   KEYBOARD_INTERACTIVE_REQUIRES_PASSWORD,
   PASSPHRASE_REQUIRES_PRIVATE_KEY,
@@ -9,6 +10,7 @@ import {
   SPLIT_DIRECTORY_RETAIN_REQUIREMENT,
   UNREADABLE_HOST_PASTE,
   buildAuthoringRequest,
+  directDirectoryRootRequirement,
   hostPasted,
   hostTyped,
   sftpFormError,
@@ -474,6 +476,59 @@ describe("sftpFormError (split inbound/outbound directories)", () => {
       expect(message).not.toContain("outbound_path");
       expect(message).not.toContain("server.path");
     }
+  });
+});
+
+describe("sftpFormError (a direct exchange's remote directory)", () => {
+  test.each([
+    ["a . segment", "/exchange/./in", DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT],
+    [
+      "a .. segment",
+      "exchange/../in",
+      DIRECT_DIRECTORY_DOT_SEGMENT_REQUIREMENT,
+    ],
+    ["the root /", " / ", directDirectoryRootRequirement(false)],
+  ])(
+    "refuses %s on the remote-directory field and builds no request",
+    (_label, remoteDirectory, message) => {
+      const values = validForm({ remoteDirectory });
+      expect(sftpFormError(values, true, true)).toEqual({
+        field: "remoteDirectory",
+        message,
+      });
+      expect(buildAuthoringRequest(values, true, true)).toBeUndefined();
+    },
+  );
+
+  test("an exchange-mode connection keeps every directory shape", () => {
+    for (const remoteDirectory of ["/exchange/./in", "exchange/../in", "/"])
+      expect(formError(validForm({ remoteDirectory }))).toBeUndefined();
+  });
+
+  test("accepts a blank, relative, or absolute directory", () => {
+    for (const remoteDirectory of ["", "exchange/in", "/exchange/in", "..."])
+      expect(
+        sftpFormError(validForm({ remoteDirectory }), true, true),
+      ).toBeUndefined();
+  });
+
+  test("the inbound half of a split names no blank alternative", () => {
+    const values = validForm({
+      remoteDirectory: "/",
+      outboundDirectory: "/exchange/out",
+    });
+    expect(sftpFormError(values, true, true)).toEqual({
+      field: "remoteDirectory",
+      message: directDirectoryRootRequirement(true),
+    });
+  });
+
+  test("the outbound half travels as a flag and keeps a . segment", () => {
+    const values = validForm({
+      remoteDirectory: "/exchange/in",
+      outboundDirectory: "/exchange/./out",
+    });
+    expect(sftpFormError(values, true, true)).toBeUndefined();
   });
 });
 
