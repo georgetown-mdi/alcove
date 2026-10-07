@@ -404,31 +404,10 @@ describe("wiring", () => {
     expect(readRepo(RECORDER_MODULE)).toContain(`"${RECORD_ENV}"`);
   });
 
-  // The artifact is packaged from what the build leaves in apps/web/dist/hosted, so
-  // the build and the upload have to stay in one job: a build moved to a job of
-  // its own would leave the packaging job with nothing to zip.
-  it("builds the web app in the job that uploads the deploy artifact", () => {
-    const workflow = workflowDocument(
-      repoRoot,
-      ".github/workflows/eb_build_and_test.yaml",
-    );
-    const uploaders = Object.values(workflow.jobs).filter((job) =>
-      (job.steps ?? []).some((step) =>
-        (step.uses ?? "").startsWith("actions/upload-artifact@"),
-      ),
-    );
-    expect(uploaders).toHaveLength(1);
-    expect(
-      (uploaders[0].steps ?? []).some((step) =>
-        (step.run ?? "").includes("npm run build -w apps/web"),
-      ),
-    ).toBe(true);
-  });
-
   // The Pages deploy job holds the Cloudflare token, so it runs after the web
-  // suite, builds nothing and checks nothing out: it uploads the site the build
-  // job left as an artifact.
-  it("uploads to Pages only after the web suite, from a job that checks nothing out", () => {
+  // suite, builds nothing and checks nothing out: it uploads the site the gate
+  // built and tested, which is the build this check reads.
+  it("uploads to Pages the site the gate built, from a job that checks nothing out", () => {
     const workflow = workflowDocument(repoRoot, DEPLOY_WORKFLOW);
     const jobs = Object.entries(workflow.jobs);
     const deployers = jobs.filter(([, job]) =>
@@ -440,27 +419,42 @@ describe("wiring", () => {
     const [, deploy] = deployers[0];
     const gate = jobs.find(([, job]) => job.uses === `./${GATE_WORKFLOW}`)?.[0];
     expect(gate).toBeDefined();
-    expect(deploy.needs).toContain(gate);
-    const usesOf = (job) => (job.steps ?? []).map((step) => step.uses ?? "");
+    expect([deploy.needs].flat()).toContain(gate);
     expect(
-      usesOf(deploy).every((uses) => !uses.startsWith("actions/checkout@")),
-    ).toBe(true);
-    expect(deploy.steps.every((step) => step.run === undefined)).toBe(true);
-    const builder = jobs.find(([, job]) =>
-      (job.steps ?? []).some((step) =>
-        (step.run ?? "").includes(BUILD_COMMAND),
+      jobs.filter(([, job]) =>
+        (job.steps ?? []).some((step) =>
+          (step.run ?? "").includes(BUILD_COMMAND),
+        ),
       ),
-    );
-    expect(builder).toBeDefined();
-    expect(deploy.needs).toContain(builder[0]);
-    const upload = builder[1].steps.find((step) =>
-      (step.uses ?? "").startsWith("actions/upload-artifact@"),
-    );
+    ).toEqual([]);
+    expect(
+      deploy.steps.every(
+        (step) =>
+          step.run === undefined &&
+          !(step.uses ?? "").startsWith("actions/checkout@"),
+      ),
+    ).toBe(true);
     const download = deploy.steps.find((step) =>
       (step.uses ?? "").startsWith("actions/download-artifact@"),
     );
+    expect(download.with.name).toBe(
+      `\${{ needs.${gate}.outputs.artifactName }}`,
+    );
+
+    const gateWorkflow = workflowDocument(repoRoot, GATE_WORKFLOW);
+    const output =
+      gateWorkflow.on.workflow_call.outputs.artifactName.value.match(
+        /^\$\{\{\s*jobs\.([\w-]+)\.outputs\.artifactName\s*\}\}$/,
+      );
+    expect(output).not.toBeNull();
+    const packager = gateWorkflow.jobs[output[1]];
+    const upload = packager.steps.find((step) =>
+      (step.uses ?? "").startsWith("actions/upload-artifact@"),
+    );
     expect(upload.with.path).toBe(BUILD_OUTPUT);
-    expect(download.with.name).toBe(upload.with.name);
+    expect(
+      packager.steps.some((step) => (step.run ?? "").includes(BUILD_COMMAND)),
+    ).toBe(true);
   });
 
   // The check reads the deploy filter, so a pull request editing only that file

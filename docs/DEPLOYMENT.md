@@ -124,33 +124,33 @@ Two environments run the same application, a staging one and a production one, e
 
 The web application builds only as a static site: `npm run build -w apps/web` writes `apps/web/dist/hosted/` and no server ([notes/hosted-static-build.md](notes/hosted-static-build.md)). [`pages_deploy.yaml`](../.github/workflows/pages_deploy.yaml) uploads that directory to a Cloudflare Pages project by direct upload:
 
-- **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch.
+- **When it runs:** on a push to `main` or `staging` that changes a deploy-affecting source, and by manual dispatch on either branch. A dispatch from any other branch ends without building.
 - **Gate:** it runs the web build and test workflow and uploads only when every suite in it passes.
-- **Build:** a job of its own builds the site with `VITE_SIGNALING_SERVER_URL` set from the repository variable of that name. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
-- **Upload:** a second job, which checks out nothing, runs `wrangler pages deploy` on the built site with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`).
+- **Build:** the gate's packaging job builds the site with `VITE_SIGNALING_SERVER_URL` set from the variable of that name and keeps it as the run's artifact, so the site uploaded is the one the suites ran beside. The build fails when the variable is unset, so a missing broker address stops the deploy rather than shipping a site that cannot coordinate.
+- **Upload:** a job of its own, which checks out nothing, downloads that artifact and runs `wrangler pages deploy` on it with the branch name. A deployment to `main` is the production deployment; one to `staging` is a preview deployment, served on the project's `staging` branch alias (`staging.<project>.pages.dev`).
 
-It reads two secrets and two variables:
+It reads two secrets and two variables. The deploy job runs in the GitHub environment `Production` for `main` and `Staging` for `staging`, so the two secrets and `CLOUDFLARE_PAGES_PROJECT` are set on each of those environments, under Settings -> Environments. `VITE_SIGNALING_SERVER_URL` is read by the gate's build, which runs in no environment, so it is a repository variable, under Settings -> Secrets and variables -> Actions.
 
-| Name | Kind | What it is |
-| ---- | ---- | ---------- |
-| `CLOUDFLARE_API_TOKEN` | Secret | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else |
-| `CLOUDFLARE_ACCOUNT_ID` | Secret | The Cloudflare account the project is in |
-| `CLOUDFLARE_PAGES_PROJECT` | Variable | The Pages project's name |
-| `VITE_SIGNALING_SERVER_URL` | Variable | The peer-coordination broker's `wss:` address, built into the site |
+| Name | Kind | Set on | What it is |
+| ---- | ---- | ------ | ---------- |
+| `CLOUDFLARE_API_TOKEN` | Secret | Environments `Production` and `Staging` | An API token scoped to Account -> Cloudflare Pages -> Edit on the one account, and nothing else |
+| `CLOUDFLARE_ACCOUNT_ID` | Secret | Environments `Production` and `Staging` | The Cloudflare account the project is in |
+| `CLOUDFLARE_PAGES_PROJECT` | Variable | Environments `Production` and `Staging` | The Pages project's name |
+| `VITE_SIGNALING_SERVER_URL` | Variable | Repository | The peer-coordination broker's `wss:` address, built into the site |
 
-The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). The Pages project and its custom domain are in the [OpenTofu root](../infra/hosted/README.md).
+The build writes only the part of Pages' configuration the site needs: a `_headers` file with the four security headers and the `/assets/*` cache rule, and no `_redirects` or `404.html`, so Pages answers an unmatched path with the root `index.html` ([notes/hosted-static-build.md](notes/hosted-static-build.md#no-catch-all-rewrite)). The Pages project and its custom domains are in the [OpenTofu root](../infra/hosted/README.md).
 
-#### Moving the production name to Pages
+#### Moving the public names to Pages
 
-The production public name keeps pointing at its Elastic Beanstalk environment until the preview deployment has been checked on the real edge. In order:
+Both public names keep pointing at their Elastic Beanstalk environments until the preview deployment has been checked on the real edge. In order:
 
 1. Deploy `staging` by dispatching the workflow, and check the preview deployment: the four security headers and HSTS on documents and assets; the `/accept` deep link with a fragment and a `/saved/<id>` deep link; offline navigation, after the first load, to routes not yet visited; a missing `/assets/` file; and one browser exchange through the broker.
-2. Set `production_origin` to `pages` in the OpenTofu root and apply, which points the production record at the project's `pages.dev` name ([the root's README](../infra/hosted/README.md#moving-the-production-name-to-pages)).
+2. Set `hosted_origin` to `pages` in the OpenTofu root and apply, which points the production record at the project's `pages.dev` name and the staging record at the `staging` branch alias ([the root's README](../infra/hosted/README.md#moving-the-public-names-to-pages)).
 3. Push `main`, which deploys production.
 
 ### The paused Elastic Beanstalk deploy
 
-[`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml) runs only by manual dispatch, until the Elastic Beanstalk environments are retired. Its artifact is the static site with the `apps/web/deploy/aws_eb/` payload and an empty `.env` copied over it. The payload's `Procfile` starts `node server/index.mjs`, which the static build does not write, so the artifact has no process for Elastic Beanstalk to start, and an environment it is deployed to does not serve the application. The sections below on the environments describe them as they run until they are retired.
+[`eb_deploy.yaml`](../.github/workflows/eb_deploy.yaml) runs only by manual dispatch, until the Elastic Beanstalk environments are retired. It packages its own artifact in a job of its own: the gate's static site with the `apps/web/deploy/aws_eb/` payload and an empty `.env` copied over it. The payload's `Procfile` starts `node server/index.mjs`, which the static build does not write, so the artifact has no process for Elastic Beanstalk to start, and an environment it is deployed to does not serve the application. The sections below on the environments describe them as they run until they are retired.
 
 Beside the exports, an OpenTofu root, [`infra/hosted/`](../infra/hosted/README.md), describes both environments, the one security group their instances attach, and the Cloudflare zone, and the maintainer applies it from outside the container. Its README holds where its state and credentials live, how it is applied, and how a plan is read for drift. It is applied to both environments and the zone, first on 2026-09-23 UTC; its README records what that run found and the hazard to check before an apply that changes an environment's security groups.
 

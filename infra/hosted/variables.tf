@@ -83,13 +83,13 @@ variable "pages_project_name" {
   description = "The Cloudflare Pages project the hosted site is uploaded to: the deploy workflow's CLOUDFLARE_PAGES_PROJECT variable."
 }
 
-variable "production_origin" {
+variable "hosted_origin" {
   type        = string
   default     = "elastic_beanstalk"
-  description = "What the production public name points at: elastic_beanstalk, its environment's name, or pages, the Pages project's pages.dev name. The default leaves the live record as it is."
+  description = "What both public names point at: elastic_beanstalk, each environment's name, or pages, the Pages project's pages.dev name for production and its staging branch alias for staging. The default leaves the live records as they are."
 
   validation {
-    condition     = contains(["elastic_beanstalk", "pages"], var.production_origin)
-    error_message = "production_origin must be elastic_beanstalk or pages."
+    condition     = contains(["elastic_beanstalk", "pages"], var.hosted_origin)
+    error_message = "hosted_origin must be elastic_beanstalk or pages."
   }
 }

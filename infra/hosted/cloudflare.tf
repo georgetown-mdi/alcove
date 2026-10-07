@@ -1,3 +1,10 @@
+locals {
+  pages_names = {
+    production = cloudflare_pages_project.hosted.subdomain
+    staging    = "staging.${cloudflare_pages_project.hosted.subdomain}"
+  }
+}
+
 # Each public name is proxied, so a visitor reaches Cloudflare's edge and only
 # the edge reaches the origin.
 resource "cloudflare_dns_record" "public_name" {
@@ -7,10 +14,10 @@ resource "cloudflare_dns_record" "public_name" {
   name    = each.value.public_name
   type    = "CNAME"
   # Elastic Beanstalk reports the name in mixed case; the live record holds it
-  # lowercase. production_origin moves the production name to Pages.
+  # lowercase.
   content = (
-    each.key == "production" && var.production_origin == "pages"
-    ? cloudflare_pages_project.hosted.subdomain
+    var.hosted_origin == "pages"
+    ? local.pages_names[each.key]
     : lower(aws_elastic_beanstalk_environment.hosted[each.key].cname)
   )
   proxied = true
@@ -67,4 +74,12 @@ resource "cloudflare_pages_domain" "production" {
   account_id   = var.cloudflare_account_id
   project_name = cloudflare_pages_project.hosted.name
   name         = var.environments["production"].public_name
+}
+
+# The staging public name on the project, served from the staging branch alias
+# its record points at.
+resource "cloudflare_pages_domain" "staging" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.hosted.name
+  name         = var.environments["staging"].public_name
 }

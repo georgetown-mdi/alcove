@@ -10,8 +10,8 @@ Nothing in the repository runs it: no workflow, script or package manifest invok
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `environments.tf`   | Both environments (`aws_elastic_beanstalk_environment.hosted["production"]` and `["staging"]`), their platform version, and the option settings both take                                                                                                                  |
 | `security_group.tf` | The one security group both instances attach: `:443` from Cloudflare's published ranges, read at plan time from the Cloudflare provider's `cloudflare_ip_ranges` data source, and no other inbound rule                                                                    |
-| `cloudflare.tf`     | A proxied DNS record for each public name, and three zone settings: SSL/TLS mode `Full (strict)` (`ssl = strict`), Always Use HTTPS, and HSTS at `max-age=15552000` without `includeSubDomains` or preload -- the values [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#recorded-settings-and-their-source) records. The Pages project (`cloudflare_pages_project.hosted`, direct upload, production branch `main`) and the production public name as its custom domain (`cloudflare_pages_domain.production`). `production_origin` points the production record at the environment (`elastic_beanstalk`, the default) or at the project's `pages.dev` name (`pages`) |
-| `variables.tf`      | Every account-specific value -- the account id, application and environment names, VPC and subnet ids, the notification address, the zone id, the Cloudflare account id, the Pages project name and the public names -- with no default; and `production_origin`, whose default leaves the live record as it is |
+| `cloudflare.tf`     | A proxied DNS record for each public name, and three zone settings: SSL/TLS mode `Full (strict)` (`ssl = strict`), Always Use HTTPS, and HSTS at `max-age=15552000` without `includeSubDomains` or preload -- the values [docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md#recorded-settings-and-their-source) records. The Pages project (`cloudflare_pages_project.hosted`, direct upload, production branch `main`) and both public names as its custom domains (`cloudflare_pages_domain.production` and `.staging`). `hosted_origin` points both records at their environments (`elastic_beanstalk`, the default) or at Pages (`pages`): the production record at the project's `pages.dev` name, and the staging record at the `staging` branch alias, `staging.<project>.pages.dev` (unverified: that a custom domain on the branch alias serves the latest `staging` deployment) |
+| `variables.tf`      | Every account-specific value -- the account id, application and environment names, VPC and subnet ids, the notification address, the zone id, the Cloudflare account id, the Pages project name and the public names -- with no default; and `hosted_origin`, whose default leaves the live records as they are |
 
 The environments, the security group, the DNS records and the Pages project have `prevent_destroy`, so a plan that would replace one fails instead of proposing it. The environments ignore `version_label`: the deploy workflow ([`eb_deploy.yaml`](../../.github/workflows/eb_deploy.yaml), paused) owns the application version, and an apply here does not roll it back. The Pages project's deployments are likewise outside this root: [`pages_deploy.yaml`](../../.github/workflows/pages_deploy.yaml) uploads them.
 
@@ -69,9 +69,9 @@ tofu apply hosted.tfplan
 
 An apply that changes no Cloudflare resource -- the plan lists none -- runs with the Read-only token that imports and plans; Edit is needed only when the plan changes a record or a zone setting.
 
-### Moving the production name to Pages
+### Moving the public names to Pages
 
-After the preview deployment is checked ([the cutover order](../../docs/DEPLOYMENT.md#moving-the-production-name-to-pages)), set `production_origin = "pages"` in `terraform.tfvars`, plan, and apply. The plan is expected to change one resource in place: the `content` of `cloudflare_dns_record.public_name["production"]`, from the environment's name to the project's `pages.dev` name. Anything else in it is a reason to stop and read. The apply changes a record, so the token needs DNS Edit. Setting `production_origin` back to `elastic_beanstalk` and applying reverses it while the environment exists.
+After the preview deployment is checked ([the cutover order](../../docs/DEPLOYMENT.md#moving-the-public-names-to-pages)), set `hosted_origin = "pages"` in `terraform.tfvars`, plan, and apply. The plan is expected to change two resources in place: the `content` of `cloudflare_dns_record.public_name["production"]`, from the environment's name to the project's `pages.dev` name, and of `cloudflare_dns_record.public_name["staging"]`, from the environment's name to `staging.<project>.pages.dev`. Anything else in it is a reason to stop and read. The apply changes records, so the token needs DNS Edit. Setting `hosted_origin` back to `elastic_beanstalk` and applying reverses it while the environments exist.
 
 ### Before an apply that changes an environment's security groups
 
@@ -102,6 +102,7 @@ A Pages project created in the dashboard rather than by an apply is imported the
 ```sh
 tofu import cloudflare_pages_project.hosted '<account-id>/<project-name>'
 tofu import cloudflare_pages_domain.production '<account-id>/<project-name>/<production public name>'
+tofu import cloudflare_pages_domain.staging '<account-id>/<project-name>/<staging public name>'
 ```
 
 The group id is the one both committed configuration files name in `SecurityGroups`. An environment id is `aws elasticbeanstalk describe-environments --environment-names <name> --query 'Environments[0].EnvironmentId'`. A record id is the `id` of `GET https://api.cloudflare.com/client/v4/zones/<zone-id>/dns_records?name=<public name>`.

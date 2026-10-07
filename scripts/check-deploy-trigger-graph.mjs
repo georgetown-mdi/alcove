@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Deploy-trigger coverage check, run by eb_build_and_test.yaml.
 //
-// .github/workflows/pages_deploy.yaml redeploys the hosted site on a push
-// whose changed paths match a hand-written filter. That filter is
-// narrower than the trees it names -- most pointedly
+// .github/workflows/pages_deploy.yaml redeploys the hosted site on a push whose
+// changed paths match a hand-written filter. That filter is narrower than the
+// trees it names -- most pointedly
 // `packages/peerjs-broker/src/contrib/**`, which by design omits the sibling
 // `src/standalone.ts` on the assumption that the local `npm start` entry is in no
 // deployed import graph. An assumption like that is invisible when it breaks: let
@@ -59,7 +59,7 @@ import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 /** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
 
-/** The build output the deployed artifact is packaged from. */
+/** The build output the deploy uploads. */
 export const BUILD_OUTPUT = "apps/web/dist/hosted";
 
 /** The module that installs the recorder this check reads. */

@@ -54,47 +54,31 @@ permissions:
   contents: read
 
 jobs:
+  # A dispatch from any other branch ends here rather than building a site
+  # nothing deploys.
   build-and-test:
+    if: github.ref_name == 'main' || github.ref_name == 'staging'
     uses: ./.github/workflows/eb_build_and_test.yaml
 
-  build:
-    name: Build the hosted static site
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - name: Checkout source code
-        uses: actions/checkout@v7
-      - name: Set up and build core
-        uses: ./.github/actions/setup
-      # The build refuses to run when VITE_SIGNALING_SERVER_URL is unset
-      # (apps/web/vite.config.ts), so a missing variable fails this step.
-      - name: Build web app
-        env:
-          VITE_SIGNALING_SERVER_URL: ${{ vars.VITE_SIGNALING_SERVER_URL }}
-        run: npm run build -w apps/web
-      - name: Upload the site
-        uses: actions/upload-artifact@v7
-        with:
-          name: hosted-site-${{ github.sha }}
-          path: apps/web/dist/hosted
-          retention-days: 1
-          if-no-files-found: error
-
   # The only job given the Cloudflare credentials. It checks out nothing and
-  # runs no repository code: it downloads the built site and uploads it.
+  # runs no repository code: it downloads the site the gate built and tested,
+  # and uploads it.
   deploy:
     name: Upload to Cloudflare Pages
-    needs: [build-and-test, build]
-    if: github.ref_name == 'main' || github.ref_name == 'staging'
+    needs: build-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: ${{ github.ref_name == 'main' && 'Production' || 'Staging' }}
     permissions: {}
+    env:
+      PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+      PAGES_BRANCH: ${{ github.ref_name }}
+      COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Download the site
         uses: actions/download-artifact@v8
         with:
-          name: hosted-site-${{ github.sha }}
+          name: ${{ needs.build-and-test.outputs.artifactName }}
           path: site
       # Pinned to a commit because the step holds the deploy token, and to an
       # exact wrangler so the step does not install the newest wrangler 4.
@@ -104,4 +88,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           wranglerVersion: "4.147.0"
-          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          command: pages deploy site --project-name="$PAGES_PROJECT" --branch="$PAGES_BRANCH" --commit-hash="$COMMIT_SHA"
