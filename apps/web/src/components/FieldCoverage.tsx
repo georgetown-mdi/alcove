@@ -131,7 +131,7 @@ export function FieldCoverage({
         <Text size="xs">
           Across your whole file, <strong>no row</strong> produces a value for
           this field, so it cannot match. A cleaning step above is likely
-          dropping every value -- check it before continuing.
+          dropping every value - check it before continuing.
         </Text>
       </Alert>
     );

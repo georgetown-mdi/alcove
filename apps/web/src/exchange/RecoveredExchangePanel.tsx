@@ -125,7 +125,7 @@ const DISCARD_CONFIRM_TITLE = "Discard this exchange?";
  * instead. */
 export const DISCARD_CONFIRM_BODY =
   "Discarding removes this exchange and any results from this console, and " +
-  "stops it if it is still running. This cannot be undone -- download anything " +
+  "stops it if it is still running. This cannot be undone - download anything " +
   "you need first.";
 
 /** The heading over a folder a restart left behind. */

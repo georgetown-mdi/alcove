@@ -1654,7 +1654,7 @@ describe("console inviter re-attaches on a busy create", () => {
     await expect
       .element(
         page.getByText(
-          "This exchange was already running here -- from another tab or an earlier visit -- so you are watching it rather than starting a new one.",
+          "This exchange was already running here - from another tab or an earlier visit - so you are watching it rather than starting a new one.",
         ),
       )
       .toBeVisible();
@@ -1867,7 +1867,7 @@ describe("console inviter partner accept kit", () => {
       // and the partner's half of the bilateral agreement on their command.
       expect(sheet.text).toContain("THIS EXCHANGE KEEPS ITS FILES");
       expect(sheet.text).toContain(
-        "The files stay in the directory the two of you meet in",
+        "The files stay in the exchange directory on the SFTP",
       );
       expect(sheet.text).toContain("exchange --retain-files your-file.csv");
     } finally {

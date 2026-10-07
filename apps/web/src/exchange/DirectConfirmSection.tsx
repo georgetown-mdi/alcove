@@ -204,10 +204,10 @@ export function DirectConfirmSection({
       <div>
         <h1 tabIndex={-1}>Confirm and run</h1>
         <Text size="sm" c="dimmed">
-          Alcove read your file and inferred the terms below -- what your file
-          is expected to contribute. The exchange re-reads the file when it
-          runs, so if you edit it after this preview the run uses the edited
-          file (a mismatch stops the exchange before any records are compared).
+          Alcove read your file and inferred the terms below - what your file is
+          expected to contribute. The exchange re-reads the file when it runs,
+          so if you edit it after this preview the run uses the edited file (a
+          mismatch stops the exchange before any records are compared).
         </Text>
       </div>
 
@@ -218,7 +218,7 @@ export function DirectConfirmSection({
 
       <TextInput
         label="Your identity (optional)"
-        description="The name your partner sees, and what names you in the disclosure record. Omitted if blank -- your partner and the record then show that no name was given."
+        description="The name your partner sees, and what names you in the disclosure record. Omitted if blank - your partner and the record then show that no name was given."
         value={identity}
         onChange={(event) => onIdentity(event.currentTarget.value)}
         error={identityError}
@@ -362,7 +362,7 @@ export function DirectConfirmSection({
           label={
             "I trust the server my partner and I agreed on, and I trust my " +
             "partner. This exchange is protected only by the connection to that " +
-            "server -- it uses no shared secret and no separate encryption, so " +
+            "server - it uses no shared secret and no separate encryption, so " +
             "the server's administrator is trusted with the traffic."
           }
         />

@@ -298,13 +298,13 @@ export function sftpCredentialNote(
   const noHostKey = server.hostKeyFingerprint === undefined;
   if (!noCredential && !noHostKey) return undefined;
   const credentialLine =
-    "private_key or password under connection.server -- written as @ and " +
+    "private_key or password under connection.server - written as @ and " +
     "the path of the file that holds it";
   const hostKeyLine = "the server's host_key_fingerprint";
   if (noCredential && noHostKey)
     return (
       "This configuration names no SFTP credential and no host key. Before " +
-      `you run it, add ${credentialLine} -- and ${hostKeyLine}.`
+      `you run it, add ${credentialLine} - and ${hostKeyLine}.`
     );
   if (noCredential)
     return (

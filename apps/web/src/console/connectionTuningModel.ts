@@ -390,9 +390,9 @@ export function connectionTuningProblems(
   if (connectProblem !== undefined) problems.push(connectProblem);
   if (reconnectAttempts(draft.maxReconnectAttempts) === null)
     problems.push(
-      "The retry budget must be a whole number from 0 to " +
-        `${MAX_RECONNECT_ATTEMPTS}, or left blank for the default ` +
-        `(${DEFAULT_MAX_RECONNECT_ATTEMPTS}).`,
+      "The number of times to retry a failed connection must be a whole " +
+        `number from 0 to ${MAX_RECONNECT_ATTEMPTS}. Enter one, or leave it ` +
+        `blank for the default (${DEFAULT_MAX_RECONNECT_ATTEMPTS}).`,
     );
   return problems;
 }

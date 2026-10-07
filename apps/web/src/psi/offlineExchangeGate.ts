@@ -15,5 +15,5 @@
  */
 export const OFFLINE_EXCHANGE_REASON =
   "This device is offline, so an exchange cannot run: it needs the network for " +
-  "the whole run -- to your partner's browser, an agreed server, or a shared " +
-  "folder -- and your partner has to be running their side at the same time.";
+  "the whole run - to your partner's browser, an agreed server, or a shared " +
+  "folder - and your partner has to be running their side at the same time.";

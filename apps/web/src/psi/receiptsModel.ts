@@ -267,8 +267,8 @@ export const FIRST_CONTACT_PIN_ADVISORY =
   "reports the fingerprint when it does. Its receipt then attests to whoever " +
   "sent that invitation. To tie the receipt to your partner and to nobody " +
   "else, ask them to run 'alcove fingerprint' and send you the value over a " +
-  "channel you trust -- a phone call, not the same email as the invitation " +
-  "-- and enter it above before you run.";
+  "channel you trust - a phone call, not the same email as the invitation " +
+  "- and enter it above before you run.";
 
 /**
  * What the card states about the pin this exchange holds: the fingerprint
@@ -376,7 +376,7 @@ function divergenceReconcileGuidance(picked: boolean): string {
   return (
     "Make the two match: set 'Your name or agency' for this exchange to the name the " +
     "identity is bound to, or create a new signing identity under the name " +
-    `these terms state at the command line -- ${rekeyCommand(picked)} -- ` +
+    `these terms state at the command line - ${rekeyCommand(picked)} - ` +
     "which gives you a new fingerprint every partner who pinned the old one " +
     "must be sent before their verification works again."
   );
@@ -389,8 +389,8 @@ function divergenceReconcileGuidance(picked: boolean): string {
  */
 function rekeyGuidance(boundTo: string, picked: boolean): string {
   return (
-    `Create a new signing identity ${boundTo} at the command line -- ` +
-    `${rekeyCommand(picked)} -- then send every partner who pinned the old ` +
+    `Create a new signing identity ${boundTo} at the command line - ` +
+    `${rekeyCommand(picked)} - then send every partner who pinned the old ` +
     "fingerprint the new one before their verification works again."
   );
 }
@@ -495,7 +495,7 @@ export function signingIdentityDivergence(
   if (unstatable !== undefined)
     return (
       "Your signing identity is bound to a name the agreed terms cannot " +
-      `state -- ${unstatable} -- so it differs from the "${termsName}" this ` +
+      `state - ${unstatable} - so it differs from the "${termsName}" this ` +
       "exchange names you by, and no change to 'Your name or agency' can bring the two " +
       `into agreement. ${DIVERGENCE_CONSEQUENCE} ` +
       rekeyGuidance(DIVERGENCE_REKEY_UNDER_ADMITTED_NAME, picked)
@@ -504,7 +504,7 @@ export function signingIdentityDivergence(
   if (fieldCannotState !== undefined)
     return (
       "Your signing identity is bound to a name 'Your name or agency' cannot be set " +
-      `to -- ${fieldCannotState} -- so it differs from the "${termsName}" ` +
+      `to - ${fieldCannotState} - so it differs from the "${termsName}" ` +
       `this exchange names you by. ${DIVERGENCE_CONSEQUENCE} ` +
       rekeyGuidance(DIVERGENCE_REKEY_UNDER_TERMS_NAME, picked)
     );
@@ -555,7 +555,7 @@ export function fingerprintRequestProblem(
 export const UNNAMED_PARTY_PROBLEM =
   "Fill in 'Your name or agency' for this exchange before signing receipts. A receipt " +
   "names both parties, and the certificate you present is trusted by the name " +
-  "you used in the agreed terms -- with none there, your partner has nothing " +
+  "you used in the agreed terms - with none there, your partner has nothing " +
   "to check it against, and the exchange refuses to start. Name this party in " +
   "the terms above, or choose 'No receipt' to run unsigned, which asks for no " +
   "name at all.";
@@ -588,7 +588,7 @@ export const RETENTION_NOTE_PROBLEM =
  * operator did not mean to write. */
 export const RETENTION_NOTE_CONTROL_CHAR_PROBLEM =
   "The retention note must not contain a control character (a NUL or an ESC, " +
-  "for instance). A tab, a line break, or a carriage return is fine -- the " +
+  "for instance). A tab, a line break, or a carriage return is fine - the " +
   "console refuses any other one before the run starts.";
 
 /** The problem a maximum age that is on but not a usable day count reports.
@@ -680,9 +680,9 @@ const IDENTITY_PICKED_LOCATION_READ_NOTICE =
   "and the console creates no key there, with one exception: showing your " +
   "fingerprint checks that the file is there and then reads it, so a file " +
   "removed between those two steps is created again at that path. Create it " +
-  "once at the command line -- " +
+  "once at the command line - " +
   fingerprintCommand(true, NEW_IDENTITY_ARGS) +
-  ", with NAME your name and FILE the file you picked -- and mount the " +
+  ", with NAME your name and FILE the file you picked - and mount the " +
   "folder read-only afterwards, which closes that case too. Keep it out of " +
   "every folder your partner syncs.";
 
@@ -736,7 +736,7 @@ export const IDENTITY_SHARED_MOUNT_LIMIT_ADVISORY =
   "Before a shared-folder exchange runs, Alcove checks whether the folder " +
   "your partner writes into holds your signing key, and refuses the run if it " +
   "does: your long-lived private key there lets whoever reads it sign receipts " +
-  "in your name -- for every exchange, with every partner. That check compares " +
+  "in your name - for every exchange, with every partner. That check compares " +
   "folder locations and identity, so one folder mounted twice under two names " +
   "passes it. Keep the shared folder (JOB_RENDEZVOUS_DIR) separate from the " +
   "folder holding your key, input, and results, and check that the two are not " +
@@ -763,7 +763,7 @@ export const IDENTITY_SHARED_MOUNT_REFUSAL_ADVISORY =
   "partner. While a file sits at your signing identity's path there it refuses " +
   "a shared-folder exchange. It checks that one path and nothing else, so a " +
   "copy of your key under another name, and this folder mounted a second time " +
-  "under another path, are not seen -- and whoever reads your signing key can " +
+  "under another path, are not seen - and whoever reads your signing key can " +
   "sign receipts in your name, for every exchange, with every partner. Give " +
   "the shared folder a mount of its own (JOB_RENDEZVOUS_DIR), separate from " +
   "the folder holding your key, input, and results, or change where your " +
@@ -782,11 +782,11 @@ export function identityRegenerationNotice(picked: boolean): string {
   return (
     "Your signing identity is long-lived: the same key signs every exchange " +
     "with every partner, which is what lets a fingerprint stay pinned. " +
-    "Replacing it is a command-line action -- " +
+    "Replacing it is a command-line action - " +
     fingerprintCommand(picked, ["--force", ...NEW_IDENTITY_ARGS]) +
     ", with NAME your name" +
     (picked ? " and FILE the file you picked" : "") +
-    " -- because the new key has a new fingerprint, and every partner who " +
+    " - because the new key has a new fingerprint, and every partner who " +
     "pinned the old one must be sent the new one before their verification " +
     "works again."
   );
@@ -809,7 +809,7 @@ export const RECEIPT_LOCATION_NOTICE =
   "run's own folder, and the run screen offers " +
   "it as a download once the run finishes or fails. Discarding the run removes " +
   "it along with the results, so keep a copy of your own if you mean to keep " +
-  "it -- it is the artifact an auditor checks, and neither party can recreate " +
+  "it - it is the artifact an auditor checks, and neither party can recreate " +
   "it afterwards.";
 
 /** What the console says about the certificate export, so an operator who
@@ -817,7 +817,7 @@ export const RECEIPT_LOCATION_NOTICE =
  * directory wherever the identity itself is kept: that is the one folder the
  * console writes to. */
 export const CERTIFICATE_EXPORT_NOTICE =
-  "The export is the public certificate only -- never your private key -- and " +
+  "The export is the public certificate only - never your private key - and " +
   "it lands in your working folder, there even when your signing identity " +
   "is kept elsewhere. Your partner needs only the fingerprint " +
   "to pin you; the certificate file is for an auditor who wants to check a " +
@@ -835,7 +835,7 @@ export const RETENTION_NOTE_PLACEHOLDER =
 export const RETENTION_NOTE_NOTICE =
   "This note is filed with your own exchange record and nothing else: it is " +
   "never sent to your partner, never checked against theirs, and never part of " +
-  "the agreed terms. Write where this result is filed and how long it is kept -- " +
+  "the agreed terms. Write where this result is filed and how long it is kept - " +
   "never a name, an identifier, or any value from the data.";
 
 /** The web app's form of the notice: the stored document, every backup, and
@@ -846,7 +846,7 @@ export const RETENTION_NOTE_NOTICE_WEB =
   "every backup file you download, which is not encrypted, and every " +
   "configuration file you export. It is never sent to your partner, " +
   "never checked against theirs, and never part of the agreed terms. Write " +
-  "where this result is filed and how long it is kept -- never a name, an " +
+  "where this result is filed and how long it is kept - never a name, an " +
   "identifier, or any value from the data.";
 
 /** The maximum-age control's label. */

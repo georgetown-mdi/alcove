@@ -374,7 +374,7 @@ describe("dispatchManagedCronExport", () => {
           side: "inviter",
           sharedSecret: generateSharedSecret(),
         }),
-      /Remove: turn/,
+      /to the command line: turn\./,
     ],
     [
       "an authentication block on the stored document",

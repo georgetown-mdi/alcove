@@ -351,13 +351,13 @@ const SUCCEEDED_DISCLOSURE =
 /** The disclosure line for a run that provably stopped before any data left this
  * party (a no-show, or a failure that fired before the data exchange began). */
 const NOTHING_DISCLOSED =
-  "Nothing was disclosed -- the run stopped before any data was exchanged.";
+  "Nothing was disclosed - the run stopped before any data was exchanged.";
 
 /** The disclosure line for an agreed window the schedule skipped: no run began
  * at all, so the sentence above, which speaks of a run that stopped, would
  * overstate what happened. */
 const SKIPPED_DISCLOSURE =
-  "Nothing was disclosed -- no run was started, and this exchange's secret is unchanged.";
+  "Nothing was disclosed - no run was started, and this exchange's secret is unchanged.";
 
 /**
  * What neither the run bookkeeping nor the accounting can say about a run that

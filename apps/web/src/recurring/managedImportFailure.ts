@@ -181,7 +181,7 @@ export function liveCopyImportReason(labels: ReadonlyArray<string>): string {
     const named = label === "" ? "An exchange in the list" : `"${label}"`;
     return (
       `${named} has the same terms and the same side as this backup, with a ` +
-      "different secret -- an older backup of it would look like this. " +
+      "different secret - an older backup of it would look like this. " +
       "Nothing was imported. If it is the same exchange, open it from the " +
       "list instead: a second copy falls behind the first time either one " +
       "runs, and then cannot connect to your partner. If it is a separate " +
@@ -196,7 +196,7 @@ export function liveCopyImportReason(labels: ReadonlyArray<string>): string {
       : ` (${names.join(", ")}${unnamed === 0 ? "" : `, and ${unnamed} with no name`})`;
   return (
     `${labels.length} exchanges in the list${listed} have the same terms and ` +
-    "the same side as this backup, with different secrets -- an older backup " +
+    "the same side as this backup, with different secrets - an older backup " +
     "of one of them would look like this. Nothing was imported. If it is one " +
     "of these exchanges, open that one from the list instead: a second copy " +
     "falls behind the first time either one runs, and then cannot connect to " +
@@ -293,7 +293,7 @@ export function storedCopyImportReason(
     const words = STORED_COPY_WORDS[state];
     return (
       `${named} ${words.state} and has the same terms and the same side as ` +
-      `these files, with a different secret -- ${words.resembles}. Nothing ` +
+      `these files, with a different secret - ${words.resembles}. Nothing ` +
       `was imported. If they belong to it, ${words.take}. If this is a ` +
       "separate exchange with the same terms, add these files as a new one." +
       stopFirst
@@ -349,7 +349,7 @@ export function sideMismatchImportReason(label: string): string {
   const named = label === "" ? "An exchange in the list" : `"${label}"`;
   return (
     `${named} holds this .alcove.key's secret for the other side of the ` +
-    "exchange -- these look like your partner's files -- so nothing was " +
+    "exchange - these look like your partner's files - so nothing was " +
     "imported. Choose the alcove.yaml and .alcove.key saved for your side."
   );
 }
@@ -364,9 +364,9 @@ export function chosenCopyImportReason(
   error: ManagedImportChosenCopyError,
 ): string {
   return error.reason === "run-in-flight"
-    ? "That exchange is running right now -- in this browser, in another " +
-        "tab, or on its schedule -- so nothing was imported. When it " +
+    ? "That exchange is running right now - in this browser, in another " +
+        "tab, or on its schedule - so nothing was imported. When it " +
         "finishes, import the files again."
-    : "That exchange changed since you chose it -- it was deleted, taken " +
-        "back, or edited -- so nothing was imported. Import the files again.";
+    : "That exchange changed since you chose it - it was deleted, taken " +
+        "back, or edited - so nothing was imported. Import the files again.";
 }

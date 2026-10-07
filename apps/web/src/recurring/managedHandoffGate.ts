@@ -46,7 +46,7 @@ export const RUN_IN_FLIGHT_HANDOFF_TITLE = "Wait for this run to finish";
  * the one who started it.
  */
 export const RUN_IN_FLIGHT_HANDOFF_REASON =
-  "This exchange is running right now -- in this browser, in another tab, or on " +
+  "This exchange is running right now - in this browser, in another tab, or on " +
   "its schedule. A run changes its shared secret as soon as it connects to your " +
   "partner, so a copy handed over now can already be out of date. When it " +
   "finishes, choose hand off again.";
@@ -63,8 +63,8 @@ export const SUPERSEDED_HANDOFF_TITLE = "That copy is out of date";
  * Shown with the hand-off's own remedy after it ({@link supersededHandoffReason}).
  */
 const SUPERSEDED_HANDOFF_EXPLANATION =
-  "This exchange's secret has changed since you downloaded it -- a run changes " +
-  "it, and so does creating a fresh invitation -- so what you downloaded would " +
+  "This exchange's secret has changed since you downloaded it - a run changes " +
+  "it, and so does creating a fresh invitation - so what you downloaded would " +
   "not work for whoever received it. Nothing was handed over.";
 
 /** Taking a fresh copy, from where each hand-off's refusal is shown. The operator's
@@ -97,8 +97,8 @@ export const RECORD_GONE_HANDOFF_TITLE = "This exchange is no longer here";
  * "download it again" is exactly the sentence this case must not state.
  */
 export const RECORD_GONE_HANDOFF_REASON =
-  "This exchange is no longer in this browser -- it was deleted, or cleared " +
-  "along with the browser's storage -- so there was no copy here to hand over " +
+  "This exchange is no longer in this browser - it was deleted, or cleared " +
+  "along with the browser's storage - so there was no copy here to hand over " +
   "and nothing was written. What you already downloaded is all that is left of " +
   "it: keep those files if you still need this exchange, and set it up again " +
   "with your partner if you do not have them.";
@@ -165,8 +165,8 @@ export const CUSTODY_UNREADABLE_IMPORT_TITLE =
 export function custodyUnreadableImportReason(label: string): string {
   const named = label === "" ? "that exchange" : `"${label}"`;
   return (
-    `This browser could not read the note it keeps beside ${named} -- the one ` +
-    "recording whether this copy was handed off somewhere else -- so nothing " +
+    `This browser could not read the note it keeps beside ${named} - the one ` +
+    "recording whether this copy was handed off somewhere else - so nothing " +
     "was imported. If you handed this exchange off, it runs from the files you " +
     "saved then and there is nothing here to import. If you did not, delete " +
     "that exchange from the list on this page, then import the backup file " +
@@ -209,8 +209,8 @@ export function handedOffPairImportReason(
 export function custodyUnreadablePairImportReason(label: string): string {
   const named = label === "" ? "that exchange" : `"${label}"`;
   return (
-    `This browser could not read the note it keeps beside ${named} -- the one ` +
-    "recording whether this copy was handed off somewhere else -- so nothing " +
+    `This browser could not read the note it keeps beside ${named} - the one ` +
+    "recording whether this copy was handed off somewhere else - so nothing " +
     "was imported. Delete that exchange from the list on this page, then " +
     "import the alcove.yaml and .alcove.key again. If you handed it off to " +
     "the command line, stop the scheduled run there first."

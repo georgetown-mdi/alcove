@@ -1294,7 +1294,7 @@ describe("the receipts card's model", () => {
     // where they choose to sign, not only in the deployment guide, and it names
     // the remedy the guide documents.
     expect(IDENTITY_SHARED_MOUNT_LIMIT_ADVISORY).toMatch(
-      /sign receipts in your name -- for every exchange, with every partner/,
+      /sign receipts in your name - for every exchange, with every partner/,
     );
     expect(IDENTITY_SHARED_MOUNT_LIMIT_ADVISORY).toMatch(/JOB_RENDEZVOUS_DIR/);
   });
@@ -1583,12 +1583,12 @@ describe("the receipts card's model", () => {
 
   test("re-keying is named as the image's command over the operator's folders", () => {
     expect(identityRegenerationNotice(false)).toContain(
-      `-- ${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
-        "your name -- because",
+      `- ${DEFAULT_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
+        "your name - because",
     );
     expect(identityRegenerationNotice(true)).toContain(
-      `-- ${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
-        "your name and FILE the file you picked -- because",
+      `- ${PICKED_IDENTITY_COMMAND} --force --identity NAME, with NAME ` +
+        "your name and FILE the file you picked - because",
     );
   });
 

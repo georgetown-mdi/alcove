@@ -60,8 +60,8 @@ const CONSOLE_REFUSAL_COPY: Record<PartnerCertificateRefusalKind, string> = {
     "Your partner presented a signing certificate that is not the one you " +
     "pinned, so the exchange stopped and sent none of your data, and the " +
     "fingerprint you entered is unchanged. Confirm the value with your " +
-    "partner over a channel you trust -- a phone call, not the same email as " +
-    "the invitation -- and they produce it by running " +
+    "partner over a channel you trust - a phone call, not the same email as " +
+    "the invitation - and they produce it by running " +
     "'alcove fingerprint'. Where they have made a new signing identity, " +
     "replace the value under your partner's fingerprint before you run again.",
 };

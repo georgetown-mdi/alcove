@@ -167,8 +167,8 @@ function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
       return endpoint.inboundPath === undefined ||
         endpoint.outboundPath === undefined
         ? [
-            "You and your partner meet through two folders rather than one: you",
-            "write into one and read their files out of the other. Your partner's",
+            "This exchange uses two shared folders rather than one: you write into",
+            "one and read your partner's files out of the other. Your partner's",
             "console could not put a name to either, so there is no name here to",
             "check. Use the two folders you and your partner agreed on.",
           ]
@@ -176,11 +176,11 @@ function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
             `  You write to:   ${printable(endpoint.inboundPath)}`,
             `  You read from:  ${printable(endpoint.outboundPath)}`,
             "",
-            "You and your partner meet through two folders rather than one. Those",
-            "are what your partner calls them; your own names for them can differ",
-            "-- a mapped drive letter, or folders you named yourself -- so check",
-            "them against the folders you were told to use rather than expecting",
-            "the names to match.",
+            "This exchange uses two shared folders rather than one. Those are",
+            "what your partner calls them. Your own names for them can differ,",
+            "such as a mapped drive letter or folders you named yourself, so",
+            "check them against the folders you were told to use rather than",
+            "expecting the names to match.",
           ];
     return endpoint.path === undefined
       ? [
@@ -192,8 +192,8 @@ function rendezvousLines(endpoint: AcceptKitEndpoint): Array<string> {
           `  Shared folder:  ${printable(endpoint.path)}`,
           "",
           "That is what your partner calls the shared folder. Your own name for",
-          "it can differ -- a mapped drive letter, or a folder you named",
-          "yourself -- so check it against the folder you were told to use",
+          "it can differ, such as a mapped drive letter or a folder you named",
+          "yourself, so check it against the folder you were told to use",
           "rather than expecting the two to match.",
         ];
   }
@@ -288,8 +288,8 @@ function bilateralFlagLines(settings: BilateralSettings): Array<string> {
     ],
     [
       "   --lockless-rendezvous is your half of a setting your partner turned",
-      "   on: the two sides meet with an acknowledgement instead of a lock",
-      "   file. Both sides must use this setting. Leave it on the command,",
+      "   on: the two sides connect using acknowledgement files instead of a",
+      "   lock file. Both sides must use this setting. Leave it on the command,",
       "   or the exchange stops with an error when the two sides connect.",
       "",
     ],
@@ -344,31 +344,31 @@ function retainLines(endpoint: AcceptKitEndpoint): Array<string> {
     endpoint.channel === "filedrop"
       ? endpoint.split === true
         ? [
-            "The files stay in both folders above -- the one you write into and",
-            "the one you read from -- your copies of them and your partner's",
-            "alike. Nothing removes them when the exchange ends, so both folders",
-            "must start empty on both sides, and clearing them afterwards is",
-            "for the two of you to decide.",
+            "The files stay in both shared folders above, the one you write into",
+            "and the one you read from, in your copies of them and your",
+            "partner's alike. Nothing removes them when the exchange ends, so",
+            "both folders must start empty on both sides. You and your partner",
+            "decide together whether to clear them afterwards.",
           ]
         : [
-            "The files stay in the shared folder the two of you meet in -- your",
-            "copy of it and your partner's alike. Nothing removes them when the",
-            "exchange ends, so both of you must start from an empty shared folder,",
-            "and clearing it afterwards is for the two of you to decide.",
+            "The files stay in the shared folder, in your copy of it and your",
+            "partner's alike. Nothing removes them when the exchange ends, so",
+            "both of you must start from an empty shared folder. You and your",
+            "partner decide together whether to clear it afterwards.",
           ]
       : split
         ? [
-            "The files stay in both directories above -- the one you write to",
-            "and the one you read from -- on the SFTP server named above.",
-            "Nothing removes them when the exchange ends, so both directories",
-            "must start empty, and clearing them afterwards is for the two of",
-            "you to decide.",
+            "The files stay in both directories above, the one you write to and",
+            "the one you read from, on the SFTP server named above. Nothing",
+            "removes them when the exchange ends, so both directories must start",
+            "empty. You and your partner decide together whether to clear them",
+            "afterwards.",
           ]
         : [
-            "The files stay in the directory the two of you meet in, on the SFTP",
+            "The files stay in the exchange directory on the SFTP",
             "server named above. Nothing removes them when the exchange ends, so",
-            "both of you must start from an empty directory, and clearing it",
-            "afterwards is for the two of you to decide.",
+            "both of you must start from an empty directory. You and your partner",
+            "decide together whether to clear it afterwards.",
           ];
   return [
     ...heading("THIS EXCHANGE KEEPS ITS FILES"),
@@ -378,13 +378,14 @@ function retainLines(endpoint: AcceptKitEndpoint): Array<string> {
     "",
     ...persistence,
     "",
-    "The records the two of you exchange are encrypted, and stay encrypted",
-    "in what is left behind. The small files the two sides meet through are",
-    "not: they are plaintext and they persist alongside the rest, so anyone",
-    "who can read that location afterwards can see that an exchange",
-    "happened, when, how many messages each side sent and how large they",
-    "were, the name each side ran under, and the settings each side",
-    "announced. Nothing there is your CSV file or the matched result.",
+    "The records you and your partner exchange are encrypted, and stay",
+    "encrypted in what is left behind. The small files the two sides use to",
+    "find each other are not: they are plaintext and they persist alongside",
+    "the rest, so anyone who can read that location afterwards can see",
+    "that an exchange happened, when, how many messages each side sent",
+    "and how large they were, the name each side ran under, and the",
+    "settings each side announced. Nothing there is your CSV file or the",
+    "matched result.",
     "",
     "Your side must run in retain mode too, or the exchange stops with an",
     "error when the two sides connect. The commands below already include",
@@ -421,7 +422,7 @@ function opening(
           ];
   return [
     RULE,
-    "ALCOVE -- HOW TO ACCEPT THIS EXCHANGE",
+    "ALCOVE - HOW TO ACCEPT THIS EXCHANGE",
     RULE,
     "",
     "Your partner has set up an Alcove record-linkage exchange with you and",
@@ -430,8 +431,9 @@ function opening(
     "",
     ...channelLines,
     "",
-    "The invitation is confidential: it carries a one-time secret, so keep it",
-    "to the channel it arrived on. This sheet carries no secret of any kind.",
+    "The invitation is confidential: it contains a one-time secret, so keep",
+    "it to the channel it arrived on. This sheet contains no secret of any",
+    "kind.",
     "",
     ...heading("WHAT YOU NEED"),
     "Docker, installed and running. Docker Desktop (docker.com) is the",
@@ -448,14 +450,14 @@ function opening(
     // shouted rather than plausible, since an unreplaced placeholder would
     // otherwise reach the partner as this party's name.
     ...heading("THE NAME YOUR PARTNER SEES"),
-    "Alcove records a name for your side -- what your partner reads as who",
-    "they exchanged with, in the agreed terms and in the record each of you",
+    "Alcove records a name for your side. Your partner sees it as who they",
+    "exchanged with, in the agreed terms and in the record each of you",
     "keeps. It picks none for you, so add this to the end of the accept",
     "command on this sheet:",
     "",
     '  --identity "YOUR NAME, YOUR ORGANIZATION"',
     "",
-    "with both parts replaced by what your partner will recognize -- your",
+    "with both parts replaced by what your partner will recognize: your",
     "own name, and the organization you are exchanging on behalf of. Leave",
     "it off and accepting stops and asks, rather than naming you itself.",
     "",
@@ -465,7 +467,7 @@ function opening(
     ...heading("WHICH DOCKER DO YOU HAVE?"),
     "  * Docker Desktop, on Windows, macOS, or Linux: nothing to do here.",
     "    Skip to the next section.",
-    "  * Docker Engine on Linux -- the docker your distribution packages:",
+    "  * Docker Engine on Linux (the docker your distribution packages):",
     "    read the rest of this section first.",
     "",
     "On Docker Engine, Alcove can hit 'permission denied' the moment it",
@@ -478,20 +480,20 @@ function opening(
     "",
     '  --user "$(id -u):$(id -g)"',
     "",
-    "That runs Alcove as you: every folder you can use, it can use --",
+    "That runs Alcove as you. Every folder you can use, it can use:",
     ...(endpoint.channel !== "filedrop"
       ? [
           "the folder holding your CSV file and the folder holding your",
-          "password file -- and everything it writes stays yours afterwards.",
+          "password file. Everything it writes stays yours afterwards.",
         ]
       : endpoint.split === true
         ? [
             "the folder holding your CSV file and your own copies of the two",
-            "shared folders -- and everything it writes stays yours afterwards.",
+            "shared folders. Everything it writes stays yours afterwards.",
           ]
         : [
             "the folder holding your CSV file and your own copy of the shared",
-            "folder -- and everything it writes stays yours afterwards.",
+            "folder. Everything it writes stays yours afterwards.",
           ]),
     "",
     "If you cannot change the commands, the other way is to hand a single",
@@ -499,8 +501,8 @@ function opening(
     ...(endpoint.channel !== "filedrop"
       ? ["file, run:"]
       : endpoint.split === true
-        ? ["file -- your own folder, never a shared one -- run:"]
-        : ["file -- your own folder, never the shared one -- run:"]),
+        ? ["file (your own folder, never a shared one), run:"]
+        : ["file (your own folder, never the shared one), run:"]),
     "",
     "  sudo chown 1000:1000 .",
     "",
@@ -523,7 +525,7 @@ function opening(
     "of your columns would be sent. That display is the thing to read before",
     "you answer; this sheet only gets you to it.",
     "",
-    ...heading("WHERE YOU WILL MEET"),
+    ...heading("WHERE THE FILES ARE EXCHANGED"),
     ...rendezvousLines(endpoint),
     "",
     ...(retainFiles ? retainLines(endpoint) : []),
@@ -621,9 +623,9 @@ function launcherRouteLines(
     "  Start-Alcove.ps1",
     "  Setup-AlcoveFileDrop.ps1  (must sit beside it)",
     "",
-    'Put them in a folder of their own and run, in PowerShell -- not "Run as',
-    'administrator", because an elevated window cannot see the drives you',
-    "mapped as yourself:",
+    "Put them in a folder of their own. Use an ordinary PowerShell window,",
+    'not one opened with "Run as administrator": an elevated window cannot',
+    "see the drives you mapped as yourself. In that folder, run:",
     "",
     "  powershell -ExecutionPolicy Bypass -File .\\Start-Alcove.ps1",
     "",
@@ -636,7 +638,7 @@ function launcherRouteLines(
           "real server and share behind your drive letter or DFS path, creates",
           "the Docker volume that reaches them, checks both folders, and opens",
           "the Alcove console in your browser. Paste the invitation into the",
-          "console's accept flow there, and you are done -- the rest of this",
+          "console's accept flow there, and you are done. The rest of this",
           "sheet is for situation B.",
           "",
           "Keep the two folders side by side inside one exchange folder on the",
@@ -650,12 +652,12 @@ function launcherRouteLines(
           "your drive letter or DFS path, creates the Docker volume that reaches",
           "it, checks the folder, and opens the Alcove console in your browser.",
           "Paste the invitation into the console's accept flow there, and you are",
-          "done -- the rest of this sheet is for situation B.",
+          "done. The rest of this sheet is for situation B.",
           "",
         ]),
     ...consoleControlLines(settings),
     "(On macOS or Linux a network share is not situation A: mount it the way",
-    'you usually do -- Finder\'s "Connect to Server", or your file manager --',
+    'you usually do, with Finder\'s "Connect to Server" or your file manager,',
     "and once it shows as a folder, it is situation B below.)",
     "",
     "Why you can trust those files: they are plaintext PowerShell scripts,",
@@ -678,8 +680,8 @@ function filedropSplitBody(
   settings: BilateralSettings,
 ): Array<string> {
   return [
-    ...heading("STEP 1 -- WHICH KIND OF FOLDERS ARE YOURS?"),
-    "This exchange meets through two folders rather than one. The answer",
+    ...heading("STEP 1 - WHICH KIND OF FOLDERS ARE YOURS?"),
+    "This exchange uses two shared folders rather than one. The answer",
     "decides everything below. Pick one.",
     "",
     "  A. A Windows network drive or a DFS path. Either folder opens in File",
@@ -691,9 +693,9 @@ function filedropSplitBody(
     "     Egnyte and the like), plain local folders, or shares you mounted",
     "     yourself on macOS or Linux.",
     "",
-    ...heading("A -- A WINDOWS NETWORK DRIVE OR A DFS PATH"),
+    ...heading("A - A WINDOWS NETWORK DRIVE OR A DFS PATH"),
     ...launcherRouteLines(version, settings, true),
-    ...heading("B -- FOLDERS DOCKER CAN OPEN"),
+    ...heading("B - FOLDERS DOCKER CAN OPEN"),
     "Two commands, both run from the folder that holds your CSV file. Use a",
     "folder of your own, neither of the shared folders: accepting writes",
     "alcove.yaml and .alcove.key (your key file) beside your CSV, and",
@@ -708,9 +710,9 @@ function filedropSplitBody(
     `       inbound_path: ${INBOUND_SYNC_MOUNT}`,
     `       outbound_path: ${OUTBOUND_SYNC_MOUNT}`,
     "",
-    "   Then mount your two folders there when you run the exchange -- the",
-    `   one you READ your partner's files out of at ${INBOUND_SYNC_MOUNT}, the one you`,
-    `   WRITE your own into at ${OUTBOUND_SYNC_MOUNT}:`,
+    "   Then mount your two folders there when you run the exchange. Mount",
+    `   the one you READ your partner's files out of at ${INBOUND_SYNC_MOUNT}, and the`,
+    `   one you WRITE your own into at ${OUTBOUND_SYNC_MOUNT}:`,
     "",
     `     docker run --rm -v "$PWD":${WORK_MOUNT} ` +
       `-v "/path/to/the/folder/you/read":${INBOUND_SYNC_MOUNT} ` +
@@ -720,7 +722,7 @@ function filedropSplitBody(
     "",
     "   Getting the two the wrong way round is the one mistake to watch for:",
     "   the exchange would then wait for files in the folder it is writing",
-    "   into and never meet your partner. Replace your-file.csv with your",
+    "   into and never find your partner's. Replace your-file.csv with your",
     "   CSV file's name. The matched records are written as",
     "   alcove-results-<time>.csv inside the ./results folder, created if",
     "   missing. You and your partner each run your own half; whichever runs",
@@ -738,7 +740,7 @@ function filedropBody(
   settings: BilateralSettings,
 ): Array<string> {
   return [
-    ...heading("STEP 1 -- WHICH KIND OF FOLDER IS YOURS?"),
+    ...heading("STEP 1 - WHICH KIND OF FOLDER IS YOURS?"),
     "The answer decides everything below. Pick one.",
     "",
     "  A. A Windows network drive or a DFS path. It opens in File Explorer",
@@ -750,9 +752,9 @@ function filedropBody(
     "     Dropbox, Egnyte and the like), a plain local folder, or a share",
     "     you mounted yourself on macOS or Linux.",
     "",
-    ...heading("A -- A WINDOWS NETWORK DRIVE OR A DFS PATH"),
+    ...heading("A - A WINDOWS NETWORK DRIVE OR A DFS PATH"),
     ...launcherRouteLines(version, settings, false),
-    ...heading("B -- A FOLDER DOCKER CAN OPEN"),
+    ...heading("B - A FOLDER DOCKER CAN OPEN"),
     "Two commands, both run from the folder that holds your CSV file. Use a",
     "folder of your own, not the shared folder itself: accepting writes",
     "alcove.yaml and .alcove.key (your key file) beside your CSV, and",
@@ -815,7 +817,7 @@ function sftpBody(
     "",
     "2. Fill in your credentials. Accepting wrote alcove.yaml with the",
     "   server and directory taken from the invitation; two things are yours",
-    "   to supply, because an invitation never carries credentials:",
+    "   to supply, because an invitation never contains credentials:",
     "",
     // The placeholder is core's own constant, so the sheet cannot drift from
     // what accept actually seeds into alcove.yaml.
@@ -871,8 +873,8 @@ function closing(version: string | undefined): Array<string> {
     "owner-only (chmod 600 on macOS or Linux) and never commit it.",
     "",
     ...heading("IF SOMETHING GOES WRONG"),
-    "  * Invitations expire. If yours has, ask your partner for a new one --",
-    "    nothing is lost by starting again.",
+    "  * Invitations expire. If yours has, ask your partner for a new one.",
+    "    Nothing is lost by starting again.",
     "  * Every command prints what it did and which files it wrote.",
     "  * Your input file itself is never sent. Alcove reads it in the folder",
     "    you mounted and writes the result beside your input; what goes to",

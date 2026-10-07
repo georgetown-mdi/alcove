@@ -968,7 +968,7 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
     const caveats = handoffCaveats(handoffWith("sftp", {}));
     expect(caveats).toContain(
       "The connection details and host-key fingerprint are filled in, but " +
-        "the credential path is a placeholder -- set it to the credential " +
+        "the credential path is a placeholder - set it to the credential " +
         "file on the machine that runs the schedule.",
     );
     expect(caveats.join(" ")).not.toContain("configuration you opened");
@@ -978,7 +978,7 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
     const caveats = handoffCaveats(handoffWith("sftp", { credential: true }));
     expect(caveats).toContain(
       "The connection details and host-key fingerprint are filled in, and " +
-        "the credential path is the one in the configuration you opened -- " +
+        "the credential path is the one in the configuration you opened - " +
         "check that the file is at that path on the machine that runs the " +
         "schedule.",
     );
@@ -1007,7 +1007,7 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
       handoffCaveats(handoffWith("filedrop", { signing: true })),
     ).toContain(
       "The signing identity path is the one in the configuration you " +
-        "opened -- check that signing.identity_file names the right location " +
+        "opened - check that signing.identity_file names the right location " +
         "on the machine that runs the schedule.",
     );
     expect(handoffCaveats(handoffWith("filedrop", {})).join(" ")).not.toContain(

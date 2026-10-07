@@ -139,7 +139,7 @@ export function ManageExchangeOffer({
       <div className={styles.callout}>
         <p className={styles.calloutLead}>Save as a recurring exchange</p>
         <p className={styles.small}>
-          This browser cannot store recurring exchanges -- private browsing may
+          This browser cannot store recurring exchanges - private browsing may
           be blocking storage, or this browser does not support it. Your one-off
           exchange is unaffected.
         </p>

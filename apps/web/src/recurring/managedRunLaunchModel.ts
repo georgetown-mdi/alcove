@@ -313,8 +313,8 @@ const INPUT_FAILURE: ManagedRunFailureAlert = {
   message:
     "The input file for this run is missing, could not be read, or does not " +
     "have the columns this exchange needs. Check that the file is in place " +
-    `-- where this exchange has a folder, as ${MANAGED_INPUT_FILE_NAME} in ` +
-    "it -- and matches the agreed terms, then try again.",
+    `- where this exchange has a folder, as ${MANAGED_INPUT_FILE_NAME} in ` +
+    "it - and matches the agreed terms, then try again.",
   recovery: "retry",
 };
 
@@ -610,7 +610,8 @@ const PARTIAL_ROTATION_FAILURE: ManagedRunFailureAlert = {
   title: PARTIAL_ROTATION_FAILURE_TITLE,
   message:
     "A run stopped during its key exchange before it could save the updated " +
-    "secret on this device, and a run since then did not meet your partner. " +
+    "secret on this device, and a run since then did not connect to your " +
+    "partner. " +
     "Your partner probably saved a secret this device does not have. " +
     "Re-invite your partner to reconnect; the exchange keeps your terms and " +
     "only replaces the secret.",

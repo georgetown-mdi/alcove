@@ -145,7 +145,7 @@ export function ExchangeFilesCard({
         <NativeSelect
           label="Lockless rendezvous"
           description={
-            "Meets your partner with an acknowledgement handshake instead of a " +
+            "Connects to your partner using acknowledgement files instead of a " +
             "lock file. Needed on folders kept in step by a sync tool, which " +
             "may not create a file exclusively or pass a deletion on promptly."
           }

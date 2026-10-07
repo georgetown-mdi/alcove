@@ -339,7 +339,7 @@ describe("a managed exchange", () => {
   test("the run history states nothing was disclosed for a refusal at the terms exchange", () => {
     expect(lastRunMayHaveSentPayload({ lastRun: stamped })).toBe(false);
     expect(runHistoryEntries({ lastRun: stamped })[0].disclosure).toBe(
-      "Nothing was disclosed -- the run stopped before any data was exchanged.",
+      "Nothing was disclosed - the run stopped before any data was exchanged.",
     );
   });
 

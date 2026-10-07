@@ -99,7 +99,7 @@ export function DiscardFolderList({ folder }: { folder: DiscardFolder }) {
       <ul>
         {items.map((item) => (
           <li key={item.files}>
-            <code>{item.files}</code> -- {item.what}
+            <code>{item.files}</code> - {item.what}
           </li>
         ))}
       </ul>

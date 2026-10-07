@@ -212,7 +212,7 @@ const SCHEDULE_ATTENDANCE_NOTE_INSTALLED =
  * the way out: stating a limit, not withholding a capability.
  */
 const SCHEDULE_ATTENDANCE_NOTE_TAB =
-  "This is an ordinary browser tab, which never runs this exchange on its own: a window that opens passes without a run unless you run it here. Come back during a window and run this exchange, or install this app and leave it running to have it meet the windows for you.";
+  "This is an ordinary browser tab, which never runs this exchange on its own: a window that opens passes without a run unless you run it here. Come back during a window and run this exchange, or install this app and leave it running to have it run in each window for you.";
 
 /**
  * The attendance note for the runtime the operator is actually looking at. The

@@ -50,7 +50,7 @@ export const SWEEP_CONTROL_LABEL =
  * only the operator can rule that out.
  */
 export const SWEEP_CONFIRMATION_NOTICE =
-  "This deletes the exchange's own leftover files -- the hellos, locks, " +
+  "This deletes the exchange's own leftover files - the hellos, locks, " +
   "acknowledgements, and messages a crashed or mismatched run left behind. " +
   "Anything else in the folder is left alone. Confirm no other session is " +
   "using this directory first: sweeping while an exchange is running there " +
@@ -74,8 +74,8 @@ export const SWEEP_CONFIRMATION_LABEL =
  * see it.
  */
 export const SWEEP_RETAIN_ESCALATION_NOTICE =
-  "If this directory holds a retain-mode transcript -- yours, or your " +
-  "partner's -- the sweep is refused, and only the command line can overrule " +
+  "If this directory holds a retain-mode transcript - yours, or your " +
+  "partner's - the sweep is refused, and only the command line can overrule " +
   "that: run the exchange with --sweep-exchange-files --force-retain-sweep, " +
   "which loses the prior transcript permanently.";
 

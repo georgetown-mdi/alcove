@@ -75,7 +75,7 @@ export function AppShellStatus() {
           title={OFFLINE_TITLE}
         >
           Your recurring exchanges and their details are stored in this browser
-          and open without a connection. Running an exchange does need one -- it
+          and open without a connection. Running an exchange does need one - it
           takes you and your partner online at the same time.
         </Alert>
       )}

@@ -270,7 +270,7 @@ describe("accept kit, the account the container runs as", () => {
       const section = text
         .split("THE NAME YOUR PARTNER SEES")[1]
         .split("WHICH DOCKER DO YOU HAVE?")[0];
-      expect(section).toContain("what your partner reads as who");
+      expect(section).toContain("Your partner sees it as who they");
       expect(section).toContain("accepting stops and asks");
     }
   });
@@ -386,7 +386,7 @@ describe("accept kit, sftp configuration section", () => {
     // The credential is the partner's to supply; the sheet claims only what
     // Alcove enforces -- no transmission to the partner -- not what the
     // counterparty might separately know.
-    expect(text).toContain("never carries credentials");
+    expect(text).toContain("never contains credentials");
     expect(text).toContain("never sends either one to your partner");
   });
 
@@ -534,7 +534,7 @@ describe("accept kit, a split filedrop rendezvous", () => {
     // has to be set up as two folders, so the sheet must not fall back to the
     // single-shared-folder body.
     const text = sheet(UNNAMED_FILEDROP_SPLIT);
-    expect(text).toContain("two folders rather than one");
+    expect(text).toContain("two shared folders rather than one");
     expect(text).toContain(
       "Use the two folders you and your partner agreed on.",
     );
@@ -562,12 +562,12 @@ describe("accept kit, a split filedrop rendezvous", () => {
     const text = retainSheet(FILEDROP_SPLIT);
     expect(text).toContain("THIS EXCHANGE KEEPS ITS FILES");
     expect(text).toContain(
-      "The files stay in both folders above -- the one you write into and",
+      "The files stay in both shared folders above, the one you write into",
     );
-    expect(text).toContain("both folders\nmust start empty on both sides");
+    expect(text).toContain("both folders must start empty on both sides");
     // The single-folder wording never crosses over.
     expect(text).not.toContain(
-      "The files stay in the shared folder the two of you meet in",
+      "The files stay in the shared folder, in your copy of it",
     );
   });
 
@@ -607,7 +607,7 @@ describe("accept kit, retain mode", () => {
     // Where, in that channel's own terms -- the directory on the server the
     // locator above already named, not a second copy of the locator.
     expect(sftpText).toContain(
-      "The files stay in the directory the two of you meet in, on the SFTP",
+      "The files stay in the exchange directory on the SFTP",
     );
     expect(sftpText).toContain("server named above");
     expect(sftpText).toContain("start from an empty directory");
@@ -621,15 +621,13 @@ describe("accept kit, retain mode", () => {
     // the disclosure names both directories' obligations rather than the
     // single-directory wording above.
     expect(splitText).toContain(
-      "The files stay in both directories above -- the one you write to",
+      "The files stay in both directories above, the one you write to and",
     );
-    expect(splitText).toContain("and the one you read from");
+    expect(splitText).toContain("the one you read from, on the SFTP server");
     expect(splitText).toContain("server named above");
-    expect(splitText).toContain("both directories\nmust start empty");
+    expect(splitText).toContain("both directories must start\nempty");
     // The single-path wording never crosses over onto the split sheet.
-    expect(splitText).not.toContain(
-      "The files stay in the directory the two of you meet in",
-    );
+    expect(splitText).not.toContain("The files stay in the exchange directory");
     expect(splitText).not.toContain("start from an empty directory");
 
     for (const endpoint of [FILEDROP, UNNAMED_FILEDROP]) {
@@ -637,7 +635,7 @@ describe("accept kit, retain mode", () => {
       expect(text).toContain(RETAIN_HEADING);
       expect(text).toContain("permanent transcript");
       expect(text).toContain(
-        "The files stay in the shared folder the two of you meet in",
+        "The files stay in the shared folder, in your copy of it",
       );
       expect(text).toContain("start from an empty shared folder");
       // The SFTP wording never crosses over.
@@ -655,7 +653,7 @@ describe("accept kit, retain mode", () => {
       expect(text).toContain("they are plaintext and they persist");
       expect(text).toContain("that an exchange");
       expect(text).toContain("the name each side ran under");
-      expect(text).toContain("the settings each side\nannounced");
+      expect(text).toContain("settings each side announced");
       // And the reassurance that bounds it, so the disclosure is not treated as
       // the input file being left behind.
       expect(text).toContain("Nothing there is your CSV file");
@@ -693,8 +691,8 @@ describe("accept kit, retain mode", () => {
     // there or that route rendezvouses into a mismatch.
     const text = retainSheet(FILEDROP);
     const launcher = text
-      .split("done -- the rest of this sheet is for situation B")[1]
-      .split("B -- A FOLDER DOCKER CAN OPEN")[0];
+      .split("done. The rest of this sheet is for situation B")[1]
+      .split("B - A FOLDER DOCKER CAN OPEN")[0];
     expect(launcher).toContain('open "How files are handled"');
     expect(launcher).toContain('turn on "Keep every exchange file"');
     // An SFTP partner has no launcher branch, so the console instruction is
@@ -803,8 +801,8 @@ describe("accept kit, lockless rendezvous", () => {
     // to the console's accept flow, so the setting has to be named as the
     // control that sets it there or that route stops at rendezvous.
     const launcher = locklessSheet(FILEDROP)
-      .split("done -- the rest of this sheet is for situation B")[1]
-      .split("B -- A FOLDER DOCKER CAN OPEN")[0];
+      .split("done. The rest of this sheet is for situation B")[1]
+      .split("B - A FOLDER DOCKER CAN OPEN")[0];
     expect(launcher).toContain('open "How files are handled"');
     expect(launcher).toContain('set "Lockless rendezvous" to On');
     // An SFTP partner has no launcher branch, so the console instruction is

@@ -174,6 +174,15 @@ export interface ManagedCronExport extends ManagedCommandLineConfig {
   key: ManagedCronExportFile;
 }
 
+/** What to do about stored content only an imported file could have put
+ * there, naming that content as `pronoun`. */
+function removeAndImportAgain(pronoun: "it" | "them"): string {
+  return (
+    `Remove ${pronoun} from the file you imported this exchange from, ` +
+    "import it again, and then export again."
+  );
+}
+
 /**
  * Narrow a record's stored connection to what a configuration on its channel
  * holds, refusing any field outside it -- the exchange-file schema alone
@@ -187,19 +196,18 @@ function heldConnectionOrRefuse(exchangeFile: ExchangeSpec): ConnectionConfig {
   const outside = connectionFieldsNotHeld(connection);
   if (outside.length > 0)
     throw new Error(
-      "a managed exchange is exported to the command line only from the " +
-        `connection settings this app holds on ${connection.channel}; the ` +
-        "stored connection carries field(s) outside them, which the exported " +
-        "alcove.yaml would republish for the CLI to resolve. Remove: " +
-        outside.join(", "),
+      "This exchange's connection settings include fields this app does " +
+        `not export to the command line: ${outside.join(", ")}. ` +
+        removeAndImportAgain("them"),
     );
   const literal = literalCredentialFields(connection);
   if (literal.length > 0)
     throw new Error(
-      "a managed exchange's exported alcove.yaml names a credential only as " +
-        "an @path reference; the stored connection states one as a value. " +
-        "Remove: " +
-        literal.join(", "),
+      "This exchange's connection settings state a credential as a value, " +
+        "and the command-line export writes a credential only as a file " +
+        `reference beginning with @: ${literal.join(", ")}. Replace each ` +
+        "with a file reference in the file you imported this exchange from, " +
+        "import it again, and then export again.",
     );
   return connection;
 }
@@ -260,8 +268,9 @@ function exportedConnection(
   if (connection.channel !== "webrtc") return connection;
   if (record.side === undefined)
     throw new Error(
-      "a managed webrtc exchange is exported with the side it runs as; the " +
-        "stored record holds none",
+      "This exchange does not record whether you are the inviter or the " +
+        "acceptor, so it cannot be exported to the command line. Import " +
+        "this exchange again, and then export again.",
     );
   return {
     ...connection,
@@ -307,10 +316,9 @@ function assertNoReinviteRegistrationPending(
 function assertNoStoredAuthentication(exchangeFile: ExchangeSpec): void {
   if (exchangeFile.authentication !== undefined)
     throw new Error(
-      "a managed exchange's stored document carries no authentication block; " +
-        "the exported configuration's block is composed from the local " +
-        "max-age policy alone, so a stored one is refused rather than " +
-        "republished",
+      "This exchange's settings include an authentication block, which " +
+        "this app does not export to the command line. " +
+        removeAndImportAgain("it"),
     );
 }
 
@@ -324,11 +332,9 @@ function assertComposableDocumentFields(document: ExchangeSpec): void {
   const outside = fieldsOutsideComposableDocument(document);
   if (outside.length > 0)
     throw new Error(
-      "a managed exchange is exported to the command line only from the " +
-        "document fields a command-line configuration holds here; the stored " +
-        "document carries field(s) outside them, which the exported " +
-        "alcove.yaml would republish. Remove: " +
-        outside.join(", "),
+      "This exchange's settings include fields this app does not export " +
+        `to the command line: ${outside.join(", ")}. ` +
+        removeAndImportAgain("them"),
     );
 }
 
@@ -377,7 +383,11 @@ const PEER_TIMEOUT_UNITS: ReadonlyArray<[string, number]> = [
  * largest unit that states it exactly. */
 function durationFlagValue(seconds: number): string {
   if (!Number.isInteger(seconds))
-    throw new Error("a --peer-timeout value must be a whole number of seconds");
+    throw new Error(
+      `This exchange's run window is ${seconds} seconds, and the command ` +
+        "line waits only a whole number of seconds. Change the schedule's " +
+        "run window, and then export again.",
+    );
   for (const [unit, size] of PEER_TIMEOUT_UNITS)
     if (seconds % size === 0) return `${seconds / size}${unit}`;
   return `${seconds}s`;

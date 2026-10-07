@@ -182,10 +182,10 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
       pathsAsRead.credential
         ? "The connection details and host-key fingerprint are filled in, " +
             "and the credential path is the one in the configuration you " +
-            "opened -- check that the file is at that path on the machine " +
+            "opened - check that the file is at that path on the machine " +
             "that runs the schedule."
         : "The connection details and host-key fingerprint are filled in, " +
-            "but the credential path is a placeholder -- set it to the " +
+            "but the credential path is a placeholder - set it to the " +
             "credential file on the machine that runs the schedule.",
     );
   else
@@ -200,7 +200,7 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
   if (pathsAsRead.signing)
     caveats.push(
       "The signing identity path is the one in the configuration you " +
-        "opened -- check that signing.identity_file names the right location " +
+        "opened - check that signing.identity_file names the right location " +
         "on the machine that runs the schedule.",
     );
   if (credentialPasted)

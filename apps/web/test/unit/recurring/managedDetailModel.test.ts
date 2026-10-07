@@ -307,7 +307,7 @@ describe("runHistoryEntries renders each kept run", () => {
       const entries = runHistoryEntries(record("acceptor", { lastRun }));
       expect(entries[0].outcome).toBe(label);
       expect(entries[0].disclosure).toContain(
-        "Nothing was disclosed -- the run stopped before any data was exchanged.",
+        "Nothing was disclosed - the run stopped before any data was exchanged.",
       );
     },
   );

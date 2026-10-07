@@ -210,7 +210,7 @@ function connectionNotHeldRefusal(
 ): ManagedConfigurationRefusedError {
   return new ManagedConfigurationRefusedError(
     "This configuration's connection holds settings this app does not " +
-      "keep -- a credential, or an address or file the command line would " +
+      "keep - a credential, or an address or file the command line would " +
       "open. Remove these lines from the connection and import it again: " +
       outside.join(", ") +
       ". The configuration this app hands back leaves them out, so add " +
@@ -274,7 +274,7 @@ function importedConnection(
   if (outside.length > 0 && source === "backup")
     throw new ManagedConfigurationRefusedError(
       "This backup's configuration holds settings this app does not keep " +
-        "-- a credential, or an address or file the command line would " +
+        "- a credential, or an address or file the command line would " +
         "open: " +
         outside.join(", ") +
         ". Remove them from the configuration inside the backup file and " +
@@ -369,8 +369,8 @@ function importedSide(
   if (role === undefined)
     throw new ManagedConfigurationRefusedError(
       "This configuration does not say which side of the exchange you take. " +
-        "Add role: inviter or role: acceptor to its connection -- whichever " +
-        "you agreed with your partner -- and import it again.",
+        "Add role: inviter or role: acceptor to its connection - whichever " +
+        "you agreed with your partner - and import it again.",
     );
   return role;
 }

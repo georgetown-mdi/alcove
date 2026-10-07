@@ -171,7 +171,7 @@ export function SftpAuthoringForm({
     <Stack gap="sm" mt="xs">
       {isEdit && (
         <Text size="sm" c="dimmed">
-          Re-enter the username, fingerprint, and credential -- they are never
+          Re-enter the username, fingerprint, and credential - they are never
           stored in the browser.
         </Text>
       )}
@@ -243,8 +243,8 @@ export function SftpAuthoringForm({
         label="Server identity fingerprint"
         description={
           directExchange
-            ? "The server's identity fingerprint -- ask whoever runs the SFTP server. It starts with SHA256:."
-            : "The server's identity fingerprint -- ask whoever runs the SFTP server. It starts with SHA256:. While the server's key is being changed, enter each fingerprint it may present, separated by commas."
+            ? "The server's identity fingerprint - ask whoever runs the SFTP server. It starts with SHA256:."
+            : "The server's identity fingerprint - ask whoever runs the SFTP server. It starts with SHA256:. While the server's key is being changed, enter each fingerprint it may present, separated by commas."
         }
         required
         classNames={{ input: styles.mono }}
@@ -490,7 +490,7 @@ function CredentialField({
       <Text size="sm" fw={500}>
         Credential file{" "}
         <Text span size="sm" c="dimmed" fw={400}>
-          (a file reference -- only its location is used, the file itself is
+          (a file reference - only its location is used, the file itself is
           never uploaded)
         </Text>
       </Text>
@@ -630,7 +630,7 @@ function CredentialField({
       {(values.method === "password" || values.keyboardInteractive) && (
         <Checkbox
           label="Answer the server's login prompts with this password"
-          description="Only for a server that refuses the direct password method but asks for it as a prompt. The same password, sent a different way -- it cannot answer a one-time code."
+          description="Only for a server that refuses the direct password method but asks for it as a prompt. The same password, sent a different way - it cannot answer a one-time code."
           checked={values.keyboardInteractive}
           // Checkbox takes the error as a node rather than through the
           // `errorProps` the text inputs have, so the live-region role that
@@ -669,7 +669,7 @@ function probeTargetOf(
   if (!isBareSftpHost(host))
     return {
       disabledReason:
-        "Enter just the server address -- not a full URL or login details.",
+        "Enter just the server address - not a full URL or login details.",
     };
   const portText = values.port.trim();
   if (portText === "") return { host };
@@ -839,7 +839,7 @@ function HostKeyProbe({
             <Text size="sm">
               Does this match the fingerprint whoever runs the server published?
               This console read it over the same connection the exchange will
-              use -- it cannot vouch for it.
+              use - it cannot vouch for it.
             </Text>
             {ceremony === "direct" ? (
               <>
@@ -849,7 +849,7 @@ function HostKeyProbe({
                   title="This host key is the only thing protecting your records"
                 >
                   On this path the server&apos;s host key is the only thing
-                  protecting your records -- there is no shared secret and no
+                  protecting your records - there is no shared secret and no
                   separate encryption. Verify this fingerprint against a value
                   published somewhere other than this connection.
                 </Alert>
@@ -972,15 +972,15 @@ function PeerBytesField({ excerpt }: { excerpt: string }) {
 const PROBE_PEER_ANSWER_SHAPE_COPY: Record<ProbePeerAnswerShape, string> = {
   http:
     "Something answered that port with an HTTP response rather than an SSH " +
-    "identification string -- most likely a web server, or a proxy or gateway " +
+    "identification string - most likely a web server, or a proxy or gateway " +
     "intercepting the port.",
   "tls-alert":
     "Something answered that port with a TLS alert record rather than an SSH " +
-    "identification string -- most likely a service speaking TLS, or a " +
+    "identification string - most likely a service speaking TLS, or a " +
     "TLS-terminating proxy.",
   unrecognized:
     "Something answered that port with bytes that are not an SSH " +
-    "identification string -- most likely something other than an SSH server.",
+    "identification string - most likely something other than an SSH server.",
 };
 
 /**
@@ -1015,7 +1015,7 @@ export function probePeerAnswerCopy(answer: ProbePeerAnswer): ProbeErrorCopy {
         "The server accepted the connection and then closed it without " +
         "identifying itself. An SSH server sends its identification string " +
         "first, so the connection was most likely stopped in front of the " +
-        "server -- a firewall or gateway that does not allow this machine's " +
+        "server - a firewall or gateway that does not allow this machine's " +
         "address is the usual cause. Ask whoever administers the server " +
         "whether this machine may reach the SFTP port.",
     };

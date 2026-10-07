@@ -26,7 +26,7 @@ export const DIAGNOSTIC_LOG_UNANSWERED_LEAD =
 export const DIAGNOSTIC_LOG_UNANSWERED_NOTICE =
   "This page asked several times whether this run recorded a diagnostic log " +
   "and got no answer back, so it has stopped asking. If this was a diagnostic " +
-  "run, its log may still be on the console -- reload this page to ask again.";
+  "run, its log may still be on the console - reload this page to ask again.";
 
 /**
  * The diagnostic log a run captured, offered on every console server-job seat

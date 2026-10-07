@@ -60,7 +60,7 @@ const MODE_CHOICES: ReadonlyArray<{
   label: string;
   disabled?: boolean;
 }> = [
-  { value: "none", label: "No receipt -- the ordinary unsigned record only" },
+  { value: "none", label: "No receipt - the ordinary unsigned record only" },
   {
     value: "session-derived",
     label: "Session-derived check (not built yet)",
@@ -95,9 +95,9 @@ function fingerprintFailureMessage(
         "There is no signing identity at the file you picked. The console " +
         "reads that location and creates no key there, except a file removed " +
         "between this check and the read that follows it. So create the " +
-        "identity yourself at the command line -- " +
+        "identity yourself at the command line - " +
         fingerprintCommand(true, ["--identity", "NAME"]) +
-        ", with NAME your name and FILE the file you picked -- then show the " +
+        ", with NAME your name and FILE the file you picked - then show the " +
         "fingerprint again. Or pick the file that already holds your " +
         "identity."
       );
@@ -111,7 +111,7 @@ function fingerprintFailureMessage(
             "may be theirs, so read it before changing your own setup. An " +
             "alcove.yaml your partner wrote cannot move where your key is read " +
             "from or change whose name it binds, because both are passed " +
-            "explicitly here. Fix what you find and try again -- running " +
+            "explicitly here. Fix what you find and try again - running " +
             fingerprintCommand(true) +
             ", with FILE the file you picked, prints the reason."
         : "Your signing identity could not be created or read in your " +
@@ -122,7 +122,7 @@ function fingerprintFailureMessage(
             "your own setup. An alcove.yaml your partner wrote cannot move " +
             "where your key is written or change whose name it binds, because " +
             "both are passed explicitly here. Fix what you find and try again " +
-            `-- running ${fingerprintCommand(false)} prints the reason.`;
+            `- running ${fingerprintCommand(false)} prints the reason.`;
     case "syncing":
       return (
         "A shared-folder exchange is still open on this console, and it syncs " +
@@ -398,7 +398,7 @@ export function ReceiptsCard({
                             : "your secrets folder"
                         })`
                       : ""}
-                    . Send this fingerprint over a channel you trust -- not the
+                    . Send this fingerprint over a channel you trust - not the
                     same message as the invitation.
                     {exportedName !== undefined
                       ? ` Your public certificate is in ${exportedName}.`

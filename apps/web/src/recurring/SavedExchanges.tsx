@@ -326,7 +326,7 @@ function StorageUnavailable() {
         <div className={styles.wordmark}>Alcove</div>
         <h1>Recurring exchanges</h1>
         <p className={styles.sub}>
-          This browser cannot store recurring exchanges -- private browsing may
+          This browser cannot store recurring exchanges - private browsing may
           be blocking storage, or this browser does not support it. You can
           still run a one-off exchange.
         </p>
@@ -498,11 +498,10 @@ export function DeleteExchangeButton({
           <>
             <p>
               Delete {named}? This removes everything this browser holds for it
-              -- the terms, the stored secret, its run history, its accounting
-              of disclosures, and any results a scheduled run left here for you
-              to download -- in one step. It cannot be undone here. Download
-              those results and export the accounting first if you need to keep
-              them.
+              - the terms, the stored secret, its run history, its accounting of
+              disclosures, and any results a scheduled run left here for you to
+              download - in one step. It cannot be undone here. Download those
+              results and export the accounting first if you need to keep them.
             </p>
             <p className={`${styles.small} ${styles.sub}`}>
               This only removes your copy: your partner is not notified, and
@@ -512,7 +511,7 @@ export function DeleteExchangeButton({
         )}
         {backedUp && (
           <p className={`${styles.small} ${styles.sub}`}>
-            A backup file you exported stays in your custody -- delete it
+            A backup file you exported stays in your custody - delete it
             yourself if you no longer want it. It remains a credential until the
             partnership rotates past it.
           </p>
@@ -521,7 +520,7 @@ export function DeleteExchangeButton({
           <p className={`${styles.small} ${styles.sub}`}>
             The alcove.yaml and .alcove.key you saved still run this exchange.
             Deleting it here neither retires them nor stops the runs you
-            scheduled -- remove the scheduled command and delete those two files
+            scheduled - remove the scheduled command and delete those two files
             on that machine to end it.
           </p>
         )}
@@ -600,7 +599,7 @@ function SavedExchangesFailed({ reload }: { reload: () => void }) {
     <>
       <p className={styles.sub}>
         Your recurring exchanges could not be read from this browser. One or
-        more stored records is unreadable -- likely from an old app version.
+        more stored records is unreadable - likely from an old app version.
         Remove the record below to recover the rest, or import a backup file.
       </p>
       <RecoveryListing reload={reload} />
