@@ -88,10 +88,7 @@ import {
   payloadReceiveFill,
   termsResolvingChangedPayloadReceive,
 } from "./config/recurringTerms.js";
-import {
-  buildExchangeRecord,
-  computeTermsHash,
-} from "./records/exchangeRecord.js";
+import { computeTermsHash } from "./records/exchangeRecord.js";
 import {
   buildReceiptContent,
   deriveReceiptBinder,
@@ -123,7 +120,6 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { ExchangeSpec } from "./config/exchangeSpec.js";
 import type { PartnerPayload } from "./payloadExchange.js";
 import type { BuiltExchangeRecord } from "./records/exchangeRecord.js";
-import { observedPartnerCertificateMismatch } from "./records/signingIdentity.js";
 import type { SigningIdentity } from "./records/signingIdentity.js";
 import type { SigningConfig } from "./config/signing.js";
 import {
@@ -139,6 +135,7 @@ import {
   assertPresentedDeduplicateOrAbort,
   resolvePayloadDisclosureOrAbort,
 } from "./exchange/termsRefusals.js";
+import { buildOwedExchangeRecord } from "./exchange/owedRecord.js";
 import type {
   DualSignedRecord,
   ReceiptContent,
@@ -2102,65 +2099,22 @@ export async function runExchange(
     postDisclosureFailure = { error };
   }
 
-  // Build the record once the run's outcome is decided, so it can state it. It
-  // is a secondary audit artifact, so a failure to build it (e.g. an unexpected
-  // non-canonical value) must not fail a run that otherwise succeeded or
-  // discard its result: catch, warn, and continue without a record. The caller
-  // treats the audit field as optional.
-  let audit: BuiltExchangeRecord | undefined;
-  // The completed path's report of the loss the terminated path marks on its
-  // failure below (carryingExchangeRecord).
-  let recordOwedButUnbuilt = false;
-  try {
-    audit = await buildExchangeRecord({
-      localTerms: linkageTerms,
-      partnerTerms,
-      outcome:
-        postDisclosureFailure === undefined
-          ? "completed"
-          : "receipt-swap-terminated",
-      // Read off the terminating error's own condition, never its message: a
-      // failure that says nothing about the certificate the partner presented
-      // -- a transport drop, a refused received payload, a receipt signature
-      // that did not verify over a certificate that matched the pin, a run
-      // with no pin on file -- records that none was observed.
-      certificateMismatchObserved:
-        postDisclosureFailure !== undefined &&
-        observedPartnerCertificateMismatch(postDisclosureFailure.error),
-      recordsExposed: rowCount,
-      contributedLinkageFields: [...dataset.fieldNames],
-      resultSize: bothExpectOutput ? attestedResultSize : undefined,
-      // Self-facing audit pointer from this party's local config; undefined when
-      // unconfigured, in which case the record omits it.
-      retentionDisposition,
-      associationTable: heldResult ? associationTable : undefined,
-      localPayloadSent: toCommittedPayload(localPayload),
-      // A count-only run receives no payload by its terms, so a frame a
-      // non-conforming partner sent before the refusal is not committed as one
-      // (docs/spec/EXCHANGE_RECORD.md, Count-only records).
-      partnerPayloadReceived: toCommittedPayload(
-        countOnly ? { columns: [], rowIndices: [], rows: [] } : partnerPayload,
-      ),
-      createdAt: new Date().toISOString(),
-      // The run's shared binder, so this record pairs with the receipt the step
-      // above produces; omitted on every path that derived none.
-      receiptBinder,
-    });
-  } catch (err) {
-    recordOwedButUnbuilt = true;
-    // Two warnings rather than one conditional tail: on a terminated run there is
-    // no result to be unaffected -- the throw below discards it -- so the
-    // completed path's reassurance would be a false claim there.
-    getLogger("exchange").warn(
-      postDisclosureFailure === undefined
-        ? "the exchange disclosed but the self-attested record could not be " +
-            `built (${sanitizeErrorForDisplay(err)}); the result above is ` +
-            "unaffected"
-        : "the exchange disclosed and then failed, and the self-attested " +
-            `record of that disclosure could not be built (${sanitizeErrorForDisplay(err)}); ` +
-            "the run's own failure is reported separately",
-    );
-  }
+  const { audit, recordOwedButUnbuilt } = await buildOwedExchangeRecord({
+    localTerms: linkageTerms,
+    partnerTerms,
+    postDisclosureFailure,
+    rowCount,
+    dataset,
+    bothExpectOutput,
+    attestedResultSize,
+    retentionDisposition,
+    heldResult,
+    associationTable,
+    localPayload,
+    countOnly,
+    partnerPayload,
+    receiptBinder,
+  });
 
   // The failure terminates the run, carrying the record of the disclosure that
   // already occurred so the caller can still persist it.
