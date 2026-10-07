@@ -179,6 +179,37 @@ test("diffKeptLinkageTerms warns on a soft mismatch without a conflict", () => {
   expect(log.lines.length).toBeGreaterThan(0);
 });
 
+function withPayloadNote(name: string, description: string): LinkageTerms {
+  return {
+    ...sampleTerms("Acceptor Org"),
+    payload: { send: [{ name, description }] },
+  };
+}
+
+test("diffKeptLinkageTerms keeps a configuration a re-invite differs from only in a payload description", () => {
+  const log = recordingLog();
+  const conflicts = diffKeptLinkageTerms({
+    configPath,
+    existing: keptSpec(withPayloadNote("note", "Case notes")),
+    accepted: withPayloadNote("note", "Case notes, free text"),
+    citationDriftAlternative: "decline-to-reuse",
+    log,
+  });
+  expect(conflicts).toEqual([]);
+  expect(log.lines).toEqual([]);
+});
+
+test("diffKeptLinkageTerms refuses a configuration a re-invite differs from in a linkage term", () => {
+  const conflicts = diffKeptLinkageTerms({
+    configPath,
+    existing: keptSpec(withPayloadNote("note", "Case notes")),
+    accepted: withPayloadNote("case_note", "Case notes"),
+    citationDriftAlternative: "decline-to-reuse",
+    log: recordingLog(),
+  });
+  expect(conflicts.map((c) => c.field)).toEqual(["payload"]);
+});
+
 // --- persistExpectedPartnerDeduplicate on a kept configuration --------------
 
 test("persistExpectedPartnerDeduplicate rewrites a camelCase record under one spelling", () => {

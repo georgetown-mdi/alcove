@@ -60,6 +60,9 @@ export function termsUpdateFor(
 /** The `kind` a terms update's body states. */
 const TERMS_UPDATE_KIND = "terms-update";
 
+/** The format `version` a terms update's body states. */
+const TERMS_UPDATE_VERSION = "1";
+
 /**
  * The HKDF info strings a terms update derives from the shared secret, one
  * per use; a family in the domain-separation label space
@@ -89,7 +92,7 @@ export const MAX_ENCODED_TERMS_UPDATE_LENGTH = MAX_ENCODED_INVITATION_LENGTH;
 
 const TermsUpdateBodySchema = z.strictObject({
   kind: z.literal(TERMS_UPDATE_KIND),
-  version: z.literal("1"),
+  version: z.literal(TERMS_UPDATE_VERSION),
   partnership: z.string().regex(/^[A-Za-z0-9_-]{22}$/),
   linkageTerms: InvitationLinkageTermsSchema,
 });
@@ -179,7 +182,7 @@ export async function encodeTermsUpdate(
 ): Promise<string> {
   const body = TermsUpdateBodySchema.parse({
     kind: TERMS_UPDATE_KIND,
-    version: "1",
+    version: TERMS_UPDATE_VERSION,
     partnership: await termsUpdatePartnership(sharedSecret),
     linkageTerms: update.linkageTerms,
   });
@@ -216,6 +219,22 @@ function statedPartnership(body: Uint8Array<ArrayBuffer>): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Whether an authenticated body states the terms update `kind` under a
+ * format `version` above the one this build reads. Called only after the MAC
+ * verifies, so only a holder of the shared secret can have made the claim.
+ */
+function statesNewerVersion(json: unknown): boolean {
+  if (typeof json !== "object" || json === null) return false;
+  const { kind, version } = json as Record<string, unknown>;
+  return (
+    kind === TERMS_UPDATE_KIND &&
+    typeof version === "string" &&
+    /^[1-9][0-9]{0,8}$/.test(version) &&
+    Number(version) > Number(TERMS_UPDATE_VERSION)
+  );
 }
 
 /**
@@ -290,9 +309,14 @@ export async function decodeTermsUpdate(
   try {
     parsed = TermsUpdateBodySchema.parse(json);
   } catch (err) {
-    if (err instanceof z.ZodError)
-      throw refusedFormat("its content does not match the terms update format");
-    throw err;
+    if (!(err instanceof z.ZodError)) throw err;
+    if (statesNewerVersion(json))
+      throw new TermsUpdateRefusedError(
+        "format",
+        "this terms update was made by a newer version of Alcove than this " +
+          "one; update Alcove, then try the terms update again",
+      );
+    throw refusedFormat("its content does not match the terms update format");
   }
   if (parsed.partnership !== partnership)
     throw new TermsUpdateRefusedError(

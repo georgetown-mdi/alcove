@@ -444,6 +444,20 @@ function withoutColumnDescriptions(
 }
 
 /**
+ * `payload` in the form a terms change is judged on: each column's
+ * `description` dropped, since editing one is not a terms change. Column
+ * order and an unstated direction are kept as they are.
+ */
+export function payloadWithoutColumnDescriptions(payload: Payload): Payload {
+  const comparable: Payload = {};
+  const send = withoutColumnDescriptions(payload.send);
+  const receive = withoutColumnDescriptions(payload.receive);
+  if (send !== undefined) comparable.send = send;
+  if (receive !== undefined) comparable.receive = receive;
+  return comparable;
+}
+
+/**
  * The fields of {@link partnerBoundTerms} on which `before` and `after`
  * differ, a payload column's `description` aside, each compared by canonical
  * form. A field one side leaves unstated differs from a stated one, and a
@@ -455,14 +469,8 @@ export function changedPartnerBoundTerms(
 ): Array<keyof PartnerBoundTerms> {
   const comparable = (terms: LinkageTerms): Record<string, unknown> => {
     const bound: Record<string, unknown> = { ...partnerBoundTerms(terms) };
-    if (terms.payload !== undefined) {
-      const payload: Payload = {};
-      const send = withoutColumnDescriptions(terms.payload.send);
-      const receive = withoutColumnDescriptions(terms.payload.receive);
-      if (send !== undefined) payload.send = send;
-      if (receive !== undefined) payload.receive = receive;
-      bound["payload"] = payload;
-    }
+    if (terms.payload !== undefined)
+      bound["payload"] = payloadWithoutColumnDescriptions(terms.payload);
     return bound;
   };
   const a = comparable(before);

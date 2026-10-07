@@ -14,6 +14,7 @@ import {
   keepFirstPartyLineBreaks,
   MAX_NESTING_DEPTH,
   NestingDepthExceededError,
+  payloadWithoutColumnDescriptions,
   quoteTermsValue,
   quoteTermsValueList,
   redactPrivateKeyMaterial,
@@ -482,10 +483,11 @@ function renderRuleSetCitationConflict(
  * a schema-constrained scalar), matching the predicate `validateCompatibility`
  * applies to the same values -- so a pair differing only in Unicode
  * normalization is a mismatch here too, reported at accept rather than
- * aborting mid-exchange later. On the payload this compare is stricter than
- * core (a column's `description` takes part here; core cross-checks only
- * names), an asymmetry that only refuses a reuse the operator can still make
- * onto a fresh config.
+ * aborting mid-exchange later. The payload is compared as
+ * {@link payloadWithoutColumnDescriptions} gives it, so a re-invite that only
+ * rewords a column description keeps the config; column order still counts
+ * here though core cross-checks names only, which only refuses a reuse the
+ * operator can still make onto a fresh config.
  */
 export function diffLinkageTerms(
   existing: LinkageTerms,
@@ -629,10 +631,12 @@ export function diffLinkageTerms(
     p === undefined
       ? RECONCILE_UNSET
       : compatibilityMessage`send=${renderNames(p.send ?? [])} receive=${renderNames(p.receive ?? [])}`;
+  const comparablePayload = (p: LinkageTerms["payload"]): unknown =>
+    p === undefined ? null : payloadWithoutColumnDescriptions(p);
   if (
     canonicalDiffers(
-      existing.payload ?? null,
-      incoming.payload ?? null,
+      comparablePayload(existing.payload),
+      comparablePayload(incoming.payload),
       "payload",
     )
   ) {
