@@ -77,8 +77,35 @@ export const PASTE_INVITATION_FIELD_ID = "accept-invitation";
 export interface InvitationLocation {
   /** Deep-link origin, e.g. `https://example.org:3000` (no trailing slash). */
   origin: string;
-  /** Where this app's inviter registers (`ownSignalingAddress`). */
-  signaling: SignalingAddress;
+  /** Where this app's inviter registers (`ownSignalingAddress`), or undefined
+   * on a build whose server coordinates no browser connections (the console),
+   * which then mints no webrtc invitation ({@link invitationSignalingAddress}). */
+  signaling: SignalingAddress | undefined;
+}
+
+/** A webrtc mint refused because the build names no signaling address. Its
+ * message is fixed operator-facing copy. */
+export class NoSignalingAddressError extends Error {
+  constructor() {
+    super(
+      "This console does not make browser-to-browser invitations: it coordinates no browser connections, so your partner could not reach you. Run the exchange over SFTP or a shared folder, or create the invitation in the Alcove web app.",
+    );
+    this.name = "NoSignalingAddressError";
+  }
+}
+
+/**
+ * The signaling address a webrtc invitation from `loc` names.
+ *
+ * @throws {NoSignalingAddressError} when `loc` has none, so a build without
+ *                                   one never mints an invitation naming an
+ *                                   address a partner cannot reach.
+ */
+export function invitationSignalingAddress(
+  loc: InvitationLocation,
+): SignalingAddress {
+  if (loc.signaling === undefined) throw new NoSignalingAddressError();
+  return loc.signaling;
 }
 
 /**
@@ -284,7 +311,7 @@ export function invitationWebrtcEndpoint(
   loc: InvitationLocation,
   ownRelay: RelayUrls | undefined,
 ): WebRTCEndpoint {
-  const endpoint = webrtcEndpointFromAddress(loc.signaling);
+  const endpoint = webrtcEndpointFromAddress(invitationSignalingAddress(loc));
   const relay = relayLocatorFromOwnRelay(ownRelay);
   return relay !== undefined ? { ...endpoint, relay } : endpoint;
 }

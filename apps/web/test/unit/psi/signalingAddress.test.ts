@@ -6,10 +6,14 @@ import { generateSharedSecret } from "@alcove/core";
 
 import { SIGNALING_SCHEME_MISMATCH } from "@utils/signalingScheme";
 
+import {
+  NoSignalingAddressError,
+  invitationSignalingAddress,
+  webrtcEndpointFromAddress,
+} from "../../../src/psi/invitation.js";
 import { invitationLocation } from "../../../src/psi/invitationLocation.js";
 import { listenAsInviter } from "../../../src/psi/transport/rendezvous.js";
 import { resolveSignalingAddress } from "../../../src/psi/transport/signalingAddress.js";
-import { webrtcEndpointFromAddress } from "../../../src/psi/invitation.js";
 
 import type Peer from "peerjs";
 import type { PeerOptions } from "peerjs";
@@ -17,12 +21,16 @@ import type { SignalingServerSetting } from "@utils/clientConfig";
 
 const setting = vi.hoisted(() => ({
   current: undefined as SignalingServerSetting | undefined,
+  consoleBuild: false,
 }));
 
 vi.mock("@utils/clientConfig", async (importOriginal) =>
   (await import("../../utils/clientConfigMock")).clientConfigMock(
     importOriginal,
-    { signalingServerSetting: () => setting.current },
+    {
+      signalingServerSetting: () => setting.current,
+      isConsoleBuild: () => setting.consoleBuild,
+    },
   ),
 );
 
@@ -129,6 +137,7 @@ describe("the inviter's registration and its invitation", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     setting.current = undefined;
+    setting.consoleBuild = false;
   });
 
   async function registeredOptions(): Promise<PeerOptions> {
@@ -163,7 +172,9 @@ describe("the inviter's registration and its invitation", () => {
     ],
   ])("name the same server under %s", async (_label, configured) => {
     setting.current = configured;
-    const endpoint = webrtcEndpointFromAddress(invitationLocation().signaling);
+    const endpoint = webrtcEndpointFromAddress(
+      invitationSignalingAddress(invitationLocation()),
+    );
     const options = await registeredOptions();
     expect(options).toMatchObject({
       host: endpoint.host,
@@ -181,7 +192,9 @@ describe("the inviter's registration and its invitation", () => {
       path: "/api/",
     };
     expect(
-      webrtcEndpointFromAddress(invitationLocation().signaling),
+      webrtcEndpointFromAddress(
+        invitationSignalingAddress(invitationLocation()),
+      ),
     ).toStrictEqual({
       channel: "webrtc",
       host: "signaling.example.org",
@@ -192,7 +205,9 @@ describe("the inviter's registration and its invitation", () => {
 
   test("an invitation omits the default port when no server is set", () => {
     expect(
-      webrtcEndpointFromAddress(invitationLocation().signaling),
+      webrtcEndpointFromAddress(
+        invitationSignalingAddress(invitationLocation()),
+      ),
     ).toStrictEqual({
       channel: "webrtc",
       host: "app.example.org",
@@ -206,8 +221,29 @@ describe("the inviter's registration and its invitation", () => {
       host: "signaling.example.org",
       path: "/api/",
     };
-    expect(webrtcEndpointFromAddress(invitationLocation().signaling).host).toBe(
-      "signaling.example.org",
-    );
+    expect(
+      webrtcEndpointFromAddress(
+        invitationSignalingAddress(invitationLocation()),
+      ).host,
+    ).toBe("signaling.example.org");
   });
+
+  test.each<[string, SignalingServerSetting | undefined]>([
+    ["no setting", undefined],
+    [
+      "a configured server",
+      { secure: true, host: "signaling.example.org", path: "/api/" },
+    ],
+  ])(
+    "a console names no signaling address under %s, so it mints no webrtc invitation",
+    (_label, configured) => {
+      setting.current = configured;
+      setting.consoleBuild = true;
+      const location = invitationLocation();
+      expect(location.signaling).toBeUndefined();
+      expect(() => invitationSignalingAddress(location)).toThrow(
+        NoSignalingAddressError,
+      );
+    },
+  );
 });
