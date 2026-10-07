@@ -15,10 +15,8 @@
 //   `timeout <N>` or `gtimeout <N>`, N not zero, and hold no later `;`, `&&`,
 //   `||`, lone `&` or newline outside quotes. Any non-zero N is accepted.
 //
-// The background rule rests on the harness resuming a spawned agent when its
-// background command ends; the probe is block-sleep-poll.probe.md beside this
-// file. Last run 2026-09-25 on Claude Code 2.1.282 (macOS host); a `Workflow`
-// `agent()` call was not probed.
+// Probe: block-sleep-poll.probe.md beside this file, last run 2026-09-25 on
+// Claude Code 2.1.282 (macOS host); a `Workflow` `agent()` call was not probed.
 //
 // Not a shell parser (see lib/shell.mjs): a loop in a variable, a function or
 // an `eval` string is not seen. Exit 0 allows the call; exit 2 blocks it and

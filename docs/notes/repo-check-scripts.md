@@ -653,7 +653,7 @@ The property and its failure modes are in [What zero-setup rests on](default-lin
 Held by review, it is the shape that goes stale, because the edit that breaks it is one nobody would recognize as touching zero-setup at all.
 Holding only the default set would leave a later set covered by nothing until someone remembered.
 
-### Why rule B
+### Why a field's name must equal its type
 
 The satisfiability filter compares an element's `field` against the semantic types the input file supplies,
 so a built-in field whose name is not its type names a type no file can offer,
@@ -664,5 +664,5 @@ and every key referencing it is dropped from a zero-setup party's terms whatever
 - Whether a declared field is one a party really always holds.
   Widening the field set is not silent, since its content is pinned by [the version bump check](#built-in-rule-set-version-bump) and a widening takes a bump there,
   but whether the wider set is still guaranteed is a judgment no check makes.
-- The terms builder itself: that the filter binds an element by semantic type, which is what makes rule B matter, is covered by the core suite.
+- The terms builder itself: that the filter binds an element by semantic type, which is what makes the name-equals-type rule matter, is covered by the core suite.
 - A file that supplies a column of the right type but no usable value: the property is that the keys stay inside the guaranteed fields, not that a given file matches on them.

@@ -448,7 +448,7 @@ which keeps running after the session that started it has returned.
 
 Bounding is judged on the loop's shape, not on what it waits for:
 an unbounded wait on `ps aux | grep "[e]slint"` matched an editor extension's command line for hours after the lint it watched had finished.
-A sleep under five seconds is a settle, not a poll.
+A sleep under `MINIMUM_BLOCKED_SECONDS` is a settle, not a poll.
 
 ### Why the background rule takes any bound
 
