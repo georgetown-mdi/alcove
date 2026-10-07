@@ -2555,7 +2555,7 @@ describe("reconciling a pre-existing config", () => {
     }
   });
 
-  test.skipIf(process.getuid?.() === 0)(
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "validateAccept: a config file without read permission is reported as unreadable",
     async () => {
       const options = testOptions();
