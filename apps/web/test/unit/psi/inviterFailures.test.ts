@@ -533,6 +533,8 @@ describe("failureFor", () => {
     );
     expect(failure.message).toContain("Edit connection");
     expect(failure.message).toContain(". or ..");
+    expect(failure.message).toContain("quick exchange");
+    expect(failure.message).not.toContain("blank");
     expect(failure.message).not.toContain("status 400");
   });
 

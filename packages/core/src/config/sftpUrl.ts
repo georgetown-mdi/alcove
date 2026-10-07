@@ -252,7 +252,8 @@ function encodeUrlPathSegments(segments: ReadonlyArray<string>): string {
   return segments.map((segment) => encodeURIComponent(segment)).join("/");
 }
 
-function urlPathForRemoteDirectory(path: string): string {
+/** @internal */
+export function urlPathForRemoteDirectory(path: string): string {
   if (!path.startsWith("/"))
     return `/${LOGIN_DIRECTORY_SEGMENT}/${encodeUrlPathSegments(path.split("/"))}`;
   const [, first, ...rest] = path.split("/");

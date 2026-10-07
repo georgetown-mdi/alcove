@@ -9,6 +9,7 @@ import {
   parseSftpUrl,
   sftpDialHost,
   sftpUrlDirectoryFault,
+  urlPathForRemoteDirectory,
 } from "../../src/config/sftpUrl";
 import { joinFileSyncPath } from "../../src/connection/fileSyncPath";
 import { UsageError } from "../../src/errors";
@@ -256,12 +257,13 @@ describe("formatSftpUrl", () => {
     ["//", undefined],
     ["/~", undefined],
   ] as const)(
-    "names the fault of %j exactly when the URL would change it",
+    "names a fault for %j exactly when the URL parser changes the directory",
     (path, fault) => {
       expect(sftpUrlDirectoryFault(path)).toBe(fault);
-      const write = () => formatSftpUrl({ host: "h", path });
-      if (fault === undefined) expect(write).not.toThrow();
-      else expect(write).toThrow(/reads back/);
+      const url = new URL("sftp://h");
+      if (path !== "") url.pathname = urlPathForRemoteDirectory(path);
+      const readBack = parseSftpUrl(url).path ?? "";
+      expect(fault !== undefined).toBe(readBack !== path);
     },
   );
 

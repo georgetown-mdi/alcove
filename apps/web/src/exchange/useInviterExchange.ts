@@ -341,11 +341,10 @@ function failureContentFor(
       category: "config",
       title: "The saved SFTP connection's remote directory cannot be used",
       message:
-        "The console did not start this exchange. A direct exchange cannot " +
-        "use a remote directory that is / or has a . or .. part. Start " +
-        "over, choose Edit connection on the server step, and enter the " +
-        "directory without . or .. (like /exchange/in), or leave it blank " +
-        "to use the account's home directory.",
+        "The console did not start this quick exchange because its remote " +
+        "directory must be a directory under / with no . or .. parts. Start " +
+        "over, choose Edit connection on the server step, and enter a " +
+        "directory like /exchange/in.",
     };
   // An sftp run refused because the saved connection's credential file is one
   // of the console's own. Above the mounted-file branch: the input is not at
