@@ -22,9 +22,10 @@ import { stressMemory } from "./stressMemory";
 // setup size (2^24 by default, the most the decode bound admits) and
 // PSI_STRESS_MATCH_RESPONSE_N the response size; each slice decrypts the
 // whole response it meets, so a larger response multiplies the run time. At
-// the defaults one run takes tens of minutes, most of it building the
-// starter's setup and passing each slice through the engine, so the probe's
-// limit is PSI_STRESS_MATCH_TIMEOUT_MS, an hour by default.
+// the defaults one run took 16 to 22 minutes on a hosted 4-vCPU runner, most
+// of it building the starter's setup and passing each slice through the
+// engine, so the probe's limit is PSI_STRESS_MATCH_TIMEOUT_MS, an hour by
+// default.
 
 const PROBE = fileURLToPath(
   new URL("./wasmMatchSlices.probe.ts", import.meta.url),
