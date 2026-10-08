@@ -36,7 +36,7 @@ import type {
   ServerJobZeroSetupDriverConfig,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import type { ObjectUrls, RunOutputs } from "@psi/runOutputs";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 /** The inline CSV content the reused config holds; the driver maps an `inline`
  * input source to the intent's `inputCsv` arm. */

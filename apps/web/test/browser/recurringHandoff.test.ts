@@ -13,7 +13,7 @@ import { RecurringHandoff } from "@recurring/RecurringHandoff";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
-import type { JobHandoff } from "@jobs/handoff";
+import type { JobHandoff } from "@jobContract/jobHandoff";
 
 const JOB_ID = "job-9";
 

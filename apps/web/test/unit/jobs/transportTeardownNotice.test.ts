@@ -29,7 +29,7 @@ import type {
   ServerJobExchangeDriverConfig,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // A transport close that overran its ceiling leaves this party's protocol files
 // in the shared exchange directory, and the CLI reports that on its operator log

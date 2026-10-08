@@ -24,7 +24,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RunFailure } from "@exchange/useInviterExchange";
 
 // The stderr tail a synthesized terminal names is the child's own bytes, so it

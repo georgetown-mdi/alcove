@@ -1,7 +1,7 @@
 import { SFTP_URL_DIRECTORY_REFUSAL } from "@jobContract/jobCreateRefusal";
 
 import type { AlertContent } from "@components/csvIntake";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
 /**

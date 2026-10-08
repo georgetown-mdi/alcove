@@ -11,7 +11,7 @@ import { SftpCredentialWarnings } from "./SftpCredentialWarnings";
 import { sftpConnectionLabel } from "./sftpConnectionChoice";
 import { sftpFormFromLocator } from "./sftpConnectionForm";
 
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 import type { SftpEndpointLocator } from "./sftpConnectionForm";
 
 /**

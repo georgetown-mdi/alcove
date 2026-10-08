@@ -81,7 +81,7 @@ import type { OutputDirection } from "@psi/authoring/advancedInvite";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
 import type { SftpConnectionFormValues } from "@console/sftpConnectionForm";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 const DIRECTION_CHOICES: ReadonlyArray<{
   value: OutputDirection;

@@ -6,7 +6,7 @@ import {
   readJsonOrNull,
 } from "./jobApiBody";
 
-import type { DisclosedExchangeDocument } from "@jobs/configLoad";
+import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
 import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 /**

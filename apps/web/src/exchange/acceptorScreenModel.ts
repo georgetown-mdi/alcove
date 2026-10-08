@@ -39,7 +39,7 @@ import type { ConnectionTuningDraft } from "@console/connectionTuningModel";
 import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 
 import type { AlertContent } from "@components/csvIntake";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /**
  * The acceptor console's whole state and the transitions that move it: the decoded

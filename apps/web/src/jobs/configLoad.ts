@@ -67,16 +67,18 @@ import { composeConfigDocument, composeSftpConfigSpec } from "./intentConfig";
 import { resolveWorkdirFile } from "./workdir";
 
 import type {
-  ExchangeSpec,
-  FileSyncOptions,
-  SigningConfig,
-} from "@alcove/core";
+  DisclosedExchangeDocument,
+  DisclosedFileSyncOptions,
+  DisclosedSftpServer,
+  OpenedChannel,
+} from "@jobContract/disclosedConfiguration";
+import type { ExchangeSpec, FileSyncOptions } from "@alcove/core";
 import type {
   JobExchangeIntentBase,
   JobFiledropExchangeIntent,
   JobSftpExchangeIntent,
 } from "@jobContract/intentSchemas";
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 import type { MountedKeyFileFault } from "./mountedKeyFile";
 
 /**
@@ -115,9 +117,6 @@ const OVER_LARGE_CONFIGURATION_MESSAGE =
   "exchange configuration. Check that it is the file Alcove runs " +
   "under, then open it again.";
 
-/** A channel the console opens a configuration on. */
-type OpenedChannel = "sftp" | "filedrop" | "webrtc";
-
 /** The channels the console opens a configuration on: an allowlist, so a channel
  * a later schema version adds is refused until it is named here. Only the job
  * channels ({@link isJobChannel}) are conducted; a configuration on another is
@@ -127,76 +126,6 @@ const OPENED_CHANNELS: ReadonlySet<string> = new Set<OpenedChannel>([
   "filedrop",
   "webrtc",
 ]);
-
-/**
- * The SFTP connection as the response states it: the fields the console's
- * connection form edits, and a `credentialMethod` naming WHICH credential the
- * file states rather than the credential itself. `username` and
- * `hostKeyFingerprint` are here because the form edits both; the credential,
- * its passphrase, and every `@path` among them are not, and no value of theirs
- * leaves the server.
- */
-export interface DisclosedSftpServer {
-  host: string;
-  port?: number;
-  path?: string;
-  inboundPath?: string;
-  outboundPath?: string;
-  username?: string;
-  hostKeyFingerprint?: string | Array<string>;
-  keyboardInteractive?: boolean;
-  credentialMethod?: "password" | "private_key";
-}
-
-/** The `signing` settings the receipts card edits. The identity file is a
- * path, so it is not disclosed: the response names it where the file states it
- * ({@link signingPathSettings}). */
-export interface DisclosedSigning {
-  mode: SigningConfig["mode"];
-  partnerFingerprint?: string;
-}
-
-/**
- * The file-sync tuning fields the authoring forms edit, projected from core's
- * {@link FileSyncOptions} by name so a field a later schema version adds
- * reaches no browser until this states it.
- */
-export interface DisclosedFileSyncOptions {
-  peerTimeoutMs?: number;
-  inactivityTimeoutMs?: number;
-  serverConnectTimeoutMs?: number;
-  maxReconnectAttempts?: number;
-  pollIntervalMs?: number;
-  timestampInFilename?: boolean;
-  locklessRendezvous?: boolean;
-  peerId?: string;
-  retainFiles?: boolean;
-  unexpectedFiles?: "error" | "warn" | "ignore";
-  connectionPerPoll?: boolean;
-}
-
-/**
- * The document as the browser receives it: the authoring forms' own fields and
- * nothing else. Not an {@link ExchangeSpec} -- it is a projection, so a field
- * added to the shared schema reaches no browser until this states it.
- */
-export interface DisclosedExchangeDocument {
-  channel: OpenedChannel;
-  server?: DisclosedSftpServer;
-  options?: DisclosedFileSyncOptions;
-  linkageTerms: ExchangeSpec["linkageTerms"];
-  metadata?: ExchangeSpec["metadata"];
-  standardization?: ExchangeSpec["standardization"];
-  expectedPartnerDeduplicate?: boolean;
-  includeOwnColumns?: ExchangeSpec["includeOwnColumns"];
-  csvDelimiter?: string;
-  retentionDisposition?: string;
-  signing?: DisclosedSigning;
-  /** The file's `authentication.token_max_age_days`, the one setting of that
-   * block a configuration states; the shared secret and its expiry are refused
-   * at the load ({@link assertNoStatedSecret}). */
-  tokenMaxAgeDays?: number;
-}
 
 /** The body `GET /api/jobs/config` answers with. `present: false` is a console
  * whose mount holds no configuration, which is the ordinary first run rather

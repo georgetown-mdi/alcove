@@ -43,7 +43,7 @@ import {
 import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobContract/intentSchemas";
 import { buildImageReference } from "@psi/dockerRunCommand";
 
-import type { DisclosedExchangeDocument } from "@jobs/configLoad";
+import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
 import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
 

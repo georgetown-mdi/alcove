@@ -30,7 +30,7 @@ import { delayUntilAborted } from "@psi/delayUntilAborted";
 
 import type { ExchangeRecordOutcome } from "@alcove/core";
 import type { RecordDownloads } from "../exchangeLifecycle";
-import type { RecordUnavailableReason } from "@jobs/jobManager";
+import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
 
 /** The console endpoint the shareable record downloads from. The browser never
  * composes the file's path: the console resolves it inside the job's own

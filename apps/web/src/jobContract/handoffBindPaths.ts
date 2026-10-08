@@ -7,7 +7,7 @@
 
 import type { ExchangeSpec } from "@alcove/core";
 
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobSftpServerEntry } from "./sftpConnection";
 
 /** A host path the scheduled container run mounts at the same path. */
 export interface HandoffBindPath {
@@ -22,7 +22,7 @@ export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 
 /**
  * The absolute paths `handoffSpec` names outside the folder the run starts in
- * (`JobHandoff.bindPaths` in `./handoff`): each sftp credential `@path`, each
+ * (`JobHandoff.bindPaths` in `./jobHandoff`): each sftp credential `@path`, each
  * filedrop folder, and the signing identity.
  */
 export function bindPathsIn(handoffSpec: ExchangeSpec): Array<HandoffBindPath> {

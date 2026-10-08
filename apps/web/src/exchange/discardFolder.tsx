@@ -6,7 +6,7 @@ import { folderHoldsKeepableFiles } from "@psi/jobClient/jobFolder";
 import { useJobFolder } from "./useJobFolder";
 
 import type { JobFolderAnswer } from "@psi/jobClient/jobFolder";
-import type { JobFolderContents } from "@jobs/jobFolder";
+import type { JobFolderContents } from "@jobContract/jobFolderContents";
 
 /** A run's folder as a discard confirm names it: the folder's name inside the
  * console's working directory, and which of the run's files it holds. */

@@ -42,7 +42,7 @@ import type {
   InvitationToken,
   LinkageTerms,
 } from "@alcove/core";
-import type { JobHandoff } from "@jobs/handoff";
+import type { JobHandoff } from "@jobContract/jobHandoff";
 
 // This suite exercises the CONSOLE acceptor seat: the accurate unsupported-shape
 // gate, the shared-folder confirmation, and the server-job run surface (the

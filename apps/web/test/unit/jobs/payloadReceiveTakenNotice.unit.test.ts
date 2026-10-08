@@ -37,7 +37,7 @@ import {
 
 import type { JobCreateIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // What the console tells an operator when a run it drove took the payload
 // columns its partner declares without asking. The CLI's own line names the

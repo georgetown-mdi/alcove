@@ -35,8 +35,8 @@ import {
 
 import type { ExchangeSpec } from "@alcove/core";
 import type { JobFiledropExchangeIntent } from "@jobContract/intentSchemas";
-import type { JobHandoff } from "@jobs/handoff";
-import type { JobSftpServerEntry } from "@jobs/sftpServer";
+import type { JobHandoff } from "@jobContract/jobHandoff";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
 /**
  * What a console run's hand-off makes of the configuration it was opened from:

@@ -24,7 +24,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RunFailure } from "@exchange/useInviterExchange";
 
 // A relayed internal fault and a transport stall both reach the seat as an

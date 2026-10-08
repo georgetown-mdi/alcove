@@ -20,7 +20,7 @@ import {
   runLines,
 } from "./scheduledRunCommand";
 
-import type { JobHandoff } from "@jobs/handoff";
+import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { ScheduledRunSource } from "@psi/dockerRunCommand";
 import type { ShownRunLines } from "./scheduledRunCommand";
 

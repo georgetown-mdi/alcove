@@ -31,7 +31,7 @@ import type { DirectTransport } from "./directExchangeModel";
 import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /**
  * The direct-exchange server step: choose the agreed transport, then author (or

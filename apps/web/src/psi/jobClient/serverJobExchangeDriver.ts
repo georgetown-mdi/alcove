@@ -65,10 +65,10 @@ import type {
 import type { JobCreateRefusalReason } from "@jobContract/jobCreateRefusal";
 import type { ReceiptsIntentFields } from "../receiptsModel";
 import type { RefusedColumnName } from "@psi/columnNames";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RunDiagnosticsIntentFields } from "../runDiagnosticsModel";
 import type { RunOutputs } from "@psi/runOutputs";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 const log = getLogger("serverJobExchangeDriver");
 

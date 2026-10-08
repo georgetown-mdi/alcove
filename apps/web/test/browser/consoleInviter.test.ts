@@ -46,7 +46,7 @@ import { captureDownloads } from "./captureDownloads";
 import { expectConsole } from "./expectedConsole";
 
 import type { CapturedDownload } from "./captureDownloads";
-import type { JobHandoff } from "@jobs/handoff";
+import type { JobHandoff } from "@jobContract/jobHandoff";
 
 // The exchange screens touch the router boundary.
 vi.mock("@tanstack/react-router", async () =>

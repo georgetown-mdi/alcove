@@ -30,7 +30,7 @@ import {
 } from "../utils/jobFixtures";
 
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // A terminal error is a whole cause chain, not one value: the failure sits on
 // the first link, the operator's next step on a later one. The relay holds the

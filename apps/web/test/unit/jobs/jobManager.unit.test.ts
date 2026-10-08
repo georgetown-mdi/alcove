@@ -79,17 +79,14 @@ import { waitFor } from "../../utils/waitFor";
 
 import type * as workdirModule from "@jobs/workdir";
 import type { BufferedEvent, JobRecord } from "@jobs/jobManager";
-import type {
-  CliDriverHandlers,
-  CliRunDiagnostics,
-  RelayEvent,
-} from "@jobs/cliDriver";
+import type { CliDriverHandlers, CliRunDiagnostics } from "@jobs/cliDriver";
 import type {
   JobFiledropExchangeIntent,
   JobInputFileReference,
 } from "@jobContract/intentSchemas";
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
 import type { JobApiClient } from "@psi/jobClient/serverJobExchangeDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 vi.mock("@jobs/workdir", { spy: true });
 

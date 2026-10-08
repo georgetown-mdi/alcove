@@ -68,7 +68,7 @@ import type {
   ServerJobExchangeTransport,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import type { AcquiredCsv } from "@psi/inviterEditor";
-import type { DisclosedExchangeDocument } from "@jobs/configLoad";
+import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
 import type { InviterScreenState } from "@exchange/inviterScreenModel";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
 import type { OutputDirection } from "@psi/authoring/advancedInvite";

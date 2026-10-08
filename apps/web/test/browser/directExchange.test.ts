@@ -51,7 +51,7 @@ import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { expectCommittedText } from "./collapsePanels";
 import { expectConsole } from "./expectedConsole";
 
-import type { JobHandoff } from "@jobs/handoff";
+import type { JobHandoff } from "@jobContract/jobHandoff";
 
 // The exchange screens touch the router boundary.
 vi.mock("@tanstack/react-router", async () =>

@@ -188,7 +188,7 @@ import type { ColumnSamples } from "@psi/columnSamples";
 import type { FileRejection } from "@mantine/dropzone";
 import type { ManageOfferChoices } from "./manageOfferModel";
 import type { RailStep } from "@psi/rail";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 import type { SftpEndpointLocator } from "@console/sftpConnectionForm";
 
 const log = getLogger("AcceptorScreen");

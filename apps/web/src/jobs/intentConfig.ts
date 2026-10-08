@@ -14,7 +14,7 @@ import type {
   FileSyncOptions,
 } from "@alcove/core";
 
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
 import type {
   JobExchangeIntent,

@@ -33,7 +33,7 @@ import { expectCliSucceeded, invitationFrom, startCli } from "./cliParty";
 import type { CliRun } from "./cliParty";
 import type { ExchangeSpec } from "@alcove/core";
 import type { JobExchangeIntent } from "@jobContract/intentSchemas";
-import type { JobSftpServerEntry } from "@jobs/sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
 /**
  * The export leg of "use the GUI for the settings and the CLI for the work":

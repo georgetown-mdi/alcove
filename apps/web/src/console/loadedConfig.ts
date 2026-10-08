@@ -72,7 +72,7 @@ import type {
   DisclosedExchangeDocument,
   DisclosedFileSyncOptions,
   DisclosedSftpServer,
-} from "@jobs/configLoad";
+} from "@jobContract/disclosedConfiguration";
 import type { CsvDelimiterChoice } from "@components/csvDelimiterChoice";
 import type { DisclosureChoice } from "@psi/metadataEditing";
 import type { OwnColumnsChoice } from "@psi/ownColumnsModel";

@@ -12,9 +12,11 @@ import {
 } from "./jobApiBody";
 import { sftpConnectionProjectionOf } from "./serverJobExchangeDriver";
 
-import type { AuthoredSftpServerRequest } from "@jobs/sftpServer";
+import type {
+  AuthoredSftpServerRequest,
+  SftpConnectionProjection,
+} from "@jobContract/sftpConnection";
 import type { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
 
 /**
  * The browser-side client for authoring the console's SFTP connection
