@@ -485,7 +485,7 @@ export function ReinvitePanel({
       <p className={styles.calloutLead}>Send this fresh invitation.</p>
       <p className={styles.small}>
         Send this to your partner over your usual trusted channel (for example,
-        secure email). It carries a new one-time secret, so treat it as
+        secure email). It includes a new one-time secret, so treat it as
         confidential - every re-invite puts a fresh secret on that channel, so
         it must stay trusted each time. Your partner accepts it by opening the
         link.

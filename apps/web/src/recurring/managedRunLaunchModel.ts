@@ -1123,7 +1123,7 @@ const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   lead: "Re-invite your partner.",
   body: [
     "This keeps your agreed terms and only replaces the secret. The fresh " +
-      "invitation carries a new one-time secret, so send it over your usual " +
+      "invitation includes a new one-time secret, so send it over your usual " +
       "trusted channel, exactly as you did the first time.",
   ],
 };
