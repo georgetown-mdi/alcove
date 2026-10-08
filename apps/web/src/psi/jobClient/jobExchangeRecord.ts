@@ -1,23 +1,10 @@
 /**
  * The browser-side reader for a console run's self-attested exchange record:
- * whether the console holds one for a job, how the run that wrote it ended,
- * where to download the pair from, and what to name the saved files.
- *
- * The console is the authority on all of it: a seat asks it rather than
- * inferring the record from the run's own terminal state. That is what lets
- * a re-attached run (another tab, or a return after a reload) offer the
- * record, and what lets a run that disclosed and then terminated offer one
- * too, since such a run reaches the seat as a failure
- * (docs/spec/EXCHANGE_RECORD.md, When a record is owed).
- *
- * The ask is made once the seat has seen the run's terminal event, and asked
- * again while the console reports the run's child has not yet exited: the
- * console reports no record until then, and the CLI may still be writing it.
- *
- * An ask the console does not answer is not a run without a record: reading
- * it as one would hide a disclosure's record behind a single hiccup, on the
- * surface that also offers to delete it. See {@link JobExchangeRecordOffer}
- * for how each outcome is told apart.
+ * whether the console has one for a job, how the run that wrote it ended,
+ * where to download the pair from, and what to name the saved files. The
+ * console is the authority, so a terminated run that disclosed still offers
+ * its record (docs/spec/SERVER_JOB_API.md, "The `GET /api/jobs/:jobId` status
+ * body"; docs/spec/EXCHANGE_RECORD.md, "When a record is owed").
  */
 
 import { EXCHANGE_RECORD_OUTCOMES, recordFileStamp } from "@alcove/core";
@@ -32,9 +19,8 @@ import type { ExchangeRecordOutcome } from "@alcove/core";
 import type { RecordDownloads } from "../exchangeLifecycle";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
 
-/** The console endpoint the shareable record downloads from. The browser never
- * composes the file's path: the console resolves it inside the job's own
- * workdir. */
+/** The console endpoint the shareable record downloads from; the console
+ * resolves the file's path inside the job's own workdir. */
 function jobRecordUrl(jobId: string): string {
   return `/api/jobs/${jobId}/record`;
 }
@@ -45,12 +31,9 @@ function jobKeysUrl(jobId: string): string {
   return `/api/jobs/${jobId}/keys`;
 }
 
-/**
- * The record pair's console download hrefs and save names for a run, stamped
- * from the record's own `createdAt` exactly as the in-browser path stamps its
- * blobs ({@link @psi/runOutputs}), so a console run and a browser run file one
- * exchange's artifacts under one convention.
- */
+/** The record pair's download hrefs and save names, stamped from the record's
+ * own `createdAt` as the in-browser path ({@link @psi/runOutputs}) stamps its
+ * files. */
 export function jobRecordDownloads(
   jobId: string,
   createdAt: string,
@@ -65,37 +48,18 @@ export function jobRecordDownloads(
 }
 
 /**
- * What one ask told the seat about this run's exchange record: the pair with
- * the outcome the record itself states, a record held back that neither this
- * bundle nor the console can describe, nothing to say, or an ask holding no
- * answer.
- *
- * `none` is the console answering that it holds no record for this run,
- * covering both a run that owes none and a run whose record could not be
- * written -- the two are not separable from the status body, so a seat
- * renders both as nothing rather than stating an absence it cannot name.
- *
- * `undescribable` is the console answering that a record file IS in this
- * run's workdir and it cannot offer it (an `outcome` it does not know, a
- * body it cannot parse, or a missing keys half). Nothing downloads (the
- * routes 404 under the same rule), but a record of a disclosure is on disk,
- * so it is kept apart from `none`: the controls that destroy the workdir
- * confirm before doing so.
- *
- * `unanswered` is kept apart from `none` for the reason the receipt reader
- * keeps its own apart: a rejected request, a job the console forgot across a
- * restart, a lost connection, a body that will not parse -- none of those
- * said this run has no record.
+ * What one ask told the caller about this run's exchange record. `none` is
+ * the console holding no record, which renders as nothing. `undescribable` is
+ * a record on disk the console cannot offer, so the controls that destroy the
+ * workdir confirm first. `unanswered` is an ask with no readable answer, never
+ * folded into `none`.
  */
 export type JobExchangeRecordOffer =
   | {
       kind: "available";
       outcome: ExchangeRecordOutcome;
-      /** Whether the record states that the certificate the partner presented is
-       * not the pinned identity. A body that does not state the marker at all --
-       * a console that predates it -- reads as false: the seat then says nothing
-       * about the partner's certificate, which is what a record stating no
-       * mismatch leaves it saying too. */
+      /** Whether the record states that the certificate the partner presented
+       * is not the pinned identity; only a literal `true` does. */
       recordCertificateMismatchObserved: boolean;
       downloads: RecordDownloads;
     }
@@ -103,17 +67,12 @@ export type JobExchangeRecordOffer =
   | { kind: "none" }
   | { kind: "unanswered" };
 
-/**
- * What one ask of the status route answered: an offer, or the console reporting
- * that the run's child has not exited, so it cannot yet say. Kept out of
- * {@link JobExchangeRecordOffer} because no seat holds it as an answer:
- * {@link askJobExchangeRecordOffer} asks again until the run settles.
- */
+/** What one ask answered: an offer, or `not-settled` while the run's child has
+ * not exited, which {@link askJobExchangeRecordOffer} re-asks. */
 export type JobExchangeRecordAnswer =
   JobExchangeRecordOffer | { kind: "not-settled" };
 
-/** The status-body fields this reader looks at, all of them unknown until read:
- * the body is JSON off the network, so nothing about its shape is given. */
+/** The status-body fields this reader looks at, unknown until read. */
 interface JobStatusFields {
   recordAvailable?: unknown;
   recordCreatedAt?: unknown;
@@ -122,14 +81,8 @@ interface JobStatusFields {
   recordUnavailableReason?: unknown;
 }
 
-/**
- * What each reason the console can give for withholding the pair
- * ({@link @jobs/jobManager}) leaves the seat holding.
- *
- * Written as a total map of that type rather than a test for the one value that
- * matters, so a reason added on the console side stops this bundle compiling
- * instead of silently joining the straight-through-discard answer.
- */
+/** The answer for each reason the console can give for withholding the pair.
+ * A total map, so a new reason fails to compile here until classified. */
 const OFFER_FOR_UNAVAILABLE_REASON: Record<
   RecordUnavailableReason,
   JobExchangeRecordAnswer
@@ -139,18 +92,9 @@ const OFFER_FOR_UNAVAILABLE_REASON: Record<
   "undescribable-record": { kind: "undescribable" },
 };
 
-/**
- * The offer a body denying availability leaves, read from the reason it gives.
- *
- * An absent reason is the answer a console that predates the field gives, and
- * is treated as the plain denial it was: the field refines that answer rather
- * than replacing it. A reason this bundle does not recognize is the
- * version-skew case one level down -- a console withholding the pair for
- * something this bundle cannot name -- and it answers `unanswered`, on the
- * same rule an unrecognized `recordOutcome` takes: an answer that cannot be
- * read is not a denial, and folding it into `none` would let it license
- * destroying the run's workdir.
- */
+/** The answer a body denying availability leaves. An absent reason is an older
+ * console's plain denial; an unrecognized one is `unanswered`, never `none`,
+ * since `none` licenses destroying the run's workdir. */
 function offerForUnavailableRecord(reason: unknown): JobExchangeRecordAnswer {
   if (reason === undefined) return { kind: "none" };
   for (const [known, offer] of Object.entries(OFFER_FOR_UNAVAILABLE_REASON))
@@ -158,37 +102,18 @@ function offerForUnavailableRecord(reason: unknown): JobExchangeRecordAnswer {
   return { kind: "unanswered" };
 }
 
-/** Whether a status body's `recordOutcome` is one of the values the record format
- * admits. Read strictly rather than cast: the outcome decides what the seat says
- * the record can be used for, so a body holding an unrecognized one answers
- * nothing rather than defaulting to either meaning. */
+/** The status body's `recordOutcome`, when it is one the record format
+ * admits. */
 function recordOutcomeOf(value: unknown): ExchangeRecordOutcome | undefined {
   return EXCHANGE_RECORD_OUTCOMES.find((outcome) => outcome === value);
 }
 
 /**
  * Where this job's record stands, read off `GET /api/jobs/:jobId` in one ask.
- *
- * A denial is read from `recordAvailable` and then from the reason beside it:
- * a 200 whose body does not assert `recordAvailable: true` is the console not
- * offering the pair, and `recordUnavailableReason` says whether that is a
- * definitive absence or a record it holds and cannot describe
- * ({@link offerForUnavailableRecord}), or that the run's child has not exited
- * yet. Only the definitive absence licenses a discard that does not ask again.
- *
- * A body asserting `recordAvailable === true` is trusted even where the rest
- * is not: a missing/non-string `recordCreatedAt` or an unrecognized
- * `recordOutcome` (version skew against a differently-versioned console)
- * answers `unanswered` rather than `none`, since folding an availability
- * assertion into the discard state would let an unparseable detail license
- * destroying a record the console just said it holds. The certificate-mismatch
- * marker does not join that rule: only the literal `true` states a mismatch, and
- * every other value leaves the offer where a record stating none leaves it, with
- * nothing said about the partner's certificate.
- *
- * An ask with no readable body at all -- a fetch that threw, a non-2xx, or
- * unparseable JSON -- is likewise `unanswered`; {@link askJobExchangeRecordOffer}
- * decides whether to ask again.
+ * A denial is read from `recordUnavailableReason`. A body asserting
+ * `recordAvailable: true` without a string `recordCreatedAt` and a known
+ * `recordOutcome` is `unanswered`, never `none`, as is an ask with no readable
+ * body.
  */
 export async function fetchJobExchangeRecordOffer(
   jobId: string,
@@ -220,39 +145,22 @@ export async function fetchJobExchangeRecordOffer(
   }
 }
 
-/**
- * The gap between asks after one that held no answer. What a longer wait costs
- * is how long the download stays missing on a settled run the operator is already
- * looking at; what a shorter one costs is a burst of asks at a console that has
- * just stopped answering. The receipt reader's own gap, for the same reasons.
- */
+/** The gap between asks while the run is unsettled or an ask had no answer. */
 const RECORD_AVAILABILITY_RETRY_MS = 2_000;
 
 /**
- * Consecutive asks that answer nothing about the record before the seat gives up
- * on this run. Every unanswerable shape looks alike from the browser -- a job the
- * console forgot across a restart, a route erroring, a connection that stopped
- * reaching it -- so a bound is the only thing separating a blip the next ask
- * recovers from a console that will never answer for this run.
+ * Consecutive unanswered asks before the caller gives up on this run.
  *
  * @internal exported for the unit test, which pins where a failing route stops.
  */
 export const RECORD_AVAILABILITY_UNANSWERED_LIMIT = 5;
 
 /**
- * Ask the console where this job's record stands, re-asking while the run's
- * child has not exited and while the ask itself holds no answer.
- *
- * The seat asks once it has seen the run's terminal event, which a failing run
- * emits before its child exits; the console answers `not-settled` until the
- * exit, and that is asked again without bound, since the caller stays in its
- * asking state meanwhile. Once settled, `available` and `none` cannot change
- * and asking again would tell it the same thing. The ask that comes back
- * with nothing is asked again within a bound -- a hiccup at the moment the run
- * settles would otherwise hide the record of a disclosure for the whole life
- * of the seat, on the one surface that also offers to delete it.
- *
- * A caller that stops the ask gets `none`: it established nothing.
+ * Ask the console where this job's record stands, once the caller has seen the
+ * run's terminal event. `not-settled` is re-asked without bound, since a
+ * failing run emits its terminal before its child exits; `unanswered` is
+ * re-asked up to {@link RECORD_AVAILABILITY_UNANSWERED_LIMIT} times in a row.
+ * Any other answer is final. A caller that stops the ask gets `none`.
  */
 export async function askJobExchangeRecordOffer(
   jobId: string,
