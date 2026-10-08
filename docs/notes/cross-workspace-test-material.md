@@ -237,15 +237,14 @@ production builds one: outside `packages/core` its only callers are the two
 apps' test trees, and what a caller does is open a connection over a transport.
 It is on `./testing` beside the codecs.
 
-A later pass applied the main entry's admission rule to every name on it. A
-name no code outside `packages/core` names left the entry, and a name only the
-apps' test trees name moved to `./testing` -- refusal classes a suite matches
-by `instanceof`, record and receipt builders, the PSI participant, the
-standardized dataset. `withNoListedFanOutFunctions`, the lever that stands a
-listed fan-out producer in for an unlisted one, left `./testing`: only core's
-own tests call it, and they import it from source. The published entry points
-still build together with a shared chunk, since a refusal class one entry
-publishes has to be the class another entry's code throws.
+The main entry admits a name only when code outside `packages/core` names it; a
+name only the apps' test trees name is published on `./testing` instead --
+refusal classes a suite matches by `instanceof`, record and receipt builders,
+the PSI participant, the standardized dataset. `withNoListedFanOutFunctions`,
+the lever that stands a listed fan-out producer in for an unlisted one, is on
+neither entry: only core's own tests call it, and they import it from source.
+The published entry points build together with a shared chunk, since a refusal
+class one entry publishes has to be the class another entry's code throws.
 
 ## Alternatives weighed
 
