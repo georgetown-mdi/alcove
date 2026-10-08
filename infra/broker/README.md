@@ -21,7 +21,7 @@ The front listens on IPv4 only.
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
 | `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
 | `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
-| `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; restarts the front only when the certificate or key changed, except under `install.sh`, which restarts the front itself |
+| `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; restarts the front only when the certificate or key changed or an earlier run left a restart owed, except under `install.sh`, which restarts the front itself |
 | `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 04:30 UTC plus up to 15 minutes, after the relay's own renewal window |
 | `install.sh` | Installs all of the above and converges on a re-run, then checks `/api/health` through the front |
 | `broker.env.example` | The host's one configuration file, copied to `/etc/alcove-broker/broker.env` |
@@ -42,7 +42,7 @@ On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` 
 
 4. Build core on another machine at the same commit (`npm run build -w packages/core`) and copy `packages/core/dist/untrusted-text.esm.js` and the one chunk it imports into the clone's `packages/core/dist/`, checking their sha256 sums on arrival.
    That entry point is the whole of the broker's reach into core.
-5. `chown -R nobody:nobody /opt/alcove-broker`.
+5. Leave the tree owned by root and readable by all, so the broker's account cannot rewrite the code it runs: `chown -R root:root /opt/alcove-broker && chmod -R u=rwX,go=rX /opt/alcove-broker`.
 
 Then the host's configuration, and the install:
 
@@ -70,6 +70,7 @@ Only a first install, which has no certificate yet, runs a renewal before the ch
 A configuration that fails the check stops the install with both units, the certificate, `/etc/alcove-broker/nginx.conf` and the running front unchanged.
 One that passes is copied over `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it).
 Every file the units read is written before the front is touched, and then the front gets one action: a restart when its unit, its image or its certificate changed (or the broker's unit changed, which restarts the front with the broker), otherwise a reload when only the configuration changed, keeping open WebSockets.
+Before it writes those files, `install.sh` records the actions it owes in `/etc/alcove-broker/front-action-pending` and `broker-restart-pending` (`renew.sh` records a restart there before it installs a new certificate), and removes each only once the action is made: the next run makes the actions a failed run left owed even when nothing else changed, and the renewal timer's `renew.sh` restarts the front when a restart is owed.
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 
 ## Certificates

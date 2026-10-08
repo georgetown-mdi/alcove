@@ -2,17 +2,19 @@
 # Renew the broker's certificate by ACME DNS-01 (README.md, Certificates) and
 # restart the TLS front only when the certificate or key changed.
 #
-#   renew.sh [--defer-restart FILE]
+#   renew.sh [--defer-restart]
 #
-# With --defer-restart, a changed certificate is written to FILE instead of
-# restarting the front, for install.sh to restart it once.
+# A changed certificate is recorded in front-action-pending as a restart owed
+# before it is installed, and the mark is cleared once the front restarts. A
+# restart owed by an earlier run that did not finish is made here too. With
+# --defer-restart the restart and the mark are left to install.sh.
 set -euo pipefail
 
-DEFER_TO=
-if [ "$#" -eq 2 ] && [ "$1" = --defer-restart ] && [ -n "$2" ]; then
-  DEFER_TO="$2"
+DEFER=0
+if [ "$#" -eq 1 ] && [ "$1" = --defer-restart ]; then
+  DEFER=1
 elif [ "$#" -ne 0 ]; then
-  printf 'usage: renew.sh [--defer-restart FILE]\n' >&2
+  printf 'usage: renew.sh [--defer-restart]\n' >&2
   exit 2
 fi
 
@@ -21,9 +23,17 @@ ENV_FILE="${ALCOVE_BROKER_ENV_FILE:-$ETC/broker.env}"
 ACME_HOME="${ALCOVE_BROKER_ACME_HOME:-$ETC/acme}"
 TLS="${ALCOVE_BROKER_TLS_DIR:-$ETC/tls}"
 DAYS="${ALCOVE_BROKER_RENEW_DAYS:-30}"
+PENDING="${ALCOVE_BROKER_FRONT_PENDING:-$ETC/front-action-pending}"
 
 die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
 log() { printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+
+# The front action a run owes and has not made: restart, reload or nothing.
+# Anything but reload in the file counts as a restart.
+pending_action() {
+  [ -e "$PENDING" ] || return 0
+  if [ "$(cat "$PENDING")" = reload ]; then echo reload; else echo restart; fi
+}
 
 [ -f "$ENV_FILE" ] || die "no $ENV_FILE; copy broker.env.example there and set ALCOVE_BROKER_NAME"
 # shellcheck disable=SC1090
@@ -63,19 +73,41 @@ SRC_CRT="$ACME_HOME/certificates/$NAME.crt"
 SRC_KEY="$ACME_HOME/certificates/$NAME.key"
 [ -s "$SRC_CRT" ] && [ -s "$SRC_KEY" ] || die "lego reported success but left no certificate at $SRC_CRT"
 
-if cmp -s "$SRC_CRT" "$TLS/fullchain.pem" && cmp -s "$SRC_KEY" "$TLS/privkey.pem"; then
-  log "certificate unchanged; the TLS front is left running"
+CHANGED=0
+if ! cmp -s "$SRC_CRT" "$TLS/fullchain.pem" || ! cmp -s "$SRC_KEY" "$TLS/privkey.pem"; then
+  MARK="$(mktemp "$PENDING.XXXXXX")"
+  echo restart > "$MARK"
+  mv -f "$MARK" "$PENDING"
+  install -m 600 "$SRC_KEY" "$TLS/privkey.pem"
+  install -m 644 "$SRC_CRT" "$TLS/fullchain.pem"
+  CHANGED=1
+fi
+
+if [ "$DEFER" = 1 ]; then
+  if [ "$CHANGED" = 1 ]; then
+    log "installed a new certificate; install.sh restarts alcove-broker-tls.service"
+  fi
   exit 0
 fi
-install -m 600 "$SRC_KEY" "$TLS/privkey.pem"
-install -m 644 "$SRC_CRT" "$TLS/fullchain.pem"
-if [ -n "$DEFER_TO" ]; then
-  log "installed a new certificate; install.sh restarts alcove-broker-tls.service"
-  echo changed > "$DEFER_TO"
-elif systemctl is-active --quiet alcove-broker-tls.service; then
-  log "installed a new certificate; restarting alcove-broker-tls.service"
+OWED="$(pending_action)"
+if [ "$CHANGED" = 0 ] && [ "$OWED" != restart ]; then
+  log "certificate unchanged; the TLS front is left running"
+  if [ "$OWED" = reload ]; then
+    log "an earlier install.sh did not reload alcove-broker-tls.service onto its configuration; run install.sh again"
+  fi
+  exit 0
+fi
+
+if [ "$CHANGED" = 1 ]; then
+  WHY="installed a new certificate"
+else
+  WHY="an earlier run installed the front's certificate, image or unit and did not restart it"
+fi
+if systemctl is-active --quiet alcove-broker-tls.service; then
+  log "$WHY; restarting alcove-broker-tls.service"
   systemctl restart alcove-broker-tls.service
 else
-  # On a first install the front has not started yet; install.sh starts it.
-  log "installed a new certificate; alcove-broker-tls.service is not running and was not started"
+  # A stopped front reads the installed state when it starts.
+  log "$WHY; alcove-broker-tls.service is not running and was not started"
 fi
+rm -f "$PENDING"
