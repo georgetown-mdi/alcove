@@ -32,7 +32,7 @@
     "@mantine/core": "^9.6.3",
     "@mantine/dropzone": "^9.6.3",
     "@mantine/hooks": "^9.5.0",
-    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.3.tgz",
+    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.5.tgz",
     "@alcove/cli-contract": "file:../../packages/cli-contract",
     "@alcove/core": "file:../../packages/core",
     "@tabler/icons-react": "^3.48.0",

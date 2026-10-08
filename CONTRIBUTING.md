@@ -42,7 +42,7 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 - **Node.js** 26 or later (npm 11 or later is included)
 - **Docker** for building the container image
 
-The OpenMined PSI module is vendored at `lib/openmined-psi.js-2.0.6-seclink.3.tgz` (the WASM engine plus native N-API prebuilds). No Emscripten or native toolchain is required to work against it.
+The OpenMined PSI module is vendored at `lib/openmined-psi.js-2.0.6-seclink.5.tgz` (the WASM engine plus native N-API prebuilds). No Emscripten or native toolchain is required to work against it.
 
 ## Development Setup
 
