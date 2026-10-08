@@ -12,14 +12,12 @@ import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
  * shown as an empty one.
  */
 
-/** One store read and the number of reads asked for; the surface reads the store
- * again each time the number moves. */
+/** The surface reads the store again each time `reads` moves. */
 export interface ManagedStoreRead<T> {
   reads: number;
   read: T | undefined;
 }
 
-/** The store reads' whole state. */
 export interface ManagedStoreReads {
   accounting: ManagedStoreRead<DisclosureAccountingRead>;
   /** The runs the accounting is short, read again with it, so one retry answers
@@ -28,12 +26,11 @@ export interface ManagedStoreReads {
   parkedResults: ManagedStoreRead<ParkedResultsRead>;
   /** The exchange this visit found flagged as holding a run this browser could
    * record nowhere. The id rather than a flag, so it does not follow a switch to
-   * another exchange, and a later read that finds the flag already cleared cannot retract what
-   * this visit has shown. */
+   * another exchange, and a later read that finds the flag already cleared cannot
+   * retract what this visit has shown. */
   flaggedUnrecordedId: string | undefined;
 }
 
-/** Every read under way. */
 export const MANAGED_STORE_READS_INITIAL: ManagedStoreReads = {
   accounting: { reads: 0, read: undefined },
   unfiled: undefined,
@@ -41,7 +38,6 @@ export const MANAGED_STORE_READS_INITIAL: ManagedStoreReads = {
   flaggedUnrecordedId: undefined,
 };
 
-/** The store reads' events. */
 export type ManagedStoreReadAction =
   | { type: "accounting-read"; read: DisclosureAccountingRead }
   | { type: "unfiled-disclosures-read"; read: UnfiledDisclosureRead }
@@ -53,7 +49,6 @@ export type ManagedStoreReadAction =
   /** Read the parked results again, dropping the verdict on screen. */
   | { type: "parked-results-read-requested" };
 
-/** The store reads' reducer. */
 export function managedStoreReadsReducer(
   state: ManagedStoreReads,
   action: ManagedStoreReadAction,

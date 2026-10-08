@@ -886,3 +886,258 @@ describe("the surface's reducer and a terms proposal", () => {
     expect(managedRunInProgress(settled.run)).toBe(true);
   });
 });
+
+type SurfaceActionType = ManagedRunSurfaceAction["type"];
+type SurfaceSlice = keyof ManagedRunSurfaceState;
+
+const ROUTING: {
+  [T in SurfaceActionType]: {
+    action: Extract<ManagedRunSurfaceAction, { type: T }>;
+    owns: ReadonlyArray<SurfaceSlice>;
+  };
+} = {
+  "run-started": { action: { type: "run-started" }, owns: ["run", "recovery"] },
+  "warning-raised": {
+    action: { type: "warning-raised", escapedWarning: displayText`notice` },
+    owns: ["run"],
+  },
+  "matching-resolved": {
+    action: { type: "matching-resolved", matching: MATCHING },
+    owns: ["run"],
+  },
+  "terms-change-asked": {
+    action: {
+      type: "terms-change-asked",
+      question: { change: {} as TermsChange, answer: () => undefined },
+    },
+    owns: ["run"],
+  },
+  "terms-change-answered": {
+    action: { type: "terms-change-answered" },
+    owns: ["run"],
+  },
+  "run-completed": {
+    action: {
+      type: "run-completed",
+      outputs: OUTPUTS,
+      finishedAt: FINISHED_AT,
+      unsavedReason: undefined,
+    },
+    owns: ["run"],
+  },
+  "folder-write-started": {
+    action: { type: "folder-write-started", directoryName: "work" },
+    owns: ["run"],
+  },
+  "folder-write-finished": {
+    action: {
+      type: "folder-write-finished",
+      write: {
+        directoryName: "work",
+        delivery: {
+          kind: "written",
+          fileName: "results.csv",
+          directoryName: "work",
+        },
+      },
+    },
+    owns: ["run"],
+  },
+  "folder-write-skipped": {
+    action: { type: "folder-write-skipped" },
+    owns: ["run"],
+  },
+  "run-failed": {
+    action: {
+      type: "run-failed",
+      failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber: 2 },
+    },
+    owns: ["run"],
+  },
+  "run-settled": { action: { type: "run-settled" }, owns: ["run"] },
+  "failure-cleared": { action: { type: "failure-cleared" }, owns: ["run"] },
+  "confirmation-granted": {
+    action: { type: "confirmation-granted", runNumber: 2 },
+    owns: ["recovery"],
+  },
+  "compromise-answer-started": {
+    action: { type: "compromise-answer-started", gate: { kind: "standing" } },
+    owns: ["recovery"],
+  },
+  "compromise-answer-written": {
+    action: { type: "compromise-answer-written" },
+    owns: ["recovery"],
+  },
+  "compromise-answer-failed": {
+    action: { type: "compromise-answer-failed" },
+    owns: ["recovery"],
+  },
+  "standing-clear-started": {
+    action: { type: "standing-clear-started", pastResponse: false },
+    owns: ["recovery"],
+  },
+  "standing-cleared": {
+    action: { type: "standing-cleared", record: ROTATED },
+    owns: ["load", "recovery"],
+  },
+  "standing-clear-failed": {
+    action: { type: "standing-clear-failed" },
+    owns: ["recovery"],
+  },
+  "reinvite-started": {
+    action: { type: "reinvite-started", site: "recovery" },
+    owns: ["recovery"],
+  },
+  "reinvite-composed": {
+    action: { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
+    owns: ["load", "run", "recovery"],
+  },
+  "reinvite-held-by-run": {
+    action: { type: "reinvite-held-by-run" },
+    owns: ["recovery"],
+  },
+  "reinvite-refused-by-run": {
+    action: { type: "reinvite-refused-by-run" },
+    owns: ["recovery"],
+  },
+  "reinvite-withheld": {
+    action: { type: "reinvite-withheld" },
+    owns: ["recovery"],
+  },
+  "reinvite-failed": {
+    action: { type: "reinvite-failed" },
+    owns: ["recovery"],
+  },
+  "record-read": {
+    action: { type: "record-read", record: undefined, localState: undefined },
+    owns: ["load"],
+  },
+  "record-read-failed": {
+    action: { type: "record-read-failed" },
+    owns: ["load"],
+  },
+  "record-read-requested": {
+    action: { type: "record-read-requested" },
+    owns: ["load"],
+  },
+  "record-retaken": { action: { type: "record-retaken" }, owns: ["load"] },
+  "record-adopted": {
+    action: { type: "record-adopted", record: ROTATED },
+    owns: ["load"],
+  },
+  "configuration-edited": {
+    action: { type: "configuration-edited", configuration: ROTATED },
+    owns: ["load"],
+  },
+  "local-state-reloaded": {
+    action: { type: "local-state-reloaded", localState: undefined },
+    owns: ["load"],
+  },
+  "backup-marked": {
+    action: { type: "backup-marked", marker: MARKER },
+    owns: ["load"],
+  },
+  "run-handed-off": {
+    action: { type: "run-handed-off", spent: undefined },
+    owns: ["load", "run"],
+  },
+  "accounting-read": {
+    action: { type: "accounting-read", read: { kind: "unavailable" } },
+    owns: ["reads"],
+  },
+  "unfiled-disclosures-read": {
+    action: {
+      type: "unfiled-disclosures-read",
+      read: { kind: "unavailable" },
+    },
+    owns: ["reads"],
+  },
+  "parked-results-read": {
+    action: { type: "parked-results-read", read: { kind: "unavailable" } },
+    owns: ["reads"],
+  },
+  "unrecorded-run-flagged": {
+    action: { type: "unrecorded-run-flagged", id: "abc" },
+    owns: ["reads"],
+  },
+  "accounting-read-requested": {
+    action: { type: "accounting-read-requested" },
+    owns: ["reads"],
+  },
+  "parked-results-read-requested": {
+    action: { type: "parked-results-read-requested" },
+    owns: ["reads"],
+  },
+  "export-started": { action: { type: "export-started" }, owns: ["handoff"] },
+  "export-finished": {
+    action: { type: "export-finished" },
+    owns: ["handoff"],
+  },
+  "export-failed": { action: { type: "export-failed" }, owns: ["handoff"] },
+  "backup-exported": {
+    action: { type: "backup-exported", marker: MARKER },
+    owns: ["load", "handoff"],
+  },
+  "migration-dispatched": {
+    action: {
+      type: "migration-dispatched",
+      dispatch: MIGRATION_DISPATCH,
+      marker: MARKER,
+    },
+    owns: ["load", "handoff"],
+  },
+  "migration-confirm-started": {
+    action: { type: "migration-confirm-started" },
+    owns: ["handoff"],
+  },
+  "migration-confirmed": {
+    action: { type: "migration-confirmed" },
+    owns: ["handoff"],
+  },
+  "migration-refused": {
+    action: { type: "migration-refused", refusal: "superseded" },
+    owns: ["handoff"],
+  },
+  "migration-kept": { action: { type: "migration-kept" }, owns: ["handoff"] },
+  "command-line-handed-off": {
+    action: { type: "command-line-handed-off", handoff: COMMAND_LINE },
+    owns: ["handoff"],
+  },
+  "terms-proposal-started": {
+    action: { type: "terms-proposal-started" },
+    owns: ["termsProposal"],
+  },
+  "terms-proposal-failed": {
+    action: { type: "terms-proposal-failed", failure: "refused" },
+    owns: ["termsProposal"],
+  },
+  "terms-proposal-settled": {
+    action: { type: "terms-proposal-settled" },
+    owns: ["load", "run", "termsProposal"],
+  },
+};
+
+describe("the surface's reducer slices", () => {
+  const everySliceHeld: ManagedRunSurfaceState = {
+    load: RUNNABLE_LOAD,
+    run: failedVisit.run,
+    recovery: foldSurface([{ type: "confirmation-granted", runNumber: 1 }])
+      .recovery,
+    reads: foldSurface([
+      { type: "accounting-read", read: { kind: "unavailable" } },
+    ]).reads,
+    handoff: COMMAND_LINE_HANDOFF,
+    termsProposal: { kind: "busy" },
+  };
+  const slices = Object.keys(everySliceHeld) as ReadonlyArray<SurfaceSlice>;
+
+  test.each(Object.entries(ROUTING))(
+    "%s leaves the slices it does not own as they were",
+    (_type, { action, owns }) => {
+      const next = managedRunSurfaceReducer(everySliceHeld, action);
+      for (const slice of slices)
+        if (!owns.includes(slice))
+          expect(next[slice]).toBe(everySliceHeld[slice]);
+    },
+  );
+});

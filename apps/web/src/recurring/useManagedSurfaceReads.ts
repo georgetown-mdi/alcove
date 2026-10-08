@@ -72,8 +72,7 @@ export function useManagedSurfaceReads(
     };
   }, [id, finishedAt, accountingReads, dispatch]);
 
-  // The read applies the retention as it goes, so what lands is what is still
-  // offered, never an entry the stated retention has released.
+  // The read applies the stated retention, so no released entry lands.
   useEffect(() => {
     let live = true;
     void readParkedResults(id)
@@ -92,7 +91,6 @@ export function useManagedSurfaceReads(
     };
   }, [id, parkedResultsReads, dispatch]);
 
-  // Stable across renders, so the alert's mount effect runs once.
   const dropUnrecordedRunFlag = useCallback(() => {
     void clearUnfiledExchangeFlag(id);
   }, [id]);
