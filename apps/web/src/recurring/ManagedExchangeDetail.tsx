@@ -238,7 +238,7 @@ export function ManagedExchangeDetail({
   canReinvite: boolean;
   /** Whether a compromise response stands on this exchange's record -- the
    * operator answered a failure gate "something does not add up" (see
-   * {@link ./ManagedRunSurface.tsx}). The terms re-invite is withheld under one: it
+   * {@link ./ManagedRunRecovery.tsx}). The terms re-invite is withheld under one: it
    * mints a fresh secret on the channel they flagged. */
   compromiseResponse: boolean;
   /** Whether a run of this exchange is under way anywhere this browser profile can
@@ -247,7 +247,7 @@ export function ManagedExchangeDetail({
   runInFlight: boolean;
   /** That same reading, or the mint write's own refusal when a run held the lock at
    * it. It states the reason; it does not disable the control, which the reading
-   * gives back when the run ends (see {@link ./ManagedRunSurface.tsx}). */
+   * gives back when the run ends (see {@link ./ManagedRunRecovery.tsx}). */
   runHoldsReinvite: boolean;
   /** Whether a re-invite is in flight, so the terms button shows loading. Shared
    * with the run surface's own re-invite state (see {@link ./ManagedRunSurface.tsx}),
@@ -1067,7 +1067,7 @@ function RunHistory({
  * It renders wherever this exchange's page stands: under the detail sections
  * while the exchange runs here, and on the page of a copy a hand-off spent,
  * where what earlier runs left is still at rest and still owed to the operator
- * ({@link ./ManagedRunSurface.tsx}). A spent copy runs nothing further, so it
+ * ({@link ./ManagedRunSections.tsx}). A spent copy runs nothing further, so it
  * is not `scheduled` and its empty state collapses as an unscheduled
  * exchange's does.
  *

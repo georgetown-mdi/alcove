@@ -162,7 +162,7 @@ export interface ManagedRunFailureAlert {
 }
 
 /** The classified hand-off state, which has no copy: the surface consumes this
- * kind by settling onto the stored spent state ({@link ./ManagedRunSurface.tsx}),
+ * kind by settling onto the stored spent state ({@link ./ManagedRunSections.tsx}),
  * which names the hand-off that spent the copy, what it left behind, and what the
  * refused run did. Copy authored here would be prose no surface can reach, and the
  * absent `title` and `message` keep it that way -- a host that renders this state
@@ -807,7 +807,7 @@ function missedFailure(
 }
 
 /** The hand-off state's non-disclosure attestation: the line the stored spent
- * state adds for a run the hand-off refused ({@link ./ManagedRunSurface.tsx}).
+ * state adds for a run the hand-off refused ({@link ./ManagedRunSections.tsx}).
  * The hand-off state has no alert copy of its own -- reaching it settles the
  * whole surface onto that stored state -- so the claim its gating rests on is
  * written here, beside the gate. The unit test holds the gate to these words,
@@ -1123,7 +1123,7 @@ const INVITER_REINVITE_RECOVERY: ManagedReinviteRecoveryCopy = {
   lead: "Re-invite your partner.",
   body: [
     "This keeps your agreed terms and only replaces the secret. The fresh " +
-      "invitation carries a new one-time secret, so send it over your usual " +
+      "invitation includes a new one-time secret, so send it over your usual " +
       "trusted channel, exactly as you did the first time.",
   ],
 };

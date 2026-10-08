@@ -41,9 +41,10 @@ export function Alerted({ failure }: { failure: RunFailure }) {
 }
 `;
 
-/** The file of the recurring seat, the surface holding the second tracked
- * type's real call sites. */
-const MANAGED_RUN_SURFACE_FILE = "apps/web/src/recurring/ManagedRunSurface.tsx";
+/** The recurring exchange page's recovery sections, the file holding the second
+ * tracked type's real call sites. */
+const MANAGED_RUN_RECOVERY_FILE =
+  "apps/web/src/recurring/ManagedRunRecovery.tsx";
 
 /** The same regression on the recurring seat's own failure type: an alert
  * inlining both pieces in spans of its own. */
@@ -168,7 +169,7 @@ describe("failure display-sink check", () => {
     // renders it through the shared body, so its bindings are found and none of
     // its renders sits outside a sink. The binding assertion is the vacuity
     // guard on the render one: an unfound binding reports no render either.
-    const surface = parseFile(MANAGED_RUN_SURFACE_FILE);
+    const surface = parseFile(MANAGED_RUN_RECOVERY_FILE);
     expect(failureBindingNames(surface)).toContain("failure");
     expect(
       failureTextRenders(surface).filter((render) => !render.throughSink),

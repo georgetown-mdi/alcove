@@ -575,7 +575,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
     expect(managedRunReinvites(failure)).toBe(false);
     // The state has no copy of its own: the spent surface it settles onto is
     // what names the hand-off and what the refused run did, and copy authored here
-    // would be prose no surface reaches (ManagedRunSurface.tsx).
+    // would be prose no surface reaches (ManagedRunSections.tsx).
     expect(failure).not.toHaveProperty("title");
     expect(failure).not.toHaveProperty("message");
   });
