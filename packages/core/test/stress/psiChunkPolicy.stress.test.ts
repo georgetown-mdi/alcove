@@ -62,14 +62,16 @@ describe.each([
       ctx.skip();
       return;
     }
-    // No count between: the match is one call at every size, so a count-only
-    // round moves a figure through its masking steps alone.
+    // The streamed match takes the response in pieces the policy sizes and
+    // reports between them, while the count stays one count over the whole
+    // response (docs/spec/PROTOCOL.md, PSI-C, "The match counts inside the
+    // engine").
     expect(
       await expectChunkedCountMatchesSingleCall({
         library,
         serverValues,
         clientValues,
       }),
-    ).toStrictEqual([]);
+    ).toStrictEqual(expectedCounts);
   });
 });
