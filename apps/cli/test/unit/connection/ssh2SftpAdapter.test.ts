@@ -1444,6 +1444,92 @@ describe("bounded put (idle window)", () => {
     }
   });
 
+  test("bounds the final acknowledgement and close by a full window after the last chunk", async () => {
+    // Completion is keyed to the last `data` event rather than `end`, so the
+    // test passes whenever the stream emits `end` relative to the consumer.
+    vi.useFakeTimers();
+    try {
+      const adapter = new SSH2SFTPClientAdapter();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).options = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
+      const chunkCount = 4;
+      const gap = SFTP_STALL_DEADLINE_MS * 0.75;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).client = {
+        put: vi.fn().mockImplementation((source: Readable) => {
+          return new Promise<string>((resolve) => {
+            let consumed = 0;
+            source.on("data", () => {
+              consumed += 1;
+              source.pause();
+              setTimeout(() => source.resume(), gap);
+              if (consumed === chunkCount) {
+                setTimeout(() => resolve("uploaded data stream"), gap);
+              }
+            });
+          });
+        }),
+      };
+      const payload = Buffer.alloc(
+        chunkCount * SFTP_PUT_PROGRESS_CHUNK_BYTES,
+        7,
+      );
+      const writing = adapter.put(payload, "/remote/tail.bin");
+      const captured = writing.catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(gap * chunkCount + 1);
+      await expect(writing).resolves.toBe("uploaded data stream");
+      await captured;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("rejects a put whose final acknowledgement never arrives once the window passes", async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new SSH2SFTPClientAdapter();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).options = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
+      const chunkCount = 4;
+      const gap = SFTP_STALL_DEADLINE_MS * 0.75;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (adapter as any).client = {
+        put: vi.fn().mockImplementation((source: Readable) => {
+          return new Promise<never>(() => {
+            source.on("data", () => {
+              source.pause();
+              setTimeout(() => source.resume(), gap);
+            });
+          });
+        }),
+      };
+      const payload = Buffer.alloc(
+        chunkCount * SFTP_PUT_PROGRESS_CHUNK_BYTES,
+        7,
+      );
+      const writing = adapter.put(payload, "/remote/tail.bin");
+      let settled: "resolved" | "rejected" | "pending" = "pending";
+      const captured = writing.catch((e: unknown) => e);
+      void writing.then(
+        () => (settled = "resolved"),
+        () => (settled = "rejected"),
+      );
+      // Every chunk is consumed by here, so only the tail is outstanding.
+      await vi.advanceTimersByTimeAsync(gap * chunkCount);
+      expect(settled).toBe("pending");
+      await vi.advanceTimersByTimeAsync(SFTP_STALL_DEADLINE_MS + 1);
+      const err = await captured;
+      expect(err).toBeInstanceOf(TransportOperationStalledError);
+      expect(sanitizeErrorForDisplay(err)).toContain("made no upload progress");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("uploads the exact payload bytes through the chunked source", async () => {
     // The chunked source must reassemble to the original payload byte-for-byte --
     // chunking for the progress signal must not corrupt or reorder the upload.
