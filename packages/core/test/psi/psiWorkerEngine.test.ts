@@ -10,7 +10,11 @@ import type {
   InProcessPsiEngineOptions,
   PsiEngine,
 } from "../../src/psi/psiEngine";
-import { isPsiLibraryFailure, ConnectionError } from "../../src/errors";
+import {
+  isPsiLibraryFailure,
+  ConnectionError,
+  ProtocolRefusalError,
+} from "../../src/errors";
 import {
   WorkerPsiEngine,
   servePsiWorker,
@@ -211,6 +215,52 @@ test("a library failure stays recognizable after the worker round trip", async (
     "receiver protocol error: inbound PSI serverSetup failed to decode",
   );
   expect(isPsiLibraryFailure(failure?.cause)).toBe(true);
+});
+
+test("a response refused as the partner's stays a protocol refusal after the worker round trip", async () => {
+  const starter = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "sender",
+    "identifier-revealing",
+  );
+  const { setup } = await starter.createServerSetup(["a", "b", "c"]);
+  starter.dispose();
+  const engine = inProcessWorkerEngine("joiner", "receiver");
+  try {
+    await engine.receiveServerSetup(setup);
+    const refused = await rejection(
+      engine.computeAssociationTable(new Uint8Array([0x0b])),
+    );
+    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect(refused?.message).toBe(
+      "receiver protocol error: malformed inbound PSI response frame",
+    );
+  } finally {
+    engine.dispose();
+  }
+});
+
+test("a discarded setup is freed inside the worker, so a new setup can be received", async () => {
+  const starter = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "sender",
+    "identifier-revealing",
+  );
+  const { setup } = await starter.createServerSetup(["a", "b", "c"]);
+  starter.dispose();
+  const engine = inProcessWorkerEngine("joiner", "receiver");
+  try {
+    await engine.receiveServerSetup(setup);
+    await expect(engine.receiveServerSetup(setup)).rejects.toThrow(
+      /arrived while a completed setup awaits its match/,
+    );
+    await engine.discardServerSetup();
+    await engine.receiveServerSetup(setup);
+  } finally {
+    engine.dispose();
+  }
 });
 
 test("a disposed engine is reported as the local fault it is", async () => {

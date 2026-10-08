@@ -580,6 +580,71 @@ test("a round refuses a setup at the part whose elements pass the bound, before 
   expect(pieces).toHaveBeenCalledTimes(1);
 });
 
+test.each([
+  ["an abort in place of its next part", "abort"],
+  ["its next part passing the element bound", "over-bound"],
+] as const)(
+  "a setup refused at %s after a part reached the engine leaves no live partial match",
+  async (_label, refusal) => {
+    const matches = { created: 0, deleted: 0 };
+    const clients = psiLibrary.client!;
+    const counting: typeof psiLibrary = {
+      ...psiLibrary,
+      client: {
+        ...clients,
+        createWithNewKey: (reveal) => {
+          const client = clients.createWithNewKey(reveal);
+          return {
+            ...client,
+            createMatch: () => {
+              const match = client.createMatch();
+              matches.created += 1;
+              return {
+                ...match,
+                delete: () => {
+                  matches.deleted += 1;
+                  match.delete();
+                },
+              };
+            },
+          };
+        },
+      },
+    };
+    const setup = serializeSetup(
+      psiLibrary,
+      Array.from({ length: 50 }, (_, index) => Uint8Array.of(index)),
+    );
+    const parts = partsOf(setup, 100);
+    expect(parts).toHaveLength(2);
+    const [a, b] = createMessagePipe();
+    const joiner = new PSIParticipant(
+      "client",
+      counting,
+      { role: "joiner", verbose: -1 },
+      { ...UNBOUNDED_PSI_ELEMENTS, setup: 40 },
+    );
+    const ended = joiner.identifyIntersection(b, values(3, "j")).then(
+      () => "completed",
+      (err: unknown) => err,
+    );
+    await a.send(parts[0]);
+    if (refusal === "abort") await sendAbort(a, ["a reason"]);
+    else await a.send(parts[1]);
+    const outcome = await ended;
+    const liveAtRefusal = matches.created - matches.deleted;
+    joiner.dispose();
+    await a.close();
+
+    expect(outcome).toBeInstanceOf(
+      refusal === "abort" ? PeerAbortError : ProtocolRefusalError,
+    );
+    expect(matches.created).toBe(1);
+    expect(liveAtRefusal).toBe(0);
+    expect(matches.deleted).toBe(1);
+  },
+);
+
 test("a round refuses a setup longer than the partner's record counts admit", async () => {
   const decode = vi.spyOn(
     InProcessPsiEngine.prototype,

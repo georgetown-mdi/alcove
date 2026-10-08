@@ -69,6 +69,12 @@ class SetupOrderUncheckedEngine implements PsiEngine {
     return Promise.resolve();
   }
 
+  discardServerSetup(): Promise<void> {
+    this.setupPieces = [];
+    this.heldSetup = undefined;
+    return Promise.resolve();
+  }
+
   computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {

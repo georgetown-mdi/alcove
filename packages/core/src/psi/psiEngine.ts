@@ -7,7 +7,11 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { Server as PSIServer } from "@openmined/psi.js/implementation/server.d.ts";
 
 import { countDeclaredPsiElements } from "../connection/psiElementScan";
-import { InternalConsistencyError, markPsiLibraryFailure } from "../errors";
+import {
+  InternalConsistencyError,
+  markPsiLibraryFailure,
+  ProtocolRefusalError,
+} from "../errors";
 import { DistinctValues } from "../utils/distinctValues";
 import {
   appendChunkElements,
@@ -41,10 +45,7 @@ type DeserializedServerSetup = ReturnType<
   PSILibrary["serverSetup"]["deserializeBinary"]
 >;
 
-// The partner's setup from its first piece until it completes: a streamed
-// match fed each piece as it arrives, or the pieces themselves, which the
-// sliced match joins and deserializes at completion. `bytes` counts the setup
-// bytes received.
+// The partner's setup until it completes; `bytes` counts the bytes received.
 type SetupInProgress =
   | { readonly method: "streamed"; readonly match: PSIMatch; bytes: number }
   | {
@@ -53,9 +54,8 @@ type SetupInProgress =
       bytes: number;
     };
 
-// A completed setup awaiting the match that consumes it. Each is a live
-// library object, so it never crosses a worker boundary, which is why the
-// engine, not its caller, holds it.
+// A completed setup awaiting its match: a live library object, so the engine
+// holds it rather than its caller.
 type CompletedSetup =
   | { readonly method: "streamed"; readonly match: PSIMatch }
   | { readonly method: "sliced"; readonly setup: DeserializedServerSetup };
@@ -63,13 +63,12 @@ type CompletedSetup =
 /**
  * How an {@link InProcessPsiEngine} matches the partner's setup.
  *
- * - `streamed` -- the engine's streaming match takes the setup's pieces as
- *   they arrive, checks its shape and order as it goes, and decrypts the
- *   response once, fed in pieces.
- * - `sliced` -- the setup is joined and deserialized, and matched in one
- *   library call or, under a memory budget, in setup slices, each decrypting
- *   the whole response (psiMatchSlices.ts). Kept as the fallback to the
- *   streamed match.
+ * - `streamed` -- the engine's streaming match takes the setup in pieces,
+ *   checking its shape and order as they arrive, and decrypts the response
+ *   once.
+ * - `sliced` -- the setup is joined, deserialized, and matched in one library
+ *   call or, under a memory budget, in setup slices that each decrypt the
+ *   whole response (psiMatchSlices.ts).
  */
 export type PsiMatchMethod = "streamed" | "sliced";
 
@@ -169,34 +168,17 @@ export function valuesContributedExactlyOnce(
 export type PsiProcessedElementsReporter = (processed: number) => void;
 
 /**
- * The CPU-bound PSI crypto core behind {@link ./participant.PSIParticipant}.
- * It owns the library's stateful `server` / `client` objects -- and thus
- * the secret key -- and performs the deserialize + elliptic-curve masking +
- * serialize for each protocol step, taking raw bytes / value lists and
- * returning raw bytes / index lists.
+ * The PSI crypto core behind {@link ./participant.PSIParticipant}: it owns the
+ * library's `server` / `client` objects, and with them the secret key, and
+ * runs each protocol step over bytes, value lists and index lists. No live
+ * library handle crosses the interface, so a worker can host the engine, and
+ * the joiner's setup stays inside it from its first piece to its match. The
+ * participant bounds each partner frame's element count before calling it.
  *
- * The whole interface is bytes-in / bytes-out (or value-list-in) by design:
- * nothing that crosses it is a live library handle, so a worker-hosted
- * implementation can stand behind the same interface without the caller
- * changing. The one piece of cross-call state -- the joiner's setup from its
- * first piece ({@link receiveServerSetupPiece}) to the match that consumes it
- * -- lives INSIDE the engine for the same reason: it cannot cross a worker
- * boundary, so the engine holds it rather than handing it back.
- *
- * The host-side, pre-deserialize element-count guards stay above this
- * boundary, in {@link ./participant.PSIParticipant}, which runs them on the
- * raw wire bytes before dispatching here, so the engine only ever
- * deserializes an already-bounded frame.
- *
- * An engine is built for exactly one {@link PsiEngineMode}, and the
- * operations of the other mode refuse rather than return: which disclosure
- * a round produces is fixed with the key it is produced under, not chosen
- * when the result is read.
- *
- * An operation over a partner's frame tags a failure the PSI library raises
- * on it with `markPsiLibraryFailure` (`errors.ts`), and only that failure:
- * the caller reports a tagged failure as the frame failing to decode and
- * raises any other unchanged.
+ * An engine is built for one {@link PsiEngineMode}; the other mode's
+ * operations refuse. A failure the PSI library raises on a partner's frame is
+ * tagged with `markPsiLibraryFailure` (`errors.ts`), and only that failure, so
+ * the caller can report it as the frame failing to decode.
  */
 export interface PsiEngine {
   /**
@@ -250,6 +232,12 @@ export interface PsiEngine {
    * round trip later.
    */
   completeServerSetup(): Promise<void>;
+  /**
+   * Frees the partner's setup, whether its pieces are still arriving or it
+   * awaits its match, so a round a refusal ends holds none past the refusal.
+   * A no-op when no setup is held. Client role.
+   */
+  discardServerSetup(): Promise<void>;
   /**
    * Removes this party's encryption layer from the partner's doubly-encrypted
    * response and compares it against the setup the preceding
@@ -644,6 +632,22 @@ export class InProcessPsiEngine implements PsiEngine {
     return settled(() => this.endSetup());
   }
 
+  discardServerSetup(): Promise<void> {
+    this.freeSetup();
+    return Promise.resolve();
+  }
+
+  // A streamed match holds its own copy of the client key in engine memory,
+  // freed only by its delete().
+  private freeSetup(): void {
+    const receiving = this.receivingSetup;
+    const held = this.heldSetup;
+    this.receivingSetup = undefined;
+    this.heldSetup = undefined;
+    if (receiving?.method === "streamed") receiving.match.delete();
+    if (held?.method === "streamed") held.match.delete();
+  }
+
   private takeSetupPiece(piece: Uint8Array): void {
     if (this.heldSetup !== undefined)
       throw new InternalConsistencyError(
@@ -721,12 +725,9 @@ export class InProcessPsiEngine implements PsiEngine {
     this.heldSetup = { method: "sliced", setup };
   }
 
-  // Runs one call feeding the streamed match its setup. A refusal discards
-  // the setup and its match, and is raised as the protocol error the sliced
-  // match raises for the same condition where the engine names one: a setup
-  // ending before its first byte has no Raw data structure, which is what the
-  // sliced match finds in it. Any other refusal is the library's failure on
-  // the partner's frame.
+  // A refusal frees the setup and raises the sliced match's protocol error for
+  // the condition the engine names (an empty setup has no Raw data structure),
+  // or else the library's failure on the partner's frame.
   private streamedSetupStep(
     receiving: Extract<SetupInProgress, { method: "streamed" }>,
     step: () => void,
@@ -773,18 +774,16 @@ export class InProcessPsiEngine implements PsiEngine {
     return { client, setup };
   }
 
-  // Feeds the whole response to the streamed match in pieces, reporting the
-  // running count between them, and returns its result. Each piece ends where
-  // the policy's element range ends if every element has one length, as a
-  // conforming response's do; the engine takes a cut anywhere, so a response
-  // whose elements differ in length is matched alike and only the reported
-  // count is approximate. Deletes the match however it ends.
+  // Each response piece ends where the policy's element range ends if every
+  // element has one length, as a conforming response's do; the engine takes a
+  // cut anywhere, so only the reported count is approximate otherwise.
+  // Deletes the match however it ends.
   private matchStreamed(
     match: PSIMatch,
     responseBytes: Uint8Array,
   ): PSIMatchResult {
     try {
-      let responseCount: number | undefined;
+      let responseCount: number;
       try {
         responseCount = countDeclaredPsiElements(
           responseBytes,
@@ -792,24 +791,21 @@ export class InProcessPsiEngine implements PsiEngine {
           Number.MAX_SAFE_INTEGER,
         );
       } catch {
-        // A frame the scan cannot read is fed whole for the engine to refuse.
+        throw new ProtocolRefusalError(
+          `${this.id} protocol error: malformed inbound PSI response frame`,
+        );
       }
       const totalBytes = responseBytes.byteLength;
       let fed = 0;
-      this.overChunks(
-        responseCount === undefined
-          ? [{ start: 0, end: 0 }]
-          : this.rangesFor(responseCount),
-        (range) => {
-          const end =
-            responseCount === undefined || range.end === responseCount
-              ? totalBytes
-              : Math.floor((range.end * totalBytes) / responseCount);
-          const piece = responseBytes.subarray(fed, end);
-          fed = end;
-          fromLibrary(() => match.matchResponsePiece(piece));
-        },
-      );
+      this.overChunks(this.rangesFor(responseCount), (range) => {
+        const end =
+          range.end === responseCount
+            ? totalBytes
+            : Math.floor((range.end * totalBytes) / responseCount);
+        const piece = responseBytes.subarray(fed, end);
+        fed = end;
+        fromLibrary(() => match.matchResponsePiece(piece));
+      });
       const result = fromLibrary(() => match.finish());
       if (result.decryptedCount !== responseCount)
         throw new InternalConsistencyError(
@@ -902,12 +898,10 @@ export class InProcessPsiEngine implements PsiEngine {
     );
   }
 
-  // The streamed match's pairs, which it emits in response order, put in the
-  // order the library's own call emits them: partner index ascending, ties by
-  // local index. A counting sort by partner index keeps response order among
-  // ties, which is local index order because a response element matches at
-  // most one element of a strictly ascending setup -- checked here, so the
-  // tie order cannot depend on an unchecked property of the engine.
+  // The streamed match's pairs, in response order, put in the library call's
+  // order: partner index ascending, ties by local index. The counting sort
+  // keeps response order among ties, which is local index order only if local
+  // indices ascend, as checked here.
   private inPartnerIndexOrder(
     localIndices: Uint32Array,
     partnerIndices: Uint32Array,
@@ -1032,18 +1026,9 @@ export class InProcessPsiEngine implements PsiEngine {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    // A match holds its own copy of the client key in engine memory, freed
-    // only by its delete(), as the server and client objects below are.
-    if (this.receivingSetup?.method === "streamed")
-      this.receivingSetup.match.delete();
-    if (this.heldSetup?.method === "streamed") this.heldSetup.match.delete();
-    this.receivingSetup = undefined;
-    this.heldSetup = undefined;
-    // Free the WASM-heap C++ state behind the embind server / client wrappers --
-    // including the generated secret key -- which JS GC does not reclaim. dispose()
-    // is terminal (the participant is not used past it; see exchange.ts), so no
-    // later call can touch the freed objects, and the disposed guard above keeps a
-    // repeated dispose() from a double delete().
+    this.freeSetup();
+    // The server / client objects hold the secret key in engine memory, which
+    // garbage collection does not reclaim; only delete() frees it.
     this.server?.delete();
     this.client?.delete();
   }

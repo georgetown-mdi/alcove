@@ -569,12 +569,25 @@ export class PSIParticipant {
     };
   }
 
+  // A failure after some parts reached the engine frees the partial setup
+  // there; a failure to free it does not replace the original error.
+  private async receiveServerSetupInParts(
+    conn: MessageConnection,
+  ): Promise<void> {
+    try {
+      await this.receiveServerSetupPieces(conn);
+    } catch (error) {
+      await this.engine.discardServerSetup().catch(() => undefined);
+      throw error;
+    }
+  }
+
   // Receive the partner's setup in its parts and hand each part to the engine
   // as it arrives, so the setup is never joined: each part is checked as
   // receivePsiSetInPieces checks it and element-scanned before it reaches the
   // engine, so the engine never holds more elements than the scan admits, and
   // the setup completes only once its last part has passed both.
-  private async receiveServerSetupInParts(
+  private async receiveServerSetupPieces(
     conn: MessageConnection,
   ): Promise<void> {
     const limits = this.partnerSetLimits(this.elementBounds.setup);

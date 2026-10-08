@@ -8,7 +8,9 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import {
   InternalConsistencyError,
   isPsiLibraryFailure,
+  ProtocolRefusalError,
 } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
 import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import {
   InProcessPsiEngine,
@@ -288,6 +290,67 @@ describe.each([
       }
     });
   });
+
+  test.for(MODES)(
+    "in %s mode, a response the element scan cannot read is refused as the partner's, before the engine sees it",
+    async (mode, ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const round = frames(library, mode);
+      const fed = vi.fn();
+      const deleted = vi.fn();
+      const clients = library.client!;
+      const watching: PSILibrary = {
+        ...library,
+        client: {
+          ...clients,
+          createWithNewKey: (reveal) => {
+            const client = clients.createWithNewKey(reveal);
+            return {
+              ...client,
+              createMatch: () => {
+                const match = client.createMatch();
+                return {
+                  ...match,
+                  matchResponsePiece: (piece) => {
+                    fed();
+                    match.matchResponsePiece(piece);
+                  },
+                  delete: () => {
+                    deleted();
+                    match.delete();
+                  },
+                };
+              },
+            };
+          },
+        },
+      };
+      for (const unreadable of [
+        round.response.subarray(0, round.response.length - 1),
+        new Uint8Array([0x0a, 0x05, 0x01]),
+        new Uint8Array([0x0b]),
+      ]) {
+        const engine = joiner(watching, mode);
+        try {
+          await engine.receiveServerSetup(round.setup);
+          const refusal = await caught(() => match(engine, mode, unreadable));
+          expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+          expect((refusal as Error).message).toBe(
+            "joiner protocol error: malformed inbound PSI response frame",
+          );
+          expect(classifyFailure(refusal)).toBe("partner-refused");
+          expect(deleted).toHaveBeenCalledTimes(1);
+        } finally {
+          engine.dispose();
+          deleted.mockClear();
+        }
+      }
+      expect(fed).not.toHaveBeenCalled();
+    },
+  );
 
   test("a setup that is not a Raw data structure is refused by name, and a setup the engine cannot read as the library's failure", async (ctx) => {
     if (!library) {
