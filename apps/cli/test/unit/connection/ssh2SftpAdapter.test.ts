@@ -460,6 +460,45 @@ describe("keyboard-interactive", () => {
       }),
     ).rejects.toThrow("keyboard-interactive");
   });
+
+  test("records the handler as attached only once an attach succeeds", async () => {
+    // A failed attach leaves nothing recorded, so the next connect attaches
+    // again rather than taking the handler as already in place.
+    const adapter = new SSH2SFTPClientAdapter();
+    const { client, listeners } = keyboardClient();
+    let refuseNextAttach = true;
+    client.on.mockImplementation(
+      (event: string, listener: (...args: unknown[]) => void) => {
+        if (event === "keyboard-interactive" && refuseNextAttach) {
+          refuseNextAttach = false;
+          throw new Error("listener registration failed");
+        }
+        (listeners[event] ??= []).push(listener);
+      },
+    );
+    installClient(adapter, client);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const session = (adapter as any).session as {
+      keyboardInteractiveAttached: boolean;
+    };
+    const opts = {
+      host: "sftp.example.org",
+      password: "hunter2",
+      tryKeyboard: true,
+      maxReconnectAttempts: 0,
+    };
+
+    await expect(adapter.connect({ ...opts })).rejects.toThrow(
+      "listener registration failed",
+    );
+    expect(session.keyboardInteractiveAttached).toBe(false);
+
+    await adapter.connect({ ...opts });
+    expect({
+      attempts: keyboardAttaches(client),
+      recorded: session.keyboardInteractiveAttached,
+    }).toEqual({ attempts: 2, recorded: true });
+  });
 });
 
 // --- rename retry ------------------------------------------------------------

@@ -336,10 +336,15 @@ describe("session transitions", () => {
       "with no teardown latched",
     );
     expect(socket.destroy).not.toHaveBeenCalled();
+    expect(internals.session.abandonedTeardownClosedTransport).toBe(false);
 
     internals.session.beginClose();
     internals.forceCloseAbandonedTeardown();
     expect(socket.destroy).toHaveBeenCalledOnce();
+    expect({
+      recorded: internals.session.abandonedTeardownClosedTransport,
+      closing: internals.session.isClosing,
+    }).toEqual({ recorded: true, closing: true });
   });
 
   test("an abandoned teardown that cannot close the transport still stops the keepalive", async () => {

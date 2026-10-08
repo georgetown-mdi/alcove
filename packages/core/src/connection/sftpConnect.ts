@@ -24,8 +24,9 @@ export interface PresentedHostKey {
 }
 
 /**
- * View an ssh2 hostVerifier `keyBlob` as a Uint8Array over the same bytes. A
- * Buffer may view a shared pool, so the offset and length must pass through.
+ * View an ssh2 hostVerifier `keyBlob` as a Uint8Array over the same bytes. The
+ * Buffer is a view into a larger one, so the offset and length must pass
+ * through.
  *
  * @internal
  */
@@ -37,9 +38,10 @@ export const hostKeyBlob = (keyBlob: Buffer): Uint8Array<ArrayBuffer> =>
   );
 
 /**
- * Deliver an ssh2 hostVerifier verdict, swallowing the throw a late call makes
- * once the handshake has torn down while the async check was pending: the
- * verdict is moot, and an escaped throw would be an unhandled rejection.
+ * Deliver an ssh2 hostVerifier verdict, swallowing any throw: a verdict the
+ * async check delivers after the handshake has torn down is moot, and an
+ * escaped throw would be an unhandled rejection. What the pinned ssh2 does with
+ * a late verdict: docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client.
  *
  * @internal
  */

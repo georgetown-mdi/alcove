@@ -14,6 +14,8 @@ import {
 
 const log = () => ({ trace: vi.fn() });
 
+const INTERVAL_MS = SFTP_HEARTBEAT_INTERVAL_MS;
+
 // A controllable ping: resolves immediately by default, or parks until released
 // so a "slow keepalive" can be modeled.
 function makePing() {
@@ -45,16 +47,16 @@ describe("SftpHeartbeat", () => {
     try {
       // Each keepalive resolves at once, so the next beat re-arms on its settle.
       const ping = vi.fn(() => Promise.resolve());
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // Just short of the interval: still idle, no beat yet.
-      await vi.advanceTimersByTimeAsync(999);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS - 1);
       expect(ping).not.toHaveBeenCalled();
       // Crossing the interval issues exactly one keepalive.
       await vi.advanceTimersByTimeAsync(1);
       expect(ping).toHaveBeenCalledTimes(1);
       // The settled ping re-arms the next beat: a second interval issues a second.
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
@@ -65,18 +67,18 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // A long operation spans the interval boundary: the operation itself keeps
       // the session alive, so no concurrent keepalive is issued (which would be
       // an unsafe second op on the one ssh2-sftp-client connection).
       const op = hb.opStarted();
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5 * INTERVAL_MS);
       expect(ping).not.toHaveBeenCalled();
       // Once it settles the idle clock restarts; a keepalive follows one interval
       // of genuine quiet later, not immediately.
       hb.opSettled(op);
-      await vi.advanceTimersByTimeAsync(999);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS - 1);
       expect(ping).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
       expect(ping).toHaveBeenCalledTimes(1);
@@ -89,17 +91,17 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // A brief operation lands halfway through the window and resets the clock,
       // so the pending beat must not fire at the original interval.
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2);
       const op = hb.opStarted();
       hb.opSettled(op);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2);
       expect(ping).not.toHaveBeenCalled();
       // A full interval after the activity, the beat fires.
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS / 2);
       expect(ping).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -110,18 +112,18 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping, calls } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // First beat fires and parks (the server is slow to answer the realPath).
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
       // Several more intervals elapse with the first ping unresolved: no second
       // ping is issued, since the next beat is only armed once a ping settles.
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5 * INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
       // Releasing it re-arms the schedule; the next interval issues the next beat.
       calls[0].resolve();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
@@ -136,15 +138,14 @@ describe("SftpHeartbeat", () => {
       const hb = new SftpHeartbeat({
         ping,
         log: { trace },
-        intervalMs: 1_000,
       });
       hb.start();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
       // The server rejects the keepalive: it is logged at trace, never rethrown,
       // and the next beat still arms.
       calls[0].reject(new Error("channel closed"));
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(2);
       expect(trace).toHaveBeenCalledWith(
         expect.stringContaining("SFTP keepalive failed"),
@@ -158,11 +159,11 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       hb.stop();
       // No beat ever fires after stop, however long the process idles.
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10 * INTERVAL_MS);
       expect(ping).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
@@ -173,15 +174,15 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping, calls } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
       // Teardown lands while the keepalive is still in flight; its late settle
       // must not schedule another beat.
       hb.stop();
       calls[0].resolve();
-      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10 * INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -192,12 +193,12 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       hb.stop();
       // A reconnect re-arms the heartbeat; a fresh idle interval issues a beat.
       hb.start();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -208,28 +209,28 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping, calls } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // A beat fires and its keepalive is still unanswered (the server is slow)...
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
       // ...when a fatal error tears the session down mid-ping and the adapter then
       // reconnects. The new session must beat on its own interval, not stay
       // suppressed by the prior cycle's stuck `pinging` flag.
       hb.stop();
       hb.start();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(2);
       // The interrupted first ping settling late is inert: it must not reschedule
       // onto the new session (which would stack a second, racing beat). With the new
       // session's own ping still in flight (so no beat is armed on a timer), nothing
       // else can fire, so the count holds.
       calls[0].resolve();
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5 * INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(2);
       // The new session's own ping still drives its next beat normally.
       calls[1].resolve();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
@@ -240,7 +241,7 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // An operation is in flight when the session is torn down (a fatal error),
       // and is never balanced by opSettled on that dead session.
@@ -249,7 +250,7 @@ describe("SftpHeartbeat", () => {
       // Reconnect: the new session must not inherit the stale in-flight count, which
       // would make every tick skip the beat.
       hb.start();
-      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(INTERVAL_MS);
       expect(ping).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -260,7 +261,7 @@ describe("SftpHeartbeat", () => {
     vi.useFakeTimers();
     try {
       const { ping } = makePing();
-      const hb = new SftpHeartbeat({ ping, log: log(), intervalMs: 1_000 });
+      const hb = new SftpHeartbeat({ ping, log: log() });
       hb.start();
       // Session A issues an operation whose settlement is deferred -- a large
       // transfer, or a request buffered on a channel that is about to die.
@@ -276,7 +277,7 @@ describe("SftpHeartbeat", () => {
       // it must NOT decrement session B's in-flight count -- a stale decrement would
       // zero the count and let a beat fire concurrently with session B's live op.
       hb.opSettled(staleOp);
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(5 * INTERVAL_MS);
       expect(ping).not.toHaveBeenCalled();
     } finally {
       vi.useRealTimers();

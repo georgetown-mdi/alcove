@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import http from "node:http";
 import net from "node:net";
 import os from "node:os";
@@ -458,6 +458,11 @@ const ROUTING_ROWS: Array<RoutingRow> = [
   { proxied: true, variable: "HTTPS_PROXY", nodeArgs: ["--use_env_proxy"] },
   { proxied: true, variable: "HTTPS_PROXY", nodeOptions: '"--use-env-proxy"' },
   {
+    proxied: true,
+    variable: "HTTPS_PROXY",
+    nodeOptions: "--no-warnings  --use-env-proxy",
+  },
+  {
     proxied: false,
     variable: "HTTPS_PROXY",
     nodeArgs: ["--use-env-proxy", "--no-use-env-proxy=true"],
@@ -709,3 +714,71 @@ test.skipIf(loopbackTlsCert === null)(
   },
   60_000,
 );
+
+test.skipIf(loopbackTlsCert === null)(
+  "a WebSocket whose certificate did not verify reports an empty TypeError",
+  async () => {
+    // Why the probe exists: the failed `wss://` dial's own error names nothing,
+    // so a certificate that did not verify cannot be told from any other
+    // failure without a second handshake.
+    const reported = await new Promise<{
+      eventMessage: unknown;
+      errorName: unknown;
+      errorMessage: unknown;
+      errorCause: unknown;
+    }>((resolve) => {
+      const socket = new WebSocket(`wss://127.0.0.1:${boundPort(tlsServer)}/`);
+      socket.addEventListener(
+        "error",
+        (event) => {
+          const { message, error } = event as ErrorEvent;
+          const failure = error as Error | undefined;
+          resolve({
+            eventMessage: message,
+            errorName: failure?.name,
+            errorMessage: failure?.message,
+            errorCause: failure?.cause,
+          });
+        },
+        { once: true },
+      );
+    });
+    expect(reported).toEqual({
+      eventMessage: "",
+      errorName: "TypeError",
+      errorMessage: "",
+      errorCause: undefined,
+    });
+  },
+);
+
+test("NODE_OPTIONS separates flags by a space and by no other character", () => {
+  // `environmentProxyingConfigured` splits `NODE_OPTIONS` on spaces alone. Any
+  // other whitespace between two flags stops Node before it runs anything, so a
+  // run that is reading its flags at all was started with space-separated ones.
+  const expected = [
+    { separator: " ", ran: true },
+    { separator: "   ", ran: true },
+    { separator: "\t", ran: false },
+    { separator: "\n", ran: false },
+    { separator: "\r", ran: false },
+    { separator: "\v", ran: false },
+    { separator: "\f", ran: false },
+    { separator: "\u00a0", ran: false },
+  ];
+  const outcomes = expected.map(({ separator }) => {
+    const run = spawnSync(
+      process.execPath,
+      ["-e", "process.stdout.write('ran')"],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          NODE_OPTIONS: `--no-warnings${separator}--no-deprecation`,
+        },
+        encoding: "utf8",
+      },
+    );
+    return { separator, ran: run.status === 0 && run.stdout === "ran" };
+  });
+  expect(outcomes).toEqual(expected);
+});

@@ -1,12 +1,16 @@
+import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
+import { createRequire } from "node:module";
 import net from "node:net";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type { AddressInfo, Socket } from "node:net";
 
 import { expect, test } from "vitest";
 import type Ssh2SftpClient from "ssh2-sftp-client";
-import type { SFTPWrapper } from "ssh2";
+import type { SFTPWrapper, WriteStream } from "ssh2";
 
+import { SFTP_PUT_PROGRESS_CHUNK_BYTES } from "../../src/connection/sftpLivenessGuard";
 import {
   isPreIdentificationDialFailure,
   peerProbeTargetFromConnectOptions,
@@ -984,6 +988,469 @@ inProcessOnly(
       });
     } finally {
       await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// One write call several WRITE packets long, the shape a whole-payload put
+// would hand the write stream.
+const MULTI_PACKET_WRITE_BYTES = 4 * SFTP_PUT_PROGRESS_CHUNK_BYTES;
+// How long a write left partly acknowledged is watched for a callback that
+// must not come; an acknowledged write calls back in single-digit milliseconds.
+const PARTIAL_ACK_SILENCE_MS = 1_000;
+
+function openWriteStream(
+  wrapper: SFTPWrapper,
+  remotePath: string,
+): Promise<WriteStream> {
+  return new Promise((resolve, reject) => {
+    const stream = wrapper.createWriteStream(remotePath);
+    stream.once("ready", () => resolve(stream));
+    stream.once("error", reject);
+  });
+}
+
+// The assumption the put idle window's chunking rests on
+// (`SFTP_PUT_PROGRESS_CHUNK_BYTES`): ssh2 splits one large write into several
+// WRITE packets and calls the write back only once the server has acknowledged
+// every one of them, so a single whole-payload write would show no progress
+// until it had finished.
+inProcessOnly(
+  "ssh2 calls a write-stream write back only once every packet of it is acknowledged",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const namespace = `write-ack-${process.pid}`;
+    const streams: WriteStream[] = [];
+    try {
+      await fsp.mkdir(path.join(srv.handle.backingDir, namespace), {
+        recursive: true,
+      });
+      const remote = `${srv.handle.remoteRoot}/${namespace}`;
+      await client.connect(dialOptions(srv));
+      const wrapper = internalsOf(client).sftp as SFTPWrapper;
+      const meter = srv.sessionControls.requests;
+
+      const acknowledged = await openWriteStream(wrapper, `${remote}/a.bin`);
+      streams.push(acknowledged);
+      meter.reset();
+      let acknowledgedCalledBack = false;
+      acknowledged.write(Buffer.alloc(MULTI_PACKET_WRITE_BYTES, 1), () => {
+        acknowledgedCalledBack = true;
+      });
+      await waitFor(() => acknowledgedCalledBack, PARK_POLL);
+      const acknowledgedPackets = meter.read().receivedByOp.WRITE ?? 0;
+
+      const partial = await openWriteStream(wrapper, `${remote}/b.bin`);
+      streams.push(partial);
+      meter.reset();
+      srv.inject.writesAnsweredBeforeWithholding = 1;
+      let partialCalledBack = false;
+      partial.write(Buffer.alloc(MULTI_PACKET_WRITE_BYTES, 1), () => {
+        partialCalledBack = true;
+      });
+      await waitFor(
+        () => (meter.read().receivedByOp.WRITE ?? 0) >= 2,
+        PARK_POLL,
+      );
+      await delay(PARTIAL_ACK_SILENCE_MS);
+
+      expect({
+        severalPackets: acknowledgedPackets > 1,
+        partialAcknowledged: meter.read().answeredByOp.WRITE,
+        partialCalledBack,
+      }).toEqual({
+        severalPackets: true,
+        partialAcknowledged: 1,
+        partialCalledBack: false,
+      });
+    } finally {
+      srv.inject.writesAnsweredBeforeWithholding = null;
+      for (const stream of streams) stream.on("error", () => {});
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// A put source that never ends on its own: every pull gets another chunk.
+function endlessPutSource(): Readable {
+  const chunk = Buffer.alloc(SFTP_PUT_PROGRESS_CHUNK_BYTES, 1);
+  return new Readable({
+    read() {
+      this.push(chunk);
+    },
+  });
+}
+
+// The assumption behind the bounded put source's own destroy on every terminal
+// path: the pinned client leaves a caller-provided source as it was when the
+// put fails, whether the server refused it or the session was lost under it.
+inProcessOnly(
+  "ssh2-sftp-client leaves a caller's put source undestroyed when the put fails",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const internals = internalsOf(client);
+    const namespace = `put-source-${process.pid}`;
+    try {
+      await fsp.mkdir(path.join(srv.handle.backingDir, namespace), {
+        recursive: true,
+      });
+      const remote = `${srv.handle.remoteRoot}/${namespace}`;
+      await client.connect(dialOptions(srv));
+
+      const refusedSource = endlessPutSource();
+      const refused = await putOutcome(
+        client.put(refusedSource, `${remote}/absent/out.bin`),
+      );
+
+      const lostSource = endlessPutSource();
+      const upload = putOutcome(client.put(lostSource, `${remote}/lost.bin`));
+      await delay(LOST_SESSION_DESTROY_AFTER_MS);
+      internals.client?._sock?.destroy();
+      const lost = await upload;
+
+      expect({
+        refused,
+        refusedSourceDestroyed: refusedSource.destroyed,
+        lost,
+        lostSourceDestroyed: lostSource.destroyed,
+      }).toEqual({
+        refused: 2,
+        refusedSourceDestroyed: false,
+        lost: "ERR_GENERIC_CLIENT",
+        lostSourceDestroyed: false,
+      });
+    } finally {
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// How long a put whose source was destroyed is watched for the server-side
+// CLOSE and the put's settlement; both arrive within milliseconds when they do.
+const SOURCE_DESTROY_SETTLE_MS = 1_000;
+
+// The assumption behind the put stall destroying its source WITH an error: the
+// pinned client closes the server-side file handle, and rejects the put, only
+// on the source's 'error'. A bare destroy ends neither, which would leave the
+// handle open at the server until the session ends.
+inProcessOnly(
+  "ssh2-sftp-client closes a put's server handle on its source's error, not on a bare destroy",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const namespace = `put-destroy-${process.pid}`;
+    try {
+      await fsp.mkdir(path.join(srv.handle.backingDir, namespace), {
+        recursive: true,
+      });
+      const remote = `${srv.handle.remoteRoot}/${namespace}`;
+      await client.connect(dialOptions(srv));
+      const meter = srv.sessionControls.requests;
+
+      const destroyMidPut = async (
+        name: string,
+        destroy: (source: Readable) => void,
+      ): Promise<{ put: DialOutcome; closes: number }> => {
+        const source = endlessPutSource();
+        meter.reset();
+        const put = trackDial(client.put(source, `${remote}/${name}`));
+        await waitFor(
+          () => (meter.read().receivedByOp.WRITE ?? 0) > 0,
+          PARK_POLL,
+        );
+        destroy(source);
+        await Promise.race([put.settlement, delay(SOURCE_DESTROY_SETTLE_MS)]);
+        await delay(SOURCE_DESTROY_SETTLE_MS);
+        return {
+          put: put.outcome(),
+          closes: meter.read().receivedByOp.CLOSE ?? 0,
+        };
+      };
+
+      const withError = await destroyMidPut("error.bin", (source) =>
+        source.destroy(new Error("source failed")),
+      );
+      const bare = await destroyMidPut("bare.bin", (source) =>
+        source.destroy(),
+      );
+
+      expect({ withError, bare }).toEqual({
+        withError: { put: "rejected", closes: 1 },
+        bare: { put: "pending", closes: 0 },
+      });
+    } finally {
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// What one handle-based readdir call answered: the SFTP status code of its
+// error, and how many entries its list held, or that it held no list.
+async function readdirOnce(
+  wrapper: SFTPWrapper,
+  handle: Buffer,
+): Promise<{ code: number | undefined; entries: number | "no list" }> {
+  return new Promise((resolve) => {
+    wrapper.readdir(handle, (err, list) => {
+      resolve({
+        code: err ? (err as Error & { code?: number }).code : undefined,
+        entries: list === undefined ? "no list" : list.length,
+      });
+    });
+  });
+}
+
+// The readdir contract the adapter's listing loop is written against
+// (`Ssh2SftpClientInternals.sftp.readdir`): one call answers one server
+// batch, end-of-directory arrives as an error coded SSH_FX_EOF (1), and a call
+// that errs passes no list at all.
+inProcessOnly(
+  "ssh2's readdir answers one server batch per call and passes no list with an error",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const client = createRawSftpClient();
+    const namespace = `readdir-${process.pid}`;
+    const names = ["a.txt", "b.txt", "c.txt"];
+    try {
+      const directory = path.join(srv.handle.backingDir, namespace);
+      await fsp.mkdir(directory, { recursive: true });
+      for (const name of names)
+        await fsp.writeFile(path.join(directory, name), "x");
+      await client.connect(dialOptions(srv));
+      const wrapper = internalsOf(client).sftp as SFTPWrapper;
+      srv.inject.readdirBatchSize = 1;
+      const handle = await new Promise<Buffer>((resolve, reject) => {
+        wrapper.opendir(
+          `${srv.handle.remoteRoot}/${namespace}`,
+          (err, opened) => (err ? reject(err) : resolve(opened)),
+        );
+      });
+
+      const batches: Array<Awaited<ReturnType<typeof readdirOnce>>> = [];
+      for (let call = 0; call <= names.length + 2; call++) {
+        const batch = await readdirOnce(wrapper, handle);
+        batches.push(batch);
+        if (batch.code !== undefined) break;
+      }
+      await new Promise<void>((resolve) =>
+        wrapper.close(handle, () => resolve()),
+      );
+      const afterClose = await readdirOnce(wrapper, handle);
+
+      expect({
+        everyBatchOneEntry: batches
+          .slice(0, -1)
+          .every((batch) => batch.entries === 1),
+        batchesBeforeEnd: batches.length - 1 >= names.length,
+        end: batches.at(-1),
+        afterCloseHasCode: typeof afterClose.code === "number",
+        afterCloseEntries: afterClose.entries,
+      }).toEqual({
+        everyBatchOneEntry: true,
+        batchesBeforeEnd: true,
+        end: { code: 1, entries: "no list" },
+        afterCloseHasCode: true,
+        afterCloseEntries: "no list",
+      });
+    } finally {
+      srv.inject.readdirBatchSize = 0;
+      await client.end().catch(() => {});
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// The connect deadline a dial with a parked host-key verifier is given, short
+// so the deadline is what tears that handshake down.
+const LATE_VERDICT_READY_TIMEOUT_MS = 500;
+
+// How a handshake parked on the host-key verifier is torn down before its
+// verdict is delivered.
+type VerifierTeardown =
+  "ready timeout" | "socket destroyed" | "verdict refused";
+
+// Park a dial on an async host-key verifier, tear the handshake down the given
+// way, and then deliver the verdict `settleVerify` would deliver late.
+async function lateVerdictOutcome(
+  srv: InProcessSftpServer,
+  teardown: VerifierTeardown,
+): Promise<{
+  dial: DialOutcome;
+  lateVerdict: "returned" | "threw";
+  keyBlobIsView: boolean;
+}> {
+  const client = createRawSftpClient();
+  let parkedVerify: ((permitted: boolean) => void) | undefined;
+  let keyBlobIsView = false;
+  try {
+    const dial = trackDial(
+      client.connect({
+        ...dialOptions(srv),
+        readyTimeout: LATE_VERDICT_READY_TIMEOUT_MS,
+        hostVerifier: (
+          keyBlob: Buffer,
+          verify: (permitted: boolean) => void,
+        ) => {
+          keyBlobIsView = keyBlob.byteLength < keyBlob.buffer.byteLength;
+          parkedVerify = verify;
+        },
+      }),
+    );
+    await waitFor(() => parkedVerify !== undefined, PARK_POLL);
+    if (teardown === "socket destroyed")
+      internalsOf(client).client?._sock?.destroy();
+    if (teardown === "verdict refused") parkedVerify?.(false);
+    await dial.settlement;
+
+    let lateVerdict: "returned" | "threw" = "returned";
+    try {
+      parkedVerify?.(true);
+    } catch {
+      lateVerdict = "threw";
+    }
+    return { dial: dial.outcome(), lateVerdict, keyBlobIsView };
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+// What `settleVerify` (packages/core/src/connection/sftpConnect.ts) guards and
+// `hostKeyBlob` reads: on the pinned stack a verdict delivered after the
+// handshake tore down returns without throwing, whichever way it tore down, so
+// the guard's swallow is defensive; and the host key arrives as a view into a
+// larger buffer, so its offset and length must pass through.
+inProcessOnly(
+  "a host-key verdict delivered after the handshake tore down returns without throwing",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    try {
+      const teardowns: VerifierTeardown[] = [
+        "ready timeout",
+        "socket destroyed",
+        "verdict refused",
+      ];
+      const outcomes: Record<string, unknown> = {};
+      for (const teardown of teardowns)
+        outcomes[teardown] = await lateVerdictOutcome(srv, teardown);
+
+      const expected = {
+        dial: "rejected",
+        lateVerdict: "returned",
+        keyBlobIsView: true,
+      };
+      expect(outcomes).toEqual({
+        "ready timeout": expected,
+        "socket destroyed": expected,
+        "verdict refused": expected,
+      });
+    } finally {
+      await srv.stop();
+    }
+  },
+  TEST_TIMEOUT_MS,
+);
+
+// A dial parked at the subsystem request, run in a child process so that what
+// keeps a process alive can be read with nothing else on its event loop. The
+// child reports the resources holding its loop open once ssh2 is ready.
+const PARKED_SUBSYSTEM_CHILD_SCRIPT = `
+  const Client = require(process.env.ALCOVE_SFTP_CLIENT_MODULE);
+  const quiet = () => {};
+  const client = new Client("child", { error: quiet, end: quiet, close: quiet });
+  client.client.once("ready", () => {
+    setImmediate(() =>
+      process.stdout.write(JSON.stringify(process.getActiveResourcesInfo()) + "\\n"),
+    );
+  });
+  client
+    .connect({
+      host: process.env.ALCOVE_SFTP_HOST,
+      port: Number(process.env.ALCOVE_SFTP_PORT),
+      username: process.env.ALCOVE_SFTP_USER,
+      password: process.env.ALCOVE_SFTP_PASSWORD,
+      readyTimeout: Number(process.env.ALCOVE_SFTP_READY_TIMEOUT_MS),
+      retries: 1,
+    })
+    .catch(quiet);
+`;
+
+// The assumption `watchSubsystemOpen` unrefs its timer on: once ssh2 is ready
+// and the subsystem request is unanswered, the live socket alone holds the
+// process open, so the bound's timer need not.
+inProcessOnly(
+  "a dial parked at the subsystem request holds its process open by the socket",
+  async () => {
+    const srv = await startInProcessSftpServer();
+    const controls = srv.sessionControls;
+    const withheldBefore = controls.withheldSubsystemOpenCount();
+    controls.withholdSubsystemOpen = true;
+    const { host, port, usera } = srv.handle;
+    const child = spawn(
+      process.execPath,
+      ["-e", PARKED_SUBSYSTEM_CHILD_SCRIPT],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          ALCOVE_SFTP_CLIENT_MODULE: createRequire(import.meta.url).resolve(
+            "ssh2-sftp-client",
+          ),
+          ALCOVE_SFTP_HOST: host,
+          ALCOVE_SFTP_PORT: String(port),
+          ALCOVE_SFTP_USER: usera.username,
+          ALCOVE_SFTP_PASSWORD: usera.password ?? "",
+          ALCOVE_SFTP_READY_TIMEOUT_MS: String(
+            SUBSYSTEM_PHASE_READY_TIMEOUT_MS,
+          ),
+        },
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    let reported = "";
+    child.stdout.on("data", (chunk: Buffer) => {
+      reported += chunk.toString("utf8");
+    });
+    const exited = new Promise<void>((resolve) =>
+      child.on("exit", () => resolve()),
+    );
+    try {
+      await waitFor(
+        () =>
+          child.exitCode !== null ||
+          (reported.includes("\n") &&
+            controls.withheldSubsystemOpenCount() > withheldBefore),
+        PARK_POLL,
+      );
+      if (child.exitCode === null) await delay(SUBSYSTEM_PHASE_PARKED_MS);
+
+      const resources = (
+        reported === "" ? [] : JSON.parse(reported)
+      ) as string[];
+      expect({
+        socketHeld: resources.includes("TCPSocketWrap"),
+        timersHeld: resources.filter((name) => name === "Timeout"),
+        exitCode: child.exitCode,
+        signalCode: child.signalCode,
+      }).toEqual({
+        socketHeld: true,
+        timersHeld: [],
+        exitCode: null,
+        signalCode: null,
+      });
+    } finally {
+      child.kill("SIGKILL");
+      await exited;
+      controls.withholdSubsystemOpen = false;
       await srv.stop();
     }
   },
