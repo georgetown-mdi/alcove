@@ -1,22 +1,13 @@
 /**
- * The pure ordering and decision half of the managed (recurring) exchange's
- * run+rotate critical section: the IndexedDB-free, Web-Locks-free logic that
- * decides what the rotation writes back, restamps `expires` from the max-age
- * policy, and records the run's `lastRun` bookkeeping -- so the persist-before-
- * success sequence and its decisions are unit-testable in Node without a database
- * or a real lock. The platform half (the Web Locks acquisition and the strict-
- * durability, field-scoped store write) is in {@link ./managedExchangeRun.ts}.
+ * The pure half of the managed exchange's run-and-rotate critical section: what
+ * the rotation writes back, the `expires` restamp from the max-age policy, and
+ * the run's `lastRun` bookkeeping, with no IndexedDB or Web Locks. The platform
+ * half is {@link ./managedExchangeRun.ts}.
  *
- * Normative sequence: docs/spec/MANAGED_EXCHANGE_RECORD.md, "Persist-before-
- * success ordering". Within one run: the handshake yields the `AuthResult`; the
- * rotated `sharedSecret` (and `expires`, restamped from `tokenMaxAgeDays` when a
- * policy is set) is durably persisted and the write awaited; only then does the
- * data exchange begin, and only on its completion is the run recorded succeeded.
- * {@link runRotationCriticalSection} is the handshake-through-persist half of
- * the caller's locked window; it resolves a gate holding the value the data
- * exchange needs, so the data exchange is unreachable until the persist
- * resolves -- the ordering is a property of the control flow, not the caller's
- * discipline.
+ * Sequence: docs/spec/MANAGED_EXCHANGE_RECORD.md, "Persist-before-success
+ * ordering". {@link runRotationCriticalSection} resolves the value the data
+ * exchange needs only after the rotated secret persists, so the ordering is a
+ * property of the control flow.
  */
 
 import { rotatedKeyExpires } from "@alcove/core";
@@ -27,31 +18,23 @@ import type {
 } from "./managedExchangeRecord";
 
 /**
- * The rotation write-back: the fields a successful handshake advances on the
- * stored record, and nothing else. Structurally scoped to the rotation fields so
- * a whole-record write cannot ride along and overwrite a concurrent write with a
- * stale secret or a stale document -- the field-scoped write the store applies
- * inside one transaction consumes exactly this shape.
- *
- * `expires` is a three-way decision, not an optional: `{ expires: string }`
- * restamps a bound when a max-age policy is set, `{ expires: null }` clears any
- * standing bound when no policy is set (a policy dropped between runs must not
- * leave a stale bound armed), and it is `null` rather than absent so the write
- * distinguishes "clear it" from "leave it untouched".
+ * The fields a successful handshake advances on the stored record, and nothing
+ * else, so a field-scoped write cannot overwrite a concurrent write with a
+ * stale secret or document. `expires: null` clears a standing bound when no
+ * policy is set, distinct from leaving it untouched.
  */
 export interface RotationWriteBack {
   /** The rotated shared secret to persist as the record's current secret. */
   sharedSecret: string;
-  /** The restamped bound (`now + tokenMaxAgeDays`) when a policy is set, or
-   * `null` to clear any standing bound when no policy is set. */
+  /** `now + tokenMaxAgeDays` when a policy is set, or `null` to clear any
+   * standing bound. */
   expires: string | null;
 }
 
 /**
- * Compute the rotation write-back for a run: the rotated secret always, plus the
- * `expires` decision. When `tokenMaxAgeDays` is set, `expires` is restamped by
- * core's {@link rotatedKeyExpires}, the rule the CLI key file uses; when it is
- * absent, `expires` is `null` so any standing bound is cleared.
+ * Compute the rotation write-back for a run. With `tokenMaxAgeDays` set,
+ * `expires` is restamped by core's {@link rotatedKeyExpires}, the rule the CLI
+ * key file uses; without it, `expires` is `null`.
  *
  * @throws {RangeError} as {@link rotatedKeyExpires} does, prefixed with
  *   `rotationWriteBack: `.
@@ -75,30 +58,24 @@ export function rotationWriteBack(
   }
 }
 
-/** Record a run that completed the data exchange. The `lastRun` the tiered
- * desync UX and the backup state read as green: `succeeded`, no `failureKind`. */
+/** Record a run that completed the data exchange. */
 export function succeededRun(at: number): ManagedExchangeLastRun {
   return { at: new Date(at).toISOString(), outcome: "succeeded" };
 }
 
 /**
- * Record a run whose partner never arrived: no handshake ran and no payload left
- * this party. Has no `failureKind` -- unlike every other kind, which names a
- * failure of something that did happen, a no-show is the absence of a run, and
- * the failure tiering and the "nothing was disclosed" line both key off the
- * `"missed"` outcome alone.
+ * Record a run whose partner never arrived: no handshake ran and nothing left
+ * this party. It has no `failureKind`, since a no-show is the absence of a run
+ * and the failure tiering keys off the `"missed"` outcome alone.
  */
 export function missedRun(at: number): ManagedExchangeLastRun {
   return { at: new Date(at).toISOString(), outcome: "missed" };
 }
 
 /**
- * Record a run whose rotation could not be persisted: `failureKind: "storage"`,
- * so the next handshake failure surfaces through the benign Tier-1 framing
- * rather than the attack framing (docs/MANAGED_EXCHANGE.md, "Telling a desync
- * from an attack"). Distinct from a custody read that could not complete before
- * any secret rotated, which records `"custody-unreadable"` instead
- * ({@link ./managedExchangeRun.ts}).
+ * Record a run whose rotation could not be persisted, so the next handshake
+ * failure is shown with the desync framing rather than the attack framing
+ * (docs/MANAGED_EXCHANGE.md, "Telling a desync from an attack").
  */
 export function storageFailureRun(at: number): ManagedExchangeLastRun {
   return {
@@ -108,13 +85,8 @@ export function storageFailureRun(at: number): ManagedExchangeLastRun {
   };
 }
 
-/** Record a non-succeeded run with the given outcome and failure kind. Used for
- * the failure paths the runner classifies (an `auth`/`security` handshake
- * failure, a `transport` drop, a benign `input` problem, a `terms-shortfall`
- * refusal, a `consent` refusal, a `too-large` refusal, a `cancelled` run); the
- * critical section itself decides `succeededRun`, `storageFailureRun`, and the
- * `handed-off` and `custody-unreadable` stamps `refuseHandedOffCopy` writes
- * ({@link ./managedExchangeRun.ts}). */
+/** Record a non-succeeded run with the given outcome and failure kind, for the
+ * failure paths the runner classifies. */
 export function failedRun(
   at: number,
   outcome: Exclude<ManagedExchangeLastRun["outcome"], "succeeded">,
@@ -123,10 +95,8 @@ export function failedRun(
   return { at: new Date(at).toISOString(), outcome, failureKind };
 }
 
-/** Raised when the rotation write-back fails to persist, stating the `lastRun`
- * bookkeeping the caller records. Distinct from a handshake or data-exchange
- * failure so the runner can route it to the `storage` failure tier and know the
- * data exchange never began. */
+/** Raised when the rotation write-back fails to persist, before the data
+ * exchange began. */
 export class RotationPersistError extends Error {
   /** The `storage`-kind `lastRun` to record for this failed run. */
   readonly lastRun: ManagedExchangeLastRun;
@@ -137,56 +107,31 @@ export class RotationPersistError extends Error {
   }
 }
 
-/** The rotation half of a run: the handshake and the durable persist,
- * injected by the platform half as callbacks. The lock is the caller's,
- * spanning the whole run; this half must finish before the first
- * peer-visible payload, secret durably persisted -- testable in Node with
- * the persist call faked. */
+/** The handshake and the durable persist, injected by the platform half. The
+ * lock is the caller's and spans the whole run. */
 export interface ManagedRotationCriticalSection<THandshake> {
-  /**
-   * Run the authenticated handshake and yield the rotated secret (from the
-   * `AuthResult`) plus whatever the data-exchange phase needs. Runs inside the
-   * lock; a throw here aborts the run before any persist or data exchange.
-   */
+  /** Run the authenticated handshake and yield the rotated secret plus what the
+   * data-exchange phase needs. A throw aborts the run before any persist. */
   handshake: () => Promise<{ rotatedSecret: string; handshake: THandshake }>;
-  /**
-   * Durably persist the rotation write-back and await the write's completion.
-   * The platform half opens a strict-durability, field-scoped transaction; a
-   * throw here means the secret did not persist and the data exchange must not
-   * begin (a `RotationPersistError` is raised in its place).
-   */
+  /** Durably persist the write-back and await the write. A throw means the
+   * secret did not persist and the data exchange must not begin. */
   persist: (writeBack: RotationWriteBack) => Promise<void>;
-  /** The operator's max-age policy for this record, or `undefined` for no bound.
-   * Restamps `expires` on the write-back when set. */
+  /** The record's max-age policy, or `undefined` for no bound. */
   tokenMaxAgeDays: number | undefined;
-  /** The instant of rotation, injected so the stamp reflects the caller's clock
-   * and the sequence stays pure for testing. */
+  /** The clock the stamps read. */
   now: () => number;
 }
 
-/**
- * The result of the locked critical section: the handshake's held value,
- * obtainable only once the rotated secret is durably persisted. A caller
- * structurally cannot begin the data exchange before the persist resolves.
- */
+/** The handshake's value, obtainable only once the rotated secret is durably
+ * persisted. */
 interface ManagedRotationGate<THandshake> {
-  /** The handshake's held value, to hand to the data-exchange phase. */
+  /** The handshake's value, for the data-exchange phase. */
   handshake: THandshake;
 }
 
 /**
- * Run the rotation half of one run's persist-before-success sequence: it
- * finishes before the first peer-visible payload.
- *
- * 1. `handshake()` yields the `AuthResult`'s rotated secret.
- * 2. The rotation write-back is computed and `persist()`ed, awaited to
- *    completion. A persist failure raises {@link RotationPersistError} stating
- *    the `storage`-kind `lastRun`.
- *
- * Returns the {@link ManagedRotationGate} only after the persist commits, so the
- * data exchange it gates is unreachable before the persist resolves. The lock
- * window is the caller's and is wider than this function: it runs on to the
- * data exchange and the success stamp ({@link ./managedExchangeRun.ts}).
+ * Run the handshake, then persist the rotation write-back and await it.
+ * Returns the {@link ManagedRotationGate} only after the persist commits.
  *
  * @throws {RotationPersistError} if the rotation write-back fails to persist.
  */
