@@ -1,31 +1,15 @@
-// The bound on the one phase of an SFTP dial that ssh2's own connect deadline
-// does not cover: the `subsystem sftp` request ssh2-sftp-client issues once ssh2
-// reports the client ready. ssh2 clears the `readyTimeout` that
-// `server_connect_timeout_ms` sets as soon as authentication succeeds, and the
-// request that follows has no deadline of its own, so a server that
-// authenticates the operator and then never answers it leaves the dial waiting
-// with nothing to end it. Both halves of that -- where the phase begins, and
-// that it does not end on its own -- are driven against the pinned stack in
-// apps/cli/test/integration/sftpStackPremises.test.ts; the bound itself is
-// driven through the adapter in
-// apps/cli/test/integration/subsystemOpenBound.test.ts. Re-verify on any ssh2 /
-// ssh2-sftp-client bump per docs/spec/DEPENDENCY_PINS.md ("Upgrading the SFTP
-// Stack").
+// The bound on the `subsystem sftp` request after authentication, which ssh2's
+// `readyTimeout` does not cover:
+// docs/spec/CHANNEL_SECURITY.md#connect-probe-bound.
 
 import { DEFAULT_SERVER_CONNECT_TIMEOUT_MS, TimeoutError } from "@alcove/core";
 
 import { subsystemOpenTimeoutMessage } from "./sftpAdapterWarnings";
 
 /**
- * The rejection this bound raises, and the type the dial classifies it by: a
- * subsystem-open deadline is terminal -- the server took the whole per-attempt
- * budget on a connection it had already authenticated -- while a `TimeoutError`
- * from anywhere else in a dial stays retryable. A subclass rather than the base
- * type so that classification cannot widen to a deadline this module did not
- * raise.
- *
- * Extends {@link TimeoutError}, so it keeps that type's reading everywhere else:
- * an availability failure (the CLI's exit 69), not a misconfigured command.
+ * The rejection this bound raises. The dial treats it as terminal, while any
+ * other `TimeoutError` in a dial stays retryable; elsewhere it is an
+ * availability failure (exit 69) like its base type.
  */
 export class SubsystemOpenTimeoutError extends TimeoutError {
   constructor(message: string) {
@@ -35,12 +19,8 @@ export class SubsystemOpenTimeoutError extends TimeoutError {
 }
 
 /**
- * The two ssh2 `Client` members the bound reaches past ssh2-sftp-client's public
- * API: the subscription to `'ready'`, which is what arms it, and the unsubscribe
- * that drops the arming when a dial settles first. Both optional, on the same
- * terms as every member of
- * {@link ./sftpClientInternals.Ssh2SftpClientInternals}, whose `client` is what
- * a caller passes: a version that relocated the Client reads undefined here.
+ * The ssh2 `Client` members the bound subscribes to `'ready'` through.
+ * Optional, as in {@link ./sftpClientInternals.Ssh2SftpClientInternals}.
  */
 export interface SubsystemOpenWatchTarget {
   once?(event: "ready", listener: () => void): void;
@@ -48,14 +28,8 @@ export interface SubsystemOpenWatchTarget {
 }
 
 /**
- * The bound applied to one dial's SFTP subsystem-open phase, in milliseconds:
- * the same per-attempt budget the operator already granted the phase before it.
- * Core sets that budget as ssh2's `readyTimeout` from
- * `connection.options.server_connect_timeout_ms`, so one operator-facing setting
- * governs both halves of an attempt rather than a second number to discover.
- *
- * A direct adapter caller that set no usable `readyTimeout` gets the same
- * default the connection schema would have applied.
+ * The subsystem-open bound in milliseconds: the dial's `readyTimeout`, or the
+ * schema default when it has no usable one.
  *
  * @param readyTimeoutMs - The dial's `readyTimeout`, as the connect options hold
  * it.
@@ -68,34 +42,24 @@ export function subsystemOpenTimeoutMs(readyTimeoutMs: unknown): number {
     : DEFAULT_SERVER_CONNECT_TIMEOUT_MS;
 }
 
-/**
- * A dial's armed subsystem-open bound, raced against the dial itself.
- */
+/** A dial's armed subsystem-open bound, raced against the dial itself. */
 export interface SubsystemOpenWatch {
   /**
    * Rejects with a {@link SubsystemOpenTimeoutError} once the bound has elapsed
-   * since authentication succeeded. It settles no other way, so a caller races
-   * it against the dial and reads that type as this phase and only this phase.
+   * since authentication; it settles no other way.
    */
   readonly expired: Promise<never>;
   /**
-   * Drop the watch: cancel the timer and the subscription behind it. Idempotent,
-   * and required on every path -- the ssh2 `Client` outlives any one dial, so a
-   * listener left behind would accumulate across re-dials.
+   * Cancel the timer and the subscription. Idempotent, and required on every
+   * path: the ssh2 `Client` outlives the dial, so listeners would accumulate.
    */
   cancel(): void;
 }
 
 /**
- * Arm the subsystem-open bound on `client`, the ssh2 `Client` beneath
- * ssh2-sftp-client. The bound starts at ssh2's `'ready'`, which is the event
- * ssh2-sftp-client itself waits for before requesting the subsystem, so the
- * watch covers exactly the phase after authentication and nothing of the phase
- * before it.
- *
- * Returns `undefined` when this build cannot subscribe to that `Client` at all,
- * leaving the caller to decide what an unbounded phase is worth reporting;
- * nothing else here fails.
+ * Arm the subsystem-open bound on `client`, starting at ssh2's `'ready'`, the
+ * event ssh2-sftp-client waits for before requesting the subsystem. Returns
+ * `undefined` when the `Client` cannot be subscribed to.
  *
  * @param client - The ssh2 `Client`, as ssh2-sftp-client exposes it.
  * @param timeoutMs - The bound, from {@link subsystemOpenTimeoutMs}.
@@ -120,9 +84,7 @@ export function watchSubsystemOpen(
         ),
       timeoutMs,
     );
-    // The dial this bounds is parked on a live socket, which holds the process
-    // open on its own; an unref'd timer keeps the bound from being the thing
-    // that outlives a run.
+    // The live socket already holds the process open; the timer must not.
     timer.unref();
   };
   client.once("ready", armBound);
