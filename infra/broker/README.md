@@ -109,8 +109,7 @@ Each forced renewal counts against Let's Encrypt's limit of five duplicate certi
 ## Exposure
 
 `systemd-analyze security alcove-broker.service` scored the unit 8.6 EXPOSED with `NoNewPrivileges=`, `PrivateTmp=`, `ProtectSystem=strict` and `ProtectHome=` as its only sandboxing.
-The unit's sandbox is the set measured on the host on 2026-10-08 (systemd 252), as a drop-in over that unit, with the same directives as the tracked unit.
-It scored 1.3 OK, the broker answered `/api/health` and a CLI invite/accept exchange completed through the front ([the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)).
+With the sandbox measured on the host on 2026-10-08 (systemd 252) and set in the tracked unit, it scored 1.3 OK, the broker answered `/api/health` and a CLI invite/accept exchange completed through the front ([the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)).
 
 Two directives are left out because the broker did not start under them:
 

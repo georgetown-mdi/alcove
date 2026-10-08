@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -306,12 +306,14 @@ printf 'nginx -t mode=%s cert=%s\n' "$(stat -c %a "$conf")" "$cert" >> "$CALLS"
 ! grep -q broken_directive "$conf"
 `;
 
-// mv, recording each target with the time the rename had completed.
+// mv, recording each target with the time the rename had completed; it fails
+// after renaming the live configuration while STOP_AFTER_CONF exists.
 const MV_STUB = String.raw`
 for real in /usr/bin/mv /bin/mv; do [ -x "$real" ] && break; done
 "$real" "$@" || exit
 for target; do :; done
 printf '%s %s\n' "$target" "$(date +%s%6N)" >> "$RENAMES"
+case "$target" in */nginx.conf) [ ! -f "$STOP_AFTER_CONF" ] || exit 1 ;; esac
 `;
 
 /**
@@ -360,6 +362,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const failLego = join(root, "fail-lego");
   const holdLego = join(root, "hold-lego");
   const stopFrontOnReload = join(root, "stop-front-on-reload");
+  const stopAfterConf = join(root, "stop-after-conf");
   const serial = join(root, "serial");
   const clearLogs = () => {
     for (const log of [calls, starts, envLog, renames]) writeFileSync(log, "");
@@ -380,6 +383,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
     ["FAIL_LEGO", failLego],
     ["HOLD_LEGO", holdLego],
     ["STOP_FRONT_ON_RELOAD", stopFrontOnReload],
+    ["STOP_AFTER_CONF", stopAfterConf],
     ["SERIAL", serial],
     ["NAME", NAME],
   ]
@@ -483,6 +487,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
     stopFrontOnReload: flag(stopFrontOnReload),
     failRestart: flag(failRestart),
     holdDocker: flag(holdDocker),
+    stopAfterConf: flag(stopAfterConf),
     calls: () => lines(calls),
     // The time, in microseconds, at which each target's last rename completed.
     renames: () =>
@@ -766,6 +771,41 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(frontActions(host.calls())).toEqual([
       `systemctl try-restart ${FRONT_UNIT}`,
     ]);
+  });
+
+  it("stamps the staged configuration just before the rename, so a run killed after the rename leaves it newer than the wait", async () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    const template = join(host.source, "nginx.conf.tmpl");
+    writeFileSync(template, `${readFileSync(template, "utf8")}# changed\n`);
+    host.clearLogs();
+    host.holdLego(true);
+    host.stopAfterConf(true);
+    const install = host.spawnInstall();
+    await waitFor(() => host.calls().includes("lego"));
+    const waited = BigInt(Date.now()) * 1000n;
+    await new Promise((done) => setTimeout(done, 100));
+    host.holdLego(false);
+    const installed = await install.exit;
+    expect(installed.status).not.toBe(0);
+    expect(readFileSync(host.conf, "utf8")).toContain("# changed");
+    expect(mtimeUs(host.conf) > waited + 50_000n).toBe(true);
+  });
+
+  it("puts the unit-state.sh a new renew.sh calls in place before renew.sh", () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    for (const file of ["renew.sh", "unit-state.sh"]) {
+      appendFileSync(join(host.source, file), "# revision 2\n");
+    }
+    host.clearLogs();
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    const order = [...host.renames().entries()]
+      .filter(([target]) => /\/(renew|unit-state)\.sh$/.test(target))
+      .sort((a, b) => Number(a[1] - b[1]))
+      .map(([target]) => basename(target));
+    expect(order).toEqual(["unit-state.sh", "renew.sh"]);
   });
 
   it("does not start through a restart a front stopped after the staleness check", () => {

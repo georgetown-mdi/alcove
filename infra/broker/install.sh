@@ -92,8 +92,10 @@ put_file() {
   fi
 }
 renew() {
-  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
+  # unit-state.sh first: a stop between the two never leaves a new renew.sh
+  # calling go_live in an old unit-state.sh.
   put_file "$HERE/unit-state.sh" "$ETC/unit-state.sh" 600
+  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
   ALCOVE_BROKER_LOCK_FD=9 "$ETC/renew.sh" --no-restart
 }
 
@@ -139,6 +141,9 @@ put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 6
 CONF="$ETC/nginx.conf"
 if differs "$CANDIDATE" "$CONF"; then
   chmod 644 "$CANDIDATE"
+  # The candidate was written before the check and the renewal; stamp it now,
+  # so a run stopped right after the rename leaves the live file newer than them.
+  touch "$CANDIDATE"
   go_live "$CANDIDATE" "$CONF"
 fi
 chmod 644 "$CONF"
