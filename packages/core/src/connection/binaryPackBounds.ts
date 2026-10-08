@@ -89,11 +89,12 @@ export const MAX_CONCURRENT_REASSEMBLIES = 8;
 export const MAX_WEBRTC_REASSEMBLY_DEPTH = 256;
 
 /**
- * Maximum number of chunks a single reassembly may accumulate. PeerJS retains
- * each chunk as its own `Uint8Array` (measured ~232 bytes resident even for a
- * one-byte slice), an overhead the byte cap -- which counts only payload bytes --
- * undercounts, so a flood of tiny chunks could exhaust memory while staying far
- * under {@link MAX_WEBRTC_FRAME_BYTES}. This caps the count so that overhead is
+ * Maximum number of chunks a single reassembly may accumulate. Each receiver
+ * retains each chunk as its own `Uint8Array` (measured at 460 to 700 bytes
+ * resident for a one-byte slice, see {@link MIN_CHUNK_RESIDENT_BYTES}), an
+ * overhead the byte cap -- which counts only payload bytes -- undercounts, so a
+ * flood of tiny chunks could exhaust memory while staying far under
+ * {@link MAX_WEBRTC_FRAME_BYTES}. This caps the count so that overhead is
  * bounded: with {@link MAX_CONCURRENT_REASSEMBLIES} reassemblies at most this many
  * chunks each, retained chunk overhead stays on the order of the byte cap.
  *
@@ -103,11 +104,18 @@ export const MAX_WEBRTC_REASSEMBLY_DEPTH = 256;
  */
 export const MAX_CHUNKS_PER_REASSEMBLY = 131_072;
 
-/** Per-chunk retained overhead (a `Uint8Array` plus its slot, measured ~232
- * bytes even for a one-byte slice), the floor each chunk is charged against the
- * byte cap so a tiny-chunk flood is bounded by true memory; see
- * {@link MAX_CHUNKS_PER_REASSEMBLY}. */
-export const MIN_CHUNK_RESIDENT_BYTES = 256;
+/**
+ * The least each retained chunk is charged against
+ * {@link MAX_WEBRTC_FRAME_BYTES}, so a tiny-chunk flood is bounded by the memory
+ * it holds rather than by its payload. A one-byte chunk measured about 575
+ * bytes resident in Node and 662 in Chromium at the 349,525 chunks this floor
+ * admits into the byte cap; the floor is 16% above the larger. The method and
+ * the figures at other counts are in docs/spec/CHANNEL_SECURITY.md.
+ *
+ * Above 841 bytes the floor would lower the largest frame a sender admits
+ * (`webrtcFrameReceiveCharge`, docs/spec/PROTOCOL.md).
+ */
+export const MIN_CHUNK_RESIDENT_BYTES = 768;
 
 /**
  * Maximum byte length of a single BinaryPack string a frame may contain.

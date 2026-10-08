@@ -62,7 +62,35 @@ describe("the WebRTC inbound bound constants", () => {
     expect(MAX_WEBRTC_STRING_BYTES).toBe(209_715_200);
     expect(MAX_CHUNKS_PER_REASSEMBLY).toBe(131_072);
     expect(MAX_CONCURRENT_REASSEMBLIES).toBe(8);
-    expect(MIN_CHUNK_RESIDENT_BYTES).toBe(256);
+    expect(MIN_CHUNK_RESIDENT_BYTES).toBe(768);
+  });
+
+  // Resident bytes one retained one-byte chunk costs, by how many are retained,
+  // measured 2026-10-08 on each receive path (docs/spec/CHANNEL_SECURITY.md,
+  // "Retained chunk-count cap"). The cost falls as the count grows.
+  const measuredResidentBytesPerChunk = [
+    { chunks: 262_144, node: 632, chromium: 701 },
+    { chunks: 349_525, node: 575, chromium: 662 },
+    { chunks: 524_288, node: 520, chromium: 625 },
+    { chunks: 1_048_576, node: 460, chromium: 610 },
+  ];
+
+  test("charge each chunk at least the resident memory it was measured to hold", () => {
+    // A flood filling the byte cap retains this many chunks; the cost measured at
+    // the nearest count at or below it is the larger, so the more conservative.
+    const admitted = Math.floor(
+      MAX_WEBRTC_FRAME_BYTES / MIN_CHUNK_RESIDENT_BYTES,
+    );
+    const nearestBelow = measuredResidentBytesPerChunk
+      .filter((row) => row.chunks <= admitted)
+      .at(-1);
+    expect(
+      nearestBelow,
+      `no measurement at or below ${admitted} chunks: measure that count`,
+    ).toBeDefined();
+    expect(MIN_CHUNK_RESIDENT_BYTES).toBeGreaterThanOrEqual(
+      Math.max(nearestBelow?.node ?? 0, nearestBelow?.chromium ?? 0),
+    );
   });
 });
 
