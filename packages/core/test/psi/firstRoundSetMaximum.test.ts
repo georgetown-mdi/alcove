@@ -17,36 +17,12 @@ import {
   StandardizedField,
 } from "../../src/standardization";
 
-import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
-import { prepared } from "../utils/support";
+import { distinctFirstName, preparedFirstNames } from "../utils/support";
 
 // The first-round check every channel runs reads the prepared dataset,
 // before any connection. The per-set maximum is lowered so the boundary is
 // reached with a few hundred values.
-
-function letters(i: number): string {
-  let out = "";
-  let n = i;
-  do {
-    out = String.fromCharCode(97 + (n % 26)) + out;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  // A prefix no first-name cleaning shortens or maps onto another name.
-  return `zq${out}`;
-}
-
-function preparedWith(
-  firstNames: Array<string>,
-  strategy: LinkageStrategy = "cascade",
-  deduplicate = false,
-) {
-  return prepared(
-    "Tester",
-    firstNames.map((name) => ({ first_name: name })),
-    { terms: { linkageStrategy: strategy, deduplicate } },
-  );
-}
 
 test("the check's bound is the protocol's per-set maximum", () => {
   expect(MAX_PSI_DECODE_ELEMENTS).toBe(2 ** 24);
@@ -72,8 +48,12 @@ async function refusalOf(
 test("the check refuses one value over the bound and admits one under and at it", async () => {
   // 300 values held by one record each, beside 40 records sharing 20 values:
   // the round drops a shared value, so 300 is the count the check weighs.
-  const unique = Array.from({ length: 301 }, (_unused, i) => letters(i));
-  const shared = Array.from({ length: 20 }, (_unused, i) => letters(1000 + i));
+  const unique = Array.from({ length: 301 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
+  const shared = Array.from({ length: 20 }, (_unused, i) =>
+    distinctFirstName(1000 + i),
+  );
   const rows = (uniqueCount: number) => [
     ...unique.slice(0, uniqueCount),
     ...shared,
@@ -81,9 +61,9 @@ test("the check refuses one value over the bound and admits one under and at it"
   ];
   const bound = 300;
 
-  expect(await refusalOf(preparedWith(rows(299)), bound)).toBeUndefined();
-  expect(await refusalOf(preparedWith(rows(300)), bound)).toBeUndefined();
-  const refusal = await refusalOf(preparedWith(rows(301)), bound);
+  expect(await refusalOf(preparedFirstNames(rows(299)), bound)).toBeUndefined();
+  expect(await refusalOf(preparedFirstNames(rows(300)), bound)).toBeUndefined();
+  const refusal = await refusalOf(preparedFirstNames(rows(301)), bound);
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect(statesItsOwnNextStep(refusal, { ownOnly: true })).toBe(true);
   expect((refusal as RoundSetLimitError).reason).toBe("over-set-maximum");
@@ -95,24 +75,29 @@ test("the check refuses one value over the bound and admits one under and at it"
 test("the first-round check counts every distinct value a deduplicating party sends", async () => {
   // 400 values each held by two records: a party that drops a shared value
   // sends none of them, one whose terms set deduplicate sends all 400.
-  const values = Array.from({ length: 400 }, (_unused, i) => letters(i));
+  const values = Array.from({ length: 400 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   const rows = [...values, ...values];
   const bound = 300;
 
   expect(
-    await refusalOf(preparedWith(rows, "cascade", false), bound),
+    await refusalOf(preparedFirstNames(rows, "cascade", false), bound),
   ).toBeUndefined();
-  const refusal = await refusalOf(preparedWith(rows, "cascade", true), bound);
+  const refusal = await refusalOf(
+    preparedFirstNames(rows, "cascade", true),
+    bound,
+  );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(/at least 400 values to send/);
 });
 
 test("the check leaves a single-pass exchange to its dataset ceiling", async () => {
-  const rows = Array.from({ length: 50 }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: 50 }, (_unused, i) => distinctFirstName(i));
   expect(
-    await refusalOf(preparedWith(rows, "single-pass"), 10),
+    await refusalOf(preparedFirstNames(rows, "single-pass"), 10),
   ).toBeUndefined();
-  expect(await refusalOf(preparedWith(rows), 10)).toBeInstanceOf(
+  expect(await refusalOf(preparedFirstNames(rows), 10)).toBeInstanceOf(
     RoundSetLimitError,
   );
 });
@@ -122,7 +107,7 @@ test("the check leaves a single-pass exchange to its dataset ceiling", async () 
  * `failure` when read.
  */
 function withThrowingRows(
-  prepared: ReturnType<typeof preparedWith>,
+  prepared: ReturnType<typeof preparedFirstNames>,
   rowCount: number,
   failure: Error,
 ) {
@@ -146,8 +131,8 @@ function withThrowingRows(
 
 test("the check refuses, with the failure as its cause, when the count throws", async () => {
   const rowCount = 50;
-  const prepared = preparedWith(
-    Array.from({ length: rowCount }, (_unused, i) => letters(i)),
+  const prepared = preparedFirstNames(
+    Array.from({ length: rowCount }, (_unused, i) => distinctFirstName(i)),
   );
   const failure = new RangeError("out of memory");
   const refusal = await refusalOf(
@@ -164,8 +149,8 @@ test("the check refuses, with the failure as its cause, when the count throws", 
 
 test("the check raises a refusal the count throws in both roles as it is", async () => {
   const rowCount = 50;
-  const prepared = preparedWith(
-    Array.from({ length: rowCount }, (_unused, i) => letters(i)),
+  const prepared = preparedFirstNames(
+    Array.from({ length: rowCount }, (_unused, i) => distinctFirstName(i)),
   );
   const refusal = new UsageError("a refusal the round would raise");
   expect(

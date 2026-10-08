@@ -5,14 +5,13 @@ import {
   buildStandardizedDataset,
   StandardizedKeyIterable,
 } from "../../src/standardization";
-import { PSIParticipant } from "../../src/psi/participant";
+import { makeParticipant } from "../utils/support";
 import { linkViaPSI } from "../../src/psi/link";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 import type { LinkageTerms } from "../../src/config/linkageTermsSchema";
 import type { ColumnMetadata } from "../../src/config/metadata";
 
 import { createMessagePipe } from "../../src/connection/messageConnection";
-import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
 // --- Fixtures ----------------------------------------------------------------
 
@@ -90,18 +89,8 @@ const psiLibrary = await PSI();
 
 const [serverConn, clientConn] = createMessagePipe();
 
-const server = new PSIParticipant(
-  "server",
-  psiLibrary,
-  { role: "starter", verbose: -1 },
-  UNBOUNDED_PSI_ELEMENTS,
-);
-const client = new PSIParticipant(
-  "client",
-  psiLibrary,
-  { role: "joiner", verbose: -1 },
-  UNBOUNDED_PSI_ELEMENTS,
-);
+const server = makeParticipant(psiLibrary, "starter");
+const client = makeParticipant(psiLibrary, "joiner");
 
 // --- Tests --------------------------------------------------------------------
 

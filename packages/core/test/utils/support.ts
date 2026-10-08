@@ -14,7 +14,11 @@ import {
   createMessagePipe,
   type MessageConnection,
 } from "../../src/connection/messageConnection";
-import type { Output, LinkageTerms } from "../../src/config/linkageTermsSchema";
+import type {
+  Output,
+  LinkageStrategy,
+  LinkageTerms,
+} from "../../src/config/linkageTermsSchema";
 import type { Metadata } from "../../src/config/metadata";
 import { prepareForExchange, type PreparedExchange } from "../../src/exchange";
 import type { CSVRow } from "../../src/file";
@@ -257,6 +261,33 @@ export function prepared(
     identity,
     rows,
     options.columns ?? ["first_name"],
+  );
+}
+
+/**
+ * The `i`th of a sequence of distinct first names, each a prefix no first-name
+ * cleaning shortens or maps onto another name.
+ */
+export function distinctFirstName(i: number): string {
+  let out = "";
+  let n = i;
+  do {
+    out = String.fromCharCode(97 + (n % 26)) + out;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return `zq${out}`;
+}
+
+/** One `first_name` row per name, prepared as `Tester` under `strategy`. */
+export function preparedFirstNames(
+  firstNames: Array<string>,
+  strategy: LinkageStrategy = "cascade",
+  deduplicate = false,
+): PreparedExchange {
+  return prepared(
+    "Tester",
+    firstNames.map((name) => ({ first_name: name })),
+    { terms: { linkageStrategy: strategy, deduplicate } },
   );
 }
 

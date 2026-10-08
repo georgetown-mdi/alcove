@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { PSIParticipant } from "../src/psi/participant";
+import { makeParticipant } from "./utils/support";
 import {
   prepareForExchange,
   runExchange,
@@ -27,7 +27,6 @@ import { createMessagePipe } from "../src/connection/messageConnection";
 import { UsageError, ConnectionError } from "../src/errors";
 import type { LinkageTerms } from "../src/config/linkageTermsSchema";
 import type { AssociationTable } from "../src/types";
-import { UNBOUNDED_PSI_ELEMENTS } from "./utils/psiElementBounds";
 
 const psiLibrary = await PSI();
 
@@ -275,12 +274,7 @@ function factorRecoveryPair(
   return Promise.allSettled([
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "server",
-        psiLibrary,
-        { role: "starter", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "starter"),
       senderConn,
       senderData,
       boundsFor(receiverData[0].length, [1]),
@@ -289,12 +283,7 @@ function factorRecoveryPair(
     ),
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "client",
-        psiLibrary,
-        { role: "joiner", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "joiner"),
       receiverConn,
       receiverData,
       boundsFor(senderRecordCountTheReceiverHolds, [1]),
@@ -328,12 +317,7 @@ test("an honest fanning sender's ragged table decodes to the pairs its rows hold
   const [senderTable, receiverTable] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "server",
-        psiLibrary,
-        { role: "starter", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "starter"),
       senderConn,
       [[new Set(["SMITH", "JONES"]), "BROWN"]],
       boundsFor(2, [1], FAN_OUT_CANDIDATES_PER_ELEMENT),
@@ -342,12 +326,7 @@ test("an honest fanning sender's ragged table decodes to the pairs its rows hold
     ),
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "client",
-        psiLibrary,
-        { role: "joiner", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "joiner"),
       receiverConn,
       [["JONES", "BROWN"]],
       boundsFor(2 * FAN_OUT_CANDIDATES_PER_ELEMENT, [1]),
@@ -414,12 +393,7 @@ test("a sender that holds no rows at all is the one legitimate zero", async () =
   const [senderTable, receiverTable] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "server",
-        psiLibrary,
-        { role: "starter", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "starter"),
       senderConn,
       [[]],
       boundsFor(2, [1]),
@@ -428,12 +402,7 @@ test("a sender that holds no rows at all is the one legitimate zero", async () =
     ),
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "client",
-        psiLibrary,
-        { role: "joiner", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "joiner"),
       receiverConn,
       [["A", "B"]],
       boundsFor(0, [1]),
@@ -493,12 +462,7 @@ async function runFanOutExchange(
   const [senderTable, receiverTable] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality: senderCardinality },
-      new PSIParticipant(
-        "server",
-        psiLibrary,
-        { role: "starter", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "starter"),
       senderConn,
       senderData,
       boundsFor(receiverData[0].length, keyWidths),
@@ -507,12 +471,7 @@ async function runFanOutExchange(
     ),
     linkViaSinglePassPSI(
       { cardinality: receiverCardinality },
-      new PSIParticipant(
-        "client",
-        psiLibrary,
-        { role: "joiner", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "joiner"),
       receiverConn,
       receiverData,
       boundsFor(senderData[0].length, keyWidths),
@@ -621,12 +580,7 @@ test("terms that declare a fan-out no row realizes produce the fan-out-free tabl
   const [, raggedReceiverTable] = await Promise.all([
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "server",
-        psiLibrary,
-        { role: "starter", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "starter"),
       senderConn,
       senderData,
       boundsFor(3, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
@@ -635,12 +589,7 @@ test("terms that declare a fan-out no row realizes produce the fan-out-free tabl
     ),
     linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        "client",
-        psiLibrary,
-        { role: "joiner", verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, "joiner"),
       receiverConn,
       receiverData,
       boundsFor(3, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
@@ -764,12 +713,7 @@ test("the receiver's read gate includes the ragged table's count-prefix term", a
   const effectiveKeyCount = FAN_OUT_CANDIDATES_PER_ELEMENT;
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    new PSIParticipant(
-      "client",
-      psiLibrary,
-      { role: "joiner", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    ),
+    makeParticipant(psiLibrary, "joiner"),
     {
       send: async () => {},
       receive: () =>
@@ -807,12 +751,7 @@ test("an over-ceiling fan-out exchange aborts on both sides before any frame mov
   for (const role of roles) {
     const run = linkViaSinglePassPSI(
       { cardinality: "one-to-one" },
-      new PSIParticipant(
-        role === "starter" ? "server" : "client",
-        psiLibrary,
-        { role, verbose: -1 },
-        UNBOUNDED_PSI_ELEMENTS,
-      ),
+      makeParticipant(psiLibrary, role),
       conn,
       [["a", "b"]],
       boundsFor(overWithFanOut, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
@@ -871,12 +810,7 @@ test("a party over the ceiling on its own cleaning alone is offered the fan-out 
   const [conn] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    new PSIParticipant(
-      "server",
-      psiLibrary,
-      { role: "starter", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    ),
+    makeParticipant(psiLibrary, "starter"),
     conn,
     new Array<Column>(keyCount).fill(column),
     boundsFor(
@@ -903,12 +837,7 @@ test("a row realizing more candidates than the party declared is refused, not sh
   const [conn] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    new PSIParticipant(
-      "server",
-      psiLibrary,
-      { role: "starter", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    ),
+    makeParticipant(psiLibrary, "starter"),
     conn,
     [[new Set(["A", "B"])]],
     boundsFor(1, [1]),
@@ -937,12 +866,7 @@ test("a cell wider than the normative width bound is refused as the table is bui
   const [conn] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    new PSIParticipant(
-      "server",
-      psiLibrary,
-      { role: "starter", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    ),
+    makeParticipant(psiLibrary, "starter"),
     conn,
     [[tooWide]],
     boundsFor(1, [FAN_OUT_CANDIDATES_PER_ELEMENT]),
@@ -985,12 +909,7 @@ test("a row over the width its own key declares is refused, not the key beside i
   const [conn] = createMessagePipe();
   const run = linkViaSinglePassPSI(
     { cardinality: "one-to-one" },
-    new PSIParticipant(
-      "server",
-      psiLibrary,
-      { role: "starter", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-    ),
+    makeParticipant(psiLibrary, "starter"),
     conn,
     [[insideBound], [insideBound]],
     boundsFor(1, [FAN_OUT_CANDIDATES_PER_ELEMENT, 1]),
