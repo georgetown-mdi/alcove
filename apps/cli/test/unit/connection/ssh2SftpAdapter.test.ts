@@ -1444,6 +1444,111 @@ describe("bounded put (idle window)", () => {
     }
   });
 
+  // An adapter whose client's put() is `put`, and a pacer for the source that
+  // put() receives: each read the stream requests runs `gap` ms later, as when
+  // the write stream pulls only on the server's acknowledgement. `pulls` holds
+  // the fake-clock time of each read the guard runs -- one per chunk produced,
+  // then the end-of-file read -- and `onEndOfFile` runs at the end-of-file read.
+  function tailAdapter(
+    put: (source: Readable) => Promise<unknown>,
+  ): SSH2SFTPClientAdapter {
+    const adapter = new SSH2SFTPClientAdapter();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).options = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).log = { warn: vi.fn(), debug: vi.fn() };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (adapter as any).client = { put: vi.fn().mockImplementation(put) };
+    return adapter;
+  }
+  function paceReads(
+    source: Readable,
+    gap: number,
+    chunkCount: number,
+    pulls: number[],
+    onEndOfFile: () => void = () => {},
+  ): void {
+    const read = source._read.bind(source);
+    source._read = (size: number) => {
+      setTimeout(() => {
+        pulls.push(Date.now());
+        read(size);
+        if (pulls.length === chunkCount + 1) onEndOfFile();
+      }, gap);
+    };
+    source.on("data", () => {});
+  }
+
+  test("completes a put whose tail spans more than a window when every gap stays under it", async () => {
+    // The last chunk is produced, the end-of-file read follows one gap later,
+    // and the server acknowledges one gap after that: the tail is 1.5 windows
+    // with no gap reaching one window.
+    vi.useFakeTimers();
+    try {
+      const chunkCount = 4;
+      const gap = SFTP_STALL_DEADLINE_MS * 0.75;
+      const pulls: number[] = [];
+      const adapter = tailAdapter(
+        (source) =>
+          new Promise<string>((resolve) => {
+            paceReads(source, gap, chunkCount, pulls, () =>
+              setTimeout(() => resolve("uploaded data stream"), gap),
+            );
+          }),
+      );
+      const start = Date.now();
+      const writing = adapter.put(
+        Buffer.alloc(chunkCount * SFTP_PUT_PROGRESS_CHUNK_BYTES, 7),
+        "/remote/tail.bin",
+      );
+      void writing.catch(() => {});
+      await vi.advanceTimersByTimeAsync(gap * (chunkCount + 2) + 1);
+      expect(pulls.map((t) => t - start)).toEqual(
+        Array.from({ length: chunkCount + 1 }, (_, i) => gap * (i + 1)),
+      );
+      await expect(writing).resolves.toBe("uploaded data stream");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("rejects a put whose final acknowledgement never arrives within a window of the end-of-file read", async () => {
+    vi.useFakeTimers();
+    try {
+      const chunkCount = 4;
+      const gap = SFTP_STALL_DEADLINE_MS * 0.75;
+      const pulls: number[] = [];
+      const adapter = tailAdapter(
+        (source) =>
+          new Promise<never>(() => {
+            paceReads(source, gap, chunkCount, pulls);
+          }),
+      );
+      const writing = adapter.put(
+        Buffer.alloc(chunkCount * SFTP_PUT_PROGRESS_CHUNK_BYTES, 7),
+        "/remote/tail.bin",
+      );
+      let settled: "resolved" | "rejected" | "pending" = "pending";
+      const outcome = writing.then(
+        () => (settled = "resolved"),
+        (e: unknown) => {
+          settled = "rejected";
+          return e;
+        },
+      );
+      await vi.advanceTimersByTimeAsync(gap * (chunkCount + 1));
+      expect(pulls).toHaveLength(chunkCount + 1);
+      expect(settled).toBe("pending");
+      await vi.advanceTimersByTimeAsync(SFTP_STALL_DEADLINE_MS);
+      expect(settled).toBe("rejected");
+      const err = await outcome;
+      expect(err).toBeInstanceOf(TransportOperationStalledError);
+      expect(sanitizeErrorForDisplay(err)).toContain("made no upload progress");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("uploads the exact payload bytes through the chunked source", async () => {
     // The chunked source must reassemble to the original payload byte-for-byte --
     // chunking for the progress signal must not corrupt or reorder the upload.

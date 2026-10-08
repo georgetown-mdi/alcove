@@ -183,8 +183,9 @@ export interface BoundedPutSource {
  * chunk produced, fires when none has been pulled within `stallDeadlineMs`: it
  * rejects `result` and destroys the source WITH an error (not bare), so
  * ssh2-sftp-client's read-stream `'error'` handler tears the write stream down
- * at the server. The bound also covers the tail, since the last chunk's timer
- * clears only on `complete()`/`fail()`. Defaults to {@link SFTP_STALL_DEADLINE_MS}.
+ * at the server. Reaching end of file restarts the window once more, so the
+ * final acknowledgement and the close are bounded as one gap, cleared only on
+ * `complete()`/`fail()`. Defaults to {@link SFTP_STALL_DEADLINE_MS}.
  *
  * The source is single-use; the caller rebuilds a fresh one from the retained
  * payload per retry attempt.
@@ -271,10 +272,8 @@ export function createBoundedPutSource(
         offset = 0;
       }
       if (partIndex >= parts.length) {
-        // EOF: no more payload. This path does not re-arm the idle window, so the
-        // last data chunk's timer stands until complete()/fail() clears it --
-        // bounding the tail (the wait for the final ack and the write stream's
-        // close) as well as the body.
+        // The last chunk was consumed, which is progress.
+        armIdle();
         this.push(null);
         return;
       }
