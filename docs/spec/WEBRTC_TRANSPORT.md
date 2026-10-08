@@ -472,7 +472,7 @@ test's 15,000 ms bound (`MAX_CONNECTED_LOOP_LAG_MS`), the sender's by under
 3 s.
 
 Both peaks are at or under the figures the stress test admits a host on at
-this size, 15,829,400,000 bytes for the sender and 17,115,700,000 for the
+this size, 15,353,800,000 bytes for the sender and 17,202,600,000 for the
 receiver ([A party's memory](#a-partys-memory)), and are among the points
 those figures are fitted to.
 
@@ -481,47 +481,60 @@ one-party-per-host mode, each host running its own party against the other.
 
 ### A party's memory
 
-Measured 2026-10-03 in the development container (10 CPUs, 23 GiB, Linux
-arm64, Node v26.10.0): both parties on one host over loopback, driven by
+Measured 2026-10-08 on commit aa35fa977, on a Linux container rather than the
+development container named elsewhere in this document (Intel Core i3-14100,
+6 CPUs, 29 GiB, no swap, Ubuntu 24.04, Node v26.8.2): both parties on that
+host over loopback, one run at a time, three runs at each size, driven by
 `apps/cli/test/stress/webrtcCompletion.stress.test.ts` with
 `ALCOVE_STRESS_COMPLETION_LOG_DIR` set, so that each party's memory was
 sampled every 200 ms (`apps/cli/test/stress/peakMemoryReport.mjs`). A sample
 states the process's resident set, the main thread's `process.memoryUsage()`
-and each PSI worker's V8 heap. What no V8 heap counts is the rest: the native
-PSI engine's allocations, memory the allocator keeps after they are freed,
-and the process's code. In every run the inviter was the PSI sender, and both
-parties exited 0 with the expected result.
+and each PSI worker's V8 heap in use. What no V8 heap counts is the rest: the
+native PSI engine's allocations, the worker's external memory, memory the
+allocator keeps after it is freed, and the process's code. In every run the
+inviter was the PSI sender, and both parties exited 0 with the expected
+result. The one-minute load average was 1.5 to 4.0 at the start of these nine
+runs and 3.6 to 5.6 at their end; with the three runs on 1a0504a44 below, the
+start range is 1.32 to 4.0.
 
-Peak RSS is the process's, PSI worker included. The components, in GB, are
-those of the sample with the highest resident set, which was within 0.13 GB of
-the peak: the main thread's V8 heap, the main thread's ArrayBuffers, the PSI
-worker's heap with its external memory, and the rest. Where the peak fell is
-read off the party's log lines around that sample.
+Peak RSS is the process's high-water mark (`process.resourceUsage().maxRSS`),
+PSI worker included. The components, in GB, are those of the sample with the
+highest resident set in the run with the highest peak, which was within
+0.17 GB of that peak: the main thread's V8 heap, the main thread's
+ArrayBuffers, the PSI worker's V8 heap, and the rest. The sampler took 62% to
+71% of the samples a 200 ms period gives, fewest at the largest size, so a
+short rise can fall between samples; the peak RSS cannot. Where the peak fell
+is read off the party's log lines around that sample, each logged when its
+step ends.
 
-| Records a side | Role | Peak RSS | Where | Main heap | Main ArrayBuffers | Worker | Rest |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 500,000 | sender | 1,480,032,256 | second key, end of its set's encryption | 0.89 | 0.02 | 0.17 | 0.36 |
-| 500,000 | receiver | 1,700,110,336 | second key, end of its set's encryption | 0.96 | 0.13 | 0.28 | 0.32 |
-| 1,000,000 | sender | 2,541,735,936 | second key, end of its set's encryption | 1.73 | 0.05 | 0.38 | 0.33 |
-| 1,000,000 | receiver | 2,747,879,424 | second key, its set's build | 1.81 | 0.17 | 0.13 | 0.64 |
-| 2,000,000 | sender | 4,987,240,448 | second key, end of its set's encryption | 3.60 | 0.08 | 0.64 | 0.54 |
-| 2,000,000 | receiver | 4,563,746,816 | first key, the match | 1.37 | 0.37 | 1.76 | 1.03 |
+| Records a side | Role | Peak RSS, highest of three | Lowest of three | Where | Main heap | Main ArrayBuffers | Worker | Rest |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 500,000 | sender | 1,278,431,232 | 1,181,716,480 | fourth key, end of its set's encryption | 0.48 | 0.04 | 0.03 | 0.72 |
+| 500,000 | receiver | 1,628,418,048 | 1,570,697,216 | first key, the match | 0.36 | 0.08 | 0.41 | 0.73 |
+| 1,000,000 | sender | 2,234,875,904 | 2,211,237,888 | first key, just after its encryption of the partner's set | 0.73 | 0.31 | 0.01 | 1.10 |
+| 1,000,000 | receiver | 2,850,832,384 | 2,577,211,392 | first key, the match | 0.66 | 0.18 | 1.16 | 0.80 |
+| 2,000,000 | sender | 4,104,716,288 | 4,072,054,784 | first key, end of its encryption of the partner's set | 1.33 | 0.30 | 1.58 | 0.73 |
+| 2,000,000 | receiver | 4,781,133,824 | 4,507,717,632 | first key, the match | 1.30 | 0.37 | 1.21 | 1.90 |
 
 Where the memory goes:
 
-- **The main thread's heap in the second key** is the peak in five of the six
-  runs: the dataset, the first key's matches, the second key's set, and the
-  first key's allocations not yet collected. A 1,000,000-record run whose
-  sampler collected the main thread's garbage before each sample held that
-  heap to at most 0.90 GB in the second key, against 1.73 and 1.81 GB above,
-  and peaked at 2,017,587,200 bytes (sender) and 2,415,874,048 (receiver),
-  21% and 12% under the run above, both in the first key. Its collections
-  were the sampler's, made for the diagnosis, not the CLI's.
+- **The first key holds the peak** in 17 of the 18 runs: the sender's at the
+  end of its encryption of the receiver's set, the receiver's during the
+  match. The one exception, a 500,000-record sender, peaked at the end of its
+  own set's encryption in the fourth key, at 1,278,431,232 bytes against
+  1,181,716,480 and 1,232,269,312 in the first key for the other two.
+- **The main thread's heap** at the peak was 0.35 to 0.48 GB at 500,000
+  records, 0.66 to 0.73 GB at 1,000,000 and 1.30 to 1.44 GB at 2,000,000.
+  The history of what moved the peak is in
+  [webrtc-memory-measurements.md](../notes/webrtc-memory-measurements.md).
+- **The receiver's peak varies most.** Its three 1,000,000-record runs span
+  273,620,992 bytes, the sender's 23,638,016. The worker's heap at the
+  receiver's peak was 0.59 to 1.16 GB at 1,000,000 records, depending on
+  how far into the match the peak fell.
 - **The transport's buffers are small beside it.** The main thread's
-  ArrayBuffers were at most 0.37 GB at a peak. They were highest just after a
-  party's first-key set left the worker for the channel: 230 to 310 bytes a
-  record (0.53 GB for the 2,000,000 sender), and 190 to 290 in the run that
-  collected garbage first, where an encoded element is 35 bytes
+  ArrayBuffers were at most 0.61 GB at a peak. They were highest just after
+  the sender's encryption of the receiver's set left the worker for the
+  channel: 295 to 315 bytes a record, where an encoded element is 35 bytes
   ([PROTOCOL.md](PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
   They hold the PSI sets the main thread passes between the worker and the
   channel, both directions' framing copies, and werift's datagrams. Of
@@ -530,7 +543,7 @@ Where the memory goes:
   datagrams holds one more copy of the frame, and reassembling one holds the
   chunks' slices beside the joined frame until it completes, two copies
   (measured on a 35 MB frame).
-- **The PSI round**, the worker and the rest together, was at most 2.79 GB
+- **The PSI round**, the worker and the rest together, was at most 3.11 GB
   at a peak, the 2,000,000 receiver's during the first key's match.
 
 **The figure.** The stress test weighs a party at a fixed part plus a cost a
@@ -540,31 +553,42 @@ parties on one host at the sum of the two:
 
 | Role | Fixed part | Bytes a record |
 | --- | --- | --- |
-| Sender | 1,184,000,000 | 1,902 |
-| Receiver | 630,000,000 | 2,141 |
+| Sender | 308,000,000 | 1,954 |
+| Receiver | 740,000,000 | 2,138 |
 
 The cost a record is the least-squares slope of peak RSS against the records
-a side over the three runs above and the round between two hosts at
-7,700,000 ([A round between two hosts](#a-round-between-two-hosts)), rounded
-to a byte. The fixed part is the least that puts all four peaks at or under
-the line, rounded up to a megabyte. The sender's is the larger because its
-2,000,000 peak lies above its slope, so its figure is 44% over its measured
-peak at 500,000 records and 21% at 1,000,000. Against each measured peak:
+a side over thirteen peaks a role, rounded to a byte: the nine runs above,
+the three 1,000,000-record runs on 1a0504a44, and the round between two hosts
+at 7,700,000 ([A round between two hosts](#a-round-between-two-hosts)). The
+fixed part is the least that puts all thirteen peaks at or under the line,
+rounded up to a megabyte. A 1,000,000-record run on 1a0504a44 sets it for
+both roles, so the receiver's figure there is 27,520 bytes over its highest
+peak.
+
+The two-host round was measured on 2026-10-03 on commit 85704c19c, before
+80452d2c3 moved the peak, and has not been measured since. It stays among
+the fitted points: fitted to the twelve 2026-10-08 runs alone, the figures
+at 7,700,000 records fall 2.4% (sender) and 3.8% (receiver) under its peaks,
+and the receiver's peak at 1,000,000 records did not fall with that commit.
+
+Against the highest of all thirteen fitted peaks a role at each size, which
+at 1,000,000 records includes the three runs on 1a0504a44 on 2026-10-08, so
+those two rows are not the highest-of-three peaks in the first table:
 
 | Records a side | Sender figure | Over the peak | Receiver figure | Over the peak |
 | --- | --- | --- | --- | --- |
-| 500,000 | 2,135,000,000 | 44% | 1,700,500,000 | 0.02% |
-| 1,000,000 | 3,086,000,000 | 21% | 2,771,000,000 | 0.8% |
-| 2,000,000 | 4,988,000,000 | 0.02% | 4,912,000,000 | 7.6% |
-| 7,700,000, two hosts | 15,829,400,000 | 3.3% | 17,115,700,000 | 0.4% |
+| 500,000 | 1,285,000,000 | 0.5% | 1,809,000,000 | 11% |
+| 1,000,000 | 2,262,000,000 | 0.04% | 2,878,000,000 | 0.001% |
+| 2,000,000 | 4,216,000,000 | 2.7% | 5,016,000,000 | 4.9% |
+| 7,700,000, two hosts, 2026-10-03 | 15,353,800,000 | 0.19% | 17,202,600,000 | 0.88% |
 
 The round at 7,700,000 with both parties on one macOS host
 ([PROTOCOL.md](PROTOCOL.md#the-receive-ceiling)) peaked at 12,180,897,792
 bytes (sender) and 13,268,779,008 (receiver), under both figures and not
 among the fitted points. The file-sync party's figure
 (`cliPartyNeedBytes`, `apps/cli/test/stress/completionRun.ts`: the CLI's round
-budget plus 754 bytes a record) is 9% to 27% under every peak above except the
-two-host sender's, 1% under.
+budget plus 754 bytes a record) is 8% to 24% under every fitted receiver
+peak, and from 4.6% over to 3.3% under the fitted sender peaks.
 
 The role is decided at the terms exchange, after the gate: with equal record
 counts the inviter resolves as the PSI sender. Each run checks the role each
@@ -572,8 +596,8 @@ party logs against the one it was weighed at.
 
 **The CLI's own check.** The pre-contact check and the partner's-round check
 ([FILE_SYNC.md, Memory a PSI round needs](FILE_SYNC.md#memory-a-psi-round-needs))
-weigh the PSI round alone, `271,000,000 + 1,176 * n` bytes, which is 51% to
-61% of every WebRTC peak above. It is a lower bound by its own statement, and
+weigh the PSI round alone, `271,000,000 + 1,176 * n` bytes, which is 50% to
+73% of every fitted WebRTC peak. It is a lower bound by its own statement, and
 it leaves out the main thread on every channel, so a WebRTC party it admits
 can still run out of memory on a host with less than the figures above. It
 stays a round-only figure: it also sizes the PSI worker's heap ceiling, and a

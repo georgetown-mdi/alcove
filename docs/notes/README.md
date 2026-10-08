@@ -66,6 +66,7 @@ stands, from a direction still open to a decision taken and built.
 | [wasm-parallel-evaluation.md](wasm-parallel-evaluation.md) | Both arms measured, and the browser direction decided: Web Worker sharding, with the pthreads/SIMD build declined; nothing is built into the production path. |
 | [web-server-runtime-role.md](web-server-runtime-role.md) | End state reached for the public deployment: a static site, with the framework's server half removed; the console keeps its server. |
 | [webrtc-frame-structure-envelope.md](webrtc-frame-structure-envelope.md) | Decided and built, by a 3-panelist design panel converging 3-0 on the retirement and 2-1 on the ceiling. |
+| [webrtc-memory-measurements.md](webrtc-memory-measurements.md) | Measurement history; the current figures are in the spec. |
 | [webrtc-outbound-packer.md](webrtc-outbound-packer.md) | Decided and built, by a 3-panelist design panel deciding 2-1; the measured ceiling it removes and the one it leaves. |
 | [webrtc-relay-deployment.md](webrtc-relay-deployment.md) | Measured, with a recommendation and a proposed epic; the recommendation is now deployed and verified against the standing relay. |
 
