@@ -23,7 +23,8 @@ import {
 import { buildOutputTable } from "../src/payloadExchange";
 import { safeParseExchangeSpec } from "../src/config/exchangeSpec";
 import type { CSVRow } from "../src/file";
-import type { AssociationTable, Metadata } from "../src/main";
+import type { Metadata } from "../src/config/metadata";
+import type { AssociationTable } from "../src/types";
 
 /** A readable emitting `content` then EOF, standing in for a CSV file. */
 function streamOf(content: string): Readable {

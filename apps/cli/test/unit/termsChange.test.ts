@@ -18,9 +18,12 @@ import {
   runExchange,
   TermsChangeRefusedError,
   termsStatingDeclaredPayloadSend,
-  validateCompatibility,
 } from "@alcove/core";
-import { createMessagePipe, exchangeTerms } from "@alcove/core/testing";
+import {
+  validateCompatibility,
+  createMessagePipe,
+  exchangeTerms,
+} from "@alcove/core/testing";
 import type {
   ExchangeSpec,
   LinkageTerms,

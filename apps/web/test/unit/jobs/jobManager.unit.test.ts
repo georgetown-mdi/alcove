@@ -9,12 +9,12 @@ import { stringify as stringifyYaml } from "yaml";
 
 import {
   DISPLAY_TRUNCATION_MARKER,
-  PARTNER_LABELLED_VALUE_BUDGET,
   parseExchangeSpec,
   parseSensitiveYaml,
   renderedDisplayCost,
   snakeizeKeys,
 } from "@alcove/core";
+import { PARTNER_LABELLED_VALUE_BUDGET } from "@alcove/core/testing";
 
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 

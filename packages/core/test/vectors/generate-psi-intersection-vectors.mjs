@@ -35,8 +35,6 @@ import PSI from "@openmined/psi.js";
 import {
   PSIParticipant,
   buildStandardizedDataset,
-} from "../../dist/core.esm.js";
-import {
   StandardizedKeyIterable,
   createMessagePipe,
   linkViaPSI,

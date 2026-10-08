@@ -13,8 +13,8 @@ import {
   prepareForExchange,
   safeParseLinkageTerms,
   summarizeInvitation,
-  validateStandardizationAgainstTerms,
 } from "@alcove/core";
+import { validateStandardizationAgainstTerms } from "@alcove/core/testing";
 
 import {
   EMPTY_SAVE_FIELDS,

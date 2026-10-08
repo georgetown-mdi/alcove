@@ -15,10 +15,10 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
-  MAX_PAYLOAD_ENTRIES,
   safeParseLinkageTerms,
   sanitizeForDisplay,
 } from "@alcove/core";
+import { MAX_PAYLOAD_ENTRIES } from "@alcove/core/testing";
 
 import {
   acceptorColumnsEditorState,

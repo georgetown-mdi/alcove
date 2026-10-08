@@ -6,7 +6,7 @@ import path from "node:path";
 import ssh2 from "ssh2";
 import type { Attributes, Connection, SFTPWrapper } from "ssh2";
 
-import { computeHostKeyFingerprint } from "@alcove/core";
+import { computeHostKeyFingerprint } from "@alcove/core/testing";
 
 import { COUNTED_SFTP_OPS, createSftpSessionControls } from "./sessionControls";
 import type {

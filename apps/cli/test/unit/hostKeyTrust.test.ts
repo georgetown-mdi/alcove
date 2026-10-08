@@ -10,13 +10,15 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   getDiagnosticSink,
   InternalConsistencyError,
-  keyTypeFromBlob,
   MAX_ERROR_CAUSE_DEPTH,
   sanitizeErrorForDisplay,
   setDiagnosticSink,
   UsageError,
 } from "@alcove/core";
-import { MAX_ENDPOINT_HOST_LENGTH } from "@alcove/core/testing";
+import {
+  keyTypeFromBlob,
+  MAX_ENDPOINT_HOST_LENGTH,
+} from "@alcove/core/testing";
 import type { ConnectionConfig, PresentedHostKey } from "@alcove/core";
 
 import {

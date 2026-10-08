@@ -4,23 +4,20 @@ import path from "node:path";
 
 import { afterEach, expect, test, vi } from "vitest";
 import {
-  buildExchangeRecord,
   buildOutputTable,
   deriveOurIdColumn,
   loadCSVFile,
-  preparePayload,
   reconstructCommittedData,
-  toCommittedPayload,
   toRetainedResult,
   verifyExchangeRecord,
 } from "@alcove/core";
-import type {
-  AssociationTable,
-  CSVRow,
-  LinkageTerms,
-  Metadata,
-  PartnerPayload,
-} from "@alcove/core";
+import {
+  buildExchangeRecord,
+  preparePayload,
+  toCommittedPayload,
+} from "@alcove/core/testing";
+import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
+import type { AssociationTable, PartnerPayload } from "@alcove/core/testing";
 
 import { writeOutput } from "../../../src/util/dataIo";
 

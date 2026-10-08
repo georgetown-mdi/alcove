@@ -1,8 +1,6 @@
 import {
   BROWSER_PSI_SET_MAX_ELEMENTS,
   MAX_PSI_DECODE_ELEMENTS,
-  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
-  PSIParticipant,
   PSI_SET_REFUSED_ABORT_REASON,
   PSI_SET_TOO_LARGE_ABORT_REASON,
   PeerAbortError,
@@ -12,6 +10,8 @@ import {
   getDefaultLinkageTerms,
 } from "@alcove/core";
 import {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  PSIParticipant,
   PSI_SET_PART_HEADER_BYTES,
   psiSetByteBound,
 } from "@alcove/core/testing";

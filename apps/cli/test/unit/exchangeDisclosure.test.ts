@@ -14,17 +14,14 @@ import {
   DEFAULT_LINKAGE_RULE_SET,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
-  SELF_AUTHORED_EXCHANGE_FACTS,
   setDiagnosticSink,
 } from "@alcove/core";
-import type {
-  ConsentFact,
-  ExchangeDataSpec,
-  LinkageTerms,
-  Metadata,
-} from "@alcove/core";
-
-import { consentRepresentationProbes } from "@alcove/core/testing";
+import {
+  SELF_AUTHORED_EXCHANGE_FACTS,
+  consentRepresentationProbes,
+} from "@alcove/core/testing";
+import type { ExchangeDataSpec, LinkageTerms, Metadata } from "@alcove/core";
+import type { ConsentFact } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
 import {

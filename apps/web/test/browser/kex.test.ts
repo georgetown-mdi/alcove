@@ -3,8 +3,11 @@
 
 import { describe, expect, test } from "vitest";
 
-import { computeKexKeys, createMessagePipe } from "@alcove/core/testing";
-import { runKex } from "@alcove/core";
+import {
+  computeKexKeys,
+  createMessagePipe,
+  runKex,
+} from "@alcove/core/testing";
 
 import vectorsRaw from "../../../../packages/core/test/vectors/kex-vectors.json?raw";
 

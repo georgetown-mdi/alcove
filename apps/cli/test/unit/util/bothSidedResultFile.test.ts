@@ -26,22 +26,19 @@ vi.mock("@alcove/core", async (importActual) => {
 });
 
 import {
-  buildExchangeRecord,
   buildOutputTable,
   loadCSVFile,
-  matchedPairCount,
   parseExchangeRecord,
-  preparePayload,
-  toCommittedPayload,
   toRetainedResult,
 } from "@alcove/core";
-import type {
-  AssociationTable,
-  CSVRow,
-  LinkageTerms,
-  Metadata,
-  PartnerPayload,
-} from "@alcove/core";
+import {
+  buildExchangeRecord,
+  matchedPairCount,
+  preparePayload,
+  toCommittedPayload,
+} from "@alcove/core/testing";
+import type { CSVRow, LinkageTerms, Metadata } from "@alcove/core";
+import type { AssociationTable, PartnerPayload } from "@alcove/core/testing";
 
 import { recordFilePathIn, writeExchangeRecord } from "../../../src/recordFile";
 import { writeOutput } from "../../../src/util/dataIo";

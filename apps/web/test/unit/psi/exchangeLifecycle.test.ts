@@ -7,8 +7,6 @@ import {
   ConnectionError,
   LinkageTermsUnsatisfiableError,
   OperatorConfigError,
-  StandardizationTermsError,
-  StandardizedDataset,
   UsageError,
   describeResolvedRunShape,
   exchangeRecordFromFailure,
@@ -17,6 +15,10 @@ import {
   runExchange,
   statesItsOwnNextStep,
 } from "@alcove/core";
+import {
+  StandardizationTermsError,
+  StandardizedDataset,
+} from "@alcove/core/testing";
 
 import {
   CLOSE_OUTCOME_WARNINGS,
@@ -48,10 +50,12 @@ import type {
   MessageConnection,
   PreparedExchange,
   PsiProgress,
-  ResolvedRunShape,
-  RunExchangeOptions,
   WebRTCEndpoint,
 } from "@alcove/core";
+import type {
+  ResolvedRunShape,
+  RunExchangeOptions,
+} from "@alcove/core/testing";
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 // runExchange, the open-handshake, and the authenticated key exchange are the

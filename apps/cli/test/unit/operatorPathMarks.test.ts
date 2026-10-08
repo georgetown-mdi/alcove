@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { getLogger, operatorSuppliedSpans } from "@alcove/core";
+import { getLogger } from "@alcove/core";
+import { operatorSuppliedSpans } from "@alcove/core/testing";
 import type {
   DualSignedRecord,
   ExchangeRecord,

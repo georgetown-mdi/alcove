@@ -7,18 +7,20 @@ import { expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import {
   AuthenticationError,
-  buildKeyStrings,
   ConnectionError,
   InternalConsistencyError,
   loadCSVFile,
   MAX_RECONNECT_ATTEMPTS,
   MAX_TIMER_MS,
   PeerAbortError,
-  StandardizedDataset,
   StandardizedField,
-  UnknownStandardizationFunctionError,
   UsageError,
 } from "@alcove/core";
+import {
+  buildKeyStrings,
+  StandardizedDataset,
+  UnknownStandardizationFunctionError,
+} from "@alcove/core/testing";
 import type { ConnectionErrorKind } from "@alcove/core";
 
 import {

@@ -2,13 +2,12 @@ import { describe, expect, test } from "vitest";
 
 import {
   assessLinkageSatisfiability,
-  computeTermsHash,
   getDefaultStandardization,
   inferMetadata,
   inferMetadataForEveryColumn,
   prepareForExchange,
-  validateCompatibility,
 } from "@alcove/core";
+import { computeTermsHash, validateCompatibility } from "@alcove/core/testing";
 
 import {
   disclosedColumnNames,

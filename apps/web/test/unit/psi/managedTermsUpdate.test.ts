@@ -11,8 +11,8 @@ import {
   generateSharedSecret,
   inferMetadata,
   termsUpdateFor,
-  validateCompatibility,
 } from "@alcove/core";
+import { validateCompatibility } from "@alcove/core/testing";
 
 import {
   ManagedExchangeLockUnavailableError,

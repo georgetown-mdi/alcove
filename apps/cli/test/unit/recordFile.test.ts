@@ -33,7 +33,6 @@ vi.mock("@alcove/core", async (importActual) => {
 });
 
 import {
-  AGREED_TERMS_VERSION,
   getDefaultLinkageTerms,
   parseAgreedTerms,
   parseExchangeRecord,
@@ -42,6 +41,7 @@ import {
   type ExchangeRecord,
   type VerificationKeys,
 } from "@alcove/core";
+import { AGREED_TERMS_VERSION } from "@alcove/core/testing";
 
 import {
   agreedTermsPathFor,

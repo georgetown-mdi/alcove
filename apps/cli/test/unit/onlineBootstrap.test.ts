@@ -7,23 +7,24 @@ import type { Arguments } from "yargs";
 import YAML from "yaml";
 import {
   ConnectionError,
-  CsvRowParseError,
   getDefaultLinkageTerms,
   getDiagnosticSink,
   getLogger,
   inferDateInputFormatFromSource,
-  INFER_DATE_SCAN_CAP,
   InternalConsistencyError,
   MAX_RECONNECT_ATTEMPTS,
-  operatorSuppliedSpans,
   parseExchangeSpec,
   RoundSetLimitError,
   safeParseConnectionConfig,
   setDiagnosticSink,
   SHARED_SECRET_REGEX,
   UsageError,
+  redactUrlCredentials,
 } from "@alcove/core";
 import {
+  CsvRowParseError,
+  INFER_DATE_SCAN_CAP,
+  operatorSuppliedSpans,
   CSV_LINE_BYTE_CEILING,
   minimalPreparedExchange,
 } from "@alcove/core/testing";
@@ -66,7 +67,6 @@ import {
   singlePassDisclosureNotice,
   warnSanitizedColumns,
 } from "../../src/onlineBootstrap";
-import { redactUrlCredentials } from "@alcove/core";
 import { openInputSource } from "../../src/util/dataIo";
 import { exitCodeForError, runOrExit, withExitCode } from "../../src/util/exit";
 import { MAX_TIMEOUT_SECONDS } from "../../src/util/flags";

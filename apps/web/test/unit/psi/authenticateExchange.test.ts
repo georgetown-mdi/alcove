@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { ConnectionError, runKex } from "@alcove/core";
-import { createMessagePipe } from "@alcove/core/testing";
+import { ConnectionError } from "@alcove/core";
+
+import { createMessagePipe, runKex } from "@alcove/core/testing";
 
 import {
   authenticateExchange,

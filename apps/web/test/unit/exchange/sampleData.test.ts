@@ -2,13 +2,12 @@ import { Readable } from "node:stream";
 
 import { describe, expect, test } from "vitest";
 
+import { inferMetadata, isOptInLinkageKey, loadCSVFile } from "@alcove/core";
+
 import {
   buildKeyStrings,
   buildStandardizedDataset,
-  inferMetadata,
-  isOptInLinkageKey,
-  loadCSVFile,
-} from "@alcove/core";
+} from "@alcove/core/testing";
 
 import {
   SAMPLE_INVITER_CSV,

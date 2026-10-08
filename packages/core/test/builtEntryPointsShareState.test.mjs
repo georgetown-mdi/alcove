@@ -1,78 +1,40 @@
 // The published entry points, driven as a consumer gets them: the built
-// `@alcove/core` and `@alcove/core/testing`, not this source tree. Plain
-// JavaScript because that is what the artifacts are.
+// `@alcove/core`, `@alcove/core/testing` and `@alcove/core/untrusted-text`, not
+// this source tree. Plain JavaScript because that is what the artifacts are.
 //
-// The fan-out listing is module state the testing entry's lever rewrites and the
-// main entry's compiled steps read, so it only works while both entries reach ONE
-// copy of `src/fanOutFunctions.ts` at run time. A build giving each entry its own
-// copy passes every source-level test and leaves the lever rewriting a listing
-// nothing reads.
+// A refusal class one entry publishes is matched by `instanceof` against an error
+// another entry's code threw, so it only works while every entry reaches ONE copy
+// of the module declaring the class at run time. A build giving each entry its own
+// copy passes every source-level test and fails each of those matches.
 
-import { beforeAll, expect, test, vi } from "vitest";
+import { Readable } from "node:stream";
+
+import { beforeAll, expect, test } from "vitest";
 
 import {
   CORE_PACKAGE,
   requireFreshDists,
 } from "../../../scripts/lib/distFreshness.mjs";
 
-import {
-  StandardizedDataset,
-  StandardizedField,
-  buildKeyStrings,
-  getLogger,
-} from "@alcove/core";
-import {
-  FAN_OUT_CANDIDATES_PER_ELEMENT,
-  withNoListedFanOutFunctions,
-} from "@alcove/core/testing";
+import { loadCSVFile, parseBoundedJson } from "@alcove/core";
+import { CsvRowParseError } from "@alcove/core/testing";
+import { JsonStructureBoundError } from "@alcove/core/untrusted-text";
 
 beforeAll(() => {
   requireFreshDists({ packages: [CORE_PACKAGE], allowOptOut: false });
 });
 
-const KEY = {
-  name: "LN+DOB",
-  elements: [{ field: "last_name" }, { field: "date_of_birth" }],
-};
+test("a refusal the main entry throws is the class the testing entry publishes", async () => {
+  // An unterminated quote: the parsed rows would differ from the file's own.
+  const source = Readable.from([
+    Buffer.from('first_name,dob\n"Alice,1990-01-02\nBob,1985-12-31\n', "utf8"),
+  ]);
 
-// A row whose last name expands past the width the key declares, through the one
-// listed producer. Built per call because a step captures the listing when it
-// compiles.
-function overWideDataset() {
-  const names = Array.from(
-    { length: FAN_OUT_CANDIDATES_PER_ELEMENT + 1 },
-    (_unused, index) => `NAME${index}`,
-  );
-  const rows = [{ last_name: names.join("|"), date_of_birth: "19750716" }];
-  return new StandardizedDataset(
-    [
-      new StandardizedField(
-        "last_name",
-        "last_name",
-        [{ function: "split_on", params: { delimiter: "\\|" } }],
-        rows,
-      ),
-      new StandardizedField("date_of_birth", "date_of_birth", [], rows),
-    ],
-    [KEY],
-  );
-}
+  await expect(loadCSVFile(source)).rejects.toBeInstanceOf(CsvRowParseError);
+});
 
-test("the testing entry's fan-out lever rewrites the listing the main entry reads", () => {
-  vi.spyOn(getLogger("cleaning"), "warn").mockImplementation(() => {});
+test("a refusal the main entry throws is the class the untrusted-text entry publishes", () => {
+  const tooDeep = "[".repeat(5000) + "]".repeat(5000);
 
-  // With `split_on` declared, the over-width row contributes nothing.
-  expect(buildKeyStrings(KEY, overWideDataset(), 0)).toBeNull();
-
-  // With nothing declared, the same expansion is an unlisted producer's, which
-  // reaches the strategy that refuses it rather than being dropped.
-  const carried = withNoListedFanOutFunctions(() =>
-    buildKeyStrings(KEY, overWideDataset(), 0),
-  );
-  expect(carried?.size).toBe(FAN_OUT_CANDIDATES_PER_ELEMENT + 1);
-
-  // And the listing is back afterwards, in the copy the main entry reads.
-  expect(buildKeyStrings(KEY, overWideDataset(), 0)).toBeNull();
-
-  vi.restoreAllMocks();
+  expect(() => parseBoundedJson(tooDeep)).toThrow(JsonStructureBoundError);
 });

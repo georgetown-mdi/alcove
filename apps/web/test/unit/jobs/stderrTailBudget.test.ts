@@ -2,10 +2,10 @@ import { afterEach, expect, test } from "vitest";
 
 import {
   DISPLAY_TRUNCATION_MARKER,
-  PARTNER_LABELLED_VALUE_BUDGET,
   replaceControlCharactersForDisplay,
   sanitizeForDisplay,
 } from "@alcove/core";
+import { PARTNER_LABELLED_VALUE_BUDGET } from "@alcove/core/testing";
 
 import {
   createFetchJobApiClient,

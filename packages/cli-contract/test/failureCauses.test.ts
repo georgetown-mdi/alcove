@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  FAILURE_CAUSE_KINDS,
   FAILURE_CAUSE_PATH_MAX_LENGTH,
   sanitizeForDisplay,
 } from "@alcove/core";
+import { FAILURE_CAUSE_KINDS } from "@alcove/core/testing";
 import type { FailureCause } from "@alcove/core";
 
 import {

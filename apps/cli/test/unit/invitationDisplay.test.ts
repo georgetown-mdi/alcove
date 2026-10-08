@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import {
-  ACCEPTOR_DEDUPLICATE_CONTROL_FACTS,
   CONSENT_FACTS,
   DEDUPLICATE_ACCEPTOR_SIDE_NOTE,
   DEDUPLICATE_SHARED_RESULT_DISCLOSURE_STATEMENT,
@@ -11,17 +10,18 @@ import {
   LINKAGE_RULE_SET_VERDICT_COPY,
   MAX_DECLARED_NAMES_SHOWN,
   MAX_NAME_LENGTH,
-  MAX_PAYLOAD_ENTRIES,
   PROPOSED_NOT_APPLIED_NOTES,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
-  SELF_AUTHORED_EXCHANGE_FACTS,
   summarizeInvitation,
   UNRECOGNIZED_TRANSFORM_NOTE,
   unshownDeclaredNamesLine,
   UsageError,
 } from "@alcove/core";
 import {
+  ACCEPTOR_DEDUPLICATE_CONTROL_FACTS,
+  MAX_PAYLOAD_ENTRIES,
+  SELF_AUTHORED_EXCHANGE_FACTS,
   BEL,
   CONSENT_PROBE_TERMS,
   COUNT_ONLY_PROBE_TERMS,
@@ -34,13 +34,13 @@ import {
 import type {
   Algorithm,
   ConnectionEndpoint,
-  ConsentFact,
   InvitationToken,
   LinkageRuleSetReference,
   LinkageStrategy,
   LinkageTerms,
   TransformStep,
 } from "@alcove/core";
+import type { ConsentFact } from "@alcove/core/testing";
 
 import { decodeAndValidateInvitation } from "../../src/invitationDecode";
 import { logDecisionFacts } from "../../src/invitationDisplay";

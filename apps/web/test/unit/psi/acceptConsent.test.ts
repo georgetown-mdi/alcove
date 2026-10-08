@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 
+import { generateSharedSecret, summarizeInvitation } from "@alcove/core";
+
 import {
   STANDARDIZATION_FUNCTION_NAMES,
   TRANSFORM_FUNCTION_GLOSSARY,
-  generateSharedSecret,
-  summarizeInvitation,
-} from "@alcove/core";
+} from "@alcove/core/testing";
 
 import {
   RECEIPTS_DEFAULT,

@@ -3,11 +3,8 @@
 
 import { describe, expect, test } from "vitest";
 
-import {
-  RENDEZVOUS_ROLES,
-  deriveRendezvousPeerId,
-  encodeInvitation,
-} from "@alcove/core";
+import { deriveRendezvousPeerId, encodeInvitation } from "@alcove/core";
+import { RENDEZVOUS_ROLES } from "@alcove/core/testing";
 
 import { prepareAcceptedInvitation } from "@psi/acceptInvitation";
 

@@ -35,11 +35,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  canonicalBytes,
   computeCertificateFingerprint,
-  deriveReceiptBinder,
   generateSigningIdentity,
 } from "../../dist/core.esm.js";
+import { canonicalBytes, deriveReceiptBinder } from "../../dist/testing.esm.js";
 
 const RECORD_VERSION = "alcove-signed-receipt/v4";
 const CONTENT_DOMAIN = "alcove-signed-receipt-content/v3";

@@ -23,13 +23,8 @@ export {
 } from "./consent/displayEscapingFixtures.js";
 
 export {
-  CERTIFICATE_ONLY_LOAD_IDENTITY,
   boundIdentityOf,
   certificateOnlyLoadCases,
-} from "./records/signingIdentityDocuments.js";
-export type {
-  CertificateOnlyLoadCase,
-  CertificateOnlyLoadCaseId,
 } from "./records/signingIdentityDocuments.js";
 
 export {
@@ -37,10 +32,6 @@ export {
   COMMAND_LINE_EXPORT_OWN_TURN_URL,
   COMMAND_LINE_EXPORT_RELAY_CASES,
   COMMAND_LINE_EXPORT_RELAY_REGISTRAR,
-} from "./config/commandLineExportRelayDocuments.js";
-export type {
-  CommandLineExportRelayCase,
-  CommandLineExportRelayCaseId,
 } from "./config/commandLineExportRelayDocuments.js";
 
 // The key-schedule core, so the browser cross-implementation suite can run the
@@ -71,6 +62,9 @@ export {
   linkViaPSI,
 } from "./psi/link.js";
 export { FAN_OUT_CANDIDATES_PER_ELEMENT } from "./fanOutFunctions.js";
+// The single-pass link a sweep of scripts/single-pass-bench.mjs runs on each
+// side, which also reads the built package.
+export { linkViaSinglePassPSI } from "./psi/link.js";
 export { StandardizedKeyIterable } from "./standardization.js";
 export {
   PROTOCOL_VERSION,
@@ -86,11 +80,13 @@ export {
 // main entry point: a caller sends a message and the connection frames it.
 export {
   CONNECTION_CLOSE_TIMEOUT_MS,
+  TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
+} from "./connection/fileSyncConnection.js";
+export {
   MESSAGE_ENVELOPE_VERSION,
   MESSAGE_HEADER_BYTES,
   MESSAGE_TYPE_BINARY,
-  TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
-} from "./connection/fileSyncConnection.js";
+} from "./connection/fileSyncFraming.js";
 export { AEAD_ENVELOPE_VERSION } from "./connection/encryptedMessageConnection.js";
 
 // The connected in-memory MessageConnection pair a suite drives a protocol
@@ -141,11 +137,90 @@ export { CSV_LINE_BYTE_CEILING } from "./file.js";
 export { CAUSE_DEPTH_ELISION_MARKER } from "./utils/sanitizeErrorForDisplay.js";
 export { controlCharacterMarker } from "./utils/sanitizeForDisplay.js";
 
-// The lever that stands a listed fan-out producer in for an unlisted one. Both
-// published entry points build as one bundle with a shared chunk, so the listing
-// this rewrites is the one the main entry's compiled steps read; a build that
-// gave each entry its own copy would leave it rewriting a listing nothing reads.
-export { withNoListedFanOutFunctions } from "./fanOutFunctions.js";
+// Product names only the apps' test suites name outside this package. One
+// that gains a production caller there moves to the main entry point.
+export {
+  InvitationTermDivergenceError,
+  ProtocolRefusalError,
+  StandardizationTermsError,
+  UnknownStandardizationFunctionError,
+} from "./errors.js";
+export { FAILURE_CAUSE_KINDS } from "./failureCause.js";
+export { PSIParticipant } from "./psi/participant.js";
+export type { AssociationTable } from "./types.js";
+export type { FrameStructureRefusal } from "./connection/binaryPackBounds.js";
+export { canonicalBytes } from "./utils/canonical.js";
+export type { CanonicalValue } from "./utils/canonical.js";
+export { firstPartyNote } from "./utils/sanitizeForDisplay.js";
+export { operatorSuppliedSpans } from "./utils/operatorSuppliedText.js";
+export {
+  partnerOriginTextList,
+  PARTNER_LABELLED_VALUE_BUDGET,
+} from "./utils/partnerOriginText.js";
+export { DEFAULT_LINKAGE_KEY_SET_NAME } from "./defaults/builtInLinkageTerms.js";
+export { DEDUPLICATE_IMPLEMENTED_BY_STRATEGY } from "./linkageTermsPolicy.js";
+export {
+  MAX_PAYLOAD_ENTRIES,
+  NAME_SHAPE_MESSAGE,
+} from "./config/linkageTermsSchema.js";
+export { validateCompatibility } from "./linkageTermsNegotiation.js";
+export type { EndpointSourceConnectionConfig } from "./config/endpointProducer.js";
+export { verifyCertificateSelfSignature } from "./records/signingIdentity.js";
+export type { P256PrivateJwk } from "./records/signingIdentity.js";
+export {
+  STANDARDIZATION_FUNCTION_NAMES,
+  StandardizedDataset,
+  buildKeyStrings,
+  buildStandardizedDataset,
+} from "./standardization.js";
+export {
+  pipelineAlwaysDrops,
+  validateStandardizationAgainstTerms,
+} from "./linkageSatisfiability.js";
+export { TRANSFORM_FUNCTION_GLOSSARY } from "./consent/invitationSummary.js";
+export {
+  ACCEPTOR_DEDUPLICATE_CONTROL_FACTS,
+  SELF_AUTHORED_EXCHANGE_FACTS,
+} from "./consent/consentFacts.js";
+export type { ConsentFact } from "./consent/consentFacts.js";
+export { CsvRowParseError } from "./file.js";
+export { INFER_DATE_SCAN_CAP } from "./utils/date.js";
+export {
+  computeHostKeyFingerprint,
+  keyTypeFromBlob,
+} from "./utils/sshHostKey.js";
+export {
+  PARTNER_SET_OVER_CAPACITY_ABORT_REASON,
+  matchedPairCount,
+} from "./exchange.js";
+export type { RunExchangeOptions } from "./exchange.js";
+export {
+  assertLocalCertificateAuthorizesAgreedIdentity,
+  assertSigningModeImplemented,
+} from "./exchange/signingChecks.js";
+export type { ResolvedRunShape } from "./pairTableProjection.js";
+export { AGREED_TERMS_VERSION } from "./records/agreedTerms.js";
+export {
+  buildExchangeRecord,
+  computeTermsHash,
+  verifyRecordCommitments,
+} from "./records/exchangeRecord.js";
+export type {
+  CommittedPayload,
+  ExchangeRecordInputs,
+} from "./records/exchangeRecord.js";
+export {
+  deriveReceiptBinder,
+  signReceiptContent,
+  verifyReceiptSignature,
+} from "./records/signedReceipt.js";
+export type { ReceiptContent } from "./records/signedReceipt.js";
+export type { SignedReceiptPartyReport } from "./records/signedReceiptVerification.js";
+export { preparePayload, toCommittedPayload } from "./payloadExchange.js";
+export type { PartnerPayload } from "./payloadExchange.js";
+export { runKex } from "./kex.js";
+export { RENDEZVOUS_ROLES } from "./rendezvous.js";
+export { relayRegistrarAuthorization } from "./relayRegistrarProof.js";
 
 /** @internal */
 export function sortAssociationTable(

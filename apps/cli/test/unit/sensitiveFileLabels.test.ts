@@ -2,7 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { operatorSuppliedSpans, sanitizeErrorForDisplay } from "@alcove/core";
+import { sanitizeErrorForDisplay } from "@alcove/core";
+import { operatorSuppliedSpans } from "@alcove/core/testing";
 
 import { loadConfig } from "../../src/commands/exchange";
 import { readConfigHints } from "../../src/commands/fingerprint";

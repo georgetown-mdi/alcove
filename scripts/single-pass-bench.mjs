@@ -118,7 +118,7 @@ function mb(kib) {
 async function runRates(argv) {
   installWasmHeapProbe();
   const { default: PSI } = await import("@openmined/psi.js");
-  const { PSIParticipant } = await import("@alcove/core");
+  const { PSIParticipant } = await import("@alcove/core/testing");
   const lib = await PSI();
   const Ds = argv.length ? argv.map(Number) : [2000, 8000, 32000];
 
@@ -457,7 +457,8 @@ function ipcConnection() {
 async function runChildRole(role, rows, keys, overlap, groupSize) {
   installWasmHeapProbe();
   const { default: PSI } = await import("@openmined/psi.js");
-  const { PSIParticipant, linkViaSinglePassPSI } = await import("@alcove/core");
+  const { PSIParticipant, linkViaSinglePassPSI } =
+    await import("@alcove/core/testing");
   const lib = await PSI();
 
   const bothSided = groupSize > 0;

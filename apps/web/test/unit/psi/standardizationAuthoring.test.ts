@@ -4,13 +4,13 @@ import {
   FAN_OUT_FUNCTION_NAMES,
   MAX_TRANSFORM_PATTERN_LENGTH,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
-  UnknownStandardizationFunctionError,
   getDefaultStandardization,
   prepareForExchange,
   runPipeline,
   safeParseStandardization,
   stepCanEmptyRealizedValue,
 } from "@alcove/core";
+import { UnknownStandardizationFunctionError } from "@alcove/core/testing";
 
 import {
   INERT_COALESCE_ADVICE,

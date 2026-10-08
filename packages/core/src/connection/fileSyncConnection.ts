@@ -28,7 +28,6 @@ import {
 } from "../errors";
 import { cancellableDelay } from "./fileSyncConstants";
 import { ackMarkerName } from "./fileSyncNames";
-export { isAbortMarkerName, isExpectedAbortName } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
@@ -36,11 +35,6 @@ import type { PresentedHostKey } from "./sftpConnect";
 import { AbortMarkerSubsystem } from "./abortMarker";
 import { SftpSession } from "./sftpSession";
 export type { PresentedHostKey } from "./sftpConnect";
-export {
-  MESSAGE_ENVELOPE_VERSION,
-  MESSAGE_TYPE_BINARY,
-  MESSAGE_HEADER_BYTES,
-} from "./fileSyncFraming";
 import {
   composeDirsDisplay,
   FileSyncRendezvous,

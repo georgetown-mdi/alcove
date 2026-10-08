@@ -4,13 +4,16 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  buildExchangeRecord,
   parseExchangeRecord,
   parseVerificationKeys,
   serializeExchangeRecord,
   serializeVerificationKeys,
-  verifyRecordCommitments,
 } from "@alcove/core";
+
+import {
+  buildExchangeRecord,
+  verifyRecordCommitments,
+} from "@alcove/core/testing";
 
 import vectorsRaw from "../../../../packages/core/test/vectors/exchange-record-vectors.json?raw";
 

@@ -7,8 +7,8 @@ import {
   deriveAcceptedLinkageTerms,
   prepareForExchange,
   safeParseLinkageTerms,
-  validateStandardizationAgainstTerms,
 } from "@alcove/core";
+import { validateStandardizationAgainstTerms } from "@alcove/core/testing";
 
 import {
   addElement,

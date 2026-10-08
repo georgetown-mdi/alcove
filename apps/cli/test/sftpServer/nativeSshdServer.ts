@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { computeHostKeyFingerprint } from "@alcove/core";
+import { computeHostKeyFingerprint } from "@alcove/core/testing";
 
 import type { SftpServerHandle, SftpTestServer } from "./types";
 

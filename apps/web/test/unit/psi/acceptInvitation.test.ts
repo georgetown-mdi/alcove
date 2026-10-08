@@ -8,8 +8,8 @@ import {
   getDefaultLinkageTerms,
   prepareForExchange,
   resolveLinkageCardinality,
-  validateCompatibility,
 } from "@alcove/core";
+import { validateCompatibility } from "@alcove/core/testing";
 
 import {
   acceptorDeduplicateRefusal,

@@ -1,9 +1,7 @@
 import { describe, expect, test } from "vitest";
 
-import {
-  errorWithPartnerCauseLinks,
-  partnerOriginTextList,
-} from "@alcove/core";
+import { errorWithPartnerCauseLinks } from "@alcove/core";
+import { partnerOriginTextList } from "@alcove/core/testing";
 
 import { failureFor } from "@exchange/useInviterExchange";
 import { layOutValueLineBreaks } from "@exchange/RunSurface";

@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
-  AGREED_TERMS_VERSION,
   ConnectionError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
@@ -16,7 +15,9 @@ import {
   payloadReceiveFilledNotice,
   runExchange,
 } from "@alcove/core";
+
 import {
+  AGREED_TERMS_VERSION,
   minimalExchangeResult,
   minimalPreparedExchange,
 } from "@alcove/core/testing";
@@ -65,9 +66,13 @@ import type {
   MessageConnection,
   PsiBackendSelection,
   RendezvousRole,
+} from "@alcove/core";
+
+import type {
   ResolvedRunShape,
   RunExchangeOptions,
-} from "@alcove/core";
+} from "@alcove/core/testing";
+
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 import type { PeerCloseOutcome } from "../../../src/psi/transport/waitForPeerClose.js";
 import type { RunOutputs } from "@psi/runOutputs";
