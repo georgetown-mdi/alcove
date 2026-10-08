@@ -46,6 +46,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       files: ${{ steps.list.outputs.files }}
+      sha: ${{ steps.list.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -75,17 +76,15 @@ jobs:
             });
           ')
           echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   stress:
     name: Core PSI stress (${{ matrix.file }})
     needs: files
     runs-on: ubuntu-latest
-    # Above the longest probe limit a stress test sets (psiRoundWalls, four
-    # hours a round), so a slow case fails by its own timeout instead of being
-    # cut off here. Measured on a hosted runner 2026-10-08: the round of 2^22 a
-    # side took 44 minutes for each of its first two of five operations (about
-    # 165 minutes in all, scaled from a local run), wasmMatchSlices 40 minutes,
-    # and each other file measured there under 5 minutes.
+    # Above the longest per-test limit a stress file sets (psiRoundWalls, 240
+    # minutes), so a slow test fails on its own timeout instead of being cut off
+    # here. Per-file wall times are in the verbose output of each nightly run.
     timeout-minutes: 270
     strategy:
       # One failing file must not cancel the others' runs.
@@ -95,7 +94,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: staging
+          # The commit the files job listed from, so staging moving between the
+          # jobs cannot split the list from the runs.
+          ref: ${{ needs.files.outputs.sha }}
       # Pins Node, installs from the lockfile, and builds @alcove/core so the
       # stress tests run against the compiled fork in dist/.
       - uses: ./.github/actions/setup
@@ -112,14 +113,12 @@ jobs:
           STRESS_FILE: ${{ matrix.file }}
           # Raise the createSetupMessage permutation run above the 200k local
           # default for heavier nightly coverage past the ~125k overflow cliff.
-          # The ceiling is the stress project's 300s per-test timeout: that test
-          # is a synchronous WASM call vitest cannot interrupt, so a value large
-          # enough to push it past 300s would run to completion and only then be
-          # marked failed. At ~0.46ms/element locally, 250k (~120s) leaves margin
-          # on a slower hosted runner. Going higher (toward the 1_000_000 the task
-          # cited as an example) also needs packages/core's stress testTimeout
-          # raised; that shared-config change is out of scope for this CI job.
+          # createSetupMessageLarge sets no timeout of its own, so the stress
+          # project's 300s per-test timeout bounds it: that test is a synchronous
+          # WASM call vitest cannot interrupt, so a value that pushes it past 300s
+          # runs to completion and only then is marked failed. At ~0.46ms/element
+          # locally, 250k (~120s) leaves margin on a slower hosted runner. Going
+          # higher needs that test to set a longer timeout of its own.
           # PSI_STRESS_E2E_N (the full-round test) is intentionally left at its
-          # 25k default -- a heavier end-to-end round costs minutes and would need
-          # the same timeout raise.
+          # 25k default -- a heavier end-to-end round costs minutes.
           PSI_STRESS_N: "250000"
