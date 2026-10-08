@@ -101,6 +101,106 @@ for.
 Use an account whose password has neither -- it is item 1 of the
 [IT request](#what-to-ask-your-it-department-for).
 
+## The image download fails with a certificate error
+
+The first download of the Alcove image stops before anything about your file
+drop has been tested. Under podman the message ends:
+
+```text
+pinging container registry ghcr.io: Get "https://ghcr.io/v2/": tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+and under Docker it reads:
+
+```text
+Error response from daemon: Get "https://ghcr.io/v2/": tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+Your network passes HTTPS through a proxy that opens it and signs it again with
+a certificate of its own. The container engine, Docker Desktop or podman, does
+not trust that certificate, so it refuses the connection.
+
+The fix is to trust the proxy's certificate where the engine checks
+certificates, and then restart the engine:
+
+1. Ask your IT department for the proxy's root certificate. It is item 5 of
+   the [IT request](#what-to-ask-your-it-department-for).
+2. Have it trusted where the engine checks. podman checks inside its own Linux
+   virtual machine, so the certificate has to be added there. Docker Desktop
+   on a Mac took it from the Mac's login keychain.
+3. Restart the engine, and download again.
+
+Neither engine has been tried this way on Windows, so there are no Windows
+commands here. Where the certificate goes for your engine on Windows is a
+question for IT, and this section is the thing to show them. On a Mac, these
+are the commands that worked, with the certificate saved as `proxy-ca.pem`.
+
+**podman 5.1 on macOS:**
+
+```sh
+cat proxy-ca.pem | podman machine ssh 'cat > /tmp/proxy-ca.pem && sudo cp /tmp/proxy-ca.pem /etc/pki/ca-trust/source/anchors/proxy-ca.pem && sudo update-ca-trust'
+podman machine stop && podman machine start
+```
+
+**Docker Desktop 4.93 on macOS:** add the certificate to the login keychain,
+which asks for your Mac password, then choose **Restart** from the Docker menu
+in the menu bar.
+
+```sh
+security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db proxy-ca.pem
+```
+
+## The image download is refused
+
+The certificate is trusted, or was never the problem, and the download still
+stops. Under podman the message is:
+
+```text
+Error: copying system image from manifest list: parsing image configuration: fetching blob: StatusCode: 403, ""
+```
+
+and under Docker, with nothing after the last colon:
+
+```text
+error pulling image configuration: download failed after attempts=1: denied:
+```
+
+The image is published on `ghcr.io`, but `ghcr.io` sends the download of the
+image's configuration and layers on to a second host,
+`pkg-containers.githubusercontent.com`. A proxy that allows the first host and
+refuses the second gives these messages. Both hosts have to be allowed, and
+`ghcr.io` alone is not enough. Ask IT for both: item 5 of the
+[IT request](#what-to-ask-your-it-department-for).
+
+These messages were seen with podman 5.1 and Docker Desktop 4.93 on a Mac.
+Neither engine has been tried behind such a proxy on Windows, so if the wording
+on your screen differs, trust your screen.
+
+## An image file from your partner does not replace the download
+
+If your partner can download the image, they can save it to a file with
+`docker save` or `podman save`, and you can load that file with `docker load`
+or `podman load`. When you use the launcher, that does not get you past a
+blocked download.
+
+The launcher runs the image by its exact digest,
+`ghcr.io/georgetown-mdi/alcove@sha256:` followed by the digest its release
+names. An image loaded from a file comes in with no name at all, so the engine
+does not match it to that reference:
+
+- **podman** goes to the registry anyway, and fails as in the section above.
+  Adding `--pull=never` gives `image not known` instead.
+- **Docker** asks `ghcr.io` for the image's manifest, a short description of
+  the image, and then uses the loaded layers. It starts if `ghcr.io` is
+  reachable and only the second host is refused. If `ghcr.io` cannot be reached
+  at all, it fails, and adding `--pull=never` gives `No such image`.
+
+Two other routes have not been tried: running the image by its `:latest` name,
+as the setup script and the commands on this page do, and naming the image
+with `docker tag` or `podman tag` after loading it. Both engines were tried on
+a Mac only. Until another route is shown to work, the fix is to have both hosts
+allowed.
+
 ## The container cannot find the server
 
 The name check fails -- `FAIL: cannot resolve 'fileserver'`, or step 1 in the
@@ -145,7 +245,7 @@ machine. Three things commonly stop *it* while File Explorer keeps working:
 - **A firewall on this PC** that allows Windows but not Docker.
 - **A rule on the server** that only accepts computers it already knows.
 
-If you are on a VPN, that is almost certainly it. Take items 3 and 5 of the
+If you are on a VPN, that is almost certainly it. Take items 3 and 6 of the
 [IT request](#what-to-ask-your-it-department-for) to whoever runs the network.
 
 ## The share never asks for a password
@@ -168,7 +268,7 @@ Two options, and one dead end:
   share. This is the cleanest fix and usually the fastest to get; it is item 1
   of the [IT request](#what-to-ask-your-it-department-for).
 - If no account can be made to work, ask for the scheduled mirror instead --
-  item 5 of the [IT request](#what-to-ask-your-it-department-for).
+  item 6 of the [IT request](#what-to-ask-your-it-department-for).
 
 If a volume later fails to mount with `required key not available`, that is the
 same problem in a different place.
@@ -299,7 +399,7 @@ cmd_Setup-AlcoveFileDrop.cmd -Dialect SMB3
 ```
 
 and if that fails, `-Dialect SMB2`. If both fail, the server is too old for
-Docker to use it at all. Ask for the scheduled mirror -- item 5 of the
+Docker to use it at all. Ask for the scheduled mirror -- item 6 of the
 [IT request](#what-to-ask-your-it-department-for).
 
 ## The volume opens the wrong folder
@@ -348,7 +448,7 @@ edit the bracketed parts and paste the rest:
 Subject: SMB share access for a container on my workstation
 
 I need to run a record-linkage tool (alcove, https://github.com/georgetown-mdi/alcove)
-in Docker Desktop on my workstation [MACHINE NAME]. It exchanges files with
+in Docker Desktop or podman on my workstation [MACHINE NAME]. It exchanges files with
 [PARTNER ORGANIZATION] through the shared folder:
 
     [\\server\share\folder as it appears in File Explorer]
@@ -369,7 +469,11 @@ Please could you provide:
    workstation's Docker network, which is a different source address than my
    Windows session. [If you use a VPN, say so here.]
 4. The real server name and share, if the path above is a DFS namespace.
-5. If none of that is possible -- the container cannot reach the server from
+5. Docker or podman downloads the tool from ghcr.io, which sends the download on to
+   pkg-containers.githubusercontent.com. Please allow HTTPS to both hosts from
+   the container engine on my workstation. If the proxy inspects HTTPS, please send me its
+   root certificate so that it can be set to trust it.
+6. If none of that is possible -- the container cannot reach the server from
    its own address, or the account can only sign in with single sign-on -- then
    a scheduled mirror between that shared folder and a local folder on my
    workstation would work instead, and I would point the tool at the local
