@@ -45,12 +45,12 @@ async function bothRefusals(): Promise<{ refused: Error; partner: Error }> {
 const CONFIGURED_REFUSED =
   "Agree the linkage terms with your partner: to take on theirs, ask them " +
   "for an update made with alcove update and apply it with alcove apply, or " +
-  "change your configuration to match theirs, then run alcove exchange again.";
+  "change your configuration to match theirs, then run the same command again.";
 const CONFIGURED_PARTNER =
   "Agree the linkage terms with your partner: to have them take on yours, " +
   "send them an update made with alcove update for them to apply with alcove " +
-  "apply, or change your configuration to match theirs, then run alcove " +
-  "exchange again.";
+  "apply, or change your configuration to match theirs, then run the " +
+  "same command again.";
 const QUICK =
   "Agree with your partner on the columns your input files share and the " +
   "--linkage-strategy you both pass, then run again.";

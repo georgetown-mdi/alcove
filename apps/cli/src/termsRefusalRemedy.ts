@@ -20,6 +20,10 @@ import type { TermsDifferenceRefusedBy } from "@alcove/core";
  */
 export type TermsRefusalRun = "configured" | "quick-exchange";
 
+const QUICK_EXCHANGE_NEXT_STEP =
+  "Agree with your partner on the columns your input files share and " +
+  "the --linkage-strategy you both pass, then run again.";
+
 /**
  * The next step for each run and each party that refused.
  *
@@ -34,21 +38,17 @@ export const TERMS_REFUSAL_NEXT_STEPS: {
     "this-party":
       "Agree the linkage terms with your partner: to take on theirs, ask " +
       "them for an update made with alcove update and apply it with alcove " +
-      "apply, or change your configuration to match theirs, then run alcove " +
-      "exchange again.",
+      "apply, or change your configuration to match theirs, then run the same " +
+      "command again.",
     partner:
       "Agree the linkage terms with your partner: to have them take on " +
       "yours, send them an update made with alcove update for them to apply " +
       "with alcove apply, or change your configuration to match theirs, then " +
-      "run alcove exchange again.",
+      "run the same command again.",
   },
   "quick-exchange": {
-    "this-party":
-      "Agree with your partner on the columns your input files share and " +
-      "the --linkage-strategy you both pass, then run again.",
-    partner:
-      "Agree with your partner on the columns your input files share and " +
-      "the --linkage-strategy you both pass, then run again.",
+    "this-party": QUICK_EXCHANGE_NEXT_STEP,
+    partner: QUICK_EXCHANGE_NEXT_STEP,
   },
 };
 
