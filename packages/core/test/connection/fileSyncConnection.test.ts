@@ -1010,10 +1010,13 @@ test("probeHostKeyFingerprint reports a fingerprint-computation failure distinct
 
 test("probeHostKeyFingerprint swallows a late verify() throw on a torn-down handshake", async () => {
   // The competing-rejection race: connect() rejects on its own (as readyTimeout
-  // would) while the verifier's async fingerprint hash is still pending, and the
-  // eventual verify() throws because ssh2 already destructed its protocol.
-  // settleVerify must swallow that so the void-ed verifier IIFE never rejects --
-  // otherwise it shows up as a stray unhandled rejection (a flaky failure).
+  // would) while the verifier's async fingerprint hash is still pending. The
+  // verify() here throws as a mock; the pinned ssh2 returns without throwing on
+  // a torn-down handshake (docs/spec/DEPENDENCY_PINS.md, host-key probe premise
+  // (4); driven in apps/cli/test/integration/sftpStackPremises.test.ts). This
+  // covers the guard against a later version that does throw: settleVerify must
+  // swallow it so the void-ed verifier IIFE never rejects, which would show up
+  // as a stray unhandled rejection (a flaky failure).
   const blob = ed25519Blob();
   const { client } = makeMockClient();
   client.connect = (options: Record<string, unknown>) => {
