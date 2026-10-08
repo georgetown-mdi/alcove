@@ -91,6 +91,7 @@ Engagement is necessary but not sufficient: a provider only covers operations th
 |---|---|---|
 | AEAD AES-256-GCM, 12-byte IV (`connection/encryptedMessageConnection.ts`) | WebCrypto `crypto.subtle` | Yes -- measured engaged |
 | HKDF-SHA-256, HMAC-SHA-256, SHA-256 (`utils/crypto.ts`, `auth.ts`, `kex.ts`, `signedReceipt.ts`) | WebCrypto `crypto.subtle` | Yes -- measured available under a fips-only configuration |
+| HMAC-SHA-256 over the exchange record's commitments and the receipt's payload MACs (`utils/canonicalHmac.ts`) | `@noble/hashes`, in JavaScript | **No** -- the encoding is fed in pieces, and `crypto.subtle` has no incremental HMAC |
 | `getRandomValues` (`utils/crypto.ts`) | WebCrypto | Yes |
 | P-256 ECDH key agreement (`kex.ts`) | WebCrypto `crypto.subtle` | Yes -- `ECDH` is listed under a fips-only configuration on every measured build, and the P-256 `deriveBits` call is a gating leg of the variant image's engagement probe |
 | ECDSA P-256 with SHA-256 keygen/sign/verify (`signingKeys.ts`, `signingIdentity.ts`, `signedReceipt.ts`) | WebCrypto `crypto.subtle` | Yes -- `ECDSA` is listed under a fips-only configuration on every measured build; no leg of the variant image's engagement probe covers it, so nothing here is a measured dispatch |
@@ -101,7 +102,7 @@ The last row needed its own measurement, because "WebCrypto engages" says nothin
 
 That has a deployment consequence for the SFTP profile item: in a fips-only container with a 3.5.x provider, `ssh2` loses X25519 keypair generation, and with it the `curve25519-sha256` SSH key exchange, plus MD5 for key fingerprints. Under a 3.0.x provider X25519 survives. Which SSH algorithms remain available is therefore a function of the provider build, and it is not something the WebCrypto answer would have shown.
 
-The ceiling this table implies is the important part. Every operation Alcove performs itself -- the AEAD, the key-schedule primitives, key establishment, and receipt signing -- can sit inside a provider boundary, because each is a `crypto.subtle` call. The PSI masking cannot, and it is the one that no move to WebCrypto fixes: it is BoringSSL inside a vendored module, not OpenSSL.
+The ceiling this table implies is the important part. Every operation Alcove performs itself -- the AEAD, the key-schedule primitives, key establishment, and receipt signing -- can sit inside a provider boundary, because each is a `crypto.subtle` call. The HMACs behind the record commitments and the receipt's payload MACs cannot while they run in JavaScript. The PSI masking cannot, and it is the one that no move to WebCrypto fixes: it is BoringSSL inside a vendored module, not OpenSSL.
 
 ## What the certificates say
 

@@ -82,6 +82,15 @@ with a message asking for an npm exclude entry that would be false.
   and a bump on either is reviewed against both. The assumptions and the
   re-verification procedure are in
   [Upgrading the CLI WebRTC peer (werift)](#upgrading-the-cli-webrtc-peer-werift).
+- **Incremental HMAC (`@noble/hashes`).** Core computes each exchange
+  record commitment and receipt payload MAC as an HMAC-SHA-256 fed the canonical
+  encoding in chunks, because that encoding can be longer than the engine's
+  longest string and `crypto.subtle` has no incremental HMAC. The output must
+  match HMAC-SHA-256 byte for byte across releases and between two parties, so
+  `packages/core/package.json` declares it at one exact version, the one
+  `@noble/curves` itself depends on, and a bump is a reviewed edit. The
+  re-verification is in
+  [Upgrading the incremental HMAC (@noble/hashes)](#upgrading-the-incremental-hmac-noblehashes).
 - **PSI crypto addon (`@openmined/psi.js`).** Pinned by construction: an Alcove
   fork vendored as a local `file:` tarball
   (`lib/openmined-psi.js-<version>.tgz`), whose path resolves to exactly the
@@ -668,6 +677,19 @@ That endpoint is a confidentiality statement an operator reads before handing a 
 - Re-drive the candidate-queue assumption by hand against a browser peer if the negotiation changes. The unit test pins the order this side emits in; only a real PeerJS peer shows what it does with one that arrives early.
 - Confirm the install stays clean: werift declares no `preinstall`/`install`/`postinstall` script and ships no native or compiled content, so nothing compiles at install and no `allowScripts` verdict is needed (see [The install-script policy](#the-install-script-policy-allowscripts)). `mediabunny` (MPL-2.0) is installed as a transitive but never loaded by a datachannel-only peer.
 - TURN's relayed connectivity remains unverified by these suites. The relay transports are present in the published API, the URL parser resolves the port-443 TLS case, and an allocation has been driven against a real relay for the refresh-timer assumption above, but no exchange here runs over a relayed candidate pair; drive one before any deployment relies on relayed connectivity.
+
+## Upgrading the incremental HMAC (@noble/hashes)
+
+`canonicalHmacSha256` (`packages/core/src/utils/canonicalHmac.ts`) computes the exchange record's commitments and the signed receipt's two directional payload MACs: HMAC-SHA-256 over the canonical encoding, fed to `@noble/hashes`' incremental HMAC in the chunks `writeCanonicalBytes` writes, so no single string or byte array holds the whole encoding ([CANONICAL_ENCODING.md](CANONICAL_ENCODING.md)).
+The constructions are unchanged from a one-shot HMAC over the whole encoding ([EXCHANGE_RECORD.md](EXCHANGE_RECORD.md)), and a record written by one release is opened by another, so the one assumption is that the library computes standard HMAC-SHA-256 (RFC 2104 over FIPS 180-4 SHA-256) for any key length and any split of the message.
+The library runs in JavaScript, so these HMACs are not performed by a validated module even where one is configured beneath `crypto.subtle` ([COMPLIANCE.md, FIPS 140](../COMPLIANCE.md#fips-140)).
+
+### Re-verification on a bump
+
+- Run `npx vitest run test/utils/canonicalStream.test.ts` from `packages/core`. It compares the library's HMAC with `crypto.subtle`'s over the one-shot encoding, under keys shorter than, equal to and longer than the 64-byte block, over values that span many chunks, and recomputes each commitment and receipt MAC from its stated construction.
+- Run `npx vitest run test/records/exchangeRecord.test.ts` from `packages/core`: its exchange-record vectors pin commitment values, and the browser suite replays the same vectors (`apps/web/test/browser/exchangeRecord.test.ts`) through the same code in Chromium.
+- Move it with `@noble/curves`, which declares `@noble/hashes` at an exact version: `npm ls @noble/hashes` shows one copy under `packages/core`, and a second one means the two pins have parted.
+- Confirm the install stays clean: the package declares no install script and no dependency, so no `allowScripts` verdict is needed ([The install-script policy](#the-install-script-policy-allowscripts)).
 
 ## The shipped images hold no package manager
 

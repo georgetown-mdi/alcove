@@ -6,10 +6,10 @@ import {
   canonicalString,
   safeIntegerSchema,
 } from "../utils/canonical.js";
+import { canonicalHmacSha256 } from "../utils/canonicalHmac.js";
 import {
   bytesEqual,
   fromBase64Url,
-  hmacSha256,
   randomBytes,
   sha256,
   toBase64Url,
@@ -117,8 +117,7 @@ export async function computeCommitment(
   salt: Uint8Array<ArrayBuffer>,
   data: CanonicalValue,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const message = canonicalBytes({ domain: COMMITMENT_DOMAINS[name], data });
-  return hmacSha256(salt, message);
+  return canonicalHmacSha256(salt, { domain: COMMITMENT_DOMAINS[name], data });
 }
 
 /**

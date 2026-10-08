@@ -3,7 +3,8 @@ import { maxCodeUnits } from "../utils/maxCodeUnits.js";
 
 import { canonicalBytes } from "../utils/canonical.js";
 import { safeParseLinkageTerms } from "../config/linkageTermsSchema.js";
-import { hkdfDerive, hmacSha256, toBase64Url } from "../utils/crypto.js";
+import { canonicalHmacSha256 } from "../utils/canonicalHmac.js";
+import { hkdfDerive, toBase64Url } from "../utils/crypto.js";
 import { receiveAfterTerms } from "../partnerAbortFrame.js";
 import {
   boundedWireCertificateSchema,
@@ -168,8 +169,7 @@ async function macCommittedPayload(
   macKey: Uint8Array<ArrayBuffer>,
   payload: CommittedPayload,
 ): Promise<string> {
-  const bytes = canonicalBytes(payload as CanonicalValue);
-  return toBase64Url(await hmacSha256(macKey, bytes));
+  return toBase64Url(canonicalHmacSha256(macKey, payload));
 }
 
 /**
