@@ -1,6 +1,7 @@
-import { expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
+import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { PSIParticipant } from "../../src/psi/participant";
 import { linkViaPSI, linkViaSinglePassPSI } from "../../src/psi/link";
@@ -23,10 +24,14 @@ import {
 } from "../../src/psi/psiWorkerEngine";
 import type { Config } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
+import { classifyFailure } from "../../src/failureClass";
+import { serializeSetup } from "../../src/psi/psiChunks";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
+import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
 
 const psiLibrary = await PSI();
+const nativeLibrary = await loadNativeAddonOrSkip();
 
 // A WorkerPsiEngine wired to an in-process dispatcher instead of a real
 // thread, so the request/response protocol, id correlation, and (via
@@ -38,10 +43,11 @@ function inProcessWorkerEngine(
   role: Config["role"],
   id: string,
   options: InProcessPsiEngineOptions = {},
+  library: PSILibrary = psiLibrary,
 ): WorkerPsiEngine {
   let deliver: (response: PsiWorkerResponse) => void = () => {};
   const dispatch = servePsiWorker(
-    psiLibrary,
+    library,
     { role, id, mode: "identifier-revealing" },
     (response) => deliver(structuredClone(response)),
     options,
@@ -239,6 +245,106 @@ test("a response refused as the partner's stays a protocol refusal after the wor
   } finally {
     engine.dispose();
   }
+});
+
+describe.each([
+  { backend: "wasm", library: psiLibrary as PSILibrary | undefined },
+  { backend: "native", library: nativeLibrary },
+])("on the $backend backend", ({ library }) => {
+  // A starter's setup over `values` with its first two elements swapped, and
+  // the response to a request from `engine`, a receiver that holds no setup.
+  async function swappedRound(
+    psi: PSILibrary,
+    engine: PsiEngine,
+  ): Promise<{ setup: Uint8Array; response: Uint8Array }> {
+    const starter = new InProcessPsiEngine(
+      psi,
+      "starter",
+      "sender",
+      "identifier-revealing",
+    );
+    try {
+      const { setup } = await starter.createServerSetup(["a", "b", "c", "d"]);
+      const elements = [
+        ...psi.serverSetup
+          .deserializeBinary(setup)
+          .getRaw()!
+          .getEncryptedElementsList_asU8(),
+      ];
+      [elements[0], elements[1]] = [elements[1]!, elements[0]!];
+      const request = await engine.createClientRequest(["b", "c", "e"]);
+      const response = await starter.processClientRequest(request);
+      return { setup: serializeSetup(psi, elements), response };
+    } finally {
+      starter.dispose();
+    }
+  }
+
+  const named = {
+    ascending:
+      "receiver protocol error: PSI server setup is not in strictly ascending element order",
+    raw: "receiver protocol error: PSI server setup is not a Raw data structure",
+  };
+
+  test.for([
+    { method: "streamed", refused: "at setup arrival", atArrival: true },
+    { method: "sliced", refused: "at the match", atArrival: false },
+  ] as const)(
+    "a setup out of ascending order, refused $refused by the $method match, stays the partner's refusal after the worker round trip",
+    async ({ method, atArrival }, ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const engine = inProcessWorkerEngine(
+        "joiner",
+        "receiver",
+        { matchMethod: method },
+        library,
+      );
+      try {
+        const { setup, response } = await swappedRound(library, engine);
+        const arrival = await rejection(engine.receiveServerSetup(setup));
+        const refused = atArrival
+          ? arrival
+          : await rejection(engine.computeAssociationTable(response));
+        if (!atArrival) expect(arrival).toBeUndefined();
+        expect(refused).toBeInstanceOf(ProtocolRefusalError);
+        expect(refused?.message).toBe(named.ascending);
+        expect(classifyFailure(refused)).toBe("partner-refused");
+      } finally {
+        engine.dispose();
+      }
+    },
+  );
+
+  test.for(["streamed", "sliced"] as const)(
+    "a setup that is not a Raw data structure, refused by the %s match, stays the partner's refusal after the worker round trip",
+    async (method, ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const engine = inProcessWorkerEngine(
+        "joiner",
+        "receiver",
+        { matchMethod: method },
+        library,
+      );
+      try {
+        const refused = await rejection(
+          engine.receiveServerSetup(
+            new library.serverSetup().serializeBinary(),
+          ),
+        );
+        expect(refused).toBeInstanceOf(ProtocolRefusalError);
+        expect(refused?.message).toBe(named.raw);
+        expect(classifyFailure(refused)).toBe("partner-refused");
+      } finally {
+        engine.dispose();
+      }
+    },
+  );
 });
 
 test("a discarded setup is freed inside the worker, so a new setup can be received", async () => {

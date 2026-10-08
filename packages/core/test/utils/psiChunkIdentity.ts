@@ -4,7 +4,8 @@ import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 import { buildResponse, serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { isPsiLibraryFailure } from "../../src/errors";
+import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
 
 import type {
   InProcessPsiEngineOptions,
@@ -379,11 +380,11 @@ export async function expectBoundaryRepeatRefused(params: {
         await refusal(whole),
         await refusal(streamed),
       ]) {
-        expect(caught).toBeInstanceOf(Error);
-        expect((caught as Error).constructor).toBe(Error);
+        expect(caught).toBeInstanceOf(ProtocolRefusalError);
         expect((caught as Error).message).toBe(
           "joiner protocol error: PSI server setup is not in strictly ascending element order",
         );
+        expect(classifyFailure(caught)).toBe("partner-refused");
         expect(isPsiLibraryFailure(caught)).toBe(false);
       }
     } finally {

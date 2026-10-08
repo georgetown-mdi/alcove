@@ -2,6 +2,12 @@
 
 import { describe, expect, test } from "vitest";
 
+import { ProtocolRefusalError } from "@alcove/core/testing";
+import { classifyFailure } from "@alcove/core";
+// @ts-ignore this is really there
+import PSI from "@openmined/psi.js/psi_wasm_web";
+
+import { classifyExchangeFailure } from "@psi/exchangeLifecycle";
 import { createBrowserPsiEngineFactory } from "@psi/workers/psiCryptoController";
 import { defaultSpawnPsiCryptoWorker } from "@psi/workers/psiCryptoWorkerClient";
 
@@ -10,6 +16,8 @@ import type {
   SpawnPsiCryptoWorker,
 } from "@psi/workers/psiCryptoController";
 import type { PsiEngine } from "@alcove/core";
+
+import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
 // The browser PSI crypto offload, exercised against the REAL Vite-native worker
 // running the REAL WASM engine in a real browser. The host-side
@@ -90,6 +98,42 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
 
     // Both workers were torn down by dispose() -- no leak past the exchange.
     expect(terminations()).toBe(2);
+  }, 30_000);
+
+  test("a partner setup out of ascending order is refused in the worker as the partner's", async () => {
+    const factory = createBrowserPsiEngineFactory(trackingSpawner().spawn);
+    const starter = factory("starter", "server", "identifier-revealing");
+    const joiner = factory("joiner", "client", "identifier-revealing");
+    let refused: unknown;
+    try {
+      const psi = await (PSI() as Promise<PSILibrary>);
+      const { setup } = await starter.createServerSetup(STARTER_VALUES);
+      const elements = [
+        ...psi.serverSetup
+          .deserializeBinary(setup)
+          .getRaw()!
+          .getEncryptedElementsList_asU8(),
+      ];
+      [elements[0], elements[1]] = [elements[1], elements[0]];
+      const raw = new psi.serverSetup.RawInfo();
+      raw.setEncryptedElementsList(elements);
+      const swapped = new psi.serverSetup();
+      swapped.setRaw(raw);
+      refused = await joiner.receiveServerSetup(swapped.serializeBinary()).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    } finally {
+      starter.dispose();
+      joiner.dispose();
+    }
+
+    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect((refused as Error).message).toBe(
+      "client protocol error: PSI server setup is not in strictly ascending element order",
+    );
+    expect(classifyFailure(refused)).toBe("partner-refused");
+    expect(classifyExchangeFailure(refused, "run")).toBe("exchange");
   }, 30_000);
 
   // The acceptance criterion: the worker is torn down on every exchange-end path.

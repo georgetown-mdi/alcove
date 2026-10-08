@@ -1,4 +1,4 @@
-import { InternalConsistencyError } from "../errors";
+import { InternalConsistencyError, ProtocolRefusalError } from "../errors";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
   chunkRangesOfSize,
@@ -106,22 +106,24 @@ export function maskingChunkRanges(
 }
 
 /**
- * The protocol error refusing a partner's setup whose elements are not
- * strictly ascending by bytes, whichever match method finds it. The message
- * holds no partner bytes.
+ * The protocol refusal of a partner's setup whose elements are not strictly
+ * ascending by bytes, whichever match method finds it. The message holds no
+ * partner bytes.
  */
-export function setupNotStrictlyAscendingError(id: string): Error {
-  return new Error(
+export function setupNotStrictlyAscendingError(
+  id: string,
+): ProtocolRefusalError {
+  return new ProtocolRefusalError(
     `${id} protocol error: PSI server setup is not in strictly ascending element order`,
   );
 }
 
 /**
- * The protocol error refusing a partner's setup that is not a Raw data
- * structure, whichever match method finds it.
+ * The protocol refusal of a partner's setup that is not a Raw data structure,
+ * whichever match method finds it.
  */
-export function setupNotRawError(id: string): Error {
-  return new Error(
+export function setupNotRawError(id: string): ProtocolRefusalError {
+  return new ProtocolRefusalError(
     `${id} protocol error: PSI server setup is not a Raw data structure`,
   );
 }

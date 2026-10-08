@@ -3,13 +3,16 @@ import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 
 import { afterEach, expect, test } from "vitest";
+import PSI from "@openmined/psi.js";
 import {
   WorkerPsiEngine,
   type PsiEngine,
   type PsiWorkerInit,
 } from "@alcove/core";
+import { ProtocolRefusalError } from "@alcove/core/testing";
 
 import { createWorkerThreadHandle } from "../../src/psiWorkerHost";
+import { exitCodeForError } from "../../src/util/exit";
 
 // Exercises the CLI PSI crypto offload against the real shipping worker
 // (dist/psiWorker.worker.js) rather than the in-process fallback the rest
@@ -132,6 +135,43 @@ workerTest(
       workerTable[0].map((index) => JOINER_VALUES[index]),
     );
     expect(matchedJoinerValues).toEqual(EXPECTED_MATCH_VALUES);
+  },
+  30_000,
+);
+
+workerTest(
+  "a partner setup out of ascending order is refused in the worker as the partner's, exit 76",
+  async () => {
+    const starter = spawnEngine("starter", "order-starter");
+    const joiner = spawnEngine("joiner", "order-joiner");
+    const psi = await PSI();
+    const { setup } = await starter.engine.createServerSetup(STARTER_VALUES);
+    const elements = [
+      ...psi.serverSetup
+        .deserializeBinary(setup)
+        .getRaw()!
+        .getEncryptedElementsList_asU8(),
+    ];
+    [elements[0], elements[1]] = [elements[1]!, elements[0]!];
+    const raw = new psi.serverSetup.RawInfo();
+    raw.setEncryptedElementsList(elements);
+    const swapped = new psi.serverSetup();
+    swapped.setRaw(raw);
+
+    const refused = await joiner.engine
+      .receiveServerSetup(swapped.serializeBinary())
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect((refused as Error).message).toBe(
+      "order-joiner protocol error: PSI server setup is not in strictly ascending element order",
+    );
+    expect(exitCodeForError(refused)).toBe(76);
+    starter.engine.dispose();
+    joiner.engine.dispose();
   },
   30_000,
 );

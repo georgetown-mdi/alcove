@@ -276,10 +276,11 @@ describe.each([
         const refusal = await caught(() =>
           engine.receiveServerSetupPiece(cut[showing]!),
         );
-        expect((refusal as Error).constructor).toBe(Error);
+        expect(refusal).toBeInstanceOf(ProtocolRefusalError);
         expect((refusal as Error).message).toBe(
           "joiner protocol error: PSI server setup is not in strictly ascending element order",
         );
+        expect(classifyFailure(refusal)).toBe("partner-refused");
         expect(isPsiLibraryFailure(refusal)).toBe(false);
         expect(
           ((await caught(() => match(engine, mode, round.response))) as Error)
@@ -384,7 +385,9 @@ describe.each([
       [new Uint8Array([0, 0])],
     ]) {
       const error = await refusal(notRaw);
+      expect(error).toBeInstanceOf(ProtocolRefusalError);
       expect((error as Error).message).toBe(named);
+      expect(classifyFailure(error)).toBe("partner-refused");
       expect(isPsiLibraryFailure(error)).toBe(false);
     }
     for (const unreadable of [

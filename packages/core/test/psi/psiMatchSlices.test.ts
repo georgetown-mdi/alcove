@@ -4,7 +4,8 @@ import { vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { isPsiLibraryFailure } from "../../src/errors";
+import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
@@ -131,10 +132,11 @@ test.each([
   } catch (error) {
     caught = error;
   }
-  expect(caught).toBeInstanceOf(Error);
+  expect(caught).toBeInstanceOf(ProtocolRefusalError);
   expect((caught as Error).message).toBe(
     "joiner protocol error: PSI server setup is not in strictly ascending element order",
   );
+  expect(classifyFailure(caught)).toBe("partner-refused");
   expect(isPsiLibraryFailure(caught)).toBe(false);
 });
 
