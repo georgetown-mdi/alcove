@@ -59,12 +59,12 @@ restart_stale_units() {
   front_start="$(start_us "$FRONT")"
   if [ "$broker" = 1 ]; then
     log "restarting $BROKER onto its unit file"
-    systemctl restart "$BROKER"
+    systemctl try-restart "$BROKER"
   fi
   # The front Requires= the broker, so restarting the broker restarts a
   # running front as well, which moves its start time.
   if [ "$front" = 1 ] && [ "$(start_us "$FRONT")" = "$front_start" ]; then
     log "restarting $FRONT onto its unit file, image, configuration and certificate"
-    systemctl restart "$FRONT"
+    systemctl try-restart "$FRONT"
   fi
 }

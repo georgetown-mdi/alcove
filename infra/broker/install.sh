@@ -131,6 +131,7 @@ put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 6
 CONF="$ETC/nginx.conf"
 if differs "$CANDIDATE" "$CONF"; then
   chmod 644 "$CANDIDATE"
+  touch "$CANDIDATE"
   mv -f "$CANDIDATE" "$CONF"
 fi
 chmod 644 "$CONF"

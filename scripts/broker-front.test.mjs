@@ -249,8 +249,10 @@ case "$1" in
     [ ! -f "$FAIL_RELOAD" ] || exit 1
     for file in "$U"/*; do
       [ ! -f "$file" ] || cp "$file" "$S/loaded/"
-    done ;;
-  restart)
+    done
+    [ ! -f "$STOP_FRONT_ON_RELOAD" ] || rm -f "$S/active/alcove-broker-tls.service" ;;
+  restart|try-restart)
+    [ "$1" = restart ] || [ -f "$S/active/$unit" ] || exit 0
     start "$unit"
     # The front Requires= the broker.
     if [ "$unit" = alcove-broker.service ] && [ -f "$S/active/alcove-broker-tls.service" ]; then
@@ -335,6 +337,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const failReload = join(root, "fail-daemon-reload");
   const failLego = join(root, "fail-lego");
   const holdLego = join(root, "hold-lego");
+  const stopFrontOnReload = join(root, "stop-front-on-reload");
   const serial = join(root, "serial");
   const clearLogs = () => {
     for (const log of [calls, starts, envLog]) writeFileSync(log, "");
@@ -351,6 +354,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
     ["FAIL_RELOAD", failReload],
     ["FAIL_LEGO", failLego],
     ["HOLD_LEGO", holdLego],
+    ["STOP_FRONT_ON_RELOAD", stopFrontOnReload],
     ["SERIAL", serial],
     ["NAME", NAME],
   ]
@@ -450,6 +454,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
     failDaemonReload: flag(failReload),
     failLego: flag(failLego),
     holdLego: flag(holdLego),
+    stopFrontOnReload: flag(stopFrontOnReload),
     calls: () => lines(calls),
     clearLogs,
     run: ({ broken = false } = {}) =>
@@ -483,13 +488,13 @@ const brokerStart = (image, cert) =>
 const frontActions = (calls) =>
   calls.filter(
     (call) =>
-      /^systemctl (restart|reload|start|stop|enable --now)\b.*alcove-broker-tls/.test(
+      /^systemctl (try-restart|reload|start|stop|enable --now)\b.*alcove-broker-tls/.test(
         call,
       ) || /^docker exec alcove-broker-tls nginx /.test(call),
   );
 
 const touchesFront = (call) =>
-  /^systemctl (restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
+  /^systemctl (try-restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
     call,
   ) || /^docker exec /.test(call);
 
@@ -529,7 +534,10 @@ describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     const result = host.runRenew();
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(host.tls, "privkey.pem"), "utf8")).toBe("key 2\n");
-    expect(result.calls).toEqual(["lego", `systemctl restart ${FRONT_UNIT}`]);
+    expect(result.calls).toEqual([
+      "lego",
+      `systemctl try-restart ${FRONT_UNIT}`,
+    ]);
   });
 
   it("installs a new certificate without a restart under --no-restart, and the next run restarts the front", () => {
@@ -545,7 +553,7 @@ describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(renewed.calls).toEqual(["lego"]);
     const next = host.runRenew();
     expect(next.status, next.stderr).toBe(0);
-    expect(next.calls).toEqual(["lego", `systemctl restart ${FRONT_UNIT}`]);
+    expect(next.calls).toEqual(["lego", `systemctl try-restart ${FRONT_UNIT}`]);
     expect(host.runRenew().calls).toEqual(["lego"]);
   });
 
@@ -634,10 +642,43 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(readFileSync(host.conf, "utf8")).toContain(`server_name ${NAME};`);
     expect(statSync(host.conf).mode & 0o777).toBe(0o644);
     expect(frontActions(result.calls)).toEqual([
-      `systemctl restart ${FRONT_UNIT}`,
+      `systemctl try-restart ${FRONT_UNIT}`,
     ]);
     expect(candidatesLeft(host.etc)).toEqual([]);
     expect(frontActions(host.run().calls)).toEqual([]);
+  });
+
+  it("stamps the live configuration when it goes live, so a front started during the renewal restarts onto it", async () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    const template = join(host.source, "nginx.conf.tmpl");
+    writeFileSync(template, `${readFileSync(template, "utf8")}# changed\n`);
+    host.clearLogs();
+    host.holdLego(true);
+    const install = host.spawnInstall();
+    await waitFor(() => host.calls().includes("lego"));
+    host.startFront();
+    host.holdLego(false);
+    const installed = await install.exit;
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(readFileSync(host.conf, "utf8")).toContain("# changed");
+    expect(frontActions(host.calls())).toEqual([
+      `systemctl try-restart ${FRONT_UNIT}`,
+    ]);
+  });
+
+  it("does not start through a restart a front stopped after the staleness check", () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    writeFileSync(host.conf, "# an earlier configuration\n");
+    host.stopFrontOnReload(true);
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(frontActions(result.calls)).toEqual([
+      `systemctl try-restart ${FRONT_UNIT}`,
+      `systemctl enable --now ${FRONT_UNIT}`,
+    ]);
+    expect(result.starts).toEqual([frontStart(pinnedImage(), 1)]);
   });
 
   it("issues no action when nothing changed, from a re-run or the renewal timer", () => {
@@ -677,11 +718,11 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     expect(frontActions(result.calls)).toEqual([
-      `systemctl restart ${FRONT_UNIT}`,
+      `systemctl try-restart ${FRONT_UNIT}`,
     ]);
     expect(result.starts).toEqual([frontStart(pinnedImage("b"), 2)]);
     expect(
-      result.calls.indexOf(`systemctl restart ${FRONT_UNIT}`),
+      result.calls.indexOf(`systemctl try-restart ${FRONT_UNIT}`),
     ).toBeGreaterThan(result.calls.indexOf("lego"));
   });
 
@@ -702,7 +743,7 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     const reload = result.calls.indexOf("systemctl daemon-reload");
     expect(reload).toBeGreaterThanOrEqual(0);
     expect(
-      result.calls.indexOf(`systemctl restart ${BROKER_UNIT}`),
+      result.calls.indexOf(`systemctl try-restart ${BROKER_UNIT}`),
     ).toBeGreaterThan(reload);
   });
 
@@ -722,7 +763,7 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(result.stderr).toContain("fails nginx -t");
     expect(
       result.calls.filter((call) =>
-        /^systemctl (restart|start|stop)\b/.test(call),
+        /^systemctl (try-restart|start|stop)\b/.test(call),
       ),
     ).toEqual([]);
     expect(result.calls).not.toContain("lego");
@@ -743,7 +784,9 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     const check = result.calls.indexOf("nginx -t mode=600 cert=yes");
-    const restart = result.calls.indexOf(`systemctl restart ${BROKER_UNIT}`);
+    const restart = result.calls.indexOf(
+      `systemctl try-restart ${BROKER_UNIT}`,
+    );
     expect(check).toBeGreaterThanOrEqual(0);
     expect(restart).toBeGreaterThan(check);
   });
@@ -835,7 +878,7 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
       const reload = result.calls.indexOf("systemctl daemon-reload");
       expect(reload).toBeGreaterThanOrEqual(0);
       expect(
-        result.calls.indexOf(`systemctl restart ${FRONT_UNIT}`),
+        result.calls.indexOf(`systemctl try-restart ${FRONT_UNIT}`),
       ).toBeGreaterThan(reload);
       expect(host.runTimer().calls).toEqual(["lego"]);
     },
