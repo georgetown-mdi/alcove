@@ -12,6 +12,7 @@ import {
   TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TermsChangeRefusedError,
   exchangeTerms,
+  termsDifferenceRefusedBy,
 } from "../src/protocolSetup";
 import {
   ProtocolRefusalError,
@@ -313,6 +314,7 @@ test("a partner that declines ends the run before any key or data moves", async 
     );
   expect(rejection(partnerResult)).toBe(declined);
   expect(rejection(changerResult)).toBeInstanceOf(ProtocolRefusalError);
+  expect(termsDifferenceRefusedBy(rejection(changerResult))).toBe("partner");
   expect(partnerSent).toContainEqual(
     expect.objectContaining({
       decision: "abort",

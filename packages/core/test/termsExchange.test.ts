@@ -6,6 +6,7 @@ import {
   resolveRole,
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_MISMATCH_MESSAGE,
+  TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TERMS_ENVELOPE_FIELDS,
   termsDifferenceRefusedBy,
 } from "../src/protocolSetup";
@@ -1480,6 +1481,50 @@ test("an abort naming no differing term is not a terms difference refusal", asyn
   expect(refusal).toBeInstanceOf(ProtocolRefusalError);
   expect(termsDifferenceRefusedBy(refusal)).toBeUndefined();
 });
+
+/** The initiator's error for a responder abort giving `abortReasons`. */
+async function initiatorErrorForAbort(
+  abortReasons: string[],
+): Promise<unknown> {
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "abort",
+    protocolVersion: PROTOCOL_VERSION,
+    abortReasons,
+  });
+  return initiator.catch((err: unknown) => err);
+}
+
+test("an abort stating the partner did not accept this party's changed terms is the partner's terms refusal", async () => {
+  const refusal = await initiatorErrorForAbort([
+    "the operator declined the terms",
+    TERMS_CHANGE_NOT_ACCEPTED_REASON,
+  ]);
+  expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+  expect(termsDifferenceRefusedBy(refusal)).toBe("partner");
+  expect(sanitizeErrorForDisplay(refusal)).toBe(
+    "Your partner stopped the exchange at the linkage terms\n" +
+      "caused by: 1. reason your partner gave: the operator declined the terms\n" +
+      `2. reason your partner gave: ${TERMS_CHANGE_NOT_ACCEPTED_REASON}`,
+  );
+});
+
+test.each([
+  ["a trailing space", `${TERMS_CHANGE_NOT_ACCEPTED_REASON} `],
+  ["another case", TERMS_CHANGE_NOT_ACCEPTED_REASON.toUpperCase()],
+  ["a prefix", `note: ${TERMS_CHANGE_NOT_ACCEPTED_REASON}`],
+  ["a truncation", TERMS_CHANGE_NOT_ACCEPTED_REASON.slice(0, -1)],
+])(
+  "an abort reason differing from the not-accepted reason by %s is not a terms refusal",
+  async (_, reason) => {
+    const refusal = await initiatorErrorForAbort([reason]);
+    expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+    expect(termsDifferenceRefusedBy(refusal)).toBeUndefined();
+  },
+);
 
 test("a deduplicate refusal is worded from each party's own side", async () => {
   // Only the refusing party knows the value it holds its partner to; the

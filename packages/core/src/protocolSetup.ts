@@ -235,10 +235,12 @@ const termsMessage = z.object({
 /**
  * A terms-exchange abort's reasons as decoded: each reason equal to a
  * {@link termsDifferenceReason} as the term it names, and every other reason
- * as partner-chosen text.
+ * as partner-chosen text. `changeNotAccepted` is whether one reason equals
+ * {@link TERMS_CHANGE_NOT_ACCEPTED_REASON}; that reason stays in `others`.
  */
 interface PartnerAbortReasons {
   differingTerms: TermsDifferenceKind[];
+  changeNotAccepted: boolean;
   others: PartnerOriginTextList;
 }
 
@@ -255,7 +257,11 @@ function partnerAbortReasons(reasons: string[]): PartnerAbortReasons {
     if (kind === undefined) others.push(reason);
     else if (!differingTerms.includes(kind)) differingTerms.push(kind);
   }
-  return { differingTerms, others: partnerOriginTextList(others) };
+  return {
+    differingTerms,
+    changeNotAccepted: reasons.includes(TERMS_CHANGE_NOT_ACCEPTED_REASON),
+    others: partnerOriginTextList(others),
+  };
 }
 
 // Branded at the decode, so a reason reaches the operator only behind the
@@ -365,7 +371,7 @@ const partnerAbortError = (
     message,
     cause === undefined ? undefined : { cause },
   );
-  return reasons.differingTerms.length === 0
+  return reasons.differingTerms.length === 0 && !reasons.changeNotAccepted
     ? error
     : markTermsDifferenceRefusal(error, "partner");
 };
@@ -373,7 +379,8 @@ const partnerAbortError = (
 /**
  * Which party stopped the exchange over a difference in the linkage terms:
  * `"this-party"` where this party's own comparison refused the partner's
- * terms, `"partner"` where the partner's abort named the terms that differ.
+ * terms, `"partner"` where the partner's abort named the terms that differ or
+ * stated {@link TERMS_CHANGE_NOT_ACCEPTED_REASON}.
  */
 export type TermsDifferenceRefusedBy = "this-party" | "partner";
 

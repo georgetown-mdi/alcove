@@ -79,6 +79,44 @@ async function bothRefusals(): Promise<{ refused: Error; partner: Error }> {
   };
 }
 
+/** The responder declines the initiator's changed legal agreement; the
+ * initiator's run is the one its abort ends. */
+async function changeNotAccepted(): Promise<Error> {
+  const agreement = {
+    reference: "DUA-1",
+    purpose: "research",
+    expirationDate: "2099-01-01",
+  };
+  const declined = new Error("declined");
+  const [initiatorConn, responderConn] = createMessagePipe();
+  const [initiator, responder] = await Promise.allSettled([
+    exchangeTerms(
+      initiatorConn,
+      "initiator",
+      { ...terms, legalAgreement: { ...agreement, reference: "DUA-2" } },
+      1,
+    ),
+    exchangeTerms(
+      responderConn,
+      "responder",
+      { ...terms, legalAgreement: agreement },
+      1,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { onTermsChange: () => Promise.reject(declined) },
+    ),
+  ]);
+  if (
+    initiator.status !== "rejected" ||
+    responder.status !== "rejected" ||
+    responder.reason !== declined
+  )
+    throw new Error("expected the responder to decline the change");
+  return initiator.reason as Error;
+}
+
 function record(
   overrides: Partial<ManagedExchangeRecord> = {},
 ): ManagedExchangeRecord {
@@ -121,6 +159,19 @@ describe("a managed exchange whose partner refused its linkage terms", () => {
         "partner-refused-terms",
       );
     }
+  });
+
+  test("records a partner that did not accept this party's changed terms as the partner's refusal", async () => {
+    const notAccepted = await changeNotAccepted();
+    expect(
+      rerunFailureLastRun(notAccepted, Date.parse(RUN_AT), false, false),
+    ).toEqual(stamped);
+    expect(benignRerunOutcome(notAccepted, false)).toBe(
+      "partner-refused-terms",
+    );
+    expect(failureFor("exchange", notAccepted).title).toBe(
+      TERMS_DIFFERENCE_TITLE,
+    );
   });
 
   test("this party's own refusal keeps the terms-change kind", async () => {

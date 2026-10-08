@@ -98,6 +98,42 @@ describe("the next step beneath a terms refusal", () => {
     );
   });
 
+  test("a partner that did not accept this party's changed terms takes the partner's step", async () => {
+    const agreement = {
+      reference: "DUA-1",
+      purpose: "research",
+      expirationDate: "2099-01-01",
+    };
+    const declined = new Error("declined");
+    const [initiatorConn, responderConn] = createMessagePipe();
+    const [initiator, responder] = await Promise.allSettled([
+      exchangeTerms(
+        initiatorConn,
+        "initiator",
+        { ...terms, legalAgreement: { ...agreement, reference: "DUA-2" } },
+        1,
+      ),
+      exchangeTerms(
+        responderConn,
+        "responder",
+        { ...terms, legalAgreement: agreement },
+        1,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { onTermsChange: () => Promise.reject(declined) },
+      ),
+    ]);
+    if (initiator.status !== "rejected" || responder.status !== "rejected")
+      throw new Error("expected both parties to stop");
+    expect(responder.reason).toBe(declined);
+    const rendered = renderFailureForOperator(initiator.reason);
+    expect(exitCodeForError(initiator.reason)).toBe(76);
+    expect(rendered.endsWith(`\n${CONFIGURED_PARTNER}`)).toBe(true);
+    expect(rendered).not.toContain(PARTNER_REFUSED_NEXT_STEP);
+  });
+
   test("a step names no dash and no partner value", async () => {
     const { refused, partner } = await bothRefusals();
     for (const err of [refused, partner]) {
