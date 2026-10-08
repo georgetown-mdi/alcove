@@ -1843,11 +1843,19 @@ conn.execute("ROLLBACK")`,
     }
   });
 
+  // Bounds a registrar that never frees a slot, well inside the describe's
+  // timeout.
+  const SLOT_FREED_WAIT = { timeout: 20_000, interval: 50 };
+
   it("answers 503 past the handler cap, closes past the busy cap, and serves again once a slot frees", async () => {
     const host = fixtureHost();
+    // Deadlines past the test's own timeout, so no held connection lapses and
+    // frees its slot between the cap assertions on a loaded host.
     const { port } = await startRegistrar(host, {
       MAX_HANDLERS: 2,
       MAX_BUSY_ANSWERS: 1,
+      REQUEST_DEADLINE_SECONDS: 120,
+      BUSY_DEADLINE_SECONDS: 120,
     });
     const silent = () =>
       new Promise((resolveSocket, reject) => {
@@ -1868,7 +1876,10 @@ conn.execute("ROLLBACK")`,
       expect(busy.status).toBe(503);
       expect(JSON.parse(busy.text)).toEqual({ error: BUSY_REFUSAL });
       expect(busy.headers["retry-after"]).toBe("5");
-      held.push(await silent());
+      // The registrar frees the busy slot just after closing the 503's
+      // connection, so a connection made at once can still find it taken and be
+      // closed unanswered; one that completes a handshake holds the slot.
+      held.push(await vi.waitFor(() => silent(), SLOT_FREED_WAIT));
       await expect(
         call(port, "DELETE", "/exchanges/exchange-1"),
       ).rejects.toThrow();
@@ -1878,7 +1889,7 @@ conn.execute("ROLLBACK")`,
     await vi.waitFor(async () => {
       const served = await call(port, "DELETE", "/exchanges/exchange-1");
       expect(served.status).toBe(401);
-    });
+    }, SLOT_FREED_WAIT);
   });
 
   it("refuses a request whose headers exceed the bound", async () => {

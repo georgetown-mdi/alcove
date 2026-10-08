@@ -413,7 +413,11 @@ describe("legacy rows", () => {
   });
 });
 
-describe("the command line", () => {
+// Each case builds a fixture repository and spawns the script up to three
+// times, each a cold Node start, which runs slowly under load and can pass
+// vitest's 5 s default. Sized well past that, the bound catches a hung spawn
+// rather than timing a slow one.
+describe("the command line", { timeout: 60_000 }, () => {
   const runScript = (cwd, args) =>
     spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: "utf8" });
 

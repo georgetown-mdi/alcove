@@ -13,6 +13,9 @@ import type { ChildProcess } from "node:child_process";
 // teardown. The hosted static site has no server of its own; the static-host
 // harness (test/staticHost/server.ts) serves it.
 
+// The server is ready once it answers HTTP and has failed once it exits (see
+// waitForRoot); this bounds only one that does neither. A spawn is slow to
+// first answer on a loaded host.
 const READY_TIMEOUT_MS = 30_000;
 const STOP_TIMEOUT_MS = 5_000;
 

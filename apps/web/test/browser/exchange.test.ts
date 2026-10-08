@@ -142,8 +142,8 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
 const NOT_SET_MARK = "-Not set yet";
 
 // The coverage sweep is debounced (AGGREGATE_DEBOUNCE_MS, 500 ms). Waits for it
-// to settle measured up to 405 ms alone and 566 ms under CPU load, so 5 s is
-// about 9x the worst observed and well past the default 1 s.
+// to settle, which is slower under CPU load, so 5 s sits well past the default
+// 1 s.
 const COVERAGE_SETTLE_TIMEOUT_MS = 5000;
 
 const app = createAppMount();
@@ -2834,7 +2834,8 @@ describe("exchange screen at a narrow viewport", () => {
    * visible, so a click at the row's centre lands on the nav instead and fails
    * silently -- showing up later as an unrelated timeout. Mantine's Collapse
    * animation compounds this by moving the row while it expands, so this polls
-   * the actual hit test instead of sleeping.
+   * the actual hit test instead of sleeping. The default bound leaves room
+   * for a loaded host.
    */
   async function clickWhenHittable(
     locator: { element: () => Element; click: () => Promise<void> },
