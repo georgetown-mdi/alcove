@@ -13,9 +13,10 @@ import {
   checkKeyFileExpiry,
   clearRotationInFlight,
   loadKeyFile,
+  keyFileFromInvitation,
   markRotationInFlight,
-  provisionKeyFileFromInvitation,
   rotationInFlightNotice,
+  saveInvitedKeyFile,
   saveKeyFile,
 } from "../../src/keyFile";
 
@@ -155,35 +156,48 @@ test("saveKeyFile rejects a malformed sharedSecret before writing to disk", () =
   expect(fs.existsSync(keyPath)).toBe(false);
 });
 
-// --- provisionKeyFileFromInvitation ------------------------------------------
+// --- keyFileFromInvitation / saveInvitedKeyFile -----------------------------
 
-test("provisionKeyFileFromInvitation writes the token's secret and expiry, owner-only", async () => {
+test("keyFileFromInvitation decodes the token's secret and expiry and writes nothing", async () => {
   // The inviter-side (composing-party) copy holds BOTH the shared secret and
   // the invitation's expiry -- matching `alcove invite`, contrast accept's copy
-  // which strips the expiry. Owner-only permissions match saveKeyFile's write.
+  // which strips the expiry.
   const keyPath = path.join(dir, ".alcove.key");
   const expires = new Date(Date.now() + 3_600_000).toISOString();
   const encoded = await encodeInvitation(inviteToken(expires));
-  await provisionKeyFileFromInvitation(encoded, keyPath);
-  const key = loadKeyFile(keyPath);
-  expect(key?.sharedSecret).toBe(INVITE_SECRET);
-  expect(key?.expires).toBe(expires);
+  expect(await keyFileFromInvitation(encoded, keyPath)).toEqual({
+    sharedSecret: INVITE_SECRET,
+    expires,
+  });
+  expect(fs.existsSync(keyPath)).toBe(false);
+});
+
+test("saveInvitedKeyFile writes the decoded key owner-only", async () => {
+  const keyPath = path.join(dir, ".alcove.key");
+  const expires = new Date(Date.now() + 3_600_000).toISOString();
+  const encoded = await encodeInvitation(inviteToken(expires));
+  saveInvitedKeyFile(keyPath, await keyFileFromInvitation(encoded, keyPath));
+  expect(loadKeyFile(keyPath)).toEqual({
+    sharedSecret: INVITE_SECRET,
+    expires,
+  });
   if (process.platform !== "win32")
     expect(fs.statSync(keyPath).mode & 0o777).toBe(0o600);
 });
 
-test("provisionKeyFileFromInvitation resolves an @path invitation reference", async () => {
+test("keyFileFromInvitation resolves an @path invitation reference", async () => {
   // The @-file form (`--invitation @code.txt`) reads the code from a file so it
-  // stays out of shell history; the resolved code provisions identically.
+  // stays out of shell history; the resolved code decodes identically.
   const keyPath = path.join(dir, ".alcove.key");
   const codePath = path.join(dir, "code.txt");
   const encoded = await encodeInvitation(inviteToken());
   fs.writeFileSync(codePath, `${encoded}\n`);
-  await provisionKeyFileFromInvitation(`@${codePath}`, keyPath);
-  expect(loadKeyFile(keyPath)?.sharedSecret).toBe(INVITE_SECRET);
+  expect(
+    (await keyFileFromInvitation(`@${codePath}`, keyPath)).sharedSecret,
+  ).toBe(INVITE_SECRET);
 });
 
-test("provisionKeyFileFromInvitation errors when a key file already exists and leaves it untouched", async () => {
+test("keyFileFromInvitation errors when a key file already exists and leaves it untouched", async () => {
   // A pre-existing key file is a clean, actionable error, never an overwrite:
   // the secret rotates after the first exchange, so re-supplying the original
   // code must not resurrect a stale secret.
@@ -191,66 +205,44 @@ test("provisionKeyFileFromInvitation errors when a key file already exists and l
   const existing = JSON.stringify({ sharedSecret: TOKEN }) + "\n";
   fs.writeFileSync(keyPath, existing);
   const encoded = await encodeInvitation(inviteToken());
-  await expect(
-    provisionKeyFileFromInvitation(encoded, keyPath),
-  ).rejects.toBeInstanceOf(UsageError);
-  await expect(
-    provisionKeyFileFromInvitation(encoded, keyPath),
-  ).rejects.toThrow("already exists");
+  await expect(keyFileFromInvitation(encoded, keyPath)).rejects.toBeInstanceOf(
+    UsageError,
+  );
+  await expect(keyFileFromInvitation(encoded, keyPath)).rejects.toThrow(
+    "already exists",
+  );
   expect(fs.readFileSync(keyPath, "utf8")).toBe(existing);
 });
 
-test("provisionKeyFileFromInvitation refuses even when a concurrent writer wins the race after the pre-check passes", async () => {
-  // Defeat detectFileConflicts's pre-check by making lstatSync report ENOENT
-  // once, then write the real key file before it returns to normal --
-  // simulating a second process that provisions between the pre-check and this
-  // call's write. The write-side guard (saveKeyFile's exclusive create) must
-  // catch this and refuse with the same "already exists" UsageError the
-  // pre-check raises, without overwriting the concurrent writer's content.
+test("saveInvitedKeyFile refuses a key file written after the decode, leaving it untouched", async () => {
+  // The decode's pre-check passed; a second process provisions before the
+  // write. The exclusive create refuses with the pre-check's own message.
   const keyPath = path.join(dir, ".alcove.key");
+  const encoded = await encodeInvitation(inviteToken());
+  const decoded = await keyFileFromInvitation(encoded, keyPath);
   const concurrentWriterContent =
     JSON.stringify({ sharedSecret: TOKEN }) + "\n";
-  const realLstatSync = fs.lstatSync;
-  let bypassedOnce = false;
-  const lstatSpy = vi
-    .spyOn(fs, "lstatSync")
-    .mockImplementation((p: fs.PathLike, opts?: object) => {
-      if (!bypassedOnce && p === keyPath) {
-        bypassedOnce = true;
-        fs.writeFileSync(keyPath, concurrentWriterContent);
-        fs.chmodSync(keyPath, 0o600);
-        const err = new Error(
-          "ENOENT: no such file or directory",
-        ) as NodeJS.ErrnoException;
-        err.code = "ENOENT";
-        throw err;
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- forwarding to the real overload
-      return (realLstatSync as any)(p, opts);
-    });
+  fs.writeFileSync(keyPath, concurrentWriterContent);
+  let refusal: unknown;
   try {
-    const encoded = await encodeInvitation(inviteToken());
-    await expect(
-      provisionKeyFileFromInvitation(encoded, keyPath),
-    ).rejects.toThrow("already exists");
-    expect(bypassedOnce).toBe(true);
-    // The concurrent writer's content survives untouched -- the invitation's
-    // secret was never written over it.
-    expect(fs.readFileSync(keyPath, "utf8")).toBe(concurrentWriterContent);
-  } finally {
-    lstatSpy.mockRestore();
+    saveInvitedKeyFile(keyPath, decoded);
+  } catch (err) {
+    refusal = err;
   }
+  expect(refusal).toBeInstanceOf(UsageError);
+  expect((refusal as Error).message).toContain("already exists");
+  expect(fs.readFileSync(keyPath, "utf8")).toBe(concurrentWriterContent);
 });
 
-test("provisionKeyFileFromInvitation fails closed on a malformed code, writing nothing", async () => {
+test("keyFileFromInvitation fails closed on a malformed code", async () => {
   const keyPath = path.join(dir, ".alcove.key");
   await expect(
-    provisionKeyFileFromInvitation("not-a-valid-invitation", keyPath),
+    keyFileFromInvitation("not-a-valid-invitation", keyPath),
   ).rejects.toBeInstanceOf(UsageError);
   expect(fs.existsSync(keyPath)).toBe(false);
 });
 
-test("provisionKeyFileFromInvitation fails closed on an expired code, writing nothing", async () => {
+test("keyFileFromInvitation fails closed on an expired code", async () => {
   const keyPath = path.join(dir, ".alcove.key");
   const realNow = Date.now();
   const expires = new Date(realNow + 60_000).toISOString();
@@ -260,9 +252,9 @@ test("provisionKeyFileFromInvitation fails closed on an expired code, writing no
   vi.useFakeTimers();
   try {
     vi.setSystemTime(new Date(realNow + 120_000));
-    await expect(
-      provisionKeyFileFromInvitation(encoded, keyPath),
-    ).rejects.toThrow(expires);
+    await expect(keyFileFromInvitation(encoded, keyPath)).rejects.toThrow(
+      expires,
+    );
   } finally {
     vi.useRealTimers();
   }

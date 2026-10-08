@@ -144,7 +144,7 @@ export function checkKeyFileExpiry(
  * closing the window a separate existence pre-check would leave open -- when a
  * key file already exists at `keyFilePath`; the caller maps the resulting
  * {@link FileExistsError} to its own user-facing message (see
- * {@link provisionKeyFileFromInvitation}).
+ * {@link saveInvitedKeyFile}).
  */
 export function saveKeyFile(
   keyFilePath: string,
@@ -256,9 +256,10 @@ export function rotationInFlightNotice(
 }
 
 /**
- * The already-provisioned refusal, shared by the pre-check and the write-side
- * guard in {@link provisionKeyFileFromInvitation} so both refuse with the
- * identical message regardless of which one catches the conflict.
+ * The already-provisioned refusal, shared by the pre-check in
+ * {@link keyFileFromInvitation} and the write-side guard in
+ * {@link saveInvitedKeyFile} so both refuse with the identical message
+ * regardless of which one catches the conflict.
  */
 function alreadyProvisionedError(keyFilePath: string): UsageError {
   const message = messageWithOperatorText`--invitation cannot provision the key file at ${operatorSuppliedText(
@@ -276,28 +277,36 @@ const ALREADY_PROVISIONED_REMEDY =
   "existing key.";
 
 /**
- * Provision the key file at `keyFilePath` from an invitation code (the same
- * encoded token `alcove accept` takes; `@path`-capable), for the party that
- * composed an exchange in the web app and downloaded a config that never held
- * the secret. The fail-closed ordering (already-provisioned refusal before
- * decode, decode-and-validate before any write, exclusive write closing the
- * check-then-write race) and the expiry contrast with `accept`'s acceptor
+ * Decode an invitation code (the same encoded token `alcove accept` takes;
+ * `@path`-capable) into the key file this party writes at `keyFilePath`, for
+ * the party that composed an exchange in the web app and downloaded a config
+ * that never held the secret. Writes nothing: {@link saveInvitedKeyFile}
+ * writes the result. The fail-closed ordering (already-provisioned refusal
+ * before decode, decode-and-validate before any write, exclusive write closing
+ * the check-then-write race) and the expiry contrast with `accept`'s acceptor
  * copy: docs/spec/EXCHANGE_FILE.md, "exchange --invitation fail-closed
  * ordering" and "The secret's path".
  */
-export async function provisionKeyFileFromInvitation(
+export async function keyFileFromInvitation(
   invitation: string,
   keyFilePath: string,
-): Promise<void> {
+): Promise<KeyFile> {
   if (detectFileConflicts([keyFilePath]).length > 0)
     throw alreadyProvisionedError(keyFilePath);
   const token = await decodeAndValidateInvitation(invitation);
+  return { sharedSecret: token.sharedSecret, expires: token.expires };
+}
+
+/**
+ * Write the key file {@link keyFileFromInvitation} decoded, owner-only, and
+ * refuse rather than overwrite one that now exists at `keyFilePath`.
+ */
+export function saveInvitedKeyFile(
+  keyFilePath: string,
+  keyFile: KeyFile,
+): void {
   try {
-    saveKeyFile(
-      keyFilePath,
-      { sharedSecret: token.sharedSecret, expires: token.expires },
-      { exclusive: true },
-    );
+    saveKeyFile(keyFilePath, keyFile, { exclusive: true });
   } catch (err) {
     if (err instanceof FileExistsError)
       throw alreadyProvisionedError(keyFilePath);

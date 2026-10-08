@@ -77,6 +77,18 @@ export async function wakeServerThrough(
 }
 
 /**
+ * Make the refusal a start-mode block's wake call raises before it sends -- a
+ * block that cannot form the request -- for a caller that must refuse before
+ * it writes anything. A no-op when the connection states no start-mode block.
+ *
+ * @throws {UsageError} naming the field the request cannot be formed from.
+ */
+export function assertWakeCallFormable(connection: ConnectionConfig): void {
+  const provision = startModeProvisionOf(connection);
+  if (provision !== undefined) provisionRequest(provision);
+}
+
+/**
  * {@link wakeServerThrough} for a connection whose `@path` references were
  * already read, as `alcove exchange` reads them at configuration load.
  */

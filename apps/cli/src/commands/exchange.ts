@@ -43,7 +43,10 @@ import {
   assertHostKeyTrustCanBeEstablished,
   establishHostKeyTrust,
 } from "../hostKeyTrust";
-import { wakeProvisionedServer } from "../serverProvision";
+import {
+  assertWakeCallFormable,
+  wakeProvisionedServer,
+} from "../serverProvision";
 import { reportPersistenceLoss } from "../eventStream";
 import {
   relayRegistrarForRun,
@@ -61,7 +64,8 @@ import {
   loadKeyFile,
   checkKeyFileExpiry,
   rotationInFlightNotice,
-  provisionKeyFileFromInvitation,
+  keyFileFromInvitation,
+  saveInvitedKeyFile,
   type KeyFile,
   type KeyFileExpiryStatus,
 } from "../keyFile";
@@ -218,9 +222,9 @@ interface ExchangeArgs extends CommonBootstrapOptions {
   // ExchangeOptions below so they never reach loadConfig / the config schema.
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
-  // The invitation code that provisions the key file before it is read. Excluded
-  // from ExchangeOptions so it never reaches loadConfig; the handler consumes it
-  // in the provisioning step ahead of the config/key load.
+  // The invitation code the key file is decoded from. Excluded from
+  // ExchangeOptions so it never reaches loadConfig; the handler decodes it
+  // ahead of the config load and passes loadConfig the decoded key.
   invitation?: string;
 }
 
@@ -249,7 +253,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
   const csvDelimiter = csvDelimiterFlag(argv);
   // Kept verbatim: unlike the server-* credential flags below, the invitation is
   // NOT @-resolved here. Its @-file form is read at decode time by
-  // decodeAndValidateInvitation (via provisionKeyFileFromInvitation), so the
+  // decodeAndValidateInvitation (via keyFileFromInvitation), so the
   // code stays out of process argv even when supplied as `@code.txt`.
   const invitation = singleValue(argv, "invitation") as string | undefined;
   // Parse the common options through the shared parser (the same singleValue
@@ -425,12 +429,11 @@ function readConfigDocument(configFile: string): unknown {
 
 /**
  * Refuse a configuration holding a retired setting with the refusal
- * {@link loadConfig} raises, for a caller about to write a key file first: the
- * operator deletes the setting as told and re-runs, so nothing may have been
- * written. A configuration that cannot be read or parsed is left for
- * {@link loadConfig} to report.
+ * {@link loadConfig} raises, for a caller about to decode an invitation first,
+ * so that refusal comes ahead of the invitation's own. A configuration that
+ * cannot be read or parsed is left for {@link loadConfig} to report.
  */
-function refuseRetiredSettingBeforeProvisioning(configFile: string): void {
+function refuseRetiredSettingBeforeInvitation(configFile: string): void {
   let raw: unknown;
   try {
     raw = readConfigDocument(configFile);
@@ -449,16 +452,21 @@ type LoadedExchangeConfig = {
 } & ExchangeDataSpec;
 
 /**
- * Read and validate the configuration and key file `options` name.
+ * Read and validate the configuration and key file `options` name. With
+ * `invitedKeyFile`, the key decoded from `--invitation` and not yet written,
+ * that key stands in for the key file and nothing is read from its path.
  *
  * @throws {UsageError} for any failure to load them (exit 64), since nothing
  *   here touches a transport: a failure raised as some other class is wrapped
  *   in one, keeping it as the `cause`. An `InternalConsistencyError` passes
  *   through unwrapped (exit 70).
  */
-export function loadConfig(options: ExchangeOptions): LoadedExchangeConfig {
+export function loadConfig(
+  options: ExchangeOptions,
+  invitedKeyFile?: KeyFile,
+): LoadedExchangeConfig {
   try {
-    return readExchangeConfig(options);
+    return readExchangeConfig(options, invitedKeyFile);
   } catch (err) {
     const failureClass = classifyFailure(err);
     if (failureClass === "usage-error" || failureClass === "internal-fault")
@@ -473,7 +481,10 @@ export function loadConfig(options: ExchangeOptions): LoadedExchangeConfig {
   }
 }
 
-function readExchangeConfig(options: ExchangeOptions): LoadedExchangeConfig {
+function readExchangeConfig(
+  options: ExchangeOptions,
+  invitedKeyFile: KeyFile | undefined,
+): LoadedExchangeConfig {
   const log = getLogger("exchange");
 
   const rawConfig = readConfigDocument(options.configFile);
@@ -652,7 +663,7 @@ function readExchangeConfig(options: ExchangeOptions): LoadedExchangeConfig {
 
   let keyData: KeyFile | undefined;
   try {
-    keyData = loadKeyFile(options.keyFile);
+    keyData = invitedKeyFile ?? loadKeyFile(options.keyFile);
   } catch (err) {
     // A malformed existing key file is bad input the operator must fix or
     // re-provision (exit 64), the same classification saveKeyFile gives a
@@ -1082,23 +1093,25 @@ export async function handler(argv: Arguments): Promise<void> {
         log,
       );
 
-      // Provision the key file from --invitation before loadConfig reads it: the
-      // party that composed the exchange in the web app has a config with no
-      // secret, so this decodes the invitation code (fail-closed on checksum,
-      // schema, or expiry) and writes its own key-file copy -- shared secret and
-      // expiry -- then the exchange proceeds as usual, injecting the secret from
-      // that key file. A malformed/expired code or a pre-existing key file is a
-      // usage error (exit 64), raised before anything is written or connected.
+      // The party that composed the exchange in the web app has a config with
+      // no secret, so --invitation supplies it: the code is decoded here
+      // (fail-closed on checksum, schema, or expiry; an existing key file is
+      // refused) and the run uses the decoded key from memory. Its key file is
+      // written only once every local refusal below has passed.
+      let invitedKeyFile: KeyFile | undefined;
       if (invitation !== undefined) {
-        refuseRetiredSettingBeforeProvisioning(options.configFile);
-        await provisionKeyFileFromInvitation(invitation, options.keyFile);
+        refuseRetiredSettingBeforeInvitation(options.configFile);
+        invitedKeyFile = await keyFileFromInvitation(
+          invitation,
+          options.keyFile,
+        );
       }
 
       const {
         connection,
         authentication: loadedAuthentication,
         ...exchangeDataSpec
-      } = loadConfig(options);
+      } = loadConfig(options, invitedKeyFile);
 
       // The registration signs with authentication.sharedSecret, the secret
       // loaded before the run: the rotation rewrites the key file, not this object.
@@ -1276,6 +1289,13 @@ export async function handler(argv: Arguments): Promise<void> {
         allowMemoryShortfall,
       });
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
+
+      // The wake call's own refusal is checked here, not where it is made, so a
+      // run it refuses leaves no key file behind.
+      if (invitedKeyFile !== undefined) {
+        assertWakeCallFormable(connection);
+        saveInvitedKeyFile(options.keyFile, invitedKeyFile);
+      }
 
       // A rotation an earlier run made that the relay registrar did not confirm
       // is retried here, after every local refusal and before the run's first

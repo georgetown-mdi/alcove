@@ -39,8 +39,9 @@ import {
   readConfigLinkageSource,
 } from "../../../src/config";
 import {
+  keyFileFromInvitation,
   loadKeyFile,
-  provisionKeyFileFromInvitation,
+  saveInvitedKeyFile,
   saveKeyFile,
 } from "../../../src/keyFile";
 import {
@@ -48,7 +49,7 @@ import {
   saveSigningIdentity,
 } from "../../../src/signingIdentityFile";
 import { preflightKeyFilePath } from "../../../src/keyFilePreflight";
-import { runProtocol } from "../../../src/protocol";
+import { preflightRun, runProtocol } from "../../../src/protocol";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import { pathAsDisplayed } from "../../platformPaths";
 import {
@@ -169,16 +170,16 @@ vi.mock("../../../src/keyFilePreflight", async (importActual) => {
   };
 });
 
-// The invitation provisioning step is spy-WRAPPED so the exit-boundary tests can
-// plant an error at it; every other key-file export, and provisioning itself
-// wherever nothing is planted, stays real.
+// The invitation decode and the invited key file's write are spy-WRAPPED so the
+// exit-boundary tests can plant an error at each and the ordering tests can see
+// when the write happens; every other key-file export, and both steps wherever
+// nothing is planted, stays real.
 vi.mock("../../../src/keyFile", async (importActual) => {
   const actual = await importActual<typeof import("../../../src/keyFile")>();
   return {
     ...actual,
-    provisionKeyFileFromInvitation: vi.fn(
-      actual.provisionKeyFileFromInvitation,
-    ),
+    keyFileFromInvitation: vi.fn(actual.keyFileFromInvitation),
+    saveInvitedKeyFile: vi.fn(actual.saveInvitedKeyFile),
   };
 });
 
@@ -2278,12 +2279,8 @@ test("handler trims a supplied --identity before using it", async () => {
 });
 
 // --- handler: --invitation provisioning --------------------------------------
-// These drive the handler's provisioning step, which runs before the key file is
-// read: --invitation decodes an invitation code and writes the composing party's
-// key-file copy (secret AND expiry), then the exchange proceeds as usual. The
-// full decode/write path is unit-tested in keyFile.test.ts; these cover the
-// handler wiring -- that provisioning happens ahead of loadConfig, that the run
-// then proceeds, and the pre-existing-key and fail-closed exit paths.
+// The full decode/write path is unit-tested in keyFile.test.ts; these cover the
+// handler wiring.
 
 // A 43-char base64url secret distinct from TOKEN_A/TOKEN_B, to prove the
 // provisioned key has the invitation's secret.
@@ -2391,45 +2388,320 @@ test("handler: --invitation with a malformed code fails closed (exit 64), writin
   }
 });
 
-test.each([
-  "outbound_payload_consent",
-  "disclosed_payload_columns",
-  "expected_payload_columns",
-])(
-  "handler: --invitation on a configuration holding %s exits 64 with the refusal and writes no key file",
-  async (key) => {
-    const encoded = await encodeInvitation(inviteToken());
-    fs.writeFileSync(
-      configFile,
-      YAML.stringify({ ...minimalFiledropConfig, [key]: ["notes"] }),
-    );
-    const input = path.join(dir, "in.csv");
-    fs.writeFileSync(input, "ssn\n123456789\n");
+const WEBRTC_SERVER = { host: "peers.example.org" };
+
+/** Write `config` as the run's configuration. */
+function seedConfig(config: Record<string, unknown>): () => void {
+  return () => fs.writeFileSync(configFile, YAML.stringify(config));
+}
+
+// `says` is a fixed part of the refusal, so a row refused by something other
+// than its own check fails. `realPreparation` rows are refused inside core's preparation, which
+// the rest of this file stubs.
+const LOCALLY_REFUSED_RUNS: Array<{
+  name: string;
+  seed: () => void;
+  says: string;
+  input?: string;
+  realPreparation?: boolean;
+}> = [
+  ...[
+    "outbound_payload_consent",
+    "disclosed_payload_columns",
+    "expected_payload_columns",
+  ].map((key) => ({
+    name: `holding ${key}`,
+    seed: seedConfig({ ...minimalFiledropConfig, [key]: ["notes"] }),
+    says: `the setting "${key}" is retired; delete it from the file`,
+  })),
+  {
+    name: "that does not exist",
+    seed: () => undefined,
+    says: "does not exist; to create one",
+  },
+  {
+    name: "that is not YAML",
+    seed: () => fs.writeFileSync(configFile, "connection: [unclosed\n"),
+    says: "could not be parsed as YAML",
+  },
+  {
+    name: "with no linkage_terms",
+    seed: seedConfig({ connection: minimalFiledropConfig.connection }),
+    says: "is not a valid exchange spec",
+  },
+  {
+    name: "with a placeholder SSH username",
+    seed: seedConfig(placeholderUsernameConfig),
+    says: "placeholder as connection.server.username",
+  },
+  {
+    name: "that signs receipts and names no signing identity",
+    seed: seedConfig({
+      ...minimalFiledropConfig,
+      signing: { mode: "certificate" },
+    }),
+    says: "names no signing identity",
+  },
+  {
+    name: "with a placeholder identity",
+    seed: seedConfig({
+      ...minimalFiledropConfig,
+      linkageTerms: {
+        ...minimalLinkageTerms,
+        identity: "REPLACE_WITH_YOUR_IDENTITY",
+      },
+    }),
+    says: "placeholder as linkage_terms.identity",
+  },
+  {
+    name: "whose signing mode is session-derived",
+    seed: seedConfig({
+      ...minimalFiledropConfig,
+      signing: { mode: "session-derived" },
+    }),
+    says: "this signing.mode is not supported",
+    realPreparation: true,
+  },
+  {
+    name: "whose standardization names an undeclared linkage field",
+    seed: seedConfig({
+      ...minimalFiledropConfig,
+      standardization: [{ output: "dob", input: "ssn" }],
+    }),
+    says: "standardization is inconsistent with its linkage terms",
+    realPreparation: true,
+  },
+  {
+    name: "whose input file does not exist",
+    seed: seedConfig(minimalFiledropConfig),
+    says: "missing.csv",
+    input: "missing.csv",
+  },
+  {
+    name: "whose webrtc connection has no role",
+    seed: seedConfig({
+      connection: { channel: "webrtc", server: WEBRTC_SERVER },
+      linkageTerms: minimalLinkageTerms,
+    }),
+    says: "this webrtc connection has no `role`",
+  },
+  {
+    name: "whose webrtc server port is not dialable",
+    seed: seedConfig({
+      connection: {
+        channel: "webrtc",
+        role: "acceptor",
+        server: { ...WEBRTC_SERVER, port: 0 },
+      },
+      linkageTerms: minimalLinkageTerms,
+    }),
+    says: "server port (0) is not a dialable port",
+  },
+  {
+    name: "whose webrtc server path could move the signaling socket",
+    seed: seedConfig({
+      connection: {
+        channel: "webrtc",
+        role: "acceptor",
+        server: { ...WEBRTC_SERVER, path: "@evil.example.org/" },
+      },
+      linkageTerms: minimalLinkageTerms,
+    }),
+    says: "server `path` could move the signaling socket",
+  },
+  {
+    name: "whose webrtc connection sets ice_provision",
+    seed: seedConfig({
+      connection: {
+        channel: "webrtc",
+        role: "acceptor",
+        server: WEBRTC_SERVER,
+        iceProvision: { host: "ice.example.org" },
+      },
+      linkageTerms: minimalLinkageTerms,
+    }),
+    says: "configures `ice_provision`, which the CLI does not support",
+  },
+  {
+    name: "whose server.provision cannot form its wake call",
+    seed: seedConfig({
+      connection: {
+        ...minimalSFTPConfig.connection,
+        server: {
+          ...minimalSFTPConfig.connection.server,
+          provision: {
+            host: "wake.example.org",
+            auth: { bearer: "two words" },
+          },
+        },
+      },
+      linkageTerms: minimalLinkageTerms,
+    }),
+    says: "connection.server.provision.auth.bearer is empty or holds a space",
+  },
+];
+
+test.each(LOCALLY_REFUSED_RUNS)(
+  "handler: --invitation on a configuration $name exits as the run without it does and writes no key file",
+  async ({ seed, says, input: inputName, realPreparation }) => {
+    const core =
+      await vi.importActual<typeof import("@alcove/core")>("@alcove/core");
+    const prepareForRun = () => {
+      if (realPreparation === true)
+        vi.mocked(prepareForExchange).mockImplementationOnce(
+          core.prepareForExchange,
+        );
+    };
+    const input = path.join(dir, inputName ?? "in.csv");
+    if (inputName === undefined) fs.writeFileSync(input, "ssn\n123456789\n");
+    seed();
+    const argv = {
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+    } as unknown as Arguments;
+    const fetch = stubProvisionFetch(200);
 
     vi.mocked(runProtocol).mockReset();
+    vi.mocked(saveInvitedKeyFile).mockClear();
     const exitSpy = captureProcessExit();
     try {
+      saveKeyFile(keyFile, { sharedSecret: TOKEN_A });
+      prepareForRun();
+      await expect(handler(argv)).rejects.toThrow(/^exit:/);
+      fs.rmSync(keyFile);
+      const [withoutInvitationCode] = exitSpy.mock.calls[0];
+      const withoutInvitation = mockState.errors.join("\n");
+      expect(withoutInvitation).toContain(says);
+      exitSpy.mockClear();
+      mockState.errors.length = 0;
+
+      prepareForRun();
       await expect(
         handler({
-          _: [],
-          $0: "alcove",
-          input,
-          "config-file": configFile,
-          "key-file": keyFile,
-          invitation: encoded,
-          "log-level": "silent",
-        } as unknown as Arguments),
-      ).rejects.toThrow("exit:64");
-      expect(mockState.errors.join("\n")).toContain(
-        `the setting "${key}" is retired; delete it from the file`,
-      );
+          ...argv,
+          invitation: await encodeInvitation(inviteToken()),
+        } as Arguments),
+      ).rejects.toThrow(`exit:${withoutInvitationCode}`);
+      expect(exitSpy).toHaveBeenCalledExactlyOnceWith(withoutInvitationCode);
+      expect(mockState.errors.join("\n")).toBe(withoutInvitation);
+      expect(vi.mocked(saveInvitedKeyFile)).not.toHaveBeenCalled();
       expect(vi.mocked(runProtocol)).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
       expect(fs.existsSync(keyFile)).toBe(false);
     } finally {
       exitSpy.mockRestore();
+      vi.unstubAllGlobals();
     }
   },
 );
+
+test("handler: --invitation writes the key file owner-only, after every local check and before the wake call", async () => {
+  const expires = new Date(Date.now() + 3_600_000).toISOString();
+  const argv = provisionedRun(minimalSFTPConfig.connection);
+  fs.rmSync(keyFile);
+  let atWake: { mode: number; key: unknown } | undefined;
+  const fetch = vi.fn(async () => {
+    atWake = {
+      mode: fs.statSync(keyFile).mode & 0o777,
+      key: loadKeyFile(keyFile),
+    };
+    return new Response(null, { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetch);
+  vi.mocked(preflightRun).mockClear();
+  vi.mocked(assertHostKeyTrustCanBeEstablished).mockClear();
+  vi.mocked(saveInvitedKeyFile).mockClear();
+  vi.mocked(runProtocol).mockReset();
+  vi.mocked(runProtocol).mockResolvedValueOnce({ outcome: "completed" });
+  const exitSpy = captureProcessExit();
+  try {
+    await handler({
+      ...argv,
+      invitation: await encodeInvitation(inviteToken(expires)),
+    } as Arguments);
+    expect(exitSpy).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(atWake?.key).toEqual({ sharedSecret: INVITE_SECRET, expires });
+    if (process.platform !== "win32") expect(atWake?.mode).toBe(0o600);
+    const [preflighted] = vi.mocked(preflightRun).mock.invocationCallOrder;
+    const [hostKeyChecked] = vi.mocked(assertHostKeyTrustCanBeEstablished).mock
+      .invocationCallOrder;
+    const [saved] = vi.mocked(saveInvitedKeyFile).mock.invocationCallOrder;
+    const [woke] = fetch.mock.invocationCallOrder;
+    expect(preflighted).toBeLessThan(saved);
+    expect(hostKeyChecked).toBeLessThan(saved);
+    expect(saved).toBeLessThan(woke);
+  } finally {
+    exitSpy.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
+test("handler: without --invitation, a missing key file is refused ahead of a signing fault", async () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      ...minimalFiledropConfig,
+      signing: { mode: "certificate" },
+    }),
+  );
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  await expectExchangeExit(
+    {
+      _: [],
+      $0: "alcove",
+      input,
+      "config-file": configFile,
+      "key-file": keyFile,
+      "log-level": "silent",
+    } as unknown as Arguments,
+    64,
+  );
+  const reported = mockState.errors.join("\n");
+  expect(reported).toContain(
+    " does not exist. Create one with 'alcove invite'",
+  );
+  expect(reported).not.toContain("names no signing identity");
+});
+
+test("handler: --invitation --event-stream on a webrtc config with no role ends the stream with the refusal and writes no key file", async () => {
+  fs.writeFileSync(
+    configFile,
+    YAML.stringify({
+      connection: { channel: "webrtc", server: WEBRTC_SERVER },
+      linkageTerms: minimalLinkageTerms,
+    }),
+  );
+  const input = path.join(dir, "in.csv");
+  fs.writeFileSync(input, "ssn\n123456789\n");
+  const invitation = await encodeInvitation(inviteToken());
+  const { lines } = await captureFd3(() =>
+    expectExchangeExit(
+      {
+        _: [],
+        $0: "alcove",
+        input,
+        "config-file": configFile,
+        "key-file": keyFile,
+        "log-level": "silent",
+        "event-stream": true,
+        invitation,
+      } as unknown as Arguments,
+      64,
+    ),
+  );
+  expect(lines.at(-1)).toMatchObject({
+    type: "error",
+    category: "exchange",
+    message: expect.stringContaining("this webrtc connection has no `role`"),
+  });
+  expect(fs.existsSync(keyFile)).toBe(false);
+});
 
 // --- handler: the exit code each error boundary reports ----------------------
 // Each boundary below routes its caught error through the one exitCodeForError
@@ -2482,7 +2754,31 @@ test.each(ERROR_CLASS_EXIT_CODES)(
     fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
     const input = path.join(dir, "in.csv");
     fs.writeFileSync(input, "ssn\n123456789\n");
-    vi.mocked(provisionKeyFileFromInvitation).mockRejectedValueOnce(plant());
+    vi.mocked(keyFileFromInvitation).mockRejectedValueOnce(plant());
+    await expectExchangeExit(
+      {
+        _: [],
+        $0: "alcove",
+        input,
+        "config-file": configFile,
+        "key-file": keyFile,
+        invitation: await encodeInvitation(inviteToken()),
+        "log-level": "silent",
+      } as unknown as Arguments,
+      code,
+    );
+  },
+);
+
+test.each(ERROR_CLASS_EXIT_CODES)(
+  "handler: the invited key file's write exits $code on $planted",
+  async ({ plant, code }) => {
+    fs.writeFileSync(configFile, YAML.stringify(minimalFiledropConfig));
+    const input = path.join(dir, "in.csv");
+    fs.writeFileSync(input, "ssn\n123456789\n");
+    vi.mocked(saveInvitedKeyFile).mockImplementationOnce(() => {
+      throw plant();
+    });
     await expectExchangeExit(
       {
         _: [],
