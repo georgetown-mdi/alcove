@@ -17,8 +17,10 @@ import {
   managedRunSurfaceReducer,
   managedSurfaceView,
 } from "@recurring/managedRunSurfaceModel";
+import { MANAGED_HANDOFF_INITIAL } from "@recurring/managedRunHandoffModel";
 import { MANAGED_LOAD_INITIAL } from "@recurring/managedRunLoadModel";
 import { MANAGED_RECOVERY_INITIAL } from "@recurring/managedRunRecoveryModel";
+import { MANAGED_STORE_READS_INITIAL } from "@recurring/managedSurfaceReadsModel";
 import { TERMS_CHANGE_TAKEN_ON_FAILURE } from "@recurring/managedRunLaunchModel";
 import { appendSanitizedRunWarning } from "@psi/runWarnings";
 
@@ -35,7 +37,11 @@ import type {
   ManagedSurfaceViewInputs,
 } from "@recurring/managedRunSurfaceModel";
 import type { ResolvedMatching, TermsChange } from "@alcove/core";
+import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
+import type { ManagedHandoffState } from "@recurring/managedRunHandoffModel";
+import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
+import type { RunLines } from "@recurring/scheduledRunCommand";
 import type { RunOutputs } from "@psi/runOutputs";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
@@ -418,13 +424,41 @@ describe("the run's input", () => {
   });
 });
 
+const MIGRATION_DISPATCH: ManagedMigrationDispatch = {
+  backedUpAt: FINISHED_AT,
+  record: RUNNABLE_LOAD.record,
+  confirm: () => Promise.resolve(),
+};
+
+const COMMAND_LINE: RunLines = {
+  kind: "withheld",
+  notice: "Run it on the other machine.",
+};
+
+const COMMAND_LINE_HANDOFF: ManagedHandoffState = {
+  ...MANAGED_HANDOFF_INITIAL,
+  commandLine: COMMAND_LINE,
+};
+
+const AWAITING_CONFIRM: ManagedHandoffState = {
+  ...MANAGED_HANDOFF_INITIAL,
+  migration: {
+    kind: "awaiting-confirm",
+    dispatch: MIGRATION_DISPATCH,
+    refusal: undefined,
+  },
+};
+
+const MIGRATED: ManagedHandoffState = {
+  ...MANAGED_HANDOFF_INITIAL,
+  migration: { kind: "migrated" },
+};
+
 describe("the surface's view", () => {
   const base: ManagedSurfaceViewInputs = {
     load: RUNNABLE_LOAD,
     run: MANAGED_RUN_INITIAL,
-    commandLineHandedOff: false,
-    migrated: false,
-    migrationAwaitingConfirm: false,
+    handoff: MANAGED_HANDOFF_INITIAL,
   };
   const finished = fold([{ type: "run-started" }, completed]);
 
@@ -455,7 +489,7 @@ describe("the surface's view", () => {
           ...base,
           load,
           run: finished,
-          commandLineHandedOff: true,
+          handoff: COMMAND_LINE_HANDOFF,
         }),
       ).toBe(load.kind);
   });
@@ -479,10 +513,11 @@ describe("the surface's view", () => {
       managedSurfaceView({
         ...base,
         run: finished,
-        commandLineHandedOff: true,
-        migrated: true,
-        migrationAwaitingConfirm: true,
+        handoff: { ...AWAITING_CONFIRM, commandLine: COMMAND_LINE },
       }),
+    ).toBe("complete");
+    expect(
+      managedSurfaceView({ ...base, run: finished, handoff: MIGRATED }),
     ).toBe("complete");
   });
 
@@ -498,25 +533,21 @@ describe("the surface's view", () => {
     ).toBe("run");
   });
 
-  test("the hand-offs rank command line, then migrated, then awaiting confirmation", () => {
-    expect(
-      managedSurfaceView({
-        ...base,
-        commandLineHandedOff: true,
-        migrated: true,
-        migrationAwaitingConfirm: true,
-      }),
-    ).toBe("command-line");
-    expect(
-      managedSurfaceView({
-        ...base,
-        migrated: true,
-        migrationAwaitingConfirm: true,
-      }),
-    ).toBe("migrated");
-    expect(
-      managedSurfaceView({ ...base, migrationAwaitingConfirm: true }),
-    ).toBe("confirm-move");
+  test("a command-line hand-off outranks a migration, migrated or awaiting confirmation", () => {
+    for (const migration of [MIGRATED, AWAITING_CONFIRM])
+      expect(
+        managedSurfaceView({
+          ...base,
+          handoff: {
+            ...migration,
+            commandLine: COMMAND_LINE,
+          },
+        }),
+      ).toBe("command-line");
+    expect(managedSurfaceView({ ...base, handoff: MIGRATED })).toBe("migrated");
+    expect(managedSurfaceView({ ...base, handoff: AWAITING_CONFIRM })).toBe(
+      "confirm-move",
+    );
   });
 });
 
@@ -631,15 +662,7 @@ describe("the surface's reducer and the record load", () => {
 
   test("starts with the first read under way", () => {
     expect(MANAGED_RUN_SURFACE_INITIAL.load).toBe(MANAGED_LOAD_INITIAL);
-    expect(
-      managedSurfaceView({
-        load: MANAGED_RUN_SURFACE_INITIAL.load,
-        run: MANAGED_RUN_SURFACE_INITIAL.run,
-        commandLineHandedOff: false,
-        migrated: false,
-        migrationAwaitingConfirm: false,
-      }),
-    ).toBe("loading");
+    expect(managedSurfaceView(MANAGED_RUN_SURFACE_INITIAL)).toBe("loading");
   });
 
   test("a composed re-invite adopts the rotated record", () => {
@@ -716,4 +739,405 @@ describe("the surface's reducer and the record load", () => {
       }),
     ).toBe(MANAGED_RUN_SURFACE_INITIAL);
   });
+});
+
+const MARKER: ManagedBackupMarker = {
+  backedUpAt: FINISHED_AT.toISOString(),
+  savedAs: { kind: "downloaded", fileName: "riverbend.alcove" },
+};
+
+describe("the surface's reducer and the exports", () => {
+  const loadedVisit: ManagedRunSurfaceState = {
+    ...MANAGED_RUN_SURFACE_INITIAL,
+    load: RUNNABLE_LOAD,
+  };
+
+  test("starts with no export and no hand-off", () => {
+    expect(MANAGED_RUN_SURFACE_INITIAL.handoff).toBe(MANAGED_HANDOFF_INITIAL);
+  });
+
+  test("a backup export marks the loaded record and ends the export", () => {
+    const exported = foldSurface(
+      [{ type: "export-started" }, { type: "backup-exported", marker: MARKER }],
+      loadedVisit,
+    );
+    expect(exported.load).toEqual({ ...RUNNABLE_LOAD, backupMarker: MARKER });
+    expect(exported.handoff.export).toEqual({ kind: "idle" });
+  });
+
+  test("a dispatched migration marks the loaded record and awaits confirmation", () => {
+    const dispatched = foldSurface(
+      [
+        { type: "export-started" },
+        {
+          type: "migration-dispatched",
+          dispatch: MIGRATION_DISPATCH,
+          marker: MARKER,
+        },
+      ],
+      loadedVisit,
+    );
+    expect(dispatched.load).toEqual({ ...RUNNABLE_LOAD, backupMarker: MARKER });
+    expect(dispatched.handoff).toEqual(AWAITING_CONFIRM);
+    expect(managedSurfaceView(dispatched)).toBe("confirm-move");
+  });
+
+  test("an export event leaves the load, the run and the recovery as they were", () => {
+    for (const action of [
+      { type: "export-started" },
+      { type: "export-failed" },
+      { type: "migration-confirmed" },
+      { type: "command-line-handed-off", handoff: COMMAND_LINE },
+    ] satisfies ReadonlyArray<ManagedRunSurfaceAction>) {
+      const next = managedRunSurfaceReducer(failedVisit, action);
+      expect(next.load).toBe(failedVisit.load);
+      expect(next.run).toBe(failedVisit.run);
+      expect(next.recovery).toBe(failedVisit.recovery);
+    }
+  });
+
+  test("an export event that changes nothing returns the same state", () => {
+    expect(
+      managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
+        type: "migration-kept",
+      }),
+    ).toBe(MANAGED_RUN_SURFACE_INITIAL);
+  });
+});
+
+describe("the surface's reducer and the store reads", () => {
+  test("starts with every read under way", () => {
+    expect(MANAGED_RUN_SURFACE_INITIAL.reads).toBe(MANAGED_STORE_READS_INITIAL);
+  });
+
+  test("a read lands on the reads alone", () => {
+    const read = managedRunSurfaceReducer(failedVisit, {
+      type: "accounting-read",
+      read: { kind: "unavailable" },
+    });
+    expect(read.reads.accounting.read).toEqual({ kind: "unavailable" });
+    expect(read.load).toBe(failedVisit.load);
+    expect(read.run).toBe(failedVisit.run);
+    expect(read.handoff).toBe(failedVisit.handoff);
+  });
+
+  test("a flag already found returns the same state", () => {
+    const flagged = managedRunSurfaceReducer(MANAGED_RUN_SURFACE_INITIAL, {
+      type: "unrecorded-run-flagged",
+      id: "abc",
+    });
+    expect(
+      managedRunSurfaceReducer(flagged, {
+        type: "unrecorded-run-flagged",
+        id: "abc",
+      }),
+    ).toBe(flagged);
+  });
+});
+
+describe("the surface's reducer and a terms proposal", () => {
+  test("starts with no answer under way", () => {
+    expect(MANAGED_RUN_SURFACE_INITIAL.termsProposal).toEqual({ kind: "idle" });
+  });
+
+  test("an answer under way drops the last one's failure", () => {
+    const retried = foldSurface([
+      { type: "terms-proposal-started" },
+      { type: "terms-proposal-failed", failure: "The store refused it." },
+      { type: "terms-proposal-started" },
+    ]);
+    expect(retried.termsProposal).toEqual({ kind: "busy" });
+  });
+
+  test("a failed answer keeps its text and leaves the run and the load alone", () => {
+    const failed = foldSurface(
+      [
+        { type: "terms-proposal-started" },
+        { type: "terms-proposal-failed", failure: "The store refused it." },
+      ],
+      failedVisit,
+    );
+    expect(failed.termsProposal).toEqual({
+      kind: "failed",
+      failure: "The store refused it.",
+    });
+    expect(failed.run).toBe(failedVisit.run);
+    expect(failed.load).toBe(failedVisit.load);
+  });
+
+  test("a settled answer clears the run failure and reads the record again in one step", () => {
+    const settled = foldSurface(
+      [{ type: "terms-proposal-started" }, { type: "terms-proposal-settled" }],
+      { ...failedVisit, load: RUNNABLE_LOAD },
+    );
+    expect(settled.termsProposal).toEqual({ kind: "idle" });
+    expect(managedRunLiveFailure(settled.run)).toBeUndefined();
+    expect(settled.load).toEqual({
+      ...RUNNABLE_LOAD,
+      reads: RUNNABLE_LOAD.reads + 1,
+    });
+  });
+
+  test("a settled answer during a run leaves the run in progress", () => {
+    const settled = foldSurface([
+      { type: "run-started" },
+      { type: "terms-proposal-settled" },
+    ]);
+    expect(managedRunInProgress(settled.run)).toBe(true);
+  });
+});
+
+type SurfaceActionType = ManagedRunSurfaceAction["type"];
+type SurfaceSlice = keyof ManagedRunSurfaceState;
+
+const ROUTING: {
+  [T in SurfaceActionType]: {
+    action: Extract<ManagedRunSurfaceAction, { type: T }>;
+    owns: ReadonlyArray<SurfaceSlice>;
+  };
+} = {
+  "run-started": { action: { type: "run-started" }, owns: ["run", "recovery"] },
+  "warning-raised": {
+    action: { type: "warning-raised", escapedWarning: displayText`notice` },
+    owns: ["run"],
+  },
+  "matching-resolved": {
+    action: { type: "matching-resolved", matching: MATCHING },
+    owns: ["run"],
+  },
+  "terms-change-asked": {
+    action: {
+      type: "terms-change-asked",
+      question: { change: {} as TermsChange, answer: () => undefined },
+    },
+    owns: ["run"],
+  },
+  "terms-change-answered": {
+    action: { type: "terms-change-answered" },
+    owns: ["run"],
+  },
+  "run-completed": {
+    action: {
+      type: "run-completed",
+      outputs: OUTPUTS,
+      finishedAt: FINISHED_AT,
+      unsavedReason: undefined,
+    },
+    owns: ["run"],
+  },
+  "folder-write-started": {
+    action: { type: "folder-write-started", directoryName: "work" },
+    owns: ["run"],
+  },
+  "folder-write-finished": {
+    action: {
+      type: "folder-write-finished",
+      write: {
+        directoryName: "work",
+        delivery: {
+          kind: "written",
+          fileName: "results.csv",
+          directoryName: "work",
+        },
+      },
+    },
+    owns: ["run"],
+  },
+  "folder-write-skipped": {
+    action: { type: "folder-write-skipped" },
+    owns: ["run"],
+  },
+  "run-failed": {
+    action: {
+      type: "run-failed",
+      failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber: 2 },
+    },
+    owns: ["run"],
+  },
+  "run-settled": { action: { type: "run-settled" }, owns: ["run"] },
+  "failure-cleared": { action: { type: "failure-cleared" }, owns: ["run"] },
+  "confirmation-granted": {
+    action: { type: "confirmation-granted", runNumber: 2 },
+    owns: ["recovery"],
+  },
+  "compromise-answer-started": {
+    action: { type: "compromise-answer-started", gate: { kind: "standing" } },
+    owns: ["recovery"],
+  },
+  "compromise-answer-written": {
+    action: { type: "compromise-answer-written" },
+    owns: ["recovery"],
+  },
+  "compromise-answer-failed": {
+    action: { type: "compromise-answer-failed" },
+    owns: ["recovery"],
+  },
+  "standing-clear-started": {
+    action: { type: "standing-clear-started", pastResponse: false },
+    owns: ["recovery"],
+  },
+  "standing-cleared": {
+    action: { type: "standing-cleared", record: ROTATED },
+    owns: ["load", "recovery"],
+  },
+  "standing-clear-failed": {
+    action: { type: "standing-clear-failed" },
+    owns: ["recovery"],
+  },
+  "reinvite-started": {
+    action: { type: "reinvite-started", site: "recovery" },
+    owns: ["recovery"],
+  },
+  "reinvite-composed": {
+    action: { type: "reinvite-composed", reinvite: REINVITE, record: ROTATED },
+    owns: ["load", "run", "recovery"],
+  },
+  "reinvite-held-by-run": {
+    action: { type: "reinvite-held-by-run" },
+    owns: ["recovery"],
+  },
+  "reinvite-refused-by-run": {
+    action: { type: "reinvite-refused-by-run" },
+    owns: ["recovery"],
+  },
+  "reinvite-withheld": {
+    action: { type: "reinvite-withheld" },
+    owns: ["recovery"],
+  },
+  "reinvite-failed": {
+    action: { type: "reinvite-failed" },
+    owns: ["recovery"],
+  },
+  "record-read": {
+    action: { type: "record-read", record: undefined, localState: undefined },
+    owns: ["load"],
+  },
+  "record-read-failed": {
+    action: { type: "record-read-failed" },
+    owns: ["load"],
+  },
+  "record-read-requested": {
+    action: { type: "record-read-requested" },
+    owns: ["load"],
+  },
+  "record-retaken": { action: { type: "record-retaken" }, owns: ["load"] },
+  "record-adopted": {
+    action: { type: "record-adopted", record: ROTATED },
+    owns: ["load"],
+  },
+  "configuration-edited": {
+    action: { type: "configuration-edited", configuration: ROTATED },
+    owns: ["load"],
+  },
+  "local-state-reloaded": {
+    action: { type: "local-state-reloaded", localState: undefined },
+    owns: ["load"],
+  },
+  "backup-marked": {
+    action: { type: "backup-marked", marker: MARKER },
+    owns: ["load"],
+  },
+  "run-handed-off": {
+    action: { type: "run-handed-off", spent: undefined },
+    owns: ["load", "run"],
+  },
+  "accounting-read": {
+    action: { type: "accounting-read", read: { kind: "unavailable" } },
+    owns: ["reads"],
+  },
+  "unfiled-disclosures-read": {
+    action: {
+      type: "unfiled-disclosures-read",
+      read: { kind: "unavailable" },
+    },
+    owns: ["reads"],
+  },
+  "parked-results-read": {
+    action: { type: "parked-results-read", read: { kind: "unavailable" } },
+    owns: ["reads"],
+  },
+  "unrecorded-run-flagged": {
+    action: { type: "unrecorded-run-flagged", id: "abc" },
+    owns: ["reads"],
+  },
+  "accounting-read-requested": {
+    action: { type: "accounting-read-requested" },
+    owns: ["reads"],
+  },
+  "parked-results-read-requested": {
+    action: { type: "parked-results-read-requested" },
+    owns: ["reads"],
+  },
+  "export-started": { action: { type: "export-started" }, owns: ["handoff"] },
+  "export-finished": {
+    action: { type: "export-finished" },
+    owns: ["handoff"],
+  },
+  "export-failed": { action: { type: "export-failed" }, owns: ["handoff"] },
+  "backup-exported": {
+    action: { type: "backup-exported", marker: MARKER },
+    owns: ["load", "handoff"],
+  },
+  "migration-dispatched": {
+    action: {
+      type: "migration-dispatched",
+      dispatch: MIGRATION_DISPATCH,
+      marker: MARKER,
+    },
+    owns: ["load", "handoff"],
+  },
+  "migration-confirm-started": {
+    action: { type: "migration-confirm-started" },
+    owns: ["handoff"],
+  },
+  "migration-confirmed": {
+    action: { type: "migration-confirmed" },
+    owns: ["handoff"],
+  },
+  "migration-refused": {
+    action: { type: "migration-refused", refusal: "superseded" },
+    owns: ["handoff"],
+  },
+  "migration-kept": { action: { type: "migration-kept" }, owns: ["handoff"] },
+  "command-line-handed-off": {
+    action: { type: "command-line-handed-off", handoff: COMMAND_LINE },
+    owns: ["handoff"],
+  },
+  "terms-proposal-started": {
+    action: { type: "terms-proposal-started" },
+    owns: ["termsProposal"],
+  },
+  "terms-proposal-failed": {
+    action: { type: "terms-proposal-failed", failure: "refused" },
+    owns: ["termsProposal"],
+  },
+  "terms-proposal-settled": {
+    action: { type: "terms-proposal-settled" },
+    owns: ["load", "run", "termsProposal"],
+  },
+};
+
+describe("the surface's reducer slices", () => {
+  const everySliceHeld: ManagedRunSurfaceState = {
+    load: RUNNABLE_LOAD,
+    run: failedVisit.run,
+    recovery: foldSurface([{ type: "confirmation-granted", runNumber: 1 }])
+      .recovery,
+    reads: foldSurface([
+      { type: "accounting-read", read: { kind: "unavailable" } },
+    ]).reads,
+    handoff: COMMAND_LINE_HANDOFF,
+    termsProposal: { kind: "busy" },
+  };
+  const slices = Object.keys(everySliceHeld) as ReadonlyArray<SurfaceSlice>;
+
+  test.each(Object.entries(ROUTING))(
+    "%s leaves the slices it does not own as they were",
+    (_type, { action, owns }) => {
+      const next = managedRunSurfaceReducer(everySliceHeld, action);
+      for (const slice of slices)
+        if (!owns.includes(slice))
+          expect(next[slice]).toBe(everySliceHeld[slice]);
+    },
+  );
 });

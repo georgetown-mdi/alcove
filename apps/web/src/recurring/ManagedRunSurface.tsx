@@ -45,20 +45,9 @@ import {
   spendManagedExchangeIfCurrent,
   updateManagedExchangeLocalFields,
 } from "@psi/managed/managedExchangeStore";
-import {
-  readDisclosureAccounting,
-  resetDisclosureAccounting,
-} from "@psi/disclosureAccountingStore";
-
-import { clearParkedResults, readParkedResults } from "@psi/parkedResultsStore";
-import {
-  clearUnfiledExchangeFlag,
-  unfiledExchangeFlagged,
-} from "@psi/unfiledDisclosureFlag";
-import {
-  fileUnfiledDisclosures,
-  readUnfiledDisclosures,
-} from "@psi/unfiledDisclosureStore";
+import { clearParkedResults } from "@psi/parkedResultsStore";
+import { fileUnfiledDisclosures } from "@psi/unfiledDisclosureStore";
+import { resetDisclosureAccounting } from "@psi/disclosureAccountingStore";
 
 import {
   MAX_CONFIGURATION_IMPORT_BYTES,
@@ -180,9 +169,16 @@ import {
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
+import {
+  managedMigrationAwaitingConfirm,
+  managedMigrationRefusal,
+  managedMigrationStale,
+  managedRunHoldsMigration,
+} from "./managedRunHandoffModel";
+import { managedUnrecordedRunFlagged } from "./managedSurfaceReadsModel";
+import { useManagedSurfaceReads } from "./useManagedSurfaceReads";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
-import type { RunLines } from "./scheduledRunCommand";
 
 import type { Ref } from "react";
 
@@ -195,11 +191,6 @@ import type {
   ManagedExchangeRecord,
   RunnableManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type {
-  ManagedHandoffRefusal,
-  ManagedMigrationDispatch,
-} from "@psi/managed/managedExchangeExport";
-import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { ManagedCompromiseGate } from "./managedRunRecoveryModel";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRetakeRefusal } from "./managedRetakeModel";
@@ -207,7 +198,6 @@ import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 import type { ManagedSpentState } from "@psi/managed/managedLocalState";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
-import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
 
 const log = getLogger("ManagedRunSurface");
 
@@ -220,59 +210,26 @@ const log = getLogger("ManagedRunSurface");
  * granted), and folds the outcome into the completion surface.
  */
 export function ManagedRunSurface({ id }: { id: string }) {
-  // This exchange's accounting of disclosures as its own read classified it, one
-  // value rather than an accounting beside flags: an unreadable accounting must
-  // not render as an empty one (which would be treated as "nothing was disclosed"), and
-  // a store that did not answer must not render as either. `undefined` while the
-  // read is in flight.
-  const [accountingRead, setAccountingRead] =
-    useState<DisclosureAccountingRead>();
-  // Bumped to re-read the accounting: after a reset, so the surface shows what the
-  // store actually holds rather than assuming the delete took, and on an explicit
-  // retry of a read that never reached the store. The unfiled-run note is read
-  // again with it, so one retry answers for the whole section.
-  const [accountingReads, setAccountingReads] = useState(0);
-  // The runs this exchange noted as having disclosed without filing a record, as
-  // their own read classified them: a store that did not answer must not render
-  // as "nothing is missing". `undefined` while the read is in flight.
-  const [unfiledRead, setUnfiledRead] = useState<UnfiledDisclosureRead>();
-  // The exchange this visit found flagged as holding a run this browser could
-  // record nowhere -- the id rather than a flag, so switching exchanges cannot
-  // carry the state, and a re-read that finds the flag already cleared cannot
-  // retract what this visit has shown.
-  const [flaggedUnrecordedId, setFlaggedUnrecordedId] = useState<string>();
-  // What a scheduled run left for this visit, as its own read classified it. Read
-  // here for the same reason the accounting is: a store that did not answer must
-  // not render as "no run left anything". `undefined` while the read is in
-  // flight.
-  const [parkedResultsRead, setParkedResultsRead] =
-    useState<ParkedResultsRead>();
-  // Bumped to read the parked results again, on an explicit retry of a read that
-  // never reached the store.
-  const [parkedResultsReads, setParkedResultsReads] = useState(0);
-  const [exportBusy, setExportBusy] = useState(false);
-  const [exportFailed, setExportFailed] = useState(false);
-  // A hand-off the store refused, and which refusal it was: a run held the
-  // run+rotate lock at the click, a run rotated past the artifact this screen
-  // downloaded, or the record is gone from this browser entirely. Its own state,
-  // not exportFailed, because none of the three is an error tier.
-  const [migrationRefusal, setMigrationRefusal] =
-    useState<ManagedHandoffRefusal>();
-  // A dispatched migration whose download fired but whose spend awaits the operator
-  // attesting "the file is saved"; a dismissed save leaves the source live.
-  const [migrationDispatch, setMigrationDispatch] =
-    useState<ManagedMigrationDispatch>();
-  const [migrated, setMigrated] = useState(false);
-  // The invocation a confirmed command-line export handed over, present once this
-  // browser's copy is spent that way: like a migration, the record no longer runs
-  // here, and the surface names what runs in its place.
-  const [commandLineHandoff, setCommandLineHandoff] = useState<RunLines>();
   const [reselected, setReselected] = useState<File>();
   const [surfaceState, dispatchSurface] = useReducer(
     managedRunSurfaceReducer,
     MANAGED_RUN_SURFACE_INITIAL,
   );
-  const { load, run: runState, recovery } = surfaceState;
+  const {
+    load,
+    run: runState,
+    recovery,
+    reads,
+    handoff,
+    termsProposal,
+  } = surfaceState;
+  const accountingRead = reads.accounting.read;
+  const parkedResultsRead = reads.parkedResults.read;
+  const exportBusy = handoff.export.kind === "busy";
+  const exportFailed = handoff.export.kind === "failed";
+  const migrationDispatch = managedMigrationAwaitingConfirm(handoff);
+  const migrationRefusal = managedMigrationRefusal(handoff);
+  const commandLineHandoff = handoff.commandLine;
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
@@ -313,16 +270,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
     id,
     running,
   );
-  // A run holds the migration back: the polled reading, or the spend's own refusal
-  // at a click the poll's last reading was too old to hold back.
-  const runHoldsMigration = runInFlight || migrationRefusal === "run-in-flight";
-  // The refusals no retry can clear -- the downloaded artifact is out of date, or
-  // the record it came from is gone -- as against the run one, which ends with the
-  // run.
-  const staleMigration =
-    migrationRefusal !== undefined && migrationRefusal !== "run-in-flight";
-  const [termsProposalBusy, setTermsProposalBusy] = useState(false);
-  const [termsProposalFailure, setTermsProposalFailure] = useState<string>();
+  const runHoldsMigration = managedRunHoldsMigration(handoff, runInFlight);
+  const staleMigration = managedMigrationStale(handoff);
   // How many runs this visit has started, so each failure gets a number of its own.
   const runsStarted = useRef(0);
   // The Tier-2 confirmation gate: once the operator confirms a real partner-side
@@ -385,77 +334,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
     };
   }, [id, load.reads]);
 
-  // The accounting of disclosures is read on its own, never folded into the record
-  // load above: an unreadable accounting must not present the exchange as
-  // unloadable, and an unloadable record must not hide a readable accounting.
-  // Keyed on the completion instant as well as the id, so the entry a finished run
-  // just filed is read back without a reload. The read is total (see
-  // {@link readDisclosureAccounting}), so what lands here is a classified state to
-  // render rather than an error to interpret -- in particular, a store that did
-  // not open is its own transient state, not the destructive-recovery one.
-  useEffect(() => {
-    let live = true;
-    void readDisclosureAccounting(id)
-      .then((read) => {
-        if (live) setAccountingRead(read);
-      })
-      // The read classifies every failure rather than rejecting, so this is the
-      // safety check for that contract lapsing rather than a second failure path.
-      // Unavailable is the safe landing: it claims nothing about what is stored
-      // and offers no destructive arm, where an unhandled rejection would strand
-      // the section on its spinner.
-      .catch(() => {
-        if (live) setAccountingRead({ kind: "unavailable" });
-      });
-    return () => {
-      live = false;
-    };
-  }, [id, finishedAt, accountingReads]);
-
-  // The runs the accounting is short, read beside it and keyed the same way, so a
-  // run that has just failed to file is read back without a reload and a re-read
-  // of the accounting re-reads what it owes. The flag is read here too, and
-  // dropped only once its alert has rendered: this surface shows nothing at all
-  // for a missing, unloadable or spent exchange, and clearing on the visit
-  // instead would destroy the only trace of that run unseen.
-  useEffect(() => {
-    let live = true;
-    if (unfiledExchangeFlagged(id)) setFlaggedUnrecordedId(id);
-    void readUnfiledDisclosures(id)
-      .then((read) => {
-        if (live) setUnfiledRead(read);
-      })
-      // The read classifies every failure rather than rejecting, so this is the
-      // safety check for that contract lapsing. Unavailable claims nothing about
-      // what is stored, where an unhandled rejection would leave the section
-      // stating that nothing is missing.
-      .catch(() => {
-        if (live) setUnfiledRead({ kind: "unavailable" });
-      });
-    return () => {
-      live = false;
-    };
-  }, [id, finishedAt, accountingReads]);
-
-  // The results a run with nobody present left here, read on its own for the
-  // reasons above. The read applies the retention as it goes, so what lands here
-  // is what is still offered, never an entry the stated retention has released.
-  useEffect(() => {
-    let live = true;
-    void readParkedResults(id)
-      .then((read) => {
-        if (live) setParkedResultsRead(read);
-      })
-      // The read classifies every failure rather than rejecting; this is the
-      // safety check for that contract lapsing, landing on the state that claims
-      // nothing about what is stored rather than stranding the section.
-      .catch(() => {
-        if (live) setParkedResultsRead({ kind: "unavailable" });
-      });
-    return () => {
-      live = false;
-    };
-  }, [id, parkedResultsReads]);
+  const { dropUnrecordedRunFlag } = useManagedSurfaceReads(
+    id,
+    reads,
+    finishedAt,
+    dispatchSurface,
+  );
 
   // Revoke the run's object URLs when they are replaced or the surface unmounts:
   // the results blob is matched-record PII and the keys blob is private material.
@@ -739,39 +623,34 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // drives, marking before a spend is possible and refusing a superseded artifact.
   function backUp() {
     if (record === undefined || exportBusy) return;
-    setExportBusy(true);
-    setExportFailed(false);
-    void exportManagedBackup(record.id, exportDeps)
-      .then((result) =>
+    dispatchSurface({ type: "export-started" });
+    void exportManagedBackup(record.id, exportDeps).then(
+      (result) =>
         dispatchSurface({
-          type: "backup-marked",
+          type: "backup-exported",
           marker: downloadedMarker(result.backedUpAt),
         }),
-      )
-      .catch(() => setExportFailed(true))
-      .finally(() => setExportBusy(false));
+      () => dispatchSurface({ type: "export-failed" }),
+    );
   }
 
   // Dispatching mid-run only manufactures an artifact the confirmation will refuse:
   // the run rotates past it before the operator can attest to it.
   function migrate() {
     if (record === undefined || exportBusy || runInFlight) return;
-    setExportBusy(true);
-    setExportFailed(false);
-    setMigrationRefusal(undefined);
+    dispatchSurface({ type: "export-started" });
     void dispatchManagedMigration(record.id, {
       ...exportDeps,
       spendIfCurrent: spendManagedExchangeIfCurrent,
-    })
-      .then((dispatch) => {
+    }).then(
+      (dispatch) =>
         dispatchSurface({
-          type: "backup-marked",
+          type: "migration-dispatched",
+          dispatch,
           marker: downloadedMarker(dispatch.backedUpAt),
-        });
-        setMigrationDispatch(dispatch);
-      })
-      .catch(() => setExportFailed(true))
-      .finally(() => setExportBusy(false));
+        }),
+      () => dispatchSurface({ type: "export-failed" }),
+    );
   }
 
   // The operator attested the downloaded migration file is saved: spend the source
@@ -782,25 +661,26 @@ export function ManagedRunSurface({ id }: { id: string }) {
     const dispatch = migrationDispatch;
     if (dispatch === undefined || exportBusy || runInFlight || staleMigration)
       return;
-    setExportBusy(true);
-    setExportFailed(false);
-    setMigrationRefusal(undefined);
+    dispatchSurface({ type: "migration-confirm-started" });
     void (async () => {
       try {
         // The gate above renders from a poll, so a run started since the last
         // reading is still news here; re-reading also puts the reason on screen.
         // A run this reading still misses is refused by the spend itself, which
         // takes the run's own lock.
-        if (await recheckLock()) return;
+        if (await recheckLock()) {
+          dispatchSurface({ type: "export-finished" });
+          return;
+        }
         await dispatch.confirm(new Date());
-        setMigrationDispatch(undefined);
-        setMigrated(true);
+        dispatchSurface({ type: "migration-confirmed" });
       } catch (error) {
         if (error instanceof ManagedHandoffRefusedError)
-          setMigrationRefusal(error.refusal);
-        else setExportFailed(true);
-      } finally {
-        setExportBusy(false);
+          dispatchSurface({
+            type: "migration-refused",
+            refusal: error.refusal,
+          });
+        else dispatchSurface({ type: "export-failed" });
       }
     })();
   }
@@ -822,12 +702,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // state, so a failed export shows without claiming the backup was taken.
   function downloadUpdatedBackup() {
     if (completion.backupHook === undefined || exportBusy) return;
-    setExportBusy(true);
-    setExportFailed(false);
-    void completion.backupHook
-      .downloadUpdatedBackup()
-      .catch(() => setExportFailed(true))
-      .finally(() => setExportBusy(false));
+    dispatchSurface({ type: "export-started" });
+    void completion.backupHook.downloadUpdatedBackup().then(
+      () => dispatchSurface({ type: "export-finished" }),
+      () => dispatchSurface({ type: "export-failed" }),
+    );
   }
 
   // Fast re-invite: compose a fresh invitation from the record's OWN document (terms
@@ -1027,17 +906,8 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // previous verdict and its buttons under a click that has already been taken --
   // which displays as an inert control, beside an irreversible one.
   function readAccountingAgain(): void {
-    setAccountingRead(undefined);
-    setUnfiledRead(undefined);
-    setAccountingReads((reads) => reads + 1);
+    dispatchSurface({ type: "accounting-read-requested" });
   }
-
-  // Drop the flag, called by the alert that shows it. Held stable across renders
-  // so the alert's mount effect runs once rather than on every render of the
-  // section around it.
-  const dropUnrecordedRunFlag = useCallback(() => {
-    void clearUnfiledExchangeFlag(id);
-  }, [id]);
 
   // File the records the unfiled-run note retained, then read both again so the
   // section shows what the store holds afterwards: a filing that did not take
@@ -1070,8 +940,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // a reload ends a run in progress, and the blocked-open condition it recovers
   // from clears on its own.
   function retryParkedResultsRead(): void {
-    setParkedResultsRead(undefined);
-    setParkedResultsReads((reads) => reads + 1);
+    dispatchSurface({ type: "parked-results-read-requested" });
   }
 
   // Read the store again after the answer, so the surface shows the terms the
@@ -1079,19 +948,18 @@ export function ManagedRunSurface({ id }: { id: string }) {
   async function settleTermsProposal(apply: boolean): Promise<void> {
     const proposal = localState?.termsProposal;
     if (record === undefined || proposal === undefined) return;
-    setTermsProposalBusy(true);
-    setTermsProposalFailure(undefined);
+    dispatchSurface({ type: "terms-proposal-started" });
     try {
       if (apply)
         await applyManagedTermsProposal(record.id, proposal.proposedAt);
       else await declineManagedTermsProposal(record.id);
-      dispatchSurface({ type: "failure-cleared" });
-      dispatchSurface({ type: "record-read-requested" });
+      dispatchSurface({ type: "terms-proposal-settled" });
     } catch (error) {
       whenDiagnostic(() => console.error(error));
-      setTermsProposalFailure(termsProposalFailureText(error));
-    } finally {
-      setTermsProposalBusy(false);
+      dispatchSurface({
+        type: "terms-proposal-failed",
+        failure: termsProposalFailureText(error),
+      });
     }
   }
 
@@ -1109,8 +977,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // control, which keeps its confirm open and states the failure.
   async function clearParked(): Promise<void> {
     await clearParkedResults(id);
-    setParkedResultsRead(undefined);
-    setParkedResultsReads((reads) => reads + 1);
+    dispatchSurface({ type: "parked-results-read-requested" });
   }
 
   // Which of the surface's views the main column shows, in the order the render
@@ -1118,13 +985,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // incoming h1 (each has tabIndex -1) rather than staying on a control that no
   // longer exists. The first settle out of loading is the page arriving, not a
   // step, so it leaves focus at the top of the document.
-  const surfaceView = managedSurfaceView({
-    load,
-    run: runState,
-    commandLineHandedOff: commandLineHandoff !== undefined,
-    migrated,
-    migrationAwaitingConfirm: migrationDispatch !== undefined,
-  });
+  const surfaceView = managedSurfaceView(surfaceState);
   const surfaceRef = useRef<HTMLElement>(null);
   const previousSurfaceView = useRef(surfaceView);
   useEffect(() => {
@@ -1263,7 +1124,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <SavedExchangesFoot />
           </>
-        ) : migrated ? (
+        ) : handoff.migration.kind === "migrated" ? (
           <>
             <h1 tabIndex={-1}>Handed off to another device</h1>
             <p className={styles.sub}>
@@ -1334,10 +1195,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               <Button
                 variant="subtle"
                 disabled={exportBusy}
-                onClick={() => {
-                  setMigrationDispatch(undefined);
-                  setMigrationRefusal(undefined);
-                }}
+                onClick={() => dispatchSurface({ type: "migration-kept" })}
               >
                 {migrationRefusal === "record-gone"
                   ? "Close"
@@ -1457,9 +1315,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
             {load.localState?.termsProposal !== undefined && (
               <TermsProposalPanel
                 proposal={load.localState.termsProposal}
-                busy={termsProposalBusy}
+                busy={termsProposal.kind === "busy"}
                 disabled={running || runInFlight}
-                failure={termsProposalFailure}
+                failure={
+                  termsProposal.kind === "failed"
+                    ? termsProposal.failure
+                    : undefined
+                }
                 onApply={() => void settleTermsProposal(true)}
                 onDecline={() => void settleTermsProposal(false)}
               />
@@ -1505,13 +1367,18 @@ export function ManagedRunSurface({ id }: { id: string }) {
               record={load.record}
               runInFlight={runInFlight}
               recheckRunInFlight={recheckLock}
-              onHandedOff={setCommandLineHandoff}
+              onHandedOff={(lines) =>
+                dispatchSurface({
+                  type: "command-line-handed-off",
+                  handoff: lines,
+                })
+              }
             />
             <ManagedExchangeDetail
               record={load.record}
               accountingRead={accountingRead}
-              unfiledDisclosureRead={unfiledRead}
-              unrecordedRunFlagged={flaggedUnrecordedId === id}
+              unfiledDisclosureRead={reads.unfiled}
+              unrecordedRunFlagged={managedUnrecordedRunFlagged(reads, id)}
               parkedResultsRead={parkedResultsRead}
               onFileUnfiledDisclosures={fileUnfiled}
               onUnrecordedRunFlagShown={dropUnrecordedRunFlag}
