@@ -14,12 +14,8 @@ import type {
   MessageConnection,
 } from "@alcove/core";
 
-// ConnectionError kinds that are NOT a peer-trust problem: a handshake
-// failure holding one passes through unchanged rather than being re-tagged
-// as a trust failure. `transport` is a retryable link drop, `closed` a local
-// abort-driven teardown, `usage` a local API misuse. Everything else -- a
-// plain kex auth Error, or a `protocol` error from the peer flooding or
-// misordering frames -- is a trust failure.
+// ConnectionError kinds that are not a peer-trust problem and pass through
+// unchanged; every other handshake failure is re-tagged `security`.
 const NON_TRUST_KINDS: ReadonlySet<ConnectionErrorKind> = new Set([
   "transport",
   "closed",
@@ -27,56 +23,22 @@ const NON_TRUST_KINDS: ReadonlySet<ConnectionErrorKind> = new Set([
 ]);
 
 /**
- * Run the P-256 (NNpsk0) authenticated key exchange over the web exchange's
- * `MessageConnection`, right after the data channel opens and before the PSI
- * exchange begins. Reuses core's {@link authenticateConnection} unchanged --
- * same handshake, role labels, and token encoding as the CLI -- so a future
- * CLI WebRTC peer and a web peer compute the same transcript. Never
- * reimplement the crypto here: a reimplementation can fail silently and
- * exploitably.
+ * Run core's P-256 (NNpsk0) authenticated key exchange
+ * ({@link authenticateConnection}, shared with the CLI) over the data channel
+ * before any PSI frame. It requests no application-layer encryption, since
+ * DTLS already covers the channel (docs/SECURITY_DESIGN.md, "Channel
+ * security"). It neither persists nor rotates the returned secret.
  *
- * The web handshake role is the exchange role the web already assigns
- * (`"responder"` for the inviter, `"initiator"` for the acceptor): the channel
- * {@link openPeerMessageConnection} opens has no separate negotiation step, so
- * the same role drives both the handshake and the subsequent PSI exchange.
+ * A trust failure -- a wrong secret, a malformed or expired credential, or a
+ * `protocol` error from the peer -- is re-tagged as a `security`
+ * {@link ConnectionError}, so the caller shows the authentication-failure
+ * alert; a {@link NON_TRUST_KINDS} failure is re-thrown unchanged.
  *
- * `requestEncryption` is `false`: a WebRTC data channel is already
- * end-to-end confidential under DTLS against the peer-coordination server
- * and any TURN relay, so the web path declines the extra application-layer
- * AEAD (see docs/SECURITY_DESIGN.md, "Channel security"; only a
- * not-yet-supported DTLS-terminating WebSocket relay would flip this to
- * `true`). The 32-byte session key is still derived, for the deferred
- * web-encryption work to consume once a relay can force the wrap on. The
- * returned {@link AuthResult} holds the rotated secret unchanged: the
- * one-shot flow hands it to its completion (`RunCompletion` in
- * ./exchangeLifecycle.ts), where a hand-off to a managed exchange deposits it,
- * and a managed run feeds it to the run+rotate write-back
- * ({@link ./managedExchangeRun.ts}). This function neither
- * persists nor rotates; it authenticates and returns.
- *
- * Failure handling fails closed. A handshake failure aborts the exchange
- * before any PSI frame is sent. A trust failure -- a wrong secret, a
- * tampered/malformed/expired credential (a plain Error from the kex), or a
- * `protocol` {@link ConnectionError} from the peer flooding or misordering
- * frames -- is re-tagged as a `security`-kind `ConnectionError`. A non-trust
- * fault ({@link NON_TRUST_KINDS}: a transport drop, the kex timeout, a
- * deliberate close, or a local usage fault) is re-thrown unchanged. The
- * caller routes `security` to the authentication-failure alert and
- * everything else to the generic "exchange failed" one.
- *
- * @param mc            The open message connection (a `PeerMessageConnection`).
- * @param exchangeRole  This party's handshake role, the same role passed to
- *                      `runExchange`.
- * @param sharedSecret  The invitation's shared secret, base64url-encoded; both
- *                      peers must hold the same value or the handshake fails
- *                      closed.
- * @param expires       The invitation's `expires` (ISO 8601), if it has one.
- *                      Threaded into the auth parameters so core's pre- and
- *                      post-handshake expiry guards evaluate it, each failing
- *                      closed as the `security` trust failure -- before any
- *                      frame for an already-expired invitation, after the
- *                      handshake for one that expires mid-round-trip. Omit
- *                      (or pass `undefined`) for an unbounded credential.
+ * @param mc            The open message connection.
+ * @param exchangeRole  This party's role, the same one passed to `runExchange`.
+ * @param sharedSecret  The invitation's base64url shared secret.
+ * @param expires       The invitation's `expires` (ISO 8601); core checks it
+ *                      before and after the handshake. Omit when unbounded.
  * @returns The {@link AuthResult}; both peers derive the same `sessionKey`.
  * @throws {ConnectionError} of kind `"security"` on a trust failure; of kind
  *         `"usage"` if the peer negotiates encryption the web path does not yet
@@ -97,31 +59,21 @@ export async function authenticateExchange(
       false,
     );
   } catch (error) {
-    // Non-trust failures (`hasNonTrustConnectionError`) pass through
-    // unchanged, keeping their own kind. Everything else -- including an
-    // unrecognized failure -- defaults to the trust verdict and is re-tagged
-    // `security`: this is a trust boundary, so it fails closed.
+    // An unrecognized failure is treated as a trust failure: fail closed.
     if (hasNonTrustConnectionError(error)) throw error;
     const wrapped = new ConnectionError(errorMessage(error), "security", {
       cause: error,
     });
-    // A credential error that states its own next step already holds
-    // specific recovery guidance, so the wrap states it too and a
-    // higher-level handler adds no second, generic advisory. The web path
-    // threads the invitation's `expires`, so the expiry errors before and
-    // after the handshake (alongside the malformed-secret one) reach here.
+    // Keep a credential error's own recovery guidance, so no handler adds a
+    // second, generic advisory.
     if (hasRecoveryHint(error)) markStatesItsOwnNextStep(wrapped);
     throw wrapped;
   }
 
-  // We requested no encryption and expect the peer to match, so this decision
-  // must be false. If a peer ever requests the application AEAD (a future CLI
-  // WebRTC peer, or the deferred web-encryption work), running runExchange in
-  // cleartext while the peer wraps would silently diverge; fail loudly here
-  // until that wrap is wired. Only a peer that completed the handshake (so it
-  // holds the secret) can set this, so this never fires for an unauthenticated
-  // peer. `usage` kind routes to the caller's generic alert, not the
-  // partner-authentication one: a capability mismatch, not a failed handshake.
+  // The web path does not apply the application AEAD, so a peer requesting it
+  // would diverge from this cleartext run. Only a peer that completed the
+  // handshake can set this, so it never fires for an unauthenticated peer;
+  // `usage` routes to the generic alert, as a capability mismatch.
   if (result.applyEncryption)
     throw new ConnectionError(
       "the peer requested application-layer encryption, which the web " +
@@ -132,12 +84,8 @@ export async function authenticateExchange(
 }
 
 /**
- * Whether a handshake failure holds a non-trust {@link ConnectionError}
- * ({@link NON_TRUST_KINDS}) anywhere in its `cause` chain -- walked rather
- * than checked directly because the kex timeout wraps a `transport`
- * ConnectionError as its cause. `true` means the caller passes the failure
- * through unchanged; `false` (a plain kex auth Error, or a `protocol`
- * ConnectionError) is re-tagged as a security failure.
+ * Whether a {@link NON_TRUST_KINDS} {@link ConnectionError} is anywhere in the
+ * `cause` chain; the kex timeout wraps a `transport` error as its cause.
  */
 function hasNonTrustConnectionError(error: unknown): boolean {
   return causeChainSome(
@@ -147,11 +95,9 @@ function hasNonTrustConnectionError(error: unknown): boolean {
 }
 
 /** Whether `error` itself states its own next step (core's
- * `statesItsOwnNextStep`), as authenticateConnection's credential-validation
- * and expiry errors do. Per core's contract such a message is composed only
- * from local values and already includes its recovery instructions, so a
- * display layer may show it (sanitized) instead of fixed copy, and must not
- * add a second, generic advisory. */
+ * `statesItsOwnNextStep`), as the credential and expiry errors do: a display
+ * layer may show it (sanitized) in place of fixed copy, with no second
+ * advisory. */
 export function hasRecoveryHint(error: unknown): boolean {
   return statesItsOwnNextStep(error, { ownOnly: true });
 }

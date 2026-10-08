@@ -202,10 +202,10 @@ export async function probeManagedStoreOpen(): Promise<boolean> {
  * Returns the browser's grant decision, or `false` where the API is unavailable.
  */
 export async function requestPersistentStorage(): Promise<boolean> {
-  // `navigator.storage.persist` is typed as always present by the DOM lib but is
-  // absent under SSR and on older engines, where the call throws; the try/catch
-  // resolves either case to the secure-by-default no-grant, the same wrap
-  // isDiagnosticMode uses for localStorage.
+  // `navigator.storage.persist` is typed as always present by the DOM lib but
+  // is absent outside a browser and on older engines, where the call throws;
+  // the try/catch resolves either case to the secure-by-default no-grant, the
+  // same wrap isDiagnosticMode uses for localStorage.
   try {
     return await globalThis.navigator.storage.persist();
   } catch {

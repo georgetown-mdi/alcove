@@ -1,31 +1,26 @@
 /**
- * The SFTP connection as the job API states it: the operator-authored server
- * block, the `PUT /api/jobs/sftp` authoring body, and the credential-free
- * projection `GET /api/jobs/sftp` answers with.
+ * The SFTP connection as the job API states it: the authored server block, the
+ * `PUT /api/jobs/sftp` body, and the `GET /api/jobs/sftp` projection.
+ * Contract: docs/spec/SERVER_JOB_API.md, "The authored SFTP connection" and
+ * "Authoring the SFTP connection".
  */
 
 import type { ZeroSetupSftpRefusalReason } from "./jobCreateRefusal";
 
 /**
- * The operator-authored SFTP connection: the connection block the server -- never
- * the client -- contributes to a composed sftp job config. Credential fields
- * (`password`, `privateKey`, `privateKeyPassphrase`) hold only `@path` file
- * references; validation rejects inline values, so no secret byte ever lives in
- * server memory -- the reference is resolved by the CLI child at exchange time.
- * `hostKeyFingerprint` is mandatory: a console-driven SFTP connection always
- * pins the server host key.
+ * The authored SFTP connection the server contributes to a composed sftp job
+ * config. Credential fields contain only `@path` references, which the CLI
+ * resolves; `hostKeyFingerprint` is required.
  */
 export interface JobSftpServerEntry {
   host: string;
   port?: number;
   username?: string;
   path?: string;
-  /** The inbound (peer-written) remote directory of a split-directory
-   * connection; set together with {@link outboundPath} and never alongside
-   * {@link path}. */
+  /** The peer-written directory of a split pair; set with
+   * {@link outboundPath}, never with {@link path}. */
   inboundPath?: string;
-  /** The outbound (self-written) remote directory of a split-directory
-   * connection; the companion to {@link inboundPath}. */
+  /** The self-written directory of a split pair. */
   outboundPath?: string;
   password?: string;
   privateKey?: string;
@@ -37,11 +32,7 @@ export interface JobSftpServerEntry {
 /** Which SFTP primary auth method a credential feeds. */
 export type SftpCredType = "password" | "private_key";
 
-/**
- * A file-reference credential given as a typed `@path` (never an inline value):
- * the documented exception for a credential that lives outside any listable
- * mount. Tagged with which primary auth method it feeds.
- */
+/** A credential given as a typed `@path`, for a file outside any listable mount. */
 export interface AuthoredCredentialRef {
   kind: "ref";
   ref: string;
@@ -49,13 +40,9 @@ export interface AuthoredCredentialRef {
 }
 
 /**
- * A file-reference credential given as a locator the operator picked in the
- * credential browser: the mount id and the path segments under it. `secrets` is
- * the separate secrets directory (`JOB_SECRETS_DIR`); `folder` is the working
- * folder (`JOB_DATA_ROOT`), browsed when no secrets directory is mounted. The
- * server -- not the browser -- resolves it to an absolute `@path`, so no
- * container-absolute path ever transits the browser. Tagged with which primary
- * auth method it feeds.
+ * A credential file picked in the credential browser: `secrets`
+ * (`JOB_SECRETS_DIR`) or `folder` (`JOB_DATA_ROOT`) and the path under it. The
+ * server resolves it to an `@path`, so no container path reaches the browser.
  */
 export interface AuthoredMountRefCredential {
   kind: "mountRef";
@@ -65,14 +52,9 @@ export interface AuthoredMountRefCredential {
 }
 
 /**
- * A pasted credential value: the de-emphasized fallback for a credential that
- * exists nowhere on the console as a file. Under the single-party-console
- * trust model (a loopback-only browser on the operator's own machine) the value
- * crossing loopback is on-host, so this is acceptable -- but the server never
- * composes it as a value: it materializes it ONCE to a server-owned 0600 file at
- * the container-internal scratch path, rewrites it to an `@path`, and runs the
- * SAME containment chain the file-reference forms do. Tagged with which primary
- * auth method it feeds.
+ * A pasted credential value, for one that is not a file on the console. The
+ * server writes it to a server-owned 0600 file and uses that `@path`
+ * (docs/spec/SERVER_JOB_API.md, "Materializing a pasted credential").
  */
 export interface AuthoredRawCredential {
   kind: "raw";
@@ -80,29 +62,14 @@ export interface AuthoredRawCredential {
   credType: SftpCredType;
 }
 
-/**
- * The credential an authoring request holds: a typed `@path` reference, a
- * secrets-mount locator, or a pasted value. All resolve to an `@path` reference
- * (the pasted value only after materialization to a server-owned file) validated
- * by the authoring containment chain; no inline value ever reaches a composed
- * job file.
- */
+/** The credential in an authoring request; every form resolves to an `@path`. */
 export type AuthoredCredential =
   AuthoredCredentialRef | AuthoredMountRefCredential | AuthoredRawCredential;
 
 /**
- * The `PUT /api/jobs/sftp` authoring body. The credential arrives tagged -- a
- * typed `@path`, a secrets-mount locator, or a pasted value the server
- * materializes to a file -- rather than as a bare field, and the fingerprint is
- * mandatory and literal. `private_key_passphrase` is always an `@path`
- * reference, never a pasted value.
- *
- * The remote directory arrives in one of the two forms core's connection config
- * holds: the single shared `path`, or the split `inboundPath`/`outboundPath`
- * pair for a server with distinct drop and pickup folders. The three are
- * modelled as optional siblings, exactly as core's `SFTPServer` models them, so
- * the body stays a strict allowlist and the coherence rules over them stay
- * core's single statement rather than a second one here.
+ * The `PUT /api/jobs/sftp` authoring body. `privateKeyPassphrase` is always an
+ * `@path`. The directory fields are optional siblings as in core's
+ * `SFTPServer`, which owns the rules over them.
  */
 export interface AuthoredSftpServerRequest {
   host: string;
@@ -118,27 +85,21 @@ export interface AuthoredSftpServerRequest {
 }
 
 /**
- * The public, credential-free projection of the authored SFTP connection
- * served by `GET /api/jobs/sftp`: the locator fields plus any non-blocking
- * credential warnings (each naming a field and a directory only, never a
- * secret), and the refusal a direct run would raise over it. Constructed
- * field-by-field from the entry -- never by spreading it -- so no credential
- * reference, fingerprint, or future field can ride along.
+ * The credential-free projection `GET /api/jobs/sftp` serves. Built field by
+ * field from the entry, never by spreading it, so no credential reference or
+ * new field leaks into it.
  */
 export interface SftpConnectionProjection {
   host: string;
   port?: number;
   path?: string;
-  /** The inbound (peer-written) remote directory of a split-directory
-   * connection; present only as a pair with {@link outboundPath}, and never
-   * alongside {@link path}. */
+  /** The peer-written directory of a split pair; present with
+   * {@link outboundPath}, never with {@link path}. */
   inboundPath?: string;
-  /** The outbound (self-written) remote directory of a split-directory
-   * connection. */
+  /** The self-written directory of a split pair. */
   outboundPath?: string;
   credentialWarnings?: Array<string>;
-  /** The token job create refuses a direct (zero-setup) run of this connection
-   * with, absent when it would run. An exchange-mode run is not refused over
-   * it. */
+  /** Why job create would refuse a zero-setup run of this connection; absent
+   * when it would run. */
   zeroSetupRefusal?: ZeroSetupSftpRefusalReason;
 }

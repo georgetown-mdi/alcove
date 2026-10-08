@@ -45,22 +45,12 @@ import type { OwnColumnsChoice } from "./ownColumnsModel";
 import type { RelayUrls } from "./transport/ownRelaySetting";
 import type { SignalingAddress } from "./transport/signalingAddress";
 
-/**
- * The CSV input {@link generateInvitation} parses: exactly what
- * {@link loadCSVFileOffMainThread} (and core's `loadCSVFile` beneath it) accepts (a
- * browser `File` in production; a Node readable stream in tests). Derived from that
- * wrapper's own signature rather than importing papaparse's `LocalFile` directly, so
- * this module takes on no papaparse dependency beyond the one core already owns. */
+/** The CSV input {@link generateInvitation} parses, typed from
+ * {@link loadCSVFileOffMainThread} so this module adds no papaparse dependency. */
 type InvitationCSVInput = Parameters<typeof loadCSVFileOffMainThread>[0];
 
-/**
- * Route the deep-link targets: the acceptor's accept/reject consent screen. The
- * route itself -- decode, linkage-terms review, and the derived-id rendezvous --
- * is built by the accept route; this module only
- * constructs a URL that points at it. The token rides in the URL fragment (see
- * {@link deepLinkFor}), so the contract this constant encodes is "path plus
- * fragment", which the accept route must read in lockstep.
- */
+/** The acceptor's consent route; the token is in the URL fragment
+ * ({@link deepLinkFor}). */
 export const ACCEPT_ROUTE_PATH = INVITATION_ACCEPT_ROUTE_PATH;
 
 /** The start page's paste-an-invitation field, which takes focus when the page
@@ -68,18 +58,14 @@ export const ACCEPT_ROUTE_PATH = INVITATION_ACCEPT_ROUTE_PATH;
 export const PASTE_INVITATION_FIELD_ID = "accept-invitation";
 
 /**
- * The location inputs an invitation needs: the deep-link origin and the
- * signaling address the acceptor reaches the inviter's PeerJS server at.
- * Passed in rather than read from `window` inside assembly so
- * {@link generateInvitation} stays pure and unit-testable; the caller supplies
- * `invitationLocation()`.
+ * The deep-link origin and signaling address an invitation names, passed in so
+ * {@link generateInvitation} reads no `window`.
  */
 export interface InvitationLocation {
   /** Deep-link origin, e.g. `https://example.org:3000` (no trailing slash). */
   origin: string;
-  /** Where this app's inviter registers (`ownSignalingAddress`), or undefined
-   * on a build whose server coordinates no browser connections (the console),
-   * which then mints no webrtc invitation ({@link invitationSignalingAddress}). */
+  /** Where this app's inviter registers, or undefined on a build with no
+   * browser signaling (the console), which mints no webrtc invitation. */
   signaling: SignalingAddress | undefined;
 }
 
@@ -97,9 +83,7 @@ export class NoSignalingAddressError extends Error {
 /**
  * The signaling address a webrtc invitation from `loc` names.
  *
- * @throws {NoSignalingAddressError} when `loc` has none, so a build without
- *                                   one never mints an invitation naming an
- *                                   address a partner cannot reach.
+ * @throws {NoSignalingAddressError} when `loc` has none.
  */
 export function invitationSignalingAddress(
   loc: InvitationLocation,
@@ -109,162 +93,92 @@ export function invitationSignalingAddress(
 }
 
 /**
- * The result of composing an invitation from the inviter's file: the shareable
- * artifacts the inviter sends out-of-band ({@link encoded} / {@link deepLink}),
- * the secret and expiry that drive the rendezvous, and the linkage terms
- * embedded in the token plus the exact parsed rows those terms were derived
- * from, since the inviter runs its own half of the exchange right after.
- *
- * {@link encoded} and {@link deepLink} hold the same token and so decode
- * identically; {@link linkageTerms}, {@link rawRows}, and {@link columns} are
- * local data the inviter reuses to run the exchange and are NEVER shared (only
- * the terms ride inside the encoded token).
+ * An invitation composed from the inviter's file: the shareable token
+ * ({@link encoded}, {@link deepLink}), its secret and expiry, and the terms and
+ * parsed rows the inviter's own run uses. Only the token is shared.
  */
 export interface GeneratedInvitation {
   /** The encoded invitation string -- the bare-string copy artifact. */
   encoded: string;
   /**
-   * Deep-link URL `<origin>/accept#<encoded>` -- the URL copy artifact. The
-   * token rides in the fragment, never a query parameter, so this confidential
-   * value (it holds the setup secret and seeds the rendezvous id) is not sent
-   * to the server and stays out of access logs and Referer headers; see
-   * docs/SECURITY_DESIGN.md, "Invitation contents and confidentiality".
+   * Deep-link URL `<origin>/accept#<encoded>`. The token is in the fragment so
+   * it is never sent to the server (docs/SECURITY_DESIGN.md, "Invitation
+   * contents and confidentiality").
    */
   deepLink: string;
-  /**
-   * The fresh shared secret embedded in the token. Returned so the inviter can
-   * derive its own rendezvous peer id and listen on it (the acceptor derives
-   * the same id from the same secret held in the invitation). It is the value
-   * already inside `encoded`, exposed here rather than re-decoded; it stays in
-   * the browser and is never sent to a backend.
-   */
+  /** The secret inside `encoded`, from which the inviter derives its
+   * rendezvous peer id. Never sent to a backend. */
   sharedSecret: string;
-  /**
-   * The token's bounded expiry (ISO 8601), exposed beside `sharedSecret` so the
-   * inviter can thread it into the authenticated key exchange's expiry guards
-   * (its `expires !== undefined` gate then arms the in-handshake check). It is
-   * the value already inside `encoded`. Always set: {@link generateInvitation}
-   * mints a bounded lifetime onto every invitation.
-   */
+  /** The token's expiry (ISO 8601), for the key exchange's expiry checks. */
   expires: string;
   /**
-   * The linkage terms embedded in the token, derived from the inviter's file
-   * (inferred metadata -> default terms filtered to the keys the columns can
-   * satisfy). Returned so the inviter's own exchange reuses THIS object
-   * verbatim rather than re-deriving from the file: the embedded terms and the
-   * terms the inviter's exchange runs on must be one and the same, or the
-   * terms-compatibility handshake with the partner fails. Local: present
-   * inside `encoded` too, but exposed here so the exchange need not re-decode
-   * it.
+   * The terms embedded in the token. The inviter's run must use this object,
+   * or the terms-compatibility check with the partner fails.
    */
   linkageTerms: LinkageTerms;
-  /**
-   * The parsed CSV rows {@link linkageTerms} was derived from, returned so the
-   * inviter's exchange runs on the exact data with no re-parse and no second file
-   * prompt. Local-only: the rows are never encoded into the token or shared.
-   */
+  /** The parsed rows {@link linkageTerms} was derived from, so the inviter's
+   * run needs no re-parse. Empty on the profiled-columns path. */
   rawRows: Array<CSVRow>;
   /** The CSV column names, paired with {@link rawRows} -- the two inputs the
    * inviter's exchange feeds to `prepareForExchange`. Local-only. */
   columns: Array<string>;
-  /**
-   * The inviter's edited per-party column metadata, from the console's Matching
-   * & sharing section. Threaded into the inviter's own `prepareForExchange`
-   * (never encoded in the token), so its disclosure choices govern what the
-   * inviter sends and its column->type bindings match the run the authored
-   * keys were derived from. Absent on the quick path, where metadata is
-   * inferred from the columns downstream. Local-only.
-   */
+  /** The inviter's edited column metadata, for its own `prepareForExchange`;
+   * absent on the quick path. Never in the token. */
   metadata?: Metadata;
   /**
-   * The inviter's authored per-party standardization, from the console's
-   * Cleaning tab, RECONCILED to {@link linkageTerms}. Paired with
-   * {@link metadata} and threaded into the inviter's own `prepareForExchange`
-   * (never embedded in the token), so the cleaning -- including the per-field
-   * input-column binding that lets two fields of one semantic type bind to
-   * distinct columns -- matches the run the authored fields were derived
-   * from. Absent on the quick path, where standardization is inferred
-   * downstream. Local-only.
-   *
-   * Reconciled rather than held verbatim, since the draft keeps a disabled
-   * key's cleaning so re-enabling restores it; a stored verbatim copy would be
-   * refused as contradicting its terms when replayed. Every transform output
-   * here names a field `linkageTerms` declares, checked at the mint.
+   * The inviter's authored standardization, reconciled to {@link linkageTerms}
+   * at the mint (the draft keeps a disabled key's cleaning), for its own
+   * `prepareForExchange`; absent on the quick path. Never in the token.
    */
   standardization?: Standardization;
   /**
-   * Which of the inviter's own input columns its result file holds beside the
-   * partner's values -- the local `include_own_columns` key, narrowed at the
-   * mint to terms that give this party a result table to write into. Every
-   * surface keeping a copy of a mint -- the exchange this browser runs, the CLI
-   * exchange file the save path writes, the console's server-job config, the
-   * managed-exchange record a scheduled re-run replays -- reads it from here,
-   * so one decision governs them all. Absent where the operator chose nothing
-   * or the terms leave nothing for it to act on. Local-only: never encoded in
-   * the token, and no part of what the partner agrees to.
+   * Which of the inviter's own columns its result file includes, narrowed at
+   * the mint to terms that give it a result table. Every copy of the mint
+   * reads it from here. Never in the token.
    */
   includeOwnColumns?: OwnColumnSelection;
 }
 
-/** Why {@link generateInvitation} refused to mint an invitation for the given
- * file. Every variant is user-actionable -- the inviter can choose another file, or
- * change which columns it sends -- and every one is thrown BEFORE any shared secret
- * is generated, so a rejected file never yields a token. Anything else
- * {@link generateInvitation} throws (a schema/encoding error, an SSR misuse) is an
- * internal fault, not one of these. */
+/** Why {@link generateInvitation} refused the inviter's file. Each is
+ * user-actionable and thrown before any secret is generated; anything else it
+ * throws is an internal fault. */
 export type InvitationFileFailure =
   | {
       /** The CSV could not be read or parsed. */
       kind: "unreadable";
-      /** The underlying read/parse error, for the caller to show (sanitized)
-       * and to log. */
+      /** The read or parse error, to show (sanitized) and log. */
       cause: unknown;
     }
   | {
-      /** The file cannot satisfy every linkage key the minted terms declare, so
-       * the exchange the token sets up would be refused at its own run boundary --
-       * after the partner has accepted. The same rule every console pre-launch seat
-       * and core's `assertLinkageTermsSatisfiable` hold the input to. */
+      /** The file cannot satisfy every linkage key the terms declare, so the
+       * run would be refused after the partner accepted (core's
+       * `assertLinkageTermsSatisfiable`). */
       kind: "unlinkable";
       /** Why, in the shape the operator-facing alert is total over. */
       refusal: LinkageRefusal;
     }
   | {
-      /** The CSV header holds one or more empty (zero-length) column names -- a
-       * trailing comma, a blank cell, or a leading delimiter produces an unnamed
-       * (`""`) column. Core's {@link inferMetadata} rejects it at intake, and the
-       * payload schema's `name` `.min(1)` would otherwise reject it only as a raw
-       * ZodError at encode (the generic retry dead-end); refused here EARLY so the
-       * caller can show a clear, actionable error. */
+      /** The header has an empty column name. Refused here so the operator
+       * sees a clear error, not a raw ZodError at encode. */
       kind: "unnameable";
-      /** The 1-based positions of the empty-named columns, for the operator-facing
-       * message (see {@link unnameableColumnsAlert}). */
+      /** 1-based positions of the empty-named columns. */
       positions: Array<number>;
-      /** The 1-based positions the parse removed control characters from, so
-       * the message can tell an empty name the removal produced from one a blank
-       * header cell did. Empty for a header that held none. */
+      /** 1-based positions the parse removed control characters from, so the
+       * message can tell such a name from a blank header cell. */
       sanitizedPositions: Array<number>;
     }
   | {
-      /** A column marked to send has a name longer than `MAX_NAME_LENGTH`. The
-       * name rides the payload frame to the partner, whose parse refuses it,
-       * and `PayloadColumnSchema.name` would otherwise reject it here only as
-       * a raw ZodError at encode (the generic retry dead-end); refused with a
-       * typed failure so the caller can show a clear, actionable error. Scoped
-       * to the disclosed set: an oversized name on a column that is not sent
-       * goes nowhere and blocks nothing. */
+      /** A column marked to send has a name longer than `MAX_NAME_LENGTH`,
+       * which the partner's parse refuses. Unsent columns do not count. */
       kind: "overlong";
-      /** The 1-based positions of the offending columns, for the operator-facing
-       * message (see {@link overlongColumnsAlert}). The offending NAME is never
-       * included: it is longer than the message that would show it. */
+      /** 1-based positions of the offending columns; the name itself is too
+       * long to show. */
       positions: Array<number>;
     };
 
 /**
  * Thrown by {@link generateInvitation} when the inviter's file cannot back an
- * invitation, BEFORE the shared secret is minted. {@link failure} discriminates
- * the user-actionable cause so the caller can show the right guidance; the base
- * `message` is a fixed, non-sensitive summary suitable for a log line.
+ * invitation. `message` is a fixed summary safe to log.
  */
 export class InvitationFileError extends Error {
   readonly failure: InvitationFileFailure;
@@ -301,11 +215,9 @@ export function webrtcEndpointFromAddress(
 }
 
 /**
- * The webrtc endpoint a web invitation holds: this app's signaling locator
- * ({@link webrtcEndpointFromAddress}) plus the inviter's own relay, composed
- * by core's `relayLocatorFromOwnRelay` and omitted when there is none. The one
- * place a web inviter's relay reaches an invitation; both mint paths -- a new
- * invitation and a managed re-invite -- call it.
+ * The webrtc endpoint in a web invitation: the signaling locator plus the
+ * inviter's own relay, if any. Both mint paths, a new invitation and a managed
+ * re-invite, call it.
  */
 export function invitationWebrtcEndpoint(
   loc: InvitationLocation,
@@ -316,22 +228,15 @@ export function invitationWebrtcEndpoint(
   return relay !== undefined ? { ...endpoint, relay } : endpoint;
 }
 
-/** Build the deep-link URL with `encoded` in the fragment (see
- * {@link GeneratedInvitation.deepLink} for why the fragment, not a query). */
+/** Build the deep-link URL with `encoded` in the fragment. */
 export function deepLinkFor(origin: string, encoded: string): string {
   return `${origin}${ACCEPT_ROUTE_PATH}#${encoded}`;
 }
 
 /**
- * Peel the encoded invitation token out of what the acceptor pasted -- the
- * inverse of {@link deepLinkFor}. A deep-link URL holds the token in its
- * fragment (`<origin>${ACCEPT_ROUTE_PATH}#<token>`), so everything after the
- * first `#` is the token; a bare code has no `#` and is used as-is.
- *
- * The extracted token is passed through `stripInvitationWhitespace`, which
- * strips line breaks only up to its raw-length bound; past that bound it hands
- * the input on unchanged, and `decodeInvitation` refuses it by length at
- * `/accept`.
+ * Extract the token from a pasted deep link or bare code, the inverse of
+ * {@link deepLinkFor}. `stripInvitationWhitespace` leaves input past its length
+ * bound unchanged, for `decodeInvitation` to refuse at `/accept`.
  */
 export function tokenFromInput(input: string): string {
   const trimmed = input.trim();
@@ -341,31 +246,16 @@ export function tokenFromInput(input: string): string {
 }
 
 /**
- * The connection-endpoint an invitation should hold. Defaults to the app's own
- * WebRTC signaling locator, built from {@link InvitationLocation}; a caller
- * composing a file-drop or SFTP exchange instead supplies an explicit
- * {@link SFTPEndpoint} or {@link FileDropEndpoint} holding only authored
- * locator fields.
- *
- * The channel-specific variants hold only locator fields by construction (the
- * endpoint types have no credential field), so the credential-free invariant
- * holds regardless of channel. `encodeInvitation` re-validates the whole token
- * through the strict endpoint schema, so a malformed locator or any smuggled
- * unknown key is rejected at mint -- this request is not a second, weaker
- * gate.
+ * The endpoint to put in an invitation: `{ channel: "webrtc" }` for this
+ * app's signaling locator, or an authored sftp or filedrop locator. No endpoint
+ * type has a credential field, and `encodeInvitation` re-validates the token
+ * through the strict schema.
  */
 export type ConnectionEndpointRequest =
   { channel: "webrtc" } | SFTPEndpoint | FileDropEndpoint;
 
-/**
- * Resolve a {@link ConnectionEndpointRequest} to the {@link ConnectionEndpoint}
- * the token holds. The webrtc request is built from the inviter's
- * {@link InvitationLocation} and names the relay this inviter's own run gathers
- * against ({@link relayForRun}); an sftp/filedrop request passes through verbatim
- * (its locator fields were authored by the caller). No credential can appear
- * in any branch -- the endpoint types admit none -- and `encodeInvitation`
- * validates the result through the strict endpoint schema regardless.
- */
+/** Resolve a request to the token's endpoint; webrtc names the relay
+ * this inviter's own run uses ({@link relayForRun}). */
 function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
@@ -377,21 +267,10 @@ function resolveConnectionEndpoint(
 
 /**
  * Whether an invitation minted from these inputs declares
- * `inviterRetainsFiles`. Two grounds, ORed: the caller's resolved
- * `retain_files`, and the endpoint's own shape -- a split
- * `inbound_path`/`outbound_path` rendezvous runs in retain mode whatever the
- * caller passed ({@link endpointRequiresRetainedFiles}), and
- * `encodeInvitation` refuses a mint emitting one that leaves the retention
- * undeclared.
- *
- * {@link generateInvitation} applies this to the token. A caller that shows
- * the same retention on a second partner-facing surface -- the accept kit's
- * file-handling disclosure -- reads it from here and feeds both from the one
- * value, so the token and the sheet cannot state different modes.
- *
- * The webrtc request has no directory to split, so the shape ground never
- * fires on it; a `true` flag beside it is passed through to the token
- * schema's refusal rather than silenced here.
+ * `inviterRetainsFiles`: the caller's `retain_files`, or a split-directory
+ * endpoint, which always runs in retain mode
+ * ({@link endpointRequiresRetainedFiles}). The accept kit reads it from here
+ * too, so the token and the sheet agree.
  */
 export function invitationDeclaresRetainedFiles(params: {
   connectionEndpoint?: ConnectionEndpointRequest;
@@ -404,144 +283,58 @@ export function invitationDeclaresRetainedFiles(params: {
 }
 
 /**
- * Generate a fresh single-use invitation from the inviter's CSV: a new shared
- * secret, the linkage terms derived from the file, and this app's PeerJS
- * endpoint, encoded to a string and also wrapped as a deep-link URL. Each call
- * mints a new secret, superseding any prior unsent invitation.
+ * Generate a single-use invitation from the inviter's CSV or profiled columns:
+ * a new shared secret, the linkage terms, and the endpoint, encoded and as a
+ * deep link. The inviter's own run must use the returned terms and rows. Every
+ * refusal is raised before the secret is generated.
  *
- * This is the inviter's CSV-parse boundary. It embeds the derived terms in the
- * token AND returns them with the parsed rows: the inviter's own exchange must
- * run on this same returned `linkageTerms` object and `rawRows`/`columns`, so
- * the embedded terms the acceptor adopts and the terms the inviter runs on are
- * one and the same. `metadata` and `standardization` are per-party and local
- * -- never embedded in the token.
- *
- * Fails closed BEFORE minting the secret (see the @throws below): no token is
- * ever produced for an unreadable or unlinkable file.
- *
- * @throws {InvitationFileError} when the file is unreadable, unlinkable, contains an
- *                               unnamed column, or sends one whose name is too long
- *                               to hold (all before any secret is minted).
- * @throws {UsageError} (from core) when authored terms declare a `payload.send`
- *                      that does not match the edited metadata's disclosed set, so
- *                      the token and the partner's consent screen cannot misstate
- *                      what is sent. A mint-boundary safety check --
- *                      `prepareForExchange`'s identical check runs too late for the
- *                      consent surface.
- * @throws {UsageError} (from core) when the terms' element transforms or the
- *                      authored standardization declare a step that expands one
- *                      value into several match candidates, which the run refuses
- *                      -- likewise before any secret is minted.
- * @throws {StandardizationTermsError} (from core) when the authored
- *                      standardization, reconciled to the emitted terms, still
- *                      contradicts them -- an unknown step function, the class the
- *                      reconciliation does not cover. The check every persisting
- *                      caller inherits (see {@link GeneratedInvitation.standardization}).
+ * @throws {InvitationFileError} when the file is unreadable, unlinkable, has an
+ *                               unnamed column, or sends a column whose name is
+ *                               too long.
+ * @throws {UsageError} (from core) when authored `payload.send` does not match
+ *                      the metadata's disclosed set, or a transform expands one
+ *                      value into several match candidates.
+ * @throws {StandardizationTermsError} (from core) when the reconciled
+ *                      standardization still contradicts the terms.
  */
 export async function generateInvitation(params: {
   inviterName: string;
-  /** The inviter's CSV; parsed here (see the function summary -- this is the
-   * parse boundary). The terms are derived from its columns. Exactly one of `file`
-   * or `profiledColumns` is set. */
+  /** The inviter's CSV. Exactly one of `file` or `profiledColumns` is set. */
   file?: InvitationCSVInput;
-  /** The field-delimiter choice `file` is read under -- the one the intake step
-   * read it by, so the columns this mint binds are the columns the operator saw.
-   * Omitted to read by a comma. Unused on the profiled-columns path, which
-   * parses nothing here. */
+  /** The delimiter the intake step read `file` with; a comma when omitted. */
   csvDelimiter?: string;
-  /**
-   * The column names profiled server-side for a console server-job transport
-   * -- the alternative to `file`. When supplied, the invitation binds to
-   * THESE columns (with the authored terms / metadata / standardization)
-   * WITHOUT re-parsing a File: on the console the file is never read in the
-   * browser. The fail-closed satisfiability re-check stays columns-based.
-   * The returned `rawRows` are empty on this path. Exactly one of `file` or
-   * `profiledColumns` must be set.
-   */
+  /** Column names the console profiled server-side, bound without reading a
+   * file in the browser; `rawRows` is then empty. */
   profiledColumns?: Array<string>;
   location: InvitationLocation;
-  /**
-   * Invitation lifetime in seconds; defaults to
-   * {@link INVITATION_LIFETIME_SECONDS} (one hour) and must be in the range
-   * `(0, MAX_INVITATION_LIFETIME_SECONDS]` (up to one year), as
-   * {@link assertInvitationLifetimeSeconds} enforces. The quick
-   * path omits it and takes the default; the inviter console passes the
-   * inviter's chosen lifetime. The bounds are enforced here so this function
-   * cannot mint an unbounded token.
-   */
+  /** Lifetime in seconds, default {@link INVITATION_LIFETIME_SECONDS}, bounded
+   * by {@link assertInvitationLifetimeSeconds}. */
   lifetimeSeconds?: number;
   /**
-   * Authored linkage terms to embed, from the AdvancedInvite model
-   * (`buildAdvancedTerms`). When supplied they are embedded as written, but
-   * for a `payload.send` left unset, which is stated from the metadata: the
-   * model seeded them from this file's columns, validated them through
-   * {@link safeParseLinkageTerms}, and confirmed at least one key is
-   * satisfiable, so the default-terms derivation is skipped and
-   * `inviterName` is not consulted (the authored terms hold their own
-   * `identity`). The file is still parsed, for `rawRows`/`columns` and for a
-   * fail-closed satisfiability re-check against these exact terms. Omitted
-   * on the quick path, where the terms are derived from the file's columns.
+   * Authored terms (`buildAdvancedTerms`), embedded as written apart from an
+   * unset `payload.send`, and re-checked for satisfiability against the file;
+   * `inviterName` is then unused. Omitted on the quick path, which derives the
+   * terms from the columns.
    */
   linkageTerms?: LinkageTerms;
-  /**
-   * The inviter's edited column metadata from the console's Matching & sharing
-   * section, paired
-   * with `linkageTerms`. Returned on {@link GeneratedInvitation} and threaded into
-   * the inviter's own exchange (never embedded in the token); the fail-closed
-   * satisfiability re-check binds against it too, so the verdict matches the run.
-   * Omitted on the quick path, where metadata is inferred downstream.
-   */
+  /** The inviter's edited column metadata, used in the satisfiability
+   * re-check and returned. Omitted on the quick path. */
   metadata?: Metadata;
-  /**
-   * The inviter's authored per-party standardization from the console's
-   * Cleaning tab, paired with `metadata`/`linkageTerms`. Returned on
-   * {@link GeneratedInvitation} -- reconciled to the emitted terms -- for the
-   * inviter's own exchange, and threaded into the fail-closed satisfiability
-   * re-check so the verdict matches the run that produces the authored
-   * fields' keys. Never embedded in the token. Omitted on the quick path,
-   * where standardization is inferred downstream.
-   */
+  /** The inviter's authored standardization, used in the satisfiability
+   * re-check and returned reconciled. Omitted on the quick path. */
   standardization?: Standardization;
-  /**
-   * The connection endpoint the token holds. Defaults to
-   * `{ channel: "webrtc" }`, which builds this app's PeerJS signaling locator
-   * from `location`, so a caller that omits this mints a webrtc invitation. A
-   * caller composing a file-drop or SFTP exchange supplies an explicit
-   * sftp/filedrop endpoint holding only authored locator fields; the
-   * credential-free invariant holds either way (see
-   * {@link ConnectionEndpointRequest}).
-   */
+  /** The token's endpoint; webrtc when omitted. */
   connectionEndpoint?: ConnectionEndpointRequest;
   /**
-   * Whether the exchange this invitation is for runs in retain mode -- the
-   * inviter's own `retain_files`, under which nothing is deleted and the
-   * rendezvous location becomes a permanent transcript. Held on the token as
-   * `inviterRetainsFiles` so the partner's acceptance display states it
-   * before they consent; a declaration only, applied by nothing on the
-   * accept side.
-   *
-   * Passed only for a file-sync exchange whose options the caller has
-   * resolved. On a shared-directory or webrtc endpoint, omitted (or false)
-   * declares nothing rather than declaring delete mode; a webrtc mint (no
-   * retain mode) leaves it alone, and the token schema refuses the pair
-   * outright.
-   *
-   * This flag ADDS to the resolved endpoint's own shape, which is the other
-   * ground for the declaration: a split `inbound_path`/`outbound_path`
-   * endpoint puts every connection built from it in retain mode
-   * ({@link invitationDeclaresRetainedFiles}), so the mint declares the
-   * retention whether or not the caller passed the flag.
+   * The inviter's resolved `retain_files` for a file-sync exchange, declared on
+   * the token as `inviterRetainsFiles` so the partner sees it before
+   * consenting. A split-directory endpoint declares it regardless
+   * ({@link invitationDeclaresRetainedFiles}); the token schema refuses it on
+   * webrtc.
    */
   retainsFiles?: boolean;
-  /**
-   * Which of the inviter's own input columns its result file holds beside the
-   * partner's values, as the Matching & sharing control offers it. Narrowed
-   * here against the terms this mint emits and returned on
-   * {@link GeneratedInvitation} already decided, so every surface holding a
-   * copy of the mint reads one value; never embedded in the token, and no part
-   * of what the partner agrees to. Omitted on the quick path, where the result
-   * is the file the partner's values alone make up.
-   */
+  /** Which of the inviter's own columns its result file includes, narrowed
+   * against the emitted terms and returned. Omitted on the quick path. */
   includeOwnColumns?: OwnColumnsChoice;
 }): Promise<GeneratedInvitation> {
   const {
@@ -556,29 +349,20 @@ export async function generateInvitation(params: {
     includeOwnColumns = "none",
   } = params;
 
-  // Exactly one input source: a browser File to parse, or the console's
-  // server-side profiled columns to bind directly. Neither and both are misuse.
+  // Exactly one input source; neither or both is misuse.
   if ((file === undefined) === (profiledColumns === undefined))
     throw new Error(
       "generateInvitation requires exactly one of file or profiledColumns",
     );
 
-  // Bound the selected lifetime before the CSV is read or anything is
-  // minted, so a lifetime past the one-year ceiling cannot mint an
-  // effectively-permanent token.
   assertInvitationLifetimeSeconds(lifetimeSeconds);
 
-  // Parse the inviter's CSV here, before anything is minted, so an unreadable
-  // file aborts with no token. loadCSVFileOffMainThread rejects on a
-  // read/stream error and on a row-level parse fault (an unterminated quote,
-  // a row whose field count differs from the header); wrap either into the
-  // typed user-actionable failure. On the console's profiled-columns path
-  // there is no file to read: the columns are bound directly and no rows are
-  // produced.
+  // An unreadable file or a row-level parse fault aborts with the typed
+  // failure before anything is minted.
   let rawRows: Array<CSVRow>;
   let columns: Array<string>;
-  // The mint's own re-parse reports what it stripped; the profiled path has no
-  // parse here, so its seat states the sanitation from the profile instead.
+  // The profiled path parses nothing here; its caller states the removal
+  // from the profile.
   let sanitizedPositions: Array<number> = [];
   if (file !== undefined) {
     try {
@@ -596,13 +380,8 @@ export async function generateInvitation(params: {
     columns = profiledColumns ?? [];
   }
 
-  // Refuse an unnamed-column header before any inference or minting.
-  // inferMetadata (the quick path) and the linkage grading below both reject
-  // an empty name by throwing a raw UsageError, and the authored path would
-  // put a `""` column into payload.send and bottom out in
-  // PayloadColumnSchema's name `.min(1)` ZodError at encode -- both of which
-  // the UI flattens into its generic retry dead-end. Show the typed,
-  // user-actionable failure here instead.
+  // Refuse an empty column name with the typed failure; past here it fails
+  // only as a raw error the UI shows as a generic retry.
   const emptyPositions = emptyColumnPositions(columns);
   if (emptyPositions.length > 0)
     throw new InvitationFileError({
@@ -611,25 +390,15 @@ export async function generateInvitation(params: {
       sanitizedPositions,
     });
 
-  // The terms to embed. The AdvancedInvite model's authored terms are
-  // embedded as written but for payload.send; the quick path derives them from
-  // the file's columns (inferred metadata filters the default keys to those
-  // the columns can satisfy). Both state payload.send from the disclosing
-  // metadata below. standardization is left to CSV inference downstream in
-  // both cases.
+  // Authored terms are embedded as written apart from payload.send; the quick
+  // path derives them from the columns.
   let linkageTerms: LinkageTerms;
-  // The metadata whose marks decide what is disclosed, so the mint-boundary
-  // bound below reads the same columns the send does.
+  // The metadata whose marks decide what is disclosed.
   let disclosureMetadata: Metadata;
   if (params.linkageTerms !== undefined) {
     linkageTerms = params.linkageTerms;
-    // The mint boundary stays fail-closed even though the editor already
-    // gates on satisfiability: a set holding a key the columns cannot
-    // produce, or one whose cleaning drops every record, mints a token whose
-    // own exchange the run boundary refuses -- after the partner has
-    // accepted it. Grade the AUTHORED terms (not the full defaults) with the
-    // authored standardization and metadata, the same three inputs the
-    // inviter's own run is graded on.
+    // Re-check with the inputs the inviter's own run is graded on: a token
+    // the run refuses would fail after the partner accepted it.
     const verdict = decideLinkageTermsVerdict(
       columns,
       linkageTerms,
@@ -643,13 +412,8 @@ export async function generateInvitation(params: {
     );
     if (refusal !== undefined)
       throw new InvitationFileError({ kind: "unlinkable", refusal });
-    // Reject a payload.send that does not match the disclosed set before the
-    // token is minted, so the partner's consent screen never misstates what
-    // is sent. The AdvancedInvite model derives payload.send from the
-    // disclosed columns, so this is a defense-in-depth safety check (against
-    // a regression or a non-editor caller): the exchange-time check in
-    // prepareForExchange runs too late for the consent surface. A send left
-    // unset is stated from the metadata below.
+    // A safety check behind the editor: the consent screen must not misstate
+    // what is sent, and prepareForExchange's check runs too late for it.
     if (params.metadata !== undefined)
       assertPayloadSendDisclosed(
         linkageTerms.payload,
@@ -663,12 +427,8 @@ export async function generateInvitation(params: {
     disclosureMetadata = metadata;
     linkageTerms = getDefaultLinkageTerms(inviterName, metadata);
 
-    // Block a file the minted terms cannot be run against, the same rule the
-    // inviter's own run boundary applies. Grade the EMBEDDED terms: the
-    // derivation keeps only the built-in keys the columns support, and a file
-    // with no recognized column gets empty metadata, which supports no key
-    // and is refused. The alert names the missing field types from the FULL
-    // default terms, since the narrowed set no longer declares them.
+    // The alert names missing field types from the full default terms, since
+    // the narrowed set no longer declares them.
     const refusal = linkageRefusalFor(
       decideLinkageTermsVerdict(columns, linkageTerms, undefined, metadata),
       assessLinkageSatisfiability(columns, getDefaultLinkageTerms(inviterName))
@@ -679,22 +439,14 @@ export async function generateInvitation(params: {
       throw new InvitationFileError({ kind: "unlinkable", refusal });
   }
 
-  // State terms.payload.send from the metadata that decides what is disclosed,
-  // as the CLI's mint does: the disclosed columns, or an empty list when none
-  // is, so the acceptor's receive list is exact rather than left unset.
+  // State payload.send from the disclosing metadata, as the CLI's mint does.
   linkageTerms = termsStatingDeclaredPayloadSend(
     linkageTerms,
     disclosureMetadata,
   );
 
-  // Refuse a disclosed column whose name is too long, before the secret is
-  // minted. The quick path infers its metadata from the CSV header, which no
-  // schema bounds, so the name would otherwise reach PayloadColumnSchema's
-  // `.max` at encode as a raw ZodError the UI flattens into its generic retry
-  // dead-end -- and a caller authoring its own terms without the editor's
-  // gate would mint a token naming a column the exchange cannot accept. Show
-  // the typed, user-actionable failure here, as the empty-name gate above
-  // does.
+  // Quick-path header names are unbounded, and encode would refuse an
+  // over-long one only as a raw ZodError.
   const overlongPositions =
     overlongDisclosedColumnPositions(disclosureMetadata);
   if (overlongPositions.length > 0)
@@ -703,37 +455,17 @@ export async function generateInvitation(params: {
       positions: overlongPositions,
     });
 
-  // Fail closed, before the token is minted, on terms or a standardization
-  // that declares a step expanding one value into several match candidates
-  // under a strategy that matches one value per record
-  // (assertFanOutImplemented, which prepareForExchange applies too late, at
-  // exchange time, for an invitation already sent). The CLI's config-source
-  // mint runs the same check. The editor's Generate gate is wider and fires
-  // first on the paths it covers; this is the mint-boundary safety check the
-  // quick path and any non-editor caller reach, covering the embedded terms'
-  // element transforms and this party's own authored cleaning.
+  // prepareForExchange refuses fan-out only at exchange time, after the
+  // invitation is sent; the CLI's mint runs the same check.
   assertFanOutImplemented(linkageTerms, params.standardization);
 
-  // Fail closed, before the token is minted, on a transform step whose compile
-  // throws -- a `pad_left` with no length, a multi-character fill, a function
-  // name this build does not recognize. The pipeline is built before the first
-  // row, so such a step aborts both parties' runs after the invitation has been
-  // accepted, with only out-of-band renegotiation left as the remedy. Covering
-  // the same two pipelines the fan-out check above does, and the whole refusal
-  // for every caller: this walk compiles at the mint only, and no editor
-  // validation pass runs it.
+  // A step whose compile throws would abort both runs after the invitation
+  // was accepted; no editor validation runs this check.
   assertTransformsCompile(linkageTerms, params.standardization);
 
-  // The per-party cleaning this mint stands behind, reconciled ONCE to the
-  // terms it embeds: every surface that keeps a copy of a mint -- the
-  // managed-exchange record a scheduled re-run replays, the CLI exchange file
-  // the save path writes, the console's server-job config -- reads it from
-  // here and hands it to `prepareForExchange` with no check of its own in
-  // between. The editor's draft keeps a disabled key's cleaning so
-  // re-enabling restores it, so the reconciliation belongs at the mint
-  // rather than at each surface that reads one. The assertion fails here,
-  // before a secret is minted, rather than at the operator's next unattended
-  // run.
+  // Reconcile the cleaning to the embedded terms once: every copy of the mint
+  // (managed record, CLI exchange file, console job config) passes it to
+  // prepareForExchange with no check of its own.
   const standardization =
     params.standardization === undefined
       ? undefined
@@ -741,9 +473,7 @@ export async function generateInvitation(params: {
   if (standardization !== undefined)
     assertStandardizationMatchesTerms(standardization, linkageTerms);
 
-  // Bound the token's lifetime so an intercepted invitation cannot be
-  // accepted indefinitely, measured from the mint. encodeInvitation
-  // re-checks the result is in the future as a safety check.
+  // encodeInvitation re-checks that the expiry is in the future.
   const expires = invitationExpires(lifetimeSeconds, Date.now());
   const sharedSecret = generateSharedSecret();
   const declaresRetainedFiles = invitationDeclaresRetainedFiles({
@@ -770,10 +500,7 @@ export async function generateInvitation(params: {
     columns,
     metadata: params.metadata,
     standardization,
-    // Decided ONCE against the terms this mint emits: a count-only exchange
-    // writes no result file for anyone, and terms that hand the result to the
-    // partner alone leave this party none of its own, so neither can reach a
-    // surface that keeps a copy of this mint.
+    // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
   };
 }
