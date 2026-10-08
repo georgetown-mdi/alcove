@@ -118,7 +118,7 @@ The two algorithms this spike measured land differently on each certificate, and
 
 Neither appears in the approved-algorithm table of any of the four. The 140-2 policy states the rule rather than leaving it to be inferred from table membership: use of the approved algorithms "and allowed algorithms listed in table 7" places the module in the Approved mode, while use of a Table 8 algorithm "will place the module in the non-Approved mode of operation". The EdDSA placement is deliberate -- the policy revision history records "Updated to move EdDSA to the non-Approved mode" at version 1.2, 26 January 2023.
 
-The last column is an absence rather than a placement: neither algorithm is named anywhere in 5438's security policy ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests)), so there is no status either algorithm could hold under that certificate. The module was read the same way, at the certified pin the image carried when `openssl list` was run in it: both primitives absent while the certified provider was active ([fips-variant-image.md](fips-variant-image.md)). The variant's engagement probe attempts an X25519 derivation at every container start and records the outcome without gating on it (`support/fips-probe/engagement.mjs`), which is where a certified module that carried one would show itself.
+The last column is an absence rather than a placement: neither algorithm is named anywhere in 5438's security policy ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests)), so there is no status either algorithm could hold under that certificate. The module reads the same way: `openssl list` in the shipped image at the `3.2.2-799901ad7ab41d45` pin, on 2026-10-08 (`linux/arm64`), reports both primitives absent from the fips provider while it is active, and both present in the default-configuration control ([fips-variant-image.md](fips-variant-image.md)). The variant's engagement probe attempts an X25519 derivation at every container start and records the outcome without gating on it (`support/fips-probe/engagement.mjs`), which is where a certified module that carried one would show itself.
 
 Three statements therefore have to be kept apart, and collapsing them is how this gets written wrongly:
 
@@ -130,7 +130,7 @@ The middle category is where the taxonomy is certificate-specific rather than st
 
 The direction of travel tightens. A newer certified provider withdraws X25519's reprieve rather than extending it, so "wait for a newer certificate" is not a strategy that helps here.
 
-The runtime measurements agree with the tables, which is a useful cross-check that the intended module was loaded: under a fips-only configuration on 3.0.8 and 3.0.9, an X25519 `deriveBits` succeeds while the below-minimum RSA keygen and the MD5 digest fail beside it -- exactly the behaviour of an algorithm the module serves without approving. Those are the OpenSSL Project's from-source builds of those versions, and the version number is not what decides it: AWS's certified 3.0.8 module has no X25519 at all, where the Project's build of that same version serves it.
+The runtime measurements agree with the tables, which is a useful cross-check that the intended module was loaded: under a fips-only configuration on 3.0.8 and 3.0.9, an X25519 `deriveBits` succeeds while the below-minimum RSA keygen and the MD5 digest fail beside it -- exactly the behaviour of an algorithm the module serves without approving. Those are the OpenSSL Project's from-source builds of those versions, and the version number is not what decides it: AWS's certified 3.0.8 module, read in the image while it was the pin, has no X25519 at all, where the Project's build of that same version serves it; nor does the certified `3.2.2-799901ad7ab41d45` module the image pins, read on 2026-10-08.
 
 ### A Table 13 row that does not say what it appears to say
 
@@ -194,7 +194,7 @@ What remains open is recorded in [fips-variant-image.md](fips-variant-image.md),
 Settled by measurement, in the image, on the base that ships:
 
 - X25519 is in the key-exchange algorithms of the OpenSSL Project builds of 3.0.8, 3.0.9 and 3.0.21, and is not in 3.5.7's.
-- Ed25519 is in every measured provider's signature algorithms. Every one of them is a from-source OpenSSL Project build; the vendor module the variant image includes has neither primitive.
+- Ed25519 is in every measured provider's signature algorithms. Every one of them is a from-source OpenSSL Project build; the vendor module the variant image includes has neither primitive, read in that image ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading)).
 - `crypto.subtle` AES-256-GCM, and `node:crypto`, both dispatch into a configured FIPS provider in this image, by the four-leg attribution above.
 - A 3.0.x provider cross-loads into the 3.5.7 libcrypto Node links, and serves.
 - A module that fails its integrity check stops the process from starting.
