@@ -1,13 +1,7 @@
-// The runtime rules a set of agreed linkage terms is held to, as opposed to the
-// shape a terms document must parse into (config/linkageTermsSchema.ts): which
-// linkage strategies implement `deduplicate` and many-to-many matching, what a
-// count-only (`psi-c`) document may not carry, when a payload direction
-// declares no column, and which swap-paired key elements a single transform
-// would read differently on the two parties.
-//
-// Each rule is stated once here and read from both directions: the terms schema
-// refuses a document that breaks it at parse time, and the exchange re-asserts
-// it over the terms actually agreed.
+// The runtime rules agreed linkage terms are held to, beyond the parsed shape
+// (config/linkageTermsSchema.ts). Each is stated once here: the schema refuses a
+// document breaking it at parse time, and the exchange re-asserts it over the
+// agreed terms.
 
 import { UsageError } from "./errors.js";
 import {
@@ -25,29 +19,18 @@ import type {
 import type { LinkageCardinality } from "./psi/link.js";
 
 /**
- * Which of the count-only shape rules a `psi-c` terms document breaks. The
- * rules this document holds only: the fifth refusal the specification lists
- * reads this party's own INPUT METADATA, which no linkage-terms document
- * holds, and lives beside the disclosure predicate it asks
- * ({@link countOnlyTransmitsColumn}, `config/metadata.ts`).
+ * Which count-only shape rule a `psi-c` terms document breaks. The rule on
+ * input metadata lives in `config/metadata.ts`
+ * ({@link countOnlyTransmitsColumn}).
  */
 export type CountOnlyShapeViolation =
   "linkageKeys" | "linkageStrategy" | "deduplicate" | "payload";
 
 /**
- * The refusal message for each count-only shape rule, keyed by the rule
- * broken. Read by every enforcement point -- the {@link LinkageTermsSchema}
- * refines below, {@link assertCountOnlyTermsShape}, and the surfaces' own
- * gates -- so an operator meets the same account wherever the document is
- * stopped.
- *
- * Each message names the rule broken and the two ways out: bring the
- * document into the count-only shape, or ask for the identifier-revealing
- * algorithm that admits it. Fixed literals only, never a value read off the
- * document -- a `psi-c` document can arrive on a partner's invitation, and
- * the parse-error path is left unsanitized (see protocolSetup).
- *
- * The rules and the reasoning behind each: docs/spec/PROTOCOL.md, PSI-C.
+ * The refusal message per count-only shape rule, read by every enforcement
+ * point so each states the same thing (docs/spec/PROTOCOL.md#psi-c). Fixed
+ * literals only: a `psi-c` document can arrive on a partner's invitation, and
+ * the parse-error path is not sanitized.
  */
 export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
   Record<
@@ -85,20 +68,10 @@ export const COUNT_ONLY_SHAPE_REFUSALS: Readonly<
 };
 
 /**
- * Which count-only shape rule a terms document breaks, or `undefined` when
- * it breaks none -- including for every `psi` document, which these rules
- * leave untouched.
- *
- * The single reading of the specified shape (docs/spec/PROTOCOL.md, PSI-C:
- * one key, one round, cascade only, no deduplication, no payload), so the
- * schema, the asserts, and the two front ends' own gates cannot come to
- * different verdicts. Order is the specification's listing order; a
- * document breaking several rules reports the first, and fixing it surfaces
- * the next.
- *
- * A document already in the specified shape is NOT a violation here: whether
- * the algorithm has a run path at all is `assertAlgorithmImplemented`'s
- * question, not this function's.
+ * The first count-only shape rule a terms document breaks, in the
+ * specification's order, or `undefined` (always for a `psi` document). The one
+ * reading the schema, the asserts and both front ends share
+ * (docs/spec/PROTOCOL.md#psi-c).
  */
 export function countOnlyShapeViolation(
   terms: LinkageTerms,
@@ -116,26 +89,10 @@ export function countOnlyShapeViolation(
 }
 
 /**
- * Refuse a `psi-c` terms document outside the shape the specification
- * admits, fail-closed: an over-broad count-only document is never narrowed
- * to one key, never promoted off `cascade`, and never downgraded to a `psi`
- * run -- narrowing or downgrading would deliver a disclosure the operator
- * did not agree to.
- *
- * Applied where a document is authored or minted, and again where a
- * received one is accepted ({@link deriveAcceptedLinkageTerms}); every PARSE
- * path inherits the same rules from {@link LinkageTermsSchema}'s refines, so
- * this is the boundary for a document built or mutated without a parse.
- *
- * Distinct from what `assertDeduplicateImplemented` and
- * `resolveLinkageCardinality` refuse: a count-only run reports a size and
- * hands neither party a record-by-record result, so there is no
- * multiplicity for those to reach.
- *
- * Plain {@link UsageError}, not an `OperatorConfigError`: on the accept side
- * these values are adopted verbatim from the partner's invitation, so the
- * fault is not unconditionally this operator's own. The messages hold only
- * fixed literals.
+ * Refuse a `psi-c` terms document outside the specified shape, never narrowing
+ * or downgrading it, for a document built or mutated without a parse (a parse
+ * applies the schema refines). A {@link UsageError}, since on the accept side
+ * the values are the partner's.
  */
 export function assertCountOnlyTermsShape(terms: LinkageTerms): void {
   const violation = countOnlyShapeViolation(terms);
@@ -144,19 +101,10 @@ export function assertCountOnlyTermsShape(terms: LinkageTerms): void {
 }
 
 /**
- * Whether one direction of a `payload` dictionary -- a document's `send` or
- * its `receive` -- is declared PRESENT and EMPTY, the explicit "no column
- * moves this way". An ABSENT direction declares nothing and binds neither
- * party: `validateCompatibility` reads it lazily, and every gate below
- * takes it as disclosure.
- *
- * The one reading behind each gate that binds a party to disclosing no
- * column: the three invitation withhold readings
- * (`consent/invitationSummary.ts`) and the run's own per-direction
- * disclosure resolution (`resolveDirectionDisclosesPayload`,
- * exchange/termsRefusals.ts),
- * so a consent screen and the run it describes cannot read a declaration
- * differently.
+ * Whether one `payload` direction is declared present and empty: no column
+ * moves this way. An absent direction declares nothing and is treated as
+ * disclosure. The one reading the consent summary and the run's disclosure
+ * resolution share (`resolveDirectionDisclosesPayload`).
  */
 export function declaresNoPayloadColumn(
   direction: ReadonlyArray<PayloadColumn> | undefined,
@@ -165,18 +113,9 @@ export function declaresNoPayloadColumn(
 }
 
 /**
- * Which linkage strategies realize a deduplicating match, one entry per
- * strategy. Both do: the cascade re-expands a match on a kept value across
- * the group in each round (`linkViaPSI`), and `single-pass` applies the same
- * per-side rules in the receiver's local replay over the index table it
- * already ships (`linkViaSinglePassPSI`).
- *
- * A total table over {@link LinkageStrategy} rather than a comparison
- * against one named strategy, so a strategy added to the union states its
- * own verdict here or the build fails -- neither the refusal below nor the
- * consent copy reading the same verdict can be left behind by an addition.
- * Typed `boolean` rather than the literal values so each reader's gate gives
- * a genuine runtime branch.
+ * Which linkage strategies realize a deduplicating match. A total table so a
+ * new strategy fails the build until it states a verdict; typed `boolean` so
+ * each reader's gate is a runtime branch.
  *
  * @internal exported for the tests that drive its readers over every
  * strategy, here and in the web editor's own Generate gate.
@@ -190,13 +129,9 @@ export const DEDUPLICATE_IMPLEMENTED_BY_STRATEGY: Record<
 };
 
 /**
- * Whether an exchange on `strategy` honors a `deduplicate: true` term.
- *
- * The one predicate behind both readers of that verdict:
- * {@link assertDeduplicateImplemented} refuses the pair it returns `false`
- * for, and the consent summary's `deduplicateApplied` withholds the
- * grouping disclosure copy on the same answer (`invitationSummary.ts`), so
- * the two cannot silently diverge.
+ * Whether an exchange on `strategy` honors a `deduplicate: true` term; the one
+ * predicate behind {@link assertDeduplicateImplemented} and the consent
+ * summary's `deduplicateApplied`.
  */
 export function deduplicateIsImplementedForStrategy(
   strategy: LinkageStrategy,
@@ -205,32 +140,11 @@ export function deduplicateIsImplementedForStrategy(
 }
 
 /**
- * Refuse a linkage-terms `deduplicate: true` the run cannot honor, before
- * any matching begins: the term under a linkage strategy that does not
- * match a deduplicating cardinality
- * ({@link deduplicateIsImplementedForStrategy}).
- *
- * Both shipped strategies match one today, so this refuses nothing an
- * operator can configure currently; it stays as the boundary a strategy
- * answering `false` in {@link DEDUPLICATE_IMPLEMENTED_BY_STRATEGY} is
- * stopped at. The agreed `(true, true)` pair takes a boundary of its own,
- * {@link assertBothSidedDeduplicateImplemented}, which this guard cannot
- * express since it reads one party's document alone.
- *
- * Applied where a document is authored or minted, where a received
- * invitation is accepted ({@link deriveAcceptedLinkageTerms}), and for both
- * parties' agreed terms by `resolveLinkageCardinality` after the terms
- * exchange, before the PSI rounds begin. The accept boundary is what keeps
- * a crafted pair off the consent surfaces.
- *
- * Reads the whole terms document rather than the two values, so a caller
- * cannot pass one party's `deduplicate` against the other's strategy.
- *
- * Plain {@link UsageError}, not an `OperatorConfigError`: the refusing party
- * is not necessarily the one whose value refuses, since
- * `resolveLinkageCardinality` asserts over the PARTNER's terms document too,
- * so the fault is not unconditionally this operator's own. The message
- * holds only fixed literals.
+ * Refuse a `deduplicate: true` the document's strategy cannot honor, before
+ * matching begins. Both shipped strategies honor it; this is the boundary for
+ * one that does not. Reads the whole document so a caller cannot pair one
+ * party's `deduplicate` with the other's strategy. A {@link UsageError}, since
+ * the refused document may be the partner's.
  */
 export function assertDeduplicateImplemented(terms: LinkageTerms): void {
   if (!terms.deduplicate) return;
@@ -245,27 +159,12 @@ export function assertDeduplicateImplemented(terms: LinkageTerms): void {
 }
 
 /**
- * Which linkage strategies resolve a per-(record, key) CANDIDATE SET -- a
- * `split_on` fan-out, a `generate_fuzzy_comparisons` expansion, or a key
- * declaring `swap` -- one entry per strategy.
- *
- * `single-pass` does: its receiver holds the sender's whole per-key candidate
- * structure and replays the cascade locally, so it is the only resolver in the
- * exchange (`linkViaSinglePassPSI`). The cascade does too: each round states
- * both parties' groupings on its two position-naming frames, both parties run
- * the one shared sweep over them, and the final pass states every position an
- * accepted record's pairs rest on (docs/spec/PROTOCOL.md, Per-round candidacy
- * under cascade). The entry gates the frames with the resolution: a strategy
- * answering `false` neither sends a grouping nor admits one, so its rounds
- * put the single-valued cascade's frames on the wire and accept what it
- * accepts.
- *
- * A total table over {@link LinkageStrategy} rather than a comparison against
- * one named strategy, so a `linkage_strategy` added later refuses a candidate
- * set until its own resolution is written rather than inheriting either of the
- * two specified ones (docs/spec/PROTOCOL.md, The combinations that stay
- * unsupported). Typed `boolean` rather than the literal values so each
- * reader's gate gives a genuine runtime branch.
+ * Which linkage strategies resolve a per-(record, key) candidate set (a
+ * fan-out, a fuzzy expansion or a `swap`). The entry also gates the cascade's
+ * grouping frames (docs/spec/PROTOCOL.md#per-round-candidacy-under-cascade).
+ * A total table, typed `boolean`, so a new strategy refuses a candidate set
+ * until its resolution is written
+ * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported).
  *
  * @internal exported for the tests that drive its readers over every strategy.
  */
@@ -288,21 +187,11 @@ export function candidateSetIsImplementedForStrategy(
 }
 
 /**
- * The refusal a terms document earns for declaring a per-(record, key)
- * candidate set under a combination that resolves none, or `undefined` where
- * it declares no candidate set or the combination resolves one.
- *
- * Two combinations earn it: a `linkage_strategy` off the candidate-set
- * allowlist ({@link candidateSetIsImplementedForStrategy}), and `psi-c`,
- * whose count-only round counts matched values where the resolution pairs
- * each record at most once (docs/spec/PROTOCOL.md, The combinations that stay
- * unsupported). Both messages are fixed literals, for the reason
- * {@link COUNT_ONLY_SHAPE_REFUSALS} gives.
- *
- * The single reading behind both boundaries that refuse it: the schema refine
- * that ends the parse, and the terms half of `assertFanOutImplemented`
- * (`linkageSatisfiability.ts`), which stays the boundary for a document built
- * without a parse.
+ * The refusal for a candidate set declared under `psi-c` or a strategy that
+ * resolves none, or `undefined`
+ * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported).
+ * Shared by the schema refine and `assertFanOutImplemented`; fixed literals
+ * only.
  */
 export function termsCandidateSetRefusal(
   terms: LinkageTerms,
@@ -317,21 +206,11 @@ export function termsCandidateSetRefusal(
 }
 
 /**
- * Which linkage strategies pair the BOTH-sided deduplicating cardinality,
- * one entry per strategy. Both do, applying the "many" rule to each party so
- * a matched value contributes the two groups' product: the cascade over the
- * two parties' exchanged association maps, `single-pass` in the receiver's
- * local replay over the index table it already ships, each holding the
- * resolved table to the round-diagonal shape the entity closure rests on
- * (docs/spec/PROTOCOL.md, Deduplicating cardinalities: many-to-X matching).
- *
- * Separate from {@link DEDUPLICATE_IMPLEMENTED_BY_STRATEGY}: that table asks
- * whether a strategy honors one party's `deduplicate: true` at all, this
- * asks whether it pairs the cardinality the agreed PAIR resolves to when
- * both parties declare it.
- *
- * A total table over {@link LinkageStrategy}, typed `boolean`, for the same
- * reason as its sibling.
+ * Which linkage strategies pair the many-to-many cardinality both parties'
+ * `deduplicate: true` resolves to
+ * (docs/spec/PROTOCOL.md#deduplicating-cardinalities-many-to-x-matching).
+ * A total table, typed `boolean`, like
+ * {@link DEDUPLICATE_IMPLEMENTED_BY_STRATEGY}.
  *
  * @internal exported for the tests that drive its readers over every
  * strategy.
@@ -345,14 +224,9 @@ export const MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY: Record<
 };
 
 /**
- * Whether an exchange on `strategy` pairs the both-sided deduplicating
- * cardinality.
- *
- * The one predicate behind both readers of that verdict:
- * {@link assertBothSidedDeduplicateImplemented} refuses the agreed pair it
- * returns `false` for, and the strategy's own fail-closed half reads it at
- * the boundary that would otherwise pair it (`singlePassResolves`,
- * `link.ts`), so the two cannot silently diverge.
+ * Whether an exchange on `strategy` pairs the many-to-many cardinality; the
+ * one predicate behind {@link assertBothSidedDeduplicateImplemented} and
+ * `singlePassResolves` (`link.ts`).
  */
 export function manyToManyIsImplementedForStrategy(
   strategy: LinkageStrategy,
@@ -361,21 +235,11 @@ export function manyToManyIsImplementedForStrategy(
 }
 
 /**
- * Whether the `deduplicate` pair these two documents make is one the
- * strategy does not pair: both parties declaring the term, under a strategy
- * answering `false` in {@link MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY}.
- *
- * The one predicate behind {@link assertBothSidedDeduplicateImplemented},
- * which throws on exactly this, and the consent summary's
- * `acceptorDeduplicateRefused` (`consent/invitationSummary.ts`), which states
- * the consequence at a seat before the accepting party sets its own side. The
- * two cannot come to different verdicts about a pair, so no seat states the
- * refusal for an invitation the accept takes, nor withholds it for one the
- * accept refuses.
- *
- * Reads both terms documents whole rather than the four values, for the same
- * reason {@link assertDeduplicateImplemented} does: a caller cannot pass one
- * party's `deduplicate` against the other's strategy.
+ * Whether both documents declare `deduplicate` under a strategy that does not
+ * pair many-to-many. The one predicate behind
+ * {@link assertBothSidedDeduplicateImplemented} and the consent summary's
+ * `acceptorDeduplicateRefused`. Reads both documents whole, like
+ * {@link assertDeduplicateImplemented}.
  */
 export function bothSidedDeduplicateRefused(
   localTerms: LinkageTerms,
@@ -389,30 +253,11 @@ export function bothSidedDeduplicateRefused(
 }
 
 /**
- * Refuse the agreed `(true, true)` pair on a linkage strategy that does not
- * pair the both-sided cardinality it resolves to, before any matching
- * begins.
- *
- * The both-sided sibling of {@link assertDeduplicateImplemented}: a
- * per-party reading answers `true` for a party whose own `deduplicate: true`
- * is perfectly runnable one-sided, so only a check over BOTH documents can
- * refuse the combination the strategy will not pair. Both shipped strategies
- * pair it, so this refuses nothing an operator can configure currently; it
- * stays as the boundary a strategy answering `false` in
- * {@link MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY} is stopped at.
- *
- * Called from `resolveLinkageCardinality` (`exchange.ts`) after the terms
- * exchange and before the first round. Symmetric in the pair -- it reads
- * both documents' strategies and refuses if EITHER fails to hold the
- * cardinality, so a refused pair aborts both parties at the same point.
- *
- * The message names the STRATEGY rather than the pair, read off
- * {@link MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY} so a strategy that later
- * pairs the cardinality is named the moment its entry says so.
- *
- * Plain {@link UsageError}, not an `OperatorConfigError`, for the same
- * reason as its sibling: this check reads the PARTNER's document as well as
- * this party's, so the fault is not unconditionally this operator's own.
+ * Refuse the agreed `(true, true)` pair where either document's strategy does
+ * not pair many-to-many, before the first round; symmetric, so both parties
+ * stop at the same point. Both shipped strategies pair it; this is the boundary
+ * for one that does not. A {@link UsageError}, since it reads the partner's
+ * document too.
  */
 export function assertBothSidedDeduplicateImplemented(
   localTerms: LinkageTerms,
@@ -442,11 +287,8 @@ export function assertBothSidedDeduplicateImplemented(
 }
 
 /**
- * Every {@link LinkageCardinality}, as a schema's accepted value set.
- *
- * The label set is closed: a record naming a cardinality this build does not
- * define is not a record this build can read, so its reader rejects the value
- * rather than passing it through.
+ * Every {@link LinkageCardinality}, as a schema's accepted value set. Closed:
+ * a reader rejects a cardinality this build does not define.
  */
 export const LINKAGE_CARDINALITIES = [
   "one-to-one",
@@ -455,10 +297,8 @@ export const LINKAGE_CARDINALITIES = [
   "many-to-many",
 ] as const satisfies readonly LinkageCardinality[];
 
-// The matching cardinality an agreed `deduplicate` pair resolves to, read from
-// the LOCAL party's own side, so the two parties of one deduplicating exchange
-// hold mirror labels for the single procedure they run (docs/spec/PROTOCOL.md,
-// Deduplicating cardinalities).
+// Read from the local party's side, so the two parties record mirror labels
+// (docs/spec/PROTOCOL.md#deduplicating-cardinalities-many-to-x-matching).
 function linkageCardinalityFromDeduplicate(
   localDeduplicate: boolean,
   partnerDeduplicate: boolean,
@@ -470,13 +310,9 @@ function linkageCardinalityFromDeduplicate(
 }
 
 /**
- * What the two parties' agreed `deduplicate` values resolved to for one
- * party: its own declared value, the value its partner presented at the terms
- * exchange, and the cardinality the pair gives this party.
- *
- * The two values are recorded beside the label rather than left implicit in
- * it, since the label is mirrored and a party reading `one-to-many` off its
- * own record cannot otherwise tell which side declared what.
+ * Both parties' agreed `deduplicate` values and the cardinality they give this
+ * party. The values are kept beside the mirrored label, which alone does not
+ * say which side declared what.
  */
 export interface ResolvedMatching {
   readonly localDeduplicate: boolean;
@@ -486,14 +322,9 @@ export interface ResolvedMatching {
 
 /**
  * The {@link ResolvedMatching} for a party holding `localTerms` against a
- * partner presenting `partnerTerms`.
- *
- * The one derivation the run boundary, the returned outcome, and the
- * self-attested record all read, so a party's record cannot name a cardinality
- * its run did not resolve to. It applies none of the refusals
- * `resolveLinkageCardinality` (`exchange.ts`) applies: a caller reaching the
- * run boundary passes through those first, and the record builder derives this
- * from terms that boundary already admitted.
+ * partner presenting `partnerTerms`; the one derivation the run, its outcome
+ * and its record read. Applies none of `resolveLinkageCardinality`'s refusals,
+ * which its callers pass first.
  */
 export function resolvedMatchingFromTerms(
   localTerms: LinkageTerms,
@@ -509,13 +340,8 @@ export function resolvedMatchingFromTerms(
   };
 }
 
-// The two elements a key's `swap` names, or undefined when the key declares no
-// swap or when a target resolves to no element of that key -- the dangling case
-// the referential-integrity refine owns, which every rule about a PAIR passes
-// over so the document is answered by the one message about its actual fault.
-// Element identity is `el.name ?? el.field`, the same expression the
-// element-identifier-uniqueness refine uses, so the rules cannot disagree about
-// which two elements a swap names.
+// Undefined for no swap or a dangling target, which the referential-integrity
+// refine reports. Identity matches the element-identifier-uniqueness refine.
 function swapPairedElements(
   key: LinkageKey,
 ): [LinkageKeyElement, LinkageKeyElement] | undefined {
@@ -527,18 +353,9 @@ function swapPairedElements(
   return [first, second];
 }
 
-// Whether two swap-paired positions declare the same transform pipeline. An
-// absent `transform` and an empty one are both the identity pipeline, so
-// both normalize to the empty list. Equality is by canonical encoding
-// rather than a structural walk, since a `params` record's key order is not
-// significant to the agreed terms, which are hashed in this same canonical
-// form.
-//
-// `transform.params` values are `z.unknown()`, so a partner value outside
-// the reproducible canonical domain (a JSON integer beyond 2^53) survives
-// schema parsing and then fails to encode. Such a pair is reported as
-// DIFFERING rather than propagating the throw: a pipeline that cannot be
-// encoded cannot be shown to match its partner position.
+// Compared by canonical encoding, as the agreed terms are hashed, so `params`
+// key order does not matter. A `params` value the encoding refuses (an integer
+// beyond 2^53 passes the schema) counts as differing.
 function swapPairDeclaresOneTransform(
   first: LinkageKeyElement,
   second: LinkageKeyElement,
@@ -555,20 +372,11 @@ function swapPairDeclaresOneTransform(
 }
 
 /**
- * Whether the two elements this key's `swap` names declare DIFFERENT
- * transforms, the shape {@link LinkageTermsSchema} refuses.
- *
- * A swap moves the field references and leaves each element's own transform
- * on its position, so only a pair whose transforms agree compares
- * like-normalized values on both sides of the swapped key. An omitted
- * transform and an empty one are the same identity pipeline, and two
- * `params` records differing only in key order are one pipeline.
- *
- * False for a key declaring no swap, and for one whose swap target resolves
- * to no element -- the dangling case the schema answers by its own rule.
- *
- * Exported so an authoring surface can name this fault before the schema
- * refuses the document.
+ * Whether the two elements this key's `swap` names declare different
+ * transforms, which {@link LinkageTermsSchema} refuses: a swap moves the field
+ * references and leaves each transform on its position
+ * (docs/EXCHANGE_REFERENCE.md#swapped-keys). False for no swap or a dangling
+ * target. Exported so authoring can name the fault first.
  */
 export function swapPairTransformsDiffer(key: LinkageKey): boolean {
   const paired = swapPairedElements(key);
@@ -578,20 +386,10 @@ export function swapPairTransformsDiffer(key: LinkageKey): boolean {
 }
 
 /**
- * Whether the two elements this key's `swap` names declare DIFFERENT
- * `generateFuzzyComparisons`, the sibling shape {@link LinkageTermsSchema}
- * refuses beside {@link swapPairTransformsDiffer}.
- *
- * A swap moves only the field references and leaves each position's own
- * expansion where it is, so a mismatched pair would expand a column one way
- * on the party that swaps and another on the party that does not.
- *
- * False for a key declaring no swap, and for one whose swap target resolves
- * to no element -- the dangling case the schema answers by its own rule.
- *
- * Exported for the key-read layer, which reads the pair's two positions as
- * interchangeable when it assembles the swapped order (`planKeyRead`,
- * standardization.ts).
+ * Whether the two elements this key's `swap` names declare different
+ * `generateFuzzyComparisons`, refused like {@link swapPairTransformsDiffer}.
+ * False for no swap or a dangling target. Exported for `planKeyRead`, which
+ * treats the pair's positions as interchangeable.
  */
 export function swapPairFuzzyComparisonsDiffer(key: LinkageKey): boolean {
   const paired = swapPairedElements(key);

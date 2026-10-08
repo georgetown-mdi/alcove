@@ -4,15 +4,9 @@ import { InternalConsistencyError } from "./errors.js";
 import type { HandshakeRole } from "./types.js";
 
 /**
- * The two roles in a WebRTC rendezvous. Each party derives a deterministic
- * PeerJS peer id from the shared secret and one of these role labels, so both
- * sides compute the same pair of ids without exchanging them: the inviter
- * listens on its `"inviter"` id, and the acceptor dials that id while
- * registering under its own `"acceptor"` id.
- *
- * Frozen so the readonly compile-time type also holds at runtime (mirroring
- * {@link AEAD_CONTEXTS} in auth.ts): a plain-JS caller cannot widen the set the
- * runtime guard in {@link deriveRendezvousPeerId} checks.
+ * The two roles in a WebRTC rendezvous, each the suffix of one derived peer id
+ * ({@link deriveRendezvousPeerId}). Frozen so a plain-JS caller cannot widen the
+ * set that function's runtime guard checks.
  */
 export const RENDEZVOUS_ROLES = Object.freeze(["inviter", "acceptor"] as const);
 
@@ -20,15 +14,10 @@ export const RENDEZVOUS_ROLES = Object.freeze(["inviter", "acceptor"] as const);
 export type RendezvousRole = (typeof RENDEZVOUS_ROLES)[number];
 
 /**
- * The key-exchange handshake role a rendezvous side takes: the acceptor dials
- * the data channel and sends the first handshake message, so it is the
- * initiator; the inviter listens and answers, so it is the responder.
- *
- * Every party, CLI or browser, resolves its side through this one rule. Two
- * peers that resolve the same side to different roles never complete a
- * handshake: two initiators reject each other's second message, and two
- * responders wait on each other. The interop conformance vectors
- * (packages/core/test/vectors/webrtc-interop-vectors.json) pin the values.
+ * The handshake role a rendezvous side takes: the acceptor dials and sends
+ * first (initiator), the inviter listens (responder). Every party, CLI or
+ * browser, resolves its role through this one rule; the conformance vectors
+ * pin it (docs/spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation).
  *
  * @throws {InternalConsistencyError} if `role` is not a known rendezvous role.
  */
@@ -43,42 +32,22 @@ export function handshakeRoleForRendezvousRole(
   );
 }
 
-/**
- * Length, in bytes, of the derived peer id before hex encoding. 16 bytes -> 32
- * hex characters: UUID-scale entropy (the PeerJS default id is a random UUID),
- * collision-resistant across secrets and far beyond guessing for any party that
- * does not hold the secret.
- */
+/** Derived peer id length in bytes before hex encoding: UUID-scale entropy. */
 const PEER_ID_BYTES = 16;
 
 /**
- * HKDF info prefix for the rendezvous-id derivation. Versioned and role-separated
- * exactly like {@link deriveAeadKey}'s `alcove-aead-v2:<context>`: the version
- * guards against an incompatible construction change, and the role label is the
- * domain separation that makes the inviter and acceptor ids distinct from the one
- * secret.
- *
- * CROSS-IMPLEMENTATION CONTRACT: the full construction -- HKDF-SHA-256 over the
- * decoded 32-byte secret, zero salt, info `alcove-webrtc-peerid-v2:<role>`,
- * first {@link PEER_ID_BYTES} bytes, lowercase hex -- is the shared rendezvous
- * contract between the web app and the CLI WebRTC transport. Both sides must
- * compute it identically or CLI<->web rendezvous breaks; do not change it without
- * changing every implementation in lockstep (and bumping the `v2` version).
+ * HKDF info prefix for the peer-id derivation, completed by the role. The whole
+ * construction is a cross-implementation contract between the CLI and the web
+ * app: change it in every implementation at once and bump the version
+ * (docs/spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation).
  */
 const PEER_ID_INFO_PREFIX = "alcove-webrtc-peerid-v2:";
 
 /**
- * Derive the deterministic PeerJS peer id for one rendezvous `role` from the
- * invitation's shared secret.
- *
- * Both parties hold the secret, so both compute both ids: the inviter derives and
- * listens on its `"inviter"` id; the acceptor derives the same `"inviter"` id to
- * dial and registers under its own `"acceptor"` id. The two roles use distinct
- * HKDF info, so the ids differ.
- *
- * The id is lowercase hex, never base64url: the PeerJS client validates ids
- * against `/^[A-Za-z0-9]+(?:[ _-][A-Za-z0-9]+)*$/`, which a base64url string can
- * fail (a leading, trailing, or doubled `-`/`_`), whereas hex always passes.
+ * Derive the PeerJS peer id for one rendezvous `role` from the invitation's
+ * shared secret. The inviter listens on the `"inviter"` id; the acceptor dials
+ * it and registers under the `"acceptor"` id. Lowercase hex because the PeerJS
+ * client refuses some ids a base64url string can produce.
  *
  * @param sharedSecret  The invitation's base64url-encoded 32-byte shared secret,
  *                      matching {@link SHARED_SECRET_REGEX}.
@@ -96,10 +65,7 @@ export async function deriveRendezvousPeerId(
         "32-byte value matching SHARED_SECRET_REGEX",
     );
   }
-  // Runtime guard for an untyped (plain-JS or `as`-cast) caller, mirroring
-  // deriveAeadKey: an unknown role would otherwise silently derive an id
-  // the two parties never agree on, showing up only as a rendezvous that
-  // never connects.
+  // For an untyped caller: an unknown role derives an id the peer never dials.
   if (!(RENDEZVOUS_ROLES as readonly string[]).includes(role)) {
     throw new InternalConsistencyError(
       `deriveRendezvousPeerId: unknown role ${JSON.stringify(role)}; ` +
@@ -116,19 +82,14 @@ export async function deriveRendezvousPeerId(
 }
 
 /**
- * Refused anywhere in a signaling `host`. Each is a delimiter the URL parser
- * acts on: `@` closes an authority's userinfo, `/` `?` and `#` end the host,
- * `\` folds to `/`, and whitespace either ends the parse or is stripped. None
- * of them appears in a hostname or an IP literal.
+ * URL delimiters refused anywhere in a signaling `host`; none appears in a
+ * hostname or an IP literal.
  */
 const HOST_AUTHORITY_DELIMITERS = /[@/?#\\]|\s/;
 
 /**
- * Refused anywhere in a signaling `path`, which is
- * {@link HOST_AUTHORITY_DELIMITERS} less the separator a path is made of. A
- * leading `/` is required separately: a value without one is not a mount point,
- * and where it lands depends on how the address is assembled rather than on
- * what the field means.
+ * {@link HOST_AUTHORITY_DELIMITERS} less `/`, refused anywhere in a signaling
+ * `path`. A leading `/` is required separately.
  */
 const PATH_AUTHORITY_DELIMITERS = /[@?#\\]|\s/;
 
@@ -136,21 +97,10 @@ const PATH_AUTHORITY_DELIMITERS = /[@?#\\]|\s/;
 export type SignalingLocationField = "host" | "path";
 
 /**
- * Which field of a signaling location has a shape that could move the address
- * a rendezvous dials, or `undefined` when neither does. The refusal both
- * consumers of an invitation endpoint apply before anything is dialed, since a
- * `host` and `path` that came off an invitation are partner-supplied and
- * bounded only by length.
- *
- * The rule is the union of what either party's assembly can be moved by,
- * because the two assemble the address differently: the CLI builds it through
- * the URL API and the browser's PeerJS client concatenates it as a string, so
- * a delimiter harmless under one lands the authority elsewhere under the other.
- * Which delimiter does what to which assembly is recorded in
- * docs/spec/WEBRTC_TRANSPORT.md.
- *
- * `host` is reported before `path` so a location failing both gets the refusal
- * for the field the address is built around.
+ * Which field of a partner-supplied signaling location could move the address
+ * a rendezvous dials, or `undefined` when neither does; `host` is reported
+ * first. The rule is the union of what moves the CLI's URL-API assembly and the
+ * browser's string concatenation (docs/spec/WEBRTC_TRANSPORT.md#broker-socket).
  */
 export function authorityMovingSignalingField(location: {
   host: string;
