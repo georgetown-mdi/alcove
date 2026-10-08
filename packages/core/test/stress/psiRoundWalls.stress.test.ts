@@ -15,9 +15,9 @@ import { stressMemory } from "./stressMemory";
 // linear memory, and which operation, if any, meets a limit first. Sizes are
 // PSI_STRESS_WALLS_SIZES (2^22 and 2^23 by default), run one at a time, each
 // only when the host has twice the memory the round is expected to need.
-// A round at 2^22 takes about two hours, so each has PSI_STRESS_WALLS_TIMEOUT_MS,
-// four hours by default. A worker that dies at its heap limit is a result,
-// recorded rather than failed.
+// A round at 2^22 took 2 h 44 min on a hosted 4-vCPU runner, so each has
+// PSI_STRESS_WALLS_TIMEOUT_MS, four hours by default. A worker that dies at
+// its heap limit fails the case once the figures up to it are printed.
 
 const PROBE = fileURLToPath(
   new URL("./psiRoundWalls.probe.ts", import.meta.url),
@@ -79,8 +79,16 @@ function report(result: WallsProbeResult): void {
   );
 }
 
+function expectInsideLimits(result: WallsProbeResult): void {
+  if (result.failure)
+    expect.fail(`${result.failure.operation} failed: ${result.failure.error}`);
+  for (const each of result.operations)
+    expect(each.wasmAfterBytes).toBeLessThanOrEqual(WASM_PSI_MEMORY_MAX_BYTES);
+  expect(result.matchesExpected).toBe(true);
+}
+
 test.for(SIZES)(
-  "a WebAssembly round of %i a side stays inside each worker's limits or names the one it meets",
+  "a WebAssembly round of %i a side stays inside each worker's limits",
   { timeout: PROBE_TIMEOUT_MS + 60_000 },
   (elements, ctx) => {
     const memory = stressMemory();
@@ -92,13 +100,29 @@ test.for(SIZES)(
     );
     const result = probe(elements);
     report(result);
-
-    for (const each of result.operations)
-      expect(each.wasmAfterBytes).toBeLessThanOrEqual(
-        WASM_PSI_MEMORY_MAX_BYTES,
-      );
-    if (result.failure)
-      expect(result.failure.error).toMatch(/ERR_WORKER_OUT_OF_MEMORY/);
-    else expect(result.matchesExpected).toBe(true);
+    expectInsideLimits(result);
   },
 );
+
+// A worker meets its heap limit only in a round of millions: a 20,000-element
+// round under a 2 MiB worker heap limit (Worker resourceLimits) still
+// completed, so the failed round here is a fixture.
+test("a round in which a worker runs out of heap fails", () => {
+  const ranOutOfHeap: WallsProbeResult = {
+    mode: MODE,
+    elements: 2 ** 23,
+    overlap: 1_000,
+    operations: [],
+    failure: {
+      operation: "createServerSetup",
+      error:
+        "Error: ERR_WORKER_OUT_OF_MEMORY: Worker terminated due to reaching " +
+        "memory limit: JS heap out of memory",
+    },
+    matchesExpected: false,
+    maxRssBytes: 0,
+  };
+  expect(() => expectInsideLimits(ranOutOfHeap)).toThrow(
+    /^createServerSetup failed: .*ERR_WORKER_OUT_OF_MEMORY/,
+  );
+});

@@ -1,36 +1,51 @@
-name: Nightly Core Stress Tests
+name: Core Stress Tests
 
-# Scheduled nightly run of the core PSI stress tier -- packages/core's `stress`
+# Scheduled runs of the core PSI stress tier -- packages/core's `stress`
 # vitest project (npm run test:stress -w packages/core). That tier is excluded
 # from `npm run test` and from every PR gate so the merge-time path stays fast;
 # the tests exercise the seclink fork's large-dataset path -- e.g.
 # Server#createSetupMessage past the ~125k spread-argument cliff that once threw
 # "Maximum call stack size exceeded" -- which is too heavy to run on every push.
-# A nightly schedule is where that coverage belongs, catching a regression in
-# the large-N path without slowing the PR gate.
+# A schedule is where that coverage belongs, catching a regression in the
+# large-N path without slowing the PR gate.
 #
 # Runs only on `schedule` and manual `workflow_dispatch` -- never on push or
-# pull_request -- so the PR gate is unaffected. Each file the `stress` project
-# lists runs in a job of its own, so a stress file added under test/stress/ is
-# picked up here without an edit.
+# pull_request -- so the PR gate is unaffected. Two tiers share this file:
+# nightly runs every file the `stress` project lists except the engine files
+# named in WEEKLY_MINUTES below, which run weekly: each took from 14 minutes to
+# nearly three hours on a hosted runner. A stress file added under test/stress/
+# joins the nightly tier without an edit. Each file runs in a job of its own,
+# except the short files named in GROUPED, which share one.
 
 on:
   schedule:
-    # 04:17 UTC nightly, an hour clear of the weekly scans in codeql.yaml and
-    # dependency_audit.yaml, and off the hour per GitHub's guidance to avoid
-    # top-of-hour congestion on the shared scheduler. Two GitHub behaviors
-    # to know: a `schedule` trigger only fires from the workflow as it exists on the
+    # 04:17 UTC daily, the nightly tier: an hour clear of the weekly scans in
+    # codeql.yaml and dependency_audit.yaml, and off the hour per GitHub's
+    # guidance to avoid top-of-hour congestion on the shared scheduler. Two
+    # GitHub behaviors to know: a `schedule` trigger only fires from the workflow as it exists on the
     # default branch, so no nightly runs until this file lands there (use the manual
     # dispatch below to exercise it before then); and GitHub disables a scheduled
     # workflow after ~60 days without repo activity, emailing the last committer --
     # re-enable it from the Actions tab if a long-quiet repo needs this guard back.
+    # The listing step below maps each cron to its tier, so a cron edited here
+    # is edited there too.
     - cron: "17 4 * * *"
+    # 06:17 UTC Sunday, the weekly tier: clear of the 03:43-04:57 nightlies and
+    # of the Monday 05:30-05:47 weekly scans, on the week's quietest day for
+    # pull-request runs.
+    - cron: "17 6 * * 0"
   # On-demand run, e.g. to confirm a stress fix without waiting for the schedule.
   workflow_dispatch:
+    inputs:
+      tier:
+        description: "Which stress files to run"
+        type: choice
+        options: [all, nightly, weekly]
+        default: all
 
 # One stress run at a time per ref; do not cancel an in-flight run (it is doing
-# real, minutes-long work) -- this only guards a manual dispatch racing the
-# nightly schedule.
+# real, minutes-long work) -- this only guards a manual dispatch racing a
+# scheduled run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
@@ -45,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
-      files: ${{ steps.list.outputs.files }}
+      jobs: ${{ steps.list.outputs.jobs }}
       sha: ${{ steps.list.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -56,41 +71,89 @@ jobs:
           ref: staging
       - uses: ./.github/actions/setup
       # Vitest lists the files, so the jobs below run exactly what the `stress`
-      # project includes.
+      # project includes. Each job's limit is above the longest per-test limit
+      # in its files, so a slow test fails on its own timeout instead of being
+      # cut off; a new file whose test sets a longer one needs its own limit.
+      # A named file the project no longer lists fails this step, so a rename
+      # cannot drop a file from its tier.
       - name: List the files of the stress project
         id: list
         working-directory: packages/core
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_TIER: ${{ inputs.tier }}
         run: |
           set -euo pipefail
-          files=$(npx vitest list --project stress --filesOnly --json | node -e '
+          case "$SCHEDULE" in
+            "17 4 * * *") tier=nightly ;;
+            "17 6 * * 0") tier=weekly ;;
+            "") tier=$DISPATCH_TIER ;;
+            *) echo "::error::No stress tier runs on the schedule $SCHEDULE." && exit 1 ;;
+          esac
+          export TIER=$tier
+          jobs=$(npx vitest list --project stress --filesOnly --json | node -e '
             const { relative } = require("node:path");
+            // Measured job walls on a hosted runner: psiRoundWalls 2 h 45 min
+            // (per-test limit 241 min), wasmMatchSlices 40 min (61 min),
+            // wasmMaskingGrowth 14 to 21 min (31 min).
+            const WEEKLY_MINUTES = {
+              "test/stress/psiRoundWalls.stress.test.ts": 270,
+              "test/stress/wasmMatchSlices.stress.test.ts": 90,
+              "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
+            };
+            // Each took 0.5 to 2.5 minutes as a job of its own.
+            const GROUPED = [
+              "test/stress/createSetupMessageLarge.stress.test.ts",
+              "test/stress/findAllScanBudget.stress.test.ts",
+              "test/stress/identifyIntersectionLarge.stress.test.ts",
+              "test/stress/psiSetFraming.stress.test.ts",
+              "test/stress/roundDedupPastMapLimit.stress.test.ts",
+              "test/stress/standardizedFieldRowCount.stress.test.ts",
+            ];
+            // The longest nightly job measured 8 min 47 s (recordPastStringCap);
+            // the longest nightly per-test limit is 41 min (inputPreparation).
+            const NIGHTLY_MINUTES = 60;
             let input = "";
             process.stdin.on("data", (chunk) => (input += chunk));
             process.stdin.on("end", () => {
               const files = JSON.parse(input)
                 .map((each) => relative(process.cwd(), each.file))
                 .sort();
-              if (files.length === 0)
-                throw new Error("the stress project lists no test files");
-              console.log(JSON.stringify(files));
+              const missing = [...Object.keys(WEEKLY_MINUTES), ...GROUPED]
+                .filter((name) => !files.includes(name));
+              if (missing.length > 0)
+                throw new Error(`the stress project lists no ${missing.join(", ")}`);
+              const single = (file, minutes) => ({ name: file, files: file, minutes });
+              const weekly = files
+                .filter((file) => file in WEEKLY_MINUTES)
+                .map((file) => single(file, WEEKLY_MINUTES[file]));
+              const nightly = [
+                { name: "short files", files: GROUPED.join(" "), minutes: NIGHTLY_MINUTES },
+                ...files
+                  .filter((file) => !(file in WEEKLY_MINUTES) && !GROUPED.includes(file))
+                  .map((file) => single(file, NIGHTLY_MINUTES)),
+              ];
+              const jobs = { all: [...nightly, ...weekly], nightly, weekly }[process.env.TIER];
+              if (jobs === undefined)
+                throw new Error(`no stress tier ${process.env.TIER}`);
+              console.log(JSON.stringify(jobs));
             });
           ')
-          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "jobs=$jobs" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   stress:
-    name: Core PSI stress (${{ matrix.file }})
+    name: Core PSI stress (${{ matrix.job.name }})
     needs: files
     runs-on: ubuntu-latest
-    # Above the longest per-test limit a stress file sets (psiRoundWalls, 240
-    # minutes), so a slow test fails on its own timeout instead of being cut off
-    # here. Per-file wall times are in the verbose output of each nightly run.
-    timeout-minutes: 270
+    # Sized per job in the listing step. Per-file wall times are in the verbose
+    # output of each run.
+    timeout-minutes: ${{ matrix.job.minutes }}
     strategy:
-      # One failing file must not cancel the others' runs.
+      # One failing job must not cancel the others' runs.
       fail-fast: false
       matrix:
-        file: ${{ fromJSON(needs.files.outputs.files) }}
+        job: ${{ fromJSON(needs.files.outputs.jobs) }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -104,21 +167,23 @@ jobs:
       # a reporter replaces the config's list, so the skipped-test reporter is
       # named again.
       - name: Stress tests (core PSI)
-        run: >-
-          npm run test:stress -w packages/core --
-          --reporter=verbose
-          --reporter=../../scripts/lib/skippedLegReporter.mjs
-          "$STRESS_FILE"
+        run: |
+          set -euo pipefail
+          read -ra files <<< "$STRESS_FILES"
+          npm run test:stress -w packages/core -- \
+            --reporter=verbose \
+            --reporter=../../scripts/lib/skippedLegReporter.mjs \
+            "${files[@]}"
         env:
-          STRESS_FILE: ${{ matrix.file }}
+          STRESS_FILES: ${{ matrix.job.files }}
           # Raise the createSetupMessage permutation run above the 200k local
           # default for heavier nightly coverage past the ~125k overflow cliff.
           # createSetupMessageLarge sets no timeout of its own, so the stress
           # project's 300s per-test timeout bounds it: that test is a synchronous
           # WASM call vitest cannot interrupt, so a value that pushes it past 300s
-          # runs to completion and only then is marked failed. At ~0.46ms/element
-          # locally, 250k (~120s) leaves margin on a slower hosted runner. Going
-          # higher needs that test to set a longer timeout of its own.
+          # runs to completion and only then is marked failed. 250k took 90 s
+          # and 124 s on hosted runners. Going higher needs that test to set a
+          # longer timeout of its own.
           # PSI_STRESS_E2E_N (the full-round test) is intentionally left at its
           # 25k default -- a heavier end-to-end round costs minutes.
           PSI_STRESS_N: "250000"
