@@ -5,13 +5,15 @@ After=docker.service alcove-broker.service network-online.target
 Wants=network-online.target
 
 [Service]
+# install.sh writes the image reference from infra/broker/Dockerfile here.
+EnvironmentFile=/etc/alcove-broker/front-image.env
 ExecStartPre=-/usr/bin/docker rm -f alcove-broker-tls
 ExecStart=/usr/bin/docker run --rm --name alcove-broker-tls \
   --network host --read-only --tmpfs /tmp \
   --log-driver journald \
   -v /etc/alcove-broker/nginx.conf:/etc/nginx/nginx.conf:ro \
   -v /etc/alcove-broker/tls:/etc/nginx/tls:ro \
-  nginx:1.29-alpine
+  ${ALCOVE_BROKER_FRONT_IMAGE}
 ExecStop=-/usr/bin/docker stop alcove-broker-tls
 Restart=always
 RestartSec=5

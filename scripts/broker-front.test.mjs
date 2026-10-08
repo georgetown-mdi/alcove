@@ -1,6 +1,8 @@
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -311,11 +313,30 @@ describe("renew.sh", () => {
   });
 });
 
+/** The FROM reference of a Dockerfile: the front image's one home. */
+const fromReference = (dockerfile) =>
+  [...readFileSync(dockerfile, "utf8").matchAll(/^FROM (.*)$/gm)].map(
+    (match) => match[1],
+  );
+
+const PINNED_NGINX = /^docker\.io\/library\/nginx:[^@\s]+@sha256:[0-9a-f]{64}$/;
+
 describe("install.sh", () => {
   const NAME = "broker.example.org";
+  const FRONT_UNIT = "alcove-broker-tls.service";
+
+  // A copy of infra/broker whose Dockerfile pins the tracked tag to a fixture
+  // digest, so these runs do not depend on the tracked pin.
+  const pinnedImage = (digestByte = "a") =>
+    `${fromReference(join(BROKER, "Dockerfile"))[0].replace(/@.*$/, "")}@sha256:${digestByte.repeat(64)}`;
 
   const fixtureHost = () => {
     const root = fixtureDir("broker-install-");
+    const broker = join(root, "broker");
+    cpSync(BROKER, broker, { recursive: true });
+    const pinFront = (image) =>
+      writeFileSync(join(broker, "Dockerfile"), `FROM ${image}\n`);
+    pinFront(pinnedImage());
     const bin = join(root, "bin");
     const usrBin = join(root, "usr/bin");
     const etc = join(root, "etc/alcove-broker");
@@ -340,6 +361,7 @@ describe("install.sh", () => {
 
     const calls = join(root, "calls.log");
     const active = join(root, "front-active");
+    const brokerActive = join(root, "broker-active");
     const serial = join(root, "serial");
     const acmeEnv = join(root, "acme.env");
     writeFileSync(calls, "");
@@ -353,7 +375,13 @@ describe("install.sh", () => {
       join(bin, "systemctl"),
       [
         `printf 'systemctl %s\\n' "$*" >> '${calls}'`,
-        `if [ "$1" = is-active ]; then [ "$3" = alcove-broker-tls.service ] && [ -f '${active}' ]; fi`,
+        `if [ "$1" = is-active ]; then`,
+        `  case "$3" in`,
+        `    alcove-broker-tls.service) [ -f '${active}' ] ;;`,
+        `    alcove-broker.service) [ -f '${brokerActive}' ] ;;`,
+        `    *) false ;;`,
+        `  esac`,
+        `fi`,
       ].join("\n"),
     );
     writeStub(
@@ -402,14 +430,18 @@ describe("install.sh", () => {
     );
 
     const conf = join(etc, "nginx.conf");
+    const unitDir = join(root, "etc/systemd/system");
     return {
       conf,
       etc,
+      unitDir,
+      pinFront,
       startFront: () => writeFileSync(active, ""),
+      startBroker: () => writeFileSync(brokerActive, ""),
       renewTo: (next) => writeFileSync(serial, next),
       run: ({ broken = false } = {}) => {
         writeFileSync(calls, "");
-        const result = spawnSync(BASH, [join(BROKER, "install.sh")], {
+        const result = spawnSync(BASH, [join(broker, "install.sh")], {
           encoding: "utf8",
           env: {
             ...process.env,
@@ -486,5 +518,130 @@ describe("install.sh", () => {
       "docker exec alcove-broker-tls nginx -s reload",
     );
     expect(result.calls.some((call) => call.includes("restart"))).toBe(false);
+  });
+
+  it("restarts nothing and renews nothing when a change fails nginx -t, even with a changed broker unit", () => {
+    const host = fixtureHost();
+    expect(host.run().status).toBe(0);
+    host.startBroker();
+    host.startFront();
+    const brokerUnit = join(host.unitDir, "alcove-broker.service");
+    appendFileSync(brokerUnit, "# an earlier unit\n");
+    const brokerUnitBefore = readFileSync(brokerUnit, "utf8");
+    const frontUnitBefore = readFileSync(
+      join(host.unitDir, FRONT_UNIT),
+      "utf8",
+    );
+    const certBefore = readFileSync(
+      join(host.etc, "tls/fullchain.pem"),
+      "utf8",
+    );
+    host.renewTo("2");
+    const result = host.run({ broken: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("fails nginx -t");
+    expect(
+      result.calls.filter((call) =>
+        /^systemctl (restart|start|stop)\b/.test(call),
+      ),
+    ).toEqual([]);
+    expect(result.calls).not.toContain("lego");
+    expect(result.calls.filter(touchesFront)).toEqual([]);
+    expect(readFileSync(brokerUnit, "utf8")).toBe(brokerUnitBefore);
+    expect(readFileSync(join(host.unitDir, FRONT_UNIT), "utf8")).toBe(
+      frontUnitBefore,
+    );
+    expect(readFileSync(join(host.etc, "tls/fullchain.pem"), "utf8")).toBe(
+      certBefore,
+    );
+  });
+
+  it("checks a change before restarting a changed broker unit", () => {
+    const host = fixtureHost();
+    expect(host.run().status).toBe(0);
+    host.startBroker();
+    appendFileSync(
+      join(host.unitDir, "alcove-broker.service"),
+      "# an earlier unit\n",
+    );
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    const check = result.calls.indexOf("nginx -t mode=600 cert=yes");
+    const restart = result.calls.indexOf(
+      "systemctl restart alcove-broker.service",
+    );
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(restart).toBeGreaterThan(check);
+  });
+
+  it("refuses to obtain a certificate under a running front", () => {
+    const host = fixtureHost();
+    host.startFront();
+    const result = host.run();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("has no certificate");
+    expect(result.calls).not.toContain("lego");
+    expect(result.calls.filter(touchesFront)).toEqual([]);
+  });
+
+  it("refuses a front image without a digest before touching anything", () => {
+    const host = fixtureHost();
+    host.pinFront(pinnedImage().replace(/@.*$/, ""));
+    const result = host.run();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("pinned by digest");
+    expect(
+      result.calls.filter((call) => /^(docker|systemctl|lego)\b/.test(call)),
+    ).toEqual([]);
+  });
+
+  it("runs the front on the image it checked, and restarts it when the pin moves", () => {
+    const host = fixtureHost();
+    expect(host.run().status).toBe(0);
+    host.startFront();
+    host.pinFront(pinnedImage("b"));
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.calls).toContain(`docker pull -q ${pinnedImage("b")}`);
+    expect(result.calls).toContainEqual(
+      expect.stringMatching(
+        new RegExp(` --entrypoint nginx ${pinnedImage("b")} -t$`),
+      ),
+    );
+    expect(readFileSync(join(host.etc, "front-image.env"), "utf8")).toBe(
+      `ALCOVE_BROKER_FRONT_IMAGE=${pinnedImage("b")}\n`,
+    );
+    expect(result.calls).toContain(`systemctl restart ${FRONT_UNIT}`);
+  });
+});
+
+describe("the front image pin", () => {
+  const unit = readFileSync(
+    join(BROKER, "alcove-broker-tls.service"),
+    "utf8",
+  ).replace(/\\\n/g, " ");
+
+  it("is one registry-qualified nginx reference with an index digest", () => {
+    const references = fromReference(join(BROKER, "Dockerfile"));
+    expect(references).toHaveLength(1);
+    expect(references[0]).toMatch(PINNED_NGINX);
+  });
+
+  it("is what the front unit runs, from the file install.sh writes", () => {
+    expect(unit).toMatch(
+      /^EnvironmentFile=\/etc\/alcove-broker\/front-image\.env$/m,
+    );
+    const execStart = /^ExecStart=(.*)$/m.exec(unit)?.[1].trim().split(/\s+/);
+    expect(execStart?.at(-1)).toBe("${ALCOVE_BROKER_FRONT_IMAGE}");
+  });
+
+  it("is named nowhere else in infra/broker", () => {
+    for (const entry of readdirSync(BROKER, { withFileTypes: true })) {
+      if (!entry.isFile() || entry.name === "Dockerfile") continue;
+      expect(
+        readFileSync(join(BROKER, entry.name), "utf8"),
+        entry.name,
+      ).not.toMatch(/nginx:\d/);
+    }
   });
 });

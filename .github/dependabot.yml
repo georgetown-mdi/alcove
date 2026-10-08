@@ -148,6 +148,23 @@ updates:
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
 
+  # The broker TLS front's nginx image. infra/broker/Dockerfile is a single
+  # pinned FROM that install.sh reads and nothing builds, in the same
+  # tag@sha256: form as infra/relay/Dockerfile, so a bump here is the same
+  # one-line digest edit. The front terminates TLS for signaling and reads the
+  # certificate's key, so an nginx advisory reaches it.
+  - package-ecosystem: docker
+    directory: "/infra/broker"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+
   # GitHub Actions used by the workflows in .github/workflows. Every action is
   # tag-pinned (e.g. actions/checkout@v7) except cloudflare/wrangler-action,
   # which holds the Pages deploy token and is pinned to a commit with its

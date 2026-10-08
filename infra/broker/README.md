@@ -19,7 +19,8 @@ The front listens on IPv4 only.
 | `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as `nobody`, on `127.0.0.1:9411` only |
 | `nginx.conf.tmpl` | The front's nginx configuration, with the host's name as `__ALCOVE_BROKER_NAME__`: TLS on 8443, `/api/` proxied to the broker with WebSocket upgrade, everything else `404` |
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
-| `alcove-broker-tls.service` | The front: `nginx:1.29-alpine` under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
+| `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
+| `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
 | `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; restarts the front only when the certificate or key changed |
 | `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 04:30 UTC plus up to 15 minutes, after the relay's own renewal window |
 | `install.sh` | Installs all of the above and converges on a re-run, then checks `/api/health` through the front |
@@ -64,8 +65,9 @@ All three services write to the host's journal, under the retention the relay's 
 - **The front's error log** is at `warn`, and the test fails below `warn`. A request line in one of its lines can include the query string ([PRIVACY.md](../../PRIVACY.md)).
 
 A change to the template reaches a running front through `install.sh`.
-It renders the configuration to a root-only file under `/etc/alcove-broker` and checks it with `nginx -t` in a throwaway container of the front's image, mounted as the unit mounts it with the installed certificate (on a first install, renewal obtains the certificate before the check).
-A configuration that fails the check stops the install with `/etc/alcove-broker/nginx.conf` and the running front unchanged.
+It renders the configuration to a root-only file under `/etc/alcove-broker` and checks it with `nginx -t` in a throwaway container of the pinned image, mounted as the unit mounts it with the installed certificate, before it restarts the broker or runs a renewal.
+Only a first install, which has no certificate yet, runs a renewal before the check, and the front is not running then: `install.sh` refuses a running front with no certificate.
+A configuration that fails the check stops the install with both units, the certificate, `/etc/alcove-broker/nginx.conf` and the running front unchanged.
 One that passes is copied over `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it) and the front reloads it, keeping open WebSockets.
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 
