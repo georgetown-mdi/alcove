@@ -425,11 +425,12 @@ export interface PreflightRunResult {
 /**
  * Open the run's machine-interface stream, unless the command passes the one
  * it opened, and run {@link runProtocol}'s refusals decided from local inputs,
- * for a command whose own first network contact comes before `runProtocol`. A refusal emits the run's one terminal
- * `error` event, in the "prepare" phase `runProtocol` would have given it,
- * and is rethrown. Resolves with the open stream, which the caller passes to
- * `runProtocol` as `fileSyncRuntime.eventStream`; `runProtocol` runs the same
- * checks again, and a first round already counted is not counted twice.
+ * for a command whose own first network contact comes before `runProtocol`. A
+ * refusal emits the run's one terminal `error` event, in the "prepare" phase
+ * `runProtocol` would have given it, and is rethrown. Resolves with the open
+ * stream, which the caller passes to `runProtocol` as
+ * `fileSyncRuntime.eventStream`; `runProtocol` runs the same checks again, and
+ * a first round already counted is not counted twice.
  *
  * `signing` and `writeRecord` are the same run's signed-receipt inputs, so a
  * signed run this preflight refuses still shows
