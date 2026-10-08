@@ -16,6 +16,7 @@ stands, from a direction still open to a decision taken and built.
 | [backup-import-per-exchange-guard.md](backup-import-per-exchange-guard.md) | Decided on the maintainer's ruling and built. |
 | [bound-transformed-value.md](bound-transformed-value.md) | Decided and built, by a 3-panelist design panel. |
 | [broker-runtime-closure.md](broker-runtime-closure.md) | Decided and built. |
+| [browser-sftp-proxy.md](browser-sftp-proxy.md) | Design only, not built; the product scope and seven other choices are left open. |
 | [cascade-fan-out.md](cascade-fan-out.md) | Directed; the spec has landed, the realization is pending. |
 | [claude-md-spawn-cost.md](claude-md-spawn-cost.md) | Decided and built; what each spawn type receives, the orchestrator-only share under two partitions, and the split taken against it. |
 | [cli-webrtc-attempt-cycle.md](cli-webrtc-attempt-cycle.md) | Decided on the maintainer's ruling and built, after a real-broker measurement. |
