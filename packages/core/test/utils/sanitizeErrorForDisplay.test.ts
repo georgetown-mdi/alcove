@@ -653,6 +653,28 @@ describe("keepFirstPartyLineBreaks", () => {
     }
   });
 
+  test("costs a raw block holding every control character what its marked form renders", () => {
+    // The cost is measured on the raw block, before the mark replaces each
+    // control character, so each replacement has to be as wide as the escape
+    // the unmarked text would get. The class is scanned whole, so a control
+    // character outside the one-byte escape range would show here too.
+    const controls: Array<string> = [];
+    for (let codePoint = 0; codePoint <= 0x10ffff; codePoint += 1) {
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) continue;
+      const character = String.fromCodePoint(codePoint);
+      if (character !== "\n" && /^\p{Cc}$/u.test(character))
+        controls.push(character);
+    }
+    expect(controls).toHaveLength(64);
+    const lines = ["head", controls.join(""), `a ${controls.join(" ")} z`];
+    const block = lines.join("\n");
+    const rendered = sanitizeErrorForDisplay(
+      keepFirstPartyLineBreaks(new Error(block), lines),
+    );
+    expect(rendered).not.toContain(DISPLAY_TRUNCATION_MARKER);
+    expect(rendered.length).toBe(renderedDisplayCostKeepingLineBreaks(block));
+  });
+
   test("a line opening on the cause separator's text forges no link", () => {
     // A caller placing a fragment somebody else chose at the start of a line
     // could otherwise spell the separator behind a kept break, splitting one
@@ -1081,6 +1103,17 @@ describe("createPrivateKeyStreamRedactor", () => {
       "no markers at all",
     ])
       expect(streamed([text]), text).toBe(redactPrivateKeyMaterial(text));
+  });
+
+  test("a block whose labels run to 64 characters is stripped at every split", () => {
+    // 64 characters is the label the held-back lookahead is sized for, so a
+    // marker this long is still found wherever a delivery boundary cuts it.
+    const label = `${"L".repeat(63)} `;
+    const text = `loading key: -----BEGIN ${label}PRIVATE KEY-----\n${KEY_BODY}\n-----END ${label}PRIVATE KEY-----\nfailed`;
+    for (const chunks of everySplit(text))
+      expect(streamed(chunks), chunks[0]).toBe(
+        `loading key: ${REDACTION}\nfailed`,
+      );
   });
 
   test("a marker whose label runs long is still stripped inside one delivery", () => {
