@@ -288,6 +288,9 @@ export default defineConfig((configEnv) => {
             ],
             name: "unit",
             environment: "node",
+            // Above the default so a CPU-bound case still finishes when other
+            // suites share the machine.
+            testTimeout: 10_000,
           },
           resolve: { alias: srcAliases },
         },

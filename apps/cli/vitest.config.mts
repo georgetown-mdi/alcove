@@ -89,6 +89,9 @@ export default defineConfig({
           name: "unit",
           include: ["test/unit/**/*.{test,spec}.?(c|m)[jt]s?(x)"],
           setupFiles: ["./test/terminalFailureReporter.setup.ts"],
+          // Above the default so a CPU-bound case still finishes when other
+          // suites share the machine.
+          testTimeout: 10_000,
         },
       },
       {

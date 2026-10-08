@@ -2121,6 +2121,10 @@ test("a re-registration the server never confirms ends at the deadline, not its 
   holdAttemptClock();
   const attemptMs = 20_000;
   const waitMs = 45_000;
+  const marginMs = 1_000;
+  // The clock also moves with real time, so the checks are placed from where
+  // the wait began rather than by summing the advances.
+  const beforeWaitBegan = Date.now();
   const { sockets, session } = await startRendezvous({
     role: "inviter",
     attemptMs,
@@ -2134,12 +2138,14 @@ test("a re-registration the server never confirms ends at the deadline, not its 
   await vi.advanceTimersByTimeAsync(ID_TAKEN_RETRY_FIRST_DELAY_MS);
   await settleRegistration(sockets, 3);
   // The retry's open now hangs; its own bound would end it 30 s on.
-  expect(waitMs - attemptMs).toBeLessThan(BROKER_OPEN_TIMEOUT_MS);
+  expect(waitMs + marginMs).toBeLessThan(
+    attemptMs + ID_TAKEN_RETRY_FIRST_DELAY_MS + BROKER_OPEN_TIMEOUT_MS,
+  );
   await vi.advanceTimersByTimeAsync(
-    waitMs - attemptMs - ID_TAKEN_RETRY_FIRST_DELAY_MS - 100,
+    Math.max(0, beforeWaitBegan + waitMs - marginMs - Date.now()),
   );
   expect(await settlementOf(session)).toBe("waiting");
-  await vi.advanceTimersByTimeAsync(200);
+  await vi.advanceTimersByTimeAsync(2 * marginMs);
   const failure = await session.then(
     () => expect.unreachable("the wait should have failed"),
     (err: unknown) => err,
