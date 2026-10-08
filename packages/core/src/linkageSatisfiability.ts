@@ -1,12 +1,7 @@
-// Whether a set of declared linkage terms can ever produce a value -- the
-// static, data-free half of standardization. These refusals judge agreed
-// terms: prepareForExchange and runExchange call them inside an exchange,
-// and the apps call them ahead of one to ask whether terms would work, by
-// compiling the declared pipelines and running probe values through them.
-//
-// The execution half is standardization.ts, which owns the compiler and the key
-// builder this reads; the value-level companion, which judges values an actual
-// input file holds, is valueConstraints.ts.
+// Whether declared linkage terms can ever produce a value: the static, data-free
+// half of standardization, run inside an exchange and by the apps ahead of one.
+// The execution half is standardization.ts; the value-level companion is
+// valueConstraints.ts.
 
 import {
   chainDetailCauses,
@@ -62,17 +57,10 @@ import type {
 } from "./standardization.js";
 
 /**
- * Validate that every standardization transformation output name corresponds to
- * a linkage field defined in the provided terms, and that every step function
- * name is known.
- *
- * Returns a list of error messages; an empty array means the standardization
- * spec is consistent with these terms. The output and function names embedded in
- * each message are interpolated raw -- consistent with the sibling
- * `assertPayloadSendDisclosed` / `validateCompatibility` guards -- because the
- * in-repo caller composes them into a {@link StandardizationTermsError}, where
- * the display boundary escapes them once. A caller that instead renders a
- * message directly owns that escape.
+ * Validate that every standardization output names a linkage field in `terms`
+ * and every step function is known. Returns the error messages, empty when
+ * consistent. Names are interpolated raw: the in-repo caller composes them into
+ * a {@link StandardizationTermsError}, escaped once at the display sink.
  */
 export function validateStandardizationAgainstTerms(
   standardization: Standardization,
@@ -103,26 +91,13 @@ export function validateStandardizationAgainstTerms(
 }
 
 /**
- * Fail closed when an AUTHORED ("authoritative") standardization contradicts its
- * linkage terms -- the throwing wrapper around
- * {@link validateStandardizationAgainstTerms}, so the mint boundary
- * (`alcove invite`) and {@link prepareForExchange} refuse an inconsistent config
- * with one identical, actionable error rather than each inlining the check. The
- * standardization sibling of `assertPayloadSendDisclosed`.
+ * Throw when an authored standardization contradicts its linkage terms, the
+ * check {@link validateStandardizationAgainstTerms} reports, at the mint
+ * boundary and in {@link prepareForExchange}. Callers skip it for an absent
+ * standardization, which is derived from the terms.
  *
- * Both classes the validator reports -- a transform output naming no declared
- * linkage field, and an unknown standardization function -- are structurally fatal
- * for an authoritative config; it reports no advisory class a config might
- * legitimately hold as a note. Callers gate this on
- * `standardization !== undefined`: an absent standardization is the
- * terms-only path, reconstructed FROM the terms
- * (via `getDefaultStandardization`) and so unable to contradict them, and is
- * not gated.
- *
- * Throws {@link StandardizationTermsError} (a {@link UsageError} subclass: the CLI
- * classifies it as a configuration error, exit 64; on the web it is the one
- * prepare-time fault whose message -- naming only the authoring party's own outputs
- * and functions -- is safe to show).
+ * @throws {StandardizationTermsError} a {@link UsageError}; its message names
+ * only the authoring party's own outputs and functions.
  */
 export function assertStandardizationMatchesTerms(
   standardization: Standardization,
@@ -142,63 +117,17 @@ export function assertStandardizationMatchesTerms(
 }
 
 /**
- * Refuse terms that declare a per-(record, key) candidate set -- a `split_on`
- * fan-out, a `generate_fuzzy_comparisons` expansion, or a `swap` naming both
- * orders -- under a combination that has no resolution for one, before any
- * matching begins.
+ * Refuse a per-(record, key) candidate set (a fan-out, a fuzzy expansion or a
+ * `swap`) under `psi-c` or a strategy that resolves none, before matching
+ * (docs/spec/PROTOCOL.md#the-combinations-that-stay-unsupported). Runs where
+ * terms are authored or minted, at prepare, and at the run boundary; a parse
+ * already refuses the terms half ({@link termsCandidateSetRefusal}).
  *
- * Two combinations reach it. A `linkage_strategy` off the candidate-set
- * allowlist ({@link candidateSetIsImplementedForStrategy}): the gate is an
- * ALLOWLIST rather than a named denylist, so a strategy later added to
- * `LinkageStrategySchema` refuses a candidate set until its own resolution is
- * written (docs/spec/PROTOCOL.md, The combinations that stay unsupported). And
- * `psi-c`, whose count-only round counts matched VALUES where the resolution
- * pairs each record at most once, so the count would over-report the linkage it
- * is used to justify.
- *
- * It is the candidate-set sibling of `assertAlgorithmImplemented` and
- * `assertDeduplicateImplemented` in `exchange.ts`, and it runs at the three
- * points those use: when terms are authored or minted, at the local prepare
- * step, and at the agreed-terms run boundary. Its terms half reads terms
- * alone, so every parse refuses that half first
- * ({@link termsCandidateSetRefusal}, wired into `LinkageTermsSchema`); this
- * assert is the boundary for a document built or mutated without a parse, and
- * for the standardization half, which no parse of the terms holds.
- *
- * Both authoring surfaces a candidate set can reach are checked: a
- * standardization transformation feeds {@link StandardizedField}, and a
- * linkage-key element transform, fuzzy declaration, or swap feeds
- * {@link buildKeyStrings}; either way the candidates cross into the key's
- * candidate set. `standardization` is omitted where the caller no longer holds
- * one (the run boundary reads a prepared exchange, which retains the built
- * dataset rather than the spec); what covers that half there is
- * {@link fanOutReachedMatchingRefusal} at the round, and on single-pass the
- * declared-width check its table build runs -- both at the point of harm, but
- * after this party's terms have gone on the wire.
- *
- * The asymmetry that half holds is why the local surface is refused here at all
- * rather than left to the strategy: an element-transform fan-out rides the agreed
- * terms and both parties refuse it in lockstep, while a standardization is
- * per-party and local, so a partner cannot derive its refusal and would be left
- * waiting on a run this party is about to abort.
- *
- * The two surfaces take DIFFERENT error classes, because they differ in whose
- * content the fault is. A `standardization` is only ever this party's own: no
- * invitation holds one (it is per-party and local), and the accept path derives
- * its own from the adopted terms through `getDefaultStandardization`, whose
- * steps come from the fixed per-type pipelines and never include a fan-out
- * function. So that half is an {@link OperatorConfigError} -- the membership
- * rule for the actionable "config" category both front ends key off -- like
- * `assertSigningModeImplemented`, and raised as the base class because no
- * narrower member fits (this is an unimplemented-feature refusal, not the terms
- * inconsistency {@link StandardizationTermsError} names). A linkage key is
- * adopted verbatim from the partner's invitation on the accept path, so that
- * half stays a plain {@link UsageError} whose message the web's generic alert
- * swallows, for the same reason as `assertAlgorithmImplemented`. Either way the
- * message names only the fan-out functions this module recognizes -- a declared
- * name reaches it having already matched one -- so no partner free text is
- * interpolated, and the CLI classifies both as a usage error (exit 64) through
- * the base class.
+ * The local standardization half is refused here because a partner cannot
+ * derive it. It throws {@link OperatorConfigError}, since no invitation contains a
+ * standardization; the terms half throws {@link UsageError}, since the accept
+ * path adopts the partner's keys. Neither message contains partner free text.
+ * `standardization` is omitted where the caller no longer has one.
  */
 export function assertFanOutImplemented(
   terms: LinkageTerms,
@@ -221,63 +150,34 @@ export function assertFanOutImplemented(
 }
 
 /**
- * Upper bound on the transform steps one document may declare in total, across
- * its standardization and every linkage-key element, checked by
- * {@link assertTransformsCompile} before anything is compiled.
- *
- * The count, not the clock, is the verdict a document gets on any machine. It
- * is half the count measured against the budget below: 1024 `parse_date` steps
- * with distinct 256-character formats, the most expensive shape this build
- * compiles, took 0.7 s on an idle container and up to 1.9 s under its ordinary
- * load, against 2 s. The budget can still refuse a within-cap document on a
- * slower machine, where retrying is legitimate: each attempt was bounded, to the
- * budget plus at most one steps array's compile, and this count is what bounds
- * that array.
+ * The most transform steps one document may declare across its standardization
+ * and every linkage-key element, checked before anything compiles so the
+ * verdict is the same on every machine
+ * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
  */
 const TRANSFORM_COMPILE_MAX_STEPS = 512;
 
 /**
- * Total wall-clock budget, in milliseconds, for compiling every declared step of
- * one document in {@link assertTransformsCompile}. The count bound above holds
- * how many steps reach the walk; this holds the walk's cost for a document under
- * that bound whose steps are individually expensive, a partner-authored
- * `parse_date` format or raw pattern compiling under the linear-time engine at a
- * cost the wire bounds do not hold down. Once the budget is spent the remaining
- * steps are refused unchecked (fail closed), the same shape the dialect walk
- * takes (`config/transformRegexDialect.ts`). A document a party would actually
- * mint finishes in single-digit milliseconds.
+ * Wall-clock budget, in milliseconds, for compiling one document's steps under
+ * {@link TRANSFORM_COMPILE_MAX_STEPS}; steps past it are refused unchecked
+ * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
  */
 const TRANSFORM_COMPILE_TOTAL_BUDGET_MS = 2000;
 
-/** Optional overrides for the compile walk's bounds; both defaulted. Exposed so
- * tests can drive the two refusal paths deterministically. */
+/** Overrides for the compile walk's bounds, so tests can drive both refusals. */
 interface TransformCompileBudget {
-  /** Total wall-clock budget across all steps; see
-   * {@link TRANSFORM_COMPILE_TOTAL_BUDGET_MS}. */
+  /** See {@link TRANSFORM_COMPILE_TOTAL_BUDGET_MS}. */
   totalBudgetMs?: number;
-  /** Total declared steps the document may hold; see
-   * {@link TRANSFORM_COMPILE_MAX_STEPS}. */
+  /** See {@link TRANSFORM_COMPILE_MAX_STEPS}. */
   maxSteps?: number;
 }
 
 /**
- * Which of {@link assertTransformsCompile}'s two document-shaped refusals a
- * failure is, with the values an authoring front end needs to say what to
- * change:
- *
- * - `"uncompilable-step"` -- a step this document declares cannot be built from
- *   the parameters beside it. `stepLabel` is the label
- *   {@link uncompilableStepLabel} returned, already narrowed to a quoted name
- *   from {@link STANDARDIZATION_FUNCTION_NAMES} or the fixed stand-in for a name
- *   this build does not have, so it holds no authored text whichever surface the
- *   step came from.
- * - `"too-many-steps"` -- the document declares more transform steps than the
- *   walk checks. Both counts are integers read off the document's shape.
- *
- * The walk's third refusal, its wall-clock budget, is absent by design: it
- * reports what was not checked rather than a fault in the document, and the same
- * document can pass on a faster machine, so a front end has nothing specific to
- * tell the author about it.
+ * Which of {@link assertTransformsCompile}'s document-shaped refusals a failure
+ * is, with values a front end can render: `stepLabel` comes from
+ * {@link uncompilableStepLabel} and both counts are integers, so none contains
+ * authored text. The wall-clock refusal is absent: it names no fault in the
+ * document.
  */
 export type TransformRefusal =
   | { readonly reason: "uncompilable-step"; readonly stepLabel: string }
@@ -289,11 +189,8 @@ export type TransformRefusal =
 
 const TRANSFORM_REFUSAL = annotationKey<TransformRefusal>("transform refusal");
 
-// An annotation rather than a subclass, the shape markPeerWaitTimeout keeps:
-// each refusal's class already follows whose content the fault is (the
-// OperatorConfigError/UsageError split above), which the CLI's 64-vs-69 exit
-// code and the web's config alert both read, so a second axis of meaning cannot
-// ride on the class.
+// An annotation rather than a subclass: the class already states whose content
+// the fault is, which the CLI exit code and the web config alert read.
 function markTransformRefusal<E extends object>(
   error: E,
   refusal: TransformRefusal,
@@ -305,11 +202,8 @@ function isStepCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-// Each field a caller can render is checked against the values the two marking
-// sites produce, not just against its type: a step label is one
-// transformFunctionLabel returns, and a count is a non-negative safe integer. A
-// refusal holding anything else is no refusal, and the caller falls back to its
-// own generic message.
+// Each renderable field is checked against the values the marking sites
+// produce; anything else is no refusal, and the caller uses its own message.
 function asTransformRefusal(value: unknown): TransformRefusal | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const candidate = value as Partial<Record<string, unknown>>;
@@ -333,15 +227,9 @@ function asTransformRefusal(value: unknown): TransformRefusal | undefined {
 }
 
 /**
- * The {@link TransformRefusal} `error`, or anything in its `cause` chain, holds,
- * or `undefined` for any other failure.
- *
- * This is how a caller tells the two document-shaped refusals apart: the classes
- * they are raised under answer a different question (whose content the fault is),
- * and their messages are not a machine-readable identity. A caller that shows
- * the operator what to change reads this and composes its own words; the values
- * here hold no text from the document, so a refused import cannot echo a byte of
- * itself into that copy.
+ * The {@link TransformRefusal} on `error` or its `cause` chain, or `undefined`.
+ * How a caller tells the refusals apart and composes its own copy; the values
+ * hold no text from the document.
  */
 export function transformRefusalIn(
   error: unknown,
@@ -350,15 +238,9 @@ export function transformRefusalIn(
 }
 
 /**
- * The refusal for a document declaring more than `maxSteps` transform steps in
- * total, or `undefined` for one within the bound. Counted before any step is
- * compiled, so what it answers is the document's own shape and nothing about the
- * machine it is minted on.
- *
- * The class follows the surface whose steps take the total past the bound, in
- * the order {@link assertTransformsCompile} walks them -- whose content the
- * fault is, the split the compile refusals keep. The message states the whole
- * document's count, since the remedy spans both surfaces.
+ * The refusal for a document declaring more than `maxSteps` steps in total, or
+ * `undefined`. The class follows the surface whose steps cross the bound in
+ * walk order; the message states the whole document's count.
  */
 function stepCountRefusal(
   terms: LinkageTerms,
@@ -391,77 +273,18 @@ function stepCountRefusal(
 }
 
 /**
- * Refuse a declared pipeline whose compile throws, where the terms are
- * authored, minted, or accepted rather than where the run reaches it.
+ * Refuse a declared pipeline whose compile throws where the terms are
+ * authored, minted or accepted, before the partner spends its setup effort; the
+ * accept boundary walks the invitation's element transforms alone. The run
+ * compiles again at key realization for terms that skipped both.
  *
- * A step's factory reads its parameters once, before the first row
- * ({@link compileSteps}), and a `pad_left` with no `length`, a multi-character
- * fill, a `phonetic` naming an unimplemented algorithm, or a function name this
- * build does not recognize throws there. Without this the throw lands after the
- * invitation is sealed and accepted, so the partner has spent its setup effort
- * before the authoring fault shows -- and the remedy the run boundary can offer
- * by then is out-of-band renegotiation rather than an edit. The message here is
- * the author's: correct the parameters, or remove the step.
- *
- * The accept boundary runs it over the invitation's element transforms alone
- * (`deriveAcceptedLinkageTerms`, and the web accept gate ahead of its consent
- * screen), which is the last point the accepting party still holds the
- * decision. The run reaches the same compile at key realization, and keeps it:
- * a `LinkageTerms` built or mutated without a parse, or an accept, arrives
- * there unchecked.
- *
- * The fan-out sibling {@link assertFanOutImplemented} checks the same two
- * pipeline surfaces, for the same reason both realize what a
- * key is built from: a standardization transformation feeds
- * {@link StandardizedField}, and a linkage-key element transform feeds
- * {@link buildKeyStrings}. `standardization` is omitted where the caller holds
- * none.
- *
- * The two surfaces share one message under DIFFERENT error classes, by whose
- * content the fault is -- as the fan-out refusal splits them. A
- * `standardization` is only ever this party's own, so that half is an
- * {@link OperatorConfigError}, the actionable "config" category both front ends
- * key off. A linkage-key element transform is adopted verbatim from the
- * partner's invitation on the accept path, so that half stays a plain
- * {@link UsageError}. Either way the message names only a function label this
- * build recognizes, so no partner free text is interpolated, and the CLI
- * classifies both as a usage error (exit 64) through the base class.
- *
- * This is the safety check at the mint and accept boundaries, not the authoring
- * surface: the web element editor marks a malformed param on the input that has
- * to change (`StepListEditor`). What reaches here is what that does not cover --
- * an imported document, an invitation the partner authored, or a caller that
- * mints without the editor. It runs per mint, per accept, and via the summary's
- * deduplicate probe on display paths (`acceptTakesPartnerDeduplicate`,
- * `consent/invitationSummary.ts`, which compose per render) -- roughly 1.4ms
- * per 100-step document each time. That probe's catch swallows a refusal, so a
- * document that both fans out and deduplicates withholds the grouping
- * sentence for an uncompilable step; acceptable, since the accept gate
- * refuses such a document before consent is acted on.
- *
- * Two bounds hold that cost, and they hold this walk alone. The declared step
- * count ({@link TRANSFORM_COMPILE_MAX_STEPS}) is checked before anything
- * compiles, so a document over it takes the same refusal on every machine and
- * every retry; the wall-clock budget
- * ({@link TRANSFORM_COMPILE_TOTAL_BUDGET_MS}) stands behind it for a document
- * under the count whose steps are expensive, read once per steps array rather
- * than per step, so one attempt can overrun it by at most one array's compile --
- * the overrun the step count bounds. The compiles are memoized
- * ({@link uncompilableStepLabel}) once the walk has finished, so a repeated mint
- * of one document pays for them once, while a refused one leaves the memo as it
- * found it.
- *
- * The grading path compiles too, outside both bounds:
- * {@link pipelineAlwaysDrops}, which the browser editor's validation pass runs
- * on every pass, and the consent header's
- * {@link pipelineCollapsesParsedDateToConstant} each measure what a `substring`
- * run following a `parse_date` collapses. Each reads every run of one element in
- * one pass over it ({@link parsedDateRunReadings}), compiling each measured step
- * once, so what a grading pass costs is linear in the document's declared steps
- * rather than quadratic in each element's -- which is what an editor re-grading
- * on every keystroke needs of it. The document itself is bounded by the schema's
- * per-element step cap, the encoded-token length cap on the acceptor's side, and
- * the editor's own import cap on the inviter's.
+ * The class split follows {@link assertFanOutImplemented}: a standardization
+ * step throws {@link OperatorConfigError}, an element transform
+ * {@link UsageError}; the message names only a recognized function label.
+ * The walk is bounded by {@link TRANSFORM_COMPILE_MAX_STEPS} and
+ * {@link TRANSFORM_COMPILE_TOTAL_BUDGET_MS}; the grading path's compiles are
+ * bounded separately
+ * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
  */
 export function assertTransformsCompile(
   terms: LinkageTerms,
@@ -476,17 +299,11 @@ export function assertTransformsCompile(
     budget.maxSteps ?? TRANSFORM_COMPILE_MAX_STEPS,
   );
   if (overCount !== undefined) throw overCount;
-  // Compiled steps are held aside and committed only where the whole walk
-  // finished, so the next walk over the same arrays cannot resume past what
-  // this one paid for. That bounds each attempt rather than making a budget
-  // refusal repeatable: the engine's pattern cache is process-global
-  // (`utils/linearRegex.ts`) and outlives the refusal, so the count bound above
-  // is the verdict that repeats.
+  // Compiled steps are committed only where the whole walk finished, so a later
+  // walk cannot resume past a refused one. The engine's pattern cache still
+  // outlives a refusal, so only the count bound repeats.
   const pending: PendingCompiledTransforms = new Map();
-  // performance.now() rather than the wall clock: a backward clock step during
-  // the walk (an NTP correction, a container resuming) makes the difference
-  // negative and leaves the rest of the document unbounded, which is the
-  // fail-open direction for a bound on compile cost.
+  // Monotonic: a backward wall-clock step would leave the rest unbounded.
   const startedAt = performance.now();
   for (const transformation of standardization ?? []) {
     if (performance.now() - startedAt >= totalBudgetMs)
@@ -516,27 +333,11 @@ export function assertTransformsCompile(
 }
 
 /**
- * The linkage fields in `terms` that the input `columns` cannot satisfy through
- * the available data standardizations. The verdict is derived from the same
- * {@link resolveFieldColumns} binding the exchange's {@link buildStandardizedDataset}
- * uses: a field is producible exactly when the shared resolution bound it to a
- * column that is present in `columns`. The checker does not re-derive the
- * binding itself, so it cannot diverge from the runtime: there is one
- * resolution rather than two, leaving the HIGH-severity direction (a field the
- * builder cannot produce but the checker passes) no second reading to arise
- * from.
- *
- * Because the binding is shared, the resolution rules apply unchanged: an
- * explicit standardization preempts the type fallback (a field whose explicit
- * source column is absent is unsatisfiable even when a same-typed column exists),
- * and the type fallback binds to the FIRST `role: linkage` metadata column of the
- * field's type. An empty result means every configured field can be produced; a
- * non-empty result names the fields that cannot.
- *
- * Pass `metadata` to match an exchange that runs from an explicit metadata block
- * (`prepareForExchange` resolves the type fallback against
- * `metadata ?? inferMetadata`); omit it to fall back to name-based inference, the
- * accept-path default.
+ * The linkage fields in `terms` the input `columns` cannot produce. Read off
+ * the same {@link resolveFieldColumns} binding {@link buildStandardizedDataset}
+ * uses, so this verdict cannot pass a field the builder cannot produce. Pass
+ * `metadata` to match an exchange run from an explicit metadata block; omit it
+ * for name-based inference, the accept-path default.
  */
 export function unsatisfiedLinkageFields(
   columns: string[],
@@ -578,10 +379,6 @@ export function unsatisfiedFieldColumns(
     // A column list this is handed, not a read of its own (see resolveExchangeInputs).
     metadata ?? inferMetadata(columns, []),
   );
-  // A field is producible iff the shared resolution bound it to a column present
-  // in the input. The binding rules (explicit-preempts-fallback, first-match type
-  // fallback) live in resolveFieldColumns, not here, so this verdict cannot drift
-  // from the builder's.
   return terms.linkageFields.flatMap((field) => {
     const column = resolution.get(field.name)?.column;
     return column === undefined || !present.has(column)
@@ -591,26 +388,11 @@ export function unsatisfiedFieldColumns(
 }
 
 /**
- * Whether a `parse_date` step's INPUT format omits a date component the factory
- * requires, making {@link parseDateFactory} return null for EVERY value -- the
- * record is dropped regardless of its data. The motivating example is
- * `input_format: "MM/DD"` (no year): with no year token, the factory's `year`
- * component is never set and its all-three-components guard drops every value.
- *
- * The year component is supplied by EITHER year token ({@link YEAR_FORMAT_TOKENS}:
- * `YYYY` or `YY`), matching the factory, which populates `year` from whichever it
- * tokenizes; month needs `MM`, day needs `DD`.
- *
- * This mirrors {@link parseDateFactory} exactly so the verdict cannot drift from
- * the runtime. An absent input format falls back to the factory's complete
- * `"MM/DD/YYYY"`, which drops nothing. A non-string format yields no value
- * either way -- the decode refuses it (`config/transformParamTypes.ts`) and the
- * factory refuses it at compile -- and is reported dead WITHOUT calling
- * {@link parseDateFormat} on it, which would throw on an array. For a string
- * input format the present component set is recovered from core's OWN tokenizer
- * ({@link parseDateFormat}), not a re-implemented scan -- the
- * encode-the-runtime-invariant-as-a-check rule, here over a "this never produces a
- * value" claim.
+ * Whether a `parse_date` step's input format lacks a year (`YYYY` or `YY`),
+ * `MM` or `DD` token, so {@link parseDateFactory} drops every value. Reads
+ * core's own tokenizer ({@link parseDateFormat}) so the verdict cannot drift
+ * from the factory. An absent format drops nothing; a non-string one is
+ * reported dead without being tokenized.
  */
 export function parseDateInputDropsEveryRecord(
   params: Params | undefined,
@@ -624,23 +406,11 @@ export function parseDateInputDropsEveryRecord(
 }
 
 /**
- * The functions whose compiled step returns a value for EVERY value it is handed:
- * it may fold, erase to the empty string, pad, or expand that value, but it never
- * returns null (and never empties a candidate set, since erasing every candidate
- * to the empty string leaves the set non-empty). Every other function can leave a
- * realized value empty, which is the only way the substituting branch of a later
- * `coalesce` is ever reached.
- *
- * An ALLOWLIST rather than a list of the emptying functions, so a function added
- * to {@link STANDARDIZING_FUNCTIONS} without a decision here is treated as able
- * to empty a value -- as does a name this build does not recognize at all. That
- * over-states a `coalesce`'s reach on a consent surface, where understating it is
- * the harmful direction.
- *
- * Name-only, not params-aware: a `null_if` with an empty exclusion list and a
- * `filter_regex` matching everything drop nothing in practice, and each is still
- * classified as able to. Pinned to the real functions by a drift test that drives
- * every one of them over a value corpus.
+ * The functions whose step never returns null nor empties a candidate set, so
+ * only another function can reach a later `coalesce`'s substituting branch. An
+ * allowlist, so a new or unrecognized function counts as able to empty a value:
+ * overstating a `coalesce`'s reach on a consent screen is the safe direction.
+ * Name-only, held to the real functions by a drift test over a value corpus.
  */
 const VALUE_PRESERVING_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "remove_non_ascii",
@@ -660,46 +430,23 @@ const VALUE_PRESERVING_FUNCTION_NAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Whether `step` can leave a value the record realized empty -- the position half
- * of {@link coalesceSubstitutesConstant}, since a `coalesce` substitutes only
- * where some earlier step has emptied the value.
+ * Whether `step` can leave a realized value empty: the position half of
+ * {@link coalesceSubstitutesConstant}.
  *
- * @internal exported so the drift test can hold this classification to the real
- * functions: each is driven over a value corpus, and one classified
- * value-preserving that returns null for any of them fails.
+ * @internal exported for the drift test that checks the classification
+ * against the real functions.
  */
 export function stepCanEmptyRealizedValue(step: TransformStep): boolean {
   return !VALUE_PRESERVING_FUNCTION_NAMES.has(step.function);
 }
 
 /**
- * Whether the `coalesce` step at a given position actually substitutes its
- * fallback there. Two conditions, both necessary:
- *
- * - Its declared `default` is a string, the only shape {@link compileStep} turns
- *   into a substitution value. A step may omit the default, which leaves
- *   {@link applyStep}'s coalesce branch a pass-through; any other declared type
- *   is refused before a run, at decode and again at compile
- *   (`config/transformParamTypes.ts`).
- * - Some step BEFORE it can empty the value ({@link stepCanEmptyRealizedValue}).
- *   The branch that substitutes fires on a null value or an empty candidate set,
- *   and a pipeline starts from a non-null string -- {@link applyElementTransform}
- *   and {@link runCompiledPipeline} both take one -- so a coalesce reached with a
- *   value still in hand returns that value untouched. An ABSENT field never
- *   reaches the step either: {@link buildKeyStrings} drops the whole row for the
- *   key when the field realizes no value, and a field whose column is missing
- *   realizes none without running its pipeline at all. So the records a
- *   substituting coalesce puts on one constant are the ones an earlier RULE
- *   emptied, never the ones whose field is absent.
- *
- * `precedingSteps` are the steps that run before `step` in the same pipeline,
- * required rather than defaulted: the verdict is a property of the position, not
- * of the step alone.
- *
- * Shared so every terms-level reading of a coalesce's effect -- the dead-pipeline
- * rescue in {@link pipelineAlwaysDrops}, and the consent header's collapse marker
- * and per-step detail copy in `invitationSummary.ts` -- turns on one predicate
- * rather than a restated test that could drift from the runtime.
+ * Whether a `coalesce` at this position substitutes its fallback: its `default`
+ * is a string and some step in `precedingSteps` can empty the value
+ * ({@link stepCanEmptyRealizedValue}). A pipeline starts from a non-null string
+ * and an absent field never runs its pipeline, so the records a substituting
+ * coalesce puts on one constant are those an earlier rule emptied. The one
+ * predicate {@link pipelineAlwaysDrops} and the consent header both read.
  */
 export function coalesceSubstitutesConstant(
   step: TransformStep,
@@ -713,47 +460,14 @@ export function coalesceSubstitutesConstant(
 }
 
 /**
- * Whether a `substring` step's declared bounds read NOTHING out of a value of
- * ANY length -- the value-INDEPENDENT drop {@link pipelineAlwaysDrops} is built
- * from, as opposed to a window that merely overshoots the values one input
- * happens to hold. The motivating shape is a bound the operator never filled or
- * cleared mid-edit (`substring` with no `start`), which the terms schema admits
- * as well-formed while {@link substringFactory} nulls every row.
+ * Whether a `substring` step's declared bounds read nothing from a value of any
+ * length: `start` is 0 or not an integer, `length` is not an integer or 0, or
+ * `length` is negative and the end cannot pass the start for any value. Other
+ * negative lengths read a window once the value is long enough, which the data
+ * decides. A second reading of {@link substringWindow}, held to it by a
+ * differential sweep in `linkageSatisfiability.test.ts`.
  *
- * The conditions, each a case where the step reads no window whatever
- * `valueLength` it is handed:
- *
- * - `start` is `0`, which is the guard {@link substringWindow} opens with and
- *   never consults the value for.
- * - `start` or `length` is not an integer. A step declaring one is refused at
- *   decode and again at compile (`config/transformParamTypes.ts`), so it reads
- *   nothing by never running; the verdict answers for terms built through
- *   neither.
- * - `length` is `0`: the end argument lands exactly on the start bound, and a
- *   window closing where it opens slices `""`.
- * - `length` is negative AND the composed end argument cannot outrun the start
- *   bound for any value. Two shapes reach that. A positive `start` whose
- *   `start + length >= 1` leaves the end argument at or above zero and at or
- *   below the start bound, so the window is empty at every length. A `start` of
- *   `-1` reads from the last character onward, and no negative `length` puts an
- *   end past it -- the end argument counting back from the value's own end
- *   lands at or before that last character for every length.
- *
- * A negative `length` in any OTHER combination reads a real window once the
- * value is long enough (`slice` counts a below-zero end argument back from the
- * end of the value), so it is the data's to decide and is not claimed here.
- * Whether a value is ever that long is the acceptor's data, which the terms do
- * not contain.
- *
- * The arithmetic is a second reading of {@link substringWindow}'s, which is what
- * a differential sweep in `linkageSatisfiability.test.ts` exists for: it drives
- * the shipped key builder over every bound pair in a grid and every value
- * length a window could open at, and fails on any pair where this verdict and
- * the measured one disagree in either direction.
- *
- * @internal exported so that sweep can compare the two readings, and so the
- * rescue-equivalence sweep can model the same drop source the shipped predicate
- * reads.
+ * @internal exported for that sweep and the rescue-equivalence sweep.
  */
 export function substringWindowDropsEveryValue(
   params: Params | undefined,
@@ -769,23 +483,12 @@ export function substringWindowDropsEveryValue(
 
 /**
  * The dates {@link substringCollapsesParsedDateToConstant} measures a pipeline
- * over. Chosen so that the first two differ in EVERY digit of every rendered
- * component -- 1971 against 2068 in all four year digits, 01 against 12 in both
- * month digits, 02 against 31 in both day digits -- which is what makes "the
- * windows agree" the property the verdict claims rather than a coincidence of
- * one sample: a window reading any character the date supplied differs between
- * those two wherever the layout put it. The other two add digit variety for a
- * step that rewrites characters rather than moving them. Every year is inside
- * the `YY` pivot window (1969-2068, {@link TWO_DIGIT_YEAR_PIVOT}) and every date
- * is a real calendar date, so each probe is a value the factory can actually
- * emit whichever input format parsed it.
+ * over. The first two differ in every digit of every component, so a window
+ * reading any character the date supplied differs between them; every date is
+ * a real calendar date inside the `YY` pivot window. The dates are public, so a
+ * declared step that drops one leaves the verdict to the others.
  *
- * These dates are public whether or not they are exported -- they ship in source
- * an inviter can read -- which is why a probe a declared step drops leaves the
- * verdict to the surviving ones rather than withdrawing it.
- *
- * @internal exported so the test that authors a step naming a probe's rendered
- * value names a real one rather than a date it assumes is probed.
+ * @internal exported so a test can name a real probe's rendered value.
  */
 export const DATE_COLLAPSE_PROBES: ReadonlyArray<{
   year: string;
@@ -798,47 +501,21 @@ export const DATE_COLLAPSE_PROBES: ReadonlyArray<{
   { year: "2007", month: "11", day: "24" },
 ];
 
-// What a compiled run leaves one starting value on. The shapes are read apart
-// because the verdicts below turn on WHICH of them was reached, not merely on
-// whether a value was:
-//
-// - `value`: the characters the run holds, which is what a collapse compares
-//   across probes.
-// - `dropped`: the run produced no value, which is the opposite of a collapse
-//   and, where the run is layout-determined, is every record's fate.
-// - `candidates`: a non-empty candidate set, so the record still keys -- which
-//   is what a collapsed constant needs of the pipeline's TAIL. A fan-out INSIDE a
-//   measured run is a can't-measure that resolves upward like `unread`, and the
-//   element declares a fan-out, so the consent header ranks that breadth above
-//   this verdict regardless.
-// - `unread`: the run could not be reduced to one of the readings above. A step
-//   that leaves the value over the per-value ceiling
-//   ({@link MAX_TRANSFORMED_VALUE_LENGTH}) reports it here, as does an empty
-//   candidate set or an empty string -- shapes a window neither holds as a value
-//   nor drops as null. The caller resolves an `unread` probe UPWARD to the
-//   broader breadth word ({@link parsedDateSpanReading}): an inviter could otherwise
-//   inflate one probe past the ceiling to buy a milder marker while every real
-//   date still collapses.
+// What a compiled run leaves one starting value on. `unread` covers a value over
+// {@link MAX_TRANSFORMED_VALUE_LENGTH}, an empty set and an empty string; the
+// caller resolves it to the broader breadth word, so an inviter cannot inflate
+// one probe to buy a milder marker. A fan-out inside a measured run is also a
+// can't-measure.
 type MeasuredRunOutcome =
   | { kind: "value"; value: string }
   | { kind: "dropped" }
   | { kind: "candidates" }
   | { kind: "unread" };
 
-// The per-VALUE ceiling ({@link MAX_TRANSFORMED_VALUE_LENGTH}) is charged here as
-// the runtime does; the per-ROW assembled charge
-// ({@link MAX_ASSEMBLED_KEY_LENGTH_PER_ROW}) is not, because `applyStep` runs
-// without a `site`. That charge binds the candidates a single row accumulates
-// across a key's elements, which this per-element, per-probe measurement never
-// assembles -- one probe date cannot reach it -- so its absence changes no
-// reading. A measured limit, not an omission: the ceiling the marker rests on is
-// checked; the row-assembly bound the exchange also enforces is out of this
-// measurement's scope.
-//
-// The work budget IS charged, on a meter the grading pass owns: this
-// measurement runs the same partner-authored steps the exchange runs, on as many
-// probes, so an amplifying pipeline spends here too. Crossing it throws, which
-// leaves the probe unreadable exactly as a step that throws does.
+// Charges the per-value ceiling and the work budget as the runtime does, but
+// not the per-row assembled charge, which one probe cannot reach. A work-budget
+// crossing throws, leaving the probe unread
+// (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
 function runCompiledSteps(
   input: string,
   compiled: ReadonlyArray<CompiledStep>,
@@ -852,9 +529,6 @@ function runCompiledSteps(
   return measuredValueOutcome(current);
 }
 
-// Which reading a run's last value is, once every step has been applied. Read
-// both by the whole-run helper above and by the forward walk below, which
-// carries one value per probe and asks this at each run end.
 function measuredValueOutcome(current: FieldValue): MeasuredRunOutcome {
   if (current === null) return { kind: "dropped" };
   if (current instanceof Set)
@@ -865,31 +539,15 @@ function measuredValueOutcome(current: FieldValue): MeasuredRunOutcome {
 }
 
 /**
- * The functions whose effect on a value a `parse_date` rendered is fixed by
- * the output LAYOUT alone. Every date the factory renders under one output
- * format has the same length, and the format's own characters land in the same
- * places -- only the digits differ ({@link renderDateOutput} substitutes
- * fixed-width components) -- and each function here maps any two such values to
- * values that again share a length and are null together, so a window read after
- * it lands on the same characters for every date. That composes: a run built
- * only from these leaves every date holding a value, or drops every date.
+ * The functions that read no content: applied to two dates rendered under one
+ * output format, they leave values that share a length and are null together.
+ * A run built only from these drops every date or none, so an all-probes drop
+ * through it is dead rather than data-dependent. A function left out makes the
+ * run report a value-dependent drop, the safe side.
  *
- * Membership is what parts a measured all-probes drop that is really DEAD from
- * one the data decides, and its converse is the safe side: a function absent
- * from the set makes such a run report a value-DEPENDENT drop, which announces
- * the wider breadth word rather than claiming an element matches nothing. So
- * only functions that read no content are here. `null_if`, `filter_regex`,
- * `extract_regex` and `replace_regex` turn on the value's own characters;
- * `remove_affixes` and `phonetic` match word content; a nested `parse_date` can
- * parse one rendering and not another; and `split_on` leaves a candidate set
- * rather than a value.
- *
- * @internal exported so the drift test can hold this classification to the real
- * functions: each name is driven over a corpus of dates under several output
- * formats, and one whose outputs differ in length or in null-ness between two
- * dates fails. That drives one params shape per function, so it catches a listed
- * function that starts reading content, not a listed function some other params
- * shape would expose; the membership decision itself stays a review call.
+ * @internal exported for the drift test, which drives one params shape per
+ * function over dates under several output formats; membership stays a review
+ * call.
  */
 export const LAYOUT_DETERMINED_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "remove_non_ascii",
@@ -906,24 +564,11 @@ export const LAYOUT_DETERMINED_FUNCTION_NAMES: ReadonlySet<string> = new Set([
   "coalesce",
 ]);
 
-// What running a substring run's measured steps over {@link DATE_COLLAPSE_PROBES}
-// establishes about the window the run reads.
-//
-// `undetermined` and `cannotMeasure` are read APART because they resolve in
-// opposite directions on a consent surface:
-//
-// - `undetermined`: the shape conditions for a measurement are not met (the index
-//   is not a run end, no live `parse_date` lies ahead, or the `parse_date` drops
-//   every record), or the measurement COMPLETED and the surviving probes hold
-//   distinct values -- a determinate coarsening. Nothing here understates a
-//   collapse, so the caller resolves it to the milder / no-marker side.
-// - `cannotMeasure`: the measurement could not be completed -- a step crossed the
-//   per-value ceiling ({@link MAX_TRANSFORMED_VALUE_LENGTH}), expanded into a
-//   candidate set, or a step this build cannot compile or run threw -- so the
-//   window's breadth is unknown. An unknown breadth resolves UP to the collapse
-//   word: understating breadth is the only harmful direction on a consent
-//   surface, and an inviter must not buy the milder marker by making one probe
-//   unmeasurable while every real date still collapses.
+// What a substring run's measurement over {@link DATE_COLLAPSE_PROBES}
+// establishes. `undetermined` (no measurement, or distinct survivors) resolves
+// to the milder marker; `cannotMeasure` (a ceiling crossing, a candidate set, a
+// throw) resolves up to the collapse word, since understating breadth is the
+// harmful direction on a consent screen.
 type ParsedDateRunReading =
   | { kind: "collapsed"; value: string }
   | { kind: "valueDependentDrop" }
@@ -935,16 +580,9 @@ const UNDETERMINED: ParsedDateRunReading = { kind: "undetermined" };
 const CANNOT_MEASURE: ParsedDateRunReading = { kind: "cannotMeasure" };
 
 /**
- * One element's steps compiled at most once each, for the walk below and for the
- * tail reading that follows a collapse. A step compiles to what the whole-array
- * compile would produce, since {@link compileSteps} maps over the array and each
- * step's factory reads its own parameters and holds no state across the list --
- * the same property that lets the mint boundary name the offending step
- * ({@link uncompilableStepLabel}).
- *
- * A compile that throws is held as the failure it threw and rethrown on every
- * later ask, so a step this build cannot compile costs one attempt rather than
- * one per reading that reaches it.
+ * One element's steps compiled at most once each; a compile failure is held and
+ * rethrown on every later ask. Per-step compiles match the whole-array compile,
+ * since each factory reads only its own parameters.
  */
 function stepCompilerFor(
   steps: ReadonlyArray<TransformStep>,
@@ -969,28 +607,19 @@ function stepCompilerFor(
 }
 
 /**
- * What the probe dates hold as the walk below carries them from the
- * `parse_date` that laid their values out to the run end being read.
- *
- * A probe is `undefined` where the measurement can no longer read it: a step
- * took its value past the per-value ceiling
- * ({@link MAX_TRANSFORMED_VALUE_LENGTH}), or a step this build cannot compile or
- * run threw on it. Neither is recoverable by a later step -- a re-run from the
- * `parse_date` would cross the same ceiling or throw at the same step -- so the
- * probe stays unreadable for every later run end in the span, which is what
- * running each probe once end to end has to mean.
+ * The probe values from a `parse_date` up to the run end being read. A
+ * probe is `undefined` once a step took it past the per-value ceiling or threw,
+ * and stays so for the rest of the span.
  */
 interface ParsedDateSpan {
   probes: Array<FieldValue | undefined>;
-  /** Whether every step measured so far reads the layout rather than the value
-   * ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}), which decides an all-probes drop. */
+  /** Whether every step measured so far is in
+   * {@link LAYOUT_DETERMINED_FUNCTION_NAMES}. */
   everyStepLayoutDetermined: boolean;
 }
 
-/** Whether `index` ends a maximal run of consecutive `substring` steps. A
- * reading taken at a link INSIDE a run describes a window the run's later links
- * can slice back out of range; the value a run leaves is the value its last link
- * leaves. */
+/** Whether `index` ends a maximal run of consecutive `substring` steps, whose
+ * last link decides the value the run leaves. */
 function endsSubstringRun(
   steps: ReadonlyArray<TransformStep>,
   index: number,
@@ -1001,9 +630,8 @@ function endsSubstringRun(
   );
 }
 
-/** The probe values a live `parse_date` lays out, one per probe date. A date the
- * declared output format cannot render leaves that probe unreadable, on the same
- * rule as a step that throws. */
+/** The probe values a live `parse_date` lays out; a date the output format
+ * cannot render leaves that probe unreadable. */
 function openParsedDateSpan(parseDateStep: TransformStep): ParsedDateSpan {
   const rawOutputFormat = parseDateStep.params?.outputFormat;
   const outputFormat =
@@ -1027,10 +655,8 @@ function openParsedDateSpan(parseDateStep: TransformStep): ParsedDateSpan {
   };
 }
 
-/** Apply one measured step to every probe still readable. A compile this build
- * refuses blanks every probe for the rest of the span: the per-run reading this
- * walk mirrors compiles a whole run before running any of it, so a refused step
- * leaves that run and every later run end in its span unreadable. */
+/** Apply one measured step to every probe still readable. A refused compile
+ * blanks every probe for the rest of the span. */
 function advanceParsedDateSpan(
   span: ParsedDateSpan,
   step: TransformStep,
@@ -1059,31 +685,11 @@ function advanceParsedDateSpan(
 }
 
 /**
- * What the probe dates the span carries leave the window holding at a run end.
- *
- * A DROPPED probe does not defeat the reading. The probe dates are baked into
- * shipped public source, so requiring every one of them to survive would let a
- * single authored step naming one probe's rendered value -- a `null_if` on
- * "ACME-19710102" under an `ACME-YYYYMMDD` layout -- withdraw the verdict while
- * the pipeline still put every other date on one constant. The surviving probes
- * decide instead, and where NONE survives the reading turns on whether the run
- * is layout-determined ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}): a run that
- * reads no content drops every date it will ever see, while one containing a
- * value-dependent step has told the measurement nothing, and the consent
- * direction there is the wider breadth word rather than the narrower one.
- *
- * A probe the measurement cannot READ -- one a step inflates past the per-value
- * ceiling, or expands into a candidate set -- and a step this build cannot
- * compile or run yield `cannotMeasure`, distinct from the determinate readings
- * above. Both resolve upward at the caller: the window's breadth is unknown, and
- * an inviter must not be able to buy a milder marker by making one probe
- * unmeasurable (a `replace_regex` that inflates a future-dated probe over the
- * ceiling, an unrecognized function name) while every real date still collapses
- * onto one constant.
- *
- * The probes are read in their declared order and the reading is returned at the
- * first one that settles it, so two probes holding distinct values is a
- * determinate coarsening even where a third is unreadable.
+ * What the span's probes leave the window holding at a run end. Dropped probes
+ * do not defeat the reading, since the probe dates are public: the survivors
+ * decide, and with none the run is a layout-determined or value-dependent drop.
+ * An unreadable probe gives `cannotMeasure`, unless two earlier probes already
+ * hold distinct values.
  */
 function parsedDateSpanReading(span: ParsedDateSpan): ParsedDateRunReading {
   const survivors = new Set<string>();
@@ -1103,33 +709,12 @@ function parsedDateSpanReading(span: ParsedDateSpan): ParsedDateRunReading {
 }
 
 /**
- * The reading every substring run of one element's steps gets, by the index that
- * ends it. Both terms-level verdicts below read these measurements.
- *
- * The shape conditions a run must meet before anything is compiled or run:
- *
- * - Its index ENDS a maximal run of consecutive `substring` steps
- *   ({@link endsSubstringRun}).
- * - Some `parse_date` runs ahead of that run. The NEAREST one laid out the value
- *   the run reads; steps before it are unconstrained, since they can only change
- *   whether a value parses, never the layout a parsed date renders to.
- * - That `parse_date`'s input format can parse a date at all
- *   ({@link parseDateInputDropsEveryRecord}); one that cannot supplies no value
- *   to slice, and the drop is already the one {@link pipelineAlwaysDrops} names
- *   at the `parse_date` itself.
- *
- * Every run of one span is read in a SINGLE forward pass carrying one value per
- * probe date, rather than each run re-running the probes from the `parse_date`.
- * The reading is the same either way -- a run is a left fold over its compiled
- * steps, so carrying the fold and reading it at each run end applies each step to
- * each probe exactly as a fresh re-run would -- and it is what keeps the walk
- * linear in the element's declared steps rather than quadratic in them, which is
- * what an editor re-grading on every keystroke can afford. An index absent from
- * the result is `undetermined`: no probe was run for it.
- *
- * A span holding no run end compiles nothing, and a span's steps past its LAST
- * run end are never reached, so this compiles no step a per-run reading would
- * not have compiled.
+ * The reading of every substring run of one element, by the index that ends
+ * it; an absent index is `undetermined`. A run is measured only where it ends a
+ * maximal `substring` run with a `parse_date` ahead whose input format can
+ * parse a date; the nearest such `parse_date` laid out the value. One forward
+ * pass per span keeps the walk linear in the declared steps
+ * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
  */
 function parsedDateRunReadings(
   steps: ReadonlyArray<TransformStep>,
@@ -1158,81 +743,19 @@ function parsedDateRunReadings(
 }
 
 /**
- * Whether the `substring` at `index` of `steps` leaves every record that
- * survives an earlier `parse_date` holding the SAME constant -- the maximal
- * match breadth, not the truncation the step's name suggests. The motivating
- * shape is a window sliced wholly inside an output format's literal region
- * (`ACME-YYYYMMDD` read as `ACME`) or onto a bare separator, where the sliced
- * value holds no character the date supplied.
+ * Whether the `substring` run ending at `index` leaves every record that
+ * survives an earlier `parse_date` on one constant, such as a window inside an
+ * output format's literal region (`ACME-YYYYMMDD` read as `ACME`). Measured by
+ * running the shipped steps over {@link DATE_COLLAPSE_PROBES}, since whether a
+ * step preserves what a window reads depends on the window too.
  *
- * MEASURED, not derived from the step names: the steps between the `parse_date`
- * and the run are compiled and RUN over {@link DATE_COLLAPSE_PROBES}, and the
- * verdict is that every probe still holding a value leaves the run on one
- * identical, non-empty one. Whether a step preserves what a window reads is a
- * property of the function AND of the window -- `remove_dashes` collapses a
- * four-character window of `ACME-YYYYMMDD` but not a five-character one -- so a
- * name allowlist of "layout-preserving" functions decides it wrongly in both
- * directions, and a layout-preservation table is a second reading of behavior
- * the factories already define. Running the shipped steps is the reading that
- * cannot drift from them, the same reason {@link coalesceSubstitutesConstant}
- * reads a step's params and position rather than its name. The one name set the
- * measurement does consult ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}) answers a
- * different question -- whether a step can read the value's CONTENT at all --
- * and only to choose which way an undecided measurement falls.
- *
- * The conditions:
- *
- * - The run reads a layout some live `parse_date` ahead of it rendered, taken at
- *   the run's END -- the shape {@link parsedDateRunReadings} establishes and where
- *   the reasons for each of those live.
- * - Every probe that SURVIVES the run leaves it on one identical, non-empty
- *   value. A dropped probe does not withdraw the verdict: the probe dates ship
- *   in public source, so a single step naming one of their rendered values would
- *   otherwise buy the milder word for a pipeline that still puts every other
- *   date on the constant.
- * - Where no probe survives at all, the run is announced as a collapse unless it
- *   is layout-determined ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}), in which
- *   case it drops every date and is the dead pipeline
- *   {@link substringRunDropsEveryParsedDate} names instead. A value-dependent
- *   step that drops all four probes has told the measurement nothing, and on a
- *   consent surface an undecided measurement takes the wider breadth word rather
- *   than the reassuring one.
- * - The collapsed value survives the REST of the pipeline. Every surviving
- *   record holds the same value by then, so what the remaining steps do to it is
- *   determinate with no probing at all: a later step that drops that one value
- *   drops every record still in hand, and an element matching nothing is not one
- *   matching every date. The all-probes-dropped case has no such value, so it
- *   takes the wider word without a tail reading.
- *
- * The measurement is bounded by the terms the schema already bounds: the steps
- * up to the run's end run once per probe and the rest of the pipeline once, on
- * values held to the same per-value ceiling the runtime enforces. A step it
- * cannot measure -- a function name this build does not recognize, a pattern that
- * fails to compile, or one that inflates a probe past that ceiling -- takes the
- * COLLAPSE word rather than the milder one: the window's breadth is unknown, and
- * understating it is the only harmful direction on a consent surface. That closes
- * the milder-word evasion -- an inviter cannot make one probe unmeasurable to
- * drop the marker while every real date still collapses onto one constant (a
- * probe inflated past the ceiling is driven in linkageSatisfiability.test.ts).
- * A legitimate partial-date transform does not cross the ceiling and is not an
- * unknown function, so it still measures cleanly and keeps its true milder
- * word; only a pathological or exchange-time-throwing pipeline takes the wider
- * one.
- *
- * The limit it keeps is a value-DEPENDENT drop the terms cannot determine, and
- * it runs in the over-claiming direction alone. A `filter_regex` or `null_if`
- * between the `parse_date` and the run is measured over the probes alone, so
- * one that passes them and drops a real record leaves the verdict standing;
- * one BEFORE the `parse_date` reads the acceptor's own values, which the terms
- * do not contain, so it is not measured at all; and one that drops every probe
- * hands the run the collapse word outright. Each can leave an element earning
- * "any date" while it in fact drops records it would have collapsed. Reading a
- * drop off such a step instead is the claim {@link pipelineAlwaysDrops}
- * declines for the same reason -- it would flag a legitimate pipeline as dead
- * -- so the residual is kept where it understates nothing.
- *
- * Shared so the consent header's collapse marker in `invitationSummary.ts` turns
- * on core's own steps rather than a restated reading of them.
+ * True where every surviving probe has one identical non-empty value and the
+ * rest of the pipeline keeps it, where no probe survives a run that is not
+ * layout-determined, and where the run cannot be measured: understating breadth
+ * is the harmful direction on a consent screen. The limit runs toward
+ * overstating: a content step that drops real records but passes the probes, or
+ * runs before the `parse_date`, is not measured. The consent header's collapse
+ * marker in `invitationSummary.ts` reads this.
  */
 export function substringCollapsesParsedDateToConstant(
   steps: ReadonlyArray<TransformStep>,
@@ -1245,17 +768,10 @@ export function substringCollapsesParsedDateToConstant(
 }
 
 /**
- * Whether ANY substring run of `steps` collapses every parsed date onto one
- * constant -- the question the consent header's breadth marker asks of a whole
- * element, answered over one walk of its runs rather than one walk per step.
- *
- * The runs are read in index order and the first collapse answers, so this is
- * the verdict {@link substringCollapsesParsedDateToConstant} gives at some
- * index and the reasoning there is the reasoning here.
- *
- * A caller asking this AND {@link pipelineAlwaysDrops} of the same element takes
- * both from {@link gradeElementPipeline}, which compiles each measured step once
- * for the pair rather than once for each.
+ * Whether any substring run of `steps` collapses every parsed date onto one
+ * constant ({@link substringCollapsesParsedDateToConstant}), over one walk. A
+ * caller also asking {@link pipelineAlwaysDrops} uses
+ * {@link gradeElementPipeline} to compile each step once for both.
  */
 export function pipelineCollapsesParsedDateToConstant(
   steps: ReadonlyArray<TransformStep>,
@@ -1264,12 +780,9 @@ export function pipelineCollapsesParsedDateToConstant(
 }
 
 /**
- * Whether the run ending at `index` collapses, given what the probes left it
- * holding: the reading resolved against the REST of the pipeline.
- *
- * A run whose breadth cannot be measured, and a value-dependent all-probes drop,
- * both resolve UP to the collapse word (see {@link parsedDateSpanReading}): the
- * safe direction on a consent surface.
+ * Whether the run ending at `index` collapses, resolving its reading against
+ * the rest of the pipeline. An unmeasurable run and a value-dependent drop
+ * resolve up to the collapse word.
  */
 function collapsesAtRunEnd(
   steps: ReadonlyArray<TransformStep>,
@@ -1290,13 +803,8 @@ function collapsesAtRunEnd(
         .map((_step, offset) => compiledStep(index + 1 + offset)),
       work,
     );
-    // Every surviving record holds `reading.value` by the run's end, so the tail
-    // is determinate with no probing. Only a measured DROP withdraws the collapse
-    // -- the element then matches nothing, which the dead-key advisory speaks for.
-    // A tail that keeps a value or expands it to candidates keeps the collapse;
-    // and a tail this build cannot measure (an over-ceiling value, an unknown
-    // function) takes the collapse word too rather than the milder one, on the
-    // same can't-measure-resolves-up rule the run itself follows.
+    // The tail runs on the one collapsed value; only a measured drop
+    // withdraws the collapse, and an unmeasurable tail keeps it.
     return tail.kind !== "dropped";
   } catch {
     return true;
@@ -1304,22 +812,11 @@ function collapsesAtRunEnd(
 }
 
 /**
- * Whether the `substring` run ending at `index` drops EVERY date an earlier
- * `parse_date` can render, whatever the acceptor's data -- the value-independent
- * certainty {@link pipelineAlwaysDrops} is built from, measured rather than
- * derived from the step names. The motivating shape is a run whose composed
- * window falls back out of range (`ACME-YYYYMMDD` sliced to `ACME`, then sliced
- * again from its fifth character), which reads nothing for any record while its
- * last link is still a `substring` a breadth marker would call a truncation.
+ * Whether the `substring` run ending at `index` drops every date an earlier
+ * `parse_date` can render, such as a window sliced back out of range. Claimed
+ * only for a layout-determined run, so the probes represent every date.
  *
- * Claimed only where the measured steps are layout-determined
- * ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}), so what the probes did is what
- * every date does. A run containing a value-dependent step that happens to drop
- * all four probes is NOT dead: the data decides it, which is the residual
- * {@link pipelineAlwaysDrops} declines to read from the terms.
- *
- * @internal exported so the rescue-equivalence sweep can model the same drop
- * source the shipped predicate reads.
+ * @internal exported for the rescue-equivalence sweep.
  */
 export function substringRunDropsEveryParsedDate(
   steps: ReadonlyArray<TransformStep>,
@@ -1335,45 +832,12 @@ export function substringRunDropsEveryParsedDate(
 }
 
 /**
- * The transform params a CONSENT VERDICT reads, by function name: the values
- * that decide what the always-visible breadth marker says about an element,
- * rather than ones that only describe the step. A consent surface shows these
- * ahead of a step's other declared params, so neither the number of entries a
- * partner declares nor what it puts in them can displace the row a marker's
- * stated limits send the reader to.
- *
- * Each entry is the params some predicate here reads. `parse_date`'s two formats
- * decide {@link parseDateInputDropsEveryRecord} and the layout
- * {@link substringCollapsesParsedDateToConstant} measures; `substring`'s bounds
- * decide the window that measurement slices, and whether it opens at all
- * ({@link substringWindowDropsEveryValue}); `coalesce`'s `default` decides
- * {@link coalesceSubstitutesConstant}. These are the params whose value can push
- * the marker toward a MILDER word, so a partner must not be able to displace their
- * detail rows past the display cap.
- *
- * The collapse measurement also compiles and RUNS every step between the
- * `parse_date` and the substring run, so a `null_if`, `filter_regex`, or other
- * content step in that span participates in the reading -- its params (the values
- * a `null_if` drops on) change which probes survive. Those functions are still
- * absent here, by design: such a step can only move the reading toward the
- * BROADER word or leave a genuine coarsening, never toward an understatement. The
- * milder-versus-collapse boundary is whether the surviving probes are one value or
- * distinct, which is fixed by the LAYOUT the window reads -- the `parse_date`
- * formats and the `substring` bounds already listed -- and a content step run over
- * an already-identical set cannot manufacture distinct survivors from a collapse.
- * A drop it adds only widens the word (an all-probes drop is treated as
- * `valueDependentDrop`, "any date") or narrows real records the acceptor is not
- * harmed by not-seeing. So the ordering guarantee holds where it matters: no param
- * that could hide breadth is droppable. A function whose marker turns on its NAME
- * alone (`phonetic`, `replace_regex`, `pad_left`, and the rest) likewise has no
- * entry -- its name alone shows its marker.
- *
- * Held to those predicates by a test that moves each listed param and requires
- * the verdict to move with it, so a name listed here names a real verdict. What
- * that cannot see is the other direction -- a NEW param that could move the marker
- * toward the milder word arriving with no entry here -- which is a review call, as
- * the declared-type table in `config/transformParamTypes.ts` has the same shape
- * of gap.
+ * The transform params a consent verdict reads, by function name: the ones that
+ * could push the breadth marker toward a milder word. A consent screen shows
+ * them ahead of a step's other params, so a partner cannot push their rows past
+ * the display cap. Content steps between the `parse_date` and the run are
+ * absent: they can only widen the word. A test requires each listed param to
+ * move its verdict; a new param that could soften the marker is a review call.
  */
 export const CONSENT_VERDICT_PARAM_NAMES = frozenLookupTable({
   parse_date: ["inputFormat", "outputFormat"] as const,
@@ -1382,35 +846,14 @@ export const CONSENT_VERDICT_PARAM_NAMES = frozenLookupTable({
 } satisfies Record<string, ReadonlyArray<string>>);
 
 /**
- * Whether a transform/standardization pipeline produces NO value for every
- * possible input -- a self-defeating "dead" pipeline, determinable from the terms
- * alone without any data. Three value-INDEPENDENT drops are recognized: a
- * `parse_date` whose input format omits a required component
- * ({@link parseDateInputDropsEveryRecord}); a `substring` whose declared bounds
- * read no window out of a value of any length
- * ({@link substringWindowDropsEveryValue}), which needs no layout ahead of it
- * because the bounds settle it alone; and a `substring` run whose composed
- * window falls outside every layout an earlier live `parse_date` can render
- * ({@link substringRunDropsEveryParsedDate}), which is measured over probe dates
- * rather than composed arithmetically. A later `coalesce` with a string default
- * RESCUES a dropped value to that constant (see {@link applyStep}'s coalesce
- * branch), so a pipeline ending in such a coalesce is NOT dead -- it yields a
- * constant key, which the linkage layer treats as benign (a duplicated key
- * contributes no match but is no silent-empty hazard, the same reason the
- * coverage sweep does not flag a constant field). A coalesce BEFORE the drop, or
- * one with no string default, does not rescue.
- *
- * Steps whose drop behavior depends on the VALUE -- a `substring` whose window
- * overshoots the short values one input happens to hold and reads a real one
- * out of longer values, a `filter_regex` no value matches -- are NOT treated as
- * always-dropping, by design: that is the data-dependent residual the
- * satisfiability layer leaves to the runtime coverage sweep, and assuming it here
- * could wrongly flag a legitimate pipeline. Each claim above is held to that line:
- * a declared window is claimed only where NO value length opens it, and a run
- * measured over the probes only where every step in it reads the layout rather
- * than the content ({@link LAYOUT_DETERMINED_FUNCTION_NAMES}), so this still
- * reports a value-independent certainty alone and can never claim a producible
- * pipeline is dead.
+ * Whether a pipeline produces no value for any input, from the terms alone. The
+ * value-independent drops: a `parse_date` input format missing a component
+ * ({@link parseDateInputDropsEveryRecord}), `substring` bounds that open no
+ * window ({@link substringWindowDropsEveryValue}), and a layout-determined
+ * substring run past every rendered date
+ * ({@link substringRunDropsEveryParsedDate}). A later `coalesce` with a string
+ * default rescues the drop to a constant key. Value-dependent drops are left to
+ * the runtime coverage sweep, so this never calls a producible pipeline dead.
  */
 export function pipelineAlwaysDrops(
   steps: ReadonlyArray<TransformStep> | undefined,
@@ -1419,8 +862,7 @@ export function pipelineAlwaysDrops(
   return gradeElementPipeline(steps).alwaysDrops();
 }
 
-/** The always-drops verdict read off readings the caller already holds, so one
- * element's two verdicts share the walk that produced them. */
+/** The always-drops verdict over readings the caller already has. */
 function alwaysDropsGivenRunReadings(
   steps: ReadonlyArray<TransformStep>,
   readings: ReadonlyArray<ParsedDateRunReading>,
@@ -1428,18 +870,12 @@ function alwaysDropsGivenRunReadings(
   let dropped = false;
   for (const [index, step] of steps.entries()) {
     if (step.function === "coalesce") {
-      // A string default substitutes a constant for a dropped value, rescuing it;
-      // an undefined or non-string default leaves a dropped value dropped. The
-      // shared predicate also tests a position half this loop's own reasoning does
-      // not need; that it withholds no rescue here is held by the differential
-      // sweep in linkageSatisfiability.test.ts ("pipelineAlwaysDrops rescue
-      // equivalence") rather than asserted in this comment.
+      // The rescue-equivalence sweep in linkageSatisfiability.test.ts checks
+      // that the predicate's position half withholds no rescue here.
       if (dropped && coalesceSubstitutesConstant(step, steps.slice(0, index)))
         dropped = false;
       continue;
     }
-    // A non-coalesce step null-propagates a dropped value, so once dropped the
-    // pipeline stays dropped until a rescuing coalesce.
     if (dropped) continue;
     if (
       (step.function === "parse_date" &&
@@ -1453,33 +889,25 @@ function alwaysDropsGivenRunReadings(
   return dropped;
 }
 
-/** One element's two grading verdicts, each measured on the first ask off the
- * walk {@link gradeElementPipeline} opens. */
+/** One element's two grading verdicts, each measured on first ask. */
 export interface ElementPipelineGrading {
-  /** Whether the element produces no value for any input at all
-   * ({@link pipelineAlwaysDrops}). */
+  /** See {@link pipelineAlwaysDrops}. */
   alwaysDrops(): boolean;
-  /** Whether some substring run of the element leaves every parsed date on one
-   * constant ({@link pipelineCollapsesParsedDateToConstant}). */
+  /** See {@link pipelineCollapsesParsedDateToConstant}. */
   collapsesParsedDateToConstant(): boolean;
 }
 
 /**
- * Both element-level gradings of one steps array over ONE compiled-step memo and
- * one forward pass ({@link parsedDateRunReadings}). The consent header's breadth
- * marker asks both of every element it marks, and taking them from one grading
- * compiles each measured step once for the pair rather than once for each --
- * which is what keeps a grading pass at one compile per declared step.
- *
- * Each verdict is measured on the first ask and neither is measured unasked, so
- * the order and the short-circuiting a caller writes still decide what runs.
+ * Both element-level gradings over one compiled-step memo and one forward pass,
+ * so the consent header compiles each measured step once for the pair
+ * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * Neither verdict is measured unasked.
  */
 export function gradeElementPipeline(
   steps: ReadonlyArray<TransformStep>,
 ): ElementPipelineGrading {
   const compiledStep = stepCompilerFor(steps);
-  // One meter for the pass, so what the walk and the tail readings spend on one
-  // element accumulates across them as a row's does across a key's elements.
+  // One work meter for the element's whole grading pass.
   const work = openTransformWorkMeter();
   let readings: ParsedDateRunReading[] | undefined;
   const runReadings = (): ParsedDateRunReading[] =>
@@ -1493,68 +921,29 @@ export function gradeElementPipeline(
   };
 }
 
-/** How an input's columns fare against a set of linkage terms: which fields it
- * cannot produce, how many of the terms' linkage keys remain usable as a result,
- * and which otherwise-usable keys are self-defeating. A per-key coverage readout
- * for a surface that reports it; whether a run may proceed under these terms is
- * {@link LinkageTermsVerdict.fullySatisfied}, not a threshold read off
- * {@link satisfiableKeyCount}. */
+/** Per-key coverage of an input's columns against linkage terms, for a surface
+ * that reports it. Whether a run may proceed is
+ * {@link LinkageTermsVerdict.fullySatisfied}. */
 interface LinkageSatisfiability {
-  /** The linkage fields the columns cannot produce (see
-   * {@link unsatisfiedLinkageFields}); empty when the input satisfies every field. */
+  /** The linkage fields the columns cannot produce. */
   unsatisfied: LinkageField[];
-  /** The number of linkage keys all of whose element fields are satisfiable.
-   * This is the column-SHAPE verdict only -- it does not subtract
-   * {@link deadKeys}, so it stays the count the differential test pins against the
-   * builder's column resolution. */
+  /** Keys whose element fields are all satisfiable: the column-shape count,
+   * which does not subtract {@link deadKeys}. */
   satisfiableKeyCount: number;
   /**
-   * Keys the column-shape verdict PASSES (every element field resolves to a
-   * present column) yet that still cannot match, because an element's declared
-   * standardization can never produce a value regardless of the data -- a
-   * self-defeating rule such as a `parse_date` whose input format omits a required
-   * component (`input_format: "MM/DD"`, no year). Distinct from {@link unsatisfied},
-   * which is about MISSING columns: here the columns are present but the rule is
-   * dead, so the key would run to a silent empty result. Empty when no
-   * shape-satisfiable key is self-defeating. Reported separately rather than
-   * folded into {@link satisfiableKeyCount} so the count stays the column-shape
-   * verdict and a surface can label the key with the right remedy (fix the terms,
-   * not the CSV); the caller sanitizes the partner-controlled key names itself, as
-   * it does for {@link unsatisfied}. Detection is value-independent only (see
-   * {@link pipelineAlwaysDrops}): a data-dependent all-null collapse is left to
-   * the runtime coverage sweep, not reported here. */
+   * Keys whose columns are present but an element's declared cleaning drops
+   * every record ({@link pipelineAlwaysDrops}), so the remedy is the terms, not
+   * the CSV. The caller sanitizes the partner-controlled key names.
+   */
   deadKeys: LinkageKey[];
 }
 
 /**
- * Assess whether an input's `columns` can satisfy `terms`, for the surfaces that
- * report per-key coverage rather than decide whether a run may proceed. A key is
- * satisfiable only when EVERY element field is producible -- both declared in
- * `linkageFields` and resolvable from the columns -- since a single empty field
- * collapses the whole key for that record.
- *
- * This is a projection of {@link decideLinkageTermsVerdict}, which is where the
- * grading lives and which is what a run is held to: whether the terms may be run
- * at all is that verdict's `fullySatisfied`, not a threshold read off
- * {@link LinkageSatisfiability.satisfiableKeyCount} here. Callers own their own
- * message wording and display sanitization.
- *
- * `standardization` and `metadata` are the spec's explicit overrides, forwarded to
- * {@link unsatisfiedLinkageFields} so the verdict matches an exchange that runs
- * from them (the CLI `exchange` path passes both from its committed config; the
- * accept and web paths pass neither and rely on name inference).
- *
- * The satisfiability check is over column SHAPE, not row VALUES: a field whose
- * same-typed column exists but whose every row standardizes to empty (e.g. an
- * all-invalid date column) is reported satisfiable yet yields no key strings at
- * runtime. That residual is data-dependent and unavoidable from columns alone;
- * it can only over-claim "satisfiable", never wrongly block. The one exception is
- * value-INDEPENDENT: a key element whose declared standardization can never
- * produce a value (a self-defeating `parse_date` input format) is reported in
- * {@link LinkageSatisfiability.deadKeys}, derivable from the terms without data.
- * That is reported separately, not subtracted from {@link satisfiableKeyCount}:
- * the count stays the column-shape verdict, and a surface can label a dead key
- * with the right remedy (fix the terms, not the CSV).
+ * Per-key coverage of `columns` against `terms`, projected from
+ * {@link decideLinkageTermsVerdict}. A key is satisfiable only when every
+ * element field is declared and producible. Column shape only: a column whose
+ * every row standardizes to empty still counts, which can over-claim but never
+ * wrongly block. Callers own wording and display sanitization.
  */
 export function assessLinkageSatisfiability(
   columns: string[],
@@ -1577,77 +966,44 @@ export function assessLinkageSatisfiability(
 
 /**
  * How one declared linkage key fares against an input's columns:
- *
- * - `satisfiable` -- every element field resolves to a present column and no
- *   element declares cleaning that drops every record, so the key can produce key
- *   strings from this input.
- * - `unsatisfiable` -- at least one element field cannot be produced from the
- *   columns, so the key collapses to nothing for every record.
- * - `dead` -- every element field resolves, but an element's declared cleaning can
- *   never produce a value whatever the data (see {@link pipelineAlwaysDrops}), so
- *   the key passes the column check and still contributes nothing. Its remedy is a
- *   correction to the terms rather than a different input file, which is why it is
- *   graded apart from `unsatisfiable`.
+ * `unsatisfiable` when an element field cannot be produced, `dead` when the
+ * fields resolve but an element's cleaning drops every record
+ * ({@link pipelineAlwaysDrops}; fixed in the terms, not the input), else
+ * `satisfiable`.
  */
 export type LinkageKeyFitness = "satisfiable" | "unsatisfiable" | "dead";
 
-/** One declared linkage key beside the {@link LinkageKeyFitness} this input gives
- * it. */
+/** One declared linkage key and its {@link LinkageKeyFitness}. */
 interface GradedLinkageKey {
-  /** The declared key, verbatim from the terms. */
   key: LinkageKey;
-  /** How it fares against the input's columns. */
   fitness: LinkageKeyFitness;
 }
 
 /**
- * Whether an input may be run under a set of agreed linkage terms, and everything
- * a surface needs to say why not. This is the one home of that grading: a run is
- * refused unless the terms declare at least one linkage key and EVERY declared key
- * is `satisfiable`.
- *
- * All three failing shapes are the same fault -- the run would contribute nothing
- * for a key both parties agreed to match on -- so they are one rule rather than a
- * block beside a warning. Terms declaring no key are included because a derivation
- * can produce them: `linkageTermsFromRuleSet` narrows the built-in set to the keys
- * the columns support and narrows all the way to none, which a per-key threshold
- * would pass vacuously.
+ * Whether an input may be run under agreed linkage terms, and what a surface
+ * needs to say why not: at least one key declared and every key `satisfiable`.
+ * No key at all is refused because `linkageTermsFromRuleSet` can narrow to none.
  */
 export interface LinkageTermsVerdict {
-  /** Whether the input may be run under these terms: at least one key declared,
-   * and every declared key `satisfiable`. */
+  /** Whether the input may be run under these terms. */
   fullySatisfied: boolean;
-  /** Every declared key with its grade, in declaration order. Empty when the terms
-   * declare no key. */
+  /** Every declared key with its grade, in declaration order. */
   keys: GradedLinkageKey[];
   /** The declared keys graded `unsatisfiable`, in declaration order. */
   unsatisfiableKeys: LinkageKey[];
   /** The declared keys graded `dead`, in declaration order. */
   deadKeys: LinkageKey[];
   /** The linkage fields the columns cannot produce, each beside the column it
-   * expects (see {@link unsatisfiedFieldColumns}). Empty when the input
-   * satisfies every declared field -- including when keys are still
-   * unsatisfiable, which happens when a key element references a field the
-   * terms never declare. */
+   * expects. Can be empty while keys are unsatisfiable, when an element names an
+   * undeclared field. */
   unsatisfiedFieldColumns: UnsatisfiedFieldColumn[];
 }
 
 /**
- * Grade an input's `columns` against the linkage `terms` an exchange has agreed
- * to, and decide whether it may run under them. The fail-closed gate in
- * {@link prepareForExchange} enforces this verdict, and every front end that
- * checks earlier gives advance notice of the same decision rather than holding a
- * threshold of its own.
- *
- * `standardization` and `metadata` are the spec's explicit overrides, forwarded to
- * {@link unsatisfiedLinkageFields} so the grade matches an exchange that runs from
- * them. Pass the AUTHORED pair (both `undefined` where nothing is authored), which
- * is what a run resolves its own defaults from, so the advance notice and the gate
- * grade identical inputs.
- *
- * The grade is over column SHAPE, not row VALUES, with the one value-independent
- * exception `dead` covers; see {@link assessLinkageSatisfiability} for that
- * residual and why it can only over-accept, never wrongly refuse.
+ * Grade `columns` against agreed `terms` and decide whether the run may
+ * proceed: the gate in {@link prepareForExchange} and every earlier notice
+ * read this. Pass the authored `standardization` and `metadata` (`undefined`
+ * where none), so the notice and the gate grade identical inputs.
  */
 export function decideLinkageTermsVerdict(
   columns: string[],
@@ -1662,34 +1018,14 @@ export function decideLinkageTermsVerdict(
     metadata,
   );
   const unsatisfiedNames = new Set(missing.map(({ field }) => field.name));
-  // The set of field names that are BOTH declared and producible. A key element
-  // referencing a name absent from this set is unsatisfiable -- whether the field
-  // is declared-but-unproducible (in `unsatisfiedFieldColumns`) or not declared at all.
-  // The latter is rejected upstream by LinkageTermsSchema's referential-integrity
-  // refine (a key element `field` must name a declared linkage field), so a
-  // schema-validated terms set cannot reach here with an undeclared reference;
-  // this filter is kept as defense-in-depth for any terms not built through that
-  // schema, since at exchange time an undeclared reference resolves to no values
-  // (buildStandardizedDataset only builds declared fields, so getField returns
-  // undefined and the key collapses to null) and grading such a key satisfiable
-  // would let an incoherent terms set defeat the refusal this grading exists to
-  // raise.
+  // Declared and producible. The schema refuses an element naming an undeclared
+  // field; this still grades one unsatisfiable for terms built without a parse.
   const producibleNames = new Set(
     terms.linkageFields
       .map((f) => f.name)
       .filter((name) => !unsatisfiedNames.has(name)),
   );
-  // The dead scan walks a key's element transform steps; every maximal
-  // substring run of one element is measured in one forward pass over it
-  // (parsedDateRunReadings), so the scan compiles each measured step once and
-  // its cost is linear in the element's declared steps. Needs no separate
-  // budget: an editor re-grading on every keystroke pays under that walk what
-  // compiling the same document once already costs it, and the operator's own
-  // committed-config path drives heavier per-row compile and RE2 work at
-  // exchange time. The count this holds to is pinned in linkageProbeCost.test.ts.
-  // parseDateInputDropsEveryRecord never calls parseDateFormat on a non-string, so
-  // a hostile param shape cannot make it throw, and the measured run catches
-  // whatever its own compile or run raises.
+  // Compiles each measured step once (pinned in linkageProbeCost.test.ts).
   const keys: GradedLinkageKey[] = terms.linkageKeys.map((key) => ({
     key,
     fitness: !key.elements.every((e) => producibleNames.has(e.field))
@@ -1715,40 +1051,17 @@ export function decideLinkageTermsVerdict(
 }
 
 /**
- * Where the terms a shortfall is stated against stand between the two parties, so
- * the shared fragment fits the seat that renders it:
- *
- * - `"agreed"` -- both parties are held to these terms: an acceptor's adopted
- *   invitation, or a configuration an established exchange runs under. The keys
- *   are named as agreed, because narrowing them is an out-of-band step rather
- *   than an edit this operator can make.
- * - `"draft"` -- the operator's own terms, which no partner holds yet: the
- *   pre-invitation mint seats, where there is nobody to have agreed anything and
- *   the keys are the operator's own to change.
+ * Who is held to the terms a shortfall is stated against: `"agreed"` when both
+ * parties are, `"draft"` for the operator's own terms before an invitation.
  */
 export type LinkageTermsStanding = "agreed" | "draft";
 
 /**
- * State, in one sentence fragment, how a verdict falls short of its terms: which
- * of the declared linkage keys the input's columns cannot produce, and which of
- * them declare cleaning that drops every record.
- *
- * Every surface that refuses on {@link decideLinkageTermsVerdict} phrases the
- * shortfall through this, so the run-boundary refusal and the pre-flight notice
- * ahead of it cannot describe the same fault in different words. Each clause
- * counts against the whole declared set rather than the other clause's remainder,
- * so a refusal holding one clause reads as well as one holding both.
- *
- * `standing` is the one thing the fragment takes from its seat: it is required
- * rather than defaulted so a new caller states where its terms stand instead of
- * inheriting a partnership it may not have (see {@link LinkageTermsStanding}).
- *
- * The fragment is fixed copy and counts only. Names are terms content --
- * partner-authored on every accept path -- and each caller places them on cause
- * links of its own.
- *
- * Terms declaring no key are not its case and yield nothing: that refusal names
- * the absent declaration itself, in copy each caller owns.
+ * One sentence fragment stating which declared keys the input cannot produce
+ * and which drop every record, shared by every surface refusing on
+ * {@link decideLinkageTermsVerdict}. Fixed copy and counts only, since names are
+ * partner content. `standing` is required so each caller states it. Yields
+ * nothing for terms declaring no key.
  */
 export function summarizeLinkageShortfall(
   verdict: LinkageTermsVerdict,
@@ -1777,42 +1090,17 @@ export function summarizeLinkageShortfall(
 }
 
 /**
- * Fail closed, before any credential, terms, or data are sent, on an input that
- * cannot fully satisfy the agreed linkage terms -- the run-boundary enforcement of
- * {@link decideLinkageTermsVerdict}, called from {@link prepareForExchange}.
+ * Fail closed in {@link prepareForExchange}, before anything is sent, on an
+ * input that does not fully satisfy the agreed terms
+ * ({@link decideLinkageTermsVerdict}), including terms with no key. The remedy
+ * is new terms or a conforming input, never a retry. A one-column header adds
+ * {@link singleColumnDelimiterClause}.
  *
- * Terms declaring no linkage key at all are refused here too: the run would
- * have nothing to match on and would produce a result indistinguishable from an
- * empty intersection, so it is refused before any credential, terms, or data
- * are sent.
- *
- * The terms name the keys both parties consented to match on. A run that
- * contributes nothing for one of them matches on fewer keys than were agreed while
- * its exchange record still names every field the terms declare, so the shortfall
- * is settled with the partner out of band rather than run anyway. The remedy is
- * therefore stated as new terms or a conforming input, never as a retry: the same
- * input refuses identically every time.
- *
- * An input whose whole header read as one column takes
- * {@link singleColumnDelimiterClause} as well, on either refusal above: that
- * shape is what a file separated by something other than the delimiter the read
- * took reaches this check as, and a seat deriving its terms from that one mashed
- * column reaches the keyless refusal rather than the shortfall one.
- *
- * The summary is stated on the `"agreed"` standing: this is the boundary of a run,
- * and a run is held to the terms its partner is held to, whoever authored them.
- * The seats that hold terms no partner has yet state the same shortfall in their
- * own first-party copy, ahead of this.
- *
- * The summary holds only fixed copy and counts. The field and key names are
- * terms content -- partner-authored on every accept path -- so each category rides
- * a labelled cause link of its own, raw: the display boundary that renders the
- * chain caps each link independently and is the one altitude that escapes them, so
- * a name can only ever spend the budget of the link it shares with its own kind,
- * and the count leads each link so a truncated one still reports how much is
- * unread. Each name is also redacted ({@link redactPrivateKeyMaterial}) where it
- * is composed into its link, so a marker planted in one name cannot take the
- * names enumerated after it.
+ * The message contains only fixed copy and counts. Field and key names are partner
+ * content, so each category goes raw on a cause link of its own, which the
+ * display boundary caps and escapes, and each name is redacted
+ * ({@link redactPrivateKeyMaterial}) so a planted marker cannot take the names
+ * after it.
  */
 export function assertLinkageTermsSatisfiable(
   columns: string[],
@@ -1838,10 +1126,6 @@ export function assertLinkageTermsSatisfiable(
         "partner and run the exchange under those.",
     );
 
-  // Every name below is agreed-terms content -- partner-authored on every
-  // accept path -- redacted where it is composed into its link so a planted
-  // marker's fail-closed reach stays inside that name's own run rather than
-  // taking the names behind it with it (see redactPrivateKeyMaterial).
   const details: string[] = [];
   if (verdict.unsatisfiedFieldColumns.length > 0)
     details.push(
