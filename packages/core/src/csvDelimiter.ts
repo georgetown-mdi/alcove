@@ -28,10 +28,11 @@ export function normalizeCsvDelimiter(value: string): string {
 /**
  * Whether `value` is a delimiter Alcove reads and writes a CSV with: one tab or
  * printable ASCII character other than the double quote, so a parse and a write
- * agree on where a field ends. PapaParse ignores a `"` delimiter and detects its
- * own; CR and LF end a row and the line byte ceilings scan for them; non-ASCII is
- * escaped by code unit but counted by byte; PapaParse accepts a multi-character
- * delimiter that nothing escapes against. Grades a normalized value.
+ * agree on where a field ends. PapaParse ignores a `"` delimiter and splits on a
+ * comma; CR and LF end a row and the line byte ceilings scan for them; non-ASCII
+ * is escaped by code unit but counted by byte; PapaParse accepts a
+ * multi-character delimiter that nothing escapes against. The two PapaParse
+ * behaviors are pinned in csvDelimiter.test.ts. Grades a normalized value.
  */
 export function isCsvDelimiter(value: string): boolean {
   if (value.length !== 1) return false;

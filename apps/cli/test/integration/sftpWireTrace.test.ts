@@ -25,8 +25,8 @@ import { serverAuth, sftpServer } from "../sftpServer/testContext";
 // peer's own bytes reach the operator escaped, since a name-list the peer chose
 // arrives verbatim from ssh2 (docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP
 // Stack"); that the lines the stack renders as the transport drains reach the
-// operator's --log-file rather than the console it would fall through to once a
-// command has closed its sink; and that the wait which keeps those lines is a
+// operator's --log-file rather than the stderr it would reach once a command
+// has closed its sink; and that the wait which keeps those lines is a
 // bound the process cannot exit out from under.
 
 const TEST_TIMEOUT_MS = 60_000;
@@ -405,8 +405,7 @@ describe("a peer's own bytes", () => {
  * `--log-file`, close that sink where a command handler closes it, and hand back
  * the file's content and every byte the run put on stderr. The stderr capture
  * outlives the close by a beat, so a line the stack emits once the sink is gone
- * -- which reaches the console with a stack dump rather than the file -- is
- * caught here rather than only by the console sentinel.
+ * -- which reaches stderr rather than the file -- is caught here.
  */
 async function traceToLogFile(probe: () => Promise<unknown>): Promise<{
   logged: string[];

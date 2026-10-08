@@ -1,7 +1,9 @@
 import {
+  LinkageTermsUnsatisfiableError,
   assembleExchangeSpec,
   connectionFromLocator,
   getDefaultLinkageTerms,
+  getDefaultStandardization,
   inferMetadata,
 } from "@alcove/core";
 import { describe, expect, test } from "vitest";
@@ -13,6 +15,7 @@ import {
   managedInputLastRun,
 } from "@psi/managed/managedInputGuard";
 import { lastRunSchema } from "@psi/managed/managedExchangeRecord";
+import { prepareManagedRerunExchange } from "@psi/managed/managedPreparedExchange";
 
 import type { ExchangeSpec, WebRTCExchangeLocator } from "@alcove/core";
 
@@ -101,6 +104,79 @@ describe("assessManagedInputColumns: the standing-terms guard", () => {
     expect(rejection?.reason).toBe("columns");
     if (rejection?.reason === "columns")
       expect(rejection.unsatisfied.map((field) => field.type)).toContain("ssn");
+  });
+});
+
+describe("assessManagedInputColumns agrees with the run's own refusal", () => {
+  const VALUES: Record<string, string> = {
+    ssn: "123456789",
+    first_name: "Ann",
+    last_name: "Lee",
+    date_of_birth: "1990-01-02",
+  };
+
+  function exchangeFiles(): Array<{ name: string; file: ExchangeSpec }> {
+    const terms = standingExchangeFile();
+    const metadata = inferMetadata(standingColumns, []);
+    return [
+      { name: "terms only", file: terms },
+      { name: "authored metadata", file: { ...terms, metadata } },
+      {
+        name: "authored metadata and standardization",
+        file: {
+          ...terms,
+          metadata,
+          standardization: getDefaultStandardization(
+            metadata,
+            terms.linkageTerms,
+          ),
+        },
+      },
+    ];
+  }
+
+  const COLUMN_SETS: Array<Array<string>> = [
+    standingColumns,
+    [...standingColumns, "notes"],
+    [...standingColumns].reverse(),
+    standingColumns.slice(1),
+    ["ssn"],
+    ["first_name", "last_name", "date_of_birth"],
+    ["SSN", "First_Name", "Last_Name", "Date_Of_Birth"],
+    ["unrelated_a", "unrelated_b"],
+    [standingColumns.join("\t")],
+  ];
+
+  /** Whether the managed run's prepare step refuses `columns` on the terms;
+   * any other failure is raised. */
+  function runRefuses(file: ExchangeSpec, columns: Array<string>): boolean {
+    const rows = [
+      Object.fromEntries(
+        columns.map((column) => [column, VALUES[column] ?? "x"]),
+      ),
+    ];
+    try {
+      prepareManagedRerunExchange(file, rows, columns);
+      return false;
+    } catch (err) {
+      if (err instanceof LinkageTermsUnsatisfiableError) return true;
+      throw err;
+    }
+  }
+
+  test("for every column set under each authored shape", () => {
+    const verdicts = exchangeFiles().flatMap(({ name, file }) =>
+      COLUMN_SETS.map((columns) => ({
+        name,
+        columns,
+        guard: assessManagedInputColumns(file, columns) !== undefined,
+        run: runRefuses(file, columns),
+      })),
+    );
+    for (const verdict of verdicts)
+      expect({ ...verdict, run: verdict.guard }).toEqual(verdict);
+    expect(verdicts.some((verdict) => verdict.run)).toBe(true);
+    expect(verdicts.some((verdict) => !verdict.run)).toBe(true);
   });
 });
 
