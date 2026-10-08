@@ -100,26 +100,17 @@ import {
 import { attendedFolderWriteNote } from "./attendedFolderWriteModel";
 
 import {
-  managedCompromiseResponseActive,
   managedConfirmationGranted,
   managedFailureHoldsReinvite,
   managedReinviteFailedAt,
-  managedReinviteInFlight,
   managedRunHoldsReinvite,
   managedStandingConditionShown,
 } from "./managedRunRecoveryModel";
 import {
-  managedMigrationAwaitingConfirm,
   managedMigrationRefusal,
-  managedMigrationStale,
   managedRunHoldsMigration,
 } from "./managedRunHandoffModel";
-import {
-  managedRunCompletion,
-  managedRunInProgress,
-  managedRunLiveFailure,
-  managedSurfaceView,
-} from "./managedRunSurfaceModel";
+import { managedSurfaceView } from "./managedRunSurfaceModel";
 import { managedUnrecordedRunFlagged } from "./managedSurfaceReadsModel";
 
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
@@ -152,6 +143,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
     state: surfaceState,
     runInFlight,
     recheckLock,
+    running,
+    liveFailure,
+    runCompletion,
+    migrationDispatch,
+    staleMigration,
+    compromiseResponse,
+    reinviting,
     reselected,
     reselect,
     hasFolder,
@@ -195,21 +193,17 @@ export function ManagedRunSurface({ id }: { id: string }) {
   const parkedResultsRead = reads.parkedResults.read;
   const exportBusy = handoff.export.kind === "busy";
   const exportFailed = handoff.export.kind === "failed";
-  const migrationDispatch = managedMigrationAwaitingConfirm(handoff);
   const migrationRefusal = managedMigrationRefusal(handoff);
   const commandLineHandoff = handoff.commandLine;
   const runnable = load.kind === "runnable" ? load : undefined;
   const record = runnable?.record;
   const localState = runnable?.localState;
-  const running = managedRunInProgress(runState);
-  const runCompletion = managedRunCompletion(runState);
   const outputs = runCompletion?.outputs;
   const folderWrite = runCompletion?.folderWrite;
   const finishedAt = runCompletion?.finishedAt;
   const runOutcomeUnsavedReason = runCompletion?.unsavedReason;
   // The hand-off has no failure copy of its own and never lands here: reaching it
   // moves the surface to the spent state below.
-  const liveFailure = managedRunLiveFailure(runState);
   const failure = liveFailure?.alert;
   const { warnings: runWarnings, matching, termsChangeQuestion } = runState;
   // The record, its detail, and the backup affordances all read the browser's own
@@ -219,19 +213,16 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // promise the partner is there (see @utils/networkStatus).
   const online = useOnlineStatus();
   const runHoldsMigration = managedRunHoldsMigration(handoff, runInFlight);
-  const staleMigration = managedMigrationStale(handoff);
   // The Tier-2 confirmation gate: once the operator confirms a real partner-side
   // failure, the surface proceeds to re-invite; a "does not add up" reply routes to
   // the compromise-response copy instead.
   const confirmationGated = managedConfirmationGranted(recovery, liveFailure);
-  const compromiseResponse = managedCompromiseResponseActive(recovery, record);
   const respondingCompromise = recovery.compromise.write.kind === "writing";
   const compromiseWriteFailed = recovery.compromise.write.kind === "failed";
   const standingSettled = recovery.standing.settled;
   const clearingStanding = recovery.standing.clear.kind === "clearing";
   const clearStandingFailed = recovery.standing.clear.kind === "failed";
   const reinvite = recovery.reinvite.composed;
-  const reinviting = managedReinviteInFlight(recovery);
   const runHoldsReinvite = managedRunHoldsReinvite(recovery, runInFlight);
   const reinviteSource = recovery.reinvite.site;
 
@@ -494,7 +485,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               <Button
                 variant="subtle"
                 disabled={exportBusy}
-                onClick={keepMigrationOnDevice}
+                onClick={() => keepMigrationOnDevice()}
               >
                 {migrationRefusal === "record-gone"
                   ? "Close"

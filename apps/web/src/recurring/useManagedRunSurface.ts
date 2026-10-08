@@ -119,6 +119,20 @@ export interface ManagedRunSurfaceHost {
   folderGrantable: boolean;
   /** Where the next run reads its input; undefined while neither is available. */
   runInputSource: ManagedInputSource | undefined;
+  /** Whether a run is in progress on this surface. */
+  running: boolean;
+  /** The live failure of the run, if it failed. */
+  liveFailure: ReturnType<typeof managedRunLiveFailure>;
+  /** What the run finished with, once it has. */
+  runCompletion: ReturnType<typeof managedRunCompletion>;
+  /** The migration download awaiting the operator's attestation. */
+  migrationDispatch: ReturnType<typeof managedMigrationAwaitingConfirm>;
+  /** Whether the migration file the operator saved is out of date. */
+  staleMigration: boolean;
+  /** Whether the record's compromise response is in force. */
+  compromiseResponse: boolean;
+  /** Whether a re-invite is being minted. */
+  reinviting: boolean;
   /** The completion surface's backup affordance for a finished run. */
   completion: ReturnType<typeof managedRerunCompletion>;
   /** Start a run. */
@@ -870,6 +884,13 @@ export function useManagedRunSurface(id: string): ManagedRunSurfaceHost {
     state: surfaceState,
     runInFlight,
     recheckLock,
+    running,
+    liveFailure,
+    runCompletion,
+    migrationDispatch,
+    staleMigration,
+    compromiseResponse,
+    reinviting,
     reselected,
     reselect: setReselected,
     hasFolder,
