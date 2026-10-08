@@ -22,13 +22,14 @@ on:
     # 04:17 UTC daily, the nightly tier: an hour clear of the weekly scans in
     # codeql.yaml and dependency_audit.yaml, and off the hour per GitHub's
     # guidance to avoid top-of-hour congestion on the shared scheduler. Two
-    # GitHub behaviors to know: a `schedule` trigger only fires from the workflow as it exists on the
-    # default branch, so no nightly runs until this file lands there (use the manual
-    # dispatch below to exercise it before then); and GitHub disables a scheduled
-    # workflow after ~60 days without repo activity, emailing the last committer --
-    # re-enable it from the Actions tab if a long-quiet repo needs this guard back.
-    # The listing step below maps each cron to its tier, so a cron edited here
-    # is edited there too.
+    # GitHub behaviors to know: a `schedule` trigger only fires from the
+    # workflow as it exists on the default branch, so no nightly runs until this
+    # file lands there (use the manual dispatch below to exercise it before
+    # then); and GitHub disables a scheduled workflow after ~60 days without
+    # repo activity, emailing the last committer -- re-enable it from the
+    # Actions tab if a long-quiet repo needs this guard back. The listing step
+    # below reads the tier from the cron's day-of-week field: a cron with a day
+    # of week is the weekly tier, one without is the nightly tier.
     - cron: "17 4 * * *"
     # 06:17 UTC Sunday, the weekly tier: clear of the 03:43-04:57 nightlies and
     # of the Monday 05:30-05:47 weekly scans, on the week's quietest day for
@@ -84,20 +85,25 @@ jobs:
           DISPATCH_TIER: ${{ inputs.tier }}
         run: |
           set -euo pipefail
-          case "$SCHEDULE" in
-            "17 4 * * *") tier=nightly ;;
-            "17 6 * * 0") tier=weekly ;;
-            "") tier=$DISPATCH_TIER ;;
-            *) echo "::error::No stress tier runs on the schedule $SCHEDULE." && exit 1 ;;
-          esac
+          if [ -z "$SCHEDULE" ]; then
+            tier=$DISPATCH_TIER
+          else
+            read -r _ _ _ _ day_of_week <<< "$SCHEDULE"
+            if [ "$day_of_week" = "*" ]; then tier=nightly; else tier=weekly; fi
+          fi
           export TIER=$tier
           jobs=$(npx vitest list --project stress --filesOnly --json | node -e '
             const { relative } = require("node:path");
             // Measured job walls on a hosted runner: psiRoundWalls 2 h 45 min
             // (per-test limit 241 min), wasmMatchSlices 40 min (61 min),
-            // wasmMaskingGrowth 14 to 21 min (31 min).
+            // wasmMaskingGrowth 14 to 21 min (31 min). The 270 minutes for
+            // psiRoundWalls cover one round, 2^22 (measured 2 h 44 min); its
+            // 2^23 round needs about 24 GiB, which a hosted runner lacks, so
+            // WALLS_SIZES pins the job to 2^22.
+            const WALLS_FILE = "test/stress/psiRoundWalls.stress.test.ts";
+            const WALLS_SIZES = "4194304";
             const WEEKLY_MINUTES = {
-              "test/stress/psiRoundWalls.stress.test.ts": 270,
+              [WALLS_FILE]: 270,
               "test/stress/wasmMatchSlices.stress.test.ts": 90,
               "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
             };
@@ -123,7 +129,12 @@ jobs:
                 .filter((name) => !files.includes(name));
               if (missing.length > 0)
                 throw new Error(`the stress project lists no ${missing.join(", ")}`);
-              const single = (file, minutes) => ({ name: file, files: file, minutes });
+              const single = (file, minutes) => ({
+                name: file,
+                files: file,
+                minutes,
+                wallsSizes: file === WALLS_FILE ? WALLS_SIZES : "",
+              });
               const weekly = files
                 .filter((file) => file in WEEKLY_MINUTES)
                 .map((file) => single(file, WEEKLY_MINUTES[file]));
@@ -170,12 +181,14 @@ jobs:
         run: |
           set -euo pipefail
           read -ra files <<< "$STRESS_FILES"
+          if [ -n "$WALLS_SIZES" ]; then export PSI_STRESS_WALLS_SIZES=$WALLS_SIZES; fi
           npm run test:stress -w packages/core -- \
             --reporter=verbose \
             --reporter=../../scripts/lib/skippedLegReporter.mjs \
             "${files[@]}"
         env:
           STRESS_FILES: ${{ matrix.job.files }}
+          WALLS_SIZES: ${{ matrix.job.wallsSizes }}
           # Raise the createSetupMessage permutation run above the 200k local
           # default for heavier nightly coverage past the ~125k overflow cliff.
           # createSetupMessageLarge sets no timeout of its own, so the stress
