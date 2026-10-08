@@ -106,10 +106,10 @@ export const MAX_CHUNKS_PER_REASSEMBLY = 131_072;
 /**
  * The least each retained chunk is charged against
  * {@link MAX_WEBRTC_FRAME_BYTES}, so a tiny-chunk flood is bounded by the memory
- * it holds rather than by its payload. It is at least what one chunk holds
- * resident on either receive path at the most chunks the caps let a receiver
- * retain at once; the measurements are in docs/spec/CHANNEL_SECURITY.md,
- * "Retained chunk-count cap".
+ * it holds rather than by its payload. It is at least the per-chunk overhead of
+ * a minimal chunk on either receive path at the most chunks the caps let a
+ * receiver retain at once; the measurements and the limit for chunks just under
+ * it are in docs/spec/CHANNEL_SECURITY.md, "Retained chunk-count cap".
  *
  * It must not exceed the last chunk's charge on the largest frame a sender
  * admits, or it would lower that frame (`webrtcFrameReceiveCharge`,
