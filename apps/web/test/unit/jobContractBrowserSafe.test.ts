@@ -262,11 +262,19 @@ describe("the job API contract stays loadable in the browser", () => {
   test("the directory holds the contract modules the walk is meant to cover", () => {
     expect(files).toEqual(
       expect.arrayContaining([
+        join(CONTRACT_DIRECTORY, "disclosedConfiguration.ts"),
+        join(CONTRACT_DIRECTORY, "handoffBindPaths.ts"),
         join(CONTRACT_DIRECTORY, "intentSchemas.ts"),
         join(CONTRACT_DIRECTORY, "jobCreateRefusal.ts"),
+        join(CONTRACT_DIRECTORY, "jobFolderContents.ts"),
+        join(CONTRACT_DIRECTORY, "jobHandoff.ts"),
         join(CONTRACT_DIRECTORY, "mountBrowsePurpose.ts"),
+        join(CONTRACT_DIRECTORY, "recordUnavailableReason.ts"),
+        join(CONTRACT_DIRECTORY, "relayEvent.ts"),
         join(CONTRACT_DIRECTORY, "runArtifactNames.ts"),
+        join(CONTRACT_DIRECTORY, "sftpConnection.ts"),
         join(CONTRACT_DIRECTORY, "workInputName.ts"),
+        join(CONTRACT_DIRECTORY, "workInputResponses.ts"),
       ]),
     );
   });

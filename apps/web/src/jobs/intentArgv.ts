@@ -11,7 +11,7 @@ import { isAdmissiblePeerId } from "@jobContract/intentSchemas";
 
 import { composeSftpConfigDocument } from "./intentConfig";
 
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 

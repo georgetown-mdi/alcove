@@ -223,7 +223,7 @@ import type { InviterSpineStep } from "./inviterScreenModel";
 import type { ManageOfferChoices } from "./manageOfferModel";
 import type { PendingInvitation } from "./pendingInvitation";
 import type { Section } from "./stepRestore";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 import type {
   CSVRow,

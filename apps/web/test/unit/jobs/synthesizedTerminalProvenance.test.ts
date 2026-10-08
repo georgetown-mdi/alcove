@@ -11,7 +11,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // What the console's synthesized terminals owe an operator, held over the CLASS
 // rather than over one message: whatever the child wrote, the console's own

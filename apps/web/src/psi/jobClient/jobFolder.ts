@@ -4,7 +4,7 @@ import {
   readBoundedJson,
 } from "@psi/jobClient/jobApiBody";
 
-import type { JobFolderContents } from "@jobs/jobFolder";
+import type { JobFolderContents } from "@jobContract/jobFolderContents";
 
 /**
  * What one ask told the browser about a console run's folder: which of its files

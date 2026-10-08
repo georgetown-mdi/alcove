@@ -69,7 +69,10 @@ import {
   serializeKeyFile,
 } from "@alcove/core";
 
-import { HANDOFF_LOG_FILE_NAME, bindPathsIn } from "@jobs/handoffBindPaths";
+import {
+  HANDOFF_LOG_FILE_NAME,
+  bindPathsIn,
+} from "@jobContract/handoffBindPaths";
 
 import { readOwnRelaySetting } from "../transport/ownRelaySetting";
 
@@ -96,7 +99,7 @@ import type {
   ManagedExchangeSchedule,
   RunnableManagedExchangeRecord,
 } from "./managedExchangeRecord";
-import type { HandoffBindPath } from "@jobs/handoffBindPaths";
+import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { OwnRelayRead } from "../transport/ownRelaySetting";
 
 /** The config file name `alcove exchange` reads at its default config path

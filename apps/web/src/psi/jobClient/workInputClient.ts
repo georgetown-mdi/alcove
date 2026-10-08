@@ -10,7 +10,7 @@ import type {
   JobInputListing,
   JobInputProfile,
   JobInputProfileErrorCode,
-} from "@jobs/workInputs";
+} from "@jobContract/workInputResponses";
 import type { FieldValueCoverage } from "@psi/workers/nonEmptyAggregate";
 import type { Standardization } from "@alcove/core";
 

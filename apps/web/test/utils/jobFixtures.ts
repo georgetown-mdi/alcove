@@ -18,7 +18,7 @@ import type {
   JobZeroSetupSftpIntent,
 } from "@jobContract/intentSchemas";
 import type { JobManager } from "@jobs/jobManager";
-import type { JobSftpServerEntry } from "@jobs/sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 import type { LinkageTerms } from "@alcove/core";
 
 /** The stub CLI the driver tests point JOB_CLI_BINARY at. */

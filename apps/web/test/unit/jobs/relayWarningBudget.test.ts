@@ -27,7 +27,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { PresentedHostKey } from "@alcove/core";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // A CLI warning is one composition, escaped once on its way to a console
 // seat: the relay fits the CLI's unescaped text and the seat escapes it. Either

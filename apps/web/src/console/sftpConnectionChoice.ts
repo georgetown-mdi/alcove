@@ -1,7 +1,7 @@
 import { SPLIT_DIRECTORY_RETAIN_REQUIREMENT } from "./sftpConnectionForm";
 
 import type { SFTPEndpoint } from "@alcove/core";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /**
  * The pure model behind the console SFTP card: on a console build, the operator

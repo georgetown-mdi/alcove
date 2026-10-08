@@ -8,8 +8,8 @@ import type {
   HandoffSigningSetting,
   JobHandoff,
   JobHandoffTemplate,
-} from "@jobs/handoff";
-import type { HandoffBindPath } from "@jobs/handoffBindPaths";
+} from "@jobContract/jobHandoff";
+import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 
 /**
  * The browser-side reader for `GET /api/jobs/:jobId/handoff`: the recurring-run

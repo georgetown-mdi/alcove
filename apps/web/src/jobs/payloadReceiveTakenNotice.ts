@@ -3,8 +3,8 @@ import {
   sanitizeForDisplay,
 } from "@alcove/core";
 
-import type { JobHandoff } from "./handoff";
-import type { RelayEvent } from "./cliDriver";
+import type { JobHandoff } from "@jobContract/jobHandoff";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 /** The CLI warning source an unattended fill rides (docs/spec/CLI_EVENTS.md). */
 export const PAYLOAD_RECEIVE_TAKEN_SOURCE = "payloadReceiveTaken";

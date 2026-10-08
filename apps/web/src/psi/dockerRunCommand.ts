@@ -3,7 +3,7 @@ import { alcoveVersion } from "@utils/clientConfig";
 
 import { shellJoinCommand } from "./managed/recurringHandoff";
 
-import type { HandoffBindPath } from "@jobs/handoffBindPaths";
+import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 
 /**
  * The `docker run` command running Alcove's published image over a folder,

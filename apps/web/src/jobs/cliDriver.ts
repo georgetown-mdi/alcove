@@ -29,19 +29,8 @@ import { PAYLOAD_RECEIVE_TAKEN_SOURCE } from "./payloadReceiveTakenNotice";
 
 import type { FailureCause, PartnerOriginText } from "@alcove/core";
 import type { ChildProcess } from "node:child_process";
-import type { EventType } from "@alcove/cli-contract";
 import type { Readable } from "node:stream";
-
-/**
- * A relayed CLI event after validation against the fd-3 schema
- * (`@alcove/cli-contract`, docs/spec/CLI_EVENTS.md) and field sanitization. A
- * malformed or unknown line is a degradation notice, never a crash.
- */
-export interface RelayEvent {
-  v: number;
-  type: EventType;
-  [key: string]: unknown;
-}
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 /**
  * The closed vocabulary of `source` values on the `warning` events the console

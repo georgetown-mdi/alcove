@@ -26,7 +26,7 @@ import {
 
 import type { JobExchangeIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // What the console tells an operator about a first authenticated contact: the
 // notice a run that pinned the partner's certificate raises, and the failure a

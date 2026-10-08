@@ -38,7 +38,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // Every warning the CLI raises reaches a console seat escaped exactly once:
 // the CLI writes the text unescaped beside its own escape of it, the relay

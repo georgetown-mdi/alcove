@@ -95,7 +95,6 @@ import type {
   CliRunControls,
   CliRunDiagnostics,
   JobTerminalState,
-  RelayEvent,
 } from "./cliDriver";
 import type {
   JobCreateIntent,
@@ -109,17 +108,21 @@ import type { TermsProposalApplyResult } from "./termsProposal";
 
 import type { ExchangeRecordOutcome, PartnerOriginText } from "@alcove/core";
 import type {
+  JobSftpServerEntry,
+  SftpConnectionProjection,
+} from "@jobContract/sftpConnection";
+import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
-import type { JobFolderView } from "./jobFolder";
-import type { JobHandoff } from "./handoff";
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobFolderView } from "@jobContract/jobFolderContents";
+import type { JobHandoff } from "@jobContract/jobHandoff";
+import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
+import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
 import type { SftpProbeResult } from "./sftpProbe";
 import type { SigningFingerprintResult } from "./signingIdentity";
-import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
 /**
  * Thrown by {@link JobManager.createJob} when an sftp intent arrives but no
@@ -323,19 +326,6 @@ export interface BufferedEvent {
 
 /** The lifecycle status of a job. */
 type JobStatus = "running" | "succeeded" | "failed" | "cancelled";
-
-/**
- * Why the exchange-record pair is withheld for a job, distinguished because a
- * client may act on each differently: `no-record` is the console's definitive
- * denial (nothing at the record path), the only one that licenses destroying
- * the workdir without asking; `undescribable-record` is a record file present
- * but not one this bundle can parse (unknown `outcome`, malformed, or missing
- * its keys half); `not-settled` is a run whose child has not exited, even
- * where its terminal event has arrived, since the CLI writes the pair near the
- * end and the run's artifacts are resolved only on exit.
- */
-export type RecordUnavailableReason =
-  "not-settled" | "no-record" | "undescribable-record";
 
 /**
  * The uniform view the status and download routes consume, built from the live
@@ -577,32 +567,6 @@ interface JobManagerOptions {
    * the server-side constructor, never derived from a request.
    */
   childEnv?: NodeJS.ProcessEnv;
-}
-
-/**
- * The public, credential-free projection of the authored SFTP connection
- * served by `GET /api/jobs/sftp`: the locator fields plus any non-blocking
- * credential warnings (each naming a field and a directory only, never a
- * secret), and the refusal a direct run would raise over it. Constructed
- * field-by-field from the entry -- never by spreading it -- so no credential
- * reference, fingerprint, or future field can ride along.
- */
-export interface SftpConnectionProjection {
-  host: string;
-  port?: number;
-  path?: string;
-  /** The inbound (peer-written) remote directory of a split-directory
-   * connection; present only as a pair with {@link outboundPath}, and never
-   * alongside {@link path}. */
-  inboundPath?: string;
-  /** The outbound (self-written) remote directory of a split-directory
-   * connection. */
-  outboundPath?: string;
-  credentialWarnings?: Array<string>;
-  /** The token job create refuses a direct (zero-setup) run of this connection
-   * with, absent when it would run. An exchange-mode run is not refused over
-   * it. */
-  zeroSetupRefusal?: ZeroSetupSftpRefusalReason;
 }
 
 /**

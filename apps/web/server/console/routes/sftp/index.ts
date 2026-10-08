@@ -11,7 +11,7 @@ import {
 
 import { defineJobRoute } from "../../jobRoute";
 
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /**
  * `/api/jobs/sftp/` -- the SFTP connection an sftp job runs against. Shares

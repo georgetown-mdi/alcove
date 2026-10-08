@@ -36,7 +36,7 @@ import { RECEIPTS_DEFAULT, receiptsIntentFields } from "@psi/receiptsModel";
 
 import { tempDataRoot, validSftpIntent } from "../../utils/jobFixtures";
 
-import type { DisclosedExchangeDocument } from "@jobs/configLoad";
+import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
 
 // The authoring-state half of the mount load: each card's draft read back out of
 // a loaded document, and the round trip through the composition it is the inverse

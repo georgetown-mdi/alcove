@@ -23,7 +23,7 @@ import type {
   UnmountableBindPath,
   UnmountableReason,
 } from "@psi/dockerRunCommand";
-import type { HandoffBindPath } from "@jobs/handoffBindPaths";
+import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { RunSchedule } from "./scheduleTemplates";
 
 /**

@@ -15,7 +15,7 @@ import type {
 } from "@psi/jobClient/serverJobExchangeDriver";
 import type { ExchangeDriverEvents } from "@psi/exchangeDriver";
 import type { ExchangeErrorCategory } from "@psi/exchangeLifecycle";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RunOutputs } from "@psi/runOutputs";
 
 /** What the post-terminal status read answers for a run these tests do not

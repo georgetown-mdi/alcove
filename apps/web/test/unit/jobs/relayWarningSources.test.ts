@@ -21,13 +21,10 @@ import {
   validIntent,
 } from "../../utils/jobFixtures";
 
-import type {
-  CliDriverHandlers,
-  RelayEvent,
-  RelayWarningSource,
-} from "@jobs/cliDriver";
+import type { CliDriverHandlers, RelayWarningSource } from "@jobs/cliDriver";
 import type { ChildProcess } from "node:child_process";
 import type { JobRecord } from "@jobs/jobManager";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // A supervisor reading one job stream switches on `source`, so each notice the
 // relay composes itself reaches the stream under its own value. Every emission

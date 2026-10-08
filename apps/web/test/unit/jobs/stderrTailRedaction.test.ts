@@ -16,7 +16,7 @@ import {
 } from "../../utils/jobFixtures";
 
 import type { JobRecord } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // The retained stderr tail is a rolling WINDOW, so a clip taken before
 // redaction hands the operator a key body with neither marker on it: the

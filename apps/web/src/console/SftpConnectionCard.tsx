@@ -19,7 +19,7 @@ import { quickExchangeSftpRefusal } from "./quickExchangeSftpRefusal";
 
 import type { ProbeCeremony } from "./SftpAuthoringForm";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /** Where a saved connection stands for the run this card serves: a quick
  * exchange refuses it, the run needs retain mode back on, or it is ready. */

@@ -46,7 +46,7 @@ import type {
   SftpEndpointLocator,
   SftpFormField,
 } from "./sftpConnectionForm";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 /**
  * Which host-key confirmation ceremony the probe presents. Both paths pin the

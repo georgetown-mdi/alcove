@@ -16,7 +16,7 @@ import {
 
 import type { AddressInfo } from "node:net";
 import type { BufferedEvent } from "@jobs/jobManager";
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 // This drives an ACTUAL cut -- a real loopback socket destroyed mid-body, in
 // front of the real SSE route over the real job manager -- and fails unless

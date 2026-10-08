@@ -10,7 +10,7 @@ import { failureFor } from "@exchange/useInviterExchange";
 import { termsApplyOutcomeText } from "@console/termsChangeRecoveryModel";
 import { termsChangeView } from "@psi/termsChangeView";
 
-import type { RelayEvent } from "@jobs/cliDriver";
+import type { RelayEvent } from "@jobContract/relayEvent";
 
 /** A run id, the name of its folder in the working folder. */
 const JOB_ID = "3f2b8c1e-0d4a-4c6e-9a51-7e2f0b9c4d13";

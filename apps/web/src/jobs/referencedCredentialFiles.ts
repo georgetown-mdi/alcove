@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ExchangeSpec } from "@alcove/core";
-import type { JobSftpServerEntry } from "./sftpServer";
+import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
 /**
  * The files holding a secret that the console's current connection and opened

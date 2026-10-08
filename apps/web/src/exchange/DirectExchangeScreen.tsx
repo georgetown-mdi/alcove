@@ -76,7 +76,7 @@ import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 import type { LinkageStrategy } from "@alcove/core";
 import type { RailStep } from "@psi/rail";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
-import type { SftpConnectionProjection } from "@jobs/jobManager";
+import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
 
 const TRANSPORT_NOTES: Record<DirectTransport, string> = {
   sftp: "SFTP",
