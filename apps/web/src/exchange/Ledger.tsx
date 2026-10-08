@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { IconInfoCircle } from "@tabler/icons-react";
 
-import { Tooltip } from "@mantine/core";
+import { Tooltip, VisuallyHidden } from "@mantine/core";
 
 import styles from "@styles/app.module.css";
 
@@ -30,7 +30,7 @@ function shareBarRows(
  * console's monospace data voice, and an optional reference to the spine step
  * that owns the value ("Step 2"). `muted` is the named empty state ("None",
  * "Nothing - matching only"), rendered in the placeholder voice; with neither
- * the row shows the em-dash "not decided yet" mark. `shareBar` holds the
+ * the row shows the not-set mark. `shareBar` holds the
  * producer's marker for the narrow condensed bar (see {@link shareBarRows}).
  */
 interface LedgerRow {
@@ -108,7 +108,18 @@ const FACT_TONE_CLASS = {
   attention: `${styles.val} ${styles.valAttention}`,
 } as const;
 
-/** A Customize row's quiet fact: the em-dash "nothing yet" mark when absent,
+/** The mark for a value not chosen yet: a hyphen on screen, hidden from a
+ * screen reader, which reads the words beside it instead. */
+function NotSetMark() {
+  return (
+    <>
+      <span aria-hidden="true">-</span>
+      <VisuallyHidden>Not set yet</VisuallyHidden>
+    </>
+  );
+}
+
+/** A Customize row's quiet fact: the not-set mark when absent,
  * the model's tone color when present. The fact is plain text inside the row,
  * so an attention state is never conveyed by color alone. */
 function CustomizeFactValue({ entry }: { entry: RailFact }) {
@@ -118,7 +129,7 @@ function CustomizeFactValue({ entry }: { entry: RailFact }) {
         entry.tone === undefined ? styles.val : FACT_TONE_CLASS[entry.tone]
       }
     >
-      {entry.fact ?? "\u2014"}
+      {entry.fact ?? <NotSetMark />}
     </span>
   );
 }
@@ -232,7 +243,9 @@ function LedgerRows({ rows }: { rows: ReadonlyArray<LedgerRow> }) {
             </dt>
             <dd>
               {row.value ?? (
-                <span className={styles.dash}>{row.muted ?? "\u2014"}</span>
+                <span className={styles.dash}>
+                  {row.muted ?? <NotSetMark />}
+                </span>
               )}
             </dd>
           </div>

@@ -51,7 +51,7 @@ export function formatFirstIssue(
   issues: ReadonlyArray<JobSchemaIssue>,
 ): string {
   if (issues.length === 0)
-    throw new Error("a rejected body carried no schema issue to format");
+    throw new Error("a rejected body had no schema issue to format");
   const issue = issues[0];
   const field =
     issue.path.length > 0 ? issue.path.map(String).join(".") : "body";
@@ -73,7 +73,7 @@ export function formatIssues(
   root: string,
 ): string {
   if (issues.length === 0)
-    throw new Error("a rejected body carried no schema issue to format");
+    throw new Error("a rejected body had no schema issue to format");
   return issues
     .map((issue) => {
       const fieldPath = [root, ...issue.path.map(String)].join(".");

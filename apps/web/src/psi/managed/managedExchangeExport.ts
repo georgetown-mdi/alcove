@@ -182,7 +182,7 @@ function handoffRefusalMessage(
     case "record-gone":
       return `managed exchange ${id} is no longer stored, so there is no copy left to hand off`;
     case "superseded":
-      return `the downloaded hand-off artifact for managed exchange ${id} no longer carries its current secret`;
+      return `the downloaded hand-off artifact for managed exchange ${id} does not contain its current secret`;
   }
 }
 

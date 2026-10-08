@@ -190,15 +190,15 @@ const REFUSED_PARAM_NAME_REMEDY =
 const REFUSED_PARAM_NAME_MESSAGES: Record<ParamNameRefusal, string> = {
   "too-long":
     `A linkage key's transform names a parameter longer than ${String(MAX_NAME_LENGTH)} ` +
-    "characters, which these terms cannot carry. " +
+    "characters, which these terms cannot include. " +
     REFUSED_PARAM_NAME_REMEDY,
   "control-character":
     "A linkage key's transform names a parameter with a control or " +
-    "text-direction character in it, which these terms cannot carry. " +
+    "text-direction character in it, which these terms cannot include. " +
     REFUSED_PARAM_NAME_REMEDY,
   "lone-surrogate":
     "A linkage key's transform names a parameter with an incomplete character " +
-    "in it, which these terms cannot carry. " +
+    "in it, which these terms cannot include. " +
     REFUSED_PARAM_NAME_REMEDY,
 };
 

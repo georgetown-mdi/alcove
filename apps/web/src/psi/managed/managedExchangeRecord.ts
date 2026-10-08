@@ -605,7 +605,7 @@ const persistedExchangeFileSchema = z.preprocess(
     return document;
   },
   ExchangeSpecSchema.refine((spec) => spec.authentication === undefined, {
-    message: "exchangeFile must not carry an authentication block",
+    message: "exchangeFile must not contain an authentication block",
   }),
 );
 

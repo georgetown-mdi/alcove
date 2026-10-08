@@ -137,7 +137,9 @@ vi.mock("@psi/exchangeLifecycle", async (importOriginal) =>
   (await import("./moduleMocks")).exchangeLifecycleMock(importOriginal),
 );
 
-const EM_DASH = "\u2014";
+// The ledger's empty-value mark: a hyphen hidden from a screen reader, then the
+// words it reads instead.
+const NOT_SET_MARK = "-Not set yet";
 
 // The coverage sweep is debounced (AGGREGATE_DEBOUNCE_MS, 500 ms). Waits for it
 // to settle measured up to 405 ms alone and 566 ms under CPU load, so 5 s is
@@ -449,15 +451,15 @@ describe("inviter screen", () => {
     expect(ledger).not.toBeNull();
 
     // The ledger hosts the Customize group pre-create; with no file yet each
-    // fact renders the em-dash quiet value on a not-yet-reachable row.
+    // fact renders the not-set mark on a not-yet-reachable row.
     expect((ledger as Element).textContent).toContain("Customize");
     const facts = Array.from(
       (ledger as Element).querySelectorAll(`.${styles.val}`),
     );
     expect(facts.map((fact) => fact.textContent)).toEqual([
-      EM_DASH,
-      EM_DASH,
-      EM_DASH,
+      NOT_SET_MARK,
+      NOT_SET_MARK,
+      NOT_SET_MARK,
     ]);
 
     const rowLabels = Array.from(
@@ -473,11 +475,14 @@ describe("inviter screen", () => {
       "How it runs",
     ]);
 
-    // Every undecided ledger value is the muted em-dash mark.
-    const values = Array.from((ledger as Element).querySelectorAll("dd")).map(
-      (value) => value.textContent,
+    // Every undecided ledger value is the muted not-set mark, its hyphen
+    // hidden from a screen reader.
+    const valueCells = Array.from((ledger as Element).querySelectorAll("dd"));
+    expect(valueCells.map((value) => value.textContent)).toEqual(
+      Array.from({ length: 7 }, () => NOT_SET_MARK),
     );
-    expect(values).toEqual(Array.from({ length: 7 }, () => EM_DASH));
+    for (const cell of valueCells)
+      expect(cell.querySelector('[aria-hidden="true"]')?.textContent).toBe("-");
   });
 
   test("derives terms on read and tracks step-2 edits in the ledger", async () => {
@@ -1814,9 +1819,9 @@ describe("inviter screen", () => {
     await expect.element(continueButton).toBeDisabled();
     const facts = Array.from(document.querySelectorAll(`.${styles.val}`));
     expect(facts.map((fact) => fact.textContent)).toEqual([
-      EM_DASH,
-      EM_DASH,
-      EM_DASH,
+      NOT_SET_MARK,
+      NOT_SET_MARK,
+      NOT_SET_MARK,
     ]);
 
     // Readiness comes back with the next good read.
@@ -1889,7 +1894,9 @@ describe("inviter screen", () => {
     });
 
     await expect
-      .element(page.getByText("It carries a one-time secret", { exact: false }))
+      .element(
+        page.getByText("It contains a one-time secret", { exact: false }),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByText("This invitation expires", { exact: false }))
