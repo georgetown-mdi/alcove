@@ -1290,10 +1290,8 @@ export async function handler(argv: Arguments): Promise<void> {
       });
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
 
-      // The last local step before the run's first network contact, so a run
-      // refused before here leaves no key file behind for the re-run to trip on.
-      // The wake call's own refusal is made first: it is local, but the wake
-      // call below makes it only on the way to sending.
+      // The wake call's own refusal is checked here, not where it is made, so a
+      // run it refuses leaves no key file behind.
       if (invitedKeyFile !== undefined) {
         assertWakeCallFormable(connection);
         saveInvitedKeyFile(options.keyFile, invitedKeyFile);

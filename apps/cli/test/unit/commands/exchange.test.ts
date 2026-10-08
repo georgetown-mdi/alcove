@@ -2279,13 +2279,8 @@ test("handler trims a supplied --identity before using it", async () => {
 });
 
 // --- handler: --invitation provisioning --------------------------------------
-// --invitation decodes an invitation code ahead of the config load, runs the
-// exchange on the decoded key, and writes the composing party's key-file copy
-// (secret AND expiry) just before the run's first network contact. The full
-// decode/write path is unit-tested in keyFile.test.ts; these cover the handler
-// wiring -- that every local refusal leaves no key file, that the write comes
-// before the first network contact, and the pre-existing-key and fail-closed
-// exit paths.
+// The full decode/write path is unit-tested in keyFile.test.ts; these cover the
+// handler wiring.
 
 // A 43-char base64url secret distinct from TOKEN_A/TOKEN_B, to prove the
 // provisioned key has the invitation's secret.
@@ -2400,10 +2395,8 @@ function seedConfig(config: Record<string, unknown>): () => void {
   return () => fs.writeFileSync(configFile, YAML.stringify(config));
 }
 
-// Each configuration below is refused by a local check, from the config load
-// through prepareDataset to the wake call's own validation. `says` is a fixed
-// part of the refusal, so a row refused by something other than its own check
-// fails. `realPreparation` rows are refused inside core's preparation, which
+// `says` is a fixed part of the refusal, so a row refused by something other
+// than its own check fails. `realPreparation` rows are refused inside core's preparation, which
 // the rest of this file stubs.
 const LOCALLY_REFUSED_RUNS: Array<{
   name: string;
