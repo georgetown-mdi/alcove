@@ -1,7 +1,7 @@
 ---
 title: "Alcove Compliance"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-07"
+last_reviewed: "2026-09-11"
 ---
 
 # Alcove compliance
@@ -162,7 +162,6 @@ So the present tense is: the algorithms the scoped claim names are on certificat
 - **Data at rest.** Alcove encrypts nothing on disk. The key file, the signing identity, the exchange records and the result CSV are written unencrypted at owner-only permissions (`0600` on Unix, a restricted ACL on Windows), so at-rest confidentiality is the deploying agency's storage or full-disk encryption rather than a control this software provides. See [SC-28](#nist-sp-800-53) and [SECURITY_DESIGN.md#key-file-security](SECURITY_DESIGN.md#key-file-security).
 - **The web application.** Its key exchange and receipt signing run on the browser's own Web Crypto implementation and its PSI in WebAssembly. A browser offers no configurable cryptographic module, so every statement here about a validated module is about the `-fips` container image alone.
 - **The PSI scheme itself.** The masking is an elliptic-curve construction over P-256 that no NIST publication specifies and no module certificate approves as a scheme, and it runs in BoringSSL, inside a vendored WebAssembly module or the native addon the CLI loads where a prebuild ships for the platform, neither of which an OpenSSL provider can reach in principle. The second half is a deployment fact; the first is permanent. What is unapproved is the scheme rather than its implementation, so no validated module and no future image makes the PSI layer approved.
-- **Record commitments and receipt payload MACs.** The exchange record's commitments and the signed receipt's two payload MACs are HMAC-SHA-256 computed in JavaScript by `@noble/hashes`, fed the canonical encoding in pieces because that encoding can be longer than the longest string the engine holds. `crypto.subtle` offers no incremental HMAC, so no validated module performs them, in either image. The receipt signature over those MACs is a `crypto.subtle` ECDSA call.
 - **Protocol composition in JavaScript.** The key schedule, the AEAD envelope and its sequence discipline, the canonical encoding, and the receipt's domain separation and per-signer binding are composed in application JavaScript above primitive calls. CMVP validates modules, not protocols: however each primitive call is served, the result is validated primitives and never a validated protocol. Recorded per area in [key-establishment-fips-boundary.md](notes/key-establishment-fips-boundary.md) and [receipt-signing-fips-boundary.md](notes/receipt-signing-fips-boundary.md).
 
 #### What an authorizing official is being asked to accept

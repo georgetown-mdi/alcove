@@ -25,7 +25,6 @@ updates:
         patterns:
           - "@openmined/psi.js"
           - "@noble/curves"
-          - "@noble/hashes"
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"
@@ -67,7 +66,6 @@ updates:
         exclude-patterns:
           - "@openmined/psi.js"
           - "@noble/curves"
-          - "@noble/hashes"
           - "node-forge"
           - "ssh2"
           - "ssh2-sftp-client"

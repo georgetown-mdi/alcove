@@ -22,7 +22,7 @@ const GIB = 1024 * MIB;
 const HEAP_MIB = Math.min(14_336, Math.floor(totalmem() / MIB) - 2_048);
 const PROBE_TIMEOUT_MS = 1_800_000;
 // Each probe's peak resident set, rounded up to whole GiB.
-const NEED_GIB: Record<ProbeMode, number> = { under: 10, past: 7 };
+const NEED_GIB: Record<ProbeMode, number> = { under: 9, past: 8 };
 
 function runProbe(mode: ProbeMode): ProbeResult {
   // A synchronous spawn blocks the event loop, so vitest's own test timeout

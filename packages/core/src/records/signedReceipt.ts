@@ -169,7 +169,7 @@ async function macCommittedPayload(
   macKey: Uint8Array<ArrayBuffer>,
   payload: CommittedPayload,
 ): Promise<string> {
-  return toBase64Url(canonicalHmacSha256(macKey, payload));
+  return toBase64Url(await canonicalHmacSha256(macKey, payload));
 }
 
 /**

@@ -387,9 +387,9 @@ const CHUNK_CODE_UNITS = 1 << 16;
  * longer than the engine's longest string can still be hashed. The encoder
  * writes every array's and object's brackets, commas, colons and sorted keys
  * itself and takes each primitive's encoding from `canonicalize`, so a chunk
- * ends only between two whole tokens, never inside a character. A chunk is at
- * least 64 Ki UTF-16 code units of text, except the last; it is longer when one
- * primitive's encoding is.
+ * ends only between two whole tokens, never inside a character. A chunk is
+ * about 64 Ki UTF-16 code units of text, longer when one primitive's encoding
+ * is, and the last may be shorter.
  *
  * `value` is validated in full before the first write, and the whole encoding
  * runs within this call, so `value` cannot change between its validation and
@@ -436,41 +436,31 @@ function* appendCanonical(
     buffer.text += canonicalizeValidated(node);
     return;
   }
-  if (Array.isArray(node)) {
-    buffer.text += "[";
-    for (let at = 0; at < node.length; at++) {
-      if (at > 0) buffer.text += ",";
-      const element: unknown = node[at];
-      if (element !== null && typeof element === "object")
-        yield* appendCanonical(element, buffer);
-      else buffer.text += canonicalizeValidated(element);
-      if (buffer.text.length >= CHUNK_CODE_UNITS) {
-        yield buffer.text;
-        buffer.text = "";
-      }
-    }
-    buffer.text += "]";
-    return;
-  }
+  const elements = Array.isArray(node) ? (node as readonly unknown[]) : null;
+  const members = node as Readonly<Record<string, unknown>>;
   // RFC 8785 orders members by their names' UTF-16 code units, which is the
   // default order of Array.prototype.sort.
-  const members = node as Readonly<Record<string, unknown>>;
-  buffer.text += "{";
-  let first = true;
-  for (const key of Object.keys(members).sort()) {
-    if (!first) buffer.text += ",";
-    first = false;
-    buffer.text += `${canonicalizeValidated(key)}:`;
-    const member = members[key];
-    if (member !== null && typeof member === "object")
-      yield* appendCanonical(member, buffer);
-    else buffer.text += canonicalizeValidated(member);
+  const keys = elements === null ? Object.keys(members).sort() : null;
+  const count = elements?.length ?? keys?.length ?? 0;
+  buffer.text += elements === null ? "{" : "[";
+  for (let at = 0; at < count; at++) {
+    if (at > 0) buffer.text += ",";
+    let child: unknown;
+    if (keys === null) child = elements?.[at];
+    else {
+      const key = keys[at];
+      buffer.text += `${canonicalizeValidated(key)}:`;
+      child = members[key];
+    }
+    if (child !== null && typeof child === "object")
+      yield* appendCanonical(child, buffer);
+    else buffer.text += canonicalizeValidated(child);
     if (buffer.text.length >= CHUNK_CODE_UNITS) {
       yield buffer.text;
       buffer.text = "";
     }
   }
-  buffer.text += "}";
+  buffer.text += elements === null ? "}" : "]";
 }
 
 /**

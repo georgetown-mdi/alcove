@@ -14,14 +14,17 @@ import {
   CanonicalEncodingError,
   writeCanonicalBytes,
 } from "../../src/utils/canonical";
-import { canonicalHmacSha256 } from "../../src/utils/canonicalHmac";
+import {
+  canonicalBytesPastStringCap,
+  canonicalHmacSha256,
+} from "../../src/utils/canonicalHmac";
 import { hkdfDerive, hmacSha256, toBase64Url } from "../../src/utils/crypto";
 
-// The streamed encoder and the HMAC over it are held to the one-shot
-// encoding: every chunk sequence must concatenate to exactly the bytes
-// canonicalBytes returns, and every streamed HMAC must equal the WebCrypto
-// HMAC over those bytes, so a record or receipt built either way verifies
-// against the other.
+// The chunked encoder and the HMAC over it are held to the one-shot encoding:
+// every chunk sequence and the buffer built from it must equal the bytes
+// canonicalBytes returns, and every HMAC over that buffer must equal the HMAC
+// over those bytes, so a record or receipt built either way verifies against
+// the other.
 
 type Vector =
   | { name: string; value: unknown; bytesHex: string; refuses?: undefined }
@@ -331,13 +334,85 @@ describe("writeCanonicalBytes: refusals", () => {
   });
 });
 
+describe("canonicalBytesPastStringCap equals canonicalBytes", () => {
+  // 2-, 3- and 4-byte UTF-8 (the last a surrogate pair in UTF-16).
+  const WIDE = ["\u00e9", "\u4e2d", "\u{1f600}"];
+  // A filler string whose length moves the chunk boundary across the
+  // elements after it, one code unit at a time.
+  const boundaryCases = Array.from({ length: 24 }, (_unused, shift) => [
+    "a".repeat(CHUNK_CODE_UNITS - 20 + shift),
+    ...WIDE,
+    `${WIDE.join("")}x`,
+    `x${WIDE.join("")}`,
+    ...WIDE.map((wide) => wide.repeat(3)),
+  ]);
+
+  test("chunk boundaries fall beside each width of character", () => {
+    const strictDecoder = new TextDecoder("utf-8", { fatal: true });
+    const before = new Set<string>();
+    const after = new Set<string>();
+    for (const value of boundaryCases) {
+      const texts = chunksOf(value).map((chunk) => strictDecoder.decode(chunk));
+      for (let at = 1; at < texts.length; at++) {
+        const ending = [...texts[at - 1].slice(0, -1)].at(-1) ?? "";
+        const starting = [...texts[at].slice(2)][0] ?? "";
+        if (WIDE.includes(ending)) before.add(ending);
+        if (WIDE.includes(starting)) after.add(starting);
+      }
+    }
+    expect([...before].sort()).toEqual([...WIDE].sort());
+    expect([...after].sort()).toEqual([...WIDE].sort());
+  });
+
+  test.each(boundaryCases.map((value, shift) => ({ shift, value })))(
+    "multi-byte characters beside a chunk boundary, shift $shift",
+    ({ value }) => {
+      expect(toHex(canonicalBytesPastStringCap(value))).toBe(
+        toHex(canonicalBytes(value)),
+      );
+    },
+  );
+
+  test("each width of character across several buffer growths", () => {
+    // Rows whose widths differ, so the growth points land at varying
+    // offsets within the characters' encodings.
+    const value = payloadOf(30_000, (row) =>
+      WIDE[row % 3].repeat(1 + (row % 11)),
+    );
+    const bytes = canonicalBytesPastStringCap(value);
+    expect(bytes.length).toBeGreaterThan(8 * CHUNK_CODE_UNITS);
+    expect(toHex(bytes)).toBe(toHex(canonicalBytes(value)));
+  });
+
+  test.each([
+    ...vectors.filter((vector) => !vector.refuses),
+    ...SHAPES.map(({ name, value }) => ({ name, value, bytesHex: undefined })),
+  ])("$name", ({ value }) => {
+    expect(toHex(canonicalBytesPastStringCap(value))).toBe(
+      toHex(canonicalBytes(value)),
+    );
+  });
+
+  test("a value outside the domain is refused", () => {
+    expect(() => canonicalBytesPastStringCap({ a: undefined })).toThrow(
+      CanonicalEncodingError,
+    );
+  });
+});
+
 describe("canonicalHmacSha256 equals the WebCrypto HMAC over canonicalBytes", () => {
   const keys = [1, 16, 32, 63, 64, 65, 200].map((length) =>
     Uint8Array.from({ length }, (_unused, at) => (at * 31 + length) & 0xff),
   );
   const values = [
     ...SHAPES.map(({ value }) => value),
-    payloadOf(20_000, (row) => `é${row}\u{1f600}`),
+    payloadOf(20_000, (row) => `\u00e9${row}\u{1f600}\u4e2d`),
+    [
+      "a".repeat(CHUNK_CODE_UNITS - 2),
+      "\u{1f600}",
+      "\u4e2d".repeat(CHUNK_CODE_UNITS),
+      "\u00e9",
+    ],
     vectors.filter((vector) => !vector.refuses).map((vector) => vector.value),
   ];
 
@@ -345,16 +420,16 @@ describe("canonicalHmacSha256 equals the WebCrypto HMAC over canonicalBytes", ()
     "under a key of $length bytes",
     async ({ key }) => {
       for (const value of values)
-        expect(canonicalHmacSha256(key, value)).toEqual(
+        expect(await canonicalHmacSha256(key, value)).toEqual(
           await hmacSha256(key, canonicalBytes(value)),
         );
     },
   );
 
-  test("a value outside the domain is refused", () => {
-    expect(() => canonicalHmacSha256(keys[3], { a: undefined })).toThrow(
-      CanonicalEncodingError,
-    );
+  test("a value outside the domain is refused", async () => {
+    await expect(
+      canonicalHmacSha256(keys[3], { a: undefined }),
+    ).rejects.toThrow(CanonicalEncodingError);
   });
 });
 

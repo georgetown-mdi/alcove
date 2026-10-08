@@ -130,12 +130,14 @@ The verifier indexes the input's identifier column in shards of 2^24 entries, as
 
 The exchange record and receipt at that size, 2^24 + 2048 pairs of this shape, are built and verified by `packages/core/test/stress/canonicalLargeArray.stress.test.ts` in the opt-in stress tier.
 
-**The record and receipt past V8's longest string.** The record's commitments and the receipt's payload MACs are HMAC-SHA-256 over the canonical encoding fed in chunks ([CANONICAL_ENCODING.md, Implementation note](CANONICAL_ENCODING.md#implementation-note-non-normative)), so the encoding is not bounded by V8's longest string, 536,870,888 characters on Node 26.10. Measured on 2026-10-07 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.10, heap raised to 14 GiB, with other test runs sharing the host. Each row is one process building a record over a sent payload of one 30-character column, an empty received payload, and an association table of as many pairs as rows, then both parties' receipt content, then verifying the record's commitments:
+**The record and receipt past V8's longest string.** The record's commitments and the receipt's payload MACs are HMAC-SHA-256 over the canonical encoding, written in chunks into one byte array and passed to one `crypto.subtle` call ([CANONICAL_ENCODING.md, Implementation note](CANONICAL_ENCODING.md#implementation-note-non-normative)), so the encoding is not bounded by V8's longest string, 536,870,888 characters on Node 26.10. Measured on 2026-10-08 in a 10-core aarch64 Linux container with 23 GB of memory, Node 26.10, heap raised to 14 GiB. Each row is one process building a record over a sent payload of one 30-character column, an empty received payload, and an association table of as many pairs as rows, then both parties' receipt content, then verifying the record's commitments:
 
 | Sent payload rows | Commitment encoding | One string? | Result | Time | Peak RSS |
 | --- | --- | --- | --- | --- | --- |
-| 15,339,166 | 536,870,887 bytes | yes; one row more is refused | record verifies; commitments and MAC equal the one-shot values | 752 s | 9.2 GiB |
-| 16,779,264 (2^24 + 2048) | 587,274,317 bytes | refused | record verifies; both receipt contents equal | 449 s | 6.9 GiB |
+| 15,339,166 | 536,870,887 bytes | yes; one row more is refused | record verifies; commitments and MAC equal the one-shot values | 248 s | 8.2 GiB |
+| 16,779,264 (2^24 + 2048) | 587,274,317 bytes | refused | record verifies; both receipt contents equal | 189 s | 7.2 GiB |
+
+Measured alone over the second row's built payload, the sent-payload commitment raises peak RSS by about 1.9 GiB: the byte array, grown by doubling, the encoding's transient strings, and the copy `crypto.subtle` makes of its input. Each encoding runs without yielding to the event loop, so that commitment holds the thread it runs on, a browser page's included, for about 32 s.
 
 `packages/core/test/stress/recordPastStringCap.stress.test.ts` holds both cases in the opt-in stress tier.
 
