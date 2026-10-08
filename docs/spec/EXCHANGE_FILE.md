@@ -710,34 +710,28 @@ been confirmed at the relay registrar a run registers at
 
 ### `exchange --invitation` fail-closed ordering
 
-The handler loads and validates the configuration first, without reading the
-key file, and makes every refusal the configuration alone decides, so a
-configuration that fails stops the run with nothing written. That includes the
-connection's own refusals, which the run makes again where it dials: a webrtc
-connection with no `role`, a `server` block the broker location cannot be
-resolved from, or an `ice_provision` block, and a `server.provision` block that
-cannot form its wake call. A refusal that also depends on something besides the
-configuration -- the input file, the signing identity file, the output folder,
-or whether stdin is a terminal -- comes after the key file is written; the key
-file left behind is the provisioned one, and the run is retried without
-`--invitation`.
-`provisionKeyFileFromInvitation` (`apps/cli/src/keyFile.ts`) is then the
-ordering authority for the key file, and it is fail-closed at each step:
+`keyFileFromInvitation` and `saveInvitedKeyFile` (`apps/cli/src/keyFile.ts`)
+are the ordering authority for that path, and it is fail-closed at each step:
 
 1. **Refuse if a key file already exists.** A key file present at the key path is
    a `UsageError` (exit 64), never an overwrite. After the first exchange the
    secret rotates, so re-supplying the original code must not resurrect a stale
    secret; provisioning is a first-time step, re-established only by re-inviting.
-   This check runs before the code is even decoded.
-2. **Decode and validate before any write.** The code is decoded and validated
-   for checksum, schema, and expiry (`decodeAndValidateInvitation`) before
-   anything is written, so a malformed or expired code raises its `UsageError`
-   and leaves the filesystem untouched -- nothing is written and no connection
-   is attempted.
-3. **Write the key file, then read it.** Only on success is the key file
-   written (with the token's shared secret and expiry). The handler then reads
-   the provisioned key into the configuration it already loaded, and the
-   exchange proceeds as a normal recurring `exchange`.
+   This check runs first, before the code is even decoded.
+2. **Decode and validate before the configuration loads.** The code is decoded
+   and validated for checksum, schema, and expiry
+   (`decodeAndValidateInvitation`), so a malformed or expired code raises its
+   `UsageError` with nothing written and no connection attempted.
+3. **Run on the decoded key, then write it.** The decoded shared secret and
+   expiry are held in memory, and the run takes them in place of the key file
+   it would otherwise read. The key file is written (the token's shared secret
+   and expiry) only once every local check has passed, just before the run
+   first contacts the network: after the configuration load, the dataset
+   preparation, the signing identity load, the run's local pre-flight, and the
+   wake call's own validation, and before the wake call, the host-key probe,
+   or the dial. A run refused before then leaves no key file. The write is an
+   exclusive create, so a key file that appeared at the key path meanwhile is
+   refused as in step 1 rather than overwritten.
    The `--invitation` value is never `@`-resolved into `argv`; its `@`-file form
    (`--invitation @code.txt`) is read at decode time, keeping the code out of
    shell history and the process argument list.

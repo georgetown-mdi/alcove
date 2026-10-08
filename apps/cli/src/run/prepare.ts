@@ -25,7 +25,6 @@ import { LocalFSClient } from "../connection/localFSClient";
 import { SSH2SFTPClientAdapter } from "../connection/ssh2SftpAdapter";
 import { INACTIVITY_TIMEOUT_GUIDANCE } from "../connection/timeoutGuidance";
 import {
-  assertNoIceProvision,
   brokerLocationFromConnection,
   iceServersFromConnection,
   relayCredentialForRun,
@@ -93,32 +92,6 @@ export const WEBRTC_ROLE_REQUIRED =
   "other's does. Set `role: inviter` or `role: acceptor` on the connection " +
   "block.";
 
-function webRtcRoleOf(
-  connection: WebRTCConnectionConfig,
-): NonNullable<WebRTCConnectionConfig["role"]> {
-  if (connection.role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
-  return connection.role;
-}
-
-/**
- * Make the refusals {@link webRtcDialFrom} raises from the connection alone --
- * no `role`, a `server` block {@link brokerLocationFromConnection} refuses, an
- * `ice_provision` block -- for a caller that must refuse before it writes
- * anything. A no-op on any other channel.
- *
- * @throws {UsageError} as {@link webRtcDialFrom} does for those three.
- */
-export function assertWebRtcConnectionResolvable(
-  connection: ProtocolConnectionConfig,
-): void {
-  if (connection.channel !== "webrtc") return;
-  webRtcRoleOf(connection);
-  // The dial itself warns about a plaintext location; warning here too would
-  // print it twice.
-  brokerLocationFromConnection(connection.server, () => undefined);
-  assertNoIceProvision(connection);
-}
-
 /** The webrtc rendezvous inputs, resolved before anything is dialed. */
 interface WebRtcDial {
   /** The key-exchange role this party takes once the channel is open. */
@@ -156,7 +129,8 @@ export function webRtcDialFrom(
 ): WebRtcDial {
   if (sharedSecret === undefined)
     throw new UsageError(WEBRTC_RENDEZVOUS_SECRET_REQUIRED);
-  const role = webRtcRoleOf(connection);
+  const { role } = connection;
+  if (role === undefined) throw new UsageError(WEBRTC_ROLE_REQUIRED);
   // peer_timeout_ms bounds the partner's arrival (the rendezvous) and
   // inactivity_timeout_ms a present partner's silence on the open channel.
   // Neither reaches the channel open between them: once both descriptions are

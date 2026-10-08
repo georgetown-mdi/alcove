@@ -1,5 +1,6 @@
 import type { Argv, Arguments } from "yargs";
 import fs from "node:fs";
+import { z } from "zod";
 
 import {
   classifyFailure,
@@ -8,6 +9,7 @@ import {
   operatorSuppliedText,
   redactAndRenderOperatorSuppliedText,
   parseExchangeSpec,
+  retiredSettingIssue,
   retiredSigningSettingNotice,
   getLogger,
   OperatorConfigError,
@@ -18,7 +20,6 @@ import {
 } from "@alcove/core";
 import type {
   ExchangeDataSpec,
-  ExchangeSpec,
   FileSyncOptions,
   PreparedExchange,
 } from "@alcove/core";
@@ -63,7 +64,8 @@ import {
   loadKeyFile,
   checkKeyFileExpiry,
   rotationInFlightNotice,
-  provisionKeyFileFromInvitation,
+  keyFileFromInvitation,
+  saveInvitedKeyFile,
   type KeyFile,
   type KeyFileExpiryStatus,
 } from "../keyFile";
@@ -108,7 +110,6 @@ import {
   RUN_BLOCK_CONSEQUENCE,
 } from "./linkagePreflight";
 import { warnOnValueConstraints } from "./valueConstraintWarnings";
-import { assertWebRtcConnectionResolvable } from "../run/prepare";
 import {
   preflightRun,
   runProtocol,
@@ -221,8 +222,9 @@ interface ExchangeArgs extends CommonBootstrapOptions {
   // ExchangeOptions below so they never reach loadConfig / the config schema.
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
-  // The invitation code that provisions the key file before it is read. Excluded
-  // from ExchangeOptions so it never reaches loadConfig.
+  // The invitation code the key file is decoded from. Excluded from
+  // ExchangeOptions so it never reaches loadConfig; the handler decodes it
+  // ahead of the config load and passes loadConfig the decoded key.
   invitation?: string;
 }
 
@@ -251,7 +253,7 @@ export function parseArgs(argv: Arguments): ExchangeArgs {
   const csvDelimiter = csvDelimiterFlag(argv);
   // Kept verbatim: unlike the server-* credential flags below, the invitation is
   // NOT @-resolved here. Its @-file form is read at decode time by
-  // decodeAndValidateInvitation (via provisionKeyFileFromInvitation), so the
+  // decodeAndValidateInvitation (via keyFileFromInvitation), so the
   // code stays out of process argv even when supplied as `@code.txt`.
   const invitation = singleValue(argv, "invitation") as string | undefined;
   // Parse the common options through the shared parser (the same singleValue
@@ -425,11 +427,23 @@ function readConfigDocument(configFile: string): unknown {
   );
 }
 
-/** The configuration {@link loadExchangeSpec} reads, resolved. */
-type LoadedExchangeSpec = {
-  connection: ProtocolConnectionConfig;
-  specAuthentication: ExchangeSpec["authentication"];
-} & ExchangeDataSpec;
+/**
+ * Refuse a configuration holding a retired setting with the refusal
+ * {@link loadConfig} raises, for a caller about to decode an invitation first,
+ * so that refusal comes ahead of the invitation's own. A configuration that
+ * cannot be read or parsed is left for {@link loadConfig} to report.
+ */
+function refuseRetiredSettingBeforeInvitation(configFile: string): void {
+  let raw: unknown;
+  try {
+    raw = readConfigDocument(configFile);
+  } catch {
+    return;
+  }
+  const retired = retiredSettingIssue(raw);
+  if (retired !== undefined)
+    throw invalidExchangeSpecError(configFile, new z.ZodError([retired]));
+}
 
 /** The configuration and key file {@link loadConfig} reads, resolved. */
 type LoadedExchangeConfig = {
@@ -438,58 +452,27 @@ type LoadedExchangeConfig = {
 } & ExchangeDataSpec;
 
 /**
- * Read and validate the configuration and key file `options` name.
+ * Read and validate the configuration and key file `options` name. With
+ * `invitedKeyFile`, the key decoded from `--invitation` and not yet written,
+ * that key stands in for the key file and nothing is read from its path.
  *
  * @throws {UsageError} for any failure to load them (exit 64), since nothing
  *   here touches a transport: a failure raised as some other class is wrapped
  *   in one, keeping it as the `cause`. An `InternalConsistencyError` passes
  *   through unwrapped (exit 70).
  */
-export function loadConfig(options: ExchangeOptions): LoadedExchangeConfig {
-  const { specAuthentication, ...spec } = loadExchangeSpec(options);
-  return {
-    ...spec,
-    authentication: loadAuthentication(options, specAuthentication),
-  };
-}
-
-/**
- * Read and validate the configuration `options` names, without reading its
- * key file, so `--invitation` can write the key file only once this has
- * succeeded.
- *
- * @throws {UsageError} as {@link loadConfig} does.
- */
-function loadExchangeSpec(options: ExchangeOptions): LoadedExchangeSpec {
-  return asConfigLoadFailure(options.configFile, () =>
-    readExchangeSpec(options),
-  );
-}
-
-/**
- * Read the key file `options` names into the `authentication` policy
- * {@link loadExchangeSpec} returned.
- *
- * @throws {UsageError} as {@link loadConfig} does.
- */
-function loadAuthentication(
+export function loadConfig(
   options: ExchangeOptions,
-  specAuthentication: ExchangeSpec["authentication"],
-): AuthPersist {
-  return asConfigLoadFailure(options.configFile, () =>
-    readKeyFileAuthentication(options, specAuthentication),
-  );
-}
-
-function asConfigLoadFailure<T>(configFile: string, load: () => T): T {
+  invitedKeyFile?: KeyFile,
+): LoadedExchangeConfig {
   try {
-    return load();
+    return readExchangeConfig(options, invitedKeyFile);
   } catch (err) {
     const failureClass = classifyFailure(err);
     if (failureClass === "usage-error" || failureClass === "internal-fault")
       throw err;
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
-      configFile,
+      options.configFile,
     )} could not be loaded`;
     throw keepOperatorSuppliedText(
       new UsageError(message.text, { cause: err }),
@@ -498,7 +481,10 @@ function asConfigLoadFailure<T>(configFile: string, load: () => T): T {
   }
 }
 
-function readExchangeSpec(options: ExchangeOptions): LoadedExchangeSpec {
+function readExchangeConfig(
+  options: ExchangeOptions,
+  invitedKeyFile: KeyFile | undefined,
+): LoadedExchangeConfig {
   const log = getLogger("exchange");
 
   const rawConfig = readConfigDocument(options.configFile);
@@ -675,21 +661,9 @@ function readExchangeSpec(options: ExchangeOptions): LoadedExchangeSpec {
     log,
   );
 
-  // The channel guard above throws on any channel runProtocol cannot run, so
-  // the discriminated union narrows `connection` to ProtocolConnectionConfig
-  // here.
-  return { connection, specAuthentication: specAuth, ...exchangeDataSpec };
-}
-
-function readKeyFileAuthentication(
-  options: ExchangeOptions,
-  specAuthentication: ExchangeSpec["authentication"],
-): AuthPersist {
-  const log = getLogger("exchange");
-
   let keyData: KeyFile | undefined;
   try {
-    keyData = loadKeyFile(options.keyFile);
+    keyData = invitedKeyFile ?? loadKeyFile(options.keyFile);
   } catch (err) {
     // A malformed existing key file is bad input the operator must fix or
     // re-provision (exit 64), the same classification saveKeyFile gives a
@@ -705,7 +679,7 @@ function readKeyFileAuthentication(
     throw keepOperatorSuppliedText(new UsageError(message.text), message);
   }
   // A missing key file is a configuration problem (exit 64), consistent with
-  // the missing-config case readConfigDocument reports.
+  // the missing-config case above.
   if (keyData === undefined) {
     const message = messageWithOperatorText`key file ${operatorSuppliedText(
       options.keyFile,
@@ -735,15 +709,23 @@ function readKeyFileAuthentication(
     log.warn(
       rotationInFlightNotice(options.keyFile, keyData.rotationInFlightSince),
     );
-  return {
+  const authPersist: AuthPersist = {
     // Operator-policy fields parsed from the YAML `authentication` block (today,
     // token_max_age_days), passed through end to end -- protocol.ts reads
     // tokenMaxAgeDays here to stamp the rotated token's expiry. The injected
     // fields below come only from the key file and override any YAML value.
-    ...specAuthentication,
+    ...specAuth,
     sharedSecret: keyData.sharedSecret,
     expires: keyData.expires,
     keyFilePath: options.keyFile,
+  };
+  // The channel guard above throws on any channel runProtocol cannot run, so
+  // the discriminated union narrows `connection` to ProtocolConnectionConfig
+  // here.
+  return {
+    connection,
+    authentication: authPersist,
+    ...exchangeDataSpec,
   };
 }
 
@@ -1111,69 +1093,25 @@ export async function handler(argv: Arguments): Promise<void> {
         log,
       );
 
-      const { connection, specAuthentication, ...exchangeDataSpec } =
-        loadExchangeSpec(options);
-
-      // A certificate-mode run naming no signing identity is unrunnable from
-      // the parsed configuration alone, so it is refused before the key file
-      // is written, the dataset is prepared, and the first-use host-key step
-      // opens a probe transport and writes an accepted pin into alcove.yaml.
-      // Beside it, the first contact whose configuration file cannot take the
-      // pin it would record: same inputs, same point, same exit code.
-      assertSigningIdentityNamed(exchangeDataSpec.signing);
-      assertPartnerFingerprintRecordable(
-        exchangeDataSpec.signing,
-        options.configFile,
-      );
-
-      // termsIdentity is the identity this run PUTS IN THE AGREED TERMS, which is
-      // what a partner verifies a signed receipt's certificate against. It comes
-      // from --identity, else the loaded configuration's linkage_terms.identity,
-      // and is absent when neither names this party: the terms then hold no
-      // identity at all rather than a label the operator never chose. A blank flag
-      // value is what a scripted `--identity "$ORG"` sends with ORG unset, so it
-      // is treated as absent and leaves the configuration's own label standing.
-      let termsIdentity: string | undefined;
-      const flagIdentity = optionalIdentity(options.identity);
-      if (flagIdentity !== undefined) {
-        termsIdentity = flagIdentity;
-        if (exchangeDataSpec.linkageTerms)
-          exchangeDataSpec.linkageTerms = {
-            ...exchangeDataSpec.linkageTerms,
-            identity: flagIdentity,
-          };
-      } else {
-        termsIdentity = exchangeDataSpec.linkageTerms?.identity;
-      }
-      assertNoConfigPlaceholder({
-        value: exchangeDataSpec,
-        path: [],
-        configFile: options.configFile,
-        remedyFor: (field) =>
-          field === "linkage_terms.identity"
-            ? "Replace it with your name, organization, and " +
-              "contact, or pass --identity, before running the exchange."
-            : undefined,
-      });
-
-      // With --invitation, the connection's own refusals run before the key
-      // file is written; preflightRun repeats them for every run.
+      // The party that composed the exchange in the web app has a config with
+      // no secret, so --invitation supplies it: the code is decoded here
+      // (fail-closed on checksum, schema, or expiry; an existing key file is
+      // refused) and the run uses the decoded key from memory. Its key file is
+      // written only once every local refusal below has passed.
+      let invitedKeyFile: KeyFile | undefined;
       if (invitation !== undefined) {
-        assertWebRtcConnectionResolvable(connection);
-        assertWakeCallFormable(connection);
+        refuseRetiredSettingBeforeInvitation(options.configFile);
+        invitedKeyFile = await keyFileFromInvitation(
+          invitation,
+          options.keyFile,
+        );
       }
 
-      // Written only after every refusal the configuration alone decides. It
-      // decodes the code (fail-closed on checksum, schema, or expiry) and
-      // writes this party's key-file copy; a bad code or an existing key file
-      // exits 64 with nothing written.
-      if (invitation !== undefined)
-        await provisionKeyFileFromInvitation(invitation, options.keyFile);
-
-      const loadedAuthentication = loadAuthentication(
-        options,
-        specAuthentication,
-      );
+      const {
+        connection,
+        authentication: loadedAuthentication,
+        ...exchangeDataSpec
+      } = loadConfig(options, invitedKeyFile);
 
       // The registration signs with authentication.sharedSecret, the secret
       // loaded before the run: the rotation rewrites the key file, not this object.
@@ -1224,17 +1162,31 @@ export async function handler(argv: Arguments): Promise<void> {
         warn: (message) => log.warn(message),
       });
 
-      // Token expiry advisory baseline: was the token expiring soon at load
-      // time? This recheck uses a fresh clock just after loadAuthentication's
-      // hard stop, so in the (sub-millisecond) gap a token can tip from
-      // "expiring-soon" to "expired". That is handled, not guaranteed away: the
-      // advisory below is keyed on "expiring-soon" and self-skips on "expired",
-      // and runProtocol's pre-handshake assertSharedSecretReadyForHandshake
-      // aborts an expired token with the re-invite message before any
-      // handshake. The threshold comes from the max-age policy; without a
-      // policy it is undefined and the status is "ok" (never "expiring-soon").
-      // Re-evaluated after the exchange to decide whether to warn (see
-      // shouldWarnTokenExpiring).
+      // A certificate-mode run naming no signing identity is unrunnable from the
+      // parsed configuration alone, so it is refused here: ahead of the dataset
+      // preparation, and ahead of the first-use host-key step that opens a probe
+      // transport to the server and writes an accepted pin into alcove.yaml.
+      // Neither should happen on the way to telling an operator the run could
+      // never have finished.
+
+      // Beside it, the first contact whose configuration file cannot take the pin
+      // it would record: same inputs, same point, same exit code.
+      assertSigningIdentityNamed(exchangeDataSpec.signing);
+      assertPartnerFingerprintRecordable(
+        exchangeDataSpec.signing,
+        options.configFile,
+      );
+
+      // Token expiry advisory baseline: was the token expiring soon at load time?
+      // This recheck uses a fresh clock just after loadConfig's hard stop, so in the
+      // (sub-millisecond) gap a token can tip from "expiring-soon" to "expired". That
+      // is handled, not guaranteed away: the advisory below is keyed on
+      // "expiring-soon" and self-skips on "expired", and runProtocol's pre-handshake
+      // assertSharedSecretReadyForHandshake aborts an expired token with the re-invite
+      // message before any handshake. The threshold comes from the max-age policy;
+      // without a policy it is undefined and the status is "ok" (never
+      // "expiring-soon"). Re-evaluated after the exchange to decide whether to warn
+      // (see shouldWarnTokenExpiring).
       const warnThresholdDays = warnThresholdDaysForPolicy(
         authentication.tokenMaxAgeDays,
       );
@@ -1248,6 +1200,36 @@ export async function handler(argv: Arguments): Promise<void> {
       );
 
       announceRetainMode(connection, log);
+
+      // termsIdentity is the identity this run PUTS IN THE AGREED TERMS, which is
+      // what a partner verifies a signed receipt's certificate against. It comes
+      // from --identity, else the loaded configuration's linkage_terms.identity,
+      // and is absent when neither names this party: the terms then hold no
+      // identity at all rather than a label the operator never chose. A blank flag
+      // value is what a scripted `--identity "$ORG"` sends with ORG unset, so it
+      // is treated as absent and leaves the configuration's own label standing.
+      let termsIdentity: string | undefined;
+      const flagIdentity = optionalIdentity(options.identity);
+      if (flagIdentity !== undefined) {
+        termsIdentity = flagIdentity;
+        if (exchangeDataSpec.linkageTerms)
+          exchangeDataSpec.linkageTerms = {
+            ...exchangeDataSpec.linkageTerms,
+            identity: flagIdentity,
+          };
+      } else {
+        termsIdentity = exchangeDataSpec.linkageTerms?.identity;
+      }
+      assertNoConfigPlaceholder({
+        value: exchangeDataSpec,
+        path: [],
+        configFile: options.configFile,
+        remedyFor: (field) =>
+          field === "linkage_terms.identity"
+            ? "Replace it with your name, organization, and " +
+              "contact, or pass --identity, before running the exchange."
+            : undefined,
+      });
 
       const prepared = await prepareDataset(
         exchangeDataSpec,
@@ -1307,6 +1289,15 @@ export async function handler(argv: Arguments): Promise<void> {
         allowMemoryShortfall,
       });
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
+
+      // The last local step before the run's first network contact, so a run
+      // refused before here leaves no key file behind for the re-run to trip on.
+      // The wake call's own refusal is made first: it is local, but the wake
+      // call below makes it only on the way to sending.
+      if (invitedKeyFile !== undefined) {
+        assertWakeCallFormable(connection);
+        saveInvitedKeyFile(options.keyFile, invitedKeyFile);
+      }
 
       // A rotation an earlier run made that the relay registrar did not confirm
       // is retried here, after every local refusal and before the run's first
