@@ -249,6 +249,15 @@ mode an operator leaves on a file they supplied is a value they can read and set
 while an ACE grants access the mode cannot express on a file the run is about to
 write those diagnostics into.
 
+That strip runs only when `fstat` of the open descriptor reports a regular file.
+A terminal, pipe, FIFO, socket or device node -- `/dev/stderr` on a pipe, the
+case a scheduler capturing stderr meets -- is not stripped: it keeps no
+diagnostics at rest for an ACE to expose. The decision is read from the
+descriptor rather than from a fresh look at the path, so a path swapped after
+the open cannot turn the strip off for the regular file the lines land in; the
+strip itself still re-resolves the path, the limitation the table above states.
+A failed `fstat` is refused like a failed strip.
+
 A failed strip is fail-closed, exactly as a failed `icacls` narrowing is on
 Windows: no content is written. The temp-file writers unlink the temp file on the
 way out, so nothing reaches the destination -- and for the `doctor probe`

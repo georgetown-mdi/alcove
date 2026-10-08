@@ -304,6 +304,88 @@ describe("the log file's extended ACL", () => {
   );
 
   test.skipIf(process.platform === "win32")(
+    "a symlink to a regular file is stripped through the link",
+    () => {
+      const commands = recordAclStripCommands();
+      const target = path.join(dir, "target.log");
+      fs.writeFileSync(target, "", { mode: 0o600 });
+      const link = path.join(dir, "link.log");
+      fs.symlinkSync(target, link);
+
+      const sink = withPlatform("darwin", () => configureLogFile(link));
+      sink.close();
+
+      expect(commands).toEqual([["/bin/chmod", "-N", link]]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32").each([
+    ["a character device", () => "/dev/null"],
+    [
+      "a symlink to a character device",
+      () => {
+        const link = path.join(dir, "device-link.log");
+        fs.symlinkSync("/dev/null", link);
+        return link;
+      },
+    ],
+  ])("a log file that is %s is not stripped", (_name, logPathFor) => {
+    // `/dev/stderr` on a pipe or a terminal is the case a run meets; a device
+    // node stands in for it here, since the runner owns this process's fd 2.
+    const logPath = logPathFor();
+    const commands = recordAclStripCommands();
+
+    const sink = withPlatform("darwin", () => configureLogFile(logPath));
+    logLibrary.setDefaultLevel(logLibrary.levels.INFO);
+    getLogger("acl-sites-device").info("a line");
+    sink.close();
+
+    expect(commands).toEqual([]);
+  });
+
+  test.skipIf(process.platform === "win32")(
+    "whether to strip is decided by the opened descriptor, not the path",
+    () => {
+      // Swap the path for a device node right after the open: the descriptor
+      // still names the regular file the lines land in, so the strip still runs.
+      const commands = recordAclStripCommands();
+      const logPath = path.join(dir, "swapped.log");
+      const realOpen = fs.openSync;
+      vi.spyOn(fs, "openSync").mockImplementationOnce(
+        (...args: Parameters<typeof fs.openSync>) => {
+          const fd = realOpen(...args);
+          fs.renameSync(logPath, path.join(dir, "opened.log"));
+          fs.symlinkSync("/dev/null", logPath);
+          return fd;
+        },
+      );
+
+      const sink = withPlatform("darwin", () => configureLogFile(logPath));
+      sink.close();
+
+      expect(commands).toEqual([["/bin/chmod", "-N", logPath]]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "a descriptor that cannot be inspected is refused, not left unstripped",
+    () => {
+      const logPath = path.join(dir, "unreadable-stat.log");
+      const commands = recordAclStripCommands();
+      vi.spyOn(fs, "fstatSync").mockImplementation(() => {
+        throw Object.assign(new Error("EIO: i/o error, fstat"), {
+          code: "EIO",
+        });
+      });
+
+      expect(() =>
+        withPlatform("darwin", () => configureLogFile(logPath)),
+      ).toThrow(/could not secure log file/);
+      expect(commands).toEqual([]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
     "a refused strip writes no line and leaves the diagnostic sink alone",
     () => {
       const logPath = path.join(dir, "refused.log");

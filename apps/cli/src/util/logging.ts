@@ -227,10 +227,12 @@ function openLogFileForAppend(logFilePath: string): {
  * Between that open and the first write, on macOS the file's extended (NFSv4)
  * ACL is cleared, so no line is written while an inherited ACE could still
  * grant another principal the access the `0600` mode denies; the strip
- * follows a symlink at the path, matching the open. A failed strip is
- * fail-closed: the descriptor is released and the run refused as a
- * {@link UsageError} holding the refusal as its cause, with an existing
- * file's content untouched and a created one left empty.
+ * follows a symlink at the path, matching the open. A descriptor that is not
+ * a regular file (`/dev/stderr` on a pipe or terminal) is not stripped. A
+ * failed strip, or a failed `fstat` of the descriptor, is fail-closed: the
+ * descriptor is released and the run refused as a {@link UsageError} holding
+ * the refusal as its cause, with an existing file's content untouched and a
+ * created one left empty.
  */
 export function configureLogFile(logFilePath: string): LogSink {
   // Windows paths are accepted: fold backslashes to forward slashes on ingestion
@@ -275,12 +277,12 @@ export function configureLogFile(logFilePath: string): LogSink {
   }
 
   try {
-    // Between the open and the first line, the same place the owner-only writers
-    // put it: on macOS the 0600 mode leaves an inherited ACE in force, and this
-    // descriptor is where the run's diagnostics land. The strip follows a
-    // symlink at the path because the open does -- acting on the link node
-    // would clear an ACL governing nothing while the lines went to its target.
-    stripExtendedAcls(normalized, { symlinks: "follow" });
+    // On macOS the 0600 mode leaves an inherited ACE in force. The strip follows
+    // a symlink at the path because the open does. Whether to strip is read
+    // from the open descriptor: a terminal, pipe or device node keeps no lines
+    // at rest for an ACE to expose, so it is not stripped.
+    if (fs.fstatSync(fd).isFile())
+      stripExtendedAcls(normalized, { symlinks: "follow" });
   } catch (err) {
     try {
       fs.closeSync(fd);
