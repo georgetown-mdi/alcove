@@ -13,11 +13,12 @@ import { stressMemory } from "./stressMemory";
 
 // The CLI's input preparation over 2^24 records, each with its own 9-digit
 // SSN, from reading the CSV to the first-round check: admitted at the per-set
-// maximum, and refused with the maximum one value under the rows, a count that
-// walks every record (docs/spec/FILE_SYNC.md, Preparing the input at 2^24).
+// maximum, and refused with the maximum one under the values the round sends,
+// a count that walks every record (docs/spec/FILE_SYNC.md, Preparing the
+// input at 2^24).
 // The probe runs in its own process under the heap limit the container
 // images set, and reports each stage's time and the process's peak resident
-// set. About eight minutes and 12 GB resident on the measured host, which is
+// set. About 13 minutes and 12 GB resident on the measured host, which is
 // why it is the opt-in tier. ALCOVE_STRESS_PREPARATION_ROWS lowers the row
 // count for a quicker run; the maximum is lowered with it to the row count, so
 // the check is still taken at the bound.
@@ -90,9 +91,12 @@ test(
       "prepare",
       "constraints",
       "first-round count",
+      "first-round values",
       "first-round count, one over",
     ]);
-    expect(result.firstRound).toBe(ROWS > MAX_VALUES ? "refused" : "fits");
+    expect(result.firstRound).toBe(
+      result.firstRoundValues > MAX_VALUES ? "refused" : "fits",
+    );
     expect(result.firstRoundOneOver).toBe("refused");
     // The string-table slowdown this guards against cut the count's pace about
     // fiftyfold from partway through to the end. A pause or a busy host slows

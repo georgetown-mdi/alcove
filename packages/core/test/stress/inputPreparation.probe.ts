@@ -4,8 +4,10 @@
 // prints. It writes the input first where the file does not exist: four
 // columns, an id, a synthetic SSN, a last name and a date of birth, one
 // distinct SSN a row. The first-round check runs twice: at a per-set maximum
-// of `<maxValues>`, and at one value fewer than the rows, so the input is one
-// value over it and the count walks every record.
+// of `<maxValues>`, and at one value fewer than the round sends, so the input
+// is one value over it and the count walks every record. The values the round
+// sends are counted with the check's own counter, since the standardization
+// drops some SSNs as placeholders.
 //
 // Usage: node --max-old-space-size=<MiB> --import tsx inputPreparation.probe.ts <rows> <csv> [<maxValues>]
 
@@ -16,8 +18,11 @@ import { performance } from "node:perf_hooks";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { RoundSetLimitError } from "../../src/errors";
 import { prepareForExchange } from "../../src/exchange";
+import type { PreparedExchange } from "../../src/exchange";
 import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import { loadCSVFile } from "../../src/file";
+import { RoundSetCounter } from "../../src/psi/link";
+import { StandardizedKeyIterable } from "../../src/standardization";
 import { summarizeDatasetConstraintViolations } from "../../src/valueConstraints";
 
 export interface PreparationStage {
@@ -30,17 +35,35 @@ export interface PreparationStage {
 export interface PreparationProbeResult {
   readonly rows: number;
   readonly stages: ReadonlyArray<PreparationStage>;
+  /** The values the first round sends, in the sending role. */
+  readonly firstRoundValues: number;
   /** Rows a second over each successive million the one-over count walked. */
   readonly countRowsPerSecond: ReadonlyArray<number>;
   /** The first-round check at the per-set maximum. */
   readonly firstRound: "fits" | "refused";
-  /** The first-round check at one value fewer than the rows. */
+  /** The first-round check at one value fewer than `firstRoundValues`. */
   readonly firstRoundOneOver: "fits" | "refused";
 }
 
 function ssn(i: number): string {
   const digits = String(100_000_000 + i);
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
+}
+
+function countFirstRoundValues(prepared: PreparedExchange): number {
+  const { linkageTerms, dataset, rowCount } = prepared;
+  const counter = new RoundSetCounter(linkageTerms.deduplicate);
+  let row = 0;
+  for (const candidates of new StandardizedKeyIterable(
+    linkageTerms.linkageKeys[0],
+    dataset,
+    rowCount,
+    false,
+    0,
+    false,
+  ))
+    counter.add(row++, candidates);
+  return counter.size;
 }
 
 async function writeInput(path: string, rows: number): Promise<void> {
@@ -121,13 +144,16 @@ async function main(): Promise<void> {
   const firstRound = await timed("first-round count", () =>
     outcome(assertFirstRoundWithinSetMaximum(prepared, { maxValues })),
   );
+  const firstRoundValues = await timed("first-round values", () =>
+    countFirstRoundValues(prepared),
+  );
   const countRowsPerSecond: Array<number> = [];
   let lastMillion = 0;
   let lastMillionAt = performance.now();
   const firstRoundOneOver = await timed("first-round count, one over", () =>
     outcome(
       assertFirstRoundWithinSetMaximum(prepared, {
-        maxValues: rows - 1,
+        maxValues: firstRoundValues - 1,
         progressIntervalMs: 100,
         onProgress: (report) => {
           if (report.state === "started") {
@@ -154,6 +180,7 @@ async function main(): Promise<void> {
   const result: PreparationProbeResult = {
     rows,
     stages,
+    firstRoundValues,
     countRowsPerSecond,
     firstRound,
     firstRoundOneOver,
