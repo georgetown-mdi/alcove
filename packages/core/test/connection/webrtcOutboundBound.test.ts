@@ -91,6 +91,17 @@ test("the frame bound refuses one byte over the largest frame it admits", () => 
   expect(largest).toBeLessThan(MAX_WEBRTC_FRAME_BYTES);
 });
 
+test("the chunk floor stays at or below the last chunk's charge on the largest frame", () => {
+  // The largest frame is whole chunks plus a last chunk charged what remains of
+  // the bound. A floor above that remainder would raise the last chunk's charge
+  // past the bound and lower the largest frame.
+  const fullChunkCharge = webrtcFrameReceiveCharge(2 * PEERJS_CHUNK_MTU) / 2;
+  const lastChunkCharge = MAX_WEBRTC_FRAME_BYTES % fullChunkCharge;
+  expect(lastChunkCharge).toBe(841);
+  expect(MIN_CHUNK_RESIDENT_BYTES).toBeLessThanOrEqual(lastChunkCharge);
+  expect(webrtcFrameReceiveCharge(267_532_686)).toBe(MAX_WEBRTC_FRAME_BYTES);
+});
+
 test("the browser receive ceiling is the largest set one frame holds", () => {
   const largest = largestAdmitted(
     (n) => !webrtcFrameExceedsBound(minimumPsiSetFrameBytes(n)),

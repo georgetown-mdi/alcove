@@ -62,7 +62,39 @@ describe("the WebRTC inbound bound constants", () => {
     expect(MAX_WEBRTC_STRING_BYTES).toBe(209_715_200);
     expect(MAX_CHUNKS_PER_REASSEMBLY).toBe(131_072);
     expect(MAX_CONCURRENT_REASSEMBLIES).toBe(8);
-    expect(MIN_CHUNK_RESIDENT_BYTES).toBe(256);
+    expect(MIN_CHUNK_RESIDENT_BYTES).toBe(768);
+  });
+
+  // Resident bytes one retained one-byte chunk costs, by how many are retained,
+  // on each receive path (docs/spec/CHANNEL_SECURITY.md, "Retained chunk-count
+  // cap"). The cost falls as the count grows.
+  const measuredResidentBytesPerChunk = [
+    { chunks: 262_144, node: 632, chromium: 701 },
+    { chunks: 349_525, node: 586, chromium: 668 },
+    { chunks: 524_288, node: 520, chromium: 625 },
+    { chunks: 1_048_576, node: 460, chromium: 610 },
+  ];
+
+  test("charge each chunk at least the resident memory it was measured to hold", () => {
+    // The most chunks a receiver retains at once: a reassembly releases its
+    // chunks when the last one lands, and the byte budget is shared by every
+    // reassembly in flight. The cost measured at the nearest count at or below
+    // it is the larger, so the more conservative.
+    const reachable = Math.min(
+      MAX_CONCURRENT_REASSEMBLIES * (MAX_CHUNKS_PER_REASSEMBLY - 1),
+      Math.floor(MAX_WEBRTC_FRAME_BYTES / MIN_CHUNK_RESIDENT_BYTES),
+    );
+    expect(reachable).toBe(349_525);
+    const nearestBelow = measuredResidentBytesPerChunk
+      .filter((row) => row.chunks <= reachable)
+      .at(-1);
+    expect(
+      nearestBelow,
+      `no measurement at or below ${reachable} chunks: measure that count`,
+    ).toBeDefined();
+    expect(MIN_CHUNK_RESIDENT_BYTES).toBeGreaterThanOrEqual(
+      Math.max(nearestBelow?.node ?? 0, nearestBelow?.chromium ?? 0),
+    );
   });
 });
 

@@ -89,13 +89,13 @@ export const MAX_CONCURRENT_REASSEMBLIES = 8;
 export const MAX_WEBRTC_REASSEMBLY_DEPTH = 256;
 
 /**
- * Maximum number of chunks a single reassembly may accumulate. PeerJS retains
- * each chunk as its own `Uint8Array` (measured ~232 bytes resident even for a
- * one-byte slice), an overhead the byte cap -- which counts only payload bytes --
- * undercounts, so a flood of tiny chunks could exhaust memory while staying far
- * under {@link MAX_WEBRTC_FRAME_BYTES}. This caps the count so that overhead is
- * bounded: with {@link MAX_CONCURRENT_REASSEMBLIES} reassemblies at most this many
- * chunks each, retained chunk overhead stays on the order of the byte cap.
+ * Maximum number of chunks a single reassembly may accumulate. Each receiver
+ * retains each chunk as its own `Uint8Array`, which costs several hundred
+ * bytes resident even for a one-byte slice -- an overhead the byte cap, which
+ * counts only payload bytes, undercounts (see {@link MIN_CHUNK_RESIDENT_BYTES}).
+ * This caps the count so that overhead is bounded: with
+ * {@link MAX_CONCURRENT_REASSEMBLIES} reassemblies at most this many chunks
+ * each, retained chunk overhead stays on the order of the byte cap.
  *
  * Value: 131,072 (2^17), ~8x the ~16,500 chunks a 256 MiB frame produces at
  * PeerJS's ~16 KiB (16,300-byte) chunk MTU, so it never rejects a legitimate
@@ -103,11 +103,19 @@ export const MAX_WEBRTC_REASSEMBLY_DEPTH = 256;
  */
 export const MAX_CHUNKS_PER_REASSEMBLY = 131_072;
 
-/** Per-chunk retained overhead (a `Uint8Array` plus its slot, measured ~232
- * bytes even for a one-byte slice), the floor each chunk is charged against the
- * byte cap so a tiny-chunk flood is bounded by true memory; see
- * {@link MAX_CHUNKS_PER_REASSEMBLY}. */
-export const MIN_CHUNK_RESIDENT_BYTES = 256;
+/**
+ * The least each retained chunk is charged against
+ * {@link MAX_WEBRTC_FRAME_BYTES}, so a tiny-chunk flood is bounded by the memory
+ * it holds rather than by its payload. It is at least the per-chunk overhead of
+ * a minimal chunk on either receive path at the most chunks the caps let a
+ * receiver retain at once; the measurements and the limit for chunks just under
+ * it are in docs/spec/CHANNEL_SECURITY.md, "Retained chunk-count cap".
+ *
+ * It must not exceed the last chunk's charge on the largest frame a sender
+ * admits, or it would lower that frame (`webrtcFrameReceiveCharge`,
+ * docs/spec/PROTOCOL.md).
+ */
+export const MIN_CHUNK_RESIDENT_BYTES = 768;
 
 /**
  * Maximum byte length of a single BinaryPack string a frame may contain.
