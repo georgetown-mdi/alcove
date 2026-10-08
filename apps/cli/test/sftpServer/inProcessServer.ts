@@ -228,6 +228,7 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     nameReplyFilenameBytesOnNextReaddir: null,
     lastNameReplyPayloadBytes: undefined,
     withholdOn: null,
+    writesAnsweredBeforeWithholding: null,
     renameFailuresRemaining: 0,
     readdirBatchSize: 0,
     emptyNonEofReaddirBatches: 0,
@@ -627,6 +628,10 @@ function attachSftpHandlers(
     "WRITE",
     (reqid: number, handleBuf: Buffer, offset: number, data: Buffer) => {
       if (inject.withholdOn === "WRITE") return;
+      if (inject.writesAnsweredBeforeWithholding !== null) {
+        if (inject.writesAnsweredBeforeWithholding === 0) return;
+        inject.writesAnsweredBeforeWithholding -= 1;
+      }
       const h = lookup(handleBuf);
       if (!h || h.type !== "file")
         return sftp.status(reqid, STATUS_CODE.FAILURE);

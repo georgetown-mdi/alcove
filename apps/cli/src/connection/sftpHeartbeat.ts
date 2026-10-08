@@ -31,8 +31,6 @@ export interface SftpHeartbeatOptions {
    */
   ping: () => Promise<unknown>;
   log: HeartbeatLog;
-  /** Test-only override of {@link SFTP_HEARTBEAT_INTERVAL_MS}. */
-  intervalMs?: number;
 }
 
 /**
@@ -44,7 +42,6 @@ export interface SftpHeartbeatOptions {
 export class SftpHeartbeat {
   private readonly ping: () => Promise<unknown>;
   private readonly log: HeartbeatLog;
-  private readonly intervalMs: number;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private lastActivityAt = 0;
   private inFlight = 0;
@@ -57,7 +54,6 @@ export class SftpHeartbeat {
   constructor(options: SftpHeartbeatOptions) {
     this.ping = options.ping;
     this.log = options.log;
-    this.intervalMs = options.intervalMs ?? SFTP_HEARTBEAT_INTERVAL_MS;
   }
 
   /**
@@ -70,7 +66,7 @@ export class SftpHeartbeat {
     this.pinging = false;
     this.inFlight = 0;
     this.lastActivityAt = Date.now();
-    this.schedule(this.intervalMs);
+    this.schedule(SFTP_HEARTBEAT_INTERVAL_MS);
   }
 
   /**
@@ -116,12 +112,12 @@ export class SftpHeartbeat {
   private tick(): void {
     if (this.stopped) return;
     if (this.inFlight > 0 || this.pinging) {
-      this.schedule(this.intervalMs);
+      this.schedule(SFTP_HEARTBEAT_INTERVAL_MS);
       return;
     }
     const idleMs = Date.now() - this.lastActivityAt;
-    if (idleMs < this.intervalMs) {
-      this.schedule(this.intervalMs - idleMs);
+    if (idleMs < SFTP_HEARTBEAT_INTERVAL_MS) {
+      this.schedule(SFTP_HEARTBEAT_INTERVAL_MS - idleMs);
       return;
     }
     this.sendPing();
@@ -141,7 +137,7 @@ export class SftpHeartbeat {
         if (epoch !== this.epoch) return;
         this.pinging = false;
         this.lastActivityAt = Date.now();
-        if (!this.stopped) this.schedule(this.intervalMs);
+        if (!this.stopped) this.schedule(SFTP_HEARTBEAT_INTERVAL_MS);
       });
   }
 }

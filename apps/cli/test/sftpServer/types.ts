@@ -116,6 +116,12 @@ export interface SftpFaultInjection {
   lastNameReplyPayloadBytes: number | undefined;
   /** Accept a request of this opcode but never answer it (withheld response). */
   withholdOn: string | null;
+  /**
+   * Answer this many further WRITEs, then accept every later WRITE without
+   * answering it, so a case can leave one write partly acknowledged.
+   * Decremented per WRITE answered; null leaves WRITE normal.
+   */
+  writesAnsweredBeforeWithholding: number | null;
   /** Fail RENAME with the generic-failure status this many times, then succeed. */
   renameFailuresRemaining: number;
   /**

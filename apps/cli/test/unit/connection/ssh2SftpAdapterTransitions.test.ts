@@ -336,10 +336,17 @@ describe("session transitions", () => {
       "with no teardown latched",
     );
     expect(socket.destroy).not.toHaveBeenCalled();
+    expect(internals.session.abandonedTeardownClosedTransport).toBe(false);
 
     internals.session.beginClose();
     internals.forceCloseAbandonedTeardown();
     expect(socket.destroy).toHaveBeenCalledOnce();
+    // The record is set only on a connection already closing, which is why
+    // nothing ever clears it.
+    expect({
+      recorded: internals.session.abandonedTeardownClosedTransport,
+      closing: internals.session.isClosing,
+    }).toEqual({ recorded: true, closing: true });
   });
 
   test("an abandoned teardown that cannot close the transport still stops the keepalive", async () => {
