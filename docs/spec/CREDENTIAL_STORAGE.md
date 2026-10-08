@@ -277,6 +277,8 @@ other platforms, where no strip runs, it is accepted. Named by its ordinary path
 (`--log-file run.log 2>>run.log`), stderr's file is stripped like any other, and
 refused when that strip fails.
 
+A log path that is a symlink to a descriptor path is not recognized as one, so it takes the ordinary strip through the link. The strip's child process resolves the descriptor path against its own descriptors, so as an ordinary user the strip fails and the run is refused, and run as root it may act on `/dev/null` and leave the file's ACL in place (unmeasured on macOS; behavior unchanged from before this change).
+
 A failed strip is fail-closed, exactly as a failed `icacls` narrowing is on
 Windows: no content is written. The temp-file writers unlink the temp file on the
 way out, so nothing reaches the destination -- and for the `doctor probe`
