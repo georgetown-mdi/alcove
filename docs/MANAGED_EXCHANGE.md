@@ -1176,8 +1176,8 @@ What the import accepts is what this app can hold:
   and at any depth, is held when the file writes it as `@` and a path, and
   refused, by field name, when the file writes any other value, a number or
   `true` included. The refusal says to put the value in a file of its own and
-  write the setting as `@` and that file's path. Any other `provider_options` setting, such as a cipher
-  list, is held as written.
+  write the setting as `@` and that file's path. Any other
+  `provider_options` setting, such as a cipher list, is held as written.
 - **No shared secret.** A configuration naming one in its `authentication` block
   is refused: the secret comes in only from the `.alcove.key` chosen beside it.
 - **A `role` on a webrtc connection.** The configuration has to say which side of
