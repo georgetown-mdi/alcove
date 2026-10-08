@@ -1,10 +1,7 @@
 // The send-side half of the WebRTC data-channel frame bound
-// (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"): the
-// arithmetic a sender uses to keep every frame within what the partner's
-// receive path admits. The size of each part a round sends
-// (psi/psiSetParts.ts) and a browser party's receive ceiling
-// (`BROWSER_PSI_SET_MAX_ELEMENTS`) both go through `webrtcFrameExceedsBound`,
-// so the two cannot disagree about where the bound falls.
+// (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"). The PSI
+// set part size (psi/psiSetParts.ts) and `BROWSER_PSI_SET_MAX_ELEMENTS` both go
+// through `webrtcFrameExceedsBound`, so they agree on where the bound falls.
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
@@ -12,11 +9,8 @@ import {
 } from "./binaryPackBounds";
 
 /**
- * Byte length past which PeerJS splits a packed message into chunks
- * (`peerjs`'s `util.chunkedMTU`), measured against the pinned `peerjs`
- * (docs/spec/DEPENDENCY_PINS.md). A packed frame at or under it goes on the
- * wire whole; a longer one goes as `ceil(bytes / PEERJS_CHUNK_MTU)` chunk
- * envelopes of at most this many payload bytes each.
+ * Byte length past which PeerJS splits a packed message into chunks: the
+ * pinned `peerjs`'s `util.chunkedMTU` (docs/spec/DEPENDENCY_PINS.md).
  */
 export const PEERJS_CHUNK_MTU = 16_300;
 
@@ -32,10 +26,8 @@ const MAX_PEERJS_CHUNK_ENVELOPE_BYTES = 1 + 11 + 2 + 5 + 6 + 3 * 9 + 3;
 /**
  * Bytes one encrypted PSI element takes in a serialized set: a 33-byte
  * compressed curve point plus its protobuf tag and length byte. A set of `n`
- * elements serializes to at least `n` times this: the response the PSI
- * library builds is exactly that long, and the setup and request add a few
- * bytes of message framing (docs/spec/PROTOCOL.md, "The memory ceiling, and
- * the CSV intake cap").
+ * elements serializes to at least `n` times this (docs/spec/PROTOCOL.md, "The
+ * memory ceiling, and the CSV intake cap").
  */
 export const PSI_ENCODED_ELEMENT_BYTES = 35;
 
@@ -51,8 +43,7 @@ export const PSI_SET_MAX_FRAMING_BYTES = 6;
 /**
  * Length of the BinaryPack frame a byte array of `payloadBytes` bytes packs
  * to: the payload plus the `fixraw`, `bin16`, or `bin32` header its length
- * selects -- the frame a PSI set, a single-pass reply, or any other binary
- * message puts on the data channel.
+ * selects.
  */
 export function binaryPackByteStringLength(payloadBytes: number): number {
   if (payloadBytes <= 0x0f) return payloadBytes + 1;
@@ -62,12 +53,10 @@ export function binaryPackByteStringLength(payloadBytes: number): number {
 
 /**
  * The most bytes a WebRTC receiver charges against its frame bound for one
- * packed frame of `packedFrameBytes` bytes. A frame sent whole is charged its
- * own length. A chunked frame is charged per chunk, each at least
- * {@link MIN_CHUNK_RESIDENT_BYTES}, and a receiver that counts whole chunk
- * datagrams charges each chunk's envelope too, so this adds the widest
- * envelope to every chunk. It is an upper bound on what either receiver
- * charges: the web app counts chunk payloads, the CLI whole datagrams.
+ * packed frame of `packedFrameBytes` bytes. A chunked frame is charged per
+ * chunk, each at least {@link MIN_CHUNK_RESIDENT_BYTES} and with the widest
+ * envelope added, an upper bound for both receivers: the web app counts chunk
+ * payloads, the CLI whole datagrams.
  */
 export function webrtcFrameReceiveCharge(packedFrameBytes: number): number {
   if (packedFrameBytes <= PEERJS_CHUNK_MTU) return packedFrameBytes;
@@ -79,10 +68,8 @@ export function webrtcFrameReceiveCharge(packedFrameBytes: number): number {
 }
 
 /**
- * Whether a packed frame of `packedFrameBytes` bytes is one the partner's
- * WebRTC receive path could refuse: true when {@link webrtcFrameReceiveCharge}
- * exceeds `maxFrameBytes`. The one test every sender-side refusal of this
- * bound applies.
+ * Whether the partner's WebRTC receive path could refuse a packed frame of
+ * `packedFrameBytes` bytes. Every sender-side refusal of this bound applies it.
  *
  * @param maxFrameBytes - The receiver's bound, {@link MAX_WEBRTC_FRAME_BYTES}
  *   unless a test lowers it.
@@ -96,9 +83,7 @@ export function webrtcFrameExceedsBound(
 
 /**
  * The fewest bytes the packed frame of a PSI set of `elementCount` elements
- * can take: the byte-array frame around {@link PSI_ENCODED_ELEMENT_BYTES} per
- * element. A lower bound on every set frame of that count, so a count whose
- * frame this already puts over the bound is one no set of it can fit.
+ * can take, so a count this puts over the bound is one no set of it can fit.
  */
 export function minimumPsiSetFrameBytes(elementCount: number): number {
   return binaryPackByteStringLength(elementCount * PSI_ENCODED_ELEMENT_BYTES);
@@ -106,9 +91,8 @@ export function minimumPsiSetFrameBytes(elementCount: number): number {
 
 /**
  * The most elements a PSI set can hold and still fit one WebRTC frame bounded
- * at `maxFrameBytes`: the largest count whose {@link minimumPsiSetFrameBytes}
- * {@link webrtcFrameExceedsBound} admits. At {@link MAX_WEBRTC_FRAME_BYTES}
- * it is a browser party's receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS`.
+ * at `maxFrameBytes`. At {@link MAX_WEBRTC_FRAME_BYTES} it is a browser party's
+ * receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS`.
  *
  * @param maxFrameBytes - The receiver's bound, {@link MAX_WEBRTC_FRAME_BYTES}
  *   unless a test lowers it.

@@ -2,24 +2,16 @@ import { z } from "zod";
 import { camelizeKeys } from "../utils/camelizeKeys.js";
 import { safeParseCamelized } from "./safeParseCamelized.js";
 
-// Signing configuration for exchange receipts: the optional `signing` block
-// on the ExchangeSpec (alcove.yaml); see EXCHANGE_REFERENCE.md. Carries only
-// non-secret references -- signing identity file path, receipt mode, and pinned
-// partner certificate fingerprint. The signing private key stays out of the
-// config and the rotating key file; see docs/SECURITY_DESIGN.md.
+// Signing configuration for exchange receipts: the optional `signing` block of
+// alcove.yaml (docs/EXCHANGE_REFERENCE.md, Signing). It contains only
+// non-secret references; the signing private key stays out of the config and
+// the rotating key file (docs/SECURITY_DESIGN.md).
 
 /**
- * Canonical form of a certificate fingerprint: an unpadded base64url
- * SHA-256 digest, exactly 43 characters (32 bytes). The stable string a
- * party shares with its partner out-of-band and pins here; the exact
- * length lets a truncated or mistyped paste fail with a clear error.
- *
- * The final character is constrained to the canonical set (base64url
- * values that are a multiple of 4: A E I M Q U Y c g k o s w 0 4 8), since
- * a 43-character base64url string carries 258 bits but a SHA-256 digest is
- * only 256 -- the last character's low 2 bits are unused and zero in what
- * `alcove fingerprint` emits. This keeps the pin string a 1:1 image of the
- * digest and rejects a near-miss paste rather than silently accepting one.
+ * Canonical form of a certificate fingerprint: an unpadded base64url SHA-256
+ * digest, exactly 43 characters, so a truncated or mistyped paste fails. The
+ * last character is limited to values whose two unused low bits are zero, as
+ * `alcove fingerprint` emits them, so the pin is a 1:1 image of the digest.
  */
 export const FINGERPRINT_REGEX = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/;
 
@@ -42,34 +34,24 @@ const SigningModeSchema: z.ZodType<SigningMode> = z.enum([
 ]);
 
 /**
- * The `signing` block of an {@link ExchangeSpec}. All paths are local to the
- * party that holds the config; `partnerFingerprint` is the only field that
- * crosses the trust boundary, and it is a public value (a hash of a public
- * certificate) obtained from the partner over a trusted out-of-band channel.
+ * The `signing` block of an {@link ExchangeSpec}. Paths are local to the party
+ * holding the config; `partnerFingerprint`, the one field from the partner, is
+ * a public value obtained over a trusted out-of-band channel.
  */
 export interface SigningConfig {
   /** Receipt signing mode for this exchange. */
   mode: SigningMode;
   /**
-   * Path to this party's signing identity file (private key + self-signed
-   * certificate). Owner-read-only; the identity is a credential, so the CLI
-   * resolves no path of its own when this is omitted. Optional in shape but
-   * required in `certificate` mode -- a cross-field rule enforced at the
-   * CLI's certificate-mode pre-flight, not in this schema, so a
-   * partially-authored config still parses. Stored verbatim: a leading `~`
-   * is not resolved here (a host concern); a consumer that opens this path
-   * must tilde-expand it at use time (`expandTilde`), as `alcove
-   * fingerprint` does.
+   * Path to this party's signing identity file (private key and self-signed
+   * certificate); the CLI resolves no default. Required in `certificate` mode,
+   * checked at the CLI's pre-flight so a partially authored config parses.
+   * Stored verbatim: a consumer opening it tilde-expands it (`expandTilde`).
    */
   identityFile?: string;
   /**
-   * The partner's pinned certificate fingerprint (unpadded base64url
-   * SHA-256): set in advance from a value exchanged out of band, or recorded
-   * by the first authenticated contact from the certificate the partner
-   * presents there. A presented partner certificate is trusted only if its
-   * fingerprint matches this value; a later contact whose certificate
-   * differs is refused. Long-lived: valid until the partner regenerates its
-   * identity.
+   * The partner's pinned certificate fingerprint: set in advance from a value
+   * exchanged out of band, or recorded at the first authenticated contact. A
+   * partner certificate is trusted only if its fingerprint matches this value.
    */
   partnerFingerprint?: string;
 }
@@ -89,32 +71,20 @@ const SigningConfigSchema: z.ZodType<SigningConfig> = z.object({
 });
 
 /**
- * Schema for the optional `signing` block, exported so
- * {@link ExchangeSpecSchema} can embed it. Field-shape validation only:
- * `certificate` mode's cross-field requirements -- a pinned partner
- * fingerprint to verify against, an `identity_file` to sign with -- are
- * enforced at the pre-exchange gate instead, so a partially-authored
- * config still parses. `alcove fingerprint`, which needs only
- * `identity_file`, reads it from the raw config text rather than this
- * schema.
+ * Schema for the optional `signing` block, embedded by
+ * {@link ExchangeSpecSchema}. Field shapes only: `certificate` mode's
+ * cross-field requirements are enforced at the pre-exchange gate, so a
+ * partially authored config parses.
  */
 export { SigningConfigSchema };
 
 /**
- * Whether a partner certificate fingerprint is pinned at all; its absence
- * is what the terms exchange treats as a first authenticated contact, and
- * what leaves a certificate presented anywhere else untrustable. Shared by
- * four readings that must agree: the verification-time rejection of a
- * certificate against no pin (`assertPartnerCertificateTrusted`), the
- * terms-time resolution deciding between a comparison and an adoption
- * (`resolvePartnerCertificateOrAbort`), the gate refusing a run that can
- * neither pin nor establish one (`assertCertificateModePinsPartner`), and the
- * CLI pre-flight that holds a first contact to a configuration it can record
- * the adopted pin into (`assertPartnerFingerprintRecordable`).
- *
- * An empty string counts as no pin alongside `undefined`: {@link
- * FINGERPRINT_REGEX} cannot produce one, so it arrives only from a
- * {@link SigningConfig} assembled in code, as a pin nobody set.
+ * Whether a partner certificate fingerprint is pinned; its absence marks a
+ * first authenticated contact. The one reading that
+ * `assertPartnerCertificateTrusted`, `resolvePartnerCertificateOrAbort`,
+ * `assertCertificateModePinsPartner` and `assertPartnerFingerprintRecordable`
+ * must agree on. An empty string, which {@link FINGERPRINT_REGEX} cannot
+ * produce, counts as no pin.
  */
 export function partnerPinIsPresent(
   pinnedFingerprint: string | undefined,
@@ -144,8 +114,7 @@ export function retiredSigningSetting(raw: unknown): string | undefined {
 
 /**
  * The warning for a file stating the retired receipt-path `setting`, named as
- * the file writes it. The setting is accepted and ignored: a signed run writes
- * its receipt into the output folder under the run's time stamp.
+ * the file writes it; the setting is accepted and ignored.
  */
 export function retiredSettingNotice(setting: string): string {
   return (
