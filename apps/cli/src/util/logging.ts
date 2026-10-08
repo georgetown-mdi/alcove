@@ -3,6 +3,7 @@
 // get a logger with both applied.
 
 import fs from "node:fs";
+import path from "node:path";
 import util from "node:util";
 
 import logLibrary from "loglevel";
@@ -227,10 +228,15 @@ function openLogFileForAppend(logFilePath: string): {
  * Between that open and the first write, on macOS the file's extended (NFSv4)
  * ACL is cleared, so no line is written while an inherited ACE could still
  * grant another principal the access the `0600` mode denies; the strip
- * follows a symlink at the path, matching the open. A failed strip is
- * fail-closed: the descriptor is released and the run refused as a
- * {@link UsageError} holding the refusal as its cause, with an existing
- * file's content untouched and a created one left empty.
+ * follows a symlink at the path, matching the open. A descriptor that is not
+ * a regular file (`/dev/stderr` on a pipe or terminal) is not stripped. A
+ * regular file named through a `/dev/fd` or `/dev/std*` path cannot be
+ * stripped: stderr's own file (`/dev/stderr` redirected to a file) is written
+ * unstripped, and on macOS any other such file is refused as a
+ * {@link UsageError} asking for the file's own path. A failed strip, or a
+ * failed `fstat` of the descriptor, is fail-closed: the descriptor is released
+ * and the run refused as a {@link UsageError} holding the refusal as its cause,
+ * with an existing file's content untouched and a created one left empty.
  */
 export function configureLogFile(logFilePath: string): LogSink {
   // Windows paths are accepted: fold backslashes to forward slashes on ingestion
@@ -274,13 +280,22 @@ export function configureLogFile(logFilePath: string): LogSink {
     }
   }
 
+  let isStderr: boolean;
   try {
-    // Between the open and the first line, the same place the owner-only writers
-    // put it: on macOS the 0600 mode leaves an inherited ACE in force, and this
-    // descriptor is where the run's diagnostics land. The strip follows a
-    // symlink at the path because the open does -- acting on the link node
-    // would clear an ACL governing nothing while the lines went to its target.
-    stripExtendedAcls(normalized, { symlinks: "follow" });
+    const file = fs.fstatSync(fd);
+    isStderr = isSameFileAsStderr(file);
+    if (file.isFile()) {
+      // The `chmod` child would resolve a descriptor path against its own
+      // descriptors, not this process's, so it cannot reach this file.
+      if (!namesDescriptorPath(normalized))
+        stripExtendedAcls(normalized, { symlinks: "follow" });
+      else if (!isStderr && process.platform === "darwin")
+        throw new UsageError(
+          `could not secure log file ${normalized}: its extended ACL cannot ` +
+            "be cleared through a descriptor path. Name the file by its own " +
+            "path instead.",
+        );
+    }
   } catch (err) {
     try {
       fs.closeSync(fd);
@@ -288,6 +303,7 @@ export function configureLogFile(logFilePath: string): LogSink {
       // Best-effort close of the descriptor the open above took; the refusal
       // below is what the caller has to see.
     }
+    if (err instanceof UsageError) throw err;
     // Reported through this function's own usage boundary, as its open failure
     // is, so a refused log file exits 64 before any exchange work begins rather
     // than escaping to the last-resort printer. The strip's refusal -- which
@@ -298,7 +314,6 @@ export function configureLogFile(logFilePath: string): LogSink {
   }
 
   const loss: LogFileLoss = { path: normalized, lost: 0, reported: 0 };
-  const isStderr = isSameFileAsStderr(fd);
   const active: ActiveLogFile = { loss, isStderr };
   activeLogFile = active;
   return installLogSink(
@@ -340,14 +355,21 @@ export function configureLogFile(logFilePath: string): LogSink {
 // A `--log-file` naming stderr itself (`/dev/stderr`, or a path stderr is
 // redirected to) would print twice each error-level line and each prompt-stream
 // line the log copies.
-function isSameFileAsStderr(fd: number): boolean {
+function isSameFileAsStderr(file: fs.Stats): boolean {
   try {
-    const file = fs.fstatSync(fd);
     const stderr = fs.fstatSync(2);
     return file.dev === stderr.dev && file.ino === stderr.ino;
   } catch {
     return false;
   }
+}
+
+// `/dev/stderr`, `/dev/fd/2` and the like name a descriptor of the opening
+// process rather than a file.
+function namesDescriptorPath(logFilePath: string): boolean {
+  return /^\/dev\/(?:std(?:in|out|err)|fd\/\d+)$/.test(
+    path.posix.resolve(logFilePath),
+  );
 }
 
 /** One diagnostic line as the installed sink writes it, newline included. */

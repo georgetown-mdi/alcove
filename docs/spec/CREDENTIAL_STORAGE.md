@@ -249,6 +249,36 @@ mode an operator leaves on a file they supplied is a value they can read and set
 while an ACE grants access the mode cannot express on a file the run is about to
 write those diagnostics into.
 
+That strip runs only when `fstat` of the open descriptor reports a regular file.
+A terminal, pipe, FIFO, socket or device node -- `/dev/stderr` on a pipe, the
+case a scheduler capturing stderr meets -- is not stripped: it keeps no
+diagnostics at rest for an ACE to expose. The decision is read from the
+descriptor rather than from a fresh look at the path, so a path swapped after
+the open cannot turn the strip off for the regular file the lines land in; the
+strip itself still re-resolves the path, the limitation the table above states.
+A failed `fstat` is refused like a failed strip. A FIFO or other non-regular
+log path is not stripped, so its own mode governs who can open it and read the
+lines as they are written.
+
+A regular file named through a descriptor path -- `/dev/stdin`, `/dev/stdout`,
+`/dev/stderr` or `/dev/fd/N` once resolved -- cannot be stripped at all: the
+`chmod` child resolves that path against its own descriptors, not the CLI's, so
+it would fail or act on whatever its own descriptor names (`/dev/null` for its
+standard streams). When the file's device and inode match stderr's, as
+`--log-file /dev/stderr` with stderr redirected to a file gives, the strip is
+skipped and the run goes on: that file is the operator's own redirect target and
+already receives the run's diagnostics. The flag adds one line to it: the
+disclosure digest an exchange writes only when a log file is set and the level
+is `warn` or more verbose, a sha256 over the disclosure lines, the party
+identity and the destination. Every other
+regular file reached through a descriptor path is refused on macOS before any
+line is written, as a usage error (exit 64) asking for the file's own path. On
+other platforms, where no strip runs, it is accepted. Named by its ordinary path
+(`--log-file run.log 2>>run.log`), stderr's file is stripped like any other, and
+refused when that strip fails.
+
+A log path that is a symlink to a descriptor path is not recognized as one, so it takes the ordinary strip through the link. The strip's child process resolves the descriptor path against its own descriptors, so as an ordinary user the strip fails and the run is refused, and run as root it may act on `/dev/null` and leave the file's ACL in place (unmeasured on macOS; behavior unchanged from before this change).
+
 A failed strip is fail-closed, exactly as a failed `icacls` narrowing is on
 Windows: no content is written. The temp-file writers unlink the temp file on the
 way out, so nothing reaches the destination -- and for the `doctor probe`
