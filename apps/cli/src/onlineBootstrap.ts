@@ -70,6 +70,7 @@ import {
   type RunProtocolResult,
 } from "./protocol";
 import type { RunnableConnectionConfig } from "./connectionFromUrl";
+import type { EventStreamEmitter } from "./eventStream";
 import { startModeProvisionAsRead, wakeServerThrough } from "./serverProvision";
 import {
   payloadReceiveFillConfirmation,
@@ -842,12 +843,12 @@ export async function runOnlineBootstrap(params: {
   /**
    * `--event-stream`: emit the opt-in NDJSON machine-interface stream on fd 3
    * for the online exchange (see protocol.FileSyncRuntimeOptions and
-   * docs/spec/CLI_EVENTS.md). Opened by this bootstrap before its host-key
-   * step, which runs the fail-closed fd-3 preflight there, and the emitter
-   * handed to runProtocol. Undefined/false on the offline invite/accept paths,
-   * which never reach runProtocol.
+   * docs/spec/CLI_EVENTS.md): the emitter the command opened, or the flag,
+   * which this bootstrap opens before its host-key step. Either way the
+   * emitter is handed to runProtocol. Undefined/false on the offline
+   * invite/accept paths, which never reach runProtocol.
    */
-  eventStream?: boolean;
+  eventStream?: boolean | EventStreamEmitter;
   /**
    * `--allow-memory-shortfall`: warn rather than refuse a run whose PSI round
    * needs more memory than the process has (see checkRunMemoryBudget in
@@ -936,16 +937,15 @@ export async function runOnlineBootstrap(params: {
     params.connection,
     params.provision,
   );
-  // Open the machine-interface stream here rather than leaving it to runProtocol:
-  // this bootstrap's own persistence losses (both hooks below) must ride the
-  // same fd-3 channel as the run's terminal result event, and runProtocol drives
-  // the emitter but does not hand it to a hook, so reporting a loss means
-  // holding the object here and passing it in. preflightRun opens it and makes
-  // runProtocol's own local checks -- the fd-3 preflight, the shared secret and
-  // its key-file path, the memory the round needs, the first round's size, and
-  // the webrtc rendezvous -- so each, like the non-interactive host-key refusal
-  // after it, comes before the wake call and the host-key probe, as in
-  // `alcove exchange`.
+  // Hold the machine-interface stream here rather than leaving it to
+  // runProtocol: this bootstrap's own persistence losses (both hooks below)
+  // must ride the same fd-3 channel as the run's terminal result event, and
+  // runProtocol drives the emitter but does not hand it to a hook. preflightRun
+  // opens it where the command has not, and makes runProtocol's own local
+  // checks -- the shared secret and its key-file path, the memory the round
+  // needs, the first round's size, and the webrtc rendezvous -- so each, like
+  // the non-interactive host-key refusal after it, comes before the wake call
+  // and the host-key probe, as in `alcove exchange`.
   const hostKeyPersistence: HostKeyPersistence = params.reuseExistingConfig
     ? { mode: "write-now", configPath: params.configPath }
     : { mode: "save-with-config", configPath: params.configPath };

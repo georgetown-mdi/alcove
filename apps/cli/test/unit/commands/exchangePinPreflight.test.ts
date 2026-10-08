@@ -21,10 +21,10 @@ import type { Arguments } from "yargs";
 // runs it: nothing here is mocked but `process.exit` and fd 3 itself, so what
 // the run reaches is what production reaches.
 //
-// A supervisor watching the machine channel is told nothing by this refusal,
-// which is what docs/spec/SERVER_JOB_API.md rests its statement that the console
-// relay has no event to rewrite on: the check stands ahead of the exchange, and
-// the event stream is opened inside it.
+// A supervisor watching the machine channel reads this refusal as the run's
+// terminal `config` event, which is what docs/spec/SERVER_JOB_API.md rests its
+// statement that the console relay rebuilds it on: the event stream is opened
+// before the configuration is read.
 
 const SHARED_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
-  "a first contact that cannot record its pin exits 64 with nothing on fd 3 (skipped where a directory cannot be made read-only for its owner)",
+  "a first contact that cannot record its pin exits 64 with a config event naming the file (skipped where a directory cannot be made read-only for its owner)",
   async () => {
     const configFile = path.join(dir, "alcove.yaml");
     const keyFile = path.join(dir, ".alcove.key");
@@ -93,7 +93,13 @@ test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
       const { lines } = await captureFd3(async () => {
         await expect(handler(argv)).rejects.toThrow("exit:64");
       });
-      expect(lines).toEqual([]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toMatchObject({
+        type: "error",
+        category: "config",
+        exitCode: 64,
+      });
+      expect(String(lines[0].message)).toContain(configFile);
     } finally {
       exitSpy.mockRestore();
     }

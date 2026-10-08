@@ -59,6 +59,7 @@ import {
   type ConsentSurfaceSink,
 } from "../invitationDisplay";
 import { runOrExit } from "../util/exit";
+import { openEventStream } from "../eventStream";
 import { assertNoUnknownOptions, csvDelimiterFlag } from "../util/flags";
 import {
   declarePositionals,
@@ -1085,6 +1086,14 @@ export async function handler(argv: Arguments): Promise<void> {
       // before the invitation decode, any connection, or any file write.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveAcceptPositionals(positionals);
+      // An acceptance naming a URL runs an exchange, so its stream opens here,
+      // ahead of the invitation decode, the configuration load, and every
+      // other refusal past the arguments. One running at the invitation's own
+      // endpoint is known only from the decode, and opens it at the bootstrap.
+      const openedEventStream =
+        resolved.mode === "online"
+          ? openEventStream(options.eventStream)
+          : undefined;
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
       warnIfCommandLineHoldsLiteralCredential(
@@ -1248,7 +1257,7 @@ export async function handler(argv: Arguments): Promise<void> {
           loggerName: "accept",
           logFile: options.logFile,
           writeRecord: options.record,
-          eventStream: options.eventStream,
+          eventStream: openedEventStream ?? options.eventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           reuseExistingConfig: ready.reuseExistingConfig,
           provision: options.serverProvisionRead,

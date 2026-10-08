@@ -18,9 +18,10 @@ import { saveKeyFile } from "../../../src/keyFile";
  * child process with fd 3 wired to a pipe, its exit status, and every line it
  * wrote there. The child loads tsx in its own process rather than through
  * `tsx/cli`, which runs the entry point in a second process that does not
- * inherit fd 3. One failure is reported at the command's exit boundary, the
- * other inside the protocol lifecycle; each ends the stream with one `error`
- * event whose `exitCode` is the status the process exits with.
+ * inherit fd 3. Some failures are reported at the command's exit boundary --
+ * the configuration load among them -- the others inside the protocol
+ * lifecycle; each ends the stream with one `error` event whose `exitCode` is
+ * the status the process exits with.
  */
 
 const require = createRequire(import.meta.url);
@@ -80,24 +81,26 @@ interface FailedRun {
 
 /** Run `alcove exchange` non-interactively with fd 3 wired to a pipe. */
 function runExchange(): Promise<FailedRun> {
+  return runCli([
+    "exchange",
+    path.join(work, "input.csv"),
+    path.join(work, "out"),
+    "--config-file",
+    path.join(work, "alcove.yaml"),
+    "--key-file",
+    path.join(work, "alcove.key"),
+    "--no-record",
+    "--peer-timeout",
+    "5s",
+    "--event-stream",
+  ]);
+}
+
+/** Run the CLI on `args` non-interactively with fd 3 wired to a pipe. */
+function runCli(args: Array<string>): Promise<FailedRun> {
   const child = spawn(
     process.execPath,
-    [
-      "--import",
-      pathToFileURL(require.resolve("tsx")).href,
-      cliEntry,
-      "exchange",
-      path.join(work, "input.csv"),
-      path.join(work, "out"),
-      "--config-file",
-      path.join(work, "alcove.yaml"),
-      "--key-file",
-      path.join(work, "alcove.key"),
-      "--no-record",
-      "--peer-timeout",
-      "5s",
-      "--event-stream",
-    ],
+    ["--import", pathToFileURL(require.resolve("tsx")).href, cliEntry, ...args],
     { cwd: work, stdio: ["ignore", "ignore", "pipe", "pipe"] },
   );
   let stderr = "";
@@ -126,7 +129,10 @@ function runExchange(): Promise<FailedRun> {
   });
 }
 
-function expectOneTerminalError(run: FailedRun): Record<string, unknown> {
+function expectOneTerminalError(
+  run: FailedRun,
+  loggerName = "exchange",
+): Record<string, unknown> {
   const errors = run.events.filter((event) => event.type === "error");
   expect(errors, run.stderr).toHaveLength(1);
   const terminal = run.events.at(-1);
@@ -136,7 +142,7 @@ function expectOneTerminalError(run: FailedRun): Record<string, unknown> {
   // The field is the text of stderr's error line after its log prefix, byte
   // for byte (docs/spec/CLI_EVENTS.md, the error event's `message`).
   expect(run.stderr).toContain(
-    `[ERROR] [exchange] ${String(terminal?.message)}\n`,
+    `[ERROR] [${loggerName}] ${String(terminal?.message)}\n`,
   );
   return terminal ?? {};
 }
@@ -196,6 +202,67 @@ test(
     });
     expect(terminal.recoveryHint).toBe(true);
     expect(terminal.message).toContain("--peer-timeout");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "a configuration that is not YAML ends the stream with a config error",
+  async () => {
+    fs.writeFileSync(path.join(work, "alcove.yaml"), "connection: [unclosed\n");
+    const run = await runExchange();
+    expect(run.status).toBe(64);
+    expect(run.events.some((event) => event.type === "metrics")).toBe(false);
+    const terminal = expectOneTerminalError(run);
+    expect(terminal.category).toBe("config");
+    expect(terminal.message).toContain("could not be parsed as YAML");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "a configuration the schema refuses ends the stream with a config error",
+  async () => {
+    fs.writeFileSync(
+      path.join(work, "alcove.yaml"),
+      "connection:\n  channel: carrier-pigeon\n",
+    );
+    const run = await runExchange();
+    expect(run.status).toBe(64);
+    const terminal = expectOneTerminalError(run);
+    expect(terminal.category).toBe("config");
+    expect(terminal.message).toContain("is not a valid exchange spec");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "a missing configuration ends the stream with a config error",
+  async () => {
+    const run = await runExchange();
+    expect(run.status).toBe(64);
+    const terminal = expectOneTerminalError(run);
+    expect(terminal.category).toBe("config");
+    expect(terminal.message).toContain("does not exist");
+  },
+  RUN_DEADLINE_MS + 10_000,
+);
+
+test(
+  "a quick exchange refused before it reads its input ends the stream",
+  async () => {
+    fs.mkdirSync(path.join(work, "shared"));
+    const run = await runCli([
+      pathToFileURL(path.join(work, "shared")).href,
+      path.join(work, "input.csv"),
+      "--save",
+      "--key-file",
+      path.join(work, "alcove.key"),
+      "--event-stream",
+    ]);
+    expect(run.status).toBe(64);
+    const terminal = expectOneTerminalError(run, "alcove");
+    expect(terminal.message).toContain("alcove.key");
   },
   RUN_DEADLINE_MS + 10_000,
 );

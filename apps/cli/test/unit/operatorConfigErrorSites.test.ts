@@ -305,6 +305,43 @@ const RECORDED_SITES: readonly ConfigErrorSite[] = [
       "The rest is fixed prose naming the command that writes one.",
   },
   {
+    file: "apps/cli/src/commands/exchange.ts",
+    anchor: "readConfigDocument",
+    raises: "OperatorConfigError",
+    interpolates: ["String(err)", "configFile", "err.message"],
+    provenance:
+      "`configFile` is the operator's own path, as above. `err` is the Node " +
+      "filesystem error of this party's own read of that path: an errno and " +
+      "the local path, holding no byte of the document.",
+  },
+  {
+    file: "apps/cli/src/commands/exchange.ts",
+    anchor: "readConfigDocument",
+    raises: "OperatorConfigError",
+    interpolates: ["configFile"],
+    provenance:
+      "`configFile` is the operator's own path, as above. The rest is fixed " +
+      "prose: the sensitive-parse chokepoint's refusal is caught and never " +
+      "quoted, so no byte of the document reaches the message.",
+  },
+  {
+    file: "apps/cli/src/commands/exchange.ts",
+    anchor: "invalidExchangeSpecError",
+    raises: "OperatorConfigError",
+    interpolates: ["configFile", "describeConfigSchemaError(err)"],
+    provenance:
+      "`configFile` is the operator's own path, as above. " +
+      "describeConfigSchemaError (config/loaders.ts) renders the first issue " +
+      "the exchange schema raised over the configuration document the " +
+      "operator handed this run, a file in their own folder that they can " +
+      "open and edit: its key path as the file spells it, cut at a free-form " +
+      "`params` record, and the schema's own reason, which can quote a key " +
+      "or value the document holds. What a configuration written by `alcove " +
+      "accept` holds of the partner's terms passed this same schema at that " +
+      "acceptance, so a refusal can quote any of it only where a build with " +
+      "a stricter schema reads the file than wrote it.",
+  },
+  {
     file: "apps/cli/src/config/persist.ts",
     anchor: "assertPartnerFingerprintRecordable",
     raises: "OperatorConfigError",

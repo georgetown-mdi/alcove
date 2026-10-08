@@ -309,10 +309,10 @@ describe("the relayed notice states no container path", () => {
 // The CLI's two first-contact refusals as it writes them: each names the
 // configuration file the pin goes into (the token the stub replaces with the
 // --config-file value it was spawned with) and offers an edit of that file or a
-// writable mount of it, neither of which a console operator can act on. They
-// reach the console by different routes -- the adoption write fails inside the
-// protocol run, which reports it on the event stream, while the check before
-// connecting exits on stderr with no event stream open at all.
+// writable mount of it, neither of which a console operator can act on. Both
+// reach the console as the run's terminal `config` event: the adoption write
+// fails inside the protocol run, and the check before connecting fails at the
+// command's exit boundary, with the event stream already open.
 const PRE_CONNECTION_REFUSAL =
   "this exchange signs receipts (signing.mode: certificate) and pins no " +
   "partner fingerprint, so its first authenticated contact records the " +
@@ -393,29 +393,21 @@ describe("the relayed first-contact failure states no container path", () => {
     expectNothingCrossed(record, dataRoot);
   });
 
-  test("the refusal raised before connecting is left as the CLI reports it", async () => {
-    // The limit of the rebuild above. This check runs before the protocol does
+  test("the refusal raised before connecting is rebuilt", async () => {
+    // This check runs before the protocol does
     // (assertPartnerFingerprintRecordable, apps/cli/src/commands/exchange.ts),
-    // so the CLI exits 64 on stderr with its event stream never opened: there
-    // is no event to rewrite, and what the operator reads is the terminal the
-    // manager synthesizes for a stream that broke, with the CLI's own sentence
-    // on its stderr cause link.
-    const { record } = await runCertificateJob("pin-preflight", {
-      STUB_EXIT_CODE: "64",
-      STUB_STDERR: PRE_CONNECTION_REFUSAL,
-    });
-    const failure = soleFailure(record);
-    expect(failure.category).toBe("exchange");
-    expect(failure.message).toContain("the event stream broke");
-    // The console's own sentence, then the stderr cause link holding the end of
-    // what the CLI printed.
-    expect(failure[ERROR_MESSAGE_CHAIN_FIELD]).toEqual([
-      failure.message,
-      expect.stringContaining("records the pin."),
-    ]);
-    expect(JSON.stringify(record.events)).not.toContain(
-      PARTNER_PIN_UNRECORDABLE_FAILURE,
+    // after the CLI has opened its event stream, so it arrives as the same
+    // terminal `config` event the adoption write's failure does.
+    const { dataRoot, record, failure } = await runWithTerminalFailure(
+      "pin-preflight",
+      PRE_CONNECTION_REFUSAL,
     );
+    expect(failure.message).toBe(PARTNER_PIN_UNRECORDABLE_FAILURE);
+    expect(failure[ERROR_MESSAGE_CHAIN_FIELD]).toEqual([
+      PARTNER_PIN_UNRECORDABLE_FAILURE,
+    ]);
+    expect(failure.category).toBe("config");
+    expectNothingCrossed(record, dataRoot);
   });
 
   test("a failure naming no console path is relayed as the CLI wrote it", async () => {

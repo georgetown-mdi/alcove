@@ -741,6 +741,13 @@ export async function handler(argv: Arguments): Promise<void> {
 
   try {
     await runOrExit(log, async () => {
+      // The --save bootstrap persists from the onOutputComplete hook below and
+      // reports what it loses on the machine-interface stream, so this command
+      // opens the stream itself and hands runProtocol the emitter rather than
+      // the flag, keeping both sources on the one stream that sends the run's
+      // terminal event. Opened first, so every refusal after the argument
+      // parse ends the stream with its terminal event.
+      const eventStreamEmitter = openEventStream(eventStream);
       assertRetainSweepGuard(sweepExchangeFiles, forceRetainSweep);
 
       const { server, input, output } = resolved;
@@ -849,14 +856,9 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         options.serverProvisionRead,
       );
-      // The --save bootstrap persists from the onOutputComplete hook below and
-      // reports what it loses on the machine-interface stream, so this command
-      // opens the stream itself and hands runProtocol the emitter rather than
-      // the flag, keeping both sources on the one stream that sends the run's
-      // terminal event. Opened here, before the host-key step, so the fd-3
-      // preflight and the undeclared-columns notice both precede that step's
-      // probe connection, as in `alcove exchange` (see docs/spec/CLI_EVENTS.md).
-      const eventStreamEmitter = openEventStream(eventStream);
+      // Raised here, before the host-key step, so the undeclared-columns notice
+      // precedes that step's probe connection, as in `alcove exchange` (see
+      // docs/spec/CLI_EVENTS.md).
       const undeclaredColumnsWarned = warnUndeclaredColumns({
         prepared,
         alreadyWarned: false,
