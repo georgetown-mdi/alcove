@@ -11,37 +11,13 @@ import {
 } from "../../src/standardization";
 import { getLogger } from "../../src/utils/logger";
 
-import type { LinkageStrategy } from "../../src/config/linkageTermsSchema";
 import type { CSVRow } from "../../src/file";
 import type { PsiProgress } from "../../src/psi/participant";
-import { prepared } from "../utils/support";
+import { distinctFirstName, preparedFirstNames } from "../utils/support";
 
 // The first-round count reads the prepared dataset, before any connection.
 // The per-set maximum is lowered so the bound is reached with a few hundred
 // values.
-
-function letters(i: number): string {
-  let out = "";
-  let n = i;
-  do {
-    out = String.fromCharCode(97 + (n % 26)) + out;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  // A prefix no first-name cleaning shortens or maps onto another name.
-  return `zq${out}`;
-}
-
-function preparedWith(
-  firstNames: Array<string>,
-  strategy: LinkageStrategy = "cascade",
-  deduplicate = false,
-) {
-  return prepared(
-    "Tester",
-    firstNames.map((name) => ({ first_name: name })),
-    { terms: { linkageStrategy: strategy, deduplicate } },
-  );
-}
 
 /** What `check` rejects with, or undefined where it resolves. */
 async function refusalOf(check: Promise<void>): Promise<unknown> {
@@ -56,13 +32,18 @@ async function refusalOf(check: Promise<void>): Promise<unknown> {
 test("a deduplicating party's count stops once its set is over the bound", async () => {
   // 3000 distinct values against a bound of 300: the size only grows, so the
   // count stops at the first clock check past the bound, in each role.
-  const rows = Array.from({ length: 3000 }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: 3000 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundWithinSetMaximum(preparedWith(rows, "cascade", true), {
-      maxValues: 300,
-      onProgress: (progress) => reports.push(progress),
-    }),
+    assertFirstRoundWithinSetMaximum(
+      preparedFirstNames(rows, "cascade", true),
+      {
+        maxValues: 300,
+        onProgress: (progress) => reports.push(progress),
+      },
+    ),
   );
   expect(refusal).toBeInstanceOf(RoundSetLimitError);
   expect((refusal as Error).message).toMatch(/at least 1024 values to send/);
@@ -83,10 +64,12 @@ test("a deduplicating party's count stops once its set is over the bound", async
 
 test("the first-round count reports its progress through both roles", async () => {
   const rowCount = 5000;
-  const rows = Array.from({ length: rowCount }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: rowCount }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+    assertFirstRoundWithinSetMaximum(preparedFirstNames(rows), {
       maxValues: 300,
       onProgress: (progress) => reports.push(progress),
       progressIntervalMs: 0,
@@ -114,7 +97,9 @@ test("the first-round count reports its progress through both roles", async () =
 test("the first-round count reports nothing for an input whose records cannot reach the bound", async () => {
   const reports: Array<PsiProgress> = [];
   await assertFirstRoundWithinSetMaximum(
-    preparedWith(Array.from({ length: 50 }, (_unused, i) => letters(i))),
+    preparedFirstNames(
+      Array.from({ length: 50 }, (_unused, i) => distinctFirstName(i)),
+    ),
     {
       maxValues: 300,
       onProgress: (progress) => reports.push(progress),
@@ -124,14 +109,16 @@ test("the first-round count reports nothing for an input whose records cannot re
 });
 
 test("the first-round count drops a raise on a progress report, and a raise on any other reaches the caller", async () => {
-  const rows = Array.from({ length: 5000 }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: 5000 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   const maxValues = 300;
   const display = new Error("display fault");
   const onProgress = (throwOn: PsiProgress["state"]) => (p: PsiProgress) => {
     if (p.state === throwOn) throw display;
   };
   const progressRefusal = await refusalOf(
-    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+    assertFirstRoundWithinSetMaximum(preparedFirstNames(rows), {
       maxValues,
       onProgress: onProgress("progress"),
       progressIntervalMs: 0,
@@ -140,7 +127,7 @@ test("the first-round count drops a raise on a progress report, and a raise on a
   expect(progressRefusal).toBeInstanceOf(RoundSetLimitError);
   expect(
     await refusalOf(
-      assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+      assertFirstRoundWithinSetMaximum(preparedFirstNames(rows), {
         maxValues,
         onProgress: onProgress("started"),
       }),
@@ -149,14 +136,16 @@ test("the first-round count drops a raise on a progress report, and a raise on a
 });
 
 test("the first-round count yields to the event loop as it reports", async () => {
-  const rows = Array.from({ length: 5000 }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: 5000 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   let timerRan = false;
   let progressAfterTimer = false;
   setTimeout(() => {
     timerRan = true;
   }, 0);
   await refusalOf(
-    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+    assertFirstRoundWithinSetMaximum(preparedFirstNames(rows), {
       maxValues: 300,
       onProgress: (progress) => {
         if (progress.state === "progress" && timerRan)
@@ -191,7 +180,7 @@ test("the first-round check raises the fan-out refusal for a candidate set a cou
     },
     "Tester",
     Array.from({ length: 200 }, (_unused, i) => ({
-      first_name: `${letters(2 * i)} ${letters(2 * i + 1)}`,
+      first_name: `${distinctFirstName(2 * i)} ${distinctFirstName(2 * i + 1)}`,
     })),
     ["first_name"],
   );
@@ -215,7 +204,7 @@ test("the first-round check raises the fan-out refusal for a candidate set a cou
  * `failure` when read.
  */
 function withThrowingRows(
-  prepared: ReturnType<typeof preparedWith>,
+  prepared: ReturnType<typeof preparedFirstNames>,
   rowCount: number,
   failure: Error,
 ) {
@@ -239,8 +228,8 @@ function withThrowingRows(
 
 test("the first-round check refuses, with the failure as its cause, when the count throws", async () => {
   const rowCount = 50;
-  const prepared = preparedWith(
-    Array.from({ length: rowCount }, (_unused, i) => letters(i)),
+  const prepared = preparedFirstNames(
+    Array.from({ length: rowCount }, (_unused, i) => distinctFirstName(i)),
   );
   const failure = new RangeError("Map maximum size exceeded");
   const reports: Array<PsiProgress["state"]> = [];
@@ -258,8 +247,8 @@ test("the first-round check refuses, with the failure as its cause, when the cou
 
 test("the first-round check raises a refusal the count throws in both roles as it is", async () => {
   const rowCount = 50;
-  const prepared = preparedWith(
-    Array.from({ length: rowCount }, (_unused, i) => letters(i)),
+  const prepared = preparedFirstNames(
+    Array.from({ length: rowCount }, (_unused, i) => distinctFirstName(i)),
   );
   const refusal = new UsageError("a refusal the round would raise");
   await expect(
@@ -278,7 +267,7 @@ test("the first-round check reports no row, so each row's warning comes once, fr
   const split = [{ function: "split_on", params: { delimiter: " " } }];
   const parts = (row: string, count: number) =>
     Array.from({ length: count }, (_unused, i) =>
-      `${row}x${letters(i)}`.padEnd(8, "z"),
+      `${row}x${distinctFirstName(i)}`.padEnd(8, "z"),
     ).join(" ");
   const prepared = prepareForExchange(
     {
@@ -348,8 +337,8 @@ test("the first-round check reports no row, so each row's warning comes once, fr
 
 test("the first-round check refuses, with the failure as its cause, when the receiver-role count throws", async () => {
   const rowCount = 50;
-  const prepared = preparedWith(
-    Array.from({ length: rowCount }, (_unused, i) => letters(i)),
+  const prepared = preparedFirstNames(
+    Array.from({ length: rowCount }, (_unused, i) => distinctFirstName(i)),
   );
   // The field cache holds each row once read, so the receiver-role pass fails
   // at its walk over the key's values instead of at a row.
@@ -373,11 +362,13 @@ test("the first-round check refuses, with the failure as its cause, when the rec
 });
 
 test("an aborted first-round count rejects with the signal's reason and reports nothing further", async () => {
-  const rows = Array.from({ length: 5000 }, (_unused, i) => letters(i));
+  const rows = Array.from({ length: 5000 }, (_unused, i) =>
+    distinctFirstName(i),
+  );
   const controller = new AbortController();
   const reports: Array<PsiProgress> = [];
   const refusal = await refusalOf(
-    assertFirstRoundWithinSetMaximum(preparedWith(rows), {
+    assertFirstRoundWithinSetMaximum(preparedFirstNames(rows), {
       maxValues: 300,
       onProgress: (progress) => {
         reports.push(progress);
