@@ -1609,20 +1609,17 @@ which party decides which part: [EXCHANGE_REFERENCE.md](EXCHANGE_REFERENCE.md#wh
   of the exchange is in progress.
 
 Your partner's run ends with a partner refusal whenever you decline or a
-scheduled run stops; it is not asked anything.
+scheduled run stops; it is not asked anything. How the kept change and the
+run's bookkeeping are stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-refused-terms-change).
 
 Where your partner's run refuses your terms instead -- it compares them with
 its own and does not take them on -- your run stops at the same point, before
-any linkage key or data moves, and is not recorded as a connection problem:
-your partner refuses the same terms at every window. The run screen, the next
-visit, the between-visit notification, and the list row each say that your
-linkage terms differ from your partner's and that your partner stopped the
-run, and the next step is to agree the terms through a terms update: make one
-under **Change terms** and send it to your partner to apply, or apply one
-they make, then run the exchange again (see [Changing the terms of a saved
-exchange](#changing-the-terms-of-a-saved-exchange)). The run screen also shows
-the terms that differ. How the kept change and the
-run's bookkeeping are stored: [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#a-refused-terms-change).
+any linkage key or data moves, and the exchange states that your partner
+refused your linkage terms. No retry is offered, since your partner refuses
+the same terms at every window: agree the terms with your partner through a
+terms update (see [Changing the terms of a saved
+exchange](#changing-the-terms-of-a-saved-exchange)), then run the exchange
+again.
 
 What each run disclosed is accounted for **run by run**. Every successful run
 produces the same self-attested exchange record a one-shot exchange does -- this

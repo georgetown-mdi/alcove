@@ -914,9 +914,9 @@ export type ManagedRunCausePlacement =
  * placement is decided here.
  *
  * Two of the three states showing the error at all are the ones whose copy
- * accounts for nothing about why the run stopped. The transport state states a connection
- * problem and no more ({@link TRANSPORT_FAILURE}), and its error is the
- * partner- or network-written text the label exists to attribute. The
+ * accounts for nothing about why the run stopped. The transport state states a
+ * connection problem and no more ({@link TRANSPORT_FAILURE}), and its error is
+ * the partner- or network-written text the label exists to attribute. The
  * unreadable-custody state is this browser reading its own storage
  * ({@link CUSTODY_UNREADABLE_FAILURE}), with no affordance on this surface that
  * makes the entry readable, so the read's error is the only diagnostic it has
@@ -930,7 +930,8 @@ export type ManagedRunCausePlacement =
  * ({@link relayRegistrationFailure}), and the partner-set-too-large state's
  * ({@link partnerSetTooLargeFailure}). The partner-refused-terms state shows
  * the error as the one-shot exchange's terms alert does: the copy states the
- * refusal, and the error the terms that differ, which no copy names.
+ * refusal, and the error states the terms that differ or the reason the partner
+ * gave, which no copy names.
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunFailureAlert["kind"],

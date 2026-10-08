@@ -2091,8 +2091,7 @@ export async function runProtocol(
     };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
-    // A failed post-authentication hook is the online invite or accept's
-    // configuration write, which the persistence-loss warning above reported.
+    // A failed post-auth hook is the online invite or accept's config write.
     markTermsRefusalRun(
       err,
       auth === null
