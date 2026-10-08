@@ -60,10 +60,10 @@ jobs:
         with:
           # A scheduled workflow runs from the default branch, so the ref cannot
           # be left implicit: the floors are committed against `staging`, which
-          # is what this leg measures. A dispatch started from another branch
-          # still measures `staging` -- measure a branch with `npm run
-          # test:mutation` in a checkout of it.
-          ref: staging
+          # is what a scheduled run measures. A manual dispatch instead takes
+          # the ref it was dispatched on, so a change can be measured on its
+          # own branch before it lands.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'staging' }}
       # Pins Node, installs from the lockfile, and builds @alcove/core. The
       # mutation runner needs the installed tree: Stryker's vitest runner
       # resolves vitest through the repository root's package.json.
@@ -91,8 +91,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # As in the core job: the floor is committed against `staging`.
-          ref: staging
+          # As in the core job.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'staging' }}
       - uses: ./.github/actions/setup
       - name: Mutation score against the committed floor
         run: npm run test:mutation:cli
