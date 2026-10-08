@@ -21,8 +21,9 @@ With FIPS 140-3 as the target standard, no provider choice puts an X25519 key
 exchange inside a module's approved mode. Certificate 5438, the module the FIPS
 variant image embeds, names X25519 in no table at all, approved or
 non-approved, and states its non-approved-but-allowed category empty, so there
-is no status the curve could hold there -- and the certified module read inside
-the image held no such primitive to begin with
+is no status the curve could hold there -- and the certified module the image
+pins, `3.2.2-799901ad7ab41d45`, has no such primitive to begin with, read inside
+the image on 2026-10-08
 ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests),
 [fips-variant-image.md](fips-variant-image.md)). Certificate 4985, the OpenSSL
 Project module read beside it, places X25519 in its Non-Approved, Not Allowed

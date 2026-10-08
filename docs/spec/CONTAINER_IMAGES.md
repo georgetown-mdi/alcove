@@ -283,6 +283,13 @@ serves it at two NVRs holding two certified modules:
     3.0.8-1.amzn2023.0.1 -> 3.0.8-d694bfa693b76001   <- the module certificate 5021 names
     3.2.2-1.amzn2023     -> 3.2.2-799901ad7ab41d45   <- what this image pins, certificate 5438
 
+The second line was read back from a `linux/arm64` build of `Dockerfile.fips`
+on 2026-10-08: `rpm` names `openssl-fips-provider-certified-so`
+`3.2.2-1.amzn2023` as the owner of the installed `fips.so`, and
+`openssl list -providers` reports module `3.2.2-799901ad7ab41d45` active beside
+an `openssl` library at 3.5.8. The first line was not re-read then, and the
+`x86_64` build was not run.
+
 Both NVRs hold a certified module under a certificate of its own, so within
 this package name the pin decides which certificate the image stands on rather
 than whether the module is certified at all. Nothing in the build decides it by
@@ -367,16 +374,14 @@ the policy attaches to two of the algorithm rows are in
 
 ### The Caveat
 
-The certificate states one Caveat. Its installation clause, quoted verbatim:
+The certificate states one Caveat, a single field of three sentences. Quoted
+verbatim as one string, read from the certificate page on 2026-10-08:
 
-> When installed, initialized and configured as specified in Section 11.1 of
-> the Security Policy.
+> When operated in approved mode. When installed, initialized and configured as specified in Section 11.1 of the Security Policy. No assurance of minimum security of SSPs (e.g., keys, bit strings) that are externally loaded, or of SSPs established with externally loaded SSPs.
 
-The rest of the field is the sentence certificate 5021 also carries -- "When
-operated in approved mode. No assurance of minimum security of SSPs (e.g.,
-keys, bit strings) that are externally loaded, or of SSPs established with
-externally loaded SSPs." -- transcribed clause by clause rather than as one
-string, so the order the two parts appear in on the page is not stated here.
+The first and third sentences are the two that certificate 5021's Caveat also
+states, from a reading of that page taken before the pin moved and not repeated
+on 2026-10-08. The second, the installation clause, is 5438's alone.
 
 Provenance differs from every other row in this section. The Caveat is a field
 of the certificate detail page itself, an HTML page with no page numbers,
@@ -384,9 +389,9 @@ rather than of the 68-page security policy that sources the tables below; there
 is accordingly no page citation for it and none is fabricated.
 
 `SSP` is the FIPS 140-3 term for a sensitive security parameter: a key, a seed,
-or any other value whose disclosure or modification compromises the module. That
-sentence reaches this project's composition directly -- the key schedule mixes a
-pre-shared secret the module did not generate -- and
+or any other value whose disclosure or modification compromises the module. The
+Caveat's third sentence reaches this project's composition directly -- the key
+schedule mixes a pre-shared secret the module did not generate -- and
 [COMPLIANCE.md](../COMPLIANCE.md#fips-140) is where what follows from that is
 stated.
 

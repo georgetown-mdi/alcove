@@ -24,8 +24,9 @@ both certificates in play here. Certificate 4985 places it in Table 8,
 Non-Approved and Not Allowed, and includes ECDSA on its approved-algorithm list.
 Certificate 5438, the module the FIPS variant image embeds, names Ed25519 in no
 table at all and states its non-approved-but-allowed category empty, so there is
-no status the algorithm could hold there -- and the certified module read inside
-the image held no such primitive to begin with
+no status the algorithm could hold there -- and the certified module the image
+pins, `3.2.2-799901ad7ab41d45`, has no such primitive to begin with, read inside
+the image on 2026-10-08
 ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests),
 [fips-variant-image.md](fips-variant-image.md)). ECDSA is on that certificate's
 approved-algorithm table as well, over P-256 and with SHA2-256 among its hashes,
@@ -127,11 +128,12 @@ the module entirely is strictly better than routing it in, and that holds under
 the disclosure option as much as under the migration.
 
 Under certificate 5438 the option is not there to take at all. The certified
-Amazon Linux module read in the image has no Ed25519 -- `openssl list` reported
-it absent while the provider was active
-([fips-variant-image.md](fips-variant-image.md)) -- so presence is a property of
-the OpenSSL Project builds measured here rather than of the module the image
-ships.
+Amazon Linux module the image pins has no Ed25519 -- `openssl list` in the image
+at `3.2.2-799901ad7ab41d45` reports it absent while the provider is active, and
+Ed25519 keypair generation throws `ERR_OSSL_EVP_UNSUPPORTED` (both read
+2026-10-08) ([fips-variant-image.md](fips-variant-image.md)) -- so presence is
+a property of the OpenSSL Project builds measured here rather than of the module
+the image ships.
 
 The same reasoning forecloses an obvious-looking shortcut. Node's WebCrypto in
 this runtime does include Ed25519 -- measured deterministic, 64-byte signatures,
@@ -236,7 +238,8 @@ name, and the service the call lands on is not established here.
 - That an EdDSA build of receipt signing would be FIPS-approved. It is not on
   any OpenSSL Project certificate; under certificate 4985 Ed25519 is
   Non-Approved and Not Allowed, and certificate 5438 names it in no table at
-  all, while the module read inside the image held no such primitive. Two of the
+  all, while the module the image pins has no such primitive (read inside the
+  image at `3.2.2-799901ad7ab41d45` on 2026-10-08). Two of the
   forty active certificates do approve EdDSA, and neither yields a verifiable
   certified module for a freely redistributable image -- see
   [fips-provider-surface.md](fips-provider-surface.md). This is why the algorithm
