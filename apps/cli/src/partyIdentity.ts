@@ -16,12 +16,9 @@ const PARTNER_READS_IT =
 export { PLACEHOLDER_IDENTITY };
 
 /**
- * The form a label an operator typed takes on its way into linkage terms:
- * NFC-normalized, then trimmed. NFC is the canonical form linkage-terms free
- * text is compared in across parties, and trimming drops the whitespace a
- * quoted shell argument leaves around the name, so one typed name is one
- * string in the terms the agreed-terms hash covers and in the identity a
- * signing certificate is authorized against, whichever seat typed it.
+ * A typed label as it enters linkage terms: NFC-normalized, the form parties
+ * compare free text in, then trimmed, so one typed name is one string in the
+ * agreed terms and in the identity a signing certificate is authorized against.
  */
 function normalizeSuppliedIdentity(identity: string | undefined): string {
   return identity?.normalize("NFC").trim() ?? "";
@@ -38,11 +35,9 @@ export const IDENTITY_STILL_PLACEHOLDER =
   `${PARTNER_READS_IT}, the invitation, and the disclosure record.`;
 
 /**
- * Why a label typed at one invocation cannot stand in for a configured one --
- * the clause every refusal that reads a label out of a configuration file ends
- * on. The file persists unchanged and supplies the terms of every run under the
- * partnership, so a label given for this one invocation would name the party
- * here and leave it named otherwise everywhere after.
+ * The clause ending every refusal that reads the label from a configuration
+ * file: that file supplies the terms of every later run, so a flag given once
+ * would name the party differently here than everywhere after.
  */
 const FLAG_CANNOT_STAND_IN =
   `${IDENTITY_FLAG_HELP} cannot stand in, because the configuration persists ` +
@@ -57,12 +52,9 @@ export const IDENTITY_REQUIRED =
   `${PARTNER_READS_IT}, the invitation, and the disclosure record.`;
 
 /**
- * The refusal {@link resolveInvitationIdentity} raises, naming the
- * configuration file expected to hold the label.
- *
- * The path composes RAW: `sanitizeErrorForDisplay` escapes the whole
- * rendered chain once at the CLI's display boundary, so escaping here too
- * would double-escape it. See CONTRIBUTING.md, Operator-facing escaping.
+ * The refusal {@link resolveInvitationIdentity} raises. The path is composed
+ * raw and escaped once at the display sink: CONTRIBUTING.md, Operator-facing
+ * escaping.
  */
 export function configuredIdentityRequired(configPath: string): string {
   return (
@@ -73,12 +65,8 @@ export function configuredIdentityRequired(configPath: string): string {
 }
 
 /**
- * The refusal {@link resolveKeptConfigurationIdentity} raises, naming the
- * configuration this acceptance keeps as the file that was expected to hold
- * the label.
- *
- * The path composes RAW, for the reason and with the single escape
- * {@link configuredIdentityRequired} documents.
+ * The refusal {@link resolveKeptConfigurationIdentity} raises. The path is
+ * composed raw, as in {@link configuredIdentityRequired}.
  */
 export function keptConfigurationIdentityRequired(configPath: string): string {
   return (
@@ -90,13 +78,9 @@ export function keptConfigurationIdentityRequired(configPath: string): string {
 }
 
 /**
- * The refusal both configured-label resolvers raise when the configuration
- * still holds the template placeholder, naming the field to edit and the
- * file it sits in. One wording serves both, since neither command can
- * replace the label from the command line.
- *
- * The path composes RAW, for the reason and with the single escape
- * {@link configuredIdentityRequired} documents.
+ * The refusal every configured-label resolver raises when the configuration
+ * still holds the template placeholder. The path is composed raw, as in
+ * {@link configuredIdentityRequired}.
  */
 export function configuredIdentityStillPlaceholder(configPath: string): string {
   return (
@@ -110,17 +94,9 @@ export function configuredIdentityStillPlaceholder(configPath: string): string {
 
 /**
  * This party's identity label for a command that authors its own linkage
- * terms: the `--identity` value under {@link normalizeSuppliedIdentity}, and
- * nothing else.
- *
- * There is no fallback: a run with no flag, or a blank value (e.g. an unset
- * `$ORG` in `--identity "$ORG"`), stops rather than defaulting to system
- * state such as the account Alcove runs as, because the partner reads this
- * label as the operator's own chosen name.
- *
- * {@link PLACEHOLDER_IDENTITY} is refused alongside blank: the schema
- * accepts it as a label, but sending it would name this party with the
- * words asking for a name.
+ * terms: the normalized `--identity` value, with no fallback to system state
+ * such as the account name. Blank and {@link PLACEHOLDER_IDENTITY} are
+ * refused: docs/EXCHANGE_REFERENCE.md#linkage_termsidentity.
  */
 export function resolveIdentity(identity: string | undefined): string {
   const chosen = normalizeSuppliedIdentity(identity);
@@ -131,15 +107,9 @@ export function resolveIdentity(identity: string | undefined): string {
 }
 
 /**
- * This party's identity label for a run that may go unnamed: the
- * `--identity` value under {@link normalizeSuppliedIdentity}, or `undefined`
- * where the flag names nothing.
- *
- * A blank value (e.g. an unset `$ORG` in `--identity "$ORG"`) is absence,
- * not a label -- the terms simply hold no identity.
- * {@link PLACEHOLDER_IDENTITY} is refused rather than treated as absence:
- * unlike blank, it is a value the operator typed believing it named them,
- * so silently dropping it would unname a run behind their back.
+ * This party's identity label for a run that may go unnamed: the normalized
+ * `--identity` value, or `undefined` when blank. {@link PLACEHOLDER_IDENTITY}
+ * is refused rather than dropped, since the operator typed it as a name.
  */
 export function optionalIdentity(
   identity: string | undefined,
@@ -152,39 +122,30 @@ export function optionalIdentity(
 }
 
 /**
- * The line shown above either identity question, stating what the label is for.
- * It is the sentence both refusals above end on, so the operator who is asked
- * and the operator who is refused read the same account of it.
+ * The line shown above either identity question; the same sentence the
+ * refusals end on.
  */
 export const IDENTITY_PROMPT_PREAMBLE = `${PARTNER_READS_IT}, the invitation, and the disclosure record.`;
 
 /**
- * The question `alcove init` asks. It states what a blank answer does, because
- * blank is not a refusal here: the template is a scaffold to hand-edit, so an
- * operator who has not settled the wording yet gets {@link PLACEHOLDER_IDENTITY}
- * to replace, exactly as a run with no terminal to ask at does.
+ * The question `alcove init` asks, where a blank answer writes
+ * {@link PLACEHOLDER_IDENTITY} into the template for hand-editing.
  */
 export const INIT_IDENTITY_QUESTION =
   "Identity for this party (name, organization, contact), or blank to fill in " +
   "by hand later:";
 
 /**
- * The question `alcove accept` asks. It has no blank-answer note because
- * blank is absence and an acceptance will not proceed unnamed
- * ({@link IDENTITY_REQUIRED}): it authors a durable partnership the partner
- * reads a name off.
+ * The question `alcove accept` asks; an acceptance will not proceed unnamed
+ * ({@link IDENTITY_REQUIRED}).
  */
 export const ACCEPT_IDENTITY_QUESTION =
   "Identity for this party (name, organization, contact):";
 
 /**
  * Ask for this party's identity at the terminal and return the raw answer.
- *
- * Both lines go to the prompt stream rather than through a logger, so the
- * question and the reason for it are on the terminal whatever `--log-level` and
- * `--log-file` are set to -- the routing the consent surface already takes
- * wherever a prompt follows it. Whether asking is possible at all is the
- * caller's to decide; this only asks.
+ * Both lines go to the prompt stream, not a logger, so `--log-level` and
+ * `--log-file` cannot hide them. The caller decides whether asking is possible.
  */
 export function askIdentityAtPrompt(question: string): Promise<string> {
   writePromptLine(IDENTITY_PROMPT_PREAMBLE);
@@ -192,17 +153,8 @@ export function askIdentityAtPrompt(question: string): Promise<string> {
 }
 
 /**
- * This party's label from `--identity`, or from a question at the terminal
- * when the flag held none: the trimmed value, or `undefined` where neither
- * source named this party.
- *
- * Both sources take {@link optionalIdentity}'s treatment -- blank read as
- * absence, {@link PLACEHOLDER_IDENTITY} refused -- so an operator cannot
- * reach a laxer path by typing at the prompt instead of passing the flag.
- *
- * `ask` is the caller's whole interactivity decision: `undefined` means no
- * prompt runs and the flag's answer stands alone. The flag is read first
- * either way, so supplying it is what skips the question.
+ * This party's label from `--identity`, else from `ask` when given, each under
+ * {@link optionalIdentity}; `undefined` where neither names this party.
  */
 export async function identityFromFlagOrPrompt(
   identity: string | undefined,
@@ -215,18 +167,9 @@ export async function identityFromFlagOrPrompt(
 
 /**
  * This party's identity label for an invitation minted from a saved
- * configuration: the `linkage_terms.identity` that configuration holds.
- *
- * Inviting authors a durable partnership, so it will not proceed unnamed,
- * and `--identity` is not an alternative: the configuration persists and
- * supplies every later run's terms. Whitespace-only and
- * {@link PLACEHOLDER_IDENTITY} are refused for the same reason blank and
- * the placeholder are refused elsewhere in this module.
- *
- * The value comes back VERBATIM: a certificate authorizes an exact
- * identity string, and every later `alcove exchange` reads the
- * configuration's own bytes, so a trimmed copy would name the partnership
- * differently in the invitation than in the runs under it.
+ * configuration: its `linkage_terms.identity`, refused where blank or the
+ * placeholder. Returned untrimmed, since a certificate authorizes the exact
+ * string every later `alcove exchange` reads from the same file.
  */
 export function resolveInvitationIdentity(
   configuredIdentity: string | undefined,
@@ -240,20 +183,9 @@ export function resolveInvitationIdentity(
 }
 
 /**
- * This party's identity label for an acceptance that keeps the
- * configuration already at the path: that file's own
- * `linkage_terms.identity`.
- *
- * Such an acceptance writes no configuration, so the label has to be the
- * kept file's own: under `signing.mode: certificate` the agreed terms'
- * label is what a receipt is verified against, so a run under any other
- * label would name this party one way for the acceptance and another for
- * the partnership it belongs to. `--identity` is not an alternative, for
- * the same reason it is not one when inviting from a configuration.
- *
- * Blank and {@link PLACEHOLDER_IDENTITY} are refused, and the value comes
- * back VERBATIM, exactly as {@link resolveInvitationIdentity} treats them
- * and for the reasons recorded there.
+ * This party's identity label for an acceptance that keeps the configuration
+ * already at the path: that file's `linkage_terms.identity`, treated as
+ * {@link resolveInvitationIdentity} treats it.
  */
 export function resolveKeptConfigurationIdentity(
   configuredIdentity: string | undefined,
@@ -267,8 +199,8 @@ export function resolveKeptConfigurationIdentity(
 }
 
 /**
- * The refusal {@link resolveTermsUpdateIdentity} raises. The path composes
- * RAW, for the reason {@link configuredIdentityRequired} documents.
+ * The refusal {@link resolveTermsUpdateIdentity} raises. The path is composed
+ * raw, as in {@link configuredIdentityRequired}.
  */
 export function termsUpdateIdentityRequired(configPath: string): string {
   return (
@@ -296,9 +228,8 @@ export function resolveTermsUpdateIdentity(
 }
 
 /**
- * The body both configured-label resolvers share. `required` is the whole
- * difference between them: why THIS command reads the label out of a file rather
- * than off the command line, which is what its refusal has to say.
+ * The body the configured-label resolvers share; `required` is each command's
+ * refusal for an absent label.
  */
 function resolveConfiguredIdentity(
   configuredIdentity: string | undefined,
