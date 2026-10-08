@@ -1,39 +1,25 @@
 /**
- * The connection-lifecycle state one SFTP adapter holds for its whole life:
- * how far its teardown has got, what the ssh2 Client's transport has reported
- * about closing, and the one-shot budgets whose whole content is "this run has
- * already done that once". Transport-blind, like {@link ./sftpAdapterLedger}: no
- * ssh2 or ssh2-sftp-client type reaches it, and it holds no session, socket or
- * client object.
- *
- * It holds the state that outlives a session generation. Per-session values --
- * the guarded SFTPWrapper, the captured fatal error, the transition queue, the
- * boundary reading -- stay on the adapter, where the transition lock that orders
- * them is. See {@link ./ssh2SftpAdapter} for the events that drive this, and
- * docs/notes/sftp-adapter-state-machine.md for the model the adapter's session
- * machine follows.
+ * The connection-lifecycle state one SFTP adapter keeps across session
+ * generations: teardown progress, the transport-close reading, and one-shot
+ * budgets. Transport-blind: it contains no ssh2 type, session, socket or client.
+ * Per-session values stay on the adapter, under its transition lock:
+ * docs/notes/sftp-adapter-state-machine.md.
  */
 
 /**
- * How far the connection's terminal close has got. The two latches behind it are
- * separate facts, not a progression: `beginTeardown()` says a teardown-driven
- * re-dial is still wanted but exempt from the mid-exchange reconnection cap,
- * while `beginClose()` forbids a re-dial outright -- and `end()` does not
- * require `beginTeardown()` first, so all four combinations are reachable. Both
- * latches are monotonic, so this only ever advances.
+ * How far the connection's terminal close has got, from two independent
+ * monotonic latches: `beginTeardown()` (a re-dial is still wanted, exempt from
+ * the reconnection cap) and `beginClose()` (no re-dial). Either can come
+ * first, so all four combinations are reachable.
  */
 export type TeardownState =
   "running" | "tearingDown" | "closing" | "closingAfterTeardown";
 
 /**
- * What is known about the ssh2 Client's transport close, as the three states it
- * can be in rather than the two booleans that would encode them: `unreadable`
- * when the installed ssh2-sftp-client exposes no `client.on()` to watch through
- * (an absence of information, not an observation), `owed` when the transport has
- * emitted its `'end'` without its `'close'` -- the window in which a dial on the
- * same Client is rejected by connect-time listeners -- and `delivered`
- * otherwise. The measured ordering, and what an unwatchable Client costs, are in
- * docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack".
+ * What is known about the ssh2 Client's transport close: `unreadable` when the
+ * Client exposes no `on()` to watch, `owed` between its `'end'` and `'close'`
+ * (when a dial on that Client is rejected), and `delivered` otherwise:
+ * docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client.
  */
 export type TransportCloseReading = "unreadable" | "owed" | "delivered";
 
@@ -53,11 +39,7 @@ export class SftpSessionState {
 
   /**
    * Whether `end()` has latched. Read once per transition inside the transition
-   * queue's critical section, and that single read is the whole of "no session
-   * transition begins after teardown has been latched". It also refuses a reopen
-   * of a terminally closed connection and stops session recovery from launching
-   * a re-dial into a teardown, whose readyTimeout would slow a clean close and
-   * whose fresh session would outlive the teardown.
+   * lock, so no session transition, reopen or recovery re-dial begins after it.
    */
   get isClosing(): boolean {
     return (
@@ -66,8 +48,8 @@ export class SftpSessionState {
   }
 
   /**
-   * Whether `beginTeardown()` has latched. Read where a session loss is
-   * classified: a drop under a teardown this side drove is not a partner's.
+   * Whether `beginTeardown()` has latched: a drop under this side's teardown is
+   * not the partner's.
    */
   get isTearingDown(): boolean {
     return (
@@ -93,12 +75,10 @@ export class SftpSessionState {
   }
 
   /**
-   * Whether an abandoning teardown closed the transport itself, cutting short
-   * whatever dial the transition it gave up on was running. That dial rejects
-   * with the same error a genuine peer close produces (measured; see
-   * docs/spec/DEPENDENCY_PINS.md), so telling "this adapter closed it" from "the
-   * partner dropped us" takes this reading rather than a match on the error
-   * text. Never cleared: it is only ever set on a connection already closing.
+   * Whether an abandoning teardown closed the transport itself. The dial it cut
+   * short rejects with the same error as a peer close (docs/spec/DEPENDENCY_PINS.md),
+   * so this, not the error text, tells the two apart. Never cleared: it is only
+   * set on a connection already closing.
    */
   get abandonedTeardownClosedTransport(): boolean {
     return this.#abandonedTeardownClosedTransport;
@@ -116,9 +96,8 @@ export class SftpSessionState {
 
   /**
    * Take the one-per-adapter permission to attach the transport-lifecycle
-   * listeners, moving the reading off `unreadable`. False on every later call:
-   * ssh2-sftp-client constructs its Client once and reuses it across reconnects,
-   * so re-attaching per reconnect would stack duplicate listeners.
+   * listeners; false on every later call, since the Client is reused across
+   * reconnects and listeners would stack.
    */
   beginWatchingTransport(): boolean {
     if (this.#transportClose !== "unreadable") return false;
@@ -139,30 +118,21 @@ export class SftpSessionState {
 
   /**
    * Whether this connection's single non-SSH-answer diagnosis has been taken.
-   * The diagnosis opens a TCP connection of its own and the connection-per-poll
-   * mode dials at every cycle start, so an unspent budget would re-dial a peer
-   * that is already answering wrongly once per tick for as long as the condition
-   * stands. What it says is that this run has already told the operator what
-   * answered the port.
+   * It opens its own TCP connection, so connection-per-poll would otherwise
+   * repeat it every cycle.
    */
   get peerAnswerDiagnosisSpent(): boolean {
     return this.#peerAnswerDiagnosisSpent;
   }
 
-  /**
-   * Spend that budget, at the point the diagnosis opens its own connection
-   * rather than at the point it produces a diagnostic: the connection is the
-   * cost.
-   */
+  /** Spend that budget when the diagnosis opens its connection. */
   spendPeerAnswerDiagnosis(): void {
     this.#peerAnswerDiagnosisSpent = true;
   }
 
   /**
-   * Take the one warning that the transport lifecycle cannot be read. Whether
-   * the Client exposes `on()` is a property of the installed version rather than
-   * of any one drop, so a second copy tells the operator nothing the first did
-   * not.
+   * Take the one warning that the transport lifecycle cannot be read; it
+   * depends on the installed version, so one copy suffices.
    */
   spendUnreadableLifecycleWarning(): boolean {
     if (this.#unreadableLifecycleWarned) return false;
@@ -171,20 +141,14 @@ export class SftpSessionState {
   }
 
   /**
-   * Whether the keyboard-interactive answer handler is attached. It goes on the
-   * ssh2 Client once per adapter, on the same terms as the transport listeners:
-   * ssh2-sftp-client reuses that Client across reconnects, so a per-reconnect
-   * re-attach would stack duplicates and eventually trip a MaxListenersExceeded
-   * warning.
+   * Whether the keyboard-interactive answer handler is attached; once per
+   * adapter, like the transport listeners.
    */
   get keyboardInteractiveAttached(): boolean {
     return this.#keyboardInteractiveAttached;
   }
 
-  /**
-   * Record that handler as attached, after the attach itself: an adapter that
-   * could not attach one has not spent this, so a later call still tries.
-   */
+  /** Record that handler as attached; called only after a successful attach. */
   recordKeyboardInteractiveAttached(): void {
     this.#keyboardInteractiveAttached = true;
   }

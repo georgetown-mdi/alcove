@@ -8,16 +8,10 @@ import type { PreparedExchange } from "@alcove/core";
 import { raiseInactivityLimit } from "../connection/timeoutGuidance";
 
 /**
- * Operator guidance appended to the file-sync peer-silence timeout error, used
- * when no valid cross-party abort marker (`<id>-abort.json`, armed in the run loop
- * after the handshake) is present to upgrade the failure to a definitive
- * {@link PeerAbortError}. The marker holds no cause and cannot exist for a
- * peer whose exchange directory has gone unwritable (the same condition that
- * stops it writing the marker) or that was hard-killed, so this text states
- * the likely receiver-side causes without naming one as certain, and hedges
- * ("may have") to cover the slow-peer case too. See docs/spec/FILE_SYNC.md
- * ("Sender-side peer-silence attribution"). `limitNamed` is whether the error
- * already names inactivity_timeout_ms.
+ * Guidance appended to the file-sync peer-silence timeout when no abort marker
+ * names the failure; it hedges, since this side cannot know the cause:
+ * docs/spec/FILE_SYNC.md#sender-side-peer-silence-attribution. `limitNamed` is
+ * whether the error already names inactivity_timeout_ms.
  */
 export const peerSilenceGuidance = (limitNamed: boolean): string =>
   "The peer completed the rendezvous but has sent nothing since. The likely " +
@@ -29,21 +23,11 @@ export const peerSilenceGuidance = (limitNamed: boolean): string =>
   `still working on a large dataset, ${raiseInactivityLimit(limitNamed)}.`;
 
 /**
- * Operator guidance replacing {@link peerSilenceGuidance} when the peer hello
- * this run rendezvoused against was already in the folder at entry and nothing
- * has confirmed a live peer behind it since (`unconfirmedEntryPeerHello`).
- *
- * An entry-present hello is byte-identical whether a partner wrote it or an
- * interrupted run in this same folder left it behind, so this text does not
- * accuse the peer's side; it hedges ("may be") and prescribes a re-run before
- * removal, since a partner that died mid-handshake leaves the same shape a
- * merely slow one clears on retry.
- *
- * Kept short, with the filename LAST: this line rides behind the core layer's
- * own peer-silence sentence inside one cause-chain link, and the rendered
- * boundary truncates each link, so every fixed character here is one the
- * filename does not get. The truncation budget is pinned by a test, not
- * asserted here.
+ * Guidance replacing {@link peerSilenceGuidance} when the peer hello was
+ * already in the folder at entry and no live peer has confirmed it since. Such
+ * a hello may be left over from an interrupted run here, so the text hedges and
+ * prescribes a re-run before removal. Kept short with the filename last: it
+ * shares one cause-chain link, which the display truncates.
  */
 export const entryHelloResidueGuidance = (helloName: string): string =>
   "No partner was confirmed; the hello found at start may be left over. " +
@@ -51,22 +35,11 @@ export const entryHelloResidueGuidance = (helloName: string): string =>
   helloName;
 
 /**
- * Operator guidance for a run that swept the shared folder at entry and then
- * timed out waiting for the partner.
- *
- * `--sweep-exchange-files` fires when both operators reach for it at once:
- * the second sweep deletes the first party's live rendezvous files, so each
- * side times out with no mention of sweeping in its own error. The text is
- * identical for both parties and prescribes the same action, so recovering
- * needs no contact between them; it hedges ("appear to have") since only the
- * party that swept first can confirm it, and the prescribed retry is correct
- * even if the timeout had an unrelated cause.
- *
- * Claiming the folder is empty is licensed only for a clean delete-mode
- * timeout: a sweep that could not delete every file, or a retain-mode run
- * that keeps every protocol file it wrote, does not reach this text -- see
- * the gate at the emission site. Operator-facing description:
- * docs/EXCHANGE_REFERENCE.md ("Directory exclusivity").
+ * Guidance for a run that swept the shared folder at entry and then timed out
+ * waiting for the partner, the result of both sides sweeping at once. Both
+ * sides get the same text and action, so recovery needs no contact. Only a
+ * clean delete-mode sweep reaches it, since it says the folder is empty:
+ * docs/EXCHANGE_REFERENCE.md#directory-exclusivity.
  */
 export const BOTH_SWEPT_GUIDANCE =
   "Both sides appear to have cleared the folder at the same time, removing " +
@@ -74,19 +47,10 @@ export const BOTH_SWEPT_GUIDANCE =
   "again on both sides, without --sweep-exchange-files.";
 
 /**
- * Operator guidance for a run that configures a signing identity while record
- * writing is off (`--no-record`).
- *
- * The receipt is bound to its run by a binder the exchange record holds, so a
- * receipt with no record beside it verifies at most `INCOMPLETE` everywhere,
- * forever -- the salts and binder are minted during the exchange and stored
- * nowhere else, so this is only correctable before the run, which is why it
- * fires here rather than at the receipt write.
- *
- * Warns rather than refuses: a receipt kept for its signatures alone is a
- * legitimate use, so the text names both consequences and both ways out (keep
- * the record, or drop the signing block). See docs/CLI.md ("Signing without an
- * exchange record") and docs/spec/EXCHANGE_RECORD.md.
+ * Warning for a run with a signing identity and `--no-record`: its receipt can
+ * never verify above `INCOMPLETE`, which is correctable only before the run.
+ * A warning, not a refusal, since a receipt kept for its signatures alone is a
+ * legitimate use: docs/CLI.md#signing-without-an-exchange-record.
  */
 export const SIGNING_WITHOUT_RECORD_WARNING =
   "A signing identity is configured but record writing is off (--no-record). " +
@@ -122,14 +86,10 @@ export function undeclaredColumnsNotice(
 const PAYLOAD_SEND_NOTICE_LISTED_COLUMNS = 10;
 
 /**
- * The notice naming the columns this run states it sends that the
- * configuration's authored `payload.send` does not list, or `undefined` when
- * it lists every one or lists none. The run states its send set from its
- * metadata (`termsStatingDeclaredPayloadSend`), so without this notice a
- * column the configuration never listed reaches the partner unannounced on
- * this side. The remedy precedes the names, so a sink that truncates the
- * message cuts names rather than the remedy. Composed raw: the names are this
- * party's metadata, escaped once at each sink.
+ * The notice naming the columns the metadata sends that the authored
+ * `payload.send` does not list, or `undefined` when it lists every one or
+ * lists none. The remedy precedes the names, so truncation cuts names first.
+ * Composed raw; each sink escapes it.
  */
 export function payloadSendBeyondConfigurationNotice(
   prepared: Pick<PreparedExchange, "linkageTerms" | "metadata">,
@@ -162,17 +122,9 @@ export function payloadSendBeyondConfigurationNotice(
 }
 
 /**
- * What a run reports when it disclosed, terminated after that, and owed a
- * self-attested record its build could not produce.
- *
- * Pairs with the completed path's missing-artifact report so a disclosure
- * that occurred is never left with no record and no notice: core warns at
- * the build with the cause, but only on the operator log, which an
- * unattended run discards -- so the machine stream states the fact here too.
- *
- * Names no destination, since nothing reached a write. Not a persistence
- * loss: this run failed and keeps its own exit code rather than the one that
- * tells a supervisor not to re-run.
+ * The event-stream warning for a run that failed after disclosing and could
+ * not build its exchange record. Not a persistence loss: the run keeps its own
+ * failure exit code.
  */
 export const TERMINATED_RECORD_UNBUILT_WARNING =
   "no exchange record could be built for this exchange, so none was written; " +
@@ -180,18 +132,9 @@ export const TERMINATED_RECORD_UNBUILT_WARNING =
   "no local record";
 
 /**
- * What the "terms agreed" line adds when the partner named nobody on a run that
- * files an exchange record.
- *
- * A record for a partner that supplied no `linkage_terms.identity` omits
- * `partnerIdentity` rather than inventing one, so it states every other
- * accounting element but not who the other party was -- an absence that is
- * treated as benign unless named here, at the point the operator can still
- * re-run with a named partner instead of finding the gap at audit time.
- *
- * One sentence, no advice about whether to proceed: an unnamed partner is
- * ordinary for a quick, unsigned run, and this fires only where a record is
- * being written. See docs/COMPLIANCE.md (HIPAA considerations).
+ * What the "terms agreed" line adds on a recorded run whose partner supplied
+ * no `linkage_terms.identity`, so the record will name no recipient:
+ * docs/COMPLIANCE.md#hipaa-considerations.
  */
 export const UNNAMED_PARTNER_ACCOUNTING_NOTE =
   "-- this exchange's record will hold no partner name, so an accounting of " +
@@ -199,13 +142,10 @@ export const UNNAMED_PARTNER_ACCOUNTING_NOTE =
   "who this exchange was with.";
 
 /**
- * What the operator is told when a run adopts the partner's certificate on a
- * first authenticated contact. It names the value pinned and the file it went
- * into, says plainly what that pin is authenticated by, and asks for the
- * out-of-band comparison that is the only thing which can strengthen it.
- *
- * The fingerprint is a digest this party derived from the presented
- * certificate, so no partner-authored text reaches the line through it.
+ * The notice for a run that pins the partner's certificate on first contact,
+ * asking for an out-of-band fingerprint comparison:
+ * docs/CLI.md#pinning-the-partners-certificate. The fingerprint is a digest
+ * this party derived, so it contains no partner-authored text.
  */
 export function partnerCertificatePinnedNotice(
   fingerprint: string,

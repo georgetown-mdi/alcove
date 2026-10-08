@@ -10,41 +10,24 @@ import { fittedCauseLink } from "./causeLink";
 import { transportOperationStalledError } from "./sftpLivenessGuard";
 
 /**
- * Directory-listing enforcement shared by the file-transport adapters
- * ({@link ../connection/localFSClient.LocalFSClient | LocalFSClient} and
- * {@link ../connection/ssh2SftpAdapter.SSH2SFTPClientAdapter}): a directory
- * over {@link MAX_DIRECTORY_ENTRIES} entries, or an entry name over
- * {@link MAX_FILENAME_BYTES}, is refused with a
- * {@link DirectoryListingBoundsError} before the listing is materialized.
- * Rationale: docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound".
+ * Directory-listing bounds shared by `LocalFSClient` and the SFTP adapter,
+ * refused before the listing is materialized:
+ * docs/spec/CHANNEL_SECURITY.md#directory-listing-bound.
  */
 
-/**
- * Maximum number of entries a transport directory listing enumerates
- * before it is refused, counting every entry regardless of type. Fixed,
- * not operator-configurable. Derivation (roughly 5 MiB worst-case
- * allocation) and enforcement point: docs/spec/CHANNEL_SECURITY.md,
- * "Directory-listing bound".
- */
+/** Maximum entries a transport directory listing enumerates, of any type. */
 export const MAX_DIRECTORY_ENTRIES = 8192;
 
 /**
- * Maximum length, in UTF-8 bytes, of a single directory entry's filename;
- * enforced per entry at the transport `list()` layer in both adapters,
- * measured by {@link filenameByteLength}. Fixed, for the same reason as
- * {@link MAX_DIRECTORY_ENTRIES}. Value is core's `MAX_FILE_NAME_BYTES`, the
- * POSIX `NAME_MAX`; derivation: docs/spec/CHANNEL_SECURITY.md,
- * "Directory-listing bound".
+ * Maximum UTF-8 byte length of one entry's filename, measured by
+ * {@link filenameByteLength}: core's `MAX_FILE_NAME_BYTES`.
  */
 export const MAX_FILENAME_BYTES = MAX_FILE_NAME_BYTES;
 
 /**
- * The length {@link MAX_FILENAME_BYTES} bounds: the name's UTF-8 encoding in
- * bytes, not its JavaScript string length, which counts UTF-16 code units and
- * reads a name of multi-byte characters as shorter than the filesystem limit
- * it is measured against. For a name that arrives as a decoded string this is
- * the length of its re-encoding, which over-counts bytes that were not valid
- * UTF-8; `LocalFSClient` measures the raw on-disk bytes instead.
+ * The name's UTF-8 length in bytes. For a decoded string this is the length of
+ * its re-encoding, which over-counts bytes that were not valid UTF-8;
+ * `LocalFSClient` measures the raw on-disk bytes instead.
  */
 export function filenameByteLength(name: string): number {
   return Buffer.byteLength(name, "utf8");
@@ -53,13 +36,9 @@ export function filenameByteLength(name: string): number {
 const DIRECTORY_LINK_LABEL = "directory: ";
 
 /**
- * Compose the labelled `directory:` cause link both refusals below hold,
- * fitted at this composition site by {@link ./causeLink.fittedCauseLink}:
- * `dirPath` is bounded nowhere upstream -- on an offline-accept config it
- * can be seeded from a partner invitation endpoint field that is
- * charset-unconstrained and 4096 characters wide. Why fitting happens
- * here rather than at the display boundary: docs/spec/CHANNEL_SECURITY.md,
- * "Display sanitization escape format".
+ * The labelled `directory:` cause link both refusals below include, fitted here
+ * because `dirPath` is bounded nowhere upstream and can come from a partner
+ * invitation: docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
  */
 function directoryLink(dirPath: string): string {
   // eslint-disable-next-line no-restricted-syntax -- an offline-accept config seeds this directory from the partner's invitation, so it keeps the escape.
@@ -67,11 +46,8 @@ function directoryLink(dirPath: string): string {
 }
 
 /**
- * Construct the typed, terminal error for a directory whose entry count exceeds
- * {@link MAX_DIRECTORY_ENTRIES}. `dirPath` takes a labelled cause link of its
- * own ({@link directoryLink}) rather than leading the summary, where it would
- * spend the budget the bound, the refusal and the next step
- * {@link DirectoryListingBoundsError} holds need.
+ * The terminal error for a directory over {@link MAX_DIRECTORY_ENTRIES}
+ * entries, with `dirPath` in its own cause link.
  */
 export function directoryTooLargeError(
   dirPath: string,
@@ -85,19 +61,12 @@ export function directoryTooLargeError(
 }
 
 /**
- * Construct the typed, terminal error for a directory entry whose filename
- * exceeds {@link MAX_FILENAME_BYTES}. Only a leading 64-character slice
- * of the offending name is interpolated -- a memory bound, not the display
- * budget {@link directoryLink} fits to -- raw and unescaped (escaping is
- * the display boundary's job; a split surrogate pair still renders as a
- * visible escape, not mojibake). The true length is reported separately,
- * as a number, never partner text: `nameBytes` where the caller measured the
- * raw bytes, otherwise the length of `name` re-encoded.
- *
- * `dirPath` and `name` are chosen by different parties (operator/partner
- * endpoint vs. server), so each takes a labelled cause link of its own: a
- * shared link would let either chooser's bytes delete the other's
- * disclosure, or delete the refusal and the next step.
+ * The terminal error for an entry name over {@link MAX_FILENAME_BYTES}. Only a
+ * raw 64-character slice of the name is kept, a memory bound; the true length
+ * is reported as a number: `nameBytes` where the caller measured raw bytes,
+ * otherwise `name` re-encoded. `dirPath` and `name` come from different
+ * parties, so each takes its own cause link and neither can crowd out the
+ * other.
  */
 export function filenameTooLongError(
   dirPath: string,
@@ -105,10 +74,8 @@ export function filenameTooLongError(
   max: number,
   nameBytes: number = filenameByteLength(name),
 ): DirectoryListingBoundsError {
-  // A name reaching here is longer than MAX_FILENAME_BYTES and so longer than
-  // this preview, which is why the marker is unconditional. Redaction runs after
-  // slicing, so the slice still bounds what an attacker-sized name can relay
-  // into memory, and before the marker is appended, so a planted BEGIN marker in
+  // The name is longer than the slice, so the marker is unconditional.
+  // Redaction runs before the marker is appended, so a planted BEGIN marker in
   // the slice cannot consume it under the fail-closed dangling rule.
   const shown = `${redactPrivateKeyMaterial(
     name.slice(0, 64),
@@ -124,23 +91,16 @@ export function filenameTooLongError(
 }
 
 /**
- * Maximum number of `readdir` round-trips (server batches) a single
- * transport `list()` will issue before it is refused, enforced in the
- * SFTP adapter's streamed read loop. The liveness sibling of the
- * memory-size bounds above: a server returning empty, non-EOF readdir
- * batches advances neither bound, so without this cap the read loop
- * recurses forever. Fixed, not operator-configurable. Value and
- * derivation: docs/spec/CHANNEL_SECURITY.md, "Per-operation liveness
- * bounds".
+ * Maximum `readdir` round-trips one SFTP `list()` issues, so empty non-EOF
+ * batches cannot loop forever:
+ * docs/spec/CHANNEL_SECURITY.md#per-operation-liveness-bounds.
  */
 export const MAX_LISTING_READDIR_BATCHES = 2 * MAX_DIRECTORY_ENTRIES;
 
 /**
- * Construct the typed, terminal liveness error for a listing that exceeded the
- * round-trip cap ({@link MAX_LISTING_READDIR_BATCHES}) without completing -- the
- * empty-batch / no-progress flood. Builds the shared
- * {@link ./sftpLivenessGuard.transportOperationStalledError} so this listing-
- * specific stall and the `get()` / `createExclusive()` stalls are one error type.
+ * The terminal liveness error for a listing over
+ * {@link MAX_LISTING_READDIR_BATCHES} round-trips, of the same type as the
+ * other transport stalls.
  */
 export function listingStalledByBatchCountError(
   dirPath: string,
@@ -155,9 +115,8 @@ export function listingStalledByBatchCountError(
 }
 
 /**
- * Construct the typed, terminal liveness error for a listing that exceeded the
- * wall-clock deadline ({@link ./sftpLivenessGuard.SFTP_STALL_DEADLINE_MS})
- * without completing -- the server withheld a readdir/close callback.
+ * The terminal liveness error for a listing past the wall-clock deadline
+ * ({@link ./sftpLivenessGuard.SFTP_STALL_DEADLINE_MS}).
  */
 export function listingStalledByTimeoutError(
   dirPath: string,

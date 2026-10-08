@@ -5,40 +5,17 @@ import type { BrokerLocation } from "./brokerClient";
 import type { TLSSocket } from "node:tls";
 
 /**
- * Why a TLS signaling socket would not come up, answered after it has already
- * failed.
- *
- * The `WebSocket` the broker client dials reports a failed `wss://` handshake
- * as an `error` event holding an empty `TypeError` -- no code, no message, and
- * no certificate (measured against the Node global `WebSocket`) -- so the one
- * failure an operator on a managed network hits most, a TLS-intercepting proxy
- * whose certificate authority this machine does not trust, is indistinguishable
- * from a broker that is simply down. This module answers that question by
- * handshaking with the same endpoint once more and reporting what the
- * certificate check said.
- *
- * Verification stays ON for the handshake, so no unverified TLS socket exists
- * at any point: `authorizationError` is set exactly when the certificate check
- * is what failed, and is null for a connection that never got that far
- * (measured: a refused port reports `ECONNREFUSED` with a null
- * `authorizationError`). The socket is destroyed as soon as either outcome is
- * known and nothing is ever written to it.
- *
- * The probe dials the configured endpoint's own host and port directly and
- * never through a proxy: `tls.connect` reads no proxy environment at all
- * (measured against a real CONNECT proxy, which saw nothing while the probe
- * answered). A run with Node's environment proxying configured dials the
- * `WebSocket` through the proxy instead, so the probe cannot tell what that
- * connection presented, and {@link askSignalingCertificate} -- the one place
- * that decides which of the two a failed dial is told about -- answers such a
- * failure with no certificate verdict rather than one about the origin.
+ * Why a TLS signaling socket would not come up, answered after it failed. Node's
+ * `WebSocket` reports a failed `wss://` handshake as an empty `TypeError`, so
+ * this handshakes with the endpoint once more, verification on and nothing
+ * written, and reports what the certificate check said. `tls.connect` reads no
+ * proxy environment, so a proxied run is told no check was made:
+ * docs/CLI.md#when-a-webrtc-exchange-does-not-connect.
  */
 
 /**
- * Ceiling on the diagnostic handshake. The failure it explains has already
- * happened, so a server that accepts the connection and then says nothing --
- * a plaintext port answering a TLS dial, measured to hang rather than fail --
- * must not hold the report open.
+ * Ceiling on the diagnostic handshake, so a server that accepts and then says
+ * nothing cannot hold the report open.
  */
 export const SIGNALING_TLS_PROBE_TIMEOUT_MS = 5_000;
 
@@ -53,11 +30,8 @@ export type SignalingCertificateProbe = (
 ) => Promise<string | undefined>;
 
 /**
- * What a failed signaling dial is told about the endpoint's certificate.
- *
- * `undefined` adds nothing to the failure the caller already has: the
- * certificate verified, the check reached no verdict, or the dial was one no
- * check applies to.
+ * What a failed signaling dial is told about the endpoint's certificate;
+ * `undefined` adds nothing to the failure the caller already has.
  */
 export type SignalingCertificateAnswer =
   /** The certificate did not verify, under this verification failure code. */
@@ -66,23 +40,13 @@ export type SignalingCertificateAnswer =
   | { kind: "not-checked-proxied" }
   | undefined;
 
-/**
- * The one value `NODE_USE_ENV_PROXY` opts in with: measured on Node 26 against
- * a CONNECT proxy, "true", "TRUE", "yes", "0", "01" and " 1" all leave a
- * `wss://` dial direct.
- */
+/** The one value `NODE_USE_ENV_PROXY` opts in with. */
 const ENVIRONMENT_PROXY_OPT_IN = "1";
 
 /**
- * The variables the proxy for a `wss://` dial is read from. Measured on the
- * same run: each of the four routes the dial, the `http` pair included, while
- * `ALL_PROXY`, `all_proxy` and `npm_config_proxy` route nothing.
- *
- * Every spelling named here and above is a row of
- * test/integration/webrtc/signalingCertificate.test.ts, driven against a real
- * proxy, so a Node upgrade that moves one -- or an edit adding a variable Node
- * does not honor -- is a failing test rather than an operator told about a
- * certificate their dial never reached.
+ * The variables Node reads the proxy for a `wss://` dial from. Every spelling
+ * here and above is driven against a real proxy in
+ * test/integration/webrtc/signalingCertificate.test.ts.
  */
 const PROXY_ENVIRONMENT_VARIABLES = [
   "HTTPS_PROXY",
@@ -93,10 +57,8 @@ const PROXY_ENVIRONMENT_VARIABLES = [
 
 /**
  * Whether `token` is the Node flag turning environment proxying on, the flag
- * turning it off, or neither. Measured on Node 26 against a CONNECT proxy: an
- * underscore reads as a hyphen, a double quote is dropped, and a `=` and
- * whatever follows it are ignored, so `--use-env-proxy=false` turns proxying
- * ON and `--no-use-env-proxy=true` turns it off.
+ * turning it off, or neither. Node treats an underscore as a hyphen, drops a
+ * double quote and ignores `=` onward, so `--use-env-proxy=false` turns it on.
  */
 function environmentProxyingFlag(token: string): boolean | undefined {
   const name = token.replaceAll('"', "").split("=")[0]?.replaceAll("_", "-");
@@ -106,10 +68,9 @@ function environmentProxyingFlag(token: string): boolean | undefined {
 }
 
 /**
- * The Node flags this run started under, in the order Node applied them:
- * measured on the same run, `NODE_OPTIONS` is read before the command line,
- * and a space is the only separator it accepts -- a tab or a newline between
- * two flags stops the process before it runs.
+ * The Node flags this run started under, in the order Node applies them:
+ * `NODE_OPTIONS` first, then the command line. A space is the only
+ * `NODE_OPTIONS` separator; a tab or newline stops the process before it runs.
  */
 function nodeFlags(): Array<string> {
   return [...(process.env.NODE_OPTIONS ?? "").split(" "), ...process.execArgv];
@@ -117,20 +78,10 @@ function nodeFlags(): Array<string> {
 
 /**
  * Whether this run has the environment proxying configured that a `wss://`
- * dial follows and {@link probeSignalingCertificate} does not. Read through
- * {@link askSignalingCertificate}, which holds the scheme this question is
- * asked under.
- *
- * Node takes the opt-in from `NODE_USE_ENV_PROXY` or from the
- * `--use-env-proxy` flag by either route, the last flag deciding, so both are
- * read here.
- *
- * It answers for the run, not for one endpoint: `NO_PROXY` and `no_proxy`
- * exclude hosts from the proxy per dial, which is Node's resolution to make
- * rather than one to reproduce here, so a run excluding the signaling host is
- * still answered yes.
- * Node reads all of this as the process starts, so a value written into
- * `process.env` after that changes this answer without changing the dial.
+ * dial follows and {@link probeSignalingCertificate} does not, from
+ * `NODE_USE_ENV_PROXY` or the last `--use-env-proxy` flag. It answers for the
+ * run and ignores `NO_PROXY`. Node reads these at startup, so a later
+ * `process.env` write changes this answer but not the dial.
  */
 export function environmentProxyingConfigured(): boolean {
   let optedIn = process.env.NODE_USE_ENV_PROXY === ENVIRONMENT_PROXY_OPT_IN;
@@ -145,15 +96,9 @@ export function environmentProxyingConfigured(): boolean {
 }
 
 /**
- * The host to hand `tls.connect`: the URL parser's, with an IPv6 literal's
- * brackets removed.
- *
- * The brackets are URL syntax rather than part of the address, and `tls.connect`
- * resolves what it is given as written -- measured against a self-signed
- * listener on `::1`, "[::1]" reports `ENOTFOUND` with no certificate check
- * having run, "::1" reports `DEPTH_ZERO_SELF_SIGNED_CERT`. Parsing rather than
- * reading `host` is what makes this the same authority the signaling socket
- * dialed, IDNA normalization included.
+ * The host to hand `tls.connect`: the URL parser's, so it matches the
+ * signaling socket's dial including IDNA normalization, with an IPv6 literal's
+ * brackets removed, since `tls.connect` would look "[::1]" up as a name.
  */
 function dialedHost(location: BrokerLocation): string | undefined {
   let parsed: URL;
@@ -179,12 +124,8 @@ function verificationFailureCode(socket: TLSSocket): string | undefined {
 
 /**
  * Handshake with `location` once and report the certificate verification
- * failure, if that is what stopped it.
- *
- * Never rejects: every outcome that is not a verification failure -- the
- * handshake succeeding, the connection failing before TLS, the ceiling
- * expiring, `signal` aborting, a `host` that does not parse -- is `undefined`,
- * because the caller already has a failure to report and this only adds to it.
+ * failure, if that is what stopped it. Never rejects: every other outcome is
+ * `undefined`.
  */
 export const probeSignalingCertificate: SignalingCertificateProbe = (
   location,
@@ -196,11 +137,9 @@ export const probeSignalingCertificate: SignalingCertificateProbe = (
       resolve(undefined);
       return;
     }
-    // SNI is what an endpoint holding more than one certificate selects by, so
-    // a probe that sends a different one answers about a different certificate.
-    // Measured on Node 26: `tls.connect` sends no server name unless
-    // `servername` is given, while the `WebSocket` dial does send the host's.
-    // RFC 6066 excludes an IP literal, which Node enforces by throwing on one.
+    // Send the same SNI the `WebSocket` dial sends, so the answer is about the
+    // same certificate; `tls.connect` sends none unless told, and throws on an
+    // IP literal (RFC 6066).
     const port = location.port;
     let socket: TLSSocket;
     try {
@@ -212,10 +151,8 @@ export const probeSignalingCertificate: SignalingCertificateProbe = (
       resolve(undefined);
       return;
     }
-    // The socket is left referenced although the ceiling above is not: both
-    // unreferenced, a run whose last live handle is this handshake exits before
-    // the failure it explains is reported (measured: the answer never arrives).
-    // An interrupt releases it by destroying it below instead.
+    // The socket stays referenced, or a run whose last handle is this handshake
+    // exits before the failure is reported; an interrupt destroys it instead.
     const timer = setTimeout(
       () => settle(undefined),
       SIGNALING_TLS_PROBE_TIMEOUT_MS,
@@ -237,14 +174,9 @@ export const probeSignalingCertificate: SignalingCertificateProbe = (
 
 /**
  * What to tell a failed signaling dial to `location` about the endpoint's
- * certificate: what `probe` found, or that no check was made.
- *
- * This is the one place the question is decided, so every condition that
- * settles it is here. A `ws://` dial has no certificate on any path, and a run
- * whose environment routes the dial through a proxy reaches an endpoint the
- * probe does not, so neither is asked and neither is told about a certificate
- * -- the second says so, because there the check is the thing an operator
- * would otherwise expect to have run.
+ * certificate, the one place this is decided. A `ws://` dial is told nothing;
+ * a proxied run is told no check was made, since the probe would not reach
+ * the endpoint its dial did.
  */
 export async function askSignalingCertificate(
   location: BrokerLocation,
