@@ -63,7 +63,10 @@ All three services write to the host's journal, under the retention the relay's 
   [`scripts/broker-front.test.mjs`](../../scripts/broker-front.test.mjs) fails if a log format in the template writes any variable outside the documented fields, or if the template drops the `http`-level access log and so falls back to nginx's built-in format, which writes the query string.
 - **The front's error log** is at `warn`, and the test fails below `warn`. A request line in one of its lines can include the query string ([PRIVACY.md](../../PRIVACY.md)).
 
-A change to the template reaches a running front through `install.sh`, which rewrites `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it), runs `nginx -t` in the container and reloads it, keeping open WebSockets.
+A change to the template reaches a running front through `install.sh`.
+It renders the configuration to a root-only file under `/etc/alcove-broker` and checks it with `nginx -t` in a throwaway container of the front's image, mounted as the unit mounts it with the installed certificate (on a first install, renewal obtains the certificate before the check).
+A configuration that fails the check stops the install with `/etc/alcove-broker/nginx.conf` and the running front unchanged.
+One that passes is copied over `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it) and the front reloads it, keeping open WebSockets.
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 
 ## Certificates

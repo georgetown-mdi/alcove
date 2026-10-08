@@ -4,8 +4,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +16,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 // The broker's TLS front (infra/broker): the template's logging, the renderer,
-// and renew.sh against a fixture host with `lego` and `systemctl` stubs on PATH.
+// and renew.sh and install.sh against a fixture host with `lego`, `systemctl`
+// and `docker` stubs on PATH.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BROKER = resolve(here, "..", "infra/broker");
@@ -68,22 +71,39 @@ const directives = (text) => {
 
 const template = () => directives(readFileSync(TEMPLATE, "utf8"));
 
-describe("nginx.conf.tmpl logging", () => {
-  it("logs only the documented fields, so no line contains the query string", () => {
-    const formats = template().filter(({ name }) => name === "log_format");
-    expect(formats.length).toBeGreaterThan(0);
-    for (const { args } of formats) {
-      const variables = [
+/** Variables each log_format writes, in both the `$name` and `${name}` forms. */
+const logFormatVariables = (parsed) =>
+  parsed
+    .filter(({ name }) => name === "log_format")
+    .map(({ args }) =>
+      [
         ...args
           .slice(1)
           .join("")
-          .matchAll(/\$(\w+)/g),
-      ].map((match) => match[1]);
+          .matchAll(/\$(?:\{(\w+)\}|(\w+))/g),
+      ].map((match) => match[1] ?? match[2]),
+    );
+
+describe("nginx.conf.tmpl logging", () => {
+  it("logs only the documented fields, so no line contains the query string", () => {
+    const formats = logFormatVariables(template());
+    expect(formats.length).toBeGreaterThan(0);
+    for (const variables of formats) {
       expect(variables.length).toBeGreaterThan(0);
       for (const variable of variables) {
         expect(ALLOWED_LOG_VARIABLES, `$${variable}`).toContain(variable);
       }
     }
+  });
+
+  it.each([
+    ["log_format f '$request';", "request"],
+    ["log_format f '${request}';", "request"],
+    ["log_format f '$uri?${args}';", "args"],
+  ])("finds the undocumented variable in %s", (text, variable) => {
+    const found = logFormatVariables(directives(`http { ${text} }`)).flat();
+    expect(found).toContain(variable);
+    expect(ALLOWED_LOG_VARIABLES).not.toContain(variable);
   });
 
   it("names one of its own formats on every access log, at the http level too", () => {
@@ -288,5 +308,183 @@ describe("renew.sh", () => {
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("drives lego only");
     expect(result.calls).toEqual([""]);
+  });
+});
+
+describe("install.sh", () => {
+  const NAME = "broker.example.org";
+
+  const fixtureHost = () => {
+    const root = fixtureDir("broker-install-");
+    const bin = join(root, "bin");
+    const usrBin = join(root, "usr/bin");
+    const etc = join(root, "etc/alcove-broker");
+    const src = join(root, "opt/alcove-broker/src");
+    for (const dir of [
+      bin,
+      usrBin,
+      join(root, "usr/local/bin"),
+      join(root, "etc/systemd/system"),
+      join(src, "node_modules/.bin"),
+      join(src, "packages/core/dist"),
+    ]) {
+      mkdirSync(dir, { recursive: true });
+    }
+    mkdirSync(etc, { recursive: true, mode: 0o700 });
+    writeStub(join(root, "usr/local/bin/npm"), "exit 0");
+    writeStub(join(src, "node_modules/.bin/tsx"), "exit 0");
+    writeFileSync(
+      join(src, "packages/core/dist/untrusted-text.esm.js"),
+      "//\n",
+    );
+
+    const calls = join(root, "calls.log");
+    const active = join(root, "front-active");
+    const serial = join(root, "serial");
+    const acmeEnv = join(root, "acme.env");
+    writeFileSync(calls, "");
+    writeFileSync(serial, "1");
+    writeStub(
+      join(bin, "id"),
+      `if [ "$1" = -u ]; then echo 0; else exec /usr/bin/id "$@"; fi`,
+    );
+    writeStub(join(bin, "curl"), "exit 0");
+    writeStub(
+      join(bin, "systemctl"),
+      [
+        `printf 'systemctl %s\\n' "$*" >> '${calls}'`,
+        `if [ "$1" = is-active ]; then [ "$3" = alcove-broker-tls.service ] && [ -f '${active}' ]; fi`,
+      ].join("\n"),
+    );
+    writeStub(
+      join(bin, "lego"),
+      [
+        `printf 'lego\\n' >> '${calls}'`,
+        `mkdir -p '${etc}/acme/certificates'`,
+        `printf 'certificate %s\\n' "$(cat '${serial}')" > '${etc}/acme/certificates/${NAME}.crt'`,
+        `printf 'key %s\\n' "$(cat '${serial}')" > '${etc}/acme/certificates/${NAME}.key'`,
+      ].join("\n"),
+    );
+    // nginx -t in a throwaway container: records the candidate's mode and
+    // whether a certificate was mounted, and fails on `broken_directive`.
+    writeStub(
+      join(usrBin, "docker"),
+      [
+        `printf 'docker %s\\n' "$*" >> '${calls}'`,
+        `[ "$1" = run ] || exit 0`,
+        `conf=; tls=`,
+        `for arg in "$@"; do`,
+        `  case "$arg" in`,
+        `    *:/etc/nginx/nginx.conf:ro) conf="\${arg%%:*}" ;;`,
+        `    *:/etc/nginx/tls:ro) tls="\${arg%%:*}" ;;`,
+        `  esac`,
+        `done`,
+        `cert=no; [ -s "$tls/fullchain.pem" ] && cert=yes`,
+        `printf 'nginx -t mode=%s cert=%s\\n' "$(stat -c %a "$conf")" "$cert" >> '${calls}'`,
+        `! grep -q broken_directive "$conf"`,
+      ].join("\n"),
+    );
+    writeFileSync(
+      join(etc, "broker.env"),
+      `ALCOVE_BROKER_NAME=${NAME}\nALCOVE_BROKER_ACME_ENV=${acmeEnv}\n`,
+    );
+    writeFileSync(
+      acmeEnv,
+      "ALCOVE_RELAY_ACME_EMAIL=ops@example.org\nCLOUDFLARE_DNS_API_TOKEN=fixture-token\n",
+    );
+    const brokenTemplate = join(root, "broken.tmpl");
+    writeFileSync(
+      brokenTemplate,
+      readFileSync(TEMPLATE, "utf8").replace(
+        "worker_processes 1;",
+        "worker_processes 1;\nbroken_directive on;",
+      ),
+    );
+
+    const conf = join(etc, "nginx.conf");
+    return {
+      conf,
+      etc,
+      startFront: () => writeFileSync(active, ""),
+      renewTo: (next) => writeFileSync(serial, next),
+      run: ({ broken = false } = {}) => {
+        writeFileSync(calls, "");
+        const result = spawnSync(BASH, [join(BROKER, "install.sh")], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${usrBin}:${bin}:${process.env.PATH}`,
+            ALCOVE_BROKER_INSTALL_ROOT: root,
+            ...(broken ? { ALCOVE_BROKER_TEMPLATE: brokenTemplate } : {}),
+          },
+        });
+        return {
+          ...result,
+          calls: readFileSync(calls, "utf8").trim().split("\n"),
+        };
+      },
+    };
+  };
+
+  const touchesFront = (call) =>
+    /^systemctl (restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
+      call,
+    ) || /^docker exec /.test(call);
+
+  const candidatesLeft = (etc) =>
+    readdirSync(etc).filter((entry) => entry.startsWith("nginx.conf."));
+
+  it("checks a first install's configuration against the certificate before writing it", () => {
+    const host = fixtureHost();
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    const check = result.calls.indexOf("nginx -t mode=600 cert=yes");
+    expect(check).toBeGreaterThan(result.calls.indexOf("lego"));
+    expect(readFileSync(host.conf, "utf8")).toContain(`server_name ${NAME};`);
+    expect(statSync(host.conf).mode & 0o777).toBe(0o644);
+    expect(candidatesLeft(host.etc)).toEqual([]);
+  });
+
+  it("leaves no live file when a first install's configuration fails nginx -t", () => {
+    const host = fixtureHost();
+    const result = host.run({ broken: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("fails nginx -t");
+    expect(existsSync(host.conf)).toBe(false);
+    expect(result.calls.filter(touchesFront)).toEqual([]);
+    expect(candidatesLeft(host.etc)).toEqual([]);
+  });
+
+  it("keeps the live file and the running front when a change fails nginx -t", () => {
+    const host = fixtureHost();
+    expect(host.run().status).toBe(0);
+    host.startFront();
+    const before = readFileSync(host.conf, "utf8");
+    host.renewTo("2");
+    const result = host.run({ broken: true });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("fails nginx -t");
+    expect(result.calls).toContain("nginx -t mode=600 cert=yes");
+    expect(readFileSync(host.conf, "utf8")).toBe(before);
+    expect(result.calls).not.toContain("lego");
+    expect(result.calls.filter(touchesFront)).toEqual([]);
+    expect(candidatesLeft(host.etc)).toEqual([]);
+  });
+
+  it("copies a checked change over the live file in place and reloads the front", () => {
+    const host = fixtureHost();
+    writeFileSync(host.conf, "# an earlier configuration\n");
+    const inode = statSync(host.conf).ino;
+    expect(host.run().status).toBe(0);
+    host.startFront();
+    writeFileSync(host.conf, "# an earlier configuration\n");
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(statSync(host.conf).ino).toBe(inode);
+    expect(readFileSync(host.conf, "utf8")).toContain(`server_name ${NAME};`);
+    expect(result.calls).toContain(
+      "docker exec alcove-broker-tls nginx -s reload",
+    );
+    expect(result.calls.some((call) => call.includes("restart"))).toBe(false);
   });
 });

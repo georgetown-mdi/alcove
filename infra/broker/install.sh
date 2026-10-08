@@ -13,9 +13,11 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # Literal paths: the unit files name them too, and cannot read a variable.
-ETC=/etc/alcove-broker
-SRC=/opt/alcove-broker/src
-UNIT_DIR=/etc/systemd/system
+# ALCOVE_BROKER_INSTALL_ROOT prefixes them for scripts/broker-front.test.mjs.
+ROOT="${ALCOVE_BROKER_INSTALL_ROOT:-}"
+ETC="$ROOT/etc/alcove-broker"
+SRC="$ROOT/opt/alcove-broker/src"
+UNIT_DIR="$ROOT/etc/systemd/system"
 ENV_FILE="$ETC/broker.env"
 IMAGE=nginx:1.29-alpine
 PORT=8443
@@ -38,11 +40,11 @@ RENDERED="$(ALCOVE_BROKER_ENV_FILE="$ENV_FILE" "$HERE/render-config.sh")"
 ACME_ENV="${ALCOVE_BROKER_ACME_ENV:-/etc/alcove-relay/acme.env}"
 [ -f "$ACME_ENV" ] || die "no $ACME_ENV, which has the ACME contact and the DNS provider credential; see broker.env.example"
 
-[ -x /usr/local/bin/npm ] || die "alcove-broker.service runs /usr/local/bin/npm, which this host does not have; see README.md, Install"
+[ -x "$ROOT/usr/local/bin/npm" ] || die "alcove-broker.service runs /usr/local/bin/npm, which this host does not have; see README.md, Install"
 [ -x "$SRC/node_modules/.bin/tsx" ] || die "no broker workspace install at $SRC; see README.md, Install"
 [ -s "$SRC/packages/core/dist/untrusted-text.esm.js" ] \
   || die "$SRC has no built core entry point the broker imports; see README.md, Install"
-[ "$(command -v docker || true)" = /usr/bin/docker ] \
+[ "$(command -v docker || true)" = "$ROOT/usr/bin/docker" ] \
   || die "alcove-broker-tls.service runs /usr/bin/docker, which is not docker on this host"
 command -v lego >/dev/null 2>&1 || die "lego is not installed; see Certificates in infra/relay/README.md"
 command -v curl >/dev/null 2>&1 || die "curl is not installed; the end-of-install check needs it"
@@ -81,31 +83,55 @@ done
 curl -fsS http://127.0.0.1:9411/api/health >/dev/null \
   || die "the broker did not answer on 127.0.0.1:9411/api/health within 120 s; journalctl -u alcove-broker.service"
 
+# --- the certificate --------------------------------------------------------------
+put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
+TLS="$ETC/tls"
+CANDIDATE="$(mktemp "$ETC/nginx.conf.XXXXXX")"
+RESTART_MARK="$(mktemp "$ETC/restart.XXXXXX")"
+trap 'rm -f "$CANDIDATE" "$RESTART_MARK"' EXIT
+# renew [MARK]: run renew.sh, which writes to MARK when it restarts the front.
+renew() {
+  ALCOVE_BROKER_ENV_FILE="$ENV_FILE" ALCOVE_BROKER_ACME_HOME="$ETC/acme" ALCOVE_BROKER_TLS_DIR="$TLS" \
+    ALCOVE_BROKER_RESTART_MARK="${1:-}" "$ETC/renew.sh"
+}
+# nginx -t loads the certificate, so a first install obtains it before the
+# configuration is checked. No restart mark: it would precede the new file.
+CERT_OBTAINED=0
+if [ ! -s "$TLS/fullchain.pem" ] || [ ! -s "$TLS/privkey.pem" ]; then
+  log "no certificate in $TLS yet; obtaining one to check the configuration against"
+  renew
+  CERT_OBTAINED=1
+fi
+
 # --- the front's configuration ----------------------------------------------------
-# Written in place when it exists: the front bind-mounts the file, and a new
+# Checked by nginx -t in the front's image, mounted as the unit mounts it,
+# before it reaches the live file.
+docker pull -q "$IMAGE" >/dev/null
+printf '%s\n' "$RENDERED" > "$CANDIDATE"
+docker run --rm --network host --read-only --tmpfs /tmp \
+  -v "$CANDIDATE:/etc/nginx/nginx.conf:ro" \
+  -v "$TLS:/etc/nginx/tls:ro" \
+  --entrypoint nginx "$IMAGE" -t \
+  || die "the rendered configuration fails nginx -t; $ETC/nginx.conf and the running front are unchanged. Fix nginx.conf.tmpl and run again"
+# Copied in place when it exists: the front bind-mounts the file, and a new
 # inode would leave the running container reading the old one.
 CONF="$ETC/nginx.conf"
 CONF_CHANGED=0
 if [ ! -f "$CONF" ]; then
-  install -m 644 /dev/null "$CONF"
-  printf '%s\n' "$RENDERED" > "$CONF"
+  install -m 644 "$CANDIDATE" "$CONF"
   CONF_CHANGED=1
-elif [ "$(cat "$CONF")" != "$RENDERED" ]; then
-  printf '%s\n' "$RENDERED" > "$CONF"
+elif ! cmp -s "$CANDIDATE" "$CONF"; then
+  cat "$CANDIDATE" > "$CONF"
   CONF_CHANGED=1
 fi
 chmod 644 "$CONF"
 
-# --- the certificate --------------------------------------------------------------
-put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
-RESTART_MARK="$(mktemp)"
-trap 'rm -f "$RESTART_MARK"' EXIT
-ALCOVE_BROKER_RESTART_MARK="$RESTART_MARK" "$ETC/renew.sh"
+# --- a renewal due now ------------------------------------------------------------
+[ "$CERT_OBTAINED" = 1 ] || renew "$RESTART_MARK"
 FRONT_RESTARTED=0
 [ -s "$RESTART_MARK" ] && FRONT_RESTARTED=1
 
 # --- the front --------------------------------------------------------------------
-docker pull -q "$IMAGE" >/dev/null
 CHANGED=0
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
 FRONT_UNIT_CHANGED=$CHANGED
@@ -125,10 +151,9 @@ if [ "$FRONT_WAS_ACTIVE" = 1 ]; then
       docker exec alcove-broker-tls true >/dev/null 2>&1 && break
       sleep 1
     done
-    docker exec alcove-broker-tls true >/dev/null 2>&1       || die "the alcove-broker-tls container did not accept docker exec within 30 s; journalctl -u alcove-broker-tls.service"
+    docker exec alcove-broker-tls true >/dev/null 2>&1 \
+      || die "the alcove-broker-tls container did not accept docker exec within 30 s; journalctl -u alcove-broker-tls.service"
     # A reload keeps open WebSockets; a restart would drop them.
-    docker exec alcove-broker-tls nginx -t \
-      || die "the rendered $CONF fails nginx -t; the running front keeps its loaded configuration until it restarts. Fix the template and run again"
     docker exec alcove-broker-tls nginx -s reload
     log "alcove-broker-tls.service reloaded onto the new configuration"
   fi
