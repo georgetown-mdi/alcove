@@ -12,30 +12,20 @@ import type {
 } from "@alcove/core";
 
 /**
- * Off-main-thread PSI crypto for the web app: the CPU-bound elliptic-curve masking
- * a PSI round performs runs in a Web Worker the app owns, so the browser tab stays
- * interactive -- UI paints, timers fire, and the WebRTC peer keepalives keep firing
- * -- while a round masks, instead of freezing for the round's duration (the browser
- * analogue of the CLI's `worker_threads` offload).
+ * The browser spawn adapter for core's PSI worker boundary: it wires a Web
+ * Worker into core's {@link WorkerPsiEngine}, so a PSI round's masking runs off
+ * the main thread and the tab stays responsive, as the CLI's `worker_threads`
+ * offload does. {@link psiCrypto.worker} is the worker entry. Only bytes, value
+ * lists and index lists cross the boundary; the secret key is generated and
+ * kept inside the worker by core's `servePsiWorker`.
  *
- * This is the BROWSER SPAWN ADAPTER for the runtime-agnostic PSI worker boundary in
- * `@alcove/core`: core's {@link WorkerPsiEngine} turns each crypto call into a
- * request/response round trip with a worker reached through a {@link PsiWorkerHandle},
- * and core's `servePsiWorker` runs the crypto on the worker side. This module wires
- * a Web Worker into that boundary (the CLI wires a `worker_threads` worker into the same
- * boundary); {@link psiCrypto.worker} is the worker entry. Only raw bytes, value lists,
- * and index lists cross it -- never a live library handle, and never the
- * secret key, which `servePsiWorker` generates and keeps inside the worker.
- *
- * Kept Node-loadable (it never references the real `Worker` constructor -- that lives
- * in {@link ./psiCryptoWorkerClient}) so its dispatch is unit-testable with a fake
- * worker, exactly as {@link ./csvParseController} is.
+ * Node-loadable, never referencing the real `Worker` constructor (that is in
+ * {@link ./psiCryptoWorkerClient}), so the dispatch is unit-testable with a fake
+ * worker.
  */
 
-/** The slice of the dedicated-`Worker` API the host side drives. The real `Worker`
- * is adapted to it in {@link ./psiCryptoWorkerClient}; a unit test supplies a fake.
- * `onmessage` receives the worker's {@link PsiWorkerResponse} replies; `onerror` and
- * `onmessageerror` report a worker-level fault (see {@link createPsiCryptoWorkerHandle}). */
+/** The slice of the dedicated-`Worker` API the host side drives; a unit test
+ * supplies a fake. */
 export interface PsiCryptoWorker {
   postMessage: (message: PsiWorkerRequest) => void;
   onmessage: ((event: { data: PsiWorkerResponse }) => void) | null;
@@ -44,50 +34,34 @@ export interface PsiCryptoWorker {
   terminate: () => void;
 }
 
-/** Spawns a fresh PSI-crypto worker seeded with `init` (its role and id). The seed
- * is passed at construction -- through the Worker's `name`, the browser analogue of
- * the CLI worker's `workerData` (see {@link encodePsiWorkerInit}) -- so the worker's
- * message channel sends only crypto requests. Injected so this module never
- * references the real `Worker` constructor directly (keeping it Node-loadable and the
- * dispatch unit-testable); the browser default is {@link ./psiCryptoWorkerClient}. */
+/** Spawns a fresh PSI-crypto worker seeded with `init` through the Worker's
+ * `name` (see {@link encodePsiWorkerInit}); the browser default is
+ * {@link ./psiCryptoWorkerClient}. */
 export type SpawnPsiCryptoWorker = (init: PsiWorkerInit) => PsiCryptoWorker;
 
 /**
- * Encode the worker's role/id seed for transport through the Web Worker's `name`.
- * A Web Worker has no `workerData` channel like `worker_threads`, so the seed rides
- * `name` (a string set at construction and readable synchronously as `self.name` at
- * worker startup), which is the browser analogue of the CLI worker's `workerData`:
- * available before the first message, so the worker's message channel sends only
- * crypto requests. Paired with {@link decodePsiWorkerInit}, the worker's side.
+ * Encode the worker's role/id seed for the Web Worker's `name`, the browser
+ * analogue of the CLI worker's `workerData`: it is readable as `self.name`
+ * before the first message, so the message channel sends only crypto requests.
+ * {@link decodePsiWorkerInit} is the worker's side.
  */
 export function encodePsiWorkerInit(init: PsiWorkerInit): string {
   return JSON.stringify(init);
 }
 
-/** Decode the role/id seed the worker reads from `self.name` (see
- * {@link encodePsiWorkerInit}). Runs in {@link ./psiCrypto.worker}. */
+/** Decode the role/id seed the worker reads from `self.name`. */
 export function decodePsiWorkerInit(name: string): PsiWorkerInit {
   // eslint-disable-next-line no-restricted-properties -- decodes the seed encodePsiWorkerInit serialized into this worker's own name
   return JSON.parse(name) as PsiWorkerInit;
 }
 
 /**
- * The worker-side request router for {@link ./psiCrypto.worker}: buffers incoming
- * crypto requests until an asynchronously-loaded dispatcher is ready, then drains
- * them in order and routes the rest straight through. If the dispatcher fails to load
- * (a WASM-engine load failure), every buffered and subsequent request is answered with
- * a failure reply through `failRequest` -- so the host's pending call fails fast rather
- * than hanging on a worker that will never reply, the browser counterpart of the CLI
- * worker's exit(1)-on-load-failure signal. `startDispatcher` cannot both resolve and
- * reject, so a request is buffered-and-drained XOR failed, never both, and never
- * double-answered.
- *
- * Extracted here (Node-loadable) rather than inlined in the browser-only worker entry
- * so this buffer / drain / fail state machine -- including the load-failure path a real
- * WASM load will not exercise on demand -- is unit-testable with a fake dispatcher,
- * exactly as the host-side {@link createPsiCryptoWorkerHandle} is. `startDispatcher`
- * resolves to the ready request handler; the worker wires it to load the WASM engine
- * and call `servePsiWorker`.
+ * The worker-side request router for {@link ./psiCrypto.worker}: buffers
+ * requests until the asynchronously loaded dispatcher is ready, then drains them
+ * in order. If the dispatcher fails to load, every buffered and later request is
+ * answered through `failRequest`, so the host's pending call fails rather than
+ * hanging. Kept here, outside the browser-only entry, so the load-failure path
+ * is unit-testable.
  */
 export function createBufferingRequestRouter(
   startDispatcher: () => Promise<(request: PsiWorkerRequest) => void>,
@@ -119,24 +93,12 @@ export function createBufferingRequestRouter(
 }
 
 /**
- * Wrap a Web Worker as the runtime-agnostic {@link PsiWorkerHandle} a
- * {@link WorkerPsiEngine} drives: post a request, route replies and faults, and
- * terminate. This is the browser counterpart of the CLI's `createWorkerThreadHandle`,
- * and it is the SINGLE definition of the host-side event wiring --
- * production spawns a real Worker through it and the unit tests wrap a fake through it,
- * so neither re-implements a mirror that can drift.
- *
- * Unlike the CLI's `worker_threads` handle, no exit / self-initiated-teardown guard is
- * needed: a Web Worker's `terminate()` fires no event, so a clean disposal cannot
- * masquerade as a fault. Only a genuine worker fault reaches `onError`: an uncaught
- * error (a module-load failure, or the worker re-signalling a backend-load failure via
- * a per-request error reply -- see {@link ./psiCrypto.worker}) fires `onerror`, and a
- * reply that fails structured-clone deserialization fires `onmessageerror` instead of
- * `onmessage`/`onerror` -- with no handler it is silently dropped and the pending call
- * hangs, so route it to `onError` too. Today's replies all clone (byte arrays and
- * index lists), so that route is a safety check rather than a live path -- one
- * psiCryptoController.test.ts drives with the other fault events, mirroring the CLI
- * handle's `messageerror` routing.
+ * Wrap a Web Worker as the {@link PsiWorkerHandle} a {@link WorkerPsiEngine}
+ * drives; the browser counterpart of the CLI's `createWorkerThreadHandle`, and
+ * the one definition of the host-side event wiring for production and tests.
+ * A Web Worker's `terminate()` fires no event, so no teardown guard is needed.
+ * `onmessageerror` (a reply that fails structured-clone deserialization) is
+ * routed to `onError`, since with no handler the pending call would hang.
  */
 export function createPsiCryptoWorkerHandle(
   worker: PsiCryptoWorker,
@@ -156,16 +118,11 @@ export function createPsiCryptoWorkerHandle(
 }
 
 /**
- * Build the {@link RunExchangeOptions.psiEngineFactory} the web exchange passes to
- * core's `runExchange`: given the resolved PSI role and id, spawn a worker (via
- * `spawn`, seeded with that role/id) and return a {@link WorkerPsiEngine} bound to it,
- * so the masking runs off the main thread. `runExchange` disposes the returned engine
- * on every exchange-end path (success, error, abort) through the participant's
- * teardown, and {@link WorkerPsiEngine.dispose} terminates the worker -- so a worker
- * is never leaked past an exchange.
- *
- * `spawn` is injected so a unit test drives the factory with a fake worker; production
- * passes {@link ./psiCryptoWorkerClient.defaultSpawnPsiCryptoWorker}.
+ * Build the {@link RunExchangeOptions.psiEngineFactory} the web exchange passes
+ * to core's `runExchange`: spawn a worker seeded with the resolved role and id,
+ * and return a {@link WorkerPsiEngine} bound to it. `runExchange` disposes the
+ * engine on every exchange-end path, and {@link WorkerPsiEngine.dispose}
+ * terminates the worker.
  */
 export function createBrowserPsiEngineFactory(
   spawn: SpawnPsiCryptoWorker,

@@ -1,25 +1,11 @@
 /**
  * The note a run leaves when its disclosure record never reached the exchange's
- * accounting of disclosures: the pure, IndexedDB-free half of
- * {@link ./unfiledDisclosureStore.ts}, so the shape, the key, and the merge rule
- * are unit-testable in Node with no database.
- *
- * The append is best-effort by design -- the exchange has already happened, so a
- * failed append can neither undo it nor make the run a failure -- and the notice
- * it raises reaches whoever is present. A scheduled run has nobody, so this note
- * is what the next visit reads instead: the accounting is short an entry, and
- * this says which run it owes.
- *
- * It sits in the disclosure store beside the accounting it stands against, under
- * a key of its own ({@link unfiledDisclosureKey}), so a run that was never filed
- * is never a row of a log whose rows are self-attested records.
- *
- * What it holds at rest is one retained exchange record per unfiled run, where
- * that run produced one -- the same cleartext content the accounting's own
- * entries hold. Retaining it is what lets the next visit file the entry; a run
- * whose record could not be built leaves its instant alone, and no retry can
- * recover it (see docs/spec/MANAGED_EXCHANGE_RECORD.md, "A run whose record was
- * not filed").
+ * accounting of disclosures: the pure half of {@link ./unfiledDisclosureStore.ts}.
+ * The append is best-effort, so a scheduled run with nobody present leaves this
+ * note for the next visit. It sits in the disclosure store under a key of its
+ * own, and keeps one retained exchange record per unfiled run where the run
+ * built one (docs/spec/MANAGED_EXCHANGE_RECORD.md, "A run whose record was not
+ * filed").
  */
 
 import { z } from "zod";
@@ -29,25 +15,17 @@ import { parseExchangeRecord } from "@alcove/core";
 import type { ExchangeRecord } from "@alcove/core";
 import type { ZodType } from "zod";
 
-/** The single recognized format version for a stored note. A reader rejects any
- * other value rather than migrating it, the reader-rejects-unknown rule the
- * record and the accounting of disclosures follow (see
- * docs/spec/EXCHANGE_RECORD.md). */
+/** The single recognized format version for a stored note; a reader rejects any
+ * other value rather than migrating it. */
 export const UNFILED_DISCLOSURE_VERSION = "alcove-unfiled-disclosure/v2";
 
-/** The second element of the note's key, which is what separates it from the
- * accounting stored under the exchange id alone. */
+/** The second element of the note's key. */
 const UNFILED_DISCLOSURE_KEY_PART = "unfiled";
 
 /**
  * Where one exchange's note sits in the disclosure store: an array key of the
- * record id and a fixed part, beside the accounting that same id keys on its
- * own.
- *
- * An array key equals no string key whatever the id holds, so a note collides
- * with no exchange's accounting -- including an imported record's id, which the
- * record schema admits as any non-empty string rather than as this app's own
- * generated one.
+ * record id and a fixed part. An array key equals no string key, so a note
+ * collides with no exchange's accounting whatever the id is.
  */
 export function unfiledDisclosureKey(id: string): [string, string] {
   return [id, UNFILED_DISCLOSURE_KEY_PART];
@@ -55,18 +33,14 @@ export function unfiledDisclosureKey(id: string): [string, string] {
 
 /**
  * One run whose disclosure record never reached the accounting, as it sits at
- * rest. The retained record is held to nothing here: a record this build's
- * exchange-record format no longer admits keeps its stored bytes rather than
- * refusing the whole note, whose fact outlives any record format
- * ({@link unfiledDisclosuresOf}).
+ * rest. The retained record is not validated here, so a record a later format
+ * refuses keeps its stored bytes ({@link unfiledDisclosuresOf}).
  */
 export interface StoredUnfiledDisclosure {
-  /** ISO-8601 instant the shortfall was noted, which falls inside the run it
-   * stands for. The run's own instant is the retained record's `createdAt`
-   * wherever there is one. */
+  /** ISO-8601 instant the shortfall was noted, during the run. */
   at: string;
-  /** The run's own self-attested exchange record, retained so the append can be
-   * retried. Absent where the run built none, the state no retry recovers. */
+  /** The run's own exchange record, retained so the append can be retried;
+   * absent where the run built none. */
   record?: unknown;
 }
 
@@ -89,10 +63,7 @@ const storedSchema: ZodType<StoredUnfiledDisclosures> = z
 
 /**
  * Parse a value read from the note's key. Rejects an unrecognized `version`, an
- * unknown key, or an entry with no instant, and looks inside no retained record
- * -- the fact that a run went unfiled is what this value exists to keep, and it
- * must survive a record format the entries were written under and this build no
- * longer reads.
+ * unknown key, or an entry with no instant, and looks inside no retained record.
  *
  * @throws {ZodError} if the value is not a stored note this build recognizes.
  */
@@ -102,18 +73,16 @@ export function parseStoredUnfiledDisclosures(
   return storedSchema.parse(raw);
 }
 
-/** The binding nonce a retained record holds, or `undefined` for a value that
- * holds none: the entry identity the merge below matches on, read off the stored
- * value without holding it to the record format. */
+/** The retained record's binding nonce, or `undefined`, read without
+ * validating the record. */
 function bindingNonceOf(record: unknown): string | undefined {
   if (record === null || typeof record !== "object") return undefined;
   const nonce = (record as Record<string, unknown>)["bindingNonce"];
   return typeof nonce === "string" ? nonce : undefined;
 }
 
-/** Whether `entry` is already noted: a retained record matches on its own
- * binding nonce, and an entry that retained none matches on its instant, which
- * is all that identifies it. */
+/** Whether `entry` is already noted, matched on its record's binding nonce or,
+ * with no record, on its instant. */
 function alreadyNoted(
   entries: ReadonlyArray<StoredUnfiledDisclosure>,
   entry: StoredUnfiledDisclosure,
@@ -127,14 +96,9 @@ function alreadyNoted(
 }
 
 /**
- * Note one unfiled run, returning the result; a missing note starts one. Entries
- * stay in run order.
- *
- * Noting the same run twice is a no-op, matched on the retained record's own
- * binding nonce (see docs/spec/EXCHANGE_RECORD.md, "Record fields") or, for a
- * run that retained no record, on its instant. So a repeated write cannot leave
- * two entries for one disclosure, and the number of entries is the number of
- * runs the accounting is short.
+ * Note one unfiled run, in run order; a missing note starts one. Noting the
+ * same run twice is a no-op (docs/spec/EXCHANGE_RECORD.md, "Record fields"), so
+ * the entry count is the number of runs the accounting is short.
  */
 export function noteUnfiledDisclosure(
   current: StoredUnfiledDisclosures | undefined,
@@ -151,33 +115,23 @@ export function noteUnfiledDisclosure(
 
 /** One unfiled run as the next visit reads it. */
 export interface UnfiledDisclosure {
-  /** The instant the run is named by: its record's own `createdAt` where a
-   * record was retained and admitted, otherwise the instant the shortfall was
-   * noted. */
+  /** The record's own `createdAt` where one was retained and admitted,
+   * otherwise the instant the shortfall was noted. */
   at: string;
-  /** The retained record, where the run built one and this build admits it. Its
-   * absence is what makes the entry unrecoverable: there is nothing left to
-   * append. */
+  /** The retained record, where the run built one and this build admits it;
+   * without it the entry cannot be filed. */
   record?: ExchangeRecord;
-  /** Set where a record for this run IS stored and this build's record format
-   * refuses it. Nothing can be filed either way, which is why it is not a
-   * record; what differs is what the browser holds, so a surface can state the
-   * two without claiming that nothing was kept. */
+  /** Set where a record for this run is stored and this build's record format
+   * refuses it, so the UI does not claim nothing was kept. */
   unreadableRecordRetained?: true;
 }
 
 /**
- * The stored note's entries as the next visit reads them, oldest first: each
- * entry's retained record validated through core's own
- * {@link parseExchangeRecord}, and left out of the reading where that refuses.
- *
- * A record this build does not admit leaves the entry standing with no record,
- * which is what the surface states as unrecoverable: the append holds an entry
- * to the same validation, so a record it refuses could not be filed either. It
- * is marked as retained-but-unreadable rather than folded into the run that
- * built no record, because those bytes are still stored. The stored bytes are
- * untouched by this reading -- only a write prunes an entry -- so a build that
- * admits them again finds them.
+ * The stored note's entries as the next visit reads them, oldest first, each
+ * retained record validated through core's {@link parseExchangeRecord}. A
+ * refused record leaves the entry with no record, marked retained but
+ * unreadable; the stored bytes are untouched, since only a write prunes an
+ * entry.
  */
 export function unfiledDisclosuresOf(
   stored: StoredUnfiledDisclosures,
@@ -195,13 +149,8 @@ export function unfiledDisclosuresOf(
 
 /**
  * The note left after the runs whose binding nonces `filed` holds were appended
- * to the accounting, or `undefined` when nothing is left to keep -- which is
- * what tells the store to remove the key rather than leave an empty note at
- * rest.
- *
- * An entry that was not filed stays exactly as it sits, retained record
- * included: a run whose record could not be built is not resolved by another
- * run's filing, and neither is one whose record this build cannot read.
+ * to the accounting, or `undefined` when nothing is left, so the store removes
+ * the key. An entry that was not filed stays exactly as stored.
  */
 export function unfiledDisclosuresAfterFiling(
   stored: StoredUnfiledDisclosures,
