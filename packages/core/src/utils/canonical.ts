@@ -17,7 +17,9 @@ import { loneSurrogateIndex } from "./wellFormedString.js";
 // RFC 8785 itself is delegated to the `canonicalize` package (the scheme
 // author's reference implementation). What this module adds is a strict
 // pre-validation pass that REJECTS, rather than silently coerces, every value
-// outside the safe reproducible domain (see {@link assertCanonical}).
+// outside the safe reproducible domain (see {@link assertCanonical}), and the
+// chunked writer, which writes the structure itself and only each primitive
+// through `canonicalize` (see {@link writeCanonicalBytes}).
 
 /**
  * The value domain {@link canonicalString} accepts: JSON primitives plus
@@ -307,21 +309,41 @@ function installIsWellFormedIfAbsent(): void {
  *   canonical domain.
  */
 export function canonicalString(value: unknown): string {
+  return underEncodingContract(() => {
+    assertCanonicalForEncoding(value);
+    return canonicalizeValidated(value);
+  });
+}
+
+/**
+ * Validate `value` and prepare the engine for encoding it. Every encoder in
+ * this module calls it before its first `canonicalize` call: the safety of the
+ * output rests entirely on assertCanonical catching every value canonicalize
+ * would coerce. canonicalize substitutes or drops out-of-domain values -- a
+ * function-valued member is omitted, an array hole is written as `null`, a Date
+ * is written through its toJSON -- so the pre-validator, not canonicalize,
+ * holds the domain.
+ */
+function assertCanonicalForEncoding(value: unknown): void {
+  assertCanonical(value, "$");
+  installIsWellFormedIfAbsent();
+}
+
+/** `canonicalize(value)` for a value {@link assertCanonicalForEncoding} accepted. */
+function canonicalizeValidated(value: unknown): string {
+  const encoded = canonicalize(value);
+  // canonicalize returns undefined for any top-level value that
+  // JSON.stringify drops entirely -- undefined, a function, or a symbol.
+  // assertCanonical already rejected all of those, so this only guards the
+  // declared return type.
+  if (encoded === undefined) fail("value is not canonicalizable", "$");
+  return encoded;
+}
+
+/** Run `encode`, holding every error it throws to {@link CanonicalEncodingError}. */
+function underEncodingContract<T>(encode: () => T): T {
   try {
-    // assertCanonical MUST run first: the safety of the output rests entirely
-    // on it catching every value canonicalize would coerce. canonicalize
-    // substitutes or drops out-of-domain values -- a function-valued member is
-    // omitted, an array hole is written as `null`, a Date is written through
-    // its toJSON -- so the pre-validator, not canonicalize, holds the domain.
-    assertCanonical(value, "$");
-    installIsWellFormedIfAbsent();
-    const encoded = canonicalize(value);
-    // canonicalize returns undefined for any top-level value that
-    // JSON.stringify drops entirely -- undefined, a function, or a symbol.
-    // assertCanonical already rejected all of those, so this only guards the
-    // declared return type.
-    if (encoded === undefined) fail("value is not canonicalizable", "$");
-    return encoded;
+    return encode();
   } catch (err) {
     // Boundary guard upholding the module's contract that every rejection is
     // a CanonicalEncodingError. Domain rejections hold their precise JSON
@@ -354,6 +376,94 @@ const enc = new TextEncoder();
  */
 export function canonicalBytes(value: unknown): Uint8Array<ArrayBuffer> {
   return enc.encode(canonicalString(value));
+}
+
+/** The UTF-16 length at which {@link writeCanonicalBytes} writes its buffered text. */
+const CHUNK_CODE_UNITS = 1 << 16;
+
+/**
+ * Pass `write` the bytes {@link canonicalBytes} returns for `value`, as
+ * consecutive chunks whose concatenation is exactly those bytes, so an encoding
+ * longer than the engine's longest string can still be hashed. The encoder
+ * writes every array's and object's brackets, commas, colons and sorted keys
+ * itself and takes each primitive's encoding from `canonicalize`, so a chunk
+ * ends only between two whole tokens, never inside a character. A chunk is
+ * about 64 Ki UTF-16 code units of text, longer when one primitive's encoding
+ * is, and the last may be shorter.
+ *
+ * `value` is validated in full before the first write, and the whole encoding
+ * runs within this call, so `value` cannot change between its validation and
+ * its encoding except through `write` itself. An error `write` throws reaches
+ * the caller unchanged.
+ *
+ * @throws {CanonicalEncodingError} if `value` contains anything outside the
+ *   canonical domain.
+ */
+export function writeCanonicalBytes(
+  value: unknown,
+  write: (chunk: Uint8Array<ArrayBuffer>) => void,
+): void {
+  underEncodingContract(() => assertCanonicalForEncoding(value));
+  const texts = canonicalTexts(value);
+  for (;;) {
+    const step = underEncodingContract(() => texts.next());
+    if (step.done === true) return;
+    write(enc.encode(step.value));
+  }
+}
+
+interface TextBuffer {
+  text: string;
+}
+
+function* canonicalTexts(value: unknown): Generator<string, void, undefined> {
+  const buffer: TextBuffer = { text: "" };
+  yield* appendCanonical(value, buffer);
+  if (buffer.text.length > 0) yield buffer.text;
+}
+
+/**
+ * Append the canonical text of `node` to `buffer`, yielding the buffered text
+ * whenever it reaches `CHUNK_CODE_UNITS` after a whole element or member.
+ * A primitive is appended in place rather than through a nested generator, so
+ * a row of cells costs one generator, not one per cell.
+ *
+ * Recurses once per nesting level, so a very deeply nested value exhausts the
+ * call stack here though the one-shot encoder, which keeps its own stack, encodes it.
+ */
+function* appendCanonical(
+  node: unknown,
+  buffer: TextBuffer,
+): Generator<string, void, undefined> {
+  if (node === null || typeof node !== "object") {
+    buffer.text += canonicalizeValidated(node);
+    return;
+  }
+  const elements = Array.isArray(node) ? (node as readonly unknown[]) : null;
+  const members = node as Readonly<Record<string, unknown>>;
+  // RFC 8785 orders members by their names' UTF-16 code units, which is the
+  // default order of Array.prototype.sort.
+  const keys = elements === null ? Object.keys(members).sort() : null;
+  const count = elements?.length ?? keys?.length ?? 0;
+  buffer.text += elements === null ? "{" : "[";
+  for (let at = 0; at < count; at++) {
+    if (at > 0) buffer.text += ",";
+    let child: unknown;
+    if (keys === null) child = elements?.[at];
+    else {
+      const key = keys[at];
+      buffer.text += `${canonicalizeValidated(key)}:`;
+      child = members[key];
+    }
+    if (child !== null && typeof child === "object")
+      yield* appendCanonical(child, buffer);
+    else buffer.text += canonicalizeValidated(child);
+    if (buffer.text.length >= CHUNK_CODE_UNITS) {
+      yield buffer.text;
+      buffer.text = "";
+    }
+  }
+  buffer.text += elements === null ? "}" : "]";
 }
 
 /**

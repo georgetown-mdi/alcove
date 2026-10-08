@@ -347,6 +347,10 @@ order mark. This byte string is what is hashed and signed; hashing and signature
 details belong to the receipt itself (see
 [PROTOCOL.md](PROTOCOL.md#third-party-verifiable-proof-of-a-data-flow)).
 
+An implementation may produce the byte string in consecutive pieces, provided
+the pieces concatenate to exactly the byte string above. Nothing in the hashed
+or signed result shows how it was produced.
+
 ## Worked examples
 
 In each row, encoding the value yields the canonical string shown; the
@@ -416,6 +420,16 @@ schema fields use `safeIntegerSchema`. `canonicalize` calls the ES2024
 `String.prototype.isWellFormed`; where an engine lacks it, `canonicalString`
 installs one built on the same lone-surrogate scan the pre-validation uses. None of this is required to reproduce the
 bytes; the normative definition is RFC 8785 over the value domain above.
+
+`writeCanonicalBytes(value, write)` passes `write` the same bytes in
+consecutive chunks of about 64 Ki UTF-16 code units of text each, after
+validating the whole value. It writes the brackets, commas, colons and member
+names itself, ordering members by UTF-16 code units, and takes each
+primitive's encoding from `canonicalize`, so a chunk ends only between two
+whole tokens. For the exchange record's commitments and the receipt's payload
+MACs, `packages/core/src/utils/canonicalHmac.ts` copies these chunks into one
+byte array and computes HMAC-SHA-256 over it with one `crypto.subtle` call, so
+the encoding is never held as one string, whose length V8 caps. The chunked writer descends one call per nesting level where `canonicalize` keeps its own stack, so a value nested more deeply than a few thousand levels exhausts the call stack and throws `CanonicalEncodingError` there while `canonicalBytes` still encodes it (measured on Node 26.10: depth 3000 encodes both ways, depth 5000 only through `canonicalBytes`). The record and receipt values nest at most 3 levels.
 
 The `canonicalize` package is inlined into `@alcove/core`'s built artifacts
 rather than resolved at runtime; why, and what that costs when an advisory
