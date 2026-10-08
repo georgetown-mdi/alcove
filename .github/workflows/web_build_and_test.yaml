@@ -173,7 +173,7 @@ jobs:
     # applies, and since pages_deploy.yaml gates its deploy on this workflow via
     # workflow_call, a hang would also stall a production deploy. 30 min sits far
     # above a normal leg yet cuts a true hang short. It must also clear the worst
-    # case the browser provisioning step below is allowed: its 22 min plus the few
+    # case the browser provisioning step below is allowed: its 23 min plus the few
     # minutes the rest of that leg measures, so an upstream stall there ends on
     # that step's own named failure rather than on this cap, which GitHub reports
     # as a cancellation.
@@ -333,16 +333,44 @@ jobs:
       # each attempt bounds the whole command and a stalled attempt is retried here
       # rather than costing a human rerun of the workflow. The 10m per-attempt
       # bound clears the slowest measured success (7m24s) with headroom; two
-      # attempts, each with timeout's 30s kill-after grace, plus the 15s backoff
-      # between them total 21m15s, inside timeout-minutes, so the per-attempt
-      # bound is what fires and names the failure, and timeout-minutes fits
-      # inside the job bound above.
+      # attempts, each with timeout's 30s kill-after grace, the 15s backoff and
+      # the 30s apt-lock wait between them total 21m45s, inside timeout-minutes,
+      # so the per-attempt bound is what fires and names the failure, and
+      # timeout-minutes fits inside the job bound above.
+      #
+      # A timed-out attempt has left its apt-get running and holding apt's lists
+      # lock, which failed the next attempt at once. So before a retry, every
+      # process holding one of apt's locks is ended, the wait for the locks to
+      # clear is bounded, and dpkg finishes any install the kill interrupted.
       - name: Install Playwright Chromium
         if: matrix.playwright == 'true'
-        timeout-minutes: 22
+        timeout-minutes: 23
         run: |
           attempts=2
           attempt_timeout=10m
+          apt_locks='^/var/lib/(apt/lists/lock|dpkg/lock|dpkg/lock-frontend)$|^/var/cache/apt/archives/lock$'
+          apt_lock_holders() {
+            sudo lslocks --noheadings --raw --output PID,PATH | awk -v locks="$apt_locks" '$2 ~ locks { print $1 }' | sort -u
+          }
+          end_apt_lock_holders() {
+            holders=$(apt_lock_holders)
+            if [ -z "$holders" ]; then
+              return 0
+            fi
+            echo "::warning::Ending the apt processes still holding apt's locks: $holders"
+            sudo kill $holders || true
+            for _ in $(seq 30); do
+              if [ -z "$(apt_lock_holders)" ]; then
+                break
+              fi
+              sleep 1
+            done
+            holders=$(apt_lock_holders)
+            if [ -n "$holders" ]; then
+              sudo kill -KILL $holders || true
+            fi
+            sudo dpkg --configure -a || true
+          }
           for attempt in $(seq 1 "$attempts"); do
             status=0
             timeout --kill-after=30s "$attempt_timeout" npx playwright install --with-deps chromium || status=$?
@@ -356,6 +384,7 @@ jobs:
             fi
             echo "::warning::Playwright provisioning attempt $attempt $outcome"
             if [ "$attempt" -lt "$attempts" ]; then
+              end_apt_lock_holders
               sleep 15
             fi
           done

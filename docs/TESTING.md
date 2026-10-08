@@ -379,6 +379,8 @@ its `/api/` to the broker, as `npm run dev` from the repository root does
 (`scripts/dev.mjs`); the setup counts that server ready only once a signaling
 dial through it opens. A reused server is not probed for signaling, since it
 forwards to whichever broker started with it.
+A dev server the setup starts that exits before answering, a taken port
+included, fails the run at once with its last lines of output.
 
 ```sh
 npm run test:browser -w apps/web    # auto-starts, waits for, and stops the dev server
@@ -394,6 +396,10 @@ against a cold optimizer cache: remove `apps/web/node_modules/.vite` first -- a
 warm cache passes even when the configuration is wrong. Inline vitest projects
 do not inherit the root `optimizeDeps`/`resolve` configuration; each project
 that needs it has its own.
+A `vitest run` of the browser project in which Vite optimizes a dependency its
+startup scan missed, and so reloads the test page, fails with an error naming
+that cause: add the dependency Vite logs to that project's
+`optimizeDeps.include`.
 
 ### Locators and text assertions
 

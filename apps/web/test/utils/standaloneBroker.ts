@@ -7,6 +7,8 @@ import { READINESS_SEGMENT } from "@alcove/peerjs-broker/standaloneOptions";
 
 import { trackChild } from "./childProcess.ts";
 
+import type { ChildProcess } from "node:child_process";
+
 /**
  * Starts the repository's vendored PeerJS broker as a process of its own, on a
  * loopback origin that is NOT the page's, with the wiring a provisioned broker
@@ -31,12 +33,17 @@ import { trackChild } from "./childProcess.ts";
  * stdout protocol admits (packages/peerjs-broker/src/standalone.ts). */
 const READY_LINE = /^alcove-broker (\d+)\n$/;
 
-/** Longest to wait for the child to report its port before giving up. */
+/** Longest to wait for the child to report its port before giving up; an exit
+ * ends the wait at once. Measured on a 10-core host: 0.5 to 0.8 s at load 10,
+ * 2.6 s with about 22 processes runnable. */
 const START_TIMEOUT_MS = 30_000;
 
 /** Longest to wait for the readiness endpoint to answer once the port is known,
- * and how often to re-ask within it. */
+ * how long one request may take, and how often to re-ask within it. An exit
+ * ends the wait at once. Measured: the first request answers, 5 to 150 ms after
+ * the port is reported, at the same loads as above. */
 const READY_PROBE_TIMEOUT_MS = 10_000;
+const READY_PROBE_REQUEST_TIMEOUT_MS = 2_000;
 const READY_PROBE_INTERVAL_MS = 100;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -69,6 +76,7 @@ function delay(ms: number): Promise<void> {
  * the whole of what it states (packages/peerjs-broker/src/standaloneOptions.ts).
  */
 async function probeReadiness(
+  child: ChildProcess,
   origin: string,
   readinessPath: string,
   failurePrefix: string,
@@ -76,8 +84,16 @@ async function probeReadiness(
   const deadline = Date.now() + READY_PROBE_TIMEOUT_MS;
   let lastFailure = "no attempt was made";
   for (;;) {
+    if (child.exitCode !== null || child.signalCode !== null)
+      throw new Error(
+        `${failurePrefix} the signaling broker exited ` +
+          `(code ${child.exitCode}, signal ${child.signalCode}) before ` +
+          `answering ${readinessPath}`,
+      );
     try {
-      const response = await fetch(`${origin}${readinessPath}`);
+      const response = await fetch(`${origin}${readinessPath}`, {
+        signal: AbortSignal.timeout(READY_PROBE_REQUEST_TIMEOUT_MS),
+      });
       if (response.ok) return await response.text();
       // The body is read either way: an unconsumed one holds the socket open.
       await response.body?.cancel();
@@ -174,6 +190,7 @@ export async function startStandaloneBroker(
   let readinessBody: string;
   try {
     readinessBody = await probeReadiness(
+      child,
       origin,
       `${mountPath}/${READINESS_SEGMENT}`,
       failurePrefix,

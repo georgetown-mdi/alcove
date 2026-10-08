@@ -2827,7 +2827,9 @@ describe("exchange screen at a narrow viewport", () => {
    * visible, so a click at the row's centre lands on the nav instead and fails
    * silently -- showing up later as an unrelated timeout. Mantine's Collapse
    * animation compounds this by moving the row while it expands, so this polls
-   * the actual hit test instead of sleeping.
+   * the actual hit test instead of sleeping. The default bound is a measured
+   * margin: the row became hittable within 23 ms (3 frames) with about 22
+   * processes runnable on a 10-core host.
    */
   async function clickWhenHittable(
     locator: { element: () => Element; click: () => Promise<void> },

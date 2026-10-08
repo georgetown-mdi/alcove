@@ -14,6 +14,7 @@ import { DEV_SIGNALING_PORT_ENV } from "./src/utils/devSignalingPort.ts";
 // A type-only import, erased before either config loader resolves anything.
 import type * as liveWebrtcLeg from "./test/liveWebrtc/legCommands.ts";
 import type { ConfigEnv, Plugin, ProxyOptions } from "vite";
+import type { Vitest } from "vitest/node";
 
 const configManager = new ConfigManager();
 const config = await configManager.load({ dotenv: true });
@@ -171,6 +172,46 @@ function hostedDevDocument(): Plugin {
           request.url = "/hosted/index.html";
         next();
       });
+    },
+  };
+}
+
+const DEPENDENCY_RELOAD_FAILURE =
+  "Vite found a dependency its startup scan missed, optimized it, and reloaded the test page during the run, so a test on that page may have failed because of the reload. Add the dependency Vite names above to optimizeDeps.include in the browser project in apps/web/vite.config.ts, then remove apps/web/node_modules/.vite and run again.";
+
+// Fails a browser run in which the dependency optimizer reloaded the test page,
+// which it does with a full-reload message to the page. Watch mode is left out,
+// since a file change there sends the same message.
+function failOnDependencyReload(): Plugin {
+  let vitest: Vitest | undefined;
+  let reported = false;
+  return {
+    name: "alcove-fail-on-dependency-reload",
+    apply: "serve",
+    configureVitest(context) {
+      vitest = context.vitest;
+    },
+    configureServer(server) {
+      const hot = server.environments.client.hot;
+      const send = hot.send;
+      hot.send = (...args: Array<unknown>) => {
+        const [payload] = args;
+        if (
+          !reported &&
+          vitest !== undefined &&
+          !vitest.config.watch &&
+          typeof payload === "object" &&
+          payload !== null &&
+          (payload as { type?: unknown }).type === "full-reload"
+        ) {
+          reported = true;
+          vitest.state.catchError(
+            new Error(DEPENDENCY_RELOAD_FAILURE),
+            "Unhandled Error",
+          );
+        }
+        Reflect.apply(send, hot, args);
+      };
     },
   };
 }
@@ -346,6 +387,7 @@ export default defineConfig((configEnv) => {
           // does not inherit the root `optimizeDeps`, so without this its first spawn
           // reloads the run on a cold optimizer cache (see psiWorkerWasmEngine).
           optimizeDeps: { include: [psiWorkerWasmEngine] },
+          plugins: [failOnDependencyReload()],
         },
         {
           test: {

@@ -1039,36 +1039,32 @@ const runScript = (args, cwd = dirname(SCRIPT)) => {
   }
 };
 
+// Every case below spawns the script one to three times, each a cold Node
+// start. Measured on a 10-core host: 0.5 to 2.6 s a case at load 7, and 2.2 to
+// 6.1 s at load 16, where the two- and three-spawn cases exceeded vitest's 5 s
+// default. Sized well past that, the bound catches a hung spawn rather than
+// timing a slow one.
+const SPAWN_CASES = { timeout: 60_000 };
+
 // The script as an agent invokes it, so argv handling, the git error path, and
 // the exit codes are exercised rather than assumed. Every case here resolves
 // without repo history, which is what a shallow CI checkout has. Exit 3 stays
 // unreachable from a subprocess -- it needs a TypeScript whose printer fails a
 // probe -- and is covered only by the soundness-probe test above.
-describe("the script as an agent runs it", () => {
-  // Three cold Node spawns in one case: 0.8s together alone against vitest's 5s
-  // default, and 6.6s with the rest of the script suites competing for the same
-  // cores, which is the contention that reddened it. Sized well past that worst
-  // measurement, this stays a hang safety check rather than a claim about how
-  // fast a process starts.
-  const USAGE_SPAWN_TIMEOUT_MS = 60_000;
-
-  it(
-    "prints usage and exits 2 unless given exactly two refs",
-    () => {
-      for (const args of [[], ["only-one"], ["one", "two", "three"]]) {
-        const result = runScript(args);
-        expect(result.status).toBe(2);
-        expect(result.stderr).toMatch(
-          /^Usage: node \.claude\/scripts\/verify-nonexecutable-delta\.mjs /,
-        );
-        expect(result.stderr).toMatch(
-          /resolve in the git worktree this is run from/,
-        );
-        expect(result.stdout).toBe("");
-      }
-    },
-    USAGE_SPAWN_TIMEOUT_MS,
-  );
+describe("the script as an agent runs it", SPAWN_CASES, () => {
+  it("prints usage and exits 2 unless given exactly two refs", () => {
+    for (const args of [[], ["only-one"], ["one", "two", "three"]]) {
+      const result = runScript(args);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toMatch(
+        /^Usage: node \.claude\/scripts\/verify-nonexecutable-delta\.mjs /,
+      );
+      expect(result.stderr).toMatch(
+        /resolve in the git worktree this is run from/,
+      );
+      expect(result.stdout).toBe("");
+    }
+  });
 
   it("exits 2 when a ref does not resolve, rather than reporting a verdict", () => {
     const result = runScript(["HEAD", "no-such-ref-9f3c1a"]);
@@ -1077,24 +1073,15 @@ describe("the script as an agent runs it", () => {
     expect(result.stdout).not.toMatch(/HOLDS|VIOLATED/);
   });
 
-  // Measured alone at 350-490ms across repeated runs, and past vitest's 5s
-  // default -- an outright timeout -- once under contention with the full
-  // `npm test` fan-out. Sized at roughly five times that default.
-  const SOUNDNESS_PROBE_TIMEOUT_MS = 30_000;
-
-  it(
-    "passes its probes and exits 0 over a ref compared with itself",
-    { timeout: SOUNDNESS_PROBE_TIMEOUT_MS },
-    () => {
-      const result = runScript(["HEAD", "HEAD"]);
-      expect(result.status).toBe(0);
-      expect(result.stdout).toMatch(
-        /soundness probes: (\d+)\/\1 passed on typescript /,
-      );
-      expect(result.stdout).toContain("(none)");
-      expect(result.stdout).toMatch(/non-executable-delta property: HOLDS/);
-    },
-  );
+  it("passes its probes and exits 0 over a ref compared with itself", () => {
+    const result = runScript(["HEAD", "HEAD"]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(
+      /soundness probes: (\d+)\/\1 passed on typescript /,
+    );
+    expect(result.stdout).toContain("(none)");
+    expect(result.stdout).toMatch(/non-executable-delta property: HOLDS/);
+  });
 });
 
 // Which tree a verdict is about, driven rather than modelled: the script sits in
@@ -1105,7 +1092,7 @@ describe("the script as an agent runs it", () => {
 // full sha resolves and diffs identically from either tree, since linked
 // worktrees share one object database, while HEAD, HEAD~n and ORIG_HEAD each
 // mean a different commit per tree.
-describe("the tree a verdict is about", () => {
+describe("the tree a verdict is about", SPAWN_CASES, () => {
   const toplevelOf = (dir) =>
     execFileSync("git", ["rev-parse", "--show-toplevel"], {
       cwd: dir,
