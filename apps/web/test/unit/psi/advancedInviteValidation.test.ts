@@ -2,7 +2,6 @@ import { describe, expect, test } from "vitest";
 
 import {
   CanonicalEncodingError,
-  DEDUPLICATE_IMPLEMENTED_BY_STRATEGY,
   FAN_OUT_FUNCTION_NAMES,
   MAX_DISPLAYED_PARAMS,
   MAX_INVITATION_LIFETIME_SECONDS,
@@ -11,9 +10,12 @@ import {
   assertTransformsCompile,
   authoredLinkageFields,
   canonicalString,
-  pipelineAlwaysDrops,
   safeParseLinkageTerms,
 } from "@alcove/core";
+import {
+  DEDUPLICATE_IMPLEMENTED_BY_STRATEGY,
+  pipelineAlwaysDrops,
+} from "@alcove/core/testing";
 
 import {
   draftFromTerms,

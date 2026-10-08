@@ -8,7 +8,6 @@ import { createElement } from "react";
 
 import {
   SIGNED_RECEIPT_VERSION,
-  buildExchangeRecord,
   computeCertificateFingerprint,
   generateSigningIdentity,
   serializeCertificate,
@@ -16,24 +15,28 @@ import {
   serializeExchangeRecord,
   serializeSigningIdentity,
   serializeVerificationKeys,
-  signReceiptContent,
 } from "@alcove/core";
+
+import { buildExchangeRecord, signReceiptContent } from "@alcove/core/testing";
 
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 
 import type {
-  AssociationTable,
-  CommittedPayload,
   DualSignedRecord,
   ExchangeRecord,
   LinkageTerms,
-  ReceiptContent,
   SigningCertificate,
   SigningIdentity,
   VerificationKeys,
 } from "@alcove/core";
+
+import type {
+  AssociationTable,
+  CommittedPayload,
+  ReceiptContent,
+} from "@alcove/core/testing";
 
 /** Each fixture party's own name, held apart from the terms: `identity` is
  * optional there, so reading it back would type as possibly absent where these

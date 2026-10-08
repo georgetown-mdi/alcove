@@ -37,7 +37,7 @@ import {
   scanFrameStructure,
 } from "@alcove/core";
 
-import type { FrameStructureRefusal } from "@alcove/core";
+import type { FrameStructureRefusal } from "@alcove/core/testing";
 import type { Unpackable } from "peerjs-js-binarypack";
 
 /** The two limits `scanFrameStructure` measures a frame against. A fixture has

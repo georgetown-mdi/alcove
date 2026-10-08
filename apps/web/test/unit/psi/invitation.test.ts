@@ -15,9 +15,12 @@ import {
   getDefaultLinkageTerms,
   inferMetadata,
   summarizeInvitation,
-  validateCompatibility,
 } from "@alcove/core";
-import { MAX_RAW_INVITATION_LENGTH } from "@alcove/core/testing";
+
+import {
+  MAX_RAW_INVITATION_LENGTH,
+  validateCompatibility,
+} from "@alcove/core/testing";
 
 import {
   ACCEPT_ROUTE_PATH,

@@ -22,9 +22,9 @@ import {
   MAX_NAME_LENGTH,
   OperatorConfigError,
   sanitizeErrorForDisplay,
-  StandardizationTermsError,
   UsageError,
 } from "@alcove/core";
+import { StandardizationTermsError } from "@alcove/core/testing";
 import type {
   Algorithm,
   ConnectionConfig,

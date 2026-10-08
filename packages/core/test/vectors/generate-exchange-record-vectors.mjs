@@ -19,7 +19,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-import { buildExchangeRecord } from "../../dist/core.esm.js";
+import { buildExchangeRecord } from "../../dist/testing.esm.js";
 
 // Node's Buffer decodes unpadded base64url directly, so the regenerator does not
 // depend on any core base64 export.

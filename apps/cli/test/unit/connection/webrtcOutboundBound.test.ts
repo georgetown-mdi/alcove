@@ -2,12 +2,9 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
+import { InProcessPsiEngine, MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
 import {
-  InProcessPsiEngine,
-  MAX_WEBRTC_FRAME_BYTES,
   PSIParticipant,
-} from "@alcove/core";
-import {
   binaryPackByteStringLength,
   PSI_SET_PART_HEADER_BYTES,
   webrtcFrameReceiveCharge,

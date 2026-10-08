@@ -1,4 +1,5 @@
-import { deriveRelayKey, relayRegistrarAuthorization } from "@alcove/core";
+import { deriveRelayKey } from "@alcove/core";
+import { relayRegistrarAuthorization } from "@alcove/core/testing";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {

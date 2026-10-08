@@ -164,7 +164,6 @@ const {
 const {
   DISPLAY_TRUNCATION_MARKER,
   RELAY_CREDENTIAL_MAX_TTL_SECONDS,
-  StandardizedDataset,
   UsageError,
   RoundSetLimitError,
   assertFirstRoundWithinSetMaximum,
@@ -174,6 +173,7 @@ const {
   mintRunRelayCredential,
   sanitizeErrorForDisplay,
 } = await import("@alcove/core");
+const { StandardizedDataset } = await import("@alcove/core/testing");
 
 /**
  * A pair of connections wired to each other: what one sends the other receives,

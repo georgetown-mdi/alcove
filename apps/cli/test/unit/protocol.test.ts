@@ -5,7 +5,13 @@ import path from "node:path";
 
 import { vi, test, expect, beforeEach, afterEach } from "vitest";
 import YAML from "yaml";
-import type { PreparedExchange } from "@alcove/core";
+import type {
+  PreparedExchange,
+  BuiltExchangeRecord,
+  DualSignedRecord,
+  ExchangeRecord,
+  VerificationKeys,
+} from "@alcove/core";
 
 import {
   denyDirectoryWrites,
@@ -357,13 +363,11 @@ import {
   causeChainSome,
   FrameSizeExceededError,
   InternalConsistencyError,
-  InvitationTermDivergenceError,
   FileSyncConnection,
   fromEventConnection,
   authenticateConnection,
   generateSigningIdentity,
   OperatorConfigError,
-  ProtocolRefusalError,
   ReceiptVerificationError,
   isPeerWaitTimeout,
   sanitizeErrorForDisplay,
@@ -375,18 +379,20 @@ import {
   getLogger,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
-  operatorSuppliedSpans,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
   describeExchangeStages,
   assertFirstRoundWithinSetMaximum,
   prepareForExchange,
   RoundCapacityError,
   RoundSetLimitError,
-  AGREED_TERMS_VERSION,
   parseAgreedTerms,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
 import {
+  InvitationTermDivergenceError,
+  ProtocolRefusalError,
+  operatorSuppliedSpans,
+  AGREED_TERMS_VERSION,
   AEAD_ENVELOPE_VERSION,
   MESSAGE_ENVELOPE_VERSION,
   MESSAGE_HEADER_BYTES,
@@ -395,13 +401,9 @@ import {
 } from "@alcove/core/testing";
 import type {
   AssociationTable,
-  BuiltExchangeRecord,
-  DualSignedRecord,
-  ExchangeRecord,
   PartnerPayload,
   ResolvedRunShape,
-  VerificationKeys,
-} from "@alcove/core";
+} from "@alcove/core/testing";
 import {
   runProtocol,
   type RunProtocolResult,

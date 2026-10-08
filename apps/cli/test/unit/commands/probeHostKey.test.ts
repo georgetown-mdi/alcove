@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
 import type { Arguments } from "yargs";
 import {
-  keyTypeFromBlob,
   sanitizeErrorForDisplay,
   sanitizeForDisplay,
   UsageError,
 } from "@alcove/core";
+import { keyTypeFromBlob } from "@alcove/core/testing";
 import type { PresentedHostKey, SFTPConnectionConfig } from "@alcove/core";
 
 import {

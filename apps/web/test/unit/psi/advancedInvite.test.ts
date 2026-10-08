@@ -15,9 +15,11 @@ import {
   linkageRuleSetReferenceFor,
   prepareForExchange,
   safeParseLinkageTerms,
+} from "@alcove/core";
+import {
   validateCompatibility,
   validateStandardizationAgainstTerms,
-} from "@alcove/core";
+} from "@alcove/core/testing";
 
 import {
   addKey,

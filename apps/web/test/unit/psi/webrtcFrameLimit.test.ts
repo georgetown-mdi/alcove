@@ -9,10 +9,10 @@ import {
   InProcessPsiEngine,
   MAX_WEBRTC_FRAME_BYTES,
   PEERJS_CHUNK_MTU,
-  PSIParticipant,
   RoundSetLimitError,
 } from "@alcove/core";
 import {
+  PSIParticipant,
   PSI_SET_PART_HEADER_BYTES,
   ROUND_ONE_SET_UNCOUNTED_FOR_PARTNER_MESSAGE,
   binaryPackByteStringLength,

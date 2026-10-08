@@ -4,7 +4,8 @@ import path from "node:path";
 
 import { afterEach, expect, test } from "vitest";
 import { buildOutputTable, loadCSVFile, toRetainedResult } from "@alcove/core";
-import type { AssociationTable, Metadata, PartnerPayload } from "@alcove/core";
+import type { Metadata } from "@alcove/core";
+import type { AssociationTable, PartnerPayload } from "@alcove/core/testing";
 
 import { writeOutput } from "../../../src/util/dataIo";
 

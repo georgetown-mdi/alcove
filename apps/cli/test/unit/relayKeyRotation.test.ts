@@ -3,11 +3,8 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import {
-  ConnectionError,
-  deriveRelayKey,
-  relayRegistrarAuthorization,
-} from "@alcove/core";
+import { ConnectionError, deriveRelayKey } from "@alcove/core";
+import { relayRegistrarAuthorization } from "@alcove/core/testing";
 import type { RelayRegistrar } from "@alcove/core";
 
 import { loadKeyFile, saveKeyFile } from "../../src/keyFile";

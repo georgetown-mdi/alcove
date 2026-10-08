@@ -12,12 +12,9 @@ import {
   InternalConsistencyError,
   RoundSetLimitError,
   UsageError,
-} from "@alcove/core";
-import {
   DEFAULT_LINKAGE_RULE_SET,
   assertFirstRoundWithinSetMaximum,
   assertSharedSecretReadyForHandshake,
-  computeTermsHash,
   csvDelimiterRefusal,
   encodeInvitation,
   generateSigningIdentity,
@@ -27,6 +24,7 @@ import {
   sanitizeErrorForDisplay,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
+import { computeTermsHash } from "@alcove/core/testing";
 import type {
   InvitationToken,
   LinkageRuleSetReference,
@@ -87,6 +85,7 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock("@alcove/core", async (importActual) => {
   const actual = await importActual<typeof import("@alcove/core")>();
+  const { StandardizedDataset } = await import("@alcove/core/testing");
   return {
     ...actual,
     getLogger: (_name: string) => ({
@@ -131,7 +130,7 @@ vi.mock("@alcove/core", async (importActual) => {
             linkageFields: [],
             linkageKeys: [],
           },
-          dataset: new actual.StandardizedDataset([], []),
+          dataset: new StandardizedDataset([], []),
           rawRows: [],
           rowCount: 0,
         }) satisfies PreparedExchange,

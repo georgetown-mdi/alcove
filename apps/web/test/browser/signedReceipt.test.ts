@@ -5,25 +5,24 @@ import { describe, expect, test } from "vitest";
 
 import {
   computeCertificateFingerprint,
-  deriveReceiptBinder,
   generateSigningIdentity,
   parseCertificate,
   parseDualSignedRecord,
   parseSigningIdentity,
+  verifyDualSignedRecord,
+} from "@alcove/core";
+import {
+  deriveReceiptBinder,
   signReceiptContent,
   verifyCertificateSelfSignature,
-  verifyDualSignedRecord,
   verifyReceiptSignature,
-} from "@alcove/core";
+} from "@alcove/core/testing";
 
 import certVectorsRaw from "../../../../packages/core/test/vectors/signing-cert-vectors.json?raw";
 import receiptVectorsRaw from "../../../../packages/core/test/vectors/signed-receipt-vectors.json?raw";
 
-import type {
-  P256PrivateJwk,
-  SigningCertificate,
-  SigningIdentity,
-} from "@alcove/core";
+import type { SigningCertificate, SigningIdentity } from "@alcove/core";
+import type { P256PrivateJwk } from "@alcove/core/testing";
 
 // The companion to packages/core/test/records/signedReceipt.test.ts and
 // signingIdentity.test.ts: it runs the same checked-in vectors through the

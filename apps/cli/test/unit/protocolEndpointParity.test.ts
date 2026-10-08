@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import type { EndpointSourceConnectionConfig } from "@alcove/core";
+import type { EndpointSourceConnectionConfig } from "@alcove/core/testing";
 
 import type { ProtocolConnectionConfig } from "../../src/protocol";
 

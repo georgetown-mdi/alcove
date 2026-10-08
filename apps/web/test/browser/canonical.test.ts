@@ -3,11 +3,8 @@
 
 import { describe, expect, test } from "vitest";
 
-import {
-  CanonicalEncodingError,
-  canonicalBytes,
-  canonicalString,
-} from "@alcove/core";
+import { CanonicalEncodingError, canonicalString } from "@alcove/core";
+import { canonicalBytes } from "@alcove/core/testing";
 
 // The companion to packages/core/test/utils/canonical.test.ts: it runs the SAME
 // checked-in vectors through the browser build of @alcove/core in real

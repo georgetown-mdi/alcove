@@ -6,8 +6,8 @@ import {
   inferMetadata,
   inferMetadataForEveryColumn,
   isDisclosedToPartner,
-  preparePayload,
 } from "@alcove/core";
+import { preparePayload } from "@alcove/core/testing";
 
 import {
   applyDisclosure,

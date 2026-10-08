@@ -11,17 +11,19 @@ import {
   InternalConsistencyError,
   OperatorConfigError,
   PeerAbortError,
-  ProtocolRefusalError,
   ReceiptVerificationError,
   SIGNING_CERTIFICATE_VERSION,
-  StandardizationTermsError,
   UsageError,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
-  assertLocalCertificateAuthorizesAgreedIdentity,
-  assertSigningModeImplemented,
   renderedDisplayCost,
   markStatesItsOwnNextStep,
 } from "@alcove/core";
+import {
+  ProtocolRefusalError,
+  StandardizationTermsError,
+  assertLocalCertificateAuthorizesAgreedIdentity,
+  assertSigningModeImplemented,
+} from "@alcove/core/testing";
 import type { Displayable } from "@alcove/core";
 
 import {

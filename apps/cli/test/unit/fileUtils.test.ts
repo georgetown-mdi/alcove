@@ -5,9 +5,9 @@ import path from "node:path";
 import {
   getLogger,
   joinErrorCauseChain,
-  operatorSuppliedSpans,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
+import { operatorSuppliedSpans } from "@alcove/core/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {

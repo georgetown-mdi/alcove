@@ -6,8 +6,8 @@ import {
   deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
-  relayRegistrarAuthorization,
 } from "@alcove/core";
+import { relayRegistrarAuthorization } from "@alcove/core/testing";
 
 import {
   MANAGED_RELAY_REENROLLMENT_STEP,

@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Arguments } from "yargs";
 import YAML from "yaml";
-import { deriveRelayKey, relayRegistrarAuthorization } from "@alcove/core";
+import { deriveRelayKey } from "@alcove/core";
+import { relayRegistrarAuthorization } from "@alcove/core/testing";
 import type { PreparedExchange } from "@alcove/core";
 
 import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
@@ -31,6 +32,7 @@ const logged = vi.hoisted(() => ({ errors: [] as string[] }));
 
 vi.mock("@alcove/core", async (importActual) => {
   const actual = await importActual<typeof import("@alcove/core")>();
+  const { StandardizedDataset } = await import("@alcove/core/testing");
   return {
     ...actual,
     getLogger: () => ({
@@ -54,7 +56,7 @@ vi.mock("@alcove/core", async (importActual) => {
             linkageFields: [],
             linkageKeys: [],
           },
-          dataset: new actual.StandardizedDataset([], []),
+          dataset: new StandardizedDataset([], []),
           rawRows: [],
           rowCount: 0,
         }) satisfies PreparedExchange,

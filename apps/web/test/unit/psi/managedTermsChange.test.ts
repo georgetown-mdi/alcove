@@ -6,8 +6,8 @@ import {
   generateSharedSecret,
   getDefaultLinkageTerms,
   inferMetadata,
-  validateCompatibility,
 } from "@alcove/core";
+import { validateCompatibility } from "@alcove/core/testing";
 
 import {
   ManagedTermsChangeTakenOnError,

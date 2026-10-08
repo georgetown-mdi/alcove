@@ -34,10 +34,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  canonicalBytes,
   computeCertificateFingerprint,
   generateSigningIdentity,
 } from "../../dist/core.esm.js";
+import { canonicalBytes } from "../../dist/testing.esm.js";
 
 const CERTIFICATE_VERSION = "alcove-signing-cert/v3";
 const IDENTITY_VERSION = "alcove-signing-identity/v3";

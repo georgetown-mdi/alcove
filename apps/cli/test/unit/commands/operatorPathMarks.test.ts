@@ -15,18 +15,20 @@ import {
   getDefaultLinkageTerms,
   getLogger,
   inferMetadata,
-  operatorSuppliedSpans,
   sanitizeErrorForDisplay,
   serializeDualSignedRecord,
   SIGNED_RECEIPT_VERSION,
-  signReceiptContent,
 } from "@alcove/core";
+import {
+  operatorSuppliedSpans,
+  signReceiptContent,
+} from "@alcove/core/testing";
 import type {
   ConnectionEndpoint,
   ExchangeSpec,
   LinkageTerms,
-  ReceiptContent,
 } from "@alcove/core";
+import type { ReceiptContent } from "@alcove/core/testing";
 
 import {
   handler as acceptHandler,

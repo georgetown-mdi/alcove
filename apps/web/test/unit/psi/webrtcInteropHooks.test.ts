@@ -139,6 +139,7 @@ vi.mock("@openmined/psi.js/psi_wasm_web", () => ({
 }));
 vi.mock("@alcove/core", async (importOriginal) => {
   const actual = await importOriginal<typeof AlcoveCore>();
+  const { StandardizedDataset } = await import("@alcove/core/testing");
   const stubLinkageTerms: LinkageTerms = {
     version: "1.0.0",
     date: "2026-01-01",
@@ -164,7 +165,7 @@ vi.mock("@alcove/core", async (importOriginal) => {
         ({
           metadata: [],
           linkageTerms: stubLinkageTerms,
-          dataset: new actual.StandardizedDataset([], []),
+          dataset: new StandardizedDataset([], []),
           rawRows: [],
           rowCount: 0,
         }) satisfies PreparedExchange,

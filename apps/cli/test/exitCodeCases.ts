@@ -3,10 +3,10 @@ import {
   ConnectionError,
   InternalConsistencyError,
   PeerAbortError,
-  ProtocolRefusalError,
   ReceiptVerificationError,
   UsageError,
 } from "@alcove/core";
+import { ProtocolRefusalError } from "@alcove/core/testing";
 
 import { PERSISTENCE_LOSS_EXIT_CODE } from "@alcove/cli-contract";
 

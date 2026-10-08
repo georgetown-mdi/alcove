@@ -2,12 +2,12 @@ import { expect, test } from "vitest";
 
 import {
   ConnectionError,
-  FAILURE_CAUSE_KINDS,
   failureCauseFromUntrusted,
   failureCauseSentence,
   markFailureCause,
   sanitizeForDisplay,
 } from "@alcove/core";
+import { FAILURE_CAUSE_KINDS } from "@alcove/core/testing";
 import type { FailureCause } from "@alcove/core";
 
 import { buildErrorEvent } from "../../src/eventStream";

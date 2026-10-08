@@ -1,10 +1,8 @@
-import { EXCHANGE_RECORD_VERSION, buildExchangeRecord } from "@alcove/core";
+import { EXCHANGE_RECORD_VERSION } from "@alcove/core";
+import { buildExchangeRecord } from "@alcove/core/testing";
 
-import type {
-  CommittedPayload,
-  ExchangeRecord,
-  LinkageTerms,
-} from "@alcove/core";
+import type { ExchangeRecord, LinkageTerms } from "@alcove/core";
+import type { CommittedPayload } from "@alcove/core/testing";
 
 /**
  * Real exchange records for the accounting-of-disclosures suites, built through

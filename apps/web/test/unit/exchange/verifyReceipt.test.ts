@@ -5,10 +5,8 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   EXCHANGE_RECORD_VERSION,
   SIGNED_RECEIPT_VERSION,
-  buildExchangeRecord,
   computeCertificateFingerprint,
   deriveOurIdColumn,
-  firstPartyNote,
   generateSigningIdentity,
   reconstructCommittedData,
   reproductionMismatchCauses,
@@ -18,10 +16,15 @@ import {
   serializeExchangeRecord,
   serializeSigningIdentity,
   serializeVerificationKeys,
-  signReceiptContent,
   toRetainedResult,
   verifyExchangeRecord,
 } from "@alcove/core";
+
+import {
+  buildExchangeRecord,
+  firstPartyNote,
+  signReceiptContent,
+} from "@alcove/core/testing";
 
 import {
   PARTNER_SEND_SET_UNKNOWN_NOTE,
@@ -39,20 +42,23 @@ import {
 } from "@exchange/verifyReceiptModel";
 
 import type {
-  AssociationTable,
-  CanonicalValue,
-  CommittedPayload,
   DualSignedRecord,
   DualSignedRecordVerificationReport,
   ExchangeRecord,
   LinkageTerms,
   Metadata,
-  ReceiptContent,
   RecordVerificationReport,
-  SignedReceiptPartyReport,
   SigningIdentity,
   VerificationKeys,
 } from "@alcove/core";
+
+import type {
+  AssociationTable,
+  CanonicalValue,
+  CommittedPayload,
+  ReceiptContent,
+  SignedReceiptPartyReport,
+} from "@alcove/core/testing";
 
 type ExchangeRecordInputs = Parameters<typeof buildExchangeRecord>[0];
 

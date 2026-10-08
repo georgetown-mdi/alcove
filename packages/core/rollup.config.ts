@@ -30,12 +30,10 @@ function makeExternal(bundled: Set<string>) {
 export default defineConfig([
   // The published entry points build TOGETHER, with code splitting, so a module
   // more than one of them reaches exists once at run time. Built separately they
-  // would each hold their own copy, and a module holding mutable state -- the
-  // fan-out listing the testing entry's lever rewrites (src/fanOutFunctions.ts)
-  // -- would be two independent states, so the lever would rewrite a listing the
-  // main entry's code never reads. A class is the same shape of problem: the
-  // untrusted-text entry publishes JsonStructureBoundError, and two copies of it
-  // would fail an `instanceof` against a refusal the main entry threw.
+  // would each hold their own copy of every class they share: the testing entry
+  // publishes CsvRowParseError and the untrusted-text entry JsonStructureBoundError,
+  // and a second copy of either would fail an `instanceof` against a refusal the
+  // main entry threw.
   {
     input: {
       core: "src/main.ts",

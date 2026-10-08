@@ -9,10 +9,10 @@ import { createElement } from "react";
 import "@mantine/core/styles.css";
 
 import {
-  buildExchangeRecord,
   serializeExchangeRecord,
   serializeVerificationKeys,
 } from "@alcove/core";
+import { buildExchangeRecord } from "@alcove/core/testing";
 
 import { VerifyReceiptScreen } from "@exchange/VerifyReceiptScreen";
 

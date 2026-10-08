@@ -8,14 +8,11 @@ import type { Argv } from "yargs";
 import YAML from "yaml";
 
 import {
-  AGREED_TERMS_VERSION,
-  buildExchangeRecord,
   computeCertificateFingerprint,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_MAX_DISPLAY_LENGTH,
   DISPLAY_TRUNCATION_MARKER,
   EXCHANGE_RECORD_VERSION,
-  firstPartyNote,
   generateSigningIdentity,
   getDefaultLinkageTerms,
   serializeAgreedTerms,
@@ -23,21 +20,28 @@ import {
   serializeExchangeRecord,
   serializeSigningIdentity,
   serializeVerificationKeys,
-  signReceiptContent,
   SIGNED_RECEIPT_VERSION,
   UsageError,
 } from "@alcove/core";
+import {
+  AGREED_TERMS_VERSION,
+  buildExchangeRecord,
+  firstPartyNote,
+  signReceiptContent,
+} from "@alcove/core/testing";
 import type {
   AgreedTerms,
-  CommittedPayload,
   DualSignedRecord,
   DualSignedRecordVerificationReport,
-  ExchangeRecordInputs,
   LinkageTerms,
-  ReceiptContent,
   RecordVerificationReport,
-  SignedReceiptPartyReport,
 } from "@alcove/core";
+import type {
+  CommittedPayload,
+  ExchangeRecordInputs,
+  ReceiptContent,
+  SignedReceiptPartyReport,
+} from "@alcove/core/testing";
 
 import {
   RECEIPT_VERIFICATION_FAILED_EXIT_CODE,

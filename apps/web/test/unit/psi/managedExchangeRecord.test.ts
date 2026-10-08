@@ -1,14 +1,16 @@
 import {
   CSV_DELIMITER_DETECT,
-  DEFAULT_LINKAGE_KEY_SET_NAME,
   KeyFileSchema,
   assembleExchangeSpec,
-  computeTermsHash,
   connectionFromLocator,
   generateSharedSecret,
   getDefaultLinkageTerms,
   termsAsTheRunStatedThem,
 } from "@alcove/core";
+import {
+  DEFAULT_LINKAGE_KEY_SET_NAME,
+  computeTermsHash,
+} from "@alcove/core/testing";
 import { describe, expect, test } from "vitest";
 
 import { storedWorkingDirectoryUsable } from "@psi/managed/managedWorkingDirectory";

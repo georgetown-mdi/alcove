@@ -9,7 +9,7 @@ import {
 import {
   isAbortMarkerName,
   isExpectedAbortName,
-} from "../src/connection/fileSyncConnection";
+} from "../src/connection/fileSyncNames";
 import { toBase64Url, fromBase64Url, bytesEqual } from "../src/utils/crypto";
 
 const sessionKeyA = new Uint8Array(32).fill(0xa1);

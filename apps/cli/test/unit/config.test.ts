@@ -13,10 +13,8 @@ import {
   MAX_NAME_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_NESTING_DEPTH,
-  NAME_SHAPE_MESSAGE,
   NestingDepthExceededError,
   OperatorConfigError,
-  operatorSuppliedSpans,
   parseExchangeSpec,
   quoteTermsValue,
   renderedDisplayCost,
@@ -25,9 +23,13 @@ import {
   snakeizeKeys,
   StandardizedField,
   UsageError,
-  validateCompatibility,
 } from "@alcove/core";
-import { controlCharacterMarker } from "@alcove/core/testing";
+import {
+  NAME_SHAPE_MESSAGE,
+  operatorSuppliedSpans,
+  validateCompatibility,
+  controlCharacterMarker,
+} from "@alcove/core/testing";
 import {
   applyConnectionOverrides,
   assertNoConfigPlaceholder,

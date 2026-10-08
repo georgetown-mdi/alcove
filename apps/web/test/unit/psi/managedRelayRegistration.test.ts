@@ -3,8 +3,10 @@ import {
   deriveRelayKey,
   generateSharedSecret,
   getDefaultLinkageTerms,
-  relayRegistrarAuthorization,
 } from "@alcove/core";
+
+import { relayRegistrarAuthorization } from "@alcove/core/testing";
+
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
