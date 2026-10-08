@@ -774,18 +774,20 @@ The receive ceiling](spec/PROTOCOL.md#the-receive-ceiling).
 #### Partner data that does not follow the protocol
 
 This browser refuses partner data that does not follow the exchange
-protocol -- a malformed or out-of-order PSI setup, an unreadable response, a
-malformed terms message or payload, or another protocol version. The run is
-not recorded as a connection problem, since the partner's run sends the same
-data at every window: it is a state of its own whose remedy is the partner's.
-The run screen, the next visit, and the between-visit notification each say
-that the partner's data did not follow the exchange protocol and to ask the
-partner to check that they run a current version of Alcove, and no retry is
-offered. The run screen also shows what was refused. The refusal can come
-after sets of this party's were sent, so the run history states the same
-uncertain disclosure line as above. A one-shot exchange refused this way
-offers no retry either. An entry an earlier build wrote for the same refusal
-records a connection problem and reads as one.
+protocol -- a malformed or out-of-order PSI setup, an unreadable response or
+payload, a terms message missing a required field, or another protocol
+version. The run is not recorded as a connection problem, since the partner's
+run sends the same data at every window: it is a state of its own, and no
+retry is offered. The run screen says that the partner's data did not follow
+the exchange protocol and to ask the partner to check that they run a current
+version of Alcove, and shows what was refused. Where the two parties run
+different protocol versions it says so instead, and names which of them runs
+the older one where it can tell. The next visit and the between-visit
+notification cannot tell the two causes apart, so they say to check with the
+partner which version each runs, and that whoever runs the older one updates
+it. The refusal can come after sets of this party's were sent, so the run
+history states the same uncertain disclosure line as above. A one-shot
+exchange refused this way offers no retry either.
 
 #### An input that has not changed since the last run
 

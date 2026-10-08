@@ -29,7 +29,6 @@ import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   PARTNER_PROTOCOL_REFUSAL_PROBLEM,
-  PARTNER_PROTOCOL_REFUSAL_REMEDY,
   PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
@@ -38,6 +37,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
@@ -336,8 +336,8 @@ function failureNotice(
       title: NOTICE_TITLES["partner-protocol-refusal"],
       body:
         `${name} stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}, and ` +
-        `every later window stops the same way until your partner's run ` +
-        `changes. ${PARTNER_PROTOCOL_REFUSAL_REMEDY}`,
+        `every later window stops the same way. ` +
+        RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
       tag: noticeTag(record.id, "partner-protocol-refusal"),
     };
   if (tier === "too-large") {

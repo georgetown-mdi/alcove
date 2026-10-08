@@ -375,14 +375,14 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * partner input refuses identically at every window. The partner's refusal of
  * this exchange's terms at the terms exchange ({@link termsDifferenceRefusedBy}
  * `"partner"`) records `partner-refused-terms`: the same terms refuse
- * identically until the two parties agree them. This browser's refusal of
- * partner data that did not follow the exchange protocol
- * ({@link isPartnerProtocolRefusal}) records `partner-protocol-refusal`: the
- * same partner run sends the same data at every window. `aborted` then records
- * `cancelled`. A trust-boundary failure ({@link isTrustBoundaryFailure} of
- * {@link classifyFailure}) before the data exchange began records `auth`.
- * Everything else -- including any of these once the data exchange began --
- * records `transport`.
+ * identically until the two parties agree them. `aborted` then records
+ * `cancelled`, before this party's refusal of what the partner sent
+ * ({@link isPartnerProtocolRefusal}), which records
+ * `partner-protocol-refusal`: a stopped run's teardown can cut a frame short
+ * and raise that refusal. A trust-boundary failure
+ * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
+ * exchange began records `auth`. Everything else -- including any of these
+ * once the data exchange began -- records `transport`.
  *
  * `terms-shortfall`, `auth`, and `missed` require `!dataExchangeStarted`: each
  * tells the operator nothing left this device. Every outcome here is `failed`
@@ -435,9 +435,9 @@ export function rerunFailureLastRun(
     };
   if (termsDifferenceRefusedBy(error) === "partner")
     return failedRun(at, "failed", "partner-refused-terms");
+  if (aborted) return failedRun(at, "failed", "cancelled");
   if (isPartnerProtocolRefusal(error))
     return failedRun(at, "failed", "partner-protocol-refusal");
-  if (aborted) return failedRun(at, "failed", "cancelled");
   if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
   return failedRun(at, "failed", "transport");

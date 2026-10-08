@@ -526,6 +526,35 @@ export class ProtocolRefusalError extends Error {
 }
 
 /**
+ * Which party runs the older version in a version mismatch: `"unknown"` where
+ * the partner's version cannot be ordered against this build's.
+ */
+export type OlderVersionSide = "this-party" | "partner" | "unknown";
+
+/**
+ * A {@link ProtocolRefusalError} raised where this party refuses what the
+ * partner sent as not following the exchange protocol: a frame, payload, PSI
+ * setup or response it cannot read or that breaks a protocol rule, a required
+ * field missing, or another protocol or wire-format version. Any other refusal
+ * -- the partner's own abort, a refusal over the linkage terms -- is a plain
+ * {@link ProtocolRefusalError}, as is a refusal where the fault could be either
+ * party's.
+ */
+export class PartnerProtocolRefusalError extends ProtocolRefusalError {
+  /** Set for a version mismatch only: which party runs the older version. */
+  readonly olderVersion: OlderVersionSide | undefined;
+
+  constructor(
+    message: string,
+    options?: ErrorOptions & { olderVersion?: OlderVersionSide | undefined },
+  ) {
+    super(message, options);
+    this.name = "PartnerProtocolRefusalError";
+    this.olderVersion = options?.olderVersion;
+  }
+}
+
+/**
  * A publish torn by a session drop whose outcome the transport cannot determine:
  * the operation rejects, and whether the peer holds the file is unknown
  * (docs/spec/CHANNEL_SECURITY.md). {@link FileSyncMessageLoop}'s send path, which

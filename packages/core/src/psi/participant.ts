@@ -22,7 +22,7 @@ import {
 } from "../utils/partnerIndices";
 import {
   InternalConsistencyError,
-  ProtocolRefusalError,
+  PartnerProtocolRefusalError,
   RoundSetLimitError,
 } from "../errors";
 import { sendAbort } from "../protocolSetup";
@@ -469,12 +469,12 @@ export class PSIParticipant {
     try {
       declared = scan();
     } catch {
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: malformed inbound PSI ${kind} frame`,
       );
     }
     if (declared > ceiling)
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: inbound PSI ${kind} declares more than ` +
           `${ceiling} encrypted element(s)`,
       );
@@ -483,7 +483,7 @@ export class PSIParticipant {
 
   private requestAnswered(): SentRequest {
     if (this.sentRequest === undefined)
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: inbound PSI response with no request ` +
           "of this party's awaiting one",
       );
@@ -494,7 +494,7 @@ export class PSIParticipant {
     const request = this.requestAnswered();
     this.sentRequest = undefined;
     if (responseBytes.byteLength > request.bytes)
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `${this.id} protocol error: inbound PSI response is ` +
           `${responseBytes.byteLength} bytes, over the ${request.bytes} bytes ` +
           "of the request this party sent",

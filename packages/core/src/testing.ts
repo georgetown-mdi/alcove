@@ -141,6 +141,7 @@ export { controlCharacterMarker } from "./utils/sanitizeForDisplay.js";
 // that gains a production caller there moves to the main entry point.
 export {
   InvitationTermDivergenceError,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
   StandardizationTermsError,
   UnknownStandardizationFunctionError,

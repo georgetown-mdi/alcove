@@ -56,9 +56,12 @@ export type {
 export {
   classifyFailure,
   firstLinkBehindTransportWraps,
+  isPartnerProtocolRefusal,
   isTrustBoundaryFailure,
+  olderVersionOf,
 } from "./failureClass";
 export type { FailureClass } from "./failureClass";
+export type { OlderVersionSide } from "./errors";
 export { ProcessState } from "./psi/participant";
 export type {
   PsiOperation,
@@ -420,7 +423,6 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
-  isPartnerProtocolRefusal,
   termsDifferenceRefusedBy,
 } from "./protocolSetup";
 export type { TermsChange, TermsDifferenceRefusedBy } from "./protocolSetup";

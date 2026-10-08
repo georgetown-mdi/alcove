@@ -14,6 +14,7 @@ import type {
 import {
   isPsiLibraryFailure,
   ConnectionError,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
 } from "../../src/errors";
 import {
@@ -238,7 +239,7 @@ test("a response refused as the partner's stays a protocol refusal after the wor
     const refused = await rejection(
       engine.computeAssociationTable(new Uint8Array([0x0b])),
     );
-    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
     expect(refused?.message).toBe(
       "receiver protocol error: malformed inbound PSI response frame",
     );

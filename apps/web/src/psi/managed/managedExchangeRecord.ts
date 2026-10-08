@@ -258,10 +258,10 @@ export type ManagedExchangeRunOutcome =
  * stop (the partner's abort named linkage terms that differ from its own) is
  * met at the terms exchange, before any linkage key or data moves, and is
  * benign too: its remedy is terms agreed with the partner through a terms
- * update. A `"partner-protocol-refusal"` stop (this browser refused partner
- * data that did not follow the exchange protocol) can be met at any point after
- * the handshake, after sets of this party's may have moved, and is benign the
- * same way: its remedy is the partner's, a current version of Alcove. */
+ * update. A `"partner-protocol-refusal"` stop (this party refused what the
+ * partner sent as not following the exchange protocol) can be met at any point
+ * after the handshake, after sets of this party's may have moved, and is
+ * benign too. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"

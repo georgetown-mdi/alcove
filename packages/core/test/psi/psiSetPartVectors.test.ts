@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 
 import { createMessagePipe } from "../../src/connection/messageConnection";
-import { ProtocolRefusalError } from "../../src/errors";
+import { PartnerProtocolRefusalError } from "../../src/errors";
 import {
   PSI_SET_PART_HEADER_BYTES,
   psiSetParts,
@@ -71,7 +71,7 @@ test.each(vectors.refusals.map((v) => [v.name, v] as const))(
   "%s is refused",
   async (_name, vector) => {
     await expect(received(vector.partsHex, vector.maxSetBytes)).rejects.toThrow(
-      new ProtocolRefusalError(
+      new PartnerProtocolRefusalError(
         `client protocol error: inbound PSI response ${vector.refusal}`,
       ),
     );

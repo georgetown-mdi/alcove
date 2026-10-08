@@ -19,9 +19,9 @@
  * advances or anticipates a write the runner has not made.
  */
 
-import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
+import { MAX_WEBRTC_FRAME_BYTES, olderVersionOf } from "@alcove/core";
 
-import type { TermsDifferenceRefusedBy } from "@alcove/core";
+import type { OlderVersionSide, TermsDifferenceRefusedBy } from "@alcove/core";
 
 import type {
   ManagedExchangeSchedule,
@@ -231,19 +231,49 @@ export const PARTNER_REFUSED_TERMS_REMEDY =
   "and send it to them to apply, or apply an update they make with theirs, " +
   "then run the exchange again.";
 
-/** The title over a run stopped because this browser refused partner data that
- * did not follow the exchange protocol; shared by the one-shot exchange, a
- * managed run's alert, and the between-visit notification. */
+/** The title over a run stopped because this party refused what its partner
+ * sent as not following the exchange protocol (`isPartnerProtocolRefusal`).
+ * The partner's run sends the same at every attempt until a party's run or
+ * version changes, so no surface offers a retry for it. */
 export const PARTNER_PROTOCOL_REFUSAL_TITLE =
   "Your partner's data did not follow the exchange protocol";
 
-/** What stopped a run that refused its partner's data, completing a sentence
- * that ends "stopped because". */
+/** What stopped such a run, completing a sentence that ends "stopped
+ * because". */
 export const PARTNER_PROTOCOL_REFUSAL_PROBLEM =
   "your partner's data did not follow the exchange protocol";
 
-/** The remedy for a refusal of partner data that did not follow the exchange
- * protocol, in the words the one-shot exchange, the next-visit alert, and the
- * between-visit notification all state it in. */
-export const PARTNER_PROTOCOL_REFUSAL_REMEDY =
-  "Ask your partner to check that they run a current version of Alcove.";
+/** The remedy for such a run read back from the record, which does not hold
+ * whether the refusal was over a version mismatch. */
+export const RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY =
+  "Check with your partner which version of Alcove each of you runs: " +
+  "whoever runs the older one updates it.";
+
+const OLDER_VERSION_REMEDY: Record<OlderVersionSide, string> = {
+  partner: "Your partner runs the older version: ask them to update Alcove.",
+  "this-party": "This page runs the older version: reload it to update Alcove.",
+  unknown: "Whichever of you runs the older version updates Alcove.",
+};
+
+/** The copy for such a run read off the live error: a version mismatch names
+ * which party runs the older version where the refusal could tell. `problem`
+ * completes a sentence that ends "stopped because". */
+export function partnerProtocolRefusalCopy(error: unknown): {
+  title: string;
+  problem: string;
+  remedy: string;
+} {
+  const olderVersion = olderVersionOf(error);
+  if (olderVersion === undefined)
+    return {
+      title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+      problem: PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+      remedy:
+        "Ask your partner to check that they run a current version of Alcove.",
+    };
+  return {
+    title: "You and your partner run different versions of Alcove",
+    problem: "you and your partner run different versions of Alcove",
+    remedy: OLDER_VERSION_REMEDY[olderVersion],
+  };
+}

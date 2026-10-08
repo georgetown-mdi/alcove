@@ -39,7 +39,7 @@ import { singleIssueArray } from "./utils/singleIssueArray.js";
 import { loneSurrogateIndex } from "./utils/wellFormedString.js";
 import {
   InternalConsistencyError,
-  ProtocolRefusalError,
+  PartnerProtocolRefusalError,
   UsageError,
   isTransportPublishIndeterminate,
   ConnectionError,
@@ -955,7 +955,7 @@ export function buildOutputTable(
     ["rows", partnerPayload.rows],
   ] as const) {
     if (!Array.isArray(collection)) {
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `partner payload ${field} is not an array: ` +
           "refusing to read entries from a value that holds none",
       );
@@ -963,14 +963,14 @@ export function buildOutputTable(
   }
 
   if (!partnerPayload.columns.every((column) => typeof column === "string")) {
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "a partner payload column name is not a string: " +
         "refusing to write a header of another shape into the result",
     );
   }
 
   if (partnerPayload.rowIndices.length !== partnerPayload.rows.length) {
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "partner payload rowIndices and rows have different lengths: " +
         `${partnerPayload.rowIndices.length} vs ${partnerPayload.rows.length}`,
     );
@@ -984,13 +984,13 @@ export function buildOutputTable(
   // framing. isPayloadCell is the wire schema's own cell predicate.
   for (const row of partnerPayload.rows) {
     if (!Array.isArray(row)) {
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         "a partner payload row is not an array of cells: " +
           "refusing to read cell values from a non-row value",
       );
     }
     if (!row.every(isPayloadCell)) {
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         "a partner payload cell is neither a string nor null: " +
           "refusing to write a value of another shape into the result",
       );
@@ -999,7 +999,7 @@ export function buildOutputTable(
 
   const columnCount = partnerPayload.columns.length;
   if (!hasOneCellPerColumn(columnCount, partnerPayload.rows)) {
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "partner payload rows do not have one cell per declared column: " +
         `expected ${columnCount} cell${columnCount === 1 ? "" : "s"} per row`,
     );
@@ -1053,7 +1053,7 @@ export function buildOutputTable(
   // invariant keeps a check of its own rather than resting on that call
   // path.
   if (theirIdxToPayloadPos.size !== partnerPayload.rowIndices.length) {
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "partner payload rowIndices contains duplicate indices",
     );
   }
@@ -1068,7 +1068,7 @@ export function buildOutputTable(
         missingSeen.setIfAbsent(idx, true) === undefined,
     );
     if (missing.length > 0) {
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         "partner payload is missing rows for association table indices: " +
           missing.join(", "),
       );

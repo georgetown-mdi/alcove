@@ -10,7 +10,7 @@ import { countDeclaredPsiElements } from "../connection/psiElementScan";
 import {
   InternalConsistencyError,
   markPsiLibraryFailure,
-  ProtocolRefusalError,
+  PartnerProtocolRefusalError,
 } from "../errors";
 import { DistinctValues } from "../utils/distinctValues";
 import {
@@ -791,7 +791,7 @@ export class InProcessPsiEngine implements PsiEngine {
           Number.MAX_SAFE_INTEGER,
         );
       } catch {
-        throw new ProtocolRefusalError(
+        throw new PartnerProtocolRefusalError(
           `${this.id} protocol error: malformed inbound PSI response frame`,
         );
       }

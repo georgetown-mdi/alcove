@@ -202,7 +202,7 @@ function tierStatus(
     case "partner-refused-terms":
       return `Last run stopped: your partner's run refused your linkage terms (${at}); agree the terms through a terms update`;
     case "partner-protocol-refusal":
-      return `Last run stopped: your partner's data did not follow the exchange protocol (${at}); ask your partner to check their version of Alcove`;
+      return `Last run stopped: your partner's data did not follow the exchange protocol (${at}); check your Alcove versions with your partner`;
     case "handed-off":
       // The row already names the hand-off and its date beside this line, so the
       // status says what the run did rather than repeating the state.

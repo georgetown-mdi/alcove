@@ -6,10 +6,12 @@ import {
   AuthenticationError,
   ConnectionError,
   InternalConsistencyError,
+  PartnerProtocolRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
   UsageError,
 } from "./errors";
+import type { OlderVersionSide } from "./errors";
 import { ReceiptVerificationError } from "./records/signedReceipt";
 import { MAX_ERROR_CAUSE_DEPTH } from "./utils/sanitizeErrorForDisplay";
 
@@ -88,6 +90,28 @@ export function isTrustBoundaryFailure(failureClass: FailureClass): boolean {
     failureClass === "receipt-not-verified" ||
     failureClass === "trust-check-failed"
   );
+}
+
+/**
+ * Whether `err` is this party's refusal of what the partner sent as not
+ * following the exchange protocol: {@link firstLinkBehindTransportWraps} of it
+ * is a {@link PartnerProtocolRefusalError}.
+ */
+export function isPartnerProtocolRefusal(err: unknown): boolean {
+  return (
+    firstLinkBehindTransportWraps(err) instanceof PartnerProtocolRefusalError
+  );
+}
+
+/**
+ * Which party runs the older version where `err` is a refusal over a version
+ * mismatch ({@link isPartnerProtocolRefusal}), else `undefined`.
+ */
+export function olderVersionOf(err: unknown): OlderVersionSide | undefined {
+  const link = firstLinkBehindTransportWraps(err);
+  return link instanceof PartnerProtocolRefusalError
+    ? link.olderVersion
+    : undefined;
 }
 
 /**

@@ -37,8 +37,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partner-refused-terms"` -- the partner's run refused this exchange's
  *   linkage terms as differing from its own, before any key or data moved
  *   (terms agreed with the partner through a terms update).
- * - `"partner-protocol-refusal"` -- this browser refused partner data that did
- *   not follow the exchange protocol (the partner checks their version).
+ * - `"partner-protocol-refusal"` -- this party refused what the partner sent
+ *   as not following the exchange protocol (the two parties compare their
+ *   versions of Alcove).
  * - `"handed-off"` -- an export handed this copy off (none here).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).

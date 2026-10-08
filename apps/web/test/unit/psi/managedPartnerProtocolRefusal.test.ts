@@ -1,12 +1,13 @@
 import {
   ConnectionError,
+  TermsChangeRefusedError,
   generateSharedSecret,
   getDefaultLinkageTerms,
 } from "@alcove/core";
 
 import {
   PROTOCOL_VERSION,
-  ProtocolRefusalError,
+  PartnerProtocolRefusalError,
   createMessagePipe,
   exchangeTerms,
 } from "@alcove/core/testing";
@@ -20,8 +21,8 @@ import {
   parseManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
 import {
-  PARTNER_PROTOCOL_REFUSAL_REMEDY,
   PARTNER_PROTOCOL_REFUSAL_TITLE,
+  RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
 } from "@psi/managed/managedFailureCopy";
 import {
   benignRerunOutcome,
@@ -41,17 +42,11 @@ import { deriveManagedFailureTier } from "@psi/managed/managedFailureTiers";
 import { failureFor } from "@exchange/useInviterExchange";
 import { savedExchangeRow } from "@recurring/savedExchangesModel";
 
+import type { LinkageTerms, OlderVersionSide } from "@alcove/core";
 import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
-import type { LinkageTerms } from "@alcove/core";
-
-// A run that refused its partner's data as not following the exchange
-// protocol: the partner's run sends the same data at every attempt, so the
-// one-shot alert offers no retry, and a managed run records a kind of its own
-// that the next visit, the notification, the list row, and the run history
-// state rather than a connection problem.
 
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 const RUN_AT = "2026-07-14T09:00:00.000Z";
@@ -102,7 +97,7 @@ async function partnerTermsAbort(): Promise<Error> {
 /** Each refusal as it reaches a surface: bare from the PSI engine, behind the
  * transport wrap the message bridge adds, and from the terms exchange. */
 async function refusals(): Promise<Array<[string, Error]>> {
-  const setup = new ProtocolRefusalError(SETUP_REFUSAL_MESSAGE);
+  const setup = new PartnerProtocolRefusalError(SETUP_REFUSAL_MESSAGE);
   return [
     ["a PSI setup", setup],
     [
@@ -139,15 +134,48 @@ const stamped: ManagedExchangeLastRun = {
 
 const ONE_SHOT_MESSAGE =
   "The exchange stopped because your partner's data did not follow the " +
-  "exchange protocol. Running it again stops the same way until your " +
-  "partner's run changes. Ask your partner to check that they run a current " +
-  "version of Alcove.";
+  "exchange protocol, and running it again stops the same way. Ask your " +
+  "partner to check that they run a current version of Alcove.";
 
 const MANAGED_MESSAGE =
   "The last run stopped because your partner's data did not follow the " +
-  "exchange protocol. Running it again stops the same way until your " +
-  "partner's run changes. Ask your partner to check that they run a current " +
-  "version of Alcove.";
+  "exchange protocol, and running it again stops the same way. Ask your " +
+  "partner to check that they run a current version of Alcove.";
+
+const RECORDED_MESSAGE =
+  "The last run stopped because your partner's data did not follow the " +
+  "exchange protocol, and running it again stops the same way. Check with " +
+  "your partner which version of Alcove each of you runs: whoever runs the " +
+  "older one updates it.";
+
+const VERSION_MISMATCH_TITLE =
+  "You and your partner run different versions of Alcove";
+
+const VERSION_MISMATCH_REMEDY: Record<OlderVersionSide, string> = {
+  partner: "Your partner runs the older version: ask them to update Alcove.",
+  "this-party": "This page runs the older version: reload it to update Alcove.",
+  unknown: "Whichever of you runs the older version updates Alcove.",
+};
+
+/** The responder's refusal of an initiator advertising `advertised`. */
+async function versionMismatch(advertised: unknown): Promise<Error> {
+  const [initiatorConn, responderConn] = createMessagePipe();
+  const responder = exchangeTerms(responderConn, "responder", terms, 1);
+  await initiatorConn.send({
+    linkageTerms: terms,
+    recordCount: 1,
+    receiveCeiling: 1,
+    protocolVersion: advertised,
+  });
+  await initiatorConn.receive();
+  return (await responder.catch((error: unknown) => error)) as Error;
+}
+
+const versionMismatches: ReadonlyArray<[unknown, OlderVersionSide]> = [
+  [PROTOCOL_VERSION - 1, "partner"],
+  [PROTOCOL_VERSION + 1, "this-party"],
+  ["2", "unknown"],
+];
 
 describe("a one-shot exchange that refused its partner's data", () => {
   test.each(["inviter", "acceptor"] as const)(
@@ -176,9 +204,38 @@ describe("a one-shot exchange that refused its partner's data", () => {
   test("shows what was refused under the label", () => {
     const failure = failureFor(
       "exchange",
-      new ProtocolRefusalError(SETUP_REFUSAL_MESSAGE),
+      new PartnerProtocolRefusalError(SETUP_REFUSAL_MESSAGE),
     );
     expect(failure.reportedCause).toBe(SETUP_REFUSAL_MESSAGE);
+  });
+
+  test("a version mismatch names which party runs the older version, or that the versions differ", async () => {
+    for (const [advertised, older] of versionMismatches) {
+      const failure = failureFor("exchange", await versionMismatch(advertised));
+      expect(failure).toMatchObject({
+        category: "config",
+        title: VERSION_MISMATCH_TITLE,
+        message:
+          "The exchange stopped because you and your partner run different " +
+          "versions of Alcove, and running it again stops the same way. " +
+          VERSION_MISMATCH_REMEDY[older],
+        retry: "withheld",
+        reportedCause: expect.stringContaining("incompatible Alcove version"),
+      });
+    }
+  });
+
+  test("a terms change this party did not take on keeps its own alert", () => {
+    const failure = failureFor(
+      "exchange",
+      new TermsChangeRefusedError("linkage terms are incompatible", {
+        received: undefined,
+        sent: undefined,
+        partnerDeduplicate: undefined,
+        otherTerms: ["algorithm"],
+      }),
+    );
+    expect(failure.title).not.toBe(PARTNER_PROTOCOL_REFUSAL_TITLE);
   });
 
   test("the partner's own abort at the terms exchange keeps the retryable alert", async () => {
@@ -207,6 +264,29 @@ describe("a managed exchange that refused its partner's data", () => {
       }
   });
 
+  test("a run the operator stopped records cancelled even where its teardown raised the refusal", async () => {
+    for (const [, refusal] of await refusals())
+      expect(
+        rerunFailureLastRun(refusal, Date.parse(RUN_AT), true, true),
+      ).toEqual({ at: RUN_AT, outcome: "failed", failureKind: "cancelled" });
+  });
+
+  test("a terms change this party did not take on keeps its own kind", () => {
+    const refusal = new TermsChangeRefusedError(
+      "linkage terms are incompatible",
+      {
+        received: undefined,
+        sent: undefined,
+        partnerDeduplicate: undefined,
+        otherTerms: ["algorithm"],
+      },
+    );
+    expect(benignRerunOutcome(refusal, true)).toBeUndefined();
+    expect(
+      rerunFailureLastRun(refusal, Date.parse(RUN_AT), false, true),
+    ).toEqual({ at: RUN_AT, outcome: "failed", failureKind: "terms-change" });
+  });
+
   test("the partner's own abort at the terms exchange keeps the transport kind", async () => {
     const abort = await partnerTermsAbort();
     expect(rerunFailureLastRun(abort, Date.parse(RUN_AT), false, true)).toEqual(
@@ -216,7 +296,7 @@ describe("a managed exchange that refused its partner's data", () => {
   });
 
   test("a live launch and the next visit state the refusal and its step, with no retry", () => {
-    const refusal = new ProtocolRefusalError(SETUP_REFUSAL_MESSAGE);
+    const refusal = new PartnerProtocolRefusalError(SETUP_REFUSAL_MESSAGE);
     const live = classifyManagedRunFailure(
       refusal,
       { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
@@ -229,12 +309,15 @@ describe("a managed exchange that refused its partner's data", () => {
       undefined,
       NOW,
     );
-    for (const failure of [live, recorded]) {
+    for (const [failure, message] of [
+      [live, MANAGED_MESSAGE],
+      [recorded, RECORDED_MESSAGE],
+    ] as const) {
       if (failure === undefined || failure.kind === "handed-off")
         throw new Error("expected the partner-protocol-refusal alert");
       expect(failure.kind).toBe("partner-protocol-refusal");
       expect(failure.title).toBe(PARTNER_PROTOCOL_REFUSAL_TITLE);
-      expect(failure.message).toBe(MANAGED_MESSAGE);
+      expect(failure.message).toBe(message);
       expect(managedRunRetryable(failure)).toBe(false);
     }
     expect(live.kind !== "handed-off" && live.reportedCause).toBe(
@@ -245,6 +328,26 @@ describe("a managed exchange that refused its partner's data", () => {
         recorded.kind !== "handed-off" &&
         recorded.reportedCause,
     ).toBeUndefined();
+  });
+
+  test("a live launch refused over a version mismatch names which party runs the older version", async () => {
+    for (const [advertised, older] of versionMismatches) {
+      const live = classifyManagedRunFailure(
+        await versionMismatch(advertised),
+        { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
+        undefined,
+        NOW,
+        true,
+      );
+      expect(live).toMatchObject({
+        kind: "partner-protocol-refusal",
+        title: VERSION_MISMATCH_TITLE,
+        message:
+          "The last run stopped because you and your partner run different " +
+          "versions of Alcove, and running it again stops the same way. " +
+          VERSION_MISMATCH_REMEDY[older],
+      });
+    }
   });
 
   test("an unattended run's notification, list row, and history name the state", () => {
@@ -262,9 +365,11 @@ describe("a managed exchange that refused its partner's data", () => {
     expect(notice?.kind).toBe("partner-protocol-refusal");
     expect(notice?.title).toBe(PARTNER_PROTOCOL_REFUSAL_TITLE);
     expect(notice?.body).toContain("every later window stops the same way");
-    expect(notice?.body.endsWith(PARTNER_PROTOCOL_REFUSAL_REMEDY)).toBe(true);
+    expect(
+      notice?.body.endsWith(RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY),
+    ).toBe(true);
     expect(savedExchangeRow(stored, undefined, NOW).status).toMatch(
-      /^Last run stopped: your partner's data did not follow the exchange protocol \(.*\); ask your partner to check their version of Alcove$/,
+      /^Last run stopped: your partner's data did not follow the exchange protocol \(.*\); check your Alcove versions with your partner$/,
     );
     const [entry] = runHistoryEntries({ lastRun: stamped });
     expect(entry.failure).toBe(

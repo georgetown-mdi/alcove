@@ -74,7 +74,7 @@ import {
 } from "../linkageTermsPolicy";
 import {
   InternalConsistencyError,
-  ProtocolRefusalError,
+  PartnerProtocolRefusalError,
   UsageError,
   ConnectionError,
   markStatesItsOwnNextStep,
@@ -3239,7 +3239,7 @@ export function encodeInt32LE(values: ReadonlyArray<number>): Uint8Array {
 /** @internal exported for the wire-message test. */
 export function decodeInt32LE(bytes: Uint8Array): Int32Array {
   if (bytes.byteLength % 4 !== 0)
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "protocol error: single-pass distinct-value index table is not a whole " +
         "number of int32s",
     );
@@ -3302,20 +3302,20 @@ export function decodeSinglePassReply(bytes: Uint8Array): {
   distinctValueIndices: Int32Array;
 } {
   if (!(bytes instanceof Uint8Array))
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "protocol error: single-pass reply is not a binary frame",
     );
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 0;
   const readSlice = (what: string): Uint8Array => {
     if (offset + 4 > bytes.byteLength)
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `protocol error: single-pass reply truncated reading ${what} length`,
       );
     const len = view.getUint32(offset, true);
     offset += 4;
     if (offset + len > bytes.byteLength)
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         `protocol error: single-pass reply truncated reading ${what}`,
       );
     const slice = bytes.subarray(offset, offset + len);
@@ -3325,7 +3325,7 @@ export function decodeSinglePassReply(bytes: Uint8Array): {
   const setup = readSlice("setup");
   const response = readSlice("response");
   if (offset + 4 > bytes.byteLength)
-    throw new ProtocolRefusalError(
+    throw new PartnerProtocolRefusalError(
       "protocol error: single-pass reply truncated reading record count",
     );
   const numRecords = view.getUint32(offset, true);

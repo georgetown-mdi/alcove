@@ -73,9 +73,6 @@ import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
 import { tooLargeReadingOf } from "@psi/managed/managedRun";
 
 import {
-  PARTNER_PROTOCOL_REFUSAL_PROBLEM,
-  PARTNER_PROTOCOL_REFUSAL_REMEDY,
-  PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
@@ -84,6 +81,7 @@ import {
   PARTNER_SET_TOO_LARGE_TITLE,
   TERMS_DIFFERENCE_PROBLEM,
   TERMS_DIFFERENCE_TITLE,
+  partnerProtocolRefusalCopy,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -527,20 +525,20 @@ function failureContentFor(
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };
-  // Partner data this browser refused as not following the exchange protocol,
-  // with what was refused in the labelled block. Classified `config`: the
-  // partner's run sends the same data however many times this one runs.
-  if (isPartnerProtocolRefusal(error))
+  // What was refused is shown in the labelled block; why no retry is offered:
+  // PARTNER_PROTOCOL_REFUSAL_TITLE.
+  if (isPartnerProtocolRefusal(error)) {
+    const copy = partnerProtocolRefusalCopy(error);
     return {
       category: "config",
-      title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+      title: copy.title,
       message:
-        `The exchange stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}. ` +
-        "Running it again stops the same way until your partner's run " +
-        `changes. ${PARTNER_PROTOCOL_REFUSAL_REMEDY}`,
+        `The exchange stopped because ${copy.problem}, and running it again ` +
+        `stops the same way. ${copy.remedy}`,
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };
+  }
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
   // count that could not be taken. The message is fixed copy with counts, and

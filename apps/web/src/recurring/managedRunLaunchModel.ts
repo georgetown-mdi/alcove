@@ -20,7 +20,6 @@ import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
   PARTNER_PROTOCOL_REFUSAL_PROBLEM,
-  PARTNER_PROTOCOL_REFUSAL_REMEDY,
   PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
@@ -29,6 +28,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
   TERMS_DIFFERENCE_PROBLEM,
@@ -37,6 +37,7 @@ import {
   TOO_LARGE_REMEDY,
   TOO_LARGE_SET_SOURCE,
   UNEXPLAINED_FAILURE_TITLE,
+  partnerProtocolRefusalCopy,
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
@@ -98,10 +99,9 @@ export {
  *   exchange sends is over the most values the partner can receive, or the
  *   partner's set is larger than this browser can match, and the same files
  *   refuse identically every time. Not `"retry"`.
- * - `"ask-partner"` -- the partner must fix a cause on their side: their run
- *   refused to send its set and reported why, or sent data that did not follow
- *   the exchange protocol, and it fails identically every time. Not
- *   `"retry"`.
+ * - `"ask-partner"` -- the cause is the partner's or is settled with them:
+ *   their run refused to send its set and reported why, or this party refused
+ *   what their run sent, and it fails identically every time. Not `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
   | "reinvite"
@@ -590,20 +590,33 @@ const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailureAlert = {
   recovery: "none",
 };
 
-/** The benign state of a run stopped because this browser refused partner
- * data that did not follow the exchange protocol. The same copy as the
- * one-shot exchange's alert, so a live launch and the record read back state
- * the same refusal. Not the retry state -- the partner's run sends the same
- * data at every window. */
-const PARTNER_PROTOCOL_REFUSAL_FAILURE: ManagedRunFailureAlert = {
-  kind: "partner-protocol-refusal",
-  title: PARTNER_PROTOCOL_REFUSAL_TITLE,
-  message:
-    `The last run stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}. ` +
-    "Running it again stops the same way until your partner's run changes. " +
-    PARTNER_PROTOCOL_REFUSAL_REMEDY,
-  recovery: "ask-partner",
-};
+/** The benign state of a run stopped because this party refused what its
+ * partner sent ({@link PARTNER_PROTOCOL_REFUSAL_TITLE}), in `copy`: a live
+ * launch's read off its error ({@link partnerProtocolRefusalCopy}), or the
+ * record's ({@link RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE}). */
+function partnerProtocolRefusalFailure(copy: {
+  title: string;
+  problem: string;
+  remedy: string;
+}): ManagedRunFailureAlert {
+  return {
+    kind: "partner-protocol-refusal",
+    title: copy.title,
+    message:
+      `The last run stopped because ${copy.problem}, and running it again ` +
+      `stops the same way. ${copy.remedy}`,
+    recovery: "ask-partner",
+  };
+}
+
+/** {@link partnerProtocolRefusalFailure} read back from the record. */
+const RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE = partnerProtocolRefusalFailure(
+  {
+    title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+    problem: PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+    remedy: RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  },
+);
 
 /** The state of a run that stopped before connecting because its relay's
  * registrar did not confirm the registration the record held as pending. The
@@ -779,7 +792,7 @@ export function managedRunTierFailure(
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
     case "partner-protocol-refusal":
-      return PARTNER_PROTOCOL_REFUSAL_FAILURE;
+      return RECORDED_PARTNER_PROTOCOL_REFUSAL_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
@@ -1115,7 +1128,7 @@ function classifyLaunchState(
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
   if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
   if (benign === "partner-protocol-refusal")
-    return PARTNER_PROTOCOL_REFUSAL_FAILURE;
+    return partnerProtocolRefusalFailure(partnerProtocolRefusalCopy(error));
   if (benign === "relay-registration") return relayRegistrationFailure(error);
   if (
     error instanceof ManagedSignalingEndpointRefusedError &&

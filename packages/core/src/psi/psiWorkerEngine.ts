@@ -4,6 +4,7 @@ import {
   InternalConsistencyError,
   isPsiLibraryFailure,
   markPsiLibraryFailure,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
 } from "../errors";
 import {
@@ -14,6 +15,7 @@ import {
   type PsiProcessedElementsReporter,
 } from "./psiEngine";
 import type { PSIParticipant } from "./participant";
+import type { OlderVersionSide } from "../errors";
 
 // The runtime-agnostic PSI worker boundary. It moves the
 // blocking elliptic-curve masking off the thread that owns the network transport
@@ -107,6 +109,10 @@ export type PsiWorkerResponse =
       libraryFailure?: boolean;
       /** Whether the failure is a {@link ProtocolRefusalError}, rebuilt as one. */
       protocolRefusal?: boolean;
+      /** Whether that refusal is a {@link PartnerProtocolRefusalError}, and its
+       * {@link PartnerProtocolRefusalError.olderVersion}. */
+      partnerProtocolRefusal?:
+        { olderVersion: OlderVersionSide | undefined } | undefined;
       stopped?: boolean;
     };
 
@@ -383,6 +389,9 @@ export function servePsiWorker(
             error: error instanceof Error ? error.message : String(error),
             libraryFailure: isPsiLibraryFailure(error),
             protocolRefusal: error instanceof ProtocolRefusalError,
+            ...(error instanceof PartnerProtocolRefusalError
+              ? { partnerProtocolRefusal: { olderVersion: error.olderVersion } }
+              : {}),
             stopped: error instanceof PsiOperationStoppedError,
           }),
       );
@@ -397,9 +406,16 @@ function rebuildWorkerFailure(response: {
   error: string;
   libraryFailure?: boolean;
   protocolRefusal?: boolean;
+  partnerProtocolRefusal?:
+    { olderVersion: OlderVersionSide | undefined } | undefined;
   stopped?: boolean;
 }): Error {
   if (response.stopped === true) return new PsiOperationStoppedError();
+  if (response.partnerProtocolRefusal !== undefined)
+    return new PartnerProtocolRefusalError(
+      response.error,
+      response.partnerProtocolRefusal,
+    );
   if (response.protocolRefusal === true)
     return new ProtocolRefusalError(response.error);
   const failure = new Error(response.error);
