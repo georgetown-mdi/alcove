@@ -448,7 +448,7 @@ function heldSettingsLostRefusal(
 /**
  * The records whose ABSENCE is a valid state turning an enforcement off, so a
  * load that could not put one back into the composed document would silently
- * release this party from it (docs/spec/EXCHANGE_FILE.md, "The records that
+ * release this party from it (docs/spec/EXCHANGE_FILE.md, "The record that
  * must survive"). Named here as the file spells them; whether the composition
  * still emits each is measured, never assumed.
  */

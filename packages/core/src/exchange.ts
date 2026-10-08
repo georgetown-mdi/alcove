@@ -1957,7 +1957,7 @@ export async function runExchange(
         content,
         // Retained in the receipt's unsigned envelope, so re-deriving the
         // agreed-terms hash later takes this party's own terms and nothing
-        // else (docs/spec/EXCHANGE_RECORD.md, "Dual-signed record file").
+        // else (docs/spec/EXCHANGE_RECORD.md, "Signed receipt file").
         partnerTerms,
       });
     }
