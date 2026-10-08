@@ -12,7 +12,12 @@ import {
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
-import { ProtocolRefusalError, ConnectionError } from "../src/errors";
+import {
+  PartnerProtocolRefusalError,
+  ProtocolRefusalError,
+  ConnectionError,
+} from "../src/errors";
+import { isPartnerProtocolRefusal, olderVersionOf } from "../src/failureClass";
 import type { LinkageTerms, Output } from "../src/config/linkageTermsSchema";
 import type { PresentedHostKey } from "../src/connection/fileSyncConnection";
 import type { PsiRole } from "../src/types";
@@ -1480,6 +1485,90 @@ test("an abort naming no differing term is not a terms difference refusal", asyn
   const refusal = await initiator.catch((err: unknown) => err);
   expect(refusal).toBeInstanceOf(ProtocolRefusalError);
   expect(termsDifferenceRefusedBy(refusal)).toBeUndefined();
+});
+
+test("a terms frame missing a required field is the partner's protocol refusal", async () => {
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "proceed",
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  await connB.receive();
+  const refusal = await initiator.catch((err: unknown) => err);
+  expect(refusal).toBeInstanceOf(PartnerProtocolRefusalError);
+  expect(isPartnerProtocolRefusal(refusal)).toBe(true);
+  expect(
+    isPartnerProtocolRefusal(
+      new ConnectionError("send failed", "transport", { cause: refusal }),
+    ),
+  ).toBe(true);
+  expect(olderVersionOf(refusal)).toBeUndefined();
+});
+
+test("a protocol version mismatch names the party running the older version where it can", async () => {
+  for (const [advertised, older] of [
+    [PROTOCOL_VERSION + 1, "this-party"],
+    [PROTOCOL_VERSION - 1, "partner"],
+    ["2", "unknown"],
+    [undefined, "unknown"],
+  ] as const) {
+    const [connA, connB] = makeConnections();
+    const responder = exchangeTerms(connB, "responder", termsB, 200);
+    await connA.send({
+      linkageTerms: termsA,
+      recordCount: 100,
+      receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+      protocolVersion: advertised,
+    });
+    await connA.receive();
+    const refusal = await responder.catch((err: unknown) => err);
+    expect(isPartnerProtocolRefusal(refusal)).toBe(true);
+    expect(olderVersionOf(refusal), String(advertised)).toBe(older);
+  }
+});
+
+test("neither the partner's abort nor a terms refusal is the partner's protocol refusal", async () => {
+  const [byPartner, byThisParty] = (
+    await runExchange(termsA, { ...termsB, algorithm: "psi-c" })
+  ).map((outcome) =>
+    outcome.status === "rejected" ? outcome.reason : undefined,
+  );
+  expect(isPartnerProtocolRefusal(byPartner)).toBe(false);
+  expect(isPartnerProtocolRefusal(byThisParty)).toBe(false);
+
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "abort",
+    protocolVersion: PROTOCOL_VERSION,
+    abortReasons: ["the operator declined the terms"],
+  });
+  const abort = await initiator.catch((err: unknown) => err);
+  expect(abort).toBeInstanceOf(ProtocolRefusalError);
+  expect(isPartnerProtocolRefusal(abort)).toBe(false);
+
+  const responderSide = makeConnections();
+  const responder = exchangeTerms(responderSide[1], "responder", termsB, 200);
+  await responderSide[0].send({
+    linkageTerms: termsA,
+    recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  await responderSide[0].receive();
+  await responderSide[0].send({ decision: "abort" });
+  expect(
+    isPartnerProtocolRefusal(await responder.catch((err: unknown) => err)),
+  ).toBe(false);
+
+  expect(isPartnerProtocolRefusal(new Error("data channel closed"))).toBe(
+    false,
+  );
 });
 
 /** The initiator's error for a responder abort giving `abortReasons`. */

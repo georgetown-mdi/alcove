@@ -332,6 +332,8 @@ const FAILURE_KIND_LABELS: Record<
   "partner-set-too-large": "your partner's set is too large for this browser",
   "partner-refused-set": "your partner's run refused to send its set",
   "partner-refused-terms": "your partner's run refused your linkage terms",
+  "partner-protocol-refusal":
+    "your partner's data did not follow the exchange protocol",
   "terms-change": "your partner's terms changed",
   cancelled: "you stopped the run",
 };
@@ -396,7 +398,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * `"partner-set-too-large"` with `refusedInRound` (the partner's abort in
  * place of its set, or this browser's refusal of a set's first part, after
  * sets of this party's may have moved), `"partner-refused-set"` (the
- * partner's abort in place of its set, at the same point), `"cancelled"`, and
+ * partner's abort in place of its set, at the same point),
+ * `"partner-protocol-refusal"` (this browser's refusal of partner data at any
+ * point after the handshake), `"cancelled"`, and
  * a missing kind -- cannot prove it.
  */
 function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {

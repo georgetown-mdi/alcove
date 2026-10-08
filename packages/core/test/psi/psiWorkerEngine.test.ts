@@ -14,6 +14,7 @@ import type {
 import {
   isPsiLibraryFailure,
   ConnectionError,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
 } from "../../src/errors";
 import {
@@ -61,6 +62,53 @@ function inProcessWorkerEngine(
   };
   return new WorkerPsiEngine(handle);
 }
+
+function repliesWith(
+  failure: Omit<Extract<PsiWorkerResponse, { ok: false }>, "id" | "ok">,
+): WorkerPsiEngine {
+  let deliver: (response: PsiWorkerResponse) => void = () => {};
+  return new WorkerPsiEngine({
+    postMessage: (request) =>
+      deliver({ id: request.id, ok: false, ...failure }),
+    setHandlers: ({ onMessage }) => {
+      deliver = onMessage;
+    },
+    terminate: () => {},
+  });
+}
+
+describe("the refusal discriminant of a failed worker reply", () => {
+  test("a plain refusal is rebuilt as a protocol refusal that is not the partner's", async () => {
+    const engine = repliesWith({
+      error: "refused",
+      refusal: { kind: "protocol" },
+    });
+    const refused = await rejection(engine.createServerSetup(["a"]));
+    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect(refused).not.toBeInstanceOf(PartnerProtocolRefusalError);
+  });
+
+  test.for([undefined, "partner", "this-party", "unknown"] as const)(
+    "a partner refusal keeps its older version (%s)",
+    async (olderVersion) => {
+      const engine = repliesWith({
+        error: "refused",
+        refusal: { kind: "partner-protocol", olderVersion },
+      });
+      const refused = await rejection(engine.createServerSetup(["a"]));
+      expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
+      expect((refused as PartnerProtocolRefusalError).olderVersion).toBe(
+        olderVersion,
+      );
+    },
+  );
+
+  test("a reply with no refusal is a plain error", async () => {
+    const engine = repliesWith({ error: "boom" });
+    const refused = await rejection(engine.createServerSetup(["a"]));
+    expect(refused).not.toBeInstanceOf(ProtocolRefusalError);
+  });
+});
 
 function workerParticipant(
   id: string,
@@ -238,7 +286,7 @@ test("a response refused as the partner's stays a protocol refusal after the wor
     const refused = await rejection(
       engine.computeAssociationTable(new Uint8Array([0x0b])),
     );
-    expect(refused).toBeInstanceOf(ProtocolRefusalError);
+    expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
     expect(refused?.message).toBe(
       "receiver protocol error: malformed inbound PSI response frame",
     );

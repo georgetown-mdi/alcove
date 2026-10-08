@@ -28,6 +28,8 @@ import { readManagedFailure } from "./managedFailureTiers";
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+  PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
@@ -35,6 +37,7 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
   REPEATED_MISS_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
@@ -69,6 +72,7 @@ export type BetweenVisitNoticeKind =
   | "partner-set-too-large"
   | "partner-refused-set"
   | "partner-refused-terms"
+  | "partner-protocol-refusal"
   | "terms-change"
   | "unexplained";
 
@@ -125,6 +129,7 @@ const NOTICE_TITLES: Record<
   "partner-set-too-large": PARTNER_SET_TOO_LARGE_TITLE,
   "partner-refused-set": PARTNER_REFUSED_SET_TITLE,
   "partner-refused-terms": TERMS_DIFFERENCE_TITLE,
+  "partner-protocol-refusal": PARTNER_PROTOCOL_REFUSAL_TITLE,
   unexplained: UNEXPLAINED_FAILURE_TITLE,
 };
 
@@ -138,6 +143,7 @@ const NOTIFIED_FAILURE_TIERS: ReadonlySet<ManagedFailureTier> = new Set([
   "partner-set-too-large",
   "partner-refused-set",
   "partner-refused-terms",
+  "partner-protocol-refusal",
   "unexplained",
 ]);
 
@@ -323,6 +329,16 @@ function failureNotice(
         `terms, which differ from theirs, and every later window stops the ` +
         `same way until you agree them. ${PARTNER_REFUSED_TERMS_REMEDY}`,
       tag: noticeTag(record.id, "partner-refused-terms"),
+    };
+  if (tier === "partner-protocol-refusal")
+    return {
+      kind: "partner-protocol-refusal",
+      title: NOTICE_TITLES["partner-protocol-refusal"],
+      body:
+        `${name} stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}, and ` +
+        `every later window stops the same way. ` +
+        RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY,
+      tag: noticeTag(record.id, "partner-protocol-refusal"),
     };
   if (tier === "too-large") {
     const reading: TooLargeReading = record.lastRun ?? {};

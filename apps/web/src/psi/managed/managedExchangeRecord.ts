@@ -258,7 +258,10 @@ export type ManagedExchangeRunOutcome =
  * stop (the partner's abort named linkage terms that differ from its own) is
  * met at the terms exchange, before any linkage key or data moves, and is
  * benign too: its remedy is terms agreed with the partner through a terms
- * update. */
+ * update. A `"partner-protocol-refusal"` stop (this party refused what the
+ * partner sent as not following the exchange protocol) can be met at any point
+ * after the handshake, after sets of this party's may have moved, and is
+ * benign too. */
 export type ManagedExchangeFailureKind =
   | "auth"
   | "transport"
@@ -271,6 +274,7 @@ export type ManagedExchangeFailureKind =
   | "partner-set-too-large"
   | "partner-refused-set"
   | "partner-refused-terms"
+  | "partner-protocol-refusal"
   | "terms-change"
   | "cancelled";
 
@@ -542,6 +546,7 @@ export const lastRunSchema: ZodType<ManagedExchangeLastRun> = z.object({
       "partner-set-too-large",
       "partner-refused-set",
       "partner-refused-terms",
+      "partner-protocol-refusal",
       "terms-change",
       "cancelled",
     ])

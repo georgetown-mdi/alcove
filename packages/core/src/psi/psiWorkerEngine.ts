@@ -4,6 +4,7 @@ import {
   InternalConsistencyError,
   isPsiLibraryFailure,
   markPsiLibraryFailure,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
 } from "../errors";
 import {
@@ -14,6 +15,7 @@ import {
   type PsiProcessedElementsReporter,
 } from "./psiEngine";
 import type { PSIParticipant } from "./participant";
+import type { OlderVersionSide } from "../errors";
 
 // The runtime-agnostic PSI worker boundary. It moves the
 // blocking elliptic-curve masking off the thread that owns the network transport
@@ -105,8 +107,10 @@ export type PsiWorkerResponse =
        * frame boundary reads (see `markPsiLibraryFailure`, `errors.ts`).
        */
       libraryFailure?: boolean;
-      /** Whether the failure is a {@link ProtocolRefusalError}, rebuilt as one. */
-      protocolRefusal?: boolean;
+      /** Which refusal the failure is, rebuilt as that error: a
+       * {@link ProtocolRefusalError}, or a {@link PartnerProtocolRefusalError}
+       * with its {@link PartnerProtocolRefusalError.olderVersion}. */
+      refusal?: WorkerRefusal;
       stopped?: boolean;
     };
 
@@ -382,11 +386,25 @@ export function servePsiWorker(
             ok: false,
             error: error instanceof Error ? error.message : String(error),
             libraryFailure: isPsiLibraryFailure(error),
-            protocolRefusal: error instanceof ProtocolRefusalError,
+            ...refusalOf(error),
             stopped: error instanceof PsiOperationStoppedError,
           }),
       );
   };
+}
+
+type WorkerRefusal =
+  | { kind: "protocol" }
+  | { kind: "partner-protocol"; olderVersion: OlderVersionSide | undefined };
+
+function refusalOf(error: unknown): { refusal?: WorkerRefusal } {
+  if (error instanceof PartnerProtocolRefusalError)
+    return {
+      refusal: { kind: "partner-protocol", olderVersion: error.olderVersion },
+    };
+  if (error instanceof ProtocolRefusalError)
+    return { refusal: { kind: "protocol" } };
+  return {};
 }
 
 // Rebuilds a failed reply into the error the host raises. Only the message
@@ -396,11 +414,15 @@ export function servePsiWorker(
 function rebuildWorkerFailure(response: {
   error: string;
   libraryFailure?: boolean;
-  protocolRefusal?: boolean;
+  refusal?: WorkerRefusal;
   stopped?: boolean;
 }): Error {
   if (response.stopped === true) return new PsiOperationStoppedError();
-  if (response.protocolRefusal === true)
+  if (response.refusal?.kind === "partner-protocol")
+    return new PartnerProtocolRefusalError(response.error, {
+      olderVersion: response.refusal.olderVersion,
+    });
+  if (response.refusal?.kind === "protocol")
     return new ProtocolRefusalError(response.error);
   const failure = new Error(response.error);
   if (response.libraryFailure === true) markPsiLibraryFailure(failure);

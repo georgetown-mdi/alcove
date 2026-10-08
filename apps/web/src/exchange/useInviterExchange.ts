@@ -13,6 +13,7 @@ import {
   assertFirstRoundWithinSetMaximum,
   getLogger,
   handshakeRoleForRendezvousRole,
+  isPartnerProtocolRefusal,
   isSetTooLargeError,
   joinErrorCauseChain,
   loadPsiBackend,
@@ -80,6 +81,8 @@ import {
   PARTNER_SET_TOO_LARGE_TITLE,
   TERMS_DIFFERENCE_PROBLEM,
   TERMS_DIFFERENCE_TITLE,
+  partnerProtocolRefusalCopy,
+  partnerProtocolRefusalMessage,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -523,6 +526,18 @@ function failureContentFor(
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };
+  // What was refused is shown in the labelled block; why no retry is offered:
+  // PARTNER_PROTOCOL_REFUSAL_TITLE.
+  if (isPartnerProtocolRefusal(error)) {
+    const copy = partnerProtocolRefusalCopy(error);
+    return {
+      category: "config",
+      title: copy.title,
+      message: partnerProtocolRefusalMessage("The exchange", copy),
+      settingsCannotResolve: true,
+      ...reportedCauseFields(sanitizedFailureMessage(error)),
+    };
+  }
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
   // count that could not be taken. The message is fixed copy with counts, and

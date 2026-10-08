@@ -18,6 +18,7 @@ import {
   webrtcFrameExceedsBound,
 } from "../../src/connection/webrtcOutboundBound";
 import {
+  PartnerProtocolRefusalError,
   PeerAbortError,
   ProtocolRefusalError,
   RoundCapacityError,
@@ -120,7 +121,7 @@ test("every part's header states its index, the part count, and the set's length
 test("a missing part is refused", async () => {
   const [first, , third] = partsOf(bytes(25), 10);
   await expect(receiveAfter([first, third])).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup is missing part 1",
     ),
   );
@@ -130,7 +131,7 @@ test("a missing part is refused", async () => {
 test("a repeated part is refused", async () => {
   const [first, second] = partsOf(bytes(25), 10);
   await expect(receiveAfter([first, second, second])).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup repeats part 1",
     ),
   );
@@ -141,7 +142,7 @@ test("a set declaring more bytes than the bound admits is refused at its first p
   const parts = partsOf(bytes(25), 10);
   // Only the first part is queued: a receiver that read on would wait forever.
   await expect(receiveAfter(parts.slice(0, 1), 24)).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup declares 25 bytes, " +
         "over the 24 the agreed record counts admit",
     ),
@@ -153,7 +154,7 @@ test("a set declaring more bytes than the bound admits is refused at its first p
   const huge = partsOf(bytes(25), 10)[0];
   new DataView(huge.buffer).setBigUint64(8, 2n ** 62n);
   await expect(receiveAfter([huge], psiSetByteBound(10))).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup declares " +
         "4611686018427387904 bytes, over the 356 the agreed record counts admit",
     ),
@@ -195,7 +196,7 @@ test("a set over the bound is refused as a protocol error even when it is also o
     elements: 3,
   }).catch((err: unknown) => err);
   expect(refusal).toEqual(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup declares 25 bytes, " +
         "over the 24 the agreed record counts admit",
     ),
@@ -265,7 +266,7 @@ test("a part with no set bytes is refused unless it is an empty set's only part"
   for (const frame of [headerOnly, ...parts]) await a.send(frame);
   const receive = vi.spyOn(b, "receive");
   await expect(receivePsiSet(b, "client", "serverSetup", 25)).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "client protocol error: inbound PSI serverSetup part 0 holds no set bytes",
     ),
   );
@@ -1002,7 +1003,7 @@ test("the element scan holds a partner's setup or request to this party's receiv
 
   const starter = held("starter");
   await expect(starter.processClientRequest(request)).rejects.toThrow(
-    new ProtocolRefusalError(
+    new PartnerProtocolRefusalError(
       "server protocol error: inbound PSI request declares more than 2 " +
         "encrypted element(s)",
     ),

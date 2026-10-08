@@ -37,6 +37,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  * - `"partner-refused-terms"` -- the partner's run refused this exchange's
  *   linkage terms as differing from its own, before any key or data moved
  *   (terms agreed with the partner through a terms update).
+ * - `"partner-protocol-refusal"` -- this party refused what the partner sent
+ *   as not following the exchange protocol (the two parties compare their
+ *   versions of Alcove).
  * - `"handed-off"` -- an export handed this copy off (none here).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).
@@ -64,6 +67,7 @@ export type ManagedFailureTier =
   | "partner-set-too-large"
   | "partner-refused-set"
   | "partner-refused-terms"
+  | "partner-protocol-refusal"
   | "handed-off"
   | "custody-unreadable"
   | "missed"
@@ -206,6 +210,8 @@ function recordedFailureTier(
     return "partner-refused-set";
   if (lastRun.failureKind === "partner-refused-terms")
     return "partner-refused-terms";
+  if (lastRun.failureKind === "partner-protocol-refusal")
+    return "partner-protocol-refusal";
   if (lastRun.failureKind === "handed-off") return "handed-off";
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
   if (lastRun.failureKind === "storage") return "storage";

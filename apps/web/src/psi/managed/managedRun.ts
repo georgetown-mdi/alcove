@@ -27,6 +27,7 @@ import {
   RoundCapacityError,
   TermsChangeRefusedError,
   classifyFailure,
+  isPartnerProtocolRefusal,
   isSetTooLargeError,
   isTrustBoundaryFailure,
   termsDifferenceRefusedBy,
@@ -375,10 +376,13 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * this exchange's terms at the terms exchange ({@link termsDifferenceRefusedBy}
  * `"partner"`) records `partner-refused-terms`: the same terms refuse
  * identically until the two parties agree them. `aborted` then records
- * `cancelled`. A trust-boundary failure ({@link isTrustBoundaryFailure} of
- * {@link classifyFailure}) before the data exchange began records `auth`.
- * Everything else -- including any of these once the data exchange began --
- * records `transport`.
+ * `cancelled`, before this party's refusal of what the partner sent
+ * ({@link isPartnerProtocolRefusal}), which records
+ * `partner-protocol-refusal`: a stopped run's teardown can cut a frame short
+ * and raise that refusal. A trust-boundary failure
+ * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
+ * exchange began records `auth`. Everything else -- including any of these
+ * once the data exchange began -- records `transport`.
  *
  * `terms-shortfall`, `auth`, and `missed` require `!dataExchangeStarted`: each
  * tells the operator nothing left this device. Every outcome here is `failed`
@@ -432,6 +436,8 @@ export function rerunFailureLastRun(
   if (termsDifferenceRefusedBy(error) === "partner")
     return failedRun(at, "failed", "partner-refused-terms");
   if (aborted) return failedRun(at, "failed", "cancelled");
+  if (isPartnerProtocolRefusal(error))
+    return failedRun(at, "failed", "partner-protocol-refusal");
   if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
   return failedRun(at, "failed", "transport");
@@ -442,8 +448,9 @@ export function rerunFailureLastRun(
  * connection attempt found no partner, `"too-large"` before connecting or
  * after the terms exchange, `"partner-set-too-large"` and
  * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
- * at the terms exchange, and `"relay-registration"` before connecting, once
- * the registrar did not confirm a pending registration. */
+ * at the terms exchange, `"partner-protocol-refusal"` at any point after the
+ * handshake, and `"relay-registration"` before connecting, once the registrar
+ * did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"
@@ -456,6 +463,7 @@ type BenignRerunOutcome =
   | "partner-set-too-large"
   | "partner-refused-set"
   | "partner-refused-terms"
+  | "partner-protocol-refusal"
   | "relay-registration";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
@@ -527,6 +535,7 @@ export function benignRerunOutcome(
   if (isPartnerRefusedSetAbort(error)) return "partner-refused-set";
   if (termsDifferenceRefusedBy(error) === "partner")
     return "partner-refused-terms";
+  if (isPartnerProtocolRefusal(error)) return "partner-protocol-refusal";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
   return undefined;

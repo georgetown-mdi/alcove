@@ -2,14 +2,14 @@
 
 import { describe, expect, test } from "vitest";
 
+import { classifyFailure, isPartnerProtocolRefusal } from "@alcove/core";
 import { ProtocolRefusalError } from "@alcove/core/testing";
-import { classifyFailure } from "@alcove/core";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
-import { classifyExchangeFailure } from "@psi/exchangeLifecycle";
 import { createBrowserPsiEngineFactory } from "@psi/workers/psiCryptoController";
 import { defaultSpawnPsiCryptoWorker } from "@psi/workers/psiCryptoWorkerClient";
+import { failureFor } from "@exchange/useInviterExchange";
 
 import type {
   PsiCryptoWorker,
@@ -133,7 +133,11 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
       "client protocol error: PSI server setup is not in strictly ascending element order",
     );
     expect(classifyFailure(refused)).toBe("partner-refused");
-    expect(classifyExchangeFailure(refused, "run")).toBe("exchange");
+    expect(isPartnerProtocolRefusal(refused)).toBe(true);
+    expect(failureFor("exchange", refused)).toMatchObject({
+      category: "config",
+      retry: "withheld",
+    });
   }, 30_000);
 
   // The acceptance criterion: the worker is torn down on every exchange-end path.

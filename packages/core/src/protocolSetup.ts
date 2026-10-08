@@ -38,7 +38,8 @@ import {
 } from "./utils/partnerOriginText";
 import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
-import { ProtocolRefusalError } from "./errors";
+import { PartnerProtocolRefusalError, ProtocolRefusalError } from "./errors";
+import type { OlderVersionSide } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import {
   receiveParsed,
@@ -669,7 +670,17 @@ async function reconcileProtocolVersion(
 ): Promise<void> {
   if (partnerVersion === PROTOCOL_VERSION) return;
   await sendAbort(conn, [PROTOCOL_VERSION_MISMATCH_MESSAGE], localTerms);
-  throw new ProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE);
+  throw new PartnerProtocolRefusalError(PROTOCOL_VERSION_MISMATCH_MESSAGE, {
+    olderVersion: olderVersionThan(partnerVersion),
+  });
+}
+
+// The version integer only rises, so a partner's integer orders against this
+// build's; any other value does not.
+function olderVersionThan(partnerVersion: unknown): OlderVersionSide {
+  if (typeof partnerVersion !== "number" || !Number.isInteger(partnerVersion))
+    return "unknown";
+  return partnerVersion < PROTOCOL_VERSION ? "partner" : "this-party";
 }
 
 /** The diagnostics a comparison refuses on: the partner decides what this
@@ -885,13 +896,13 @@ export async function exchangeTerms(
     // is a protocol failure, not something to default.
     if (msg.recordCount === undefined) {
       await sendAbort(conn, ["partner omitted record count"]);
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         "partner omitted record count on terms exchange",
       );
     }
     if (msg.receiveCeiling === undefined) {
       await sendAbort(conn, ["partner omitted receive ceiling"]);
-      throw new ProtocolRefusalError(
+      throw new PartnerProtocolRefusalError(
         "partner omitted receive ceiling on terms exchange",
       );
     }

@@ -27,6 +27,7 @@ import {
   chainDetailCauses,
   FrameSizeExceededError,
   PeerAbortError,
+  PartnerProtocolRefusalError,
   ProtocolRefusalError,
   TransportPublishIndeterminateError,
   errorMessage,
@@ -955,7 +956,7 @@ export class FileSyncMessageLoop {
               // envelope bump raises the byte), so name that real cause
               // instead of the raw "malformed envelope" text.
               if (parseErr instanceof IncompatibleEnvelopeVersionError)
-                throw new ProtocolRefusalError(
+                throw new PartnerProtocolRefusalError(
                   `message file ${redactPrivateKeyMaterial(messageFile.name)} ` +
                     `from ${redactPrivateKeyMaterial(peerId)} has an ` +
                     `unrecognized wire ` +
@@ -963,6 +964,8 @@ export class FileSyncMessageLoop {
                     `not this build's ${MESSAGE_ENVELOPE_VERSION}); the partner ` +
                     `is likely running an incompatible Alcove version, and ` +
                     `both parties must run the same version`,
+                  // A pre-envelope peer's leading '{' reads as a higher byte.
+                  { olderVersion: "unknown" },
                 );
               // Any other envelope failure (truncation, unknown type, out-of-
               // range seq) is genuine corruption from a same-version peer.

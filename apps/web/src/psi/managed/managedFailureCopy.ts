@@ -19,9 +19,10 @@
  * advances or anticipates a write the runner has not made.
  */
 
-import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
+import { MAX_WEBRTC_FRAME_BYTES, olderVersionOf } from "@alcove/core";
+import { isConsoleBuild } from "@utils/clientConfig";
 
-import type { TermsDifferenceRefusedBy } from "@alcove/core";
+import type { OlderVersionSide, TermsDifferenceRefusedBy } from "@alcove/core";
 
 import type {
   ManagedExchangeSchedule,
@@ -230,3 +231,74 @@ export const PARTNER_REFUSED_TERMS_REMEDY =
   "choose Make a terms update under Change terms on this exchange's page " +
   "and send it to them to apply, or apply an update they make with theirs, " +
   "then run the exchange again.";
+
+/** The title over a run stopped because this party refused what its partner
+ * sent as not following the exchange protocol (`isPartnerProtocolRefusal`).
+ * The partner's run sends the same at every attempt until a party's run or
+ * version changes, so no surface offers a retry for it. */
+export const PARTNER_PROTOCOL_REFUSAL_TITLE =
+  "Your partner's data did not follow the exchange protocol";
+
+/** What stopped such a run, completing a sentence that ends "stopped
+ * because". */
+export const PARTNER_PROTOCOL_REFUSAL_PROBLEM =
+  "your partner's data did not follow the exchange protocol";
+
+/** The remedy for such a run read back from the record, which does not hold
+ * whether the refusal was over a version mismatch. */
+export const RECORDED_PARTNER_PROTOCOL_REFUSAL_REMEDY =
+  "Check with your partner which version of Alcove each of you runs: " +
+  "whoever runs the older one updates it.";
+
+const OLDER_VERSION_REMEDY: Record<OlderVersionSide, string> = {
+  partner: "Your partner runs the older version: ask them to update Alcove.",
+  "this-party": "This page runs the older version: reload it to update Alcove.",
+  unknown: "Whichever of you runs the older version updates Alcove.",
+};
+
+/** A console runs from a container image, so reloading its page does not
+ * update it. */
+const CONSOLE_OLDER_VERSION_REMEDY =
+  "This console runs the older version: pull the latest Alcove image and " +
+  "restart the console.";
+
+function olderVersionRemedy(olderVersion: OlderVersionSide): string {
+  return olderVersion === "this-party" && isConsoleBuild()
+    ? CONSOLE_OLDER_VERSION_REMEDY
+    : OLDER_VERSION_REMEDY[olderVersion];
+}
+
+/** The sentence naming what stopped the subject and that running it again does
+ * the same, then the remedy. */
+export function partnerProtocolRefusalMessage(
+  subject: string,
+  copy: { problem: string; remedy: string },
+): string {
+  return (
+    `${subject} stopped because ${copy.problem}, and running it again ` +
+    `stops the same way. ${copy.remedy}`
+  );
+}
+
+/** The copy for such a run read off the live error: a version mismatch names
+ * which party runs the older version where the refusal could tell. `problem`
+ * completes a sentence that ends "stopped because". */
+export function partnerProtocolRefusalCopy(error: unknown): {
+  title: string;
+  problem: string;
+  remedy: string;
+} {
+  const olderVersion = olderVersionOf(error);
+  if (olderVersion === undefined)
+    return {
+      title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+      problem: PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+      remedy:
+        "Ask your partner to check that they run a current version of Alcove.",
+    };
+  return {
+    title: "You and your partner run different versions of Alcove",
+    problem: "you and your partner run different versions of Alcove",
+    remedy: olderVersionRemedy(olderVersion),
+  };
+}

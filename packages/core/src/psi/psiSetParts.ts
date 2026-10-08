@@ -22,7 +22,7 @@ import {
   PSI_SET_MAX_FRAMING_BYTES,
   webrtcFrameExceedsBound,
 } from "../connection/webrtcOutboundBound";
-import { ProtocolRefusalError, RoundCapacityError } from "../errors";
+import { PartnerProtocolRefusalError, RoundCapacityError } from "../errors";
 import { sendAbort } from "../protocolSetup";
 import { PARTNER_SET_OVER_CAPACITY_ABORT_REASON } from "../partnerAbortFrame";
 import { receivePsiBinaryFrame } from "./psiBinaryFrame";
@@ -250,8 +250,9 @@ export async function receivePsiSet(
  * each part's header against the part expected next and against the first
  * part's. A part with no set bytes is refused unless it is the only part of an
  * empty set, so a partner cannot hold the receive reading empty parts. Any
- * deviation is a {@link ProtocolRefusalError}, and so is a set whose parts end
- * short of its declared length, refused after its last part is taken.
+ * deviation is a {@link PartnerProtocolRefusalError}, and so is a set whose
+ * parts end short of its declared length, refused after its last part is
+ * taken.
  *
  * A set whose declared length is within `maxSetBytes` but over
  * `capacity.setBytes` is this party's own limit rather than a deviation: the
@@ -277,8 +278,8 @@ export async function receivePsiSetInPieces(
     typeof maxSetBytes === "number"
       ? { bytes: maxSetBytes, source: "the agreed record counts admit" }
       : maxSetBytes;
-  const refuse = (detail: string): ProtocolRefusalError =>
-    new ProtocolRefusalError(
+  const refuse = (detail: string): PartnerProtocolRefusalError =>
+    new PartnerProtocolRefusalError(
       `${participantId} protocol error: inbound PSI ${what} ${detail}`,
     );
   let count = 1;
