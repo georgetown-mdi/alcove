@@ -3,6 +3,10 @@
 # renewal on this host. Idempotent: run it again after an edit to a unit, the
 # template or renew.sh and it converges.
 #
+# Order: check the whole target state, renew the certificate without restarting
+# the front, write every file the units read, then act once at the end: restart
+# the broker if its unit changed, and restart, reload or leave the front.
+#
 #   install.sh
 #
 # It installs units and configuration only. The broker's workspace under
@@ -68,19 +72,17 @@ put_file() {
 
 TLS="$ETC/tls"
 CANDIDATE="$(mktemp "$ETC/nginx.conf.XXXXXX")"
-RESTART_MARK="$(mktemp "$ETC/restart.XXXXXX")"
+CERT_MARK="$(mktemp "$ETC/cert-changed.XXXXXX")"
 IMAGE_ENV="$(mktemp "$ETC/front-image.env.XXXXXX")"
-trap 'rm -f "$CANDIDATE" "$RESTART_MARK" "$IMAGE_ENV"' EXIT
-# renew [MARK]: run renew.sh, which writes to MARK when it restarts the front.
+trap 'rm -f "$CANDIDATE" "$CERT_MARK" "$IMAGE_ENV"' EXIT
 renew() {
   ALCOVE_BROKER_ENV_FILE="$ENV_FILE" ALCOVE_BROKER_ACME_HOME="$ETC/acme" ALCOVE_BROKER_TLS_DIR="$TLS" \
-    ALCOVE_BROKER_RESTART_MARK="${1:-}" "$ETC/renew.sh"
+    "$ETC/renew.sh" "$@"
 }
 
 # --- a first install's certificate --------------------------------------------------
 # nginx -t loads the certificate, so a first install obtains it before the
 # check. renew.sh restarts a running front, so this path requires a stopped one.
-# No restart mark: it would precede the new file.
 CERT_OBTAINED=0
 if [ ! -s "$TLS/fullchain.pem" ] || [ ! -s "$TLS/privkey.pem" ]; then
   if systemctl is-active --quiet alcove-broker-tls.service; then
@@ -104,29 +106,28 @@ docker run --rm --network host --read-only --tmpfs /tmp \
   --entrypoint nginx "$IMAGE" -t \
   || die "the rendered configuration fails nginx -t; the units, the certificate, $ETC/nginx.conf and the running front are unchanged. Fix nginx.conf.tmpl and run again"
 
-# --- the broker -----------------------------------------------------------------
+# --- a renewal due now ------------------------------------------------------------
+# Before the target state is written, so a failed renewal leaves no change on
+# disk waiting for a restart. The front's restart is left to the end.
+put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
+[ "$CERT_OBTAINED" = 1 ] || renew --defer-restart "$CERT_MARK"
+CERT_CHANGED=0
+[ -s "$CERT_MARK" ] && CERT_CHANGED=1
+
+# --- the target state -------------------------------------------------------------
 CHANGED=0
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 BROKER_UNIT_CHANGED=$CHANGED
-BROKER_WAS_ACTIVE=0
-systemctl is-active --quiet alcove-broker.service && BROKER_WAS_ACTIVE=1
-systemctl daemon-reload
-systemctl enable --now alcove-broker.service
-if [ "$BROKER_WAS_ACTIVE" = 1 ] && [ "$BROKER_UNIT_CHANGED" = 1 ]; then
-  # The front Requires= the broker, so systemd restarts it too, onto the live
-  # file as it was.
-  log "alcove-broker.service changed; restarting it"
-  systemctl restart alcove-broker.service
-fi
-log "waiting for the broker's health endpoint on 127.0.0.1:9411"
-for _ in $(seq 1 60); do
-  curl -fsS http://127.0.0.1:9411/api/health >/dev/null 2>&1 && break
-  sleep 2
-done
-curl -fsS http://127.0.0.1:9411/api/health >/dev/null \
-  || die "the broker did not answer on 127.0.0.1:9411/api/health within 120 s; journalctl -u alcove-broker.service"
+CHANGED=0
+put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
+printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
+put_file "$IMAGE_ENV" "$ETC/front-image.env" 644
+FRONT_UNIT_CHANGED=$CHANGED
+CHANGED=0
+put_file "$HERE/alcove-broker-cert.service" "$UNIT_DIR/alcove-broker-cert.service" 644
+put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 644
+TIMER_CHANGED=$CHANGED
 
-# --- the live configuration -------------------------------------------------------
 # Copied in place when it exists: the front bind-mounts the file, and a new
 # inode would leave the running container reading the old one.
 CONF="$ETC/nginx.conf"
@@ -140,29 +141,35 @@ elif ! cmp -s "$CANDIDATE" "$CONF"; then
 fi
 chmod 644 "$CONF"
 
-# --- a renewal due now ------------------------------------------------------------
-put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
-[ "$CERT_OBTAINED" = 1 ] || renew "$RESTART_MARK"
-FRONT_RESTARTED=0
-[ -s "$RESTART_MARK" ] && FRONT_RESTARTED=1
-
-# --- the front --------------------------------------------------------------------
-CHANGED=0
-put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
-printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
-put_file "$IMAGE_ENV" "$ETC/front-image.env" 644
-FRONT_UNIT_CHANGED=$CHANGED
+# --- one action per unit ------------------------------------------------------------
+BROKER_WAS_ACTIVE=0
+systemctl is-active --quiet alcove-broker.service && BROKER_WAS_ACTIVE=1
 FRONT_WAS_ACTIVE=0
 systemctl is-active --quiet alcove-broker-tls.service && FRONT_WAS_ACTIVE=1
 systemctl daemon-reload
-systemctl enable --now alcove-broker-tls.service
-if [ "$FRONT_WAS_ACTIVE" = 1 ]; then
-  if [ "$FRONT_UNIT_CHANGED" = 1 ]; then
-    log "alcove-broker-tls.service or its image changed; restarting it"
+
+FRONT_RESTARTED=0
+if [ "$BROKER_WAS_ACTIVE" = 0 ]; then
+  systemctl enable --now alcove-broker.service
+else
+  systemctl enable alcove-broker.service
+  if [ "$BROKER_UNIT_CHANGED" = 1 ]; then
+    # The front Requires= the broker, so systemd restarts a running front too.
+    log "alcove-broker.service changed; restarting it"
+    systemctl restart alcove-broker.service
+    FRONT_RESTARTED=$FRONT_WAS_ACTIVE
+  fi
+fi
+
+if [ "$FRONT_WAS_ACTIVE" = 0 ]; then
+  systemctl enable --now alcove-broker-tls.service
+else
+  systemctl enable alcove-broker-tls.service
+  if [ "$FRONT_RESTARTED" = 1 ]; then
+    log "alcove-broker-tls.service restarted with the broker"
+  elif [ "$FRONT_UNIT_CHANGED" = 1 ] || [ "$CERT_CHANGED" = 1 ]; then
+    log "alcove-broker-tls.service, its image or its certificate changed; restarting it"
     systemctl restart alcove-broker-tls.service
-  elif [ "$CONF_CHANGED" = 1 ] && [ "$FRONT_RESTARTED" = 1 ]; then
-    # The configuration was written before renew.sh restarted the front.
-    log "alcove-broker-tls.service restarted onto the new configuration with the certificate"
   elif [ "$CONF_CHANGED" = 1 ]; then
     for _ in $(seq 1 30); do
       docker exec alcove-broker-tls true >/dev/null 2>&1 && break
@@ -176,17 +183,19 @@ if [ "$FRONT_WAS_ACTIVE" = 1 ]; then
   fi
 fi
 
-# --- renewal ----------------------------------------------------------------------
-CHANGED=0
-put_file "$HERE/alcove-broker-cert.service" "$UNIT_DIR/alcove-broker-cert.service" 644
-put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 644
-systemctl daemon-reload
 systemctl enable --now alcove-broker-cert.timer
-if [ "$CHANGED" = 1 ]; then
+if [ "$TIMER_CHANGED" = 1 ]; then
   systemctl restart alcove-broker-cert.timer
 fi
 
 # --- check ------------------------------------------------------------------------
+log "waiting for the broker's health endpoint on 127.0.0.1:9411"
+for _ in $(seq 1 60); do
+  curl -fsS http://127.0.0.1:9411/api/health >/dev/null 2>&1 && break
+  sleep 2
+done
+curl -fsS http://127.0.0.1:9411/api/health >/dev/null \
+  || die "the broker did not answer on 127.0.0.1:9411/api/health within 120 s; journalctl -u alcove-broker.service"
 # Through the front on this host, under the certificate's own name.
 for _ in $(seq 1 15); do
   curl -fsS --resolve "$NAME:$PORT:127.0.0.1" "https://$NAME:$PORT/api/health" >/dev/null 2>&1 && break

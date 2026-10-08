@@ -1,8 +1,20 @@
 #!/bin/bash
 # Renew the broker's certificate by ACME DNS-01 (README.md, Certificates) and
-# restart the TLS front only when the certificate or key changed. When
-# ALCOVE_BROKER_RESTART_MARK names a file, a restart writes to it.
+# restart the TLS front only when the certificate or key changed.
+#
+#   renew.sh [--defer-restart FILE]
+#
+# With --defer-restart, a changed certificate is written to FILE instead of
+# restarting the front, for install.sh to restart it once.
 set -euo pipefail
+
+DEFER_TO=
+if [ "$#" -eq 2 ] && [ "$1" = --defer-restart ] && [ -n "$2" ]; then
+  DEFER_TO="$2"
+elif [ "$#" -ne 0 ]; then
+  printf 'usage: renew.sh [--defer-restart FILE]\n' >&2
+  exit 2
+fi
 
 ETC=/etc/alcove-broker
 ENV_FILE="${ALCOVE_BROKER_ENV_FILE:-$ETC/broker.env}"
@@ -57,11 +69,13 @@ if cmp -s "$SRC_CRT" "$TLS/fullchain.pem" && cmp -s "$SRC_KEY" "$TLS/privkey.pem
 fi
 install -m 600 "$SRC_KEY" "$TLS/privkey.pem"
 install -m 644 "$SRC_CRT" "$TLS/fullchain.pem"
-# On a first install the front has not started yet; install.sh starts it.
-if systemctl is-active --quiet alcove-broker-tls.service; then
+if [ -n "$DEFER_TO" ]; then
+  log "installed a new certificate; install.sh restarts alcove-broker-tls.service"
+  echo changed > "$DEFER_TO"
+elif systemctl is-active --quiet alcove-broker-tls.service; then
   log "installed a new certificate; restarting alcove-broker-tls.service"
   systemctl restart alcove-broker-tls.service
-  [ -z "${ALCOVE_BROKER_RESTART_MARK:-}" ] || echo restarted > "$ALCOVE_BROKER_RESTART_MARK"
 else
+  # On a first install the front has not started yet; install.sh starts it.
   log "installed a new certificate; alcove-broker-tls.service is not running and was not started"
 fi
