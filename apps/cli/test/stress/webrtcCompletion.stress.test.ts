@@ -126,8 +126,8 @@ const WEBRTC_PARTY_MEMORY: Record<
   PsiRole,
   { fixedBytes: number; bytesPerRecord: number }
 > = {
-  sender: { fixedBytes: 1_184_000_000, bytesPerRecord: 1_902 },
-  receiver: { fixedBytes: 630_000_000, bytesPerRecord: 2_141 },
+  sender: { fixedBytes: 308_000_000, bytesPerRecord: 1_954 },
+  receiver: { fixedBytes: 740_000_000, bytesPerRecord: 2_138 },
 };
 
 function webrtcPartyNeedBytes(party: PartyName): number {
