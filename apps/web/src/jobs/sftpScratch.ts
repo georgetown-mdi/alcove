@@ -17,9 +17,11 @@ import { isPathWithin } from "./pathContainment";
  * in between. The directory is owner-only (0700) and swept clean
  * at server start, so a credential orphaned by a restart never lingers --
  * unlike a workdir, an SSH credential must not inherit the "lingers until
- * deleted" behavior. `/run` is the conventional runtime-state location; mount
- * a tmpfs there to keep pasted secrets off disk entirely, with the sweep as
- * the fallback when the container does not.
+ * deleted" behavior. `/run` is the conventional runtime-state location; a
+ * tmpfs at this directory or its parent, owned by the runtime account, keeps
+ * pasted secrets off disk entirely, with the sweep as the fallback when the
+ * container has none. A root-owned tmpfs refuses the boot:
+ * docs/spec/SERVER_JOB_API.md, "A tmpfs for the scratch directory".
  */
 export const SFTP_CREDENTIAL_SCRATCH_DIR = "/run/alcove/sftp-credentials";
 
