@@ -15,81 +15,54 @@ export const NEW_INVITATION_REMEDY =
   "Ask your partner for a new invitation, or create one with 'alcove " +
   "invite' and have your partner accept it.";
 
-// --- Public API --------------------------------------------------------------
-
 /**
  * Result returned by {@link authenticateConnection} after a successful P-256
  * key exchange.
  */
 export interface AuthResult {
   /**
-   * 32-byte session key from the P-256 key exchange. Both parties hold the
-   * same value after a successful handshake, with forward secrecy and mutual
-   * authentication from the shared secret. A caller that needs
-   * application-layer encryption (the `sftp` and `filedrop` channels) passes
-   * this to {@link deriveAeadKey} to derive the AES-256-GCM keys, one key per
-   * direction rather than per channel. A caller that relies on
-   * transport-layer security (e.g. WebRTC with DTLS) may ignore it.
+   * 32-byte session key from the P-256 key exchange, the same for both parties.
+   * A caller that needs application-layer encryption passes it to
+   * {@link deriveAeadKey}; one relying on transport security (WebRTC with
+   * DTLS) may ignore it.
    */
   sessionKey: Uint8Array<ArrayBuffer>;
   /**
-   * Rotated shared secret derived deterministically from `sessionKey`.  Both
-   * parties compute the same value; no extra round-trip is required.  The
-   * caller is responsible for persisting this to `.alcove.key` so that future
-   * exchanges use the rotated credential.
-   *
-   * The value is a base64url-encoded 32-byte HKDF output.  It has no
-   * expiration and is suitable for use as a persistent shared secret.
+   * Rotated shared secret, a base64url 32-byte HKDF output both parties derive
+   * from `sessionKey`, with no expiration. The caller persists it to
+   * `.alcove.key` for the next exchange.
    */
   rotatedSecret: string;
   /**
-   * The negotiated decision to wrap the connection in an additional
-   * application-encryption layer, forwarded from the key exchange
-   * ({@link KexResult.applyEncryption}): the OR of this party's
-   * `requestEncryption` argument and the peer's request, transcript-bound so
-   * both parties agree on it. The caller applies {@link deriveAeadKey} and an
-   * `EncryptedMessageConnection` wrap when this is `true`. File-sync callers
-   * request encryption unconditionally, so it is always `true` for them.
+   * Whether to wrap the connection in an application-encryption layer
+   * ({@link KexResult.applyEncryption}): the transcript-bound OR of both
+   * parties' requests. When `true` the caller applies {@link deriveAeadKey}
+   * and an `EncryptedMessageConnection` wrap.
    */
   applyEncryption: boolean;
 }
 
 /**
- * The fixed set of AEAD direction-context labels {@link deriveAeadKey}
- * accepts, one per direction of the application-layer AEAD channel. Why the
- * key is per direction and why the label set is closed:
- * docs/spec/CHANNEL_SECURITY.md ("Application-layer AEAD").
- *
- * Add a label only as a reviewed change, appended here. Frozen so a plain-JS
- * caller cannot widen the set by pushing onto the readonly compile-time type;
- * the runtime guard below checks this set.
+ * The AEAD direction-context labels {@link deriveAeadKey} accepts, one per
+ * direction (docs/spec/CHANNEL_SECURITY.md, "Application-layer AEAD"). Add a
+ * label only as a reviewed change. Frozen so a plain-JS caller cannot widen
+ * the set the runtime guard checks.
  */
 export const AEAD_CONTEXTS = Object.freeze([
   "initiator-to-responder",
   "responder-to-initiator",
 ] as const);
 
-/**
- * An AEAD direction-context label. One of the fixed {@link AEAD_CONTEXTS};
- * the open `string` type is not accepted, so a variable label cannot reach
- * {@link deriveAeadKey} without a reviewed change to that tuple.
- */
+/** An AEAD direction-context label, one of {@link AEAD_CONTEXTS}. */
 export type AeadContext = (typeof AEAD_CONTEXTS)[number];
 
 /**
- * Derive a 32-byte AES-256-GCM key from the session key using HKDF.
- *
- * Use this when the connection channel requires application-layer encryption.
- * Call it after {@link authenticateConnection} and pass the result to the
- * channel's encryption layer.
+ * Derive a 32-byte AES-256-GCM key for one direction of the application-layer
+ * encrypted stream from the session key using HKDF.
  *
  * @param sessionKey  The `sessionKey` field from {@link AuthResult}.
- * @param context     A fixed AEAD direction-context label from
- *                    {@link AEAD_CONTEXTS} (e.g. `"initiator-to-responder"`)
- *                    that binds the derived key to one direction of the
- *                    encrypted stream.  The {@link AeadContext} type rejects a
- *                    free-form label at compile time; the runtime check below
- *                    catches an untyped (plain-JS or `as`-cast) caller.
+ * @param context     The direction label. The runtime check catches a caller
+ *                    that bypasses the {@link AeadContext} type.
  * @throws {Error} if `context` is not one of {@link AEAD_CONTEXTS}.
  */
 export async function deriveAeadKey(
@@ -106,10 +79,8 @@ export async function deriveAeadKey(
 }
 
 /**
- * The two abort-token roles, frozen for the same reason as
- * {@link AEAD_CONTEXTS}. One token is derived per role; the writer's own role
- * names the token it writes, the peer's role names the token it verifies.
- * Structurally identical to {@link HandshakeRole}.
+ * The two abort-token roles, frozen as {@link AEAD_CONTEXTS} is. The writer's
+ * own role names the token it writes, the peer's the token it verifies.
  */
 export const ABORT_TOKEN_ROLES = Object.freeze([
   "initiator",
@@ -120,15 +91,9 @@ export const ABORT_TOKEN_ROLES = Object.freeze([
 type AbortTokenRole = (typeof ABORT_TOKEN_ROLES)[number];
 
 /**
- * Derive a 32-byte per-direction abort token from the session key using HKDF.
- * The token authenticates the cross-party abort marker
- * (`<writerId>-abort.json`); what it protects, the role binding, and this
- * label's place in the domain-separation label space are in
- * docs/spec/CHANNEL_SECURITY.md ("Authenticated abort marker") and
- * docs/spec/PROTOCOL.md ("The domain-separation label space").
- *
- * Mirrors {@link deriveAeadKey}: a frozen role tuple plus a runtime allowlist
- * check catches an untyped (plain-JS or `as`-cast) caller.
+ * Derive a 32-byte per-direction abort token from the session key using HKDF,
+ * authenticating the cross-party abort marker (`<writerId>-abort.json`;
+ * docs/spec/CHANNEL_SECURITY.md, "Authenticated abort marker").
  *
  * @throws {Error} if `role` is not one of {@link ABORT_TOKEN_ROLES}.
  */
@@ -146,10 +111,8 @@ export async function deriveAbortToken(
 }
 
 /**
- * Whether an ISO 8601 `expires` is at or before `now`. An unparseable value is
- * treated as expired (fail closed): `new Date(bad) <= now` is `false`, so a
- * malformed timestamp from a caller that bypassed key-file validation would
- * otherwise slip past the expiry guards below as if it were still valid.
+ * Whether an ISO 8601 `expires` is at or before `now`. An unparseable value,
+ * from a caller that bypassed key-file validation, counts as expired.
  */
 function isExpired(expires: string, now: number): boolean {
   const expiresMs = new Date(expires).getTime();
@@ -157,25 +120,14 @@ function isExpired(expires: string, now: number): boolean {
 }
 
 /**
- * Assert the locally-knowable pre-handshake preconditions on a shared secret:
- * present and well-formed (matching {@link SHARED_SECRET_REGEX}), and not
- * already expired. Both are determinable from local state alone, so a caller
- * can run this before opening any connection -- {@link runProtocol} (the CLI)
- * does, and {@link authenticateConnection} also runs it for a library
- * consumer that bypasses that orchestration. This is the pre-handshake check
- * of docs/spec/PROTOCOL.md ("Enforcement sites"), which enumerates all four
- * and states what each covers.
+ * Assert the pre-handshake check on a shared secret (docs/spec/PROTOCOL.md,
+ * "Enforcement sites"): present, matching {@link SHARED_SECRET_REGEX}, and not
+ * expired. It reads local state only, so {@link runProtocol} runs it before
+ * opening a connection; {@link authenticateConnection} runs it too.
  *
- * Both throws are marked {@link markStatesItsOwnNextStep}, since their
- * messages already include specific recovery instructions; a higher-level
- * catch checks the mark and suppresses its own generic advisory.
- *
- * Narrows `authentication.sharedSecret` to a non-optional `string` on
- * success.
- *
- * @throws {Error} (marked {@link markStatesItsOwnNextStep}) if `sharedSecret`
- *                 is absent or not a base64url-encoded 32-byte value, or if
- *                 `expires` is set and in the past.
+ * @throws {Error} (marked {@link markStatesItsOwnNextStep}, as each message
+ *                 states its own remedy) if `sharedSecret` is absent or not a
+ *                 base64url-encoded 32-byte value, or if `expires` is past.
  */
 export function assertSharedSecretReadyForHandshake(
   authentication: Authentication,
@@ -203,56 +155,33 @@ export function assertSharedSecretReadyForHandshake(
 
 /**
  * Run a P-256 (NNpsk0) authenticated key exchange over an already-open
- * connection.
+ * connection, before `runExchange`. Both parties must call it with the same
+ * `sharedSecret`, or key confirmation fails and this throws.
  *
- * Call this immediately after the connection is established and before
- * `runExchange` (exported from `./exchange.ts`). Both parties must call it
- * with the same `sharedSecret`, or the key-confirmation step fails and this
- * function throws.
- *
- * Runtime contract: {@link Authentication}'s `sharedSecret` is typed
- * optional only for parse-time intermediate states (e.g. a config file
- * loaded before the key file is injected). By the time this function runs
- * it must be a string matching {@link SHARED_SECRET_REGEX}, or this function
- * throws synchronously, before any network activity, with a marked recovery
- * error. A library consumer that bypasses the CLI's config loader is
- * responsible for ensuring the secret is present.
- *
- * Expiry is checked before the handshake begins and again after it
- * completes (docs/spec/PROTOCOL.md, "Enforcement sites").
- *
- * This function's own validation errors (secret format, pre- and
- * post-handshake expiry) are marked {@link markStatesItsOwnNextStep},
- * since their messages already include recovery instructions; higher-level
- * code should check the mark and suppress its own generic advisory when it
- * is set. A key-exchange failure from `runKex` is not marked: its message
- * is generic by design.
+ * The secret is checked before any network activity, and expiry again after
+ * the handshake (docs/spec/PROTOCOL.md, "Enforcement sites"). Those errors are
+ * marked {@link markStatesItsOwnNextStep}; a key-exchange failure is not, its
+ * message generic by design.
  *
  * @param conn            An open, ready-to-use connection.
  * @param authentication  The authentication block from the connection
  *                        config. `sharedSecret` must be present.
- * @param handshakeRole   This party's role (`"initiator"` or `"responder"`),
- *                        matching the role passed to subsequent protocol
- *                        calls.
- * @param requestEncryption  Whether this party requests an additional
- *                        application-encryption layer over the connection.
- *                        It is bound into the handshake transcript and OR'd
- *                        with the peer's request; the result is returned as
- *                        {@link AuthResult.applyEncryption}. Which channel
- *                        asks for what: docs/spec/CHANNEL_SECURITY.md
- *                        ("Which channels request it").
+ * @param handshakeRole   This party's role, matching the role passed to
+ *                        subsequent protocol calls.
+ * @param requestEncryption  Whether this party requests an application-
+ *                        encryption layer, OR'd with the peer's request into
+ *                        {@link AuthResult.applyEncryption}
+ *                        (docs/spec/CHANNEL_SECURITY.md, "Which channels
+ *                        request it").
  *
  * @throws {Error} if `authentication.sharedSecret` is absent or not a
- *                 base64url-encoded 32-byte value.
- * @throws {Error} if `authentication.expires` is in the past before the
- *                 handshake, or if it expires during the key-exchange
- *                 round-trip (post-handshake check).
+ *                 base64url-encoded 32-byte value, or if
+ *                 `authentication.expires` passes before or during the
+ *                 handshake.
  * @throws {AuthenticationError} (a `"security"`-kind ConnectionError,
- *                 message `"key exchange authentication failed"`,
- *                 propagated unwrapped from `runKex`) if the key exchange
- *                 fails: a wrong shared secret or tampered messages. The
- *                 class is the trust-boundary marker consumers classify on;
- *                 the message stays generic.
+ *                 propagated unwrapped from `runKex`) on a wrong shared secret
+ *                 or tampered messages. Consumers classify on the class; the
+ *                 message stays generic.
  */
 export async function authenticateConnection(
   conn: MessageConnection,
@@ -260,13 +189,10 @@ export async function authenticateConnection(
   handshakeRole: HandshakeRole,
   requestEncryption: boolean,
 ): Promise<AuthResult> {
-  // Narrows `authentication.sharedSecret` to a non-optional string for the
-  // rest of this function.
   assertSharedSecretReadyForHandshake(authentication);
   const { sharedSecret, expires } = authentication;
 
-  // runKex takes the raw 32-byte pre-shared secret; the assertion above
-  // (SHARED_SECRET_REGEX) guarantees `sharedSecret` decodes to exactly 32 bytes.
+  // SHARED_SECRET_REGEX guarantees `sharedSecret` decodes to exactly 32 bytes.
   const { sessionKey, applyEncryption } = await runKex(
     conn,
     handshakeRole,
@@ -274,8 +200,7 @@ export async function authenticateConnection(
     requestEncryption,
   );
 
-  // Post-handshake expiry check: catches a secret that expires during the
-  // key-exchange round-trip (docs/spec/PROTOCOL.md, "Enforcement sites").
+  // A secret that expired during the key-exchange round-trip.
   if (expires !== undefined && isExpired(expires, Date.now())) {
     throw markStatesItsOwnNextStep(
       new Error(

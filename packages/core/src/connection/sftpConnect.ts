@@ -5,9 +5,8 @@
 
 /**
  * The host key a server presented on the SFTP channel, as observed by
- * {@link SftpSession.probeHostKeyFingerprint}. Both fields are public
- * (a host key and its fingerprint are not secret): the CLI shows them to the
- * operator on a first-use trust prompt and persists `fingerprint` as the pin.
+ * {@link SftpSession.probeHostKeyFingerprint}. Both fields are public: the CLI
+ * shows them on a first-use trust prompt and persists `fingerprint` as the pin.
  */
 export interface PresentedHostKey {
   /**
@@ -18,9 +17,8 @@ export interface PresentedHostKey {
   fingerprint: string;
   /**
    * SSH key-type string, e.g. `ssh-ed25519`, as {@link keyTypeFromBlob} returned
-   * it. Stored unsanitized: show it only through an escaping sink. The partner's
-   * advertised value arrives on this field under a length bound alone
-   * (`protocolSetup.ts`), so it can contain control and bidirectional characters.
+   * it. Unsanitized, and a partner-advertised value is only length-bounded
+   * (`protocolSetup.ts`): show it only through an escaping sink.
    */
   keyType: string;
 }
@@ -58,11 +56,10 @@ export const settleVerify = (
 
 /**
  * The `ssh2-sftp-client` options `connection.providerOptions` may set for SFTP;
- * every other key is dropped with a warning, so the map cannot change the host,
- * the credentials or host-key verification. An allowlist because ssh2's
- * sensitive options are many and grow (`sock`, `authHandler`, `agent`), so a
- * forbid-list would fail open. `algorithms` is filtered by
- * {@link SFTP_ALGORITHMS_ALLOWED_SUBKEYS} (docs/EXCHANGE_REFERENCE.md).
+ * every other key is dropped with a warning. An allowlist because ssh2's
+ * sensitive options (`sock`, `authHandler`, `agent`) are many and grow.
+ * `algorithms` is filtered by {@link SFTP_ALGORITHMS_ALLOWED_SUBKEYS}
+ * (docs/EXCHANGE_REFERENCE.md, `connection.provider_options`).
  *
  * @internal
  */
