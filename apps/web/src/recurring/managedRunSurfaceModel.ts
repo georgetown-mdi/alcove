@@ -1,4 +1,8 @@
 import {
+  MANAGED_HANDOFF_INITIAL,
+  managedHandoffReducer,
+} from "./managedRunHandoffModel";
+import {
   MANAGED_LOAD_INITIAL,
   managedLoadReducer,
 } from "./managedRunLoadModel";
@@ -6,12 +10,20 @@ import {
   MANAGED_RECOVERY_INITIAL,
   managedRecoveryReducer,
 } from "./managedRunRecoveryModel";
+import {
+  MANAGED_STORE_READS_INITIAL,
+  managedStoreReadsReducer,
+} from "./managedSurfaceReadsModel";
 
 import type { Displayable, ResolvedMatching, TermsChange } from "@alcove/core";
 
 import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
 
+import type {
+  ManagedHandoffAction,
+  ManagedHandoffState,
+} from "./managedRunHandoffModel";
 import type {
   ManagedLoadAction,
   ManagedLoadState,
@@ -20,7 +32,13 @@ import type {
   ManagedRecoveryAction,
   ManagedRecoveryState,
 } from "./managedRunRecoveryModel";
+import type {
+  ManagedStoreReadAction,
+  ManagedStoreReads,
+} from "./managedSurfaceReadsModel";
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
+import type { ManagedBackupMarker } from "@psi/managed/managedBackupState";
+import type { ManagedMigrationDispatch } from "@psi/managed/managedExchangeExport";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
 import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
@@ -188,19 +206,38 @@ export function managedRunReducer(
   }
 }
 
-/** The surface's state: the record load, the attended run and the failure
- * recovery. */
+/** The answer to the partner's proposed terms change. A failure includes the
+ * text the panel shows. */
+export type ManagedTermsProposalRequest =
+  { kind: "idle" } | { kind: "busy" } | { kind: "failed"; failure: string };
+
+/** The terms proposal's events. Settling it also clears the run failure and reads
+ * the record again; the composed surface reducer routes it to all three. */
+export type ManagedTermsProposalAction =
+  | { type: "terms-proposal-started" }
+  | { type: "terms-proposal-failed"; failure: string }
+  | { type: "terms-proposal-settled" };
+
+/** The surface's state: the record load, the attended run, the failure recovery,
+ * the store reads beside the record, the exports and hand-offs, and the answer to
+ * a terms proposal. */
 export interface ManagedRunSurfaceState {
   load: ManagedLoadState;
   run: ManagedRunState;
   recovery: ManagedRecoveryState;
+  reads: ManagedStoreReads;
+  handoff: ManagedHandoffState;
+  termsProposal: ManagedTermsProposalRequest;
 }
 
-/** The first read under way, and no run and no recovery this visit. */
+/** Every read under way, and nothing else under way this visit. */
 export const MANAGED_RUN_SURFACE_INITIAL: ManagedRunSurfaceState = {
   load: MANAGED_LOAD_INITIAL,
   run: MANAGED_RUN_INITIAL,
   recovery: MANAGED_RECOVERY_INITIAL,
+  reads: MANAGED_STORE_READS_INITIAL,
+  handoff: MANAGED_HANDOFF_INITIAL,
+  termsProposal: { kind: "idle" },
 };
 
 /** A recovery write that returns the record it wrote, adopted with its outcome. */
@@ -212,12 +249,26 @@ export type ManagedRecordWriteAction =
       record: RunnableManagedExchangeRecord;
     };
 
+/** An export that marked the record backed up, the marker landing on the loaded
+ * record with the export's outcome. */
+export type ManagedBackupExportAction =
+  | { type: "backup-exported"; marker: ManagedBackupMarker }
+  | {
+      type: "migration-dispatched";
+      dispatch: ManagedMigrationDispatch;
+      marker: ManagedBackupMarker;
+    };
+
 /** Every event the surface reports. */
 export type ManagedRunSurfaceAction =
   | ManagedRunAction
   | Exclude<ManagedRecoveryAction, { type: ManagedRecordWriteAction["type"] }>
   | ManagedRecordWriteAction
-  | ManagedLoadAction;
+  | ManagedLoadAction
+  | ManagedStoreReadAction
+  | Exclude<ManagedHandoffAction, { type: ManagedBackupExportAction["type"] }>
+  | ManagedBackupExportAction
+  | ManagedTermsProposalAction;
 
 function withRun(
   state: ManagedRunSurfaceState,
@@ -233,6 +284,20 @@ function withLoad(
   return load === state.load ? state : { ...state, load };
 }
 
+function withHandoff(
+  state: ManagedRunSurfaceState,
+  handoff: ManagedHandoffState,
+): ManagedRunSurfaceState {
+  return handoff === state.handoff ? state : { ...state, handoff };
+}
+
+function withReads(
+  state: ManagedRunSurfaceState,
+  reads: ManagedStoreReads,
+): ManagedRunSurfaceState {
+  return reads === state.reads ? state : { ...state, reads };
+}
+
 function adopted(
   load: ManagedLoadState,
   record: RunnableManagedExchangeRecord,
@@ -243,7 +308,9 @@ function adopted(
 /** The surface's reducer. A run start moves both the run and the recovery; a
  * composed re-invite adopts the rotated record and replaces the failure it
  * recovers from; a standing clear adopts the record it wrote; a run the hand-off
- * refused settles with the copy spent. */
+ * refused settles with the copy spent; an export that marked the record backed up
+ * lands the marker with its outcome; a settled terms proposal clears the failure
+ * and reads the record again. */
 export function managedRunSurfaceReducer(
   state: ManagedRunSurfaceState,
   action: ManagedRunSurfaceAction,
@@ -257,6 +324,7 @@ export function managedRunSurfaceReducer(
       };
     case "reinvite-composed":
       return {
+        ...state,
         load: adopted(state.load, action.record),
         run: managedRunReducer(state.run, { type: "failure-cleared" }),
         recovery: managedRecoveryReducer(state.recovery, action),
@@ -285,6 +353,48 @@ export function managedRunSurfaceReducer(
     case "run-settled":
     case "failure-cleared":
       return withRun(state, managedRunReducer(state.run, action));
+    case "backup-exported":
+    case "migration-dispatched":
+      return {
+        ...state,
+        load: managedLoadReducer(state.load, {
+          type: "backup-marked",
+          marker: action.marker,
+        }),
+        handoff: managedHandoffReducer(state.handoff, action),
+      };
+    case "terms-proposal-settled":
+      return {
+        ...state,
+        load: managedLoadReducer(state.load, {
+          type: "record-read-requested",
+        }),
+        run: managedRunReducer(state.run, { type: "failure-cleared" }),
+        termsProposal: { kind: "idle" },
+      };
+    case "terms-proposal-started":
+      return { ...state, termsProposal: { kind: "busy" } };
+    case "terms-proposal-failed":
+      return {
+        ...state,
+        termsProposal: { kind: "failed", failure: action.failure },
+      };
+    case "export-started":
+    case "export-finished":
+    case "export-failed":
+    case "migration-confirm-started":
+    case "migration-confirmed":
+    case "migration-refused":
+    case "migration-kept":
+    case "command-line-handed-off":
+      return withHandoff(state, managedHandoffReducer(state.handoff, action));
+    case "accounting-read":
+    case "unfiled-disclosures-read":
+    case "parked-results-read":
+    case "unrecorded-run-flagged":
+    case "accounting-read-requested":
+    case "parked-results-read-requested":
+      return withReads(state, managedStoreReadsReducer(state.reads, action));
     case "record-read":
     case "record-read-failed":
     case "record-read-requested":
@@ -365,13 +475,10 @@ export type ManagedSurfaceView =
   | "run";
 
 /** What {@link managedSurfaceView} chooses from. */
-export interface ManagedSurfaceViewInputs {
-  load: ManagedLoadState;
-  run: ManagedRunState;
-  commandLineHandedOff: boolean;
-  migrated: boolean;
-  migrationAwaitingConfirm: boolean;
-}
+export type ManagedSurfaceViewInputs = Pick<
+  ManagedRunSurfaceState,
+  "load" | "run" | "handoff"
+>;
 
 /** The view the main column shows, the first that applies in this order: the
  * load's own page short of a runnable record, a finished run, a hand-off, then
@@ -381,8 +488,9 @@ export function managedSurfaceView(
 ): ManagedSurfaceView {
   if (inputs.load.kind !== "runnable") return inputs.load.kind;
   if (managedRunCompletion(inputs.run) !== undefined) return "complete";
-  if (inputs.commandLineHandedOff) return "command-line";
-  if (inputs.migrated) return "migrated";
-  if (inputs.migrationAwaitingConfirm) return "confirm-move";
+  if (inputs.handoff.commandLine !== undefined) return "command-line";
+  if (inputs.handoff.migration.kind === "migrated") return "migrated";
+  if (inputs.handoff.migration.kind === "awaiting-confirm")
+    return "confirm-move";
   return "run";
 }
