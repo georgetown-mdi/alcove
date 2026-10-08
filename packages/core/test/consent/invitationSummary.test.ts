@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vitest";
 
-import { getDefaultLinkageTerms } from "../../src/defaults/builtInLinkageTerms.js";
+import {
+  BUILT_IN_LINKAGE_RULE_SETS,
+  getDefaultLinkageTerms,
+} from "../../src/defaults/builtInLinkageTerms.js";
 import {
   summarizeInvitation,
   TRANSFORM_FUNCTION_GLOSSARY,
@@ -32,6 +35,7 @@ import {
 import { declaredTransformParamType } from "../../src/config/transformParamTypes.js";
 import { camelizeKeys } from "../../src/utils/camelizeKeys.js";
 import { runPipeline } from "../../src/standardization.js";
+import { DATE_COLLAPSE_PROBES } from "../../src/linkageSatisfiability.js";
 
 import type { ConnectionEndpoint } from "../../src/config/invitation.js";
 import type { Metadata } from "../../src/config/metadata.js";
@@ -1153,6 +1157,27 @@ describe("the consent summary's date-collapse marker", () => {
     ).toEqual(["date of birth (any date)"]);
   });
 
+  test("a filter every probe passes shows any date, though it drops real records", () => {
+    // The stated limit of the measurement: it runs only the probe dates, so a
+    // filter that keeps exactly those and drops every other date reads as the
+    // full collapse.
+    const probeRenderings = DATE_COLLAPSE_PROBES.map(
+      ({ year, month, day }) => `${year}${month}${day}`,
+    );
+    const steps = [
+      parseDate(LITERAL_REGION_FORMAT),
+      {
+        function: "filter_regex",
+        params: { pattern: `^ACME-(${probeRenderings.join("|")})$` },
+      },
+      slice(1, 4),
+    ];
+    const { year, month, day } = DATE_COLLAPSE_PROBES[0];
+    expect(runPipeline(`${month}/${day}/${year}`, steps)).toBe("ACME");
+    expect(runPipeline("03/04/1985", steps)).toBeNull();
+    expect(headerFor(steps)).toEqual(["date of birth (any date)"]);
+  });
+
   test("a rescued dead run names the fallback rather than falling silent", () => {
     // The run drops every date, but the coalesce puts every record back on
     // one constant, so the element is not dead and the accurate marker is
@@ -1217,6 +1242,25 @@ describe("the consent summary's date-collapse marker", () => {
     ]);
     expect(params[0]).toBe(`output_format: ${LITERAL_REGION_FORMAT}`);
     expect(params[1]).toMatch(/^flood: F+\.\.\.\[truncated\]$/);
+  });
+});
+
+describe("the consent summary's padded-slice marker", () => {
+  test("no built-in key slices a padded value", () => {
+    // A higher-ranked marker can mask "padded slice"; the built-in keys are
+    // kept out of that case by never slicing after a pad.
+    for (const ruleSet of BUILT_IN_LINKAGE_RULE_SETS)
+      for (const key of ruleSet.linkageKeys)
+        for (const element of key.elements) {
+          const functions = (element.transform ?? []).map(
+            (step) => step.function,
+          );
+          const padAt = functions.indexOf("pad_left");
+          expect(
+            padAt === -1 || !functions.slice(padAt + 1).includes("substring"),
+            `${key.name} ${element.field}`,
+          ).toBe(true);
+        }
   });
 });
 
