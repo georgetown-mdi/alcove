@@ -112,13 +112,15 @@ vi.mock("@recurring/ManagedTermsUpdate", async (importOriginal) => ({
  * it is armed for: the write's `put` is issued as an `add` of a key the store already
  * holds, which fails the request with a ConstraintError and aborts the
  * transaction. What `transaction.error` holds at the bubbled `error` event and
- * at the `abort` event that follows is recorded, for the test to assert.
+ * at the `abort` event that follows is recorded, for the test to assert;
+ * `aborted` resolves with the latter once the abort event fires.
  */
 const storeFault = vi.hoisted(() => ({
   armedFor: undefined as string | undefined,
   atError: undefined as DOMException | null | undefined,
-  atAbort: undefined as DOMException | null | undefined,
   requestError: undefined as DOMException | null | undefined,
+  aborted: undefined as unknown as Promise<DOMException | null>,
+  recordAbort: undefined as unknown as (error: DOMException | null) => void,
 }));
 const realPut = IDBObjectStore.prototype.put;
 
@@ -144,7 +146,7 @@ function installStoreFault(): void {
       storeFault.requestError = request.error;
     });
     transaction.addEventListener("abort", () => {
-      storeFault.atAbort = transaction.error;
+      storeFault.recordAbort(transaction.error);
     });
     return request;
   };
@@ -175,8 +177,10 @@ beforeEach(async () => {
   installStoreFault();
   storeFault.armedFor = undefined;
   storeFault.atError = undefined;
-  storeFault.atAbort = undefined;
   storeFault.requestError = undefined;
+  storeFault.aborted = new Promise((resolve) => {
+    storeFault.recordAbort = resolve;
+  });
   stub.realRun = false;
   stub.faultStamp = false;
   stub.hold = undefined;
@@ -210,9 +214,7 @@ test("an aborted stamp rejects with the failed request's error, which transactio
   expect(storeFault.requestError?.name).toBe("ConstraintError");
   expect(rejection).toBe(storeFault.requestError);
   // The abort event follows in a later task, holding the same error.
-  await vi.waitFor(() => {
-    expect(storeFault.atAbort).toBe(storeFault.requestError);
-  });
+  expect(await storeFault.aborted).toBe(storeFault.requestError);
   expect((await getManagedExchange(created.id))?.lastRun).toBeUndefined();
 });
 
@@ -238,9 +240,7 @@ test("a run whose success stamp the store aborts shows its results and says the 
   // note shows once the write rejects at the error event; the abort event
   // follows in a later task, so it may not have fired yet.
   expect(storeFault.atError).toBeNull();
-  await vi.waitFor(() => {
-    expect(storeFault.atAbort?.name).toBe("ConstraintError");
-  });
+  expect((await storeFault.aborted)?.name).toBe("ConstraintError");
   // The rotation committed before the stamp; the stamp did not.
   const stored = await getManagedExchange(created.id);
   expect(stored?.sharedSecret).not.toBe(created.sharedSecret);

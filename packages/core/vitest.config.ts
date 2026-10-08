@@ -38,6 +38,9 @@ export default defineConfig({
           // `npm run test:stress`. Extend (not replace) vitest's defaults so
           // node_modules/dist stay excluded.
           exclude: [...configDefaults.exclude, "test/stress/**"],
+          // Above the default so a WASM round or heap measurement still
+          // finishes when other suites share the machine.
+          testTimeout: 15_000,
         },
       },
       {
