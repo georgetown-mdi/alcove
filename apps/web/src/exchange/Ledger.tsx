@@ -30,7 +30,7 @@ function shareBarRows(
  * console's monospace data voice, and an optional reference to the spine step
  * that owns the value ("Step 2"). `muted` is the named empty state ("None",
  * "Nothing - matching only"), rendered in the placeholder voice; with neither
- * the row shows the {@link NotSetMark}. `shareBar` holds the
+ * the row shows the not-set mark. `shareBar` holds the
  * producer's marker for the narrow condensed bar (see {@link shareBarRows}).
  */
 interface LedgerRow {
@@ -119,7 +119,7 @@ function NotSetMark() {
   );
 }
 
-/** A Customize row's quiet fact: the {@link NotSetMark} when absent,
+/** A Customize row's quiet fact: the not-set mark when absent,
  * the model's tone color when present. The fact is plain text inside the row,
  * so an attention state is never conveyed by color alone. */
 function CustomizeFactValue({ entry }: { entry: RailFact }) {
