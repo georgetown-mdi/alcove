@@ -7,6 +7,7 @@ import {
   PROTOCOL_VERSION,
   PROTOCOL_VERSION_MISMATCH_MESSAGE,
   TERMS_ENVELOPE_FIELDS,
+  termsDifferenceRefusedBy,
 } from "../src/protocolSetup";
 import { MAX_NAME_LENGTH } from "../src/config/linkageTermsSchema";
 import { MAX_PSI_DECODE_ELEMENTS } from "../src/connection/frameSize";
@@ -1436,6 +1437,48 @@ test("a refusal by the initiator is worded from each party's own side", async ()
     PARTNER_REFUSED +
       `payload mismatch: your send columns [] do not match your partner's receive columns ["email"]`,
   );
+});
+
+test("each party's terms refusal states which party refused", async () => {
+  // The responder refuses on the algorithm and the initiator reads its abort;
+  // then the initiator refuses on the columns it receives and the responder
+  // reads its abort at message 3.
+  const reasons = (settled: PromiseSettledResult<unknown>[]): unknown[] =>
+    settled.map((outcome) =>
+      outcome.status === "rejected" ? outcome.reason : undefined,
+    );
+  const [byResponderAtInitiator, byResponder] = reasons(
+    await runExchange(termsA, { ...termsB, algorithm: "psi-c" }),
+  );
+  expect(termsDifferenceRefusedBy(byResponder)).toBe("this-party");
+  expect(termsDifferenceRefusedBy(byResponderAtInitiator)).toBe("partner");
+  const [byInitiator, byInitiatorAtResponder] = reasons(
+    await runExchange(
+      { ...termsA, payload: { receive: [{ name: "email" }] } },
+      termsB,
+    ),
+  );
+  expect(termsDifferenceRefusedBy(byInitiator)).toBe("this-party");
+  expect(termsDifferenceRefusedBy(byInitiatorAtResponder)).toBe("partner");
+  // Read through a wrap, as a transport wraps it.
+  expect(
+    termsDifferenceRefusedBy(new Error("wrapped", { cause: byInitiator })),
+  ).toBe("this-party");
+});
+
+test("an abort naming no differing term is not a terms difference refusal", async () => {
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "abort",
+    protocolVersion: PROTOCOL_VERSION,
+    abortReasons: ["the operator declined the terms"],
+  });
+  const refusal = await initiator.catch((err: unknown) => err);
+  expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+  expect(termsDifferenceRefusedBy(refusal)).toBeUndefined();
 });
 
 test("a deduplicate refusal is worded from each party's own side", async () => {

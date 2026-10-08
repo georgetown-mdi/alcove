@@ -56,6 +56,7 @@ import {
 
 import { LocalFSClient } from "./connection/localFSClient";
 import { markArrivalWait, type ArrivalWait } from "./failureRemedy";
+import { markTermsRefusalRun } from "./termsRefusalRemedy";
 import { SSH2SFTPClientAdapter } from "./connection/ssh2SftpAdapter";
 import { dialedBrokerAuthority } from "./connection/webrtc/brokerClient";
 import { describeIceTransportPolicy } from "./connection/webrtc/iceDiagnostics";
@@ -2090,6 +2091,7 @@ export async function runProtocol(
     };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
+    markTermsRefusalRun(err, auth === null ? "quick-exchange" : "configured");
     // tokenRotated=true means this party's saveKeyFile succeeded; the
     // partner independently derived the same new token from the session
     // key, but their disk write cannot be verified from here. "Retry

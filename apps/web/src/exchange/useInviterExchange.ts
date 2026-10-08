@@ -19,6 +19,7 @@ import {
   prepareForExchange,
   sanitizeErrorChainLinks,
   sanitizeErrorForDisplay,
+  termsDifferenceRefusedBy,
 } from "@alcove/core";
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 
@@ -113,6 +114,7 @@ import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
+import type { TermsDifferenceRefusedBy } from "@alcove/core";
 import type { Transport } from "@psi/transportChooser";
 import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
@@ -254,6 +256,36 @@ function partnerRefusalCopy(
     };
   return undefined;
 }
+
+/** The title of the alert for a refusal over a difference in the linkage
+ * terms. */
+export const TERMS_DIFFERENCE_TITLE =
+  "Your linkage terms differ from your partner's";
+
+const TERMS_DIFFERENCE_PROBLEM: Record<TermsDifferenceRefusedBy, string> = {
+  "this-party":
+    "Your partner's linkage terms differ from yours, so this exchange " +
+    "stopped before any linkage key or data was sent.",
+  partner:
+    "Your partner stopped this exchange because your linkage terms differ " +
+    "from theirs, before any linkage key or data was sent.",
+};
+
+/**
+ * The next step for a refusal over a difference in the linkage terms, by
+ * seat: the inviter sends a fresh invitation with the agreed terms, and the
+ * acceptor asks for one. Each names the control its seat's alert offers.
+ *
+ * @internal exported for testing
+ */
+export const TERMS_DIFFERENCE_REMEDY: Record<ExchangeSeat, string> = {
+  inviter:
+    "Agree the terms with your partner, then choose Start over with a fresh " +
+    "invitation and send your partner the new invitation.",
+  acceptor:
+    "Ask your partner for a new invitation with the terms you agree on, " +
+    "then choose Start over with a fresh invitation to accept it.",
+};
 
 function failureContentFor(
   category: ExchangeErrorCategory,
@@ -491,6 +523,19 @@ function failureContentFor(
         settingsCannotResolve: true,
       };
   }
+  // A refusal over a difference in the linkage terms, raised in this browser:
+  // what happened from this party's side, then its seat's next step, with the
+  // differences themselves in the labelled block. Classified `config`: the same
+  // terms refuse identically however many times it runs.
+  const refusedBy = termsDifferenceRefusedBy(error);
+  if (refusedBy !== undefined && !(error instanceof RelayedTerminalError))
+    return {
+      category: "config",
+      title: TERMS_DIFFERENCE_TITLE,
+      message: `${TERMS_DIFFERENCE_PROBLEM[refusedBy]} ${TERMS_DIFFERENCE_REMEDY[seat]}`,
+      settingsCannotResolve: true,
+      ...reportedCauseFields(sanitizedFailureMessage(error)),
+    };
   // A set of this party's own over the most values the partner can receive, or
   // over the protocol's maximum, refused before it is sent; or a first-round
   // count that could not be taken. The message is fixed copy with counts, and

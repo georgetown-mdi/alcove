@@ -52,4 +52,59 @@ describe("a terms refusal at each seat", () => {
         `algorithm mismatch: yours is "psi-c", your partner's is "psi"`,
     );
   });
+
+  const REFUSED =
+    "Your partner's linkage terms differ from yours, so this exchange " +
+    "stopped before any linkage key or data was sent.";
+  const PARTNER_REFUSED =
+    "Your partner stopped this exchange because your linkage terms differ " +
+    "from theirs, before any linkage key or data was sent.";
+  const INVITER_STEP =
+    "Agree the terms with your partner, then choose Start over with a fresh " +
+    "invitation and send your partner the new invitation.";
+  const ACCEPTOR_STEP =
+    "Ask your partner for a new invitation with the terms you agree on, " +
+    "then choose Start over with a fresh invitation to accept it.";
+
+  test.each([
+    {
+      seat: "inviter",
+      side: "responder",
+      message: `${REFUSED} ${INVITER_STEP}`,
+    },
+    {
+      seat: "inviter",
+      side: "initiator",
+      message: `${PARTNER_REFUSED} ${INVITER_STEP}`,
+    },
+    {
+      seat: "acceptor",
+      side: "responder",
+      message: `${REFUSED} ${ACCEPTOR_STEP}`,
+    },
+    {
+      seat: "acceptor",
+      side: "initiator",
+      message: `${PARTNER_REFUSED} ${ACCEPTOR_STEP}`,
+    },
+  ] as const)(
+    "the $seat seat's alert ends with its next step ($side)",
+    async ({ seat, side, message }) => {
+      const failure = failureFor(
+        "exchange",
+        (await bothFailures())[side],
+        undefined,
+        "browser",
+        seat,
+      );
+      expect(failure).toMatchObject({
+        category: "config",
+        title: "Your linkage terms differ from your partner's",
+        message,
+        settingsCannotResolve: true,
+        retry: "withheld",
+      });
+      expect(failure.message).not.toContain("psi-c");
+    },
+  );
 });
