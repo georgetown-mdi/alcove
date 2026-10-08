@@ -1,0 +1,11 @@
+[Unit]
+Description=Renew the alcove standalone broker's TLS certificate daily
+
+[Timer]
+# After the relay's renewal window (03:00 plus up to 1h).
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

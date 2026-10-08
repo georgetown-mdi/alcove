@@ -341,15 +341,45 @@ The bring-up stood the broker up by deploying the web app's own image and using
 its mounted signaling path. A later measurement exercised the standalone entry
 point. On 2026-10-03 the broker workspace's standalone entry point ran on the
 standing relay instance beside coturn under systemd, behind an nginx TLS front
-at its own name on port 8443, a measurement port because coturn holds 443. A
-browser inviter built with `VITE_SIGNALING_SERVER_URL`, a CLI-to-CLI exchange
-and an invite/accept pair each completed one exchange through it. The
-deployment was then removed; the 443 question and the standing service stay
-with the follow-on item for the standing broker service.
+at its own name on port 8443, because coturn listens on 443. A browser inviter
+built with `VITE_SIGNALING_SERVER_URL`, a CLI-to-CLI exchange and an
+invite/accept pair each completed one exchange through it, and that deployment
+was removed.
 
-Two operational facts came with it. The relay instance is a t4g.nano with
-412 MB, which carried coturn, the broker and nginx with no headroom. A
-full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
+**The standalone broker is deployed as a standing service.** On 2026-10-05/06
+the same shape went back onto the relay instance to stay, and its URL, at the
+standing name on 8443, is the one the web app's build names. Its units, the
+front's configuration and the certificate renewal are tracked in
+[infra/broker/](../../infra/broker/README.md). What that deployment measured:
+
+- **Reach.** From an outside machine with certificate verification on,
+  `/api/health` through the front answered `200`, a signaling WebSocket opened,
+  and `/` answered `404`.
+- **An exchange.** A CLI invite/accept pair completed one exchange through it.
+  Both parties ran on one machine with the built-in STUN default, so the run
+  says nothing about the relay path.
+- **Renewal.** One forced renewal through the installed script changed the
+  served certificate and restarted the front; a run through the renewal unit
+  outside the window left the certificate and the front as they were.
+- **Memory.** The deployment cost the instance about 50 MB of available memory
+  and about 105 MB more swap in use. coturn did not restart and no process was
+  OOM-killed. A few minutes after start the broker used 54 to 62 MB and the
+  front 8 to 13 MB.
+- **Unit exposure.** `systemd-analyze security` scores the broker's unit 8.6,
+  EXPOSED.
+- **Logging.** The front's access log records the request path without its
+  query string from 2026-10-07 on
+  ([PRIVACY.md](../../PRIVACY.md#hosted-web-application)), and a test over the
+  tracked configuration fails if it would log the query string again.
+
+The deployment did not measure a renewal fired by the timer that changes the
+certificate, a reboot, repeated crashes, sustained memory pressure, a
+connection idle for ten minutes, a browser acceptor, a network admitting TCP to
+443 only, or a scheduled liveness probe.
+
+Two operational facts came with the 2026-10-03 run. The relay instance is a
+t4g.nano with 412 MB, which carried coturn, the broker and nginx with no
+headroom. A full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
 
@@ -590,7 +620,7 @@ change to the drop-in.
 | coturn on Fargate | a credential granted the container service; the one used here is denied it outright |
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
-| The standalone broker at its standing name on 443 | the follow-on item for the standing broker service; the standalone entry point itself completed exchanges beside coturn on 8443 on 2026-10-03, then was removed |
+| The standing broker on 443, and across a reboot, repeated crashes and memory pressure | the broker on 443 once coturn and the front share that port, and an instance reboot, a repeatedly killed broker and an exchange under memory pressure, each observed on the standing deployment ([Does the coordination server leave the web app's deployment](#does-the-coordination-server-leave-the-web-apps-deployment)) |
 | A relayed exchange longer than `max-allocate-lifetime` | a relayed run past 600 s, which shows whether werift and the browser refresh their allocations; every relayed run measured here took seconds |
 | Whether coturn reports usage or metrics mid-session for a long or high-volume allocation | one relayed session longer than `max-allocate-lifetime`, with its usage and `/metrics` read while it is open; the host run's sessions were short |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |

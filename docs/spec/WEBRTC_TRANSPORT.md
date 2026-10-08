@@ -69,6 +69,8 @@ genuine id collision (two parties, two tokens, answered with `ID-TAKEN`) from a
 reconnect of the same client (same id and token, which the broker adopts
 silently and answers with no `OPEN`).
 
+The query string carries the rendezvous identifier, and the standalone broker's TLS front is a stated limit on its privacy: it writes each request's path but never its query string to its access log, while its error log can carry a request line, the query string and so the rendezvous identifier included, as [PRIVACY.md](../../PRIVACY.md) states.
+
 The CLI resolves the omitted parts of `connection.server` to the same defaults a
 PeerJS client applies, except `secure`, which a browser client takes from the
 page it was served over and the CLI has no page for:

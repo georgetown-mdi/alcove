@@ -146,7 +146,7 @@ The build writes only the part of Pages' configuration the site needs: a `_heade
 - **The coordination server and the TURN relay are outside Cloudflare.** `signal.data-bridge.org` and `turn.data-bridge.org` are DNS-only records in the zone, pointing at one host the project runs, which runs the broker, its nginx TLS front and the relay (coturn).
 - **Their logs are in that host's system journal:** the nginx front's access log and error log, the broker's output and coturn's output. The containers write to it through Docker's `journald` log driver, and nothing ships the journal off the host.
 - **The access log records the request path without the query string,** so the rendezvous identifier and client token in a signaling URL are not written to it.
-- **Retention is bounded by the host's journald configuration.** That configuration, the nginx configuration and the units live on the host, not in this repository.
+- **Retention is bounded by the host's journald configuration.** That configuration is [`infra/relay/journald-alcove-relay.conf`](../infra/relay/journald-alcove-relay.conf); the broker's units and the nginx front's configuration are in [`infra/broker/`](../infra/broker/README.md), and the relay's in [`infra/relay/`](../infra/relay/README.md).
 
 ## Diagnosing web connection failures
 
