@@ -98,7 +98,11 @@ chmod 644 "$CONF"
 
 # --- the certificate --------------------------------------------------------------
 put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
-"$ETC/renew.sh"
+RESTART_MARK="$(mktemp)"
+trap 'rm -f "$RESTART_MARK"' EXIT
+ALCOVE_BROKER_RESTART_MARK="$RESTART_MARK" "$ETC/renew.sh"
+FRONT_RESTARTED=0
+[ -s "$RESTART_MARK" ] && FRONT_RESTARTED=1
 
 # --- the front --------------------------------------------------------------------
 docker pull -q "$IMAGE" >/dev/null
@@ -113,7 +117,15 @@ if [ "$FRONT_WAS_ACTIVE" = 1 ]; then
   if [ "$FRONT_UNIT_CHANGED" = 1 ]; then
     log "alcove-broker-tls.service changed; restarting it"
     systemctl restart alcove-broker-tls.service
+  elif [ "$CONF_CHANGED" = 1 ] && [ "$FRONT_RESTARTED" = 1 ]; then
+    # The configuration was written before renew.sh restarted the front.
+    log "alcove-broker-tls.service restarted onto the new configuration with the certificate"
   elif [ "$CONF_CHANGED" = 1 ]; then
+    for _ in $(seq 1 30); do
+      docker exec alcove-broker-tls true >/dev/null 2>&1 && break
+      sleep 1
+    done
+    docker exec alcove-broker-tls true >/dev/null 2>&1       || die "the alcove-broker-tls container did not accept docker exec within 30 s; journalctl -u alcove-broker-tls.service"
     # A reload keeps open WebSockets; a restart would drop them.
     docker exec alcove-broker-tls nginx -t \
       || die "the rendered $CONF fails nginx -t; the running front keeps its loaded configuration until it restarts. Fix the template and run again"

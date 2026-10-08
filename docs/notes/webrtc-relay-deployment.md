@@ -377,9 +377,9 @@ certificate, a reboot, repeated crashes, sustained memory pressure, a
 connection idle for ten minutes, a browser acceptor, a network admitting TCP to
 443 only, or a scheduled liveness probe.
 
-Two operational facts came with the 2026-10-03 run. The relay instance is a t4g.nano with
-412 MB, which carried coturn, the broker and nginx with no headroom. A
-full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
+Two operational facts came with the 2026-10-03 run. The relay instance is a
+t4g.nano with 412 MB, which carried coturn, the broker and nginx with no
+headroom. A full-workspace `npm ci` on it OOM-killed coturn (restarted by systemd in about
 8 s), so any install there must be scoped to the broker workspace or built
 elsewhere.
 

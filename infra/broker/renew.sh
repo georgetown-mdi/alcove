@@ -1,12 +1,7 @@
 #!/bin/bash
-# Renew the standalone broker's certificate by ACME DNS-01, install it for the
-# TLS front, and restart the front only when the certificate or key changed (a
-# restart drops live WebSockets). Idempotent: lego's `run` issues a first
-# certificate, and after that renews only inside its window. The DNS credential
-# is exported only into the subshell that runs the client.
-#
-# Installed at /etc/alcove-broker/renew.sh, root-owned at mode 700, rather than
-# under /opt/alcove-broker, which the broker's account owns.
+# Renew the broker's certificate by ACME DNS-01 (README.md, Certificates) and
+# restart the TLS front only when the certificate or key changed. When
+# ALCOVE_BROKER_RESTART_MARK names a file, a restart writes to it.
 set -euo pipefail
 
 ETC=/etc/alcove-broker
@@ -66,6 +61,7 @@ install -m 644 "$SRC_CRT" "$TLS/fullchain.pem"
 if systemctl is-active --quiet alcove-broker-tls.service; then
   log "installed a new certificate; restarting alcove-broker-tls.service"
   systemctl restart alcove-broker-tls.service
+  [ -z "${ALCOVE_BROKER_RESTART_MARK:-}" ] || echo restarted > "$ALCOVE_BROKER_RESTART_MARK"
 else
   log "installed a new certificate; alcove-broker-tls.service is not running and was not started"
 fi

@@ -13,10 +13,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-// The standalone broker's TLS front (infra/broker): the template's logging, the
-// renderer, and renew.sh against a fixture host. It reads the template, not a
-// running nginx; `lego` and `systemctl` are stubs on PATH that record their
-// calls, so nothing here needs root, systemd or an ACME authority.
+// The broker's TLS front (infra/broker): the template's logging, the renderer,
+// and renew.sh against a fixture host with `lego` and `systemctl` stubs on PATH.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const BROKER = resolve(here, "..", "infra/broker");

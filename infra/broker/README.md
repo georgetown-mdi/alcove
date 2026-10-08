@@ -64,6 +64,7 @@ All three services write to the host's journal, under the retention the relay's 
 - **The front's error log** is at `warn`, and the test fails below `warn`. A request line in one of its lines can include the query string ([PRIVACY.md](../../PRIVACY.md)).
 
 A change to the template reaches a running front through `install.sh`, which rewrites `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it), runs `nginx -t` in the container and reloads it, keeping open WebSockets.
+The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 
 ## Certificates
 
@@ -76,7 +77,7 @@ Each forced renewal counts against Let's Encrypt's limit of five duplicate certi
 
 ## Exposure
 
-`systemd-analyze security alcove-broker.service` scores the unit 8.6, EXPOSED, and systemd warns at load that `User=nobody` is not safe.
+`systemd-analyze security alcove-broker.service` scores the unit EXPOSED (the score is in the [deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)), and systemd warns at load that `User=nobody` is not safe.
 The unit is the deployed one; tightening it is a change to measure on the host first.
 
 ## What is not tracked
