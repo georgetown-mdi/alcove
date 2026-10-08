@@ -1,7 +1,7 @@
 ---
 title: "Alcove Security Design"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-07"
+last_reviewed: "2026-10-08"
 ---
 
 # Alcove security
@@ -481,7 +481,7 @@ Alcove uses the identifying fields only to compute the intersection: it does not
 
 **Protocol messages.** During matching, the data crossing the wire is cryptographic protocol messages (elliptic-curve points) plus non-identifying match bookkeeping (encrypted-set indices and association tables); raw identifier values never cross. On recurring (authenticated) CLI exchanges these are wrapped in AEAD ciphertext by the application-layer encryption (see [Channel security](#channel-security)); on quick exchanges and the web application's application layer they cross under transport encryption only. The PSI guarantee ensures each party learns only the existence of shared members, with records outside the intersection never revealed. After matching, a payload-exchange phase transmits the raw values of the payload columns each party designated, for matched rows only; by default the identifying columns used for matching are linkage-only and are not among them.
 
-**Third parties.** No PII is transmitted to any third party. The coordination server used by the web application's WebRTC channel sees only connection metadata (peer IDs) and has no visibility into data-channel traffic (see [Channel security](#channel-security)). The hosted web application is served through Cloudflare, which terminates its public TLS session and sees the delivery metadata it forwards -- client addresses, requested paths, and the application's own pages and signaling traffic -- rather than exchange content. SFTP and shared-folder channels use operator-managed infrastructure.
+**Third parties.** No PII is transmitted to any third party. The coordination server used by the web application's WebRTC channel sees only connection metadata (peer IDs) and has no visibility into data-channel traffic (see [Channel security](#channel-security)). The hosted web application is served through Cloudflare, which terminates its public TLS session and sees the delivery metadata it forwards -- client addresses, requested paths, and the application's own pages -- rather than exchange content. It carries none of the coordination server's traffic: the application's origin serves no signaling, and the hosted coordination server runs on a host of its own outside Cloudflare ([DEPLOYMENT.md](DEPLOYMENT.md#what-the-deployment-logs)). SFTP and shared-folder channels use operator-managed infrastructure.
 
 **Logging.** Alcove does not write PII to log output. Operational logging is limited to non-sensitive metadata: the runtime resource ceilings logged once per exchange (Node version, host memory, the V8 heap limits, and any container memory limit) and the memory this party's record count needs, exchange timing, transport errors, and protocol state transitions. Review log output before forwarding it to a third-party logging service.
 
