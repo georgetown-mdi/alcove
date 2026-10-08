@@ -1,26 +1,11 @@
-// Message-frame envelope codec for the file-sync wire protocol: the pure
-// serialize/deserialize over the raw `version || type || seq || payload` bytes
-// every data-plane message file holds. Everything here is a pure function of
-// its byte/number inputs -- no instance state, no I/O -- so the wire layout and
-// its validation live in one place.
-
-// Binary message-frame envelope. Every data-plane message file -- a JSON
-// control message (the pre-encryption handshake) and an encrypted binary PSI
-// frame alike -- is written as raw bytes `version || type || seq || payload`:
+// The file-sync message envelope, `version || type || seq || payload`:
 //
-//   byte 0      version/format marker (MESSAGE_ENVELOPE_VERSION)
-//   byte 1      payload type (MESSAGE_TYPE_OBJECT | MESSAGE_TYPE_BINARY): the
-//               outer, cleartext discriminator the reader keys on, since an
-//               encrypted frame's own type tag lives inside the AEAD
-//               ciphertext and cannot drive the transport read
+//   byte 0      MESSAGE_ENVELOPE_VERSION
+//   byte 1      MESSAGE_TYPE_OBJECT (UTF-8 JSON) or MESSAGE_TYPE_BINARY (raw)
 //   bytes 2..9  per-session sequence number, 8-byte big-endian
-//   bytes 10..  payload: UTF-8 JSON (MESSAGE_TYPE_OBJECT) or raw frame bytes
-//               (MESSAGE_TYPE_BINARY)
+//   bytes 10..  payload, never converted to a string
 //
-// Raw bytes cost no base64 expansion and keep the read path off
-// `Buffer.prototype.toString()`, which throws above Node's maximum string
-// length, so a frame larger than that limit can still be read. The send-time
-// `ts` is not held in the body; a timestamped filename records it.
+// See docs/spec/FILE_SYNC.md#file-taxonomy.
 /** @internal */
 export const MESSAGE_ENVELOPE_VERSION = 1;
 /** @internal */
@@ -33,11 +18,7 @@ export const MESSAGE_HEADER_BYTES = 10;
 export const messageTypeLabel = (type: number): string =>
   type === MESSAGE_TYPE_BINARY ? "Uint8Array" : "Object";
 
-// Writes the MESSAGE_HEADER_BYTES-long envelope header (version || type || seq)
-// into the first 10 bytes of `out`. Every byte is assigned, so an allocUnsafe
-// target leaks no uninitialized bytes. Shared by the header-only serializer (the
-// streamed send path) and the whole-message serializer (test message injection)
-// so the byte layout lives in one place.
+// Assigns every header byte, so an allocUnsafe target leaks none.
 const writeMessageHeader = (out: Buffer, type: number, seq: number): void => {
   out[0] = MESSAGE_ENVELOPE_VERSION;
   out[1] = type;
@@ -45,14 +26,8 @@ const writeMessageHeader = (out: Buffer, type: number, seq: number): void => {
 };
 
 /**
- * Serialize just the {@link MESSAGE_HEADER_BYTES}-byte envelope header
- * (`version || type || seq`), returning a fresh Buffer holding only those bytes.
- * The send path streams this header and the payload as two chunks (see
- * {@link FileSyncConnection.send}) rather than concatenating them into one
- * buffer, so it never copies the whole payload to prepend the 10-byte header: a
- * binary frame holds ~1x its size live, not ~2x. The on-disk bytes are
- * identical to {@link serializeFileSyncMessage}'s (`header || payload`); the byte
- * count the filename declares is `MESSAGE_HEADER_BYTES + payload.length`.
+ * Serialize only the envelope header. The send path writes it and the payload
+ * as two chunks, so the payload is never copied to prepend it.
  *
  * @internal exported for the file-sync transport tests.
  */
@@ -66,16 +41,8 @@ export function serializeFileSyncMessageHeader(
 }
 
 /**
- * Serialize a data-plane message into its on-disk binary envelope. `payload` is
- * the raw payload bytes (UTF-8 JSON for {@link MESSAGE_TYPE_OBJECT}, the frame
- * itself for {@link MESSAGE_TYPE_BINARY}). The returned Buffer's length is the
- * exact on-disk byte count encoded into the message filename, so the receiver's
- * sync-gate can distinguish a partially-synced file from a complete one.
- *
- * The live send path does NOT use this: it streams a
- * {@link serializeFileSyncMessageHeader} header and the payload as two chunks to
- * avoid the full-payload copy this makes (`out.set`). This whole-buffer form is
- * retained for the transport tests, which inject a complete message file's bytes.
+ * Serialize a whole message file's bytes, for tests that inject one; the send
+ * path uses {@link serializeFileSyncMessageHeader}.
  *
  * @internal exported for the file-sync transport tests.
  */
@@ -93,22 +60,14 @@ export function serializeFileSyncMessage(
 export interface DeserializedMessage {
   type: number;
   seq: number;
-  // A view onto the source buffer (no copy): a MESSAGE_TYPE_OBJECT payload is
-  // handed to parseBoundedJson, a MESSAGE_TYPE_BINARY payload is delivered as-is,
-  // so the frame is never stringified regardless of its size.
+  // A view onto the source buffer, not a copy.
   payload: Uint8Array;
 }
 
-// Thrown by deserializeFileSyncMessage when byte 0, the cleartext envelope
-// version marker, is not this build's MESSAGE_ENVELOPE_VERSION -- the one
-// signal separating a same-version peer's corrupt frame from a foreign wire
-// format: a pre-binary-envelope JSON control message begins with '{' (0x7B),
-// and a future version bump raises the byte, so an unrecognized value most
-// likely means an incompatible Alcove version. The read path turns this
-// into a "likely incompatible partner version" hint rather than a raw
-// "malformed envelope" message; it is not a certain diagnosis, since a
-// foreign format that happens to reuse byte 0 == 1 still falls through to
-// the generic checks.
+/**
+ * Byte 0 is not this build's {@link MESSAGE_ENVELOPE_VERSION}: most likely a
+ * partner on an incompatible Alcove version, which the read path reports.
+ */
 export class IncompatibleEnvelopeVersionError extends Error {
   constructor(readonly foundVersion: number) {
     super(`unsupported message envelope version ${foundVersion}`);
@@ -117,11 +76,9 @@ export class IncompatibleEnvelopeVersionError extends Error {
 }
 
 /**
- * Parse a message file's bytes back into its envelope fields, validating the
- * version marker, the type discriminator, and the minimum length. Throws on any
- * structural failure, which the caller wraps as a terminal error: an
- * unrecognized version as a partner refusal. Deliberately does NOT decode the payload, so a frame larger than
- * Node's maximum string length is never converted to a string here.
+ * Parse a message file's bytes into its envelope fields, throwing on any
+ * structural failure. The payload is not decoded, so a frame past Node's
+ * maximum string length can be read.
  */
 export function deserializeFileSyncMessage(
   raw: Uint8Array,
@@ -133,12 +90,8 @@ export function deserializeFileSyncMessage(
   const type = raw[1];
   if (type !== MESSAGE_TYPE_OBJECT && type !== MESSAGE_TYPE_BINARY)
     throw new Error(`unknown message payload type ${type}`);
-  // An honest writer caps seq at the per-session message counter (far below
-  // 2^53), so reject anything above MAX_SAFE_INTEGER as malformed before
-  // narrowing to a Number -- a Number() conversion above that range loses
-  // precision, and comparing as BigInt first mirrors the AEAD decorator's
-  // inbound-seq guard (handleInbound) rather than leaning on the downstream
-  // retain-mode cross-check to fail-safe on the corrupted value.
+  // Compared as a BigInt before narrowing, since Number() loses precision
+  // above MAX_SAFE_INTEGER.
   const seqBig = new DataView(
     raw.buffer,
     raw.byteOffset,

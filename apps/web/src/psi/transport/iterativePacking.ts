@@ -1,29 +1,15 @@
-// The send-side counterpart of boundedReassembly.ts: it replaces this
-// connection class's BinaryPack encode step so an outbound frame's element
-// count is bounded by memory rather than by the JavaScript stack. The encoder
-// itself -- and the byte-for-byte comparison against the pinned packer that
-// keeps the wire unchanged -- lives in `@alcove/core`
-// (connection/binaryPackEncode.ts), so both WebRTC transports put the same
-// bytes on the wire.
-//
-// PeerJS packs an outbound frame with `peerjs-js-binarypack`'s `pack`, which
-// descends one call frame per element: a matched set of a few thousand records
-// overflows the sender's stack after both parties have paid for the PSI
-// compute. Chunking and buffering are left to PeerJS; only the encode step
-// changes (docs/spec/WEBRTC_TRANSPORT.md).
+// Replaces PeerJS's recursive BinaryPack encode step with core's iterative
+// encoder, so a large matched set cannot overflow the sender's stack after the
+// PSI compute. Chunking and buffering stay with PeerJS. See
+// docs/spec/WEBRTC_TRANSPORT.md#outbound-encoding.
 
 import { encodeBinaryPackValue } from "@alcove/core";
 
 import type { DataConnection } from "peerjs";
 
 /**
- * The PeerJS `DataConnection` internals this override replaces and calls.
- * `_send` packs one outbound value and hands it to `_sendChunks` (over the
- * chunker's MTU) or to `_bufferedSend` (at or under it, and for every chunk
- * `_sendChunks` sends back through `_send`). None is part of the public
- * `DataConnection` type, so this is a documented dependency assumption;
- * {@link assertIterativePackingSupported} checks all four exist, so a `peerjs`
- * upgrade that renames or restructures the send path fails loud.
+ * The private PeerJS `DataConnection` internals this override replaces and
+ * calls; {@link assertIterativePackingSupported} checks they exist.
  */
 interface PackingDataConnection {
   _send: (data: unknown, chunked: boolean) => void;
@@ -34,19 +20,11 @@ interface PackingDataConnection {
 
 /**
  * Asserts `conn` exposes the PeerJS internals
- * {@link packOutboundFramesIteratively} replaces and calls. Encodes the
- * dependency assumption as a runtime check, not a comment: a `peerjs` upgrade
- * that renames the encode step or moves the chunker must fail loud (the live
- * browser exchange test installs the override on every exchange) rather than
- * silently leave the recursive packer in place, which fails only once an
- * exchange is large enough -- past the PSI compute both parties paid for.
- * Called before any listener is attached, so a broken assumption fails cleanly
- * with nothing to tear down.
- *
- * The four are all the replacement needs: PeerJS's fifth send path,
- * `_send_blob`, is not probed because the replacement drops it. Alcove sends
- * no `Blob`, and one handed to the replacement is refused by the encoder
- * (docs/spec/DEPENDENCY_PINS.md).
+ * {@link packOutboundFramesIteratively} replaces and calls, so a `peerjs`
+ * upgrade that moves them fails before any listener is attached instead of
+ * leaving the recursive packer in place. `_send_blob` is not probed: the
+ * replacement drops it and the encoder refuses a `Blob`. See
+ * docs/spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack.
  */
 export function assertIterativePackingSupported(conn: DataConnection): void {
   const probe = conn as unknown as {
@@ -72,17 +50,12 @@ export function assertIterativePackingSupported(conn: DataConnection): void {
 
 /**
  * Replaces `conn`'s BinaryPack encode step with core's iterative encoder,
- * leaving PeerJS's chunking and buffering to PeerJS. The replacement keeps the
- * original's contract exactly: an already-chunked value, or a packed frame at
- * or under the chunker's MTU, goes straight to `_bufferedSend`; anything larger
- * goes to `_sendChunks`, whose chunk envelopes come back through this same
- * replacement.
+ * keeping the original's routing: a chunk or a frame within the chunker's MTU
+ * goes to `_bufferedSend`, anything larger to `_sendChunks`.
  *
- * @param conn  The PeerJS data connection (open or not yet open); install
- *              before the first send.
- * @throws If the PeerJS internals are not as expected (a broken upgrade
- *   assumption), or, at send time, if a frame holds a value kind the wire does
- *   not carry.
+ * @param conn  The PeerJS data connection; install before the first send.
+ * @throws If the PeerJS internals are not as expected, or, at send time, if a
+ *   frame contains a value kind the wire does not support.
  */
 export function packOutboundFramesIteratively(conn: DataConnection): void {
   assertIterativePackingSupported(conn);

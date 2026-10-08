@@ -1,9 +1,8 @@
-// The one boundary through which a linkage-terms value, often partner-chosen,
-// enters a cross-party compatibility diagnostic. It redacts private-key material,
-// replaces control characters, and delimits the value so it cannot read as one of
-// Alcove's own clauses; it emits only printable ASCII the display escape leaves
-// unchanged. The brand makes a raw value in a diagnostic a compile error
-// (docs/spec/CHANNEL_SECURITY.md, Compatibility diagnostic value delimiting).
+// The only way a linkage-terms value enters a cross-party compatibility
+// diagnostic: redacted, control characters replaced, and delimited so it cannot
+// pass for one of Alcove's own clauses. The brand makes a raw value there a
+// compile error. See
+// docs/spec/CHANNEL_SECURITY.md#compatibility-diagnostic-value-delimiting.
 
 import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 import { replaceControlCharactersForDisplay } from "../utils/sanitizeForDisplay.js";
@@ -12,19 +11,17 @@ declare const compatibilityMessageBrand: unique symbol;
 
 /**
  * First-party text from {@link compatibilityMessage}'s fixed spans, or a terms
- * value passed through {@link quoteTermsValue} or {@link bareTermsValue}. A plain
- * `string` is not assignable to it; it is still a `string`. The phantom brand
- * exists only at compile time and claims delimiting, control-character treatment
- * and redaction, not escaping: confusables and non-ASCII stay for the display sink.
+ * value passed through {@link quoteTermsValue} or {@link bareTermsValue}. The
+ * compile-time brand claims delimiting and redaction, not escaping, which stays
+ * with the display sink.
  */
 export type CompatibilityMessageFragment = string & {
   readonly [compatibilityMessageBrand]: true;
 };
 
 /**
- * The delimiter {@link quoteTermsValue} wraps a terms value in, and the
- * character it doubles inside one. Doubling needs no escape character, so the
- * display escape rewrites nothing this module emits.
+ * The delimiter {@link quoteTermsValue} wraps a value in and doubles inside it;
+ * doubling needs no escape character for the display escape to rewrite.
  */
 export const TERMS_VALUE_DELIMITER = '"';
 
@@ -35,20 +32,15 @@ export const TERMS_VALUE_DELIMITER = '"';
 export const MAX_BARE_TERMS_VALUE_LENGTH = 64;
 
 /**
- * The charset {@link bareTermsValue} renders undelimited: letters, digits, `.`,
- * `_` and `-`, with at least one digit. It excludes the delimiter and the payload
- * list's punctuation, and the digit keeps a bare value from spelling a
- * connective, since the templates' own words are digit-free (executed in
- * compatibilityMessage.test.ts). The length bound is checked beside it.
+ * What {@link bareTermsValue} renders undelimited. The required digit keeps a
+ * bare value from spelling one of the templates' digit-free words.
  */
 export const BARE_TERMS_VALUE_PATTERN = /^[A-Za-z0-9._-]*[0-9][A-Za-z0-9._-]*$/;
 
 /**
- * Render a terms value as one delimited run: private-key material redacted,
- * control characters replaced, wrapped in {@link TERMS_VALUE_DELIMITER} with
- * every delimiter inside doubled, so no value can end its run early. The display
- * cap can still cut a run, leaving it unterminated before
- * `DISPLAY_TRUNCATION_MARKER`. For display only: comparisons use raw values.
+ * Render a terms value as one delimited run that no value can end early. The
+ * display cap can still cut a run before `DISPLAY_TRUNCATION_MARKER`. For
+ * display only: comparisons use raw values.
  */
 export function quoteTermsValue(value: string): CompatibilityMessageFragment {
   const doubled = replaceControlCharactersForDisplay(
@@ -62,9 +54,8 @@ export function quoteTermsValue(value: string): CompatibilityMessageFragment {
 
 /**
  * Render a semver string or ISO date without delimiters, re-checking the shape
- * on the redacted value, since `validateCompatibility`'s inputs need not be
- * schema-parsed; any other value, a redacted one included, takes
- * {@link quoteTermsValue}.
+ * since `validateCompatibility`'s inputs need not be schema-parsed; any other
+ * value takes {@link quoteTermsValue}.
  */
 export function bareTermsValue(value: string): CompatibilityMessageFragment {
   const redacted = redactPrivateKeyMaterial(value);
@@ -77,9 +68,8 @@ export function bareTermsValue(value: string): CompatibilityMessageFragment {
 }
 
 /**
- * Render the payload column names as comma-separated runs, quoted per element so
- * a column named `a,b` stays distinct from columns `a` and `b`, matching the
- * element-wise comparison that found the mismatch.
+ * Render payload column names quoted per element, so a column named `a,b`
+ * stays distinct from columns `a` and `b`.
  */
 export function quoteTermsValueList(
   values: readonly string[],
@@ -90,11 +80,9 @@ export function quoteTermsValueList(
 }
 
 /**
- * Tagged template composing fixed first-party copy with fragments, keeping the
- * brand that concatenation would drop:
- * ``compatibilityMessage`version mismatch: yours is ${bareTermsValue(v)}` ``.
- * It stops accidental omission only; a hand-built `TemplateStringsArray` or an
- * `as` assertion bypasses it.
+ * Tagged template composing fixed copy with fragments, keeping the brand that
+ * concatenation would drop. It stops accidental omission only: an `as`
+ * assertion or a hand-built `TemplateStringsArray` bypasses it.
  */
 export function compatibilityMessage(
   fixedSpans: TemplateStringsArray,
@@ -107,10 +95,8 @@ export function compatibilityMessage(
 }
 
 /**
- * Render one half of a rule-set citation, the set name quoted and the version in
- * the checked bare form, shared by every surface that shows a citation so no
- * surface can delimit it differently. Takes the two values so a caller's own
- * treatment (escaping for `log.warn`, redaction) comes before this last pass.
+ * A rule-set citation as every screen and log shows it: the name quoted, the
+ * version bare. A caller's own treatment (escaping, redaction) comes first.
  */
 export function ruleSetCitation(
   name: string,

@@ -5,65 +5,41 @@ import { inferMetadata, linkageDateOfBirthColumn } from "./config/metadata.js";
 import { INFER_DATE_SCAN_CAP, inferDateFormat } from "./utils/date.js";
 
 /**
- * Resolve the date-of-birth column of a header: {@link linkageDateOfBirthColumn}
- * over the metadata {@link inferMetadata} gives the column names, or `undefined`
- * when there is none. The column a config authored from this header, such as
- * the CLI's `init` template through {@link inferDateInputFormatFromSource},
- * binds the `date_of_birth` field to.
+ * The header's date-of-birth column as {@link linkageDateOfBirthColumn}
+ * resolves it, or `undefined` when there is none.
  *
- * An empty column name is dropped rather than handed to {@link inferMetadata}:
- * this selection runs inside the read -- `loadCSVColumnSample`'s chunk handler
- * and the web server's stream consumer -- which holds no sanitized-position
- * list, so its empty-name refusal would state the wrong cause for a name the
- * strip emptied, ahead of the caller's own warning. The one refusal stays
- * with that caller, which passes the positions
- * (`CSVParseMeta.sanitizedColumnPositions`) and names the removal. A type is resolved
- * per name, so dropping one changes no other column's type.
+ * An empty name is dropped, not refused: this runs inside the read, which has
+ * no sanitized positions, so the refusal that names the removal is left to the
+ * caller (`CSVParseMeta.sanitizedColumnPositions`).
  */
 export function inferDateOfBirthColumn(
   columns: Array<string>,
 ): string | undefined {
   const named = columns.filter((name) => name.length > 0);
-  // No name is empty past that filter, so no refusal can fire and there is no
-  // cause to state; the read's caller raises the one that names the removal.
   return linkageDateOfBirthColumn(inferMetadata(named, []))?.name;
 }
 
-/** The header columns plus the inferred date-input format of a source's
- * date-of-birth column, as {@link inferDateInputFormatFromSource} resolves them. */
+/** What {@link inferDateInputFormatFromSource} resolves from a source. */
 interface InferredDateInputFormat {
   /** The CSV header field names. */
   columns: Array<string>;
-  /** The 1-based positions of the names the read removed control characters
-   * from (`CSVParseMeta.sanitizedColumnPositions`), so a caller authoring a config
-   * from this read tells its operator what changed. */
+  /** 1-based positions of names the read stripped control characters from. */
   sanitizedColumnPositions: Array<number>;
-  /** The date-of-birth column the format was inferred from, absent when the
-   * header has none. */
+  /** Absent when the header has no date-of-birth column. */
   dobColumn?: string;
-  /** The inferred `parse_date` input format for {@link dobColumn}, absent when
-   * there is no DOB column or its values yield no format signal. */
+  /** The `parse_date` input format for {@link dobColumn}, absent when its
+   * sample yields no format. */
   dateInputFormat?: string;
 }
 
 /**
  * Read a CSV source's header and infer its date-of-birth column's
- * `parse_date` input format, in one bounded streaming pass -- the
- * composition every "derive a config from a file" path shares.
+ * `parse_date` input format in one streaming pass. The sample cap is
+ * {@link inferDateFormat}'s own scan cap, so the format equals a full-column
+ * read's at bounded memory. See
+ * docs/spec/DEFAULT_STANDARDIZATION.md#date-format-inference.
  *
- * The bound is exact, not heuristic: the sample cap matches
- * {@link inferDateFormat}'s own scan cap, so the inferred format equals one
- * from a full-column read. The CLI's `init` and the web server's file
- * profile rely on that equivalence to profile a CLI-scale file (millions of
- * rows) at bounded, not file-sized, peak memory.
- *
- * `delimiter` reads the source by that field delimiter; omit it to have the
- * read detect one, as {@link loadCSVColumnSample} does.
- *
- * Resolves the header columns, the DOB column (absent without one), and the
- * format (absent without a DOB column or a signal in its sample); rejects,
- * like {@link loadCSVColumnSample}, on a read/parse error or line-ceiling
- * trip.
+ * Omit `delimiter` to detect one. Rejects as {@link loadCSVColumnSample} does.
  */
 export async function inferDateInputFormatFromSource(
   file: LocalFile,
