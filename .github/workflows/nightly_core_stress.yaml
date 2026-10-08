@@ -10,9 +10,9 @@ name: Nightly Core Stress Tests
 # the large-N path without slowing the PR gate.
 #
 # Runs only on `schedule` and manual `workflow_dispatch` -- never on push or
-# pull_request -- so the PR gate is unaffected. It invokes the whole `stress`
-# project, so any future stress test added under test/stress/ is picked up here
-# automatically, not just today's two.
+# pull_request -- so the PR gate is unaffected. Each file the `stress` project
+# lists runs in a job of its own, so a stress file added under test/stress/ is
+# picked up here without an edit.
 
 on:
   schedule:
@@ -35,18 +35,17 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
-# Least privilege: this test job only needs to read the repo.
+# Least privilege: these test jobs only need to read the repo.
 permissions:
   contents: read
 
 jobs:
-  stress:
-    name: Core PSI stress tests
+  files:
+    name: List the stress test files
     runs-on: ubuntu-latest
-    # Upper bound on a hung run. The work fits well under this: each stress test
-    # has its own 300s timeout (packages/core/vitest.config.ts), and install plus
-    # the core build add only a couple of minutes.
-    timeout-minutes: 30
+    timeout-minutes: 15
+    outputs:
+      files: ${{ steps.list.outputs.files }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,12 +53,63 @@ jobs:
           # is promoted to main slowly, so checking out main here would catch a
           # regression late. staging is the branch this nightly exists to watch.
           ref: staging
+      - uses: ./.github/actions/setup
+      # Vitest lists the files, so the jobs below run exactly what the `stress`
+      # project includes.
+      - name: List the files of the stress project
+        id: list
+        working-directory: packages/core
+        run: |
+          set -euo pipefail
+          files=$(npx vitest list --project stress --filesOnly --json | node -e '
+            const { relative } = require("node:path");
+            let input = "";
+            process.stdin.on("data", (chunk) => (input += chunk));
+            process.stdin.on("end", () => {
+              const files = JSON.parse(input)
+                .map((each) => relative(process.cwd(), each.file))
+                .sort();
+              if (files.length === 0)
+                throw new Error("the stress project lists no test files");
+              console.log(JSON.stringify(files));
+            });
+          ')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+
+  stress:
+    name: Core PSI stress (${{ matrix.file }})
+    needs: files
+    runs-on: ubuntu-latest
+    # Above the longest probe limit a stress test sets (psiRoundWalls, four
+    # hours a round), so a slow case fails by its own timeout instead of being
+    # cut off here. Measured on a hosted runner 2026-10-08: the round of 2^22 a
+    # side took 44 minutes for each of its first two of five operations (about
+    # 165 minutes in all, scaled from a local run), wasmMatchSlices 40 minutes,
+    # and each other file measured there under 5 minutes.
+    timeout-minutes: 270
+    strategy:
+      # One failing file must not cancel the others' runs.
+      fail-fast: false
+      matrix:
+        file: ${{ fromJSON(needs.files.outputs.files) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: staging
       # Pins Node, installs from the lockfile, and builds @alcove/core so the
       # stress tests run against the compiled fork in dist/.
       - uses: ./.github/actions/setup
+      # The verbose reporter prints each test's duration as it finishes; naming
+      # a reporter replaces the config's list, so the skipped-test reporter is
+      # named again.
       - name: Stress tests (core PSI)
-        run: npm run test:stress -w packages/core
+        run: >-
+          npm run test:stress -w packages/core --
+          --reporter=verbose
+          --reporter=../../scripts/lib/skippedLegReporter.mjs
+          "$STRESS_FILE"
         env:
+          STRESS_FILE: ${{ matrix.file }}
           # Raise the createSetupMessage permutation run above the 200k local
           # default for heavier nightly coverage past the ~125k overflow cliff.
           # The ceiling is the stress project's 300s per-test timeout: that test
