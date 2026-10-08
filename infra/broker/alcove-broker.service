@@ -11,14 +11,45 @@ WorkingDirectory=/opt/alcove-broker/src
 Environment=ALCOVE_BROKER_HOST=127.0.0.1
 Environment=ALCOVE_BROKER_PORT=9411
 ExecStart=/usr/local/bin/npm start -w packages/peerjs-broker -- --path /api
+# npm exits 143 when a stop sends SIGTERM.
+SuccessExitStatus=143
 Restart=always
 RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# The sandbox measured on the host (README.md, Exposure). DynamicUser= and
+# MemoryDenyWriteExecute= each stopped the broker starting there.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-StandardOutput=journal
-StandardError=journal
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RemoveIPC=yes
+PrivateUsers=yes
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
 
 [Install]
 WantedBy=multi-user.target

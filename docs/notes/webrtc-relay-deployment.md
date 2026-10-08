@@ -365,8 +365,16 @@ front's configuration and the certificate renewal are tracked in
   and about 105 MB more swap in use. coturn did not restart and no process was
   OOM-killed. A few minutes after start the broker used 54 to 62 MB and the
   front 8 to 13 MB.
-- **Unit exposure.** `systemd-analyze security` scores the broker's unit 8.6,
-  EXPOSED.
+- **Unit exposure.** `systemd-analyze security` scored the broker's unit as
+  first deployed 8.6, EXPOSED. On 2026-10-08 a sandboxing set applied as a
+  drop-in scored 1.3, OK, with the broker answering `/api/health` and a CLI
+  invite/accept exchange completing through the front; the tracked unit
+  contains that set ([infra/broker/README.md, Exposure](../../infra/broker/README.md#exposure)).
+  `DynamicUser=yes` stopped npm starting (`uv_os_homedir returned ENOENT`) and
+  `MemoryDenyWriteExecute=yes` aborted node in V8, so both are left out, the
+  unit still runs as `nobody`, and systemd still warns that `nobody` is not
+  safe. Stopping the unit left it `failed` (npm exits 143 on SIGTERM);
+  `SuccessExitStatus=143` makes a stop leave it `inactive`.
 - **Logging.** The front's access log records the request path without its
   query string from 2026-10-07 on
   ([PRIVACY.md](../../PRIVACY.md#hosted-web-application)), and a test over the

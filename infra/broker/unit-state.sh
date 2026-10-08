@@ -6,6 +6,22 @@
 
 FRONT=alcove-broker-tls.service
 BROKER=alcove-broker.service
+TIMER=alcove-broker-cert.timer
+
+# go_live STAGED TARGET [STAGED TARGET...]: rename each staged file over its
+# target, then set every target's mtime to a clock read after the last rename.
+# The kernel stamps a write from a coarse clock, up to a tick before the write,
+# so only an explicit stamp taken after the rename makes a unit that started
+# before any target went live count as stale.
+go_live() {
+  local targets=()
+  while [ "$#" -ge 2 ]; do
+    mv -f "$1" "$2"
+    targets+=("$2")
+    shift 2
+  done
+  touch -m -d "@$(date +%s.%N)" "${targets[@]}"
+}
 
 # Microseconds since the epoch at which UNIT last became active, on the wall
 # clock file mtimes use; 0 if it never did or the stamp does not parse, which
@@ -39,19 +55,27 @@ front_stale() {
     "$TLS/fullchain.pem" "$TLS/privkey.pem"
 }
 
-# restart_stale_units [--reload]: run daemon-reload when a unit needs it (or
-# always, with --reload), then restart the running broker and front if stale.
-# A stopped unit is left stopped: it reads the current state when it starts.
+# restart_stale_units [--install]: run daemon-reload when a unit needs it (or
+# always, under --install), then restart the running broker and front if
+# stale, and under --install the renewal timer too: renew.sh runs as the
+# service that timer starts. Each restart is decided before the reload, which
+# clears NeedDaemonReload. A stopped unit is left stopped: it reads the
+# current state when it starts.
 restart_stale_units() {
-  local broker=0 front=0 reload=0 unit front_start
+  local broker=0 front=0 timer=0 reload=0 unit front_start
   if systemctl is-active --quiet "$BROKER" && stale "$BROKER" "$UNIT_DIR/$BROKER"; then
     broker=1
   fi
   if systemctl is-active --quiet "$FRONT" && front_stale; then
     front=1
   fi
-  [ "${1:-}" != --reload ] || reload=1
-  for unit in "$BROKER" "$FRONT" alcove-broker-cert.service alcove-broker-cert.timer; do
+  if [ "${1:-}" = --install ]; then
+    reload=1
+    if systemctl is-active --quiet "$TIMER" && stale "$TIMER" "$UNIT_DIR/$TIMER"; then
+      timer=1
+    fi
+  fi
+  for unit in "$BROKER" "$FRONT" alcove-broker-cert.service "$TIMER"; do
     [ "$(systemctl show -p NeedDaemonReload --value "$unit")" != yes ] || reload=1
   done
   [ "$reload" = 0 ] || systemctl daemon-reload
@@ -66,5 +90,9 @@ restart_stale_units() {
   if [ "$front" = 1 ] && [ "$(start_us "$FRONT")" = "$front_start" ]; then
     log "restarting $FRONT onto its unit file, image, configuration and certificate"
     systemctl try-restart "$FRONT"
+  fi
+  if [ "$timer" = 1 ]; then
+    log "restarting $TIMER onto its unit file"
+    systemctl try-restart "$TIMER"
   fi
 }
