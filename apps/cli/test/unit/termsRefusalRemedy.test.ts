@@ -51,6 +51,11 @@ const CONFIGURED_PARTNER =
   "send them an update made with alcove update for them to apply with alcove " +
   "apply, or change your configuration to match theirs, then run the " +
   "same command again.";
+const CONFIGURATION_UNWRITTEN =
+  "This run saved its key file but wrote no configuration. Agree the linkage " +
+  "terms with your partner, move or remove that key file, then set the " +
+  "exchange up again from a fresh invitation with alcove invite or alcove " +
+  "accept.";
 const QUICK =
   "Agree with your partner on the columns your input files share and the " +
   "--linkage-strategy you both pass, then run again.";
@@ -59,6 +64,16 @@ describe("the next step beneath a terms refusal", () => {
   test.each([
     { run: "configured", side: "refused", step: CONFIGURED_REFUSED },
     { run: "configured", side: "partner", step: CONFIGURED_PARTNER },
+    {
+      run: "configuration-unwritten",
+      side: "refused",
+      step: CONFIGURATION_UNWRITTEN,
+    },
+    {
+      run: "configuration-unwritten",
+      side: "partner",
+      step: CONFIGURATION_UNWRITTEN,
+    },
     { run: "quick-exchange", side: "refused", step: QUICK },
     { run: "quick-exchange", side: "partner", step: QUICK },
   ] as const)(
@@ -81,6 +96,42 @@ describe("the next step beneath a terms refusal", () => {
     expect(renderFailureForOperator(partner).endsWith(CONFIGURED_PARTNER)).toBe(
       true,
     );
+  });
+
+  test("a partner that did not accept this party's changed terms takes the partner's step", async () => {
+    const agreement = {
+      reference: "DUA-1",
+      purpose: "research",
+      expirationDate: "2099-01-01",
+    };
+    const declined = new Error("declined");
+    const [initiatorConn, responderConn] = createMessagePipe();
+    const [initiator, responder] = await Promise.allSettled([
+      exchangeTerms(
+        initiatorConn,
+        "initiator",
+        { ...terms, legalAgreement: { ...agreement, reference: "DUA-2" } },
+        1,
+      ),
+      exchangeTerms(
+        responderConn,
+        "responder",
+        { ...terms, legalAgreement: agreement },
+        1,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { onTermsChange: () => Promise.reject(declined) },
+      ),
+    ]);
+    if (initiator.status !== "rejected" || responder.status !== "rejected")
+      throw new Error("expected both parties to stop");
+    expect(responder.reason).toBe(declined);
+    const rendered = renderFailureForOperator(initiator.reason);
+    expect(exitCodeForError(initiator.reason)).toBe(76);
+    expect(rendered.endsWith(`\n${CONFIGURED_PARTNER}`)).toBe(true);
+    expect(rendered).not.toContain(PARTNER_REFUSED_NEXT_STEP);
   });
 
   test("a step names no dash and no partner value", async () => {

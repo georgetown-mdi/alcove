@@ -22,11 +22,14 @@ import {
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
+  PARTNER_REFUSED_TERMS_REMEDY,
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
   SINGLE_COLUMN_DELIMITER_REMEDY,
   TERMS_CHANGE_FAILURE_TITLE,
+  TERMS_DIFFERENCE_PROBLEM,
+  TERMS_DIFFERENCE_TITLE,
   TERMS_SHORTFALL_FAILURE_TITLE,
   TOO_LARGE_REMEDY,
   TOO_LARGE_SET_SOURCE,
@@ -136,6 +139,7 @@ export interface ManagedRunFailureAlert {
     | "too-large"
     | "partner-set-too-large"
     | "partner-refused-set"
+    | "partner-refused-terms"
     | "terms-change"
     | "relay-registration"
     | "saved-address-refused"
@@ -565,6 +569,22 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailureAlert = {
   recovery: "ask-partner",
 };
 
+/** The benign state of a run stopped because the partner's run refused this
+ * exchange's linkage terms as differing from its own, at the terms exchange
+ * before any linkage key or data moved. The same copy as the one-shot
+ * exchange's alert for the partner's side, with the step this exchange's page
+ * offers. Not the retry state -- the same terms refuse identically -- and its
+ * way forward is the page's Change terms section, so the alert offers no
+ * recovery of its own. Its copy attests non-disclosure, so the recorded tier
+ * is gated ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}); the live reading
+ * is not, since the error's mark is set only at the terms exchange. */
+const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailureAlert = {
+  kind: "partner-refused-terms",
+  title: TERMS_DIFFERENCE_TITLE,
+  message: `${TERMS_DIFFERENCE_PROBLEM.partner} ${PARTNER_REFUSED_TERMS_REMEDY}`,
+  recovery: "none",
+};
+
 /** The state of a run that stopped before connecting because its relay's
  * registrar did not confirm the registration the record held as pending. The
  * error's own message names the registrar, its answer, and the next step: a
@@ -736,6 +756,8 @@ export function managedRunTierFailure(
       return RECORDED_PARTNER_SET_TOO_LARGE_FAILURE;
     case "partner-refused-set":
       return PARTNER_REFUSED_SET_FAILURE;
+    case "partner-refused-terms":
+      return PARTNER_REFUSED_TERMS_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
@@ -852,6 +874,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "terms-change": "none",
   "partner-set-too-large": "none",
   "partner-refused-set": "none",
+  "partner-refused-terms": "alert-copy",
   expired: "none",
   input: "none",
   missed: "none",
@@ -892,10 +915,10 @@ export type ManagedRunCausePlacement =
  * by the kind union, so a state added to the model does not typecheck until its
  * placement is decided here.
  *
- * The two states showing the error at all are the ones whose copy accounts for
- * nothing about why the run stopped. The transport state states a connection
- * problem and no more ({@link TRANSPORT_FAILURE}), and its error is the
- * partner- or network-written text the label exists to attribute. The
+ * Two of the three states showing the error at all are the ones whose copy
+ * accounts for nothing about why the run stopped. The transport state states a
+ * connection problem and no more ({@link TRANSPORT_FAILURE}), and its error is
+ * the partner- or network-written text the label exists to attribute. The
  * unreadable-custody state is this browser reading its own storage
  * ({@link CUSTODY_UNREADABLE_FAILURE}), with no affordance on this surface that
  * makes the entry readable, so the read's error is the only diagnostic it has
@@ -907,13 +930,17 @@ export type ManagedRunCausePlacement =
  * copy is the refusal's own message ({@link tooLargeFailure}), so a second
  * block would repeat it, and so is the relay-registration state's
  * ({@link relayRegistrationFailure}), and the partner-set-too-large state's
- * ({@link partnerSetTooLargeFailure}).
+ * ({@link partnerSetTooLargeFailure}). The partner-refused-terms state shows
+ * the error as the one-shot exchange's terms alert does: the copy states the
+ * refusal, and the error states the terms that differ or the reason the partner
+ * gave, which no copy names.
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunFailureAlert["kind"],
   ManagedRunCausePlacement
 > = {
   transport: "attributed",
+  "partner-refused-terms": "attributed",
   "custody-unreadable": "own-account",
   expired: "withheld",
   input: "withheld",
@@ -1007,8 +1034,9 @@ export function withShownCause(
  * `dataExchangeStarted` is THIS run's phase boundary (the run's own
  * `onDataExchangeStart` option, passed to {@link benignRerunOutcome}): a benign
  * state whose copy claims nothing left this device is read off the error only
- * from before it, and a derived tier making the same claim is gated by it too
- * ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
+ * from before it, except the partner's terms refusal, whose error is marked
+ * only at the terms exchange; a derived tier making the same claim is gated by
+ * it too ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
  *
  * Whatever state it lands on, the launch error reaches the operator only
  * through {@link managedRunCausePlacement}, and never on the not-runnable
@@ -1059,6 +1087,7 @@ function classifyLaunchState(
   if (benign === "partner-set-too-large")
     return partnerSetTooLargeFailure(error);
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
+  if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
   if (benign === "relay-registration") return relayRegistrationFailure(error);
   if (
     error instanceof ManagedSignalingEndpointRefusedError &&

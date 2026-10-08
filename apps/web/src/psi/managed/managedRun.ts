@@ -29,6 +29,7 @@ import {
   classifyFailure,
   isSetTooLargeError,
   isTrustBoundaryFailure,
+  termsDifferenceRefusedBy,
 } from "@alcove/core";
 
 import { PartnerNoShowError } from "../transport/waitForConnection";
@@ -368,12 +369,14 @@ function isPartnerRefusedSetAbort(error: unknown): boolean {
  * part of a partner's set over this browser's ceiling. The partner's abort in
  * place of a set of its own over that ceiling records the same with
  * `refusedInRound`, since this browser's setup may have been sent by then. The
- * partner's abort in place of its first set refused for any other cause
- * records `partner-refused-set` with `refusedInRound` for the same reason. The
- * same partner input refuses identically at every window. `aborted` then
- * records `cancelled`. A trust-boundary failure
- * ({@link isTrustBoundaryFailure} of {@link classifyFailure}) before the data
- * exchange began records `auth`.
+ * partner's abort in place of its first set refused for any other cause records
+ * `partner-refused-set` with `refusedInRound` for the same reason. The same
+ * partner input refuses identically at every window. The partner's refusal of
+ * this exchange's terms at the terms exchange ({@link termsDifferenceRefusedBy}
+ * `"partner"`) records `partner-refused-terms`: the same terms refuse
+ * identically until the two parties agree them. `aborted` then records
+ * `cancelled`. A trust-boundary failure ({@link isTrustBoundaryFailure} of
+ * {@link classifyFailure}) before the data exchange began records `auth`.
  * Everything else -- including any of these once the data exchange began --
  * records `transport`.
  *
@@ -426,6 +429,8 @@ export function rerunFailureLastRun(
       ...failedRun(at, "failed", "partner-refused-set"),
       refusedInRound: true,
     };
+  if (termsDifferenceRefusedBy(error) === "partner")
+    return failedRun(at, "failed", "partner-refused-terms");
   if (aborted) return failedRun(at, "failed", "cancelled");
   if (isTrustBoundaryFailure(classifyFailure(error)) && !dataExchangeStarted)
     return failedRun(at, "failed", "auth");
@@ -436,8 +441,9 @@ export function rerunFailureLastRun(
  * six are read before any connection is attempted; `"missed"` is read after a
  * connection attempt found no partner, `"too-large"` before connecting or
  * after the terms exchange, `"partner-set-too-large"` and
- * `"partner-refused-set"` after the terms exchange, and `"relay-registration"` before connecting, once the registrar
- * did not confirm a pending registration. */
+ * `"partner-refused-set"` after the terms exchange, `"partner-refused-terms"`
+ * at the terms exchange, and `"relay-registration"` before connecting, once
+ * the registrar did not confirm a pending registration. */
 type BenignRerunOutcome =
   | "expired"
   | "handed-off"
@@ -449,6 +455,7 @@ type BenignRerunOutcome =
   | "too-large"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-refused-terms"
   | "relay-registration";
 
 /** Classify a launch failure into the benign outcome it holds, or `undefined`
@@ -518,6 +525,8 @@ export function benignRerunOutcome(
   if (error instanceof RoundCapacityError || isPartnerOverCeilingAbort(error))
     return "partner-set-too-large";
   if (isPartnerRefusedSetAbort(error)) return "partner-refused-set";
+  if (termsDifferenceRefusedBy(error) === "partner")
+    return "partner-refused-terms";
   if (error instanceof ManagedRelayRegistrationError)
     return "relay-registration";
   return undefined;

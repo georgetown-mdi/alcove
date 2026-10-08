@@ -78,6 +78,8 @@ import {
   PARTNER_SET_TOO_LARGE_PROBLEM,
   PARTNER_SET_TOO_LARGE_REMEDY,
   PARTNER_SET_TOO_LARGE_TITLE,
+  TERMS_DIFFERENCE_PROBLEM,
+  TERMS_DIFFERENCE_TITLE,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -114,7 +116,6 @@ import type { JobExchangeOptions } from "@jobContract/intentSchemas";
 import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
-import type { TermsDifferenceRefusedBy } from "@alcove/core";
 import type { Transport } from "@psi/transportChooser";
 import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
@@ -256,20 +257,6 @@ function partnerRefusalCopy(
     };
   return undefined;
 }
-
-/** The title of the alert for a refusal over a difference in the linkage
- * terms. */
-export const TERMS_DIFFERENCE_TITLE =
-  "Your linkage terms differ from your partner's";
-
-const TERMS_DIFFERENCE_PROBLEM: Record<TermsDifferenceRefusedBy, string> = {
-  "this-party":
-    "Your partner's linkage terms differ from yours, so this exchange " +
-    "stopped before any linkage key or data was sent.",
-  partner:
-    "Your partner stopped this exchange because your linkage terms differ " +
-    "from theirs, before any linkage key or data was sent.",
-};
 
 /**
  * The next step for a refusal over a difference in the linkage terms, by

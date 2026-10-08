@@ -2091,7 +2091,15 @@ export async function runProtocol(
     };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
-    markTermsRefusalRun(err, auth === null ? "quick-exchange" : "configured");
+    // A failed post-auth hook is the online invite or accept's config write.
+    markTermsRefusalRun(
+      err,
+      auth === null
+        ? "quick-exchange"
+        : run.onAuthenticatedError === undefined
+          ? "configured"
+          : "configuration-unwritten",
+    );
     // tokenRotated=true means this party's saveKeyFile succeeded; the
     // partner independently derived the same new token from the session
     // key, but their disk write cannot be verified from here. "Retry

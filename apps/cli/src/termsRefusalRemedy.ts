@@ -1,8 +1,10 @@
 // The next step the CLI states beneath a refusal over a difference in the
 // linkage terms (core's `termsDifferenceRefusedBy`), by which party refused and
 // by the kind of run: a run from a configuration and key file, which settles
-// terms through `alcove update` and `alcove apply`, or a quick exchange, whose
-// terms each party infers from its own input file.
+// terms through `alcove update` and `alcove apply`; an online invite or accept
+// that saved its key file but wrote no configuration, which only a fresh
+// invitation sets up again; or a quick exchange, whose terms each party infers
+// from its own input file.
 
 import {
   annotate,
@@ -16,9 +18,18 @@ import type { TermsDifferenceRefusedBy } from "@alcove/core";
  * The kind of run a terms refusal ended: `configured` for a run holding a
  * configuration and key file (`alcove exchange`, and the online `alcove
  * invite` and `alcove accept`, which write both before the terms exchange),
- * `quick-exchange` for a run with no shared secret.
+ * `configuration-unwritten` for an online `alcove invite` or `alcove accept`
+ * whose configuration write failed after the handshake saved its key file,
+ * and `quick-exchange` for a run with no shared secret.
  */
-export type TermsRefusalRun = "configured" | "quick-exchange";
+export type TermsRefusalRun =
+  "configured" | "configuration-unwritten" | "quick-exchange";
+
+const CONFIGURATION_UNWRITTEN_NEXT_STEP =
+  "This run saved its key file but wrote no configuration. Agree the " +
+  "linkage terms with your partner, move or remove that key file, then set " +
+  "the exchange up again from a fresh invitation with alcove invite or " +
+  "alcove accept.";
 
 const QUICK_EXCHANGE_NEXT_STEP =
   "Agree with your partner on the columns your input files share and " +
@@ -45,6 +56,10 @@ export const TERMS_REFUSAL_NEXT_STEPS: {
       "yours, send them an update made with alcove update for them to apply " +
       "with alcove apply, or change your configuration to match theirs, then " +
       "run the same command again.",
+  },
+  "configuration-unwritten": {
+    "this-party": CONFIGURATION_UNWRITTEN_NEXT_STEP,
+    partner: CONFIGURATION_UNWRITTEN_NEXT_STEP,
   },
   "quick-exchange": {
     "this-party": QUICK_EXCHANGE_NEXT_STEP,

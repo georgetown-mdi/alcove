@@ -51,6 +51,7 @@ async function run(
   name: string,
   dropDir: string,
   exchange: PreparedExchange,
+  onAuthenticated?: () => void,
 ): Promise<string> {
   const keyFilePath = path.join(work, `${name}.key`);
   saveKeyFile(keyFilePath, { sharedSecret: SHARED_SECRET });
@@ -71,6 +72,7 @@ async function run(
       output: path.join(work, `${name}-out`),
       verbosity: -1,
       loggerName: `terms-sides-${name}`,
+      ...(onAuthenticated === undefined ? {} : { onAuthenticated }),
     });
   } catch (err) {
     return renderFailureForOperator(err);
@@ -120,4 +122,38 @@ test("each party states a linkage strategy difference from its own side", async 
       rendered.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[refusedBy]}`),
     ).toBe(true);
   }
+}, 30_000);
+
+test("a run whose configuration write failed names a fresh invitation as the step", async () => {
+  const dropDir = fs.mkdtempSync(path.join(work, "drop-"));
+  const configurationWriteFails = (): void => {
+    throw new Error("the configuration directory is read-only");
+  };
+  const [[unwritten, configured]] = await withCapturedLogs(
+    () =>
+      Promise.all([
+        run(
+          "unwritten",
+          dropDir,
+          prepared("Cascade Co", "cascade"),
+          configurationWriteFails,
+        ),
+        run("configured", dropDir, prepared("Single Pass Co", "single-pass")),
+      ]),
+    () => true,
+  );
+  const unwrittenStep =
+    TERMS_REFUSAL_NEXT_STEPS["configuration-unwritten"]["this-party"];
+  expect(unwritten.endsWith(`\n${unwrittenStep}`)).toBe(true);
+  expect(unwritten).not.toContain("alcove update");
+  const configuredRefusedBy = configured.includes(
+    "linkage terms are incompatible: ",
+  )
+    ? "this-party"
+    : "partner";
+  expect(
+    configured.endsWith(
+      `\n${TERMS_REFUSAL_NEXT_STEPS.configured[configuredRefusedBy]}`,
+    ),
+  ).toBe(true);
 }, 30_000);

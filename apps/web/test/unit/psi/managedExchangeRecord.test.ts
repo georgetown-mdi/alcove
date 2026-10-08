@@ -2223,6 +2223,7 @@ describe("the rotation-in-flight marker", () => {
     "too-large": false,
     "partner-set-too-large": false,
     "partner-refused-set": false,
+    "partner-refused-terms": false,
     "terms-change": false,
     cancelled: false,
   } satisfies Record<ManagedExchangeFailureKind, boolean>;

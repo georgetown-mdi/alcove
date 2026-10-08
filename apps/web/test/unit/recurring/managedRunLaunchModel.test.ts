@@ -1534,8 +1534,9 @@ describe("the launch error a classified state shows", () => {
   // What the operator is shown follows from one table, and what it holds is a
   // decision per state: the two states whose copy accounts for nothing show the
   // error, one under the label attributing it to the exchange and one finishing
-  // its own copy, and every state whose copy states the cause itself shows none
-  // of it.
+  // its own copy, the partner's terms refusal shows the terms that differ under
+  // that label, and every other state whose copy states the cause itself shows
+  // none of it.
 
   /** Every state the surface classifies into, and where its launch error
    * reaches the operator. Exhaustive by its type, so a kind added to the model
@@ -1546,6 +1547,7 @@ describe("the launch error a classified state shows", () => {
     ManagedRunCausePlacement
   > = {
     transport: "attributed",
+    "partner-refused-terms": "attributed",
     "custody-unreadable": "own-account",
     expired: "withheld",
     input: "withheld",
