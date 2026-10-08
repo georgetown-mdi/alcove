@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 
 import {
   exchangeTerms,
+  isPartnerProtocolRefusal,
   probeProtocolVersion,
   resolveRole,
   PROTOCOL_VERSION,
@@ -1480,6 +1481,74 @@ test("an abort naming no differing term is not a terms difference refusal", asyn
   const refusal = await initiator.catch((err: unknown) => err);
   expect(refusal).toBeInstanceOf(ProtocolRefusalError);
   expect(termsDifferenceRefusedBy(refusal)).toBeUndefined();
+});
+
+test("a refusal of partner data that did not follow the protocol is the partner's protocol refusal", async () => {
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "proceed",
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  await connB.receive();
+  const refusal = await initiator.catch((err: unknown) => err);
+  expect(refusal).toBeInstanceOf(ProtocolRefusalError);
+  expect(isPartnerProtocolRefusal(refusal)).toBe(true);
+  expect(
+    isPartnerProtocolRefusal(
+      new ConnectionError("send failed", "transport", { cause: refusal }),
+    ),
+  ).toBe(true);
+  expect(
+    isPartnerProtocolRefusal(
+      new ProtocolRefusalError(
+        "client protocol error: malformed inbound PSI response frame",
+      ),
+    ),
+  ).toBe(true);
+});
+
+test("neither the partner's abort nor a terms refusal is the partner's protocol refusal", async () => {
+  const [byPartner, byThisParty] = (
+    await runExchange(termsA, { ...termsB, algorithm: "psi-c" })
+  ).map((outcome) =>
+    outcome.status === "rejected" ? outcome.reason : undefined,
+  );
+  expect(isPartnerProtocolRefusal(byPartner)).toBe(false);
+  expect(isPartnerProtocolRefusal(byThisParty)).toBe(false);
+
+  const [connA, connB] = makeConnections();
+  const initiator = exchangeTerms(connA, "initiator", termsA, 100);
+  await connB.receive();
+  await connB.send({
+    linkageTerms: termsB,
+    decision: "abort",
+    protocolVersion: PROTOCOL_VERSION,
+    abortReasons: ["the operator declined the terms"],
+  });
+  const abort = await initiator.catch((err: unknown) => err);
+  expect(abort).toBeInstanceOf(ProtocolRefusalError);
+  expect(isPartnerProtocolRefusal(abort)).toBe(false);
+
+  const responderSide = makeConnections();
+  const responder = exchangeTerms(responderSide[1], "responder", termsB, 200);
+  await responderSide[0].send({
+    linkageTerms: termsA,
+    recordCount: 100,
+    receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
+    protocolVersion: PROTOCOL_VERSION,
+  });
+  await responderSide[0].receive();
+  await responderSide[0].send({ decision: "abort" });
+  expect(
+    isPartnerProtocolRefusal(await responder.catch((err: unknown) => err)),
+  ).toBe(false);
+
+  expect(isPartnerProtocolRefusal(new Error("data channel closed"))).toBe(
+    false,
+  );
 });
 
 /** The initiator's error for a responder abort giving `abortReasons`. */

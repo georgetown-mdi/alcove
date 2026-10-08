@@ -13,6 +13,7 @@ import {
   assertFirstRoundWithinSetMaximum,
   getLogger,
   handshakeRoleForRendezvousRole,
+  isPartnerProtocolRefusal,
   isSetTooLargeError,
   joinErrorCauseChain,
   loadPsiBackend,
@@ -72,6 +73,9 @@ import { selectExchangeDriver } from "@psi/exchangeDriverSelection";
 import { tooLargeReadingOf } from "@psi/managed/managedRun";
 
 import {
+  PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+  PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
@@ -520,6 +524,20 @@ function failureContentFor(
       category: "config",
       title: TERMS_DIFFERENCE_TITLE,
       message: `${TERMS_DIFFERENCE_PROBLEM[refusedBy]} ${TERMS_DIFFERENCE_REMEDY[seat]}`,
+      settingsCannotResolve: true,
+      ...reportedCauseFields(sanitizedFailureMessage(error)),
+    };
+  // Partner data this browser refused as not following the exchange protocol,
+  // with what was refused in the labelled block. Classified `config`: the
+  // partner's run sends the same data however many times this one runs.
+  if (isPartnerProtocolRefusal(error))
+    return {
+      category: "config",
+      title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+      message:
+        `The exchange stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}. ` +
+        "Running it again stops the same way until your partner's run " +
+        `changes. ${PARTNER_PROTOCOL_REFUSAL_REMEDY}`,
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };

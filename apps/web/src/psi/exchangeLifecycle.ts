@@ -132,10 +132,8 @@ export type ExchangeErrorCategory =
  * `classifyTerminalError` drops the phase, since its category has to agree
  * with an exit code this alert has no counterpart for. See {@link
  * ExchangeErrorCategory} for what each category means and for {@link
- * LinkageTermsUnsatisfiableError}'s membership.
- *
- * @internal exported for testing */
-export function classifyExchangeFailure(
+ * LinkageTermsUnsatisfiableError}'s membership. */
+function classifyExchangeFailure(
   error: unknown,
   phase: "prepare" | "run",
 ): ExchangeErrorCategory {

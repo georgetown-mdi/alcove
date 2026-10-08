@@ -40,6 +40,7 @@ import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
 import { ProtocolRefusalError } from "./errors";
 import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
+import { firstLinkBehindTransportWraps } from "./failureClass";
 import {
   receiveParsed,
   parseOrProtocolError,
@@ -342,6 +343,10 @@ const PARTNER_TERMS_REFUSAL_MESSAGE =
   "Your partner stopped the exchange because the linkage terms differ";
 const PARTNER_ABORT_REASON_LABEL = "reason your partner gave: ";
 
+const PARTNER_TERMS_ABORT = annotationKey<true>(
+  "partner abort at the terms exchange",
+);
+
 /**
  * The error for a partner's abort at the terms exchange. `presented` is the
  * terms this party sent the partner, and `partnerTerms` the partner's, where
@@ -353,7 +358,11 @@ const partnerAbortError = (
   partnerTerms: LinkageTerms | undefined,
 ): ProtocolRefusalError => {
   if (reasons === undefined)
-    return new ProtocolRefusalError(PARTNER_ABORT_MESSAGE);
+    return annotate(
+      new ProtocolRefusalError(PARTNER_ABORT_MESSAGE),
+      PARTNER_TERMS_ABORT,
+      true,
+    );
   const message =
     reasons.differingTerms.length === 0
       ? PARTNER_ABORT_MESSAGE
@@ -367,9 +376,13 @@ const partnerAbortError = (
     PARTNER_ABORT_REASON_LABEL,
     reasons.others,
   );
-  const error = new ProtocolRefusalError(
-    message,
-    cause === undefined ? undefined : { cause },
+  const error = annotate(
+    new ProtocolRefusalError(
+      message,
+      cause === undefined ? undefined : { cause },
+    ),
+    PARTNER_TERMS_ABORT,
+    true,
   );
   return reasons.differingTerms.length === 0 && !reasons.changeNotAccepted
     ? error
@@ -405,6 +418,24 @@ export function termsDifferenceRefusedBy(
   error: unknown,
 ): TermsDifferenceRefusedBy | undefined {
   return annotationOf(error, TERMS_DIFFERENCE_REFUSED_BY);
+}
+
+/**
+ * Whether `error` is this party's refusal of partner data that did not follow
+ * the exchange protocol: a malformed or out-of-order PSI setup or response, a
+ * malformed terms message or payload, or another protocol version. The link
+ * {@link firstLinkBehindTransportWraps} reads is a {@link ProtocolRefusalError},
+ * and neither the partner's own abort at the terms exchange nor a refusal over
+ * a difference in the linkage terms. A retry meets the same refusal until the
+ * partner's run changes.
+ */
+export function isPartnerProtocolRefusal(error: unknown): boolean {
+  const link = firstLinkBehindTransportWraps(error);
+  return (
+    link instanceof ProtocolRefusalError &&
+    annotationOf(link, PARTNER_TERMS_ABORT, { ownOnly: true }) === undefined &&
+    termsDifferenceRefusedBy(link) === undefined
+  );
 }
 
 // --- Terms exchange ----------------------------------------------------------

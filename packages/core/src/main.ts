@@ -420,6 +420,7 @@ export type {
 } from "./linkageTermsNegotiation";
 export {
   TermsChangeRefusedError,
+  isPartnerProtocolRefusal,
   termsDifferenceRefusedBy,
 } from "./protocolSetup";
 export type { TermsChange, TermsDifferenceRefusedBy } from "./protocolSetup";

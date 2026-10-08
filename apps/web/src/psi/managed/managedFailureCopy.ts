@@ -230,3 +230,20 @@ export const PARTNER_REFUSED_TERMS_REMEDY =
   "choose Make a terms update under Change terms on this exchange's page " +
   "and send it to them to apply, or apply an update they make with theirs, " +
   "then run the exchange again.";
+
+/** The title over a run stopped because this browser refused partner data that
+ * did not follow the exchange protocol; shared by the one-shot exchange, a
+ * managed run's alert, and the between-visit notification. */
+export const PARTNER_PROTOCOL_REFUSAL_TITLE =
+  "Your partner's data did not follow the exchange protocol";
+
+/** What stopped a run that refused its partner's data, completing a sentence
+ * that ends "stopped because". */
+export const PARTNER_PROTOCOL_REFUSAL_PROBLEM =
+  "your partner's data did not follow the exchange protocol";
+
+/** The remedy for a refusal of partner data that did not follow the exchange
+ * protocol, in the words the one-shot exchange, the next-visit alert, and the
+ * between-visit notification all state it in. */
+export const PARTNER_PROTOCOL_REFUSAL_REMEDY =
+  "Ask your partner to check that they run a current version of Alcove.";

@@ -19,6 +19,9 @@ import {
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
+  PARTNER_PROTOCOL_REFUSAL_PROBLEM,
+  PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  PARTNER_PROTOCOL_REFUSAL_TITLE,
   PARTNER_REFUSED_SET_PROBLEM,
   PARTNER_REFUSED_SET_REMEDY,
   PARTNER_REFUSED_SET_TITLE,
@@ -96,8 +99,9 @@ export {
  *   partner's set is larger than this browser can match, and the same files
  *   refuse identically every time. Not `"retry"`.
  * - `"ask-partner"` -- the partner must fix a cause on their side: their run
- *   refused to send its set and reported why, and it refuses identically every
- *   time. Not `"retry"`.
+ *   refused to send its set and reported why, or sent data that did not follow
+ *   the exchange protocol, and it fails identically every time. Not
+ *   `"retry"`.
  * - `"none"` -- nothing to recover (informational; e.g. a missed window). */
 type ManagedRunRecovery =
   | "reinvite"
@@ -140,6 +144,7 @@ export interface ManagedRunFailureAlert {
     | "partner-set-too-large"
     | "partner-refused-set"
     | "partner-refused-terms"
+    | "partner-protocol-refusal"
     | "terms-change"
     | "relay-registration"
     | "saved-address-refused"
@@ -585,6 +590,21 @@ const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailureAlert = {
   recovery: "none",
 };
 
+/** The benign state of a run stopped because this browser refused partner
+ * data that did not follow the exchange protocol. The same copy as the
+ * one-shot exchange's alert, so a live launch and the record read back state
+ * the same refusal. Not the retry state -- the partner's run sends the same
+ * data at every window. */
+const PARTNER_PROTOCOL_REFUSAL_FAILURE: ManagedRunFailureAlert = {
+  kind: "partner-protocol-refusal",
+  title: PARTNER_PROTOCOL_REFUSAL_TITLE,
+  message:
+    `The last run stopped because ${PARTNER_PROTOCOL_REFUSAL_PROBLEM}. ` +
+    "Running it again stops the same way until your partner's run changes. " +
+    PARTNER_PROTOCOL_REFUSAL_REMEDY,
+  recovery: "ask-partner",
+};
+
 /** The state of a run that stopped before connecting because its relay's
  * registrar did not confirm the registration the record held as pending. The
  * error's own message names the registrar, its answer, and the next step: a
@@ -758,6 +778,8 @@ export function managedRunTierFailure(
       return PARTNER_REFUSED_SET_FAILURE;
     case "partner-refused-terms":
       return PARTNER_REFUSED_TERMS_FAILURE;
+    case "partner-protocol-refusal":
+      return PARTNER_PROTOCOL_REFUSAL_FAILURE;
     case "too-large":
       return recordedTooLargeFailure(record.lastRun ?? {});
     case "handed-off":
@@ -875,6 +897,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "partner-set-too-large": "none",
   "partner-refused-set": "none",
   "partner-refused-terms": "alert-copy",
+  "partner-protocol-refusal": "none",
   expired: "none",
   input: "none",
   missed: "none",
@@ -933,7 +956,9 @@ export type ManagedRunCausePlacement =
  * ({@link partnerSetTooLargeFailure}). The partner-refused-terms state shows
  * the error as the one-shot exchange's terms alert does: the copy states the
  * refusal, and the error states the terms that differ or the reason the partner
- * gave, which no copy names.
+ * gave, which no copy names. The partner-protocol-refusal state shows it as the
+ * one-shot exchange's alert does too: the error names what in the partner's
+ * data was refused, for the partner to act on.
  */
 const MANAGED_RUN_CAUSE_PLACEMENT: Record<
   ManagedRunFailureAlert["kind"],
@@ -941,6 +966,7 @@ const MANAGED_RUN_CAUSE_PLACEMENT: Record<
 > = {
   transport: "attributed",
   "partner-refused-terms": "attributed",
+  "partner-protocol-refusal": "attributed",
   "custody-unreadable": "own-account",
   expired: "withheld",
   input: "withheld",
@@ -1088,6 +1114,8 @@ function classifyLaunchState(
     return partnerSetTooLargeFailure(error);
   if (benign === "partner-refused-set") return PARTNER_REFUSED_SET_FAILURE;
   if (benign === "partner-refused-terms") return PARTNER_REFUSED_TERMS_FAILURE;
+  if (benign === "partner-protocol-refusal")
+    return PARTNER_PROTOCOL_REFUSAL_FAILURE;
   if (benign === "relay-registration") return relayRegistrationFailure(error);
   if (
     error instanceof ManagedSignalingEndpointRefusedError &&
