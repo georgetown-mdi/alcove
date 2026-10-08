@@ -2091,7 +2091,16 @@ export async function runProtocol(
     };
   } catch (err) {
     markArrivalWait(err, arrivalWait);
-    markTermsRefusalRun(err, auth === null ? "quick-exchange" : "configured");
+    // A failed post-authentication hook is the online invite or accept's
+    // configuration write, which the persistence-loss warning above reported.
+    markTermsRefusalRun(
+      err,
+      auth === null
+        ? "quick-exchange"
+        : run.onAuthenticatedError === undefined
+          ? "configured"
+          : "configuration-unwritten",
+    );
     // tokenRotated=true means this party's saveKeyFile succeeded; the
     // partner independently derived the same new token from the session
     // key, but their disk write cannot be verified from here. "Retry

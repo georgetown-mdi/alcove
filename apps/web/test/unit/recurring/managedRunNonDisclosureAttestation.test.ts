@@ -103,6 +103,10 @@ const TIER_EVIDENCE: Record<
     record({ lastRun: failed("partner-refused-set") }),
     undefined,
   ],
+  "partner-refused-terms": [
+    record({ lastRun: failed("partner-refused-terms") }),
+    undefined,
+  ],
   "handed-off": [record({ lastRun: failed("handed-off") }), undefined],
   "custody-unreadable": [
     record({ lastRun: failed("custody-unreadable") }),

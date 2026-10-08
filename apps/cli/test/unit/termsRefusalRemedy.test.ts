@@ -51,6 +51,11 @@ const CONFIGURED_PARTNER =
   "send them an update made with alcove update for them to apply with alcove " +
   "apply, or change your configuration to match theirs, then run the " +
   "same command again.";
+const CONFIGURATION_UNWRITTEN =
+  "This run saved its key file but wrote no configuration. Agree the linkage " +
+  "terms with your partner, move or remove that key file, then set the " +
+  "exchange up again from a fresh invitation with alcove invite or alcove " +
+  "accept.";
 const QUICK =
   "Agree with your partner on the columns your input files share and the " +
   "--linkage-strategy you both pass, then run again.";
@@ -59,6 +64,16 @@ describe("the next step beneath a terms refusal", () => {
   test.each([
     { run: "configured", side: "refused", step: CONFIGURED_REFUSED },
     { run: "configured", side: "partner", step: CONFIGURED_PARTNER },
+    {
+      run: "configuration-unwritten",
+      side: "refused",
+      step: CONFIGURATION_UNWRITTEN,
+    },
+    {
+      run: "configuration-unwritten",
+      side: "partner",
+      step: CONFIGURATION_UNWRITTEN,
+    },
     { run: "quick-exchange", side: "refused", step: QUICK },
     { run: "quick-exchange", side: "partner", step: QUICK },
   ] as const)(

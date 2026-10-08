@@ -21,6 +21,8 @@
 
 import { MAX_WEBRTC_FRAME_BYTES } from "@alcove/core";
 
+import type { TermsDifferenceRefusedBy } from "@alcove/core";
+
 import type {
   ManagedExchangeSchedule,
   TooLargeReading,
@@ -197,3 +199,34 @@ export const PARTNER_REFUSED_SET_PROBLEM =
 export const PARTNER_REFUSED_SET_REMEDY =
   "Their run reported why it refused; ask your partner to fix the cause " +
   "on their side.";
+
+/** The title of the alert for a refusal over a difference in the linkage
+ * terms; shared by the one-shot exchange, a managed run's alert, and the
+ * between-visit notification. */
+export const TERMS_DIFFERENCE_TITLE =
+  "Your linkage terms differ from your partner's";
+
+/** What happened in a refusal over a difference in the linkage terms, from
+ * the side of the party that refused and of the party whose run its abort
+ * ended. */
+export const TERMS_DIFFERENCE_PROBLEM: Record<
+  TermsDifferenceRefusedBy,
+  string
+> = {
+  "this-party":
+    "Your partner's linkage terms differ from yours, so this exchange " +
+    "stopped before any linkage key or data was sent.",
+  partner:
+    "Your partner stopped this exchange because your linkage terms differ " +
+    "from theirs, before any linkage key or data was sent.",
+};
+
+/** The next step for a managed exchange whose partner refused its linkage
+ * terms, naming the controls of the exchange page's Change terms section, in
+ * the words the next-visit alert and the between-visit notification both
+ * state it in. */
+export const PARTNER_REFUSED_TERMS_REMEDY =
+  "Agree the linkage terms with your partner: to have them take on yours, " +
+  "choose Make a terms update under Change terms on this exchange's page " +
+  "and send it to them to apply, or apply an update they make with theirs, " +
+  "then run the exchange again.";

@@ -34,6 +34,9 @@ import type { ManagedLocalState } from "./managedLocalStateShape";
  *   match (the command-line application, or the partner splits their input).
  * - `"partner-refused-set"` -- the partner's run refused to send its set for a
  *   cause other than size (ask the partner).
+ * - `"partner-refused-terms"` -- the partner's run refused this exchange's
+ *   linkage terms as differing from its own, before any key or data moved
+ *   (terms agreed with the partner through a terms update).
  * - `"handed-off"` -- an export handed this copy off (none here).
  * - `"missed"` -- the partner never arrived within the wait (the next window, or
  *   run again once the partner is ready).
@@ -60,6 +63,7 @@ export type ManagedFailureTier =
   | "terms-change"
   | "partner-set-too-large"
   | "partner-refused-set"
+  | "partner-refused-terms"
   | "handed-off"
   | "custody-unreadable"
   | "missed"
@@ -200,6 +204,8 @@ function recordedFailureTier(
     return "partner-set-too-large";
   if (lastRun.failureKind === "partner-refused-set")
     return "partner-refused-set";
+  if (lastRun.failureKind === "partner-refused-terms")
+    return "partner-refused-terms";
   if (lastRun.failureKind === "handed-off") return "handed-off";
   if (lastRun.failureKind === "custody-unreadable") return "custody-unreadable";
   if (lastRun.failureKind === "storage") return "storage";

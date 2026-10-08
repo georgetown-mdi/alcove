@@ -331,6 +331,7 @@ const FAILURE_KIND_LABELS: Record<
   "handed-off": "this exchange had been handed off",
   "partner-set-too-large": "your partner's set is too large for this browser",
   "partner-refused-set": "your partner's run refused to send its set",
+  "partner-refused-terms": "your partner's run refused your linkage terms",
   "terms-change": "your partner's terms changed",
   cancelled: "you stopped the run",
 };
@@ -385,8 +386,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
  * `rerunFailureLastRun`), `"storage"` (persist-before-success), `"terms-change"`
- * (stamped only for core's refusal at the terms exchange, which precedes every
- * linkage round and the payload frame), and `"partner-set-too-large"` without
+ * and `"partner-refused-terms"` (stamped only for this party's refusal or the
+ * partner's abort at the terms exchange, which precedes every linkage round
+ * and the payload frame), and `"partner-set-too-large"` without
  * `refusedInRound` (a refusal at the terms exchange, which stored records
  * hold). The remaining kinds -- `"transport"` (the catch-all a mid-exchange
  * failure also lands in), `"too-large"` (a later round refuses this party's
@@ -408,7 +410,8 @@ function disclosurePrecedesExchange(lastRun: ManagedExchangeLastRun): boolean {
     failureKind === "terms-shortfall" ||
     failureKind === "auth" ||
     failureKind === "storage" ||
-    failureKind === "terms-change"
+    failureKind === "terms-change" ||
+    failureKind === "partner-refused-terms"
   );
 }
 
