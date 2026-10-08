@@ -1,10 +1,9 @@
 // Diagnoses a dial that failed before the peer identified itself as an SSH
-// server. ssh2 discards whatever the peer sent and rejects every cause with
-// one message (measured against the pinned stack; see
-// docs/spec/DEPENDENCY_PINS.md, "Upgrading the SFTP Stack"), so this module
-// reads those bytes itself on a second, bounded, credential-free connection.
-// A healthy SSH server keeps its original rejection; the excerpt is
-// untrusted bytes, redacted in classifyPeerAnswer before it is rendered.
+// server. ssh2 discards the peer's bytes and rejects every such cause with one
+// message (docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client),
+// so this module reads them on a second, bounded, credential-free connection.
+// Rules: docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification, "Diagnosing
+// a peer that never identifies itself".
 
 import net from "node:net";
 
@@ -14,45 +13,27 @@ import {
   redactPrivateKeyMaterial,
 } from "@alcove/core";
 
-/**
- * The port ssh2 dials when connect options hold none. Core omits `port` from
- * the connect options when the config sets none, so the diagnosis has to
- * reproduce that default to reach the same endpoint the failed dial did -- see
- * {@link peerProbeTargetFromConnectOptions}, whose agreement with the pinned
- * stack is a check rather than prose.
- */
+/** The port ssh2 dials when connect options hold none. */
 const SSH2_DEFAULT_PORT = 22;
 
 /**
- * Ceiling on how long {@link observePeerAnswer} spends on the whole read --
- * connect and bytes together -- before settling on what it has. Small and
- * additionally clamped by {@link diagnosePeerAnswer} to the connect budget the
- * failed dial ran under (`serverConnectTimeoutMs`, which core enforces as ssh2's
- * `readyTimeout`), so the diagnosis stays inside the budget the operator already
- * granted the connect rather than adding an unbounded wait to a run that has
- * just failed.
+ * Ceiling on the whole read, connect included; {@link diagnosePeerAnswer}
+ * also clamps it to the failed dial's connect budget.
  */
 export const PEER_ANSWER_READ_BUDGET_MS = 2_000;
 
 /**
- * Bytes {@link observePeerAnswer} retains before it stops reading. Above
- * {@link PEER_EXCERPT_MAX_BYTES} so a real SSH server can still be recognized
- * by its identification string past a preamble line; a preamble longer than
- * this bound, or an identification string arriving after
- * {@link PEER_ANSWER_READ_BUDGET_MS}, is classified as non-SSH. A retention
- * bound, not a hard ceiling: the socket is never paused, so one delivery, up
- * to the stream's high-water mark, can still arrive after it is reached.
+ * Bytes {@link observePeerAnswer} retains before it stops reading, above
+ * {@link PEER_EXCERPT_MAX_BYTES} so an identification string after a preamble
+ * line is still found. It bounds what is kept, not what arrives: the socket is
+ * never paused, so one delivery may be larger.
  */
 export const PEER_ANSWER_READ_MAX_BYTES = 512;
 
 /**
- * Bytes of the peer's answer included in the diagnostic, bounded HERE at
- * composition rather than at the display boundary: this is what is held and
- * passed around, distinct from what is rendered. Sized so printable bytes
- * render whole within one display link, and bytes that each escape to four
- * characters still fit one link. The private-key strip runs over the whole
- * retained read before this clip (see {@link classifyPeerAnswer}), never the
- * other way round, so it is applied to text already redacted.
+ * Bytes of the peer's answer kept in the diagnostic, sized so the excerpt fits
+ * one display link even when every byte escapes to four characters. Applied
+ * after the private-key strip (see {@link classifyPeerAnswer}).
  */
 export const PEER_EXCERPT_MAX_BYTES = 128;
 
@@ -69,29 +50,20 @@ export type PeerAnswer =
    * dial failed for some other reason. */
   | { kind: "identified" }
   /** The peer sent bytes that are not an SSH identification string. `excerpt`
-   * is what its first bytes held, redacted and then clipped by
-   * {@link classifyPeerAnswer}, so every consumer holds the same treated bytes.
-   */
+   * is its first bytes, redacted and clipped by {@link classifyPeerAnswer}. */
   | { kind: "non-ssh"; shape: PeerAnswerShape; excerpt: string }
   /** The peer accepted the connection and then closed or reset it having sent
    * nothing at all. */
   | { kind: "closed-unanswered" }
-  /** Nothing was established: the connection could not be made, or it was made
-   * and stood open with no bytes on it until the budget ran out. A peer that
-   * accepts and then stalls is grouped here, by design, rather than with
-   * `closed-unanswered` -- a merely slow server looks the same from this side,
-   * and the rejection the dial already has says so without guessing. */
+  /** Nothing was established: no connection, or one that stayed silent until
+   * the budget ran out, which a slow server cannot be told apart from. */
   | { kind: "unobserved" };
 
 /**
  * The rejection fragments the pinned stack raises for a dial that ended
- * before the peer's identification string was read, measured against `ssh2`
- * 1.17.0 through `ssh2-sftp-client` 12.1.1 (see docs/spec/DEPENDENCY_PINS.md,
- * "Upgrading the SFTP Stack"). A version that rewords them stops the
- * diagnosis firing without changing behavior: an unmatched rejection is
- * handed back as it stands, since the fragment only gates whether to look
- * (sftpPeerIdentification.test.ts, "leaves an unreachable host to the
- * rejection it already has").
+ * before the peer identified itself (see DEPENDENCY_PINS.md). A stack that
+ * rewords them only stops the diagnosis: an unmatched rejection is returned
+ * as it stands.
  */
 const PRE_IDENTIFICATION_FAILURE_FRAGMENTS = [
   "Connection lost before handshake",
@@ -100,11 +72,8 @@ const PRE_IDENTIFICATION_FAILURE_FRAGMENTS = [
 
 /**
  * Whether `error` is a dial rejection raised before the peer identified
- * itself -- the case this module reads the peer's first bytes for. Walks
- * the cause chain rather than reading one message, so the gate does not rest
- * on the stack's own rejection being the link it is handed: a re-raise that
- * replaces the message and keeps that rejection as its cause -- the shape
- * the dial paths' own diagnostics compose -- stays matched.
+ * itself. Walks the cause chain, so a re-raise that keeps the rejection as
+ * its cause still matches.
  *
  * @internal
  */
@@ -120,10 +89,8 @@ export function isPreIdentificationDialFailure(error: unknown): boolean {
 }
 
 /**
- * An SSH identification string at the start of a line, the one thing a peer can
- * send that makes it an SSH server (RFC 4253 section 4.2: the server sends it
- * first, and may send other lines ahead of it). Anchored to a line start so the
- * three characters appearing inside an HTML page do not read as one.
+ * An SSH identification string at a line start (RFC 4253 section 4.2 allows
+ * other lines ahead of it), so `SSH-` inside an HTML page does not match.
  */
 const SSH_IDENTIFICATION_LINE = /(?:^|\r|\n)SSH-/;
 
@@ -132,17 +99,11 @@ const isTlsAlertRecord = (bytes: Uint8Array): boolean =>
   bytes.length >= 5 && bytes[0] === 0x15 && bytes[1] === 0x03;
 
 /**
- * Classify what the peer sent. Decoded latin1, not utf8, so every byte maps
- * to one code point and the display boundary can escape each one back
- * losslessly, where utf8 would collapse an invalid sequence and lose the
- * bytes that identify what answered.
- *
- * The excerpt is redacted of private-key material over the whole retained
- * read and clipped afterward, never the reverse -- clipping first could cut
- * a `BEGIN ... PRIVATE KEY` marker in half and leave nothing for a consumer
- * to strip (see docs/spec/CHANNEL_SECURITY.md). Classification itself reads
- * the raw, unredacted text, so a planted marker cannot swallow a real
- * identification string.
+ * Classify what the peer sent, decoded latin1 so every byte maps to one code
+ * point the display can escape losslessly. The excerpt is redacted before it
+ * is clipped, since a clip could cut a private-key marker in half; the
+ * classification reads the unredacted text, so a planted marker cannot hide
+ * an identification string.
  */
 function classifyPeerAnswer(bytes: Uint8Array): PeerAnswer {
   if (bytes.length === 0) return { kind: "closed-unanswered" };
@@ -161,15 +122,10 @@ function classifyPeerAnswer(bytes: Uint8Array): PeerAnswer {
 }
 
 /**
- * Open one TCP connection to `host:port`, read whatever the peer sends within
- * `budgetMs`, and report what it establishes. Writes nothing -- no
- * credential, no identification string, no SSH traffic -- since the host-key
- * probe this backs rests on presenting nothing to an unverified server.
- *
- * Best-effort, not relied on: it runs after the dial has already failed,
- * against a peer that may answer a second connection differently (a load
- * balancer, a round-robin address), so anything it cannot establish reports
- * `unobserved` and the caller falls back to the rejection it already had.
+ * Open one TCP connection to `host:port` and classify what the peer sends
+ * within `budgetMs`. Writes nothing, since the host-key probe presents
+ * nothing to an unverified server. Best-effort: a second connection may reach
+ * a different peer behind a load balancer.
  *
  * @internal
  */
@@ -188,10 +144,6 @@ export function observePeerAnswer(
       socket.destroy();
       resolve(answer);
     };
-    // One deadline over connect and read together, so the whole diagnosis costs
-    // at most this much wall clock however the peer behaves. Bytes already read
-    // when it expires are classified; a connection standing open with none is
-    // not (see the `unobserved` case).
     const deadline = setTimeout(() => {
       settle(
         observed.length > 0
@@ -200,8 +152,6 @@ export function observePeerAnswer(
       );
     }, budgetMs);
     socket.on("data", (chunk: Buffer) => {
-      // Truncated to the read bound BEFORE it is retained, so a peer answering
-      // with megabytes cannot make this hold them.
       observed = Buffer.concat([
         observed,
         chunk.subarray(0, PEER_ANSWER_READ_MAX_BYTES - observed.length),
@@ -212,13 +162,9 @@ export function observePeerAnswer(
     socket.on("end", () => settle(classifyPeerAnswer(observed)));
     socket.on("close", () => settle(classifyPeerAnswer(observed)));
     socket.on("error", (err: NodeJS.ErrnoException) => {
-      // A reset the peer sent AFTER accepting is the same "sent nothing" case
-      // as a clean close: which of the two a network sends is a property of
-      // the gear in front of the server rather than of the server, so both
-      // take one message, and the rejection one link down has the wording
-      // that distinguishes them. Any other errno means the connection was
-      // never made -- a refusal, an unresolvable name, an unreachable route
-      // -- which the rejection already reports without help.
+      // A reset after accepting is the same "sent nothing" case as a clean
+      // close; any other errno means no connection, which the rejection
+      // already reports.
       if (observed.length > 0) settle(classifyPeerAnswer(observed));
       else
         settle(
@@ -231,21 +177,15 @@ export function observePeerAnswer(
 }
 
 /**
- * What the read established, in the form a machine consumer reads it: the two
- * {@link PeerAnswer} arms that say something about the peer, without the two
- * that say nothing (`identified` and `unobserved` compose no diagnostic at all).
- * Held on the raised error so a caller classifies on structure rather than on
- * the composed sentence. `excerpt` is the producer's, private-key material
- * already stripped from it, so a consumer emits it as it stands.
+ * The {@link PeerAnswer} arms that compose a diagnostic, held on the raised
+ * error for machine consumers. `excerpt` is already redacted.
  */
 export type PeerIdentificationDiagnosis =
   | { kind: "non-ssh"; shape: PeerAnswerShape; excerpt: string }
   | { kind: "closed-unanswered" };
 
-/** The diagnostic this module raises. A distinct subtype holding the
- * {@link PeerIdentificationDiagnosis} the composed message was written from, so
- * a caller emitting a machine-readable form reads the classification and the
- * peer's bytes off the error rather than parsing them back out of prose. */
+/** The diagnostic this module raises, holding the
+ * {@link PeerIdentificationDiagnosis} its message was written from. */
 class PeerIdentificationError extends Error {
   constructor(
     message: string,
@@ -258,10 +198,7 @@ class PeerIdentificationError extends Error {
 }
 
 /**
- * The diagnosis a failure has, or undefined when no link in its cause chain
- * is one of this module's. Walks the chain rather than reading the value handed
- * over, for the same reason {@link isPreIdentificationDialFailure} does: the
- * dial paths re-raise, keeping the diagnostic as a cause.
+ * The diagnosis anywhere in a failure's cause chain, or undefined.
  *
  * @internal
  */
@@ -278,12 +215,8 @@ export function peerIdentificationDiagnosisOf(
 }
 
 /**
- * What the peer's first bytes held, said as the evidence it is rather than as
- * a verdict on what the peer is. The read is bounded twice -- by
- * {@link PEER_ANSWER_READ_MAX_BYTES} and {@link PEER_ANSWER_READ_BUDGET_MS} --
- * and an SSH server may legally send lines ahead of its identification string,
- * so a real one whose preamble outruns either bound lands here as well. Hence
- * the likelihood wording, and the caveat the recovery step has.
+ * What the peer's first bytes held, worded as a likelihood: an SSH server
+ * whose preamble outruns either read bound lands here too.
  */
 const NON_SSH_SHAPE_DESCRIPTION: Record<PeerAnswerShape, string> = {
   http:
@@ -298,30 +231,18 @@ const NON_SSH_SHAPE_DESCRIPTION: Record<PeerAnswerShape, string> = {
 };
 
 /**
- * How the second connection was made, said once so no message implies Alcove
- * learned this from the failed dial or presented anything to get it. A link of
- * its own beside the recovery step rather than a sentence appended to it:
- * first-party copy is capped by the display boundary exactly as anyone else's
- * is, and a step and this together outgrow one link's budget.
+ * How the second connection was made. A cause link of its own, since with the
+ * recovery step it would outgrow one link's display budget.
  */
 const READ_PROVENANCE =
   `Alcove read this on a second connection to the same endpoint, opened ` +
   `after the dial failed and carrying no credential.`;
 
 /**
- * Compose the operator-facing diagnostic for a dial that died before the
- * peer identified itself, or return `error` untouched when the read
- * established nothing to say.
- *
- * The diagnostic replaces the rejection's message and keeps the rejection as
- * the last link of its cause chain, so the stack's own wording -- which
- * distinguishes a clean close from a reset -- is still there behind it.
- *
- * Every fragment somebody else chose rides a link of its own: the peer's
- * excerpt and the configured endpoint are both unbounded and untrusted or
- * partner-supplied, so sharing a link with first-party text would let either
- * delete the step the operator has to act on (see CONTRIBUTING.md,
- * Operator-facing escaping).
+ * Compose the operator-facing diagnostic, or return `error` untouched when the
+ * read established nothing. The rejection stays the last cause link, and the
+ * peer's excerpt and the configured endpoint each take a link of their own so
+ * neither can crowd out the recovery step.
  *
  * @internal
  */
@@ -380,21 +301,12 @@ export function explainPeerIdentificationFailure(
 }
 
 /**
- * The endpoint the diagnosis reads: it has to be the endpoint the dial it
- * diagnoses used, since a read of a different port reports on a peer the
- * dial never spoke to. Derived from ssh2's connect options -- what the
- * transport adapter's dial sequence actually holds, including on a re-dial
- * -- rather than the Alcove config they were built from. Reads `host` and
- * `port` because those are the fields core assigns after its default-deny
- * `providerOptions` filter, so no operator-supplied key can move the
- * endpoint out from under this. A portless config takes ssh2's own default
- * port, held equal to the pinned stack's by
- * `apps/cli/test/integration/sftpStackPremises.test.ts`.
- *
- * Returns `undefined` when the options hold no host, or a port of a type
- * ssh2 would coerce rather than use as given: the endpoint the dial reached
- * cannot then be reproduced, and a dial this cannot follow keeps the
- * rejection it already had.
+ * The endpoint the failed dial used, read from ssh2's connect options, whose
+ * `host` and `port` core assigns after its `providerOptions` filter. A
+ * portless config takes {@link SSH2_DEFAULT_PORT}, held equal to the pinned
+ * stack's by `apps/cli/test/integration/sftpStackPremises.test.ts`.
+ * `undefined` when there is no host or the port is not a number, since the
+ * endpoint cannot then be reproduced.
  *
  * @internal
  */
@@ -409,20 +321,11 @@ export function peerProbeTargetFromConnectOptions(options: {
 }
 
 /**
- * Read the peer's first bytes and compose what they say about `error`, for a
- * rejection the caller has already put to
- * {@link isPreIdentificationDialFailure}. Called from the transport
- * adapter's dial sequence and nowhere else -- the single point every dial
- * Alcove makes passes through, the host-key probe's included -- so no
- * entry point can grow a second read of the same peer.
- *
- * The gate is the caller's, not this function's: the caller spends a
- * per-connection budget on the read (see the adapter's once-per-connection
- * latch) and has to know whether the read will run before spending it.
- *
- * `connectBudgetMs` is the per-attempt connect budget the failed dial ran
- * under; the read is clamped to it, so a shortened connect does not get a
- * longer diagnosis than the dial it diagnoses.
+ * Read the peer's first bytes and compose what they say about `error`, which
+ * the caller has already passed through {@link isPreIdentificationDialFailure}
+ * (the caller owns the once-per-connection gate). Called only from the
+ * transport adapter's dial sequence. The read is clamped to
+ * `connectBudgetMs`, the failed dial's connect budget.
  *
  * @internal
  */

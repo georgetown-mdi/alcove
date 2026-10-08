@@ -19,16 +19,10 @@ import { BARE_INVOCATION_SUMMARY, BareInvocationError } from "../usageHints";
 import { parseDurationFlag, parseFineDurationFlag } from "./duration";
 
 /**
- * Read a single-value CLI option from parsed yargs `Arguments`, rejecting a flag
- * given more than once. yargs collects a repeated option into an array (e.g.
- * `--accept-timeout 60 --accept-timeout 120` -> `[60, 120]`), which would reach
- * arithmetic, a comparison, or a string method as if it were a scalar; this
- * throws a {@link UsageError} naming the flag instead.
- *
- * Returns the value unchanged for the caller to cast to the option's declared
- * type (`undefined` when the flag was absent). `type: "count"` and
- * `type: "boolean"` options are not read through here, since a repeat is valid
- * for them.
+ * Read a single-value CLI option, throwing a {@link UsageError} for a repeated
+ * flag, which yargs collects into an array. Returns the value uncast, or
+ * `undefined` when absent. Not for `count` or `boolean` options, where a repeat
+ * is valid.
  */
 export function singleValue(argv: Arguments, name: string): unknown {
   const value = argv[name];
@@ -38,19 +32,10 @@ export function singleValue(argv: Arguments, name: string): unknown {
 }
 
 /**
- * Reject any `--`-prefixed token captured among a command's positionals as an
- * unrecognized option, with a {@link UsageError} (exit 64) naming it, in the
- * same "Unknown argument(s): ..." wording yargs' own `strictOptions` uses.
- * `invite`, `accept`, and `init` set `unknown-options-as-args` so a `-`-leading
- * invitation string survives as a positional -- which also lets a mistyped
- * `--flag` reach the positional array -- so those commands reject a typo
- * through this scan instead of `strictOptions`.
- *
- * A legitimate positional is single-`-`-leading at most (an invitation,
- * `@path` reference, input/output file, or server URL), so a double-dash token
- * is always a mistype; a single-`-` token is left untouched, since it cannot be
- * told from a `-`-leading invitation without decoding it. yargs consumes a lone
- * `--` separator before positionals are captured, so it never reaches this scan.
+ * Reject a `--`-prefixed positional as an unknown option, in yargs'
+ * `strictOptions` wording. For commands that set `unknown-options-as-args` so
+ * a `-`-leading invitation survives as a positional; no legitimate positional
+ * starts with `--`, and a single-`-` token is left alone.
  */
 export function assertNoUnknownOptions(positionals: Array<unknown>): void {
   const unknown = positionals
@@ -63,26 +48,16 @@ export function assertNoUnknownOptions(positionals: Array<unknown>): void {
 }
 
 /**
- * The sanity ceiling the duration-valued timeout flags (`--connection-timeout`,
- * `--connect-timeout`, `--peer-timeout`, `--accept-timeout`) are capped at,
- * re-exported from core -- the console's zero-setup authoring surface holds its
- * timeout fields to the same value, and core is the only module both apps can
- * import. Its rationale lives
- * with the option fields it qualifies, in
- * `packages/core/src/config/connection.ts`.
+ * The ceiling on the duration-valued timeout flags, shared with the console
+ * through core; rationale in `packages/core/src/config/connection.ts`.
  */
 export { MAX_TIMEOUT_SECONDS };
 
 /**
- * Read a duration-valued CLI option from parsed `Arguments` and return it as a
- * whole number of seconds (or `undefined` when the flag is absent). Rejects a
- * repeat (via {@link singleValue}) and a malformed or bare-integer value (via
- * {@link parseDurationFlag}), naming the flag in either error. A value above
- * `maxSeconds` is rejected with a flag-named usage error stating the maximum,
- * followed by `ceilingMeaning` in parentheses when given.
- *
- * {@link parseDurationFlag} yields a positive millisecond offset whose smallest
- * unit is seconds, so the divide-by-1000 to seconds is always exact.
+ * Read a duration-valued CLI option as whole seconds, or `undefined` when
+ * absent. A repeat, a malformed or bare-integer value, or a value above
+ * `maxSeconds` is a flag-named {@link UsageError}; `ceilingMeaning`, when
+ * given, follows the stated maximum in parentheses.
  */
 export function durationFlagSeconds(
   argv: Arguments,
@@ -92,9 +67,8 @@ export function durationFlagSeconds(
 ): number | undefined {
   const raw = singleValue(argv, name);
   if (raw === undefined) return undefined;
-  // Coerce the unknown from singleValue to a string so a type:"string" contract
-  // violation is reported as parseDurationFlag's flag-named UsageError rather
-  // than a raw TypeError from .trim() on a non-string.
+  // String() so a non-string value gets the flag-named UsageError, not a
+  // TypeError from .trim().
   const seconds = parseDurationFlag(`--${name}`, String(raw)) / 1000;
   if (seconds > maxSeconds) {
     const maximum =
@@ -110,20 +84,10 @@ export function durationFlagSeconds(
 }
 
 /**
- * Read a duration-valued CLI option and return it as a whole number of
- * MILLISECONDS (or `undefined` when the flag is absent), preserving sub-second
- * precision. The millisecond counterpart of {@link durationFlagSeconds}: it reads
- * through {@link parseFineDurationFlag} rather than the coarse
- * {@link parseDurationFlag}, so the flag also accepts a `100ms`-style value, and
- * returns the parser's millisecond offset directly instead of dividing to
- * seconds, which would floor a sub-second value to zero.
- *
- * The value arms a timer, so it is capped at {@link MAX_TIMER_MS}, the longest
- * delay a timer honors.
- *
- * A repeat (via {@link singleValue}), a malformed or bare-integer value (via
- * {@link parseFineDurationFlag}), and a value above the ceiling are rejected
- * with a flag-named {@link UsageError} (exit 64).
+ * Read a duration-valued CLI option as whole milliseconds, accepting a
+ * `100ms`-style value, or `undefined` when absent. The value arms a timer, so
+ * it is capped at {@link MAX_TIMER_MS}; a repeat, a malformed value or one
+ * above the cap is a flag-named {@link UsageError}.
  */
 export function durationFlagMs(
   argv: Arguments,
@@ -131,7 +95,6 @@ export function durationFlagMs(
 ): number | undefined {
   const raw = singleValue(argv, name);
   if (raw === undefined) return undefined;
-  // Coerce to a string defensively, as durationFlagSeconds does.
   const ms = parseFineDurationFlag(`--${name}`, String(raw));
   if (ms > MAX_TIMER_MS)
     throw new UsageError(
@@ -143,24 +106,11 @@ export function durationFlagMs(
 }
 
 /**
- * Read a count-valued CLI option (a nonnegative whole number) from parsed
- * `Arguments` and return it as a number (or `undefined` when the flag is
- * absent). Rejects a repeat (via {@link singleValue}) and any value that is not
- * a nonnegative safe integer -- a negative, a fraction, a non-numeric token, or
- * a magnitude past `Number.MAX_SAFE_INTEGER` -- with a flag-named
- * {@link UsageError} (exit 64). `Number.isSafeInteger` mirrors the schema's
- * `z.int().nonnegative()` on the same field, so the CLI boundary and the
- * merged-options re-validation agree.
- *
- * `maxValue`, when given, is an inclusive upper sanity ceiling checked after
- * the type/sign/range rejection, rejected with the same flag-named
- * {@link UsageError}; the message states a bare count with no time unit. Omit
- * `maxValue` for a flag with no product ceiling.
- *
- * Route only non-secret count flags through this helper: a rejected value is
- * echoed verbatim in the usage error, and {@link sanitizeErrorForDisplay}
- * redacts PEM key blocks, not a bare token, so a secret-valued flag would leak
- * into stderr and any log.
+ * Read a count-valued CLI option as a non-negative safe integer, matching the
+ * schema's `z.int().nonnegative()`, or `undefined` when absent; `maxValue` is
+ * an inclusive ceiling. A rejected value is echoed in the error, so route no
+ * secret-valued flag through here: {@link sanitizeErrorForDisplay} redacts PEM
+ * blocks, not a bare token.
  */
 export function nonNegativeIntFlag(
   argv: Arguments,
@@ -173,9 +123,6 @@ export function nonNegativeIntFlag(
     throw new UsageError(
       `--${name} must be a non-negative whole number; got ${String(raw)}`,
     );
-  // The sanity ceiling is the last check, layered on top of the type/sign/range
-  // rejection above (a value reaching here is a non-negative safe integer), the
-  // same way durationFlagSeconds applies MAX_TIMEOUT_SECONDS after parseDurationFlag.
   if (maxValue !== undefined && raw > maxValue)
     throw new UsageError(
       `--${name} must not exceed ${maxValue}; got ${String(raw)}`,
@@ -184,21 +131,9 @@ export function nonNegativeIntFlag(
 }
 
 /**
- * Read `--csv-delimiter` from parsed `Arguments` as the field-delimiter choice
- * the run reads its CSV input by and writes its result with -- a single
- * character, or `detect` to take the delimiter from the file itself -- returning
- * `undefined` when the flag was absent, which reads and writes commas.
- *
- * The spelling resolution and the accepted-value rule are core's own
- * ({@link normalizeCsvDelimiter}, {@link isCsvDelimiterChoice}), shared with the
- * configuration schema so a value one refuses the other refuses in the same
- * words. Rejected here, at parse time, as a {@link UsageError} (exit 64) --
- * before any credential, terms, or data are sent -- rather than as a confusing
- * one-column read later.
- *
- * The option is declared `type: "string"`, so a value that looks numeric stays
- * a string and a bare `--csv-delimiter` yields the empty string, which the rule
- * refuses.
+ * Read `--csv-delimiter`: a single character or `detect`, or `undefined` when
+ * absent (commas). The rule is core's, shared with the configuration schema;
+ * a refused value is a {@link UsageError} at parse time.
  */
 export function csvDelimiterFlag(argv: Arguments): string | undefined {
   const raw = singleValue(argv, "csv-delimiter");
@@ -212,14 +147,10 @@ export function csvDelimiterFlag(argv: Arguments): string | undefined {
 }
 
 /**
- * Run a pre-logger parse step, mapping a {@link UsageError} it throws to a
- * clean stderr message and exit 64. A bootstrap-style command resolves its
- * log level and reads every option before the logger exists, so a usage error
- * there cannot be routed through the logger; this is the one place that
- * boundary lives. Any other error propagates unchanged to the top-level
- * handler. `process.exit` is typed `never`, so this returns the parsed value
- * on the success path. A {@link BareInvocationError} prints
- * {@link BARE_INVOCATION_SUMMARY} as written: its line breaks are its own.
+ * Run a parse step that precedes the logger, printing a {@link UsageError} to
+ * stderr and exiting 64; other errors propagate. A
+ * {@link BareInvocationError} prints {@link BARE_INVOCATION_SUMMARY} as
+ * written.
  */
 export function parseOrExit<T>(parse: () => T): T {
   try {

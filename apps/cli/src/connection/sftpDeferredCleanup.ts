@@ -6,51 +6,34 @@ import {
 } from "./sftpLivenessGuard";
 
 /**
- * The record of cleanup deletes the SFTP transport could not perform, and the
- * drain that re-issues them at the next point a session exists. See
- * {@link DeferredCleanupDeletes}. Why the record exists, what is admitted to
- * it, and its two bounds are in docs/spec/CHANNEL_SECURITY.md, "The deferred
- * cleanup-delete record".
- */
-
-/**
- * Cap on the connection-per-poll record of unperformed cleanup deletes of the
- * protocol's own in-flight temp file; overflow refuses rather than evicts.
- * Derivation: docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete
- * record".
+ * Cap on the record of unperformed cleanup deletes; overflow refuses rather
+ * than evicts. This constant and the two below are derived in
+ * docs/spec/CHANNEL_SECURITY.md#the-deferred-cleanup-delete-record.
  */
 export const MAX_DEFERRED_CLEANUP_DELETES = 64;
 
 /**
- * Re-issue budget for ONE RECORDING of a cleanup delete, after which that
- * recording gives up and its file is left behind. Derivation:
- * docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record".
+ * Re-issue budget for one recording of a cleanup delete, after which its file
+ * is left behind.
  *
  * @internal exported for the record's own tests
  */
 export const MAX_DEFERRED_CLEANUP_REISSUES = 3;
 
 /**
- * Per-operation deadline (ms) a drain re-issue is held to
- * ({@link DeferredCleanupDeletes.reissue}) in place of the
- * {@link ./sftpLivenessGuard.SFTP_STALL_DEADLINE_MS} every other round trip
- * holds, and so the bound on the whole drain. Derivation:
- * docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record".
+ * Deadline (ms) on each drain re-issue, in place of
+ * {@link ./sftpLivenessGuard.SFTP_STALL_DEADLINE_MS}, and so on the whole drain.
  */
 const DEFERRED_CLEANUP_DRAIN_TIMEOUT_MS = 5_000;
 
-// The final segment of a remote path. SFTP paths are POSIX-separated on the wire
-// whatever either end's platform is, so a backslash is an ordinary character in a
-// remote filename here and must not be read as a separator. A path with no
-// separator at all is its own basename.
+// SFTP paths are POSIX-separated on the wire on any platform, so a backslash
+// is an ordinary filename character here.
 const remoteBasename = (path: string): string =>
   path.slice(path.lastIndexOf("/") + 1);
 
 /**
- * Minimal logger interface the record needs: the states it refuses are
- * reported at debug, never warned, because they fire only where a drain has
- * repeatedly failed to reach the server, which the operations that needed that
- * server already report.
+ * The record logs its refusals at debug only: they follow repeated failures to
+ * reach the server, which the operations that needed it already report.
  */
 interface DeferredCleanupLog {
   debug: (message: string) => void;
@@ -59,56 +42,40 @@ interface DeferredCleanupLog {
 /** Constructor bundle for {@link DeferredCleanupDeletes}. */
 export interface DeferredCleanupDeletesOptions {
   /**
-   * Connection-per-poll (ephemeral-session) mode. The record and the drain are
-   * that mode's machinery: the default mode holds one session for the whole
-   * exchange, so a cleanup delete never lands in a gap with no session, and
-   * nothing is recorded or re-issued.
+   * Connection-per-poll mode. The default mode holds one session throughout,
+   * so it records and re-issues nothing.
    */
   enabled: boolean;
   log: DeferredCleanupLog;
   /**
-   * Issues one re-issued cleanup delete against the live session, resolving when
-   * the server answers and rejecting otherwise. Injected rather than driven here
-   * so that round trip stays in the adapter, where the two adapter source checks
-   * examine it and its allowance is registered by the enclosing method's name
-   * (scripts/sftp-tracked-round-trips.test.mjs and
-   * scripts/sftp-operation-spans.test.mjs).
+   * Issues one re-issued delete on the live session, rejecting unless the
+   * server answers. Injected so the round trip stays in the adapter, where
+   * scripts/sftp-tracked-round-trips.test.mjs and
+   * scripts/sftp-operation-spans.test.mjs examine it.
    */
   issueDelete: (path: string) => Promise<void>;
   /**
-   * Whether a drain may be issued now. The states that drain nothing -- a fatal
-   * SFTP protocol error, a latched teardown, and no live session -- are in
-   * docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record"; the
-   * remaining two, the default held-session mode and an empty record, this class
-   * answers itself.
+   * Whether the adapter's state allows a drain now; this class checks the
+   * mode and an empty record itself.
    */
   canDrain: () => boolean;
 }
 
 /**
- * The connection-per-poll record of cleanup deletes that were not performed, and
- * the single-flight drain that re-issues them. What each of {@link record} and
- * {@link drain} runs on, and the two bounds
- * ({@link MAX_DEFERRED_CLEANUP_DELETES}, {@link MAX_DEFERRED_CLEANUP_REISSUES}),
- * are in docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record".
+ * The connection-per-poll record of cleanup deletes that were not performed,
+ * and the single-flight drain that re-issues them:
+ * docs/spec/CHANNEL_SECURITY.md#the-deferred-cleanup-delete-record.
  */
 export class DeferredCleanupDeletes {
   private readonly enabled: boolean;
   private readonly log: DeferredCleanupLog;
   private readonly issueDelete: (path: string) => Promise<void>;
   private readonly canDrain: () => boolean;
-  // Paths of the protocol's own in-flight temp writes whose cleanup delete was
-  // not performed, kept for re-issue at the next point a session exists. What
-  // is admitted, why the record is sound, and why it is keyed by path are in
-  // docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record". The
-  // value is the re-issues that path has left (see
-  // MAX_DEFERRED_CLEANUP_REISSUES), held on the record rather than in a counter
-  // of its own so an entry cannot outlive its budget.
+  // Unperformed temp-file deletes, each with the re-issues it has left, held
+  // on the entry so it cannot outlive its budget.
   private readonly budgetByPath = new Map<string, number>();
-  // The drain currently running, so a second call joins it rather than issuing a
-  // second delete for the same path. Cleared when it settles, which is what lets
-  // a later re-establishment drain a record made after this one took its
-  // snapshot.
+  // The running drain, which a second call joins; cleared when it settles so
+  // a later re-establishment drains records made after its snapshot.
   private draining: Promise<void> | undefined;
 
   constructor(options: DeferredCleanupDeletesOptions) {
@@ -124,11 +91,8 @@ export class DeferredCleanupDeletes {
   }
 
   /**
-   * Record a cleanup delete that was not performed, so the next point at which a
-   * session exists re-issues it. Connection-per-poll only. What is admitted to
-   * the record, why that narrowing makes deferral sound, and the cap and budget
-   * over it are in docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete
-   * record".
+   * Record an unperformed cleanup delete of a protocol temp file for re-issue
+   * once a session exists. Connection-per-poll only.
    */
   record(path: string, reissuesLeft = MAX_DEFERRED_CLEANUP_REISSUES): void {
     if (!this.enabled) return;
@@ -142,9 +106,8 @@ export class DeferredCleanupDeletes {
       );
       return;
     }
-    // An entry already standing keeps the budget it holds: a decrement arriving
-    // from a re-issue whose path was re-recorded while it was in flight is
-    // discarded rather than applied to that newer recording.
+    // An existing entry keeps its budget, so a failed re-issue's decrement does
+    // not apply to a newer recording of the same path.
     if (this.budgetByPath.has(path)) return;
     if (this.budgetByPath.size >= MAX_DEFERRED_CLEANUP_DELETES) {
       this.log.debug(
@@ -158,19 +121,14 @@ export class DeferredCleanupDeletes {
   }
 
   /**
-   * Re-issue every recorded cleanup delete, at a point where a session exists.
-   * Driven at the tail of the adapter's ensureConnected(), OUTSIDE the
-   * transition. The call sites it covers, the states that drain nothing, and
-   * the bound over the concurrent re-issues are in
-   * docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record".
+   * Re-issue every recorded cleanup delete. Driven at the tail of the
+   * adapter's ensureConnected(), outside the transition.
    */
   drain(): Promise<void> {
     if (this.budgetByPath.size === 0) return Promise.resolve();
     if (!this.canDrain()) return Promise.resolve();
-    // A drain already running holds the snapshot it took; a record made after
-    // that snapshot is left for the next re-establishment rather than issued
-    // alongside it, so no path is deleted twice concurrently and this cannot
-    // re-enter itself.
+    // Records made after a running drain's snapshot wait for the next
+    // re-establishment, so no path is deleted twice concurrently.
     this.draining ??= this.runDrain().finally(() => {
       this.draining = undefined;
     });
@@ -186,10 +144,8 @@ export class DeferredCleanupDeletes {
   }
 
   /**
-   * One re-issued cleanup delete, on the same never-reject terms as safeDelete's
-   * own, and resolving whatever happens. A failure offers the path back to the
-   * record with one fewer re-issue left, so a server briefly unreachable at one
-   * boundary is swept at the next.
+   * One re-issued cleanup delete, which never rejects. A failure records the
+   * path again with one fewer re-issue left.
    */
   private reissue(path: string, reissuesLeft: number): Promise<void> {
     return withSftpOperationDeadline(
