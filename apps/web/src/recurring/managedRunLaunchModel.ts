@@ -575,7 +575,9 @@ const PARTNER_REFUSED_SET_FAILURE: ManagedRunFailureAlert = {
  * exchange's alert for the partner's side, with the step this exchange's page
  * offers. Not the retry state -- the same terms refuse identically -- and its
  * way forward is the page's Change terms section, so the alert offers no
- * recovery of its own. */
+ * recovery of its own. Its copy attests non-disclosure, so the recorded tier
+ * is gated ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}); the live reading
+ * is not, since the error's mark is set only at the terms exchange. */
 const PARTNER_REFUSED_TERMS_FAILURE: ManagedRunFailureAlert = {
   kind: "partner-refused-terms",
   title: TERMS_DIFFERENCE_TITLE,
@@ -872,7 +874,7 @@ export const MANAGED_RUN_NON_DISCLOSURE_ATTESTATION: Readonly<
   "terms-change": "none",
   "partner-set-too-large": "none",
   "partner-refused-set": "none",
-  "partner-refused-terms": "none",
+  "partner-refused-terms": "alert-copy",
   expired: "none",
   input: "none",
   missed: "none",
@@ -1032,8 +1034,9 @@ export function withShownCause(
  * `dataExchangeStarted` is THIS run's phase boundary (the run's own
  * `onDataExchangeStart` option, passed to {@link benignRerunOutcome}): a benign
  * state whose copy claims nothing left this device is read off the error only
- * from before it, and a derived tier making the same claim is gated by it too
- * ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
+ * from before it, except the partner's terms refusal, whose error is marked
+ * only at the terms exchange; a derived tier making the same claim is gated by
+ * it too ({@link MANAGED_RUN_NON_DISCLOSURE_ATTESTATION}).
  *
  * Whatever state it lands on, the launch error reaches the operator only
  * through {@link managedRunCausePlacement}, and never on the not-runnable

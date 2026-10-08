@@ -386,9 +386,9 @@ const OUTCOME_UNCERTAIN = `The run did not complete. ${DELIVERY_NOT_RECORDED}; c
  * pre-connection), `"auth"` (a `security`-kind failure the classifier stamps
  * only before the data exchange begins; see {@link ../psi/managedRun.ts},
  * `rerunFailureLastRun`), `"storage"` (persist-before-success), `"terms-change"`
- * and `"partner-refused-terms"` (stamped only for this party's refusal or the
- * partner's abort at the terms exchange, which precedes every linkage round
- * and the payload frame), and `"partner-set-too-large"` without
+ * and `"partner-refused-terms"` (stamped respectively for this party's refusal
+ * and for the partner's abort at the terms exchange, which precedes every
+ * linkage round and the payload frame), and `"partner-set-too-large"` without
  * `refusedInRound` (a refusal at the terms exchange, which stored records
  * hold). The remaining kinds -- `"transport"` (the catch-all a mid-exchange
  * failure also lands in), `"too-large"` (a later round refuses this party's

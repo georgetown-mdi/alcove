@@ -47,6 +47,7 @@ const NON_DISCLOSURE_PHRASES: ReadonlyArray<RegExp> = [
   /nothing was exchanged/i,
   /partner was not contacted/i,
   /stopped before (reading|connecting)/i,
+  /before any linkage key or data was sent/i,
 ];
 
 function attestsNonDisclosure(copy: string): boolean {
@@ -193,6 +194,25 @@ describe("the non-disclosure gate is bound to the copy it gates", () => {
       // reading; the tiers that render that copy already are unchanged by it.
       expect(past !== before && past === "transport", tier).toBe(attests);
     }
+  });
+
+  test("a stale partner terms refusal past the boundary shows the generic copy", () => {
+    // A later run that failed mid-data-exchange and lost its own stamp leaves
+    // the earlier refusal as the record's tier.
+    const [stale] = TIER_EVIDENCE["partner-refused-terms"];
+    const failure = classifyManagedRunFailure(
+      new Error("data channel dropped"),
+      { atLaunch: stale, afterRun: stale },
+      undefined,
+      NOW,
+      true,
+    );
+    if (failure.kind === "handed-off")
+      throw new Error("expected an alert state");
+    expect(failure.kind).toBe("transport");
+    expect(attestsNonDisclosure(`${failure.title} ${failure.message}`)).toBe(
+      false,
+    );
   });
 
   test("each tier's evidence derives to that tier", () => {
