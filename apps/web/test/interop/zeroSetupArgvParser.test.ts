@@ -159,7 +159,12 @@ function splitSftpConnection(): { dir: string; connectionArgs: Array<string> } {
   };
 }
 
-/** Run the real CLI over `argv` and report what its parser did with it. */
+/**
+ * Run the real CLI over `argv` and report what its parser did with it. The
+ * child gets the driver's stdio shape, fd 3 included: the argv holds
+ * `--event-stream`, and the CLI refuses that flag ahead of every later refusal
+ * when fd 3 is not open.
+ */
 function parseWithRealCli(
   argv: Array<string>,
   cwd: string,
@@ -167,6 +172,7 @@ function parseWithRealCli(
   const result = spawnSync(process.execPath, [CLI_ENTRY, ...argv], {
     cwd,
     encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe", "pipe"],
     timeout: CHILD_EXIT_TIMEOUT_MS,
   });
   return { status: result.status, stderr: result.stderr };
