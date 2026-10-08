@@ -427,6 +427,9 @@ function* canonicalTexts(value: unknown): Generator<string, void, undefined> {
  * whenever it reaches `CHUNK_CODE_UNITS` after a whole element or member.
  * A primitive is appended in place rather than through a nested generator, so
  * a row of cells costs one generator, not one per cell.
+ *
+ * Recurses once per nesting level, so a very deeply nested value exhausts the
+ * call stack here though the one-shot encoder, which keeps its own stack, encodes it.
  */
 function* appendCanonical(
   node: unknown,

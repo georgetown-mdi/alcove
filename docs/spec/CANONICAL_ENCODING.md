@@ -429,7 +429,7 @@ primitive's encoding from `canonicalize`, so a chunk ends only between two
 whole tokens. For the exchange record's commitments and the receipt's payload
 MACs, `packages/core/src/utils/canonicalHmac.ts` copies these chunks into one
 byte array and computes HMAC-SHA-256 over it with one `crypto.subtle` call, so
-the encoding is never held as one string, whose length V8 caps.
+the encoding is never held as one string, whose length V8 caps. The chunked writer descends one call per nesting level where `canonicalize` keeps its own stack, so a value nested more deeply than a few thousand levels exhausts the call stack and throws `CanonicalEncodingError` there while `canonicalBytes` still encodes it (measured on Node 26.10: depth 3000 encodes both ways, depth 5000 only through `canonicalBytes`). The record and receipt values nest at most 3 levels.
 
 The `canonicalize` package is inlined into `@alcove/core`'s built artifacts
 rather than resolved at runtime; why, and what that costs when an advisory
