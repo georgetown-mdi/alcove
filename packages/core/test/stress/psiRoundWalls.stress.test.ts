@@ -104,9 +104,8 @@ test.for(SIZES)(
   },
 );
 
-// A worker meets its heap limit only in a round of millions: a 20,000-element
-// round under a 2 MiB worker heap limit (Worker resourceLimits) still
-// completed, so the failed round here is a fixture.
+// A real worker heap exhaustion is not cheap to reproduce, so the failed round
+// here is a hand-built fixture.
 test("a round in which a worker runs out of heap fails", () => {
   const ranOutOfHeap: WallsProbeResult = {
     mode: MODE,
