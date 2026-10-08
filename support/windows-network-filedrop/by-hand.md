@@ -114,6 +114,10 @@ not get mistaken later for a problem with your share:
 docker pull ghcr.io/georgetown-mdi/alcove:latest
 ```
 
+If this stops with a certificate error or a refusal, your network's proxy is in
+the way: see
+[the image download fails with a certificate error](troubleshooting.md#the-image-download-fails-with-a-certificate-error).
+
 Now the account. The username and password you are about to use are the ones
 the **container** will present to the file server -- Windows signs you in as
 yourself, and Docker cannot borrow that. Two things to know, and

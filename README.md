@@ -82,6 +82,8 @@ Replacing each of the following:
    * `INPUT_FILE` - your data file: a CSV with identifier columns (such as name, date of birth, or SSN) and, optionally, columns with data to share with the other party for matched records. A relative path is resolved inside `WORK_PATH`. Example: `clients.csv`.
    * `OUTPUT_FOLDER` - the folder the run writes its result and exchange record in, each run under its own time-stamped names. It is created if missing, and a relative path is resolved inside `WORK_PATH`. Example: `./` for `WORK_PATH` itself, or `matches/`.
 
+If `docker pull` stops with a certificate error or a refusal behind your organization's proxy, see [the image download fails with a certificate error](support/windows-network-filedrop/troubleshooting.md#the-image-download-fails-with-a-certificate-error).
+
 A complete example, run from `/Users/me/psi-exchange` containing `clients.csv`:
 
 ```sh
