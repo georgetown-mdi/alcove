@@ -351,14 +351,14 @@ export function InviterExchangeSection({
             {partnerAcceptsByCli ? (
               <p>
                 Send one of these to your partner over a trusted channel (for
-                example, secure email). It carries a one-time secret, so treat
+                example, secure email). It contains a one-time secret, so treat
                 it as confidential. Keep this tab open while your partner
                 accepts.
               </p>
             ) : (
               <p>
                 Send this link to your partner over a trusted channel (for
-                example, secure email). It carries a one-time secret, so treat
+                example, secure email). It contains a one-time secret, so treat
                 it as confidential. If the link arrives broken, your partner can
                 paste the whole link into the accept form. Keep this tab open
                 while your partner accepts.
@@ -392,8 +392,8 @@ export function InviterExchangeSection({
                 <p className={styles.small}>
                   Your partner accepts from the command line. Send them the
                   invitation as text, with these instructions alongside it. The
-                  sheet takes them from nothing to accepting and carries no
-                  secret, so it can travel any way that suits them.
+                  sheet takes them from nothing to accepting and contains no
+                  secret, so you can send it any way that suits them.
                 </p>
                 <Button variant="default" onClick={onDownloadAcceptKit}>
                   Download instructions for your partner

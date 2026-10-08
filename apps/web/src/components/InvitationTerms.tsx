@@ -602,7 +602,7 @@ export function InvitationTerms({
   // that happens.
   if (countOnly && viewerOutboundSend.length > 0)
     throw new Error(
-      "count-only terms carry a non-empty outbound column set: a psi-c " +
+      "count-only terms include a non-empty outbound column set: a psi-c " +
         "exchange sends no data column in either direction",
     );
   // The mirror check on what the INVITATION declares: a psi-c document declaring a

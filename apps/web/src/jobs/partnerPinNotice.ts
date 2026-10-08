@@ -78,8 +78,7 @@ export function partnerCertificatePinnedNotice(
     "signing certificate your partner presented. That pin is authenticated " +
     `by the channel the invitation travelled and nothing else. ${value} ` +
     "Enter it under your partner's fingerprint before the next exchange: " +
-    "this run's pin is not written back into the configuration in your " +
-    "folder, so nothing carries it forward on its own."
+    "this run's pin is not saved to the configuration in your folder."
   );
 }
 

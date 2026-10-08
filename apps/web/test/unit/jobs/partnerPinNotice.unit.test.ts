@@ -212,7 +212,7 @@ describe("the notice states the pin without naming a file", () => {
     // folder, so it is lost unless the operator enters it -- unlike a
     // command-line run, which records it in the file it was passed.
     expect(notice).toMatch(/before the next exchange/);
-    expect(notice).toMatch(/not written back/);
+    expect(notice).toMatch(/not saved to the configuration/);
   });
 
   test("a value it could not read back leaves the pin stated and the value out", () => {

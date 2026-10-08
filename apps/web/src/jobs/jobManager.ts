@@ -1450,7 +1450,7 @@ export class JobManager {
       return writeJobFile(workdir, JOB_FILE_NAMES.input, intent.inputCsv);
     // The exactly-one-of intent schema guarantees one input source; refuse a
     // caller that bypassed it rather than spawning the CLI on an empty input.
-    throw new Error("job intent carries neither inputCsv nor inputFile");
+    throw new Error("job intent has neither inputCsv nor inputFile");
   }
 
   /**

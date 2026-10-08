@@ -301,13 +301,13 @@ function wholeSecondFlagMs(field: string) {
     .max(
       MAX_TIMEOUT_SECONDS * 1000,
       `${field} must not exceed ${MAX_TIMEOUT_SECONDS / 86_400} days on a ` +
-        "quick exchange: the duration flag it is carried on refuses a " +
-        "longer value",
+        "quick exchange: the duration flag that passes it to the run " +
+        "refuses a longer value",
     )
     .refine((ms) => ms % 1000 === 0, {
       message:
-        `${field} must be a whole number of seconds on a zero-setup ` +
-        "exchange: it is carried to the run as a duration flag, whose value " +
+        `${field} must be a whole number of seconds on a quick ` +
+        "exchange: it is passed to the run as a duration flag, whose value " +
         "takes a second-or-coarser unit",
     })
     .optional();

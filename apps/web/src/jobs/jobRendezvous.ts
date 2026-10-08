@@ -376,7 +376,7 @@ function splitPairProblem(
   if (locator === undefined || outboundLocator === undefined)
     return (
       "This console cannot name both shared folders, so an invitation " +
-      `minted here would carry no locator for one of them. Set ${JOB_RENDEZVOUS_NAME_ENV} ` +
+      `created here would leave one of them out. Set ${JOB_RENDEZVOUS_NAME_ENV} ` +
       `and ${JOB_RENDEZVOUS_OUTBOUND_NAME_ENV} to the two folders' own names and ` +
       "restart the console."
     );

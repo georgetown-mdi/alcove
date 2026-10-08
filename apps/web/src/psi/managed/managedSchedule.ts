@@ -163,7 +163,7 @@ function toScheduleInstant(ms: number): string {
     ms > MAX_STORED_INSTANT_MS
   )
     throw new RangeError(
-      "managed schedule instant falls outside the range a stored UTC instant carries",
+      "managed schedule instant falls outside the range of a stored UTC instant",
     );
   return new Date(ms).toISOString();
 }
