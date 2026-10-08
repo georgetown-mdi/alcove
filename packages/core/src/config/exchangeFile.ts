@@ -15,110 +15,65 @@ import type { WebRTCEndpoint } from "./invitation.js";
 // --- Locator-only connection description -------------------------------------
 
 /**
- * The SFTP locator a web-composed exchange config holds: WHERE the
- * rendezvous is, never HOW to authenticate to it. Holds only the public
- * locator fields -- host, optional port, a single shared `path` OR the
- * split `inboundPath`/`outboundPath` pair, and optional tuning
- * {@link FileSyncOptions}.
- *
- * By construction there is no credential field: no `username`,
- * `password`, `privateKey`, `privateKeyPassphrase`, `hostKeyFingerprint`,
- * or `keyboardInteractive`. A credential is unrepresentable in a
- * mint-layer input, so it cannot reach the minted file by mistake -- the
- * type is the enforcement, and exchangeFile.test.ts sweeps a maximal
- * minted YAML for those spellings regardless. The minted config seeds
- * `username` with an obvious `REPLACE_WITH_...` placeholder (see
- * {@link mintExchangeFile}).
+ * The SFTP locator of a web-composed exchange config: where the rendezvous
+ * is, never how to authenticate to it. No credential field is representable
+ * (docs/spec/EXCHANGE_FILE.md#mint-layer-guarantees).
  */
 interface SftpExchangeLocator {
   channel: "sftp";
-  /** Non-empty hostname of the SFTP server. */
   host: string;
-  /** Reachable port; the exchange-spec schema validates the range. */
+  /** The exchange-spec schema validates the range. */
   port?: number;
-  /** Remote working directory (shared mode). Mutually exclusive with the split
-   * `inboundPath`/`outboundPath` pair. */
+  /** Shared mode; mutually exclusive with the split pair. */
   path?: string;
-  /** Inbound (peer-written) remote directory for a split-directory exchange;
-   * set together with {@link outboundPath}, mutually exclusive with {@link path}. */
+  /** Peer-written directory; set together with {@link outboundPath}. */
   inboundPath?: string;
-  /** Outbound (self-written) remote directory; the companion to
-   * {@link inboundPath}. */
+  /** Self-written directory; set together with {@link inboundPath}. */
   outboundPath?: string;
-  /** Optional tuning/toggle options (poll interval, retain mode, ...). */
   options?: FileSyncOptions;
 }
 
 /**
- * The file-drop locator a web-composed exchange config holds: the shared
- * directory (or the split inbound/outbound pair) both parties rendezvous in. A
- * file-drop exchange has no host or credentials at all, so this type holds only
- * the directory locator and optional {@link FileSyncOptions} -- a credential is
- * unrepresentable here too (see {@link SftpExchangeLocator}).
+ * The file-drop locator: the shared directory or the split pair. No host or
+ * credential is representable.
  */
 interface FiledropExchangeLocator {
   channel: "filedrop";
-  /** Shared directory (shared mode). Mutually exclusive with the split
-   * `inboundPath`/`outboundPath` pair. */
+  /** Shared mode; mutually exclusive with the split pair. */
   path?: string;
-  /** Inbound (peer-written) directory for a split-directory exchange; set
-   * together with {@link outboundPath}, mutually exclusive with {@link path}. */
+  /** Peer-written directory; set together with {@link outboundPath}. */
   inboundPath?: string;
-  /** Outbound (self-written) directory; the companion to {@link inboundPath}. */
+  /** Self-written directory; set together with {@link inboundPath}. */
   outboundPath?: string;
   options?: FileSyncOptions;
 }
 
 /**
- * The credential-free WebRTC locator a web-composed exchange config
- * holds: WHERE the PeerJS peer-coordination server is (`host`/optional
- * `port`/optional `path`), never HOW to reach it privately. It is the
- * invitation's {@link WebRTCEndpoint} -- one locator type, not a second
- * parallel definition -- so the endpoint the code holds and the
- * connection block a managed record persists agree on the credential-free
- * shape by construction.
- *
- * No credential is representable: no PeerJS `server.key`,
- * `server.username`, `turn`, `ice_provision`, or `provider_options` entry.
- * The full webrtc connection block CAN represent those, so the guarantee
- * is the composition rule -- {@link connectionFromLocator} expands only
- * these locator fields and {@link WebRTCEndpointSchema} rejects any other
- * -- not a runtime strip.
+ * The credential-free WebRTC locator: the invitation's {@link WebRTCEndpoint}.
+ * The full webrtc connection block can include credentials, so the guarantee is
+ * that {@link connectionFromLocator} expands only these fields and
+ * {@link WebRTCEndpointSchema} rejects any other.
  */
 export type WebRTCExchangeLocator = WebRTCEndpoint;
 
 /**
- * A credential-free connection description the browser mints a
- * DOWNLOADABLE exchange config from, discriminated by `channel`. Holds
- * ONLY locator fields -- no credential is representable by construction,
- * so the minted file cannot leak one. Covers only the file-sync channels a
- * downloadable config targets (`sftp`, `filedrop`); a webrtc exchange is
- * coordinated live, not from a minted file, so
- * {@link WebRTCExchangeLocator} is not a member here -- this narrowness
- * keeps {@link mintExchangeFile}'s surface file-sync-only (see the
- * mint-surface guard test).
+ * The credential-free connection a downloadable exchange config is minted
+ * from. File-sync channels only: a webrtc exchange is coordinated live.
  */
 export type ExchangeFileConnection =
   SftpExchangeLocator | FiledropExchangeLocator;
 
 /**
- * The full credential-free locator union {@link connectionFromLocator} expands:
- * the file-sync {@link ExchangeFileConnection} channels plus
- * {@link WebRTCExchangeLocator}. Broader than {@link ExchangeFileConnection}
- * because the locator-to-connection expansion also serves the managed-record
- * composer, which composes a live webrtc connection block; the downloadable-file
- * mint path stays on the narrower file-sync-only {@link ExchangeFileConnection}.
+ * Every locator {@link connectionFromLocator} expands, webrtc included for the
+ * managed-record composer.
  */
 export type ExchangeLocator = ExchangeFileConnection | WebRTCExchangeLocator;
 
 // --- Mint --------------------------------------------------------------------
 
 /**
- * Everything a web-composed exchange needs to become a CLI-ready config, minus
- * the secret (which rides only the invitation code, never the file). The
- * connection is a credential-free {@link ExchangeFileConnection}; the linkage
- * terms are mandatory; metadata, standardization, and the partner's
- * declared `deduplicate` are optional.
+ * A web-composed exchange to mint as a CLI config. The secret is not
+ * representable: it travels only in the invitation code.
  */
 export interface ExchangeFileInput {
   connection: ExchangeFileConnection;
@@ -126,14 +81,12 @@ export interface ExchangeFileInput {
   metadata?: Metadata;
   standardization?: Standardization;
   /**
-   * The `deduplicate` an accepted invitation declared for the PARTNER's own side
-   * -- the top-level `expected_partner_deduplicate` a later `alcove exchange`
-   * holds the presented value to. Optional; omit where no invitation was accepted
-   * (there is then no declaration to bind).
+   * The `deduplicate` an accepted invitation declared for the partner's side,
+   * which a later `alcove exchange` checks the presented value against. Omit
+   * where no invitation was accepted.
    */
   expectedPartnerDeduplicate?: boolean;
-  /** See {@link ExchangeSpecAssembly.signing} -- held verbatim through
-   * {@link mintExchangeFile} on the same no-secret terms. */
+  /** See {@link ExchangeSpecAssembly.signing}. */
   signing?: SigningConfig;
   /** See {@link ExchangeSpecAssembly.retentionDisposition}. */
   retentionDisposition?: string;
@@ -143,14 +96,7 @@ export interface ExchangeFileInput {
   csvDelimiter?: string;
 }
 
-/**
- * The inputs {@link assembleExchangeSpec} assembles into a validated
- * {@link ExchangeSpec}: an already-expanded connection block plus the shared
- * optional blocks. This is {@link ExchangeFileInput} with the connection past
- * its locator expansion -- the boundary between the two composers' locator
- * types (file-sync for the downloadable mint, webrtc for the managed
- * record) and the one assembly rule they share.
- */
+/** {@link ExchangeFileInput} with the connection already expanded. */
 interface ExchangeSpecAssembly {
   connection: ConnectionConfig;
   linkageTerms: LinkageTerms;
@@ -159,65 +105,36 @@ interface ExchangeSpecAssembly {
   /** See {@link ExchangeFileInput.expectedPartnerDeduplicate}. */
   expectedPartnerDeduplicate?: boolean;
   /**
-   * This party's receipt-signing block: the mode, the local path of its
-   * signing identity file, the partner fingerprint it pins, and where a
-   * signed receipt is written. No secret is representable here -- the
-   * private key lives in the identity file this block only NAMES, and the
-   * pinned fingerprint is a public digest (see `config/signing.ts`).
-   *
-   * Every path it holds is the assembling caller's to choose: a caller
-   * composing a config for another machine must state a path that machine
-   * has, since a container-internal path assembled into a portable
-   * document names nothing on the host that would run it.
+   * This party's receipt-signing block. It names the identity file and contains
+   * no secret (`config/signing.ts`). Its paths must exist on the machine that
+   * runs the config.
    */
   signing?: SigningConfig;
   /**
-   * This party's self-facing retention/disposition note, recorded verbatim in its
-   * own exchange record. Per-party and local: never swapped with the partner,
-   * cross-validated, or folded into the agreed-terms hash. Free operator text,
-   * bounded by the spec schema; omit the field to record no pointer.
+   * This party's retention note, recorded verbatim in its own exchange record.
+   * Local: never swapped, cross-validated, or hashed into the agreed terms.
    */
   retentionDisposition?: string;
   /**
-   * Which of this party's own input columns its result file holds beside the
-   * partner's values (`config/metadata.ts`, `ownResultColumnNames`). Per-party
-   * and local like {@link retentionDisposition}: never swapped,
-   * cross-validated, or folded into the agreed-terms hash. Omit the field to
-   * compose the result the partner's values alone make up.
-   *
-   * The spec schema refuses it beside a count-only (`psi-c`) algorithm, which
-   * writes no result file, so an assembly pairing the two throws here rather
-   * than at the run.
+   * Which of this party's own columns its result file includes
+   * (`ownResultColumnNames`, `config/metadata.ts`). Local like
+   * {@link retentionDisposition}. The schema refuses it beside `psi-c`.
    */
   includeOwnColumns?: OwnColumnSelection;
   /**
-   * The field delimiter this party reads its own CSV by and writes its result
-   * file with, or `detect` to take it from the file itself. Per-party and local
-   * like {@link retentionDisposition}: the two parties' files need not agree on
-   * it, and neither reads the other's. Omit the field to read and write commas.
-   *
-   * Graded by the spec schema against the accepted set (`csvDelimiter.ts`), so
-   * an assembly holding a value outside it throws here.
+   * The delimiter this party reads its CSV and writes its result with, or
+   * `detect`. Local; omitted means commas. Validated against `csvDelimiter.ts`.
    */
   csvDelimiter?: string;
 }
 
 /**
- * Assemble an exchange spec on the camelCase side and validate it through
- * {@link ExchangeSpecSchema}, returning the PARSE RESULT (never the raw
- * input) so only the schema's own fields reach a consumer. Optional blocks
- * are attached only when present, so an absent field is an omitted key,
- * not an explicit `undefined` a snakeize/serialize step would render.
+ * Assemble an exchange spec and return the {@link ExchangeSpecSchema} parse
+ * result, never the raw input. An absent optional block is an omitted key. The
+ * one assembly rule behind the downloadable mint and the web managed record
+ * (docs/spec/EXCHANGE_FILE.md#the-artifact-is-the-cli-config-schema).
  *
- * The single assembly rule behind both composers: {@link mintExchangeFile}
- * serializes this result to the downloadable YAML, and the web app's
- * managed-record composer persists it directly, so the two artifacts
- * cannot drift apart. No `authentication` block is ever assembled -- the
- * shared secret is not representable in the input.
- *
- * @throws {ZodError} if the assembled spec fails {@link ExchangeSpecSchema}
- *   validation (an invalid connection, an out-of-range port, a malformed
- *   split pair, ...).
+ * @throws {ZodError} if the assembled spec fails validation.
  */
 export function assembleExchangeSpec(
   input: ExchangeSpecAssembly,
@@ -247,40 +164,22 @@ export function assembleExchangeSpec(
 }
 
 /**
- * Assemble a browser-composed exchange into the CLI's exact config schema
- * and serialize it to the snake_case YAML the CLI loads verbatim.
+ * Mint a browser-composed exchange as the snake_case YAML the CLI loads
+ * verbatim, with no `authentication` block and the SFTP username seeded with
+ * {@link PLACEHOLDER_SSH_USERNAME}
+ * (docs/spec/EXCHANGE_FILE.md#mint-layer-guarantees). No Node imports: the web
+ * app consumes this module.
  *
- * The artifact IS the CLI config: it validates through
- * {@link assembleExchangeSpec} before serializing, so a mismatch appears
- * here rather than when the CLI later loads a malformed file, then is
- * written with the same {@link snakeizeKeys} + yaml `stringify` discipline
- * the CLI's `saveConfig` uses.
- *
- * The secret never enters the file: there is no `authentication` block --
- * the CLI injects the shared secret from `.alcove.key` at runtime, and
- * the secret rides ONLY the invitation code. For an SFTP locator, the one
- * SSH identity field the operator must supply (`username`) is seeded with
- * the {@link PLACEHOLDER_SSH_USERNAME} placeholder, so a downloaded
- * config fails loudly rather than connecting anonymously.
- *
- * Browser-safe: no Node imports (fs/path), so the module is consumable
- * from `apps/web`.
- *
- * @throws {ZodError} if the assembled spec fails {@link ExchangeSpecSchema}
- *   validation (an invalid locator, an out-of-range port, a malformed
- *   split pair, ...).
+ * @throws {ZodError} if the assembled spec fails validation.
  */
 export function mintExchangeFile(input: ExchangeFileInput): string {
   return stringifyYaml(snakeizeKeys(mintExchangeSpec(input)));
 }
 
 /**
- * The validated spec {@link mintExchangeFile} serializes, for a caller that
- * needs the document as a spec rather than as text -- one that merges it with
- * another spec, or renders it through a different writer.
+ * The validated spec {@link mintExchangeFile} serializes.
  *
- * @throws {ZodError} if the assembled spec fails {@link ExchangeSpecSchema}
- *   validation.
+ * @throws {ZodError} if the assembled spec fails validation.
  */
 export function mintExchangeSpec(input: ExchangeFileInput): ExchangeSpec {
   return assembleExchangeSpec({
@@ -290,20 +189,11 @@ export function mintExchangeSpec(input: ExchangeFileInput): ExchangeSpec {
 }
 
 /**
- * Expand a credential-free {@link ExchangeLocator} into the CLI's
- * {@link ConnectionConfig} shape. The single-vs-split directory form is
- * included verbatim; the schema enforces the both-or-neither and
- * mutual-exclusion rules. For SFTP the placeholder username is seeded --
- * the one identity field a locator cannot hold.
- *
- * For WebRTC the expansion copies only the
- * {@link WebRTCEndpointSchema}-validated `host`/`port`/`path` into
- * `server`, and a url-only `relay` into `invitation_relay`, so no PeerJS
- * `server.key`, `server.username`, `turn`, `ice_provision`, or
- * `provider_options` entry is representable in the result. The locator is
- * validated through {@link WebRTCEndpointSchema} first, so a type-bypassed
- * caller's unexpected key is rejected there, at the locator, rather than
- * reaching the connection this builds.
+ * Expand a credential-free {@link ExchangeLocator} into a
+ * {@link ConnectionConfig}; the schema enforces the split-pair rules. A webrtc
+ * locator is parsed through {@link WebRTCEndpointSchema} first, so an
+ * unexpected key is rejected before only `host`/`port`/`path` and `relay` are
+ * copied.
  */
 export function connectionFromLocator(
   locator: ExchangeLocator,
@@ -327,8 +217,6 @@ export function connectionFromLocator(
       channel: "sftp",
       server: {
         host: locator.host,
-        // The locator holds no credential; seed the one SSH identity field the
-        // operator must fill in with an obvious placeholder (see mintExchangeFile).
         username: PLACEHOLDER_SSH_USERNAME,
         ...(locator.port !== undefined ? { port: locator.port } : {}),
         ...(locator.path !== undefined ? { path: locator.path } : {}),

@@ -4,89 +4,50 @@ import { formatCount } from "./utils/formatCount.js";
 import type { ResolvedMatching } from "./linkageTermsPolicy.js";
 
 /**
- * What a run resolved to at the post-terms, pre-round boundary: the
- * matching cardinality both parties derived from the agreed `deduplicate`
- * pair, the two record counts the derived pair table's size follows from,
- * and the two entitlements that decide which party ends up holding what the
- * pairing produces.
+ * What a run resolved to after the terms exchange and before the first round:
+ * the matching cardinality, the record counts the pair table's size follows
+ * from, and the two output entitlements. Every field comes from authenticated
+ * session state; the partner's count is bounded by `recordCountField`
+ * (protocolSetup.ts) to {@link MAX_RECORD_COUNT}. {@link runExchange} hands it
+ * to `onProtocolConfirmed`, so a front end reads what the run resolved.
  *
- * Every field is fixed before the first PSI round and comes from
- * authenticated session state: the cardinality from
- * {@link resolveLinkageCardinality} over both parties' agreed terms, this
- * party's own row count from its loaded dataset and the count it declared
- * from that count and its own cleaning, the partner's from the
- * terms-exchange envelope (bounded by its schema, `recordCountField`,
- * protocolSetup.ts, to a nonnegative integer no larger than
- * {@link MAX_RECORD_COUNT}), and both entitlements from the two agreed
- * terms documents plus the resolved role. {@link runExchange} hands the
- * whole shape to its `onProtocolConfirmed` callback, so a front end reads
- * the same state the run resolved from rather than deriving its own.
- *
- * The entitlements are here because the copy composed from this shape
- * speaks about a result and about what the partner learns, and neither
- * follows from the cardinality alone: a cardinality label plus a record
- * count cannot tell a party whether it receives a result at all, so a
- * notice resting on the cardinality alone would assert an entitlement the
- * run may not have.
- *
- * Extends {@link ResolvedMatching}, the same triple the run returns on its
- * outcome and writes into its self-attested record, so what a seat states
- * before the first round and what the record holds afterwards are one shape.
+ * The entitlements are here because the cardinality alone cannot tell a party
+ * whether it receives a result. Extends {@link ResolvedMatching}, the triple
+ * the run's outcome and its record also state.
  */
 export interface ResolvedRunShape extends ResolvedMatching {
   /** This party's own raw dataset record count. */
   readonly localRecordCount: number;
   /**
-   * This party's record count as DECLARED on the terms exchange: its raw
-   * count times the fan-out factor its own standardization declares
-   * (`localFanOutFactor`, fanOutFunctions.ts), so it equals
-   * {@link localRecordCount} for a party whose own cleaning does not fan
-   * out.
-   *
-   * The figure role resolution weighed, the one the partner holds for this
-   * party, and the one {@link projectPairTable} multiplies -- both parties
-   * hold both declared counts and neither holds the other's raw one, so a
-   * projection over the declared pair is the only one the two sides agree
-   * on. The raw count is kept beside it, since it is what this party's
-   * rows actually number.
+   * This party's count as declared on the terms exchange: the raw count times
+   * its own fan-out factor (`localFanOutFactor`, fanOutFunctions.ts). Neither
+   * party knows the other's raw count, so {@link projectPairTable} multiplies
+   * the declared pair.
    */
   readonly localDeclaredRecordCount: number;
   /** The partner's record count as declared on the terms exchange. */
   readonly partnerRecordCount: number;
   /**
-   * Whether this party's own agreed terms entitle it to the matched result
-   * (`output.expectsOutput`).
-   *
-   * The same predicate gates the association table {@link runExchange}
-   * returns (`heldResult`, exchange.ts), so it determines whether this
-   * party writes a result file at all. A party this is false for has a
-   * partner it is true for -- `validateCompatibility` refuses a pair where
-   * neither expects output -- so the pairing this run produces is always
-   * held by someone.
+   * Whether this party's agreed terms entitle it to the matched result
+   * (`output.expectsOutput`). The same predicate gates `heldResult`
+   * (exchange.ts). `validateCompatibility` refuses a pair where neither
+   * expects output.
    */
   readonly localExpectsOutput: boolean;
   /**
-   * Whether this run withholds the PARTNER's half of the association table
-   * entirely, leaving it blind to which of its own records matched and to the
-   * size of any group of this party's records standing behind one of them.
-   *
-   * The single-pass blind-helper case (`withholdsSenderAssociationTable`,
-   * link.ts): the partner is the resolved sender, expects no output, and
-   * discloses no payload, so the receiver suppresses its half rather than
-   * sending it. False under the cascade, which withholds no half.
+   * Whether this run withholds the partner's half of the association table
+   * (`withholdsSenderAssociationTable`, link.ts): the single-pass case where the
+   * partner is the sender, expects no output and discloses no payload. False
+   * under the cascade.
    */
   readonly partnerAssociationTableWithheld: boolean;
 }
 
 /**
- * The projected pair count above which {@link describeResolvedRunShape} composes
- * the pair-table advisory.
- *
- * Advisory only. Nothing in the protocol, the run path, or either front end
- * refuses on this number -- the both-sided expansion takes no ceiling by decision
- * (docs/spec/PROTOCOL.md, The both-sided expansion has no ceiling of its own), so
- * the value decides only whether a string is shown. Its derivation from the result
- * file's measured bytes per pair is recorded in that same section.
+ * The projected pair count above which {@link describeResolvedRunShape}
+ * composes the pair-table advisory. Advisory only: nothing refuses on it
+ * (docs/spec/PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps,
+ * which also derives the value).
  */
 export const PAIR_TABLE_ADVISORY_MAX_PAIRS = 10_000_000;
 
@@ -95,58 +56,32 @@ export const PAIR_TABLE_ADVISORY_MAX_PAIRS = 10_000_000;
  * whether that product is above {@link PAIR_TABLE_ADVISORY_MAX_PAIRS}.
  */
 export interface PairTableProjection {
-  /**
-   * This party's own raw dataset record count. Not a factor of the product: it
-   * is the rows the advisory names behind a declared count its cleaning fanned.
-   */
+  /** This party's raw count, named by the advisory when its cleaning fanned out. */
   readonly localRecordCount: number;
   /** This party's declared record count, one factor of the product. */
   readonly localDeclaredRecordCount: number;
   /** The partner's declared record count, the other factor. */
   readonly partnerRecordCount: number;
   /**
-   * The exact product of the two counts.
-   *
-   * A `bigint` because the counts' own bounds admit a product past
-   * `Number.MAX_SAFE_INTEGER`: two parties each declaring {@link MAX_RECORD_COUNT}
-   * multiply to 10^24, so a `number` product would be an approximation both in the
-   * comparison below and in the figure the advisory names.
+   * The exact product of the two declared counts. A `bigint`: two counts at
+   * {@link MAX_RECORD_COUNT} multiply past `Number.MAX_SAFE_INTEGER`.
    */
   readonly projectedPairs: bigint;
   readonly exceedsAdvisoryBound: boolean;
 }
 
-// A count this projection can multiply: the bounds the terms-exchange schema
-// (`recordCountField`, protocolSetup.ts) holds a declared count to, which is
-// where a count outside them is refused as a `protocol` decode failure. Failing
-// SOFT here rather than throwing -- an advisory is no reason to end an exchange
-// -- so a count this rejects yields no projection while the cardinality is named
-// as usual.
+// The bounds `recordCountField` (protocolSetup.ts) applies to a declared count.
+// Fails soft: an advisory is no reason to end an exchange.
 function isDeclarableRecordCount(count: number): boolean {
   return Number.isSafeInteger(count) && count >= 0 && count <= MAX_RECORD_COUNT;
 }
 
 /**
- * Project the derived pair table's size for a resolved run, or `undefined`
- * where the cardinality puts no product on it.
- *
- * Only `many-to-many` grows quadratically: both parties keep their
- * within-dataset duplicates, so the table is bounded at the two DECLARED
- * record counts' product and no derived frame or dataset bound narrows it
- * (docs/spec/PROTOCOL.md, The both-sided expansion has no ceiling of its
- * own). Under every other cardinality at most one side keeps duplicates and
- * the table is bounded by a single record count, so there is no product to
- * project and this returns `undefined`.
- *
- * The product is DECLARED times DECLARED on both sides, so the two parties
- * project the same figure for the same run: each party holds its own raw
- * row count and neither holds the other's, so mixing a raw factor with a
- * declared one would give the two sides different totals for one run.
- *
- * The projection is the worst case rather than a prediction: what the
- * pairing produces when every record on both sides shares one value, at
- * counts a fan-out can only overstate. A run that matches less produces
- * less, and no run produces more.
+ * Project the derived pair table's size, or `undefined` unless the cardinality
+ * is `many-to-many`, the only one bounded by a product
+ * (docs/spec/PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps).
+ * Declared times declared, so both parties project the same figure. A worst
+ * case, not a prediction.
  */
 export function projectPairTable(
   shape: ResolvedRunShape,
@@ -171,21 +106,10 @@ export function projectPairTable(
 }
 
 /**
- * State what the two parties' agreed `deduplicate` values resolved to: this
- * party's own declared value, the value its partner presented at the terms
- * exchange, and the cardinality the pair gives this party.
- *
- * Composed for every run, whatever the cardinality, and stated once the terms
- * are agreed. Nothing earlier can state it: each party's value comes from its
- * own document, so the pair exists only after the terms exchange, and a seat
- * that stated only its own value would leave the partner's -- which decides
- * whether several of the partner's records may match one of this party's --
- * unread on both sides.
- *
- * Both values render as the fixed literals `true` and `false` off a boolean
- * the terms schema already parsed, and the cardinality as one of the closed
- * label set, so the sentence holds no partner-authored text and a display sink
- * escapes it as it escapes any other message.
+ * State this party's declared `deduplicate`, the partner's, and the resulting
+ * cardinality. Only possible after the terms exchange, when the pair exists.
+ * The values render as fixed literals, so no partner-authored text is
+ * interpolated.
  */
 export function describeResolvedMatching(matching: ResolvedMatching): string {
   return (
@@ -196,22 +120,9 @@ export function describeResolvedMatching(matching: ResolvedMatching): string {
   );
 }
 
-// Exhaustive over the union with no default, so a cardinality added to the
-// label set fails to compile here rather than resolving to silence by
-// omission.
-//
-// Every sentence about a result file or about what the partner reads is
-// chosen from the entitlements the shape holds rather than from the
-// cardinality label, which determines neither: a party the agreed terms
-// give no output is handed no association table at all (`heldResult`,
-// exchange.ts), so naming "your result file" to it would assert an
-// entitlement the run does not have. Where this party holds no result its
-// partner does -- `validateCompatibility` refuses a pair where neither
-// expects output -- so the pairing is always attributable to someone.
-//
-// Each branch spells its whole sentence rather than interpolating a phrase
-// a ternary picked: the readings are fixed first-party copy, and writing
-// them out keeps each one readable as the sentence an operator meets.
+// Sentences about a result file follow the entitlements, not the cardinality:
+// a party with no output is handed no association table (`heldResult`,
+// exchange.ts).
 function describeCardinality(shape: ResolvedRunShape): string | undefined {
   switch (shape.cardinality) {
     case "one-to-one":
@@ -257,11 +168,8 @@ function describeCardinality(shape: ResolvedRunShape): string | undefined {
   }
 }
 
-// Both factors are the DECLARED counts, so the sentence names the same two
-// numbers on both parties and the total it reports is the one the partner's own
-// advisory reports. Where this party's cleaning fanned its declared count past
-// its rows, a second sentence says so: the first sentence otherwise names a
-// record count the operator cannot find in its own file.
+// Both factors are the declared counts, so both parties name the same numbers.
+// Where this party's cleaning fanned out, a second sentence names its raw rows.
 function describePairTableProjection(projection: PairTableProjection): string {
   return (
     `This run projects up to ${formatCount(projection.projectedPairs)} matched ` +
@@ -285,35 +193,23 @@ function describePairTableProjection(projection: PairTableProjection): string {
 /** What a front end renders for a resolved run at the pre-round boundary. */
 interface ResolvedRunShapeNotices {
   /**
-   * Names the deduplicating cardinality this run resolved to and what it means
-   * for the result this party holds and for what the partner reads, or
-   * `undefined` under `one-to-one`, which is the shape every consent surface
-   * already describes and the only one that adds no multiplicity.
+   * The cardinality and what it means for this party's result and the
+   * partner's view, or `undefined` under `one-to-one`.
    */
   readonly cardinalityNotice: string | undefined;
   /**
-   * Names the projected pair count and what each side contributes to it, or
-   * `undefined` while the projection is within
-   * {@link PAIR_TABLE_ADVISORY_MAX_PAIRS} (and under every cardinality that
-   * projects no product at all).
+   * The projected pair count, or `undefined` within
+   * {@link PAIR_TABLE_ADVISORY_MAX_PAIRS} or with no product.
    */
   readonly pairTableAdvisory: string | undefined;
 }
 
 /**
- * Compose what a front end shows for a resolved run, after the terms exchange
- * and before the first round.
- *
- * The composition is pure and this module raises nothing itself: the spec makes
- * the pair-table advisory a front end's discretion (docs/spec/PROTOCOL.md, The
- * both-sided expansion has no ceiling of its own), so `runExchange` hands each
- * seat the {@link ResolvedRunShape} and each seat decides where and how loudly to
- * render what this returns. A warning emitted from the run path would decide it
- * for every seat instead.
- *
- * Both strings are first-party prose over two integers this function formats
- * itself, so no partner-authored text is interpolated into either and a display
- * sink escapes them exactly as it escapes any other message it is handed.
+ * Compose what a front end shows for a resolved run before the first round.
+ * Pure: the advisory is each front end's to render
+ * (docs/spec/PROTOCOL.md#deriving-one-table-from-the-exchanged-association-maps).
+ * Both strings are first-party prose over integers, with no partner-authored
+ * text.
  */
 export function describeResolvedRunShape(
   shape: ResolvedRunShape,
