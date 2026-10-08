@@ -382,7 +382,7 @@ re-walked.
 
 ### The release SBOM's hoisting residual
 
-Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. On npm 11.19.1 against the lockfile at `af75c88ca`, re-driven 2026-10-08:
+Release step 9 in [RELEASES.md](../RELEASES.md#9-generate-and-attach-the-sbom) runs `npm sbom` with no workaround flag, and its BOM omits a few packages the shipped tree holds. Re-driven 2026-10-08 against the lockfile as committed (the figures depend on the npm version, 11.19.1):
 
 - `npm sbom --sbom-format cyclonedx --package-lock-only --omit=dev -w packages/core -w apps/cli -w apps/web` exits 0 at 131 components, and the same command without `-w apps/web` exits 0 at 85. Every one of those 85 also appears in the 131, by name and version, so the full-scope command closes the web console's runtime set into the BOM rather than dropping it.
 - `npm ls --all --omit=dev --package-lock-only` exits 0, so the tree reports no peer conflict.
