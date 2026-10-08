@@ -26,8 +26,8 @@ compute](../spec/PROTOCOL.md#the-single-pass-dataset-ceiling-receiver-memory-and
 
 ## What the vendored package contains
 
-`lib/openmined-psi.js-2.0.6-seclink.3.tgz` ships **one** WebAssembly binary --
-byte-identical (sha256 prefix `e19d57fe`, 1,428,515 bytes) across the three
+`lib/openmined-psi.js-2.0.6-seclink.5.tgz` ships **one** WebAssembly binary --
+byte-identical (sha256 prefix `9612b14f`, 1,444,412 bytes) across the three
 environment entries `psi_wasm_node.js`, `psi_wasm_web.js` and
 `psi_wasm_worker.js` -- plus the native N-API entry `psi_native_node.js` and
 prebuilds for linux x64/arm64 (glibc and musl), darwin x64/arm64 and win32 x64.
