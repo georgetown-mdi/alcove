@@ -423,9 +423,9 @@ export interface PreflightRunResult {
 }
 
 /**
- * Open the run's machine-interface stream and run {@link runProtocol}'s
- * refusals decided from local inputs, for a command whose own first network
- * contact comes before `runProtocol`. A refusal emits the run's one terminal
+ * Open the run's machine-interface stream, unless the command passes the one
+ * it opened, and run {@link runProtocol}'s refusals decided from local inputs,
+ * for a command whose own first network contact comes before `runProtocol`. A refusal emits the run's one terminal
  * `error` event, in the "prepare" phase `runProtocol` would have given it,
  * and is rethrown. Resolves with the open stream, which the caller passes to
  * `runProtocol` as `fileSyncRuntime.eventStream`; `runProtocol` runs the same
@@ -452,7 +452,8 @@ export async function preflightRun(options: {
   verbosity: number;
   loggerName: string;
   logFile?: string;
-  eventStream: boolean | undefined;
+  /** The stream the command opened, or the `--event-stream` flag to open it. */
+  eventStream: boolean | EventStreamEmitter | undefined;
   /** `--allow-memory-shortfall`: warn rather than refuse a memory shortfall. */
   allowMemoryShortfall?: boolean;
 }): Promise<PreflightRunResult> {
@@ -468,7 +469,13 @@ export async function preflightRun(options: {
     logFile,
     allowMemoryShortfall = false,
   } = options;
-  const eventStream = openEventStream(options.eventStream);
+  // A command opens its stream once, ahead of its configuration load, and
+  // passes the emitter here: a second open would install a second writer whose
+  // exit-boundary reporter replaces the first one's.
+  const eventStream =
+    typeof options.eventStream === "object"
+      ? options.eventStream
+      : openEventStream(options.eventStream);
   const emit = (fn: (e: EventStreamEmitter) => void): void => {
     if (eventStream !== undefined) fn(eventStream);
   };

@@ -62,6 +62,7 @@ import { readConnectionCredentials } from "../util/atSignRefs";
 import type { ResolvedConnectionCredentials } from "../util/atSignRefs";
 import { DURATION_VALUE_HELP } from "../util/duration";
 import { runOrExit } from "../util/exit";
+import { openEventStream } from "../eventStream";
 import {
   assertNoUnknownOptions,
   csvDelimiterFlag,
@@ -1175,6 +1176,12 @@ export async function handler(argv: Arguments): Promise<void> {
       // token mint.
       assertNoUnknownOptions(positionalsBeforeDoubleDash(argv, positionals));
       const resolved = resolveInvitePositionals(positionals);
+      // An online invitation runs an exchange, so its stream opens here, ahead
+      // of the configuration load and every other refusal past the arguments.
+      const openedEventStream =
+        resolved.mode === "online"
+          ? openEventStream(options.eventStream)
+          : undefined;
       const url = resolved.mode === "online" ? resolved.url : undefined;
       assertBootstrapUrlPasswordStorable(argv, url);
       warnIfCommandLineHoldsLiteralCredential(
@@ -1224,7 +1231,7 @@ export async function handler(argv: Arguments): Promise<void> {
           loggerName: "invite",
           logFile: options.logFile,
           writeRecord: options.record,
-          eventStream: options.eventStream,
+          eventStream: openedEventStream,
           allowMemoryShortfall: options.allowMemoryShortfall,
           // The wait for the partner to arrive runs on --accept-timeout; the
           // configuration saved at acceptance does not, so an unattended

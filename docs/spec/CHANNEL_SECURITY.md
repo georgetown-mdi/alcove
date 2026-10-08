@@ -298,11 +298,11 @@ connection-schema refusal above.
 
 **When the call runs.** `alcove exchange` sends a start-mode call once
 (`wakeProvisionedServer`), after every refusal decided from local inputs alone
-and before the first-use host-key probe. Ahead of it run the configuration and
-key-file load, the dataset preparation and its linkage-terms checks, the
-signing-identity load, the non-interactive refusal of an unpinned SFTP host
-(`assertHostKeyTrustCanBeEstablished`), and `runProtocol`'s own local checks
-through `preflightRun`: the `--event-stream` fd-3 preflight, the shared
+and before the first-use host-key probe. Ahead of it run the `--event-stream`
+fd-3 preflight, the configuration and key-file load, the dataset preparation
+and its linkage-terms checks, the signing-identity load, the non-interactive
+refusal of an unpinned SFTP host (`assertHostKeyTrustCanBeEstablished`), and
+`runProtocol`'s own local checks through `preflightRun`: the shared
 secret's format and expiry, the key-file path, the first round's size against
 one message on the channel, and the WebRTC rendezvous resolution. After it run
 the checks that need the network -- the first-use host-key probe and the

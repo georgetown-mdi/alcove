@@ -47,7 +47,7 @@ import {
   assertWakeCallFormable,
   wakeProvisionedServer,
 } from "../serverProvision";
-import { reportPersistenceLoss } from "../eventStream";
+import { openEventStream, reportPersistenceLoss } from "../eventStream";
 import {
   relayRegistrarForRun,
   relayRegistrarLabel,
@@ -378,15 +378,18 @@ const MISSING_SIGNING_IDENTITY_REMEDY =
   "fingerprint --identity-file <that path>', or point signing.identity_file " +
   "at the file you already hold";
 
-/** The usage error for a configuration that fails exchange-spec validation. */
+/** The refusal for a configuration that fails exchange-spec validation. */
 function invalidExchangeSpecError(
   configFile: string,
   err: unknown,
-): UsageError {
+): OperatorConfigError {
   const message = messageWithOperatorText`config file ${operatorSuppliedText(
     configFile,
   )} is not a valid exchange spec: ${describeConfigSchemaError(err)}`;
-  return keepOperatorSuppliedText(new UsageError(message.text), message);
+  return keepOperatorSuppliedText(
+    new OperatorConfigError(message.text),
+    message,
+  );
 }
 
 /**
@@ -419,12 +422,28 @@ function readConfigDocument(configFile: string): unknown {
     const message = messageWithOperatorText`config file ${operatorSuppliedText(
       configFile,
     )} could not be read: ${err instanceof Error ? err.message : String(err)}`;
-    throw keepOperatorSuppliedText(new UsageError(message.text), message);
+    throw keepOperatorSuppliedText(
+      new OperatorConfigError(message.text),
+      message,
+    );
   }
-  return parseSensitiveYaml(
-    source,
-    messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
-  );
+  try {
+    return parseSensitiveYaml(
+      source,
+      messageWithOperatorText`config file ${operatorSuppliedText(configFile)}`,
+    );
+  } catch (err) {
+    // The chokepoint's refusal names the path only, never the parser's
+    // source-bearing message; rethrown as the configuration fault it is.
+    if (!(err instanceof UsageError)) throw err;
+    const message = messageWithOperatorText`config file ${operatorSuppliedText(
+      configFile,
+    )} could not be parsed as YAML`;
+    throw keepOperatorSuppliedText(
+      new OperatorConfigError(message.text),
+      message,
+    );
+  }
 }
 
 /**
@@ -1083,6 +1102,10 @@ export async function handler(argv: Arguments): Promise<void> {
 
   try {
     await runOrExit(log, async () => {
+      // Opened first, so every refusal after the argument parse -- the
+      // configuration load among them -- ends the stream with its terminal
+      // event (docs/spec/CLI_EVENTS.md, Terminal-event guarantees).
+      const openedEventStream = openEventStream(eventStream);
       assertRetainSweepGuard(sweepExchangeFiles, forceRetainSweep);
       warnIfCommandLineHoldsLiteralCredential(
         commandLineLiteralCredentials(
@@ -1264,14 +1287,11 @@ export async function handler(argv: Arguments): Promise<void> {
 
       // Every refusal above and here is decided from local inputs alone, so all
       // of them come before the wake call and the host-key probe, the run's
-      // first network contact: runProtocol's own local checks (the
-      // --event-stream fd-3 preflight, the shared secret, the key-file path, the
-      // memory the round needs, the first round's size, and the webrtc
-      // rendezvous), which runProtocol runs again, then an unpinned SFTP host on
-      // a non-interactive run, refused with the stream open so the refusal is
-      // its terminal event.
+      // first network contact: runProtocol's own local checks (the shared
+      // secret, the key-file path, the memory the round needs, the first
+      // round's size, and the webrtc rendezvous), which runProtocol runs again,
+      // then an unpinned SFTP host on a non-interactive run.
       const {
-        eventStream: openedEventStream,
         signingWithoutRecordWarned,
         undeclaredColumnsWarned,
         memoryBudgetReported,
@@ -1285,7 +1305,7 @@ export async function handler(argv: Arguments): Promise<void> {
         verbosity,
         loggerName: "exchange",
         logFile,
-        eventStream,
+        eventStream: openedEventStream,
         allowMemoryShortfall,
       });
       assertHostKeyTrustCanBeEstablished(connection, hostKeyPersistence);
