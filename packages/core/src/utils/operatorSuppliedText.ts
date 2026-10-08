@@ -1,27 +1,14 @@
 declare const operatorSuppliedBrand: unique symbol;
 
 /**
- * One string whose bytes the OPERATOR supplied -- a path they typed, a value
- * they wrote in their own configuration -- marked where it enters a message so
- * the display sink renders it as given instead of escaping it.
- *
- * The mark is what makes the treatment opt-in: text nobody marked is escaped,
- * which is the standing assignment (CONTRIBUTING.md, Operator-facing
- * escaping), so a fragment somebody else chose keeps its escape by doing
- * nothing. Only a call site that states "the operator chose these bytes" gets
- * the other treatment, and it states it per FRAGMENT, so a message naming an
- * operator's path beside a partner's value escapes the part of itself the
- * partner chose.
- *
- * The brand keys a module-private `unique symbol`, so nothing outside this
- * module builds one: a value a partner sends can carry no such property,
- * whatever it spells, because no parse produces a symbol key.
- *
- * It marks WHO CHOSE THE BYTES and nothing else. A path copied into a
- * configuration out of an invitation the partner wrote is the partner's
- * choice sitting in the operator's file, so a site holding a value of that
- * class leaves it unmarked; what the render does leave out either way is the
- * control class ({@link ./sanitizeForDisplay.renderOperatorSuppliedText}).
+ * One string whose bytes the operator supplied (a path they typed, a value in
+ * their own configuration), marked per fragment where it enters a message so
+ * the display sink renders it as given; unmarked text is escaped. It marks who
+ * chose the bytes: a path copied from a partner's invitation stays unmarked.
+ * The control class is left out either way
+ * ({@link ./sanitizeForDisplay.renderOperatorSuppliedText}). No parse produces
+ * the symbol key the brand uses. See
+ * docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
  */
 export interface OperatorSuppliedText {
   readonly [operatorSuppliedBrand]: string;
@@ -29,11 +16,7 @@ export interface OperatorSuppliedText {
 
 const OPERATOR_SUPPLIED_VALUE = Symbol("alcove.display.operatorSuppliedText");
 
-/**
- * Mark one string as {@link OperatorSuppliedText}, at the site that composes
- * it into a message. Its bytes are the operator's own: a path from the command
- * line or their configuration file, not a value a remote party chose.
- */
+/** Mark one string the operator supplied as {@link OperatorSuppliedText}. */
 export const operatorSuppliedText = (value: string): OperatorSuppliedText =>
   ({ [OPERATOR_SUPPLIED_VALUE]: value }) as unknown as OperatorSuppliedText;
 
@@ -41,26 +24,15 @@ export const operatorSuppliedText = (value: string): OperatorSuppliedText =>
 export interface DisplaySpan {
   /** The span's raw bytes, escaped or rendered where the message is shown. */
   readonly text: string;
-  /**
-   * Whether the operator supplied these bytes. A span nobody marked is
-   * escaped, so the treatment that leaves bytes as given is reached only by
-   * marking.
-   */
+  /** Whether the operator supplied these bytes; unmarked spans are escaped. */
   readonly operatorSupplied: boolean;
 }
 
 /**
- * A message composed out of first-party copy and fragments, holding both what
- * the message says and which of its spans the operator supplied.
- *
- * `text` is the string the same template literal would have produced with the
- * fragments interpolated raw -- what an `Error` built from it takes as its
- * message, so classification and message equality read the text they read
- * before the message was partitioned.
- *
- * Build one through {@link messageWithOperatorText} rather than as an object
- * literal: only what that composes holds the brand the interpolation reads, so
- * a hand-built value of this shape interpolates as its own `text`, escaped.
+ * A message with the spans the operator supplied marked. `text` is the raw
+ * interpolation, what an `Error` built from it takes as its message. Build one
+ * through {@link messageWithOperatorText}: a hand-built value of this shape
+ * has no brand and interpolates as its own `text`, escaped.
  */
 export interface MessageWithOperatorText {
   readonly text: string;
@@ -68,15 +40,9 @@ export interface MessageWithOperatorText {
 }
 
 /**
- * Where the spans of a partitioned message are kept: on the message
- * {@link messageWithOperatorText} composes, and on the error
- * {@link keepOperatorSuppliedText} marks with it for the renderer to read.
- *
- * A SYMBOL-keyed property, out of reach of the text the renderer defends
- * against: no parse produces one, so no value a partner sends can ask for the
- * treatment, on either route. Registered rather than module-private, so a
- * process holding two copies of this module reads the mark the other copy
- * wrote instead of escaping a path the operator typed.
+ * The symbol key that stores a partitioned message's spans, on a composed
+ * message and on a marked error. Registered rather than module-private, so a second
+ * copy of this module in the process reads the mark.
  */
 const OPERATOR_SUPPLIED_SPANS = Symbol.for(
   "alcove.errorDisplay.operatorSuppliedSpans",
@@ -85,24 +51,10 @@ const OPERATOR_SUPPLIED_SPANS = Symbol.for(
 /**
  * Compose a message as a tagged template, keeping each fragment's origin:
  * ``messageWithOperatorText`could not read ${operatorSuppliedText(path)}: ${detail}` ``.
- *
- * The fixed spans are the call site's own copy and every unmarked value is a
- * fragment somebody else may have chosen, so both take the escape; a marked
- * value is the one span rendered as given. A `number` is printable ASCII and
- * takes the escape like any unmarked value, which leaves it unchanged.
- *
- * A message this function composed interpolates as its own spans rather than
- * as text, so a message built around a label another call site partitioned --
- * the file label the sensitive-parse chokepoint reports
- * ({@link ../sensitiveFile.SensitiveFileLabel}) -- keeps the origin that site
- * stated instead of flattening it back to an escaped string. A value of the
- * same SHAPE that this function did not compose is not that: it holds no
- * {@link OPERATOR_SUPPLIED_SPANS} brand, so its `text` is interpolated as a
- * fragment nobody marked and escaped like any other.
- *
- * The result is inert: it holds text and spans and reaches the operator only
- * through {@link keepOperatorSuppliedText}, which is what puts the partition
- * where the renderer reads it.
+ * Fixed spans and unmarked values take the escape; a marked value is rendered
+ * as given. A message this function composed interpolates as its own spans
+ * (as a {@link ../sensitiveFile.SensitiveFileLabel} does). The result reaches
+ * the renderer only through {@link keepOperatorSuppliedText}.
  */
 export function messageWithOperatorText(
   fixedSpans: TemplateStringsArray,
@@ -139,15 +91,9 @@ export function messageWithOperatorText(
 }
 
 /**
- * What an interpolated value contributes when it holds no mark and is no
- * composed message: its own `text` where it has one, and the value as a
- * string otherwise.
- *
- * Reading `text` keeps the diagnosis of a value shaped like a composed message
- * that {@link composedSpans} would not honour -- one nothing branded, or one
- * whose spans do not join back -- which would otherwise reach the operator as
- * `[object Object]`, naming nothing they can act on. The text is a fragment
- * nobody marked either way, so it is escaped at the sink.
+ * An unmarked value's text: its own `text` where it has one, so a
+ * message-shaped value {@link composedSpans} refuses does not render as
+ * `[object Object]`, and the value as a string otherwise.
  */
 function unmarkedText(value: unknown): string {
   if (typeof value === "object" && value !== null) {
@@ -158,20 +104,10 @@ function unmarkedText(value: unknown): string {
 }
 
 /**
- * The spans of an interpolated value that is itself a composed message, or
- * `undefined` for every other value, which is then interpolated as text.
- *
- * A composed message is told by the {@link OPERATOR_SUPPLIED_SPANS} brand
- * {@link messageWithOperatorText} puts on what it returns, an OWN symbol-keyed
- * property: text a partner sends cannot ask for the treatment here any more
- * than it can at the mark on an error, whatever it spells, because no parse
- * produces a symbol key. The brand is the registered symbol, so a message
- * another copy of this module composed is read as this copy's own.
- *
- * The shape is then checked the way {@link operatorSuppliedSpans} checks the
- * mark it reads off an error: `text` and `spans` own properties of the value
- * rather than its prototype's, every span well-formed, and the spans joining
- * back to the message's own `text`.
+ * The spans of a value {@link messageWithOperatorText} composed, told by its
+ * own {@link OPERATOR_SUPPLIED_SPANS} property, or `undefined`. The shape is
+ * checked as {@link operatorSuppliedSpans} checks it: own `text` and `spans`,
+ * every span well-formed, and the spans joining back to `text`.
  */
 function composedSpans(value: unknown): ReadonlyArray<DisplaySpan> | undefined {
   if (typeof value !== "object" || value === null) return undefined;
@@ -210,13 +146,8 @@ export function spansOfMessage(
 
 /**
  * The string inside an {@link OperatorSuppliedText}, or `undefined` for a
- * value holding no mark -- which is what the renderers read to decide between
- * showing bytes as the operator typed them and escaping them
- * ({@link ./sanitizeForDisplay.renderOperatorSuppliedText}). The mark keys a
- * module-private symbol, so a mark another copy of this module made reads as
- * no mark here; that copy's value stringifies to `[object Object]` rather
- * than to the path, which is the limit of the value mark and the reason the
- * SPAN mark keys a registered symbol instead.
+ * value with no mark. The key is module-private, so a mark another copy of
+ * this module made is treated as no mark and stringifies to `[object Object]`.
  */
 export function operatorSuppliedValue(value: unknown): string | undefined {
   if (typeof value !== "object" || value === null) return undefined;
@@ -225,19 +156,10 @@ export function operatorSuppliedValue(value: unknown): string | undefined {
 }
 
 /**
- * Mark `error` with the spans of the message it was built from, so
- * {@link ./sanitizeErrorForDisplay.sanitizeErrorForDisplay} escapes the spans
- * nobody marked and renders the operator's own as given.
- *
- * Pass the message the error's own `message` was built from: the renderer
- * escapes the whole message and ignores the mark unless the spans join back to
- * it, so a mark that does not describe the text it sits on costs a doubled
- * backslash rather than a wrong rendering. `error.message` is left as composed.
- *
- * It marks the error and returns it, the shape
- * {@link ./sanitizeErrorForDisplay.keepFirstPartyLineBreaks} takes. A message
- * with no marked span asks for nothing the escape does not already do, so it
- * is left unmarked.
+ * Mark `error` with the spans of the message its `message` was built from, so
+ * {@link ./sanitizeErrorForDisplay.sanitizeErrorForDisplay} renders the
+ * operator's spans as given; spans that do not join back to the message are
+ * ignored. Returns `error`, left unmarked when no span is the operator's.
  */
 export function keepOperatorSuppliedText<E extends Error>(
   error: E,
@@ -254,31 +176,16 @@ export function keepOperatorSuppliedText<E extends Error>(
 
 /**
  * The spans {@link keepOperatorSuppliedText} left on `link` whose text joins
- * back to `message`, or `undefined` for a link that asked for no such
- * treatment -- which is every link Alcove does not partition itself.
- *
- * The join is checked here rather than trusted: the renderer shows what the
- * spans hold, so spans that describe some other text would put a rendering out
- * of step with the `Error.message` a log line or a test reads. Failing that
- * check falls back to escaping the message whole, the treatment of an
- * unmarked link.
- *
- * Read by SHAPE and not by identity, which is what the registered symbol
- * above asks for: a mark another copy of this module wrote is read as this
- * copy's own, and so is any value holding a well-shaped spans array under
- * that symbol. Setting a symbol-keyed property takes code -- no parse
- * produces one, whatever the text spells -- so what this trusts is code
- * running in the process, and it still checks the array's shape and its join
- * against the message before rendering a span of it. A mark of any other
- * shape is no mark at all.
+ * back to `message`, or `undefined`, so the message is escaped whole. Read by
+ * shape, not identity: any well-shaped array under the registered symbol is
+ * accepted, which trusts only code running in the process.
  */
 export function operatorSuppliedSpans(
   link: unknown,
   message: string,
 ): ReadonlyArray<DisplaySpan> | undefined {
   if (typeof link !== "object" || link === null) return undefined;
-  // An OWN property, where the mark puts it: a class or a plain object in a
-  // chain's path must not lend the treatment to everything built from it.
+  // Own property only, so a prototype does not lend the mark.
   if (!Object.hasOwn(link, OPERATOR_SUPPLIED_SPANS)) return undefined;
   const marked = (link as Record<symbol, unknown>)[OPERATOR_SUPPLIED_SPANS];
   if (!Array.isArray(marked)) return undefined;
