@@ -66,8 +66,9 @@ describe.each([
       ctx.skip();
       return;
     }
-    // No count between: the match is one call at every size, so a count-only
-    // round moves a figure through its masking steps alone.
+    // The streamed match takes the response in pieces of the chunk size and
+    // reports between them, while the count stays one count over the whole
+    // response.
     expect(
       await expectChunkedCountMatchesSingleCall({
         library,
@@ -75,20 +76,44 @@ describe.each([
         clientValues,
         chunkElements: CHUNK_ELEMENTS,
       }),
+    ).toStrictEqual(BETWEEN_CHUNKS);
+    // The sliced match never splits the response: one call, no count between.
+    expect(
+      await expectChunkedCountMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        chunkElements: CHUNK_ELEMENTS,
+        matchMethod: "sliced",
+      }),
     ).toStrictEqual([]);
   });
 
-  test("a duplicated response counts each value once, not once per chunk", async (ctx) => {
+  test("a duplicated response counts each value once, not once per piece", async (ctx) => {
     if (!library) {
       ctx.skip();
       return;
     }
-    await expectDuplicatedResponseCountMatchesSingleCall({
-      library,
-      serverValues,
-      clientValues,
-      chunkElements: CHUNK_ELEMENTS,
-    });
+    // Each repeat lies a whole list, five pieces, away from its twin.
+    expect(
+      await expectDuplicatedResponseCountMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        chunkElements: CHUNK_ELEMENTS,
+      }),
+    ).toStrictEqual(
+      Array.from({ length: 9 }, (_, index) => CHUNK_ELEMENTS * (index + 1)),
+    );
+    expect(
+      await expectDuplicatedResponseCountMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        chunkElements: CHUNK_ELEMENTS,
+        matchMethod: "sliced",
+      }),
+    ).toStrictEqual([]);
   });
 
   test("a set the policy takes in one chunk reports no count at all", async (ctx) => {
@@ -115,6 +140,7 @@ describe.each([
       serverValues,
       clientValues,
       chunkElements: CHUNK_ELEMENTS,
+      matchMethod: "sliced",
       setupSliceElements: SETUP_SLICE_ELEMENTS,
     });
     expect(processed).toStrictEqual({
@@ -135,6 +161,7 @@ describe.each([
         library,
         serverValues,
         clientValues,
+        matchMethod: "sliced",
         setupSliceElements: SETUP_SLICE_ELEMENTS,
       }),
     ).toStrictEqual({ computeAssociationTable: BETWEEN_CHUNKS });
@@ -152,12 +179,13 @@ describe.each([
         serverValues,
         clientValues,
         chunkElements: CHUNK_ELEMENTS,
+        matchMethod: "sliced",
         setupSliceElements: SETUP_SLICE_ELEMENTS,
       }),
     ).toStrictEqual(BETWEEN_CHUNKS);
   });
 
-  test("a setup repeating an element across a slice boundary is refused sliced or not", async (ctx) => {
+  test("a setup repeating an element across a slice boundary is refused by every match", async (ctx) => {
     if (!library) {
       ctx.skip();
       return;
@@ -180,6 +208,7 @@ describe.each([
         library,
         serverValues,
         clientValues,
+        matchMethod: "sliced",
         setupSliceElements: TOTAL,
       }),
     ).toStrictEqual({});
@@ -188,6 +217,7 @@ describe.each([
         library,
         serverValues,
         clientValues,
+        matchMethod: "sliced",
         setupSliceElements: TOTAL,
       }),
     ).toStrictEqual([]);

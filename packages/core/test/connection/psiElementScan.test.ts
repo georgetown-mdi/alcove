@@ -2,7 +2,10 @@ import { expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { countDeclaredPsiElements } from "../../src/connection/psiElementScan";
+import {
+  countDeclaredPsiElements,
+  PsiElementScan,
+} from "../../src/connection/psiElementScan";
 import type { PsiMessageKind } from "../../src/connection/psiElementScan";
 
 const lib = await PSI();
@@ -137,4 +140,76 @@ test("a field whose declared length runs past the buffer throws", () => {
   expect(() => countDeclaredPsiElements(bytes, "request", BIG)).toThrow(
     /past end/,
   );
+});
+
+// --- A frame scanned in pieces --------------------------------------------------
+
+// The scan over `bytes` cut into pieces of `size` bytes: its count, or the
+// message it throws.
+function scannedInPieces(
+  bytes: Uint8Array,
+  kind: PsiMessageKind,
+  ceiling: number,
+  size: number,
+): number | string {
+  const scan = new PsiElementScan(kind, ceiling, bytes.byteLength);
+  try {
+    for (let start = 0; start < bytes.byteLength; start += size)
+      if (scan.add(bytes.subarray(start, start + size)) > ceiling) break;
+    return scan.end();
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
+function scannedWhole(
+  bytes: Uint8Array,
+  kind: PsiMessageKind,
+  ceiling: number,
+): number | string {
+  try {
+    return countDeclaredPsiElements(bytes, kind, ceiling);
+  } catch (error) {
+    return (error as Error).message;
+  }
+}
+
+test("a frame scanned in pieces cut anywhere counts and refuses as the whole frame does", () => {
+  const gcs = new lib.serverSetup();
+  const gcsInfo = new lib.serverSetup.GCSInfo();
+  gcsInfo.setDiv(300);
+  gcsInfo.setHashRange(1 << 20);
+  gcsInfo.setBits(new Uint8Array([1, 2, 3, 4]));
+  gcs.setGcs(gcsInfo);
+  const setup = rawSetupBytes(9, 33);
+  const frames: Array<[PsiMessageKind, Uint8Array]> = [
+    ["request", requestBytes(7, 35, true)],
+    ["response", responseBytes(9, 33)],
+    ["serverSetup", setup],
+    ["serverSetup", rawSetupBytes(0)],
+    ["serverSetup", gcs.serializeBinary()],
+    ["serverSetup", setup.subarray(0, setup.length - 4)],
+    ["serverSetup", new Uint8Array([...setup, 0x0a])],
+    ["request", new Uint8Array([0x12, 0x64])],
+    ["request", new Uint8Array([0x0b])],
+    ["request", new Uint8Array([0x09, 1, 2, 3])],
+    ["request", new Uint8Array([0x0d, 1, 2, 3, 4])],
+    ["request", new Uint8Array([0x08, ...Array<number>(10).fill(0x80), 0])],
+    ["serverSetup", new Uint8Array([0x0a, 0x04, 0x0a, 0x05, 1, 2])],
+  ];
+  for (const [kind, bytes] of frames)
+    for (const ceiling of [BIG, 3])
+      for (const size of [1, 2, 3, 5, 34, 35, 36, bytes.byteLength || 1])
+        expect(scannedInPieces(bytes, kind, ceiling, size)).toStrictEqual(
+          scannedWhole(bytes, kind, ceiling),
+        );
+});
+
+test("a frame scanned in pieces past its stated length, or ending short of it, throws", () => {
+  const bytes = requestBytes(3, 35);
+  const over = new PsiElementScan("request", BIG, bytes.byteLength - 1);
+  expect(() => over.add(bytes)).toThrow(/past the frame's length/);
+  const short = new PsiElementScan("request", BIG, bytes.byteLength);
+  short.add(bytes.subarray(0, 10));
+  expect(() => short.end()).toThrow(/ends short of its length/);
 });

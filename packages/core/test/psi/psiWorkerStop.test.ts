@@ -166,8 +166,16 @@ test("a stop flag once set is not cleared by a later request", async () => {
   }
 });
 
-// Five slices of the partner's 100-element setup.
+// Five slices of the partner's 100-element setup, or five pieces of the
+// 100-element response a streamed match is fed.
 const SLICE_ELEMENTS = 20;
+const SPLIT_MATCHES: ReadonlyArray<[string, InProcessPsiEngineOptions]> = [
+  [
+    "first slice of a sliced",
+    { matchMethod: "sliced", setupSliceElements: SLICE_ELEMENTS },
+  ],
+  ["first piece of a streamed", { chunkElements: SLICE_ELEMENTS }],
+];
 const JOINER_VALUES = VALUES.map((value, index) =>
   index % 2 === 0 ? value : `joiner-only-${index}`,
 );
@@ -220,12 +228,14 @@ async function joinerMatch(
   return { ...joiner, match };
 }
 
-test.each(MODES)(
-  "a stop requested at the first slice of a sliced %s match ends it at the next slice, and nothing of the match leaves the worker",
-  async (mode) => {
-    const { engine, posted, match } = await joinerMatch(mode, {
-      setupSliceElements: SLICE_ELEMENTS,
-    });
+test.each(
+  SPLIT_MATCHES.flatMap(([split, options]) =>
+    MODES.map((mode) => [split, mode, options] as const),
+  ),
+)(
+  "a stop requested at the %s %s match ends it at the next boundary, and nothing of the match leaves the worker",
+  async (_split, mode, options) => {
+    const { engine, posted, match } = await joinerMatch(mode, options);
     const seen: Array<number> = [];
     engine.observeProcessedElements((processed) => {
       seen.push(processed);
@@ -253,7 +263,7 @@ test.each(MODES)(
 );
 
 test.each(MODES)(
-  "a stop requested during a one-call %s match takes effect only after the match finishes",
+  "a stop requested during a %s match in one piece takes effect only after the match finishes",
   async (mode) => {
     const { engine, posted, match } = await joinerMatch(mode, {});
     const before = posted.length;
@@ -280,37 +290,40 @@ test.each(MODES)(
   },
 );
 
-test("a partner lost at the first slice of a participant's sliced match fails it with the loss", async () => {
-  const { engine } = inProcessWorkerEngine(
-    { role: "joiner", id: "client", mode: "identifier-revealing" },
-    { setupSliceElements: SLICE_ELEMENTS },
-  );
-  const participant = new PSIParticipant(
-    "client",
-    psiLibrary,
-    { role: "joiner", verbose: -1 },
-    UNBOUNDED_PSI_ELEMENTS,
-    engine,
-  );
-  const partnerLost = new Error("partner lost");
-  let lost = false;
-  participant.stopOperationsWhen(() => (lost ? partnerLost : undefined));
-  try {
-    const { setup, response } = await matchFrames(
-      "identifier-revealing",
-      (values) => participant.createClientRequest(values),
+test.each(SPLIT_MATCHES)(
+  "a partner lost at the %s participant's match fails it with the loss",
+  async (_split, options) => {
+    const { engine } = inProcessWorkerEngine(
+      { role: "joiner", id: "client", mode: "identifier-revealing" },
+      options,
     );
-    const seen: Array<number> = [];
-    engine.observeProcessedElements((processed) => {
-      seen.push(processed);
-      lost = true;
-      expect(participant.stopOperationInFlight()).toBe(true);
-    });
-    await expect(participant.computeValueMatches(setup, response)).rejects.toBe(
-      partnerLost,
+    const participant = new PSIParticipant(
+      "client",
+      psiLibrary,
+      { role: "joiner", verbose: -1 },
+      UNBOUNDED_PSI_ELEMENTS,
+      engine,
     );
-    expect(seen).toStrictEqual([SLICE_ELEMENTS]);
-  } finally {
-    participant.dispose();
-  }
-});
+    const partnerLost = new Error("partner lost");
+    let lost = false;
+    participant.stopOperationsWhen(() => (lost ? partnerLost : undefined));
+    try {
+      const { setup, response } = await matchFrames(
+        "identifier-revealing",
+        (values) => participant.createClientRequest(values),
+      );
+      const seen: Array<number> = [];
+      engine.observeProcessedElements((processed) => {
+        seen.push(processed);
+        lost = true;
+        expect(participant.stopOperationInFlight()).toBe(true);
+      });
+      await expect(
+        participant.computeValueMatches(setup, response),
+      ).rejects.toBe(partnerLost);
+      expect(seen).toStrictEqual([SLICE_ELEMENTS]);
+    } finally {
+      participant.dispose();
+    }
+  },
+);

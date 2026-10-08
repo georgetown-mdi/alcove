@@ -100,6 +100,8 @@ const refusingPsiEngine = (): PsiEngine => ({
   processClientRequest: () => Promise.reject(engineFailure),
   createClientRequest: () => Promise.reject(engineFailure),
   receiveServerSetup: () => Promise.reject(engineFailure),
+  receiveServerSetupPiece: () => Promise.reject(engineFailure),
+  completeServerSetup: () => Promise.reject(engineFailure),
   computeAssociationTable: () => Promise.reject(engineFailure),
   computeIntersectionCardinality: () => Promise.reject(engineFailure),
   dispose: () => {},

@@ -77,6 +77,7 @@ export type { PsiEngine, PsiEngineMode } from "./psi/psiEngine";
 // points share can refer only to a type one of them exports.
 export type {
   InProcessPsiEngineOptions,
+  PsiMatchMethod,
   PsiProcessedElementsReporter,
 } from "./psi/psiEngine";
 export { psiEngineOptionsForBackend } from "./psi/psiMatchSlices";

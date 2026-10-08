@@ -154,7 +154,7 @@ test("only the WebAssembly backend is budgeted", () => {
   expect(psiEngineOptionsForBackend("native")).toStrictEqual({});
 });
 
-test("a setup that fits the budget matches in one call whatever the slice size would be", async () => {
+test("a sliced match over a setup that fits the budget runs in one call whatever the slice size would be", async () => {
   const library = await PSI();
   const setupValues = ["a", "b", "c", "d", "e", "f", "g"];
   const clientValues = ["c", "e", "z"];
@@ -164,7 +164,10 @@ test("a setup that fits the budget matches in one call whatever the slice size w
   expect(() => matchSetupSliceElements(clientValues.length, budget)).toThrow(
     /below the floor/,
   );
-  const options = { matchMemoryBudgetBytes: budget };
+  const options = {
+    matchMethod: "sliced",
+    matchMemoryBudgetBytes: budget,
+  } as const;
   const sender = new InProcessPsiEngine(
     library,
     "starter",

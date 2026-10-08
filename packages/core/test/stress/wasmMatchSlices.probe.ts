@@ -139,8 +139,8 @@ async function main(): Promise<void> {
   const revealsIdentifiers = mode === "identifier-revealing";
   const options: InProcessPsiEngineOptions =
     sizing === "budget"
-      ? { matchMemoryBudgetBytes: Number(sizingArg) }
-      : { setupSliceElements: Number(sizingArg) };
+      ? { matchMethod: "sliced", matchMemoryBudgetBytes: Number(sizingArg) }
+      : { matchMethod: "sliced", setupSliceElements: Number(sizingArg) };
 
   installWasmMemoryProbe();
   const { default: loadWasm } = await import("@openmined/psi.js");

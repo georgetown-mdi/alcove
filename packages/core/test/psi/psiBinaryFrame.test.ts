@@ -180,16 +180,16 @@ test("a failure the library did not raise is raised unchanged", async () => {
 });
 
 test("a frame the library cannot read is reported as the frame failing to decode", async () => {
-  // Field number 0 passes the element scan, and the library's own decoder
-  // refuses it.
-  const ended = await endOfRoundAfter(new Uint8Array([0, 0]));
+  // A Raw setup holding a varint field passes the element scan, and the
+  // engine's own reader refuses it.
+  const ended = await endOfRoundAfter(new Uint8Array([0x0a, 0x02, 0x10, 0x01]));
 
   expect(ended).toBeInstanceOf(ConnectionError);
   expect((ended as ConnectionError).kind).toBe("protocol");
   expect(ended?.message).toBe(
     "joiner protocol error: inbound PSI serverSetup failed to decode",
   );
-  expect((ended?.cause as Error).message).toMatch(/field number/i);
+  expect((ended?.cause as Error).message).toMatch(/unexpected field/);
 });
 
 test("a frame the engine diagnoses keeps its diagnosis as the top line", async () => {

@@ -592,11 +592,10 @@ sent after it.
 - A crypto step does not start once the connection has ended: the party fails
   at once with the error that ended it.
 - A crypto step already handed to the PSI worker stops at its next chunk
-  or match call boundary, so the party logs a warning naming the loss when
-  it happens and fails with the connection's error within one masking chunk
-  during encryption, or at the end of the current match call during the
-  match -- for a match that runs as one call, such as a count-only match
-  without setup slices, the whole match. The worker is not terminated inside
+  or response piece boundary, so the party logs a warning naming the loss
+  when it happens and fails with the connection's error within one masking
+  chunk during encryption, or one response piece during the match -- for a
+  match whose response is one piece, the whole match. The worker is not terminated inside
   a native call, which aborts the process
   ([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-vendored-openminedpsijs-addon)
   states the stop mechanism). A browser party without `SharedArrayBuffer`

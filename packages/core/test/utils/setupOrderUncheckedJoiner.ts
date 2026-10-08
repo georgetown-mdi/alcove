@@ -17,6 +17,7 @@ import { UNBOUNDED_PSI_ELEMENTS } from "./psiElementBounds";
 class SetupOrderUncheckedEngine implements PsiEngine {
   private readonly inner: InProcessPsiEngine;
   private heldSetup: Uint8Array | undefined;
+  private setupPieces: Array<Uint8Array> = [];
 
   constructor(
     private readonly library: PSILibrary,
@@ -43,8 +44,29 @@ class SetupOrderUncheckedEngine implements PsiEngine {
   }
 
   async receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
-    await this.inner.receiveServerSetup(setupBytes);
+    await this.receiveServerSetupPiece(setupBytes);
+    await this.completeServerSetup();
+  }
+
+  receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
+    this.setupPieces.push(piece);
+    return Promise.resolve();
+  }
+
+  completeServerSetup(): Promise<void> {
+    const setupBytes = new Uint8Array(
+      this.setupPieces.reduce((total, piece) => total + piece.byteLength, 0),
+    );
+    let filled = 0;
+    for (const piece of this.setupPieces) {
+      setupBytes.set(piece, filled);
+      filled += piece.byteLength;
+    }
+    this.setupPieces = [];
+    if (!this.library.serverSetup.deserializeBinary(setupBytes).getRaw())
+      throw new Error("the partner's setup is not a Raw data structure");
     this.heldSetup = setupBytes;
+    return Promise.resolve();
   }
 
   computeAssociationTable(

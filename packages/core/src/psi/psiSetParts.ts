@@ -1,11 +1,13 @@
 // A cascade or count-only round sends each PSI set -- the setup, the request,
 // the response -- as one or more parts, each a binary frame within the
-// partner's per-frame receive bound, and the receiver joins them before the
-// element scan and decode. Every part begins with the same fixed header, so a
-// missing, repeated, or inconsistent part is refused from the header alone,
-// and the set's declared length is held to a bound derived from the
-// authenticated record counts before any buffer for it is allocated
-// (docs/spec/PROTOCOL.md, "A PSI set is sent in parts").
+// partner's per-frame receive bound. The receiver joins a request's or a
+// response's parts before the element scan and decode, and scans a setup's
+// part by part as it hands each to the engine's match. Every part begins with
+// the same fixed header, so a missing, repeated, or inconsistent part is
+// refused from the header alone, and the set's declared length is held to a
+// bound derived from the authenticated record counts before any buffer for it
+// is allocated or any of it reaches the engine (docs/spec/PROTOCOL.md, "A PSI
+// set is sent in parts").
 import {
   MAX_FRAME_SIZE_BYTES,
   MAX_PSI_DECODE_ELEMENTS,
@@ -193,35 +195,84 @@ export interface PsiSetByteLimit {
   readonly source: string;
 }
 
+/** This party's own ceiling on a received set: its bytes and the element count they are derived from. */
+export interface PsiSetCapacity {
+  readonly setBytes: number;
+  readonly elements: number;
+}
+
+/**
+ * Takes each part's set bytes, in order, as {@link receivePsiSetInPieces}
+ * admits them, with the set's declared byte length.
+ */
+export type PsiSetPieceSink = (
+  piece: Uint8Array,
+  setBytes: number,
+) => void | Promise<void>;
+
 /**
  * Receives one PSI set sent by {@link sendPsiSet} and returns its bytes,
- * joined. Each part is read as {@link receivePsiBinaryFrame} reads a frame, so
- * a partner's abort in place of any part ends the round as a peer abort. The
- * set's declared length is checked against `maxSetBytes` before a buffer is
- * allocated for it, and each part's header against the part expected next and
- * against the first part's. A part with no set bytes is refused unless it is
- * the only part of an empty set, so a partner cannot hold the receive reading
- * empty parts. Any deviation is a {@link ProtocolRefusalError}.
- *
- * A set whose declared length is within `maxSetBytes` but over
- * `capacity.setBytes` is this party's own limit rather than a deviation: the
- * partner is sent {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON} and a
- * {@link RoundCapacityError} is raised, before any buffer is allocated.
- *
- * @param what - The set the round awaits, named in every refusal.
- * @param maxSetBytes - The most bytes the set may hold under the protocol:
- *   {@link psiSetByteBound} of the agreed record counts, or a
- *   {@link PsiSetByteLimit} naming another source.
- * @param capacity - This party's own ceiling on the set, when it is under
- *   `maxSetBytes`: its bytes and the element count they are derived from.
+ * joined. The checks are {@link receivePsiSetInPieces}'s; the buffer the parts
+ * are joined into is allocated once the first part has passed them.
  */
 export async function receivePsiSet(
   conn: MessageConnection,
   participantId: string,
   what: string,
   maxSetBytes: number | PsiSetByteLimit,
-  capacity?: { readonly setBytes: number; readonly elements: number },
+  capacity?: PsiSetCapacity,
 ): Promise<Uint8Array> {
+  let set: Uint8Array | undefined;
+  let filled = 0;
+  await receivePsiSetInPieces(
+    conn,
+    participantId,
+    what,
+    maxSetBytes,
+    capacity,
+    (piece, setBytes) => {
+      if (set === undefined)
+        set = piece.byteLength === setBytes ? piece : new Uint8Array(setBytes);
+      if (set !== piece) set.set(piece, filled);
+      filled += piece.byteLength;
+    },
+  );
+  return set ?? new Uint8Array(0);
+}
+
+/**
+ * Receives one PSI set sent by {@link sendPsiSet}, handing each part's set
+ * bytes to `takePiece` once that part's header has passed every check below,
+ * so no part a check refuses, and none after it, reaches `takePiece`. Each
+ * part is read as {@link receivePsiBinaryFrame} reads a frame, so a partner's
+ * abort in place of any part ends the round as a peer abort. The set's
+ * declared length is checked against `maxSetBytes` at the first part, and
+ * each part's header against the part expected next and against the first
+ * part's. A part with no set bytes is refused unless it is the only part of an
+ * empty set, so a partner cannot hold the receive reading empty parts. Any
+ * deviation is a {@link ProtocolRefusalError}, and so is a set whose parts end
+ * short of its declared length, refused after its last part is taken.
+ *
+ * A set whose declared length is within `maxSetBytes` but over
+ * `capacity.setBytes` is this party's own limit rather than a deviation: the
+ * partner is sent {@link PARTNER_SET_OVER_CAPACITY_ABORT_REASON} and a
+ * {@link RoundCapacityError} is raised at the first part.
+ *
+ * @param what - The set the round awaits, named in every refusal.
+ * @param maxSetBytes - The most bytes the set may hold under the protocol:
+ *   {@link psiSetByteBound} of the agreed record counts, or a
+ *   {@link PsiSetByteLimit} naming another source.
+ * @param capacity - This party's own ceiling on the set, when it is under
+ *   `maxSetBytes`.
+ */
+export async function receivePsiSetInPieces(
+  conn: MessageConnection,
+  participantId: string,
+  what: string,
+  maxSetBytes: number | PsiSetByteLimit,
+  capacity: PsiSetCapacity | undefined,
+  takePiece: PsiSetPieceSink,
+): Promise<void> {
   const limit =
     typeof maxSetBytes === "number"
       ? { bytes: maxSetBytes, source: "the agreed record counts admit" }
@@ -230,7 +281,6 @@ export async function receivePsiSet(
     new ProtocolRefusalError(
       `${participantId} protocol error: inbound PSI ${what} ${detail}`,
     );
-  let set: Uint8Array | undefined;
   let count = 1;
   let setBytes = 0;
   let filled = 0;
@@ -265,7 +315,6 @@ export async function receivePsiSet(
       count = declaredCount;
       if (count < 1 || count > Math.max(1, setBytes))
         throw refuse(`declares ${count} parts for a set of ${setBytes} bytes`);
-      if (count > 1) set = new Uint8Array(setBytes);
     } else if (declaredCount !== count || declaredBytes !== BigInt(setBytes)) {
       throw refuse(`part ${index} declares a different set than part 0`);
     }
@@ -274,11 +323,9 @@ export async function receivePsiSet(
       throw refuse(`part ${index} holds no set bytes`);
     if (payload.byteLength > setBytes - filled)
       throw refuse(`part ${index} runs past the set's declared length`);
-    if (set === undefined) set = payload;
-    else set.set(payload, filled);
+    await takePiece(payload, setBytes);
     filled += payload.byteLength;
   }
   if (filled !== setBytes)
     throw refuse("ends short of the set's declared length");
-  return set ?? new Uint8Array(0);
 }

@@ -1,11 +1,11 @@
 // Wire-format element-count scanner for the PSI decode call sites: counts the
 // encrypted elements a partner-supplied protobuf frame declares, without
 // materializing them, so an over-declared frame is rejected before
-// `deserializeBinary` allocates its ~211-byte object per declared entry --
-// closing a frame-bytes-to-element-count memory amplification that could
-// otherwise exhaust memory before a post-deserialize count could catch it.
-// Raw-protobuf analogue of the WebRTC BinaryPack scan
-// (connection/binaryPackBounds.ts).
+// `deserializeBinary` allocates its ~211-byte object per declared entry, or the
+// engine's streaming match its fixed slot per setup element -- closing a
+// frame-bytes-to-element-count memory amplification that could otherwise
+// exhaust memory before a later count could catch it. Raw-protobuf analogue of
+// the WebRTC BinaryPack scan (connection/binaryPackBounds.ts).
 //
 // Reads only the protobuf wire format (varint tags, wire types,
 // length-delimited fields), never the @openmined/psi.js message API, so a
@@ -18,7 +18,9 @@
 // Counts every length-delimited field at the target depth, an upper bound on
 // what `deserializeBinary` actually materializes, so it never under-counts.
 // An unparseable frame throws and the caller rejects it -- fail closed, since
-// a conforming peer serializes the same wire format the scan accepts.
+// a conforming peer serializes the same wire format the scan accepts. The
+// frame may be handed over in pieces cut at any byte (a set received in
+// parts), and the count and the refusals are the same however it is cut.
 
 /**
  * The three partner-supplied PSI message kinds decoded at the participant
@@ -35,73 +37,140 @@ const ELEMENT_DEPTH: Record<PsiMessageKind, number> = {
   serverSetup: 1,
 };
 
-interface VarintRead {
-  value: number;
-  pos: number;
-}
+// The field header being read: its tag varint, then the varint a varint field
+// holds or the length a length-delimited field declares.
+type HeaderPart = "tag" | "value" | "length";
 
-// Read a base-128 varint at `pos`. Uses `* 2 ** shift` rather than `<< shift` so a
-// length up to the ~512 MiB frame cap (30 bits) stays exact. Throws on a truncated
-// or over-long varint.
-function readVarint(bytes: Uint8Array, pos: number): VarintRead {
-  let value = 0;
-  let shift = 0;
-  for (;;) {
-    if (pos >= bytes.length)
-      throw new Error("PSI element scan: truncated varint");
-    const byte = bytes[pos];
-    pos += 1;
-    value += (byte & 0x7f) * 2 ** shift;
-    if ((byte & 0x80) === 0) return { value, pos };
-    shift += 7;
-    if (shift > 63) throw new Error("PSI element scan: varint too long");
+/**
+ * The element-count scan over a frame handed over in pieces cut at any byte,
+ * each scanned as it arrives, so a set received in parts is counted without
+ * joining it. {@link countDeclaredPsiElements} is this scan over one piece.
+ * @internal
+ */
+export class PsiElementScan {
+  private readonly targetDepth: number;
+  private readonly ceiling: number;
+  private readonly totalBytes: number;
+  private count = 0;
+  private offset = 0;
+  // End offsets of the length-delimited fields the scan descended into,
+  // innermost last; the frame's own length bounds the top level.
+  private readonly ends: number[] = [];
+  private skipTo = 0;
+  private reading: HeaderPart | undefined;
+  private wireType = 0;
+  private varint = 0;
+  private shift = 0;
+
+  /**
+   * @param totalBytes - The frame's whole length, known before its first
+   *   piece (a set's parts declare it), so a field declared past the frame's
+   *   end is refused at its header.
+   */
+  constructor(kind: PsiMessageKind, ceiling: number, totalBytes: number) {
+    this.targetDepth = ELEMENT_DEPTH[kind];
+    this.ceiling = ceiling;
+    this.totalBytes = totalBytes;
   }
-}
 
-// Count length-delimited (wire type 2) fields at exactly `depth` levels of nesting
-// (depth 0 = the top level of `bytes`), recursing only through length-delimited
-// fields. Stops as soon as the running count exceeds `ceiling`, returning a value
-// > ceiling. Throws on a malformed frame.
-function scanCount(bytes: Uint8Array, depth: number, ceiling: number): number {
-  const len = bytes.length;
-  let pos = 0;
-  let count = 0;
-  while (pos < len) {
-    const wireType = bytes[pos] & 0x07;
-    // Consume the tag varint (the field number is not needed).
-    pos = readVarint(bytes, pos).pos;
-    if (wireType === 2) {
-      const lengthRead = readVarint(bytes, pos);
-      const start = lengthRead.pos;
-      const end = start + lengthRead.value;
-      if (end > len || end < start)
-        throw new Error("PSI element scan: field length past end");
-      pos = end;
-      if (depth === 0) {
-        count += 1;
-      } else {
-        count += scanCount(
-          bytes.subarray(start, end),
-          depth - 1,
-          ceiling - count,
-        );
+  /**
+   * Scans the frame's next `piece` and returns the count so far: a value above
+   * the ceiling once the frame declares more, after which no later byte is
+   * read. Throws on a malformed frame.
+   */
+  add(piece: Uint8Array): number {
+    if (this.count > this.ceiling) return this.count;
+    if (piece.byteLength > this.totalBytes - this.offset)
+      throw new Error("PSI element scan: bytes past the frame's length");
+    const length = piece.byteLength;
+    let pos = 0;
+    while (pos < length) {
+      if (this.offset < this.skipTo) {
+        const step = Math.min(this.skipTo - this.offset, length - pos);
+        pos += step;
+        this.offset += step;
+        continue;
       }
-      if (count > ceiling) return count;
-    } else if (wireType === 0) {
-      pos = readVarint(bytes, pos).pos;
-    } else if (wireType === 1) {
-      pos += 8;
-      if (pos > len)
-        throw new Error("PSI element scan: truncated 64-bit field");
-    } else if (wireType === 5) {
-      pos += 4;
-      if (pos > len)
-        throw new Error("PSI element scan: truncated 32-bit field");
-    } else {
-      throw new Error(`PSI element scan: unsupported wire type ${wireType}`);
+      const boundary = this.ends.at(-1) ?? this.totalBytes;
+      if (this.reading === undefined) {
+        if (this.offset === boundary) {
+          this.ends.pop();
+          continue;
+        }
+        this.startHeaderPart("tag");
+        this.wireType = piece[pos]! & 0x07;
+      } else if (this.offset === boundary) {
+        throw new Error("PSI element scan: truncated varint");
+      }
+      const byte = piece[pos]!;
+      pos += 1;
+      this.offset += 1;
+      this.varint += (byte & 0x7f) * 2 ** this.shift;
+      if ((byte & 0x80) !== 0) {
+        this.shift += 7;
+        if (this.shift > 63)
+          throw new Error("PSI element scan: varint too long");
+        continue;
+      }
+      this.headerPartRead(boundary);
+      if (this.count > this.ceiling) return this.count;
     }
+    return this.count;
   }
-  return count;
+
+  /**
+   * Ends the scan once every piece is added and returns the frame's count, or
+   * a value above the ceiling as {@link add} does. Throws on a frame that ends
+   * inside a field or short of its length.
+   */
+  end(): number {
+    if (this.count > this.ceiling) return this.count;
+    if (this.offset !== this.totalBytes)
+      throw new Error("PSI element scan: frame ends short of its length");
+    if (this.reading !== undefined)
+      throw new Error("PSI element scan: truncated varint");
+    return this.count;
+  }
+
+  private startHeaderPart(part: HeaderPart): void {
+    this.reading = part;
+    this.varint = 0;
+    this.shift = 0;
+  }
+
+  private headerPartRead(boundary: number): void {
+    const part = this.reading;
+    this.reading = undefined;
+    if (part === "length") {
+      const end = this.offset + this.varint;
+      if (end > boundary)
+        throw new Error("PSI element scan: field length past end");
+      if (this.ends.length === this.targetDepth) {
+        this.count += 1;
+        this.skipTo = end;
+      } else {
+        this.ends.push(end);
+      }
+      return;
+    }
+    if (part !== "tag") return;
+    if (this.wireType === 2) this.startHeaderPart("length");
+    else if (this.wireType === 0) this.startHeaderPart("value");
+    else if (this.wireType === 1)
+      this.skipFixed(8, boundary, "truncated 64-bit field");
+    else if (this.wireType === 5)
+      this.skipFixed(4, boundary, "truncated 32-bit field");
+    else
+      throw new Error(
+        `PSI element scan: unsupported wire type ${this.wireType}`,
+      );
+  }
+
+  private skipFixed(bytes: number, boundary: number, refusal: string): void {
+    if (this.offset + bytes > boundary)
+      throw new Error(`PSI element scan: ${refusal}`);
+    this.skipTo = this.offset + bytes;
+  }
 }
 
 /**
@@ -117,5 +186,7 @@ export function countDeclaredPsiElements(
   kind: PsiMessageKind,
   ceiling: number,
 ): number {
-  return scanCount(bytes, ELEMENT_DEPTH[kind], ceiling);
+  const scan = new PsiElementScan(kind, ceiling, bytes.byteLength);
+  scan.add(bytes);
+  return scan.end();
 }

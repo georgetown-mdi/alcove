@@ -16,8 +16,8 @@ import {
 
 import type { WasmMaskingOperation } from "../../src/psi/psiMatchSlices";
 
-// A round whose masking chunks and match slices come from the memory budget
-// goes on the wire as the single call's bytes. The budget's floor is lowered
+// A round whose masking chunks, and a sliced match's slices, come from the
+// memory budget goes on the wire as the single call's bytes. The budget's floor is lowered
 // to a unit-sized set so the cap binds at 200 elements; the policy's own chunk
 // count still reads the shipped floor and takes the set in one chunk, so every
 // split below is the budget's.
@@ -49,22 +49,29 @@ describe.each([
       ctx.skip();
       return;
     }
-    const processed = await expectChunkedRoundMatchesSingleCall({
-      library,
-      serverValues,
-      clientValues,
-      matchMemoryBudgetBytes: BUDGET_BYTES,
-    });
-    expect(processed.createServerSetup).toStrictEqual(
-      budgetChunkStarts("createSetupMessage"),
-    );
-    expect(processed.createClientRequest).toStrictEqual(
-      budgetChunkStarts("createRequest"),
-    );
-    expect(processed.processClientRequest).toStrictEqual(
-      budgetChunkStarts("processRequest"),
-    );
-    expect(processed.computeAssociationTable?.length).toBeGreaterThan(0);
+    for (const matchMethod of ["sliced", "streamed"] as const) {
+      const processed = await expectChunkedRoundMatchesSingleCall({
+        library,
+        serverValues,
+        clientValues,
+        matchMethod,
+        matchMemoryBudgetBytes: BUDGET_BYTES,
+      });
+      expect(processed.createServerSetup).toStrictEqual(
+        budgetChunkStarts("createSetupMessage"),
+      );
+      expect(processed.createClientRequest).toStrictEqual(
+        budgetChunkStarts("createRequest"),
+      );
+      expect(processed.processClientRequest).toStrictEqual(
+        budgetChunkStarts("processRequest"),
+      );
+      // The budget slices only a sliced match; the streamed one takes this
+      // response, one piece under the policy, whole.
+      if (matchMethod === "sliced")
+        expect(processed.computeAssociationTable?.length).toBeGreaterThan(0);
+      else expect(processed.computeAssociationTable).toBeUndefined();
+    }
   });
 
   test("a count-only round reproduces the single call's bytes and cardinality", async (ctx) => {
@@ -72,12 +79,20 @@ describe.each([
       ctx.skip();
       return;
     }
-    const matchProcessed = await expectChunkedCountMatchesSingleCall({
+    const slicedProcessed = await expectChunkedCountMatchesSingleCall({
+      library,
+      serverValues,
+      clientValues,
+      matchMethod: "sliced",
+      matchMemoryBudgetBytes: BUDGET_BYTES,
+    });
+    expect(slicedProcessed.length).toBeGreaterThan(0);
+    const streamedProcessed = await expectChunkedCountMatchesSingleCall({
       library,
       serverValues,
       clientValues,
       matchMemoryBudgetBytes: BUDGET_BYTES,
     });
-    expect(matchProcessed.length).toBeGreaterThan(0);
+    expect(streamedProcessed).toStrictEqual([]);
   });
 });

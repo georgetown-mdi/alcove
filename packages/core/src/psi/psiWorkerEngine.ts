@@ -58,6 +58,8 @@ type PsiWorkerRequestBody =
   | { method: "processClientRequest"; requestBytes: Uint8Array }
   | { method: "createClientRequest"; values: ReadonlyArray<string> }
   | { method: "receiveServerSetup"; setupBytes: Uint8Array }
+  | { method: "receiveServerSetupPiece"; piece: Uint8Array }
+  | { method: "completeServerSetup" }
   | { method: "computeAssociationTable"; responseBytes: Uint8Array }
   | { method: "computeIntersectionCardinality"; responseBytes: Uint8Array };
 
@@ -249,6 +251,14 @@ export class WorkerPsiEngine implements PsiEngine {
     return this.call({ method: "receiveServerSetup", setupBytes });
   }
 
+  receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
+    return this.call({ method: "receiveServerSetupPiece", piece });
+  }
+
+  completeServerSetup(): Promise<void> {
+    return this.call({ method: "completeServerSetup" });
+  }
+
   computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
@@ -317,6 +327,10 @@ export function servePsiWorker(
         return engine.createClientRequest(body.values);
       case "receiveServerSetup":
         return engine.receiveServerSetup(body.setupBytes);
+      case "receiveServerSetupPiece":
+        return engine.receiveServerSetupPiece(body.piece);
+      case "completeServerSetup":
+        return engine.completeServerSetup();
       case "computeAssociationTable":
         return engine.computeAssociationTable(body.responseBytes);
       case "computeIntersectionCardinality":

@@ -200,7 +200,10 @@ test("a library failure stays recognizable after the worker round trip", async (
   const [, response] = joinerMatchFrames();
 
   const failure = await rejection(
-    participant.computeValueMatches(new Uint8Array([0, 0]), response),
+    participant.computeValueMatches(
+      new Uint8Array([0x0a, 0x02, 0x10, 0x01]),
+      response,
+    ),
   );
 
   expect(failure).toBeInstanceOf(ConnectionError);
@@ -368,6 +371,7 @@ test("a worker serves its engine options: a setup-sliced match equals the in-pro
     "identifier-revealing",
   );
   const sliced = inProcessWorkerEngine("joiner", "sliced", {
+    matchMethod: "sliced",
     setupSliceElements: 40,
   });
   const whole = new InProcessPsiEngine(
