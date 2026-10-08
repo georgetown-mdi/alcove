@@ -39,6 +39,7 @@ import {
 import type { PartnerOriginTextList } from "./utils/partnerOriginText";
 import { boundedArray } from "./utils/boundedArray";
 import { ProtocolRefusalError } from "./errors";
+import { annotate, annotationKey, annotationOf } from "./failureAnnotation";
 import {
   receiveParsed,
   parseOrProtocolError,
@@ -360,11 +361,44 @@ const partnerAbortError = (
     PARTNER_ABORT_REASON_LABEL,
     reasons.others,
   );
-  return new ProtocolRefusalError(
+  const error = new ProtocolRefusalError(
     message,
     cause === undefined ? undefined : { cause },
   );
+  return reasons.differingTerms.length === 0
+    ? error
+    : markTermsDifferenceRefusal(error, "partner");
 };
+
+/**
+ * Which party stopped the exchange over a difference in the linkage terms:
+ * `"this-party"` where this party's own comparison refused the partner's
+ * terms, `"partner"` where the partner's abort named the terms that differ.
+ */
+export type TermsDifferenceRefusedBy = "this-party" | "partner";
+
+const TERMS_DIFFERENCE_REFUSED_BY = annotationKey<TermsDifferenceRefusedBy>(
+  "terms difference refused by",
+);
+
+function markTermsDifferenceRefusal<E extends object>(
+  error: E,
+  refusedBy: TermsDifferenceRefusedBy,
+): E {
+  return annotate(error, TERMS_DIFFERENCE_REFUSED_BY, refusedBy);
+}
+
+/**
+ * Which party stopped the exchange over a difference in the linkage terms,
+ * read along `error`'s cause chain, or `undefined` for any other failure. Each
+ * app states its own next step for it, since only the app knows which command
+ * or control settles the terms with the partner.
+ */
+export function termsDifferenceRefusedBy(
+  error: unknown,
+): TermsDifferenceRefusedBy | undefined {
+  return annotationOf(error, TERMS_DIFFERENCE_REFUSED_BY);
+}
 
 // --- Terms exchange ----------------------------------------------------------
 
@@ -676,9 +710,12 @@ async function settleTermsChange(params: {
       refusedTermKinds(comparison).map(termsDifferenceReason),
       abortTerms,
     );
-    throw new TermsChangeRefusedError(
-      `linkage terms are incompatible: ${refusalsOf(comparison).join("; ")}`,
-      comparison.delta,
+    throw markTermsDifferenceRefusal(
+      new TermsChangeRefusedError(
+        `linkage terms are incompatible: ${refusalsOf(comparison).join("; ")}`,
+        comparison.delta,
+      ),
+      "this-party",
     );
   };
   if (

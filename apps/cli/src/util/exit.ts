@@ -27,6 +27,7 @@ import {
 import type { FailureClass } from "@alcove/core";
 
 import { failureRemedy } from "../failureRemedy";
+import { termsRefusalNextStep } from "../termsRefusalRemedy";
 
 /**
  * The next step shown beneath an `internal-fault` failure
@@ -77,12 +78,17 @@ export function partnerRefusalNextStep(err: unknown): string | undefined {
 
 /**
  * The fixed next step the CLI adds beneath `err`:
- * {@link internalFaultNextStep} for an exit-70 fault,
- * {@link partnerRefusalNextStep} for an exit-76 refusal, otherwise
- * `undefined`.
+ * {@link internalFaultNextStep} for an exit-70 fault, the step that settles
+ * the terms for a refusal over a difference in them
+ * ({@link termsRefusalNextStep}), {@link partnerRefusalNextStep} for any other
+ * exit-76 refusal, otherwise `undefined`.
  */
 export function fixedNextStep(err: unknown): string | undefined {
-  return internalFaultNextStep(err) ?? partnerRefusalNextStep(err);
+  return (
+    internalFaultNextStep(err) ??
+    termsRefusalNextStep(err) ??
+    partnerRefusalNextStep(err)
+  );
 }
 
 /**

@@ -479,8 +479,9 @@ export type {
 export {
   TERMS_CHANGE_NOT_ACCEPTED_REASON,
   TermsChangeRefusedError,
+  termsDifferenceRefusedBy,
 } from "./protocolSetup";
-export type { TermsChange } from "./protocolSetup";
+export type { TermsChange, TermsDifferenceRefusedBy } from "./protocolSetup";
 export { termsDeltaSections } from "./termsDeltaDisplay";
 export type { TermsDeltaSection } from "./termsDeltaDisplay";
 export type {

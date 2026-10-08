@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, expect, test } from "vitest";
 
-import { prepareForExchange, sanitizeErrorForDisplay } from "@alcove/core";
+import { prepareForExchange } from "@alcove/core";
 import type { LinkageTerms, PreparedExchange } from "@alcove/core";
 import { withCapturedLogs } from "@alcove/core/testing";
 
@@ -13,11 +13,13 @@ import {
   runProtocol,
   type ProtocolConnectionConfig,
 } from "../../../src/protocol";
+import { TERMS_REFUSAL_NEXT_STEPS } from "../../../src/termsRefusalRemedy";
+import { renderFailureForOperator } from "../../../src/util/exit";
 import { firstNameTerms } from "../../support";
 
 // Two CLI parties whose linkage strategies differ run a real file-drop
 // exchange. The party that refuses and the party whose run its abort ends each
-// state the difference from their own side.
+// state the difference from their own side, and the next step for that side.
 
 const SHARED_SECRET = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -71,7 +73,7 @@ async function run(
       loggerName: `terms-sides-${name}`,
     });
   } catch (err) {
-    return sanitizeErrorForDisplay(err);
+    return renderFailureForOperator(err);
   }
   throw new Error(`${name} completed an exchange its terms should refuse`);
 }
@@ -110,4 +112,12 @@ test("each party states a linkage strategy difference from its own side", async 
       ),
     ),
   ).toHaveLength(1);
+  for (const { rendered } of sides) {
+    const refusedBy = rendered.includes("linkage terms are incompatible: ")
+      ? "this-party"
+      : "partner";
+    expect(
+      rendered.endsWith(`\n${TERMS_REFUSAL_NEXT_STEPS.configured[refusedBy]}`),
+    ).toBe(true);
+  }
 }, 30_000);
