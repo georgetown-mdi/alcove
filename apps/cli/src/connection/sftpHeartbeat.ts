@@ -1,39 +1,21 @@
 import { sanitizeErrorForDisplay } from "@alcove/core";
 
 /**
- * Keeps an otherwise-idle SFTP session alive past a server's idle timeout by
- * issuing a periodic no-op SFTP command, the application-layer complement to
- * the liveness bounds in {@link ./sftpLivenessGuard} (those cap a hostile
- * server's hang; this keeps a friendly server from dropping a legitimately
- * quiet session). See {@link SftpHeartbeat}. Full rationale -- the motivating
- * failure and why a real SFTP command rather than an SSH/TCP keepalive:
- * docs/spec/CHANNEL_SECURITY.md, "SFTP session heartbeat and TCP keepalive".
+ * Keeps an idle SFTP session alive past a server's idle timeout with a periodic
+ * no-op SFTP command:
+ * docs/spec/CHANNEL_SECURITY.md#sftp-session-heartbeat-and-tcp-keepalive.
  */
 
 /**
- * Interval, in milliseconds, between heartbeat beats: the maximum time an idle
- * session goes without a keepalive command, and the delay before the first
- * beat after a session goes quiet.
- *
- * Value: 60,000 ms (60 s) -- half the tightest idle timeout this must survive
- * (Azure Blob SFTP's fixed 2 minutes). Fixed, not operator-configurable, for
- * the same reason as {@link ./sftpLivenessGuard.SFTP_STALL_DEADLINE_MS}: a
- * configurable value risks silently defeating the timeout it exists to beat.
- * Full rationale: docs/spec/CHANNEL_SECURITY.md.
+ * Milliseconds between beats: the longest an idle session goes without a
+ * keepalive command. Half the tightest server idle timeout it must survive.
  */
 export const SFTP_HEARTBEAT_INTERVAL_MS = 60_000;
 
 /**
- * Idle time, in milliseconds, before the kernel begins sending TCP keepalive
- * probes on the SFTP socket (`net.Socket.setKeepAlive`'s initialDelay). A
- * transport-layer safety check beneath {@link SftpHeartbeat}, not a substitute
- * for it: it keeps NAT/firewall state warm and detects a dead peer, but rides
- * below the SFTP protocol, so it does not reset the server's SFTP-command idle
- * timer.
- *
- * Value: 30,000 ms (30 s), below common NAT idle windows and below the
- * heartbeat interval. Node sets only the initial delay; probe interval and
- * count keep their OS defaults. See docs/spec/CHANNEL_SECURITY.md.
+ * Idle milliseconds before TCP keepalive probes start on the SFTP socket
+ * (`setKeepAlive`'s initial delay). It keeps NAT state warm but does not reset
+ * the server's SFTP idle timer, so it does not replace {@link SftpHeartbeat}.
  */
 export const SFTP_TCP_KEEPALIVE_DELAY_MS = 30_000;
 
@@ -44,55 +26,32 @@ interface HeartbeatLog {
 
 export interface SftpHeartbeatOptions {
   /**
-   * Issues the no-op keepalive command (a bounded `realPath(".")`). Must return a
-   * promise that settles when the server answers or the wait is bounded out; its
-   * outcome is swallowed (logged at trace) and never reaches the exchange, so a
-   * failing keepalive cannot itself fail a round.
+   * Issues the no-op keepalive command (a bounded `realPath(".")`). Its outcome
+   * is logged at trace and never reaches the exchange.
    */
   ping: () => Promise<unknown>;
   log: HeartbeatLog;
-  /**
-   * Beat interval; defaults to {@link SFTP_HEARTBEAT_INTERVAL_MS}. Test-only:
-   * production constructs the heartbeat with no override.
-   */
+  /** Test-only override of {@link SFTP_HEARTBEAT_INTERVAL_MS}. */
   intervalMs?: number;
 }
 
 /**
- * A self-rescheduling keepalive for one SFTP session. {@link start} arms it
- * after a successful connect; the adapter brackets its server-driven
- * operations with {@link opStarted}/{@link opSettled} so a beat is suppressed
- * while real traffic already keeps the session alive; {@link stop} tears it
- * down on every terminal path.
- *
- * ssh2-sftp-client shares connection-level temp listeners across operations,
- * so two operations in flight on one client at once is unsafe: the heartbeat
- * never pings while an adapter operation is in flight or a previous ping has
- * not settled, and only after a full interval of genuine idleness. Re-verify
- * this assumption on any ssh2-sftp-client upgrade, per the "Upgrading the SFTP
- * Stack" checklist in docs/spec/DEPENDENCY_PINS.md.
+ * A self-rescheduling keepalive for one SFTP session. The adapter brackets its
+ * server-driven operations with {@link opStarted}/{@link opSettled}, and the
+ * heartbeat pings only after a full idle interval with nothing in flight, so a
+ * beat never takes a session-loss rejection from a real operation.
  */
 export class SftpHeartbeat {
   private readonly ping: () => Promise<unknown>;
   private readonly log: HeartbeatLog;
   private readonly intervalMs: number;
   private timer: ReturnType<typeof setTimeout> | undefined;
-  // Wall-clock (Date.now) of the last observed session activity: a connect, or an
-  // operation starting or settling. The idle window is measured from here.
   private lastActivityAt = 0;
-  // Count of adapter operations currently on the wire. While non-zero the session
-  // is being kept alive by real traffic, so no beat is issued.
   private inFlight = 0;
-  // True while a heartbeat ping is itself in flight, so beats never stack.
   private pinging = false;
-  // Latched by stop(): a fired-but-not-yet-run tick, and a ping settling after
-  // teardown, both no-op once set so nothing reschedules past stop().
   private stopped = false;
-  // Bumped by every start()/stop(). A ping issued -- or an operation bracketed by
-  // opStarted/opSettled -- in one cycle captures the epoch; its late settlement is
-  // ignored once the epoch has moved on, so a ping or op that outlives a teardown or
-  // a reconnect can neither clear the new cycle's `pinging` flag, reschedule a beat
-  // onto it, nor decrement the new session's in-flight count.
+  // Bumped by every start()/stop(); a ping or operation settling under an older
+  // epoch is ignored, so it cannot touch a later session's state.
   private epoch = 0;
 
   constructor(options: SftpHeartbeatOptions) {
@@ -102,17 +61,11 @@ export class SftpHeartbeat {
   }
 
   /**
-   * Arm the heartbeat after a successful connect. Idempotent across reconnects: it
-   * resets the idle clock and re-schedules, so a fresh session starts a fresh
-   * window whether or not a prior one was running.
+   * Arm the heartbeat after a successful connect, with a fresh idle window and
+   * the prior session's counters dropped. Idempotent across reconnects.
    */
   start(): void {
     this.stopped = false;
-    // Fresh cycle: advance the epoch (fencing the prior cycle's stragglers; see the
-    // epoch field) and drop the transient state a torn-down session may have left
-    // set -- a stuck `pinging`, or an `inFlight` an interrupted op never balanced --
-    // either of which would otherwise make every tick on the new session skip its
-    // beat.
     this.epoch += 1;
     this.pinging = false;
     this.inFlight = 0;
@@ -121,10 +74,8 @@ export class SftpHeartbeat {
   }
 
   /**
-   * A server-driven adapter operation began: the session is active. Returns the
-   * current epoch as a token the matching {@link opSettled} must present, so an op
-   * whose session was torn down (a stop()/start() has since moved the epoch on)
-   * cannot decrement a later session's in-flight count when it finally settles.
+   * A server-driven adapter operation began. Returns the epoch token the
+   * matching {@link opSettled} must present.
    */
   opStarted(): number {
     this.inFlight += 1;
@@ -133,10 +84,8 @@ export class SftpHeartbeat {
   }
 
   /**
-   * A server-driven adapter operation settled (resolved or rejected). `token` is the
-   * epoch {@link opStarted} returned; a settle whose epoch has since moved is ignored
-   * (see the epoch field), so a straggler cannot decrement or count as activity on a
-   * later session.
+   * A server-driven adapter operation settled. A `token` from an older epoch is
+   * ignored.
    */
   opSettled(token: number): void {
     if (token !== this.epoch) return;
@@ -145,15 +94,11 @@ export class SftpHeartbeat {
   }
 
   /**
-   * Stop the heartbeat on a terminal/cleanup path (session end or a fatal server
-   * error). Clears the pending timer and latches `stopped` so any tick or ping
-   * already scheduled reschedules nothing. Safe to call when never started and
-   * safe to call repeatedly.
+   * Stop the heartbeat on a terminal path, so no pending tick or ping
+   * reschedules. Safe when never started and when repeated.
    */
   stop(): void {
     this.stopped = true;
-    // Advance the epoch (see the epoch field) and drop the transient counters so a
-    // later start() begins from a clean slate.
     this.epoch += 1;
     this.pinging = false;
     this.inFlight = 0;
@@ -164,25 +109,16 @@ export class SftpHeartbeat {
   private schedule(delayMs: number): void {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => this.tick(), Math.max(delayMs, 0));
-    // The heartbeat is a background keepalive, never real work: every terminal
-    // path clears it, so unref'ing it only matters when the process is winding
-    // down with the timer still armed, where it must not hold the process open
-    // (the same unref'd-timer teardown contract as the SFTP liveness bounds).
+    // A background keepalive must not hold the process open.
     this.timer.unref();
   }
 
   private tick(): void {
     if (this.stopped) return;
-    // Real traffic (a live operation, or a ping still settling) is already keeping
-    // the session alive, and ssh2-sftp-client forbids a second concurrent op, so
-    // skip this beat and re-check after a full interval.
     if (this.inFlight > 0 || this.pinging) {
       this.schedule(this.intervalMs);
       return;
     }
-    // Activity may have landed after this timer was armed; only beat once the
-    // session has actually been idle for a full interval, else wait out the
-    // remainder (measured from lastActivityAt so idle never exceeds one interval).
     const idleMs = Date.now() - this.lastActivityAt;
     if (idleMs < this.intervalMs) {
       this.schedule(this.intervalMs - idleMs);
@@ -193,8 +129,6 @@ export class SftpHeartbeat {
 
   private sendPing(): void {
     this.pinging = true;
-    // Bind this ping to the current cycle so its late settlement below is fenced off
-    // a later cycle (see the epoch field).
     const epoch = this.epoch;
     void this.ping()
       .then(() => this.log.trace("SFTP keepalive sent"))
@@ -207,7 +141,6 @@ export class SftpHeartbeat {
         if (epoch !== this.epoch) return;
         this.pinging = false;
         this.lastActivityAt = Date.now();
-        // A ping that settled after stop() must not re-arm a torn-down heartbeat.
         if (!this.stopped) this.schedule(this.intervalMs);
       });
   }

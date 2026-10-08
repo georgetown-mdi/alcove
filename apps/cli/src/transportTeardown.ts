@@ -1,9 +1,5 @@
-// The ceiling on closing a run's transport: how long a finished run waits for
-// it and what it reports when it stops. Every local artifact the exchange owes
-// a path is awaited with no budget -- a wedged write to disk is the
-// supervisor's kill budget to bound, not this one's -- so what a finished run
-// bounds is the close here and, where the result goes to stdout instead of a
-// path, the drain that hands it to the reader (util/dataIo).
+// The ceiling on closing a run's transport, and the notice when it is reached:
+// docs/spec/WEBRTC_TRANSPORT.md#budgets.
 
 import { TEARDOWN_LEFTOVER_FILES_CLAUSE } from "@alcove/core";
 
@@ -13,22 +9,9 @@ import { settleWithinCeiling, type CeilingOutcome } from "./util/ceiling";
 import { heldResourceKinds } from "./util/exitGate";
 
 /**
- * How long a run waits for its transport to finish closing, per channel.
- *
- * Each value sits above the sum of that channel's own documented teardown
- * budgets, so reaching it means a close overran every bound beneath it rather
- * than that this ceiling cut a legitimate wait short. A channel added to
- * {@link ConnectionConfig} declares its own value here or fails to compile.
- *
- * - `webrtc`: the close drain (5 min), the sentinel hand-off (2 s), the data
- *   channel's own close (2 s) and the ICE statistics read (2 s) sum to 306 s
- *   (docs/spec/WEBRTC_TRANSPORT.md, Budgets).
- * - `sftp` and `filedrop`: the terminal-frame drain (60 s,
- *   docs/spec/FILE_SYNC.md) and the connection close (30 s) sum to 90 s, with
- *   the SFTP adapter's own client-close, forced-close and deferred-cleanup
- *   drains (5 s, 1 s, 5 s) beneath them. Both file-based channels take one
- *   value: they close through the same `FileSyncConnection`, and the adapter's
- *   bounds are the smaller term.
+ * How long a run waits for its transport to finish closing, per channel. Each
+ * value is above the sum of that channel's own teardown budgets
+ * (docs/spec/WEBRTC_TRANSPORT.md#budgets, docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close).
  */
 export const TRANSPORT_TEARDOWN_CEILING_MS: Record<
   ConnectionConfig["channel"],
@@ -56,18 +39,10 @@ export interface TeardownOutcome extends CeilingOutcome {
 }
 
 /**
- * Wait for `close` for at most `ceilingMs`, reporting which way it ended and,
- * where it did not finish, what was still holding the event loop.
- *
- * The race itself, and what it does with a close that outlives the ceiling, is
- * {@link settleWithinCeiling}. An expiry here is housekeeping the run reports
- * and carries on from ({@link teardownCeilingNotice}), not a failure: the
- * exchange and everything it owed are already finished when this is called.
- *
- * A close that rejects inside the ceiling is raised to the caller rather than
- * reported. Each layer's close catches its own failure, so a rejection that
- * reaches here came from outside any of them and belongs on the run's own
- * failure channel.
+ * Wait for `close` for at most `ceilingMs` ({@link settleWithinCeiling}),
+ * reporting which way it ended and, where it did not finish, what was still
+ * holding the event loop. An expiry is reported, not a failure; a close that
+ * rejects inside the ceiling is raised to the caller.
  */
 export async function closeWithinCeiling(
   ceilingMs: number,
@@ -85,38 +60,18 @@ export interface ExchangeFileDisposition {
   retainFiles: boolean;
   /**
    * Whether the output stage returned with the result, the exchange record,
-   * the receipt and the caller's own post-exchange writes all on disk. A run
-   * that never reached that stage -- an interrupt, or a failure in the
-   * exchange itself -- a run that failed inside it, and a run that lost one of
-   * those artifacts non-fatally all leave this false, since none of them wrote
-   * the whole set the notice would otherwise account for.
+   * the receipt and the caller's own post-exchange writes all on disk; false
+   * for any run that did not write the whole set.
    */
   outputsWritten: boolean;
 }
 
 /**
- * The notice a run states on the operator log when its transport did not
- * finish closing inside the ceiling: how long it waited and which resource
- * kinds were still armed. The exit status is the exchange's own outcome either
- * way, which the second sentence says so an unattended supervisor does not
- * read the notice as a failure to retry. The teardown runs after the run's
- * terminal event, so this text reaches the operator alone and never the
- * machine-interface stream.
- *
- * The on-disk half of that second sentence is stated only by a run whose
- * output stage returned with every artifact it owed written. `doCleanup` also
- * runs from the interrupt paths, from a failure ahead of that stage, from a
- * failure inside it -- a result file that could not be written among them --
- * and from a run that lost the exchange record or the receipt non-fatally, and
- * telling the operator everything the run writes is on disk would name
- * artifacts they will not find.
- *
- * A run deleting its protocol files gets one more sentence, naming the one
- * thing the abandoned close leaves for the operator: on the file channels that
- * close is what removes this party's own files from the shared directory
- * (docs/spec/FILE_SYNC.md, `responsibleFiles`), so an expired teardown can
- * leave them there. A retain-mode run's close removes nothing, and those files
- * are the transcript it was set to keep, so it is told nothing about them.
+ * The operator-log notice for a transport that did not finish closing inside
+ * the ceiling: how long it waited, what still held the event loop, and that
+ * the exit status is unchanged. It claims the outputs are on disk only when
+ * `outputsWritten` is set, and a file-channel run in delete mode is told its
+ * protocol files may be left in the exchange directory.
  */
 export function teardownCeilingNotice(
   outcome: TeardownOutcome,
