@@ -34,14 +34,12 @@ import type { ChildProcess } from "node:child_process";
 const READY_LINE = /^alcove-broker (\d+)\n$/;
 
 /** Longest to wait for the child to report its port before giving up; an exit
- * ends the wait at once. Measured on a 10-core host: 0.5 to 0.8 s at load 10,
- * 2.6 s with about 22 processes runnable. */
+ * ends the wait at once. A spawn is slow to report under load. */
 const START_TIMEOUT_MS = 30_000;
 
 /** Longest to wait for the readiness endpoint to answer once the port is known,
  * how long one request may take, and how often to re-ask within it. An exit
- * ends the wait at once. Measured: the first request answers, 5 to 150 ms after
- * the port is reported, at the same loads as above. */
+ * ends the wait at once. */
 const READY_PROBE_TIMEOUT_MS = 10_000;
 const READY_PROBE_REQUEST_TIMEOUT_MS = 2_000;
 const READY_PROBE_INTERVAL_MS = 100;

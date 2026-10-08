@@ -177,10 +177,10 @@ function hostedDevDocument(): Plugin {
 }
 
 const DEPENDENCY_RELOAD_FAILURE =
-  "Vite found a dependency its startup scan missed, optimized it, and reloaded the test page during the run, so a test on that page may have failed because of the reload. Add the dependency Vite names above to optimizeDeps.include in the browser project in apps/web/vite.config.ts, then remove apps/web/node_modules/.vite and run again.";
+  "The dev server reloaded the page during a test run (usually because Vite re-optimized a dependency), so a test on that page may have failed because of the reload. Re-run, and if it repeats add the dependency Vite names above to optimizeDeps.include in the browser project in apps/web/vite.config.ts, then remove apps/web/node_modules/.vite.";
 
-// Fails a browser run in which the dependency optimizer reloaded the test page,
-// which it does with a full-reload message to the page. Watch mode is left out,
+// Fails a browser run in which the dev server sent the test page a full-reload
+// message, which the dependency optimizer does when it re-optimizes. Watch mode is left out,
 // since a file change there sends the same message.
 function failOnDependencyReload(): Plugin {
   let vitest: Vitest | undefined;

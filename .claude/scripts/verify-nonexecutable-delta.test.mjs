@@ -1040,10 +1040,8 @@ const runScript = (args, cwd = dirname(SCRIPT)) => {
 };
 
 // Every case below spawns the script one to three times, each a cold Node
-// start. Measured on a 10-core host: 0.5 to 2.6 s a case at load 7, and 2.2 to
-// 6.1 s at load 16, where the two- and three-spawn cases exceeded vitest's 5 s
-// default. Sized well past that, the bound catches a hung spawn rather than
-// timing a slow one.
+// start, which runs slowly under load and can pass vitest's 5 s default. Sized
+// well past that, the bound catches a hung spawn rather than timing a slow one.
 const SPAWN_CASES = { timeout: 60_000 };
 
 // The script as an agent invokes it, so argv handling, the git error path, and

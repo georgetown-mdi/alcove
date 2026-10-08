@@ -31,9 +31,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const webRoot = resolve(here, "../..");
 
 // The dev server is ready once it answers HTTP, and has failed once it exits;
-// this bounds only one that does neither. Spawn to first answer measured 3 to
-// 9 s on a 10-core host at load 7 to 10, 15 s with about 22 processes
-// runnable, and 62 s by hand on a more loaded host.
+// this bounds only one that does neither. A dev server spawned on a loaded host
+// is slow to first answer.
 const READY_TIMEOUT_MS = 300_000;
 // A signaling dial through a dev server that already answers HTTP waits on no
 // startup work, so it keeps a shorter bound.
