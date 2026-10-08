@@ -1317,9 +1317,15 @@ nothing, and owes nothing -- no payload frame had reached the transport. Either 
 side of the send the run stopped on; the accounting does. And the cancel does not
 discard what the transport already holds buffered: the teardown's close flushes
 rather than drops, so a cancel does not mean nothing further leaves the device.
-Export/import between devices is **migration, not sync** (the source copy is
-invalidated on export). Both are specified in
-[managed-exchange-design.md](../notes/managed-exchange-design.md#single-device-ownership).
+The lock guards one browser profile; across devices the guard is **migration,
+not sync**. Nothing synchronizes a record between two devices, and the migration
+export spends the source copy, so the copy imported on the new device is the one
+that runs. The spend is written once the operator confirms the file is saved,
+never at the download, and a run that finds its copy spent refuses before it
+connects (see [the spent
+state](#the-backup-marker-the-spent-state-and-the-import-marker-local-siblings-never-in-the-artifact)).
+The rationale for both guards is [Single-device
+ownership](../notes/managed-exchange-design.md#single-device-ownership).
 
 ### Persist-before-success ordering
 

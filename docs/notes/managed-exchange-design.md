@@ -197,6 +197,7 @@ The first to run rotates, and the other's copy is stale at once with no way to r
 Single-device ownership is an invariant, not a recommendation.
 
 Two mechanisms uphold it: a lock within one browser profile, and migration in place of sync across devices.
+Both are specified in [Single-owner invariant](../spec/MANAGED_EXCHANGE_RECORD.md#single-owner-invariant); this section records why they take the shape they do.
 
 ### Cross-tab single-writer locking (Web Locks)
 
@@ -258,6 +259,24 @@ Its spend is operator-attested for the same reason a device migration's is: two 
 No path hands the secret to a scheduler and leaves a second live owner behind.
 Its two files are the command line's working copy, rewritten by every run there, so taking them does not count as a backup this browser restores from.
 
+## Bringing a command-line configuration back
+
+The import of an `alcove.yaml` serves an operator who would rather set an exchange up in a browser than author YAML, and run it where the data and the scheduler are.
+What it accepts follows from what this browser can hold and run.
+
+- **Connection settings this browser cannot apply are refused.**
+  The record holds a webrtc connection as the credential-free locator this app composes, so a TURN credential, an ICE provisioning block or a PeerJS server key is refused rather than stored.
+  An sftp connection is held whole because nothing here runs it: each setting goes back into the file Alcove runs.
+- **No secret is stored from the configuration.**
+  A credential is held only as an `@path` reference, since this browser stores no secret value.
+  A shared secret comes in only from the `.alcove.key` chosen beside it.
+  The command line warns about and strips a secret written in `alcove.yaml`; the import refuses one, so the key file is the one route a secret takes into this browser.
+- **Refusals name fields as the file spells them**, so the operator fixes the line in the file rather than looking for a control in the app.
+- **A match by terms and side lands only on the operator's word.**
+  A pair holds no record id, and two separate exchanges can share terms and side, so a stored exchange found that way is offered, never assumed.
+
+The import's rules are in [The configuration-only record](../spec/MANAGED_EXCHANGE_RECORD.md#the-configuration-only-record) and [Importing the key file beside a configuration](../spec/MANAGED_EXCHANGE_RECORD.md#importing-the-key-file-beside-a-configuration).
+
 ## Desync detection and recovery
 
 A rotation desync is the failure the durability contract is built to avoid, but it cannot be driven to zero.
@@ -281,7 +300,11 @@ Its fields and write order are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_E
 
 A run's bookkeeping holds one run, so the next stamp, a benign no-show above all, would replace the evidence of a failure the operator must settle with their partner.
 That is why such evidence is also raised as a standing condition, beside the run bookkeeping, where no later run's stamp reaches it.
+Without it, the confirmation reserved for this class would be asked for once and never again: every visit after the first no-show would report that the partner did not arrive, and stop.
 A successful run does not clear it either: it rules out neither a third party who tried and moved on nor an accidental self-fork, the two readings the confirmation exists to separate.
+The first condition stands against later ones because answering it is a single act over everything that stood before it.
+A store failure can span a run's rotation write and its own best-effort bookkeeping write, then recover in time for the schedule's advance, so the window's own write raises the condition a second time.
+The raise sites and what clears the condition are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-standing-condition).
 
 ### The grace window
 
@@ -314,6 +337,16 @@ This follows the CLI's approach: the tool reports the failure and structures the
 
 A standing compromise response skips scheduled windows but leaves the attended run available.
 The difference is who decides: an attended run is the operator's own act, taken with the response's warning in front of them, while a scheduled one would be taken by a machine with nobody watching, putting the flagged secret back on the flagged channel.
+
+While a compromise response stands, no control offers a fresh invitation, because creating one on that channel is the act the response names as the wrong one.
+The controls read the record a page loaded, so the write that would rotate the secret reads the stored record again and refuses, and a tab opened before the answer cannot create an invitation past it.
+The acknowledgement that clears the response puts the invitation back on offer after it, so the order is: reach the partner another way first, then re-invite.
+That order is what the response is for.
+A run that failed the same way after the answer is a failure the operator has confirmed nothing about, so it gets its own gate before any invitation.
+The response's rules are in [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#the-operators-response-to-it).
+
+A run in flight withholds the same two controls for a different reason: a fresh invitation would replace the secret the run is connecting on.
+The screen's reading of a run in flight is polled and can be stale, so nothing rests on it: creating the invitation takes the run's lock before it replaces the secret ([Cross-tab single-writer locking](#cross-tab-single-writer-locking-web-locks)).
 
 ### Recovery: fast re-invite
 

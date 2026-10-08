@@ -1074,10 +1074,10 @@ that one: enroll the exchange again first.
 An `alcove.yaml` written for the command line imports here on its own, without
 its key file, whichever channel it runs over. What lands is a
 **configuration-only** exchange: the agreed terms, the connection, and the local
-settings, with no shared secret. It is for the operator who would rather set an
-exchange up in a browser than author YAML, and run it where the data and the
-scheduler are -- read the file in, edit what is editable, download it again, run
-it there.
+settings, with no shared secret: read the file in, edit what is editable,
+download it again, and run it where the data and the scheduler are. Why the
+import works this way: [Bringing a command-line configuration
+back](notes/managed-exchange-design.md#bringing-a-command-line-configuration-back).
 
 The list's one import control takes it, whether the list is empty, holds
 exchanges already, or cannot be read; the same control takes a backup file
@@ -1125,9 +1125,8 @@ no longer connect to your partner. What the pair import takes and refuses:
   same side as the files, the import stops and names it. You can take the files
   into it -- taking a handed-off exchange back, restoring a moved one, or
   completing a configuration with its key file -- add them as a new exchange
-  instead, or cancel. Two separate exchanges can share terms and side, so
-  nothing is taken in without your answer. Before taking a handed-off exchange
-  back, stop its scheduled run on the command line.
+  instead, or cancel. Nothing is taken in without your answer. Before taking a
+  handed-off exchange back, stop its scheduled run on the command line.
 
 The secret is kept only in this browser's stored copy of the exchange, as for an
 exchange set up here; the import marks the exchange as restored, and it reads as
@@ -1155,21 +1154,19 @@ What the import accepts is what this app can hold:
 
 - **A file Alcove itself would load.** A hand-edited configuration that no
   longer matches the format Alcove reads is refused naming the fields to fix,
-  spelled as the file spells them, so the operator goes back to the line rather
-  than to the app.
+  spelled as the file spells them.
 - **A connection this app can hold.** A webrtc connection may hold what this
   app composes for it, a rendezvous address; a TURN credential, an ICE
-  provisioning block, or a PeerJS server key is refused by field name, since
-  this browser runs a webrtc exchange and could not apply them. A filedrop
+  provisioning block, or a PeerJS server key is refused by field name. A filedrop
   connection holds its folders and `options`. An sftp connection is held whole
   -- host, port, username, folders, `options`, `host_key_fingerprint`,
-  `keyboard_interactive`, `provision`, and `provider_options` -- since
-  nothing here runs it and each setting goes back into the file Alcove runs.
+  `keyboard_interactive`, `provision`, and `provider_options` -- and each
+  setting goes back into the file Alcove runs.
 - **A `signing` block, held unchanged.** The mode, `identity_file`, and
   `partner_fingerprint` are kept exactly as the file writes them -- an `@` in
   a path is text, and this browser opens no file it names -- with no editor
   here, and the exported configuration states the block as the imported one
-  did. A `receipt_output`, which Alcove no longer reads, is dropped, and the
+  did. A `receipt_output`, which Alcove does not read, is dropped, and the
   import names it and says to delete it from the file: a signed run writes its
   receipt into the output folder. The exchange runs with Alcove.
 - **Credentials as `@path` references, never as values.** An sftp `password`,
@@ -1178,14 +1175,11 @@ What the import accepts is what this app can hold:
   `privateKey`, or `private_key` key in `provider_options`, in any letter case
   and at any depth, is held when the file writes it as `@` and a path, and
   refused, by field name, when the file writes any other value, a number or
-  `true` included: this browser does not store a secret. The refusal
-  says to put the value in a file of its own and write the setting as `@` and
-  that file's path. Any other `provider_options` setting, such as a cipher
-  list, is held as written.
+  `true` included. The refusal says to put the value in a file of its own and
+  write the setting as `@` and that file's path. Any other
+  `provider_options` setting, such as a cipher list, is held as written.
 - **No shared secret.** A configuration naming one in its `authentication` block
   is refused: the secret comes in only from the `.alcove.key` chosen beside it.
-  Alcove reads the secret from `.alcove.key` and refuses it in `alcove.yaml`
-  for the same reason.
 - **A `role` on a webrtc connection.** The configuration has to say which side of
   the partnership this party takes; the command line refuses a webrtc connection
   that names none, and so does this. An sftp or filedrop connection has no `role`.
@@ -1196,8 +1190,10 @@ maximum age for the exchange's secret, which the exported configuration holds as
 three settings of the file that are this party's alone -- which of its own columns
 its result file holds (`include_own_columns`), how its input file separates fields
 (`csv_delimiter`), and its retention note (`retention_disposition`).
-The agreed terms are read-only here as everywhere else -- exchanging on different
-terms is a new exchange, agreed with the partner. An import that is not edited
+The agreed terms are not among them: a configuration imported alone keeps its
+terms as the file states them, and an exchange imported with its key file
+changes them only under Change terms (see [Changing the terms of a saved
+exchange](#changing-the-terms-of-a-saved-exchange)). An import that is not edited
 exports back to the same configuration, and an edited one exports back with the
 edits and every other setting as the file stated it.
 
@@ -1300,19 +1296,16 @@ freshly recorded one is.
 Two failures have a remedy the operator must carry out with their partner rather
 than on this device: a rotation this device could not save, which may have left
 the two parties on different secrets, and a handshake that failed closed with
-nothing to explain it. Both are recorded as a run's `failureKind`, and a run's
-bookkeeping holds one run -- so the next stamp, a benign no-show above all,
-replaces it. Left there, the confirmation the tiering below reserves for exactly
-this class would be asked for once and never again: every visit after the first
-no-show would read "your partner did not arrive" and stop.
+nothing to explain it. Either one is raised as a **standing condition** beside
+the run bookkeeping, where a later run's entry, a no-show's included, does not
+replace it: the recurring-exchanges list line, the exchange's own page, and a later
+run all still read it until it is cleared. Why it is kept beside the bookkeeping:
+[Detection: an implicit generic
+failure](notes/managed-exchange-design.md#detection-an-implicit-generic-failure).
 
-So the evidence is **raised as a standing condition** as well, beside the run
-bookkeeping, where no later run's stamp reaches it. It carries the instant of the
-run that raised it and which of the two failures it was, and nothing else. The
-first one stands: a later failure of the same class leaves it as it is, because
-answering it is a single act over everything that stood before -- and the message
-the operator forwards names that later failure beside the first, so the partner
-checks their own logs for both occasions.
+The first condition stands. A later failure of the same kind leaves it as it is,
+and the message the operator forwards names that later failure beside the
+first, so the partner checks their own logs for both occasions.
 
 Three things clear a standing condition, and nothing else does:
 
@@ -1326,21 +1319,11 @@ Three things clear a standing condition, and nothing else does:
   checklist to pass: the page states the condition and its re-invite recovery,
   and a short acknowledgement clears it.
 - **A re-invite**, which drops it with the run bookkeeping in the same rotation
-  that installs the fresh secret. It is the recovery the condition asked for.
+  that installs the fresh secret.
 - **Deleting the exchange**, which takes it along with the record.
 
-A no-show never clears one, and neither does a successful run on its own. The
-success is tempting to read as the all-clear, and it is not one: it rules out
-neither a third party who tried and moved on nor an accidental self-fork, which
-are exactly the two readings the confirmation exists to separate. The operator
-settles it, or a re-invite does.
-
-One window needs the condition raised twice over. A store failure can span a
-run's rotation write and its own best-effort bookkeeping write, and then recover
-in time to answer the schedule's advance -- leaving the plan moved past a window
-that neither ran nor recorded anything at all. So the window's own write carries
-the condition its run raised, as a second chance at the evidence the run could
-not persist.
+A no-show never clears one, and neither does a successful run on its own: the
+operator clears it, or a re-invite does.
 
 A pattern of missed windows is a coordination problem, resolved out-of-band
 where the schedule itself was agreed -- reported, not auto-paused (see [Retry
@@ -1364,20 +1347,14 @@ recovery, which for each of them is re-invite, **without** the attack
 checklist.
 
 **Tier 2: no local explanation.** A handshake failure with no recorded benign
-cause gets the full out-of-band confirmation. The page still shows context: an
-established partnership that has succeeded many times reads differently from one
-that never completed a run. The confirmation is a **forwardable, pre-filled
+cause gets the full out-of-band confirmation: a **forwardable, pre-filled
 message** you send to your partner over another channel, asking them:
 
 - to confirm their identity on the out-of-band channel, not just reply;
-- what their own tool reported, and when -- establishing that a real failure
-  occurred on the partner's side, rather than inferring it from this side's
-  failure alone;
+- what their own tool reported, and when;
 - whether they ran the exchange from more than one place (a second browser or
-  profile, another device, a restored backup): an accidental self-fork is
-  indistinguishable at the other party from an attack (see [Running from one
-  device](#running-from-one-device)), and this question is the only way to
-  expose it.
+  profile, another device, a restored backup; see [Running from one
+  device](#running-from-one-device)).
 
 The partner's reply feeds a **two-outcome gate**, not a free-form judgment:
 "the partner confirmed a real failure on their side" proceeds to re-invite;
@@ -1391,51 +1368,39 @@ given: a later run that fails the same way does not put the question again, a
 reload and the next visit find it as the operator left it, and no control on the
 exchange's page offers a fresh invitation while it stands, neither the
 failure's own recovery nor the configuration section's re-invite on the same
-terms, since creating one on that channel is the act the response names as
-the wrong one. A page left open from before the answer was given is held by the same
-rule: the write that would rotate the secret reads the exchange itself and
-refuses, so a second tab cannot create one past an answer it never saw.
+terms. A page left open from before the answer was given is held by the same
+rule: creating an invitation there is refused.
 
 The schedule is held by it as well. A window that falls due while the response
-stands is **skipped**: the runner connects to nobody and rotates nothing, since a
-scheduled run would put the secret the operator flagged back on the channel they
-flagged it over, with nobody present to see it. The skip is recorded as the
-window's own outcome rather than a partner's absence, so it counts toward no miss
-pattern and reaches no coordination prompt (see [Retry and repeated
-misses](#retry-and-repeated-misses)); the exchange's page names it in the run
-history, and the between-visit notification says it once while the answer stands.
-The schedule resumes at the next due window the moment one of the three acts
-below clears the answer.
+stands is **skipped**: the runner connects to nobody and rotates nothing. The
+skip is recorded as the window's own outcome rather than a partner's absence, so
+it counts toward no miss pattern and reaches no coordination prompt (see [Retry
+and repeated misses](#retry-and-repeated-misses)); the exchange's page names it
+in the run history, and the between-visit notification says it once while the
+answer stands. The schedule resumes at the next due window the moment one of the
+three acts below clears the answer.
 
-Running the exchange from the page is left available under the response, with its
-warning standing over the control: you decide that run yourself, with the
-warning in front of you.
+Running the exchange from the page stays available under the response, with its
+warning shown over the control.
 
-It is kept where the standing condition is kept, so exactly the three acts that
-clear a standing condition clear it too, and nothing else does. The one the
-exchange's page offers under a response is the acknowledgement that the partner
-confirmed the failure on another channel: it settles the condition, the response
-goes with it, and the fresh invitation is on offer again for the operator to
-send. That ordering -- reach the partner another way first, then re-invite -- is
-what the response is for.
+The three acts that clear a standing condition clear the response too, and
+nothing else does. The one the exchange's page offers under a response is the
+acknowledgement that the partner confirmed the failure on another channel: it
+clears the condition, the response goes with it, and the fresh invitation is on
+offer again for the operator to send. Reach your partner another way first, then
+re-invite.
 
 The answer covers the failure it was given at. Where a run since then failed the
-same way, that later failure is one the operator has confirmed nothing about, so
-the acknowledgement puts its gate rather than the invitation: the two-outcome
-gate is asked once per failure, and no control creates an invitation while one
-of them is unanswered.
+same way, the acknowledgement puts the two-outcome gate for that later failure
+rather than offering the invitation: the gate is asked once per failure, and no
+control creates an invitation while one of them is unanswered.
 
-A run in flight withholds the same two controls for an unrelated reason and on
-its own schedule: while a run of this exchange is under way anywhere in the
-browser profile -- this tab, another tab, or its schedule -- a fresh invitation
-would replace the secret the run is connecting on, so neither control creates
-one until the run ends. Nothing here is answered away the way the compromise
-response is: the withhold lifts on its own once the run finishes, whatever it
-finished with. Nothing rests on the reading: creating the invitation takes the
-run's lock before it replaces the secret, so a run started since the page last
-read that state refuses it in the same words the withholding uses. The control
-re-checks the reading at the click as well, which puts the reason on screen
-without waiting for that refusal.
+While a run of this exchange is under way anywhere in the browser profile --
+this tab, another tab, or its schedule -- the same two controls create no
+invitation either, and say so. This lifts on its own once the run finishes,
+whatever it finished with, with nothing to answer. A run that started since the
+page last checked is caught when you click: creating the invitation is refused
+in the same words.
 
 ### Expiry is its own state, never routed through attack framing
 
