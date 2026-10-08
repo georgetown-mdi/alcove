@@ -21,7 +21,8 @@ The front listens on IPv4 only.
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
 | `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
 | `alcove-broker-tls.service` | The front: the pinned image under `docker run`, host network, read-only root, the rendered configuration and `/etc/alcove-broker/tls` mounted read-only, logging to the journal |
-| `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; restarts the front only when the certificate or key changed or an earlier run left a restart owed, except under `install.sh`, which restarts the front itself |
+| `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; then restarts each running unit whose inputs are newer than its start, whether or not the renewal succeeded, except under `install.sh`, which does that itself after its writes |
+| `unit-state.sh` | Sourced by both scripts and installed beside `renew.sh`: decides from systemd's state and file times which running units to restart |
 | `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 04:30 UTC plus up to 15 minutes, after the relay's own renewal window |
 | `install.sh` | Installs all of the above and converges on a re-run, then checks `/api/health` through the front |
 | `broker.env.example` | The host's one configuration file, copied to `/etc/alcove-broker/broker.env` |
@@ -68,9 +69,13 @@ A change to the template reaches a running front through `install.sh`.
 It renders the configuration to a root-only file under `/etc/alcove-broker` and checks it with `nginx -t` in a throwaway container of the pinned image, mounted as the unit mounts it with the installed certificate, before it restarts the broker or runs a renewal.
 Only a first install, which has no certificate yet, runs a renewal before the check, and the front is not running then: `install.sh` refuses a running front with no certificate.
 A configuration that fails the check stops the install with both units, the certificate, `/etc/alcove-broker/nginx.conf` and the running front unchanged.
-One that passes is copied over `/etc/alcove-broker/nginx.conf` in place (the container bind-mounts that file, so a new inode would not reach it).
-Every file the units read is written before the front is touched, and then the front gets one action: a restart when its unit, its image or its certificate changed (or the broker's unit changed, which restarts the front with the broker), otherwise a reload when only the configuration changed, keeping open WebSockets.
-Before it writes those files, `install.sh` records the actions it owes in `/etc/alcove-broker/front-action-pending` and `broker-restart-pending` (`renew.sh` records a restart there before it installs a new certificate), and removes each only once the action is made: the next run makes the actions a failed run left owed even when nothing else changed, and the renewal timer's `renew.sh` restarts the front when a restart is owed.
+One that passes replaces `/etc/alcove-broker/nginx.conf` by a rename.
+Every file the units read is written, each only when its content changed, before any unit is touched.
+Then each running unit is restarted when one of its inputs was written at or after its start (`ActiveEnterTimestamp`), or systemd has not reloaded its unit file (`NeedDaemonReload`), after a `systemctl daemon-reload`.
+The front's inputs are its unit file, `front-image.env`, `nginx.conf` and the certificate and key; the broker's is its unit file, and restarting the broker restarts the front with it.
+A configuration change restarts the front too and drops its open WebSockets: a reload would not move the start time, so a reload decided this way would repeat on every run.
+Nothing records a restart still to make: a run that dies after its writes leaves the inputs newer than the start, and the next `install.sh` or the renewal timer's `renew.sh` restarts the unit, the timer even when its own renewal fails.
+Both scripts hold an exclusive `flock` on `/etc/alcove-broker/lock` for their whole run, so one never acts on the other's half-written state; `install.sh` passes its descriptor to the `renew.sh` it runs.
 The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
 
 ## Certificates

@@ -3,13 +3,11 @@
 # renewal on this host. Idempotent: run it again after an edit to a unit, the
 # template or renew.sh and it converges.
 #
-# Order: check the whole target state, renew the certificate without restarting
-# the front, record the restarts and reload the run owes, write every file the
-# units read, then act once at the end: restart the broker if its unit changed,
-# and restart, reload or leave the front. The owed actions are recorded under
-# /etc/alcove-broker and cleared only once made, so a run that dies in between
-# leaves them to the next run; renew.sh, run by its timer, makes an owed front
-# restart too.
+# Under the lock renew.sh also takes: check the whole target state, renew the
+# certificate without restarting anything, write every file the units read,
+# then restart each running unit whose inputs are newer than its start
+# (unit-state.sh) and start any that is stopped. A run that dies in between
+# leaves those inputs newer, so the next run of either script restarts it.
 #
 #   install.sh
 #
@@ -36,8 +34,16 @@ die() { printf '[%s] ABORTING: %s\n' "$(date -u +%FT%TZ)" "$*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "install.sh writes under /etc; run it as root"
 
-# --- preconditions --------------------------------------------------------------
 install -d -m 700 "$ETC"
+command -v flock >/dev/null 2>&1 || die "flock is not installed; it comes with util-linux"
+(umask 077 && : >> "$ETC/lock")
+exec 9>> "$ETC/lock"
+if ! flock -n 9; then
+  log "waiting for another install.sh or renew.sh run to finish"
+  flock 9
+fi
+
+# --- preconditions --------------------------------------------------------------
 [ -f "$ENV_FILE" ] || die "no $ENV_FILE. Copy broker.env.example there at mode 600, set ALCOVE_BROKER_NAME, and run again"
 # shellcheck disable=SC1090
 . "$ENV_FILE"
@@ -71,49 +77,28 @@ put_file() {
   fi
 }
 
-# The front's owed action, restart or reload, in the file renew.sh also reads
-# and writes, and a restart of the broker owed. Anything but reload in the
-# front's file counts as a restart.
-PENDING="$ETC/front-action-pending"
-BROKER_PENDING="$ETC/broker-restart-pending"
-pending_action() {
-  [ -e "$PENDING" ] || return 0
-  if [ "$(cat "$PENDING")" = reload ]; then echo reload; else echo restart; fi
-}
-# owe ACTION: record ACTION as owed, keeping a restart already recorded.
-owe() {
-  [ "$1" = reload ] && [ "$(pending_action)" = restart ] && return 0
-  local mark
-  mark="$(mktemp "$PENDING.XXXXXX")"
-  printf '%s\n' "$1" > "$mark"
-  mv -f "$mark" "$PENDING"
-}
-FRONT_OWED="$(pending_action)"
-BROKER_OWED=0
-[ -e "$BROKER_PENDING" ] && BROKER_OWED=1
-if [ -n "$FRONT_OWED" ] || [ "$BROKER_OWED" = 1 ]; then
-  log "an earlier run did not finish restarting or reloading the units it changed; this run does"
-fi
-
 TLS="$ETC/tls"
+# shellcheck source=unit-state.sh
+. "$HERE/unit-state.sh"
 CANDIDATE="$(mktemp "$ETC/nginx.conf.XXXXXX")"
 IMAGE_ENV="$(mktemp "$ETC/front-image.env.XXXXXX")"
 trap 'rm -f "$CANDIDATE" "$IMAGE_ENV"' EXIT
 renew() {
-  ALCOVE_BROKER_ENV_FILE="$ENV_FILE" ALCOVE_BROKER_ACME_HOME="$ETC/acme" ALCOVE_BROKER_TLS_DIR="$TLS" \
-    ALCOVE_BROKER_FRONT_PENDING="$PENDING" "$ETC/renew.sh" "$@"
+  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
+  put_file "$HERE/unit-state.sh" "$ETC/unit-state.sh" 600
+  ALCOVE_BROKER_LOCK_FD=9 "$ETC/renew.sh" --no-restart
 }
 
 # --- a first install's certificate --------------------------------------------------
 # nginx -t loads the certificate, so a first install obtains it before the
-# check. renew.sh restarts a running front, so this path requires a stopped one.
+# check. The front must be stopped: the next renew.sh would restart a running
+# one onto the new certificate whether or not the check passed.
 CERT_OBTAINED=0
 if [ ! -s "$TLS/fullchain.pem" ] || [ ! -s "$TLS/privkey.pem" ]; then
   if systemctl is-active --quiet alcove-broker-tls.service; then
     die "alcove-broker-tls.service is running but $TLS has no certificate. Stop it (systemctl stop alcove-broker-tls.service) and run install.sh again"
   fi
   log "no certificate in $TLS yet; obtaining one to check the configuration against"
-  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
   renew
   CERT_OBTAINED=1
 fi
@@ -130,99 +115,41 @@ docker run --rm --network host --read-only --tmpfs /tmp \
   --entrypoint nginx "$IMAGE" -t \
   || die "the rendered configuration fails nginx -t; the units, the certificate, $ETC/nginx.conf and the running front are unchanged. Fix nginx.conf.tmpl and run again"
 
-# --- what the target state owes ---------------------------------------------------
-printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
-CONF="$ETC/nginx.conf"
-if differs "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service"; then
-  BROKER_OWED=1
-fi
-if differs "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" \
-  || differs "$IMAGE_ENV" "$ETC/front-image.env"; then
-  FRONT_OWED=restart
-fi
-CONF_CHANGED=0
-differs "$CANDIDATE" "$CONF" && CONF_CHANGED=1
-[ "$CONF_CHANGED" = 1 ] && [ -z "$FRONT_OWED" ] && FRONT_OWED=reload
-TIMER_CHANGED=0
-if differs "$HERE/alcove-broker-cert.service" "$UNIT_DIR/alcove-broker-cert.service" \
-  || differs "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer"; then
-  TIMER_CHANGED=1
-fi
-
 # --- a renewal due now ------------------------------------------------------------
-# Before the target state is written, so a failed renewal leaves no change on
-# disk waiting for a restart. renew.sh records a new certificate as a restart
-# owed before it installs it.
-put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
-[ "$CERT_OBTAINED" = 1 ] || renew --defer-restart
-[ "$BROKER_OWED" = 0 ] || install -m 600 /dev/null "$BROKER_PENDING"
-[ -z "$FRONT_OWED" ] || owe "$FRONT_OWED"
-FRONT_OWED="$(pending_action)"
+# Before the target state is written, so a failed renewal leaves it unchanged.
+[ "$CERT_OBTAINED" = 1 ] || renew
 
 # --- the target state -------------------------------------------------------------
+# A file is written only when its content changes: its mtime is what makes the
+# unit that reads it count as stale.
+printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
 put_file "$IMAGE_ENV" "$ETC/front-image.env" 644
 put_file "$HERE/alcove-broker-cert.service" "$UNIT_DIR/alcove-broker-cert.service" 644
 put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 644
-
-# Copied in place when it exists: the front bind-mounts the file, and a new
-# inode would leave the running container reading the old one.
-if [ ! -f "$CONF" ]; then
-  install -m 644 "$CANDIDATE" "$CONF"
-elif [ "$CONF_CHANGED" = 1 ]; then
-  cat "$CANDIDATE" > "$CONF"
+CONF="$ETC/nginx.conf"
+if differs "$CANDIDATE" "$CONF"; then
+  chmod 644 "$CANDIDATE"
+  mv -f "$CANDIDATE" "$CONF"
 fi
 chmod 644 "$CONF"
 
-# --- one action per unit ------------------------------------------------------------
-BROKER_WAS_ACTIVE=0
-systemctl is-active --quiet alcove-broker.service && BROKER_WAS_ACTIVE=1
-FRONT_WAS_ACTIVE=0
-systemctl is-active --quiet alcove-broker-tls.service && FRONT_WAS_ACTIVE=1
-systemctl daemon-reload
-
-FRONT_RESTARTED=0
-if [ "$BROKER_WAS_ACTIVE" = 0 ]; then
-  systemctl enable --now alcove-broker.service
-else
-  systemctl enable alcove-broker.service
-  if [ "$BROKER_OWED" = 1 ]; then
-    # The front Requires= the broker, so systemd restarts a running front too.
-    log "restarting alcove-broker.service onto its unit"
-    systemctl restart alcove-broker.service
-    FRONT_RESTARTED=$FRONT_WAS_ACTIVE
+# --- the units ----------------------------------------------------------------------
+TIMER=alcove-broker-cert.timer
+TIMER_STALE=0
+if systemctl is-active --quiet "$TIMER" && stale "$TIMER" "$UNIT_DIR/$TIMER"; then
+  TIMER_STALE=1
+fi
+restart_stale_units --reload
+for unit in "$BROKER" "$FRONT" "$TIMER"; do
+  if systemctl is-active --quiet "$unit"; then
+    systemctl enable "$unit"
+  else
+    systemctl enable --now "$unit"
   fi
-fi
-rm -f "$BROKER_PENDING"
-
-if [ "$FRONT_WAS_ACTIVE" = 0 ]; then
-  systemctl enable --now alcove-broker-tls.service
-else
-  systemctl enable alcove-broker-tls.service
-  if [ "$FRONT_RESTARTED" = 1 ]; then
-    log "alcove-broker-tls.service restarted with the broker"
-  elif [ "$FRONT_OWED" = restart ]; then
-    log "restarting alcove-broker-tls.service onto its unit, image and certificate"
-    systemctl restart alcove-broker-tls.service
-  elif [ "$FRONT_OWED" = reload ]; then
-    for _ in $(seq 1 30); do
-      docker exec alcove-broker-tls true >/dev/null 2>&1 && break
-      sleep 1
-    done
-    docker exec alcove-broker-tls true >/dev/null 2>&1 \
-      || die "the alcove-broker-tls container did not accept docker exec within 30 s; journalctl -u alcove-broker-tls.service, then run install.sh again"
-    # A reload keeps open WebSockets; a restart would drop them.
-    docker exec alcove-broker-tls nginx -s reload
-    log "alcove-broker-tls.service reloaded onto the new configuration"
-  fi
-fi
-rm -f "$PENDING"
-
-systemctl enable --now alcove-broker-cert.timer
-if [ "$TIMER_CHANGED" = 1 ]; then
-  systemctl restart alcove-broker-cert.timer
-fi
+done
+[ "$TIMER_STALE" = 0 ] || systemctl restart "$TIMER"
 
 # --- check ------------------------------------------------------------------------
 log "waiting for the broker's health endpoint on 127.0.0.1:9411"

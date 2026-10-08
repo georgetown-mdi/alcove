@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   appendFileSync,
   chmodSync,
@@ -186,205 +186,6 @@ describe("render-config.sh", () => {
   );
 });
 
-describe("renew.sh", () => {
-  const NAME = "broker.example.org";
-
-  const fixtureHost = ({ client = "lego" } = {}) => {
-    const root = fixtureDir("broker-renew-");
-    const bin = join(root, "bin");
-    mkdirSync(bin);
-    const calls = join(root, "calls.log");
-    const active = join(root, "front-active");
-    const serial = join(root, "serial");
-    const acmeHome = join(root, "acme");
-    const tls = join(root, "tls");
-    const pending = join(root, "front-action-pending");
-    writeFileSync(calls, "");
-    writeFileSync(serial, "1");
-    writeStub(
-      join(bin, "systemctl"),
-      [
-        `printf 'systemctl %s token=%s\\n' "$*" "\${CLOUDFLARE_DNS_API_TOKEN-unset}" >> '${calls}'`,
-        `if [ "$1" = is-active ]; then [ -f '${active}' ]; fi`,
-      ].join("\n"),
-    );
-    writeStub(
-      join(bin, "lego"),
-      [
-        `printf 'lego token=%s\\n' "\${CLOUDFLARE_DNS_API_TOKEN-unset}" >> '${calls}'`,
-        `mkdir -p '${acmeHome}/certificates'`,
-        `printf 'certificate %s\\n' "$(cat '${serial}')" > '${acmeHome}/certificates/${NAME}.crt'`,
-        `printf 'key %s\\n' "$(cat '${serial}')" > '${acmeHome}/certificates/${NAME}.key'`,
-      ].join("\n"),
-    );
-    const envFile = join(root, "broker.env");
-    const acmeEnv = join(root, "acme.env");
-    writeFileSync(
-      envFile,
-      `ALCOVE_BROKER_NAME=${NAME}\nALCOVE_BROKER_ACME_ENV=${acmeEnv}\n`,
-    );
-    writeFileSync(
-      acmeEnv,
-      [
-        "ALCOVE_RELAY_ACME_EMAIL=ops@example.org",
-        `ALCOVE_RELAY_ACME_CLIENT=${client}`,
-        "ALCOVE_RELAY_DNS_PROVIDER=cloudflare",
-        "CLOUDFLARE_DNS_API_TOKEN=fixture-token",
-        "",
-      ].join("\n"),
-    );
-    return {
-      root,
-      tls,
-      pending,
-      startFront: () => writeFileSync(active, ""),
-      renewTo: (next) => writeFileSync(serial, next),
-      run: (args = []) => {
-        writeFileSync(calls, "");
-        const result = spawnSync(BASH, [join(BROKER, "renew.sh"), ...args], {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            PATH: `${bin}:${process.env.PATH}`,
-            ALCOVE_BROKER_ENV_FILE: envFile,
-            ALCOVE_BROKER_ACME_HOME: acmeHome,
-            ALCOVE_BROKER_TLS_DIR: tls,
-            ALCOVE_BROKER_FRONT_PENDING: pending,
-          },
-        });
-        return {
-          ...result,
-          calls: readFileSync(calls, "utf8").trim().split("\n"),
-        };
-      },
-    };
-  };
-
-  it("installs a first certificate without starting a stopped front", () => {
-    const host = fixtureHost();
-    const result = host.run();
-    expect(result.status).toBe(0);
-    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
-      "certificate 1\n",
-    );
-    expect(result.calls.filter((call) => /restart|start /.test(call))).toEqual(
-      [],
-    );
-    expect(existsSync(host.pending)).toBe(false);
-  });
-
-  it("leaves a running front alone when the certificate is unchanged", () => {
-    const host = fixtureHost();
-    host.run();
-    host.startFront();
-    const result = host.run();
-    expect(result.status).toBe(0);
-    expect(result.calls.some((call) => call.includes("restart"))).toBe(false);
-    expect(result.stderr).toContain("certificate unchanged");
-  });
-
-  it("restarts a running front onto a renewed certificate", () => {
-    const host = fixtureHost();
-    host.run();
-    host.startFront();
-    host.renewTo("2");
-    const result = host.run();
-    expect(result.status).toBe(0);
-    expect(readFileSync(join(host.tls, "privkey.pem"), "utf8")).toBe("key 2\n");
-    expect(result.calls).toContainEqual(
-      expect.stringMatching(/^systemctl restart alcove-broker-tls\.service /),
-    );
-    expect(existsSync(host.pending)).toBe(false);
-  });
-
-  it("records a new certificate as a restart owed under --defer-restart, and does not restart", () => {
-    const host = fixtureHost();
-    host.run();
-    host.startFront();
-    const unchanged = host.run(["--defer-restart"]);
-    expect(unchanged.status).toBe(0);
-    expect(existsSync(host.pending)).toBe(false);
-    host.renewTo("2");
-    const renewed = host.run(["--defer-restart"]);
-    expect(renewed.status).toBe(0);
-    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
-      "certificate 2\n",
-    );
-    expect(readFileSync(host.pending, "utf8")).toBe("restart\n");
-    expect(renewed.calls.some((call) => call.includes("restart"))).toBe(false);
-  });
-
-  it("restarts a running front for a restart an earlier run left owed, with the certificate unchanged", () => {
-    const host = fixtureHost();
-    host.run();
-    host.startFront();
-    writeFileSync(host.pending, "restart\n");
-    const result = host.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(
-      result.calls.filter((call) => call.startsWith("systemctl restart")),
-    ).toEqual([
-      expect.stringMatching(/^systemctl restart alcove-broker-tls\.service /),
-    ]);
-    expect(existsSync(host.pending)).toBe(false);
-  });
-
-  it("clears an owed restart without starting a stopped front", () => {
-    const host = fixtureHost();
-    host.run();
-    writeFileSync(host.pending, "restart\n");
-    const result = host.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.calls.filter((call) => /restart|start /.test(call))).toEqual(
-      [],
-    );
-    expect(existsSync(host.pending)).toBe(false);
-  });
-
-  it("leaves an owed reload to install.sh", () => {
-    const host = fixtureHost();
-    host.run();
-    host.startFront();
-    writeFileSync(host.pending, "reload\n");
-    const result = host.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.calls.some((call) => call.includes("restart"))).toBe(false);
-    expect(result.stderr).toContain("run install.sh again");
-    expect(readFileSync(host.pending, "utf8")).toBe("reload\n");
-  });
-
-  it.each([[["--defer-restart", "x"]], [["--restart", "x"]], [["x"]]])(
-    "refuses the arguments %j before running lego",
-    (args) => {
-      const result = fixtureHost().run(args);
-      expect(result.status).toBe(2);
-      expect(result.stderr).toContain("usage: renew.sh");
-      expect(result.calls).toEqual([""]);
-    },
-  );
-
-  it("exports the provider credential to lego and to nothing after it", () => {
-    const host = fixtureHost();
-    host.startFront();
-    const result = host.run();
-    expect(result.status).toBe(0);
-    expect(result.calls).toContain("lego token=fixture-token");
-    const systemctlCalls = result.calls.filter((call) =>
-      call.startsWith("systemctl"),
-    );
-    expect(systemctlCalls.length).toBeGreaterThan(0);
-    for (const call of systemctlCalls) expect(call).toMatch(/token=unset$/);
-  });
-
-  it("refuses an ACME client other than lego", () => {
-    const host = fixtureHost({ client: "acme.sh" });
-    const result = host.run();
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain("drives lego only");
-    expect(result.calls).toEqual([""]);
-  });
-});
-
 /** The FROM reference of a Dockerfile: the front image's one home. */
 const fromReference = (dockerfile) =>
   [...readFileSync(dockerfile, "utf8").matchAll(/^FROM (.*)$/gm)].map(
@@ -393,201 +194,414 @@ const fromReference = (dockerfile) =>
 
 const PINNED_NGINX = /^docker\.io\/library\/nginx:[^@\s]+@sha256:[0-9a-f]{64}$/;
 
-describe("install.sh", () => {
-  const NAME = "broker.example.org";
-  const FRONT_UNIT = "alcove-broker-tls.service";
+const NAME = "broker.example.org";
+const FRONT_UNIT = "alcove-broker-tls.service";
+const BROKER_UNIT = "alcove-broker.service";
 
-  // A copy of infra/broker whose Dockerfile pins the tracked tag to a fixture
-  // digest, so these runs do not depend on the tracked pin.
-  const pinnedImage = (digestByte = "a") =>
-    `${fromReference(join(BROKER, "Dockerfile"))[0].replace(/@.*$/, "")}@sha256:${digestByte.repeat(64)}`;
+// The tracked tag pinned to a fixture digest, so these runs do not depend on
+// the tracked pin.
+const pinnedImage = (digestByte = "a") =>
+  `${fromReference(join(BROKER, "Dockerfile"))[0].replace(/@.*$/, "")}@sha256:${digestByte.repeat(64)}`;
 
-  const fixtureHost = () => {
-    const root = fixtureDir("broker-install-");
-    const broker = join(root, "broker");
-    cpSync(BROKER, broker, { recursive: true });
-    const pinFront = (image) =>
-      writeFileSync(join(broker, "Dockerfile"), `FROM ${image}\n`);
-    pinFront(pinnedImage());
-    const bin = join(root, "bin");
-    const usrBin = join(root, "usr/bin");
-    const etc = join(root, "etc/alcove-broker");
-    const src = join(root, "opt/alcove-broker/src");
-    for (const dir of [
-      bin,
-      usrBin,
-      join(root, "usr/local/bin"),
-      join(root, "etc/systemd/system"),
-      join(src, "node_modules/.bin"),
-      join(src, "packages/core/dist"),
-    ]) {
-      mkdirSync(dir, { recursive: true });
-    }
-    mkdirSync(etc, { recursive: true, mode: 0o700 });
-    writeStub(join(root, "usr/local/bin/npm"), "exit 0");
-    writeStub(join(src, "node_modules/.bin/tsx"), "exit 0");
-    writeFileSync(
-      join(src, "packages/core/dist/untrusted-text.esm.js"),
-      "//\n",
-    );
+// Longer than a kernel tick, so a file written after a unit starts has a later
+// mtime than the start, as on a host where runs are minutes apart.
+const pause = () =>
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
 
-    const calls = join(root, "calls.log");
-    const restarts = join(root, "restarts.log");
-    const active = join(root, "front-active");
-    const brokerActive = join(root, "broker-active");
-    const failReload = join(root, "fail-daemon-reload");
-    const failLego = join(root, "fail-lego");
-    const serial = join(root, "serial");
-    const acmeEnv = join(root, "acme.env");
-    writeFileSync(calls, "");
-    writeFileSync(serial, "1");
-    writeStub(
-      join(bin, "id"),
-      `if [ "$1" = -u ]; then echo 0; else exec /usr/bin/id "$@"; fi`,
-    );
-    writeStub(join(bin, "curl"), "exit 0");
-    writeStub(
-      join(bin, "systemctl"),
-      [
-        `printf 'systemctl %s\\n' "$*" >> '${calls}'`,
-        `if [ "$1" = daemon-reload ] && [ -f '${failReload}' ]; then exit 1; fi`,
-        // What a restarted front starts on: its image and its certificate.
-        `if [ "$1" = restart ]; then`,
-        `  printf '%s image=%s cert=%s\\n' "$2" "$(sed -n 's/^ALCOVE_BROKER_FRONT_IMAGE=//p' '${etc}/front-image.env')" "$(cat '${etc}/tls/fullchain.pem')" >> '${restarts}'`,
-        `fi`,
-        `if [ "$1" = is-active ]; then`,
-        `  case "$3" in`,
-        `    alcove-broker-tls.service) [ -f '${active}' ] ;;`,
-        `    alcove-broker.service) [ -f '${brokerActive}' ] ;;`,
-        `    *) false ;;`,
-        `  esac`,
-        `fi`,
-      ].join("\n"),
-    );
-    writeStub(
-      join(bin, "lego"),
-      [
-        `printf 'lego\\n' >> '${calls}'`,
-        `[ ! -f '${failLego}' ] || exit 1`,
-        `mkdir -p '${etc}/acme/certificates'`,
-        `printf 'certificate %s\\n' "$(cat '${serial}')" > '${etc}/acme/certificates/${NAME}.crt'`,
-        `printf 'key %s\\n' "$(cat '${serial}')" > '${etc}/acme/certificates/${NAME}.key'`,
-      ].join("\n"),
-    );
-    // nginx -t in a throwaway container: records the candidate's mode and
-    // whether a certificate was mounted, and fails on `broken_directive`.
-    writeStub(
-      join(usrBin, "docker"),
-      [
-        `printf 'docker %s\\n' "$*" >> '${calls}'`,
-        `[ "$1" = run ] || exit 0`,
-        `conf=; tls=`,
-        `for arg in "$@"; do`,
-        `  case "$arg" in`,
-        `    *:/etc/nginx/nginx.conf:ro) conf="\${arg%%:*}" ;;`,
-        `    *:/etc/nginx/tls:ro) tls="\${arg%%:*}" ;;`,
-        `  esac`,
-        `done`,
-        `cert=no; [ -s "$tls/fullchain.pem" ] && cert=yes`,
-        `printf 'nginx -t mode=%s cert=%s\\n' "$(stat -c %a "$conf")" "$cert" >> '${calls}'`,
-        `! grep -q broken_directive "$conf"`,
-      ].join("\n"),
-    );
-    writeFileSync(
-      join(etc, "broker.env"),
-      `ALCOVE_BROKER_NAME=${NAME}\nALCOVE_BROKER_ACME_ENV=${acmeEnv}\n`,
-    );
-    writeFileSync(
-      acmeEnv,
-      "ALCOVE_RELAY_ACME_EMAIL=ops@example.org\nCLOUDFLARE_DNS_API_TOKEN=fixture-token\n",
-    );
-    const brokenTemplate = join(root, "broken.tmpl");
-    writeFileSync(
-      brokenTemplate,
-      readFileSync(TEMPLATE, "utf8").replace(
-        "worker_processes 1;",
-        "worker_processes 1;\nbroken_directive on;",
-      ),
-    );
+// systemd as the scripts see it: the copy of each unit file it loaded at the
+// last daemon-reload (NeedDaemonReload when the file differs), each unit's
+// start time, and a line in STARTS for every broker or front start naming
+// whether it ran the unit file on disk and the image and certificate it read.
+const SYSTEMCTL_STUB = String.raw`
+printf 'systemctl token=%s\n' "$(printenv CLOUDFLARE_DNS_API_TOKEN || echo unset)" >> "$ENVLOG"
+for unit; do :; done
+load() { [ -f "$S/loaded/$1" ] || [ ! -f "$U/$1" ] || cp "$U/$1" "$S/loaded/$1"; }
+start() {
+  load "$1"
+  date +%s%6N > "$S/started/$1"
+  : > "$S/active/$1"
+  case "$1" in alcove-broker.service | alcove-broker-tls.service) ;; *) return 0 ;; esac
+  def=current
+  if [ ! -f "$U/$1" ]; then def=none; elif ! cmp -s "$U/$1" "$S/loaded/$1"; then def=stale; fi
+  printf '%s def=%s image=%s cert=%s\n' "$1" "$def" \
+    "$(sed -n 's/^ALCOVE_BROKER_FRONT_IMAGE=//p' "$E/front-image.env" 2>/dev/null)" \
+    "$(cat "$E/tls/fullchain.pem" 2>/dev/null)" >> "$STARTS"
+}
+case "$1" in
+  show)
+    case "$3" in
+      ActiveEnterTimestamp)
+        [ -f "$S/started/$unit" ] || { echo; exit 0; }
+        at="$(sed 's/\(......\)$/.\1/' "$S/started/$unit")"
+        format='+%a %Y-%m-%d %H:%M:%S UTC'
+        case " $* " in *" --timestamp=us+utc "*) format='+%a %Y-%m-%d %H:%M:%S.%6N UTC' ;; esac
+        date -u -d "@$at" "$format" ;;
+      NeedDaemonReload)
+        if [ -f "$S/loaded/$unit" ] && ! cmp -s "$U/$unit" "$S/loaded/$unit"; then echo yes; else echo no; fi ;;
+      *) exit 1 ;;
+    esac
+    exit 0 ;;
+  is-active) [ -f "$S/active/$unit" ]; exit ;;
+esac
+printf 'systemctl %s\n' "$*" >> "$CALLS"
+case "$1" in
+  daemon-reload)
+    [ ! -f "$FAIL_RELOAD" ] || exit 1
+    for file in "$U"/*; do
+      [ ! -f "$file" ] || cp "$file" "$S/loaded/"
+    done ;;
+  restart)
+    start "$unit"
+    # The front Requires= the broker.
+    if [ "$unit" = alcove-broker.service ] && [ -f "$S/active/alcove-broker-tls.service" ]; then
+      start alcove-broker-tls.service
+    fi ;;
+  start) [ -f "$S/active/$unit" ] || start "$unit" ;;
+  enable) if [ "$2" = --now ] && [ ! -f "$S/active/$unit" ]; then start "$unit"; fi ;;
+  stop) rm -f "$S/active/$unit" ;;
+esac
+exit 0
+`;
 
-    const conf = join(etc, "nginx.conf");
-    const unitDir = join(root, "etc/systemd/system");
-    const pending = join(etc, "front-action-pending");
-    const brokerPending = join(etc, "broker-restart-pending");
-    const PATH = `${usrBin}:${bin}:${process.env.PATH}`;
-    const runScript = (script, env) => {
-      writeFileSync(calls, "");
-      writeFileSync(restarts, "");
-      const result = spawnSync(BASH, [script], {
-        encoding: "utf8",
-        env: { ...process.env, PATH, ...env },
-      });
-      return {
-        ...result,
-        calls: readFileSync(calls, "utf8").trim().split("\n"),
-        restarts: readFileSync(restarts, "utf8").split("\n").slice(0, -1),
-      };
-    };
+// lego: fails while FAIL_LEGO exists, and waits up to 10 s while HOLD_LEGO
+// exists.
+const LEGO_STUB = String.raw`
+printf 'lego token=%s\n' "$(printenv CLOUDFLARE_DNS_API_TOKEN || echo unset)" >> "$ENVLOG"
+printf 'lego\n' >> "$CALLS"
+n=0
+while [ -f "$HOLD_LEGO" ] && [ "$n" -lt 500 ]; do n=$((n + 1)); sleep 0.02; done
+[ ! -f "$FAIL_LEGO" ] || exit 1
+mkdir -p "$E/acme/certificates"
+printf 'certificate %s\n' "$(cat "$SERIAL")" > "$E/acme/certificates/$NAME.crt"
+printf 'key %s\n' "$(cat "$SERIAL")" > "$E/acme/certificates/$NAME.key"
+`;
+
+// nginx -t in a throwaway container: records the candidate's mode and whether
+// a certificate was mounted, and fails on broken_directive.
+const DOCKER_STUB = String.raw`
+printf 'docker %s\n' "$*" >> "$CALLS"
+[ "$1" = run ] || exit 0
+conf=; tls=
+for arg in "$@"; do
+  case "$arg" in
+    *:/etc/nginx/nginx.conf:ro) conf="$(printf '%s' "$arg" | sed 's/:.*//')" ;;
+    *:/etc/nginx/tls:ro) tls="$(printf '%s' "$arg" | sed 's/:.*//')" ;;
+  esac
+done
+cert=no; [ -s "$tls/fullchain.pem" ] && cert=yes
+printf 'nginx -t mode=%s cert=%s\n' "$(stat -c %a "$conf")" "$cert" >> "$CALLS"
+! grep -q broken_directive "$conf"
+`;
+
+/**
+ * A host under a fixture root: infra/broker copied with a fixture pin, stubs
+ * for systemctl, lego, docker, curl and id on PATH, and the broker workspace
+ * install.sh checks for.
+ */
+const brokerHost = ({ client = "lego" } = {}) => {
+  const root = fixtureDir("broker-host-");
+  const source = join(root, "broker");
+  cpSync(BROKER, source, { recursive: true });
+  const pinFront = (image) =>
+    writeFileSync(join(source, "Dockerfile"), `FROM ${image}\n`);
+  pinFront(pinnedImage());
+  const bin = join(root, "bin");
+  const usrBin = join(root, "usr/bin");
+  const etc = join(root, "etc/alcove-broker");
+  const unitDir = join(root, "etc/systemd/system");
+  const src = join(root, "opt/alcove-broker/src");
+  const state = join(root, "systemd");
+  for (const dir of [
+    bin,
+    usrBin,
+    unitDir,
+    join(root, "usr/local/bin"),
+    join(src, "node_modules/.bin"),
+    join(src, "packages/core/dist"),
+    join(state, "loaded"),
+    join(state, "started"),
+    join(state, "active"),
+  ]) {
+    mkdirSync(dir, { recursive: true });
+  }
+  mkdirSync(etc, { recursive: true, mode: 0o700 });
+  writeStub(join(root, "usr/local/bin/npm"), "exit 0");
+  writeStub(join(src, "node_modules/.bin/tsx"), "exit 0");
+  writeFileSync(join(src, "packages/core/dist/untrusted-text.esm.js"), "//\n");
+
+  const calls = join(root, "calls.log");
+  const starts = join(root, "starts.log");
+  const envLog = join(root, "env.log");
+  const failReload = join(root, "fail-daemon-reload");
+  const failLego = join(root, "fail-lego");
+  const holdLego = join(root, "hold-lego");
+  const serial = join(root, "serial");
+  const clearLogs = () => {
+    for (const log of [calls, starts, envLog]) writeFileSync(log, "");
+  };
+  clearLogs();
+  writeFileSync(serial, "1");
+  const paths = [
+    ["S", state],
+    ["U", unitDir],
+    ["E", etc],
+    ["CALLS", calls],
+    ["STARTS", starts],
+    ["ENVLOG", envLog],
+    ["FAIL_RELOAD", failReload],
+    ["FAIL_LEGO", failLego],
+    ["HOLD_LEGO", holdLego],
+    ["SERIAL", serial],
+    ["NAME", NAME],
+  ]
+    .map(([name, value]) => `${name}='${value}'`)
+    .join("\n");
+  writeStub(join(bin, "systemctl"), `${paths}\n${SYSTEMCTL_STUB}`);
+  writeStub(join(bin, "lego"), `${paths}\n${LEGO_STUB}`);
+  writeStub(join(usrBin, "docker"), `${paths}\n${DOCKER_STUB}`);
+  writeStub(join(bin, "curl"), "exit 0");
+  writeStub(
+    join(bin, "id"),
+    `if [ "$1" = -u ]; then echo 0; else exec /usr/bin/id "$@"; fi`,
+  );
+
+  const acmeEnv = join(root, "acme.env");
+  writeFileSync(
+    join(etc, "broker.env"),
+    `ALCOVE_BROKER_NAME=${NAME}\nALCOVE_BROKER_ACME_ENV=${acmeEnv}\n`,
+  );
+  writeFileSync(
+    acmeEnv,
+    [
+      "ALCOVE_RELAY_ACME_EMAIL=ops@example.org",
+      `ALCOVE_RELAY_ACME_CLIENT=${client}`,
+      "ALCOVE_RELAY_DNS_PROVIDER=cloudflare",
+      "CLOUDFLARE_DNS_API_TOKEN=fixture-token",
+      "",
+    ].join("\n"),
+  );
+  const brokenTemplate = join(root, "broken.tmpl");
+  writeFileSync(
+    brokenTemplate,
+    readFileSync(TEMPLATE, "utf8").replace(
+      "worker_processes 1;",
+      "worker_processes 1;\nbroken_directive on;",
+    ),
+  );
+
+  const lines = (path) => readFileSync(path, "utf8").split("\n").slice(0, -1);
+  const scriptEnv = (extra = {}) => ({
+    ...process.env,
+    PATH: `${usrBin}:${bin}:${process.env.PATH}`,
+    ALCOVE_BROKER_INSTALL_ROOT: root,
+    ...extra,
+  });
+  const runScript = (args, extra) => {
+    clearLogs();
+    pause();
+    const result = spawnSync(BASH, args, {
+      encoding: "utf8",
+      env: scriptEnv(extra),
+    });
+    pause();
     return {
-      conf,
-      etc,
-      unitDir,
-      pending,
-      pinFront,
-      startFront: () => writeFileSync(active, ""),
-      startBroker: () => writeFileSync(brokerActive, ""),
-      renewTo: (next) => writeFileSync(serial, next),
-      failDaemonReload: (fail) =>
-        fail ? writeFileSync(failReload, "") : rmSync(failReload),
-      failLego: () => writeFileSync(failLego, ""),
-      marksLeft: () => [pending, brokerPending].filter(existsSync),
-      run: ({ broken = false } = {}) =>
-        runScript(join(broker, "install.sh"), {
-          ALCOVE_BROKER_INSTALL_ROOT: root,
-          ...(broken ? { ALCOVE_BROKER_TEMPLATE: brokenTemplate } : {}),
-        }),
-      // The renewal timer: the installed renew.sh with no argument.
-      runTimer: () =>
-        runScript(join(etc, "renew.sh"), {
-          ALCOVE_BROKER_ENV_FILE: join(etc, "broker.env"),
-          ALCOVE_BROKER_ACME_HOME: join(etc, "acme"),
-          ALCOVE_BROKER_TLS_DIR: join(etc, "tls"),
-          ALCOVE_BROKER_FRONT_PENDING: pending,
-        }),
+      ...result,
+      calls: lines(calls),
+      starts: lines(starts),
+      env: lines(envLog),
     };
   };
+  const spawnScript = (args) => {
+    const child = spawn(BASH, args, {
+      env: scriptEnv(),
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    const exit = new Promise((done) => {
+      child.on("close", (status) => done({ status, stderr }));
+    });
+    return { child, exit };
+  };
+  const setFront = (active) => {
+    if (active) {
+      writeFileSync(join(state, "active", FRONT_UNIT), "");
+      writeFileSync(join(state, "started", FRONT_UNIT), `${Date.now()}000\n`);
+      pause();
+    } else {
+      rmSync(join(state, "active", FRONT_UNIT), { force: true });
+    }
+  };
+  const flag = (path) => (on) =>
+    on ? writeFileSync(path, "") : rmSync(path, { force: true });
 
-  // A start, stop, restart or reload of the front; enabling it is none of these.
-  const frontActions = (calls) =>
-    calls.filter(
-      (call) =>
-        /^systemctl (restart|reload|start|stop|enable --now)\b.*alcove-broker-tls/.test(
-          call,
-        ) || /^docker exec alcove-broker-tls nginx /.test(call),
+  return {
+    conf: join(etc, "nginx.conf"),
+    etc,
+    source,
+    tls: join(etc, "tls"),
+    unitDir,
+    pinFront,
+    startFront: () => setFront(true),
+    stopFront: () => setFront(false),
+    renewTo: (next) => writeFileSync(serial, next),
+    failDaemonReload: flag(failReload),
+    failLego: flag(failLego),
+    holdLego: flag(holdLego),
+    calls: () => lines(calls),
+    clearLogs,
+    run: ({ broken = false } = {}) =>
+      runScript(
+        [join(source, "install.sh")],
+        broken ? { ALCOVE_BROKER_TEMPLATE: brokenTemplate } : {},
+      ),
+    // renew.sh from the tracked tree, before any install.
+    runRenew: (args = []) => runScript([join(BROKER, "renew.sh"), ...args]),
+    // The renewal timer: the installed renew.sh with no argument.
+    runTimer: () => runScript([join(etc, "renew.sh")]),
+    spawnInstall: () => spawnScript([join(source, "install.sh")]),
+    spawnTimer: () => spawnScript([join(etc, "renew.sh")]),
+  };
+};
+
+const waitFor = async (condition) => {
+  const deadline = Date.now() + 10_000;
+  while (!condition()) {
+    if (Date.now() > deadline) throw new Error("timed out waiting");
+    await new Promise((done) => setTimeout(done, 20));
+  }
+};
+
+const frontStart = (image, cert) =>
+  `${FRONT_UNIT} def=current image=${image} cert=certificate ${cert}`;
+const brokerStart = (image, cert) =>
+  `${BROKER_UNIT} def=current image=${image} cert=certificate ${cert}`;
+
+// A start, stop, restart or reload of the front; enabling it is none of these.
+const frontActions = (calls) =>
+  calls.filter(
+    (call) =>
+      /^systemctl (restart|reload|start|stop|enable --now)\b.*alcove-broker-tls/.test(
+        call,
+      ) || /^docker exec alcove-broker-tls nginx /.test(call),
+  );
+
+const touchesFront = (call) =>
+  /^systemctl (restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
+    call,
+  ) || /^docker exec /.test(call);
+
+const candidatesLeft = (etc) =>
+  readdirSync(etc).filter((entry) => entry.startsWith("nginx.conf."));
+
+// Each case runs the scripts up to five times, about half a second each on a
+// loaded machine.
+const SCRIPT_TIMEOUT = 30_000;
+
+describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
+  it("installs a first certificate without starting a stopped front", () => {
+    const host = brokerHost();
+    const result = host.runRenew();
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
+      "certificate 1\n",
     );
+    expect(result.calls).toEqual(["lego"]);
+  });
 
-  const touchesFront = (call) =>
-    /^systemctl (restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
-      call,
-    ) || /^docker exec /.test(call);
+  it("leaves a running front alone when the certificate is unchanged", () => {
+    const host = brokerHost();
+    host.runRenew();
+    host.startFront();
+    const result = host.runRenew();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.calls).toEqual(["lego"]);
+    expect(result.stderr).toContain("the certificate is unchanged");
+  });
 
-  const candidatesLeft = (etc) =>
-    readdirSync(etc).filter((entry) => entry.startsWith("nginx.conf."));
+  it("restarts a running front onto a renewed certificate", () => {
+    const host = brokerHost();
+    host.runRenew();
+    host.startFront();
+    host.renewTo("2");
+    const result = host.runRenew();
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(host.tls, "privkey.pem"), "utf8")).toBe("key 2\n");
+    expect(result.calls).toEqual(["lego", `systemctl restart ${FRONT_UNIT}`]);
+  });
 
+  it("installs a new certificate without a restart under --no-restart, and the next run restarts the front", () => {
+    const host = brokerHost();
+    host.runRenew();
+    host.startFront();
+    host.renewTo("2");
+    const renewed = host.runRenew(["--no-restart"]);
+    expect(renewed.status, renewed.stderr).toBe(0);
+    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
+      "certificate 2\n",
+    );
+    expect(renewed.calls).toEqual(["lego"]);
+    const next = host.runRenew();
+    expect(next.status, next.stderr).toBe(0);
+    expect(next.calls).toEqual(["lego", `systemctl restart ${FRONT_UNIT}`]);
+    expect(host.runRenew().calls).toEqual(["lego"]);
+  });
+
+  it.each([[["--no-restart", "x"]], [["--defer-restart"]], [["x"]]])(
+    "refuses the arguments %j before running lego",
+    (args) => {
+      const result = brokerHost().runRenew(args);
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("usage: renew.sh");
+      expect(result.calls).toEqual([]);
+    },
+  );
+
+  it("exports the provider credential to lego and to nothing after it", () => {
+    const host = brokerHost();
+    host.startFront();
+    const result = host.runRenew();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.env).toContain("lego token=fixture-token");
+    const systemctlCalls = result.env.filter((line) =>
+      line.startsWith("systemctl"),
+    );
+    expect(systemctlCalls.length).toBeGreaterThan(0);
+    for (const call of systemctlCalls) {
+      expect(call).toBe("systemctl token=unset");
+    }
+  });
+
+  it("refuses an ACME client other than lego", () => {
+    const host = brokerHost({ client: "acme.sh" });
+    const result = host.runRenew();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("drives lego only");
+    expect(result.calls).not.toContain("lego");
+  });
+});
+
+describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
   it("checks a first install's configuration against the certificate before writing it", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     const check = result.calls.indexOf("nginx -t mode=600 cert=yes");
     expect(check).toBeGreaterThan(result.calls.indexOf("lego"));
     expect(readFileSync(host.conf, "utf8")).toContain(`server_name ${NAME};`);
     expect(statSync(host.conf).mode & 0o777).toBe(0o644);
+    expect(statSync(join(host.etc, "lock")).mode & 0o777).toBe(0o600);
     expect(candidatesLeft(host.etc)).toEqual([]);
-    expect(host.marksLeft()).toEqual([]);
+    expect(result.starts).toEqual([
+      brokerStart(pinnedImage(), 1),
+      frontStart(pinnedImage(), 1),
+    ]);
   });
 
   it("leaves no live file when a first install's configuration fails nginx -t", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     const result = host.run({ broken: true });
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("fails nginx -t");
@@ -597,9 +611,8 @@ describe("install.sh", () => {
   });
 
   it("keeps the live file and the running front when a change fails nginx -t", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startFront();
     const before = readFileSync(host.conf, "utf8");
     host.renewTo("2");
     const result = host.run({ broken: true });
@@ -612,42 +625,53 @@ describe("install.sh", () => {
     expect(candidatesLeft(host.etc)).toEqual([]);
   });
 
-  it("copies a checked change over the live file in place and reloads the front", () => {
-    const host = fixtureHost();
-    writeFileSync(host.conf, "# an earlier configuration\n");
-    const inode = statSync(host.conf).ino;
+  it("replaces the live file with a checked change and restarts the front onto it", () => {
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startFront();
     writeFileSync(host.conf, "# an earlier configuration\n");
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
-    expect(statSync(host.conf).ino).toBe(inode);
     expect(readFileSync(host.conf, "utf8")).toContain(`server_name ${NAME};`);
+    expect(statSync(host.conf).mode & 0o777).toBe(0o644);
     expect(frontActions(result.calls)).toEqual([
-      "docker exec alcove-broker-tls nginx -s reload",
+      `systemctl restart ${FRONT_UNIT}`,
     ]);
-    expect(result.calls.some((call) => call.includes("restart"))).toBe(false);
-    expect(host.marksLeft()).toEqual([]);
+    expect(candidatesLeft(host.etc)).toEqual([]);
+    expect(frontActions(host.run().calls)).toEqual([]);
   });
 
-  it("issues no front action when nothing changed", () => {
-    const host = fixtureHost();
+  it("issues no action when nothing changed, from a re-run or the renewal timer", () => {
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     expect(result.calls).toContain("lego");
     expect(frontActions(result.calls)).toEqual([]);
-    expect(result.restarts).toEqual([]);
-    expect(host.marksLeft()).toEqual([]);
+    expect(result.starts).toEqual([]);
+    const timer = host.runTimer();
+    expect(timer.status, timer.stderr).toBe(0);
+    expect(timer.calls).toEqual(["lego"]);
+  });
+
+  it("starts a stopped front, and the renewal timer leaves it stopped", () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    host.stopFront();
+    host.renewTo("2");
+    const timer = host.runTimer();
+    expect(timer.status, timer.stderr).toBe(0);
+    expect(timer.calls).toEqual(["lego"]);
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(frontActions(result.calls)).toEqual([
+      `systemctl enable --now ${FRONT_UNIT}`,
+    ]);
+    expect(result.starts).toEqual([frontStart(pinnedImage(), 2)]);
   });
 
   it("restarts the front once, onto the new image and certificate, when the pin moves with a renewal due", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
     host.pinFront(pinnedImage("b"));
     host.renewTo("2");
     const result = host.run();
@@ -655,55 +679,41 @@ describe("install.sh", () => {
     expect(frontActions(result.calls)).toEqual([
       `systemctl restart ${FRONT_UNIT}`,
     ]);
-    expect(result.restarts).toEqual([
-      `${FRONT_UNIT} image=${pinnedImage("b")} cert=certificate 2`,
-    ]);
+    expect(result.starts).toEqual([frontStart(pinnedImage("b"), 2)]);
     expect(
       result.calls.indexOf(`systemctl restart ${FRONT_UNIT}`),
     ).toBeGreaterThan(result.calls.indexOf("lego"));
-    expect(host.marksLeft()).toEqual([]);
   });
 
   it("restarts the front through a changed broker unit and not again", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
-    appendFileSync(
-      join(host.unitDir, "alcove-broker.service"),
-      "# an earlier unit\n",
-    );
+    appendFileSync(join(host.unitDir, BROKER_UNIT), "# an earlier unit\n");
     host.pinFront(pinnedImage("b"));
     host.renewTo("2");
     writeFileSync(host.conf, "# an earlier configuration\n");
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     expect(frontActions(result.calls)).toEqual([]);
-    expect(result.restarts).toEqual([
-      `alcove-broker.service image=${pinnedImage("b")} cert=certificate 2`,
+    expect(result.starts).toEqual([
+      brokerStart(pinnedImage("b"), 2),
+      frontStart(pinnedImage("b"), 2),
     ]);
     const reload = result.calls.indexOf("systemctl daemon-reload");
     expect(reload).toBeGreaterThanOrEqual(0);
     expect(
-      result.calls.indexOf("systemctl restart alcove-broker.service"),
+      result.calls.indexOf(`systemctl restart ${BROKER_UNIT}`),
     ).toBeGreaterThan(reload);
-    expect(host.marksLeft()).toEqual([]);
   });
 
   it("restarts nothing and renews nothing when a change fails nginx -t, even with a changed broker unit", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
-    const brokerUnit = join(host.unitDir, "alcove-broker.service");
+    const brokerUnit = join(host.unitDir, BROKER_UNIT);
     appendFileSync(brokerUnit, "# an earlier unit\n");
     const brokerUnitBefore = readFileSync(brokerUnit, "utf8");
     const frontUnitBefore = readFileSync(
       join(host.unitDir, FRONT_UNIT),
-      "utf8",
-    );
-    const certBefore = readFileSync(
-      join(host.etc, "tls/fullchain.pem"),
       "utf8",
     );
     host.renewTo("2");
@@ -721,31 +731,25 @@ describe("install.sh", () => {
     expect(readFileSync(join(host.unitDir, FRONT_UNIT), "utf8")).toBe(
       frontUnitBefore,
     );
-    expect(readFileSync(join(host.etc, "tls/fullchain.pem"), "utf8")).toBe(
-      certBefore,
+    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
+      "certificate 1\n",
     );
   });
 
   it("checks a change before restarting a changed broker unit", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    appendFileSync(
-      join(host.unitDir, "alcove-broker.service"),
-      "# an earlier unit\n",
-    );
+    appendFileSync(join(host.unitDir, BROKER_UNIT), "# an earlier unit\n");
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
     const check = result.calls.indexOf("nginx -t mode=600 cert=yes");
-    const restart = result.calls.indexOf(
-      "systemctl restart alcove-broker.service",
-    );
+    const restart = result.calls.indexOf(`systemctl restart ${BROKER_UNIT}`);
     expect(check).toBeGreaterThanOrEqual(0);
     expect(restart).toBeGreaterThan(check);
   });
 
   it("refuses to obtain a certificate under a running front", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     host.startFront();
     const result = host.run();
     expect(result.status).not.toBe(0);
@@ -755,20 +759,17 @@ describe("install.sh", () => {
   });
 
   it("refuses a front image without a digest before touching anything", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     host.pinFront(pinnedImage().replace(/@.*$/, ""));
     const result = host.run();
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain("pinned by digest");
-    expect(
-      result.calls.filter((call) => /^(docker|systemctl|lego)\b/.test(call)),
-    ).toEqual([]);
+    expect(result.calls).toEqual([]);
   });
 
   it("runs the front on the image it checked, and restarts it when the pin moves", () => {
-    const host = fixtureHost();
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startFront();
     host.pinFront(pinnedImage("b"));
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
@@ -781,120 +782,114 @@ describe("install.sh", () => {
     expect(readFileSync(join(host.etc, "front-image.env"), "utf8")).toBe(
       `ALCOVE_BROKER_FRONT_IMAGE=${pinnedImage("b")}\n`,
     );
-    expect(result.calls).toContain(`systemctl restart ${FRONT_UNIT}`);
-    expect(host.marksLeft()).toEqual([]);
+    expect(result.starts).toEqual([frontStart(pinnedImage("b"), 1)]);
   });
 
-  // A run that wrote the new image and certificate and died before restarting
-  // the front: daemon-reload, the first systemctl action, fails.
-  const interruptedAfterWrites = () => {
-    const host = fixtureHost();
+  it("leaves the target state unwritten when the renewal fails, and nothing for the timer to restart", () => {
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
     host.pinFront(pinnedImage("b"));
-    host.renewTo("2");
-    host.failDaemonReload(true);
-    const failed = host.run();
-    expect(failed.status).not.toBe(0);
-    expect(readFileSync(join(host.etc, "front-image.env"), "utf8")).toBe(
-      `ALCOVE_BROKER_FRONT_IMAGE=${pinnedImage("b")}\n`,
-    );
-    expect(readFileSync(join(host.etc, "tls/fullchain.pem"), "utf8")).toBe(
-      "certificate 2\n",
-    );
-    expect(failed.restarts).toEqual([]);
-    expect(readFileSync(host.pending, "utf8")).toBe("restart\n");
-    host.failDaemonReload(false);
-    return host;
-  };
-
-  it("restarts the front once on the run after one that died with its restart owed", () => {
-    const host = interruptedAfterWrites();
-    const broken = host.run({ broken: true });
-    expect(broken.status).not.toBe(0);
-    expect(readFileSync(host.pending, "utf8")).toBe("restart\n");
-    const result = host.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain("an earlier run did not finish");
-    expect(frontActions(result.calls)).toEqual([
-      `systemctl restart ${FRONT_UNIT}`,
-    ]);
-    expect(result.restarts).toEqual([
-      `${FRONT_UNIT} image=${pinnedImage("b")} cert=certificate 2`,
-    ]);
-    expect(host.marksLeft()).toEqual([]);
-    const again = host.run();
-    expect(again.status, again.stderr).toBe(0);
-    expect(frontActions(again.calls)).toEqual([]);
-  });
-
-  it("has the renewal timer restart the front a failed run left owed", () => {
-    const host = interruptedAfterWrites();
-    const result = host.runTimer();
-    expect(result.status, result.stderr).toBe(0);
-    expect(result.restarts).toEqual([
-      `${FRONT_UNIT} image=${pinnedImage("b")} cert=certificate 2`,
-    ]);
-    expect(host.marksLeft()).toEqual([]);
-  });
-
-  it("leaves nothing owed when the renewal fails before the writes", () => {
-    const host = fixtureHost();
-    expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
-    host.pinFront(pinnedImage("b"));
-    host.failLego();
+    host.failLego(true);
     const result = host.run();
     expect(result.status).not.toBe(0);
     expect(result.calls).toContain("lego");
     expect(readFileSync(join(host.etc, "front-image.env"), "utf8")).toBe(
       `ALCOVE_BROKER_FRONT_IMAGE=${pinnedImage()}\n`,
     );
-    expect(host.marksLeft()).toEqual([]);
+    expect(result.calls.filter((call) => call.startsWith("systemctl"))).toEqual(
+      [],
+    );
+    const timer = host.runTimer();
+    expect(timer.status).not.toBe(0);
+    expect(timer.calls).toEqual(["lego"]);
   });
 
-  it("restarts the broker on the run after one that died with its restart owed", () => {
-    const host = fixtureHost();
+  // A run that wrote its changes and died at daemon-reload, before any restart.
+  const interrupted = (change) => {
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
-    appendFileSync(
-      join(host.unitDir, "alcove-broker.service"),
-      "# an earlier unit\n",
-    );
+    change(host);
     host.failDaemonReload(true);
-    expect(host.run().status).not.toBe(0);
-    expect(host.marksLeft()).toEqual([
-      join(host.etc, "broker-restart-pending"),
-    ]);
+    const failed = host.run();
+    expect(failed.status).not.toBe(0);
+    expect(failed.starts).toEqual([]);
     host.failDaemonReload(false);
+    return host;
+  };
+
+  it.each([
+    ["the renewal timer", (host) => host.runTimer()],
+    ["a re-run of install.sh", (host) => host.run()],
+  ])(
+    "has %s restart the front onto a unit file whose daemon-reload a failed run lost",
+    (_, next) => {
+      const host = interrupted((h) =>
+        appendFileSync(join(h.source, FRONT_UNIT), "# revision 2\n"),
+      );
+      expect(readFileSync(join(host.unitDir, FRONT_UNIT), "utf8")).toContain(
+        "# revision 2",
+      );
+      const result = next(host);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.starts).toEqual([frontStart(pinnedImage(), 1)]);
+      const reload = result.calls.indexOf("systemctl daemon-reload");
+      expect(reload).toBeGreaterThanOrEqual(0);
+      expect(
+        result.calls.indexOf(`systemctl restart ${FRONT_UNIT}`),
+      ).toBeGreaterThan(reload);
+      expect(host.runTimer().calls).toEqual(["lego"]);
+    },
+  );
+
+  it("has the renewal timer restart the front onto a certificate a failed run installed, while lego fails, and exit non-zero", () => {
+    const host = interrupted((h) => h.renewTo("2"));
+    expect(readFileSync(join(host.tls, "fullchain.pem"), "utf8")).toBe(
+      "certificate 2\n",
+    );
+    host.failLego(true);
+    const result = host.runTimer();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("lego did not renew");
+    expect(result.starts).toEqual([frontStart(pinnedImage(), 2)]);
+    expect(host.runTimer().starts).toEqual([]);
+  });
+
+  it("restarts the broker on the run after one that died before restarting it", () => {
+    const host = interrupted((h) =>
+      appendFileSync(join(h.source, BROKER_UNIT), "# revision 2\n"),
+    );
     const result = host.run();
     expect(result.status, result.stderr).toBe(0);
-    expect(result.restarts).toEqual([
-      `alcove-broker.service image=${pinnedImage()} cert=certificate 1`,
+    expect(result.starts).toEqual([
+      brokerStart(pinnedImage(), 1),
+      frontStart(pinnedImage(), 1),
     ]);
     expect(frontActions(result.calls)).toEqual([]);
-    expect(host.marksLeft()).toEqual([]);
+    expect(host.run().starts).toEqual([]);
   });
 
-  it("reloads the front on the run after one that died with its reload owed", () => {
-    const host = fixtureHost();
+  it("runs install.sh and the renewal timer one at a time", async () => {
+    const host = brokerHost();
     expect(host.run().status).toBe(0);
-    host.startBroker();
-    host.startFront();
-    writeFileSync(host.conf, "# an earlier configuration\n");
-    host.failDaemonReload(true);
-    expect(host.run().status).not.toBe(0);
-    expect(readFileSync(host.pending, "utf8")).toBe("reload\n");
-    host.failDaemonReload(false);
-    const result = host.run();
-    expect(result.status, result.stderr).toBe(0);
-    expect(frontActions(result.calls)).toEqual([
-      "docker exec alcove-broker-tls nginx -s reload",
-    ]);
-    expect(host.marksLeft()).toEqual([]);
+    host.clearLogs();
+    host.holdLego(true);
+    const install = host.spawnInstall();
+    await waitFor(() => host.calls().includes("lego"));
+    const timer = host.spawnTimer();
+    await new Promise((done) => setTimeout(done, 300));
+    expect(host.calls().filter((call) => call === "lego")).toHaveLength(1);
+    expect(timer.child.exitCode).toBe(null);
+    host.holdLego(false);
+    const [installed, renewed] = await Promise.all([install.exit, timer.exit]);
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(renewed.status, renewed.stderr).toBe(0);
+    expect(renewed.stderr).toContain("waiting for another install.sh");
+    const calls = host.calls();
+    const legoRuns = calls.flatMap((call, at) => (call === "lego" ? [at] : []));
+    expect(legoRuns).toHaveLength(2);
+    expect(legoRuns[1]).toBeGreaterThan(
+      calls.lastIndexOf("systemctl enable alcove-broker-cert.timer"),
+    );
   });
 });
 
