@@ -1,4 +1,5 @@
 import { MAX_RECORD_COUNT } from "./connection/frameSize.js";
+import { InternalConsistencyError } from "./errors.js";
 import { formatCount } from "./utils/formatCount.js";
 
 import type { ResolvedMatching } from "./linkageTermsPolicy.js";
@@ -165,6 +166,12 @@ function describeCardinality(shape: ResolvedRunShape): string | undefined {
             "one row per pair and can hold far more rows than either party " +
             "has records.")
       );
+    default: {
+      const unreachable: never = shape.cardinality;
+      throw new InternalConsistencyError(
+        `unhandled cardinality ${String(unreachable)}`,
+      );
+    }
   }
 }
 

@@ -262,10 +262,9 @@ function normalizeCSVRow(row: unknown): CSVRow {
  * The PapaParse configuration every CSV read shares, so {@link loadCSVFile} and
  * {@link streamCSVRows} parse identically.
  *
- * Inline, never `worker: true`: the bundled worker mis-applies `header: true`
- * and returns an empty `data`, which broke the production web inviter. No test
- * catches it (dev and browser tests resolve the worker); the header check in
- * {@link runSharedCSVParse} is the safety check.
+ * Inline, never `worker: true`: PapaParse's own worker broke the header parse
+ * in the production web bundle once, and no test drives it in that bundle. The
+ * non-string header check in {@link runSharedCSVParse} is the safety check.
  */
 const SHARED_CSV_PARSE_CONFIG = {
   worker: false,
@@ -371,8 +370,7 @@ async function runSharedCSVParse(
           );
           return;
         }
-        // A non-string header field means the parse malfunctioned (the bundled
-        // worker leaks a data row into `meta.fields`).
+        // A non-string header field means the parse malfunctioned.
         if (meta.fields?.some((field) => typeof field !== "string")) {
           reject(
             new InternalConsistencyError(

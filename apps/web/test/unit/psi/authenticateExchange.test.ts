@@ -218,6 +218,32 @@ describe("authenticateExchange", () => {
     );
   });
 
+  test.each(["initiator", "responder"] as const)(
+    "an unauthenticated peer requesting encryption fails as security, not the encryption mismatch (web %s)",
+    async (webRole) => {
+      // The encryption-mismatch refusal is reachable only past the handshake:
+      // a peer holding the wrong secret is refused as a trust failure, whatever
+      // it requested.
+      const [connWeb, connPeer] = createMessagePipe();
+      const wrongPsk = new Uint8Array(Buffer.from(SECRET_B, "base64url"));
+      const [web] = await Promise.allSettled([
+        authenticateExchange(connWeb, webRole, SECRET_A),
+        runKex(
+          connPeer,
+          webRole === "initiator" ? "responder" : "initiator",
+          wrongPsk,
+          true,
+        ),
+      ]);
+
+      expect(web.status).toBe("rejected");
+      if (web.status !== "rejected") return;
+      expect(web.reason).toBeInstanceOf(ConnectionError);
+      expect((web.reason as ConnectionError).kind).toBe("security");
+      expect((web.reason as ConnectionError).message).toBe(GENERIC_FAILURE);
+    },
+  );
+
   // --- Threaded invitation expiry ------------------------------------------
   //
   // authenticateExchange forwards the invitation's `expires` into core's auth
