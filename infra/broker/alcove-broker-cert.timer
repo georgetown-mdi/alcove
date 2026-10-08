@@ -1,0 +1,13 @@
+[Unit]
+Description=Renew the alcove standalone broker's TLS certificate daily
+
+[Timer]
+# Daily, because the ACME client renews only inside its window; the front
+# restarts only on a day the certificate changed. After the relay's own
+# renewal window (03:00 plus up to 1h) so the two never run together.
+OnCalendar=*-*-* 04:30:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

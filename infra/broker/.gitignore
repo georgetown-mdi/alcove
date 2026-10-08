@@ -1,0 +1,8 @@
+# What an operator fills in or a host renders: the host's name, cert material,
+# the ACME account, and the rendered front configuration.
+broker.env
+nginx.conf
+acme/
+*.pem
+*.key
+*.crt

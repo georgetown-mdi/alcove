@@ -1,0 +1,24 @@
+[Unit]
+Description=alcove peer-coordination broker (standalone entry point)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nobody
+WorkingDirectory=/opt/alcove-broker/src
+Environment=ALCOVE_BROKER_HOST=127.0.0.1
+Environment=ALCOVE_BROKER_PORT=9411
+ExecStart=/usr/local/bin/npm start -w packages/peerjs-broker -- --path /api
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
