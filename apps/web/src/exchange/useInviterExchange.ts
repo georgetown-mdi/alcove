@@ -82,6 +82,7 @@ import {
   TERMS_DIFFERENCE_PROBLEM,
   TERMS_DIFFERENCE_TITLE,
   partnerProtocolRefusalCopy,
+  partnerProtocolRefusalMessage,
   tooLargeFailureTitle,
 } from "@psi/managed/managedFailureCopy";
 
@@ -532,9 +533,7 @@ function failureContentFor(
     return {
       category: "config",
       title: copy.title,
-      message:
-        `The exchange stopped because ${copy.problem}, and running it again ` +
-        `stops the same way. ${copy.remedy}`,
+      message: partnerProtocolRefusalMessage("The exchange", copy),
       settingsCannotResolve: true,
       ...reportedCauseFields(sanitizedFailureMessage(error)),
     };

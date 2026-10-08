@@ -38,6 +38,7 @@ import {
   TOO_LARGE_SET_SOURCE,
   UNEXPLAINED_FAILURE_TITLE,
   partnerProtocolRefusalCopy,
+  partnerProtocolRefusalMessage,
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "@psi/managed/managedFailureCopy";
@@ -602,9 +603,7 @@ function partnerProtocolRefusalFailure(copy: {
   return {
     kind: "partner-protocol-refusal",
     title: copy.title,
-    message:
-      `The last run stopped because ${copy.problem}, and running it again ` +
-      `stops the same way. ${copy.remedy}`,
+    message: partnerProtocolRefusalMessage("The last run", copy),
     recovery: "ask-partner",
   };
 }

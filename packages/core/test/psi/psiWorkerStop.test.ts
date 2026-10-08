@@ -256,7 +256,6 @@ test.each(
         ok: false,
         error: new PsiOperationStoppedError().message,
         libraryFailure: false,
-        protocolRefusal: false,
         stopped: true,
       },
     ]);

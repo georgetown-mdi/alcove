@@ -250,8 +250,9 @@ export async function receivePsiSet(
  * each part's header against the part expected next and against the first
  * part's. A part with no set bytes is refused unless it is the only part of an
  * empty set, so a partner cannot hold the receive reading empty parts. Any
- * deviation is a {@link PartnerProtocolRefusalError}, and so is a set whose parts end
- * short of its declared length, refused after its last part is taken.
+ * deviation is a {@link PartnerProtocolRefusalError}, and so is a set whose
+ * parts end short of its declared length, refused after its last part is
+ * taken.
  *
  * A set whose declared length is within `maxSetBytes` but over
  * `capacity.setBytes` is this party's own limit rather than a deviation: the

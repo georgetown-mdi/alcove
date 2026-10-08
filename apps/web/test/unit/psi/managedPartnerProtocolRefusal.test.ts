@@ -11,7 +11,7 @@ import {
   createMessagePipe,
   exchangeTerms,
 } from "@alcove/core/testing";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
@@ -47,6 +47,19 @@ import type {
   ManagedExchangeLastRun,
   ManagedExchangeRecord,
 } from "@psi/managed/managedExchangeRecord";
+
+const build = vi.hoisted(() => ({ console: false }));
+
+vi.mock("@utils/clientConfig", async (importOriginal) =>
+  (await import("../../utils/clientConfigMock")).clientConfigMock(
+    importOriginal,
+    { isConsoleBuild: () => build.console },
+  ),
+);
+
+afterEach(() => {
+  build.console = false;
+});
 
 const NOW = Date.parse("2026-07-14T12:00:00.000Z");
 const RUN_AT = "2026-07-14T09:00:00.000Z";
@@ -223,6 +236,33 @@ describe("a one-shot exchange that refused its partner's data", () => {
         reportedCause: expect.stringContaining("incompatible Alcove version"),
       });
     }
+  });
+
+  test("a console that runs the older version is told to update its image, not reload", async () => {
+    build.console = true;
+    const mismatch = await versionMismatch(PROTOCOL_VERSION + 1);
+    const remedy =
+      "This console runs the older version: pull the latest Alcove image " +
+      "and restart the console.";
+    expect(failureFor("exchange", mismatch).message).toBe(
+      "The exchange stopped because you and your partner run different " +
+        "versions of Alcove, and running it again stops the same way. " +
+        remedy,
+    );
+    expect(
+      classifyManagedRunFailure(
+        mismatch,
+        { atLaunch: record(), afterRun: record({ lastRun: stamped }) },
+        undefined,
+        NOW,
+        true,
+      ),
+    ).toMatchObject({ message: expect.stringContaining(remedy) });
+    const partner = failureFor(
+      "exchange",
+      await versionMismatch(PROTOCOL_VERSION - 1),
+    );
+    expect(partner.message).toContain(VERSION_MISMATCH_REMEDY.partner);
   });
 
   test("a terms change this party did not take on keeps its own alert", () => {
