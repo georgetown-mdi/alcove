@@ -1,3 +1,7 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import logLibrary from "loglevel";
 import { afterEach, describe, expect, test } from "vitest";
 
@@ -5,6 +9,7 @@ import {
   DISPLAY_TRUNCATION_MARKER,
   getLogger,
   getLoggerForVerbosity,
+  setDiagnosticSink,
   setLogLevel,
 } from "@alcove/core";
 
@@ -15,6 +20,11 @@ import {
   sshWireTraceLine,
 } from "../../../src/connection/sftpWireTrace";
 import type { WireTraceLogger } from "../../../src/connection/sftpWireTrace";
+import { configureLogFile } from "../../../src/util/logging";
+import {
+  captureStdio,
+  snapshotDiagnosticSinkAndLevel,
+} from "../../loggingTestSupport";
 
 // The escaping and the level gate on the SSH stack's diagnostic lines, and the
 // level the logger the trace rides comes up at -- driven against the real
@@ -158,5 +168,43 @@ describe("the logger the trace rides", () => {
     const log = getLogger(SSH_WIRE_TRACE_LOGGER_NAME);
     expect(log.getLevel()).toBe(logLibrary.levels.DEBUG);
     expect(sshWireTrace(log)).toBeUndefined();
+  });
+});
+
+describe("a trace left attached after the --log-file closes", () => {
+  snapshotDiagnosticSinkAndLevel();
+
+  test("writes its next line to stderr, not the file, until detached", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-wire-trace-"));
+    try {
+      const logPath = path.join(dir, "run.log");
+      setDiagnosticSink(undefined);
+      const sink = configureLogFile(logPath);
+      setLogLevel(logLibrary.levels.TRACE);
+      const trace = sshWireTrace(getLogger(SSH_WIRE_TRACE_LOGGER_NAME))!;
+      trace.emit("Handshake completed");
+      sink.close();
+      const fileAtClose = fs.readFileSync(logPath, "utf8");
+
+      const { stdoutWrites, stderrWrites, restore } = captureStdio();
+      try {
+        trace.emit("Socket ended");
+        trace.detach();
+        trace.emit("Socket closed");
+      } finally {
+        restore();
+      }
+
+      expect(fileAtClose).toContain("Handshake completed");
+      expect(fs.readFileSync(logPath, "utf8")).toBe(fileAtClose);
+      expect(stderrWrites.join("")).toMatch(
+        new RegExp(
+          `^\\[[^\\]]+\\] \\[TRACE\\] \\[${SSH_WIRE_TRACE_LOGGER_NAME}\\] Socket ended\\n$`,
+        ),
+      );
+      expect(stdoutWrites).toEqual([]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

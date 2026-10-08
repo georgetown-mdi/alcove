@@ -1,5 +1,6 @@
 import { Readable } from "node:stream";
 
+import Papa from "papaparse";
 import { expect, test } from "vitest";
 
 import {
@@ -50,12 +51,12 @@ test("isCsvDelimiter accepts a tab and every printable ASCII character but the q
 });
 
 test("isCsvDelimiter refuses everything the read and the write could not agree on", () => {
-  // Multi-character: PapaParse accepts one (driven against the parser), and no
-  // single character could be escaped against it on the write side.
+  // Multi-character: no single character could be escaped against it on the
+  // write side, though the parser accepts one (pinned below).
   expect(isCsvDelimiter("::")).toBe(false);
   expect(isCsvDelimiter("")).toBe(false);
-  // The quote is RFC 4180's escape character, and PapaParse ignores it as a
-  // delimiter and detects one of its own instead.
+  // The quote is RFC 4180's escape character, and the parser ignores it as a
+  // delimiter (pinned below).
   expect(isCsvDelimiter('"')).toBe(false);
   expect(isCsvDelimiter("\n")).toBe(false);
   expect(isCsvDelimiter("\r")).toBe(false);
@@ -64,6 +65,31 @@ test("isCsvDelimiter refuses everything the read and the write could not agree o
   expect(isCsvDelimiter("\u00a7")).toBe(false);
   expect(isCsvDelimiter("\u0000")).toBe(false);
   expect(isCsvDelimiter(String.fromCharCode(127))).toBe(false);
+});
+
+test("the parser splits on a multi-character delimiter", () => {
+  const parsed = Papa.parse<CSVRow>("id::name\n1::alice\n", {
+    delimiter: "::",
+    header: true,
+    skipEmptyLines: true,
+  });
+  expect(parsed.errors).toEqual([]);
+  expect(parsed.meta.delimiter).toBe("::");
+  expect(parsed.data).toEqual([{ id: "1", name: "alice" }]);
+});
+
+test("the parser ignores a double-quote delimiter and splits on a comma", () => {
+  const parse = (content: string) =>
+    Papa.parse<CSVRow>(content, {
+      delimiter: '"',
+      header: true,
+      skipEmptyLines: true,
+    });
+  const commaFile = parse("id,name\n1,alice\n");
+  expect(commaFile.meta.delimiter).toBe(",");
+  expect(commaFile.data).toEqual([{ id: "1", name: "alice" }]);
+  // No detection: a pipe file reads as one column.
+  expect(parse("id|name\n1|alice\n").meta.fields).toEqual(["id|name"]);
 });
 
 test("normalizeCsvDelimiter resolves the tab and detect spellings and leaves everything else", () => {

@@ -20,6 +20,7 @@ import {
   unknownFrameNotice,
 } from "@psi/jobClient/serverJobExchangeDriver";
 import { FD3_LINE_CAP } from "@jobs/cliDriver";
+import { MAX_JOB_STATUS_RESPONSE_BYTES } from "@psi/jobClient/jobApiBody";
 import { buildRunOutputs } from "@psi/runOutputs";
 
 import {
@@ -1234,6 +1235,78 @@ describe("createServerJobExchangeDriver intent and cancellation", () => {
     const failure = events.onError.mock.calls[0][0] as { category: string };
     expect(failure.category).toBe("exchange");
   });
+});
+
+describe("an unreadable job-API body is classified as a thrown SyntaxError was", () => {
+  const unreadableBodies = [
+    { name: "a body that is not JSON", body: "{not json" },
+    {
+      name: "a body over the status cap",
+      body: JSON.stringify({
+        id: "job-1",
+        pad: "a".repeat(MAX_JOB_STATUS_RESPONSE_BYTES),
+      }),
+    },
+  ];
+
+  const answering =
+    (body: string, status: number): typeof fetch =>
+    () =>
+      Promise.resolve(
+        new Response(body, {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+  async function run(client: JobApiClient) {
+    const events = driverEvents(new AbortController().signal);
+    await createServerJobExchangeDriver(driverConfig(), client).run(events);
+    return events;
+  }
+
+  const thrownSyntaxError = () =>
+    Promise.reject(new SyntaxError("Unexpected token n in JSON"));
+
+  test.for(unreadableBodies)(
+    "a create answering $name fails as a thrown SyntaxError does",
+    async ({ body }) => {
+      const { client: read } = scriptedClient([result(true)]);
+      read.createJob = createFetchJobApiClient(answering(body, 201)).createJob;
+      const { client: thrown } = scriptedClient([result(true)]);
+      thrown.createJob = thrownSyntaxError;
+
+      const categories = async (client: JobApiClient) =>
+        (await run(client)).onError.mock.calls.map(
+          (call) => (call[0] as { category: string }).category,
+        );
+      const readCategories = await categories(read);
+      expect(readCategories).toEqual(["exchange"]);
+      expect(readCategories).toEqual(await categories(thrown));
+    },
+  );
+
+  test.for(unreadableBodies)(
+    "a post-terminal read answering $name still delivers the result, as a thrown SyntaxError does",
+    async ({ body }) => {
+      const { client: read } = scriptedClient([result(true)]);
+      read.fetchFinalRunStatus = createFetchJobApiClient(
+        answering(body, 200),
+      ).fetchFinalRunStatus;
+      const { client: thrown } = scriptedClient([result(true)]);
+      thrown.fetchFinalRunStatus = thrownSyntaxError;
+
+      const delivered = async (client: JobApiClient) => {
+        const events = await run(client);
+        expect(events.onError).not.toHaveBeenCalled();
+        return events.onResult.mock.calls[0][0] as RunOutputs;
+      };
+      const readOutputs = await delivered(read);
+      expect(resultsUrlOf(readOutputs)).toBe("/api/jobs/job-1/result");
+      expect(readOutputs.record).toBeUndefined();
+      expect(readOutputs).toEqual(await delivered(thrown));
+    },
+  );
 });
 
 describe("createFetchJobApiClient over an injected fetch", () => {

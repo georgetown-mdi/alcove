@@ -40,7 +40,8 @@ export const parseMessageByteCount = (name: string): number | undefined => {
 // The NNN sequence counter of a timestamped message filename
 // (`<id>-<ts>-<NNN>-<byteCount>.json`), parsed right-anchored. Only meaningful
 // for a timestamped name (retain mode): on any other name the segment is part of
-// the id and the result is wrong, not undefined, and nothing guards it at runtime.
+// the id and the result is wrong, not undefined, and nothing guards it at runtime;
+// the "is not read outside retain mode" test in fileSyncMessageLoop.test.ts holds its one caller to retain mode.
 /** @internal */
 export const parseTimestampedMessageNNN = (
   name: string,

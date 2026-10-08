@@ -16,9 +16,9 @@ export const SSH_WIRE_TRACE_LOGGER_NAME = "ssh";
 
 /**
  * Cap on the escaped characters one traced line emits. Above the 256-character
- * `sanitizeForDisplay` default, which would cut the algorithm name-lists (361
- * characters against the pinned stack); still bounded so a server padding its
- * name-lists cannot fill the operator's log.
+ * `sanitizeForDisplay` default, which would cut the stack's algorithm name-lists
+ * (sftpWireTraceLineLength.test.ts measures them); still bounded so a server
+ * padding its name-lists cannot fill the operator's log.
  */
 export const SSH_WIRE_TRACE_MAX_DISPLAY_LENGTH = 1024;
 
@@ -47,8 +47,7 @@ export interface SshWireTrace {
   emit: (line: string) => void;
   /**
    * Emit nothing further; idempotent. Detach when the connection is done: a line
-   * emitted after the command's log sink is gone falls through to the raw console
-   * and prints a stack dump the `--log-file` never sees.
+   * emitted after the command's `--log-file` closes goes to stderr, not the file.
    */
   detach: () => void;
 }

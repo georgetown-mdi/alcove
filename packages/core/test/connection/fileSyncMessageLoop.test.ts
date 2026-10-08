@@ -821,6 +821,50 @@ describe("FileSyncMessageLoop counter commit points", () => {
   });
 });
 
+describe("FileSyncMessageLoop message counter", () => {
+  // A timestamped peer message whose counter is not recvSeq (0): delivered
+  // only where the scan does not read the counter.
+  const plantTimestampedMessageAtCounter = (
+    files: Map<string, Buffer>,
+  ): void => {
+    const body = objectMessage({ m: 1 }, 0);
+    const name = messageFilename({
+      id: PEER,
+      timestampInFilename: true,
+      byteCount: body.length,
+      seq: 5,
+      ts: Date.UTC(2026, 0, 2, 3, 4, 5),
+    });
+    files.set(`${DIR}/${name}`, body);
+  };
+
+  test("is not read outside retain mode", async () => {
+    const files = new Map<string, Buffer>();
+    const f = makeLoop({ timestampInFilename: true }, {}, files);
+    plantTimestampedMessageAtCounter(files);
+
+    await f.pollOnce();
+    f.loop.stop();
+
+    expect(f.emitted.map((e) => e.event)).toEqual(["data"]);
+  });
+
+  test("holds back the same message in retain mode", async () => {
+    const files = new Map<string, Buffer>();
+    const f = makeLoop(
+      { retainFiles: true, timestampInFilename: true },
+      {},
+      files,
+    );
+    plantTimestampedMessageAtCounter(files);
+
+    await f.pollOnce();
+    f.loop.stop();
+
+    expect(f.emitted).toEqual([]);
+  });
+});
+
 describe("FileSyncMessageLoop poller lifecycle", () => {
   test("peer-abort path clears pollerActive synchronously before the error emit", async () => {
     const f = makeLoop();
