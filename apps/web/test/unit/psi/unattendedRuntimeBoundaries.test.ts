@@ -405,7 +405,7 @@ describe("writing a run's results into the granted folder", () => {
   test("is reached from the scheduled run and the attended run of a recurring exchange, and from nowhere else", () => {
     expect(appSymbolSites(RUN_RESULTS_WRITER)).toEqual([
       "psi/managed/managedScheduleRuntime.ts: writeUnattendedResultsToFolder",
-      "recurring/ManagedRunSurface.tsx: ManagedRunSurface.run",
+      "recurring/useManagedRunSurface.ts: useManagedRunSurface.run",
     ]);
   });
 
