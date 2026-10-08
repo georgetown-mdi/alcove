@@ -1,40 +1,26 @@
 import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
 
-// PSI crypto backend selection: participant.ts consumes a PSILibrary a
-// caller injects (see RunExchangeOptions.psiLibrary in exchange.ts), and
-// this picks which implementation to inject. Node prefers the native
-// N-API addon (faster EC, parallelizable) and falls back to the portable
-// WebAssembly build; the browser always uses WASM. The addon wraps the
-// same private-join-and-compute P-256 curve and wire format as WASM, so
-// the two interoperate byte-for-byte -- pinned by the
-// psi-engine-wire-vectors.json fixture.
+// Picks the PSILibrary a caller injects (RunExchangeOptions.psiLibrary). The
+// two backends interoperate byte-for-byte, pinned by the
+// psi-engine-wire-vectors.json fixture. See
+// docs/spec/PROTOCOL.md#psi-base-function.
 
-/**
- * Which PSI crypto engine {@link loadPsiBackend} resolved: the native N-API
- * addon, or the portable WebAssembly build.
- */
+/** Which PSI crypto engine {@link loadPsiBackend} resolved. */
 type PsiBackendKind = "native" | "wasm";
 
 /**
- * Loaders the environment supplies to {@link loadPsiBackend}. The selector owns
- * the node-vs-browser and prebuild-present-vs-absent decision; the caller owns
- * how each backend is imported, so no module resolution leaks into this pure
- * decision -- and a browser bundle pulls in neither the node WASM entry nor the
- * native addon.
+ * Loaders the environment supplies to {@link loadPsiBackend}. The caller owns
+ * how each backend is imported, so a browser bundle pulls in neither the node
+ * WASM entry nor the native addon.
  */
 interface PsiBackendLoaders {
   /**
-   * Loads the native addon backend, or resolves `null` when no prebuild is
-   * available for this platform. Consulted only under Node. A throw is treated
-   * the same as `null` -- the selector falls back to WASM either way, so a
-   * missing or broken addon never breaks correctness. Omit on the browser.
+   * Loads the native addon, or resolves `null` when no prebuild is available
+   * for this platform. Consulted only under Node; a throw falls back to WASM
+   * as `null` does. Omit on the browser.
    */
   readonly loadNative?: () => Promise<PSILibrary | null>;
-  /**
-   * Loads the WebAssembly backend: always available, the default-correct
-   * fallback. The caller chooses the node vs web WASM entry so the selector
-   * stays bundler-agnostic.
-   */
+  /** Loads the WebAssembly backend from the node or web entry. */
   readonly loadWasm: () => Promise<PSILibrary>;
 }
 
@@ -42,16 +28,12 @@ interface PsiBackendLoaders {
 export interface PsiBackendOptions {
   /**
    * Whether this is a Node runtime (native addon eligible). Defaults to
-   * {@link detectNodeRuntime}. Pass an explicit value where the environment is
-   * known statically -- the CLI is always Node, the web app always a browser --
-   * which also makes the decision unit-testable without a real runtime.
+   * {@link detectNodeRuntime}; pass it where the environment is known.
    */
   readonly isNode?: boolean;
   /**
-   * Invoked when the native backend was eligible (Node with a `loadNative`
-   * loader) but yielded no library, just before falling back to WASM. `error`
-   * is set when the loader threw and absent when it reported no prebuild
-   * (resolved `null`). Diagnostics only -- the fallback happens regardless.
+   * Called before falling back to WASM when the native backend was eligible
+   * but yielded no library; `error` is set when the loader threw.
    */
   readonly onNativeUnavailable?: (info: { error?: unknown }) => void;
 }
@@ -63,11 +45,8 @@ export interface PsiBackendSelection {
 }
 
 /**
- * Best-effort check for a Node runtime. True only when a Node `process` is
- * present and no DOM `window` is: a bundled browser build can shim `process`, so
- * the absent window disambiguates that shim from real Node. Read through
- * `globalThis` so the reference type-checks without Node's ambient types and is
- * safe in every build.
+ * Best-effort check for a Node runtime: a Node `process` and no DOM `window`,
+ * since a browser bundle can shim `process`.
  */
 export function detectNodeRuntime(): boolean {
   const g = globalThis as {
@@ -78,10 +57,8 @@ export function detectNodeRuntime(): boolean {
 }
 
 /**
- * Selects the PSI crypto backend: under Node, prefer the native addon and fall
- * back to WASM when no prebuild is available or the addon fails to load; in the
- * browser, always WASM. Correctness never depends on the addon being present --
- * the WASM path is the default-correct fallback.
+ * Selects the PSI crypto backend: under Node the native addon, falling back to
+ * WASM when it is unavailable or fails to load; in the browser, always WASM.
  */
 export async function loadPsiBackend(
   loaders: PsiBackendLoaders,

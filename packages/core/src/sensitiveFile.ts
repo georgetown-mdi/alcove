@@ -13,75 +13,46 @@ import {
 } from "./utils/operatorSuppliedText.js";
 
 // The single chokepoint for parsing documents that may hold secrets: the
-// operator's alcove.yaml (inline SFTP credentials -- server.password /
-// privateKey / privateKeyPassphrase), the .alcove.key shared secret, the
-// signing identity's P-256 private key (all stored at 0600), and -- in the web
-// app -- a YAML/JSON linkage-terms document an operator imports. The invariant
-// these helpers enforce in one place is: the content of such a document must
-// never reach an error message, log, or stderr -- only a caller-supplied
-// path-only label may.
+// operator's alcove.yaml (inline SFTP credentials), the .alcove.key shared
+// secret, the signing identity's private key, and a linkage-terms document the
+// web app imports. The content of such a document must never reach an error
+// message, log, or stderr; only a caller-supplied path-only label may.
 //
-// Shared by both apps. Imports nothing host-specific (just `yaml` and core's
-// UsageError), so it is browser-safe: the web app routes its YAML/JSON config
-// import through these instead of a raw parser. An ESLint ban forbids the raw
-// parsers across packages/core/src (this module is the exempt chokepoint),
-// apps/web/src, apps/cli/src (outside the CLI's thin re-export of this module),
-// and packages/peerjs-broker/src, so no caller can silently reopen a leak
-// channel. The filesystem READ stays with each CLI caller -- an errno holds
-// only a path and code, no content.
+// Browser-safe and shared by both apps. An ESLint ban forbids the raw parsers
+// across packages/core/src (this module exempt), apps/web/src, apps/cli/src
+// (outside the CLI's re-export of this module), and
+// packages/peerjs-broker/src. The filesystem read stays with each CLI caller:
+// an errno contains only a path and code.
 //
-// The parsers leak through several independent channels, each easy to
-// reintroduce at a single call site:
+// The parsers leak through four channels:
 //
-//   1. YAML.parse throws a YAMLParseError on a syntax error and a plain
-//      ReferenceError on an unresolved alias; both messages embed a snippet of
-//      the offending source. We never interpolate the caught error -- path only.
-//   2. YAML.parseDocument collects syntax errors in doc.errors (same snippet),
-//      and defers alias resolution: an unresolved alias leaves doc.errors empty
-//      and throws only when the document is materialized (toString / toJS),
-//      echoing the alias token. Both are guarded here.
-//   3. YAML.parse / parseDocument emit NON-fatal warnings (an unresolved
-//      custom tag, a bad !!int/!!float cast) and then return normally, so no
-//      try/catch fires. The warning holds the full source line; the yaml
-//      package routes it to process.emitWarning (STDERR) under Node, or to
-//      console.warn in a browser where process is absent (the same
-//      secret-bearing text, just a different sink). logLevel "error"
-//      suppresses BOTH sinks while still THROWING on fatal errors -- this
-//      module is shared with the browser, so closing the console.warn sink
-//      matters as much as the Node one. (logLevel "silent" would also swallow
-//      the fatal-error throw, returning a mangled partial object, so it is NOT
-//      used.)
-//   4. JSON.parse throws a SyntaxError that, on a non-JSON document start, echoes
-//      a leading span of the source (the shared secret / private key if the
-//      document leads with it). Path only.
+//   1. YAML.parse throws a YAMLParseError on a syntax error and a
+//      ReferenceError on an unresolved alias, both embedding a source snippet.
+//      The caught error is never interpolated.
+//   2. YAML.parseDocument collects syntax errors in doc.errors, and an
+//      unresolved alias throws only when the document is materialized
+//      (toString / toJS). Both are guarded here.
+//   3. Non-fatal warnings (an unresolved custom tag, a bad !!int cast) contain
+//      the source line and go to process.emitWarning under Node or
+//      console.warn in a browser. logLevel "error" suppresses both while still
+//      throwing on fatal errors; "silent" would also swallow the throw.
+//   4. JSON.parse throws a SyntaxError that can echo a leading span of the
+//      source.
 //
-// Schema validation (Zod) over the parsed value is a separate, safe layer the
-// callers keep: its messages name the field, path, and format rule, never the
-// value.
+// Zod validation of the parsed value is a separate layer: its messages name
+// the field and rule, never the value.
 
 /**
- * yaml parse options for a credential-bearing document: suppress non-fatal
- * warnings (they echo source to stderr; see channel 3 above) while still
- * throwing on fatal errors, and cap alias expansion so an alias bomb
- * (billion-laughs) cannot blow up memory before the schema's own bounds
- * bite.
- *
- * `maxAliasCount: 100` pins the library's current default as an explicit,
- * enforced check rather than an implicit one a future yaml release could
- * change; the web import path also length-caps the input before this runs.
+ * Suppresses non-fatal warnings (channel 3) and caps alias expansion against
+ * an alias bomb; `maxAliasCount: 100` pins the library default explicitly.
  */
 const SAFE_YAML_OPTIONS = { logLevel: "error", maxAliasCount: 100 } as const;
 
 /**
  * The path-only descriptor a caller names the document by, such as
- * `` `config file ${path}` ``.
- *
- * A caller that knows the path is the OPERATOR's own composes the label with
- * {@link ./utils/operatorSuppliedText.messageWithOperatorText} instead of as a
- * string, so the failure below renders that path as the operator typed it
- * rather than escaping its separators. A plain string keeps the escape, which
- * is what a label naming no operator path -- the web app's fixed document
- * names -- asks for.
+ * `` `config file ${path}` ``. A label naming the operator's own path is
+ * composed with {@link ./utils/operatorSuppliedText.messageWithOperatorText}
+ * so the failure renders it unescaped; a plain string keeps the escape.
  */
 export type SensitiveFileLabel = string | MessageWithOperatorText;
 
@@ -103,10 +74,8 @@ function yamlParseFailure(fileLabel: SensitiveFileLabel): UsageError {
 }
 
 /**
- * Parse YAML that may contain secrets, returning the decoded value. On any
- * failure throws a {@link UsageError} naming `fileLabel` only (which the caller
- * builds from the path), never the parser's source-bearing message. `fileLabel`
- * is a path-only descriptor such as `` `config file ${path}` ``.
+ * Parse YAML that may contain secrets. On any failure throws a
+ * {@link UsageError} naming `fileLabel` only.
  */
 export function parseSensitiveYaml(
   source: string,
@@ -120,18 +89,12 @@ export function parseSensitiveYaml(
 }
 
 /**
- * Parse, edit, and re-serialize a YAML {@link Document} in one step, for an
- * in-place edit that preserves comments and key order (the host-key-pin write,
- * which must not rewrite the whole file). Lines the edit does not change keep
- * their bytes from `source` where {@link keepUntouchedSourceLines} can restore
- * them. The live {@link Document} never leaves this module: the caller's
- * `edit` callback receives it to mutate (e.g. `setIn`) and returns nothing, so
- * a caller cannot accidentally `toJS()`/`toString()`/`JSON.stringify` it back
- * into an error elsewhere -- the one leak channel the ESLint ban cannot see (a
- * method call on a Document instance, not on the YAML namespace). Guards the
- * syntax-error channel (doc.errors, before the edit) and the deferred-alias
- * channel (the alias shows only when toString materializes the document, after
- * the edit). An error the `edit` callback itself throws propagates unchanged.
+ * Parse, edit, and re-serialize a YAML {@link Document} in one step, keeping
+ * comments, key order and, where {@link keepUntouchedSourceLines} can, the
+ * bytes of unchanged lines. The {@link Document} never leaves this module:
+ * `edit` mutates it and returns nothing, since a method call on a Document is
+ * a leak the ESLint ban cannot see. Guards channel 2 on both sides of the
+ * edit; an error `edit` throws propagates unchanged.
  */
 export function editSensitiveYamlDocument(
   source: string,
@@ -176,16 +139,10 @@ function keepUntouchedSourceLines(source: string, edited: string): string {
 }
 
 /**
- * Parse JSON that may contain secrets. On any failure throws a
- * {@link UsageError} naming `fileLabel` only, never the parser's message (which
- * can echo a leading span of the source -- channel 4).
- *
- * Routes through {@link parseBoundedJson} rather than a bare `JSON.parse`, so
- * it inherits the structural pre-bound that stops a pathological object/array
- * from driving the parser into an uncatchable, process-terminating abort. Both
- * the bound's byte-free error and `JSON.parse`'s source-bearing one are caught
- * here and replaced with the path-only failure; the byte-free bound error
- * stays on as its `cause`.
+ * Parse JSON that may contain secrets, under {@link parseBoundedJson}'s
+ * structural bound. On any failure throws a {@link UsageError} naming
+ * `fileLabel` only (channel 4); a {@link JsonStructureBoundError}, which
+ * contains no source bytes, is kept as its `cause`.
  */
 export function parseSensitiveJson(
   source: string,
