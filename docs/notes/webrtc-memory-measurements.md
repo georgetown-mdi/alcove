@@ -10,11 +10,11 @@ _Status: measurement record, built. The current measurement, the fit and the fig
 
 Commit 80452d2c3 holds a round's matched records in typed arrays. On 2026-10-03, before it, the 1,000,000-record peaks were 2,541,735,936 bytes (sender) and 2,747,879,424 (receiver), in the second key with the main heap at 1.73 and 1.81 GB.
 
-On the 2026-10-08 measurement host on 2026-10-05, one run at each commit, the main heap at the peak fell from 1.73 to 0.68 GB (sender) and 1.77 to 0.65 GB (receiver) across it, and the sender's peak from 2,554,142,720 to 2,245,230,592 bytes. The receiver's did not fall (2,700,550,144 and 2,740,928,512).
+On the same bench host on 2026-10-05, one run at each commit, the main heap at the peak fell from 1.73 to 0.68 GB (sender) and 1.77 to 0.65 GB (receiver) across it, and the sender's peak from 2,554,142,720 to 2,245,230,592 bytes. The receiver's did not fall (2,700,550,144 and 2,740,928,512).
 
 ## Commit 72fb8155b did not move the peak
 
-Commit 72fb8155b writes the exchange record's and receipt's encoding in chunks. Three 1,000,000-record runs on its parent, 1a0504a44, on the same host the same day (2026-10-05), had mean peaks of 2,223,104,000 bytes (sender) and 2,701,021,184 (receiver), against 2,226,461,355 and 2,718,849,707 on aa35fa977: 0.15% and 0.66% apart, inside the spread of either set. No peak fell after the last key, where the steps it changed run.
+Commit 72fb8155b writes the exchange record's and receipt's encoding in chunks. Three 1,000,000-record runs on its parent, 1a0504a44, on the same host on 2026-10-08, in the same session as the nine runs on aa35fa977, had mean peaks of 2,223,104,000 bytes (sender) and 2,701,021,184 (receiver), against 2,226,461,355 and 2,718,849,707 on aa35fa977: 0.15% and 0.66% apart, inside the spread of either set. No peak fell after the last key, where the steps it changed run.
 
 ## The two-host point
 

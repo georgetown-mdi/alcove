@@ -572,7 +572,7 @@ at 7,700,000 records fall 2.4% (sender) and 3.8% (receiver) under its peaks,
 and the receiver's peak at 1,000,000 records did not fall with that commit.
 
 Against the highest of all thirteen fitted peaks a role at each size, which
-at 1,000,000 records includes the three runs on 1a0504a44 on 2026-10-05, so
+at 1,000,000 records includes the three runs on 1a0504a44 on 2026-10-08, so
 those two rows are not the highest-of-three peaks in the first table:
 
 | Records a side | Sender figure | Over the peak | Receiver figure | Over the peak |
