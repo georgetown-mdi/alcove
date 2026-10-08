@@ -122,6 +122,21 @@ const storeFault = vi.hoisted(() => ({
   aborted: undefined as unknown as Promise<DOMException | null>,
   recordAbort: undefined as unknown as (error: DOMException | null) => void,
 }));
+
+/** The error `aborted` resolves with, or a failure naming the missing abort. */
+function abortRecorded(): Promise<DOMException | null> {
+  return Promise.race([
+    storeFault.aborted,
+    new Promise<never>((_, reject) =>
+      setTimeout(
+        () =>
+          reject(new Error("the store never aborted the stamp's transaction")),
+        4_000,
+      ),
+    ),
+  ]);
+}
+
 const realPut = IDBObjectStore.prototype.put;
 
 function installStoreFault(): void {
@@ -214,7 +229,7 @@ test("an aborted stamp rejects with the failed request's error, which transactio
   expect(storeFault.requestError?.name).toBe("ConstraintError");
   expect(rejection).toBe(storeFault.requestError);
   // The abort event follows in a later task, holding the same error.
-  expect(await storeFault.aborted).toBe(storeFault.requestError);
+  expect(await abortRecorded()).toBe(storeFault.requestError);
   expect((await getManagedExchange(created.id))?.lastRun).toBeUndefined();
 });
 
@@ -240,7 +255,7 @@ test("a run whose success stamp the store aborts shows its results and says the 
   // note shows once the write rejects at the error event; the abort event
   // follows in a later task, so it may not have fired yet.
   expect(storeFault.atError).toBeNull();
-  expect((await storeFault.aborted)?.name).toBe("ConstraintError");
+  expect((await abortRecorded())?.name).toBe("ConstraintError");
   // The rotation committed before the stamp; the stamp did not.
   const stored = await getManagedExchange(created.id);
   expect(stored?.sharedSecret).not.toBe(created.sharedSecret);

@@ -2142,7 +2142,7 @@ test("a re-registration the server never confirms ends at the deadline, not its 
     attemptMs + ID_TAKEN_RETRY_FIRST_DELAY_MS + BROKER_OPEN_TIMEOUT_MS,
   );
   await vi.advanceTimersByTimeAsync(
-    beforeWaitBegan + waitMs - marginMs - Date.now(),
+    Math.max(0, beforeWaitBegan + waitMs - marginMs - Date.now()),
   );
   expect(await settlementOf(session)).toBe("waiting");
   await vi.advanceTimersByTimeAsync(2 * marginMs);
