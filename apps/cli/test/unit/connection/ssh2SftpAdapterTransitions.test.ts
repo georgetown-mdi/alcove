@@ -341,8 +341,6 @@ describe("session transitions", () => {
     internals.session.beginClose();
     internals.forceCloseAbandonedTeardown();
     expect(socket.destroy).toHaveBeenCalledOnce();
-    // The record is set only on a connection already closing, which is why
-    // nothing ever clears it.
     expect({
       recorded: internals.session.abandonedTeardownClosedTransport,
       closing: internals.session.isClosing,

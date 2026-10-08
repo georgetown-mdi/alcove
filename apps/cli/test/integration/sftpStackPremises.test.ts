@@ -1433,12 +1433,17 @@ inProcessOnly(
       );
       if (child.exitCode === null) await delay(SUBSYSTEM_PHASE_PARKED_MS);
 
+      const resources = (
+        reported === "" ? [] : JSON.parse(reported)
+      ) as string[];
       expect({
-        resources: (reported === "" ? [] : JSON.parse(reported)) as string[],
+        socketHeld: resources.includes("TCPSocketWrap"),
+        timersHeld: resources.filter((name) => name === "Timeout"),
         exitCode: child.exitCode,
         signalCode: child.signalCode,
       }).toEqual({
-        resources: expect.arrayContaining(["TCPSocketWrap"]),
+        socketHeld: true,
+        timersHeld: [],
         exitCode: null,
         signalCode: null,
       });
