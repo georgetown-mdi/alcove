@@ -20,16 +20,8 @@ import type { JobCreateIntent } from "@jobContract/intentSchemas";
 import type { JobRecord } from "@jobs/jobManager";
 
 /**
- * An authored SFTP connection names its credential by `@path`, and the console's
- * job child, the real `alcove`, reads that file when it loads its configuration
- * -- not the server when the operator authors the connection. So a credential
- * rotated in place between authoring and the run is the one the run uses.
- *
- * What the run read is observed through the CLI's own refusal of an empty
- * credential file at configuration load: a credential emptied after authoring
- * is refused there, and one filled after authoring passes the load and the run
- * dials the server. The server is a loopback port nothing listens on, so a run
- * past the load ends unreachable without a partner.
+ * The run's credential read is observed through the CLI's refusal of an empty
+ * credential file at configuration load, versus a connect failure past it.
  */
 
 // Satisfies every key of the fixture's default linkage terms, so the CLI's
