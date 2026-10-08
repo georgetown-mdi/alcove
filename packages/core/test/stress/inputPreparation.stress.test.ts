@@ -18,7 +18,7 @@ import { stressMemory } from "./stressMemory";
 // input at 2^24).
 // The probe runs in its own process under the heap limit the container
 // images set, and reports each stage's time and the process's peak resident
-// set. About eight minutes and 12 GB resident on the measured host, which is
+// set. About 13 minutes and 12 GB resident on the measured host, which is
 // why it is the opt-in tier. ALCOVE_STRESS_PREPARATION_ROWS lowers the row
 // count for a quicker run; the maximum is lowered with it to the row count, so
 // the check is still taken at the bound.
