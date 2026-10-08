@@ -38,6 +38,10 @@ import {
   transformPatternSizeMessage,
 } from "../../src/config/transformRegexDialect";
 import { STANDARDIZATION_FUNCTION_DESCRIPTORS } from "../../src/standardization";
+import {
+  CanonicalEncodingError,
+  canonicalString,
+} from "../../src/utils/canonical";
 import { MAX_ENCODED_INVITATION_LENGTH } from "../../src/config/invitation";
 import { pipelineAlwaysDrops } from "../../src/linkageSatisfiability";
 import { describeDecodeError } from "../../src/utils/describeDecodeError";
@@ -719,12 +723,33 @@ test("a swap pair whose transform params cannot be canonically encoded is refuse
   // outside the reproducible canonical domain -- an integer past 2^53 -- reaches
   // the pair comparison. It is answered by a refusal, even for two identically
   // spelled pipelines, rather than by an exception escaping the safe parse.
-  const unencodable = [{ function: "to_upper_case", params: { scale: 1e300 } }];
+  const unencodable = [
+    { function: "to_upper_case", params: { scale: 2 ** 53 } },
+  ];
+  expect(() => canonicalString(unencodable)).toThrow(CanonicalEncodingError);
+  // The same pipeline on both positions of an unswapped key passes the schema,
+  // so the refusal below is the pair comparison's.
+  expect(
+    safeParseLinkageTerms({
+      ...swappedTransforms(unencodable, unencodable),
+      linkageKeys: [
+        {
+          name: "Unswapped",
+          elements: [
+            { field: "firstName", transform: unencodable },
+            { field: "lastName", transform: unencodable },
+          ],
+        },
+      ],
+    }).success,
+  ).toBe(true);
+
   const result = safeParseLinkageTerms(
     swappedTransforms(unencodable, unencodable),
   );
   expect(result.success).toBe(false);
   if (result.success) return;
+  expect(result.error.issues).toHaveLength(1);
   expect(result.error.issues[0].message).toMatch(/same transform/);
 });
 

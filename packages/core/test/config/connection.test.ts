@@ -2,6 +2,7 @@ import { ZodError, z } from "zod";
 import { expect, test } from "vitest";
 
 import { MAX_TIMER_MS } from "../../src/utils/promise";
+import { fromBase64Url, toBase64Url } from "../../src/utils/crypto";
 
 import {
   MAX_PEER_ID_BYTES,
@@ -2364,6 +2365,40 @@ test("a persisted options block resolves neither sweep flag", () => {
   });
   expect(config.options).not.toHaveProperty("sweepExchangeFiles");
   expect(config.options).not.toHaveProperty("forceRetainSweep");
+});
+
+// --- SHARED_SECRET_REGEX -----------------------------------------------------
+
+const BASE64URL_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+test("SHARED_SECRET_REGEX admits exactly the canonical base64url encodings of 32 bytes", () => {
+  // authenticateConnection decodes an admitted secret straight into the
+  // handshake's 32-byte key. Every length near 43 and every final character is
+  // tried over several prefixes.
+  let admitted = 0;
+  for (let length = 40; length <= 46; length++) {
+    for (let variant = 0; variant < 8; variant++) {
+      const prefix = Array.from(
+        { length: length - 1 },
+        (_, i) => BASE64URL_ALPHABET[(i * 7 + variant * 13) % 64],
+      ).join("");
+      for (const last of BASE64URL_ALPHABET) {
+        const candidate = prefix + last;
+        const decoded =
+          candidate.length % 4 === 1 ? undefined : fromBase64Url(candidate);
+        const canonical32 =
+          decoded?.length === 32 && toBase64Url(decoded) === candidate;
+        expect(SHARED_SECRET_REGEX.test(candidate), candidate).toBe(
+          canonical32,
+        );
+        if (canonical32) admitted++;
+      }
+    }
+  }
+  // 8 prefixes of length 42, each with the 16 final characters that leave the
+  // two padding bits zero.
+  expect(admitted).toBe(8 * 16);
 });
 
 // --- generateSharedSecret ----------------------------------------------------
