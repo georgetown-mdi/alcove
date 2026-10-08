@@ -194,7 +194,7 @@ What remains open is recorded in [fips-variant-image.md](fips-variant-image.md),
 Settled by measurement, in the image, on the base that ships:
 
 - X25519 is in the key-exchange algorithms of the OpenSSL Project builds of 3.0.8, 3.0.9 and 3.0.21, and is not in 3.5.7's.
-- Ed25519 is in every measured provider's signature algorithms. Every one of them is a from-source OpenSSL Project build; the vendor module the variant image includes has neither primitive, read in that image at its `3.2.2-799901ad7ab41d45` pin on 2026-10-08.
+- Ed25519 is in every measured provider's signature algorithms. Every one of them is a from-source OpenSSL Project build; the vendor module the variant image includes has neither primitive, read in that image ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading)).
 - `crypto.subtle` AES-256-GCM, and `node:crypto`, both dispatch into a configured FIPS provider in this image, by the four-leg attribution above.
 - A 3.0.x provider cross-loads into the 3.5.7 libcrypto Node links, and serves.
 - A module that fails its integrity check stops the process from starting.

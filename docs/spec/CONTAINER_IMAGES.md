@@ -283,12 +283,12 @@ serves it at two NVRs holding two certified modules:
     3.0.8-1.amzn2023.0.1 -> 3.0.8-d694bfa693b76001   <- the module certificate 5021 names
     3.2.2-1.amzn2023     -> 3.2.2-799901ad7ab41d45   <- what this image pins, certificate 5438
 
-The second line was read back from a `linux/arm64` build of `Dockerfile.fips`
-on 2026-10-08: `rpm` names `openssl-fips-provider-certified-so`
+The second line was read back from a build of `Dockerfile.fips`
+([reading](#the-fips-images-measured-reading)): `rpm` names `openssl-fips-provider-certified-so`
 `3.2.2-1.amzn2023` as the owner of the installed `fips.so`, and
 `openssl list -providers` reports module `3.2.2-799901ad7ab41d45` active beside
-an `openssl` library at 3.5.8. The first line was not re-read then, and the
-`x86_64` build was not run.
+an `openssl` library at 3.5.8. The first line is not measured at 3.2.2, and the
+`x86_64` build is not measured.
 
 Both NVRs hold a certified module under a certificate of its own, so within
 this package name the pin decides which certificate the image stands on rather
@@ -358,6 +358,17 @@ one that includes an init system. The 4.17.12 version and the package counts are
 unverified as of 2026-09-29: they come from an earlier build and were not
 re-run.
 
+### The FIPS image's measured reading
+
+Every statement in the docs that the FIPS image's module does not offer X25519 or
+Ed25519, and that Node's key generation for them throws
+`ERR_OSSL_EVP_UNSUPPORTED`, was read once, here: on 2026-10-08, in a
+`linux/arm64` build of `Dockerfile.fips` at module `3.2.2-799901ad7ab41d45`
+(package `3.2.2-1.amzn2023`). In that build Node's linked OpenSSL is 3.5.7
+(`process.versions.openssl`) and the image's own `openssl` library and command
+are 3.5.8, two components that are both right for what each names. The
+`x86_64` build was not measured.
+
 ## What certificate 5438 attests
 
 The provider pins above name CMVP certificate 5438, "Amazon Linux 2023 OpenSSL
@@ -375,13 +386,12 @@ the policy attaches to two of the algorithm rows are in
 ### The Caveat
 
 The certificate states one Caveat, a single field of three sentences. Quoted
-verbatim as one string, read from the certificate page on 2026-10-08:
+verbatim as one string, read from the certificate page:
 
 > When operated in approved mode. When installed, initialized and configured as specified in Section 11.1 of the Security Policy. No assurance of minimum security of SSPs (e.g., keys, bit strings) that are externally loaded, or of SSPs established with externally loaded SSPs.
 
 The first and third sentences are the two that certificate 5021's Caveat also
-states, from a reading of that page taken before the pin moved and not repeated
-on 2026-10-08. The second, the installation clause, is 5438's alone.
+states, as 5021's Caveat was read at the 3.0.8 pin; it is not read at 3.2.2. The second, the installation clause, is 5438's alone.
 
 Provenance differs from every other row in this section. The Caveat is a field
 of the certificate detail page itself, an HTML page with no page numbers,

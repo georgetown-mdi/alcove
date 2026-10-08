@@ -77,11 +77,10 @@ that states the HKDF SP 800-56C attribution in prose rather than leaving the row
 name to carry it; and a Caveat that stops at the SSP sentence, where 5438's adds
 section 11.1's install-and-FIPS-mode-verification requirement as a
 certificate-level condition the image cannot satisfy for itself, since it often
-cannot even read the host's FIPS mode. 5438's Caveat was re-read verbatim from
-its certificate page on 2026-10-08
-([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-caveat)); 5021's was not,
-so its side of that comparison, like its tables here, is from the reading taken
-when the move was weighed. It is Active until 2030-05-25, so nothing forced the
+cannot even read the host's FIPS mode. 5438's Caveat is read verbatim from
+its certificate page
+([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-caveat)); 5021's, like its tables here, is read at the 3.0.8 pin,
+and its side of that comparison is not read at 3.2.2. It is Active until 2030-05-25, so nothing forced the
 move.
 
 The move was taken anyway (owner, 2026-09-10), for runway: 5438's sunset is
@@ -97,9 +96,9 @@ re-measured against it the vulnerability delta is zero on every scan setting and
 both architectures, and the module is incrementally patchable exactly as 5021's
 was -- `openssl-libs` floats, `dnf update` moves real packages, and the
 certified module stays put (measured 2026-09-09,
-`scratch/fips-5438-remeasure/`). A `linux/arm64` build at the pin on 2026-10-08
-read back an `openssl` library at 3.5.8 beside the active certified module
-`3.2.2-799901ad7ab41d45`. The pinned NVR is the higher of the two the
+`scratch/fips-5438-remeasure/`). A build at the pin
+([reading](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading)) reads back an `openssl` library at 3.5.8 beside the
+active certified module. The pinned NVR is the higher of the two the
 snapshot serves under that package name; the build runs no update in any case,
 and its read-back assertion fails on any module its pins do not name.
 
@@ -265,14 +264,15 @@ absence, the entry separates the two.
 - **SFTP against a server that offers only `curve25519` key exchange.**
   Permanent, with no client-side fix. The measured part is the primitive: the
   certified module has no X25519, so `crypto.generateKeyPairSync('x25519')`
-  throws `ERR_OSSL_EVP_UNSUPPORTED` in this image (measured 2026-10-08 at the
-  `3.2.2-799901ad7ab41d45` pin, `linux/arm64`). What that produces at the
-  handshake is Alcove's own behaviour rather than a second measurement taken
-  here -- it withholds from its offer every key exchange built on a primitive
-  the running process cannot perform, so a server with nothing else to offer is refused cleanly at
-  negotiation, with an error naming the missing primitive and pointing at the
-  server's administrator or at a different host, instead of winning the
-  negotiation and then dying mid-handshake on a raw OpenSSL string
+  throws `ERR_OSSL_EVP_UNSUPPORTED` in this image
+  ([reading](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading)).
+  What that produces at the handshake is Alcove's own behaviour rather than a
+  second measurement taken here -- it withholds from its offer every key
+  exchange built on a primitive the running process cannot perform, so a server
+  with nothing else to offer is refused cleanly at negotiation, with an error
+  naming the missing primitive and pointing at the server's administrator or at
+  a different host, instead of winning the negotiation and then dying
+  mid-handshake on a raw OpenSSL string
   ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#key-exchange-algorithms-and-the-hosts-crypto-provider)).
   Where the server does offer an alternative the fix is configuration Alcove
   already accepts, and a full authenticated exchange over SFTP completes with
@@ -310,8 +310,8 @@ absence, the entry separates the two.
   outside security contexts often enough elsewhere that its absence belongs on
   this list. `crypto.createHash("md5")` throws `ERR_OSSL_EVP_UNSUPPORTED`.
 - **X25519 and Ed25519 through `node:crypto` or `crypto.subtle`.** The certified
-  Amazon Linux module has neither. Read in the shipped image at the
-  `3.2.2-799901ad7ab41d45` pin on 2026-10-08 (`linux/arm64`), `openssl list`
+  Amazon Linux module has neither. Read in the shipped image
+  ([reading](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading)), `openssl list`
   reports both ABSENT from the fips provider while it is `status: active` and
   the default-configuration control lists both, so the absence is the
   provider's rather than the listing's. Under the image's own fips-only
@@ -662,7 +662,7 @@ reading -- Docker Hub is not reachable from the development container and no
   the validation.** It is measured to load, self-test and serve, and AWS's own
   packaging permits the pairing -- the `dnf swap` resolves and completes on both
   architectures with `openssl-libs` at `3.5.7-2.amzn2023.0.1` installed beside
-  it -- but the module's security policy names an
+  it (the image's `openssl` library later read 3.5.8, as above) -- but the module's security policy names an
   `openssl-3.2.2-1.amzn2023.0.1` RPM as its distribution vehicle rather than a
   required host libcrypto, a package this image installs under no such name
   ([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests)),

@@ -22,9 +22,9 @@ exchange inside a module's approved mode. Certificate 5438, the module the FIPS
 variant image embeds, names X25519 in no table at all, approved or
 non-approved, and states its non-approved-but-allowed category empty, so there
 is no status the curve could hold there -- and the certified module the image
-pins, `3.2.2-799901ad7ab41d45`, has no such primitive to begin with, read inside
-the image on 2026-10-08
-([CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests),
+pins, `3.2.2-799901ad7ab41d45`, has no such primitive to begin with
+([reading](../spec/CONTAINER_IMAGES.md#the-fips-images-measured-reading),
+[CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#what-certificate-5438-attests),
 [fips-variant-image.md](fips-variant-image.md)). Certificate 4985, the OpenSSL
 Project module read beside it, places X25519 in its Non-Approved, Not Allowed
 table. That leaves a fork. Disclose the boundary -- cheap and accurate, and
