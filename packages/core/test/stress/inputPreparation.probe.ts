@@ -3,12 +3,11 @@
 // `inputPreparation.stress.test.ts` spawns it and reads the one JSON line it
 // prints. It writes the input first where the file does not exist: four
 // columns, an id, a synthetic SSN, a last name and a date of birth, one
-// distinct SSN a row. A row whose SSN the built-in standardization nulls as a
-// placeholder, as it does 111-11-1111 in the 11,111,112th row, sends no
-// first-round value, so the round sends one value a row less those rows. The
-// first-round check runs twice: at a per-set maximum of `<maxValues>`, and at
-// one value fewer than the round sends, so the input is one value over it and
-// the count walks every record.
+// distinct SSN a row. The first-round check runs twice: at a per-set maximum
+// of `<maxValues>`, and at one value fewer than the round sends, so the input
+// is one value over it and the count walks every record. The values the round
+// sends are counted with the check's own counter, since the standardization
+// drops some SSNs as placeholders.
 //
 // Usage: node --max-old-space-size=<MiB> --import tsx inputPreparation.probe.ts <rows> <csv> [<maxValues>]
 
@@ -17,12 +16,13 @@ import { once } from "node:events";
 import { performance } from "node:perf_hooks";
 
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
-import { getDefaultStandardization } from "../../src/defaults/builtInStandardization";
 import { RoundSetLimitError } from "../../src/errors";
 import { prepareForExchange } from "../../src/exchange";
 import type { PreparedExchange } from "../../src/exchange";
 import { assertFirstRoundWithinSetMaximum } from "../../src/exchange/firstRoundCapacity";
 import { loadCSVFile } from "../../src/file";
+import { RoundSetCounter } from "../../src/psi/link";
+import { StandardizedKeyIterable } from "../../src/standardization";
 import { summarizeDatasetConstraintViolations } from "../../src/valueConstraints";
 
 export interface PreparationStage {
@@ -35,7 +35,7 @@ export interface PreparationStage {
 export interface PreparationProbeResult {
   readonly rows: number;
   readonly stages: ReadonlyArray<PreparationStage>;
-  /** The values the first round sends: the rows whose SSN is not nulled. */
+  /** The values the first round sends, in the sending role. */
   readonly firstRoundValues: number;
   /** Rows a second over each successive million the one-over count walked. */
   readonly countRowsPerSecond: ReadonlyArray<number>;
@@ -45,33 +45,25 @@ export interface PreparationProbeResult {
   readonly firstRoundOneOver: "fits" | "refused";
 }
 
-const FIRST_SSN = 100_000_000;
-
 function ssn(i: number): string {
-  const digits = String(FIRST_SSN + i);
+  const digits = String(100_000_000 + i);
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5)}`;
 }
 
-// The rows below `rows` whose SSN a `null_if` step of the standardization the
-// exchange applies to its `ssn` field nulls.
-function nulledSsnRows(prepared: PreparedExchange, rows: number): number {
-  const nulled = new Set<number>();
-  for (const transformation of getDefaultStandardization(
-    prepared.metadata,
-    prepared.linkageTerms,
-  )) {
-    if (transformation.output !== "ssn") continue;
-    for (const step of transformation.steps ?? []) {
-      if (step.function !== "null_if") continue;
-      const { value, values } = step.params ?? {};
-      for (const v of [value, ...(Array.isArray(values) ? values : [])])
-        if (typeof v === "string" && /^\d{9}$/.test(v)) {
-          const row = Number(v) - FIRST_SSN;
-          if (row >= 0 && row < rows) nulled.add(row);
-        }
-    }
-  }
-  return nulled.size;
+function countFirstRoundValues(prepared: PreparedExchange): number {
+  const { linkageTerms, dataset, rowCount } = prepared;
+  const counter = new RoundSetCounter(linkageTerms.deduplicate);
+  let row = 0;
+  for (const candidates of new StandardizedKeyIterable(
+    linkageTerms.linkageKeys[0],
+    dataset,
+    rowCount,
+    false,
+    0,
+    false,
+  ))
+    counter.add(row++, candidates);
+  return counter.size;
 }
 
 async function writeInput(path: string, rows: number): Promise<void> {
@@ -141,7 +133,6 @@ async function main(): Promise<void> {
       prepared.rowCount,
     ),
   );
-  const firstRoundValues = rows - nulledSsnRows(prepared, rows);
   const outcome = (check: Promise<void>): Promise<"fits" | "refused"> =>
     check.then(
       () => "fits" as const,
@@ -152,6 +143,9 @@ async function main(): Promise<void> {
     );
   const firstRound = await timed("first-round count", () =>
     outcome(assertFirstRoundWithinSetMaximum(prepared, { maxValues })),
+  );
+  const firstRoundValues = await timed("first-round values", () =>
+    countFirstRoundValues(prepared),
   );
   const countRowsPerSecond: Array<number> = [];
   let lastMillion = 0;

@@ -15,8 +15,7 @@ import { stressMemory } from "./stressMemory";
 // SSN, from reading the CSV to the first-round check: admitted at the per-set
 // maximum, and refused with the maximum one under the values the round sends,
 // a count that walks every record (docs/spec/FILE_SYNC.md, Preparing the
-// input at 2^24). The round sends one value a row less the rows whose SSN the
-// built-in standardization nulls, which the probe reports.
+// input at 2^24).
 // The probe runs in its own process under the heap limit the container
 // images set, and reports each stage's time and the process's peak resident
 // set. About eight minutes and 12 GB resident on the measured host, which is
@@ -92,6 +91,7 @@ test(
       "prepare",
       "constraints",
       "first-round count",
+      "first-round values",
       "first-round count, one over",
     ]);
     expect(result.firstRound).toBe(
