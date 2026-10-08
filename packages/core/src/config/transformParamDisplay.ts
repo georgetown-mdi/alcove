@@ -2,33 +2,16 @@ import { snakeizeKey } from "../utils/camelizeKeys.js";
 import { holdsPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 
 /**
- * Upper bound on the number of transform parameters one step may declare, and
- * the number the consent summary shows per step
- * (`packages/core/src/consent/invitationSummary.ts`). One constant for both,
- * because the summary states a step's parameters as a list and the count past
- * the list as a number: a step declaring more than it shows would state a
- * count where the run applies values.
- *
- * A real function takes a handful, so the bound is far above any authored
- * step and far below `MAX_PARAMS_ENTRIES`, the count a partner's record is
- * stopped at before its keys are read (`linkageTermsSchema.ts`).
+ * The most parameters one step may declare, and the most the consent summary
+ * shows per step, so the summary never states a count where the run applies
+ * values. Far below `MAX_PARAMS_ENTRIES` (`linkageTermsSchema.ts`).
  */
 export const MAX_DISPLAYED_PARAMS = 16;
 
 /**
- * The parameters a step declares, in declaration order: the entries
- * {@link transformParamDisplayRefusals} counts against
- * {@link MAX_DISPLAYED_PARAMS} and the entries the consent summary orders,
- * shows, and states the remainder of as a count (`orderedParamEntries`,
- * `packages/core/src/consent/invitationSummary.ts`). One function for both,
- * so the count refused and the count shown are one expression rather than two
- * that have to be read against each other.
- *
- * An own key whose value is `undefined` is a declared parameter here, because
- * the summary paints a row for it: a record schema keeps such a key, which an
- * in-process caller can pass (no JSON or YAML document holds `undefined`).
- * A `params` that is not a plain object declares none -- an array's indices
- * name no parameter, and neither schema admits one.
+ * The parameters a step declares, in declaration order, for both the count
+ * refusal and the consent summary. An own key whose value is `undefined`
+ * counts; a `params` that is not a plain object declares none.
  */
 export function declaredParamEntries(
   params: unknown,
@@ -39,10 +22,9 @@ export function declaredParamEntries(
 }
 
 /**
- * Render a transform parameter value for display. Primitives become their
- * plain string form; anything structured is JSON-encoded (best effort). The
- * result is sanitized and length-bounded by the caller, so it need not be
- * safe on its own.
+ * A transform parameter value as display text: primitives in plain form,
+ * anything else JSON-encoded, `""` when that throws. The caller sanitizes and
+ * bounds the result.
  */
 export function describeTransformParamValue(value: unknown): string {
   if (typeof value === "string") return value;
@@ -51,9 +33,6 @@ export function describeTransformParamValue(value: unknown): string {
   if (value === null) return "null";
   if (value === undefined) return "";
   try {
-    // A value past the checks above is an object/array from a JSON-parsed
-    // params record, so JSON.stringify yields a string (and throws only on the
-    // unreachable circular/bigint cases, caught below).
     return JSON.stringify(value);
   } catch {
     return "";
@@ -61,29 +40,13 @@ export function describeTransformParamValue(value: unknown): string {
 }
 
 /**
- * The `key: value` line the consent summary renders one declared parameter
- * as, before the display sanitizer reads it. Shared with the summary so a
- * refusal below judges the same characters the sanitizer would.
- *
- * The key is the snake_case spelling the document writes ({@link snakeizeKey}),
- * the spelling every param refusal names a param in
- * (`config/transformParamTypes.ts`), so one param has one spelling wherever a
- * reader meets it. Validation runs on the camelized shape, and two on-disk
- * spellings camelize alike, so the written form is the one a reader can find
- * in the file. It takes that function's limit: a key outside the lowercase-word
- * convention -- which a free-form params record admits, the schema's own names
- * never being one -- renders a `_` before each of its capitals.
- *
- * A key holding private key material keeps the spelling it was authored in,
- * since the display redaction downstream matches an upper-case marker and the
- * rewrite lower-cases one: rewritten, such a key would be shown where the
- * marker belongs.
- *
- * The rendering is guarded like the encoding above: a rendered value within a
- * few code units of the engine's string limit overflows on the key rewrite or
- * the concatenation itself, and that RangeError would escape safeParse, which
- * converts a ZodError to a result but not an internal throw. Such a line
- * renders empty, the fallback an unrenderable value takes.
+ * The `key: value` line the consent summary shows for one parameter, shared
+ * so a refusal judges the characters the display sanitizer reads. The key is
+ * in its snake_case document spelling, except a key holding private key
+ * material, which keeps its authored spelling so the redaction still matches
+ * it. A line too long for the engine renders `""`, so the RangeError cannot
+ * escape `safeParse`. See
+ * docs/spec/CHANNEL_SECURITY.md#transform-parameter-declared-types.
  */
 export function describedTransformParamEntry(
   param: string,
@@ -99,57 +62,37 @@ export function describedTransformParamEntry(
 }
 
 /**
- * Refusal message for a step declaring both of `null_if`'s two parameters.
- * The run reads `values` and ignores `value` (`nullIfFactory`,
- * `packages/core/src/standardization.ts`), while a summary states both.
+ * Refusal message for a `null_if` step declaring both `value` and `values`;
+ * the run applies only `values` (`nullIfFactory`, `standardization.ts`).
  */
 export const NULL_IF_BOTH_VALUE_PARAMS_MESSAGE =
   "null_if must declare value or values, not both";
 
 /**
  * Refusal message for a parameter whose displayed line the private-key
- * redaction would replace. A fixed literal echoing neither the parameter's
- * name nor its value, which the issue path locates instead.
+ * redaction would replace. Like the two below, it echoes no part of the
+ * offending text; the issue path locates it.
  */
 export const PRIVATE_KEY_PARAM_MESSAGE =
   "a transform param must not contain private key material";
 
-/**
- * Refusal message for a step whose FUNCTION NAME the private-key redaction
- * would replace. The name is displayed on its own line of the consent summary
- * rather than inside a parameter's, so it takes a refusal of its own naming
- * the field the offending text sits in. A fixed literal echoing no part of
- * that name, for the reason {@link PRIVATE_KEY_PARAM_MESSAGE} gives.
- */
+/** Refusal message for a function name the redaction would replace. */
 export const PRIVATE_KEY_FUNCTION_MESSAGE =
   "a transform function name must not contain private key material";
 
-/**
- * Refusal message for a parameter whose NAME the private-key redaction would
- * replace, separate from {@link PRIVATE_KEY_PARAM_MESSAGE} so a refusal names
- * the half of the entry the material sits in. A fixed literal, for the reason
- * that message gives.
- */
+/** Refusal message for a parameter name the redaction would replace. */
 export const PRIVATE_KEY_PARAM_NAME_MESSAGE =
   "a transform param name must not contain private key material";
 
 /** Refusal message for a step declaring more parameters than are displayed. */
 export const TRANSFORM_PARAM_COUNT_MESSAGE = `a transform step must not declare more than ${MAX_DISPLAYED_PARAMS} params`;
 
-/**
- * What the calling schema refuses on its own, so this grading does not scan a
- * value that schema rejects anyway.
- */
+/** What the calling schema already refuses, so the scan here can skip it. */
 export interface TransformParamDisplayOptions {
   /**
-   * The length past which the caller refuses a STRING param, or `undefined`
-   * where it bounds none. The key-material scan below renders a parameter as
-   * its displayed line and runs the redaction over that copy, work linear in
-   * the value; a string the caller refuses for its length meets that refusal
-   * alone instead. The partner-controlled terms schema passes its
-   * `MAX_TRANSFORM_PARAM_LENGTH` (`linkageTermsSchema.ts`); the
-   * operator-local standardization schema bounds no param length and passes
-   * `undefined`.
+   * The length past which the caller refuses a string param, or `undefined`
+   * where it bounds none. The key-material scan skips such a string, whose
+   * rendering would cost work linear in its length.
    */
   refusesStringParamsPast: number | undefined;
 }
@@ -163,31 +106,13 @@ export interface TransformParamDisplayRefusal {
 }
 
 /**
- * Every shape of `step` a consent summary would state as something other than
- * what the run applies. An empty array is a step the summary states as it
- * runs.
- *
- * Each is refused where the document is decoded rather than shown as it
- * stands: `null_if` declaring both `value` and `values`, of which the run
- * applies only `values`; a step declaring more parameters than the summary
- * shows, whose remainder it states as a count; and the function name, a
- * parameter name, or a parameter's displayed line that the private-key
- * redaction would replace with its marker. The three key-material refusals
- * name their own field, so a reader of the refusal knows which text to
- * correct.
- *
- * An over-count step yields no per-parameter refusal, so the issues one step
- * raises stay bounded by {@link MAX_DISPLAYED_PARAMS} plus the one its
- * function name can raise, however many entries the record holds -- the bound
- * the safe-parse contract rests on
- * (docs/spec/CHANNEL_SECURITY.md, "Application-layer parsed-input bounds").
- * A string value the caller already refuses for its length is skipped by the
- * key-material scan for the same reason
- * ({@link TransformParamDisplayOptions.refusesStringParamsPast}).
- *
- * Own-property lookups throughout: a step's function name and parameter names
- * are partner-authored free text, and a name reaching only `Object.prototype`
- * (`constructor`, `toString`) names no declared parameter.
+ * Every shape of `step` a consent summary would state as something other
+ * than what the run applies; empty when the summary states it as it runs.
+ * An over-count step yields no per-parameter refusal, which keeps the issues
+ * one step raises bounded
+ * (docs/spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+ * Lookups are own-property only, since names are partner-authored. See
+ * docs/spec/CHANNEL_SECURITY.md#transform-parameter-declared-types.
  */
 export function transformParamDisplayRefusals(
   step: {
@@ -197,16 +122,13 @@ export function transformParamDisplayRefusals(
   options: TransformParamDisplayOptions,
 ): TransformParamDisplayRefusal[] {
   const refusals: TransformParamDisplayRefusal[] = [];
-  // Scanned before the params guard below, so a step declaring no params is
-  // judged on its name too.
   if (holdsPrivateKeyMaterial(step.function))
     refusals.push({
       path: ["function"],
       message: PRIVATE_KEY_FUNCTION_MESSAGE,
     });
   const params = step.params;
-  // The shape guard {@link declaredParamEntries} makes, repeated to narrow
-  // `params` for the own-property lookups below, which throw on a null.
+  // Repeats the guard in declaredParamEntries to narrow `params`.
   if (params === null || typeof params !== "object" || Array.isArray(params))
     return refusals;
   const entries = declaredParamEntries(params);
@@ -214,8 +136,7 @@ export function transformParamDisplayRefusals(
     refusals.push({ path: ["params"], message: TRANSFORM_PARAM_COUNT_MESSAGE });
     return refusals;
   }
-  // Declared as `nullIfFactory` reads it: `textParam` passes over an undefined
-  // value, so neither the refusal nor the run counts one.
+  // An undefined value is not declared, matching how `nullIfFactory` reads it.
   const declares = (param: string): boolean =>
     Object.hasOwn(params, param) && params[param] !== undefined;
   if (step.function === "null_if" && declares("value") && declares("values"))
@@ -224,9 +145,7 @@ export function transformParamDisplayRefusals(
       message: NULL_IF_BOTH_VALUE_PARAMS_MESSAGE,
     });
   for (const [param, value] of entries) {
-    // The name is scanned apart from the line it is displayed in, so the skip
-    // below -- which passes over a VALUE the caller refuses for its length --
-    // cannot take the name with it.
+    // Scanned apart from the line, so the length skip below cannot skip a name.
     if (holdsPrivateKeyMaterial(param)) {
       refusals.push({
         path: ["params", param],
@@ -234,9 +153,8 @@ export function transformParamDisplayRefusals(
       });
       continue;
     }
-    // Read as the caller's own length refine reads it: a string value, and
-    // only a string, is bounded there, so key material nested in a list entry
-    // is scanned however long that entry is.
+    // Only a string value is length-bounded by the caller; key material nested
+    // in a list entry is scanned however long the entry is.
     if (
       typeof value === "string" &&
       options.refusesStringParamsPast !== undefined &&

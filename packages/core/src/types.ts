@@ -1,33 +1,19 @@
 import { z } from "zod";
 
 /**
- * Paired arrays of matched row indices produced by PSI linkage.
- *
- * `[0]` contains our (local) row indices; `[1]` contains the corresponding
- * partner row indices, so entry `i` is one matched PAIR. The entries in `[0]`
- * are in strictly ascending order -- a structural invariant of the cascade in
- * {@link linkViaPSI} relied upon by payload reconstruction. The single-pass
- * sender receives its table from the partner rather than producing it, so
- * there the order is enforced by {@link assertPartnerIndexTable}, beside the
- * range, distinctness, and pairing checks (utils/partnerIndices.ts;
- * docs/spec/PROTOCOL.md's index-validation subsection).
- *
- * The one exception is the "one" side of a deduplicating exchange, where
- * several of the partner's records link to one of ours and `[0]` is
- * non-decreasing rather than strictly ascending -- the distinctness is what
- * that cardinality relaxes, and the ascending order itself still holds
- * (docs/spec/PROTOCOL.md, Deriving one table from the exchanged association
- * maps). The mirror case repeats `[1]` instead. `assertMatchedPairsWellFormed`
- * (exchange.ts) checks the admitted shapes rather than resting on this
- * description.
+ * Paired arrays of matched row indices produced by PSI linkage: `[0]` contains
+ * our row indices and `[1]` the partner's, so entry `i` is one matched pair.
+ * `[0]` is strictly ascending, except on the "one" side of a deduplicating
+ * exchange, where it is non-decreasing (the mirror case repeats `[1]`).
+ * `assertMatchedPairsWellFormed` (exchange.ts) and, for a table received from
+ * the partner, {@link assertPartnerIndexTable} check this. See
+ * docs/spec/PROTOCOL.md#partner-supplied-index-tables-are-checked-against-local-state.
  */
 export type AssociationTable = [Array<number>, Array<number>];
 
 /**
- * Maps a Connection event name to its listener signature.
- * `data` holds an arbitrary parsed message; `error` holds an asynchronous
- * transport failure reported by the poller. Synchronous failures (send and
- * synchronize) throw instead.
+ * Listener signature per Connection event. `error` is an asynchronous
+ * transport failure; synchronous failures (send, synchronize) throw.
  */
 type ConnectionEventHandler<E extends "data" | "error"> = E extends "data"
   ? (data: unknown) => void
@@ -50,66 +36,32 @@ export type Connection = {
     context?: undefined,
     once?: boolean,
   ) => Connection;
-  // Hands a message to the transport. Resolution (or return, for a synchronous
-  // transport) means only that the message has been accepted locally for
-  // delivery: buffered into the channel (WebRTC) or durably written to the
-  // shared directory (file-sync). It does NOT mean the peer has received it -
-  // there is no end-to-end delivery or acknowledgement at this layer. So never
-  // infer "the peer has my message" from `send` resolving. The guarantee that
-  // the final frame survives teardown comes from the `close` contract below,
-  // which each transport meets one of two ways: a durable send with a draining
-  // close (file-sync) or a flushing close (WebRTC). See docs/COMMUNICATION.md
-  // ("Message delivery and teardown").
+  // Resolving means only that the transport accepted the message locally, not
+  // that the peer received it. The final frame survives teardown through the
+  // `close` contract below. See
+  // docs/COMMUNICATION.md#message-delivery-and-teardown.
   send: (data: unknown, chunked?: boolean) => void | Promise<void>;
-  // `close` may be synchronous (e.g. a test passthrough) or asynchronous (e.g.
-  // FileSyncConnection, which calls its transport client's `end()`). Callers
-  // that need to wait for transport teardown MUST `await` the result.
-  //
-  // Delivery contract (paired with `send`): the exchange's final frame must
-  // survive a clean close. Because `send` resolving does not imply the peer
-  // received the message, every transport guarantees this one of two ways:
-  // (a) durable send + draining close - file-sync writes durably to the shared
-  // directory but the sender's cleanup can delete a file before the peer polls
-  // it, so a clean close drains (waits for the peer to consume the last sent
-  // file) before sweeping; or (b) flushing close - delivers frames `send`
-  // accepted but has not yet put on the wire before teardown completes (WebRTC).
-  // A transport that does neither silently drops final frames. An error close
-  // never flushes: an errored link is already unusable.
+  // Callers that need to wait for teardown MUST await the result. A clean
+  // close guarantees the last frame `send` accepted reaches the peer, either
+  // by a durable send plus a close that drains until the peer consumes it
+  // (file-sync) or by a close that delivers buffered frames (WebRTC). An error
+  // close never flushes.
   close: () => void | Promise<void>;
-  // An `error` emitted while no listener is registered is retained here so
-  // the next protocol-layer receive can detect failures that arrived in the
-  // gap between listener-registration cycles. Reading clears the value; only
-  // the most recent unhandled error is retained.
-  //
-  // Asymmetric with `data`: there is no `takeBufferedData`. A `data` event
-  // emitted while no listener is registered is silently dropped. Protocol
-  // callers must therefore register `data` listeners synchronously before
-  // any await that could yield to the transport's poll cycle, AND before
-  // the peer has cause to send the next message. The established pattern
-  // (see kex.ts / protocolSetup.ts / payloadExchange.ts) is that each
-  // receive helper installs its `once("data", ...)` listener inside the
-  // Promise executor -- synchronously after any prior receive resolves --
-  // so no transport macrotask can interleave between consumption of one
-  // message and registration for the next.
+  // Returns and clears the most recent `error` emitted while no listener was
+  // registered. There is no equivalent for `data`: a `data` event with no
+  // listener is dropped, so each receive helper registers its `once("data")`
+  // listener synchronously inside its Promise executor, before any await.
   takeBufferedError: () => unknown;
-  // Optional: bound the next inbound frame this transport reads into memory to
-  // `maxBytes`, replacing the transport's static frame-size cap for subsequent
-  // reads until cleared (passing `undefined` restores the default). The
-  // single-pass receiver sets this to the per-exchange derived cap
-  // (singlePassReplyByteCap) before reading the reply, so the read gate refuses a
-  // frame larger than the exchanged record counts imply rather than allocating up
-  // to the static ceiling. A transport that bounds its inbound path another way
-  // (the WebRTC data channel, fixed at MAX_WEBRTC_FRAME_BYTES) omits this. See
-  // docs/spec/CHANNEL_SECURITY.md.
+  // Bounds subsequent inbound frame reads to `maxBytes` in place of the
+  // static cap; `undefined` restores it. Omitted by a transport bounded another
+  // way (WebRTC). See
+  // docs/spec/CHANNEL_SECURITY.md#single-pass-per-exchange-cap.
   setInboundFrameCap?: (maxBytes: number | undefined) => void;
-  // Optional: the interval at which this transport polls for inbound frames. A
-  // transport that polls delivers a frame up to one interval after the peer
-  // wrote it, so a caller bounding a request/response wait adds it; a
-  // transport that pushes frames (WebRTC) omits this.
+  // The inbound poll interval, which a request/response wait adds to its
+  // bound. Omitted by a transport that pushes frames (WebRTC).
   inboundPollIntervalMs?: () => number;
-  // Optional: the message-file bound the partner's read gate applies, which a
-  // PSI round checks the file of a set it built against before sending it. A
-  // transport with no such bound omits this.
+  // The partner's read-gate bound on a message file, which a PSI round checks
+  // an outgoing set's file against. Omitted by a transport with no such bound.
   outboundFileSyncFrameBound?: () => number;
 };
 
