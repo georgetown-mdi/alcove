@@ -725,13 +725,19 @@ are the ordering authority for that path, and it is fail-closed at each step:
 3. **Run on the decoded key, then write it.** The decoded shared secret and
    expiry are held in memory, and the run takes them in place of the key file
    it would otherwise read. The key file is written (the token's shared secret
-   and expiry) only once every local check has passed, just before the run
-   first contacts the network: after the configuration load, the dataset
-   preparation, the signing identity load, the run's local pre-flight, and the
-   wake call's own validation, and before the wake call, the host-key probe,
-   or the dial. A run refused before then leaves no key file. The write is an
-   exclusive create, so a key file that appeared at the key path meanwhile is
-   refused as in step 1 rather than overwritten.
+   and expiry) only once every check the CLI makes before connecting has
+   passed, just before the run first contacts the network: after the
+   configuration load, the dataset preparation, the signing identity load, the
+   run's local pre-flight, and the wake call's own validation, and before the
+   wake call, the host-key probe, or the dial. A run refused before then leaves
+   no key file. The write is an exclusive create, so a key file that appeared
+   at the key path meanwhile is refused as in step 1 rather than overwritten.
+   Limits: an SFTP private key the transport cannot parse is refused only at
+   the dial, after the key file is written; a refused run can also leave the
+   key file's parent directory and the output folder the pre-flight created;
+   and the pre-flight does not probe the hard-link support the exclusive write
+   uses, so on a filesystem without it the write fails after the pre-flight,
+   leaving no secret on disk.
    The `--invitation` value is never `@`-resolved into `argv`; its `@`-file form
    (`--invitation @code.txt`) is read at decode time, keeping the code out of
    shell history and the process argument list.
