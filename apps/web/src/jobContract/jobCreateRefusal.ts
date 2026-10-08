@@ -1,3 +1,5 @@
+import { sftpUrlDirectoryFault } from "@alcove/core";
+
 /*
  * The fixed tokens a `POST /api/jobs` refusal states in its body, so the browser
  * can show copy the operator can act on.
@@ -69,5 +71,58 @@ export function isJobCreateRefusalReason(
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
     value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
+  );
+}
+
+/** The refusals a direct (zero-setup) sftp run raises over the saved
+ * connection itself, before any job exists. */
+export type ZeroSetupSftpRefusalReason =
+  typeof SFTP_URL_DIRECTORY_REFUSAL | typeof SFTP_FINGERPRINT_LIST_REFUSAL;
+
+/** The fields of a saved sftp connection a direct run's refusal reads. */
+export interface ZeroSetupSftpRefusalInput {
+  path?: string;
+  inboundPath?: string;
+  hostKeyFingerprint: string | ReadonlyArray<string>;
+}
+
+/** A direct (zero-setup) sftp run's verdict on a saved connection: the
+ * refusal, or the single fingerprint the run pins when it runs. */
+export type ZeroSetupSftpCheck =
+  | { refusal: typeof SFTP_URL_DIRECTORY_REFUSAL }
+  | { refusal: typeof SFTP_FINGERPRINT_LIST_REFUSAL }
+  | { refusal: undefined; hostKeyFingerprint: string };
+
+/**
+ * Whether a direct (zero-setup) sftp run takes this saved connection: refused
+ * for a remote directory (the inbound half, for a split pair) with no
+ * `sftp://` URL form, then for a fingerprint list, which the run's
+ * single-valued fingerprint flag cannot pass on. Job create throws on the
+ * refusal and the connection's projection states it, so the quick-exchange
+ * step refuses exactly the connections a run would.
+ */
+export function zeroSetupSftpCheck(
+  connection: ZeroSetupSftpRefusalInput,
+): ZeroSetupSftpCheck {
+  const urlPath = connection.inboundPath ?? connection.path;
+  if (urlPath !== undefined && sftpUrlDirectoryFault(urlPath) !== undefined)
+    return { refusal: SFTP_URL_DIRECTORY_REFUSAL };
+  if (typeof connection.hostKeyFingerprint !== "string")
+    return { refusal: SFTP_FINGERPRINT_LIST_REFUSAL };
+  return {
+    refusal: undefined,
+    hostKeyFingerprint: connection.hostKeyFingerprint,
+  };
+}
+
+/** Whether a value read off a connection projection is a direct-run refusal
+ * this bundle knows. An unknown token is treated as none, leaving job create
+ * to refuse the run. */
+export function isZeroSetupSftpRefusalReason(
+  value: unknown,
+): value is ZeroSetupSftpRefusalReason {
+  return (
+    value === SFTP_URL_DIRECTORY_REFUSAL ||
+    value === SFTP_FINGERPRINT_LIST_REFUSAL
   );
 }

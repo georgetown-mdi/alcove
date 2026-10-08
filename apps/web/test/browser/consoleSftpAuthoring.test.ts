@@ -763,6 +763,21 @@ describe("console SFTP connection authoring", () => {
       .toBeInTheDocument();
   });
 
+  test("an exchange runs a connection a quick exchange refuses, so it stays ready", async () => {
+    stubJobApi({
+      sftp: {
+        configured: true,
+        host: "sftp.example.gov",
+        path: "/exchange/../in",
+        zeroSetupRefusal: "sftp-url-directory",
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await expect.element(page.getByText("Ready to try")).toBeInTheDocument();
+    expect(page.getByText("Needs a change").query()).toBeNull();
+  });
+
   test("an invalid port under collapsed Advanced shows on Save", async () => {
     stubJobApi();
     app.render(createElement(InviterScreen));

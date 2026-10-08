@@ -35,9 +35,8 @@ import {
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
-  SFTP_FINGERPRINT_LIST_REFUSAL,
-  SFTP_URL_DIRECTORY_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  isZeroSetupSftpRefusalReason,
 } from "@jobContract/jobCreateRefusal";
 import {
   discardServerJob,
@@ -51,6 +50,7 @@ import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { hasRecoveryHint } from "@psi/authenticateExchange";
 import { inviterExchangeDataSpec } from "@psi/authoring/advancedInvite";
 import { listenAsInviter } from "@psi/transport/rendezvous";
+import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 
 import {
@@ -114,6 +114,7 @@ import type { LoadedEnforcementRecords } from "@console/loadedConfig";
 import type { ReceiptsIntentFields } from "@psi/receiptsModel";
 import type { RunDiagnosticsIntentFields } from "@psi/runDiagnosticsModel";
 import type { Transport } from "@psi/transportChooser";
+import type { ZeroSetupSftpRefusalReason } from "@jobContract/jobCreateRefusal";
 
 const log = getLogger("useInviterExchange");
 
@@ -198,6 +199,22 @@ function sanitizedFailureMessage(error: unknown): string {
  */
 function reportedCauseFields(cause: string): Pick<RunFailure, "reportedCause"> {
   return cause.trim() === "" ? {} : { reportedCause: cause };
+}
+
+/** The failure for a quick exchange job create refused over the saved SFTP
+ * connection. Classified `config`: a retry refuses identically until the
+ * connection is edited, which start-over reaches through the server step. */
+function quickExchangeSftpFailure(
+  reason: ZeroSetupSftpRefusalReason,
+): Omit<RunFailure, "retry"> {
+  const copy = quickExchangeSftpRefusalCopy(reason);
+  return {
+    category: "config",
+    title: copy.title,
+    message:
+      `The console did not start this exchange. ${copy.problem} Start over, ` +
+      `choose Edit connection on the server step, and ${copy.change}`,
+  };
 }
 
 /** @internal */
@@ -314,38 +331,14 @@ function failureContentFor(
           "from the folder holding your key, input, and results, then run the " +
           "exchange again.",
     };
-  // A direct sftp run refused over the saved connection's several host-key
-  // fingerprints. Above the mounted-file branch: the file is not at fault.
-  // Classified `config`: a retry refuses identically until the connection is
-  // edited, which start-over reaches through the server step.
+  // A direct sftp run refused over the saved connection: several host-key
+  // fingerprints, or a remote directory its sftp:// URL cannot state. Above
+  // the mounted-file branch: the file is not at fault.
   if (
     error instanceof JobApiRequestError &&
-    error.refusalReason === SFTP_FINGERPRINT_LIST_REFUSAL
+    isZeroSetupSftpRefusalReason(error.refusalReason)
   )
-    return {
-      category: "config",
-      title: "The saved SFTP connection holds more than one fingerprint",
-      message:
-        "The console did not start this exchange. The saved SFTP connection " +
-        "holds more than one server identity fingerprint, and a quick " +
-        "exchange pins one. Start over, choose Edit connection on the server " +
-        "step, and keep only the fingerprint the server presents now.",
-    };
-  // A direct sftp run refused over the saved connection's remote directory,
-  // which its sftp:// URL cannot state. Classified `config`, as above.
-  if (
-    error instanceof JobApiRequestError &&
-    error.refusalReason === SFTP_URL_DIRECTORY_REFUSAL
-  )
-    return {
-      category: "config",
-      title: "The saved SFTP connection's remote directory cannot be used",
-      message:
-        "The console did not start this quick exchange because its remote " +
-        "directory must be a directory under / with no . or .. parts. Start " +
-        "over, choose Edit connection on the server step, and enter a " +
-        "directory like /exchange/in.",
-    };
+    return quickExchangeSftpFailure(error.refusalReason);
   // An sftp run refused because the saved connection's credential file is one
   // of the console's own. Above the mounted-file branch: the input is not at
   // fault. Classified `config`: a retry refuses identically.

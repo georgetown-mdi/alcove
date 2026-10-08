@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import { Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { Alert, Badge, Button, Group, Stack, Text } from "@mantine/core";
+import { IconAlertTriangle } from "@tabler/icons-react";
 
 import styles from "@styles/app.module.css";
 
@@ -14,10 +15,24 @@ import {
 } from "./sftpConnectionChoice";
 import { SftpAuthoringForm } from "./SftpAuthoringForm";
 import { SftpCredentialWarnings } from "./SftpCredentialWarnings";
+import { quickExchangeSftpRefusal } from "./quickExchangeSftpRefusal";
 
 import type { ProbeCeremony } from "./SftpAuthoringForm";
 import type { SftpConnectionFormValues } from "./sftpConnectionForm";
 import type { SftpConnectionProjection } from "@jobs/jobManager";
+
+/** Where a saved connection stands for the run this card serves: a quick
+ * exchange refuses it, the run needs retain mode back on, or it is ready. */
+type ConnectionStatus = "refused" | "retain-problem" | "ready";
+
+const STATUS_BADGES: Record<
+  ConnectionStatus,
+  { color: string; label: string }
+> = {
+  refused: { color: "red", label: "Needs a change" },
+  "retain-problem": { color: "orange", label: "Needs retain mode" },
+  ready: { color: "teal", label: "Ready to try" },
+};
 
 /**
  * The console's SFTP connection surface under the SFTP transport card: shows
@@ -27,7 +42,8 @@ import type { SftpConnectionProjection } from "@jobs/jobManager";
  * With a connection: edit/clear affordances and the accurate "Ready to try"
  * label (authored, not yet verified), plus any non-blocking credential
  * warnings; a split-directory connection whose retain mode has since been
- * turned off is labelled as needing it back instead. Without one: the empty
+ * turned off is labelled as needing it back instead, and on the direct path a
+ * connection a quick exchange refuses shows that refusal. Without one: the empty
  * state invites authoring, or a switch to save-a-file for the operator's own
  * command-line tool.
  *
@@ -66,8 +82,9 @@ export function SftpConnectionCard({
    * forwarded to {@link SftpAuthoringForm} (default `exchange`; `direct` on the
    * direct-exchange path). */
   probeCeremony?: ProbeCeremony;
-  /** Hold the connection to what a direct exchange can run, forwarded to
-   * {@link SftpAuthoringForm} (true on the direct-exchange path). */
+  /** Hold the connection to what a direct exchange can run: forwarded to
+   * {@link SftpAuthoringForm}, and a saved connection one refuses shows that
+   * refusal (true on the direct-exchange path). */
   directExchange?: boolean;
   /** Whether to offer the save-a-file alternative at all. True (the default) on the
    * inviter path, which can mint an exchange file for the command-line tool. False
@@ -90,27 +107,45 @@ export function SftpConnectionCard({
   // this connection was authored, so the summary re-asks the split-directory
   // precondition rather than calling a connection the run would refuse ready.
   const retainProblem = splitDirectoryRetainProblem(connection, retainFiles);
+  // A connection saved for an exchange can hold what a quick exchange refuses,
+  // so the direct path states job create's refusal here instead of calling it
+  // ready.
+  const directRefusal = directExchange
+    ? quickExchangeSftpRefusal(connection)
+    : undefined;
+  const status: ConnectionStatus =
+    directRefusal !== undefined
+      ? "refused"
+      : retainProblem !== undefined
+        ? "retain-problem"
+        : "ready";
+  const ready = status === "ready";
 
   if (connection !== null && !formOpen)
     return (
       <Stack gap="xs" mt="xs">
         <Group gap="xs" align="center">
-          <Badge
-            color={retainProblem === undefined ? "teal" : "orange"}
-            variant="light"
-          >
-            {retainProblem === undefined ? "Ready to try" : "Needs retain mode"}
+          <Badge color={STATUS_BADGES[status].color} variant="light">
+            {STATUS_BADGES[status].label}
           </Badge>
           <Text size="sm">
-            {retainProblem === undefined
-              ? "Runs through "
-              : "Set up on this machine, through "}
+            {ready ? "Runs through " : "Set up on this machine, through "}
             <span className={styles.mono}>
               {sftpConnectionLabel(connection)}
             </span>
-            {retainProblem === undefined ? ", set up on this machine." : "."}
+            {ready ? ", set up on this machine." : "."}
           </Text>
         </Group>
+        {directRefusal !== undefined && (
+          <Alert
+            role="alert"
+            color="red"
+            icon={<IconAlertTriangle aria-hidden />}
+            title={directRefusal.title}
+          >
+            {directRefusal.message}
+          </Alert>
+        )}
         {retainProblem !== undefined && (
           <Text size="sm">{SPLIT_DIRECTORY_RETAIN_SUMMARY}</Text>
         )}

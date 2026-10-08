@@ -40,6 +40,7 @@ import {
 } from "@exchange/directExchangeModel";
 import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
+import { SPLIT_DIRECTORY_RETAIN_SUMMARY } from "@console/sftpConnectionForm";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { UNDESCRIBABLE_RECORD_LEAD } from "@exchange/RecordDownload";
 import { useDirectExchange } from "@exchange/useDirectExchange";
@@ -1609,6 +1610,111 @@ describe("direct exchange remote directory", () => {
       ).toBe(false);
     },
   );
+});
+
+describe("direct exchange saved connection a quick exchange refuses", () => {
+  /** Commit the mounted file, which advances to the agreed-server step. */
+  async function reachServerStep() {
+    await page.getByRole("button", { name: "Select clients.csv" }).click();
+    await page.getByRole("button", { name: "Use this file" }).click();
+    await expect
+      .element(
+        page.getByRole("heading", { level: 1, name: "The agreed server" }),
+      )
+      .toBeInTheDocument();
+  }
+
+  test.each([
+    [
+      "a dot-segment directory",
+      { path: "/exchange/../in", zeroSetupRefusal: "sftp-url-directory" },
+      "The saved SFTP connection's remote directory cannot be used",
+      "A quick exchange's remote directory must be a directory under / with no . or .. parts. Choose Edit connection and enter a directory like /exchange/in.",
+    ],
+    [
+      "two host-key fingerprints",
+      { path: "/exchange", zeroSetupRefusal: "sftp-fingerprint-list" },
+      "The saved SFTP connection holds more than one fingerprint",
+      "The saved SFTP connection holds more than one server identity fingerprint, and a quick exchange pins one. Choose Edit connection and keep only the fingerprint the server presents now.",
+    ],
+  ])(
+    "%s shows job create's refusal and withholds Continue",
+    async (_label, saved, title, message) => {
+      stubJobApi({ sftp: { ...CONFIGURED_SFTP, ...saved } });
+      app.render(createElement(DirectExchangeScreen));
+      await reachServerStep();
+
+      await expect
+        .element(
+          page
+            .getByRole("alert")
+            .filter({ hasText: title })
+            .filter({ hasText: message }),
+        )
+        .toBeInTheDocument();
+      await expect
+        .element(page.getByText("Needs a change"))
+        .toBeInTheDocument();
+      expect(page.getByText("Ready to try").query()).toBeNull();
+      expect(
+        page
+          .getByRole("button", { name: "Continue to confirm and run" })
+          .query(),
+      ).toBeNull();
+      await expect
+        .element(page.getByRole("button", { name: "Edit connection" }))
+        .toBeInTheDocument();
+    },
+  );
+
+  test("a refused split connection keeps its retain-mode guidance", async () => {
+    stubJobApi({
+      sftp: {
+        ...CONFIGURED_SFTP,
+        inboundPath: "/exchange/in",
+        outboundPath: "/exchange/out",
+        zeroSetupRefusal: "sftp-fingerprint-list",
+      },
+    });
+    app.render(createElement(DirectExchangeScreen));
+    await reachServerStep();
+
+    await expect
+      .element(
+        page.getByRole("alert").filter({
+          hasText: "The saved SFTP connection holds more than one fingerprint",
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(SPLIT_DIRECTORY_RETAIN_SUMMARY))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "The connection is not verified until the exchange runs",
+          {
+            exact: false,
+          },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect.element(page.getByText("Needs a change")).toBeInTheDocument();
+  });
+
+  test("a connection a quick exchange runs stays ready to try", async () => {
+    stubJobApi({ sftp: { ...CONFIGURED_SFTP, path: "/exchange/in" } });
+    app.render(createElement(DirectExchangeScreen));
+    await reachServerStep();
+
+    await expect.element(page.getByText("Ready to try")).toBeInTheDocument();
+    expect(page.getByText("Needs a change").query()).toBeNull();
+    await expect
+      .element(
+        page.getByRole("button", { name: "Continue to confirm and run" }),
+      )
+      .toBeEnabled();
+  });
 });
 
 describe("direct exchange host-key probe (direct ceremony)", () => {
