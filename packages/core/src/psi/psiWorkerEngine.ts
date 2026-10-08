@@ -4,6 +4,7 @@ import {
   InternalConsistencyError,
   isPsiLibraryFailure,
   markPsiLibraryFailure,
+  ProtocolRefusalError,
 } from "../errors";
 import {
   InProcessPsiEngine,
@@ -58,6 +59,9 @@ type PsiWorkerRequestBody =
   | { method: "processClientRequest"; requestBytes: Uint8Array }
   | { method: "createClientRequest"; values: ReadonlyArray<string> }
   | { method: "receiveServerSetup"; setupBytes: Uint8Array }
+  | { method: "receiveServerSetupPiece"; piece: Uint8Array }
+  | { method: "completeServerSetup" }
+  | { method: "discardServerSetup" }
   | { method: "computeAssociationTable"; responseBytes: Uint8Array }
   | { method: "computeIntersectionCardinality"; responseBytes: Uint8Array };
 
@@ -101,6 +105,8 @@ export type PsiWorkerResponse =
        * frame boundary reads (see `markPsiLibraryFailure`, `errors.ts`).
        */
       libraryFailure?: boolean;
+      /** Whether the failure is a {@link ProtocolRefusalError}, rebuilt as one. */
+      protocolRefusal?: boolean;
       stopped?: boolean;
     };
 
@@ -249,6 +255,18 @@ export class WorkerPsiEngine implements PsiEngine {
     return this.call({ method: "receiveServerSetup", setupBytes });
   }
 
+  receiveServerSetupPiece(piece: Uint8Array): Promise<void> {
+    return this.call({ method: "receiveServerSetupPiece", piece });
+  }
+
+  completeServerSetup(): Promise<void> {
+    return this.call({ method: "completeServerSetup" });
+  }
+
+  discardServerSetup(): Promise<void> {
+    return this.call({ method: "discardServerSetup" });
+  }
+
   computeAssociationTable(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
@@ -317,6 +335,12 @@ export function servePsiWorker(
         return engine.createClientRequest(body.values);
       case "receiveServerSetup":
         return engine.receiveServerSetup(body.setupBytes);
+      case "receiveServerSetupPiece":
+        return engine.receiveServerSetupPiece(body.piece);
+      case "completeServerSetup":
+        return engine.completeServerSetup();
+      case "discardServerSetup":
+        return engine.discardServerSetup();
       case "computeAssociationTable":
         return engine.computeAssociationTable(body.responseBytes);
       case "computeIntersectionCardinality":
@@ -358,6 +382,7 @@ export function servePsiWorker(
             ok: false,
             error: error instanceof Error ? error.message : String(error),
             libraryFailure: isPsiLibraryFailure(error),
+            protocolRefusal: error instanceof ProtocolRefusalError,
             stopped: error instanceof PsiOperationStoppedError,
           }),
       );
@@ -366,13 +391,17 @@ export function servePsiWorker(
 
 // Rebuilds a failed reply into the error the host raises. Only the message
 // crosses the boundary, so a library failure is re-tagged here from the
-// reply's own flag, and a stop is rebuilt as the stop it was.
+// reply's own flag, and a stop or a protocol refusal is rebuilt as the one it
+// was.
 function rebuildWorkerFailure(response: {
   error: string;
   libraryFailure?: boolean;
+  protocolRefusal?: boolean;
   stopped?: boolean;
 }): Error {
   if (response.stopped === true) return new PsiOperationStoppedError();
+  if (response.protocolRefusal === true)
+    return new ProtocolRefusalError(response.error);
   const failure = new Error(response.error);
   if (response.libraryFailure === true) markPsiLibraryFailure(failure);
   return failure;

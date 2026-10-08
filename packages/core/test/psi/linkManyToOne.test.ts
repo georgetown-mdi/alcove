@@ -23,7 +23,9 @@ import {
   InternalConsistencyError,
   isPsiLibraryFailure,
   ConnectionError,
+  ProtocolRefusalError,
 } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
 import { singlePassReplyByteCap } from "../../src/connection/frameSize";
 import { MANY_TO_MANY_IMPLEMENTED_BY_STRATEGY } from "../../src/linkageTermsPolicy";
 import { receivePsiSet, sendPsiSet } from "../../src/psi/psiSetParts";
@@ -379,11 +381,11 @@ test("a partner setup holding one value twice is refused before the joiner's mat
   await joinerConn.close();
   const starterOutcome = await starterRound;
 
-  expect(joinerOutcome).toBeInstanceOf(Error);
-  expect((joinerOutcome as Error).constructor).toBe(Error);
+  expect(joinerOutcome).toBeInstanceOf(ProtocolRefusalError);
   expect((joinerOutcome as Error).message).toBe(
     "client protocol error: PSI server setup is not in strictly ascending element order",
   );
+  expect(classifyFailure(joinerOutcome)).toBe("partner-refused");
   expect(isPsiLibraryFailure(joinerOutcome)).toBe(false);
   expect(starterOutcome).toBeInstanceOf(Error);
 });

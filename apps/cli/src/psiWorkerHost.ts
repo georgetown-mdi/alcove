@@ -273,8 +273,8 @@ export function offerExitAtOnceWhilePsiWorkersStop(
  * exited. A signal handler awaits this before `process.exit`, which would
  * otherwise tear a worker down inside a native call and abort the process.
  * An operation in flight stops at its next boundary: at most one masking
- * chunk during encryption, the end of the current match call during the
- * match -- for a count-only or unsliced match, the whole match. When it has
+ * chunk during encryption, one response piece during the match -- for a
+ * match whose response is one piece, the whole match. When it has
  * to wait, a repeated signal ends the wait as
  * {@link offerExitAtOnceWhilePsiWorkersStop} describes. Never rejects.
  */

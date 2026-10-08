@@ -11,6 +11,7 @@ import {
 } from "../connection/frameSize";
 import {
   countDeclaredPsiElements,
+  PsiElementScan,
   type PsiMessageKind,
 } from "../connection/psiElementScan";
 import { singleIssueArray } from "../utils/singleIssueArray";
@@ -38,7 +39,9 @@ import {
   ownSetTooLargeMessage,
   psiSetByteBound,
   receivePsiSet,
+  receivePsiSetInPieces,
   sendPsiSet,
+  type PsiSetCapacity,
 } from "./psiSetParts";
 import type { RoundGroupingField } from "./roundGrouping";
 
@@ -239,12 +242,8 @@ export interface PsiProgress {
    * How many of `elements` the operation has finished masking or matching.
    * Present on `progress` alone, and always short of `elements`: the engine
    * reports between the chunks it splits a large set into, never after the
-   * last one, whose figure the `finished` report states.
-   *
-   * The `computeIntersectionCardinality` operation never splits the
-   * partner's response, so it reports between the setup slices a memory
-   * budget splits its match into and nothing when the match is one call (see
-   * {@link ./psiEngine.PsiEngine.computeIntersectionCardinality}).
+   * last one, whose figure the `finished` report states. A match reports
+   * between the pieces it feeds the partner's response to the engine in.
    */
   processed?: number;
   /**
@@ -442,14 +441,33 @@ export class PSIParticipant {
     bytes: Uint8Array,
     authenticatedBound: number,
   ): number {
-    const ceiling = Math.min(
+    const ceiling = this.inboundElementCeiling(kind, authenticatedBound);
+    return this.assertScanWithinCeiling(kind, ceiling, () =>
+      countDeclaredPsiElements(bytes, kind, ceiling),
+    );
+  }
+
+  private inboundElementCeiling(
+    kind: PsiMessageKind,
+    authenticatedBound: number,
+  ): number {
+    return Math.min(
       authenticatedBound,
       MAX_PSI_DECODE_ELEMENTS,
       kind === "response" ? MAX_PSI_DECODE_ELEMENTS : this.setCeilings.local,
     );
+  }
+
+  // The refusals of a frame `scan` cannot read or finds declaring more than
+  // `ceiling` elements; returns the count it found otherwise.
+  private assertScanWithinCeiling(
+    kind: PsiMessageKind,
+    ceiling: number,
+    scan: () => number,
+  ): number {
     let declared: number;
     try {
-      declared = countDeclaredPsiElements(bytes, kind, ceiling);
+      declared = scan();
     } catch {
       throw new ProtocolRefusalError(
         `${this.id} protocol error: malformed inbound PSI ${kind} frame`,
@@ -511,35 +529,103 @@ export class PSIParticipant {
         );
   }
 
-  // Receive one of the round's PSI sets in its parts. A setup or a request
-  // holds the partner's own set: it is held to the bytes the authenticated
-  // element bound for its kind admits, and to this party's receive ceiling, as
-  // this party's capacity rather than the protocol's. A response is held to
-  // the request this party sent.
+  // Receive one of the round's PSI sets in its parts, joined. A request holds
+  // the partner's own set: see partnerSetLimits. A response is held to the
+  // request this party sent.
   private receiveRoundSet(
     conn: MessageConnection,
-    kind: PsiMessageKind,
+    kind: "request" | "response",
   ): Promise<Uint8Array> {
     if (kind === "response")
       return receivePsiSet(conn, this.id, kind, {
         bytes: this.requestAnswered().bytes,
         source: "bytes of the request this party sent",
       });
-    const elementBound = Math.min(
-      kind === "serverSetup"
-        ? this.elementBounds.setup
-        : this.elementBounds.request,
-      MAX_PSI_DECODE_ELEMENTS,
-    );
-    const ceiling = this.setCeilings.local;
+    const limits = this.partnerSetLimits(this.elementBounds.request);
     return receivePsiSet(
       conn,
       this.id,
       kind,
-      psiSetByteBound(elementBound),
-      ceiling < elementBound
-        ? { setBytes: psiSetByteBound(ceiling), elements: ceiling }
-        : undefined,
+      limits.maxSetBytes,
+      limits.capacity,
+    );
+  }
+
+  // A setup or a request holds the partner's own set: it is held to the bytes
+  // the authenticated element bound for its kind admits, and to this party's
+  // receive ceiling, as this party's capacity rather than the protocol's.
+  private partnerSetLimits(authenticatedBound: number): {
+    maxSetBytes: number;
+    capacity: PsiSetCapacity | undefined;
+  } {
+    const elementBound = Math.min(authenticatedBound, MAX_PSI_DECODE_ELEMENTS);
+    const ceiling = this.setCeilings.local;
+    return {
+      maxSetBytes: psiSetByteBound(elementBound),
+      capacity:
+        ceiling < elementBound
+          ? { setBytes: psiSetByteBound(ceiling), elements: ceiling }
+          : undefined,
+    };
+  }
+
+  // A failure after some parts reached the engine frees the partial setup
+  // there; a failure to free it does not replace the original error.
+  private async receiveServerSetupInParts(
+    conn: MessageConnection,
+  ): Promise<void> {
+    try {
+      await this.receiveServerSetupPieces(conn);
+    } catch (error) {
+      await this.engine.discardServerSetup().catch(() => undefined);
+      throw error;
+    }
+  }
+
+  // Receive the partner's setup in its parts and hand each part to the engine
+  // as it arrives, so the setup is never joined: each part is checked as
+  // receivePsiSetInPieces checks it and element-scanned before it reaches the
+  // engine, so the engine never holds more elements than the scan admits, and
+  // the setup completes only once its last part has passed both.
+  private async receiveServerSetupPieces(
+    conn: MessageConnection,
+  ): Promise<void> {
+    const limits = this.partnerSetLimits(this.elementBounds.setup);
+    const ceiling = this.inboundElementCeiling(
+      "serverSetup",
+      this.elementBounds.setup,
+    );
+    let scan: PsiElementScan | undefined;
+    await receivePsiSetInPieces(
+      conn,
+      this.id,
+      "serverSetup",
+      limits.maxSetBytes,
+      limits.capacity,
+      async (piece, setBytes) => {
+        const setupScan = (scan ??= new PsiElementScan(
+          "serverSetup",
+          ceiling,
+          setBytes,
+        ));
+        this.assertScanWithinCeiling("serverSetup", ceiling, () =>
+          setupScan.add(piece),
+        );
+        await decodePsiBinaryFrame(this.id, "serverSetup", () =>
+          this.engine.receiveServerSetupPiece(piece),
+        );
+      },
+    );
+    if (scan === undefined)
+      throw new InternalConsistencyError(
+        `${this.id}: a PSI setup was received with no part`,
+      );
+    const completedScan = scan;
+    this.assertScanWithinCeiling("serverSetup", ceiling, () =>
+      completedScan.end(),
+    );
+    await decodePsiBinaryFrame(this.id, "serverSetup", () =>
+      this.engine.completeServerSetup(),
     );
   }
 
@@ -692,13 +778,10 @@ export class PSIParticipant {
     return this.computeAssociationTable(responseBytes);
   }
 
-  // Host-side element-count guard, then hand the setup to the engine to
-  // deserialize, Raw-check, and hold. Split from the match (below) so the
-  // cascade joiner can validate the setup the instant it arrives -- a
-  // fail-fast before it sends its own request -- while the response it
-  // matches against arrives a round trip later. The guard runs here, above
-  // the engine boundary, so the engine only ever deserializes an
-  // already-bounded frame.
+  // The single-pass setup, which arrives whole inside its message: the
+  // host-side element-count guard, then the engine takes, checks and holds
+  // it. The guard runs here, above the engine boundary, so the engine only
+  // ever reads an already-bounded frame.
   private receiveServerSetup(setupBytes: Uint8Array): Promise<void> {
     this.assertInboundElementBound(
       "serverSetup",
@@ -782,9 +865,8 @@ export class PSIParticipant {
     }
 
     this.log.debug(`${this.id}: starting count-only protocol`);
-    const serverSetup = await this.receiveRoundSet(conn, "serverSetup");
     this.log.debug(`${this.id}: receiving server data encrypted by server`);
-    await this.receiveServerSetup(serverSetup);
+    await this.receiveServerSetupInParts(conn);
 
     await this.refuseOwnSetOverDecodeCap(conn, set.length);
     const clientRequest = await this.createClientRequest(set);
@@ -895,13 +977,12 @@ export class PSIParticipant {
     } else {
       this.log.debug(`${this.id}: starting identify-intersection protocol`);
 
-      const serverSetup = await this.receiveRoundSet(conn, "serverSetup");
       this.log.debug(`${this.id}: receiving server data encrypted by server`);
 
-      // Validate and hold the server setup the instant it arrives -- a fail-fast
-      // before we send our own request -- while the response we match it against
+      // Validate and hold the server setup as it arrives -- a fail-fast before
+      // we send our own request -- while the response we match it against
       // arrives a round trip later.
-      await this.receiveServerSetup(serverSetup);
+      await this.receiveServerSetupInParts(conn);
 
       await this.refuseOwnSetOverDecodeCap(conn, set.length);
       const clientRequest = await this.createClientRequest(set);

@@ -29,6 +29,7 @@ import {
   PSI_SET_TOO_LARGE_ABORT_REASON,
 } from "../../src/partnerAbortFrame";
 import { PSIParticipant } from "../../src/psi/participant";
+import { serializeSetup } from "../../src/psi/psiChunks";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import {
   ownSetOverPartnerCeilingMessage,
@@ -488,8 +489,15 @@ async function joinerFed(
   return outcome;
 }
 
-test("a round ends on an abort in place of a setup part before decoding any of it", async () => {
-  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+test("a round ends on an abort in place of a setup part before the setup completes", async () => {
+  const pieces = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "receiveServerSetupPiece",
+  );
+  const complete = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "completeServerSetup",
+  );
   const engine = new InProcessPsiEngine(
     psiLibrary,
     "starter",
@@ -507,11 +515,141 @@ test("a round ends on an abort in place of a setup part before decoding any of i
     await sendAbort(starter, ["a reason"]);
   });
   expect(ended).toBeInstanceOf(PeerAbortError);
-  expect(decode).not.toHaveBeenCalled();
+  // Each part reaches the engine as it arrives; the setup never completes.
+  expect(pieces).toHaveBeenCalledTimes(2);
+  expect(complete).not.toHaveBeenCalled();
 });
 
+test("a round refuses a setup out of ascending order at the part that shows it, before reading the rest or sending its request", async () => {
+  const request = vi.spyOn(InProcessPsiEngine.prototype, "createClientRequest");
+  const engine = new InProcessPsiEngine(
+    psiLibrary,
+    "starter",
+    "server",
+    "identifier-revealing",
+  );
+  const { setup } = await engine.createServerSetup(values(100, "s"));
+  engine.dispose();
+  const elements = [
+    ...psiLibrary.serverSetup
+      .deserializeBinary(setup)
+      .getRaw()!
+      .getEncryptedElementsList_asU8(),
+  ];
+  [elements[10], elements[11]] = [elements[11]!, elements[10]!];
+  const parts = partsOf(serializeSetup(psiLibrary, elements), 1000);
+  expect(parts.length).toBeGreaterThan(2);
+
+  // Only the first part is sent: the elements it swaps lie inside it.
+  const ended = await joinerFed(UNBOUNDED_PSI_ELEMENTS, (starter) =>
+    starter.send(parts[0]),
+  );
+  expect((ended as Error).message).toBe(
+    "client protocol error: PSI server setup is not in strictly ascending element order",
+  );
+  expect(request).not.toHaveBeenCalled();
+});
+
+test("a round refuses a setup at the part whose elements pass the bound, before that part reaches the engine", async () => {
+  const pieces = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "receiveServerSetupPiece",
+  );
+  // Fifty ascending one-byte elements under a Raw data structure, 3 bytes
+  // each: inside the byte bound for 40 elements but over its element count,
+  // with no more than 40 in the first part.
+  const setup = serializeSetup(
+    psiLibrary,
+    Array.from({ length: 50 }, (_, index) => Uint8Array.of(index)),
+  );
+  expect(setup.byteLength).toBeLessThanOrEqual(psiSetByteBound(40));
+  const parts = partsOf(setup, 100);
+  expect(parts).toHaveLength(2);
+
+  const ended = await joinerFed(
+    { ...UNBOUNDED_PSI_ELEMENTS, setup: 40 },
+    async (starter) => {
+      for (const part of parts) await starter.send(part);
+    },
+  );
+  expect(ended).toBeInstanceOf(ProtocolRefusalError);
+  expect((ended as Error).message).toBe(
+    "client protocol error: inbound PSI serverSetup declares more than 40 " +
+      "encrypted element(s)",
+  );
+  expect(pieces).toHaveBeenCalledTimes(1);
+});
+
+test.each([
+  ["an abort in place of its next part", "abort"],
+  ["its next part passing the element bound", "over-bound"],
+] as const)(
+  "a setup refused at %s after a part reached the engine leaves no live partial match",
+  async (_label, refusal) => {
+    const matches = { created: 0, deleted: 0 };
+    const clients = psiLibrary.client!;
+    const counting: typeof psiLibrary = {
+      ...psiLibrary,
+      client: {
+        ...clients,
+        createWithNewKey: (reveal) => {
+          const client = clients.createWithNewKey(reveal);
+          return {
+            ...client,
+            createMatch: () => {
+              const match = client.createMatch();
+              matches.created += 1;
+              return {
+                ...match,
+                delete: () => {
+                  matches.deleted += 1;
+                  match.delete();
+                },
+              };
+            },
+          };
+        },
+      },
+    };
+    const setup = serializeSetup(
+      psiLibrary,
+      Array.from({ length: 50 }, (_, index) => Uint8Array.of(index)),
+    );
+    const parts = partsOf(setup, 100);
+    expect(parts).toHaveLength(2);
+    const [a, b] = createMessagePipe();
+    const joiner = new PSIParticipant(
+      "client",
+      counting,
+      { role: "joiner", verbose: -1 },
+      { ...UNBOUNDED_PSI_ELEMENTS, setup: 40 },
+    );
+    const ended = joiner.identifyIntersection(b, values(3, "j")).then(
+      () => "completed",
+      (err: unknown) => err,
+    );
+    await a.send(parts[0]);
+    if (refusal === "abort") await sendAbort(a, ["a reason"]);
+    else await a.send(parts[1]);
+    const outcome = await ended;
+    const liveAtRefusal = matches.created - matches.deleted;
+    joiner.dispose();
+    await a.close();
+
+    expect(outcome).toBeInstanceOf(
+      refusal === "abort" ? PeerAbortError : ProtocolRefusalError,
+    );
+    expect(matches.created).toBe(1);
+    expect(liveAtRefusal).toBe(0);
+    expect(matches.deleted).toBe(1);
+  },
+);
+
 test("a round refuses a setup longer than the partner's record counts admit", async () => {
-  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  const decode = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "receiveServerSetupPiece",
+  );
   const engine = new InProcessPsiEngine(
     psiLibrary,
     "starter",
@@ -588,7 +726,10 @@ async function joinerFedFirstSetupPart(
 }
 
 test("a round refuses a partner's setup within the record counts but over this party's receive ceiling at its first part, as this party's capacity", async () => {
-  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  const decode = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "receiveServerSetupPiece",
+  );
   const { outcome, firstSent } = await joinerFedFirstSetupPart(10, 9);
   expect(outcome).toBeInstanceOf(RoundCapacityError);
   expect((outcome as RoundCapacityError).stage).toBe("set-first-part");
@@ -601,7 +742,10 @@ test("a round refuses a partner's setup within the record counts but over this p
 });
 
 test("a round refuses a partner's setup over the record counts as a protocol error, whatever this party's receive ceiling", async () => {
-  const decode = vi.spyOn(InProcessPsiEngine.prototype, "receiveServerSetup");
+  const decode = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "receiveServerSetupPiece",
+  );
   for (const ceiling of [5, 9, 20]) {
     const { outcome, firstSent } = await joinerFedFirstSetupPart(9, ceiling);
     expect(outcome).toBeInstanceOf(ProtocolRefusalError);

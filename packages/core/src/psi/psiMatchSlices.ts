@@ -1,4 +1,4 @@
-import { InternalConsistencyError } from "../errors";
+import { InternalConsistencyError, ProtocolRefusalError } from "../errors";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
   chunkRangesOfSize,
@@ -106,12 +106,35 @@ export function maskingChunkRanges(
 }
 
 /**
+ * The protocol refusal of a partner's setup whose elements are not strictly
+ * ascending by bytes, whichever match method finds it. The message holds no
+ * partner bytes.
+ */
+export function setupNotStrictlyAscendingError(
+  id: string,
+): ProtocolRefusalError {
+  return new ProtocolRefusalError(
+    `${id} protocol error: PSI server setup is not in strictly ascending element order`,
+  );
+}
+
+/**
+ * The protocol refusal of a partner's setup that is not a Raw data structure,
+ * whichever match method finds it.
+ */
+export function setupNotRawError(id: string): ProtocolRefusalError {
+  return new ProtocolRefusalError(
+    `${id} protocol error: PSI server setup is not a Raw data structure`,
+  );
+}
+
+/**
  * Refuses a partner's setup whose elements are not strictly ascending by
- * bytes, before every match whether sliced or not. The sliced match sums or
- * offsets per-slice results, which equals the single call only when no
- * element appears in two slices; a conforming setup holds distinct masked
- * values in the library's sort order, so only a nonconforming partner is
- * refused. The message holds no partner bytes.
+ * bytes, before every sliced match whether it runs in slices or one call. The
+ * sliced match sums or offsets per-slice results, which equals the single
+ * call only when no element appears in two slices; a conforming setup holds
+ * distinct masked values in the library's sort order, so only a
+ * nonconforming partner is refused.
  */
 export function assertStrictlyAscending(
   elements: ReadonlyArray<Uint8Array>,
@@ -119,17 +142,16 @@ export function assertStrictlyAscending(
 ): void {
   for (let index = 1; index < elements.length; index += 1)
     if (compareElementBytes(elements[index - 1]!, elements[index]!) >= 0)
-      throw new Error(
-        `${id} protocol error: PSI server setup is not in strictly ascending element order`,
-      );
+      throw setupNotStrictlyAscendingError(id);
 }
 
 /**
  * The engine options a worker serving `backend` runs under: the WebAssembly
- * engine's match slices and masking chunks are sized to
- * {@link WASM_PSI_MATCH_BUDGET_BYTES}, and the native addon, which has no
- * fixed memory maximum, runs every match as one call and every masking
- * operation at the chunk policy's sizes.
+ * engine's masking chunks, and its match slices where a match runs sliced,
+ * are sized to {@link WASM_PSI_MATCH_BUDGET_BYTES}, and the native addon,
+ * which has no fixed memory maximum, runs every masking operation at the
+ * chunk policy's sizes. Both match by the engine's default method, the
+ * streamed match.
  */
 export function psiEngineOptionsForBackend(
   backend: PsiBackendSelection["backend"],

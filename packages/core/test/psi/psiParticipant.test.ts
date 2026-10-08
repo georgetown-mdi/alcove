@@ -317,13 +317,17 @@ async function respondedRound(): Promise<{
   return { receiver, setup, request, response };
 }
 
-// The response padded to `length` bytes with one unknown protobuf field the
-// library skips: a varint of field 15 whose value 0 is written in
-// `length - response.byteLength - 1` bytes.
+// The response padded to `length` bytes by writing its first element's
+// length varint, a single byte, in `length - response.byteLength + 1` bytes:
+// the same message, which the engine reads as it reads the unpadded one.
 function paddedResponse(response: Uint8Array, length: number): Uint8Array {
-  const valueBytes = length - response.byteLength - 1;
-  const padding = [15 << 3, ...Array<number>(valueBytes - 1).fill(0x80), 0];
-  return new Uint8Array([...response, ...padding]);
+  const extraBytes = length - response.byteLength;
+  const varint = [
+    response[1]! | 0x80,
+    ...Array<number>(extraBytes - 1).fill(0x80),
+    0,
+  ];
+  return new Uint8Array([response[0]!, ...varint, ...response.subarray(2)]);
 }
 
 test("a response as long as the request this party sent proceeds", async () => {
@@ -340,7 +344,10 @@ test("a response as long as the request this party sent proceeds", async () => {
 test("a response longer than the request this party sent is refused before decode", async () => {
   const { receiver, setup, request, response } = await respondedRound();
   const overLength = paddedResponse(response, request.byteLength + 1);
-  const deserialize = vi.spyOn(psiLibrary.response, "deserializeBinary");
+  const deserialize = vi.spyOn(
+    InProcessPsiEngine.prototype,
+    "computeAssociationTable",
+  );
   try {
     const refused = receiver.computeValueMatches(setup, overLength);
     await expect(refused).rejects.toBeInstanceOf(ProtocolRefusalError);

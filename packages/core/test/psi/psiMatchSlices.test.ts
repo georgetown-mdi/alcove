@@ -4,7 +4,8 @@ import { vi } from "vitest";
 import PSI from "@openmined/psi.js";
 
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { isPsiLibraryFailure } from "../../src/errors";
+import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
+import { classifyFailure } from "../../src/failureClass";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
@@ -131,10 +132,11 @@ test.each([
   } catch (error) {
     caught = error;
   }
-  expect(caught).toBeInstanceOf(Error);
+  expect(caught).toBeInstanceOf(ProtocolRefusalError);
   expect((caught as Error).message).toBe(
     "joiner protocol error: PSI server setup is not in strictly ascending element order",
   );
+  expect(classifyFailure(caught)).toBe("partner-refused");
   expect(isPsiLibraryFailure(caught)).toBe(false);
 });
 
@@ -154,7 +156,7 @@ test("only the WebAssembly backend is budgeted", () => {
   expect(psiEngineOptionsForBackend("native")).toStrictEqual({});
 });
 
-test("a setup that fits the budget matches in one call whatever the slice size would be", async () => {
+test("a sliced match over a setup that fits the budget runs in one call whatever the slice size would be", async () => {
   const library = await PSI();
   const setupValues = ["a", "b", "c", "d", "e", "f", "g"];
   const clientValues = ["c", "e", "z"];
@@ -164,7 +166,10 @@ test("a setup that fits the budget matches in one call whatever the slice size w
   expect(() => matchSetupSliceElements(clientValues.length, budget)).toThrow(
     /below the floor/,
   );
-  const options = { matchMemoryBudgetBytes: budget };
+  const options = {
+    matchMethod: "sliced",
+    matchMemoryBudgetBytes: budget,
+  } as const;
   const sender = new InProcessPsiEngine(
     library,
     "starter",

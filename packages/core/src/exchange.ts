@@ -1077,10 +1077,8 @@ export interface RunExchangeOptions {
    * and how long it ran once it settles. A front end renders a live progress
    * display from it: the operations are the ones a long round spends its
    * minutes inside, and one over a large set reports its processed count
-   * between the chunks the engine splits it into. A count-only round's match
-   * never splits the partner's response: it reports between the setup slices
-   * a memory budget splits it into, and nothing between its start and finish
-   * when it runs as one call.
+   * between the chunks the engine splits it into, a match between the pieces
+   * it feeds the partner's response in.
    *
    * Every figure is a count or a duration, never a value from either party's
    * data, and none of it goes on the wire.
