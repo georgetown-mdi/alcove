@@ -1,25 +1,9 @@
 /**
  * The browser-side reader for a console run's signed receipt: whether the
- * console holds one for a job, where to download it from, and what to name the
- * saved file.
- *
- * The console is the authority on all three. A seat asks it rather than
- * remembering what it requested, which is what lets a re-attached run -- another
- * tab, or a return after a reload -- offer the receipt at all.
- *
- * The ask is independent of how the run ended. A receipt is written from the
- * mutually-verifiable facts once the signature swap completes, independent of
- * the local record build and the run's exit code -- a persistence-loss exit can
- * still have a receipt as the one artifact that survived. `GET
- * /api/jobs/:jobId/receipt` is not gated on success for that reason
- * (docs/spec/SERVER_JOB_API.md); a reader must not gate the download on a
- * successful terminal either.
- *
- * An ask the console does not answer is not a run without a receipt -- it says
- * nothing at all. Treating it as "no receipt" would silently hide one the
- * console holds, behind a single hiccup at the moment the run settled.
- * Consecutive unanswered asks are bounded instead, and the ask ends on an
- * outcome the seat can state.
+ * console has one for a job, where to download it from, and what to name the
+ * saved file. The ask is independent of how the run ended, so the download is
+ * never gated on a successful terminal (docs/spec/SERVER_JOB_API.md, "The
+ * `GET /api/jobs/:jobId/receipt` response").
  */
 
 import {
@@ -30,29 +14,17 @@ import { delayUntilAborted } from "@psi/delayUntilAborted";
 
 import { recordFileStamp } from "@alcove/core";
 
-/** The console endpoint the receipt downloads from. The browser never composes
- * the file's path: the console resolves it inside the job's own workdir. */
+/** The console endpoint the receipt downloads from; the console resolves the
+ * file's path inside the job's own workdir. */
 function jobReceiptUrl(jobId: string): string {
   return `/api/jobs/${jobId}/receipt`;
 }
 
 /**
- * What one ask told the seat about this run's receipt: the file and its download
- * name, a run that asked for a receipt the console does not hold, nothing to
- * say at all, or an ask holding no answer about the receipt.
- *
- * `missing` is kept apart from `none` for the same reason the diagnostic log
- * keeps its own two apart ({@link ./jobDiagnosticLog}): only `receiptRequested`
- * -- the console's own record of the intent it launched -- separates a receipt
- * that was never asked for from one that was asked for and is not there.
- *
- * `unanswered` is kept apart from both, for the same reason the log keeps its
- * own: a rejected request, a job the console has forgotten across a restart, a
- * lost connection, a body that will not parse -- none of those said this run
- * has no receipt, and folding them into `none` (rendered as nothing at all)
- * would hide a real receipt silently. A body that IS readable and holds
- * neither field is `none`: the console answered, and its answer establishes
- * nothing for the seat to state.
+ * What one ask told the caller about this run's receipt. `missing` is a run
+ * that asked for a receipt the console does not have; `none` is a readable
+ * answer that establishes nothing; `unanswered` is an ask with no readable
+ * body, which is never folded into `none` because `none` renders as nothing.
  */
 export type JobReceiptOffer =
   | { kind: "available"; receiptUrl: string; receiptFileName: string }
@@ -61,18 +33,10 @@ export type JobReceiptOffer =
   | { kind: "unanswered" };
 
 /**
- * The download name the operator's browser saves the receipt under. It follows
- * the record downloads' stamped convention, which is also the CLI's own default
- * receipt name off the same `createdAt` (`defaultReceiptPath` in apps/cli), so an
- * operator's console and command-line runs file the artifact under one
- * convention.
- *
- * The stamp falls back to the job id where the status body reports no record to
- * take one from: a run can hold a receipt with no record -- the case the
- * receipt endpoint is not success-gated for -- so the download must not be
- * withheld for want of a filename. The id names the run as unambiguously as the
- * timestamp does, matching the stamp the diagnostic log's own download name
- * already holds.
+ * The download name for the receipt, on the record downloads' stamped
+ * convention (the CLI's `defaultReceiptPath`). The stamp falls back to the job
+ * id where the status body reports no record, since a run can have a receipt
+ * without one.
  */
 function receiptFileName(jobId: string, status: JobStatusFields): string {
   const stamp =
@@ -83,8 +47,7 @@ function receiptFileName(jobId: string, status: JobStatusFields): string {
   return `alcove-receipt-${stamp}.json`;
 }
 
-/** The status-body fields this reader looks at, all of them unknown until read:
- * the body is JSON off the network, so nothing about its shape is given. */
+/** The status-body fields this reader looks at, unknown until read. */
 interface JobStatusFields {
   receiptAvailable?: unknown;
   receiptRequested?: unknown;
@@ -94,16 +57,8 @@ interface JobStatusFields {
 
 /**
  * Where this job's receipt stands, read off `GET /api/jobs/:jobId` in one ask.
- *
- * The two receipt fields are read strictly and together: only a literal `true` on
- * either answers, so a readable body that omits one, holds a non-boolean, or is
- * not this endpoint's status body at all falls to `none` and the seat says
- * nothing about this run's receipt rather than reporting one missing on the
- * strength of a malformed frame.
- *
- * An ask that came back with no readable body at all -- a fetch that threw, a
- * non-2xx, a body that would not parse -- is `unanswered` rather than either
- * answer, and {@link askJobReceiptOffer} is what decides whether to ask again.
+ * Only a literal `true` on either receipt field answers; any other readable
+ * body is `none`. An ask with no readable body is `unanswered`.
  */
 export async function fetchJobReceiptOffer(
   jobId: string,
@@ -132,44 +87,22 @@ export async function fetchJobReceiptOffer(
   }
 }
 
-/**
- * The gap between asks after one that held no answer. What a longer wait
- * costs is how long the download stays missing on a settled run the operator is
- * already looking at; what a shorter one costs is a burst of asks at a
- * console that has just stopped answering.
- */
+/** The gap between asks after one with no answer. */
 const RECEIPT_AVAILABILITY_RETRY_MS = 2_000;
 
 /**
- * Consecutive asks that answer nothing about the receipt before the seat gives
- * up on this run. Every unanswerable shape looks alike from the browser -- a job
- * the console forgot across a restart, a route erroring, a connection that
- * stopped reaching it -- so a bound is the only thing separating a blip the next
- * ask recovers from a console that will never answer for this run. At
- * {@link RECEIPT_AVAILABILITY_RETRY_MS} apiece this spends under ten seconds
- * before the seat says so, on a run that has already reached its terminal.
+ * Consecutive unanswered asks before the caller gives up on this run.
  *
  * @internal exported for the unit test, which pins where a failing route stops.
  */
 export const RECEIPT_AVAILABILITY_UNANSWERED_LIMIT = 5;
 
 /**
- * Ask the console where this job's receipt stands, re-asking while the ask
- * itself holds no answer.
- *
- * One ask determines every answer the console actually gives: the seat asks a run
- * that has already settled, so `available`, `missing`, and `none` cannot change
- * and asking again would tell it the same thing. Only the answer that comes
- * back with nothing gets re-asked -- a hiccup at the moment the run settles
- * would otherwise hide a receipt the console holds for the whole life of the
- * seat, silently, since `none` renders as no control at all. Consecutive
- * unanswered asks are re-asked up to
- * {@link RECEIPT_AVAILABILITY_UNANSWERED_LIMIT} times, so a transient failure
- * costs a couple of seconds while a persistent one ends in `unanswered` -- the
- * outcome a seat states rather than renders as nothing.
- *
- * A caller that stops the ask gets `none`: it established nothing, which is the
- * one outcome the seat shows nothing for.
+ * Ask the console where this job's receipt stands, re-asking only while an
+ * ask has no answer: the run has already settled, so any answer is final.
+ * Unanswered asks are re-asked up to
+ * {@link RECEIPT_AVAILABILITY_UNANSWERED_LIMIT} times in a row before ending in
+ * `unanswered`. A caller that stops the ask gets `none`.
  */
 export async function askJobReceiptOffer(
   jobId: string,
