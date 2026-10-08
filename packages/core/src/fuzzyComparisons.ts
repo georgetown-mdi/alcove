@@ -3,22 +3,12 @@ import { isCalendarDateValid } from "./utils/calendarDate.js";
 import type { GenerateFuzzyComparisons } from "./config/linkageTermsSchema.js";
 
 /**
- * The longest standardized value the fuzzy expansion will widen.
- *
- * Every expansion kind emits candidates of O(length) characters each:
- * O(length) of them for the deletion kind, whose allocation therefore grows
- * with the SQUARE of the value it is handed, and O(length^2) for the
- * all-pairs transposition kind, whose allocation grows with its CUBE. The
- * value is local row data, whose length nothing upstream bounds, while the
- * decision to expand it comes from the partner-authored linkage terms -- so
- * without this cap a partner could declare a fuzzy element over a field the
- * local file fills with very long cells and drive unbounded per-row
- * allocation. Names and canonical dates sit far below the cap, so it never
- * binds on real linkage data.
- *
- * A value above the cap is refused rather than passed through unexpanded:
- * passing it through would match that row on the single exact value while
- * the consent surface states each candidate matches independently.
+ * The longest standardized value the fuzzy expansion accepts. Expansion
+ * allocates work growing with the square (deletions) or cube (transpositions)
+ * of the value's length, the value is local row data nothing upstream bounds,
+ * and the partner's terms decide whether to expand it. A longer value is
+ * refused, not matched on its exact value alone. See
+ * docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection.
  */
 export const MAX_FUZZY_EXPANSION_INPUT_LENGTH = 128;
 
@@ -27,10 +17,8 @@ const CANONICAL_DATE_LAYOUT = "YYYYMMDD";
 
 const CANONICAL_DATE_PATTERN = /^[0-9]{8}$/;
 
-// Neither the standardized value nor the element name is interpolated into any
-// refusal below: the value is local row data (the PII the exchange exists to
-// keep local) and the element name is partner-authored free text. Each message
-// names only the fixed enum member and the recovery, so it is safe to render.
+// The refusals below interpolate neither the row value (local PII) nor the
+// partner-authored element name.
 function fuzzyValueTooLongRefusal(kind: GenerateFuzzyComparisons): UsageError {
   return new UsageError(
     `a linkage-key element declares "${kind}" fuzzy comparisons, but a row's ` +
@@ -58,19 +46,10 @@ function nonCanonicalDateRefusal(kind: GenerateFuzzyComparisons): UsageError {
 }
 
 /**
- * Refuse a value the declared expansion cannot be applied to.
- *
- * The single place both input conditions live, so a caller that screens
- * values ahead of expanding them screens on exactly what the expansion
- * itself refuses. {@link expandFuzzyComparisons} calls it on the value it
- * is handed, and `buildKeyStrings` calls it over an element's whole
- * pre-expansion candidate list before expanding any of them: that loop can
- * settle the row at the accumulating bound partway through the list, so
- * without the pass ahead of it whether the operator is told about an
- * unexpandable value would depend on where in the list it sits.
- *
- * Total over the kind, so a kind added without an arm fails to compile
- * rather than silently taking the length check alone.
+ * Refuse a value the declared expansion cannot be applied to: the one place
+ * both input conditions live, so `buildKeyStrings` screens an element's whole
+ * pre-expansion list on exactly what the expansion refuses. See
+ * docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection.
  *
  * @throws {UsageError} if `value` is above
  * {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, or if `kind` is
@@ -96,23 +75,10 @@ export function assertFuzzyExpansionAccepts(
 }
 
 /**
- * Every two-position transposition of `value` -- all pairs of positions,
- * not adjacent ones alone -- excluding `value` itself.
- *
- * A FULL-VARIANT enumeration: the whole set of values one transposition
- * away from `value`, which is why one party enumerating it suffices for
- * two records a single transposition apart to meet
- * (docs/notes/one-sided-fuzzy-expansion.md). Adjacent pairs alone would
- * miss the transposition an operator most often makes across a separator.
- *
- * Iterates code points rather than UTF-16 units so a swap never splits a
- * surrogate pair into two lone surrogates -- a candidate no partner's
- * standardized value could equal, and one that would not survive the key
- * builder's final NFC pass unchanged.
- *
- * A pair of identical characters transposes to the original string, so it
- * emits no candidate. Every other pair emits a candidate differing from
- * `value` at exactly that pair's two positions, so no two pairs collide.
+ * Every swap of two unequal code points at any two positions of `value`, a
+ * full-variant enumeration, so one party expanding suffices
+ * (docs/notes/one-sided-fuzzy-expansion.md). Code points, not UTF-16 units,
+ * so a swap never splits a surrogate pair.
  */
 export function transpositionCandidates(value: string): string[] {
   const points = Array.from(value);
@@ -129,18 +95,9 @@ export function transpositionCandidates(value: string): string[] {
 }
 
 /**
- * Every single-character deletion of `value`; each is one code point shorter
- * than `value`, so `value` itself is never among them.
- *
- * These are the values within one edit distance of `value` that are SHORTER
- * than it -- a deletion NEIGHBOURHOOD rather than a full variant enumeration,
- * and the reason this kind is the one both parties expand: the partner's own
- * value is expanded by its own party, so a deletion on each side covers a single
- * substitution or insertion between them without either side enumerating the
- * alphabet (docs/notes/one-sided-fuzzy-expansion.md).
- *
- * Deleting either character of a repeated pair yields the same string, so the
- * result is deduplicated.
+ * Every single code point deletion of `value`, deduplicated. A deletion
+ * neighbourhood, not a full-variant enumeration, so both parties expand
+ * (docs/notes/one-sided-fuzzy-expansion.md).
  */
 export function deletionCandidates(value: string): string[] {
   const points = Array.from(value);
@@ -152,20 +109,11 @@ export function deletionCandidates(value: string): string[] {
 }
 
 /**
- * The calendar-valid dates one year either side of a canonical
- * `YYYYMMDD` value, excluding the value itself.
+ * The calendar-valid dates one year either side of a canonical `YYYYMMDD`
+ * value. An input that is not itself a valid date emits none, which keeps the
+ * relation symmetric ("19990229" would otherwise expand to "20000229").
  *
- * Both the input and the shifted date must be real calendar dates. Feb 29 has
- * no counterpart in an adjacent non-leap year, so a shifted date that is not
- * one emits no candidate; the surviving side (or neither) is returned. An
- * input that is not one emits none either, which is what keeps the relation
- * symmetric -- without that guard "19990229" would expand to "20000229",
- * which does not expand back, and the pair would meet under one role
- * resolution and not the other. A shift off the four-digit year range is
- * dropped the same way.
- *
- * Throws when `value` is not a canonical `YYYYMMDD` date, rather than returning
- * the value unexpanded -- see {@link expandFuzzyComparisons}.
+ * @throws {UsageError} when `value` is not a canonical `YYYYMMDD` date.
  */
 export function adjacentYearCandidates(value: string): string[] {
   assertFuzzyExpansionAccepts(value, "adjacent_years");
@@ -184,25 +132,12 @@ export function adjacentYearCandidates(value: string): string[] {
 }
 
 /**
- * The canonical `YYYYMMDD` value with its day and month exchanged, when that
- * exchange is itself a real calendar date, and nothing otherwise.
- *
- * A FULL-VARIANT enumeration, like {@link adjacentYearCandidates}: the one
- * exchanged reading is the whole set of values a day/month transposition
- * relates the date to, so one party enumerating it suffices for a record
- * entered under the other field order to meet it
+ * The canonical `YYYYMMDD` value with day and month exchanged, when both
+ * readings are valid dates and differ; a full-variant enumeration
  * (docs/notes/one-sided-fuzzy-expansion.md).
+ * Requiring the input to be valid keeps the relation an involution.
  *
- * Both readings must be real calendar dates: an exchanged reading that is not
- * one (a day above 12 names no month) emits no candidate, and an input that is
- * not one emits none either. The second guard is what makes the relation an
- * involution -- without it "19901301" would expand to "19900113", which does
- * not expand back, and the pair would meet under one role resolution and not
- * the other. A date whose day and month are equal exchanges to itself and
- * emits none.
- *
- * Throws when `value` is not a canonical `YYYYMMDD` date, rather than returning
- * the value unexpanded -- see {@link expandFuzzyComparisons}.
+ * @throws {UsageError} when `value` is not a canonical `YYYYMMDD` date.
  */
 export function dayMonthSwapCandidates(value: string): string[] {
   assertFuzzyExpansionAccepts(value, "day_month_swaps");
@@ -218,31 +153,12 @@ export function dayMonthSwapCandidates(value: string): string[] {
 }
 
 /**
- * Whether `kind`'s candidates are built by the resolved PSI RECEIVER alone
- * rather than by both parties.
- *
- * Expanding-side selection, not the one-sided OUTPUT entitlement
- * (docs/notes/one-sided-disclosure.md): the entitlement is an agreed term,
- * while this is a local execution choice keyed on the role both parties
- * resolve from the record counts they already exchanged (`resolveRole`,
- * protocolSetup.ts). It moves no term, no terms hash, and no wire byte.
- *
- * What separates the two is the shape of the expansion, not the field it
- * reads. `transpositions`, `adjacent_years`, and `day_month_swaps` are
- * FULL-VARIANT enumerations -- the whole set of values one transposition,
- * one year, or one day/month exchange away from the value -- so one party
- * enumerating suffices for two records that far apart to meet.
- * `edit_distances` is a deletion NEIGHBOURHOOD:
- * each side's own deletions are what let a substitution or insertion
- * between the two values meet in the middle (see
- * {@link deletionCandidates}), so expanding one side alone would match on
- * less than the terms declare. Full argument, including why the
- * intersection does not depend on which party role resolution designates:
+ * Whether only the resolved PSI receiver expands `kind`: true for the
+ * full-variant kinds, false for the `edit_distances` deletion neighbourhood,
+ * which both sides must expand. A local execution choice keyed on the
+ * resolved role (`resolveRole`); it moves no term or wire byte. Pure, so both
+ * parties classify a kind identically. See
  * docs/notes/one-sided-fuzzy-expansion.md.
- *
- * Total over the kind and pure -- it reads no term, no role, and no row --
- * so both parties classify a kind identically, and a member added to
- * {@link GenerateFuzzyComparisons} without an arm here fails to compile.
  */
 export function expandsOnReceiverOnly(kind: GenerateFuzzyComparisons): boolean {
   switch (kind) {
@@ -256,39 +172,13 @@ export function expandsOnReceiverOnly(kind: GenerateFuzzyComparisons): boolean {
 }
 
 /**
- * The most candidate values `kind` can realize from one standardized value,
- * counting the value itself.
- *
- * The factor a fuzzy element contributes to its key's declared width
- * (`declaredKeyWidth`, fanOutFunctions.ts), so it must upper-bound
- * {@link expandFuzzyComparisons}'s result for every value the expansion
- * accepts: a ceiling below what the expansion realizes refuses an honest
- * row at the width bound, and one above it spends value slots that stay
- * empty.
- *
- * Each kind's count grows with the WIDTH of the value it is handed:
- * `adjacent_years` emits the year either side of a canonical date, so
- * three with the value, whatever the value's width; `day_month_swaps`
- * emits at most the one date whose day and month are exchanged, so two
- * with the value, whatever its width; `edit_distances` emits one
- * deletion per code point, so the width plus the value;
- * `transpositions` emits one swap per PAIR of positions, so the pair
- * count with the value -- quadratic in the width, which is why the
- * per-key ceiling refuses an element whose value is bounded to more than
- * 45 characters.
- *
- * `valueWidthBound` is the width the element's own transforms bound its
- * value to (`elementValueWidthBound`, keyElementWidth.ts), which both
- * parties derive from the agreed terms. An element whose transforms bound
- * nothing passes `undefined` and takes
- * {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, the longest value the
- * expansion accepts at all; a bound above that limit is clamped to it,
- * since a wider value is refused rather than expanded.
- *
- * Total over the kind and pure, like {@link expandsOnReceiverOnly} beside
- * it, so both parties derive the identical factor from the agreed terms
- * and a member added to {@link GenerateFuzzyComparisons} without an arm
- * here fails to compile.
+ * The most candidates `kind` can realize from one value, counting the value
+ * itself: the factor a fuzzy element adds to its key's declared width, so it
+ * must bound {@link expandFuzzyComparisons}'s result from above.
+ * `valueWidthBound` (`elementValueWidthBound`) is clamped to
+ * {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, which also applies when it is
+ * `undefined`. Pure, so both parties derive the same factor. See
+ * docs/spec/PROTOCOL.md#the-width-bound-a-per-key-candidate-cap-the-terms-declare.
  */
 export function fuzzyCandidateCeiling(
   kind: GenerateFuzzyComparisons,
@@ -311,28 +201,12 @@ export function fuzzyCandidateCeiling(
 }
 
 /**
- * Expand one standardized value into the match candidates a
- * `generateFuzzyComparisons` rule declares.
+ * The match candidates a `generateFuzzyComparisons` rule declares for one
+ * standardized value: `value` first, then the kind's candidates, deduplicated
+ * and in a stable order.
  *
- * The returned array always LEADS with `value` itself: fuzzy comparison
- * widens the candidate set rather than replacing the exact match, so a
- * record that matches on the exact value still matches. The remaining
- * entries are the kind's candidates, deduplicated against each other and
- * against `value`, in a deterministic order -- both parties run this over
- * their own rows, and a hashed PSI entry is order-independent, but a
- * stable order keeps the key builder's cross-product reproducible for a
- * given row.
- *
- * Expansion runs on the value the element's `transform` pipeline has
- * already produced, not on the raw field value; see `buildKeyStrings`.
- *
- * @throws {UsageError} if the declared expansion cannot be applied to this
- * value -- a value above {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, or an
- * `adjacent_years` or `day_month_swaps` element whose value is not a
- * canonical `YYYYMMDD` date.
- * Returning the bare value instead would match the row on its exact value
- * while the consent surface states each candidate matches independently,
- * which is the silent narrowing this refusal exists to prevent.
+ * @throws {UsageError} under the conditions {@link assertFuzzyExpansionAccepts}
+ * names, rather than matching the row on its exact value alone.
  */
 export function expandFuzzyComparisons(
   value: string,
