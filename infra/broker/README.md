@@ -16,7 +16,7 @@ The front listens on IPv4 only.
 
 | path | what it is |
 | --- | --- |
-| `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as `nobody`, on `127.0.0.1:9411` only |
+| `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as `nobody` under the sandbox in [Exposure](#exposure), on `127.0.0.1:9411` only |
 | `nginx.conf.tmpl` | The front's nginx configuration, with the host's name as `__ALCOVE_BROKER_NAME__`: TLS on 8443, `/api/` proxied to the broker with WebSocket upgrade, everything else `404` |
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
 | `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
@@ -65,18 +65,37 @@ All three services write to the host's journal, under the retention the relay's 
   [`scripts/broker-front.test.mjs`](../../scripts/broker-front.test.mjs) fails if a log format in the template writes any variable outside the documented fields, or if the template drops the `http`-level access log and so falls back to nginx's built-in format, which writes the query string.
 - **The front's error log** is at `warn`, and the test fails below `warn`. A request line in one of its lines can include the query string ([PRIVACY.md](../../PRIVACY.md)).
 
+The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
+
+## How a change reaches the units
+
 A change to the template reaches a running front through `install.sh`.
 It renders the configuration to a root-only file under `/etc/alcove-broker` and checks it with `nginx -t` in a throwaway container of the pinned image, mounted as the unit mounts it with the installed certificate, before it restarts the broker or runs a renewal.
 Only a first install, which has no certificate yet, runs a renewal before the check, and the front is not running then: `install.sh` refuses a running front with no certificate.
 A configuration that fails the check stops the install with both units, the certificate, `/etc/alcove-broker/nginx.conf` and the running front unchanged.
-One that passes replaces `/etc/alcove-broker/nginx.conf` by a rename.
 Every file the units read is written, each only when its content changed, before any unit is touched.
+Each is staged beside its target and renamed over it, then given a modification time read from the clock after the rename, so a unit that started before the file went live has an earlier start.
 Then each running unit is restarted when one of its inputs was written at or after its start (`ActiveEnterTimestamp`), or systemd has not reloaded its unit file (`NeedDaemonReload`), after a `systemctl daemon-reload`.
 The front's inputs are its unit file, `front-image.env`, `nginx.conf` and the certificate and key; the broker's is its unit file, and restarting the broker restarts the front with it.
+The renewal timer's input is its unit file, and only `install.sh` restarts it: `renew.sh` runs as the service that timer starts.
 A configuration change restarts the front too and drops its open WebSockets: a reload would not move the start time, so a reload decided this way would repeat on every run.
 Nothing records a restart still to make: a run that dies after its writes leaves the inputs newer than the start, and the next `install.sh` or the renewal timer's `renew.sh` restarts the unit, the timer even when its own renewal fails.
 Both scripts hold an exclusive `flock` on `/etc/alcove-broker/lock` for their whole run, so one never acts on the other's half-written state; `install.sh` passes its descriptor to the `renew.sh` it runs.
-The front closes a WebSocket idle for 300 s (`proxy_read_timeout`); the PeerJS client sends a heartbeat every 5 s by default (`pingInterval = 5000` in `node_modules/peerjs/dist/peerjs.js`, peerjs 1.5.5, not overridden in `apps/` or `packages/`), so a live connection stays open.
+`renew.sh` reads `unit-state.sh` only once it holds the lock, so a renewal that waited on `install.sh` uses the copy `install.sh` put in place.
+
+### Limits
+
+Each costs availability only: it leaves a unit on older inputs, or stopped, until they change again or the unit restarts for another reason.
+
+- **The wall clock.** The rule compares file times with unit start times on the system clock.
+  A clock stepped backwards between a write and the next run can make an input written after a unit started look older than that start, and that restart is missed.
+- **The key and certificate.** They are renamed into place one after the other, not in one step.
+  A front that starts between the two renames reads a key and certificate that do not match and fails to start, and systemd starts it again 5 s later.
+  A run that stops between them leaves the pair mismatched on disk until the next run of either script installs it again.
+  Swapping both in one step needs a change to what the front mounts, which has not been measured on the host.
+- **A unit systemd restarts by itself.** A broker or front that systemd restarts (`Restart=always`) between `install.sh`'s write of its unit file and the `daemon-reload` starts on the old definition.
+  The same run restarts it after the reload, but a run that stops between the reload and that restart leaves it there: its start is later than the file.
+- **The renewal timer's unit.** An `install.sh` run that stops before restarting the timer leaves it for the next `install.sh` run; the renewal timer's `renew.sh` does not restart it.
 
 ## Certificates
 
@@ -89,8 +108,20 @@ Each forced renewal counts against Let's Encrypt's limit of five duplicate certi
 
 ## Exposure
 
-`systemd-analyze security alcove-broker.service` scores the unit EXPOSED (the score is in the [deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)), and systemd warns at load that `User=nobody` is not safe.
-The unit is the deployed one; tightening it is a change to measure on the host first.
+`systemd-analyze security alcove-broker.service` scored the unit 8.6 EXPOSED with `NoNewPrivileges=`, `PrivateTmp=`, `ProtectSystem=strict` and `ProtectHome=` as its only sandboxing.
+With the sandbox measured on the host on 2026-10-08 (systemd 252) and set in the tracked unit, it scored 1.3 OK, the broker answered `/api/health` and a CLI invite/accept exchange completed through the front ([the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)).
+
+Two directives are left out because the broker did not start under them:
+
+- **`DynamicUser=yes`**, with `User=` and `Group=` cleared: npm exits at start with status 254, and the unit restarts in a loop.
+  The journal line: `A system error occurred: uv_os_homedir returned ENOENT (no such file or directory)`.
+- **`MemoryDenyWriteExecute=yes`**: node aborts at start with a core dump on SIGTRAP; V8 cannot change a mapping's permissions.
+  The journal line: `# Check failed: 12 == (*__errno_location ()).`, from `v8::base::OS::SetPermissions`.
+
+So the unit still runs as `nobody`, and systemd still warns at load: `Special user nobody configured, this is not safe!`.
+A dedicated system user, or `DynamicUser=` with a home directory set, has not been measured.
+
+A stop leaves the broker `inactive`, not `failed`: npm exits 143 on the stop's SIGTERM, and `SuccessExitStatus=143` counts that as a clean exit (measured on the host).
 
 ## What is not tracked
 

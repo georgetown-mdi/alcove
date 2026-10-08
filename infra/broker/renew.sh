@@ -24,12 +24,10 @@ ENV_FILE="$ETC/broker.env"
 ACME_HOME="$ETC/acme"
 TLS="$ETC/tls"
 DAYS="${ALCOVE_BROKER_RENEW_DAYS:-30}"
+STAGED=()
 
 die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
 log() { printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
-
-# shellcheck source=unit-state.sh
-. "$(dirname "$0")/unit-state.sh"
 
 # The lock install.sh holds when it runs this script, on the descriptor it
 # passes; opening the file again would wait on install.sh itself.
@@ -43,6 +41,9 @@ if ! flock -n "$LOCK_FD"; then
   log "waiting for another install.sh or renew.sh run to finish"
   flock "$LOCK_FD"
 fi
+# After the lock, so a run waiting on install.sh reads the copy it installs.
+# shellcheck source=unit-state.sh
+. "$(dirname "$0")/unit-state.sh"
 
 renew_certificate() {
   [ -f "$ENV_FILE" ] || die "no $ENV_FILE; copy broker.env.example there and set ALCOVE_BROKER_NAME"
@@ -84,8 +85,15 @@ renew_certificate() {
   if cmp -s "$crt" "$TLS/fullchain.pem" && cmp -s "$key" "$TLS/privkey.pem"; then
     log "the certificate is unchanged"
   else
-    install -m 600 "$key" "$TLS/privkey.pem"
-    install -m 644 "$crt" "$TLS/fullchain.pem"
+    local staged_key staged_crt
+    trap 'rm -f "${STAGED[@]}"' EXIT
+    staged_key="$(mktemp "$TLS/.privkey.pem.XXXXXX")"
+    STAGED+=("$staged_key")
+    staged_crt="$(mktemp "$TLS/.fullchain.pem.XXXXXX")"
+    STAGED+=("$staged_crt")
+    install -m 600 "$key" "$staged_key"
+    install -m 644 "$crt" "$staged_crt"
+    go_live "$staged_key" "$TLS/privkey.pem" "$staged_crt" "$TLS/fullchain.pem"
     log "installed a new certificate"
   fi
 }

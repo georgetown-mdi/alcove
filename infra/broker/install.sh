@@ -7,7 +7,8 @@
 # certificate without restarting anything, write every file the units read,
 # then restart each running unit whose inputs are newer than its start
 # (unit-state.sh) and start any that is stopped. A run that dies in between
-# leaves those inputs newer, so the next run of either script restarts it.
+# leaves those inputs newer, so the next run of either script restarts it; the
+# renewal timer's own unit is restarted by the next install.sh only.
 #
 #   install.sh
 #
@@ -68,24 +69,33 @@ IMAGE="$(sed -n 's/^FROM //p' "$HERE/Dockerfile")"
 
 log "installing the broker for $NAME"
 
-differs() { ! { [ -f "$2" ] && cmp -s "$1" "$2"; }; }
-put_file() {
-  if differs "$1" "$2"; then
-    install -m "$3" "$1" "$2"
-  else
-    chmod "$3" "$2"
-  fi
-}
-
 TLS="$ETC/tls"
 # shellcheck source=unit-state.sh
 . "$HERE/unit-state.sh"
 CANDIDATE="$(mktemp "$ETC/nginx.conf.XXXXXX")"
 IMAGE_ENV="$(mktemp "$ETC/front-image.env.XXXXXX")"
-trap 'rm -f "$CANDIDATE" "$IMAGE_ENV"' EXIT
+STAGED=()
+trap 'rm -f "$CANDIDATE" "$IMAGE_ENV" "${STAGED[@]}"' EXIT
+
+differs() { ! { [ -f "$2" ] && cmp -s "$1" "$2"; }; }
+# A changed file is staged beside its target and renamed over it, so nothing
+# reads it half-written.
+put_file() {
+  local staged
+  if differs "$1" "$2"; then
+    staged="$(mktemp "$(dirname "$2")/.$(basename "$2").XXXXXX")"
+    STAGED+=("$staged")
+    install -m "$3" "$1" "$staged"
+    go_live "$staged" "$2"
+  else
+    chmod "$3" "$2"
+  fi
+}
 renew() {
-  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
+  # unit-state.sh first: a stop between the two never leaves a new renew.sh
+  # calling go_live in an old unit-state.sh.
   put_file "$HERE/unit-state.sh" "$ETC/unit-state.sh" 600
+  put_file "$HERE/renew.sh" "$ETC/renew.sh" 700
   ALCOVE_BROKER_LOCK_FD=9 "$ETC/renew.sh" --no-restart
 }
 
@@ -120,8 +130,8 @@ docker run --rm --network host --read-only --tmpfs /tmp \
 [ "$CERT_OBTAINED" = 1 ] || renew
 
 # --- the target state -------------------------------------------------------------
-# A file is written only when its content changes: its mtime is what makes the
-# unit that reads it count as stale.
+# A file is written only when its content changes: its mtime, stamped after
+# it goes live, is what makes the unit that reads it count as stale.
 printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
@@ -131,18 +141,15 @@ put_file "$HERE/alcove-broker-cert.timer" "$UNIT_DIR/alcove-broker-cert.timer" 6
 CONF="$ETC/nginx.conf"
 if differs "$CANDIDATE" "$CONF"; then
   chmod 644 "$CANDIDATE"
+  # The candidate was written before the check and the renewal; stamp it now,
+  # so a run stopped right after the rename leaves the live file newer than them.
   touch "$CANDIDATE"
-  mv -f "$CANDIDATE" "$CONF"
+  go_live "$CANDIDATE" "$CONF"
 fi
 chmod 644 "$CONF"
 
 # --- the units ----------------------------------------------------------------------
-TIMER=alcove-broker-cert.timer
-TIMER_STALE=0
-if systemctl is-active --quiet "$TIMER" && stale "$TIMER" "$UNIT_DIR/$TIMER"; then
-  TIMER_STALE=1
-fi
-restart_stale_units --reload
+restart_stale_units --install
 for unit in "$BROKER" "$FRONT" "$TIMER"; do
   if systemctl is-active --quiet "$unit"; then
     systemctl enable "$unit"
@@ -150,7 +157,6 @@ for unit in "$BROKER" "$FRONT" "$TIMER"; do
     systemctl enable --now "$unit"
   fi
 done
-[ "$TIMER_STALE" = 0 ] || systemctl restart "$TIMER"
 
 # --- check ------------------------------------------------------------------------
 log "waiting for the broker's health endpoint on 127.0.0.1:9411"

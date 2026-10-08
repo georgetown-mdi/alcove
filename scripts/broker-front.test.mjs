@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -197,6 +197,13 @@ const PINNED_NGINX = /^docker\.io\/library\/nginx:[^@\s]+@sha256:[0-9a-f]{64}$/;
 const NAME = "broker.example.org";
 const FRONT_UNIT = "alcove-broker-tls.service";
 const BROKER_UNIT = "alcove-broker.service";
+const TIMER_UNIT = "alcove-broker-cert.timer";
+const UNITS = [
+  BROKER_UNIT,
+  FRONT_UNIT,
+  "alcove-broker-cert.service",
+  TIMER_UNIT,
+];
 
 // The tracked tag pinned to a fixture digest, so these runs do not depend on
 // the tracked pin.
@@ -252,6 +259,7 @@ case "$1" in
     done
     [ ! -f "$STOP_FRONT_ON_RELOAD" ] || rm -f "$S/active/alcove-broker-tls.service" ;;
   restart|try-restart)
+    [ ! -f "$FAIL_RESTART" ] || exit 1
     [ "$1" = restart ] || [ -f "$S/active/$unit" ] || exit 0
     start "$unit"
     # The front Requires= the broker.
@@ -279,9 +287,12 @@ printf 'key %s\n' "$(cat "$SERIAL")" > "$E/acme/certificates/$NAME.key"
 `;
 
 // nginx -t in a throwaway container: records the candidate's mode and whether
-// a certificate was mounted, and fails on broken_directive.
+// a certificate was mounted, and fails on broken_directive. A pull waits up to
+// 10 s while HOLD_DOCKER exists.
 const DOCKER_STUB = String.raw`
 printf 'docker %s\n' "$*" >> "$CALLS"
+n=0
+while [ "$1" = pull ] && [ -f "$HOLD_DOCKER" ] && [ "$n" -lt 500 ]; do n=$((n + 1)); sleep 0.02; done
 [ "$1" = run ] || exit 0
 conf=; tls=
 for arg in "$@"; do
@@ -293,6 +304,16 @@ done
 cert=no; [ -s "$tls/fullchain.pem" ] && cert=yes
 printf 'nginx -t mode=%s cert=%s\n' "$(stat -c %a "$conf")" "$cert" >> "$CALLS"
 ! grep -q broken_directive "$conf"
+`;
+
+// mv, recording each target with the time the rename had completed; it fails
+// after renaming the live configuration while STOP_AFTER_CONF exists.
+const MV_STUB = String.raw`
+for real in /usr/bin/mv /bin/mv; do [ -x "$real" ] && break; done
+"$real" "$@" || exit
+for target; do :; done
+printf '%s %s\n' "$target" "$(date +%s%6N)" >> "$RENAMES"
+case "$target" in */nginx.conf) [ ! -f "$STOP_AFTER_CONF" ] || exit 1 ;; esac
 `;
 
 /**
@@ -334,13 +355,17 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const calls = join(root, "calls.log");
   const starts = join(root, "starts.log");
   const envLog = join(root, "env.log");
+  const renames = join(root, "renames.log");
+  const failRestart = join(root, "fail-restart");
+  const holdDocker = join(root, "hold-docker");
   const failReload = join(root, "fail-daemon-reload");
   const failLego = join(root, "fail-lego");
   const holdLego = join(root, "hold-lego");
   const stopFrontOnReload = join(root, "stop-front-on-reload");
+  const stopAfterConf = join(root, "stop-after-conf");
   const serial = join(root, "serial");
   const clearLogs = () => {
-    for (const log of [calls, starts, envLog]) writeFileSync(log, "");
+    for (const log of [calls, starts, envLog, renames]) writeFileSync(log, "");
   };
   clearLogs();
   writeFileSync(serial, "1");
@@ -351,10 +376,14 @@ const brokerHost = ({ client = "lego" } = {}) => {
     ["CALLS", calls],
     ["STARTS", starts],
     ["ENVLOG", envLog],
+    ["RENAMES", renames],
+    ["FAIL_RESTART", failRestart],
+    ["HOLD_DOCKER", holdDocker],
     ["FAIL_RELOAD", failReload],
     ["FAIL_LEGO", failLego],
     ["HOLD_LEGO", holdLego],
     ["STOP_FRONT_ON_RELOAD", stopFrontOnReload],
+    ["STOP_AFTER_CONF", stopAfterConf],
     ["SERIAL", serial],
     ["NAME", NAME],
   ]
@@ -363,6 +392,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
   writeStub(join(bin, "systemctl"), `${paths}\n${SYSTEMCTL_STUB}`);
   writeStub(join(bin, "lego"), `${paths}\n${LEGO_STUB}`);
   writeStub(join(usrBin, "docker"), `${paths}\n${DOCKER_STUB}`);
+  writeStub(join(bin, "mv"), `${paths}\n${MV_STUB}`);
   writeStub(join(bin, "curl"), "exit 0");
   writeStub(
     join(bin, "id"),
@@ -427,7 +457,7 @@ const brokerHost = ({ client = "lego" } = {}) => {
     const exit = new Promise((done) => {
       child.on("close", (status) => done({ status, stderr }));
     });
-    return { child, exit };
+    return { child, exit, stderr: () => stderr };
   };
   const setFront = (active) => {
     if (active) {
@@ -455,7 +485,18 @@ const brokerHost = ({ client = "lego" } = {}) => {
     failLego: flag(failLego),
     holdLego: flag(holdLego),
     stopFrontOnReload: flag(stopFrontOnReload),
+    failRestart: flag(failRestart),
+    holdDocker: flag(holdDocker),
+    stopAfterConf: flag(stopAfterConf),
     calls: () => lines(calls),
+    // The time, in microseconds, at which each target's last rename completed.
+    renames: () =>
+      new Map(
+        lines(renames).map((line) => {
+          const at = line.lastIndexOf(" ");
+          return [line.slice(0, at), BigInt(line.slice(at + 1))];
+        }),
+      ),
     clearLogs,
     run: ({ broken = false } = {}) =>
       runScript(
@@ -500,6 +541,23 @@ const touchesFront = (call) =>
 
 const candidatesLeft = (etc) =>
   readdirSync(etc).filter((entry) => entry.startsWith("nginx.conf."));
+
+const stagedLeft = (dir) =>
+  readdirSync(dir).filter((entry) => entry.startsWith("."));
+
+const mtimeUs = (path) => statSync(path, { bigint: true }).mtimeNs / 1000n;
+
+/** Each target went live by a rename and was stamped no earlier than `live`. */
+const expectStampedAfterRename = (renames, targets, live) => {
+  for (const target of targets) {
+    expect(renames.has(target), `${target} renamed into place`).toBe(true);
+    const wentLive = live ?? renames.get(target);
+    expect(
+      mtimeUs(target) >= wentLive,
+      `${target} stamped after it went live`,
+    ).toBe(true);
+  }
+};
 
 // Each case runs the scripts up to five times, about half a second each on a
 // loaded machine.
@@ -555,6 +613,29 @@ describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(next.status, next.stderr).toBe(0);
     expect(next.calls).toEqual(["lego", `systemctl try-restart ${FRONT_UNIT}`]);
     expect(host.runRenew().calls).toEqual(["lego"]);
+  });
+
+  it("installs a renewed key and certificate by rename, both stamped after the later rename", () => {
+    const host = brokerHost();
+    host.runRenew();
+    host.startFront();
+    host.renewTo("2");
+    const result = host.runRenew();
+    expect(result.status, result.stderr).toBe(0);
+    const key = join(host.tls, "privkey.pem");
+    const cert = join(host.tls, "fullchain.pem");
+    const renames = host.renames();
+    expectStampedAfterRename(renames, [key, cert]);
+    const pairLive =
+      renames.get(key) > renames.get(cert)
+        ? renames.get(key)
+        : renames.get(cert);
+    expectStampedAfterRename(renames, [key, cert], pairLive);
+    expect(readFileSync(key, "utf8")).toBe("key 2\n");
+    expect(readFileSync(cert, "utf8")).toBe("certificate 2\n");
+    expect(statSync(key).mode & 0o777).toBe(0o600);
+    expect(statSync(cert).mode & 0o777).toBe(0o644);
+    expect(stagedLeft(host.tls)).toEqual([]);
   });
 
   it.each([[["--no-restart", "x"]], [["--defer-restart"]], [["x"]]])(
@@ -648,6 +729,31 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(frontActions(host.run().calls)).toEqual([]);
   });
 
+  it("puts each changed file a unit reads in place by a rename and stamps it after the rename", () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    for (const unit of UNITS) {
+      appendFileSync(join(host.source, unit), "# revision 2\n");
+    }
+    host.pinFront(pinnedImage("b"));
+    writeFileSync(host.conf, "# an earlier configuration\n");
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expectStampedAfterRename(host.renames(), [
+      host.conf,
+      join(host.etc, "front-image.env"),
+      ...UNITS.map((unit) => join(host.unitDir, unit)),
+    ]);
+    for (const unit of UNITS) {
+      expect(readFileSync(join(host.unitDir, unit), "utf8")).toContain(
+        "# revision 2",
+      );
+      expect(statSync(join(host.unitDir, unit)).mode & 0o777).toBe(0o644);
+    }
+    expect(stagedLeft(host.unitDir)).toEqual([]);
+    expect(stagedLeft(host.etc)).toEqual([]);
+  });
+
   it("stamps the live configuration when it goes live, so a front started during the renewal restarts onto it", async () => {
     const host = brokerHost();
     expect(host.run().status).toBe(0);
@@ -665,6 +771,41 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(frontActions(host.calls())).toEqual([
       `systemctl try-restart ${FRONT_UNIT}`,
     ]);
+  });
+
+  it("stamps the staged configuration just before the rename, so a run killed after the rename leaves it newer than the wait", async () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    const template = join(host.source, "nginx.conf.tmpl");
+    writeFileSync(template, `${readFileSync(template, "utf8")}# changed\n`);
+    host.clearLogs();
+    host.holdLego(true);
+    host.stopAfterConf(true);
+    const install = host.spawnInstall();
+    await waitFor(() => host.calls().includes("lego"));
+    const waited = BigInt(Date.now()) * 1000n;
+    await new Promise((done) => setTimeout(done, 100));
+    host.holdLego(false);
+    const installed = await install.exit;
+    expect(installed.status).not.toBe(0);
+    expect(readFileSync(host.conf, "utf8")).toContain("# changed");
+    expect(mtimeUs(host.conf) > waited + 50_000n).toBe(true);
+  });
+
+  it("puts the unit-state.sh a new renew.sh calls in place before renew.sh", () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    for (const file of ["renew.sh", "unit-state.sh"]) {
+      appendFileSync(join(host.source, file), "# revision 2\n");
+    }
+    host.clearLogs();
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    const order = [...host.renames().entries()]
+      .filter(([target]) => /\/(renew|unit-state)\.sh$/.test(target))
+      .sort((a, b) => Number(a[1] - b[1]))
+      .map(([target]) => basename(target));
+    expect(order).toEqual(["unit-state.sh", "renew.sh"]);
   });
 
   it("does not start through a restart a front stopped after the staleness check", () => {
@@ -911,6 +1052,27 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(host.run().starts).toEqual([]);
   });
 
+  it("restarts the renewal timer onto its unit file on the run after one that died before restarting it", () => {
+    const timerRestarts = (calls) =>
+      calls.filter((call) =>
+        new RegExp(`^systemctl (try-)?restart ${TIMER_UNIT}$`).test(call),
+      );
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    appendFileSync(join(host.source, BROKER_UNIT), "# revision 2\n");
+    appendFileSync(join(host.source, TIMER_UNIT), "# revision 2\n");
+    host.failRestart(true);
+    const failed = host.run();
+    expect(failed.status).not.toBe(0);
+    expect(failed.calls).toContain("systemctl daemon-reload");
+    expect(timerRestarts(failed.calls)).toEqual([]);
+    host.failRestart(false);
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(timerRestarts(result.calls)).toHaveLength(1);
+    expect(timerRestarts(host.run().calls)).toEqual([]);
+  });
+
   it("runs install.sh and the renewal timer one at a time", async () => {
     const host = brokerHost();
     expect(host.run().status).toBe(0);
@@ -933,6 +1095,30 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
     expect(legoRuns[1]).toBeGreaterThan(
       calls.lastIndexOf("systemctl enable alcove-broker-cert.timer"),
     );
+  });
+
+  it("has a renewal timer run that waited on install.sh act with the unit-state.sh install.sh put in place", async () => {
+    const host = brokerHost();
+    expect(host.run().status).toBe(0);
+    appendFileSync(
+      join(host.source, "unit-state.sh"),
+      'log "unit-state revision 2"\n',
+    );
+    host.clearLogs();
+    host.holdDocker(true);
+    const install = host.spawnInstall();
+    await waitFor(() =>
+      host.calls().some((call) => call.startsWith("docker pull")),
+    );
+    const timer = host.spawnTimer();
+    await waitFor(() =>
+      timer.stderr().includes("waiting for another install.sh"),
+    );
+    host.holdDocker(false);
+    const [installed, renewed] = await Promise.all([install.exit, timer.exit]);
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(renewed.status, renewed.stderr).toBe(0);
+    expect(renewed.stderr).toContain("unit-state revision 2");
   });
 });
 
