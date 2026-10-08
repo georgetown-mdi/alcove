@@ -41,7 +41,7 @@ export const parseMessageByteCount = (name: string): number | undefined => {
 // (`<id>-<ts>-<NNN>-<byteCount>.json`), parsed right-anchored. Only meaningful
 // for a timestamped name (retain mode): on any other name the segment is part of
 // the id and the result is wrong, not undefined, and nothing guards it at runtime;
-// fileSyncNames.test.ts holds its one caller to retain mode.
+// the "is not read outside retain mode" test in fileSyncMessageLoop.test.ts holds its one caller to retain mode.
 /** @internal */
 export const parseTimestampedMessageNNN = (
   name: string,

@@ -1237,7 +1237,7 @@ describe("createServerJobExchangeDriver intent and cancellation", () => {
   });
 });
 
-describe("an unreadable job-API body is classified as a SyntaxError is", () => {
+describe("an unreadable job-API body is classified as a thrown SyntaxError was", () => {
   const unreadableBodies = [
     { name: "a body that is not JSON", body: "{not json" },
     {

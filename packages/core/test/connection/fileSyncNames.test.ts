@@ -1,8 +1,3 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import ts from "typescript";
 import { describe, expect, test } from "vitest";
 
 import {
@@ -77,62 +72,4 @@ describe("parseTimestampedMessageNNN", () => {
     expect(name).toBe("site-12-42.json");
     expect(parseTimestampedMessageNNN(name)).toBe(12);
   });
-});
-
-const CORE_SRC = fileURLToPath(new URL("../../src", import.meta.url));
-
-function coreSourceFiles(dir: string): string[] {
-  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) return coreSourceFiles(path);
-    return entry.name.endsWith(".ts") ? [path] : [];
-  });
-}
-
-/** Every call of `callee` in core's source, with the conditions of the `if`
- * statements whose then-branch encloses it. */
-function callSites(
-  callee: string,
-): Array<{ file: string; guardedBy: string[] }> {
-  const sites: Array<{ file: string; guardedBy: string[] }> = [];
-  for (const file of coreSourceFiles(CORE_SRC)) {
-    const text = readFileSync(file, "utf8");
-    if (!text.includes(callee)) continue;
-    const source = ts.createSourceFile(
-      file,
-      text,
-      ts.ScriptTarget.Latest,
-      true,
-    );
-    const visit = (node: ts.Node): void => {
-      if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === callee
-      ) {
-        const guardedBy: string[] = [];
-        for (let child: ts.Node = node; child.parent; child = child.parent)
-          if (
-            ts.isIfStatement(child.parent) &&
-            child.parent.thenStatement === child
-          )
-            guardedBy.push(child.parent.expression.getText(source));
-        sites.push({ file: relative(CORE_SRC, file), guardedBy });
-      }
-      ts.forEachChild(node, visit);
-    };
-    visit(source);
-  }
-  return sites;
-}
-
-test("the counter is read at one call site, inside the retain-mode branch", () => {
-  expect(callSites("parseTimestampedMessageNNN")).toEqual([
-    {
-      file: join("connection", "fileSyncMessageLoop.ts"),
-      guardedBy: expect.arrayContaining([
-        "deps.options().retainFiles",
-      ]) as unknown as string[],
-    },
-  ]);
 });

@@ -164,19 +164,21 @@ describe("assessManagedInputColumns agrees with the run's own refusal", () => {
     }
   }
 
-  test("for every column set under each authored shape", () => {
-    const verdicts = exchangeFiles().flatMap(({ name, file }) =>
-      COLUMN_SETS.map((columns) => ({
-        name,
-        columns,
-        guard: assessManagedInputColumns(file, columns) !== undefined,
-        run: runRefuses(file, columns),
-      })),
-    );
-    for (const verdict of verdicts)
-      expect({ ...verdict, run: verdict.guard }).toEqual(verdict);
-    expect(verdicts.some((verdict) => verdict.run)).toBe(true);
-    expect(verdicts.some((verdict) => !verdict.run)).toBe(true);
+  const cases = exchangeFiles().flatMap(({ name, file }) =>
+    COLUMN_SETS.map((columns) => ({
+      label: `${name} with columns [${columns.join(", ")}]`,
+      guard: assessManagedInputColumns(file, columns) !== undefined,
+      run: runRefuses(file, columns),
+    })),
+  );
+
+  test.each(cases)("the guard and the run agree: $label", ({ guard, run }) => {
+    expect(run).toBe(guard);
+  });
+
+  test("both a refusal and an acceptance occur across the cases", () => {
+    expect(cases.some((c) => c.run)).toBe(true);
+    expect(cases.some((c) => !c.run)).toBe(true);
   });
 });
 
