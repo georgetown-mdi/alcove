@@ -47,15 +47,10 @@ import type { Algorithm } from "../types.js";
 import type { Displayable } from "../utils/sanitizeForDisplay.js";
 
 /**
- * Human-readable label for each linkage-field semantic type. `type` is a
- * fixed enum the schema validates, not partner free text, so these labels are
- * safe to render verbatim; the field's own `name` is partner free text and
- * stays unshown here.
- *
- * Typed {@link Displayable} because a label shares display fields with the
- * sanitized fallback for an unresolved field (see {@link summarizeKey});
- * fixed copy enters through `displayText`, the compiler-policed way in for a
- * literal this file authors.
+ * Label per linkage-field type. `type` is a schema-validated enum, so the
+ * labels render verbatim; the field `name` is partner free text and is not
+ * shown. Typed {@link Displayable} because a label shares display fields with
+ * the sanitized fallback in {@link summarizeKey}.
  */
 const FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   first_name: displayText`First name`,
@@ -69,13 +64,9 @@ const FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
 };
 
 /**
- * Compact label per linkage-field semantic type, for the always-visible per-key
- * field one-liner (see {@link InvitationKeySummary.headerFields}), where the
- * verbose {@link FIELD_TYPE_LABELS} would not fit on one line. Like those, the
- * `type` is a fixed enum the schema validates, so these are safe to render
- * verbatim. `ssn4` keeps the "(last 4)" qualifier rather than a bare "SSN": the
- * full-SSN and last-4 cases are a real disclosure difference the acceptor must
- * see, and "SSN4" is internal jargon.
+ * Compact label per field type for the per-key one-liner
+ * ({@link InvitationKeySummary.headerFields}). `ssn4` keeps "(last 4)" because
+ * full SSN versus last 4 is a disclosure difference the acceptor must see.
  */
 const COMPACT_FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
   first_name: displayText`first name`,
@@ -89,11 +80,8 @@ const COMPACT_FIELD_TYPE_LABELS: Record<LinkageField["type"], Displayable> = {
 };
 
 /**
- * Plain-language label for each fuzzy-comparison expansion. Like the field
- * type, the value is a fixed enum the schema validates (not partner free text),
- * so these are safe to render verbatim. Each expands one value into several
- * match candidates, loosening the match -- and, under `psi`, widening what is
- * disclosed -- so the acceptor must see it.
+ * Label per fuzzy-comparison expansion (a schema-validated enum). Each loosens
+ * the match and, under `psi`, widens what is disclosed.
  */
 const FUZZY_COMPARISON_LABELS: Record<
   NonNullable<LinkageKeyElement["generateFuzzyComparisons"]>,
@@ -106,16 +94,10 @@ const FUZZY_COMPARISON_LABELS: Record<
 };
 
 /**
- * Plain-language description of what each transform function does to
- * matching, keyed by the function's raw `snake_case` name (the value core's
- * cleaning library dispatches on). The acceptor sees this alongside the
- * function name and its parameters, not just the name alone. A partner name
- * core does not recognize has no entry here and falls back to the bare
- * sanitized name.
- *
- * Exported so the coverage test can assert its key set equals core's
- * {@link STANDARDIZATION_FUNCTION_NAMES} in both directions: a core function
- * with no entry here, and a stale entry for a function core dropped.
+ * Description of what each transform function does to matching, keyed by its
+ * raw `snake_case` name. A name core does not recognize has no entry and shows
+ * as the bare sanitized name. Exported so the coverage test can assert its key
+ * set equals {@link STANDARDIZATION_FUNCTION_NAMES} in both directions.
  */
 export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
   remove_non_ascii:
@@ -159,11 +141,9 @@ export const TRANSFORM_FUNCTION_GLOSSARY = frozenLookupTable({
 });
 
 /**
- * The description a `coalesce` step earns where it cannot substitute anything
- * (core's {@link coalesceSubstitutesConstant} is false for it): a declared
- * `default` that is not text, a position no emptying rule precedes, or both.
- * Names both conditions rather than only the one that failed, so one line
- * covers every non-substituting shape.
+ * Description of a `coalesce` that cannot substitute
+ * ({@link coalesceSubstitutesConstant} is false): a non-text `default`, a
+ * position no emptying rule precedes, or both.
  */
 const COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION =
   "Declares a fallback value but substitutes nothing here: a value is replaced " +
@@ -178,40 +158,31 @@ export interface InvitationLegalAgreementSummary {
   purpose: Displayable;
   /**
    * ISO 8601 date (YYYY-MM-DD) after which the exchange is refused, sanitized
-   * for display like the free-text fields: the `z.iso` schema rejects anything
-   * that could hold a deceptive character today, but the boundary does not
-   * depend on that validation staying in place.
+   * even though the `z.iso` schema already rejects deceptive characters.
    */
   expirationDate: Displayable;
 }
 
 /**
- * One half of the rule-set citation the inviter declares -- the field set or
- * the key set -- with both strings sanitized for display.
+ * One half of the inviter's rule-set citation (the field set or the key set),
+ * with both strings sanitized.
  *
- * The name and version are the inviter's own declaration about its rules: a
- * surface presents them as the inviting party's citation, not a
- * alcove-vouched provenance, since the token is accepted on a transcription
- * checksum rather than an authenticity guarantee.
- *
- * {@link verdict} is not the inviter's claim -- it is this build's own check
- * of that half, resolved only against the rule sets this build ships. A name
- * it cannot resolve reports `unchecked`.
+ * The name and version are the inviter's own declaration, not alcove-vouched
+ * provenance: the token is accepted on a transcription checksum.
+ * {@link verdict} is this build's own check against the rule sets it ships.
  */
 interface InvitationRuleSetIdentitySummary {
   /** The set's declared name, sanitized for display. */
   name: Displayable;
   /** The set's declared content version, sanitized for display. */
   version: Displayable;
-  /** This build's verdict on whether the declared rules of this half are drawn
-   * from the set named above. Fixed first-party values, not partner text. */
+  /** This build's check of this half against the rule sets it ships. */
   verdict: LinkageRuleSetCitationVerdict;
 }
 
 /**
- * The named rule set the inviter cites its linkage fields and keys to. Present
- * only when the invitation declares one; terms whose rules were authored have
- * no citation, and a surface renders nothing rather than inventing one.
+ * The rule set the inviter cites its fields and keys to. Present only when the
+ * invitation declares one; authored terms have none.
  */
 export interface InvitationRuleSetSummary {
   /** The set the declared linkage fields are cited to. */
@@ -222,293 +193,191 @@ export interface InvitationRuleSetSummary {
 
 /** The optional data columns the inviter declares, with names sanitized. */
 interface InvitationPayloadSummary {
-  /** Columns the inviter will send for matched records (what the acceptor
-   * receives), in the inviter's namespace, each sanitized for display. Empty
-   * when the declared set is empty; read {@link sendDeclared} to tell that
-   * apart from the lazy case. */
+  /**
+   * Columns the inviter sends for matched records, sanitized. Read
+   * {@link sendDeclared} to tell empty from lazy.
+   */
   send: Array<Displayable>;
   /**
-   * Whether the send set is a definite DECLARATION -- an authored
-   * `payload.send`, present even when empty -- rather than the lazy case (the
-   * inviter sends whatever its own metadata discloses, nothing declared up
-   * front). An acceptance mirrors a declared send into its own
-   * `payload.receive`, which every run's terms exchange compares against the
-   * set the inviter's run states. When true and {@link send} is empty, the
-   * acceptor is committed to "receive nothing", so the renderer states that
-   * explicitly ("(none)") instead of omitting the line; when false, the send
-   * side is lazy and stays unshown.
-   *
-   * False as well where `output.shareWithPartner` is clear, however the
-   * invitation declares its send: no column is transmitted to a party
-   * entitled to no result, so there is no arriving set to state and the
-   * receipt fact (`viewerReceivesNoResult`) is what says so.
+   * Whether the send set is a declaration (an authored `payload.send`, even if
+   * empty) rather than lazy (the inviter sends whatever its metadata
+   * discloses). A declared empty send is shown as "(none)", since the acceptor
+   * mirrors it into its own `payload.receive`. False as well where
+   * `output.shareWithPartner` is clear: no column is transmitted then.
    */
   sendDeclared: boolean;
-  /** Columns the inviter requests from the acceptor for matched records (what
-   * the acceptor sends), each sanitized for display. Empty when the
-   * declared set is empty; read {@link receiveDeclared} to tell that apart
-   * from the lazy case. */
+  /**
+   * Columns the inviter requests from the acceptor, sanitized. Read
+   * {@link receiveDeclared} to tell empty from lazy.
+   */
   receive: Array<Displayable>;
   /**
-   * Whether the receive set is a definite DECLARATION (an authored
-   * `payload.receive`, present even when empty) rather than the lazy case (no
-   * `receive` authored: the inviter takes whatever the acceptor's metadata
-   * discloses). When true and {@link receive} is empty, the inviter asserts
-   * "the acceptor sends nothing" (an acceptor stating a column is refused at
-   * the terms exchange), so the
-   * renderer states that explicitly ("(none)") instead of omitting the line;
-   * when false, the receive side is lazy and stays unshown. Mirrors
-   * {@link sendDeclared} for the opposite direction.
+   * Whether the receive set is a declaration (an authored `payload.receive`,
+   * even if empty) rather than lazy. A declared empty receive means the
+   * acceptor sends nothing (a stated column is refused at the terms exchange)
+   * and is shown as "(none)". Mirrors {@link sendDeclared}.
    */
   receiveDeclared: boolean;
 }
 
 /**
- * A single transform step applied to an element's value before hashing,
- * reduced to display form: the function name and a bounded, sanitized view of
- * its parameters -- which determine what the function does, and so what
- * matches.
+ * A transform step reduced to display form: the function name and a bounded,
+ * sanitized view of its parameters.
  */
 interface InvitationTransformSummary {
   /** Sanitized name of the transform function. */
   function: Displayable;
   /**
-   * One sanitized `key: value` string per declared parameter -- the ones a
-   * consent verdict reads first, then the rest in declaration order
-   * ({@link orderedParamEntries}) -- capped at {@link MAX_DISPLAYED_PARAMS}
-   * (a trailing "... N more" entry marks overflow). The cap keeps an
-   * arbitrarily large partner-supplied `params` record from flooding the
-   * screen, and the leading order keeps it off the rows a header marker
-   * rests on. Empty when the step declares no parameters. Every parameter is
-   * shown as declared: a step whose parameter the function cannot read as
-   * written, and one whose parameters this view would state as something
-   * other than what the run applies (`config/transformParamDisplay.ts`), are
-   * both refused when the invitation is decoded, so what is displayed
-   * here means what runs, apart from what changes at compile: a literal a
-   * step injects or compares against normalizes to NFC (`replace_regex`,
-   * `null_if`, `pad_left`, `coalesce`), and a pattern or delimiter left
-   * absent compiles as the literal word `undefined`
-   * (docs/spec/CHANNEL_SECURITY.md, "Transform-parameter declared types").
-   * The displayed text itself is rendered through the display sanitizer,
-   * whose escape format and display cut are documented in
-   * docs/spec/CHANNEL_SECURITY.md, "Display sanitization escape format".
+   * One sanitized `key: value` string per declared parameter, verdict-bearing
+   * ones first ({@link orderedParamEntries}), capped at
+   * {@link MAX_DISPLAYED_PARAMS} with a trailing "... N more" entry. Decode
+   * refuses parameters this view would misstate. What differs at compile is in
+   * docs/spec/CHANNEL_SECURITY.md, "Transform-parameter declared types"; the
+   * escape format is in "Display sanitization escape format".
    */
   params: Array<Displayable>;
   /**
-   * Plain-language description of what this function does to matching, from
-   * {@link TRANSFORM_FUNCTION_GLOSSARY}. Fixed copy keyed by the recognized
-   * function name, safe to render verbatim; absent when the declared name is
-   * one core does not recognize. A `coalesce` that substitutes nothing where
-   * it sits takes {@link COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION} instead,
-   * since the glossary line would assert a substitution that never runs.
+   * Description from {@link TRANSFORM_FUNCTION_GLOSSARY}; absent for an
+   * unrecognized name. A `coalesce` that substitutes nothing takes
+   * {@link COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION} instead.
    */
   description?: string;
   /**
-   * Literal, parameter-derived phrase for a recognized parameterized function
-   * (currently `substring` on a name field): "the first 3 characters". Leads
-   * the element's detail in place of the function name when present, and
-   * suppresses {@link description} so the slice is not stated twice. Absent
-   * for a date or other reformatted field, a negative/non-integer slice, or a
-   * function with no literal -- the renderer then leads with
-   * {@link description} instead. Fixed copy holding partner-supplied slice
-   * positions, composed through `displayText`, which admits a number but no
-   * partner string.
+   * Literal phrase for a `substring` on a name field ("the first 3
+   * characters"). Leads the element's detail and suppresses
+   * {@link description}. Absent for a date or other reformatted field, a
+   * negative or non-integer slice, or another function. Composed through
+   * `displayText`, which admits a number but no partner string.
    */
   effect?: Displayable;
 }
 
 /**
- * One element of a linkage key, reduced to what determines whether records
- * match on it: the field it derives from and any non-default matching rule it
- * holds (a value transform or a fuzzy-comparison expansion).
+ * One linkage-key element: its field and any non-default matching rule (a
+ * transform or a fuzzy expansion).
  */
 interface InvitationKeyElementSummary {
   /**
-   * Human-readable label for the field this element derives from: the fixed
-   * label for its semantic type, or the sanitized raw field name when the
+   * Fixed label for the field's type, or the sanitized raw name when the
    * reference does not resolve.
    */
   fieldLabel: Displayable;
   /**
-   * Transform steps applied to the value before hashing, in order; empty when
-   * the value is matched as-is. Each holds the sanitized function name and a
-   * bounded, sanitized view of its parameters.
+   * Transform steps applied before hashing, in order; empty when matched as-is.
    */
   transforms: Array<InvitationTransformSummary>;
   /** Plain-language label for the fuzzy-comparison expansion, if any. */
   fuzzyComparison?: string;
   /**
-   * Whether today's exchange actually applies the fuzzy comparison above: the
-   * combination that resolves a candidate set, which is the same verdict
-   * {@link InvitationSummary.fanOutApplied} reports -- a count-only exchange
-   * refuses an expanded element rather than matching it. Meaningful only
-   * alongside a `fuzzyComparison`; the renderer flags that annotation as
-   * proposed-but-not-applied when this is false.
+   * Whether today's exchange applies the fuzzy comparison: the verdict of
+   * {@link InvitationSummary.fanOutApplied}, since a count-only exchange
+   * refuses the expanded element. Meaningful only with `fuzzyComparison`.
    */
   fuzzyComparisonApplied: boolean;
 }
 
 /**
- * A single linkage key, with the ordered elements and matching rules that
- * decide which records match -- and, under `psi`, which shared identifiers are
- * disclosed. Surfaced in full so no transform, swap, or fuzzy rule is silently
- * consented to.
+ * A linkage key with the ordered elements and rules that decide which records
+ * match and, under `psi`, which identifiers are disclosed.
  */
 export interface InvitationKeySummary {
   /**
-   * A stable identity for this key, for a caller that needs to associate
-   * per-key UI state (e.g. an expanded/collapsed disclosure) with the key
-   * across a reorder. The raw (unsanitized) key name: schema-validated
-   * `LinkageTerms` guarantees it unique across `linkageKeys`, unlike
-   * {@link name}, whose sanitization/truncation can collapse two distinct raw
-   * names to the same displayed string. Never rendered, so not sanitized.
-   * That it stays off both acceptance surfaces is enforced by a check, not a
-   * comment: the web browser suite and the CLI suite each mount their consent
-   * surface on terms whose every partner-controlled string holds a hostile
-   * code point, and each fails on any output text outside printable ASCII.
+   * Stable identity for per-key UI state across a reorder: the raw key name,
+   * which schema validation makes unique (the sanitized {@link name} can
+   * collapse). Never rendered; the web browser suite and the CLI suite fail on
+   * any non-printable-ASCII output from hostile terms.
    */
   id: string;
   /** The key's name, sanitized for display. */
   name: Displayable;
   /** Ordered elements combined to form the key. */
   elements: Array<InvitationKeyElementSummary>;
-  /** True when the key declares a swap (two elements matched in either
-   * order). */
+  /**
+   * True when the key declares a swap (two elements matched in either order).
+   */
   hasSwap: boolean;
   /**
-   * Whether today's exchange actually applies the swap above: the combination
-   * that resolves a candidate set, which is the same verdict
-   * {@link InvitationSummary.fanOutApplied} reports -- a count-only exchange
-   * refuses a swapped key rather than matching it in the declared order alone.
-   * Meaningful only alongside {@link hasSwap}; the renderer flags the swap note
-   * as proposed-but-not-applied when this is false.
+   * Whether today's exchange applies the swap: the verdict of
+   * {@link InvitationSummary.fanOutApplied}, since a count-only exchange
+   * refuses a swapped key. Meaningful only with {@link hasSwap}.
    */
   swapApplied: boolean;
   /**
-   * The two swapped elements' field labels, present only when both swap
-   * references resolve to elements with *distinct* labels (the common case,
-   * e.g. ["Last name", "First name"]). Absent when an identifier names no
-   * element or the two would share a label: an unresolved swap identifier
-   * never enters this tuple, raw or sanitized -- the renderer falls back to
-   * a generic swap note keyed off {@link hasSwap} instead. Holds the same
-   * resolved labels as {@link InvitationKeyElementSummary.fieldLabel}, so
-   * like those it falls back to a sanitized raw field name when a field
-   * reference does not resolve.
+   * The two swapped elements' field labels, present only when both references
+   * resolve to elements with distinct labels. Otherwise absent and the renderer
+   * shows a generic note keyed off {@link hasSwap}; an unresolved swap
+   * identifier never enters the tuple.
    */
   swap?: [Displayable, Displayable];
   /**
-   * The always-visible one-liner of the fields this key matches on: one entry
-   * per element, each a COMPACT semantic-type label plus a terse breadth
-   * marker when its element loosens matching ("last name (partial)", "date
-   * of birth (fuzzy)"). Deduped by the full entry (label + marker) so a
-   * truncated and a whole-value element of the same field stay distinct.
-   * Fixed compact label plus fixed marker; an unresolved field falls back to
-   * its sanitized identifier, though the terms schema already refuses an
-   * element naming an undeclared field, so no decoded token reaches that
-   * fallback. An anchor a partner-controlled key {@link name} cannot
-   * misrepresent; the swap "either order" note is held by
+   * The always-visible one-liner of the fields this key matches on: a compact
+   * label per element plus a breadth marker where it loosens matching ("last
+   * name (partial)"), deduped by the full entry. An unresolved field falls back
+   * to its sanitized identifier. A swap re-attributes each marker to its
+   * partner's field, since each swapped element reads the other's value on the
+   * receiver (core's `swapElements`). The either-order note is
    * {@link swapHeaderMarker}.
-   *
-   * A swap re-attributes markers to the receiver's terms: each swapped
-   * element keeps its own rules but reads the OTHER element's field value on
-   * the receiver (core's `swapElements`), so its breadth marker is shown on
-   * its swapped PARTNER's field here, not the field it is declared on.
    */
   headerFields: Array<Displayable>;
   /**
-   * The always-visible header suffix a swapped key earns, present only when
-   * {@link hasSwap} is true. States the either-order match plainly when
-   * {@link swapApplied}; degrades to naming the refusal, the same way a
-   * refused fan-out element's {@link elementBreadthMarker} degrades to "not
-   * supported", when a count-only round refuses the swap instead. Undefined
-   * for a non-swapped key, so a renderer appends nothing. Fixed copy, safe to
-   * render verbatim; the full remedy stays in the per-key detail's own swap
-   * caveat, which this header suffix stays short beside.
+   * Header suffix for a swapped key, present only when {@link hasSwap}: states
+   * the either-order match when {@link swapApplied}, else the refusal. Fixed
+   * copy; the remedy stays in the per-key swap caveat.
    */
   swapHeaderMarker?: Displayable;
 }
 
 /**
- * A linkage field, reduced to its display label and any declared
- * constraints. Constraints are data standards both parties commit to
- * (advisory -- the application warns rather than enforces), shown so the
- * acceptor sees every rule attached to the matched data.
+ * A linkage field's label and declared constraints (advisory: the application
+ * warns and does not enforce), shown so the acceptor sees every rule on the
+ * matched data.
  */
 interface InvitationFieldSummary {
   /** Human-readable label for the field's semantic type. */
   label: string;
   /**
-   * Plain-language descriptions of the declared constraints, if any. The
-   * `exclude` denylist is summarized as a count rather than listing its
-   * values: it is advisory and can hold hundreds of entries. The
-   * partner-authored `allowedCharacters` class is NOT among these -- it is
-   * held apart in {@link allowedCharacters} so the renderer can bind it in
-   * its own bounded element rather than fold it into a joined phrase (see
-   * that field's doc).
+   * Descriptions of the declared constraints. `exclude` is summarized as a
+   * count. The partner-authored `allowedCharacters` class is held apart in
+   * {@link allowedCharacters} so the renderer can bind it in its own element.
    */
   constraints: Array<string>;
   /**
-   * The partner-authored `allowedCharacters` class the field declares,
-   * sanitized for display, present only when the field declares one. Held
-   * apart from {@link constraints} rather than folded into a joined
-   * "allowed-character pattern: X" phrase, so the renderer can bind this
-   * partner-controlled value in its own bounded element and a partner cannot
-   * place separator text inside the class to impersonate the surrounding
-   * label. The value is accepted on a transcription checksum and never
-   * vetted (the evaluating check is advisory, core's
-   * `withinAllowedCharacters`); the renderer's fixed label marks it
-   * partner-supplied and unverified.
+   * The partner-authored `allowedCharacters` class, sanitized, present only
+   * when declared. Held apart from {@link constraints} so a partner cannot
+   * place separator text inside it to impersonate the surrounding label.
+   * Accepted on a transcription checksum and never vetted (the check is
+   * advisory, core's `withinAllowedCharacters`); the renderer labels it
+   * unverified.
    */
   allowedCharacters?: Displayable;
 }
 
 /**
- * A display-ready, injection-safe view of the inviter's linkage terms,
- * derived from a decoded {@link InvitationToken}. Every partner-controlled
- * value (the self-asserted identity, linkage-key names, legal-agreement
- * text, payload column names, and the schema-validated date fields) passes
- * through {@link redactAndSanitizeForDisplay} here, at the one boundary, so
- * neither acceptance surface -- the web consent screen nor the CLI accept
- * prompt -- re-derives the escaping. The redaction half also protects a log
- * line (`consentSurfaceSink` in `apps/cli/src/invitationDisplay.ts`): without
- * it, a marker planted in a key or column name could consume the consent
- * text composed after it on the same line. Neither renderer's own defenses
- * cover this: React's JSX escaping handles HTML metacharacters and a
- * terminal handles none, but neither strips the control, bidi, zero-width,
- * or homoglyph characters this neutralizes. The dates are routed through the
- * same boundary for a uniform contract, even though the `z.iso` schemas
- * already reject such characters in them.
+ * A display-ready view of the inviter's linkage terms, derived from a decoded
+ * {@link InvitationToken}. Every partner-controlled value passes through
+ * {@link redactAndSanitizeForDisplay} here, once, so neither acceptance surface
+ * re-derives the escaping; the redaction also protects a log line
+ * (`consentSurfaceSink`, `apps/cli/src/invitationDisplay.ts`).
  *
- * Every field a partner-controlled value can reach AND that is rendered is
- * typed {@link Displayable} rather than `string`, so filling one from an
- * un-sanitized value fails to compile. The guarantee runs one way only: the
- * brand rejects a plain `string` assigned into a field already declared
- * `Displayable`, but nothing forces a newly added field to be declared that
- * way. A runtime test covers that gap: it walks the whole returned value,
- * built from terms whose every partner-controlled string holds a hostile
- * code point, and fails on any string outside printable ASCII.
- *
- * Most fields left as `string` are ones no partner value reaches: fixed
- * copy keyed by a schema-validated enum, and the core-derived transform
- * notes. {@link InvitationKeySummary.id} is the exception -- it holds the
- * partner's raw key name verbatim, safe only because it is never rendered.
+ * Fields a partner value can reach are typed {@link Displayable}. The brand
+ * does not force a new field to be declared that way, so a runtime test walks a
+ * summary built from hostile terms and fails on any string outside printable
+ * ASCII. {@link InvitationKeySummary.id} holds the raw key name and is never
+ * rendered.
  */
 export interface InvitationSummary {
-  /** The inviter's self-asserted identity, sanitized for display, or the
-   * absence marker `partyIdentityDisplay.ts` holds where the inviter supplied
-   * none. */
+  /**
+   * The inviter's self-asserted identity, sanitized, or the absence marker from
+   * `partyIdentityDisplay.ts`.
+   */
   invitingParty: Displayable;
   /** `psi` reveals matched identifiers; `psi-c` reveals only the count. */
   algorithm: Algorithm;
   /**
-   * How the agreed linkage keys are exchanged: `cascade` (the default) or
-   * `single-pass`. single-pass is disclosure-affecting: to run in one
-   * batched round the sender hands the receiver its full per-key value
-   * structure, so the receiver observes matches on less precise keys the
-   * cascade would have filtered out first. The renderer shows it as an
-   * always-visible consent note; cascade, the baseline that discloses less,
-   * is not flagged. A fixed schema enum, not partner free text, so it
-   * renders verbatim like {@link algorithm}.
+   * How the agreed keys are exchanged: `cascade` (default) or `single-pass`.
+   * single-pass is disclosure-affecting: the receiver sees matches on less
+   * precise keys the cascade would have filtered out, so the renderer always
+   * shows it. A schema enum, rendered verbatim.
    */
   linkageStrategy: LinkageStrategy;
   /** Whether the inviter expects to receive the intersection result. */
@@ -516,139 +385,81 @@ export interface InvitationSummary {
   /** Whether the inviter will share the result with the accepting partner. */
   inviterSharesResult: boolean;
   /**
-   * Whether several of the inviting party's records may match the same one of
-   * the accepting party's records (the inviter's declared deduplicate
-   * setting).
+   * The inviter's declared deduplicate setting: whether several of its records
+   * may match one of the accepting party's.
    */
   deduplicate: boolean;
   /**
-   * Whether an exchange on these terms applies the deduplicate setting above.
-   * True: the cascade matches the resolved cardinality and every surface
-   * downstream of the association table shows the multiplicity. False: the
-   * strategy this invitation names matches no deduplicating cardinality, which
-   * acceptance refuses outright (`assertDeduplicateImplemented`), so this flag
-   * never claims a disclosure for a run that cannot happen.
-   *
-   * Read alongside {@link deduplicate}, like `fansOut` and `fanOutApplied`:
-   * answers what the strategy would do with a deduplicating term, whether or
-   * not these terms declare one. Not covered: the both-sided pair under a
-   * strategy that pairs no `many-to-many`, a property of the agreed PAIR
-   * unreadable from an invitation alone -- this party's own `deduplicate` is
-   * not the invitation's to set, so no summary of one can answer that pair. A
-   * seat where the accepting party declares its own side reads the pair from
-   * `resolveLinkageCardinality` beside this flag.
+   * Whether an exchange on these terms applies {@link deduplicate}. False when
+   * the named strategy matches no deduplicating cardinality, which acceptance
+   * refuses (`assertDeduplicateImplemented`). Not covered: the both-sided pair
+   * under a strategy that pairs no `many-to-many`, which an invitation alone
+   * cannot answer (see {@link acceptorDeduplicateRefused} and
+   * `resolveLinkageCardinality`).
    */
   deduplicateApplied: boolean;
   /**
-   * Whether any linkage key's element transforms split one value into
-   * several match candidates -- the fan-out an element marker names, as
-   * "multiple" where the strategy matches those candidates and "not
-   * supported" where it refuses the exchange.
-   *
-   * Read from the AGREED terms alone, which is all an invitation holds: the
-   * inviting party's own data standardization can fan out a field the terms
-   * do not show. This is what the acceptor can be told, not the whole of
-   * what the inviter may run.
+   * Whether any key's element transforms split one value into several match
+   * candidates, the fan-out an element marker names. Read from the agreed terms
+   * alone; the inviter's own standardization can fan out a field the terms do
+   * not show.
    */
   fansOut: boolean;
   /**
-   * Whether the exchange this invitation proposes matches on those
-   * candidates.
-   *
-   * True for a combination that resolves a candidate set -- either linkage
-   * strategy under the identifier-revealing algorithm (docs/spec/PROTOCOL.md,
-   * Fan-out runs under both linkage strategies); under a count-only (`psi-c`)
-   * exchange, terms declaring a fan-out are refused before the exchange runs.
-   * Meaningful only alongside {@link fansOut}, selecting which of the two
-   * fan-out consent facts a surface renders.
+   * Whether the exchange matches on those candidates. True for either linkage
+   * strategy under `psi` (docs/spec/PROTOCOL.md, Fan-out runs under both
+   * linkage strategies); `psi-c` refuses terms declaring a fan-out before the
+   * exchange runs. Meaningful only with {@link fansOut}.
    */
   fanOutApplied: boolean;
   /**
-   * Whether a `deduplicate: true` the ACCEPTING party declares for itself
-   * against this invitation is refused: the inviting party declares a
-   * `deduplicate` of its own under a linkage strategy that pairs no
-   * both-sided cardinality, so the pair that party's own value completes
-   * resolves to a `many-to-many` match the strategy does not run.
-   *
-   * Both conditions are the invitation's own, which is what makes the
-   * consequence statable at a seat before that value is set; the pair itself
-   * is refused at the accept boundary
-   * (`assertBothSidedDeduplicateImplemented`, reached from
-   * `deriveAcceptedLinkageTerms`) and again at the agreed-terms run boundary
-   * (`resolveLinkageCardinality`). Read by the seat that offers the accepting
-   * party a control over its own side; a surface offering none accepts with
-   * that side derived false, which this combination needs true.
+   * Whether a `deduplicate: true` the ACCEPTING party declares is refused: the
+   * inviter declares its own `deduplicate` under a strategy that pairs no
+   * both-sided cardinality. Both conditions are the invitation's own, so the
+   * consequence is statable before that value is set. The pair is refused at
+   * the accept boundary (`assertBothSidedDeduplicateImplemented`) and at the
+   * agreed-terms run boundary (`resolveLinkageCardinality`).
    */
   acceptorDeduplicateRefused: boolean;
   /**
-   * Whether a linkage key expands one value into several match candidates
-   * under a `deduplicate` pair whose grouping chains: the terms declare a
-   * candidate set the exchange matches on, they declare a `deduplicate` of
-   * their own, and the accept boundary takes the pair the other party's own
-   * `deduplicate` would complete. Every record a candidate reached is then
-   * grouped with the record that reached it, so one group can hold two
-   * records no linkage key links (docs/spec/PROTOCOL.md, The `many-to-many`
-   * entity closure).
-   *
-   * The pair is put to `deriveAcceptedLinkageTerms` rather than to the
-   * strategy rule alone, so the fact is false wherever that party cannot set
-   * the value the sentence rests on -- a sole-receiver document, whose
-   * mirrored output leaves it the closed default, as much as a strategy
-   * pairing no both-sided cardinality.
-   *
-   * Read over every producer of a candidate set, unlike {@link fansOut},
-   * which is the `split_on` half alone: a `swap` key and a
-   * `generate_fuzzy_comparisons` element expand a value the same way, and the
-   * shipped default keys declare a `swap`.
-   *
-   * The other party's own `deduplicate` is not in these terms at either seat
-   * that reads this -- an invitation declares the inviting party's side and a
-   * configuration declares its author's -- so the sentence it selects states
-   * the pair conditionally rather than asserting it.
+   * Whether a key expands one value into several candidates under a
+   * `deduplicate` pair whose grouping chains: the terms declare a candidate set
+   * the exchange matches on and a `deduplicate`, and the accept boundary takes
+   * the pair the other party's `deduplicate` would complete, so one group can
+   * hold two records no key links (docs/spec/PROTOCOL.md, The `many-to-many`
+   * entity closure). False wherever that party cannot set the value, such as a
+   * sole-receiver document. Unlike {@link fansOut}, it covers every
+   * candidate-set producer (`swap`, fuzzy comparison, `split_on`). The other
+   * party's value is not in these terms, so the sentence this selects is
+   * conditional.
    */
   candidateSetChainsGrouping: boolean;
   /**
    * Whether the exchange suppresses the accepting party's half of the
-   * matched-pair table: that party's process receives neither which of its
-   * records matched nor how many of the inviting party's stand behind one.
-   * {@link withholdsAcceptorAssociationTable}'s verdict, read once so both
-   * surfaces select one fact from it -- under the deduplicate headline, and
-   * for the own-membership pair on the seat where the accepting party is the
-   * partner the fact speaks about.
+   * matched-pair table, so it learns neither which of its records matched nor
+   * how many of the inviter's stand behind one. The verdict of
+   * {@link withholdsAcceptorAssociationTable}.
    */
   acceptorTableWithheld: boolean;
   /**
-   * The same verdict for the other direction: whether the exchange suppresses
-   * the INVITING party's half of the matched-pair table, leaving its process
-   * blind to which of its own records matched, to which of the accepting
-   * party's records they matched, and to the size of any group standing behind
-   * one. {@link withholdsInviterAssociationTable}'s verdict, read once so both
-   * surfaces select from it -- the grouping pair at the seat where the
-   * accepting party declares a grouping of its own, and the own-membership
-   * pair wherever a `psi` invitation hands the inviting party no result.
+   * The same verdict for the inviting party's half
+   * ({@link withholdsInviterAssociationTable}).
    */
   inviterTableWithheld: boolean;
-  /**
-   * Linkage keys (records are matched on these), in the inviter's order, each
-   * holding its ordered elements and matching rules.
-   */
+  /** Linkage keys in the inviter's order, with their elements and rules. */
   linkageKeys: Array<InvitationKeySummary>;
   /**
-   * The unique fields the linkage keys match on, in compact-label form and
-   * order of first appearance -- no breadth markers, no per-key grouping.
-   * Always visible, above the default-collapsed matching detail, so an
-   * acceptor sees WHICH data is matched on without expanding it. A field
-   * reference that does not resolve to a declared type falls back to its
-   * sanitized raw name.
+   * The unique fields the keys match on, as compact labels in order of first
+   * appearance, with no markers or grouping. Always visible above the collapsed
+   * detail. An unresolved reference falls back to its sanitized name.
    */
   matchedFields: Array<Displayable>;
   /** PII fields involved, each with its label and declared constraints. */
   linkageFields: Array<InvitationFieldSummary>;
   /**
-   * The named rule set the inviter cites the keys and fields above to. Present
-   * only when the invitation declares one; see
-   * {@link InvitationRuleSetSummary} for why a surface renders it as the
-   * inviter's citation rather than as a vouched provenance.
+   * The rule set the keys and fields are cited to, present only when the
+   * invitation declares one. {@link InvitationRuleSetSummary} says why a
+   * surface shows it as the inviter's citation.
    */
   linkageRuleSet?: InvitationRuleSetSummary;
   /** Present only when the inviter attached a legal agreement. */
@@ -657,62 +468,38 @@ export interface InvitationSummary {
    * receive. */
   payload?: InvitationPayloadSummary;
   /**
-   * The invitation's expiry instant (ISO 8601), if the token holds one,
-   * sanitized for display on the same uniform-contract grounds as the
+   * The invitation's expiry instant (ISO 8601), if any, sanitized like the
    * agreement dates.
    */
   expires?: Displayable;
   /**
    * Whether the invitation discloses that its exchange keeps every file it
-   * writes -- retain mode, which leaves the rendezvous location a permanent
-   * transcript rather than deleting each file once it has been read.
-   *
-   * True on either of two grounds, of which a renderer is told only the
-   * outcome: the invitation DECLARES retain mode
-   * (`inviterRetainsFiles: true`), or its connection endpoint holds the
-   * split inbound/outbound directory pair, whose shape requires retain mode
-   * of any connection built from it ({@link endpointRequiresRetainedFiles}).
-   * An acceptor seeded from such an endpoint runs in retain mode whether or
-   * not the token declared it, so gating the display on the declaration
-   * alone would leave that acceptor consenting with nothing said.
-   *
-   * A one-way flag, not the inviter's setting mirrored: false means neither
-   * ground holds (a token declaring `inviterRetainsFiles: false`, one
-   * declaring nothing, or the inviter's own pre-mint preview). Named for the
-   * disclosure rather than the mode, so a renderer cannot read false as
-   * "your partner deletes the files" -- a claim `CONSENT_FACTS`'
-   * `retainedFiles` entry records as one no surface may make. A surface
-   * renders the retention fact on true and nothing on false, and needs no
-   * sanitize call: the value is schema-validated, not partner free text.
+   * writes (retain mode), leaving a permanent transcript. True when the
+   * invitation declares `inviterRetainsFiles: true`, or its endpoint has the
+   * split inbound/outbound directory pair, which requires retain mode
+   * ({@link endpointRequiresRetainedFiles}). One-way: false means neither
+   * ground applies, not that the partner deletes files, a claim `CONSENT_FACTS`'
+   * `retainedFiles` entry records as one no surface may make. The value is
+   * schema-validated, so it needs no sanitize call.
    */
   disclosesRetainedFiles: boolean;
   /**
-   * The partner's advisory shared-directory locator, sanitized for display:
-   * the `path` a single-directory file-drop endpoint holds. Present only for
-   * such an endpoint. It is the folder's own name only where the inviting
-   * console could name the folder, so a surface presenting it AS the shared
-   * folder's name overstates what it is. Sanitized for TEXT display only:
-   * safe as a React text child, and never to be interpolated into an
-   * attribute value or raw HTML.
+   * The `path` of a single-directory file-drop endpoint, sanitized for text
+   * display only (never an attribute or raw HTML). Advisory: it is the folder's
+   * own name only where the inviting console could name the folder.
    */
   connectionPath?: Displayable;
   /**
-   * The relay a webrtc endpoint names, each url sanitized for display. Present
-   * only when the endpoint names one; a list is empty when the relay names no
-   * url of that kind.
+   * The relay urls a webrtc endpoint names, sanitized. Present only when the
+   * endpoint names a relay; a list is empty when none of that kind is named.
    */
   relay?: { turn: Array<Displayable>; stun: Array<Displayable> };
 }
 
 /**
- * Plain-language descriptions of a field's declared constraints, in a stable
- * order. The `exclude` denylist is reported as a count, not its values: it
- * is advisory and may hold hundreds of entries.
- *
- * The partner-authored `allowedCharacters` class is NOT among these
- * phrases -- it is held apart in {@link allowedCharactersClass}, so the
- * renderer binds the raw partner value in its own bounded element rather
- * than folding it into a joined sentence a partner could impersonate.
+ * Descriptions of a field's declared constraints, in a stable order. `exclude`
+ * is reported as a count, not its values. `allowedCharacters` is held apart
+ * ({@link allowedCharactersClass}).
  */
 function describeConstraints(field: LinkageField): Array<string> {
   const constraints = field.constraints;
@@ -732,21 +519,13 @@ function describeConstraints(field: LinkageField): Array<string> {
 }
 
 /**
- * The field's partner-authored `allowedCharacters` class, sanitized for
- * display, or undefined when the field declares none. Returned as the raw
- * class alone (no joined system label) so the renderer can bind it in its
- * own bounded element rather than concatenate label and value into one
- * string a partner could impersonate with separator text.
- *
- * The value is a partner-authored regex character class, accepted on a
- * transcription checksum and never vetted, so a crafted class can read
- * very differently to a human than the set it admits: a leading `^`
- * negates it, and a shorthand or bracket breakout (`\p{L}`, `[:alpha:]`,
- * `]|\w|[`) is opaque to a non-regex-literate operator. The renderer labels
- * it as the partner-supplied, unverified expression it is rather than
- * paraphrasing it as a vetted "limited to <class>" promise. The evaluating
- * check is advisory (core's `withinAllowedCharacters`); this is its
- * operator-facing complement.
+ * The field's `allowedCharacters` class, sanitized, or undefined. Returned
+ * alone, without a system label, so the renderer binds it in its own element
+ * and separator text cannot impersonate the label. A crafted class can read
+ * differently to a human than the set it admits (a leading `^` negates;
+ * `\p{L}`, `[:alpha:]` and `]|\w|[` are opaque), so the renderer labels it
+ * partner-supplied and unverified. The check is advisory (core's
+ * `withinAllowedCharacters`).
  */
 function allowedCharactersClass(field: LinkageField): Displayable | undefined {
   const constraints = field.constraints;
@@ -760,28 +539,14 @@ function allowedCharactersClass(field: LinkageField): Displayable | undefined {
 }
 
 /**
- * A step's declared params in the order they are displayed: the ones a
- * consent verdict reads ({@link CONSENT_VERDICT_PARAM_NAMES}) first, then
- * the rest in declaration order.
- *
- * Leading with the verdict-bearing params matters because the party that
- * authors the transform also authors what precedes them: if those rows sat
- * in plain declaration order, the same party that shapes a header's
- * understatement (see {@link elementBreadthMarker}) could push its own
- * compensating detail row -- a `parse_date`'s `outputFormat` above all --
- * past {@link MAX_DISPLAYED_PARAMS} into the overflow marker by declaring
- * enough entries ahead of it. Leading with the verdict-bearing rows fixes
- * that at the source, and holds for a summary built from terms that never
- * passed a decode, which is what refuses a record that wide
- * (`config/transformParamDisplay.ts`).
- *
- * The entries are the ones the refusal counts ({@link declaredParamEntries}),
- * so the count shown here and the count refused there are one expression.
- *
- * The lookup goes through the table's own read path because the function name
- * is partner free text: a name that only reaches `Object.prototype`
- * (`constructor`, `toString`) answers undefined rather than an inherited
- * member, which would lead the display with rows no verdict reads.
+ * A step's declared params in display order: the ones a consent verdict reads
+ * ({@link CONSENT_VERDICT_PARAM_NAMES}) first, then the rest in declaration
+ * order. In plain order, the party that authors the transform could push a
+ * compensating row (a `parse_date`'s `outputFormat`) past
+ * {@link MAX_DISPLAYED_PARAMS} into the overflow marker. The entries come from
+ * {@link declaredParamEntries}, so the shown and refused counts agree. The
+ * lookup uses the table's read path because the function name is partner free
+ * text: `constructor` must answer undefined.
  */
 function orderedParamEntries(step: TransformStep): Array<[string, unknown]> {
   const entries = declaredParamEntries(step.params);
@@ -795,20 +560,12 @@ function orderedParamEntries(step: TransformStep): Array<[string, unknown]> {
 }
 
 /**
- * The literal slice phrase for a `substring` step on a name field, or
- * undefined when no faithful literal applies. `positionalSafe` gates both
- * the field kind and the pipeline position -- the caller passes true only
- * for a name field's FIRST step, so the slice runs on the unmodified field
- * value. A reformatted field (a date) has no verifiable literal, and a
- * substring after an earlier rewriting step (e.g. phonetic then substring)
- * would describe the intermediate value, not the field -- both fall back to
- * the glossary description instead of a misstating literal.
- *
- * The params are partner-controlled and typed `unknown`, narrowed to
- * integers before use; only a positive integer `start` yields a literal. A
- * negative `start` counts from the end, 0 is a no-op (core's schema rejects
- * it), and a non-integer is not a usable slice -- each falls back to
- * undefined. Core's `substring` is SQL SUBSTR: 1-indexed positive `start`.
+ * The literal slice phrase for a `substring` step, or undefined.
+ * `positionalSafe` is true only for a name field's FIRST step, so the slice
+ * runs on the unmodified value; a reformatted field (a date) or a substring
+ * after a rewriting step would misstate it and falls back to the glossary.
+ * Params are partner-controlled `unknown`; only a positive integer `start`
+ * yields a literal (core's `substring` is 1-indexed SQL SUBSTR).
  */
 function substringEffect(
   step: TransformStep,
@@ -835,17 +592,12 @@ function substringEffect(
 }
 
 /**
- * Reduce one transform step to its display summary: the sanitized function
- * name and a bounded, sanitized `key: value` view of its parameters, each key
- * in the spelling the document writes it ({@link describedTransformParamEntry},
- * which a refusal of the same parameter reads too). Each entry is sanitized
- * and truncated as a whole (so a parameter key or value cannot hold control,
- * bidi, or homoglyph characters), and the entry count is capped.
- * `positionalSafe` lets a recognized `substring` lead with a literal slice
- * phrase (see {@link substringEffect}) on a name field.
- * `substitutesFallback` is core's verdict on whether a `coalesce`
- * substitutes where this step sits, which decides between its two
- * descriptions; false for every other function.
+ * Reduce one transform step to its display summary. Each parameter entry is
+ * sanitized and truncated as a whole, spelled as the document writes it
+ * ({@link describedTransformParamEntry}), and the entry count is capped.
+ * `positionalSafe` allows a literal slice phrase ({@link substringEffect});
+ * `substitutesFallback` is core's verdict on whether a `coalesce` substitutes
+ * where it sits, and picks between its two descriptions.
  */
 function summarizeTransform(
   step: TransformStep,
@@ -865,15 +617,11 @@ function summarizeTransform(
     function: redactAndSanitizeForDisplay(step.function),
     params,
   };
-  // A literal slice phrase leads in place of the function name where it is
-  // faithful (substring on a name field); the glossary description is the
-  // fallback only when there is no literal. The lookup reads the RAW
-  // function name through the table's own read path, so an unmatched
-  // partner-controlled name answers undefined rather than a description. A
-  // coalesce that substitutes nothing here takes
-  // `COALESCE_WITHOUT_SUBSTITUTION_DESCRIPTION` instead of the glossary's,
-  // so this row cannot assert a substitution the header's marker has
-  // already declined to name.
+  // The literal slice phrase leads where faithful; the glossary is the
+  // fallback. The lookup reads the raw function name through the table's read
+  // path, so an unmatched partner name answers undefined. A non-substituting
+  // coalesce takes its own description so the row never asserts a substitution
+  // the header marker declined to name.
   const effect = substringEffect(step, positionalSafe);
   if (effect !== undefined) summary.effect = effect;
   else if (step.function === "coalesce" && !substitutesFallback)
@@ -888,57 +636,35 @@ function summarizeTransform(
   return summary;
 }
 
-// Core's parseDateFactory default input format (standardization.ts): an
-// absent format is the full MM/DD/YYYY layout, which holds every component,
-// so an absent inputFormat drops nothing. The matching output default is
-// DEFAULT_DATE_OUTPUT_FORMAT.
+// Core's parseDateFactory default input format (standardization.ts): an absent
+// inputFormat drops nothing. The output default is DEFAULT_DATE_OUTPUT_FORMAT.
 const DEFAULT_PARSE_DATE_INPUT = "MM/DD/YYYY";
 
 /**
- * The breadth marker a `parse_date` step's output layout earns, or undefined
- * when it merely reformats between equivalent full layouts (routine
- * canonicalization, unflagged) or its INPUT format cannot supply a full date
- * (not a broadening; see below). Two magnitudes of date collapse:
+ * The breadth marker a `parse_date` step's output layout gets, or undefined
+ * when it only reformats between equivalent full layouts or its input format
+ * cannot supply a full date.
  *
- * - "any date": the output layout holds NO date token at all, so every date
- *   collapses to one constant value -- the maximal match breadth (e.g. an
- *   `outputFormat` of "registered").
- * - "partial": the output keeps at least one date token but omits a
- *   component its input holds, so distinct dates collapse onto a coarser
- *   bucket (e.g. a year-only output matches every date within a year).
+ * - "any date": the output layout has no date token, so every date collapses
+ *   to one constant.
+ * - "partial": the output keeps a date token but omits a component its input
+ *   contains.
  *
- * A step read alone cannot see the other route to "any date": a `substring`
- * run following this one can read a window that holds only the format's own
- * characters, collapsing every date exactly as a tokenless output does.
- * That verdict is a property of the steps together, so
- * {@link elementBreadthMarker} takes it from the collapse verdict of core's
- * {@link gradeElementPipeline} instead of this per-step classification.
- *
- * A `parse_date` whose input format omits a component core requires drops
- * EVERY record, so the element matches nothing, not more, and earns no
- * marker here -- that is a narrowing the separate dead-key advisory reports
- * instead. This defers to core's `parseDateInputDropsEveryRecord` (which
- * also covers a non-string input format) rather than re-deriving the
- * required-component rule, so the marker cannot drift from the runtime.
- *
- * Classification is keyed on the OUTPUT's token set: a tokenless output is
- * "any date" whatever the input, since no input layout can un-collapse a
- * constant output. The params are partner-controlled and typed `unknown`,
- * narrowed to a string with a fallback to core's default layout when
- * absent. The returned word is one of the two fixed literals above, never
- * partner text, so the marker is injection-safe by construction.
+ * A later `substring` run can also collapse every date;
+ * {@link elementBreadthMarker} takes that from {@link gradeElementPipeline}. An
+ * input format missing a required component drops every record, a narrowing the
+ * dead-key advisory reports, so it gets no marker (core's
+ * `parseDateInputDropsEveryRecord`). The returned word is one of two fixed
+ * literals.
  */
 function parseDateBreadth(
   step: TransformStep,
 ): "any date" | "partial" | undefined {
   if (step.function !== "parse_date") return undefined;
-  // A parse_date whose input format cannot assemble a full date produces no
-  // value to classify (core drops every such record), so emit no marker
-  // here; defer to core's check, which also covers a non-string input
-  // format. This step-level guard additionally stops a dead parse_date that
-  // a later `coalesce` RESCUES to a constant from mislabelling the element
-  // a date collapse -- the correct marker there is the coalesce's
-  // "fallback".
+  // An input format that cannot assemble a full date drops every record (core's
+  // check, which also covers a non-string format). Guarding per step also stops
+  // a dead parse_date that a later `coalesce` rescues from being labelled a
+  // date collapse; the right marker there is "fallback".
   if (parseDateInputDropsEveryRecord(step.params)) return undefined;
   const rawInput = step.params?.inputFormat;
   const rawOutput = step.params?.outputFormat;
@@ -946,11 +672,9 @@ function parseDateBreadth(
     typeof rawInput === "string" ? rawInput : DEFAULT_PARSE_DATE_INPUT;
   const output =
     typeof rawOutput === "string" ? rawOutput : DEFAULT_DATE_OUTPUT_FORMAT;
-  // The output is classified in its OWN context: a `YY` in the output
-  // format is an unsubstituted literal (the factory fills only
-  // YYYY/MM/DD), so it collapses the year and holds no year component --
-  // an output of "YY" is a total constant ("any date"), and "MM/DD/YY"
-  // keeps month and day but drops the year.
+  // The output is classified in its own context: `YY` in an output format is an
+  // unsubstituted literal (the factory fills only YYYY/MM/DD), so "YY" is a
+  // constant and "MM/DD/YY" drops the year.
   const outputComponents = dateFormatComponents(output, "output");
   if (outputComponents.size === 0) return "any date";
   const dropsComponent = [...dateFormatComponents(input, "input")].some(
@@ -959,24 +683,21 @@ function parseDateBreadth(
   return dropsComponent ? "partial" : undefined;
 }
 
-/** Whether the element's transform declares a step that expands its value into
- * several match candidates -- the rule behind the "multiple" marker, and, where
- * the strategy refuses such an exchange, behind the "not supported" one. */
+/**
+ * Whether the element's transform expands its value into several match
+ * candidates: the "multiple" marker, or "not supported" where the strategy
+ * refuses.
+ */
 function declaresFanOut(element: LinkageKeyElement): boolean {
   const functions = new Set((element.transform ?? []).map((s) => s.function));
   return FAN_OUT_FUNCTION_NAMES.some((name) => functions.has(name));
 }
 
 /**
- * Transform functions that derive a value the acceptor's own identifier need
- * not compose, so a later `substring` slicing that value is no longer a
- * truncation of the identifier and earns no "partial" (see
- * {@link elementBreadthMarker}, which classifies every function name core
- * admits against that axis, for the members here and the ones absent).
- * Membership is a policy decision about the consent marker, not core's
- * runtime behavior; the names are core's own schema-validated function
- * names, so the marker stays derived from the validated set rather than
- * partner free text.
+ * Transform functions whose output the acceptor's own identifier need not
+ * compose, so a later `substring` is not a truncation of the identifier and
+ * gets no "partial" (see {@link elementBreadthMarker}). Membership is a policy
+ * decision about the consent marker, over core's schema-validated names.
  */
 const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
   "phonetic",
@@ -985,77 +706,31 @@ const LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The terse informative marker for a key element's collapsed-header entry.
- * Returns a SINGLE, most-salient marker, not one per rule -- the header is
- * terse by design, so an element holding more than one rule shows just the
- * first, while its complete rule set is held in
- * {@link InvitationKeySummary.elements} for the per-key detail.
+ * The marker for a key element's collapsed-header entry: a single, most salient
+ * one (the full rule set is in {@link InvitationKeySummary.elements}).
+ * Undefined when the element matches exactly, only canonicalizes, or its
+ * pipeline matches nothing (a narrowing the dead-key advisory reports).
+ * Ranking, widest first:
  *
- * A rule the exchange refuses outright is named as one ("not supported")
- * and outranks every marker below, since no matching of any breadth
- * happens under it. The fan-out family is that case under a count-only
- * (`psi-c`) exchange, which refuses a candidate set; otherwise the same
- * element shows "multiple". `fanOutMatches` decides which.
+ * 1. "multiple" or "not supported": fan-out; `fanOutMatches` picks which, since
+ *    a count-only `psi-c` exchange refuses a candidate set.
+ * 2. A pipeline that matches nothing: no marker.
+ * 3. "any date" (a `parse_date` output with no date token, or one a later
+ *    `substring` run leaves constant, per {@link gradeElementPipeline}), then
+ *    "fallback" (a `coalesce` that substitutes a constant,
+ *    {@link coalesceSubstitutesConstant}).
+ * 4. "partial" (a truncating `substring`, counted after a routine normalizer
+ *    but not after {@link LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS}), "fuzzy",
+ *    "sound-alike" (`phonetic`), then a component-dropping `parse_date`'s
+ *    "partial".
+ * 5. Rules whose direction is indeterminate: "pattern replacement", "pattern
+ *    extraction", "padded slice", "pattern filter", "excludes values".
  *
- * Undefined when the element matches exactly, only canonicalizes its value
- * (case, whitespace, accents, affixes, padding on its own, or a
- * `parse_date` that merely reformats between equivalent layouts), or its
- * pipeline matches NOTHING (a dead `parse_date` or a `substring` run whose
- * window falls outside every rendered layout, unless a later `coalesce`
- * rescues it) -- the latter is a narrowing-to-empty the dead-key advisory
- * reports separately, not a broadening.
- *
- * Where the direction is determinable from the terms, the marker names the
- * EFFECT:
- *
- * - "any date": a `parse_date` whose output layout holds no date token, or
- *   whose output a later `substring` run is measured to leave constant for
- *   every date (the collapse verdict of {@link gradeElementPipeline}) -- the
- *   maximal collapse, checked first since it dominates any other rule the
- *   element also holds.
- * - "fallback": a `coalesce` that substitutes a constant on every record an
- *   earlier rule of the element emptied (core's
- *   {@link coalesceSubstitutesConstant}), the same collapse as "any date"
- *   bounded to the emptied records. Ranks above the coarsening markers
- *   below for the same reason.
- * - "partial": a truncating `substring` -- counts even after a routine
- *   normalizer, unlike the detail row's stricter first-step-only literal
- *   ({@link substringEffect}), but not after a step in
- *   {@link LITERAL_CORRESPONDENCE_BREAKING_FUNCTIONS} -- or a `parse_date`
- *   whose output keeps a date token but drops a component its input holds.
- * - "fuzzy" / "sound-alike": the fuzzy-comparison expansion, or `phonetic`.
- *
- * Where an arbitrary partner-authored pattern or value list -- or a fill
- * whose reach into the sliced value depends on each record rather than the
- * terms -- makes the direction indeterminate, the marker names the RULE:
- * "pattern replacement" (`replace_regex`) and "pattern extraction"
- * (`extract_regex`) rank above "padded slice" (a `substring` after a
- * `pad_left`, since padding alone is routine and earns no marker of its
- * own), which ranks above the two narrowing-only rules "pattern filter"
- * (`filter_regex`) and "excludes values" (`null_if`).
- *
- * The full ranking, widest first: (1) fan-out, (2) dead-pipeline
- * suppression, (3) the collapse markers ("any date" then "fallback"), (4)
- * the coarsening markers ("partial" truncation, "fuzzy", "sound-alike",
- * then a component-dropping `parse_date`'s "partial"), (5) the
- * directly-named rules in the order above.
- *
- * Two known, accepted limits. First: because "padded slice" ranks last, a
- * tier-3 or tier-4 marker can mask it -- e.g. `[pad_left, substring,
- * parse_date]` with a component-dropping output renders "partial" though a
- * window landing in the fill in fact collapses every short record onto one
- * constant. Neither masking shape is reachable from the built-in key sets
- * (only `substring` and `swap` appear there). Second: the date-collapse
- * measurement ({@link gradeElementPipeline}) runs probe dates through the
- * steps between a `parse_date` and the end of a substring run; it cannot
- * see a value-DEPENDENT drop (a `filter_regex` or `null_if` that passes the
- * probes but drops a real record), so such an element earns "any date"
- * while some records it would have collapsed are in fact dropped -- the
- * same tradeoff the grading's drop verdict makes, to avoid flagging a
- * legitimate pipeline as dead. The probe dates ship in public source, so a
- * dropped or unmeasurable probe resolves to the collapse word, never the
- * milder one; both halves are held by tests driving the shipped pipeline,
- * not by this note.
+ * Known limits: a tier 3 or 4 marker can mask "padded slice" (for `[pad_left,
+ * substring, parse_date]` it renders "partial"), which no built-in key set
+ * reaches. The date-collapse measurement cannot see a value-dependent drop (a
+ * `filter_regex` that passes the probes but drops a real record), so such an
+ * element earns "any date".
  */
 function elementBreadthMarker(
   element: LinkageKeyElement,
@@ -1063,26 +738,24 @@ function elementBreadthMarker(
 ): Displayable | undefined {
   const steps = element.transform ?? [];
   const functions = new Set(steps.map((s) => s.function));
-  // Tier 1: fan-out outranks every marker below (see the function doc).
+  // Tier 1: fan-out outranks every marker below.
   if (declaresFanOut(element))
     return fanOutMatches ? displayText`multiple` : displayText`not supported`;
-  // Tier 2: a pipeline that matches nothing earns no marker. Deferred to
-  // core's drop verdict, which accounts for a rescuing `coalesce`. Its grading
-  // also answers tier 3a below, off one walk of the element's steps.
+  // Tier 2: a pipeline that matches nothing gets no marker, per core's drop
+  // verdict (which accounts for a rescuing `coalesce`). The grading also
+  // answers tier 3a, off one walk of the steps.
   const grading = gradeElementPipeline(steps);
   if (grading.alwaysDrops()) return undefined;
-  // Tier 3a: "any date" -- checked before every other rule since it is the
-  // maximal collapse. The whole pipeline is offered at once because core
-  // decides which step ends a maximal substring run, and reads every run of one
-  // element in a single walk.
+  // Tier 3a: "any date", the maximal collapse. The whole pipeline is offered at
+  // once because core decides which step ends a maximal substring run.
   const parseDateBreadths = steps.map(parseDateBreadth);
   if (
     parseDateBreadths.includes("any date") ||
     grading.collapsesParsedDateToConstant()
   )
     return displayText`any date`;
-  // Tier 3b: "fallback" -- gated on core's position-aware predicate so the
-  // marker fires exactly where the substitution runs.
+  // Tier 3b: "fallback", gated on core's position-aware predicate so it fires
+  // only where the substitution runs.
   if (
     steps.some((step, index) =>
       coalesceSubstitutesConstant(step, steps.slice(0, index)),
@@ -1103,9 +776,9 @@ function elementBreadthMarker(
   if (element.generateFuzzyComparisons !== undefined) return displayText`fuzzy`;
   if (functions.has("phonetic")) return displayText`sound-alike`;
   if (parseDateBreadths.includes("partial")) return displayText`partial`;
-  // Tier 5: the directly-named rules. The two rewriting rules rank above
-  // "padded slice" because a rewrite between the pad and the slice can
-  // dissolve the padding.
+  // Tier 5: the directly-named rules. The rewriting rules rank above "padded
+  // slice" because a rewrite between the pad and the slice can dissolve the
+  // padding.
   if (functions.has("replace_regex")) return displayText`pattern replacement`;
   if (functions.has("extract_regex")) return displayText`pattern extraction`;
   const slicesPaddedValue = steps.some(
@@ -1114,21 +787,18 @@ function elementBreadthMarker(
       steps.slice(0, index).some((prior) => prior.function === "pad_left"),
   );
   if (slicesPaddedValue) return displayText`padded slice`;
-  // The two narrowing-only rules rank last: each substitutes nothing, so
-  // "padded slice" stays exactly true beside them.
+  // The narrowing-only rules rank last: each substitutes nothing, so "padded
+  // slice" stays true beside them.
   if (functions.has("filter_regex")) return displayText`pattern filter`;
   if (functions.has("null_if")) return displayText`excludes values`;
   return undefined;
 }
 
 /**
- * Reduce one linkage key to its display summary, resolving each element's
- * field reference to a human-readable label and reporting every
- * non-default matching rule. `fieldByName` maps a field `name` to its
- * semantic type; an element or swap reference that does not resolve falls
+ * Reduce one linkage key to its display summary. `fieldByName` maps a field
+ * `name` to its semantic type; an unresolved element or swap reference falls
  * back to the sanitized raw string. `fanOutMatches` is whether the agreed
- * algorithm and strategy match a candidate set, which decides both fan-out
- * markers below.
+ * algorithm and strategy match a candidate set.
  */
 function summarizeKey(
   key: LinkageKey,
@@ -1152,22 +822,16 @@ function summarizeKey(
   const elements: Array<InvitationKeyElementSummary> = key.elements.map(
     (element) => {
       const type = fieldByName.get(element.field);
-      // A character slice reads faithfully only where its position maps to
-      // the value the acceptor sees -- a free-text name. A date or other
-      // reformatted field is canonicalized by a standardization the token
-      // does not hold, so a positional phrase there would be unverifiable;
-      // summarizeTransform falls back to the glossary description for it.
+      // A character slice reads faithfully only on a free-text name; a date or
+      // other reformatted field is canonicalized by a standardization the token
+      // does not hold.
       const positionalSafe = type === "first_name" || type === "last_name";
       const steps = element.transform ?? [];
       return {
         fieldLabel: labelForField(element.field),
-        // The substring literal is faithful only on a name field's FIRST
-        // step: a later step runs on a value an earlier one already rewrote
-        // (e.g. phonetic then substring takes the first N of the
-        // sound-alike code, not the name), so "the first N characters" of
-        // the original would be wrong. A coalesce's description is
-        // position-dependent for the same reason: what it does turns on
-        // what the steps before it can leave for it.
+        // A substring literal is faithful only on a name field's first step,
+        // since a later step runs on an already-rewritten value. A coalesce's
+        // description depends on the steps before it for the same reason.
         transforms: steps.map((step, stepIndex) =>
           summarizeTransform(
             step,
@@ -1187,25 +851,18 @@ function summarizeKey(
   const hasSwap = key.swap !== undefined;
   const swapApplied = fanOutMatches;
   let swap: [Displayable, Displayable] | undefined;
-  // Header-marker re-attribution across a swap: maps each swapped element
-  // to the breadth marker its header entry should show INSTEAD of its own
-  // (an explicit `undefined` blanks the marker). Empty for a non-swap, a
-  // same-label swap, or a pair holding a refused rule (see below), so the
-  // header loop falls back to each element's own marker. Built here because
-  // the swap resolution below supplies the element pairing it needs.
+  // Header-marker re-attribution across a swap: each swapped element maps to
+  // the marker its header entry shows instead of its own (an explicit
+  // `undefined` blanks it). Empty for a non-swap, a same-label swap, or a pair
+  // holding a refused rule.
   const headerMarkerOverride = new Map<
     LinkageKeyElement,
     Displayable | undefined
   >();
   if (key.swap !== undefined) {
-    // A swap names two elements by their effective identifier (element
-    // `name` if present, otherwise `field`); resolve each to its element so
-    // the note reads in the same field-label terms as the element list. The
-    // schema enforces that `name ?? field` is unique within a key, so this
-    // Map never drops an element. The note names the two fields only when
-    // both references resolve to elements with distinct labels; otherwise
-    // `swap` stays undefined and the renderer shows a generic note (see the
-    // `swap` field doc).
+    // A swap names two elements by identifier (`name ?? field`, unique within a
+    // key by schema). The note names the fields only when both resolve with
+    // distinct labels; otherwise `swap` stays undefined.
     const elementByIdentifier = new Map(
       key.elements.map((element) => [element.name ?? element.field, element]),
     );
@@ -1216,20 +873,12 @@ function summarizeKey(
       const secondLabel = labelForField(second.field);
       if (firstLabel !== secondLabel) {
         swap = [firstLabel, secondLabel];
-        // On the receiver each swapped element keeps ALL its own rules but
-        // reads the OTHER element's field value (core's `swapElements`
-        // rewrites only the field reference), so every breadth marker an
-        // element earns describes what happens to its PARTNER's field, and
-        // the header shows it on the partner's slot. Re-attribute
-        // uniformly: each element's header entry shows its partner's
-        // marker -- exact for every configuration, since the whole element
-        // moves. The one exception is a refused rule: "not supported" names
-        // a step the operator must find and remove, and that step sits in
-        // the element that DECLARES it, whichever field it reads on a
-        // receiver. A refused key has no run to describe, so a refused
-        // fan-out anywhere in the pair leaves both markers on their
-        // declaring elements rather than pointing at a field holding no
-        // such step.
+        // On the receiver each swapped element keeps its own rules but reads
+        // the other's field (core's `swapElements`), so each header entry shows
+        // its partner's marker. The exception is a refused fan-out: "not
+        // supported" names a step the operator must find and remove, which sits
+        // in the declaring element, so a refusal anywhere in the pair leaves
+        // both markers where declared.
         const refusedFanOut =
           !fanOutMatches && (declaresFanOut(first) || declaresFanOut(second));
         if (!refusedFanOut) {
@@ -1246,11 +895,10 @@ function summarizeKey(
     }
   }
 
-  // The always-visible field one-liner: a compact label per element with a
-  // terse breadth marker, deduped by the full entry so a truncated element
-  // does not collapse onto a whole-value one of the same field. A swap
-  // re-attributes each marker to its partner's field (see
-  // headerMarkerOverride above); a non-swapped element shows its own marker.
+  // The always-visible field one-liner: a compact label per element with its
+  // marker (re-attributed across a swap), deduped by the full entry so a
+  // truncated element does not collapse onto a whole-value one of the same
+  // field.
   const headerFields: Array<Displayable> = [];
   const seenHeaderFields = new Set<string>();
   for (const element of key.elements) {
@@ -1277,10 +925,9 @@ function summarizeKey(
     elements,
     headerFields,
     hasSwap,
-    // The swapped key order is a candidate-set producer like the fuzzy
-    // expansion (`keyDeclaresCandidateSet`, fanOutFunctions.ts), so it applies
-    // on exactly the combinations that resolve a candidate set -- the verdict
-    // `fanOutMatches` already holds.
+    // A swapped key order is a candidate-set producer like the fuzzy expansion
+    // (`keyDeclaresCandidateSet`, fanOutFunctions.ts), so it applies where
+    // `fanOutMatches` does.
     swapApplied,
     swap,
     swapHeaderMarker,
@@ -1288,46 +935,27 @@ function summarizeKey(
 }
 
 /**
- * Whether the exchange an invitation proposes withholds the ACCEPTING party's
- * half of the association table at the wire, leaving that party's process
- * blind to which of its own records matched and to the size of any group of
- * the inviting party's records standing behind one of them.
+ * Whether the exchange withholds the ACCEPTING party's half of the association
+ * table at the wire, leaving it blind to which of its records matched and to
+ * the size of any group of the inviter's records behind one.
  *
- * The rule itself is {@link withholdsSenderAssociationTable}, asked here
- * rather than restated. What this adds is the reading of an invitation's own
- * terms that puts the accepting party on that rule's withheld side, which
- * takes three conditions:
+ * Asks {@link withholdsSenderAssociationTable} about the reading of the
+ * invitation's terms that puts the accepting party on the withheld side:
  *
- * - The strategy is `single-pass`. It is the only strategy with a frame to
- *   suppress: a cascade's rounds carry each party's matched positions as they
- *   go (docs/spec/PROTOCOL.md, Withholding the sender's table from a blind
- *   helper).
- * - The inviting party is entitled to output and the accepting party is not.
- *   Role resolution gives the party entitled to the result the receiver seat
- *   whatever the record counts, so the accepting party is the sender the
- *   withholding covers -- pinned against `resolveRole` itself in
- *   `test/consent/invitationSummary.test.ts` rather than asserted here.
- * - The invitation requests no payload column from the accepting party AND
- *   requests it as a declaration -- `payload.receive` present and empty --
- *   rather than leaving that direction lazy. The declaration mirrors to the
- *   acceptor's own empty `payload.send`, which `assertPayloadSendDisclosed`
- *   holds to exactly the columns its metadata discloses before any data
- *   moves, so a run that reaches the linkage at all discloses none. An absent
- *   `receive` binds nothing and so reads as disclosure, the same direction
- *   the run defaults an unadvertised partner flag in: neither may blind a
- *   helper that needs its half back.
+ * - The strategy is `single-pass`; a cascade's rounds carry each party's
+ *   matched positions as they go (docs/spec/PROTOCOL.md, Withholding the
+ *   sender's table from a blind helper).
+ * - The inviter is entitled to output and the accepting party is not, which
+ *   makes the accepting party the sender (pinned against `resolveRole` in
+ *   `test/consent/invitationSummary.test.ts`).
+ * - The invitation declares `payload.receive` present and empty, which mirrors
+ *   to the acceptor's empty `payload.send`, held by
+ *   `assertPayloadSendDisclosed`. An absent `receive` binds nothing and reads
+ *   as disclosure.
  *
- * A deduplicating term neither adds a condition nor removes one; the
- * multiplicity bears on neither reason a helper needs its half (docs/spec/
- * PROTOCOL.md, Where the "one" party receives no output).
- *
- * A document no acceptance can reach describes no run, so it resolves false
- * whatever the conditions above say. Where the inviting party keeps the
- * result, the accepting party mirrors to no entitlement, and a `payload.send`
- * the invitation declares mirrors to a `receive` that party may not hold, so
- * `deriveAcceptedLinkageTerms` refuses the document before any surface
- * consents to it -- pinned against that refusal in
- * `test/consent/invitationSummary.test.ts` rather than restated here.
+ * Deduplication adds no condition (docs/spec/PROTOCOL.md, Where the "one" party
+ * receives no output). A document no acceptance can reach resolves false:
+ * `deriveAcceptedLinkageTerms` refuses it (pinned in the same test).
  */
 export function withholdsAcceptorAssociationTable(
   terms: LinkageTerms,
@@ -1344,37 +972,21 @@ export function withholdsAcceptorAssociationTable(
 }
 
 /**
- * Whether the exchange an invitation proposes withholds the INVITING party's
- * half of the association table at the wire, leaving that party's process
- * blind to which of the accepting party's records matched and to the size of
- * any group of them standing behind one.
+ * Whether the exchange withholds the INVITING party's half of the association
+ * table: the mirror of {@link withholdsAcceptorAssociationTable}, with the
+ * inviter as the sender. Conditions:
  *
- * The mirror of {@link withholdsAcceptorAssociationTable}, asking the same
- * rule ({@link withholdsSenderAssociationTable}) with the inviting party in
- * the sender's seat, which takes three conditions:
+ * - The strategy is `single-pass`.
+ * - The accepting party is entitled to output and the inviter is not.
+ * - The invitation declares an empty `payload.send`, which binds the inviter to
+ *   disclosing no column (`assertPayloadSendDisclosed`). An absent `send` binds
+ *   nothing and reads as disclosure.
  *
- * - The strategy is `single-pass`, the only strategy with a frame to
- *   suppress.
- * - The accepting party is entitled to output and the inviting party is not,
- *   so role resolution seats the accepting party as the receiver and leaves
- *   the inviting party the sender the withholding covers.
- * - The invitation declares an empty `payload.send`. That declaration binds
- *   the inviting party to disclosing no column -- `assertPayloadSendDisclosed`
- *   holds a present-but-empty dictionary to exactly what metadata discloses
- *   whenever the terms share the result with the partner, which this shape
- *   does -- so a run that reaches the linkage discloses none. An absent
- *   `send` binds nothing and so reads as disclosure.
- *
- * Read once so two surfaces select from it. The CLI accept prompt and the web
- * non-proposing seat pick the own-membership fact
- * (`partnerLearnsOwnMembership` / `partnerOwnMembershipWithheld`) wherever a
- * `psi` invitation hands the inviting party no result. The seat where the
- * ACCEPTING party declares a grouping of its own reads the same verdict for
- * the fact beside the pair statement (`partnerReadsDuplicateGrouping` and
- * `partnerDuplicateGroupingWithheld`). A deduplicating cardinality neither
- * adds a condition nor removes one; the "one" party as a no-output helper is
- * exactly the composition docs/spec/PROTOCOL.md covers under Where the "one"
- * party receives no output.
+ * Read once for both surfaces: the own-membership fact
+ * (`partnerLearnsOwnMembership` / `partnerOwnMembershipWithheld`) and the
+ * grouping fact (`partnerReadsDuplicateGrouping` /
+ * `partnerDuplicateGroupingWithheld`). Deduplication adds no condition
+ * (docs/spec/PROTOCOL.md, Where the "one" party receives no output).
  */
 export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
   if (terms.linkageStrategy !== "single-pass") return false;
@@ -1389,38 +1001,22 @@ export function withholdsInviterAssociationTable(terms: LinkageTerms): boolean {
 
 /**
  * Whether the exchange withholds the PARTNER's half of the association table,
- * read from the linkage terms a party wrote for ITSELF -- an exchange both
- * parties configured from their own files, with no invitation between them.
+ * read from terms a party wrote for ITSELF, with no invitation between the
+ * parties. The same rule ({@link withholdsSenderAssociationTable}), with
+ * `output.expectsOutput` as this party's entitlement, `output.shareWithPartner`
+ * the partner's, and `payload.receive` what this party takes from the partner.
+ * Conditions:
  *
- * The same rule as the two readings above
- * ({@link withholdsSenderAssociationTable}), asked at a seat where the
- * document is this party's own: `output.expectsOutput` is this party's
- * entitlement, `output.shareWithPartner` the partner's, and `payload.receive`
- * what this party takes from the partner. Three conditions:
- *
- * - The strategy is `single-pass`, the only strategy with a frame to
- *   suppress.
- * - This party is entitled to output and the partner is not, so role
- *   resolution seats this party as the receiver and leaves the partner the
- *   sender the withholding covers. `validateCompatibility` holds this party's
- *   `shareWithPartner` equal to the partner's own `expectsOutput`, so the two
- *   documents cannot disagree about which party that is.
+ * - The strategy is `single-pass`.
+ * - This party is entitled to output and the partner is not;
+ *   `validateCompatibility` keeps the two documents from disagreeing on that.
  * - This party declares an empty `payload.receive`, which binds the partner to
- *   sending no column: `validateCompatibility` refuses a partner whose
- *   `payload.send` names one. An absent `receive` binds nothing and so reads
- *   as disclosure, the direction the run defaults an unadvertised partner flag
- *   in.
+ *   sending no column (`validateCompatibility`). An absent `receive` reads as
+ *   disclosure.
  *
- * This party's own `payload.send` does not enter it: the withholding is a
- * property of the SENDER, and a document that shares no result with the
- * partner sends nothing whatever it declares.
- *
- * A reading of two documents from one of them: the empty `payload.receive` is
- * held against the partner's DECLARED `payload.send` alone, never against what
- * that partner's metadata will transmit. A partner declaring no payload at all
- * while its metadata transmits a column passes that check, so this reading
- * predicts a withheld table for a pair the run itself refuses outright, once
- * both parties' terms are agreed and before any linkage round
+ * This party's `payload.send` does not enter it. The empty `receive` is checked
+ * against the partner's DECLARED `payload.send` alone, so this reading can
+ * predict a withheld table for a pair the run refuses before any round
  * (`resolveDirectionDisclosesPayload`, exchange/termsRefusals.ts).
  */
 export function withholdsPartnerAssociationTable(terms: LinkageTerms): boolean {
@@ -1434,26 +1030,18 @@ export function withholdsPartnerAssociationTable(terms: LinkageTerms): boolean {
 }
 
 /**
- * The name the accept probe below stands the other party's own in for. The
- * derivation checks that party's `identity` against the schema's rules, and a
- * summary is built before any name is entered; the probe's result is thrown
- * away, so this value is never displayed and never run.
+ * Stand-in for the other party's `identity` in the accept probe below. The
+ * result is discarded, so the value is never displayed or run.
  */
 const ACCEPT_PROBE_IDENTITY = "you";
 
 /**
  * Whether the accept boundary takes these terms with the OTHER party's own
- * `deduplicate` set -- the party the invitation does not declare for: the
- * accepting party at a seat holding an invitation, this party's partner at a
- * seat reading terms its own party wrote.
- *
- * Runs `deriveAcceptedLinkageTerms` itself rather than restating the rules it
- * applies, so a fact stating a consequence of that value is withheld wherever
- * the accept refuses it for ANY reason: a sole-receiver document, which leaves
- * that party no value to set (the schema takes `deduplicate: true` only from a
- * party that receives the result); the count-only shape, which holds neither
- * party's value open; a strategy pairing no both-sided cardinality; and a
- * document that mirrors to no acceptable acceptance at all.
+ * `deduplicate` set: the accepting party for an invitation, the partner for
+ * terms this party wrote. Runs `deriveAcceptedLinkageTerms` rather than
+ * restating its rules, so the fact is withheld wherever accept refuses for any
+ * reason: a sole-receiver document, a count-only shape, a strategy pairing no
+ * both-sided cardinality, or a document mirroring to no acceptable acceptance.
  */
 function acceptTakesPartnerDeduplicate(terms: LinkageTerms): boolean {
   try {
@@ -1465,17 +1053,11 @@ function acceptTakesPartnerDeduplicate(terms: LinkageTerms): boolean {
 }
 
 /**
- * Build a display-ready {@link InvitationSummary} from an invitation's
- * linkage terms and optional expiry. The parameter is a structural subset of
- * {@link InvitationToken} (`linkageTerms`, `expires`, `connectionEndpoint`,
- * `inviterRetainsFiles`), so a full decoded token is accepted as-is, and so is
- * the terms/expiry pair the exchange screen holds without a token. The
- * "columns your partner will send" line derives from the terms'
- * `payload.send`; the retained-files line derives from the declaration or the
- * endpoint's split-directory shape (see
- * {@link InvitationSummary.disclosesRetainedFiles}). Pure and
- * side-effect-free: it sanitizes every partner-controlled string, so it is
- * the single tested boundary for that escaping.
+ * Build a display-ready {@link InvitationSummary} from an invitation's linkage
+ * terms and optional expiry. The parameter is a structural subset of
+ * {@link InvitationToken}, so a decoded token and the terms/expiry pair the
+ * exchange screen holds without a token are both accepted. Pure: the single
+ * tested boundary for sanitizing every partner-controlled string.
  */
 export function summarizeInvitation(
   source: Pick<
@@ -1485,10 +1067,8 @@ export function summarizeInvitation(
 ): InvitationSummary {
   const terms = source.linkageTerms;
 
-  // A single-directory file-drop endpoint's advisory path is
-  // partner-controlled free text, so it is sanitized here like every other
-  // displayed partner string; the split inbound/outbound pair and
-  // non-filedrop endpoints hold no single locator.
+  // The advisory path is partner free text, sanitized like every other partner
+  // string; the split pair and non-filedrop endpoints hold no single locator.
   const endpoint = source.connectionEndpoint;
   const connectionPath =
     endpoint?.channel === "filedrop" && endpoint.path !== undefined
@@ -1499,19 +1079,12 @@ export function summarizeInvitation(
     terms.linkageFields.map((field) => [field.name, field.type]),
   );
 
-  // Collapse fields that are identical for display -- same semantic-type
-  // label, same constraint phrases, and same allowed-character class -- so
-  // several fields of one type (e.g. a maiden and a current name both typed
-  // `first_name`) do not list the same line twice with nothing to tell them
-  // apart (the field `name` that would distinguish them is partner-controlled
-  // and stays unshown). Fields whose constraints or allowed-character class
-  // differ stay distinct. The dedupe key is the JSON encoding of the
-  // (label, constraints, allowedCharacters) triple: a plain join would not
-  // be injective, since a constraint phrase or the regex class can itself
-  // hold the separator. Built from the already-sanitized display strings,
-  // so two fields whose `allowedCharacters` differ only in characters
-  // sanitizeForDisplay folds together collapse too -- correctly, since they
-  // render identically.
+  // Collapse fields identical for display (same label, constraint phrases and
+  // allowed-character class), such as a maiden and a current name both typed
+  // `first_name`. The key is the JSON encoding of the triple, since a plain
+  // join is not injective when a phrase or class holds the separator. It is
+  // built from the sanitized strings, so fields differing only in characters
+  // sanitization folds together also collapse.
   const seenFields = new Set<string>();
   const linkageFields: Array<InvitationFieldSummary> = [];
   for (const field of terms.linkageFields) {
@@ -1531,12 +1104,9 @@ export function summarizeInvitation(
     linkageFields.push(summary);
   }
 
-  // The unique fields the keys match on, compact and deduped in order of
-  // first appearance, for the always-visible consent line above the
-  // collapsed matching detail. Derived from the keys' elements (the fields
-  // actually matched on), not the declared field list, through the same
-  // compact-label/sanitize path the per-key sublines use; markers and
-  // per-key grouping stay in the disclosure.
+  // The unique matched fields, compact and in order of first appearance,
+  // derived from the keys' elements (not the declared field list) through the
+  // same label path as the per-key sublines.
   const matchedFields: Array<Displayable> = [];
   const seenMatchedFields = new Set<string>();
   for (const key of terms.linkageKeys) {
@@ -1552,46 +1122,34 @@ export function summarizeInvitation(
     }
   }
 
-  // The consent screen reflects the inviter's terms as proposed, not only
-  // what today's exchange executes: a term the run would not apply is shown
-  // all the same, and the *Applied flags below report the gap to the
-  // renderer. The displayed terms are what the acceptor agrees to.
-  // Which of the two fan-out registers this invitation is in: a combination
-  // that matches a candidate set, or one that refuses the terms outright.
-  // Read from the refusal's OWN predicates rather than restated here, so the
-  // copy cannot stay in the refusing register for a combination the refusal
-  // has stopped refusing, and read once so the element markers, the key
-  // summaries, and the consent fact a surface shows all follow one verdict.
+  // The consent screen shows the inviter's terms as proposed, not only what
+  // today's exchange runs; the *Applied flags report the gap to the renderer.
+  //
+  // `fanOutMatches` is which fan-out register applies: a combination that
+  // matches a candidate set, or one the terms are refused for. It is read from
+  // the refusal's own predicates, once, so the markers, key summaries and
+  // consent fact follow one verdict.
   const fanOutMatches =
     terms.algorithm !== "psi-c" &&
     candidateSetIsImplementedForStrategy(terms.linkageStrategy);
-  // Whether the strategy this invitation names matches the deduplicating
-  // cardinality its term asks for; a strategy that does not is refused at
-  // acceptance rather than run. Read from the refusal's OWN predicate
-  // rather than restated here, so the copy cannot stay withheld for a
-  // strategy the refusal has stopped refusing, and read once so both
-  // surfaces withhold it on the same verdict.
+  // Whether the strategy matches the deduplicating cardinality the term asks
+  // for, from the refusal's own predicate; a strategy that does not is refused
+  // at acceptance.
   const deduplicateApplied = deduplicateIsImplementedForStrategy(
     terms.linkageStrategy,
   );
-  // The pair the accepting party's `deduplicate: true` would complete, put to
-  // the accept boundary's OWN predicate (`bothSidedDeduplicateRefused`,
-  // linkageTermsPolicy.ts) rather than restated here, so a seat cannot state
-  // the consequence for an invitation the accept takes, nor withhold it for
-  // one the accept refuses.
+  // The pair the accepting party's `deduplicate: true` would complete, from the
+  // accept boundary's own predicate (`bothSidedDeduplicateRefused`,
+  // linkageTermsPolicy.ts).
   const acceptorDeduplicateRefused = bothSidedDeduplicateRefused(
     { ...terms, deduplicate: true },
     terms,
   );
-  // The grouping a candidate set makes once both parties deduplicate, read
-  // over the whole producer list (`termsDeclareCandidateSet`, fanOutFunctions.ts)
-  // rather than over the `split_on` half `fansOut` holds, and put to the
-  // combination that matches a candidate set and to the accept boundary's own
-  // verdict on the pair. The verdict is the whole boundary rather than the
-  // both-sided predicate alone, so a seat withholds the sentence wherever the
-  // other party's `deduplicate` is one the accept refuses -- a sole-receiver
-  // document leaves that party none to set, and stating the grouping there
-  // would state a disclosure this exchange cannot make.
+  // The grouping a candidate set makes once both parties deduplicate, read over
+  // every producer (`termsDeclareCandidateSet`, fanOutFunctions.ts) rather than
+  // the `split_on` half `fansOut` holds, and over the accept boundary's whole
+  // verdict, so a sole-receiver document that leaves that party no value to set
+  // does not state a disclosure the exchange cannot make.
   const candidateSetChainsGrouping =
     fanOutMatches &&
     terms.deduplicate &&
@@ -1617,23 +1175,18 @@ export function summarizeInvitation(
     ),
     matchedFields,
     linkageFields,
-    // Narrowed to the one value a surface may state, over both grounds that
-    // put an acceptor's run in retain mode: the inviter's declaration, and
-    // an endpoint whose split-directory shape the acceptor's own connection
-    // is seeded from -- read through the same predicate that seeding uses,
-    // so a second shape test cannot drift from it. The declaration is
-    // three-valued (declared retain, declared delete, nothing declared),
-    // and only the first is a fact about the run an acceptor consents to,
-    // so the other two collapse here rather than at each renderer.
+    // Narrowed to the one value a surface may state, over both grounds for
+    // retain mode: the declaration, and an endpoint whose split-directory shape
+    // seeds the acceptor's connection (the same predicate, so they cannot
+    // drift). The declaration is three-valued; only "declared retain" is a fact
+    // about the run, so the other two collapse here.
     disclosesRetainedFiles:
       source.inviterRetainsFiles === true ||
       endpointRequiresRetainedFiles(endpoint),
   };
 
   if (terms.linkageRuleSet !== undefined) {
-    // The verdict runs over the SAME terms the names are read from, so
-    // each half's marker and its name cannot come apart on the surface
-    // that renders them.
+    // Verdicts run over the same terms the names are read from.
     const verdicts = checkLinkageRuleSetCitation(terms.linkageRuleSet, terms);
     summary.linkageRuleSet = {
       fieldSet: {
@@ -1663,17 +1216,11 @@ export function summarizeInvitation(
     };
   }
 
-  // The columns the acceptor will RECEIVE are the inviter's `payload.send`,
-  // which a mint that holds its metadata states from the columns its payload
-  // step transmits.
-  // `receive` (what the inviter requests FROM the acceptor) stays the authored
-  // list.
-  //
-  // The send is read only where the inviting party shares the result:
-  // `runExchange` builds a party's payload just when the PARTNER is entitled
-  // to one, so an invitation handing the accepting party no result transmits
-  // no column whatever its metadata discloses, and a count of arriving columns
-  // would sit on a screen that also states no result arrives.
+  // The columns the acceptor receives are the inviter's `payload.send`;
+  // `receive` (requested from the acceptor) stays the authored list. The send
+  // is read only where the inviter shares the result: `runExchange` builds a
+  // payload only when the partner is entitled to one, so a count of arriving
+  // columns would contradict a screen stating no result arrives.
   const sendDeclared =
     terms.output.shareWithPartner && terms.payload?.send !== undefined;
   const receiveDeclared = terms.payload?.receive !== undefined;
