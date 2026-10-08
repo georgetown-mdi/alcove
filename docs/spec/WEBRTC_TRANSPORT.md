@@ -493,8 +493,9 @@ and each PSI worker's V8 heap in use. What no V8 heap counts is the rest: the
 native PSI engine's allocations, the worker's external memory, memory the
 allocator keeps after it is freed, and the process's code. In every run the
 inviter was the PSI sender, and both parties exited 0 with the expected
-result. The one-minute load average was 1.5 to 4.0 at a run's start and 3.6
-to 5.6 at its end.
+result. The one-minute load average was 1.5 to 4.0 at the start of these nine
+runs and 3.6 to 5.6 at their end; with the three runs on 1a0504a44 below, the
+start range is 1.32 to 4.0.
 
 Peak RSS is the process's high-water mark (`process.resourceUsage().maxRSS`),
 PSI worker included. The components, in GB, are those of the sample with the
@@ -510,7 +511,7 @@ step ends.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 500,000 | sender | 1,278,431,232 | 1,181,716,480 | fourth key, end of its set's encryption | 0.48 | 0.04 | 0.03 | 0.72 |
 | 500,000 | receiver | 1,628,418,048 | 1,570,697,216 | first key, the match | 0.36 | 0.08 | 0.41 | 0.73 |
-| 1,000,000 | sender | 2,234,875,904 | 2,211,237,888 | first key, end of its encryption of the partner's set | 0.73 | 0.31 | 0.01 | 1.10 |
+| 1,000,000 | sender | 2,234,875,904 | 2,211,237,888 | first key, just after its encryption of the partner's set | 0.73 | 0.31 | 0.01 | 1.10 |
 | 1,000,000 | receiver | 2,850,832,384 | 2,577,211,392 | first key, the match | 0.66 | 0.18 | 1.16 | 0.80 |
 | 2,000,000 | sender | 4,104,716,288 | 4,072,054,784 | first key, end of its encryption of the partner's set | 1.33 | 0.30 | 1.58 | 0.73 |
 | 2,000,000 | receiver | 4,781,133,824 | 4,507,717,632 | first key, the match | 1.30 | 0.37 | 1.21 | 1.90 |
@@ -524,22 +525,8 @@ Where the memory goes:
   1,181,716,480 and 1,232,269,312 in the first key for the other two.
 - **The main thread's heap** at the peak was 0.35 to 0.48 GB at 500,000
   records, 0.66 to 0.73 GB at 1,000,000 and 1.30 to 1.44 GB at 2,000,000.
-  Commit 80452d2c3, which holds a round's matched records in typed arrays,
-  moved the peak from the second key to the first. On 2026-10-03, before it,
-  the 1,000,000-record peaks were 2,541,735,936 bytes (sender) and
-  2,747,879,424 (receiver), in the second key with the main heap at 1.73 and
-  1.81 GB. On this host on 2026-10-05, one run at each commit, the main heap
-  at the peak fell from 1.73 to 0.68 GB (sender) and 1.77 to 0.65 GB
-  (receiver) across it, and the sender's peak from 2,554,142,720 to
-  2,245,230,592 bytes; the receiver's did not fall (2,700,550,144 and
-  2,740,928,512).
-- **Commit 72fb8155b, which writes the exchange record's and receipt's
-  encoding in chunks, did not move the peak.** Three 1,000,000-record runs
-  on its parent, 1a0504a44, on the same host the same day, had mean peaks of
-  2,223,104,000 bytes (sender) and 2,701,021,184 (receiver), against
-  2,226,461,355 and 2,718,849,707 on aa35fa977: 0.15% and 0.66% apart,
-  inside the spread of either set. No peak fell after the last key, where
-  the steps it changed run.
+  The history of what moved the peak is in
+  [webrtc-memory-measurements.md](../notes/webrtc-memory-measurements.md).
 - **The receiver's peak varies most.** Its three 1,000,000-record runs span
   273,620,992 bytes, the sender's 23,638,016. The worker's heap at the
   receiver's peak was 0.59 to 1.16 GB at 1,000,000 records, depending on
@@ -584,7 +571,9 @@ the fitted points: fitted to the twelve 2026-10-08 runs alone, the figures
 at 7,700,000 records fall 2.4% (sender) and 3.8% (receiver) under its peaks,
 and the receiver's peak at 1,000,000 records did not fall with that commit.
 
-Against the highest peak at each size:
+Against the highest of all thirteen fitted peaks a role at each size, which
+at 1,000,000 records includes the three runs on 1a0504a44 on 2026-10-05, so
+those two rows are not the highest-of-three peaks in the first table:
 
 | Records a side | Sender figure | Over the peak | Receiver figure | Over the peak |
 | --- | --- | --- | --- | --- |
