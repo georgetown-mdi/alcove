@@ -28,129 +28,76 @@ import type {
 export { MAX_ERROR_CAUSE_DEPTH };
 
 /**
- * Marker {@link sanitizeErrorForDisplay} appends to the last link it
- * renders when the walk stops at {@link MAX_ERROR_CAUSE_DEPTH} with the
- * chain still running: the cutoff says so rather than shortening the chain
- * silently, the same way {@link DISPLAY_TRUNCATION_MARKER} marks a link the
- * per-link cap cut.
+ * Marker {@link sanitizeErrorForDisplay} appends to the last link it renders
+ * when the walk stops at {@link MAX_ERROR_CAUSE_DEPTH} with the chain still
+ * running. Holds no count: counting the remainder means walking it.
  *
- * Holds no count: counting the remainder means walking the rest of the
- * chain, which this bound exists to not perform. A composition site that
- * knows its own link count states it in the last link it composes, where
- * the number is free (`checkLinkageSatisfiability` in
- * `apps/cli/src/commands/linkagePreflight.ts`); this marker is the generic
- * fallback for a chain nobody counted.
- *
- * Plain ASCII, appended AFTER the per-link escape and cap, so it can
- * neither reintroduce a control character nor be cut off the link it
- * marks -- and, being plain ASCII, is not authenticated: a link whose
- * message ends with the same text renders identically to one this
- * renderer marked (the same open class {@link DISPLAY_TRUNCATION_MARKER}
- * has). What bounds the cost is the asymmetry: a copy can claim a loss
- * that did not happen but cannot conceal one that did. The marker's
- * ABSENCE is what an operator can rely on -- no marker means the walk
- * dropped nothing -- while its presence only says detail MAY be missing.
+ * Plain ASCII, so it is not authenticated: a link ending in the same text
+ * renders identically. A copy can claim a loss that did not happen but cannot
+ * conceal one that did, so the marker's absence is what an operator can rely
+ * on (docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format).
  */
 export const CAUSE_DEPTH_ELISION_MARKER = "...[further causes elided]";
 
 /**
  * {@link CAUSE_DEPTH_ELISION_MARKER} as it sits on a rendered chain's last
- * link, behind the single space the append below separates it with. Both
- * the renderer and the re-render call site write the marker through this
- * constant, so the text a boundary looks for is the text the renderer put
- * there.
+ * link; the renderer and the re-render in {@link sanitizeErrorChainLinks} both
+ * write and look for it through this constant.
  */
 const ELISION_SUFFIX = ` ${CAUSE_DEPTH_ELISION_MARKER}`;
 
 /**
  * Separator placed between an error's message and each chained `cause`
- * message. The leading newline is the one control character in the
- * assembled output, and it is by design: a fixed formatting byte this
- * module emits (so each cause renders on its own line in a terminal),
- * never partner-controlled input. Every byte from an error message is
- * escaped by {@link sanitizeForDisplay} before it is joined, so no
- * partner-controlled control character can ride in alongside this one.
- * Consumers rendering to HTML must opt into preserving the newline (e.g.
- * `white-space: pre-line`); browsers collapse it otherwise.
- *
- * That escape-then-join order also makes the join REVERSIBLE, which
- * {@link sanitizeErrorChainLinks} relies on: the escape rewrites every code
- * point outside printable ASCII, the newline among them, so every raw
- * newline a rendered chain holds was placed by a first-party composition
- * after the escape -- this constant's own, and the breaks a link marked by
- * {@link keepFirstPartyLineBreaks} kept. A link whose own text is
- * `caused by:` cannot forge a link boundary: no byte of a message can stand
- * as the newline in front of it, and a break the mark kept never stands in
- * front of one either ({@link refuseCauseSeparatorOpening}).
+ * message. Its leading newline is the one control character this module emits
+ * itself; every message byte is escaped by {@link sanitizeForDisplay} before
+ * the join, so no message can forge a `caused by:` boundary and
+ * {@link sanitizeErrorChainLinks} can split on this text. A kept break
+ * ({@link keepFirstPartyLineBreaks}) never stands in front of one either
+ * ({@link refuseCauseSeparatorOpening}). HTML consumers need
+ * `white-space: pre-line` to show the newline.
  */
 const ERROR_CAUSE_SEPARATOR = "\ncaused by: ";
 
 /**
- * Fallback emitted for a cause-chain link whose message cannot be read -- a
- * hostile or malformed error whose `.message`/`.cause` getter or
- * `toString`/`Symbol.toPrimitive` throws, or whose `.message` is a
- * non-string. Plain ASCII, so it passes through {@link sanitizeForDisplay}
- * unchanged and keeps this renderer total: it never throws at the
- * operator-facing, last-resort boundary it exists to protect.
+ * Fallback for a link whose message cannot be read (a throwing getter or
+ * `toString`, or a non-string `.message`). Plain ASCII, so the renderer stays
+ * total.
  */
 const UNREADABLE_LINK = "[unreadable error]";
 
 const REDACTED_PRIVATE_KEY = "[redacted private key]";
 
 /**
- * A PEM / OpenSSH private-key block (RSA, EC, DSA, OPENSSH, ENCRYPTED, or
- * unlabelled), from its BEGIN marker to the next END marker, plus a
- * fallback for a truncated block (a BEGIN with no END, e.g. a key sliced
- * into an error). The marker `-----BEGIN ... PRIVATE KEY-----` never
- * legitimately appears in operator-facing error or log text, so matching
- * it has no false-positive risk. (PGP `... PRIVATE KEY BLOCK-----` is
- * intentionally not matched: Alcove uses no PGP keys, so there is no such
- * sink here.)
+ * A PEM / OpenSSH private-key block, BEGIN marker to the next END marker, plus
+ * a fallback for a truncated block (BEGIN with no END). PGP blocks are not
+ * matched: Alcove uses no PGP keys.
  *
- * The gap between BEGIN and END uses a tempered negative lookahead so it
- * cannot cross another BEGIN marker. Without it, a long run of BEGIN
- * markers with no END makes the lazy `[\s\S]*?` rescan to end-of-string
- * for every match attempt -- O(n^2) backtracking (catastrophic on
- * partner-controlled error text, which this renderer is built to handle).
- * The lookahead bounds each attempt to one block.
+ * The tempered lookahead keeps the gap from crossing another BEGIN marker;
+ * without it a long run of BEGIN markers with no END makes the lazy
+ * `[\s\S]*?` rescan to the end of the string per attempt, O(n^2) on
+ * partner-controlled error text.
  */
 const PRIVATE_KEY_BLOCK =
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----(?:(?!-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----)[\s\S])*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g;
 const PRIVATE_KEY_DANGLING = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*/g;
 
 /**
- * Last-resort redaction safety check for PEM / OpenSSH private-key
- * material in text about to be shown to an operator. NOT the primary
- * defense: secret-bearing files are parsed through the sensitive-file
- * chokepoint (shared in `@alcove/core`, re-exported by the CLI) so a
- * parse error never holds source, and that prevention is what callers must
- * rely on. This only guards an UNANTICIPATED sink by stripping
- * private-key blocks, which are unambiguous and never legitimate in error
- * output.
+ * Last-resort redaction of PEM / OpenSSH private-key blocks in text about to
+ * be shown to an operator. Not the primary defense: secret-bearing files are
+ * parsed through the sensitive-file chokepoint so a parse error never holds
+ * source.
  *
- * The dangling rule replaces from a BEGIN marker with no END to the end of
- * the text, FAIL-CLOSED by design: a key sliced into an error has no
- * reliable structure by the time it is rendered, so the only bound that
- * holds for every delivery is "everything after the marker". A rule
- * inferring where the key body ends from the shape of the remaining bytes
- * leaks the body whenever that shape is absent.
+ * The dangling rule replaces from an unmatched BEGIN marker to the end of the
+ * text and fails closed: a sliced key has no structure to infer a body end
+ * from. It also consumes whatever was composed after the marker, so a
+ * partner-controlled fragment is passed through this function at its
+ * composition site, before interpolation. Idempotent.
  *
- * The cost of failing closed is that the replacement also consumes
- * whatever was composed after the marker -- why partner-controlled
- * fragments are passed through this function AT THEIR COMPOSITION SITE,
- * before being interpolated: a planted marker inside an already-redacted
- * fragment does not exist by the time the whole link is rendered. The
- * function is idempotent (the replacement holds no marker), so redacting
- * again per link is unaffected by a fragment already redacted.
- *
- * Redaction, not escaping: the fragment still interpolates raw and is
- * escaped exactly once, by {@link sanitizeForDisplay} at the display sink
- * (CONTRIBUTING.md, Operator-facing escaping).
- *
- * Narrow by design: it does NOT scrub by secret-shape (e.g. a 43-char
- * base64url token), since a shared secret and a host-key fingerprint share
- * that shape and fingerprints are shown to the operator on purpose.
- * Bare-token containment belongs to the chokepoint, not here.
+ * Redaction, not escaping: the fragment is escaped once, at the display sink
+ * (CONTRIBUTING.md, Operator-facing escaping). It does not scrub by secret
+ * shape, since a shared secret and a host-key fingerprint share one and
+ * fingerprints are shown on purpose. The three sinks and their reach limits:
+ * docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
  */
 export function redactPrivateKeyMaterial(text: string): string {
   return text
@@ -160,13 +107,9 @@ export function redactPrivateKeyMaterial(text: string): string {
 
 /**
  * Whether {@link redactPrivateKeyMaterial} would replace anything in `text`,
- * for a caller that refuses such a value rather than showing the marker in
- * its place -- the transform-param refusals on both config schemas
- * (`packages/core/src/config/transformParamDisplay.ts`).
- *
- * It runs the redaction and compares, so the two cannot answer differently:
- * a marker shape either module recognized alone would put a refusal and a
- * rendering out of step.
+ * for a caller that refuses such a value rather than showing the marker
+ * (`packages/core/src/config/transformParamDisplay.ts`). It runs the redaction
+ * and compares, so the two cannot disagree on what a marker is.
  */
 export function holdsPrivateKeyMaterial(text: string): boolean {
   return redactPrivateKeyMaterial(text) !== text;
@@ -174,54 +117,32 @@ export function holdsPrivateKeyMaterial(text: string): boolean {
 
 /**
  * One BEGIN or END marker, un-anchored and non-global, for the incremental
- * scan in {@link createPrivateKeyStreamRedactor}. The same shapes
- * {@link PRIVATE_KEY_BLOCK} matches, split apart because a streaming scan
- * meets each end of a block on a delivery of its own.
+ * scan in {@link createPrivateKeyStreamRedactor}.
  */
 const PRIVATE_KEY_BEGIN_MARKER = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 const PRIVATE_KEY_END_MARKER = /-----END [A-Z0-9 ]*PRIVATE KEY-----/;
 
 /**
- * The longest marker the streaming scan holds back for, in UTF-16 code
- * units: the fixed `-----BEGIN ` opener and `PRIVATE KEY-----` closer around
- * a label of at most 64. A marker split across two deliveries is scanned
- * whole because that many code units of each delivery are held back until
- * the next one arrives.
- *
- * The label the marker patterns admit is unbounded, so this bounds the
- * LOOKAHEAD rather than what matches: a marker with a longer label is still
- * matched wherever it lands inside one delivery. What the bound gives up is
- * a marker whose label runs past 64 characters AND falls across a delivery
- * boundary -- a shape no PEM or OpenSSH label takes, the longest in use
- * being `ENCRYPTED ` at ten.
+ * The longest marker the streaming scan holds back for, in UTF-16 code units:
+ * the fixed opener and closer around a label of at most 64. Bounds the
+ * lookahead, not what matches: a marker with a longer label is still matched
+ * inside one delivery, and only one whose label passes 64 characters across a
+ * delivery boundary escapes (the longest label in use is ten).
  */
 const PRIVATE_KEY_MARKER_LOOKAHEAD =
   "-----BEGIN ".length + 64 + "PRIVATE KEY-----".length;
 
 /**
  * A redactor for private-key material arriving in pieces, for a sink that
- * keeps a WINDOW of what it is given rather than the whole of it -- the
- * console's retained stderr tail (`attachStderrTail` in
- * `apps/web/src/jobs/cliDriver.ts`).
+ * keeps a window of what it is given -- the console's retained stderr tail
+ * (`attachStderrTail` in `apps/web/src/jobs/cliDriver.ts`).
  *
- * A window clips before anything renders, so a key longer than the window
- * lands in it as body alone: its BEGIN marker already evicted, its END not
- * yet written. {@link redactPrivateKeyMaterial} cannot see that shape, since
- * it holds no marker at all, and no rule reading the window can -- a rule
- * inferring a key body from the shape of the remaining bytes would strip
- * fingerprints and shared secrets with it. Redacting the STREAM in front of
- * the window is what closes it: every marker passes this scan in the order
- * the child wrote it, so the window only ever holds output this has already
- * redacted.
- *
- * The scan holds "inside a block" across deliveries: on a BEGIN marker it
- * emits {@link REDACTED_PRIVATE_KEY} once and emits nothing further until an
- * END marker is consumed, so a block spanning any number of deliveries costs
- * one replacement. A block still open at {@link PrivateKeyStreamRedactor.close}
- * stays redacted to the end, the same fail-closed reach the dangling rule
- * takes. An END marker with no BEGIN of its own is ordinary text: the reach
- * is forward only, here as at the render boundary, so no delivery can delete
- * what an earlier one already emitted.
+ * A key longer than the window lands in it as body alone, with no marker for
+ * {@link redactPrivateKeyMaterial} to see, so the stream is redacted in front
+ * of the window. On a BEGIN marker the scan emits {@link REDACTED_PRIVATE_KEY}
+ * once and nothing more until an END marker; a block still open at
+ * {@link PrivateKeyStreamRedactor.close} stays redacted. An END with no BEGIN
+ * is ordinary text: the reach is forward only.
  */
 export interface PrivateKeyStreamRedactor {
   /** Redact `chunk` in the stream's state and return what may be emitted. */
@@ -257,9 +178,8 @@ export function createPrivateKeyStreamRedactor(): PrivateKeyStreamRedactor {
         pending = pending.slice(begin.index + begin[0].length);
         insideBlock = true;
       }
-      // Inside a block the remainder is body, held only as the context an
-      // END marker may span; outside one it is emitted except for the
-      // lookahead a marker may span.
+      // Inside a block the remainder is held as context an END marker may
+      // span; outside one all but the lookahead is emitted.
       const kept = Math.min(pending.length, PRIVATE_KEY_MARKER_LOOKAHEAD);
       if (!insideBlock) emitted += pending.slice(0, pending.length - kept);
       held = pending.slice(pending.length - kept);
@@ -274,37 +194,22 @@ export function createPrivateKeyStreamRedactor(): PrivateKeyStreamRedactor {
 }
 
 /**
- * Prepare a fragment somebody else chose -- a partner-, server-, or
- * operator-supplied value -- for interpolation into a line that reaches a
- * log, console, or prompt sink: {@link redactPrivateKeyMaterial} first,
- * then {@link sanitizeForDisplay}. The composition-site half of the
- * private-key assignment, pairing with the per-argument pass the log
- * prefixer applies at the sink (`setLogPrefixer` in `./logger`).
+ * Prepare a fragment somebody else chose for interpolation into a line that
+ * reaches a log, console, or prompt sink: {@link redactPrivateKeyMaterial}
+ * first, then {@link sanitizeForDisplay}, pairing with the per-argument pass
+ * the log prefixer applies (`setLogPrefixer` in `./logger`).
  *
- * Redacting BEFORE escaping bounds the fail-closed dangling rule to the
- * fragment that held the marker: a planted marker no longer exists when
- * the sink's pass runs, so that pass cannot consume the first-party
- * explanation or recovery step composed behind the fragment. The order
- * also matters within this function: escaping first would truncate a long
- * fragment at the display cap, leaving a `BEGIN` whose `END` was cut off
- * as a dangling marker where a whole block stood.
+ * Redact before escaping: the cap would otherwise cut a long fragment between
+ * its `BEGIN` and `END`, leaving a dangling marker where a whole block stood,
+ * and a planted marker must not exist when the sink's pass runs or that pass
+ * consumes the first-party text behind the fragment. Use it uniformly rather
+ * than by position in the line. A fragment routed into an `Error` stays raw
+ * and is escaped by {@link sanitizeErrorForDisplay}.
  *
- * Use it wherever {@link sanitizeForDisplay} would be used on a log- or
- * prompt-bound fragment, uniformly rather than by position: "this fragment
- * is last on its line, so nothing follows it to lose" is a property no
- * check holds and a later copy edit silently breaks. Escaping still
- * happens exactly once -- the same single {@link sanitizeForDisplay} call,
- * not a second altitude (CONTRIBUTING.md, Operator-facing escaping) -- so
- * a fragment routed into an `Error` instead keeps composing RAW and is
- * escaped by {@link sanitizeErrorForDisplay} where the chain is rendered.
- *
- * Do NOT fit a length budget by comparing this against
- * {@link sanitizeForDisplay} at the same `maxLength`: this can return the
- * LONGER of the two, since replacing a block with the much shorter marker
- * can let a later code point fit that the escape-only form had to stop
- * before. It is {@link redactPrivateKeyMaterial} that never lengthens its
- * input, and that is the function the budgeted callers (the rendezvous
- * entry guard, and the host-key refusals) fit over.
+ * Do not fit a length budget by comparing this against
+ * {@link sanitizeForDisplay} at the same `maxLength`: the result can be the
+ * longer of the two. {@link redactPrivateKeyMaterial} never lengthens its
+ * input, and the budgeted callers fit over that.
  */
 export function redactAndSanitizeForDisplay(
   value: string,
@@ -315,12 +220,10 @@ export function redactAndSanitizeForDisplay(
 
 /**
  * `value` redacted and fitted so its single escape at the sink stays within
- * `budget`, but not escaped, for text composed raw for a sink that escapes
- * it once. Cut to a raw length first, since the fit measures the whole
- * escaped form of what it is handed ({@link boundRawFragmentForFit}), then
- * redacted, then clipped: redaction before the clip, never after, since the
- * clip appends a truncation marker that a `BEGIN` marker left dangling in
- * the kept prefix would consume ({@link clipToRenderedCost}).
+ * `budget`, but not escaped. Cut to a raw length first
+ * ({@link boundRawFragmentForFit}), then redacted, then clipped: redacting
+ * after the clip would let a dangling `BEGIN` in the kept prefix consume the
+ * truncation marker ({@link clipToRenderedCost}).
  */
 export function redactAndFitUnescaped(value: string, budget: number): string {
   return clipToRenderedCost(
@@ -330,28 +233,16 @@ export function redactAndFitUnescaped(value: string, budget: number): string {
 }
 
 /**
- * {@link redactAndSanitizeForDisplay} for a fragment the OPERATOR supplied:
+ * {@link redactAndSanitizeForDisplay} for a fragment the operator supplied:
  * {@link redactPrivateKeyMaterial} first, then
  * {@link ./sanitizeForDisplay.renderOperatorSuppliedText}, which leaves the
- * operator's own bytes as they typed them instead of escaping them.
+ * operator's own bytes as typed. The log, console and prompt half of the
+ * fragment boundary; the error route renders the same text per span
+ * (`./operatorSuppliedText`).
  *
- * This is the log-, console- and prompt-sink half of the fragment boundary,
- * pairing with the error route's per-span render: a path composed into a
- * message that never becomes an `Error` takes this at the call site that shows
- * it, and the same path composed into an `Error` stays raw and is rendered
- * where the chain is (`./operatorSuppliedText`). Either way the operator reads
- * one separator per separator they typed.
- *
- * It takes the MARK on both routes, so this sink asks the same of its callers
- * the error route asks of a composition site: an unmarked value does not
- * compile, and one that reaches here unmarked despite the type is escaped by
- * {@link redactAndSanitizeForDisplay} rather than rendered as given.
- *
- * Redacting BEFORE rendering bounds the fail-closed dangling rule to the
- * fragment that held the marker, for the reason
- * {@link redactAndSanitizeForDisplay} states: a path an operator names with a
- * `BEGIN` marker costs its own fragment, not the instruction composed behind
- * it.
+ * Takes the mark on both routes: an unmarked value does not compile, and one
+ * that arrives unmarked is escaped rather than rendered as given. Redaction
+ * runs first for the reason {@link redactAndSanitizeForDisplay} gives.
  */
 export function redactAndRenderOperatorSuppliedText(
   value: OperatorSuppliedText,
@@ -367,52 +258,29 @@ export function redactAndRenderOperatorSuppliedText(
  * Where the display form of a message whose line breaks are its own is kept
  * for {@link sanitizeErrorForDisplay} to read.
  *
- * A SYMBOL-keyed property, which is what keeps the mark out of reach of the
- * text this renderer defends against: no parse produces one (`JSON.parse`,
- * a YAML load and `structuredClone` all yield string keys alone), so no value
- * a partner sends can ask for the treatment, whatever it spells. Setting it
- * takes code, and the code that does is this module's own function.
- *
- * Registered rather than module-private, so a process holding two copies of
- * this module -- a bundle that duplicates it, a test that resets its module
- * registry -- reads the mark the other copy wrote instead of silently
- * escaping the breaks, which is the failure this whole treatment exists to
- * end.
+ * Symbol-keyed, so no parsed value (`JSON.parse`, YAML, `structuredClone`
+ * yield string keys alone) can ask for the treatment. Registered rather than
+ * module-private, so a second copy of this module reads the mark the other
+ * wrote instead of escaping the breaks.
  */
 const FIRST_PARTY_LINE_BREAK_TEXT = Symbol.for(
   "alcove.errorDisplay.firstPartyLineBreaks",
 );
 
 /**
- * Keep the line breaks BETWEEN `lines`, so {@link sanitizeErrorForDisplay}
- * renders them as line breaks rather than as the escape's `\x0a` token. For a
- * first-party composition whose structure IS the line break -- a per-field
- * conflict list above the recovery step the operator has to act on -- which
- * the whole-message escape otherwise collapses onto one physical line.
+ * Keep the line breaks between `lines`, so {@link sanitizeErrorForDisplay}
+ * renders them as line breaks rather than the escape's `\x0a`. For a
+ * first-party composition whose structure is the line break, such as a
+ * per-field conflict list above a recovery step.
  *
- * The composition states its structure by handing over the lines it wrote,
- * which is what makes the result safe to render: the breaks kept are the ones
- * BETWEEN those lines, and every control character INSIDE one is replaced by
- * its printable marker ({@link replaceControlCharactersForDisplay}), so a raw
- * line break a fragment somebody else chose brought into a line arrives as
- * `<0a>` and opens no line of its own. The renderer escapes each line and
- * joins them afterwards, the escape-then-join order
- * {@link ERROR_CAUSE_SEPARATOR} takes, so no byte of a message reaches the
- * operator as a line break by passing through the escape.
+ * Only the breaks between `lines` are kept: every control character inside a
+ * line becomes its printable marker ({@link replaceControlCharactersForDisplay}),
+ * so a fragment somebody else chose opens no line of its own. Every line passes
+ * through {@link refuseCauseSeparatorOpening}, so a fragment at the start of
+ * one cannot forge a link boundary.
  *
- * A line opening on {@link ERROR_CAUSE_SEPARATOR}'s `caused by: ` text would
- * stand behind a kept break as a link boundary, so every line is passed
- * through {@link refuseCauseSeparatorOpening} first: `lines` is a plain
- * string array, and a caller placing a fragment somebody else chose at the
- * start of one would otherwise let that chooser forge a link for
- * {@link sanitizeErrorChainLinks} to split on. Enforced here rather than
- * asked of the caller, and applied to every line rather than to the ones
- * that can reach a break, so no later edit to the composition can hand the
- * obligation back.
- *
- * It marks the error and returns it. `error.message` is left as the caller
- * composed it, so classification, comparison and equality read the same text
- * they read before, and the display form lives beside it.
+ * Marks the error and returns it; `error.message` is untouched, so
+ * classification and comparison read the same text.
  */
 export function keepFirstPartyLineBreaks<E extends Error>(
   error: E,
@@ -422,9 +290,8 @@ export function keepFirstPartyLineBreaks<E extends Error>(
     .map(replaceControlCharactersForDisplay)
     .map(refuseCauseSeparatorOpening)
     .join("\n");
-  // Lines holding no text at all would put the empty string in front of the
-  // message the caller composed, rendering the link -- and its place in a
-  // chain -- as nothing. The unmarked route shows that message instead.
+  // Empty lines would render the link as nothing; the unmarked route shows the
+  // message instead.
   if (display === "") return error;
   Object.defineProperty(error, FIRST_PARTY_LINE_BREAK_TEXT, {
     value: display,
@@ -436,8 +303,7 @@ export function keepFirstPartyLineBreaks<E extends Error>(
 
 /**
  * Where {@link keepFirstPartyLinesWithOperatorText} keeps the spans of each
- * line, registered and symbol-keyed for the reasons
- * {@link FIRST_PARTY_LINE_BREAK_TEXT} gives.
+ * line, registered and symbol-keyed as {@link FIRST_PARTY_LINE_BREAK_TEXT} is.
  */
 const FIRST_PARTY_LINE_SPANS = Symbol.for(
   "alcove.errorDisplay.firstPartyLineSpans",
@@ -445,17 +311,10 @@ const FIRST_PARTY_LINE_SPANS = Symbol.for(
 
 /**
  * {@link keepFirstPartyLineBreaks} for lines composed with
- * {@link ./operatorSuppliedText.messageWithOperatorText}: the breaks BETWEEN
- * `lines` render as line breaks, and inside each line the spans the operator
- * supplied render as they typed them while every other span takes the escape,
- * as on a link marked by
- * {@link ./operatorSuppliedText.keepOperatorSuppliedText}.
- *
- * The breaks kept are the ones between `lines` and no other: a line break
- * inside a span is escaped, or replaced by its marker in a span the operator
- * supplied, so no fragment opens a line of its own. Pass the error whose
- * message is `lines` joined with `\n`; the renderer checks that join and
- * escapes the message whole where it does not hold.
+ * {@link ./operatorSuppliedText.messageWithOperatorText}: inside each line the
+ * spans the operator supplied render as typed and every other span is escaped.
+ * Pass the error whose message is `lines` joined with `\n`; the renderer
+ * checks that join and escapes the message whole where it does not hold.
  */
 export function keepFirstPartyLinesWithOperatorText<E extends Error>(
   error: E,
@@ -473,8 +332,8 @@ export function keepFirstPartyLinesWithOperatorText<E extends Error>(
 
 /**
  * The lines {@link keepFirstPartyLinesWithOperatorText} left on `link` whose
- * text joins back to `message`, or `undefined` for a link that asked for no
- * such treatment or whose mark does not describe its message.
+ * text joins back to `message`, or `undefined` for an unmarked link or a mark
+ * that does not describe its message.
  */
 function firstPartyLineSpans(
   link: unknown,
@@ -504,45 +363,30 @@ function firstPartyLineSpans(
     : undefined;
 }
 
-/**
- * The text {@link ERROR_CAUSE_SEPARATOR} puts behind its newline, read off
- * that constant so the opening this refuses is the one the join writes.
- */
+/** The text {@link ERROR_CAUSE_SEPARATOR} puts behind its newline. */
 const CAUSE_SEPARATOR_LINE_OPENING = ERROR_CAUSE_SEPARATOR.slice("\n".length);
 
 /**
- * `line` altered where it opens on {@link CAUSE_SEPARATOR_LINE_OPENING}, so a
- * kept break in front of it does not spell a link boundary.
- *
- * A leading backslash is what does it: {@link sanitizeForDisplay} doubles a
- * literal backslash, so the line reaches the operator as `\\caused by: ` --
- * visibly not the renderer's own separator, and unambiguous under the escape's
- * rule, which is the alphabet the rest of the line is already read in.
+ * `line` prefixed with a backslash where it opens on
+ * {@link CAUSE_SEPARATOR_LINE_OPENING}, so a kept break in front of it does not
+ * spell a link boundary. {@link sanitizeForDisplay} doubles the backslash, so
+ * the line reaches the operator as `\\caused by: `, visibly not the separator.
  */
 function refuseCauseSeparatorOpening(line: string): string {
   return line.startsWith(CAUSE_SEPARATOR_LINE_OPENING) ? `\\${line}` : line;
 }
 
 /**
- * What a BLOCK costs once this renderer shows it with the line breaks between
- * its lines kept rather than escaped ({@link keepFirstPartyLineBreaks}): the
- * sum of each line's {@link renderedDisplayCost} plus one character per break,
- * which is what {@link renderFirstPartyLineBreaks} emits.
+ * What a block costs when shown with its line breaks kept
+ * ({@link keepFirstPartyLineBreaks}): each line's {@link renderedDisplayCost}
+ * plus one character per break, which is what {@link renderFirstPartyLineBreaks}
+ * emits. {@link renderedDisplayCost} would price a break at the four characters
+ * of `\x0a`, leaving three per line of the budget unspendable.
  *
- * A composition whose structure IS the line break fits its block with this
- * rather than with {@link renderedDisplayCost}, which prices a break at the
- * four characters of `\x0a`: charging four for what renders as one leaves
- * three characters per line of the budget unspendable, and what goes unspent
- * is the conflict detail the block was fitted to show.
- *
- * A raw block measures what its marked form renders to, so a site may measure
- * before it marks. Two treatments stand between the two forms, and neither
- * moves the total: the mark rewrites each line's control characters to a
- * printable marker, and every control character is at or below U+009F, where
- * the escape and the marker are both four characters wide; and a line opening
- * on the cause separator's text is prefixed, which is why this runs the same
- * {@link refuseCauseSeparatorOpening} rather than pricing the line as the
- * caller wrote it.
+ * A raw block measures what its marked form renders to: the mark's control
+ * character replacement is as wide as the escape (every control character is
+ * at or below U+009F), and the {@link refuseCauseSeparatorOpening} prefix is
+ * applied here too.
  */
 export function renderedDisplayCostKeepingLineBreaks(block: string): number {
   const lines = block.split("\n");
@@ -559,41 +403,30 @@ export function renderedDisplayCostKeepingLineBreaks(block: string): number {
 
 /**
  * The display form {@link keepFirstPartyLineBreaks} left on `link`, or
- * `undefined` for a link that asked for no such treatment -- which is every
- * link Alcove does not compose itself.
+ * `undefined` for a link that asked for no such treatment.
  */
 function firstPartyLineBreakText(link: unknown): string | undefined {
   if (typeof link !== "object" || link === null) return undefined;
-  // An OWN property, which is where the mark puts it: a link whose prototype
-  // holds one is not a link this module marked, and a class or a plain object
-  // placed in a chain's path must not lend the treatment to everything built
-  // from it.
+  // Own property only: a mark on a prototype must not lend the treatment to
+  // everything built from it.
   if (!Object.hasOwn(link, FIRST_PARTY_LINE_BREAK_TEXT)) return undefined;
   const kept = (link as Record<symbol, unknown>)[FIRST_PARTY_LINE_BREAK_TEXT];
   return typeof kept === "string" ? kept : undefined;
 }
 
 /**
- * Escape one link that kept its own line breaks: the whole text is redacted
- * first, so a private-key block spanning several lines is taken out as one
- * block rather than per line, and each line is then escaped on its own and
- * joined with the break.
+ * Escape one link that kept its own line breaks: redact the whole text first,
+ * so a private-key block spanning lines goes as one block, then escape each
+ * line and join with the break.
  *
- * The budget is the LINK's, not the line's: each line is charged what it
- * renders to plus the one character of the break behind it, so a many-line
- * link is bounded exactly where a one-line link is
- * ({@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}) instead of at that cap per
- * line. A line the escape cut is marked by the escape itself; lines dropped
- * whole for want of room are marked on the last line rendered, so no cut
- * reaches the operator unmarked.
+ * The budget is the link's: each line is charged its rendered length plus one
+ * for the break behind it, so a many-line link is bounded at
+ * {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH} as a one-line link is. Lines
+ * dropped for want of room are marked on the last line rendered.
  *
- * Every line goes through {@link refuseCauseSeparatorOpening} here as well as
- * at the mark, since what this reads is a stored string: the mark is the only
- * thing standing between a line and the operator's reading of a link
- * boundary, and code in the process that plants one -- a second copy of this
- * module writing the registered symbol, an object built to hold it -- states
- * the text rather than the lines. Applied twice it changes nothing: a line the
- * mark already prefixed no longer opens on the separator's text.
+ * Each line passes {@link refuseCauseSeparatorOpening} again here, since this
+ * reads a stored string that other code could have planted; applying it twice
+ * changes nothing.
  */
 function renderFirstPartyLineBreaks(text: string): string {
   const lines = redactPrivateKeyMaterial(text).split("\n");
@@ -609,8 +442,7 @@ function renderFirstPartyLineBreaks(text: string): string {
       maxLength: room,
     });
     rendered.push(escaped);
-    // Past its room the escape truncated and marked the line, and what the
-    // budget has left cannot show the lines behind it either.
+    // The escape truncated and marked this line; no room is left for the rest.
     if (escaped.length > room) break;
     spent += escaped.length + 1;
   }
@@ -618,21 +450,13 @@ function renderFirstPartyLineBreaks(text: string): string {
 }
 
 /**
- * Escape one link span by span, so the spans an operator supplied reach them
- * as they typed them while every other span takes the escape.
+ * Escape one link span by span: operator-supplied spans render as typed, every
+ * other span is escaped.
  *
- * The budget is the LINK's, spent in span order: each span is charged what it
- * renders to, and the first span that does not fit whole is cut and marked,
- * with the spans behind it dropped. So a link partitioned by origin is bounded
- * exactly where an unpartitioned link is
- * ({@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}) rather than at that cap per
- * span.
- *
- * Redaction runs per SPAN rather than over the joined link, which narrows the
- * fail-closed dangling rule the same way a composition site does: a `BEGIN`
- * marker inside one span consumes the rest of that span alone, so an operator
- * who names a path with one loses the path and not the sentence telling them
- * what to do about it.
+ * The budget is the link's, spent in span order; the first span that does not
+ * fit is cut and marked and the rest dropped. Redaction runs per span, so a
+ * `BEGIN` marker in an operator's path costs that path and not the sentence
+ * telling them what to do.
  */
 function renderSpans(
   spans: ReadonlyArray<DisplaySpan>,
@@ -647,8 +471,7 @@ function renderSpans(
       ? renderOperatorSuppliedSpanText(text, { maxLength: room })
       : sanitizeForDisplay(text, { maxLength: room });
     rendered += shown;
-    // Past its room the render truncated and marked the span, and what the
-    // budget has left cannot show the spans behind it either.
+    // The render truncated and marked this span; no room is left for the rest.
     if (shown.length > room) break;
   }
   return rendered;
@@ -656,10 +479,10 @@ function renderSpans(
 
 /**
  * Render one link {@link keepFirstPartyLinesWithOperatorText} marked: each line
- * span by span ({@link renderSpans}) and joined with the break, under the
- * link's one budget the way {@link renderFirstPartyLineBreaks} spends it. A
- * line opening on the cause separator's text is led by a backslash, which the
- * escape doubles, as {@link refuseCauseSeparatorOpening} does.
+ * span by span ({@link renderSpans}), joined with the break, under the link's
+ * one budget as in {@link renderFirstPartyLineBreaks}. A line opening on the
+ * cause separator's text is led by a backslash, as
+ * {@link refuseCauseSeparatorOpening} does.
  */
 function renderLinesOfSpans(
   lines: ReadonlyArray<ReadonlyArray<DisplaySpan>>,
@@ -691,76 +514,39 @@ function renderLinesOfSpans(
 
 /**
  * Render an arbitrary thrown value as operator-safe display text: its own
- * message followed by each chained `cause` message, every link passed
- * through {@link sanitizeForDisplay} so partner- or server-controlled
- * bytes embedded in any link -- control characters, the ESC that drives
- * ANSI sequences, CR/LF usable for log-line spoofing, bidi overrides,
- * zero-width and confusable characters -- cannot reach a terminal, log
- * line, or UI element. Each link also passes through a narrow
- * secret-redaction safety check that strips PEM / OpenSSH private-key
- * blocks (see {@link redactPrivateKeyMaterial}); this is a last resort for
- * an unanticipated sink, not the primary defense (secret-bearing files are
- * parsed leak-safely at their source). That check is fail-closed past a
- * truncated key, so a fragment a partner controls is redacted where it is
- * composed rather than here -- see {@link redactPrivateKeyMaterial}.
+ * message followed by each chained `cause` message, every link escaped by
+ * {@link sanitizeForDisplay} and passed through
+ * {@link redactPrivateKeyMaterial}, so partner- or server-controlled bytes
+ * cannot reach a terminal, log line, or UI element. Redaction is fail-closed
+ * past a truncated key, so a partner-controlled fragment is redacted where it
+ * is composed rather than only here.
  *
- * A link marked by {@link keepFirstPartyLineBreaks} is escaped LINE BY LINE
- * and joined with its breaks, which is how a first-party composition reaches
- * the operator as the block it was written as. The breaks are the only thing
- * that changes: each line is escaped whole, and a line break inside one is
- * the mark's own printable marker, so no byte of a message begins a line on
- * either route.
+ * A link marked by {@link keepFirstPartyLineBreaks} is escaped line by line and
+ * joined with its breaks. A link marked by
+ * {@link ./operatorSuppliedText.keepOperatorSuppliedText} is rendered span by
+ * span, and the mark is read only where its spans join back to the link's own
+ * message. A link marked by {@link keepFirstPartyLinesWithOperatorText} takes
+ * both treatments.
  *
- * A link marked by {@link ./operatorSuppliedText.keepOperatorSuppliedText} is
- * rendered SPAN BY SPAN: the spans the operator supplied reach them as they
- * typed them, with the escape's doubled backslash off the path they have to
- * copy back, and every other span is escaped as it is on an unmarked link.
- * The mark is read only where its spans join back to the link's own message,
- * so a link whose mark describes some other text is escaped whole.
+ * This is the display-boundary call for a raw error instance: the transport
+ * and message layers keep the original error so it can be classified by type,
+ * so escaping happens here. Never use it on a value used for comparison,
+ * storage, or hashing (it is lossy). The walk:
+ * - reads only each link's `.message` (via {@link errorMessage}) and `.cause`,
+ *   never `.stack` or another property;
+ * - is cycle-safe and bounded at {@link MAX_ERROR_CAUSE_DEPTH} links, each
+ *   capped at {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}, so the output is
+ *   bounded without a total-length cap;
+ * - marks a chain that outruns the depth bound with
+ *   {@link CAUSE_DEPTH_ELISION_MARKER}; a chain that ends on its own or on the
+ *   cycle guard has no marker;
+ * - suppresses a link whose raw message repeats the one before it (as
+ *   `asConnectionError` makes a wrapper repeat its cause);
+ * - never throws: an unreadable link renders as `[unreadable error]`.
  *
- * A link marked by {@link keepFirstPartyLinesWithOperatorText} takes both
- * treatments: it is rendered line by line, and span by span within a line.
- *
- * This is the display-boundary call site for rendering a raw error
- * INSTANCE to a human. The transport and message layers preserve the
- * original error object by design so it can still be classified by type
- * (e.g. `transport` vs `closed`); the escaping therefore cannot happen
- * there without mis-tagging the error, and must happen here, where it is
- * finally shown. Use it in place of `console.error(err)` or a direct
- * `err.message` interpolation at any operator-facing sink, never on a
- * value used for comparison, storage, or hashing (it is lossy; see
- * {@link sanitizeForDisplay}).
- *
- * The walk is narrow and defensive by design:
- * - it reads only each link's `.message` (via {@link errorMessage}) and
- *   `.cause`, never `.stack` or any other property, so no stack frame or
- *   credential-bearing field is ever rendered;
- * - it is cycle-safe (a chain that revisits a link stops) and
- *   depth-bounded (at most {@link MAX_ERROR_CAUSE_DEPTH} links, each
- *   capped by {@link sanitizeForDisplay} at
- *   {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}, the budget for a whole
- *   composed message rather than the per-value default), so a malformed
- *   or hostile chain cannot loop or flood -- the whole output is bounded
- *   without a separate total-length cap;
- * - a chain that outruns the depth bound is marked rather than shortened
- *   in silence: the last rendered link has
- *   {@link CAUSE_DEPTH_ELISION_MARKER}, so an operator can tell a
- *   complete chain from a cut one (a chain that ends on its own, or stops
- *   on the cycle guard having already rendered the link it revisits, has
- *   no marker);
- * - it suppresses a link whose raw message repeats the link before it --
- *   the common case, since `asConnectionError` sets a wrapper's message
- *   to its cause's message -- so the same text is not printed twice;
- * - it never throws: a link whose message cannot be read (a throwing
- *   `.message`/`.cause` getter or `toString`, or a non-string `.message`)
- *   renders as `[unreadable error]` rather than propagating, since a
- *   renderer at a last-resort catch boundary must not become a second
- *   failure.
- *
- * An unmarked error with no `cause` renders exactly as `errorMessage(err)`
- * escaped at {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}, and a non-`Error` value
- * (including `null`/`undefined`) renders its `String(...)` form, matching
- * {@link errorMessage}.
+ * An unmarked error with no `cause` renders as `errorMessage(err)` escaped at
+ * {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}; a non-`Error` value renders its
+ * `String(...)` form, matching {@link errorMessage}.
  */
 export function sanitizeErrorForDisplay(err: unknown): string {
   const rawLinks: Array<{
@@ -773,10 +559,8 @@ export function sanitizeErrorForDisplay(err: unknown): string {
   let current: unknown = err;
   let elided = false;
   for (let depth = 0; depth < MAX_ERROR_CAUSE_DEPTH; depth++) {
-    // Read each link defensively. This is a last-resort display path, so a
-    // hostile or malformed error -- a `.message` getter or `toString` that
-    // throws, or a non-string `.message` that would make sanitizeForDisplay's
-    // code-point walk throw -- must yield a marker, never crash the renderer.
+    // Read each link defensively: a throwing getter or `toString`, or a
+    // non-string `.message`, must yield a marker, never crash the renderer.
     let message: string;
     let kept: string | undefined;
     let spans: ReadonlyArray<DisplaySpan> | undefined;
@@ -787,18 +571,14 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     } catch {
       message = UNREADABLE_LINK;
     }
-    // The mark's read is its own attempt: a link whose symbol read throws -- a
-    // Proxy, or a getter -- has asked for no treatment, which costs the escaped
-    // render of a message that read fine, not the marker for a link nobody
-    // could read.
+    // A throwing mark read (a Proxy or getter) means no treatment, not an
+    // unreadable link.
     try {
       kept = firstPartyLineBreakText(current);
     } catch {
       kept = undefined;
     }
-    // The origin partition is read the same way, and after the message: it is
-    // kept only where its spans join back to the text this link renders, so a
-    // link whose message could not be read has none.
+    // Read after the message: kept only where its spans join back to it.
     try {
       spans = operatorSuppliedSpans(current, message);
     } catch {
@@ -809,11 +589,9 @@ export function sanitizeErrorForDisplay(err: unknown): string {
     } catch {
       lineSpans = undefined;
     }
-    // Suppress a link that repeats the previous link's raw message: a wrapper
-    // built by asConnectionError has its cause's message verbatim, so the
-    // outer and first inner links are usually byte-identical. The kept link is
-    // the marked one of the two, so an unmarked wrapper over a marked cause of
-    // the same text still reaches the operator as the block it was written as.
+    // Suppress a link repeating the previous raw message, keeping the marked
+    // one of the two so an unmarked wrapper over a marked cause of the same
+    // text still renders as written.
     const previous = rawLinks[rawLinks.length - 1];
     if (previous?.message !== message)
       rawLinks.push({ message, kept, spans, lineSpans });
@@ -823,12 +601,9 @@ export function sanitizeErrorForDisplay(err: unknown): string {
       if (previous.lineSpans === undefined) previous.lineSpans = lineSpans;
     }
     seen.add(current);
-    // Follow `.cause` on any object link, like {@link causeChainSome}; a
-    // non-object link has no chain to follow. typeof null is "object", so the
-    // null guard is required. This walk stays its own rather than delegating
-    // to that helper: it renders every link under a depth bound and an elision
-    // marker instead of stopping at a match, and reads each one defensively. A
-    // throwing `.cause` getter ends the chain rather than propagating.
+    // Not delegated to causeChainSome: this walk renders every link under a
+    // depth bound and an elision marker. A throwing `.cause` getter ends the
+    // chain.
     let next: unknown;
     try {
       next =
@@ -839,19 +614,16 @@ export function sanitizeErrorForDisplay(err: unknown): string {
       next = undefined;
     }
     if (next === undefined || next === null || seen.has(next)) break;
-    // The bound is spent and a further link is still there to read. Record that
-    // rather than falling out of the loop, so the cut is marked on the rendered
-    // output instead of deleting the rest of the chain in silence.
+    // The bound is spent with a further link left: record it so the cut is
+    // marked.
     if (depth === MAX_ERROR_CAUSE_DEPTH - 1) {
       elided = true;
       break;
     }
     current = next;
   }
-  // The line-and-span mark describes a link completely, so it wins. Otherwise a
-  // link marked both ways renders through the line-break form, which escapes
-  // every span: two marks over one link describe it two ways, and the escape is
-  // the treatment a link gets by asking for nothing.
+  // The line-and-span mark describes a link completely, so it wins over the
+  // line-break form, which escapes every span.
   const links: string[] = rawLinks.map(({ message, kept, spans, lineSpans }) =>
     lineSpans !== undefined
       ? renderLinesOfSpans(lineSpans)
@@ -863,9 +635,8 @@ export function sanitizeErrorForDisplay(err: unknown): string {
               maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
             }),
   );
-  // Appended after the escape and the cap, like the truncation marker inside
-  // sanitizeForDisplay: the marker is this module's own fixed ASCII, and a link
-  // that spent its whole budget must still be able to say the chain went on.
+  // Appended after the escape and the cap, so a link that spent its budget can
+  // still say the chain went on.
   if (elided)
     links[links.length - 1] = `${links[links.length - 1]}${ELISION_SUFFIX}`;
   return joinErrorCauseChain(links);
@@ -873,55 +644,34 @@ export function sanitizeErrorForDisplay(err: unknown): string {
 
 /**
  * Join already-escaped links into the rendered chain
- * {@link sanitizeErrorForDisplay} produces, adding only this module's own
- * {@link ERROR_CAUSE_SEPARATOR} framing. It is what a boundary that held
- * the chain link by link renders with, so the text an operator reads is
- * assembled by the same code on either route.
+ * {@link sanitizeErrorForDisplay} produces, so a boundary that held the chain
+ * link by link assembles the text by the same code.
  */
 export function joinErrorCauseChain(links: ReadonlyArray<string>): string {
   return links.join(ERROR_CAUSE_SEPARATOR);
 }
 
 /**
- * Take a chain {@link sanitizeErrorForDisplay} already rendered and return
- * its links, each escaped and bounded as that renderer bounds them: at
- * most {@link MAX_ERROR_CAUSE_DEPTH} links, each escaped at
- * {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}, a longer chain marked with
- * {@link CAUSE_DEPTH_ELISION_MARKER} rather than shortened in silence.
+ * Take a chain {@link sanitizeErrorForDisplay} already rendered and return its
+ * links, each escaped and bounded as that renderer bounds them (at most
+ * {@link MAX_ERROR_CAUSE_DEPTH} links, each escaped at
+ * {@link COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH}). For a boundary that receives a
+ * rendered chain as text and shows it: the console relay reading the CLI's fd-3
+ * terminal error, and the console role rendering one. Escaping link by link,
+ * not whole at the per-value {@link DEFAULT_MAX_DISPLAY_LENGTH}, keeps a later
+ * link's recovery step from being cut off.
  *
- * For a boundary that receives a rendered chain as TEXT and must pass it
- * onward or show it -- the console relay reading the CLI's fd-3 terminal
- * error, and the console seat rendering one. Such a boundary re-escapes
- * what it received (defense in depth) under a budget split first rather
- * than charged whole to the per-value {@link DEFAULT_MAX_DISPLAY_LENGTH}:
- * a chain composed as a partition by chooser would otherwise be cut inside
- * its first link or two, so a later link's recovery step never reaches
- * the operator. Escaping link by link gives each link the renderer's own
- * budget and depth bound, so the boundary admits exactly the volume the
- * renderer emits and no more.
+ * The split on {@link ERROR_CAUSE_SEPARATOR} is exact. Each link is escaped
+ * whole, so a break kept through {@link keepFirstPartyLineBreaks} arrives as
+ * `\x0a`: the mark lives on the error object, which rendered text has not.
  *
- * The split is exact rather than heuristic: {@link ERROR_CAUSE_SEPARATOR}
- * is why a link's own text cannot forge a boundary.
+ * A chain arriving with {@link CAUSE_DEPTH_ELISION_MARKER} leaves with it: it
+ * is lifted off the last link before the escape and appended after, so a cut
+ * chain is not delivered as a whole one.
  *
- * It escapes each link whole, so a break a link kept through
- * {@link keepFirstPartyLineBreaks} arrives at such a boundary as the escape's
- * `\x0a`: the mark that says whose the break is lives on the error object,
- * which no boundary reading rendered TEXT has.
- *
- * A chain that arrives already holding {@link CAUSE_DEPTH_ELISION_MARKER}
- * leaves still holding it: the marker is lifted off the last link before
- * it is escaped and appended again afterwards, since the renderer appends
- * it past the cap and re-escaping the link whole would spend the budget
- * on the marker itself. What that preserves is the marker's ABSENCE, the
- * half an operator can rely on -- a boundary that cut the marker off
- * would deliver a cut chain that displays as the whole failure.
- *
- * It escapes and does not redact: {@link redactPrivateKeyMaterial} runs
- * where a fragment is composed and again per link where the chain is
- * first rendered, and its dangling rule is fail-closed past a truncated
- * marker, so a further pass here would buy nothing on a chain this
- * renderer produced while giving a planted marker a second chance to
- * consume the recovery text composed behind it.
+ * It escapes and does not redact: redaction already ran at composition and per
+ * link, and another pass would give a planted marker a second chance to
+ * consume the recovery text behind it.
  */
 export function sanitizeErrorChainLinks(rendered: string): Array<string> {
   const links = rendered.split(ERROR_CAUSE_SEPARATOR);
@@ -934,7 +684,7 @@ export function sanitizeErrorChainLinks(rendered: string): Array<string> {
       maxLength: COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH,
     }),
   ) as Array<string>;
-  // Appended after the escape and the cap, exactly as the renderer appends it.
+  // Appended after the escape and the cap, as the renderer does.
   if (arrivedElided || links.length > MAX_ERROR_CAUSE_DEPTH)
     escaped[last] = `${escaped[last]}${ELISION_SUFFIX}`;
   return escaped;
