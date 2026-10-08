@@ -14,8 +14,8 @@
  * read as a plain query rather than watched: a tab does not become an installed
  * runtime while it is open, and an installed window does not stop being one.
  *
- * Safe under SSR and on an engine without `matchMedia`, where it reports `false`
- * -- the conservative direction for both readers.
+ * Safe outside a browser and on an engine without `matchMedia`, where it
+ * reports `false` -- the conservative direction for both readers.
  */
 export function isInstalledRuntime(): boolean {
   return (

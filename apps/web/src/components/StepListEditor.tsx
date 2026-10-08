@@ -442,7 +442,7 @@ export function StepListEditor({
   // removed or moved control leaves focus on <body> for a frame, a visible
   // flicker. Also fires on a param edit (a new array too), which is a no-op
   // since only move/remove set pendingFocusRef. Isomorphic so it degrades to a
-  // passive effect under SSR rather than warning.
+  // passive effect where there is no DOM rather than warning.
   useIsomorphicEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;

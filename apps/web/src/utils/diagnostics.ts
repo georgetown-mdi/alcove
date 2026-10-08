@@ -27,7 +27,8 @@ export function isDiagnosticMode(): boolean {
       globalThis.localStorage.getItem(DIAGNOSTICS_STORAGE_KEY),
     );
   } catch {
-    // Absent during SSR and throws when storage is blocked; either way, off.
+    // Absent outside a browser and throws when storage is blocked; either way,
+    // off.
     return false;
   }
 }

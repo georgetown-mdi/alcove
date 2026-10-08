@@ -240,8 +240,8 @@ function DeclaredColumnList({ columns }: { columns: Array<string> }) {
  */
 function MatchKeyDisclosure({ summary }: { summary: InvitationKeySummary }) {
   const [open, setOpen] = useState(false);
-  // Stable ids across SSR/hydration; one component instance per key, so useId is
-  // called once per widget (never inside a map).
+  // One component instance per key, so useId is called once per widget (never
+  // inside a map).
   const panelId = useId();
   const sublineId = useId();
   const reduceMotion = useReducedMotion();
@@ -655,8 +655,7 @@ export function InvitationTerms({
     (perspective !== "proposing" && ingressNotice !== undefined) ||
     (perspective === "proposing" && egressNotice !== undefined);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  // Stable id linking the disclosure toggle (aria-controls) to its panel; useId
-  // keeps it consistent across SSR and hydration.
+  // Stable id linking the disclosure toggle (aria-controls) to its panel.
   const detailsId = useId();
   // Tiered by disclosure direction: "What you disclose" (lifted to lead so the
   // acceptor's hardest-to-undo fact is not skimmed past), "What the exchange

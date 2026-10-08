@@ -133,15 +133,15 @@ type SpawnCSVParseWorker = () => CSVParseWorker;
 /** Whether `file` is a browser File -- the only input a worker can take
  * (structured-cloneable, and read as a byte stream in the worker); a Node stream is
  * not. Guards the `File` reference so it never throws where `File` is undefined (an
- * older runtime or SSR). */
+ * older runtime or Node). */
 function isBrowserFile(file: CSVParseInput): file is File {
   return typeof File !== "undefined" && file instanceof File;
 }
 
 /**
  * Whether `file` should be parsed off the main thread: a browser File larger than
- * {@link CSV_WORKER_FILE_BYTE_THRESHOLD}, with `Worker` available (absent under Node
- * and SSR). A Node stream or a small File returns false and is parsed inline.
+ * {@link CSV_WORKER_FILE_BYTE_THRESHOLD}, with `Worker` available (absent under
+ * Node). A Node stream or a small File returns false and is parsed inline.
  */
 export function shouldParseOffThread(file: CSVParseInput): boolean {
   return (

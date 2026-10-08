@@ -64,8 +64,8 @@ function attachmentOf(value: unknown): ConsoleJobAttachment | null {
  * Read the persisted attachment, or null when none is stored or the stored value
  * is malformed. A malformed value (a hand-edited record, or one from an
  * incompatible version) is cleared as it is read, so a bad record cannot linger
- * and re-fail the probe on every mount. Storage being unavailable (SSR, blocked
- * quota) is treated as absent.
+ * and re-fail the probe on every mount. Storage being unavailable (outside a
+ * browser, blocked quota) is treated as absent.
  */
 export function readAttachment(): ConsoleJobAttachment | null {
   let raw: string | null;

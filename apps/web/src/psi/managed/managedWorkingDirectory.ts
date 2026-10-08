@@ -62,8 +62,8 @@ const WORKING_DIRECTORY_PICKER_ID = "alcove-exchange-folder";
  * Whether this runtime can take a working-folder grant at all: the directory
  * picker exists. A `false` is what routes the surfaces to state that this
  * browser offers no folder grant, so each run is attended and the operator
- * chooses the input file for it. Never throws, so it is safe under SSR and on
- * older engines.
+ * chooses the input file for it. Never throws, so it is safe outside a browser
+ * and on older engines.
  */
 export function workingDirectoryGrantSupported(): boolean {
   return (
