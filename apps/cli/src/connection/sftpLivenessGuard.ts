@@ -272,8 +272,7 @@ export function createBoundedPutSource(
         offset = 0;
       }
       if (partIndex >= parts.length) {
-        // Reaching end of file is progress (the last chunk was consumed), so the
-        // window restarts and bounds the final acknowledgement and the close as one gap.
+        // The last chunk was consumed, which is progress.
         armIdle();
         this.push(null);
         return;
