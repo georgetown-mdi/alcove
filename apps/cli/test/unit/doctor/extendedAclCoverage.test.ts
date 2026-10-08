@@ -344,6 +344,27 @@ describe("the log file's extended ACL", () => {
   });
 
   test.skipIf(process.platform === "win32")(
+    "a log file that is the file stderr is redirected to is not stripped",
+    () => {
+      // The descriptor identity is faked, since the runner owns this process's
+      // fd 2: every descriptor reports one dev/ino, so the log file is stderr's.
+      const commands = recordAclStripCommands();
+      const logPath = path.join(dir, "stderr.log");
+      const realFstat = fs.fstatSync;
+      vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number) =>
+        Object.assign(realFstat(fd), {
+          dev: 1,
+          ino: 1,
+        })) as typeof fs.fstatSync);
+
+      const sink = withPlatform("darwin", () => configureLogFile(logPath));
+      sink.close();
+
+      expect(commands).toEqual([]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
     "whether to strip is decided by the opened descriptor, not the path",
     () => {
       // Swap the path for a device node right after the open: the descriptor

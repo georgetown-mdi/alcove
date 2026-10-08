@@ -228,7 +228,8 @@ function openLogFileForAppend(logFilePath: string): {
  * ACL is cleared, so no line is written while an inherited ACE could still
  * grant another principal the access the `0600` mode denies; the strip
  * follows a symlink at the path, matching the open. A descriptor that is not
- * a regular file (`/dev/stderr` on a pipe or terminal) is not stripped. A
+ * a regular file (`/dev/stderr` on a pipe or terminal), or that is stderr's
+ * own file (`/dev/stderr` redirected to one), is not stripped. A
  * failed strip, or a failed `fstat` of the descriptor, is fail-closed: the
  * descriptor is released and the run refused as a {@link UsageError} holding
  * the refusal as its cause, with an existing file's content untouched and a
@@ -276,12 +277,14 @@ export function configureLogFile(logFilePath: string): LogSink {
     }
   }
 
+  const isStderr = isSameFileAsStderr(fd);
   try {
     // On macOS the 0600 mode leaves an inherited ACE in force. The strip follows
     // a symlink at the path because the open does. Whether to strip is read
     // from the open descriptor: a terminal, pipe or device node keeps no lines
-    // at rest for an ACE to expose, so it is not stripped.
-    if (fs.fstatSync(fd).isFile())
+    // at rest for an ACE to expose, and stderr's own file gets these lines
+    // without the flag too (and `chmod` would resolve `/dev/stderr` as its own).
+    if (!isStderr && fs.fstatSync(fd).isFile())
       stripExtendedAcls(normalized, { symlinks: "follow" });
   } catch (err) {
     try {
@@ -300,7 +303,6 @@ export function configureLogFile(logFilePath: string): LogSink {
   }
 
   const loss: LogFileLoss = { path: normalized, lost: 0, reported: 0 };
-  const isStderr = isSameFileAsStderr(fd);
   const active: ActiveLogFile = { loss, isStderr };
   activeLogFile = active;
   return installLogSink(
