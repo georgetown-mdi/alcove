@@ -3,6 +3,7 @@
 // get a logger with both applied.
 
 import fs from "node:fs";
+import path from "node:path";
 import util from "node:util";
 
 import logLibrary from "loglevel";
@@ -228,8 +229,9 @@ function openLogFileForAppend(logFilePath: string): {
  * ACL is cleared, so no line is written while an inherited ACE could still
  * grant another principal the access the `0600` mode denies; the strip
  * follows a symlink at the path, matching the open. A descriptor that is not
- * a regular file (`/dev/stderr` on a pipe or terminal), or that is stderr's
- * own file (`/dev/stderr` redirected to one), is not stripped. A
+ * a regular file (`/dev/stderr` on a pipe or terminal) is not stripped, nor is
+ * stderr's own file named through a `/dev/fd` or `/dev/std*` path (`/dev/stderr`
+ * redirected to a file); stderr's file named by its ordinary path still is. A
  * failed strip, or a failed `fstat` of the descriptor, is fail-closed: the
  * descriptor is released and the run refused as a {@link UsageError} holding
  * the refusal as its cause, with an existing file's content untouched and a
@@ -277,14 +279,14 @@ export function configureLogFile(logFilePath: string): LogSink {
     }
   }
 
-  const isStderr = isSameFileAsStderr(fd);
+  let isStderr: boolean;
   try {
-    // On macOS the 0600 mode leaves an inherited ACE in force. The strip follows
-    // a symlink at the path because the open does. Whether to strip is read
-    // from the open descriptor: a terminal, pipe or device node keeps no lines
-    // at rest for an ACE to expose, and stderr's own file gets these lines
-    // without the flag too (and `chmod` would resolve `/dev/stderr` as its own).
-    if (!isStderr && fs.fstatSync(fd).isFile())
+    const file = fs.fstatSync(fd);
+    isStderr = isSameFileAsStderr(file);
+    // The `chmod` child would resolve a descriptor path against its own
+    // descriptors, not this process's.
+    const reachableByPath = !(isStderr && namesDescriptorPath(normalized));
+    if (file.isFile() && reachableByPath)
       stripExtendedAcls(normalized, { symlinks: "follow" });
   } catch (err) {
     try {
@@ -344,14 +346,21 @@ export function configureLogFile(logFilePath: string): LogSink {
 // A `--log-file` naming stderr itself (`/dev/stderr`, or a path stderr is
 // redirected to) would print twice each error-level line and each prompt-stream
 // line the log copies.
-function isSameFileAsStderr(fd: number): boolean {
+function isSameFileAsStderr(file: fs.Stats): boolean {
   try {
-    const file = fs.fstatSync(fd);
     const stderr = fs.fstatSync(2);
     return file.dev === stderr.dev && file.ino === stderr.ino;
   } catch {
     return false;
   }
+}
+
+// `/dev/stderr`, `/dev/fd/2` and the like name a descriptor of the opening
+// process rather than a file.
+function namesDescriptorPath(logFilePath: string): boolean {
+  return /^\/dev\/(?:std(?:in|out|err)|fd\/\d+)$/.test(
+    path.posix.resolve(logFilePath),
+  );
 }
 
 /** One diagnostic line as the installed sink writes it, newline included. */

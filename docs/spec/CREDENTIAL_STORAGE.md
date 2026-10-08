@@ -258,14 +258,17 @@ the open cannot turn the strip off for the regular file the lines land in; the
 strip itself still re-resolves the path, the limitation the table above states.
 A failed `fstat` is refused like a failed strip.
 
-Nor is a descriptor stripped when its device and inode match stderr's, as
-`--log-file /dev/stderr` with stderr redirected to a file gives. That file is
-the operator's own redirect target, which receives the run's diagnostics
-without the flag as well, so the strip would protect nothing the run does not
-already write there. It could not reach that file either: `/dev/stderr` is a
-`/dev/fd` path, and the `chmod` child resolves it against its own descriptors,
-whose stderr is `/dev/null`. A `/dev/stdout` or other `/dev/fd/N` path naming a
-regular file is still stripped, and refused when that strip fails.
+Nor is a descriptor stripped when its device and inode match stderr's and the
+path names it through a descriptor path -- `/dev/stdin`, `/dev/stdout`,
+`/dev/stderr` or `/dev/fd/N` once resolved -- as `--log-file /dev/stderr` with
+stderr redirected to a file gives. The strip could not reach that file: the
+`chmod` child resolves a descriptor path against its own descriptors, whose
+stderr is `/dev/null`. Nor would it protect anything the run does not write
+there anyway: `--log-level` selects the same lines with or without the flag,
+and without it the CLI writes every one of them to stderr. The same file named
+by its ordinary path (`--log-file run.log 2>>run.log`) is stripped, as is a
+descriptor path naming a regular file other than stderr's, and either is
+refused when that strip fails.
 
 A failed strip is fail-closed, exactly as a failed `icacls` narrowing is on
 Windows: no content is written. The temp-file writers unlink the temp file on the

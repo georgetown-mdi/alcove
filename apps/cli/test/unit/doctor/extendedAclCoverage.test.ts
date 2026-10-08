@@ -343,24 +343,73 @@ describe("the log file's extended ACL", () => {
     expect(commands).toEqual([]);
   });
 
+  // The runner owns this process's fd 2, so stderr's identity is faked: every
+  // descriptor reports one dev/ino, making any log file stderr's own.
+  function fakeEveryDescriptorAsStderr(): void {
+    const realFstat = fs.fstatSync;
+    vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number) =>
+      Object.assign(realFstat(fd), { dev: 1, ino: 1 })) as typeof fs.fstatSync);
+  }
+
+  /** A `/dev/fd/N` path naming a regular file this test holds open. */
+  function descriptorPathToRegularFile(name: string): {
+    logPath: string;
+    release: () => void;
+  } {
+    const held = fs.openSync(path.join(dir, name), "a", 0o600);
+    return {
+      logPath: `/dev/fd/${held}`,
+      release: () => fs.closeSync(held),
+    };
+  }
+
   test.skipIf(process.platform === "win32")(
-    "a log file that is the file stderr is redirected to is not stripped",
+    "stderr's own file named through a /dev/fd path is not stripped",
     () => {
-      // The descriptor identity is faked, since the runner owns this process's
-      // fd 2: every descriptor reports one dev/ino, so the log file is stderr's.
+      const { logPath, release } = descriptorPathToRegularFile("stderr.log");
       const commands = recordAclStripCommands();
-      const logPath = path.join(dir, "stderr.log");
-      const realFstat = fs.fstatSync;
-      vi.spyOn(fs, "fstatSync").mockImplementation(((fd: number) =>
-        Object.assign(realFstat(fd), {
-          dev: 1,
-          ino: 1,
-        })) as typeof fs.fstatSync);
+      fakeEveryDescriptorAsStderr();
+
+      try {
+        const sink = withPlatform("darwin", () => configureLogFile(logPath));
+        sink.close();
+      } finally {
+        release();
+      }
+
+      expect(commands).toEqual([]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "stderr's own file named by its ordinary path is stripped",
+    () => {
+      // `--log-file run.log 2>>run.log`: the chmod reaches run.log by path.
+      const commands = recordAclStripCommands();
+      const logPath = path.join(dir, "run.log");
+      fakeEveryDescriptorAsStderr();
 
       const sink = withPlatform("darwin", () => configureLogFile(logPath));
       sink.close();
 
-      expect(commands).toEqual([]);
+      expect(commands).toEqual([["/bin/chmod", "-N", logPath]]);
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "a /dev/fd path naming a regular file other than stderr's is stripped",
+    () => {
+      const { logPath, release } = descriptorPathToRegularFile("other.log");
+      const commands = recordAclStripCommands();
+
+      try {
+        const sink = withPlatform("darwin", () => configureLogFile(logPath));
+        sink.close();
+      } finally {
+        release();
+      }
+
+      expect(commands).toEqual([["/bin/chmod", "-N", logPath]]);
     },
   );
 
