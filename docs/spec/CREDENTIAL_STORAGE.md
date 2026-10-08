@@ -256,18 +256,25 @@ diagnostics at rest for an ACE to expose. The decision is read from the
 descriptor rather than from a fresh look at the path, so a path swapped after
 the open cannot turn the strip off for the regular file the lines land in; the
 strip itself still re-resolves the path, the limitation the table above states.
-A failed `fstat` is refused like a failed strip.
+A failed `fstat` is refused like a failed strip. A FIFO or other non-regular
+log path is not stripped, so its own mode governs who can open it and read the
+lines as they are written.
 
-Nor is a descriptor stripped when its device and inode match stderr's and the
-path names it through a descriptor path -- `/dev/stdin`, `/dev/stdout`,
-`/dev/stderr` or `/dev/fd/N` once resolved -- as `--log-file /dev/stderr` with
-stderr redirected to a file gives. The strip could not reach that file: the
-`chmod` child resolves a descriptor path against its own descriptors, whose
-stderr is `/dev/null`. Nor would it protect anything the run does not write
-there anyway: `--log-level` selects the same lines with or without the flag,
-and without it the CLI writes every one of them to stderr. The same file named
-by its ordinary path (`--log-file run.log 2>>run.log`) is stripped, as is a
-descriptor path naming a regular file other than stderr's, and either is
+A regular file named through a descriptor path -- `/dev/stdin`, `/dev/stdout`,
+`/dev/stderr` or `/dev/fd/N` once resolved -- cannot be stripped at all: the
+`chmod` child resolves that path against its own descriptors, not the CLI's, so
+it would fail or act on whatever its own descriptor names (`/dev/null` for its
+standard streams). When the file's device and inode match stderr's, as
+`--log-file /dev/stderr` with stderr redirected to a file gives, the strip is
+skipped and the run goes on: that file is the operator's own redirect target and
+already receives the run's diagnostics. The flag adds one line to it: the
+disclosure digest an exchange writes only when a log file is set and the level
+is `warn` or more verbose, a sha256 over the disclosure lines, the party
+identity and the destination. Every other
+regular file reached through a descriptor path is refused on macOS before any
+line is written, as a usage error (exit 64) asking for the file's own path. On
+other platforms, where no strip runs, it is accepted. Named by its ordinary path
+(`--log-file run.log 2>>run.log`), stderr's file is stripped like any other, and
 refused when that strip fails.
 
 A failed strip is fail-closed, exactly as a failed `icacls` narrowing is on

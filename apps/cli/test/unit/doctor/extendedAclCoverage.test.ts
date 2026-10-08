@@ -397,19 +397,48 @@ describe("the log file's extended ACL", () => {
   );
 
   test.skipIf(process.platform === "win32")(
-    "a /dev/fd path naming a regular file other than stderr's is stripped",
+    "a /dev/fd path naming a regular file other than stderr's is refused",
     () => {
       const { logPath, release } = descriptorPathToRegularFile("other.log");
       const commands = recordAclStripCommands();
 
+      let thrown: unknown;
       try {
-        const sink = withPlatform("darwin", () => configureLogFile(logPath));
+        thrown = catchThrown(() =>
+          withPlatform("darwin", () => configureLogFile(logPath)),
+        );
+      } finally {
+        release();
+      }
+
+      expect(thrown).toBeInstanceOf(UsageError);
+      expect((thrown as Error).message).toBe(
+        `could not secure log file ${logPath}: its extended ACL cannot be ` +
+          "cleared through a descriptor path. Name the file by its own path " +
+          "instead.",
+      );
+      expect(commands).toEqual([]);
+      expect(fs.readFileSync(path.join(dir, "other.log"), "utf8")).toBe("");
+    },
+  );
+
+  plainPosixOnly(
+    "a /dev/fd path naming another regular file is accepted where no strip runs",
+    () => {
+      const { logPath, release } = descriptorPathToRegularFile("other.log");
+
+      try {
+        const sink = configureLogFile(logPath);
+        logLibrary.setDefaultLevel(logLibrary.levels.INFO);
+        getLogger("acl-sites-descriptor").info("a line");
         sink.close();
       } finally {
         release();
       }
 
-      expect(commands).toEqual([["/bin/chmod", "-N", logPath]]);
+      expect(fs.readFileSync(path.join(dir, "other.log"), "utf8")).toContain(
+        "a line",
+      );
     },
   );
 
