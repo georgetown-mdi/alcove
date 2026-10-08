@@ -199,15 +199,12 @@ import type {
   ManagedHandoffRefusal,
   ManagedMigrationDispatch,
 } from "@psi/managed/managedExchangeExport";
-import type {
-  ManagedLocalState,
-  ManagedSpentState,
-} from "@psi/managed/managedLocalState";
 import type { DisclosureAccountingRead } from "@psi/disclosureAccountingStore";
 import type { ManagedCompromiseGate } from "./managedRunRecoveryModel";
 import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRetakeRefusal } from "./managedRetakeModel";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
+import type { ManagedSpentState } from "@psi/managed/managedLocalState";
 import type { ManagedStandingConditionView } from "./managedStandingConditionModel";
 import type { ParkedResultsRead } from "@psi/parkedResultsStore";
 import type { UnfiledDisclosureRead } from "@psi/unfiledDisclosureStore";
@@ -223,49 +220,6 @@ const log = getLogger("ManagedRunSurface");
  * granted), and folds the outcome into the completion surface.
  */
 export function ManagedRunSurface({ id }: { id: string }) {
-  const [record, setRecord] = useState<RunnableManagedExchangeRecord>();
-  // The loaded record when it holds no secret: a configuration imported from the
-  // command line, which edits and exports here and runs there. It is held apart
-  // from `record` rather than beside a flag, so no run control can be reached
-  // with it -- the run path takes the runnable record type and this is not one.
-  const [configuration, setConfiguration] = useState<ManagedExchangeRecord>();
-  // Every store write this surface makes keeps the secret the record it read
-  // holds -- a rotation, a local-fields edit, a folder grant -- so adopting the
-  // returned record restates what this surface holds rather than admitting a
-  // shape it has no controls for.
-  const adoptRecord = useCallback(
-    (updated: ManagedExchangeRecord) =>
-      setRecord(runnableManagedExchangeOrRefuse(updated)),
-    [],
-  );
-  // Three load states, each with its own recovery: MISSING (the store resolves
-  // undefined -- deleted or cleared); UNLOADABLE (the read rejects: a stored record
-  // this app version can no longer load, the documented app-upgrade case, whose
-  // recovery is re-invite -- see docs/spec/MANAGED_EXCHANGE_RECORD.md, "Versioning");
-  // and SPENT (an export handed this device's copy off, so it has no Run affordance,
-  // and what runs in its place depends on which export did it). Spent is a load
-  // state, not a disabled button: no code path from a spent record reaches the run
-  // controls or run(). A run refused by the hand-off it met inside the run+rotate
-  // lock moves into that same state directly, rather than waiting for the next load.
-  const [loadFailure, setLoadFailure] = useState<
-    "missing" | "unloadable" | "spent"
-  >();
-  // The stored spent state behind that load state, held whole: its date and the
-  // hand-off that wrote it are what the spent surface reads, and a migration's
-  // recovery (import the artifact back) is not a command-line hand-off's.
-  const [spent, setSpent] = useState<ManagedSpentState>();
-  // Whether the spent state above was reached by a run this surface started and the
-  // hand-off refused, rather than by a load that found it standing: only then does
-  // the spent surface owe the operator an account of that run.
-  const [spentByRefusedRun, setSpentByRefusedRun] = useState(false);
-  // Bumped to load the record and its sibling state again, after a re-take has
-  // cleared the spent state this surface loaded under.
-  const [recordReads, setRecordReads] = useState(0);
-  const [backupMarker, setBackupMarker] = useState<ManagedBackupMarker>();
-  // The local sibling state as the load read it, for the standing condition's own
-  // section: the import marker is what tells a restored copy's stale secret from a
-  // handshake nothing on this device explains.
-  const [localState, setLocalState] = useState<ManagedLocalState>();
   // This exchange's accounting of disclosures as its own read classified it, one
   // value rather than an accounting beside flags: an unreadable accounting must
   // not render as an empty one (which would be treated as "nothing was disclosed"), and
@@ -318,7 +272,22 @@ export function ManagedRunSurface({ id }: { id: string }) {
     managedRunSurfaceReducer,
     MANAGED_RUN_SURFACE_INITIAL,
   );
-  const { run: runState, recovery } = surfaceState;
+  const { load, run: runState, recovery } = surfaceState;
+  const runnable = load.kind === "runnable" ? load : undefined;
+  const record = runnable?.record;
+  const localState = runnable?.localState;
+  // Every store write this surface makes keeps the secret the record it read
+  // holds -- a rotation, a local-fields edit, a folder grant -- so adopting the
+  // returned record restates what this surface holds rather than admitting a
+  // shape it has no controls for.
+  const adoptRecord = useCallback(
+    (updated: ManagedExchangeRecord) =>
+      dispatchSurface({
+        type: "record-adopted",
+        record: runnableManagedExchangeOrRefuse(updated),
+      }),
+    [],
+  );
   const running = managedRunInProgress(runState);
   const runCompletion = managedRunCompletion(runState);
   const outputs = runCompletion?.outputs;
@@ -401,31 +370,20 @@ export function ManagedRunSurface({ id }: { id: string }) {
     let live = true;
     Promise.all([getManagedExchange(id), getManagedLocalState(id)])
       .then(([loaded, local]) => {
-        if (!live) return;
-        if (loaded === undefined) {
-          setLoadFailure("missing");
-        } else if (local?.spent !== undefined) {
-          // A spent record never reaches the run controls: the guard is the load
-          // state, not a hidden button.
-          setSpent(local.spent);
-          setLoadFailure("spent");
-        } else if (!runnableManagedExchange(loaded)) {
-          // A configuration-only record has its own surface: settings and the
-          // command-line export, no run. The record's shape decides it.
-          setConfiguration(loaded);
-        } else {
-          setBackupMarker(local?.backup);
-          setLocalState(local);
-          setRecord(loaded);
-        }
+        if (live)
+          dispatchSurface({
+            type: "record-read",
+            record: loaded,
+            localState: local,
+          });
       })
       .catch(() => {
-        if (live) setLoadFailure("unloadable");
+        if (live) dispatchSurface({ type: "record-read-failed" });
       });
     return () => {
       live = false;
     };
-  }, [id, recordReads]);
+  }, [id, load.reads]);
 
   // The accounting of disclosures is read on its own, never folded into the record
   // load above: an unreadable accounting must not present the exchange as
@@ -717,11 +675,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // models the getter as a literal, hence the disable).
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (controller.signal.aborted) return;
-        if (local !== undefined || reloaded !== undefined) setLocalState(local);
+        if (local !== undefined || reloaded !== undefined)
+          dispatchSurface({ type: "local-state-reloaded", localState: local });
         if (error instanceof ManagedTermsChangeTakenOnError) {
           if (reloaded !== undefined && runnableManagedExchange(reloaded))
-            setRecord(reloaded);
-          setRecordReads((reads) => reads + 1);
+            dispatchSurface({ type: "record-adopted", record: reloaded });
+          dispatchSurface({ type: "record-read-requested" });
           dispatchSurface({
             type: "run-failed",
             failure: { alert: TERMS_CHANGE_TAKEN_ON_FAILURE, runNumber },
@@ -745,9 +704,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         // hand-off the spent surface names, and a reload that did not answer costs
         // those and not the state.
         if (failed.kind === "handed-off") {
-          setSpent(local?.spent);
-          setSpentByRefusedRun(true);
-          setLoadFailure("spent");
+          dispatchSurface({ type: "run-handed-off", spent: local?.spent });
           return;
         }
         dispatchSurface({
@@ -785,7 +742,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
     setExportBusy(true);
     setExportFailed(false);
     void exportManagedBackup(record.id, exportDeps)
-      .then((result) => setBackupMarker(downloadedMarker(result.backedUpAt)))
+      .then((result) =>
+        dispatchSurface({
+          type: "backup-marked",
+          marker: downloadedMarker(result.backedUpAt),
+        }),
+      )
       .catch(() => setExportFailed(true))
       .finally(() => setExportBusy(false));
   }
@@ -802,7 +764,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
       spendIfCurrent: spendManagedExchangeIfCurrent,
     })
       .then((dispatch) => {
-        setBackupMarker(downloadedMarker(dispatch.backedUpAt));
+        dispatchSurface({
+          type: "backup-marked",
+          marker: downloadedMarker(dispatch.backedUpAt),
+        });
         setMigrationDispatch(dispatch);
       })
       .catch(() => setExportFailed(true))
@@ -892,10 +857,10 @@ export function ManagedRunSurface({ id }: { id: string }) {
           return;
         }
         const result = await reinviteManagedExchange(record);
-        adoptRecord(result.record);
         dispatchSurface({
           type: "reinvite-composed",
           reinvite: result.reinvite,
+          record: runnableManagedExchangeOrRefuse(result.record),
         });
       } catch (error) {
         // The store refuses the rotation over an answer this page has not read, and
@@ -974,10 +939,12 @@ export function ManagedRunSurface({ id }: { id: string }) {
     // and it keeps its own gate.
     dispatchSurface({ type: "standing-clear-started", pastResponse });
     clearManagedExchangeStandingCondition(record.id)
-      .then((updated) => {
-        adoptRecord(updated);
-        dispatchSurface({ type: "standing-cleared" });
-      })
+      .then((updated) =>
+        dispatchSurface({
+          type: "standing-cleared",
+          record: runnableManagedExchangeOrRefuse(updated),
+        }),
+      )
       .catch((error) => {
         whenDiagnostic(() => console.error(error));
         dispatchSurface({ type: "standing-clear-failed" });
@@ -1119,7 +1086,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
         await applyManagedTermsProposal(record.id, proposal.proposedAt);
       else await declineManagedTermsProposal(record.id);
       dispatchSurface({ type: "failure-cleared" });
-      setRecordReads((reads) => reads + 1);
+      dispatchSurface({ type: "record-read-requested" });
     } catch (error) {
       whenDiagnostic(() => console.error(error));
       setTermsProposalFailure(termsProposalFailureText(error));
@@ -1133,10 +1100,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // re-take's own answer: the load is the one place the run affordance, the backup
   // state, and the standing condition are derived.
   function readRecordAgain(): void {
-    setSpent(undefined);
-    setSpentByRefusedRun(false);
-    setLoadFailure(undefined);
-    setRecordReads((reads) => reads + 1);
+    dispatchSurface({ type: "record-retaken" });
   }
 
   // Remove everything this exchange's scheduled runs left in this browser, then
@@ -1155,9 +1119,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   // longer exists. The first settle out of loading is the page arriving, not a
   // step, so it leaves focus at the top of the document.
   const surfaceView = managedSurfaceView({
-    loadFailure,
-    configurationLoaded: configuration !== undefined,
-    recordLoaded: record !== undefined,
+    load,
     run: runState,
     commandLineHandedOff: commandLineHandoff !== undefined,
     migrated,
@@ -1175,7 +1137,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
   return (
     <AppPage>
       <main className={styles.lobby} ref={surfaceRef}>
-        {loadFailure === "missing" ? (
+        {load.kind === "missing" ? (
           <>
             <h1 tabIndex={-1}>Exchange not found</h1>
             <p className={styles.sub}>
@@ -1184,7 +1146,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <SavedExchangesFoot />
           </>
-        ) : loadFailure === "unloadable" ? (
+        ) : load.kind === "unloadable" ? (
           <>
             <h1 tabIndex={-1}>This exchange cannot be loaded</h1>
             <p className={styles.sub}>
@@ -1194,23 +1156,25 @@ export function ManagedRunSurface({ id }: { id: string }) {
             </p>
             <SavedExchangesFoot />
           </>
-        ) : loadFailure === "spent" ? (
+        ) : load.kind === "spent" ? (
           <SpentSurface
-            spent={spent}
-            refusedRun={spentByRefusedRun}
+            spent={load.spent}
+            refusedRun={load.byRefusedRun}
             parkedResultsRead={parkedResultsRead}
             onRetryParkedResultsRead={retryParkedResultsRead}
             onClearParkedResults={clearParked}
             id={id}
             onRetaken={readRecordAgain}
           />
-        ) : configuration !== undefined ? (
+        ) : load.kind === "configuration" ? (
           <ManagedConfigurationSurface
-            record={configuration}
-            onRecordEdited={setConfiguration}
+            record={load.configuration}
+            onRecordEdited={(configuration) =>
+              dispatchSurface({ type: "configuration-edited", configuration })
+            }
             onDeleted={() => void navigate({ to: "/saved" })}
           />
-        ) : record === undefined ? (
+        ) : load.kind === "loading" ? (
           <>
             <h1 tabIndex={-1}>Loading exchange</h1>
             <Loader />
@@ -1384,7 +1348,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
         ) : (
           <>
             <h1 tabIndex={-1}>
-              {record.label === "" ? "Run this exchange" : record.label}
+              {load.record.label === ""
+                ? "Run this exchange"
+                : load.record.label}
             </h1>
             <p className={styles.sub}>
               Run this exchange again with the same partner, without a new
@@ -1396,7 +1362,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               // and its recovery are gone -- the operator forwards the fresh invitation
               // and the next run derives from the new secret.
               <ReinvitePanel
-                record={record}
+                record={load.record}
                 reinvite={reinvite}
                 panelRef={reinvitePanelRef}
               />
@@ -1418,7 +1384,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
                   {!compromiseResponse && (
                     <FailureRecovery
                       failure={failure}
-                      record={record}
+                      record={load.record}
                       confirmationGated={confirmationGated}
                       reinviting={reinviting}
                       runInFlight={runInFlight}
@@ -1448,7 +1414,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
             )}
             {showStanding && !compromiseResponse && (
               <StandingConditionSection
-                record={record}
+                record={load.record}
                 view={standingView}
                 settled={standingSettled}
                 clearing={clearingStanding}
@@ -1488,9 +1454,9 @@ export function ManagedRunSurface({ id }: { id: string }) {
                 </FileButton>
               </div>
             )}
-            {localState?.termsProposal !== undefined && (
+            {load.localState?.termsProposal !== undefined && (
               <TermsProposalPanel
-                proposal={localState.termsProposal}
+                proposal={load.localState.termsProposal}
                 busy={termsProposalBusy}
                 disabled={running || runInFlight}
                 failure={termsProposalFailure}
@@ -1528,7 +1494,7 @@ export function ManagedRunSurface({ id }: { id: string }) {
               <p className={styles.sub}>{describeResolvedMatching(matching)}</p>
             )}
             <BackupPanel
-              marker={backupMarker}
+              marker={load.backupMarker}
               busy={exportBusy}
               failed={exportFailed}
               runInFlight={runInFlight}
@@ -1536,13 +1502,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
               onMigrate={migrate}
             />
             <ManagedCronExportPanel
-              record={record}
+              record={load.record}
               runInFlight={runInFlight}
               recheckRunInFlight={recheckLock}
               onHandedOff={setCommandLineHandoff}
             />
             <ManagedExchangeDetail
-              record={record}
+              record={load.record}
               accountingRead={accountingRead}
               unfiledDisclosureRead={unfiledRead}
               unrecordedRunFlagged={flaggedUnrecordedId === id}
@@ -1557,11 +1523,13 @@ export function ManagedRunSurface({ id }: { id: string }) {
               onGrantWorkingFolder={grantWorkingFolder}
               onStopUsingWorkingFolder={stopUsingWorkingFolder}
               onReinviteToChangeTerms={() => reinviteNow("detail")}
-              onTermsChanged={() => setRecordReads((reads) => reads + 1)}
-              onRelayRegistrationChanged={() =>
-                setRecordReads((reads) => reads + 1)
+              onTermsChanged={() =>
+                dispatchSurface({ type: "record-read-requested" })
               }
-              canReinvite={canReinviteFromRecord(record)}
+              onRelayRegistrationChanged={() =>
+                dispatchSurface({ type: "record-read-requested" })
+              }
+              canReinvite={canReinviteFromRecord(load.record)}
               compromiseResponse={compromiseResponse}
               runInFlight={runInFlight}
               runHoldsReinvite={runHoldsReinvite}
@@ -1572,10 +1540,11 @@ export function ManagedRunSurface({ id }: { id: string }) {
             />
             <div className={styles.workFoot}>
               <DeleteExchangeButton
-                id={record.id}
-                label={record.label}
+                id={load.record.id}
+                label={load.record.label}
                 backedUp={
-                  deriveManagedBackupState(backupMarker).kind === "backed-up"
+                  deriveManagedBackupState(load.backupMarker).kind ===
+                  "backed-up"
                 }
                 onDeleted={() => void navigate({ to: "/saved" })}
               />

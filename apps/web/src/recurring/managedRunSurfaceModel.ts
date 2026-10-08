@@ -1,4 +1,8 @@
 import {
+  MANAGED_LOAD_INITIAL,
+  managedLoadReducer,
+} from "./managedRunLoadModel";
+import {
   MANAGED_RECOVERY_INITIAL,
   managedRecoveryReducer,
 } from "./managedRunRecoveryModel";
@@ -9,11 +13,17 @@ import type { ManagedInputSource } from "@psi/managed/managedInputHandle";
 import type { RunOutputs } from "@psi/runOutputs";
 
 import type {
+  ManagedLoadAction,
+  ManagedLoadState,
+} from "./managedRunLoadModel";
+import type {
   ManagedRecoveryAction,
   ManagedRecoveryState,
 } from "./managedRunRecoveryModel";
 import type { AttendedFolderWrite } from "./attendedFolderWriteModel";
+import type { ManagedReinvite } from "@psi/managed/managedReinvite";
 import type { ManagedRunFailureAlert } from "./managedRunLaunchModel";
+import type { RunnableManagedExchangeRecord } from "@psi/managed/managedExchangeRecord";
 
 /**
  * The attended re-run's state on the managed run surface and the events that move
@@ -178,20 +188,36 @@ export function managedRunReducer(
   }
 }
 
-/** The surface's state: the attended run and the failure recovery. */
+/** The surface's state: the record load, the attended run and the failure
+ * recovery. */
 export interface ManagedRunSurfaceState {
+  load: ManagedLoadState;
   run: ManagedRunState;
   recovery: ManagedRecoveryState;
 }
 
-/** No run and no recovery this visit. */
+/** The first read under way, and no run and no recovery this visit. */
 export const MANAGED_RUN_SURFACE_INITIAL: ManagedRunSurfaceState = {
+  load: MANAGED_LOAD_INITIAL,
   run: MANAGED_RUN_INITIAL,
   recovery: MANAGED_RECOVERY_INITIAL,
 };
 
+/** A recovery write that returns the record it wrote, adopted with its outcome. */
+export type ManagedRecordWriteAction =
+  | { type: "standing-cleared"; record: RunnableManagedExchangeRecord }
+  | {
+      type: "reinvite-composed";
+      reinvite: ManagedReinvite;
+      record: RunnableManagedExchangeRecord;
+    };
+
 /** Every event the surface reports. */
-export type ManagedRunSurfaceAction = ManagedRunAction | ManagedRecoveryAction;
+export type ManagedRunSurfaceAction =
+  | ManagedRunAction
+  | Exclude<ManagedRecoveryAction, { type: ManagedRecordWriteAction["type"] }>
+  | ManagedRecordWriteAction
+  | ManagedLoadAction;
 
 function withRun(
   state: ManagedRunSurfaceState,
@@ -200,8 +226,24 @@ function withRun(
   return run === state.run ? state : { ...state, run };
 }
 
+function withLoad(
+  state: ManagedRunSurfaceState,
+  load: ManagedLoadState,
+): ManagedRunSurfaceState {
+  return load === state.load ? state : { ...state, load };
+}
+
+function adopted(
+  load: ManagedLoadState,
+  record: RunnableManagedExchangeRecord,
+): ManagedLoadState {
+  return managedLoadReducer(load, { type: "record-adopted", record });
+}
+
 /** The surface's reducer. A run start moves both the run and the recovery; a
- * composed re-invite replaces the failure it recovers from. */
+ * composed re-invite adopts the rotated record and replaces the failure it
+ * recovers from; a standing clear adopts the record it wrote; a run the hand-off
+ * refused settles with the copy spent. */
 export function managedRunSurfaceReducer(
   state: ManagedRunSurfaceState,
   action: ManagedRunSurfaceAction,
@@ -209,13 +251,27 @@ export function managedRunSurfaceReducer(
   switch (action.type) {
     case "run-started":
       return {
+        ...state,
         run: managedRunReducer(state.run, action),
         recovery: managedRecoveryReducer(state.recovery, action),
       };
     case "reinvite-composed":
       return {
+        load: adopted(state.load, action.record),
         run: managedRunReducer(state.run, { type: "failure-cleared" }),
         recovery: managedRecoveryReducer(state.recovery, action),
+      };
+    case "standing-cleared":
+      return {
+        ...state,
+        load: adopted(state.load, action.record),
+        recovery: managedRecoveryReducer(state.recovery, action),
+      };
+    case "run-handed-off":
+      return {
+        ...state,
+        load: managedLoadReducer(state.load, action),
+        run: managedRunReducer(state.run, { type: "run-settled" }),
       };
     case "warning-raised":
     case "matching-resolved":
@@ -229,6 +285,15 @@ export function managedRunSurfaceReducer(
     case "run-settled":
     case "failure-cleared":
       return withRun(state, managedRunReducer(state.run, action));
+    case "record-read":
+    case "record-read-failed":
+    case "record-read-requested":
+    case "record-retaken":
+    case "record-adopted":
+    case "configuration-edited":
+    case "local-state-reloaded":
+    case "backup-marked":
+      return withLoad(state, managedLoadReducer(state.load, action));
     default:
       return {
         ...state,
@@ -289,13 +354,10 @@ export function managedRunInputSource(
   return undefined;
 }
 
-/** Which of the surface's views the main column shows. */
+/** Which of the surface's views the main column shows: the load's own page short
+ * of a runnable record, else one of the runnable record's views. */
 export type ManagedSurfaceView =
-  | "missing"
-  | "unloadable"
-  | "spent"
-  | "configuration"
-  | "loading"
+  | Exclude<ManagedLoadState["kind"], "runnable">
   | "complete"
   | "command-line"
   | "migrated"
@@ -304,24 +366,20 @@ export type ManagedSurfaceView =
 
 /** What {@link managedSurfaceView} chooses from. */
 export interface ManagedSurfaceViewInputs {
-  loadFailure: "missing" | "unloadable" | "spent" | undefined;
-  configurationLoaded: boolean;
-  recordLoaded: boolean;
+  load: ManagedLoadState;
   run: ManagedRunState;
   commandLineHandedOff: boolean;
   migrated: boolean;
   migrationAwaitingConfirm: boolean;
 }
 
-/** The view the main column shows, the first that applies in this order: a load
- * failure, an imported configuration, loading, a finished run, a hand-off, then
+/** The view the main column shows, the first that applies in this order: the
+ * load's own page short of a runnable record, a finished run, a hand-off, then
  * the run controls. */
 export function managedSurfaceView(
   inputs: ManagedSurfaceViewInputs,
 ): ManagedSurfaceView {
-  if (inputs.loadFailure !== undefined) return inputs.loadFailure;
-  if (inputs.configurationLoaded) return "configuration";
-  if (!inputs.recordLoaded) return "loading";
+  if (inputs.load.kind !== "runnable") return inputs.load.kind;
   if (managedRunCompletion(inputs.run) !== undefined) return "complete";
   if (inputs.commandLineHandedOff) return "command-line";
   if (inputs.migrated) return "migrated";
