@@ -102,3 +102,25 @@ CONTAINER_IMAGES.md additionally includes a clearly labelled **non-normative**
 measured-inventories section. Those figures record what a built image was
 observed to contain; they bind no build, and nothing in this tier may cite them
 as a requirement.
+
+## Writing a control
+
+A control in this tier is written in this order, each part under its label
+except the first two:
+
+1. The rule: what the implementation does or refuses, in one statement.
+2. The mechanism: how the rule is constructed and where it is enforced.
+3. **Limits**: what the control does not cover, and the cases where it does
+   not hold.
+4. **Depends on**: one line naming the conditions the guarantee needs from the
+   deploying side -- an operator setting, a host property, a network
+   arrangement.
+5. **Held by**: the test or check that fails when the rule breaks.
+6. **Why**: the reason for the rule and the alternatives weighed, or a link to
+   the [`docs/notes/`](../notes/README.md) record holding them.
+
+A control already in the tier is reshaped into this order when an issue
+changes that control, not in a pass of its own. The reshape moves sentences
+without rewording them, keeps each qualifying sentence with the claim it
+qualifies, and lists any sentence it does reword in the pull request body
+([CONTRIBUTING.md](../../CONTRIBUTING.md#documentation)).

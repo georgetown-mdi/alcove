@@ -260,6 +260,12 @@ export const CHECKS = [
       "The built-in field set and key set match the pin recorded for the version each declares, cascade order included.",
   },
   {
+    script: "check:spec-sentences",
+    expiresOn: "2027-01-31",
+    description:
+      "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed under Wording changes in the pull request body, so text moved between spec files arrives unchanged. With no pull request body it prints the section to paste and passes; pr_checklist.yaml enforces it against the body.",
+  },
+  {
     script: "check:release-signing",
     expiresOn: "2026-12-31",
     description:
