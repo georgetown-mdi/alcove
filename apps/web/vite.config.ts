@@ -2,6 +2,10 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
+import {
+  SIGNALING_DISCOVERY_PATH,
+  signalingDiscoveryDocumentSource,
+} from "@alcove/core";
 import { defineConfig, loadEnv } from "vite";
 import logLibrary from "loglevel";
 import { playwright } from "@vitest/browser-playwright";
@@ -172,6 +176,58 @@ function hostedDevDocument(): Plugin {
         if (isHostedDevDocumentRequest(request))
           request.url = "/hosted/index.html";
         next();
+      });
+    },
+  };
+}
+
+// The client's OWN_SIGNALING_PATH, which this config cannot import: the client
+// module reads `import.meta.env` when it loads.
+const DEV_OWN_SIGNALING_PATH = "/api/";
+
+/**
+ * The {@link SIGNALING_DISCOVERY_PATH} document `vite dev` serves: the server
+ * `setting` names when it is set, else the dev page's own origin `host` at
+ * `/api/`, the server the dev client dials without a setting.
+ */
+export function devSignalingDiscoveryDocument(
+  setting: unknown,
+  host: string,
+  secure: boolean,
+): string {
+  const configured = typeof setting === "string" ? setting.trim() : "";
+  return signalingDiscoveryDocumentSource(
+    configured !== ""
+      ? configured
+      : `${secure ? "wss" : "ws"}://${host}${DEV_OWN_SIGNALING_PATH}`,
+  );
+}
+
+/**
+ * Serves {@link SIGNALING_DISCOVERY_PATH} from `vite dev`, as the hosted build
+ * writes it (hosted/signalingDiscoveryFile.ts), so `alcove invite` given the
+ * dev server's address dials the server the dev page uses.
+ */
+export function devSignalingDiscoveryFile(): Plugin {
+  return {
+    name: "alcove-dev-signaling-discovery-file",
+    apply: "serve",
+    configureServer(server) {
+      const setting: unknown = server.config.env["VITE_SIGNALING_SERVER_URL"];
+      const secure = Boolean(server.config.server.https);
+      server.middlewares.use((request, response, next) => {
+        const pathname = (request.url ?? "/").split("?", 1)[0];
+        const host = request.headers.host;
+        if (
+          (request.method !== "GET" && request.method !== "HEAD") ||
+          pathname !== SIGNALING_DISCOVERY_PATH ||
+          host === undefined
+        ) {
+          next();
+          return;
+        }
+        response.setHeader("content-type", "application/json");
+        response.end(devSignalingDiscoveryDocument(setting, host, secure));
       });
     },
   };
@@ -450,6 +506,7 @@ export default defineConfig((configEnv) => {
       }),
       viteReact(),
       ...(underVitest ? [] : [hostedDevDocument()]),
+      devSignalingDiscoveryFile(),
     ],
     resolve: {
       tsconfigPaths: true,

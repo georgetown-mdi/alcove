@@ -9,6 +9,7 @@ import YAML from "yaml";
 import {
   CONNECTION_BLOCK_DOC_URL,
   CONNECTION_BLOCK_NOTICE,
+  ConnectionError,
   decodeInvitation,
   DEFAULT_LINKAGE_RULE_SET,
   DEFAULT_PEER_TIMEOUT_MS,
@@ -91,7 +92,7 @@ import {
   connectionFromEndpoint,
   runOnlineBootstrap,
 } from "../../../src/onlineBootstrap";
-import { captureProcessExit } from "../../exitCapture";
+import { captureProcessExit, runToExit } from "../../exitCapture";
 import { captureStdio } from "../../loggingTestSupport";
 import {
   pathAsDisplayed,
@@ -4038,9 +4039,10 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
   // refuses it.
   const { input, options } = onlineFixture();
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({
-    outcome: "completed",
-  }));
+  runOnlineBootstrapMock.mockImplementation(async (params) => {
+    params.onSignalingRegistered?.();
+    return { outcome: "completed" };
+  });
   const exit = captureProcessExit();
   const stdio = captureStdio();
   try {
@@ -4057,6 +4059,9 @@ test("handler: a webrtc online invite tells the partner to accept, with no URL a
     const stderr = stdio.stderrWrites.join("");
     expect(exit).not.toHaveBeenCalled();
     expect(stderr).toContain("accepts and runs the exchange with:");
+    expect(stderr).toContain(
+      'A partner who uses the web app instead pastes the invitation under "Accept an invitation you were sent"',
+    );
     expect(stderr).toContain(
       "alcove accept --identity <YOUR NAME, YOUR ORGANIZATION> " +
         "<INVITATION> <INPUT_FILE>",
@@ -4113,10 +4118,18 @@ test("handler: a web app invite prints the accept link for either partner", asyn
   // A partner invited through the web app's address may accept in a browser,
   // which opens the link, or on the command line, which takes the same link.
   const { input, options } = onlineFixture();
+  vi.stubGlobal("fetch", () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ signaling_server: "wss://signal.example.org/api/" }),
+      ),
+    ),
+  );
   const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
-  runOnlineBootstrapMock.mockImplementation(async () => ({
-    outcome: "completed",
-  }));
+  runOnlineBootstrapMock.mockImplementation(async (params) => {
+    params.onSignalingRegistered?.();
+    return { outcome: "completed" };
+  });
   const exit = captureProcessExit();
   const stdio = captureStdio();
   const printed: string[] = [];
@@ -4150,12 +4163,101 @@ test("handler: a web app invite prints the accept link for either partner", asyn
     );
     expect(stderr).not.toContain(encoded);
     expect(stderr).not.toContain(token.sharedSecret);
+    expect(token.connectionEndpoint).toMatchObject({
+      host: "signal.example.org",
+      path: "/api/",
+    });
   } finally {
     stdio.restore();
     logSpy.mockRestore();
     exit.mockRestore();
     runOnlineBootstrapMock.mockReset();
+    vi.unstubAllGlobals();
   }
+});
+
+describe("handler: when an online invitation is printed", () => {
+  async function runInvite(
+    url: string,
+    bootstrap: typeof runOnlineBootstrap,
+  ): Promise<{ printed: Array<string>; stderr: string; exitCode: unknown }> {
+    const { input, options } = onlineFixture();
+    const runOnlineBootstrapMock = vi.mocked(runOnlineBootstrap);
+    runOnlineBootstrapMock.mockImplementation(bootstrap);
+    const exit = captureProcessExit();
+    const stdio = captureStdio();
+    const printed: string[] = [];
+    const logSpy = vi.spyOn(console, "log").mockImplementation((...args) => {
+      printed.push(args.map(String).join(" "));
+    });
+    try {
+      await runToExit(() =>
+        inviteHandler({
+          _: [],
+          $0: "alcove",
+          identity: "Agency A",
+          args: [url, input],
+          "config-file": options.configFile,
+          "key-file": options.keyFile,
+          "log-level": "info",
+          record: false,
+        } as unknown as Arguments),
+      );
+      return {
+        printed,
+        stderr: stdio.stderrWrites.join(""),
+        exitCode: exit.mock.calls[0]?.[0],
+      };
+    } finally {
+      stdio.restore();
+      logSpy.mockRestore();
+      exit.mockRestore();
+      runOnlineBootstrapMock.mockReset();
+    }
+  }
+
+  test("over webrtc, nothing is printed when the coordination server never accepts the registration", async () => {
+    const { printed, stderr, exitCode } = await runInvite(
+      "wss://peers.example.org/psi",
+      async () => {
+        throw new ConnectionError(
+          "the connection to the coordination server failed",
+          "transport",
+        );
+      },
+    );
+    expect(printed).toEqual([]);
+    expect(stderr).not.toContain("Share this invitation");
+    expect(stderr).not.toContain("waiting for the partner to accept");
+    expect(exitCode).toBe(69);
+  });
+
+  test("over webrtc, the invitation is printed when the registration is accepted, before the wait ends", async () => {
+    let printedAtRegistration: number | undefined;
+    const { printed } = await runInvite(
+      "wss://peers.example.org/psi",
+      async (params) => {
+        expect(params.onSignalingRegistered).toBeDefined();
+        const before = vi.mocked(console.log).mock.calls.length;
+        params.onSignalingRegistered?.();
+        printedAtRegistration =
+          vi.mocked(console.log).mock.calls.length - before;
+        return { outcome: "completed" };
+      },
+    );
+    expect(printedAtRegistration).toBe(1);
+    expect(printed).toHaveLength(1);
+  });
+
+  test("over a file-sync channel, the invitation is printed before connecting", async () => {
+    let printedBeforeConnecting: number | undefined;
+    await runInvite("sftp://host/drop", async (params) => {
+      expect(params.onSignalingRegistered).toBeUndefined();
+      printedBeforeConnecting = vi.mocked(console.log).mock.calls.length;
+      return { outcome: "completed" };
+    });
+    expect(printedBeforeConnecting).toBe(1);
+  });
 });
 
 test("webAppAcceptLink: the invitation rides in the accept route's fragment", () => {

@@ -9,6 +9,7 @@ import { clientModuleGraphGuard } from "./hosted/moduleGraphGuard.ts";
 import { deployGraphRecorderFromEnv } from "./hosted/deployGraphRecorder.ts";
 import { hostedHeadersFile } from "./hosted/headersFile.ts";
 import { hostedRouteDocuments } from "./hosted/routeDocuments.ts";
+import { hostedSignalingDiscoveryFile } from "./hosted/signalingDiscoveryFile.ts";
 
 const appRoot = import.meta.dirname;
 
@@ -34,6 +35,7 @@ const hostedConfig = {
     viteReact(),
     hostedRouteDocuments(template),
     hostedHeadersFile(),
+    hostedSignalingDiscoveryFile(),
     clientModuleGraphGuard(),
   ],
   worker: {
@@ -60,8 +62,10 @@ const hostedConfig = {
  * The hosted app as a static site, and its only build: `npm run build`
  * writes a single-page client to `dist/hosted/`, with one document per route
  * the app-shell worker warms (hosted/routeDocuments.ts), the host's `_headers`
- * (hosted/headersFile.ts) and no server. The build fails if the page's or a
- * worker's module graph reaches a server-only module (hosted/moduleGraphGuard.ts).
+ * (hosted/headersFile.ts), the published coordination server
+ * (hosted/signalingDiscoveryFile.ts) and no server. The build fails if the
+ * page's or a worker's module graph reaches a server-only module
+ * (hosted/moduleGraphGuard.ts).
  */
 export default defineConfig((configEnv) => {
   requireHostedSignalingServer(configEnv);

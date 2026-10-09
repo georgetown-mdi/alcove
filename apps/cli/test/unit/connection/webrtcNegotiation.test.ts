@@ -8,6 +8,7 @@ import {
   deriveRendezvousPeerId,
   failureCauseOf,
   generateSharedSecret,
+  InternalConsistencyError,
   sanitizeErrorForDisplay,
   setDiagnosticSink,
   setLogLevel,
@@ -314,6 +315,7 @@ async function startRendezvous(options: {
   certificateProbe?: SignalingCertificateProbe;
   /** Shared with another rendezvous so the two derive the same pair of ids. */
   sharedSecret?: string;
+  onRegistered?: () => void;
 }): Promise<{
   socket: ScriptedSocket;
   /** Every broker socket opened, one per registration, in order; `socket` is the first. */
@@ -371,6 +373,7 @@ async function startRendezvous(options: {
         : AbortSignal.any([options.signal, teardown.signal]),
     attemptIceServers: options.attemptIceServers,
     certificateProbe: options.certificateProbe,
+    onRegistered: options.onRegistered,
     peerConnectionFactory: (configuration) => {
       const built = peers.length === 0 ? peer : new ScriptedPeer();
       peers.push(built);
@@ -1801,6 +1804,60 @@ test("an inviter's partner arriving between attempts is met by the next one", as
   peers[1].ondatachannel?.({ channel });
   channel.open();
   expect((await session).channel).toBe(channel);
+});
+
+test("the first registration's OPEN is reported once, and a later attempt's is not", async () => {
+  holdAttemptClock();
+  const onRegistered = vi.fn();
+  const { sockets } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    onRegistered,
+  });
+  expect(onRegistered).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(onRegistered).toHaveBeenCalledTimes(1);
+});
+
+// The gate on attempt 0 relies on this: a first registration that does not
+// succeed ends the run, so no later attempt can be the first to register.
+test.each([
+  ["refused as ID-TAKEN", refuseIdTaken],
+  ["dropped", (socket: ScriptedSocket) => socket.drop()],
+  ["failed", (socket: ScriptedSocket) => socket.fail()],
+])(
+  "a first registration %s is not reported, and no later attempt registers",
+  async (_label, answer) => {
+    const onRegistered = vi.fn();
+    const { socket, sockets, session } = await startRendezvous({
+      role: "inviter",
+      confirmRegistration: false,
+      onRegistered,
+    });
+    answer(socket);
+    await expect(session).rejects.toThrow();
+    expect(sockets).toHaveLength(1);
+    expect(onRegistered).not.toHaveBeenCalled();
+  },
+);
+
+test("a throw from the registration callback ends the run as an internal fault, not a transport failure", async () => {
+  const written = new Error("write EPIPE");
+  const { sockets, peer, session } = await startRendezvous({
+    role: "inviter",
+    onRegistered: () => {
+      throw written;
+    },
+  });
+  const err: unknown = await session.catch((caught: unknown) => caught);
+  expect(err).toBeInstanceOf(InternalConsistencyError);
+  expect((err as Error).cause).toBe(written);
+  expect(exitCodeForError(err)).toBe(70);
+  expect(sockets).toHaveLength(1);
+  expect(sockets[0].closeCalls).toBe(1);
+  expect(peer.closeCalls).toBe(1);
 });
 
 test("an acceptor's next attempt offers a new connection from a fresh registration", async () => {

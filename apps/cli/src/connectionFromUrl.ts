@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 
 import {
+  InternalConsistencyError,
   UsageError,
   decodeUrlComponent,
   parseSftpUrl,
@@ -77,13 +78,6 @@ export const WEBRTC_URL_EXTRAS_REFUSED =
   "`server.key`) in alcove.yaml and run 'alcove exchange'.";
 
 /**
- * The path the web app serves its coordination server under, relative to the
- * app's own address. A browser inviter resolves the same location from its
- * page's origin (`apps/web/src/psi/transport/rendezvous.ts`).
- */
-export const WEB_APP_COORDINATION_PATH = "/api/";
-
-/**
  * The refusal an `http:`/`https:` URL naming anything past the web app's
  * address gets on the invite path. The URL is not echoed: a pasted invitation
  * link holds its token in the fragment.
@@ -96,23 +90,21 @@ export const WEB_APP_ADDRESS_REFUSED =
 
 /**
  * Whether `url` is a web app's address (`http:` or `https:`), the form an
- * online `alcove invite` resolves to the app's coordination server.
+ * online `alcove invite` resolves to the coordination server the app
+ * publishes (./webAppSignaling.ts).
  */
 export function isWebAppAddress(url: URL): boolean {
   return url.protocol === "http:" || url.protocol === "https:";
 }
 
 /**
- * The coordination server a web app at `address` serves, as the `ws:`/`wss:`
- * URL {@link inviterConnectionFromURL} reads: the address's host and port, the
- * {@link WEB_APP_COORDINATION_PATH} mount point, and TLS exactly when the
- * address is `https:`.
+ * The origin of the web app at `address`.
  *
- * @throws {UsageError} ({@link WEB_APP_ADDRESS_REFUSED}) when the address names
- *   a path other than `/`, a user, a query, or a fragment.
- * @internal exported for testing
+ * @throws {UsageError} ({@link WEB_APP_ADDRESS_REFUSED}) when the address is
+ *   not `http:`/`https:` or names a path other than `/`, a user, a query, or a
+ *   fragment.
  */
-export function coordinationServerURLFromWebAppAddress(address: URL): URL {
+export function webAppOrigin(address: URL): string {
   if (
     !isWebAppAddress(address) ||
     address.pathname !== "/" ||
@@ -122,10 +114,7 @@ export function coordinationServerURLFromWebAppAddress(address: URL): URL {
     address.hash
   )
     throw new UsageError(WEB_APP_ADDRESS_REFUSED);
-  const scheme = address.protocol === "https:" ? "wss:" : "ws:";
-  // `host` keeps an explicit port; the address's scheme-default port is already
-  // normalized away, and the ws:/wss: parse drops one equal to ITS default.
-  return new URL(`${scheme}//${address.host}${WEB_APP_COORDINATION_PATH}`);
+  return address.origin;
 }
 
 /**
@@ -236,12 +225,12 @@ export function connectionFromURL(
 /**
  * Build the connection an online `alcove invite` runs on from its server URL:
  * {@link connectionFromURL}'s file-sync channels, plus a `ws:`/`wss:` URL as
- * the webrtc coordination server this party meets its partner through, or an
- * `http:`/`https:` web app address resolved to the coordination server that
- * app serves ({@link coordinationServerURLFromWebAppAddress}). The
- * caller stamps the `inviter` role (`withWebRTCPeerRole`) and mints the
- * invitation, whose credential-free endpoint states the same locator so the
- * acceptor reaches this coordination server rather than a hard-coded default.
+ * the webrtc coordination server this party meets its partner through. A web
+ * app address is resolved to the server it publishes before this is called
+ * (`resolveWebAppSignalingServer`). The caller stamps the `inviter` role
+ * (`withWebRTCPeerRole`) and mints the invitation, whose credential-free
+ * endpoint states the same locator so the acceptor reaches this coordination
+ * server rather than a hard-coded default.
  *
  * A webrtc URL maps scheme to `secure` (`wss:` leaves it unset, defaulting to
  * TLS; `ws:` sets it false) and its host, port, and path to the `server`
@@ -274,13 +263,14 @@ export function connectionFromURL(
  * @internal exported for testing
  */
 export function inviterConnectionFromURL(
-  given: URL,
+  url: URL,
   overrides: ConnectionOverrides,
   ownRelay: InviterOwnRelay = {},
 ): InviterConnectionConfig {
-  const url = isWebAppAddress(given)
-    ? coordinationServerURLFromWebAppAddress(given)
-    : given;
+  if (isWebAppAddress(url))
+    throw new InternalConsistencyError(
+      "a web app address reached the connection builder unresolved",
+    );
   if (channelFromURL(url) !== "webrtc")
     return connectionFromURL(url, overrides);
 

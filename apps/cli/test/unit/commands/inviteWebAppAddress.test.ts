@@ -2,10 +2,15 @@ import fs from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import logLibrary from "loglevel";
 import YAML from "yaml";
-import { decodeInvitation, getLogger, UsageError } from "@alcove/core";
+import {
+  decodeInvitation,
+  getLogger,
+  InternalConsistencyError,
+  UsageError,
+} from "@alcove/core";
 
 import {
   resolveInvitePositionals,
@@ -13,9 +18,9 @@ import {
 } from "../../../src/commands/invite";
 import { saveConfig } from "../../../src/config";
 import {
-  coordinationServerURLFromWebAppAddress,
   inviterConnectionFromURL,
   WEB_APP_ADDRESS_REFUSED,
+  webAppOrigin,
 } from "../../../src/connectionFromUrl";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 
@@ -23,6 +28,7 @@ const tmpDirs: string[] = [];
 afterEach(() => {
   for (const d of tmpDirs.splice(0))
     fs.rmSync(d, { recursive: true, force: true });
+  vi.unstubAllGlobals();
 });
 
 function scratch(): string {
@@ -62,21 +68,17 @@ function silentLog(name: string) {
   return log;
 }
 
-describe("coordinationServerURLFromWebAppAddress", () => {
-  test("resolves the app's host, port, /api/ mount point, and TLS from the scheme", () => {
+describe("webAppOrigin", () => {
+  test("takes the app's bare address, its scheme-default port normalized away", () => {
     const cases: Array<[string, string]> = [
-      ["https://app.example.org", "wss://app.example.org/api/"],
-      ["https://app.example.org/", "wss://app.example.org/api/"],
-      ["https://app.example.org:443/", "wss://app.example.org/api/"],
-      ["https://app.example.org:8443/", "wss://app.example.org:8443/api/"],
-      ["http://app.example.org/", "ws://app.example.org/api/"],
-      ["http://127.0.0.1:3000/", "ws://127.0.0.1:3000/api/"],
-      ["http://app.example.org:443/", "ws://app.example.org:443/api/"],
+      ["https://app.example.org", "https://app.example.org"],
+      ["https://app.example.org/", "https://app.example.org"],
+      ["https://app.example.org:443/", "https://app.example.org"],
+      ["https://app.example.org:8443/", "https://app.example.org:8443"],
+      ["http://127.0.0.1:3000/", "http://127.0.0.1:3000"],
     ];
-    for (const [address, server] of cases)
-      expect(
-        coordinationServerURLFromWebAppAddress(new URL(address)).href,
-      ).toBe(server);
+    for (const [address, origin] of cases)
+      expect(webAppOrigin(new URL(address))).toBe(origin);
   });
 
   test("refuses a path, user, query, or fragment without echoing the URL", () => {
@@ -92,7 +94,7 @@ describe("coordinationServerURLFromWebAppAddress", () => {
     ]) {
       let caught: unknown;
       try {
-        coordinationServerURLFromWebAppAddress(new URL(raw));
+        webAppOrigin(new URL(raw));
       } catch (err) {
         caught = err;
       }
@@ -108,42 +110,23 @@ describe("coordinationServerURLFromWebAppAddress", () => {
   });
 });
 
-describe("inviterConnectionFromURL on a web app address", () => {
-  test("builds the webrtc connection the equivalent ws/wss URL builds", () => {
-    for (const [address, server] of [
-      ["https://app.example.org/", "wss://app.example.org/api/"],
-      ["https://app.example.org:8443", "wss://app.example.org:8443/api/"],
-      ["http://127.0.0.1:3000", "ws://127.0.0.1:3000/api/"],
-    ])
-      expect(inviterConnectionFromURL(new URL(address), {})).toEqual(
-        inviterConnectionFromURL(new URL(server), {}),
-      );
-  });
-
-  test("records host, port, path, and the plaintext choice", () => {
-    expect(
-      inviterConnectionFromURL(new URL("https://app.example.org:8443/"), {}),
-    ).toEqual({
-      channel: "webrtc",
-      server: { host: "app.example.org", port: 8443, path: "/api/" },
-    });
-    expect(
-      inviterConnectionFromURL(new URL("http://app.example.org/"), {}),
-    ).toEqual({
-      channel: "webrtc",
-      server: { host: "app.example.org", path: "/api/", secure: false },
-    });
-  });
-
-  test("applies the relay flags as on a wss URL", () => {
-    const conn = inviterConnectionFromURL(
-      new URL("https://app.example.org/"),
-      {},
-      { stun: ["stun:relay.example.org:3478"] },
-    );
-    expect(conn).toMatchObject({ stun: ["stun:relay.example.org:3478"] });
+describe("inviterConnectionFromURL", () => {
+  test("is never handed an unresolved web app address", () => {
+    expect(() =>
+      inviterConnectionFromURL(new URL("https://app.example.org/"), {}),
+    ).toThrow(InternalConsistencyError);
   });
 });
+
+/** Serve `document` as every web app's /alcove.json for the rest of the test. */
+function publishSignalingServer(document: unknown): Array<string> {
+  const fetched: Array<string> = [];
+  vi.stubGlobal("fetch", (input: string | URL) => {
+    fetched.push(String(input));
+    return Promise.resolve(new Response(JSON.stringify(document)));
+  });
+  return fetched;
+}
 
 describe("alcove invite with a web app address", () => {
   test("an http(s) address dispatches online", () => {
@@ -156,7 +139,8 @@ describe("alcove invite with a web app address", () => {
     }
   });
 
-  test("a path on the address fails before the token exists", async () => {
+  test("a path on the address fails before the token exists or any request", async () => {
+    const fetched = publishSignalingServer({});
     const dir = scratch();
     const options = optionsIn(dir);
     await expect(
@@ -172,15 +156,42 @@ describe("alcove invite with a web app address", () => {
       }),
     ).rejects.toThrow(WEB_APP_ADDRESS_REFUSED);
     expect(fs.existsSync(options.keyFile)).toBe(false);
+    expect(fetched).toEqual([]);
   });
 
-  test("the invitation and the written configuration name the resolved server, and the offline form reuses it", async () => {
+  test("an app that publishes no server fails before the token exists", async () => {
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response("<!doctype html>", { status: 200 })),
+    );
+    const dir = scratch();
+    const options = optionsIn(dir);
+    await expect(
+      validateInvite({
+        resolved: {
+          mode: "online",
+          url: new URL("https://app.example.org/"),
+          input: writeInput(dir),
+        },
+        options,
+        acceptTimeout: 900,
+        log: silentLog("invite-web-app-unpublished"),
+      }),
+    ).rejects.toThrow(
+      "https://app.example.org does not publish the address of its coordination server",
+    );
+    expect(fs.existsSync(options.keyFile)).toBe(false);
+  });
+
+  test("the invitation and the written configuration name the published server, and the offline form reuses it", async () => {
+    const fetched = publishSignalingServer({
+      signaling_server: "wss://signal.example.org:8443/api/",
+    });
     const dir = scratch();
     const options = optionsIn(dir);
     const ready = await validateInvite({
       resolved: {
         mode: "online",
-        url: new URL("https://app.example.org:8443/"),
+        url: new URL("https://app.example.org/"),
         input: writeInput(dir),
       },
       options,
@@ -188,10 +199,13 @@ describe("alcove invite with a web app address", () => {
       log: silentLog("invite-web-app-online"),
     });
     if (ready.mode !== "online") throw new Error("expected online mode");
+    expect(fetched).toEqual(["https://app.example.org/alcove.json"]);
+    // The accept link is built from the address the operator gave.
+    expect(ready.url.href).toBe("https://app.example.org/");
     const onlineToken = await decodeInvitation(ready.invitation);
     const endpoint = {
       channel: "webrtc",
-      host: "app.example.org",
+      host: "signal.example.org",
       port: 8443,
       path: "/api/",
     };
@@ -206,7 +220,7 @@ describe("alcove invite with a web app address", () => {
     expect(written.connection).toEqual({
       channel: "webrtc",
       role: "inviter",
-      server: { host: "app.example.org", port: 8443, path: "/api/" },
+      server: { host: "signal.example.org", port: 8443, path: "/api/" },
     });
 
     const offline = await validateInvite({

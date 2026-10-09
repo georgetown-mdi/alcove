@@ -506,8 +506,8 @@ export class TransportOperationStalledError extends UsageError {
  * (docs/spec/CLI_EVENTS.md, The internal-fault code).
  */
 export class InternalConsistencyError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "InternalConsistencyError";
   }
 }
