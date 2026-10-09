@@ -797,7 +797,7 @@ test("both spellings of one key are refused, naming each as the file writes it",
   // The camelize pre-pass reads both as one name and keeps one of the two, which
   // the document-against-result comparison cannot see is missing. On a
   // fail-closed record the surviving value would narrow an enforcement the
-  // operator wrote (docs/spec/EXCHANGE_FILE.md, "The records that must
+  // operator wrote (docs/spec/EXCHANGE_FILE.md, "The record that must
   // survive").
   const result = safeParseExchangeSpec({
     ...minimalSpec,

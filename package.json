@@ -30,6 +30,7 @@
     "check:expiry-dates": "node scripts/check-expiry-dates.mjs",
     "check:rule-ledgers": "node scripts/check-rule-ledgers.mjs",
     "check:rule-citations": "node scripts/check-rule-citations.mjs",
+    "check:spec-citations": "node scripts/check-spec-citations.mjs",
     "check:egress-claims": "node scripts/check-egress-claims.mjs",
     "check:workflow-agent-models": "node scripts/check-workflow-agent-models.mjs",
     "check:workflow-args-resolve": "node scripts/check-workflow-args-resolve.mjs",

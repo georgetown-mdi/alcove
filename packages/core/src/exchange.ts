@@ -914,9 +914,9 @@ export interface ExchangeResult {
    *
    * Presence follows this party's OWN entitlement, not the both-entitled gate
    * the record's result size takes: a one-sided run's receiver holds a count
-   * its own record omits (docs/spec/EXCHANGE_RECORD.md, Count-only records).
-   * The sender's copy, when present, is the receiver's report, not a figure it
-   * computed itself (docs/spec/PROTOCOL.md, PSI-C).
+   * its own record omits (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c)
+   * records). The sender's copy, when present, is the receiver's report, not a
+   * figure it computed itself (docs/spec/PROTOCOL.md, PSI-C).
    */
   intersectionCount: number | undefined;
   /**
@@ -1797,7 +1797,7 @@ export async function runExchange(
   // A count-only run has no association table to attach payload values to, and
   // its terms declare no payload column in either direction, so it exchanges
   // the empty message -- committed explicitly as empty, never omitted
-  // (docs/spec/EXCHANGE_RECORD.md, Count-only records).
+  // (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records).
   const localPayload: PayloadWireMessage =
     partnerTerms.output.expectsOutput && associationTable !== undefined
       ? preparePayload(prepared.rawRows, prepared.metadata, associationTable)
@@ -1837,7 +1837,7 @@ export async function runExchange(
   // pairing to commit to, whatever its entitlement -- and that absence is
   // normative rather than incidental (the commitment's presence is what marks a
   // party as having received the matched pairing). See
-  // docs/spec/EXCHANGE_RECORD.md, Count-only records.
+  // docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records.
   const attestedResultSize = countOnly
     ? intersectionCount
     : associationTable === undefined

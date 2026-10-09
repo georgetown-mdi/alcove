@@ -3,8 +3,8 @@ import { describe, expect, test } from "vitest";
 // The count-only run driven end to end over a real message pipe and a real PSI
 // library, against the shipped build rather than a forced setting. Every property
 // asserted here is a normative row of docs/spec/PROTOCOL.md (PSI-C) or of
-// docs/spec/EXCHANGE_RECORD.md (Count-only records), and the `psi` runs beside them
-// hold the comparison the count-only claim is stated against.
+// docs/spec/EXCHANGE_RECORD.md (Count-only (psi-c) records), and the `psi` runs
+// beside them hold the comparison the count-only claim is stated against.
 
 import PSI from "@openmined/psi.js";
 
@@ -533,8 +533,8 @@ test("a count-only exchange whose input metadata would transmit a column is refu
 test("a count-only run refuses an inbound payload column from a non-conforming partner", async () => {
   // docs/spec/PROTOCOL.md (PSI-C, Refusals) refuses payload in either
   // direction; the record's payload commitments are fixed present-and-empty
-  // (docs/spec/EXCHANGE_RECORD.md, Count-only records) regardless of what a
-  // partner transmits. The outbound leg is closed structurally
+  // (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records) regardless of
+  // what a partner transmits. The outbound leg is closed structurally
   // (associationTable stays undefined under countOnly); this pins the inbound
   // leg through the run's refusal of any payload for a party receiving none.
   const [connInitiator, connResponder] = createMessagePipe();

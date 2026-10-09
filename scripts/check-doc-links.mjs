@@ -42,7 +42,7 @@ function listMarkdown(root) {
 // each remaining whitespace character into a hyphen without collapsing runs
 // (so "ssh2 / ssh2" -> "ssh2--ssh2"). Inline links and code spans in a heading
 // are reduced to their text first.
-function slugify(text) {
+export function slugify(text) {
   return text
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
     .toLowerCase()
@@ -55,27 +55,33 @@ function slugify(text) {
 // path is named the way a reader would type it.
 const relativeToCwd = (absPath) => relative(process.cwd(), absPath) || absPath;
 
-// Map of file path -> Set of available anchor slugs (with GitHub's -1/-2
-// disambiguation suffixes for repeated headings).
+/**
+ * The anchor slugs the headings of a Markdown `source` take, with GitHub's
+ * -1/-2 disambiguation suffixes for repeated headings. `file` names the source
+ * in a fence error.
+ */
+export function headingAnchors(source, file) {
+  const anchors = new Set();
+  const counts = new Map();
+  for (const line of stripFences(source, file).split("\n")) {
+    const m = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (!m) continue;
+    const base = slugify(m[2]);
+    const n = counts.get(base) ?? 0;
+    counts.set(base, n + 1);
+    anchors.add(n === 0 ? base : `${base}-${n}`);
+  }
+  return anchors;
+}
+
+// Map of file path -> Set of available anchor slugs.
 const anchorCache = new Map();
 function anchorsFor(absPath) {
   if (anchorCache.has(absPath)) return anchorCache.get(absPath);
-  const anchors = new Set();
-  if (existsSync(absPath) && statSync(absPath).isFile()) {
-    const lines = stripFences(
-      readFileSync(absPath, "utf8"),
-      relativeToCwd(absPath),
-    ).split("\n");
-    const counts = new Map();
-    for (const line of lines) {
-      const m = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
-      if (!m) continue;
-      const base = slugify(m[2]);
-      const n = counts.get(base) ?? 0;
-      counts.set(base, n + 1);
-      anchors.add(n === 0 ? base : `${base}-${n}`);
-    }
-  }
+  const anchors =
+    existsSync(absPath) && statSync(absPath).isFile()
+      ? headingAnchors(readFileSync(absPath, "utf8"), relativeToCwd(absPath))
+      : new Set();
   anchorCache.set(absPath, anchors);
   return anchors;
 }
