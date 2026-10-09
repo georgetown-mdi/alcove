@@ -12,10 +12,10 @@
 #
 #   install.sh
 #
-# It installs units and configuration only. The broker's workspace under
-# /opt/alcove-broker/src (Node, the clone, the scoped install, core's built
-# entry point) is a precondition, set up as README.md, Install, describes; this
-# script refuses to run without it.
+# It installs units, configuration and the broker's system user only. The
+# broker's workspace under /opt/alcove-broker/src (Node, the clone, the scoped
+# install, core's built entry point) is a precondition, set up as README.md,
+# Install, describes; this script refuses to run without it.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -27,6 +27,8 @@ SRC="$ROOT/opt/alcove-broker/src"
 UNIT_DIR="$ROOT/etc/systemd/system"
 ENV_FILE="$ETC/broker.env"
 PORT=8443
+# alcove-broker.service names it in User= and Group=.
+BROKER_USER=alcove-broker
 
 [ "$#" -eq 0 ] || { printf 'usage: install.sh\n' >&2; exit 2; }
 
@@ -62,6 +64,16 @@ ACME_ENV="${ALCOVE_BROKER_ACME_ENV:-/etc/alcove-relay/acme.env}"
   || die "alcove-broker-tls.service runs /usr/bin/docker, which is not docker on this host"
 command -v lego >/dev/null 2>&1 || die "lego is not installed; see Certificates in infra/relay/README.md"
 command -v curl >/dev/null 2>&1 || die "curl is not installed; the end-of-install check needs it"
+if getent passwd "$BROKER_USER" >/dev/null; then
+  if ! getent group "$BROKER_USER" >/dev/null; then
+    die "the user $BROKER_USER exists but the group $BROKER_USER does not, and alcove-broker.service runs as both. Create the group and make it the user's primary group, or remove the user, and run again"
+  fi
+else
+  if getent group "$BROKER_USER" >/dev/null; then
+    die "the group $BROKER_USER exists but the user $BROKER_USER does not, so useradd cannot create both. Remove the group, or create the user in it, and run again"
+  fi
+  command -v useradd >/dev/null 2>&1 || die "useradd is not installed; it creates the user $BROKER_USER, which alcove-broker.service runs as"
+fi
 # The front's image, by digest: Dockerfile's FROM line is its one home.
 IMAGE="$(sed -n 's/^FROM //p' "$HERE/Dockerfile")"
 [[ "$IMAGE" =~ ^docker\.io/library/nginx:[^@[:space:]]+@sha256:[0-9a-f]{64}$ ]] \
@@ -132,6 +144,10 @@ docker run --rm --network host --read-only --tmpfs /tmp \
 # --- the target state -------------------------------------------------------------
 # A file is written only when its content changes: its mtime, stamped after
 # it goes live, is what makes the unit that reads it count as stale.
+if ! getent passwd "$BROKER_USER" >/dev/null; then
+  log "creating the system user $BROKER_USER, which the broker runs as"
+  useradd --system --user-group --no-create-home --shell /usr/sbin/nologin "$BROKER_USER"
+fi
 printf 'ALCOVE_BROKER_FRONT_IMAGE=%s\n' "$IMAGE" > "$IMAGE_ENV"
 put_file "$HERE/alcove-broker.service" "$UNIT_DIR/alcove-broker.service" 644
 put_file "$HERE/alcove-broker-tls.service" "$UNIT_DIR/alcove-broker-tls.service" 644
