@@ -10,6 +10,7 @@ import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import type {
   InProcessPsiEngineOptions,
   PsiEngine,
+  PsiEngineMode,
 } from "../../src/psi/psiEngine";
 import {
   isPsiLibraryFailure,
@@ -30,6 +31,7 @@ import { serializeSetup } from "../../src/psi/psiChunks";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 import { fanOutFreeBounds } from "../utils/singlePassBounds";
+import { repeatedSetupElement } from "../utils/psiChunkIdentity";
 
 const psiLibrary = await PSI();
 const nativeLibrary = await loadNativeAddonOrSkip();
@@ -45,11 +47,12 @@ function inProcessWorkerEngine(
   id: string,
   options: InProcessPsiEngineOptions = {},
   library: PSILibrary = psiLibrary,
+  mode: PsiEngineMode = "identifier-revealing",
 ): WorkerPsiEngine {
   let deliver: (response: PsiWorkerResponse) => void = () => {};
   const dispatch = servePsiWorker(
     library,
-    { role, id, mode: "identifier-revealing" },
+    { role, id, mode },
     (response) => deliver(structuredClone(response)),
     options,
   );
@@ -350,6 +353,38 @@ describe.each([
       engine.dispose();
     }
   });
+
+  test.for(["identifier-revealing", "count-only"] as const)(
+    "a setup repeating an element in %s mode, refused as it arrives, stays the partner's refusal after the worker round trip",
+    async (mode, ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const engine = inProcessWorkerEngine(
+        "joiner",
+        "receiver",
+        {},
+        library,
+        mode,
+      );
+      try {
+        const setup = repeatedSetupElement({
+          library,
+          serverValues: ["a", "b", "c", "d"],
+          repeatAt: 2,
+          revealsIdentifiers: mode === "identifier-revealing",
+        });
+        const refused = await rejection(engine.receiveServerSetup(setup));
+        expect(refused).toBeInstanceOf(PartnerProtocolRefusalError);
+        expect(refused?.message).toBe(named.ascending);
+        expect(classifyFailure(refused)).toBe("partner-refused");
+        expect(isPsiLibraryFailure(refused)).toBe(false);
+      } finally {
+        engine.dispose();
+      }
+    },
+  );
 
   test("a setup that is not a Raw data structure stays the partner's refusal after the worker round trip", async (ctx) => {
     if (!library) {

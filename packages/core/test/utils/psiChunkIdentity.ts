@@ -275,6 +275,38 @@ export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
 }
 
 /**
+ * A serialized partner setup over `serverValues` whose element at `repeatAt`
+ * repeats the element before it.
+ */
+export function repeatedSetupElement(params: {
+  library: PSILibrary;
+  serverValues: ReadonlyArray<string>;
+  repeatAt: number;
+  revealsIdentifiers: boolean;
+}): Uint8Array {
+  const { library, serverValues, repeatAt, revealsIdentifiers } = params;
+  const server = library.server!.createFromKey(SERVER_KEY, revealsIdentifiers);
+  try {
+    const elements = [
+      ...server
+        .createSetupMessage(
+          FALSE_POSITIVE_RATE,
+          CLIENT_INPUT_COUNT,
+          serverValues,
+          library.dataStructure.Raw,
+          [],
+        )
+        .getRaw()!
+        .getEncryptedElementsList_asU8(),
+    ];
+    elements[repeatAt] = elements[repeatAt - 1]!;
+    return serializeSetup(library, elements);
+  } finally {
+    server.delete();
+  }
+}
+
+/**
  * Asserts that a partner setup repeating one element, at `repeatAt` and the
  * element before it, is refused in either mode as the setup arrives, rather
  * than counted or paired twice: a protocol error with the named diagnosis,
@@ -287,31 +319,18 @@ export async function expectRepeatedSetupElementRefused(params: {
 }): Promise<void> {
   const { library, serverValues, repeatAt } = params;
   for (const revealsIdentifiers of [true, false]) {
-    const server = library.server!.createFromKey(
-      SERVER_KEY,
-      revealsIdentifiers,
-    );
     const joiner = engine(library, "joiner", revealsIdentifiers, undefined);
     try {
-      const elements = [
-        ...server
-          .createSetupMessage(
-            FALSE_POSITIVE_RATE,
-            CLIENT_INPUT_COUNT,
-            serverValues,
-            library.dataStructure.Raw,
-            [],
-          )
-          .getRaw()!
-          .getEncryptedElementsList_asU8(),
-      ];
-      elements[repeatAt] = elements[repeatAt - 1]!;
-      const caught = await joiner
-        .receiveServerSetup(serializeSetup(library, elements))
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
+      const setup = repeatedSetupElement({
+        library,
+        serverValues,
+        repeatAt,
+        revealsIdentifiers,
+      });
+      const caught = await joiner.receiveServerSetup(setup).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
       expect(caught).toBeInstanceOf(ProtocolRefusalError);
       expect((caught as Error).message).toBe(
         "joiner protocol error: PSI server setup is not in strictly ascending element order",
@@ -320,7 +339,6 @@ export async function expectRepeatedSetupElementRefused(params: {
       expect(isPsiLibraryFailure(caught)).toBe(false);
     } finally {
       joiner.dispose();
-      server.delete();
     }
   }
 }
