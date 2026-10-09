@@ -293,8 +293,8 @@ filter_admits() {
 # admits nothing at all.
 positive_probes=0
 
-# For a host whose ORIGIN need not answer at `/` -- Playwright's CDN serves only
-# under its release paths -- the assertion is "the proxy did not refuse it",
+# For a host whose ORIGIN need not answer at `/` -- Playwright's hosts serve only
+# their own version and metadata paths -- the assertion is "the proxy did not refuse it",
 # which is the half this configuration owns. A proxy 5xx from an origin that
 # does not answer is a pass; only a 403 from tinyproxy is a failure.
 probe_admitted() {

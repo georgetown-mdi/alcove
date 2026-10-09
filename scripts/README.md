@@ -5,7 +5,8 @@ Executables CI and contributors run against this repository. Most are the
 [`run-checks.mjs`](run-checks.mjs), which also states what keeps each excluded
 check off it. Beside them: the doc-link checker, the `npm run dev` launcher, the
 mutation run, the release and provenance verifiers, the dependency-drift check
-`.github/actions/setup` runs after a cache restore, the OS-layer attribution
+`.github/actions/setup` runs after a cache restore, the installed-Chromium check
+the dev container's `post-create.sh` runs, the OS-layer attribution
 generator `image_smoke.yaml` regenerates each image's list beside `NOTICE` from,
 the container-pair wait its bind-mount smoke step runs the exchange under,
 [`required-suites.mjs`](required-suites.mjs), which prints the builds, test
