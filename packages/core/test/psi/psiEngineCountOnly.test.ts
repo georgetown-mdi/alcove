@@ -112,9 +112,9 @@ async function runCountOnlyRound(
 }
 
 const countOnlyRefusesAssociationTable =
-  /computeAssociationTable requires a identifier-revealing PSI engine; this one is count-only/;
+  /computeAssociationTable needs a PSI engine that is identifier-revealing; this one is count-only/;
 const revealingRefusesCardinality =
-  /computeIntersectionCardinality requires a count-only PSI engine; this one is identifier-revealing/;
+  /computeIntersectionCardinality needs a PSI engine that is count-only; this one is identifier-revealing/;
 
 const mismatchedOrientations: Array<[PsiEngineMode, PsiEngineMode]> = [
   ["count-only", "identifier-revealing"],
@@ -591,10 +591,7 @@ describe.each(backendPairs)("count-only backend parity: $name", (pair) => {
       settled(() => countOnlyReceiver.computeAssociationTable(response)),
     ).rejects.toThrow(countOnlyRefusesAssociationTable);
 
-    // The refusal is pinned to the reveal flag the request holds disagreeing
-    // with the one this sender's key was generated under, on either backend:
-    // the flag is read off the request and the condition named before the
-    // library is asked.
+    // The refusal precedes the library call, so it reads the same on either backend.
     const revealingRequest =
       await revealingReceiver.createClientRequest(receiverValues);
     await expect(

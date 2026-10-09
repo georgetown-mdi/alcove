@@ -628,7 +628,7 @@ export class InProcessPsiEngine implements PsiEngine {
       throw new Error(`${this.id}: ${operation} requires the client role`);
     if (this.revealsIdentifiers !== modeRevealsIdentifiers(requiredMode))
       throw new Error(
-        `${this.id}: ${operation} requires a ${requiredMode} PSI engine; this one is ${modeName(this.revealsIdentifiers)}`,
+        `${this.id}: ${operation} needs a PSI engine that is ${requiredMode}; this one is ${modeName(this.revealsIdentifiers)}`,
       );
     const match = this.heldSetup;
     if (match === undefined)
