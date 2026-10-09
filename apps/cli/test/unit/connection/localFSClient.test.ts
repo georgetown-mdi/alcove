@@ -76,8 +76,6 @@ test("connect resolves for an accessible directory", async () => {
   await expect(client.connect({ path: dir })).resolves.toBeUndefined();
 });
 
-// FileSyncConnection.open() connects a split-mode filedrop client twice, once
-// per directory, on one client.
 test("a second connect on the same client, to another directory, leaves both usable", async () => {
   const inbound = path.join(dir, "inbound");
   const outbound = path.join(dir, "outbound");
