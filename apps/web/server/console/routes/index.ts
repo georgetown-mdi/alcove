@@ -8,6 +8,7 @@ import {
   JobSigningIdentityExposedError,
   MountedSigningPathsUnconvertedError,
   SftpUnavailableError,
+  SignalingServerUnavailableError,
 } from "@jobs/jobManager";
 import {
   MAX_JOB_BODY_BYTES,
@@ -40,7 +41,7 @@ import { defineJobRoute } from "../jobRoute";
  *
  * Feature-gated. The request body is a JSON {@link JobCreateIntent}, discriminated
  * on `mode` (a missing `mode` defaults to `exchange` for the merged client), then
- * on `channel` (filedrop | sftp): an `exchange` intent contains validated linkage
+ * on `channel` (filedrop | sftp, and webrtc on an exchange): an `exchange` intent contains validated linkage
  * terms, a shared secret, and exactly one input source; a `zeroSetup` intent
  * contains neither terms nor secret (both parties infer terms from their files),
  * only an input source and bounded tuning. The server generates the job id, and for
@@ -60,7 +61,8 @@ import { defineJobRoute } from "../jobRoute";
  * an unparseable one a 400) before schema validation runs.
  *
  * The unavailable rejection is EMPTY-bodied: an sftp intent with no connection
- * authored, a filedrop intent with no rendezvous directory, a filedrop intent
+ * authored, a webrtc intent with no coordination server authored, a filedrop
+ * intent with no rendezvous directory, a filedrop intent
  * a split-provisioned console cannot run without retain mode, and a signing
  * identity location naming nothing in the secrets mount are each 400. The busy
  * rejection is a 409 containing only the occupying exchange's id (nothing else about
@@ -159,14 +161,15 @@ export const route = defineJobRoute({
         // A mounted input that names no regular file, a filedrop intent with no
         // rendezvous directory configured, a filedrop intent on a
         // split-provisioned console without retain mode, an sftp intent with
-        // no connection authored, or a signing identity location that names
-        // nothing in the secrets mount is a 400 (the manager left no workdir
-        // behind).
+        // no connection authored, a webrtc intent with no coordination server
+        // authored, or a signing identity location that names nothing in the
+        // secrets mount is a 400 (the manager left no workdir behind).
         if (
           error instanceof JobInputNotFoundError ||
           error instanceof JobRendezvousUnavailableError ||
           error instanceof JobRendezvousRetainRequiredError ||
           error instanceof SftpUnavailableError ||
+          error instanceof SignalingServerUnavailableError ||
           error instanceof SigningIdentityLocationError
         )
           return jobEmptyResponse(400);

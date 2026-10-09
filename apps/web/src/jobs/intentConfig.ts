@@ -22,7 +22,9 @@ import type {
   JobFiledropExchangeIntent,
   JobSftpExchangeIntent,
   JobSigningPaths,
+  JobWebrtcExchangeIntent,
 } from "@jobContract/intentSchemas";
+import type { AuthoredSignalingServer } from "./signalingServer";
 
 /**
  * Compose the CLI config document (snake_case YAML the CLI loads verbatim) from a
@@ -175,6 +177,69 @@ export function composeSftpConfigSpec(
   signingPaths?: JobSigningPaths,
 ): ExchangeSpec {
   const options = intentOptionsToFileSyncOptions(intent.options);
+  return assembledConfigSpec(
+    intent,
+    {
+      channel: "sftp",
+      server: serverEntry,
+      ...(options !== undefined ? { options } : {}),
+    },
+    signingPaths,
+  );
+}
+
+/**
+ * Compose the validated exchange spec a webrtc job runs under: the connection
+ * dials the operator-authored coordination server with `role` set from the
+ * intent's `side`, and states no STUN, TURN or relay setting, so the run takes
+ * a direct connection or none. Every other block is composed as on the sftp
+ * path.
+ */
+export function composeWebrtcConfigSpec(
+  intent: JobWebrtcExchangeIntent,
+  signalingServer: AuthoredSignalingServer,
+  signingPaths?: JobSigningPaths,
+): ExchangeSpec {
+  const options = intentOptionsToFileSyncOptions(intent.options);
+  const { host, port, path, secure } = signalingServer;
+  return assembledConfigSpec(
+    intent,
+    {
+      channel: "webrtc",
+      server: {
+        host,
+        ...(port !== undefined ? { port } : {}),
+        path,
+        ...(secure ? {} : { secure: false }),
+      },
+      role: intent.side,
+      ...(options !== undefined ? { options } : {}),
+    },
+    signingPaths,
+  );
+}
+
+/** The webrtc config document: {@link composeWebrtcConfigSpec}'s spec,
+ * written as {@link composeSftpConfigDocument} writes the sftp one. */
+export function composeWebrtcConfigDocument(
+  intent: JobWebrtcExchangeIntent,
+  signalingServer: AuthoredSignalingServer,
+  signingPaths?: JobSigningPaths,
+): string {
+  return stringifyYaml(
+    snakeizeKeys(
+      composeWebrtcConfigSpec(intent, signalingServer, signingPaths),
+    ),
+  );
+}
+
+/** The spec `connection` and the intent's own blocks compose, validated
+ * through core's {@link ExchangeSpecSchema}. */
+function assembledConfigSpec(
+  intent: JobExchangeIntent,
+  connection: ExchangeSpec["connection"],
+  signingPaths: JobSigningPaths | undefined,
+): ExchangeSpec {
   const {
     metadata,
     standardization,
@@ -186,11 +251,7 @@ export function composeSftpConfigSpec(
   const signing = composedSigning(intent, signingPaths);
   const authentication = composedAuthentication(intent);
   const assembled: ExchangeSpec = {
-    connection: {
-      channel: "sftp",
-      server: serverEntry,
-      ...(options !== undefined ? { options } : {}),
-    },
+    connection,
     linkageTerms: intent.linkageTerms,
     ...(metadata !== undefined ? { metadata } : {}),
     ...(standardization !== undefined ? { standardization } : {}),

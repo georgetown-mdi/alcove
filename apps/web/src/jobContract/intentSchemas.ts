@@ -201,6 +201,17 @@ const jobSftpExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
   .strict()
   .superRefine(checkAgainstCoreFileSyncOptions);
 
+// A webrtc run polls no folder and holds no file-sync session, so only the
+// timeouts and reconnect bound every channel shares apply.
+const jobWebrtcExchangeOptionsSchema: z.ZodType<JobExchangeOptions> = z
+  .object({
+    peerTimeoutMs: jobExchangeOptionsFields.peerTimeoutMs,
+    inactivityTimeoutMs: configuredOnlyOptionsFields.inactivityTimeoutMs,
+    serverConnectTimeoutMs: jobExchangeOptionsFields.serverConnectTimeoutMs,
+    maxReconnectAttempts: jobExchangeOptionsFields.maxReconnectAttempts,
+  })
+  .strict();
+
 /**
  * A zero-setup duration passed as a CLI duration flag: a whole number of
  * seconds at most {@link MAX_TIMEOUT_SECONDS}, refused rather than rounded,
@@ -445,13 +456,25 @@ export interface JobSftpExchangeIntent extends JobExchangeIntentBase {
 }
 
 /**
+ * A webrtc exchange intent: the coordination server is the one the operator
+ * authored on the server, and `side` is required, since it is the run's
+ * `role`. A run of an opened configuration is not representable: an opened
+ * webrtc configuration is edited and saved back, not run.
+ */
+export interface JobWebrtcExchangeIntent extends JobExchangeIntentBase {
+  channel: "webrtc";
+  side: JobExchangeSide;
+  mountedConfigurationOpened?: false;
+}
+
+/**
  * The intent a client submits to create an exchange job, discriminated on
  * `channel`: the only route from the client into a CLI invocation, and closed
  * to injection by construction. Contract: docs/spec/SERVER_JOB_API.md, "The
  * job-create intent".
  */
 export type JobExchangeIntent =
-  JobFiledropExchangeIntent | JobSftpExchangeIntent;
+  JobFiledropExchangeIntent | JobSftpExchangeIntent | JobWebrtcExchangeIntent;
 
 /**
  * The CLI's `--linkage-strategy` value: `cascade` (the default, one PSI round
@@ -501,17 +524,24 @@ export type JobZeroSetupIntent =
 /** The union the create route accepts, discriminated on `mode`, then `channel`. */
 export type JobCreateIntent = JobExchangeIntent | JobZeroSetupIntent;
 
-/** The channel a console job conducts, which every job intent discriminates on. */
-export type JobChannel = JobCreateIntent["channel"];
+/**
+ * A channel the console runs a configuration opened off the mount over. A
+ * webrtc job is created only from the console's own authoring, so an opened
+ * webrtc configuration is edited and saved back rather than run.
+ */
+export type JobChannel = Extract<
+  JobCreateIntent["channel"],
+  "sftp" | "filedrop"
+>;
 
-/** The channels a console job conducts, as the configuration file spells them. */
+/** The {@link JobChannel} values, as the configuration file spells them. */
 const JOB_CHANNELS: ReadonlySet<string> = new Set<JobChannel>([
   "sftp",
   "filedrop",
 ]);
 
-/** Whether the console conducts an exchange over `channel`; an allowlist, so a
- * channel the schema adds later is not run until named here. */
+/** Whether the console runs an opened configuration over `channel`; an
+ * allowlist, so a channel the schema adds later is not run until named here. */
 export function isJobChannel(channel: string): channel is JobChannel {
   return JOB_CHANNELS.has(channel);
 }
@@ -709,9 +739,21 @@ const jobSftpExchangeIntentSchema = z
   })
   .strict();
 
+const jobWebrtcExchangeIntentSchema = z
+  .object({
+    mode: z.literal("exchange"),
+    channel: z.literal("webrtc"),
+    ...jobExchangeIntentCommonFields,
+    side: z.enum(["inviter", "acceptor"]),
+    mountedConfigurationOpened: z.literal(false).optional(),
+    options: jobWebrtcExchangeOptionsSchema.optional(),
+  })
+  .strict();
+
 const jobExchangeChannelUnion = z.discriminatedUnion("channel", [
   jobFiledropExchangeIntentSchema,
   jobSftpExchangeIntentSchema,
+  jobWebrtcExchangeIntentSchema,
 ]);
 
 /** Whether exactly one of `inputCsv` and `inputFile` is present. */

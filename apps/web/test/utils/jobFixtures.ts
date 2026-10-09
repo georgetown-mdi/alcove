@@ -14,6 +14,7 @@ import type {
   JobFiledropExchangeIntent,
   JobInputFileReference,
   JobSftpExchangeIntent,
+  JobWebrtcExchangeIntent,
   JobZeroSetupFiledropIntent,
   JobZeroSetupSftpIntent,
 } from "@jobContract/intentSchemas";
@@ -98,6 +99,20 @@ export function validSftpIntent(
 ): JobSftpExchangeIntent {
   return {
     channel: "sftp",
+    linkageTerms: validLinkageTerms(),
+    sharedSecret: VALID_SHARED_SECRET,
+    inputCsv: "ssn,last_name,date_of_birth\n111223333,smith,1990-01-01\n",
+    ...overrides,
+  };
+}
+
+/** A valid webrtc job intent (no connection field); overrides merge over it. */
+export function validWebrtcIntent(
+  overrides: Partial<JobWebrtcExchangeIntent> = {},
+): JobWebrtcExchangeIntent {
+  return {
+    channel: "webrtc",
+    side: "inviter",
     linkageTerms: validLinkageTerms(),
     sharedSecret: VALID_SHARED_SECRET,
     inputCsv: "ssn,last_name,date_of_birth\n111223333,smith,1990-01-01\n",

@@ -36,9 +36,11 @@ import {
   composeConfigDocument,
   composeKeyFileDocument,
   composeSftpConfigDocument,
+  composeWebrtcConfigDocument,
 } from "./intentConfig";
 import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
 import { readJobFolderContents } from "./jobFolder";
+import { resolveAuthoredSignalingServer } from "./signalingServer";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -115,6 +117,7 @@ import type {
   LoadedConfigurationResponse,
   OpenedMountedConfiguration,
 } from "./configLoad";
+import type { AuthoredSignalingServer } from "./signalingServer";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
@@ -122,6 +125,7 @@ import type { RelayEvent } from "@jobContract/relayEvent";
 import type { RendezvousLeg } from "./jobRendezvous";
 import type { RunArtifactPaths } from "./runArtifacts";
 import type { SftpProbeResult } from "./sftpProbe";
+import type { SignalingServerProjection } from "@jobContract/signalingServer";
 import type { SigningFingerprintResult } from "./signingIdentity";
 
 /**
@@ -133,6 +137,30 @@ export class SftpUnavailableError extends Error {
   constructor() {
     super("an sftp intent arrived but no connection is authored");
     this.name = "SftpUnavailableError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} when a webrtc intent arrives but no
+ * coordination server is authored. The route maps it to a 400.
+ */
+export class SignalingServerUnavailableError extends Error {
+  constructor() {
+    super("a webrtc intent arrived but no coordination server is authored");
+    this.name = "SignalingServerUnavailableError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.authorSignalingServer} when another `PUT` or a
+ * `DELETE` of the coordination server arrived while this one read the web
+ * app's published file: the later request decides the setting. The route
+ * maps it to a 409.
+ */
+export class SignalingServerAuthoringSupersededError extends Error {
+  constructor() {
+    super("a later request replaced or cleared the coordination server");
+    this.name = "SignalingServerAuthoringSupersededError";
   }
 }
 
@@ -613,6 +641,20 @@ export class JobManager {
    */
   private authoredMaterializedCredentialPath: string | undefined;
   /**
+   * The coordination server a webrtc job dials, held in memory for the single
+   * exchange as {@link authoredSftpServer} is. Set by
+   * {@link authorSignalingServer}, cleared by
+   * {@link clearAuthoredSignalingServer} and when the active exchange is
+   * deleted.
+   */
+  private authoredSignalingServer: AuthoredSignalingServer | undefined;
+  /** The advisories {@link authoredSignalingServer} was authored with. */
+  private authoredSignalingWarnings: Array<string> = [];
+  /** Counts authoring and clearing requests, so a `PUT` whose read of a web
+   * app finishes after a later request does not replace that request's
+   * outcome. */
+  private signalingAuthoringGeneration = 0;
+  /**
    * Whether a host-key probe child is running. The probe is single-flight, so a
    * concurrent {@link probeSftpHostKey} is refused with {@link SftpProbeBusyError}.
    * Set synchronously at entry (before any await) so two concurrent calls cannot
@@ -694,6 +736,12 @@ export class JobManager {
         throw new SftpUnavailableError();
       serverEntry = this.authoredSftpServer;
     }
+    let signalingServer: AuthoredSignalingServer | undefined;
+    if (intent.channel === "webrtc") {
+      if (this.authoredSignalingServer === undefined)
+        throw new SignalingServerUnavailableError();
+      signalingServer = this.authoredSignalingServer;
+    }
     if (intent.channel === "filedrop") {
       if (
         this.jobRendezvousDir === undefined ||
@@ -772,6 +820,7 @@ export class JobManager {
         id,
         created.workdir,
         serverEntry,
+        signalingServer,
         mountedInputPath,
         identityPath,
         mountedKeyPath,
@@ -958,6 +1007,52 @@ export class JobManager {
     return this.sftpProjection()!;
   }
 
+  /**
+   * Validate and hold the coordination server a webrtc job dials, via
+   * {@link resolveAuthoredSignalingServer}: a web app's address
+   * is resolved through the server it publishes. A refused body, or one a
+   * later request superseded while the web app was read, leaves the setting
+   * as it was. Returns the now-effective projection.
+   *
+   * @throws {SignalingServerAuthoringSupersededError} when a later `PUT` or
+   *   `DELETE` arrived during the read.
+   */
+  async authorSignalingServer(
+    rawBody: unknown,
+  ): Promise<SignalingServerProjection> {
+    const generation = ++this.signalingAuthoringGeneration;
+    const { server, warnings } = await resolveAuthoredSignalingServer(rawBody);
+    if (generation !== this.signalingAuthoringGeneration)
+      throw new SignalingServerAuthoringSupersededError();
+    this.authoredSignalingServer = server;
+    this.authoredSignalingWarnings = warnings;
+    return this.signalingServerProjection()!;
+  }
+
+  /** Forget the authored coordination server. Idempotent. */
+  clearAuthoredSignalingServer(): void {
+    this.signalingAuthoringGeneration++;
+    this.authoredSignalingServer = undefined;
+    this.authoredSignalingWarnings = [];
+  }
+
+  /** The projection of the authored coordination server for `GET
+   * /api/jobs/webrtc`, or null when none is authored; mapped field by field. */
+  signalingServerProjection(): SignalingServerProjection | null {
+    const server = this.authoredSignalingServer;
+    if (server === undefined) return null;
+    return {
+      host: server.host,
+      ...(server.port !== undefined ? { port: server.port } : {}),
+      path: server.path,
+      secure: server.secure,
+      ...(server.webAppOrigin !== undefined
+        ? { webAppOrigin: server.webAppOrigin }
+        : {}),
+      warnings: this.authoredSignalingWarnings,
+    };
+  }
+
   /** Forget the in-app authored SFTP connection and its warnings, deleting any
    * materialized pasted credential. Idempotent. */
   clearAuthoredSftpServer(): void {
@@ -1122,6 +1217,7 @@ export class JobManager {
     id: string,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
+    signalingServer: AuthoredSignalingServer | undefined,
     mountedInputPath: string | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
@@ -1139,6 +1235,7 @@ export class JobManager {
             intent,
             workdir,
             serverEntry,
+            signalingServer,
             identityPath,
             mountedKeyPath,
           );
@@ -1171,6 +1268,7 @@ export class JobManager {
       buildJobHandoff(intent, serverEntry, {
         credentialPasted: this.authoredMaterializedCredentialPath !== undefined,
         filedropSplit: this.jobRendezvousOutboundDir !== undefined,
+        ...(signalingServer !== undefined ? { signalingServer } : {}),
         keyFileBesideConfiguration: mountedKeyPath !== undefined,
         ...(mountedDocument !== undefined
           ? {
@@ -1287,6 +1385,7 @@ export class JobManager {
     intent: JobExchangeIntent,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
+    signalingServer: AuthoredSignalingServer | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
   ): Promise<{ configPath: string; keyPath: string }> {
@@ -1296,6 +1395,7 @@ export class JobManager {
         this.jobRendezvousDir,
         this.jobRendezvousOutboundDir,
         serverEntry,
+        signalingServer,
         this.signingPathsFor(identityPath),
       ),
     );
@@ -1854,6 +1954,7 @@ export class JobManager {
       this.discardMaterializedCredential();
       this.authoredSftpServer = undefined;
       this.authoredCredentialWarnings = [];
+      this.clearAuthoredSignalingServer();
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);
@@ -2344,21 +2445,30 @@ function liveJobView(record: JobRecord): JobView {
 /**
  * Compose the CLI config document for the intent's channel: filedrop
  * rendezvous in the operator-configured rendezvous mount; sftp rendezvous at
- * the operator-authored connection. Each arm requires the resource `createJob`
- * already resolved, so a missing one here is a caller bug reported as a hard
- * error, not a silent fallback.
+ * the operator-authored connection; webrtc through the operator-authored
+ * coordination server. Each arm requires the resource `createJob` already
+ * resolved, so a missing one here is a caller bug reported as a hard error,
+ * not a silent fallback.
  */
 function composeDocumentByChannel(
   intent: JobExchangeIntent,
   rendezvousDir: string | undefined,
   outboundRendezvousDir: string | undefined,
   serverEntry: JobSftpServerEntry | undefined,
+  signalingServer: AuthoredSignalingServer | undefined,
   signingPaths: JobSigningPaths,
 ): string {
   if (intent.channel === "sftp") {
     if (serverEntry === undefined)
       throw new Error("sftp job reached compose without a resolved server");
     return composeSftpConfigDocument(intent, serverEntry, signingPaths);
+  }
+  if (intent.channel === "webrtc") {
+    if (signalingServer === undefined)
+      throw new Error(
+        "webrtc job reached compose without a coordination server",
+      );
+    return composeWebrtcConfigDocument(intent, signalingServer, signingPaths);
   }
   if (rendezvousDir === undefined)
     throw new Error("filedrop job reached compose without a shared folder");

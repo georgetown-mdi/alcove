@@ -63,7 +63,8 @@ export function parseHandoff(body: unknown): JobHandoff | null {
     template,
   } = body as Record<string, unknown>;
   if (mode !== "exchange" && mode !== "zeroSetup") return null;
-  if (channel !== "sftp" && channel !== "filedrop") return null;
+  if (channel !== "sftp" && channel !== "filedrop" && channel !== "webrtc")
+    return null;
   if (typeof usedKeyFile !== "boolean") return null;
   if (typeof keyFileBesideConfiguration !== "boolean") return null;
   if (typeof credentialPasted !== "boolean") return null;
@@ -188,7 +189,7 @@ export function handoffCaveats(handoff: JobHandoff): Array<string> {
             "but the credential path is a placeholder - set it to the " +
             "credential file on the machine that runs the schedule.",
     );
-  else
+  else if (channel === "filedrop")
     caveats.push(
       pathsAsRead.sharedDirectory
         ? "The shared folder path is the one in the configuration you " +
