@@ -12,8 +12,8 @@ import {
 } from "@exchange/acceptorColumnsModel";
 import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
 import { generateInvitation } from "@psi/invitation";
-import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { inviterServerJobConfig } from "@exchange/useInviterExchange";
+import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 import { prepareAcceptedInvitation } from "@psi/acceptInvitation";
 
 import {
@@ -25,7 +25,7 @@ import {
   readBrowserCsv,
   runBrowserAcceptor,
 } from "./browserPeer";
-import { CLI_PARTY_CSV } from "./legTypes";
+import { CLI_IDENTITY, CLI_PARTY_CSV } from "./legTypes";
 
 import type { ConsoleJobOutcome, ConsoleLegStart } from "./legTypes";
 import type { BrowserOutcome } from "./browserPeer";
@@ -44,8 +44,9 @@ import type { SignalingAddress } from "@psi/transport/signalingAddress";
  * leg's environment prefix, as the CLI leg's do (`liveExchange.test.ts`). The
  * console is reached as its browser reaches it: `PUT /api/jobs/webrtc` with a
  * `ws://` address, then `POST /api/jobs`. The intent is the app's own
- * server-job config passed through its own `intentFor`, carried on the webrtc
- * arm.
+ * server-job config is the app's own, and the harness composes the webrtc
+ * intent from it and checks the result against the console's intent schema;
+ * the app's own webrtc path is not exercised here.
  */
 
 declare module "vitest/internal/browser" {
@@ -61,23 +62,49 @@ declare module "vitest/internal/browser" {
 
 /** The identity the console party declares, which the browser peer reads back
  * off the agreed terms. */
-const CONSOLE_IDENTITY = "Agency A, a@agency-a.example";
+const CONSOLE_IDENTITY = CLI_IDENTITY;
 
 /** The console party's input, inline as the console sends a file its browser
  * read. */
 const CONSOLE_INPUT = { kind: "inline", csv: CLI_PARTY_CSV } as const;
 
-/** The webrtc intent for a server-job config: `intentFor` builds every field
- * but the channel, which it takes from the transport. */
+/** The webrtc intent for a server-job config, composed here from the fields
+ * the webrtc arm carries and parsed by the console's own intent schema, so a
+ * schema change fails this test where it is made. The config's `transport` is
+ * the filedrop or sftp choice the app's config helpers require and is not
+ * read. */
 function webrtcIntent(
   config: ServerJobExchangeDriverConfig,
 ): JobWebrtcExchangeIntent {
-  return {
-    ...intentFor(config),
+  if (config.inputSource.kind !== "inline")
+    throw new Error("the console party's input is inline");
+  const intent = jobExchangeIntentSchema.parse({
     channel: "webrtc",
     side: config.side,
-    mountedConfigurationOpened: false,
-  };
+    linkageTerms: config.linkageTerms,
+    ...(config.sharedSecret !== undefined
+      ? { sharedSecret: config.sharedSecret }
+      : {}),
+    inputCsv: config.inputSource.csv,
+    ...(config.metadata !== undefined ? { metadata: config.metadata } : {}),
+    ...(config.standardization !== undefined
+      ? { standardization: config.standardization }
+      : {}),
+    ...(config.expectedPartnerDeduplicate !== undefined
+      ? { expectedPartnerDeduplicate: config.expectedPartnerDeduplicate }
+      : {}),
+    ...(config.includeOwnColumns !== undefined
+      ? { includeOwnColumns: config.includeOwnColumns }
+      : {}),
+    ...(config.csvDelimiter !== undefined
+      ? { csvDelimiter: config.csvDelimiter }
+      : {}),
+    ...(config.options !== undefined ? { options: config.options } : {}),
+    eventStream: true,
+  });
+  if (intent.channel !== "webrtc")
+    throw new Error("the schema returned a non-webrtc intent");
+  return intent;
 }
 
 /** The authored coordination server as an address an invitation names. */

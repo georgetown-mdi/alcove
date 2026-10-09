@@ -23,6 +23,10 @@ export const LEG_ENVIRONMENT_FAILURE = "live-webrtc leg environment failure:";
  * partner's. */
 export type MatchedPair = [number, number];
 
+/** The identity the CLI party declares, which the browser peer reads back off
+ * the agreed terms. */
+export const CLI_IDENTITY = "Agency A, a@agency-a.example";
+
 /** What the CLI party links on, wherever the program runs: spawned directly as
  * `alcove invite`, or by the console server for a webrtc job. Two rows in
  * common with the browser peer's file, at different offsets on each side, so a

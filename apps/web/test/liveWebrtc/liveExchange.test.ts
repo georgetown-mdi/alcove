@@ -27,8 +27,8 @@ import type { BrowserOutcome } from "./browserPeer";
  *
  * The Node side -- the broker and the `alcove` process -- runs behind the
  * vitest browser commands in `legCommands.ts`. Its failures are prefixed
- * `LEG_ENVIRONMENT_FAILURE` (legTypes.ts), so an environment that could not stand the
- * leg up is never read as an interop divergence.
+ * `LEG_ENVIRONMENT_FAILURE` (legTypes.ts), so an environment that could not
+ * stand the leg up is never read as an interop divergence.
  */
 
 declare module "vitest/internal/browser" {

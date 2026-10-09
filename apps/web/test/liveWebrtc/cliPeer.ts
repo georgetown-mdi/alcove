@@ -16,7 +16,11 @@ import {
 } from "../interop/cliParty.ts";
 import { trackChild } from "../utils/childProcess.ts";
 
-import { CLI_PARTY_CSV, LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
+import {
+  CLI_IDENTITY,
+  CLI_PARTY_CSV,
+  LEG_ENVIRONMENT_FAILURE,
+} from "./legTypes.ts";
 
 import type { LiveLegCliOutcome, MatchedPair } from "./legTypes.ts";
 
@@ -59,10 +63,6 @@ const CLI_DEADLINE_MS = 300_000;
  * immediately before the transport close that drains to acknowledgement and
  * tears the channel down (`closeRunLayers` in apps/cli/src/protocol.ts). */
 const CLOSING_CONNECTION_LINE = "closing connection";
-
-/** The identity the CLI party declares, which the browser peer reads back off
- * the agreed terms. */
-export const CLI_IDENTITY = "Agency A, a@agency-a.example";
 
 /** An `alcove invite` that has printed its invitation and is waiting for the
  * partner. */

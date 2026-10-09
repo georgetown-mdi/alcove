@@ -2,8 +2,8 @@ import { READINESS_BODY } from "@alcove/peerjs-broker/standaloneOptions";
 
 import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
-import { CLI_IDENTITY, startCliInviter } from "./cliPeer.ts";
-import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
+import { CLI_IDENTITY, LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
+import { startCliInviter } from "./cliPeer.ts";
 import { startConsoleParty } from "./consolePeer.ts";
 
 import type {

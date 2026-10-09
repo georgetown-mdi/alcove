@@ -510,8 +510,9 @@ npm run test:live-webrtc -w apps/web
 ```
 
 Unlike the interop suite, an absent `apps/cli/dist/` or console build fails
-this leg rather than skipping it. The leg is on no script but its own, so a run that asked for it and
-got a skip would report a pass over the one thing it was asked to cover.
+this leg rather than skipping it. The leg is on no script but its own, so a run
+that asked for it and got a skip would report a pass over the one thing it was
+asked to cover.
 
 It lives in `apps/web/test/liveWebrtc/`, beside the interop suite and for the
 same reason: only that workspace may import `apps/web/src`, and the CLI side is

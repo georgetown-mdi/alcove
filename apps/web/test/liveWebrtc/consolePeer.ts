@@ -36,9 +36,10 @@ const CONSOLE_JOB_DEADLINE_MS = 300_000;
 /** How often the job's status is asked for while it runs. */
 const STATUS_POLL_INTERVAL_MS = 500;
 
-/** Longest one replay of a settled job's event stream may take; the console
- * closes it after the terminal event. */
-const EVENTS_READ_TIMEOUT_MS = 10_000;
+/** Longest one read of the job -- its status, its result, or a replay of its
+ * event stream, which the console closes after the terminal event -- may
+ * take. */
+const JOB_READ_TIMEOUT_MS = 10_000;
 
 /** A console server standing with its coordination server authored. */
 export interface ConsoleParty {
@@ -96,9 +97,12 @@ export async function startConsoleParty(
   const stop = async (): Promise<void> => {
     const running = child;
     child = undefined;
-    await stopProdServer(running);
-    rmSync(dataRoot, { recursive: true, force: true });
-    rmSync(credentialDir, { recursive: true, force: true });
+    try {
+      await stopProdServer(running);
+    } finally {
+      rmSync(dataRoot, { recursive: true, force: true });
+      rmSync(credentialDir, { recursive: true, force: true });
+    }
   };
 
   try {
@@ -145,6 +149,16 @@ export async function startConsoleParty(
       if (jobId === undefined)
         throw new Error("no console job is running; none was created");
       const jobUrl = `${origin}/api/jobs/${jobId}`;
+      const read = (url: string, init?: RequestInit): Promise<Response> =>
+        fetch(url, {
+          ...init,
+          signal: AbortSignal.timeout(JOB_READ_TIMEOUT_MS),
+        }).catch((error: unknown) => {
+          throw new Error(
+            `${LEG_ENVIRONMENT_FAILURE} the console did not answer ${url}: ` +
+              String(error),
+          );
+        });
       let status = "running";
       let exitCode: number | null = null;
       // The status turns before the child's exit is reconciled, so the wait
@@ -152,7 +166,7 @@ export async function startConsoleParty(
       let settled = false;
       const deadline = Date.now() + CONSOLE_JOB_DEADLINE_MS;
       while (!settled && Date.now() < deadline) {
-        const response = await fetch(jobUrl);
+        const response = await read(jobUrl);
         if (response.ok) {
           const body = (await response.json()) as {
             status: string;
@@ -165,19 +179,15 @@ export async function startConsoleParty(
         if (!settled) await sleep(STATUS_POLL_INTERVAL_MS);
       }
 
-      const events =
-        status === "running"
-          ? ""
-          : await fetch(`${jobUrl}/events`, {
-              headers: { Accept: "text/event-stream" },
-              signal: AbortSignal.timeout(EVENTS_READ_TIMEOUT_MS),
-            })
-              .then((response) => response.text())
-              .catch((error: unknown) => `events unread: ${String(error)}`);
+      const events = await read(`${jobUrl}/events`, {
+        headers: { Accept: "text/event-stream" },
+      })
+        .then((response) => response.text())
+        .catch((error: unknown) => `events unread: ${String(error)}`);
 
       let pairs: ConsoleJobOutcome["pairs"] = null;
       if (status === "succeeded") {
-        const result = await fetch(`${jobUrl}/result`);
+        const result = await read(`${jobUrl}/result`);
         if (result.ok) pairs = pairsFromResultText(await result.text());
         else await result.body?.cancel();
       }
@@ -186,7 +196,11 @@ export async function startConsoleParty(
 
     return { signaling: projection, createJob, outcome, stop };
   } catch (error) {
-    await stop();
+    await stop().catch((stopError: unknown) => {
+      console.error(
+        `the console party did not stop cleanly after a failed start: ${String(stopError)}`,
+      );
+    });
     throw error;
   }
 }
