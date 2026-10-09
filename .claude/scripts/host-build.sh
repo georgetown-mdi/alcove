@@ -12,9 +12,6 @@
 # branch. A fresh clone also carries no dist/ or .rollup.cache left by a build
 # of another revision, which can fail a rollup build.
 #
-# Written for the bash 3.2 macOS ships: no associative arrays, no mapfile, and
-# no array expansion that `set -u` refuses when empty.
-#
 # Exit 0 built; 1 a precondition or a build step failed; 2 a usage error.
 
 set -euo pipefail
@@ -124,9 +121,27 @@ esac
 if [ "$skip_npm" -eq 1 ] && [ -z "$images" ]; then
   usage_error "--skip-npm with no --image leaves nothing to build."
 fi
+if [ -n "$platform" ] && [ -z "$images" ]; then
+  usage_error "--platform with no --image leaves nothing to build."
+fi
 
-# Every precondition is checked before the clone, so a host missing a tool
-# fails in one line rather than after minutes of fetching and installing.
+# Resolved before any git -C or cd, which would read a relative path against
+# the clone rather than the caller's directory.
+if [ -d "$from" ]; then
+  from="$(cd "$from" && pwd -P)"
+fi
+if [ -n "$dir" ]; then
+  dir="${dir%/}"
+  if [ -d "$dir" ]; then
+    dir="$(cd "$dir" && pwd -P)"
+  else
+    dir_parent="$(dirname "$dir")"
+    [ -d "$dir_parent" ] || usage_error "--dir '$dir' is in a directory that does not exist."
+    dir="$(cd "$dir_parent" && pwd -P)/$(basename "$dir")"
+  fi
+fi
+
+# Checked before the clone, so a missing tool fails before minutes of fetching.
 command -v git >/dev/null 2>&1 || fail "git is not on PATH; install git and rerun."
 if [ "$skip_npm" -eq 0 ]; then
   command -v node >/dev/null 2>&1 || fail "node is not on PATH; install Node.js and rerun."
@@ -188,7 +203,7 @@ if [ -n "$images" ]; then
     tag="${spec#*=}"
     [ -f "$dir/$file" ] || fail "commit $sha has no $file."
     say "building image $tag from $file for $platform"
-    (cd "$dir" && docker buildx build -f "$file" --platform "$platform" --progress=plain -t "$tag" --load .) ||
+    (cd "$dir" && docker buildx build -f "$file" --platform "$platform" --progress=plain -t "$tag" --load . </dev/null) ||
       fail "building image $tag from $file failed."
   done <<EOF
 $images

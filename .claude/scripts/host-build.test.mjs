@@ -1,12 +1,13 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
@@ -28,9 +29,12 @@ const PATH_WITHOUT_DOCKER = (process.env.PATH ?? "")
   .filter((dir) => dir !== "" && !existsSync(join(dir, "docker")))
   .join(delimiter);
 
-const HOST_PLATFORM = { arm64: "linux/arm64", x64: "linux/amd64" }[
-  process.arch
-];
+const HOST_PLATFORM = {
+  arm64: "linux/arm64",
+  aarch64: "linux/arm64",
+  x86_64: "linux/amd64",
+  amd64: "linux/amd64",
+}[execFileSync("uname", ["-m"], { encoding: "utf8" }).trim()];
 
 function stubBin({ docker = "ok" } = {}) {
   const bin = fixtures.makeTempDir("host-build-bin-");
@@ -65,9 +69,10 @@ function sourceRepo({ engines = ">=1" } = {}) {
   return { dir: repo.dir, first, feature };
 }
 
-function run(args, { bin, env = {} } = {}) {
+function run(args, { bin, env = {}, cwd } = {}) {
   const result = spawnSync("bash", [SCRIPT, ...args], {
     encoding: "utf8",
+    cwd,
     env: {
       ...process.env,
       DOCKER_DEFAULT_PLATFORM: "",
@@ -104,6 +109,10 @@ describe("host-build.sh arguments", () => {
     [["--image", "Dockerfile="], "--image takes FILE=TAG"],
     [["--platform", "arm64"], "--platform takes linux/ARCH"],
     [["--skip-npm"], "--skip-npm with no --image leaves nothing to build."],
+    [
+      ["--platform", "linux/arm64"],
+      "--platform with no --image leaves nothing to build.",
+    ],
   ])("refuses %j in one line with exit 2", (args, message) => {
     const result = run(args);
     expect(result.status).toBe(2);
@@ -208,6 +217,34 @@ describe("host-build.sh clone and build", () => {
     } finally {
       rmSync(dirname(dir), { recursive: true, force: true });
     }
+  });
+
+  it("resolves a relative --dir and --from against the caller's directory", () => {
+    const { bin, calls } = stubBin();
+    const source = sourceRepo();
+    const out = realpathSync(fixtures.makeTempDir("host-build-rel-"));
+    const result = run(
+      ["--from", relative(out, source.dir), "--dir", "alcove"],
+      { bin, cwd: out },
+    );
+    expect(result.stderrLines).toEqual([]);
+    expect(result.status).toBe(0);
+    const dir = join(out, "alcove");
+    expect(calls()[0]).toBe(`npm ci --no-audit --no-fund @ ${dir}`);
+    expect(result.stdout.trim().split("\n").at(-1)).toBe(
+      `host-build: done: commit ${source.first} built in ${dir}`,
+    );
+  });
+
+  it("resolves a relative --dir that already exists and is empty", () => {
+    const { bin, calls } = stubBin();
+    const out = realpathSync(fixtures.makeTempDir("host-build-rel-"));
+    const result = run(["--from", sourceRepo().dir, "--dir", "."], {
+      bin,
+      cwd: out,
+    });
+    expect(result.status).toBe(0);
+    expect(calls()[0]).toBe(`npm ci --no-audit --no-fund @ ${out}`);
   });
 
   it("names the remedy when the ref cannot be fetched", () => {
