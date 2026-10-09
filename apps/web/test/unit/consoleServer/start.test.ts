@@ -169,8 +169,8 @@ test("a static root with no client prints one line naming the build command, and
   expect(code).toBe(1);
   expect(printed).toBe(
     "The console did not start: the console client is not built (no file " +
-      `at ${path.join(staticRoot, "index.html")}); run npm run ` +
-      "build:console -w apps/web from the repository root to build it",
+      `at ${path.join(staticRoot, "index.html")}); from a source checkout run npm run ` +
+      "build:console -w apps/web; a container image without it was built without the client",
   );
 });
 

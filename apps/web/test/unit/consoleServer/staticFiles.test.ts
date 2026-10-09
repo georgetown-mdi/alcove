@@ -249,7 +249,8 @@ describe("creating the static file handler", () => {
       expect(create).toThrow(JobApiConfigError);
       expect(create).toThrow(
         `the console client is not built (no file at ${path.join(clientRoot, "index.html")}); ` +
-          "run npm run build:console -w apps/web from the repository root to build it",
+          "from a source checkout run npm run build:console -w apps/web; a container image " +
+          "without it was built without the client",
       );
     }
   });

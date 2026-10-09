@@ -144,8 +144,9 @@ function builtClientRoot(root: string): string {
   const indexPath = path.join(root, INDEX_FILE);
   const notBuilt = (): JobApiConfigError =>
     new JobApiConfigError(
-      `the console client is not built (no file at ${indexPath}); run ` +
-        `${CLIENT_BUILD_COMMAND} from the repository root to build it`,
+      `the console client is not built (no file at ${indexPath}); from a ` +
+        `source checkout run ${CLIENT_BUILD_COMMAND}; a container image ` +
+        "without it was built without the client",
     );
   try {
     const realRoot = fs.realpathSync(root);

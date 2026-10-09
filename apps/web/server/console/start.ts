@@ -106,7 +106,11 @@ export async function startConsoleServer(options: {
     port: config.PORT,
     host,
   }).catch((error: unknown) => {
-    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE")
+    const code =
+      error instanceof Error
+        ? (error as NodeJS.ErrnoException).code
+        : undefined;
+    if (code === "EADDRINUSE")
       throw new JobApiConfigError(
         `port ${config.PORT} at ${host} is already in use; set PORT to a ` +
           "free port, or stop the program using it",
