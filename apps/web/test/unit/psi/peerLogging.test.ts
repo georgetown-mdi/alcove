@@ -57,10 +57,7 @@ describe("resolvePeerDebugLevel", () => {
   });
 });
 
-/** The levels the real PeerJS logger hands its `logFunction` while a peer
- * constructed at `debug` aborts. With no WebRTC in Node and an id PeerJS
- * refuses, the constructor aborts before any network use, logging at error
- * level, and `destroy()` then logs at the verbose level. */
+/** The levels the real PeerJS logger hands its `logFunction` while a peer constructed at `debug` aborts. */
 async function levelsPeerJsDispatches(debug: number): Promise<Array<number>> {
   const levels: Array<number> = [];
   const peer = new Peer("not a valid id!", {
@@ -71,8 +68,10 @@ async function levelsPeerJsDispatches(debug: number): Promise<Array<number>> {
     path: "/",
     logFunction: (level: number) => levels.push(level),
   });
-  peer.on("error", () => {});
-  await new Promise((resolve) => setTimeout(resolve, 50));
+  await new Promise<void>((resolve) => {
+    peer.on("error", () => resolve());
+    setTimeout(resolve, 2_000);
+  });
   peer.destroy();
   return levels;
 }
