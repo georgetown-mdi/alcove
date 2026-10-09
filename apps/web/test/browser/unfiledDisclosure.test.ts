@@ -174,6 +174,18 @@ describe("what a run that could not file leaves", () => {
     expect(await readUnfiledDisclosures(created.id)).toEqual({ kind: "none" });
   });
 
+  test("the note's key equals no string key, the id and the joined key included", async () => {
+    const id = "6f1d1e1a-0000-4000-8000-000000000001";
+    const key = unfiledDisclosureKey(id);
+    const strings = [id, String(key), key.join("/"), JSON.stringify(key)];
+    for (const string of strings)
+      expect(indexedDB.cmp(key, string)).not.toBe(0);
+
+    // And at rest: values under each of those strings leave the note's key empty.
+    for (const string of strings) await putRawStored(string, { at: NOTED_AT });
+    expect(await rawStored(key)).toBeUndefined();
+  });
+
   test("the note sits beside the accounting, not in it", async () => {
     const created = await createManagedExchange(newExchange());
     const filed = await disclosureRecord();

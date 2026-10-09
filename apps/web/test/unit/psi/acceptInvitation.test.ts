@@ -594,6 +594,33 @@ describe("the accepting party's own deduplicate at the seat", () => {
       expect(refusal?.message).toContain("must set linkage_strategy to");
     }
   });
+
+  test("terms the run cannot read are refused at the seat rather than thrown into the render", () => {
+    const unreadable = new Proxy(invitationTerms, {
+      get: () => {
+        throw new Error("unreadable terms");
+      },
+    });
+    const malformed: Array<unknown> = [
+      {},
+      { ...invitationTerms, output: null },
+      { ...invitationTerms, linkageKeys: "not a list" },
+      { ...invitationTerms, linkageStrategy: 7 },
+      { ...invitationTerms, algorithm: undefined },
+      unreadable,
+    ];
+    for (const terms of malformed) {
+      for (const deduplicate of [false, true]) {
+        const read = () =>
+          acceptorDeduplicateRefusal(terms as LinkageTerms, deduplicate);
+        expect(read).not.toThrow();
+        const refusal = read();
+        if (refusal !== undefined)
+          expect(typeof refusal.message).toBe("string");
+      }
+    }
+    expect(acceptorDeduplicateRefusal(unreadable, false)?.scope).toBe("terms");
+  });
 });
 
 describe("an invitation whose mirror admits no deduplicate from this party", () => {

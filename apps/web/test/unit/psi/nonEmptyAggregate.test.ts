@@ -12,6 +12,7 @@ import {
 } from "../../../src/psi/workers/nonEmptyAggregate.js";
 
 import { NonEmptyRateController } from "../../../src/psi/workers/nonEmptyAggregateController.js";
+import { isStepValid } from "../../../src/psi/standardizationAuthoring.js";
 
 import type {
   AggregateRequest,
@@ -198,6 +199,22 @@ describe("computeFieldCoverage: the silent-empty defense", () => {
     const [coverage] = computeFieldCoverage(rows, standardization);
     expect(coverage.unavailable).toBe(true);
     expect(isSilentEmpty(coverage)).toBe(false);
+  });
+
+  test("an over-length parse_date format fails the step check, so it is unavailable and never compiled", () => {
+    // parse_date builds a regex from its input format but is outside the
+    // pattern cap; the step check is what keeps an over-length one from the
+    // compile.
+    const step = {
+      function: "parse_date",
+      params: { inputFormat: "YYYY".repeat(2_500), outputFormat: "YYYY" },
+    };
+    expect(isStepValid(step)).toBe(false);
+    const [coverage] = computeFieldCoverage(
+      [{ n: "2020" }],
+      [{ output: "birth_year", input: "n", steps: [step] }],
+    );
+    expect(coverage.unavailable).toBe(true);
   });
 });
 

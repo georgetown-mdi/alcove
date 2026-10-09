@@ -49,7 +49,7 @@ function redactValue(
   seen: WeakSet<object>,
 ): unknown {
   if (typeof value === "string") return redactString(value, ids);
-  // Collapsed as PeerJS's own printer does, dropping the `.cause` chain.
+  // Collapsed to name and message, dropping the `.cause` chain.
   if (value instanceof Error)
     return `(${value.name}) ${redactString(value.message, ids)}`;
   if (typeof value !== "object" || value === null) return value;
@@ -59,8 +59,8 @@ function redactValue(
   seen.add(value);
   if (Array.isArray(value))
     return value.map((item) => redactValue(item, ids, seen));
-  // A Map, Set, typed array or Symbol-keyed value comes out empty: dropped, not
-  // printed. PeerJS logs only strings, plain objects and Errors.
+  // A Map, Set or Symbol-keyed value comes out empty: dropped, not printed. A
+  // typed array comes out as its numeric elements, which no id match reads.
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value))
     out[key] = redactValue(item, ids, seen);
@@ -69,7 +69,7 @@ function redactValue(
 
 /**
  * Build a PeerJS `logFunction` that redacts `ids` from every message, then
- * prints through PeerJS's own level mapping (3 -> log, 2 -> warn, 1 -> error).
+ * prints by level (3 -> log, 2 -> warn, 1 -> error).
  *
  * @param ids   The session's derived rendezvous ids, local and remote.
  * @param sink  Where redacted output goes; defaults to the real `console`.

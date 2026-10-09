@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import http from "node:http";
 import net from "node:net";
 import { randomBytes } from "node:crypto";
@@ -339,6 +340,26 @@ describe("signaling diagnostics sink", () => {
     expect(brokerLines()[1]).toContain("[client-frame]");
   });
 
+  test("V8's text for a dispatch fault can quote the peer's payload, and it reaches the sink escaped", async () => {
+    const broker = await startBroker();
+    // A listener fault of a common shape: reading a property the peer named off
+    // a value that is not there. V8's TypeError names the property.
+    broker.wss.on("message", (_client: unknown, frame: { dst?: unknown }) => {
+      const absent = undefined as unknown as Record<string, unknown>;
+      return absent[String(frame.dst)];
+    });
+    const client = await connectRegistered(broker.port, "peer-quoted");
+
+    client.send(JSON.stringify({ type: "OFFER", dst: HOSTILE_FRAME }));
+
+    await waitFor(() => brokerLines().length > 0);
+    const [line] = brokerLines();
+    expect(line).toContain("[frame-dispatch]");
+    expect(line).toContain("[forged] not json");
+    expect(line).not.toMatch(CONTROL_BYTE);
+    expect(line).toContain("\\x1b");
+  });
+
   test("a frame that parses to null or a primitive is absorbed under client-frame, the peer staying registered", async () => {
     const broker = await startBroker();
     const client = await connectRegistered(broker.port, "peer-null-primitive");
@@ -557,6 +578,9 @@ describe("signaling diagnostics sink", () => {
     // An `error` emitted with no listener is thrown rather than dropped, which
     // would end the process over an ordinary peer hang-up; a failing sink must
     // not put that back.
+    expect(() =>
+      new EventEmitter().emit("error", new Error("a peer hung up")),
+    ).toThrow("a peer hung up");
     expect(() =>
       broker.wss.emit("error", new Error("a peer hung up"), "client-socket"),
     ).not.toThrow();
