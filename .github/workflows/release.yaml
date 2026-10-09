@@ -1,16 +1,16 @@
 name: Release
+run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('Release dry run on {0}', github.ref_name) }}
 
 on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 jobs:
   test:
     name: Test
-    # Held on Ubuntu 24.04: this workflow runs only on a pushed version tag,
-    # where it publishes, so no branch run has driven its jobs on 26.04.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -57,7 +57,8 @@ jobs:
   publish:
     name: Publish Docker image
     needs: test
-    # Held on Ubuntu 24.04 with the test job above, for the same reason.
+    if: ${{ github.event_name == 'push' }}
+    # Runs on Ubuntu 24.04; the dry-run job proves 26.04 before this moves.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -446,7 +447,9 @@ jobs:
   launchers:
     name: Publish the stamped launchers
     needs: publish
-    # Held on Ubuntu 24.04 with the test job above, for the same reason.
+    if: ${{ github.event_name == 'push' }}
+    # Held on Ubuntu 24.04 with the publish job: it needs that job's image
+    # digest, so it moves when that job does.
     runs-on: ubuntu-24.04
     # The only job in this workflow holding contents: write, and what it writes
     # under it is release assets alone.
@@ -512,3 +515,54 @@ jobs:
               --title "Alcove $ALCOVE_TAG" --notes ''
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
+
+  # A dispatch can come from any branch, so this job holds no write permission
+  # by design.
+  dry-run:
+    name: Build both images without publishing
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify vendored native tarball integrity
+        run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Verify vendored native tarball provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run check:prebuild-provenance
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the release image for both platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: alcove:dry-run
+          cache-from: type=gha,scope=dry-run
+          cache-to: type=gha,mode=max,scope=dry-run
+
+      - name: Build the FIPS variant for both platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.fips
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: alcove:dry-run-fips
+          cache-from: type=gha,scope=dry-run-fips
+          cache-to: type=gha,mode=max,scope=dry-run-fips
