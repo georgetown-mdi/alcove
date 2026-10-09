@@ -23,7 +23,10 @@ Run only when the owner invokes this command; never start the docket unasked.
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups`.
 2. Drop any item the owner has already ruled on, in this session or in a board
-   item or repository file.
+   item or repository file. To find such a ruling, fetch the item's epic siblings
+   (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
+   body names (`node .claude/scripts/fetch-issues.mjs <project> <itemId> ...`),
+   and cite the ruling in the item's background when one bears on it.
 3. One decision per item: an item holding two decisions is two items, never
    sub-questions under one.
 4. Number the items once, as N of M, and keep that numbering to the end.
