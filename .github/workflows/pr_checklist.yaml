@@ -5,7 +5,8 @@ name: PR Checklist
 # a resolution clause, and every n/a earned with a reason. This is the
 # mechanical safety check for the template's "resolve every line" rule (whether
 # a reason holds up stays a review call) -- see scripts/check-pr-checklist.mjs
-# for the rules.
+# for the rules. It also runs the spec sentence comparison, the other check
+# reading the body (scripts/check-spec-sentence-moves.mjs).
 #
 # Kept as its own workflow (rather than a job in static_checks.yaml) because it
 # runs on `edited` too: fixing the PR body re-runs the check without pushing a
@@ -37,6 +38,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The spec sentence comparison below measures from the merge base with
+          # the base branch, which a single-commit fetch does not carry.
+          fetch-depth: 0
       # The script is dependency-free, so a plain pinned Node suffices -- no npm
       # ci or @alcove/core build (the ./.github/actions/setup prologue) needed.
       - name: Setup Node
@@ -68,3 +73,12 @@ jobs:
         env:
           PR_JSON: ${{ runner.temp }}/pull-request.json
         run: npm run check:pr-checklist
+      # Every sentence a change to docs/spec/ adds, drops or rewords is listed
+      # under the body's Wording changes heading; a pull request changing no
+      # spec file passes in one line. It reads the body out of the same file,
+      # and runs here rather than in static_checks.yaml because its result
+      # depends on the body: a body edit re-runs it.
+      - name: Spec sentence comparison
+        env:
+          PR_JSON: ${{ runner.temp }}/pull-request.json
+        run: npm run check:spec-sentences -- --base "origin/$GITHUB_BASE_REF"
