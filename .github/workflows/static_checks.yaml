@@ -106,6 +106,8 @@ jobs:
         run: npm run check:all
       - name: Keep the script suites' test durations
         if: ${{ !cancelled() }}
+        # Timings inform; an upload outage must not fail the gate.
+        continue-on-error: true
         uses: ./.github/actions/test-durations
         with:
           name: test-durations-static-checks

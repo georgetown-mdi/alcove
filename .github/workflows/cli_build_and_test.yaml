@@ -183,6 +183,8 @@ jobs:
           ALCOVE_VITEST_JSON_DIR: ${{ runner.temp }}/vitest-json
       - name: Keep the ${{ matrix.suite }} suite's test durations
         if: ${{ !cancelled() }}
+        # Timings inform; an upload outage must not fail the gate.
+        continue-on-error: true
         uses: ./.github/actions/test-durations
         with:
           name: test-durations-cli-${{ matrix.suite }}
