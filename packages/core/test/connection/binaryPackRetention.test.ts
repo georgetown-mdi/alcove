@@ -16,7 +16,7 @@ import type { Packable, Unpackable } from "peerjs-js-binarypack";
 // its containers declare between them, its map keys -- and the wire-byte cap
 // bounds its size; what those leave is a multiple of the wire bytes, and this is
 // where that multiple is a number rather than a claim.
-// docs/spec/CHANNEL_SECURITY.md states it as the control's envelope.
+// docs/spec/TRANSPORT_BOUNDS.md states it as the control's envelope.
 //
 // The envelope is (wire bytes) x (the worst retention of one declared node),
 // because the cumulative element rule admits at most one declared node per wire

@@ -12,8 +12,8 @@ import { fittedCauseLink } from "./causeLink";
  * operations, each failing with a terminal
  * {@link TransportOperationStalledError}, and the non-fatal slow-operation
  * warning
- * (docs/spec/CHANNEL_SECURITY.md#per-operation-liveness-bounds,
- * docs/spec/CHANNEL_SECURITY.md#slow-operation-warning).
+ * (docs/spec/TRANSPORT_LIVENESS.md#per-operation-liveness-bounds,
+ * docs/spec/TRANSPORT_LIVENESS.md#slow-operation-warning).
  */
 
 /**

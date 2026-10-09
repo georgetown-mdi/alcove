@@ -1,7 +1,7 @@
 /**
  * Maximum size, in bytes, of a single inbound frame the transport reads into
  * memory, and the upper clamp for the single-pass cap below
- * (docs/spec/CHANNEL_SECURITY.md, Inbound frame-size bound). A literal rather than
+ * (docs/spec/TRANSPORT_BOUNDS.md, Inbound frame-size bound). A literal rather than
  * `buffer.constants`, so the AEAD decorator importing it needs no Node `buffer`.
  */
 export const MAX_FRAME_SIZE_BYTES = 536_870_888;

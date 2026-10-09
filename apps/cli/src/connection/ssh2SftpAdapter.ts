@@ -2725,8 +2725,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * {@link ./listingGuard}), enforced at the transport read layer rather than by
    * delegating to ssh2-sftp-client's `list()`. The bounds, why the read is
    * batched, and the liveness caps over it are in
-   * docs/spec/CHANNEL_SECURITY.md, "Directory-listing bound" and
-   * "Per-operation liveness bounds".
+   * docs/spec/TRANSPORT_BOUNDS.md, "Directory-listing bound", and
+   * docs/spec/TRANSPORT_LIVENESS.md, "Per-operation liveness bounds".
    */
   list(path: string): Promise<FileInfo[]> {
     return this.runOperation({ recovery: "verbatim" }, () =>

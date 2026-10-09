@@ -638,7 +638,10 @@ were then adversarially verified against the tree as it stood.
   rendezvous, drain, abort-marker, and retain invariants this mode must preserve;
   the normative session-lifetime detail is specified there.
 - [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) -- the authenticated abort
-  marker and the transport liveness/memory bounds this mode reconnects around.
+  marker this mode reconnects around.
+- [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md) and
+  [TRANSPORT_LIVENESS.md](../spec/TRANSPORT_LIVENESS.md) -- the transport memory
+  and liveness bounds this mode reconnects around.
 - [COMMUNICATION.md](../COMMUNICATION.md) -- the connection-lifecycle contract.
 - [connection-error-kind-taxonomy.md](connection-error-kind-taxonomy.md) -- the
   clean-close versus local-close classification.

@@ -1,5 +1,5 @@
 // The PeerJS-coupled half of the WebRTC data-channel inbound bound
-// (docs/spec/CHANNEL_SECURITY.md): it wraps this connection class's reassembly
+// (docs/spec/TRANSPORT_BOUNDS.md): it wraps this connection class's reassembly
 // and unpack internals to enforce the bounds at the points PeerJS leaves
 // unbounded. The transport-agnostic half -- the fixed bound constants and the
 // BinaryPack structural pre-scan they parameterize -- lives in `@alcove/core`

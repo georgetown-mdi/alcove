@@ -6,7 +6,7 @@ title: "Peer-Coordination Server Bounds"
 
 This document specifies the bounds the PeerJS-compatible signaling broker (`packages/peerjs-broker`) and the servers that embed it hold against an unauthenticated internet client, with their constant values and enforcement points.
 It is the implementation-level complement to the coordination-server paragraph of the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) and to [Hardening the coordination server](../DEPLOYMENT.md#hardening-the-coordination-server) in DEPLOYMENT.md, which say what each guard covers and which controls are the reverse proxy's.
-It does not cover the JSON-decode chokepoint the broker reuses or the WebRTC data channel the two parties exchange over once the broker has introduced them (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), or the signaling envelopes themselves (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md)).
+It does not cover the JSON-decode chokepoint the broker reuses (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)) or the WebRTC data channel the two parties exchange over once the broker has introduced them (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the signaling envelopes themselves (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md)).
 Intended readers are whoever deploys or assesses the broker, security auditors, and implementors.
 
 ## Signaling-server inbound frame bound
@@ -21,7 +21,7 @@ The byte half sits at the idiomatic `ws` layer, ahead of the parse: the `ws` `Se
 `ws` enforces it in the receiver as each frame's length header is read, refusing an over-cap frame with a 1009 close (`WS_ERR_UNSUPPORTED_MESSAGE_LENGTH`) before the payload is buffered and before the message handler parses it - the error surfaces as a handled `error` event the server already routes, not a crash.
 The cap sits far above any legitimate signaling frame: this server brokers only small control messages - the PeerJS OPEN / OFFER / ANSWER / CANDIDATE / HEARTBEAT family, SDP and ICE that are KB-scale - while the PSI payload itself flows peer-to-peer over the WebRTC data channel and never crosses this socket.
 It sits far below both the 100 MiB default and the ~109 MB a single 2^23-key object needs to reach the per-object ceiling, so it closes the single-frame crash outright rather than only shrinking the window, and caps each inbound frame against the single-frame memory pin.
-Like the file-sync [frame-size cap](CHANNEL_SECURITY.md#inbound-frame-size-bound) it is a fixed constant, not a configurable option: a configurable bound risks an operator raising it high enough to reintroduce the DoS.
+Like the file-sync [frame-size cap](TRANSPORT_BOUNDS.md#inbound-frame-size-bound) it is a fixed constant, not a configurable option: a configurable bound risks an operator raising it high enough to reintroduce the DoS.
 It would only need revisiting if the signaling protocol began carrying a legitimately large payload through this socket - it does not, and a redesign that routed bulk data through the broker rather than the data channel would be the change to re-evaluate against.
 As net-new security behavior on an internet-facing surface, this control is subject to the explicit security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy) before release.
 
@@ -44,7 +44,7 @@ The relay's reconnect queue reconstitutes a held payload through the same chokep
 
 ## Web signaling surface bounds
 
-The bounds in [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) harden the CLI's file-sync transport against a hostile server admin.
+The bounds in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) harden the CLI's file-sync transport against a hostile server admin.
 The PeerJS-compatible signaling broker (`packages/peerjs-broker`) is a separate surface with a different model: it is untrusted by design (see the **Channel security** and **Third parties** overviews in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security)), relaying only opaque rendezvous-setup messages between two browsers that authenticate each other directly.
 So the residual exposure on its WebSocket upgrade surface is resource exhaustion, not access to any party's data.
 The guards below are defense-in-depth against that nuisance, enforced in the application unconditionally; the deployment-dependent Origin and per-address controls are the reverse proxy's responsibility and are described operationally in [DEPLOYMENT.md](../DEPLOYMENT.md#hardening-the-coordination-server), not here.

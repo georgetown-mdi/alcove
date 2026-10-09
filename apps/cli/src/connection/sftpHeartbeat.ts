@@ -3,7 +3,7 @@ import { sanitizeErrorForDisplay } from "@alcove/core";
 /**
  * Keeps an idle SFTP session alive past a server's idle timeout with a periodic
  * no-op SFTP command:
- * docs/spec/CHANNEL_SECURITY.md#sftp-session-heartbeat-and-tcp-keepalive.
+ * docs/spec/TRANSPORT_LIVENESS.md#sftp-session-heartbeat-and-tcp-keepalive.
  */
 
 /**

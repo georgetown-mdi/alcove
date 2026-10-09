@@ -12,7 +12,7 @@ import { transportOperationStalledError } from "./sftpLivenessGuard";
 /**
  * Directory-listing bounds shared by `LocalFSClient` and the SFTP adapter,
  * refused before the listing is materialized:
- * docs/spec/CHANNEL_SECURITY.md#directory-listing-bound.
+ * docs/spec/TRANSPORT_BOUNDS.md#directory-listing-bound.
  */
 
 /** Maximum entries a transport directory listing enumerates, of any type. */
@@ -93,7 +93,7 @@ export function filenameTooLongError(
 /**
  * Maximum `readdir` round-trips one SFTP `list()` issues, so empty non-EOF
  * batches cannot loop forever:
- * docs/spec/CHANNEL_SECURITY.md#per-operation-liveness-bounds.
+ * docs/spec/TRANSPORT_LIVENESS.md#per-operation-liveness-bounds.
  */
 export const MAX_LISTING_READDIR_BATCHES = 2 * MAX_DIRECTORY_ENTRIES;
 

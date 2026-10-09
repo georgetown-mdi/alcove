@@ -58,7 +58,7 @@ export function normalizeFiledropPath(rawPath: string): string {
 // can be partner-chosen, so each gets its own cause link and cannot forge the
 // label introducing another; values are redacted here and escaped where the
 // message is shown. See
-// docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
+// docs/spec/TRANSPORT_LIVENESS.md#whole-exchange-budget.
 const transportBudgetExceededError = (
   operation: string,
   budgetMs: number,
@@ -82,7 +82,7 @@ const transportBudgetExceededError = (
 // Races `op` against `budgetMs`, rejecting with `makeError()` if the budget
 // elapses first; the losing operation is abandoned, not cancelled. The timer is
 // unref'd so it never holds the process open, and a late rejection from `op` is
-// absorbed. See docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
+// absorbed. See docs/spec/TRANSPORT_LIVENESS.md#whole-exchange-budget.
 function withTransportBudget<T>(
   op: Promise<T>,
   budgetMs: number,
@@ -396,7 +396,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // with undefined, so it can only tighten the static cap. Single-pass sets it
   // one peer round trip before the reply it governs; a lost race with the poll
   // loop's read-ahead falls back to the static cap. See
-  // docs/spec/CHANNEL_SECURITY.md#single-pass-per-exchange-cap.
+  // docs/spec/TRANSPORT_BOUNDS.md#single-pass-per-exchange-cap.
   setInboundFrameCap(maxBytes: number | undefined): void {
     this.messageLoop.setInboundFrameCap(maxBytes);
   }
@@ -585,7 +585,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // bound on LocalFSClient's operations. Fresh per await rather than one
   // absolute deadline, so it bounds a silent peer or server without capping a
   // long healthy exchange. See
-  // docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
+  // docs/spec/TRANSPORT_LIVENESS.md#whole-exchange-budget.
   private boundTransport(raw: FileTransportClient): FileTransportClient {
     const budgetMs = (): number => this.inactivityBudgetMs();
     const bound = <T>(
@@ -606,7 +606,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     };
     return {
       // Each adapter bounds its own connect. See
-      // docs/spec/CHANNEL_SECURITY.md#connect-probe-bound.
+      // docs/spec/TRANSPORT_LIVENESS.md#connect-probe-bound.
       connect: (options) => raw.connect(options),
       end: () => {
         const ms = Math.min(CONNECTION_CLOSE_TIMEOUT_MS, budgetMs());

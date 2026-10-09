@@ -166,7 +166,7 @@ Candidates, none verified in the browser:
 No candidate is recommended until a spike drives one against the SFTP test server through a raw relay from the browser suite.
 Whichever is chosen is a new security-relevant dependency under [CONTRIBUTING.md](../../CONTRIBUTING.md#dependency-policy), shipped to every browser that loads the app.
 
-The CLI adapter's [transport memory and liveness bounds](../spec/CHANNEL_SECURITY.md#transport-memory-and-liveness-bounds) live in `apps/cli`, not core, so a browser client needs its own counterpart of each.
+The CLI adapter's transport [memory](../spec/TRANSPORT_BOUNDS.md) and [liveness](../spec/TRANSPORT_LIVENESS.md) bounds live in `apps/cli`, not core, so a browser client needs its own counterpart of each.
 
 ### Host-key verification
 

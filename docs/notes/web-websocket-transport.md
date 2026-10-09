@@ -36,7 +36,7 @@ The pieces a WebSocket path would build on, with where each is stated:
   Both present the exchange with core's `MessageConnection` (`packages/core/src/connection/messageConnection.ts`): `send`, `receive`, `close`, and a terminal state.
 - **The framing and its bounds are already transport-independent on the CLI side.**
   `apps/cli/src/connection/webrtc/peerjsWire.ts` (the BinaryPack frame, the chunk envelope, the close sentinel) and `inboundBounds.ts` (the bounded reassembler) import only `@alcove/core` and `peerjs-js-binarypack`, with no Node module, so they run in a browser bundle.
-  The constants they apply -- `MAX_WEBRTC_FRAME_BYTES` of 268,435,456 bytes, the chunk-count and concurrent-reassembly caps -- live in core (`packages/core/src/connection/binaryPackBounds.ts`; [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound)).
+  The constants they apply -- `MAX_WEBRTC_FRAME_BYTES` of 268,435,456 bytes, the chunk-count and concurrent-reassembly caps -- live in core (`packages/core/src/connection/binaryPackBounds.ts`; [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)).
   The browser applies the same constants by wrapping PeerJS internals (`apps/web/src/psi/transport/boundedReassembly.ts`), which a transport that does not run PeerJS cannot reuse.
 - **The wrap is a decorator over any `MessageConnection`.**
   `EncryptedMessageConnection` (`packages/core/src/connection/encryptedMessageConnection.ts`) runs on WebCrypto, and the request bit is the fourth argument of `authenticateConnection` (`packages/core/src/auth.ts`).
