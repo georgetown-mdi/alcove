@@ -6,10 +6,7 @@
 // lists the checks that stay off the list, each with what puts it there.
 //
 // Runs serially and past a failure: the summary names every failure, and the
-// exit code is 1 if there was one. Each summary line states the one-minute load
-// average its check started under, so a slow run can be told from a loaded
-// machine. The suites a diff needs beyond these checks are printed by
-// scripts/required-suites.mjs. A check marked `usesBuild` needs the
+// exit code is 1 if there was one. A check marked `usesBuild` needs the
 // production web build, and the run clears apps/web/dist/hosted first; one
 // naming another in `buildFrom` reads that build and is skipped with a line
 // saying so when the build fails. scripts/run-checks.test.mjs holds every

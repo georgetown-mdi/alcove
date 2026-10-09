@@ -11,6 +11,7 @@ import {
   DEFAULT_BASE,
   changedPaths,
   formatPlan,
+  MissingBaseError,
   jobDisplayName,
   matchPaths,
   requiredPlan,
@@ -177,6 +178,31 @@ ${extraStep}
     ).not.toThrow();
   });
 
+  it("reads a conjunction of 'true' matrix keys and refuses any other matrix condition", () => {
+    const step = (condition) => `      - name: Build B
+        if: ${condition}
+        run: npm run build -w b`;
+
+    expect(
+      suiteLegs(
+        workflow(step("matrix.build-a == 'true' && matrix.backend == 'true'")),
+        "fixture.yaml",
+      ),
+    ).toHaveLength(2);
+    for (const condition of [
+      "matrix.backend != 'true'",
+      "matrix.backend == 'native'",
+      "contains(matrix.backend, 'nat')",
+      "matrix.backend == 'true' || matrix.build-a == 'true'",
+    ]) {
+      expect(() =>
+        suiteLegs(workflow(step(condition)), "fixture.yaml"),
+      ).toThrow(
+        /fixture\.yaml: the suite step "Build B" has an unrecognized matrix condition/,
+      );
+    }
+  });
+
   it("names a matrix job by the values its matrix lists", () => {
     expect(
       jobDisplayName("hardened", {
@@ -184,6 +210,60 @@ ${extraStep}
         strategy: { matrix: { profile: ["a", "b"] } },
       }),
     ).toBe("Hardened (a, b)");
+  });
+});
+
+describe("builds of a leg another workflow already listed", () => {
+  it("keeps the builds only the later leg enables", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "required-suites-"));
+    const workflow = (name, build) => `name: ${name}
+on:
+  pull_request:
+jobs:
+  scope:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/path-scope
+        with:
+          paths: |
+            fixture/**
+  suite:
+    needs: scope
+    strategy:
+      matrix:
+        include:
+          - suite: shared
+            command: npm run test:shared -w fixture
+            build-extra: "${build}"
+    steps:
+      - name: Build extra
+        if: matrix.build-extra == 'true'
+        run: npm run build -w extra
+      - name: Run
+        run: \${{ matrix.command }}
+`;
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      mkdirSync(resolve(root, ".github/workflows"), { recursive: true });
+      writeFileSync(
+        resolve(root, ".github/workflows/a.yaml"),
+        workflow("A", "false"),
+      );
+      writeFileSync(
+        resolve(root, ".github/workflows/b.yaml"),
+        workflow("B", "true"),
+      );
+      writeFileSync(
+        resolve(root, ".github/workflows/static_checks.yaml"),
+        "name: S\njobs: {}\n",
+      );
+      const plan = requiredPlan(root, ["fixture/x.ts"], []);
+
+      expect(legCommands(plan)).toEqual(["npm run test:shared -w fixture"]);
+      expect(plan.builds).toContain("npm run build -w extra");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -249,6 +329,49 @@ describe("the changed paths of a checkout", () => {
         "edited.txt",
         "new/untracked.txt",
       ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists a moved file's old and new paths", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "required-suites-"));
+    try {
+      git(dir, "init", "-q", "-b", "staging");
+      git(dir, "config", "user.email", "required-suites-test@example.invalid");
+      git(dir, "config", "user.name", "Required Suites Test");
+      write(dir, "from/moved.txt", "content that stays the same\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "base");
+      git(dir, "update-ref", `refs/remotes/${DEFAULT_BASE}`, "HEAD");
+      mkdirSync(resolve(dir, "to"));
+      git(dir, "mv", "from/moved.txt", "to/moved.txt");
+      git(dir, "commit", "-q", "-m", "move");
+
+      expect(changedPaths(dir, `${DEFAULT_BASE}...HEAD`)).toEqual([
+        "from/moved.txt",
+        "to/moved.txt",
+      ]);
+      expect(changedPaths(dir)).toEqual(["from/moved.txt", "to/moved.txt"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("stops with a message naming the fix when the default base is missing", () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "required-suites-"));
+    try {
+      git(dir, "init", "-q", "-b", "work");
+      git(dir, "config", "user.email", "required-suites-test@example.invalid");
+      git(dir, "config", "user.name", "Required Suites Test");
+      write(dir, "a.txt", "a\n");
+      git(dir, "add", ".");
+      git(dir, "commit", "-q", "-m", "base");
+
+      expect(() => changedPaths(dir)).toThrow(MissingBaseError);
+      expect(() => changedPaths(dir)).toThrow(
+        /git fetch origin.*explicit range/,
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

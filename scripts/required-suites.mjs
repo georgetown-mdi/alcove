@@ -1,23 +1,10 @@
 #!/usr/bin/env node
-// Prints the commands a diff requires before it goes to review: the package
-// builds the suites read, the suite legs CI runs for the touched paths, and the
-// repo-wide gates. `node scripts/required-suites.mjs [<range>] [--stdin]`.
-//
-// Nothing here restates which path needs which suite. The plan is read from the
-// workflows each time: a workflow calling the path-scope action contributes its
-// `suite` job's matrix legs when the diff touches its scope, matched by git's
-// own pathspec matching as that action does; static_checks.yaml contributes the
-// gates; scripts/lib/distFreshness.mjs names the builds. A workflow filtered by
-// `on.pull_request.paths` instead is not read, since GitHub matches those globs
-// itself.
-//
-// A matrix-conditioned step in a suite job is either a build, which the plan
-// runs before the suites, or CI provisioning named in CI_PROVISIONING_STEPS. A
-// step that is neither stops the script, so a new prerequisite cannot drop out
-// of the plan unseen.
-//
-// With no range, the diff is the merge base with origin/staging against the
-// working tree plus untracked files, so uncommitted work is included.
+// Prints the commands a diff requires before it goes to review: package builds,
+// the suite legs CI runs for the touched paths, and the repo-wide gates, all
+// read from the workflows each time. `node scripts/required-suites.mjs
+// [<range>] [--stdin]`; with no range the diff is the merge base with
+// origin/staging against the working tree plus untracked files. A workflow
+// filtered by `on.pull_request.paths` instead of the path-scope action is not read.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -46,9 +33,8 @@ export const SUITE_JOB = "suite";
 export const DEFAULT_BASE = "origin/staging";
 
 /**
- * Matrix-conditioned suite-job steps that prepare a CI runner rather than the
- * repository, so the plan leaves them out. Keyed by workflow file, then step
- * name.
+ * Matrix-conditioned suite-job steps that only prepare a CI runner, by workflow
+ * file then step name.
  */
 export const CI_PROVISIONING_STEPS = {
   [`${WORKFLOW_DIR}/cli_build_and_test.yaml`]: [
@@ -67,7 +53,7 @@ export const CI_PROVISIONING_STEPS = {
 
 const BUILD_LINE =
   /^(?:[A-Z_][A-Z0-9_]*=\S+\s+)*npm run build(?::[\w-]+)? -w \S+$/;
-const MATRIX_TRUE = /matrix\.([\w-]+) == 'true'/g;
+const MATRIX_TRUE = /^matrix\.([\w-]+) == 'true'$/;
 const MATRIX_VALUE = /^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/;
 const MATRIX_COMMAND = "${{ matrix.command }}";
 const EMPTY_BLOB = "e69de29bb2d1d6434b8b29ae775a204c9d8ab391";
@@ -87,18 +73,33 @@ const git = (root, args, options = {}) =>
 
 const nulSeparated = (text) => text.split("\0").filter((name) => name !== "");
 
+/** The default-mode base ref is missing; the message says how to fix it. */
+export class MissingBaseError extends Error {}
+
 /**
  * The paths a diff touches. With a `range`, exactly `git diff --name-only
  * <range>`; without one, the merge base with {@link DEFAULT_BASE} against the
- * working tree, plus untracked files.
+ * working tree, plus untracked files. Renames are not detected, so a moved
+ * file lists its old and new path.
  */
 export function changedPaths(root, range) {
   if (range !== undefined) {
-    return nulSeparated(git(root, ["diff", "--name-only", "-z", range, "--"]));
+    return nulSeparated(
+      git(root, ["diff", "--name-only", "--no-renames", "-z", range, "--"]),
+    );
   }
-  const base = git(root, ["merge-base", DEFAULT_BASE, "HEAD"]).trim();
+  let base;
+  try {
+    base = git(root, ["merge-base", DEFAULT_BASE, "HEAD"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  } catch {
+    throw new MissingBaseError(
+      `Cannot find ${DEFAULT_BASE} to diff against. Run \`git fetch origin\`, or pass an explicit range such as ${DEFAULT_BASE}...HEAD.`,
+    );
+  }
   const tracked = nulSeparated(
-    git(root, ["diff", "--name-only", "-z", base, "--"]),
+    git(root, ["diff", "--name-only", "--no-renames", "-z", base, "--"]),
   );
   const untracked = nulSeparated(
     git(root, ["ls-files", "--others", "--exclude-standard", "-z"]),
@@ -138,8 +139,28 @@ export function matchPaths(root, paths, pathspecs) {
   }
 }
 
-const matrixKeysRequired = (condition) =>
-  [...String(condition ?? "").matchAll(MATRIX_TRUE)].map((match) => match[1]);
+const mentionsMatrix = (condition) =>
+  String(condition ?? "").includes("matrix.");
+
+/**
+ * The matrix keys a step condition requires to be `'true'`. Throws on a
+ * condition that mentions the matrix in any shape but a `&&` conjunction of
+ * `matrix.<key> == 'true'`.
+ */
+function matrixKeysRequired(condition, where) {
+  const keys = [];
+  for (const part of String(condition).split("&&")) {
+    const key = MATRIX_TRUE.exec(part.trim())?.[1];
+    if (key === undefined) {
+      throw new Error(
+        `${where} has an unrecognized matrix condition: ${condition}; ` +
+          `teach scripts/required-suites.mjs to read it, or name the step in CI_PROVISIONING_STEPS if it only prepares a CI runner.`,
+      );
+    }
+    keys.push(key);
+  }
+  return keys;
+}
 
 const runLines = (run) =>
   String(run)
@@ -170,11 +191,15 @@ export function suiteLegs(document, path, provisioning = []) {
     throw new Error(`${path}: no ${SUITE_JOB} step runs ${MATRIX_COMMAND}`);
   }
   const conditioned = steps.filter(
-    (step) => step !== runStep && matrixKeysRequired(step.if).length > 0,
+    (step) => step !== runStep && mentionsMatrix(step.if),
   );
   const buildSteps = [];
   for (const step of conditioned) {
     if (provisioning.includes(step.name)) continue;
+    const keys = matrixKeysRequired(
+      step.if,
+      `${path}: the ${SUITE_JOB} step "${step.name}"`,
+    );
     const lines = step.run === undefined ? [] : runLines(step.run);
     if (lines.length === 0 || !lines.every((line) => BUILD_LINE.test(line))) {
       throw new Error(
@@ -183,7 +208,7 @@ export function suiteLegs(document, path, provisioning = []) {
           `or teach the plan to run it.`,
       );
     }
-    buildSteps.push({ keys: matrixKeysRequired(step.if), lines });
+    buildSteps.push({ keys, lines });
   }
   const envPrefix = (leg) =>
     Object.entries(runStep.env ?? {})
@@ -248,10 +273,11 @@ const usesPathScope = (document) =>
  * What `paths` require, as `{builds, workflows, gates}`. `workflows` has one
  * entry per path-scoped workflow the paths touch, each `{path, name, legs,
  * ciOnly}`; a leg whose command an earlier workflow already listed is left out.
+ * `packages` are the built packages whose sources trigger a build.
  */
-export function requiredPlan(root, paths) {
+export function requiredPlan(root, paths, packages = BUILT_PACKAGES) {
   const builds = [];
-  for (const pkg of BUILT_PACKAGES) {
+  for (const pkg of packages) {
     const dir = relative(root, pkg.dir).split("\\").join("/");
     const pathspecs = pkg.sources.flatMap((source) => [
       `:(glob)${dir}/${source}`,
@@ -273,18 +299,17 @@ export function requiredPlan(root, paths) {
     );
     if (touched.length === 0) continue;
     const hasSuites = document.jobs?.[SUITE_JOB] !== undefined;
-    const legs = hasSuites
-      ? suiteLegs(document, path, CI_PROVISIONING_STEPS[path] ?? []).filter(
-          (leg) => {
-            if (listed.has(leg.command)) return false;
-            listed.add(leg.command);
-            return true;
-          },
-        )
+    const allLegs = hasSuites
+      ? suiteLegs(document, path, CI_PROVISIONING_STEPS[path] ?? [])
       : [];
-    for (const line of legs.flatMap((leg) => leg.builds)) {
+    for (const line of allLegs.flatMap((leg) => leg.builds)) {
       if (!builds.includes(line)) builds.push(line);
     }
+    const legs = allLegs.filter((leg) => {
+      if (listed.has(leg.command)) return false;
+      listed.add(leg.command);
+      return true;
+    });
     workflows.push({
       path,
       name: String(document.name ?? path),
@@ -369,7 +394,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     source = `${paths.length} path(s) read from stdin`;
   } else {
     const range = positional[0];
-    paths = changedPaths(root, range);
+    try {
+      paths = changedPaths(root, range);
+    } catch (error) {
+      if (!(error instanceof MissingBaseError)) throw error;
+      console.error(error.message);
+      process.exit(2);
+    }
     source =
       range === undefined
         ? `${paths.length} path(s) changed since the merge base with ${DEFAULT_BASE}, uncommitted and untracked included`

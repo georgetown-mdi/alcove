@@ -13,9 +13,7 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["**/*.test.mjs"],
     environment: "node",
-    // Many of these tests spawn git, npm or a check script, and under a loaded
-    // machine the default 5s fails them on load alone; the .claude/hooks project
-    // uses the same bound for the same reason.
+    // Tests that spawn git, npm or a check script fail the default 5s on load alone.
     testTimeout: 30_000,
   },
 });

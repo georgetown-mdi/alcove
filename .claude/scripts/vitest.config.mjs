@@ -16,9 +16,7 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["**/*.test.mjs"],
     environment: "node",
-    // Suites that drive git or npm over a temp fixture fail the default 5s on
-    // machine load alone; the .claude/hooks project uses the same bound for the
-    // same reason.
+    // Tests that spawn git or npm fail the default 5s on load alone.
     testTimeout: 30_000,
   },
 });
