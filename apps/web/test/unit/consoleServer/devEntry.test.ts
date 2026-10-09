@@ -29,11 +29,19 @@ function devScript(): string {
   return script;
 }
 
-test("the dev script starts the console server with the client and shuts it down on SIGTERM", async () => {
-  const dataRoot = scratchDir("console-dev-root");
-  // `exec env` makes the server the shell's own process, so the signal below
-  // reaches it rather than the shell.
-  child = spawn("sh", ["-c", `exec env ${devScript()}`], {
+/** A dev server spawned from the package script. */
+interface DevRun {
+  process: ChildProcess;
+  exited: Promise<number | null>;
+  output: () => string;
+}
+
+/** Spawn the dev script on a free port, with a data root and a rendezvous
+ * mount of its own and `env` over the environment vitest runs in. */
+function spawnDev(env: Record<string, string>): DevRun {
+  // `exec env` makes the server the shell's own process, so a signal reaches
+  // it rather than the shell.
+  const spawned = spawn("sh", ["-c", `exec env ${devScript()}`], {
     cwd: APP_ROOT,
     env: {
       ...Object.fromEntries(
@@ -42,37 +50,45 @@ test("the dev script starts the console server with the client and shuts it down
         ),
       ),
       PORT: "0",
-      JOB_DATA_ROOT: dataRoot,
+      JOB_DATA_ROOT: scratchDir("console-dev-root"),
       JOB_RENDEZVOUS_DIR: scratchDir("console-dev-rvz"),
-      JOB_SFTP_CREDENTIAL_DIR: path.join(
-        scratchDir("console-dev-scratch"),
-        "credentials",
-      ),
+      ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
+  child = spawned;
   let output = "";
-  child.stdout!.on("data", (chunk: Buffer) => (output += chunk.toString()));
-  child.stderr!.on("data", (chunk: Buffer) => (output += chunk.toString()));
+  spawned.stdout.on("data", (chunk: Buffer) => (output += chunk.toString()));
+  spawned.stderr.on("data", (chunk: Buffer) => (output += chunk.toString()));
   const exited = new Promise<number | null>((resolve) =>
-    child!.on("exit", (code) => resolve(code)),
+    spawned.on("exit", (code) => resolve(code)),
   );
+  return { process: spawned, exited, output: () => output };
+}
+
+test("the dev script starts the console server with the client and shuts it down on SIGTERM", async () => {
+  const dev = spawnDev({
+    JOB_SFTP_CREDENTIAL_DIR: path.join(
+      scratchDir("console-dev-scratch"),
+      "credentials",
+    ),
+  });
 
   const url = await new Promise<string>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`the dev server did not start:\n${output}`)),
+      () => reject(new Error(`the dev server did not start:\n${dev.output()}`)),
       60_000,
     );
     const check = (): void => {
-      const match = /Listening on (http:\/\/\S+)/.exec(output);
+      const match = /Listening on (http:\/\/\S+)/.exec(dev.output());
       if (match === null) return;
       clearTimeout(timer);
       resolve(match[1]);
     };
-    child!.stdout!.on("data", check);
-    child!.stderr!.on("data", check);
-    void exited.then(() =>
-      reject(new Error(`the dev server exited:\n${output}`)),
+    dev.process.stdout!.on("data", check);
+    dev.process.stderr!.on("data", check);
+    void dev.exited.then(() =>
+      reject(new Error(`the dev server exited:\n${dev.output()}`)),
     );
   });
   expect(new URL(url).hostname).toBe("127.0.0.1");
@@ -92,6 +108,21 @@ test("the dev script starts the console server with the client and shuts it down
   expect(unknownApi.status).toBe(404);
   expect(await unknownApi.text()).toBe("");
 
-  child.kill("SIGTERM");
-  expect(await exited).toBe(0);
+  dev.process.kill("SIGTERM");
+  expect(await dev.exited).toBe(0);
+}, 90_000);
+
+test("the dev script prints a boot refusal as one line and exits 1", async () => {
+  const notADirectory = path.join(scratchDir("console-dev-scratch"), "file");
+  fs.writeFileSync(notADirectory, "");
+  const credentialDir = path.join(notADirectory, "credentials");
+  const dev = spawnDev({ JOB_SFTP_CREDENTIAL_DIR: credentialDir });
+
+  expect(await dev.exited).toBe(1);
+  expect(dev.output().trim().split("\n")).toEqual([
+    "The console did not start: the pasted-credential scratch directory " +
+      `${credentialDir} could not be created (ENOTDIR); set ` +
+      "JOB_SFTP_CREDENTIAL_DIR to a directory the account this server runs " +
+      "as can create, outside every mounted folder",
+  ]);
 }, 90_000);

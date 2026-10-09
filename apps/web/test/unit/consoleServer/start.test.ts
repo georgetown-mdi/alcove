@@ -1,8 +1,12 @@
 import path from "node:path";
+import util from "node:util";
 
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+
+import { JobApiConfigError } from "@jobs/gate";
 
 import {
+  exitOnBootFailure,
   logUncaughtException,
   logUnhandledRejection,
   startConsoleServer,
@@ -26,6 +30,15 @@ const PROCESS_EVENTS = [
 const started: Array<Server> = [];
 let listenersBefore: Map<string, Array<unknown>>;
 
+beforeEach(() => {
+  listenersBefore = new Map(
+    PROCESS_EVENTS.map((event) => [
+      event,
+      process.listeners(event) as Array<unknown>,
+    ]),
+  );
+});
+
 afterEach(async () => {
   for (const server of started.splice(0)) {
     server.closeAllConnections();
@@ -40,12 +53,6 @@ afterEach(async () => {
 });
 
 test("starting two servers in one process installs one uncaught-error listener for each event", async () => {
-  listenersBefore = new Map(
-    PROCESS_EVENTS.map((event) => [
-      event,
-      process.listeners(event) as Array<unknown>,
-    ]),
-  );
   enableJobApi();
   vi.stubEnv("PORT", "0");
   vi.stubEnv("HOST", "127.0.0.1");
@@ -65,4 +72,41 @@ test("starting two servers in one process installs one uncaught-error listener f
       .listeners("uncaughtException")
       .filter((listener) => listener === logUncaughtException),
   ).toHaveLength(1);
+});
+
+/** Run {@link exitOnBootFailure} on `error` with the exit and the console
+ * stubbed, returning the exit status and everything printed. */
+function bootFailureReport(error: unknown): { code: unknown; printed: string } {
+  const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+    throw new Error("exited");
+  });
+  const printed = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    expect(() => exitOnBootFailure(error)).toThrow("exited");
+    return {
+      code: exit.mock.calls[0]?.[0],
+      printed: printed.mock.calls
+        .map((args) => util.format(...args))
+        .join("\n"),
+    };
+  } finally {
+    exit.mockRestore();
+    printed.mockRestore();
+  }
+}
+
+test("a boot refusal prints its message as one line and exits 1", () => {
+  const { code, printed } = bootFailureReport(
+    new JobApiConfigError("set SOME_SETTING to fix it"),
+  );
+  expect(code).toBe(1);
+  expect(printed).toBe("The console did not start: set SOME_SETTING to fix it");
+});
+
+test("an unexpected boot failure prints its stack and exits 1", () => {
+  const error = new Error("listen EADDRINUSE");
+  const { code, printed } = bootFailureReport(error);
+  expect(code).toBe(1);
+  expect(error.stack).toMatch(/\n\s+at /);
+  expect(printed).toContain(error.stack);
 });
