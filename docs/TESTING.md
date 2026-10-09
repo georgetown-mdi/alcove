@@ -591,34 +591,43 @@ Dispatch the `weekly` or `all` tier only to confirm a change to the PSI engine p
 
 ## Scheduled runs
 
-The nightly and weekly workflows test the `staging` tip, which each checks out
-by name. GitHub fires a schedule from the workflow file on `main`, so a change
-to a scheduled workflow's own definition reaches its scheduled runs only once
-it is promoted there; a manual dispatch runs the definition on the branch it is
-dispatched on.
+The `nightly_*` workflows (`nightly_core_stress.yaml`,
+`nightly_live_webrtc.yaml`, `nightly_mutation.yaml`, `nightly_platform.yaml`)
+check out `staging` by name, so their scheduled runs test the `staging` tip.
+The weekly dependency audit, CodeQL and image smoke workflows run on their
+default ref. GitHub fires a schedule from the workflow file on `main`, so a
+change to a scheduled workflow's own definition reaches its scheduled runs only
+once it is promoted there; a manual dispatch runs the definition on the branch
+it is dispatched on.
 
-A scheduled run red for more than three nights in a row becomes a blocking item
-on the project board, closed by a fix or by retiring the workflow with its
-reason stated. `node scripts/scheduled-run-streak.mjs` tallies the current red
-streak of each scheduled workflow from `gh run list`, counting scheduled runs
-only, and marks a streak past three as blocking.
+A scheduled workflow red for more than `BLOCKING_STREAK` scheduled runs in a
+row (`scripts/scheduled-run-streak.mjs`) becomes a blocking item on the project
+board, closed by a fix or by retiring the workflow with its reason stated. The
+count is of runs, not days: for a weekly workflow it is that many weeks.
+`node scripts/scheduled-run-streak.mjs` tallies the current red streak of each
+scheduled workflow from `gh run list`, counting scheduled runs only, and marks
+a streak past the threshold as blocking. A workflow with more than one cron,
+such as the nightly and Sunday tiers of `nightly_core_stress.yaml`, gets one
+streak per tier. The script header states which run endings count as red.
 
 ### Per-file test durations
 
 The CLI, web and static-check jobs set `ALCOVE_VITEST_JSON_DIR` on their test
 steps, so each vitest run writes vitest's JSON report into that directory
 (`scripts/lib/jsonReportReporter.mjs`, registered beside the skipped-leg
-reporter). `.github/actions/test-durations` then lists the job's 20 slowest test
-files in the job summary and uploads the reports as a `test-durations-*`
-artifact, kept 30 days. To rank downloaded reports, or a local run's:
+reporter). `.github/actions/test-durations` then lists the job's slowest test
+files in the job summary, as many as `DEFAULT_TOP` in
+`scripts/slowest-test-files.mjs`, and uploads the reports as a
+`test-durations-*` artifact kept for the action's `retention-days`. To rank
+downloaded reports, or a local run's:
 
 ```sh
 ALCOVE_VITEST_JSON_DIR=/tmp/vitest-json npm run test:unit -w apps/cli
 node scripts/slowest-test-files.mjs /tmp/vitest-json
 ```
 
-A file's duration is the span from its first test's start to its last test's
-end, as vitest records it, so the time spent importing the module is not in it.
+What a file's duration includes is stated in the header of
+`scripts/slowest-test-files.mjs`.
 
 ## What a run did not cover
 

@@ -8,42 +8,88 @@
 // markdown, so CI appends it to the job summary. A file's duration is the span
 // from its first test's start to its last test's end, as vitest's JSON report
 // records it: the module's import and collection time before its first test is
-// not in it.
+// not in it. A report that cannot be read is named in a note and skipped; the
+// exit is 2 only when reports were found and none could be read.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 /** How many files the table lists unless `--top` says otherwise. */
 export const DEFAULT_TOP = 20;
 
+/** The top-level directories of this repository a test file can sit under. */
+const WORKSPACE_DIRECTORIES = new Set([
+  "apps",
+  "packages",
+  "scripts",
+  ".claude",
+]);
+
 /**
- * One row per test file across `reports`, slowest first, its path relative to
- * `root`. A file two runs both report is listed once per run.
+ * `file` as the table shows it: relative to `root` when inside it, otherwise,
+ * as for a report a CI runner wrote, from its first segment naming a
+ * {@link WORKSPACE_DIRECTORIES} entry, or its parent and base name.
+ */
+export function displayPath(file, root) {
+  const inside = relative(root, file);
+  const outside =
+    inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  if (inside !== "" && !outside) return inside.split(sep).join("/");
+  const segments = file.split(/[\\/]/);
+  const start = segments.findIndex((segment) =>
+    WORKSPACE_DIRECTORIES.has(segment),
+  );
+  if (start !== -1) return segments.slice(start).join("/");
+  return segments.slice(-2).join("/");
+}
+
+/**
+ * One row per test file across `reports`, slowest first, and how many entries
+ * lacked a start or end time, each listed at zero. A file two runs both report
+ * is listed once per run.
  */
 export function fileDurations(reports, root) {
   const rows = [];
+  let untimed = 0;
   for (const report of reports) {
     for (const result of report.testResults ?? []) {
+      const timed =
+        Number.isFinite(result.startTime) && Number.isFinite(result.endTime);
+      if (!timed) untimed += 1;
       rows.push({
-        file: relative(root, result.name),
-        durationMs: Math.max(0, result.endTime - result.startTime),
+        file: displayPath(result.name, root),
+        durationMs: timed ? Math.max(0, result.endTime - result.startTime) : 0,
         tests: result.assertionResults?.length ?? 0,
         status: result.status,
       });
     }
   }
-  return rows.sort((a, b) => b.durationMs - a.durationMs);
+  return { rows: rows.sort((a, b) => b.durationMs - a.durationMs), untimed };
 }
 
-/** The markdown table of the `top` slowest rows, under `title`. */
-export function formatSlowest(rows, { top = DEFAULT_TOP, title } = {}) {
+/**
+ * The markdown table of the `top` slowest rows, under `title`, after a line
+ * for each of `notes`.
+ */
+export function formatSlowest(
+  rows,
+  { top = DEFAULT_TOP, title, notes = [] } = {},
+) {
   const heading = `### Slowest test files${title ? `: ${title}` : ""}`;
+  const noteLines = notes.flatMap((note) => [note, ""]);
   if (rows.length === 0)
-    return `${heading}\n\nNo vitest JSON report was found.\n`;
+    return [
+      heading,
+      "",
+      ...noteLines,
+      "No vitest JSON report was found.",
+      "",
+    ].join("\n");
   const lines = [
     heading,
     "",
+    ...noteLines,
     `${Math.min(top, rows.length)} of ${rows.length} files.`,
     "",
     "| # | File | Seconds | Tests | Status |",
@@ -97,16 +143,41 @@ function parseArgs(argv) {
   return options;
 }
 
+/**
+ * The parsed reports at `paths`, and a note naming those that could not be
+ * read, or undefined when every one was.
+ */
+export function readReports(paths) {
+  const reports = [];
+  const unreadable = [];
+  for (const path of paths) {
+    try {
+      reports.push(JSON.parse(readFileSync(path, "utf8")));
+    } catch {
+      unreadable.push(path);
+    }
+  }
+  const note =
+    unreadable.length === 0
+      ? undefined
+      : `Skipped ${unreadable.length} unreadable report${unreadable.length === 1 ? "" : "s"}: ${unreadable.join(", ")}.`;
+  return { reports, note };
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const { top, title, paths } = parseArgs(process.argv.slice(2));
-    const reports = reportPaths(paths).map((path) =>
-      JSON.parse(readFileSync(path, "utf8")),
-    );
+    const found = reportPaths(paths);
+    const { reports, note } = readReports(found);
     const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
-    process.stdout.write(
-      formatSlowest(fileDurations(reports, root), { top, title }),
-    );
+    const { rows, untimed } = fileDurations(reports, root);
+    const notes = [note].filter((each) => each !== undefined);
+    if (untimed > 0)
+      notes.push(
+        `${untimed} file${untimed === 1 ? " has" : "s have"} no start or end time and ${untimed === 1 ? "is" : "are"} listed at 0 seconds.`,
+      );
+    process.stdout.write(formatSlowest(rows, { top, title, notes }));
+    if (found.length > 0 && reports.length === 0) process.exitCode = 2;
   } catch (err) {
     process.stderr.write(`${err instanceof Error ? err.message : err}\n`);
     process.exitCode = 2;

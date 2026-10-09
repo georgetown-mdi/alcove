@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { fileDurations, formatSlowest } from "./slowest-test-files.mjs";
+import {
+  displayPath,
+  fileDurations,
+  formatSlowest,
+} from "./slowest-test-files.mjs";
 
 const SCRIPT = fileURLToPath(
   new URL("./slowest-test-files.mjs", import.meta.url),
@@ -30,7 +34,7 @@ afterEach(() => {
 
 describe("fileDurations", () => {
   test("ranks every file of every report, slowest first, relative to the root", () => {
-    const rows = fileDurations(
+    const { rows, untimed } = fileDurations(
       [
         { testResults: [result("apps/cli/test/a.test.ts", 100, 1_100, 3)] },
         {
@@ -62,6 +66,47 @@ describe("fileDurations", () => {
         status: "passed",
       },
     ]);
+    expect(untimed).toBe(0);
+  });
+
+  test("lists an entry without a start or end time at zero and counts it", () => {
+    const { rows, untimed } = fileDurations(
+      [
+        {
+          testResults: [
+            result("apps/cli/test/a.test.ts", 0, 1_000),
+            { ...result("apps/cli/test/b.test.ts", 0, 0), endTime: undefined },
+            { ...result("apps/cli/test/c.test.ts", 0, 0), startTime: null },
+          ],
+        },
+      ],
+      ROOT,
+    );
+    expect(rows.map((row) => row.durationMs)).toEqual([1_000, 0, 0]);
+    expect(untimed).toBe(2);
+  });
+});
+
+describe("displayPath", () => {
+  test("shows a path inside the checkout relative to it", () => {
+    expect(displayPath(join(ROOT, "apps/cli/test/a.test.ts"), ROOT)).toBe(
+      "apps/cli/test/a.test.ts",
+    );
+  });
+
+  test("shows a CI runner's absolute path from its workspace directory on", () => {
+    expect(
+      displayPath(
+        "/home/runner/work/alcove/alcove/packages/core/test/unit/x.test.ts",
+        "/elsewhere/alcove",
+      ),
+    ).toBe("packages/core/test/unit/x.test.ts");
+  });
+
+  test("falls back to the parent and base name outside any workspace directory", () => {
+    expect(displayPath("/home/runner/work/vitest.test.ts", "/elsewhere")).toBe(
+      "work/vitest.test.ts",
+    );
   });
 });
 
@@ -107,6 +152,35 @@ describe("the command", () => {
     expect(run.stdout.indexOf("`y.test.ts`")).toBeLessThan(
       run.stdout.indexOf("`x.test.ts`"),
     );
+  });
+
+  test("names an unreadable report and still ranks the rest", () => {
+    const dir = mkdtempSync(join(tmpdir(), "slowest-test-files-"));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, "cli-1.json"),
+      JSON.stringify({ testResults: [result("x.test.ts", 0, 2_500)] }),
+    );
+    writeFileSync(join(dir, "web-2.json"), '{"testResults": [');
+    const run = spawnSync(process.execPath, [SCRIPT, dir], {
+      encoding: "utf8",
+    });
+    expect(run.status, run.stderr).toBe(0);
+    expect(run.stdout).toContain(
+      `Skipped 1 unreadable report: ${join(dir, "web-2.json")}.`,
+    );
+    expect(run.stdout).toContain("`x.test.ts` | 2.5");
+  });
+
+  test("fails when no report found could be read", () => {
+    const dir = mkdtempSync(join(tmpdir(), "slowest-test-files-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "web-2.json"), "not json");
+    const run = spawnSync(process.execPath, [SCRIPT, dir], {
+      encoding: "utf8",
+    });
+    expect(run.status).toBe(2);
+    expect(run.stdout).toContain("Skipped 1 unreadable report");
   });
 
   test("refuses a run with no report path", () => {

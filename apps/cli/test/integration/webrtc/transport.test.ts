@@ -167,7 +167,26 @@ test.each(["inviter", "acceptor"] as const)(
       lines.push(args.map((arg) => String(arg)).join(" "));
     });
     setLogLevel(logLibrary.levels.DEBUG);
-    const early = openWebRtcMessageConnection({ ...common, role: first });
+    // The attempt-2 line is logged before that attempt registers, so the
+    // broker's OPEN on a second socket marks the re-registration done.
+    let registrations = 0;
+    const countRegistrations = (url: string): WebSocket => {
+      const socket = new WebSocket(url);
+      socket.addEventListener("message", (event: MessageEvent) => {
+        try {
+          if (JSON.parse(String(event.data))?.type === "OPEN")
+            registrations += 1;
+        } catch {
+          // Not a frame the count needs.
+        }
+      });
+      return socket;
+    };
+    const early = openWebRtcMessageConnection({
+      ...common,
+      role: first,
+      socketFactory: countRegistrations,
+    });
     early.catch(() => {
       // Awaited below; this only keeps an early failure from going unhandled.
     });
@@ -176,6 +195,7 @@ test.each(["inviter", "acceptor"] as const)(
         expect(
           lines.some((line) => line.includes("starting connection attempt 2")),
         ).toBe(true);
+        expect(registrations).toBeGreaterThanOrEqual(2);
       },
       { timeout: attemptMs + 10_000, interval: 50 },
     );

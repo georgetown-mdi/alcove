@@ -1,12 +1,7 @@
-// Vitest's own JSON report, written only when ALCOVE_VITEST_JSON_DIR names a
-// directory. CI sets it on its test steps so each run's per-file timings are
-// kept as an artifact (`.github/actions/test-durations`); a local run, which
-// leaves it unset, writes nothing and prints nothing.
-//
-// It is registered beside the skipped-leg reporter in every config that owns a
-// run, for the reason that reporter's header gives. Each run writes a file of
-// its own, named by workspace and process, because one CI step can start
-// several runs that share the directory.
+// CI sets ALCOVE_VITEST_JSON_DIR on its test steps so each run's per-file
+// timings are kept as an artifact (`.github/actions/test-durations`). It is
+// registered beside the skipped-leg reporter in every config that owns a run,
+// for the reason that reporter's header gives.
 
 import { basename, join } from "node:path";
 
