@@ -7,10 +7,10 @@
 // passes a literal `model:` from ALLOWED_TIERS and a literal `effort:` from
 // ALLOWED_EFFORTS at the top level of its own inline options object; a spread
 // into that object, a computed or hoisted value, a non-call use of `agent`,
-// and a pinned Fable each fail. The lexer, block
-// reader and file listing are shared with check-workflow-args-resolve.mjs in
-// scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when no
-// `agent(` call is found at all. Rationale and limits:
+// and a pinned Fable each fail. The lexer, block reader and file listing are
+// shared with check-workflow-args-resolve.mjs
+// in scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when
+// no `agent(` call is found at all. Rationale and limits:
 // docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";

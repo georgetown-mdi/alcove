@@ -483,13 +483,52 @@ if (!consolidated) throw new Error(salvage("The consolidator"));
 const NIT_BATCH_NAME =
   "Nits touching no user-visible string, booked as one stated limit";
 
-// The cluster fields the round returns whatever the cluster's fix shape.
 const coreOf = ({ userVisibleString, edits, verifyCommand, ...core }) => core;
 
-// A confirmed cluster keeps its fix only when both halves came back: an edit
-// with no command to check it, or a command with nothing to check, is a
+// The file's content at the target ref, or null when git cannot show it.
+async function showAtTarget(file) {
+  if (typeof file !== "string" || file.length === 0) return null;
+  let execFile;
+  try {
+    ({ execFile } = await import("node:child_process"));
+  } catch {
+    return null;
+  }
+  const gitArgs = [
+    ...(worktreePath === null ? [] : ["-C", worktreePath]),
+    "show",
+    `${targetRef}:${file}`,
+  ];
+  return new Promise((done) => {
+    execFile(
+      "git",
+      gitArgs,
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+      (error, stdout) => done(error ? null : stdout),
+    );
+  });
+}
+
+// An edit is mechanical only when its oldText occurs exactly once in its file
+// at the target ref; the consolidator's word that it does is not enough.
+async function editsApply(edits) {
+  for (const edit of edits) {
+    if (typeof edit?.oldText !== "string" || edit.oldText.length === 0) {
+      return false;
+    }
+    const content = await showAtTarget(edit.file);
+    if (content === null || content.split(edit.oldText).length !== 2) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// A confirmed cluster keeps its fix only when both halves came back and every
+// edit's oldText is found exactly once: an edit with no command to check it, a
+// command with nothing to check, or an edit that cannot be applied is a
 // judgment item for the fix brief, not a mechanical one.
-function withFixShape(cluster) {
+async function withFixShape(cluster) {
   const core = coreOf(cluster);
   const command =
     typeof cluster.verifyCommand === "string"
@@ -499,7 +538,8 @@ function withFixShape(cluster) {
     core.verification !== "confirmed" ||
     !Array.isArray(cluster.edits) ||
     cluster.edits.length === 0 ||
-    command.length === 0
+    command.length === 0 ||
+    !(await editsApply(cluster.edits))
   ) {
     return core;
   }
@@ -507,7 +547,9 @@ function withFixShape(cluster) {
 }
 
 // One cluster standing in for every nit that touches no user-visible string.
-// Its file is empty so the batch never makes a REPEAT file or a hotspot; the
+// It carries the strongest verification outcome among its nits (confirmed over
+// unverifiable over refuted): a batch holding one confirmed nit is a confirmed
+// limit entry, and the ledger is the record of it. Its file is empty so the batch never makes a REPEAT file or a hotspot; the
 // files are named in its description instead.
 function nitBatch(nits) {
   const verification =
@@ -539,7 +581,7 @@ for (const cluster of consolidated.clusters) {
   if (cluster.severity === "nit" && cluster.userVisibleString !== true) {
     batchedNits.push(coreOf(cluster));
   } else {
-    clusters.push(withFixShape(cluster));
+    clusters.push(await withFixShape(cluster));
   }
 }
 if (batchedNits.length > 0) clusters.push(nitBatch(batchedNits));

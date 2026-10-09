@@ -266,7 +266,8 @@ Common to both:
    vote ("N of `<reviewerCount>` reviewers see a materially simpler shape", each reason on
    its own line when N > 0).
    Mark each confirmed cluster's row `mechanical` when it has `edits` and
-   `verifyCommand`, and `judgment` otherwise, and under a mechanical row write each
+   `verifyCommand` (the Workflow keeps them only when each edit's `oldText` occurs
+   exactly once in its file at the target ref), and `judgment` otherwise, and under a mechanical row write each
    edit as its file and two fenced blocks, the old text and the new text, then the
    verifying command in a fenced block. The fix brief for a mechanical item is drafted
    from these: apply the edits, run the command. Mark the nit batch's row `stated limit`.
