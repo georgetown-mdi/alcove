@@ -39,21 +39,49 @@ dependencies the body names (an unmet "Depends on" disqualifies), and size
 (prefer issues that land as one 150-900 line PR; flag anything projecting
 past ~1,200 lines as needing a split first).
 
+Before listing any item, whatever its status, check whether merged work
+already delivered it:
+- Its body: a "Delivered by:" line; a merged PR cited as landing the work
+  ("done, #N", "merged as #N", "Implemented by #N", "Settled ... in #N"); a
+  "Resolved" or "Settled" heading or line; a note that the item is ready for
+  the owner to close; or a sibling item named as carrying the rest that is
+  now Done (fetch it to see).
+- Merged PRs naming its id, up to 10 ids per call joined with OR:
+    gh pr list --state merged --limit 50 --json number,title,body
+      --search "<id> OR <id> ..."
+  Read the line that names the id. "Implements" delivers the item. "Part of"
+  is a partial delivery, and delivers the item when the body's split shows
+  that PR was the last stage. "Depends on" and "Follow-on" do not count.
+- A fix that never named the id: search merged PR titles and bodies for the
+  item title's 2-4 most specific words, and the staging log for its key
+  phrase (a squash commit's subject is its PR title):
+    gh pr list --state merged --limit 10 --json number,title --search "<words>"
+    git log origin/staging --oneline -i --grep "<phrase>"
+  A hit is a lead, not proof: read the PR (gh pr view <N> --json body) and
+  count it only when it does what the item's acceptance criteria ask.
+
 Return ONLY this, as raw text (it is data for the caller, not a message):
 1. In Progress items first, then up to 10 candidates, one line each:
    <board> <itemId> [<status>] [<epic>/<order>] <title> -- <why now, or the
    blocker>
-2. A closing 1-2 line recommendation naming the 2-4 picks for the next
+   A candidate a "Part of" PR partly delivered says so: "partly delivered by
+   #N".
+2. Delivered, owner closes: every item the check above found delivered, one
+   line each, never among the candidates:
+   <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:
+   body line, PR verb, or title match>), confirm and close
+3. A closing 1-2 line recommendation naming the 2-4 picks for the next
    session (several small issues batch well together).
 Do not include issue bodies or full board listings in your return.
 ```
 
 The agent writes nothing, so it needs no worktree isolation; it does need
-network access for the board reads (gh GraphQL).
+network access for the board reads and PR searches (gh).
 
 ## Afterward
 
-Fetch only the chosen item's body yourself (`node
+Relay the delivered list to the owner, who confirms and closes each item on
+it. Fetch only the chosen item's body yourself (`node
 .claude/scripts/fetch-issues.mjs <board> <itemId>`) or hand the item id
 straight to /start-issue. Do not re-list the boards in the calling session;
 if the shortlist looks stale or wrong, re-spawn the agent instead.

@@ -105,14 +105,18 @@ Leave this section out only if there is nothing non-obvious to say.
 List any assumptions you made or questions still unresolved. Empty if everything is decided.
 ```
 
-A closed item that came from a retro or review ends with one template line
-naming where its outcome lives:
+When a merged PR delivers an item, its body gains one line recording it, in
+this fixed form, so the backlog shortlist can tell a delivered item from a
+candidate:
 
 ```markdown
-encoded as: check | hook | ruleset line | doc | code | none
+Delivered by: #N (YYYY-MM-DD)
 ```
 
-Keep the one value that applies. It is a template line, not an enforced rule.
+A staged item lists each PR, oldest first (`Delivered by: #N, #M
+(YYYY-MM-DD)`, dated by the last), and gains the line only when its last
+stage merges; a partial delivery stays in the item's progress notes. It is a
+template line, not an enforced rule.
 
 ## Style rules
 
