@@ -18,13 +18,6 @@ import type {
 import { applyConnectionOverrides, type ConnectionOverrides } from "./config";
 import { brokerLocationFromConnection } from "./connection/webrtc/weriftPeer";
 
-// The web app address rules are core's, shared with the console.
-export {
-  WEB_APP_ADDRESS_REFUSED,
-  isWebAppAddress,
-  webAppOrigin,
-} from "@alcove/core";
-
 // The channels connectionFromURL turns a URL into: file-sync only.
 // `runProtocol` also runs webrtc, but a webrtc connection needs a `role`
 // naming which end of the rendezvous this party is, and no URL states one.

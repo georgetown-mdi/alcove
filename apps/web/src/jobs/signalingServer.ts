@@ -74,11 +74,6 @@ const PORT_REFUSED =
   "The address names port 0, which cannot be dialed. Type a port from 1 to " +
   "65535.";
 
-const WEB_APP_SHAPE_REFUSED =
-  "A web app address must end at its host and port, with no path, query or " +
-  "fragment. Type the web app's own address, or the coordination server's " +
-  "wss:// address.";
-
 const WEB_APP_REMEDY =
   "Type the coordination server's own wss:// address instead.";
 
@@ -94,35 +89,22 @@ const authorBodySchema = z.strictObject({
   address: z.string().check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
 });
 
-/** Core's resolver message as a sentence: it starts with the origin or a
- * lowercase verb, the CLI's form. */
-function asSentence(message: string, origin: string): string {
-  return message.startsWith(origin)
-    ? message
-    : message.charAt(0).toUpperCase() + message.slice(1);
-}
-
 /** The server a web app address names, through the file it publishes. */
 async function serverPublishedBy(
   address: URL,
-  text: string,
   options: ResolveAuthoredSignalingServerOptions,
 ): Promise<URL> {
-  if (address.pathname !== "/" || /[?#]/.test(text))
-    throw new JobApiConfigError(WEB_APP_SHAPE_REFUSED);
   try {
     return await resolveWebAppSignalingServer(address, {
-      remedy: WEB_APP_REMEDY,
       ...options,
+      remedy: WEB_APP_REMEDY,
     });
   } catch (error) {
-    if (error instanceof UsageError)
-      throw new JobApiConfigError(asSentence(error.message, address.origin));
+    if (error instanceof UsageError) throw new JobApiConfigError(error.message);
     if (error instanceof ConnectionError)
-      throw new SignalingServerUnreachableError(
-        asSentence(error.message, address.origin),
-        { cause: error },
-      );
+      throw new SignalingServerUnreachableError(error.message, {
+        cause: error,
+      });
     throw error;
   }
 }
@@ -161,7 +143,7 @@ export async function resolveAuthoredSignalingServer(
     dialed = publishedSignalingServerURL(text);
     if (dialed === undefined) throw new JobApiConfigError(SERVER_SHAPE_REFUSED);
   } else if (address.protocol === "http:" || address.protocol === "https:") {
-    dialed = await serverPublishedBy(address, text, options);
+    dialed = await serverPublishedBy(address, options);
     webAppOrigin = address.origin;
   } else throw new JobApiConfigError(SIGNALING_ADDRESS_SCHEME_REFUSED);
 

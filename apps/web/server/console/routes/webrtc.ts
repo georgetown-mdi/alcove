@@ -26,8 +26,8 @@ import type { SignalingServerProjection } from "@jobContract/signalingServer";
  *   `http:`/`https:` web app address resolved through the server that app
  *   publishes. A refused address is a `400 { error }`, a web app that cannot
  *   be read a `502 { error }`, each one sentence of what happened and one of
- *   what to do; a later `PUT` or `DELETE` arriving during that read makes it
- *   a `409`.
+ *   what to do; a later `PUT` or `DELETE` taking effect during that read
+ *   makes it a `409`.
  * - `DELETE` forgets it (idempotent `204`).
  *
  * `POST /api/jobs` gains no connection field: a webrtc job dials only the

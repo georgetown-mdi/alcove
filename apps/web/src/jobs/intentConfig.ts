@@ -219,8 +219,7 @@ export function composeWebrtcConfigSpec(
   );
 }
 
-/** The webrtc config document: {@link composeWebrtcConfigSpec}'s spec,
- * written as {@link composeSftpConfigDocument} writes the sftp one. */
+/** {@link composeWebrtcConfigSpec}'s spec as a YAML document. */
 export function composeWebrtcConfigDocument(
   intent: JobWebrtcExchangeIntent,
   signalingServer: AuthoredSignalingServer,

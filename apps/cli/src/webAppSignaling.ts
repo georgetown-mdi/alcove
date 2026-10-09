@@ -1,17 +1,10 @@
 import { resolveWebAppSignalingServer as resolveInCore } from "@alcove/core";
+import type { ResolveWebAppSignalingServerOptions } from "@alcove/core";
 
 /** What a refusal tells the operator to give instead of the web app's address. */
 const INSTEAD =
   "Give the coordination server itself as a wss://<server>/api/ URL, or " +
   "author `channel: webrtc` in alcove.yaml and run 'alcove exchange'.";
-
-/** Options for {@link resolveWebAppSignalingServer}. */
-export interface ResolveWebAppSignalingServerOptions {
-  /** The fetch implementation; `globalThis.fetch` when unset. */
-  fetch?: typeof globalThis.fetch;
-  /** Defaults to core's `SIGNALING_DISCOVERY_TIMEOUT_MS`. */
-  timeoutMs?: number;
-}
 
 /**
  * Core's resolution of the coordination server a web app publishes, its
@@ -24,7 +17,7 @@ export interface ResolveWebAppSignalingServerOptions {
  */
 export function resolveWebAppSignalingServer(
   address: URL,
-  options: ResolveWebAppSignalingServerOptions = {},
+  options: Omit<ResolveWebAppSignalingServerOptions, "remedy"> = {},
 ): Promise<URL> {
   return resolveInCore(address, { ...options, remedy: INSTEAD });
 }

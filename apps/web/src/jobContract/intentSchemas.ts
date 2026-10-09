@@ -525,9 +525,9 @@ export type JobZeroSetupIntent =
 export type JobCreateIntent = JobExchangeIntent | JobZeroSetupIntent;
 
 /**
- * A channel the console runs a configuration opened off the mount over. A
- * webrtc job is created only from the console's own authoring, so an opened
- * webrtc configuration is edited and saved back rather than run.
+ * The channels an opened configuration runs over. A webrtc job is created
+ * only from the console's own authoring, so an opened webrtc configuration
+ * is edited and saved back instead.
  */
 export type JobChannel = Extract<
   JobCreateIntent["channel"],

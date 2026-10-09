@@ -152,9 +152,9 @@ export class SignalingServerUnavailableError extends Error {
 }
 
 /**
- * Thrown by {@link JobManager.authorSignalingServer} when another `PUT` or a
- * `DELETE` of the coordination server arrived while this one read the web
- * app's published file: the later request decides the setting. The route
+ * Thrown by {@link JobManager.authorSignalingServer} when a later `PUT` or a
+ * `DELETE` of the coordination server took effect while this one read the
+ * web app's published file: the later request decides the setting. The route
  * maps it to a 409.
  */
 export class SignalingServerAuthoringSupersededError extends Error {
@@ -650,10 +650,11 @@ export class JobManager {
   private authoredSignalingServer: AuthoredSignalingServer | undefined;
   /** The advisories {@link authoredSignalingServer} was authored with. */
   private authoredSignalingWarnings: Array<string> = [];
-  /** Counts authoring and clearing requests, so a `PUT` whose read of a web
-   * app finishes after a later request does not replace that request's
-   * outcome. */
-  private signalingAuthoringGeneration = 0;
+  /** The ticket of the latest authoring or clearing request to arrive. */
+  private signalingAuthoringLatestTicket = 0;
+  /** The ticket of the latest request that changed the setting. A refused
+   * `PUT` changes nothing, so it never makes an earlier `PUT` stale. */
+  private signalingAuthoringCommittedTicket = 0;
   /**
    * Whether a host-key probe child is running. The probe is single-flight, so a
    * concurrent {@link probeSftpHostKey} is refused with {@link SftpProbeBusyError}.
@@ -1008,22 +1009,23 @@ export class JobManager {
   }
 
   /**
-   * Validate and hold the coordination server a webrtc job dials, via
-   * {@link resolveAuthoredSignalingServer}: a web app's address
-   * is resolved through the server it publishes. A refused body, or one a
-   * later request superseded while the web app was read, leaves the setting
-   * as it was. Returns the now-effective projection.
+   * Validate and hold the coordination server a webrtc job dials, resolving
+   * a web app's address through the server it publishes
+   * ({@link resolveAuthoredSignalingServer}). A refused body leaves the
+   * setting as it was, as does a body whose read a later request overtook.
+   * Returns the now-effective projection.
    *
    * @throws {SignalingServerAuthoringSupersededError} when a later `PUT` or
-   *   `DELETE` arrived during the read.
+   *   `DELETE` took effect during the read.
    */
   async authorSignalingServer(
     rawBody: unknown,
   ): Promise<SignalingServerProjection> {
-    const generation = ++this.signalingAuthoringGeneration;
+    const ticket = ++this.signalingAuthoringLatestTicket;
     const { server, warnings } = await resolveAuthoredSignalingServer(rawBody);
-    if (generation !== this.signalingAuthoringGeneration)
+    if (this.signalingAuthoringCommittedTicket > ticket)
       throw new SignalingServerAuthoringSupersededError();
+    this.signalingAuthoringCommittedTicket = ticket;
     this.authoredSignalingServer = server;
     this.authoredSignalingWarnings = warnings;
     return this.signalingServerProjection()!;
@@ -1031,13 +1033,15 @@ export class JobManager {
 
   /** Forget the authored coordination server. Idempotent. */
   clearAuthoredSignalingServer(): void {
-    this.signalingAuthoringGeneration++;
+    this.signalingAuthoringLatestTicket++;
+    this.signalingAuthoringCommittedTicket =
+      this.signalingAuthoringLatestTicket;
     this.authoredSignalingServer = undefined;
     this.authoredSignalingWarnings = [];
   }
 
   /** The projection of the authored coordination server for `GET
-   * /api/jobs/webrtc`, or null when none is authored; mapped field by field. */
+   * /api/jobs/webrtc`, or null when none is authored. */
   signalingServerProjection(): SignalingServerProjection | null {
     const server = this.authoredSignalingServer;
     if (server === undefined) return null;

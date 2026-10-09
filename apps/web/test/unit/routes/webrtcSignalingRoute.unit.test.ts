@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { WEB_APP_ADDRESS_REFUSED } from "@alcove/core";
 import { parse as parseYaml } from "yaml";
 
 import {
@@ -221,7 +222,8 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
     ["a query", "wss://peers.test/psi?key=x", /no query, fragment/],
     ["a percent-escape", "wss://peers.test/p%2Fsi", /percent-escape/],
     ["port 0", "wss://peers.test:0/psi", /port 0/],
-    ["a web app path", "https://app.test/accept", /no path, query/],
+    ["a web app path", "https://app.test/accept", WEB_APP_ADDRESS_REFUSED],
+    ["a web app fragment", "https://app.test/#token", WEB_APP_ADDRESS_REFUSED],
   ])("refuses %s, keeping the authored server", async (_, address, error) => {
     seedManager();
     await putWebrtc({ address: "wss://kept.test/psi" });
@@ -281,7 +283,57 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
     const put = await putWebrtc({ address: app });
     expect(put.status).toBe(502);
     const { error } = (await put.json()) as { error: string };
-    expect(error).toMatch(/^Could not read the coordination server address/);
+    expect(error).toMatch(/^could not read the coordination server address/);
+    expect(error).toMatch(
+      /Type the coordination server's own wss:\/\/ address/,
+    );
+  });
+
+  /** A web app that answers only when the returned `answer` is called. */
+  async function heldWebApp(): Promise<{
+    app: string;
+    answered: () => Promise<() => void>;
+  }> {
+    let answer: (() => void) | undefined;
+    const app = await webApp((_request, response) => {
+      answer = () => publishing("ws://signal.test/api/")(_request, response);
+    });
+    return {
+      app,
+      answered: async () => {
+        await vi.waitFor(() => expect(answer).toBeDefined());
+        return answer!;
+      },
+    };
+  }
+
+  test("a refused PUT during the web app's read leaves the PUT to finish", async () => {
+    seedManager();
+    const { app, answered } = await heldWebApp();
+    const put = putWebrtc({ address: app });
+    const answer = await answered();
+    expect((await putWebrtc({ address: "sftp://peers.test/" })).status).toBe(
+      400,
+    );
+    answer();
+    expect((await put).status).toBe(200);
+    expect(await getWebrtc()).toMatchObject({
+      host: "signal.test",
+      webAppOrigin: new URL(app).origin,
+    });
+  });
+
+  test("a later PUT during the web app's read wins over the PUT", async () => {
+    seedManager();
+    const { app, answered } = await heldWebApp();
+    const put = putWebrtc({ address: app });
+    const answer = await answered();
+    expect((await putWebrtc({ address: "wss://later.test/psi" })).status).toBe(
+      200,
+    );
+    answer();
+    expect((await put).status).toBe(409);
+    expect(await getWebrtc()).toMatchObject({ host: "later.test" });
   });
 
   test("a DELETE during the web app's read wins over the PUT", async () => {

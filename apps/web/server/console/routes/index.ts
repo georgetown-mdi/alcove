@@ -39,17 +39,19 @@ import { defineJobRoute } from "../jobRoute";
 /**
  * `POST /api/jobs` -- create and start an exchange job from a typed intent.
  *
- * Feature-gated. The request body is a JSON {@link JobCreateIntent}, discriminated
- * on `mode` (a missing `mode` defaults to `exchange` for the merged client), then
- * on `channel` (filedrop | sftp, and webrtc on an exchange): an `exchange` intent contains validated linkage
- * terms, a shared secret, and exactly one input source; a `zeroSetup` intent
- * contains neither terms nor secret (both parties infer terms from their files),
- * only an input source and bounded tuning. The server generates the job id, and for
- * an exchange composes the CLI config and key file (every path a server-chosen name
- * in the workdir; sftp connection material drawn only from the operator-authored
- * connection), while a zero-setup drives the literal positional CLI form with the
- * connection on argv (server URL plus `--server-*` flags) and no config, key, or
- * `--save`. Either way no client string reaches argv or a file path.
+ * Feature-gated. The request body is a JSON {@link JobCreateIntent},
+ * discriminated on `mode` (a missing `mode` defaults to `exchange` for the
+ * merged client), then on `channel` (filedrop | sftp, and webrtc on an
+ * exchange): an `exchange` intent contains validated linkage terms, a shared
+ * secret, and exactly one input source; a `zeroSetup` intent contains neither
+ * terms nor secret (both parties infer terms from their files), only an input
+ * source and bounded tuning. The server generates the job id, and for an
+ * exchange composes the CLI config and key file (every path a server-chosen
+ * name in the workdir; sftp connection material drawn only from the
+ * operator-authored connection), while a zero-setup drives the literal
+ * positional CLI form with the connection on argv (server URL plus `--server-*`
+ * flags) and no config, key, or `--save`. Either way no client string reaches
+ * argv or a file path.
  *
  * The console facilitates one exchange at a time: while an exchange occupies the
  * single slot, a second create is a 409 containing `{ id }` -- the occupying
