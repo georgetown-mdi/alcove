@@ -537,16 +537,19 @@ registrations, revocations, refusals and a connection error.
 
 ### Retention and who reads it
 
-- **Retention.** An entry is deleted within 91 days. `install.sh` installs a
+- **Retention.** An entry is deleted about 90 days after the newest entry in its file. `install.sh` installs a
   journald drop-in,
   [`journald-alcove-relay.conf`](../../infra/relay/journald-alcove-relay.conf),
   the one place the period is set: it keeps the journal on disk
   (`Storage=persistent`, under `/var/log/journal`), deletes archived journal
   files holding entries older than 90 days (`MaxRetentionSec`), and archives the active file
   after one day (`MaxFileSec`), since the age limit applies to archived files
-  only. It applies to the host's whole journal, coturn's and the registrar's
+  only. A file is deleted whole, so an entry outlives 90 days by up to the span
+  of its file; on the reference host, measured 2026-10-09, archived files each
+  span 1 to 8 days. It applies to the host's whole journal, coturn's and the registrar's
   lines alike, so the reference deployment runs the relay on a host of its own.
-  journald still rotates by size, so a flood of lines can drop entries sooner.
+  The size limits are journald's defaults (not set in the drop-in, not
+  measured), so a flood of lines can drop entries sooner.
   `journalctl --disk-usage` shows what the journal holds.
 - **Who reads it.** Whoever can read the relay host's journal: root and the
   accounts the host grants journal access, which on the reference deployment is
@@ -619,7 +622,7 @@ The metric is the instance's own, aggregate, with no per-session content.
 If a customer's incident-response requirement asks for session records, the
 setting is coturn's `verbose`, turned on for that deployment only. The fields it
 adds are listed under What the relay host keeps. It writes the client address
-and byte counts for each session, so the journal's retention (within 91 days)
+and byte counts for each session, so the journal's retention (about 90 days after the newest entry in a file)
 then bounds how long those are held, and a shorter period is a deployment's own
 change to the drop-in.
 
