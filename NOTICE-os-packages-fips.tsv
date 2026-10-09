@@ -7,10 +7,10 @@
 # which covers this repository's npm tree and no OS package.
 #
 # image: the FIPS variant image, built from Dockerfile.fips
-# base pin: amazonlinux:2023@sha256:5b29412077a463b4a3a8fbc99a8cdf4b929f38a3ecc8dac10328d8f36b0099b8
+# base pin: amazonlinux:2023@sha256:8ed3c0a996841537f75607e7d1de2114d8150391f75792e8da9268738547e73f
 # query: rpm -qa --qf "%{NAME}\t%|EPOCH?{%{EPOCH}}:{0}|\t%{VERSION}\t%{RELEASE}\t%{ARCH}\t%{LICENSE}\n"
 # architectures:
-#   linux/amd64 and linux/arm64 were built and queried on 2026-09-30 and
+#   linux/amd64 and linux/arm64 were built and queried on 2026-10-09 and
 #   agree on every package's name, version and license, so one list holds
 #   for both. The drift check on .github/workflows/image_smoke.yaml
 #   compares linux/amd64 only, that job building no other architecture.
@@ -21,7 +21,7 @@
 #
 # package	version	license
 alternatives	0:1.15-2.amzn2023.0.2	GPLv2
-amazon-linux-repo-cdn	0:2023.12.20260918-0.amzn2023	MIT
+amazon-linux-repo-cdn	0:2023.12.20260930-0.amzn2023	MIT
 audit-libs	0:3.1.5-1.amzn2023.0.2	LGPL-2.0-or-later
 avahi-libs	0:0.8-14.amzn2023.0.14	LGPLv2+
 basesystem	0:11-11.amzn2023.0.2	Public Domain
@@ -32,7 +32,7 @@ coreutils-single	0:8.32-30.amzn2023.0.5	GPLv3+
 cracklib	0:2.9.6-27.amzn2023.0.2	LGPLv2+
 crypto-policies	0:20260224-1.gitea0f072.amzn2023.0.6	LGPL-2.1-or-later
 cryptsetup-libs	0:2.6.1-1.amzn2023.0.1	GPLv2+ and LGPLv2+
-curl-minimal	0:8.21.0-5.amzn2023.0.1	curl
+curl-minimal	0:8.21.0-5.amzn2023.0.2	curl
 cyrus-sasl-lib	0:2.1.27-18.amzn2023.0.3	BSD with advertising
 dbus	1:1.12.28-1.amzn2023.0.1	(GPLv2+ or AFL) and GPLv2+
 dbus-broker	0:32-1.amzn2023.0.2	ASL 2.0
@@ -41,8 +41,8 @@ dbus-libs	1:1.12.28-1.amzn2023.0.1	(GPLv2+ or AFL) and GPLv2+
 device-mapper	0:1.02.185-1.amzn2023.0.5	GPLv2
 device-mapper-libs	0:1.02.185-1.amzn2023.0.5	LGPLv2
 diffutils	0:3.8-1.amzn2023.0.2	GPLv3+
-dnf	0:4.14.0-1.amzn2023.0.7	GPLv2+
-dnf-data	0:4.14.0-1.amzn2023.0.7	GPLv2+
+dnf	0:4.14.0-1.amzn2023.0.8	GPLv2+
+dnf-data	0:4.14.0-1.amzn2023.0.8	GPLv2+
 elfutils-default-yama-scope	0:0.188-3.amzn2023.0.3	GPLv2+ or LGPLv3+
 elfutils-libelf	0:0.188-3.amzn2023.0.3	GPLv2+ or LGPLv3+
 elfutils-libs	0:0.188-3.amzn2023.0.3	GPLv2+ or LGPLv3+
@@ -67,8 +67,8 @@ gzip	0:1.12-1.amzn2023.0.1	GPLv3+ and GFDL
 jansson	0:2.14-0.amzn2023	MIT
 json-c	0:0.14-8.amzn2023.0.2	MIT
 keyutils-libs	0:1.6.3-1.amzn2023.0.2	GPLv2+ and LGPLv2+
-kmod-libs	0:29-2.amzn2023.0.5	LGPLv2+
-krb5-libs	0:1.21.3-8.amzn2023.0.1	MIT
+kmod-libs	0:29-2.amzn2023.0.6	LGPLv2+
+krb5-libs	0:1.21.3-8.amzn2023.0.2	MIT
 libacl	0:2.4.0-1.amzn2023.0.1	LGPL-2.1-or-later
 libarchive	0:3.7.4-2.amzn2023.0.4	BSD-2-Clause AND FSFULLR AND GPL-2.0-or-later WITH Libtool-exception AND BSD-3-Clause AND FSFUL
 libargon2	0:20171227-9.amzn2023.0.2	Public Domain or ASL 2.0
@@ -80,7 +80,7 @@ libcap	0:2.73-1.amzn2023.0.7	BSD-3-Clause OR GPL-2.0-only
 libcap-ng	0:0.8.2-4.amzn2023.0.2	LGPLv2+
 libcom_err	0:1.46.5-2.amzn2023.0.2	MIT
 libcomps	0:0.1.20-1.amzn2023	GPL-2.0-or-later
-libcurl-minimal	0:8.21.0-5.amzn2023.0.1	curl
+libcurl-minimal	0:8.21.0-5.amzn2023.0.2	curl
 libdb	0:5.3.28-49.amzn2023.0.2	BSD and LGPLv2 and Sleepycat
 libdnf	0:0.69.0-8.amzn2023.0.8	LGPLv2+
 libeconf	0:0.7.9-1.amzn2023.0.1	MIT
@@ -103,6 +103,7 @@ librepo	0:1.14.5-2.amzn2023.0.2	LGPLv2+
 libreport-filesystem	0:2.15.2-2.amzn2023.0.2	GPLv2+
 libseccomp	0:2.5.3-1.amzn2023.0.2	LGPLv2
 libselinux	0:3.4-5.amzn2023.0.2	Public Domain
+libselinux-utils	0:3.4-5.amzn2023.0.2	Public Domain
 libsemanage	0:3.4-5.amzn2023.0.2	LGPLv2+
 libsepol	0:3.4-3.amzn2023.0.3	LGPLv2+
 libsigsegv	0:2.13-2.amzn2023.0.2	GPLv2+
@@ -122,7 +123,7 @@ libverto	0:0.3.2-1.amzn2023.0.2	MIT
 libwbclient	2:4.17.12-1.amzn2023.0.7	GPL-3.0-or-later AND LGPL-3.0-or-later
 libxcrypt	0:4.4.33-7.amzn2023	LGPL-2.1-or-later AND BSD-3-Clause AND BSD-2-Clause AND BSD-2-Clause-FreeBSD AND 0BSD AND CC0-1.0 AND LicenseRef-Fedora-Public-Domain
 libxkbcommon	0:1.6.0-2.amzn2023.0.1	MIT AND X11 AND MIT-CMU
-libxml2	0:2.10.4-1.amzn2023.0.20	MIT
+libxml2	0:2.10.4-1.amzn2023.0.21	MIT
 libyaml	0:0.2.5-5.amzn2023.0.2	MIT
 libzstd	0:1.5.5-1.amzn2023.0.1	BSD and GPLv2
 lmdb-libs	0:0.9.29-1.amzn2023.0.3	OpenLDAP
@@ -142,40 +143,44 @@ openssl-libs	1:3.5.8-1.amzn2023.0.1	ASL 2.0
 p11-kit	0:0.24.1-2.amzn2023.0.3	BSD
 p11-kit-trust	0:0.24.1-2.amzn2023.0.3	BSD
 pam	0:1.5.1-8.amzn2023.0.8	BSD and GPLv2+
-pcre2	0:10.40-1.amzn2023.0.3	BSD
-pcre2-syntax	0:10.40-1.amzn2023.0.3	BSD
+pcre2	0:10.40-1.amzn2023.0.4	BSD
+pcre2-syntax	0:10.40-1.amzn2023.0.4	BSD
+policycoreutils	0:3.4-6.amzn2023.0.3	GPLv2
 popt	0:1.18-6.amzn2023.0.2	MIT
 publicsuffix-list-dafsa	0:20260116-1.amzn2023.0.1	MPL-2.0
 python3	0:3.9.25-1.amzn2023.0.9	Python
-python3-dnf	0:4.14.0-1.amzn2023.0.7	GPLv2+
+python3-dnf	0:4.14.0-1.amzn2023.0.8	GPLv2+
 python3-gpg	0:1.23.2-182.amzn2023.0.1	LGPL-2.1-or-later AND MIT
 python3-hawkey	0:0.69.0-8.amzn2023.0.8	LGPLv2+
 python3-libcomps	0:0.1.20-1.amzn2023	GPL-2.0-or-later
 python3-libdnf	0:0.69.0-8.amzn2023.0.8	LGPLv2+
 python3-libs	0:3.9.25-1.amzn2023.0.9	Python
 python3-pip-wheel	0:21.3.1-2.amzn2023.0.21	MIT and Python and ASL 2.0 and BSD and ISC and LGPLv2 and MPLv2.0 and (ASL 2.0 or BSD)
-python3-rpm	0:4.16.1.3-29.amzn2023.0.7	GPLv2+
+python3-rpm	0:4.16.1.3-29.amzn2023.0.8	GPLv2+
 python3-setuptools-wheel	0:59.6.0-2.amzn2023.0.6	MIT and (BSD or ASL 2.0)
 qrencode-libs	0:4.1.1-2.amzn2023.0.2	LGPLv2+
 readline	0:8.1-2.amzn2023.0.2	GPLv3+
-rpm	0:4.16.1.3-29.amzn2023.0.7	GPLv2+
-rpm-build-libs	0:4.16.1.3-29.amzn2023.0.7	GPLv2+ and LGPLv2+ with exceptions
-rpm-libs	0:4.16.1.3-29.amzn2023.0.7	GPLv2+ and LGPLv2+ with exceptions
-rpm-sign-libs	0:4.16.1.3-29.amzn2023.0.7	GPLv2+ and LGPLv2+ with exceptions
+rpm	0:4.16.1.3-29.amzn2023.0.8	GPLv2+
+rpm-build-libs	0:4.16.1.3-29.amzn2023.0.8	GPLv2+ and LGPLv2+ with exceptions
+rpm-libs	0:4.16.1.3-29.amzn2023.0.8	GPLv2+ and LGPLv2+ with exceptions
+rpm-plugin-selinux	0:4.16.1.3-29.amzn2023.0.8	GPLv2+
+rpm-sign-libs	0:4.16.1.3-29.amzn2023.0.8	GPLv2+ and LGPLv2+ with exceptions
 samba-client	2:4.17.12-1.amzn2023.0.7	GPL-3.0-or-later AND LGPL-3.0-or-later
 samba-client-libs	2:4.17.12-1.amzn2023.0.7	GPL-3.0-or-later AND LGPL-3.0-or-later
 samba-common	2:4.17.12-1.amzn2023.0.7	GPL-3.0-or-later AND LGPL-3.0-or-later
 samba-common-libs	2:4.17.12-1.amzn2023.0.7	GPL-3.0-or-later AND LGPL-3.0-or-later
 sed	0:4.8-7.amzn2023.0.2	GPLv3+
+selinux-policy	0:38.1.76-1.amzn2023.0.3	GPLv2+
+selinux-policy-targeted	0:38.1.76-1.amzn2023.0.3	GPLv2+
 setup	0:2.13.7-3.amzn2023.0.2	Public Domain
 shadow-utils	2:4.9-12.amzn2023.0.4	BSD and GPLv2+
 sqlite-libs	0:3.40.0-1.amzn2023.0.8	Public Domain
-system-release	0:2023.12.20260918-0.amzn2023	MIT
-systemd	0:252.23-12.amzn2023	LGPLv2+ and MIT and GPLv2+
-systemd-libs	0:252.23-12.amzn2023	LGPLv2+ and MIT
-systemd-networkd	0:252.23-12.amzn2023	LGPLv2+
-systemd-pam	0:252.23-12.amzn2023	LGPLv2+ and MIT and GPLv2+
-systemd-resolved	0:252.23-12.amzn2023	LGPLv2+ and MIT and GPLv2+
+system-release	0:2023.12.20260930-0.amzn2023	MIT
+systemd	0:252.23-14.amzn2023	LGPLv2+ and MIT and GPLv2+
+systemd-libs	0:252.23-14.amzn2023	LGPLv2+ and MIT
+systemd-networkd	0:252.23-14.amzn2023	LGPLv2+
+systemd-pam	0:252.23-14.amzn2023	LGPLv2+ and MIT and GPLv2+
+systemd-resolved	0:252.23-14.amzn2023	LGPLv2+ and MIT and GPLv2+
 tar	2:1.34-1.amzn2023.0.4	GPLv3+
 tzdata	0:2026c-1.amzn2023.0.1	LicenseRef-Fedora-Public-Domain AND (GPL-2.0-only WITH ClassPath-exception-2.0)
 util-linux	0:2.37.4-1.amzn2023.0.6	GPLv2 and GPLv2+ and LGPLv2+ and BSD with advertising and Public Domain
@@ -183,5 +188,5 @@ util-linux-core	0:2.37.4-1.amzn2023.0.6	GPLv2 and GPLv2+ and LGPLv2+ and BSD wit
 xkeyboard-config	0:2.41-1.amzn2023.0.1	HPND AND HPND-sell-variant AND X11 AND X11-distribute-modifications-variant AND MIT AND MIT-open-group AND xkeyboard-config-Zinoviev
 xz	0:5.2.5-9.amzn2023.0.2	GPLv2+ and Public Domain
 xz-libs	0:5.2.5-9.amzn2023.0.2	Public Domain
-yum	0:4.14.0-1.amzn2023.0.7	GPLv2+
+yum	0:4.14.0-1.amzn2023.0.8	GPLv2+
 zlib	0:1.2.11-33.amzn2023.0.6	zlib and Boost
