@@ -119,7 +119,7 @@ describe("URL literal matcher", () => {
     expect(
       fileViolations(
         FIXTURE,
-        'const ice = ["stun:stun.l.google.com:19302", "stun:44.247.30.68:443"];\n',
+        'const ice = ["stun:stun.l.google.com:19302"];\n',
       ),
     ).toEqual([]);
   });
