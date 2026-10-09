@@ -8,5 +8,5 @@ import { streamedMatchLargeTest } from "./streamedMatchLarge.case";
 streamedMatchLargeTest({
   backend: "native",
   generateTimeoutMs: 50 * 60_000,
-  matchTimeoutMs: 120 * 60_000,
+  matchTimeoutMs: 15 * 60_000,
 });

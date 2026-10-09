@@ -107,12 +107,19 @@ jobs:
             // its measured time rounded up to 5 min, are 50 min to build and
             // 220 to match; its job limit of 290 is those plus 1 of test margin and
             // 15 for setup, rounded up. It needs 13 GiB free.
+            // streamedMatchLargeNative, the same round matched on the native
+            // addon: job 42 min; building the round 33.3 min (peak RSS 11444
+            // MiB); the match 8.3 min, 33704 elements a second, heap peak 273
+            // MiB, peak RSS 1949 MiB. Its probe limits, sized the same way,
+            // are 50 min to build and 15 to match, and its job limit of 85 is
+            // those plus 1 of test margin and 15 for setup, rounded up. It
+            // needs 13 GiB free.
             const WALLS_FILE = "test/stress/psiRoundWalls.stress.test.ts";
             const WALLS_SIZES = "4194304";
             const WEEKLY_MINUTES = {
               [WALLS_FILE]: 270,
               "test/stress/streamedMatchLarge.stress.test.ts": 290,
-              "test/stress/streamedMatchLargeNative.stress.test.ts": 190,
+              "test/stress/streamedMatchLargeNative.stress.test.ts": 85,
               "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
             };
             // Each took 0.5 to 2.5 minutes as a job of its own.
