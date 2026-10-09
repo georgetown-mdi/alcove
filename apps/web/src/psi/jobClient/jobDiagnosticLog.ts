@@ -75,8 +75,8 @@ type JobDiagnosticLogWatchOutcome = "available" | "unavailable" | "unanswered";
 
 /**
  * Ask the console where this job's log stands until it answers for good, the
- * caller aborts, or it stops answering. The CLI opens the log after the job id
- * is returned, so a single ask at start races the file.
+ * caller aborts, or it stops answering. The console returns the job id without
+ * waiting for the log file, so a single ask at start races the file.
  *
  * `none` ends the watch at once. `pending` is re-asked while the run is
  * unsettled and ends it once `settled` is set. `unanswered` is re-asked up to

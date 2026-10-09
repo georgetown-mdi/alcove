@@ -8,11 +8,10 @@ import type { Socket } from "node:net";
  * docs/spec/CHANNEL_SECURITY.md#web-signaling-surface-bounds.
  */
 
-/** Bound (ms) for the complete request headers. Node checks it on a periodic
- * sweep, so a close can come up to one sweep interval later. */
+/** Bound (ms) for the complete request headers. */
 export const SIGNALING_HEADERS_TIMEOUT_MS = 10_000;
 
-/** Bound (ms) for the entire request. Node requires it above
+/** Bound (ms) for the entire request. Node refuses one below
  * {@link SIGNALING_HEADERS_TIMEOUT_MS}. */
 export const SIGNALING_REQUEST_TIMEOUT_MS = 15_000;
 

@@ -848,6 +848,36 @@ describe("the diagnostic log route serves only a workdir-contained log", () => {
     });
   });
 
+  test("the create answers with the job id without waiting for the run's log to exist", async () => {
+    // The stub writes no log and outlives the test, so a create that waited on
+    // the file would never answer.
+    const root = tempDataRoot("routes-log-race");
+    roots.push(root);
+    vi.stubEnv("JOB_DATA_ROOT", root);
+    const manager = new JobManager({
+      dataRoot: root,
+      binaryPath: STUB_CLI_PATH,
+      jobRendezvousDir: scratchDir("routes-rvz"),
+      childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
+    });
+    (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
+      manager;
+    const id = await manager.createJob({
+      ...validIntent(),
+      diagnosticRun: true,
+    });
+    const record = manager.getJob(id)!;
+    try {
+      expect(record.status).toBe("running");
+      expect(await logStatusOf(id)).toMatchObject({
+        logRequested: true,
+        logAvailable: false,
+      });
+    } finally {
+      manager.cancelJob(record);
+    }
+  });
+
   test("an ordinary run's status body says outright that it captured no log", async () => {
     // Both fields answer from the log path the server set at creation from the
     // intent, so a client is told the log is never coming rather than left to

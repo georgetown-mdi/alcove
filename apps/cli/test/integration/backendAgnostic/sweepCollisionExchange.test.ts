@@ -274,6 +274,10 @@ test("a sequential one-sided sweep clears the residue and completes the exchange
     "5f2a71c8-0b3e-4d19-8a44-6c9e2f10b7d3-" +
     "e1d4c7a6-8f52-4b30-9c17-3a05e6b28d94-lock.json";
   await fsp.writeFile(path.join(dropDir, stale), "{}");
+  // A file of the operator's own beside the residue, which the sweep leaves
+  // alone: it deletes only names in the exchange's filename grammar.
+  const operatorsOwn = "roster.csv";
+  await fsp.writeFile(path.join(dropDir, operatorsOwn), "first_name\nBob\n");
 
   const outcome = await runSequentialPair({
     work,
@@ -286,6 +290,9 @@ test("a sequential one-sided sweep clears the residue and completes the exchange
 
   expect(outcome.parties.filter((party) => !party.ok)).toEqual([]);
   expect(await fsp.readdir(dropDir)).not.toContain(stale);
+  expect(await fsp.readFile(path.join(dropDir, operatorsOwn), "utf8")).toBe(
+    "first_name\nBob\n",
+  );
   await expectReceiverIntersection(outcome.outputs.a);
   // Nothing suggested a collision: the guidance is gated on a peer-wait
   // timeout, and neither party had one.

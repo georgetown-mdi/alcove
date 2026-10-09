@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import Peer from "peerjs";
 
 import {
   PEERJS_ERRORS_ONLY,
@@ -56,6 +57,44 @@ describe("resolvePeerDebugLevel", () => {
   });
 });
 
+/** The levels the real PeerJS logger hands its `logFunction` while a peer
+ * constructed at `debug` aborts. With no WebRTC in Node and an id PeerJS
+ * refuses, the constructor aborts before any network use, logging at error
+ * level, and `destroy()` then logs at the verbose level. */
+async function levelsPeerJsDispatches(debug: number): Promise<Array<number>> {
+  const levels: Array<number> = [];
+  const peer = new Peer("not a valid id!", {
+    debug,
+    secure: true,
+    host: "127.0.0.1",
+    port: 1,
+    path: "/",
+    logFunction: (level: number) => levels.push(level),
+  });
+  peer.on("error", () => {});
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  peer.destroy();
+  return levels;
+}
+
+describe("the PeerJS logger the level drives", () => {
+  test("PeerJS dispatches nothing at 0, so the log function is never asked to print", async () => {
+    expect(await levelsPeerJsDispatches(0)).toEqual([]);
+  });
+
+  test("PeerJS gates on the level before calling the log function", async () => {
+    const errorsOnly = await levelsPeerJsDispatches(PEERJS_ERRORS_ONLY);
+    expect(errorsOnly.length).toBeGreaterThan(0);
+    expect(errorsOnly.every((level) => level === 1)).toBe(true);
+
+    const everything = await levelsPeerJsDispatches(
+      resolvePeerDebugLevel(PEERJS_ERRORS_ONLY, true),
+    );
+    expect(everything).toContain(1);
+    expect(everything).toContain(3);
+  });
+});
+
 describe("createRedactingLogFunction", () => {
   test("redacts a peer id interpolated into a warning string", () => {
     const sink = makeSink();
@@ -86,6 +125,44 @@ describe("createRedactingLogFunction", () => {
 
     expect(sink.error).toHaveBeenCalledTimes(1);
     expect(allSinkOutput(sink)).not.toContain(SAMPLE_ID);
+  });
+
+  test("collapses an Error to its name and message, dropping the cause chain", () => {
+    const sink = makeSink();
+    const logFn = createRedactingLogFunction([SAMPLE_ID], sink);
+
+    logFn(
+      1,
+      new TypeError(`connection to ${SAMPLE_ID} failed`, {
+        cause: new Error(`cause naming ${OTHER_ID}`),
+      }),
+    );
+
+    expect(sink.error).toHaveBeenCalledWith(
+      "PeerJS ERROR:",
+      "(TypeError) connection to [redacted-peer-id] failed",
+    );
+  });
+
+  test("prints a Map, Set or Symbol-keyed object holding an id as an empty object", () => {
+    const sink = makeSink();
+    const logFn = createRedactingLogFunction([SAMPLE_ID], sink);
+
+    logFn(3, new Map([["src", SAMPLE_ID]]), new Set([SAMPLE_ID]), {
+      [Symbol("src")]: SAMPLE_ID,
+    });
+
+    expect(sink.log).toHaveBeenCalledWith("PeerJS:", {}, {}, {});
+  });
+
+  test("prints a typed array as its elements, which redaction does not read as text", () => {
+    const sink = makeSink();
+    const logFn = createRedactingLogFunction([SAMPLE_ID], sink);
+    const bytes = new TextEncoder().encode(SAMPLE_ID);
+
+    logFn(3, bytes);
+
+    expect(sink.log).toHaveBeenCalledWith("PeerJS:", { ...bytes });
   });
 
   test("redacts a peer id buried in a structured message object", () => {

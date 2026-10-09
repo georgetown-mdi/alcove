@@ -237,6 +237,31 @@ describe("the intent boundary admits only a mode an exchange honors", () => {
     expect(parsed.success).toBe(false);
   });
 
+  test("an identity location beside mode none is refused, on both channels and the create union", () => {
+    const identityLocation = {
+      mount: "secrets" as const,
+      subPath: ["alcove-identity.pem"],
+    };
+    for (const intent of [
+      validIntent({ signing: { mode: "none", identityLocation } }),
+      validSftpIntent({ signing: { mode: "none", identityLocation } }),
+    ]) {
+      const parsed = jobExchangeIntentSchema.safeParse(intent);
+      expect(parsed.success).toBe(false);
+      expect(parsed.error?.issues.map((issue) => issue.path)).toContainEqual([
+        "signing",
+        "identityLocation",
+      ]);
+      expect(jobCreateIntentSchema.safeParse(intent).success).toBe(false);
+    }
+    // The same location is admitted where the run loads an identity.
+    expect(
+      jobCreateIntentSchema.safeParse(
+        validIntent({ signing: { mode: "certificate", identityLocation } }),
+      ).success,
+    ).toBe(true);
+  });
+
   test("certificate mode with no pin is admitted, on both channels and the create union", () => {
     // The first authenticated contact: the spawned child pins the certificate
     // its partner presents at the terms exchange and records the fingerprint, so

@@ -8,8 +8,10 @@ import {
   MAX_TIMEOUT_SECONDS,
   MAX_TIMER_MS,
   MAX_TOKEN_MAX_AGE_DAYS,
+  MAX_TRANSFORM_PATTERN_LENGTH,
   disclosedColumnNames,
   parseSftpUrl,
+  runPipeline,
   safeParseExchangeSpec,
   safeParseMetadata,
 } from "@alcove/core";
@@ -40,6 +42,7 @@ import {
   jobCreateIntentSchema,
   jobExchangeIntentSchema,
   jobZeroSetupIntentSchema,
+  stepPatternsWithinCap,
 } from "@jobContract/intentSchemas";
 
 import {
@@ -56,7 +59,11 @@ import {
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
 
-import type { Metadata, Standardization } from "@alcove/core";
+import type {
+  Metadata,
+  Standardization,
+  StandardizationStep,
+} from "@alcove/core";
 
 // The intent schema is the ONLY channel from the client into a CLI invocation.
 // These pin its injection-closure: unknown/injection-shaped values are rejected,
@@ -386,6 +393,62 @@ describe("jobExchangeIntentSchema bounds the intent's sizes", () => {
       expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
     });
   }
+});
+
+describe("the pattern cap reaches only the params core compiles", () => {
+  const overCap = "a+".repeat(MAX_TRANSFORM_PATTERN_LENGTH);
+
+  function oneStep(step: StandardizationStep): Standardization[number] {
+    return { output: "first_name", input: "n", steps: [step] };
+  }
+
+  test("an over-cap compiled source is refused, function by function", () => {
+    for (const step of [
+      { function: "replace_regex", params: { pattern: overCap } },
+      { function: "extract_regex", params: { pattern: overCap } },
+      { function: "filter_regex", params: { pattern: overCap } },
+      { function: "split_on", params: { delimiter: overCap } },
+    ])
+      expect(stepPatternsWithinCap(oneStep(step))).toBe(false);
+  });
+
+  test("an over-cap plain-string param is not capped", () => {
+    for (const step of [
+      { function: "null_if", params: { value: overCap } },
+      { function: "coalesce", params: { default: overCap } },
+      { function: "pad_left", params: { length: 3, char: overCap } },
+      {
+        function: "replace_regex",
+        params: { pattern: "a", replacement: overCap },
+      },
+    ])
+      expect(stepPatternsWithinCap(oneStep(step))).toBe(true);
+  });
+
+  test("core reads a plain-string param as a literal, never as a pattern", () => {
+    const steps = [{ function: "null_if", params: { value: overCap } }];
+    // As a pattern it would match a run of a's; as a literal only itself.
+    const runOfAs = "a".repeat(overCap.length);
+    expect(runPipeline(runOfAs, steps)).toBe(runOfAs);
+    expect(runPipeline(overCap, steps)).toBeNull();
+  });
+});
+
+describe("the side is read by no composition rule", () => {
+  test("the composed config and key file are the same whichever side is stated", () => {
+    const sides = [{}, { side: "inviter" }, { side: "acceptor" }] as const;
+    const filedrop = sides.map((side) =>
+      composeConfigDocument(validIntent(side), "/srv/jobs/abc/exchange"),
+    );
+    const sftp = sides.map((side) =>
+      composeSftpConfigDocument(validSftpIntent(side), testSftpServerEntry()),
+    );
+    const keyFiles = sides.map((side) =>
+      composeKeyFileDocument(validIntent(side)),
+    );
+    for (const documents of [filedrop, sftp, keyFiles])
+      expect(new Set(documents).size).toBe(1);
+  });
 });
 
 describe("composeConfigDocument forwards the operator's data-prep edits", () => {

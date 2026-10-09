@@ -7,7 +7,10 @@ import { ProtocolRefusalError } from "@alcove/core/testing";
 // @ts-ignore this is really there
 import PSI from "@openmined/psi.js/psi_wasm_web";
 
-import { createBrowserPsiEngineFactory } from "@psi/workers/psiCryptoController";
+import {
+  createBrowserPsiEngineFactory,
+  createPsiCryptoWorkerHandle,
+} from "@psi/workers/psiCryptoController";
 import { defaultSpawnPsiCryptoWorker } from "@psi/workers/psiCryptoWorkerClient";
 import { failureFor } from "@exchange/useInviterExchange";
 
@@ -138,6 +141,39 @@ describe("PSI crypto Web Worker (real Vite-native worker, real WASM)", () => {
       category: "config",
       retry: "withheld",
     });
+  }, 30_000);
+
+  test("terminating the worker mid-call fires no event on the host handle", async () => {
+    const events: Array<string> = [];
+    const handle = createPsiCryptoWorkerHandle(
+      defaultSpawnPsiCryptoWorker({
+        role: "starter",
+        id: "server",
+        mode: "identifier-revealing",
+      }),
+    );
+    handle.setHandlers({
+      onMessage: (response) => events.push(`message ${response.id}`),
+      onError: (error) => events.push(`error ${error.message}`),
+    });
+
+    // One answered call shows the handlers are live before the terminate.
+    handle.postMessage({
+      id: 1,
+      body: { method: "createServerSetup", values: STARTER_VALUES },
+    });
+    await expect
+      .poll(() => events, { timeout: 20_000 })
+      .toContainEqual(expect.stringMatching(/^message 1$/));
+    const answered = events.length;
+
+    handle.postMessage({
+      id: 2,
+      body: { method: "createServerSetup", values: STARTER_VALUES },
+    });
+    handle.terminate();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(events).toHaveLength(answered);
   }, 30_000);
 
   // The acceptance criterion: the worker is torn down on every exchange-end path.
