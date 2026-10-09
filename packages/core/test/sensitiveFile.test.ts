@@ -110,6 +110,34 @@ test("the warning channel really leaks by default (guards the suppression test)"
   expect(allArgs).toContain(SECRET);
 });
 
+test("suppresses the browser route of the YAML warning channel (console.warn)", () => {
+  // With no process.emitWarning, as in a browser, the library warns through
+  // console.warn instead.
+  const processWithWarning = process as { emitWarning?: unknown };
+  const originalEmitWarning = processWithWarning.emitWarning;
+  const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  processWithWarning.emitWarning = undefined;
+  try {
+    YAML.parse(`password: !secret ${SECRET}\n`);
+    expect(consoleWarn).toHaveBeenCalled();
+    consoleWarn.mockClear();
+
+    expect(parseSensitiveYaml(`password: !secret ${SECRET}\n`, LABEL)).toEqual({
+      password: SECRET,
+    });
+    expect(consoleWarn).not.toHaveBeenCalled();
+  } finally {
+    processWithWarning.emitWarning = originalEmitWarning;
+  }
+});
+
+test("the chokepoint's YAML level is the quietest that still throws on a syntax error", () => {
+  const unclosedFlow = `a: [1, 2\nb: ${SECRET}\n`;
+  // One level quieter returns a partial document instead of throwing.
+  expect(() => YAML.parse(unclosedFlow, { logLevel: "silent" })).not.toThrow();
+  expect(() => parseSensitiveYaml(unclosedFlow, LABEL)).toThrow(UsageError);
+});
+
 // The label route's other half: which side of the fragment boundary the path
 // inside a label falls on. A label composed as a plain string is text nobody
 // marked and keeps the escape; one composed through the mark names a path the

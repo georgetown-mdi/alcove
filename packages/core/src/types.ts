@@ -49,8 +49,7 @@ export type Connection = {
   close: () => void | Promise<void>;
   // Returns and clears the most recent `error` emitted while no listener was
   // registered. There is no equivalent for `data`: a `data` event with no
-  // listener is dropped, so each receive helper registers its `once("data")`
-  // listener synchronously inside its Promise executor, before any await.
+  // listener is dropped.
   takeBufferedError: () => unknown;
   // Bounds subsequent inbound frame reads to `maxBytes` in place of the
   // static cap; `undefined` restores it. Omitted by a transport bounded another

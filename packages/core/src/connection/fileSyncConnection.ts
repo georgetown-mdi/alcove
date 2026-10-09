@@ -439,9 +439,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     // the config is safe.
     this.rawClient = client;
     this.client = this.boundTransport(client);
-    // No peerId validation here: production callers validate through
-    // FileSyncOptionsSchema (safeParseFileSyncOptions, applyConnectionOverrides)
-    // first.
+    // No peerId validation here: a caller passing one must validate it through
+    // FileSyncOptionsSchema first.
     this.id = options?.peerId ?? uuidv4();
     this.role = "unknown role";
     this.responsibleFiles = new Set();
@@ -1051,7 +1050,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
     // Re-armed after the re-entry guard and not in resetSessionState(), which
     // runs inside a live synchronize() and would wipe a concurrent close()'s
-    // abort. Assumes one synchronize() caller at a time, as the CLI drives it.
+    // abort. A second synchronize() before the first settles is unsupported:
+    // it would re-arm the controller under the first.
     this.abortController = new AbortController();
 
     // The three mode guards below repeat the config schema's rules for a

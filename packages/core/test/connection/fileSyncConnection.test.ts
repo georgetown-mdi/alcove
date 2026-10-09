@@ -196,6 +196,17 @@ test("emit('error', ...) with an attached listener is delivered and not buffered
   expect(conn.takeBufferedError()).toBeUndefined();
 });
 
+test("emit('data', ...) with no listener is dropped, not buffered", () => {
+  const { client } = makeMockClient();
+  const conn = new FileSyncConnection(client, { verbose: -1 });
+  expect(conn.emit("data", { m: 1 })).toBe(false);
+
+  const observed: unknown[] = [];
+  conn.on("data", (data) => observed.push(data));
+  expect(observed).toEqual([]);
+  expect(conn.takeBufferedError()).toBeUndefined();
+});
+
 test("only the most recent buffered error is retained", async () => {
   const { client } = makeMockClient();
   // The second unhandled error supersedes the buffered first and emits a WARN
@@ -3150,6 +3161,30 @@ test("(b) delete/delete (lock) pairing succeeds", async () => {
 
   expect(connA.peerId).toBe(ID_HIGH);
   expect(connB.peerId).toBe(ID_LOW);
+});
+
+// close() logs the terminal frame's name unescaped, so the name must hold only
+// this party's id and digits, whatever the partner sent before it.
+test("the last sent file name holds only this party's id and digits after a partner message", async () => {
+  const { connA, connB } = makeRendezvousPair(ID_LOW, {}, ID_HIGH, {});
+  await Promise.all([connA.synchronize(), connB.synchronize()]);
+
+  let delivered!: () => void;
+  const partnerMessageArrived = new Promise<void>((r) => (delivered = r));
+  const received: unknown[] = [];
+  connA.on("data", (data) => {
+    received.push(data);
+    delivered();
+  });
+  await connB.send({ text: `\u001b[2J${ID_HIGH}-hello.json` });
+  await runPoller(connA, partnerMessageArrived);
+  await connA.send({ reply: true });
+
+  expect(received).toHaveLength(1);
+  expect(connA.id).toBe(ID_LOW);
+  expect(messageLoopInternals(connA).lastSentFile).toMatch(
+    new RegExp(`^${ID_LOW}-\\d+\\.json$`),
+  );
 });
 
 test("(b) retain/retain pairing succeeds and advertises the retain flag", async () => {

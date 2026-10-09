@@ -1028,6 +1028,37 @@ describe("FileSyncMessageLoop inboundFrameCap", () => {
     expect(f.emitted).toHaveLength(1);
     expect(f.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
   });
+
+  // A poll that reads a frame before setInboundFrameCap is called gates it
+  // against the static cap: it admits a frame over the cap set later, and
+  // still refuses one over the static cap.
+  test("a frame read before the cap is set is gated by the static cap", async () => {
+    const files = new Map<string, Buffer>();
+    const f = makeLoop({}, {}, files);
+    plantDeleteMessage(files, { m: 1 });
+
+    await f.pollOnce();
+    f.loop.setInboundFrameCap(5);
+
+    expect(f.emitted).toEqual([
+      { event: "data", arg: { m: 1 }, pollerActiveAtEmit: true },
+    ]);
+
+    const overStatic = new Map<string, Buffer>();
+    const g = makeLoop({}, {}, overStatic);
+    overStatic.set(
+      `${DIR}/${PEER}-${MAX_FRAME_SIZE_BYTES + 1}.json`,
+      objectMessage({ m: 2 }, 0),
+    );
+
+    await g.pollOnce();
+
+    expect(g.emitted).toHaveLength(1);
+    expect(g.emitted[0].arg).toBeInstanceOf(FrameSizeExceededError);
+    expect((g.emitted[0].arg as Error).message).toContain(
+      `frame size of ${MAX_FRAME_SIZE_BYTES} bytes`,
+    );
+  });
 });
 
 describe("FileSyncMessageLoop resetSessionState", () => {
