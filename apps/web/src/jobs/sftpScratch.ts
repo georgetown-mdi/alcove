@@ -188,7 +188,8 @@ function assertScratchOutside(
     )
       throw new JobApiConfigError(
         "the pasted-credential scratch directory must resolve strictly " +
-          `outside ${label}`,
+          `outside ${label}; set ${JOB_SFTP_CREDENTIAL_DIR_ENV} to a ` +
+          "directory outside every mounted folder",
       );
 }
 
