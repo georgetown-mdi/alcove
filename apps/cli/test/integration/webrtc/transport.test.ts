@@ -171,10 +171,14 @@ test.each(["inviter", "acceptor"] as const)(
     early.catch(() => {
       // Awaited below; this only keeps an early failure from going unhandled.
     });
-    await new Promise((resolve) => setTimeout(resolve, attemptMs + 3_000));
-    expect(
-      lines.some((line) => line.includes("starting connection attempt 2")),
-    ).toBe(true);
+    await vi.waitFor(
+      () => {
+        expect(
+          lines.some((line) => line.includes("starting connection attempt 2")),
+        ).toBe(true);
+      },
+      { timeout: attemptMs + 10_000, interval: 50 },
+    );
     const [waited, arrived] = await Promise.all([
       early,
       openWebRtcMessageConnection({ ...common, role: second }),

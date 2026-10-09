@@ -593,7 +593,11 @@ const expectStampedAfterRename = (renames, targets, live) => {
 // loaded machine.
 const SCRIPT_TIMEOUT = 30_000;
 
-describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
+// The scripts run on a Linux systemd host: they take util-linux flock and GNU
+// date, and the stubs above use GNU date and stat, none of which macOS has.
+const describeOnScriptHost = describe.skipIf(process.platform !== "linux");
+
+describeOnScriptHost("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
   it("installs a first certificate without starting a stopped front", () => {
     const host = brokerHost();
     const result = host.runRenew();
@@ -702,7 +706,7 @@ describe("renew.sh", { timeout: SCRIPT_TIMEOUT }, () => {
   });
 });
 
-describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
+describeOnScriptHost("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
   it("checks a first install's configuration against the certificate before writing it", () => {
     const host = brokerHost();
     const result = host.run();
