@@ -818,8 +818,8 @@ Beside them,
 corresponding source for the listed binaries is published -- Alpine's aports
 for the default image, Amazon Linux source RPMs for the variant -- with the
 retrieval path for a row's own version, the reading of both Dockerfiles that
-makes the packages unmodified distribution packages, and the source-offer
-question it records as open.
+makes the packages unmodified distribution packages, and the position that the
+project makes no separate offer of source.
 
 **How they are derived.** `scripts/generate-os-package-attribution.mjs` reads
 each image's own package-manager metadata, queried against the built image by
