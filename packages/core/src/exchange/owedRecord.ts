@@ -81,7 +81,7 @@ export async function buildOwedExchangeRecord(p: {
       localPayloadSent: toCommittedPayload(localPayload),
       // A count-only run receives no payload by its terms, so a frame a
       // non-conforming partner sent before the refusal is not committed as one
-      // (docs/spec/EXCHANGE_RECORD.md, Count-only records).
+      // (docs/spec/EXCHANGE_RECORD.md, Count-only (psi-c) records).
       partnerPayloadReceived: toCommittedPayload(
         countOnly ? { columns: [], rowIndices: [], rows: [] } : partnerPayload,
       ),

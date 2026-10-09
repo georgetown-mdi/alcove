@@ -29,10 +29,10 @@ const both: Output = { expectsOutput: true, shareWithPartner: true };
 
 // One key whose element splits its value into tokens, so a row realizing more
 // candidates than the width bound admits is dropped rather than refusing the
-// run. A declared fan-out runs under single-pass alone (docs/spec/PROTOCOL.md,
-// Fan-out runs under single-pass only). The delimiter is the space the name
-// cleaning leaves between tokens: it runs ahead of the element transform, and
-// it is what turns every other separator into one.
+// run. A declared fan-out runs under either strategy (docs/spec/PROTOCOL.md,
+// Fan-out runs under both linkage strategies). The delimiter is the space the
+// name cleaning leaves between tokens: it runs ahead of the element transform,
+// and it is what turns every other separator into one.
 const terms = {
   version: "1.0.0",
   date: "2026-01-01",

@@ -47,7 +47,7 @@ import { InternalConsistencyError, ConnectionError } from "../errors.js";
 /** Single recognized format version for a dual-signed record; a reader rejects
  * any other value rather than migrating it. It moves with the certificate
  * format the record embeds and with the envelope beside the signed content
- * (docs/spec/EXCHANGE_RECORD.md, "Dual-signed record file"). */
+ * (docs/spec/EXCHANGE_RECORD.md, "Signed receipt file"). */
 export const SIGNED_RECEIPT_VERSION = "alcove-signed-receipt/v4";
 
 // The domain label folded into the signed receipt-content bytes. Its version
@@ -358,7 +358,7 @@ export interface SignedReceiptParty {
  * holding a record can re-encode either signature (ECDSA is malleable in
  * `s`) and produce a differing copy that still verifies, so the artifacts
  * are compared by verifying them, not by hashing the file. Full detail:
- * docs/spec/EXCHANGE_RECORD.md ("Dual-signed record file").
+ * docs/spec/EXCHANGE_RECORD.md ("Signed receipt file").
  */
 export interface DualSignedRecord {
   version: typeof SIGNED_RECEIPT_VERSION;

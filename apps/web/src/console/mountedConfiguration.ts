@@ -37,7 +37,7 @@ import type { ReceiptsSigningMode } from "@psi/receiptsModel";
  * the invitation-authoring path this offer sits in. A document stating one is
  * opened with its value held: the record rides the authoring state into the
  * intent the run submits, so the configuration composed for that run states it
- * exactly as the file did (docs/spec/EXCHANGE_FILE.md, "The records that must
+ * exactly as the file did (docs/spec/EXCHANGE_FILE.md, "The record that must
  * survive"). Having no control, each one is named in the carry-through notice.
  *
  * A configuration on a channel the console does not conduct opens all the same:

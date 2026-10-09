@@ -104,6 +104,12 @@ export const CHECKS = [
       "Every `<file>, <section>` citation in CLAUDE.md, CONTRIBUTING.md and .claude/ names a heading the cited instruction file has.",
   },
   {
+    script: "check:spec-citations",
+    expiresOn: "2027-06-30",
+    description:
+      "Every anchored, quoted-heading or heading-prefix citation of a docs/spec/ file outside Markdown names a heading or bold paragraph label the file has; the forms it does not resolve are in its --help.",
+  },
+  {
     script: "check:egress-claims",
     expiresOn: "2026-12-31",
     description:
