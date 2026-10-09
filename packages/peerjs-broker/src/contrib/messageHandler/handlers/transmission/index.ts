@@ -9,7 +9,7 @@ import type { IRealm } from "../../../models/realm.ts";
 // the sender told it left. A socket so holds at most this plus one relayed
 // frame, itself at most 4.4 times the 256 KiB wire cap (`1e20,` reprints as 22
 // bytes; parseBoundedJson admits any structure that size) plus 1.5 KiB of
-// `src`: under 1.11 MiB. See docs/spec/CHANNEL_SECURITY.md.
+// `src`: under 1.11 MiB. See docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const MAX_RELAY_BUFFERED_BYTES = 1024 * 1024;
 
 export const TransmissionHandler = ({

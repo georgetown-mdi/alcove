@@ -12,7 +12,7 @@ narrowing in place. See [docs/notes/README.md](README.md)._
 
 This is design rationale. The escaping, capping and rate-limiting the sink
 applies are specified in
-[docs/spec/CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md), and this note does
+[docs/spec/SIGNALING_SERVER_BOUNDS.md](../spec/SIGNALING_SERVER_BOUNDS.md), and this note does
 not restate them.
 
 ## What the wide closure cost

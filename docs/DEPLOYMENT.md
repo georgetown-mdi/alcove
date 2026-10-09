@@ -55,7 +55,7 @@ The coordination server is untrusted by design: the rendezvous ids are derived f
 - A registered client holds one connection at a time. A peer that connects again under credentials it has already registered attaches to that registration rather than taking a second one, and the connection it displaces is closed rather than left held.
 - The relay's hold-for-reconnect message queues are bounded in count and depth, so a client cannot drive unbounded memory by addressing messages to many made-up recipients.
 
-The constant values and rationale for these guards are in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#web-signaling-surface-bounds).
+The constant values and rationale for these guards are in [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds).
 
 Three further protections depend on the deployment and are the reverse proxy's responsibility, because only the proxy sees the real client origin and address, and only the proxy stands between a slow reader and the application:
 

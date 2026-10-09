@@ -127,7 +127,8 @@ export function CreateInstanceWSOnly({
   // built to survive. Behind that the sink writes each report to the caller's
   // diagnostic sink, attributed, rate limited, and with the peer's own bytes
   // escaped. The sink is a required argument rather than an option, so no
-  // wiring reaches this line without one. See docs/spec/CHANNEL_SECURITY.md.
+  // wiring reaches this line without one. See
+  // docs/spec/SIGNALING_SERVER_BOUNDS.md.
   attachSignalingDiagnostics(wss, diagnosticSink);
 
   messagesExpire.startMessagesExpiration();

@@ -5,7 +5,7 @@ import type { Socket } from "node:net";
  * The pre-101 bounds the standalone runner puts on its own HTTP server, kept
  * apart from `standalone.ts` (which listens at import time) so a test can apply
  * them. The web app's servers import the same constants. See
- * docs/spec/CHANNEL_SECURITY.md#web-signaling-surface-bounds.
+ * docs/spec/SIGNALING_SERVER_BOUNDS.md#web-signaling-surface-bounds.
  */
 
 /** Bound (ms) for the complete request headers. */

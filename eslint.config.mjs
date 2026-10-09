@@ -574,7 +574,7 @@ export default tseslint.config(
     // abort there ends rendezvous for every peer rather than for one session.
     // parseBoundedJson bounds a body structurally before JSON.parse sees it; the
     // `ws` maxPayload cap is the byte half of the same control
-    // (docs/spec/CHANNEL_SECURITY.md).
+    // (docs/spec/SIGNALING_SERVER_BOUNDS.md).
     //
     // The raw-error ban applies because the diagnostics sink writes a peer's own
     // error text to the operator's log, and the YAML ban because a config reader
