@@ -9,12 +9,13 @@ import { expect, test } from "vitest";
 import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
 import { WASM_PSI_MEMORY_MAX_BYTES } from "../../src/psi/psiWasmBudget";
 
+import { stressMemory } from "./stressMemory";
+
 import type { PsiEngineMode } from "../../src/psi/psiEngine";
 import type {
   GenerateProbeResult,
   MatchProbeResult,
 } from "./streamedMatchLarge.probe";
-import { stressMemory } from "./stressMemory";
 
 // The joiner's streamed match on the WebAssembly engine at the per-set
 // maximum: a setup and a response of PSI_STRESS_STREAMED_MATCH_N elements
@@ -22,10 +23,9 @@ import { stressMemory } from "./stressMemory";
 // PSI_STRESS_STREAMED_MATCH_MODE (identifier-revealing by default, the mode
 // whose pairs add to the engine's memory). The round is built on the native
 // addon in one process and matched in another, so the match's figures are
-// its own. The engine's fork measured this match at 2^24 at 99 min on a
-// 10-CPU arm64 host; psiRoundWalls puts a hosted runner's WebAssembly engine
-// about 1.4 times slower than the development container, so the match is
-// expected near 145 min there. Each probe's limit is below.
+// its own. The hosted-runner measurement and the limits derived from it are
+// at this file's WEEKLY_MINUTES entry in
+// .github/workflows/nightly_core_stress.yaml.
 
 const PROBE = fileURLToPath(
   new URL("./streamedMatchLarge.probe.ts", import.meta.url),
@@ -33,18 +33,55 @@ const PROBE = fileURLToPath(
 const MIB = 1024 * 1024;
 const GIB = 1024 * MIB;
 const HEAP_MIB = Math.min(16_384, Math.floor(totalmem() / MIB) - 2_048);
-// Building the round at 2^24 is three native operations of 2^24 elements;
-// the setup alone took most of a 16 to 22 minute run on a hosted runner.
-const GENERATE_TIMEOUT_MS = 75 * 60_000;
-const MATCH_TIMEOUT_MS = Number(
-  process.env.PSI_STRESS_STREAMED_MATCH_TIMEOUT_MS ?? 210 * 60_000,
+
+// Satisfying Record<PsiEngineMode, ...> makes the compiler reject a missing
+// or an extra mode, so the accepted set follows the engine's type.
+const ENGINE_MODES = {
+  "identifier-revealing": true,
+  "count-only": true,
+} as const satisfies Record<PsiEngineMode, true>;
+
+function isEngineMode(value: string): value is PsiEngineMode {
+  return Object.hasOwn(ENGINE_MODES, value);
+}
+
+function positiveIntegerFromEnvironment(
+  name: string,
+  fallback: number,
+): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!/^[1-9][0-9]*$/.test(raw) || !Number.isSafeInteger(value))
+    throw new Error(
+      `${name} is "${raw}"; set it to a positive whole number in decimal ` +
+        `digits, or leave it unset for ${fallback}`,
+    );
+  return value;
+}
+
+function modeFromEnvironment(name: string): PsiEngineMode {
+  const raw = process.env[name] ?? "identifier-revealing";
+  if (!isEngineMode(raw))
+    throw new Error(
+      `${name} is "${raw}"; set it to ` +
+        `${Object.keys(ENGINE_MODES).join(" or ")}, or leave it unset for ` +
+        `identifier-revealing`,
+    );
+  return raw;
+}
+
+const GENERATE_TIMEOUT_MS = 50 * 60_000;
+const MATCH_TIMEOUT_MS = positiveIntegerFromEnvironment(
+  "PSI_STRESS_STREAMED_MATCH_TIMEOUT_MS",
+  220 * 60_000,
 );
-const ELEMENTS = Number(
-  process.env.PSI_STRESS_STREAMED_MATCH_N ?? MAX_PSI_DECODE_ELEMENTS,
+const ELEMENTS = positiveIntegerFromEnvironment(
+  "PSI_STRESS_STREAMED_MATCH_N",
+  MAX_PSI_DECODE_ELEMENTS,
 );
 const OVERLAP = ELEMENTS - Math.min(1_024, Math.floor(ELEMENTS / 2));
-const MODE = (process.env.PSI_STRESS_STREAMED_MATCH_MODE ??
-  "identifier-revealing") as PsiEngineMode;
+const MODE = modeFromEnvironment("PSI_STRESS_STREAMED_MATCH_MODE");
 
 // Building the setup peaks the process at 768 bytes an element, measured at
 // 2^21 in the development container; the match needs far less.
@@ -145,6 +182,7 @@ test(
       ) as MatchProbeResult;
       report(built, result);
       expect(result.matchesExpected).toBe(true);
+      expect(result.wasmPeakBytes).toBeGreaterThan(0);
       expect(result.wasmPeakBytes).toBeLessThanOrEqual(
         WASM_PSI_MEMORY_MAX_BYTES,
       );

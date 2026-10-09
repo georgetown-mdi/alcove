@@ -113,7 +113,12 @@ function installWasmMemoryProbe(): void {
 }
 
 function wasmBytes(): number {
-  return wasmMemory?.buffer.byteLength ?? 0;
+  if (wasmMemory === undefined)
+    throw new Error(
+      "installWasmMemoryProbe caught no WebAssembly.Memory export as the " +
+        "engine instantiated, so the engine memory cannot be measured",
+    );
+  return wasmMemory.buffer.byteLength;
 }
 
 // `library` whose every new client is created from `key`, so an engine built
