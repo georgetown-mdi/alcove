@@ -182,6 +182,31 @@ test("leaves a browser consumer's stored level untouched", () => {
   expect(storage).toEqual({});
 });
 
+// The known limit setLogLevel documents: a level the browser already stored
+// outranks the sweep for a logger built after it.
+test("a stored per-logger level outranks the sweep for a logger built after it", () => {
+  const name = uniqueName("stored");
+  vi.stubGlobal("window", {
+    localStorage: { [`loglevel:${name}`]: "TRACE" },
+  });
+
+  setLogLevel(logLibrary.levels.SILENT);
+
+  expect(getLogger(name).getLevel()).toBe(logLibrary.levels.TRACE);
+});
+
+test("a stored root level outranks the sweep for a logger built after it", () => {
+  vi.stubGlobal("window", { localStorage: { loglevel: "TRACE" } });
+  logLibrary.setLevel(logLibrary.levels.TRACE, false);
+
+  setLogLevel(logLibrary.levels.SILENT);
+
+  expect(logLibrary.getLevel()).toBe(logLibrary.levels.TRACE);
+  expect(getLogger(uniqueName("after-root")).getLevel()).toBe(
+    logLibrary.levels.TRACE,
+  );
+});
+
 test("getLoggerForVerbosity keeps its accumulate-and-floor semantics", () => {
   // -v/-vv choose a preferred level and the resolved log level floors it: the
   // quieter of the two wins. So a silenced run stays silent however verbose it

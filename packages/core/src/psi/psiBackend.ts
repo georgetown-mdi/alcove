@@ -10,8 +10,9 @@ type PsiBackendKind = "native" | "wasm";
 
 /**
  * Loaders the environment supplies to {@link loadPsiBackend}. The caller owns
- * how each backend is imported, so a browser bundle pulls in neither the node
- * WASM entry nor the native addon.
+ * how each backend is imported, so core's built entry points import neither
+ * the node WASM entry nor the native addon, and a browser bundle gets only the
+ * engine its caller imports.
  */
 interface PsiBackendLoaders {
   /**

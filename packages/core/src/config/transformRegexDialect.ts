@@ -39,8 +39,7 @@ export function regexStepPatternParam(
 /**
  * Monotonic-clock budget, in milliseconds, for the conformance walk over one
  * terms set, since keys x elements x steps can make compilation itself a
- * denial of service; patterns left when it runs out are refused. A legitimate
- * terms set finishes in well under a millisecond.
+ * denial of service; patterns left when it runs out are refused.
  */
 const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
 
@@ -85,9 +84,9 @@ interface RegexDialectBudget {
   totalBudgetMs?: number;
   /**
    * Longest pattern compiled; a longer one is refused on length alone, since
-   * compile time is super-linear in length (a ~150 KB pattern takes seconds)
-   * and the budget cannot interrupt a compile. The schema passes
-   * MAX_TRANSFORM_PATTERN_LENGTH; omitted (unit tests only), none is refused.
+   * compile cost grows with length and the budget cannot interrupt a compile.
+   * The schema passes MAX_TRANSFORM_PATTERN_LENGTH; omitted (unit tests
+   * only), none is refused.
    */
   maxPatternLength?: number;
 }

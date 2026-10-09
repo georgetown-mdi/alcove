@@ -76,6 +76,27 @@ test("connect resolves for an accessible directory", async () => {
   await expect(client.connect({ path: dir })).resolves.toBeUndefined();
 });
 
+// FileSyncConnection.open() connects a split-mode filedrop client twice, once
+// per directory, on one client.
+test("a second connect on the same client, to another directory, leaves both usable", async () => {
+  const inbound = path.join(dir, "inbound");
+  const outbound = path.join(dir, "outbound");
+  await fs.mkdir(inbound);
+  await fs.mkdir(outbound);
+
+  await client.connect({ path: inbound });
+  await expect(client.connect({ path: outbound })).resolves.toBeUndefined();
+
+  await client.put(Buffer.from("in"), path.join(inbound, "a.json"));
+  await client.put(Buffer.from("out"), path.join(outbound, "b.json"));
+  expect((await client.list(inbound)).map((entry) => entry.name)).toEqual([
+    "a.json",
+  ]);
+  expect((await client.list(outbound)).map((entry) => entry.name)).toEqual([
+    "b.json",
+  ]);
+});
+
 test("connect refuses a directory that does not exist at once, as an input not found", async () => {
   const missing = path.join(dir, "nonexistent");
   const err: unknown = await client
