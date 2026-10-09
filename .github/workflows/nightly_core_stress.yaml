@@ -112,6 +112,7 @@ jobs:
             const WEEKLY_MINUTES = {
               [WALLS_FILE]: 270,
               "test/stress/streamedMatchLarge.stress.test.ts": 290,
+              "test/stress/streamedMatchLargeNative.stress.test.ts": 190,
               "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
             };
             // Each took 0.5 to 2.5 minutes as a job of its own.

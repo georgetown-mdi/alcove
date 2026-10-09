@@ -1,16 +1,16 @@
-// One joiner's streamed match on the WebAssembly engine, in two processes:
-// `generate` builds the round on the native addon where one ships and writes
-// it to a directory, and `match` matches it, so the engine memory, heap and
-// resident set the match reports are its own. Each prints one JSON line;
-// `streamedMatchLarge.stress.test.ts` spawns both and reads them.
+// One joiner's streamed match, in two processes: `generate` builds the round
+// on the native addon where one ships and writes it to a directory, and
+// `match-wasm` or `match-native` matches it on that engine, so the memory,
+// heap and resident set the match reports are its own. Each prints one JSON
+// line; `streamedMatchLarge.case.ts` spawns both and reads them.
 //
 // Usage: node --expose-gc --import tsx streamedMatchLarge.probe.ts
-//          <generate|match> <identifier-revealing|count-only> <elements>
-//          <overlap> <directory>
+//          <generate|match-wasm|match-native>
+//          <identifier-revealing|count-only> <elements> <overlap> <directory>
 //
 // Both sides hold `elements` values, the first `overlap` of them shared. The
-// joiner's key is written with the round, so the request built natively
-// under it is the one the WebAssembly match decrypts.
+// joiner's key is written with the round, so the request built under it is
+// the one the match decrypts on either engine.
 
 import {
   closeSync,
@@ -46,17 +46,28 @@ export interface GenerateProbeResult {
   readonly maxRssBytes: number;
 }
 
-/** What `match` prints. */
+/** The WebAssembly engine's linear memory over a match, in bytes. */
+export interface WasmMemoryFigures {
+  readonly startBytes: number;
+  readonly afterSetupBytes: number;
+  readonly peakBytes: number;
+}
+
+/** The engine a match step runs on. */
+export type MatchBackend = "wasm" | "native";
+
+/** What `match-wasm` and `match-native` print. */
 export interface MatchProbeResult {
+  readonly backend: MatchBackend;
   readonly mode: PsiEngineMode;
   readonly elements: number;
   readonly overlap: number;
   readonly setupPieces: number;
   readonly setupMs: number;
   readonly matchMs: number;
-  readonly wasmStartBytes: number;
-  readonly wasmAfterSetupBytes: number;
-  readonly wasmPeakBytes: number;
+  /** Undefined on the native addon, whose memory is in the resident set. */
+  readonly wasm: WasmMemoryFigures | undefined;
+  readonly rssAfterSetupBytes: number;
   readonly heapPeakBytes: number;
   readonly heapLimitBytes: number;
   readonly maxRssBytes: number;
@@ -252,28 +263,41 @@ function pairsMatchExpected(
   return true;
 }
 
+async function loadMatchLibrary(backend: MatchBackend): Promise<PSILibrary> {
+  if (backend === "wasm") {
+    installWasmMemoryProbe();
+    const { default: loadWasm } = await import("@openmined/psi.js");
+    return loadWasm();
+  }
+  const native = await loadNativeAddonOrSkip();
+  if (native === undefined)
+    throw new Error("no native addon ships for this platform");
+  return native;
+}
+
 async function match(
+  backend: MatchBackend,
   mode: PsiEngineMode,
   elements: number,
   overlap: number,
   directory: string,
 ): Promise<MatchProbeResult> {
-  installWasmMemoryProbe();
-  const { default: loadWasm } = await import("@openmined/psi.js");
+  const library = await loadMatchLibrary(backend);
   const key = new Uint8Array(readFileSync(join(directory, KEY_FILE)));
   const joiner = new InProcessPsiEngine(
-    libraryWithClientKey(await loadWasm(), key),
+    libraryWithClientKey(library, key),
     "joiner",
     "joiner",
     mode,
-    psiEngineOptionsForBackend("wasm"),
+    psiEngineOptionsForBackend(backend),
   );
+  const engineBytes = (): number => (backend === "wasm" ? wasmBytes() : 0);
   joiner.observeProcessedElements((processed) =>
     phase(`matched ${processed} response elements`),
   );
   try {
     gc();
-    const wasmStartBytes = wasmBytes();
+    const wasmStartBytes = engineBytes();
     // V8 reports the heap in use as each collection starts, which is where
     // the heap stands highest between collections.
     const profiler = new GCProfiler();
@@ -298,7 +322,8 @@ async function match(
     }
     await joiner.completeServerSetup();
     const setupMs = performance.now() - started;
-    const wasmAfterSetupBytes = wasmBytes();
+    const wasmAfterSetupBytes = engineBytes();
+    const rssAfterSetupBytes = process.memoryUsage.rss();
 
     const response = new Uint8Array(
       readFileSync(join(directory, RESPONSE_FILE)),
@@ -321,17 +346,25 @@ async function match(
     const matchMs = performance.now() - started;
     const heapEndBytes = getHeapStatistics().used_heap_size;
     const collections = profiler.stop()?.statistics ?? [];
+    const wasmPeakBytes = engineBytes();
     phase("done");
     return {
+      backend,
       mode,
       elements,
       overlap,
       setupPieces,
       setupMs,
       matchMs,
-      wasmStartBytes,
-      wasmAfterSetupBytes,
-      wasmPeakBytes: wasmBytes(),
+      wasm:
+        backend === "wasm"
+          ? {
+              startBytes: wasmStartBytes,
+              afterSetupBytes: wasmAfterSetupBytes,
+              peakBytes: wasmPeakBytes,
+            }
+          : undefined,
+      rssAfterSetupBytes,
       heapPeakBytes: Math.max(
         heapEndBytes,
         ...collections.map((c) => c.beforeGC.heapStatistics.usedHeapSize),
@@ -355,9 +388,11 @@ async function main(): Promise<void> {
   const result =
     step === "generate"
       ? await generate(mode, elements, overlap, directory)
-      : step === "match"
-        ? await match(mode, elements, overlap, directory)
-        : undefined;
+      : step === "match-wasm"
+        ? await match("wasm", mode, elements, overlap, directory)
+        : step === "match-native"
+          ? await match("native", mode, elements, overlap, directory)
+          : undefined;
   if (result === undefined) throw new Error(`no probe step ${step}`);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 }
