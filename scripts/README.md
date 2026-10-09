@@ -8,6 +8,8 @@ mutation run, the release and provenance verifiers, the dependency-drift check
 `.github/actions/setup` runs after a cache restore, the OS-layer attribution
 generator `image_smoke.yaml` regenerates each image's list beside `NOTICE` from,
 the container-pair wait its bind-mount smoke step runs the exchange under,
+[`required-suites.mjs`](required-suites.mjs), which prints the builds, test
+suites and gates a diff needs as read from the workflows CI runs,
 and the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or

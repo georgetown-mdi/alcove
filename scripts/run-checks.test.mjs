@@ -9,6 +9,7 @@ import {
   SEPARATE_WORKFLOW_STEPS,
   inventory,
   runAll,
+  runCheck,
   rootScripts,
   summarize,
 } from "./run-checks.mjs";
@@ -136,15 +137,50 @@ describe("the shared web build", () => {
 
 describe("reporting", () => {
   it("names every failed check in the summary and counts the passes", () => {
-    const summary = summarize([
-      { script: "linkcheck", ok: true, seconds: 1.24 },
-      { script: "check:vectors", ok: false, seconds: 9.5 },
-      { script: "test:scripts", ok: false, seconds: 30 },
-    ]);
+    const summary = summarize(
+      [
+        { script: "linkcheck", ok: true, seconds: 1.24, load: 0.5 },
+        { script: "check:vectors", ok: false, seconds: 9.5, load: 12.25 },
+        { script: "test:scripts", ok: false, seconds: 30, load: null },
+      ],
+      8,
+    );
 
-    expect(summary).toContain("1 of 3 checks passed in 40.7s.");
+    expect(summary).toContain("1 of 3 checks passed in 40.7s, on 8 CPUs;");
     expect(summary).toContain("Failed: check:vectors, test:scripts.");
     expect(summary).toContain("pass  linkcheck");
+  });
+
+  it("states the load average each check started under", () => {
+    const lines = summarize(
+      [
+        { script: "linkcheck", ok: true, seconds: 1.24, load: 0.5 },
+        { script: "check:vectors", ok: false, seconds: 9.5, load: 12.25 },
+        { script: "test:scripts", ok: true, seconds: 30, load: null },
+      ],
+      8,
+    ).split("\n");
+
+    expect(lines.find((line) => line.includes("linkcheck"))).toMatch(
+      /load 0\.50$/,
+    );
+    expect(lines.find((line) => line.includes("check:vectors"))).toMatch(
+      /load 12\.25$/,
+    );
+    expect(lines.find((line) => line.includes("test:scripts"))).toMatch(
+      /load n\/a$/,
+    );
+  });
+
+  it("records the load average a real check started under", () => {
+    const result = runCheck(
+      { script: "probe", command: [process.execPath, "-e", ""] },
+      ROOT,
+    );
+
+    expect(result.ok).toBe(true);
+    if (process.platform === "win32") expect(result.load).toBeNull();
+    else expect(result.load).toBeGreaterThanOrEqual(0);
   });
 
   it("lists what runs and what does not with its reason", () => {
