@@ -13,7 +13,7 @@ import { performance } from "node:perf_hooks";
 
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
-import type { WasmMaskingOperation } from "../../src/psi/psiMatchSlices";
+import type { WasmMaskingOperation } from "../../src/psi/psiWasmBudget";
 
 export interface MaskingProbeResult {
   readonly operation: WasmMaskingOperation;

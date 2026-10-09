@@ -7,10 +7,7 @@ import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
 import { classifyFailure } from "../../src/failureClass";
 
-import type {
-  InProcessPsiEngineOptions,
-  PsiMatchMethod,
-} from "../../src/psi/psiEngine";
+import type { InProcessPsiEngineOptions } from "../../src/psi/psiEngine";
 import { fixedKeyPsiLibrary, psiTestKey } from "./fixedKeyPsiLibrary";
 
 // The wire claim the chunked engine rests on: splitting one operation and
@@ -43,15 +40,13 @@ function engine(
   role: "starter" | "joiner",
   revealsIdentifiers: boolean,
   chunkElements: number | undefined,
-  setupSliceElements?: number,
-  matchMemoryBudgetBytes?: number,
-  matchMethod?: PsiMatchMethod,
+  maskingMemoryBudgetBytes?: number,
 ): InProcessPsiEngine {
   const options: InProcessPsiEngineOptions = {
-    ...(matchMethod === undefined ? {} : { matchMethod }),
     ...(chunkElements === undefined ? {} : { chunkElements }),
-    ...(setupSliceElements === undefined ? {} : { setupSliceElements }),
-    ...(matchMemoryBudgetBytes === undefined ? {} : { matchMemoryBudgetBytes }),
+    ...(maskingMemoryBudgetBytes === undefined
+      ? {}
+      : { maskingMemoryBudgetBytes }),
   };
   return new InProcessPsiEngine(
     fixedKeyPsiLibrary(library, SERVER_KEY, CLIENT_KEY),
@@ -69,25 +64,22 @@ function engine(
  *
  * `chunkElements` sets the chunk size; left out, the shipped sizing policy
  * decides, which is what a run at production scale exercises.
- * `matchMethod` is the joiner's; `setupSliceElements` splits a sliced match
- * into setup slices. `matchMemoryBudgetBytes` sizes both parties' calls to
- * that engine memory.
+ * `maskingMemoryBudgetBytes` sizes both parties' masking calls to that
+ * engine memory.
  */
 export async function expectChunkedRoundMatchesSingleCall(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
-  matchMethod?: PsiMatchMethod;
-  setupSliceElements?: number;
-  matchMemoryBudgetBytes?: number;
+  maskingMemoryBudgetBytes?: number;
 }): Promise<Record<string, Array<number>>> {
   const {
     library,
     serverValues,
     clientValues,
     chunkElements,
-    matchMemoryBudgetBytes,
+    maskingMemoryBudgetBytes,
   } = params;
   const server = library.server!.createFromKey(SERVER_KEY, true);
   const client = library.client!.createFromKey(CLIENT_KEY, true);
@@ -96,17 +88,14 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
     "starter",
     true,
     chunkElements,
-    undefined,
-    matchMemoryBudgetBytes,
+    maskingMemoryBudgetBytes,
   );
   const joiner = engine(
     library,
     "joiner",
     true,
     chunkElements,
-    params.setupSliceElements,
-    matchMemoryBudgetBytes,
-    params.matchMethod,
+    maskingMemoryBudgetBytes,
   );
   const processed: Record<string, Array<number>> = {};
   let operation = "";
@@ -159,25 +148,21 @@ export async function expectChunkedRoundMatchesSingleCall(params: {
 /**
  * Asserts that a chunked count-only round puts the single call's response
  * bytes on the wire and reports its cardinality, and returns the processed
- * counts the match reported: one between each pair of response pieces for a
- * streamed match; for a sliced one, none for a match in one call and one
- * between each pair of setup slices otherwise.
+ * counts the match reported: one between each pair of response pieces.
  */
 export async function expectChunkedCountMatchesSingleCall(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
   chunkElements?: number;
-  matchMethod?: PsiMatchMethod;
-  setupSliceElements?: number;
-  matchMemoryBudgetBytes?: number;
+  maskingMemoryBudgetBytes?: number;
 }): Promise<Array<number>> {
   const {
     library,
     serverValues,
     clientValues,
     chunkElements,
-    matchMemoryBudgetBytes,
+    maskingMemoryBudgetBytes,
   } = params;
   const server = library.server!.createFromKey(SERVER_KEY, false);
   const client = library.client!.createFromKey(CLIENT_KEY, false);
@@ -186,17 +171,14 @@ export async function expectChunkedCountMatchesSingleCall(params: {
     "starter",
     false,
     chunkElements,
-    undefined,
-    matchMemoryBudgetBytes,
+    maskingMemoryBudgetBytes,
   );
   const joiner = engine(
     library,
     "joiner",
     false,
     chunkElements,
-    params.setupSliceElements,
-    matchMemoryBudgetBytes,
-    params.matchMethod,
+    maskingMemoryBudgetBytes,
   );
   const processed: Array<number> = [];
   try {
@@ -251,20 +233,11 @@ export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
   serverValues: ReadonlyArray<string>;
   clientValues: ReadonlyArray<string>;
   chunkElements: number;
-  matchMethod?: PsiMatchMethod;
 }): Promise<Array<number>> {
   const { library, serverValues, clientValues, chunkElements } = params;
   const server = library.server!.createFromKey(SERVER_KEY, false);
   const client = library.client!.createFromKey(CLIENT_KEY, false);
-  const joiner = engine(
-    library,
-    "joiner",
-    false,
-    chunkElements,
-    undefined,
-    undefined,
-    params.matchMethod,
-  );
+  const joiner = engine(library, "joiner", false, chunkElements);
   const processed: Array<number> = [];
   joiner.observeProcessedElements((count) => processed.push(count));
   try {
@@ -302,48 +275,23 @@ export async function expectDuplicatedResponseCountMatchesSingleCall(params: {
 }
 
 /**
- * Asserts that a partner setup repeating one element across a setup slice
- * boundary is refused in either mode, rather than counted or paired twice,
- * and refused alike by the match in slices, the match in one call and the
- * streamed match: the same error class, the same message, the same named
- * diagnosis. The streamed match refuses it as the setup arrives, the sliced
- * one at the match.
+ * Asserts that a partner setup repeating one element, at `repeatAt` and the
+ * element before it, is refused in either mode as the setup arrives, rather
+ * than counted or paired twice: a protocol error with the named diagnosis,
+ * never the library's failure.
  */
-export async function expectBoundaryRepeatRefused(params: {
+export async function expectRepeatedSetupElementRefused(params: {
   library: PSILibrary;
   serverValues: ReadonlyArray<string>;
-  clientValues: ReadonlyArray<string>;
-  setupSliceElements: number;
+  repeatAt: number;
 }): Promise<void> {
-  const { library, serverValues, clientValues, setupSliceElements } = params;
+  const { library, serverValues, repeatAt } = params;
   for (const revealsIdentifiers of [true, false]) {
     const server = library.server!.createFromKey(
       SERVER_KEY,
       revealsIdentifiers,
     );
-    const client = library.client!.createFromKey(
-      CLIENT_KEY,
-      revealsIdentifiers,
-    );
-    const sliced = engine(
-      library,
-      "joiner",
-      revealsIdentifiers,
-      undefined,
-      setupSliceElements,
-      undefined,
-      "sliced",
-    );
-    const whole = engine(
-      library,
-      "joiner",
-      revealsIdentifiers,
-      undefined,
-      undefined,
-      undefined,
-      "sliced",
-    );
-    const streamed = engine(library, "joiner", revealsIdentifiers, undefined);
+    const joiner = engine(library, "joiner", revealsIdentifiers, undefined);
     try {
       const elements = [
         ...server
@@ -357,42 +305,22 @@ export async function expectBoundaryRepeatRefused(params: {
           .getRaw()!
           .getEncryptedElementsList_asU8(),
       ];
-      elements[setupSliceElements] = elements[setupSliceElements - 1]!;
-      const setupBytes = serializeSetup(library, elements);
-      const responseBytes = server
-        .processRequest(client.createRequest(clientValues))
-        .serializeBinary();
-      const match = async (target: InProcessPsiEngine): Promise<unknown> =>
-        revealsIdentifiers
-          ? target.computeAssociationTable(responseBytes)
-          : target.computeIntersectionCardinality(responseBytes);
-
-      const refusal = (target: InProcessPsiEngine): Promise<unknown> =>
-        target
-          .receiveServerSetup(setupBytes)
-          .then(() => match(target))
-          .then(
-            () => undefined,
-            (error: unknown) => error,
-          );
-      for (const caught of [
-        await refusal(sliced),
-        await refusal(whole),
-        await refusal(streamed),
-      ]) {
-        expect(caught).toBeInstanceOf(ProtocolRefusalError);
-        expect((caught as Error).message).toBe(
-          "joiner protocol error: PSI server setup is not in strictly ascending element order",
+      elements[repeatAt] = elements[repeatAt - 1]!;
+      const caught = await joiner
+        .receiveServerSetup(serializeSetup(library, elements))
+        .then(
+          () => undefined,
+          (error: unknown) => error,
         );
-        expect(classifyFailure(caught)).toBe("partner-refused");
-        expect(isPsiLibraryFailure(caught)).toBe(false);
-      }
+      expect(caught).toBeInstanceOf(ProtocolRefusalError);
+      expect((caught as Error).message).toBe(
+        "joiner protocol error: PSI server setup is not in strictly ascending element order",
+      );
+      expect(classifyFailure(caught)).toBe("partner-refused");
+      expect(isPsiLibraryFailure(caught)).toBe(false);
     } finally {
-      sliced.dispose();
-      whole.dispose();
-      streamed.dispose();
+      joiner.dispose();
       server.delete();
-      client.delete();
     }
   }
 }

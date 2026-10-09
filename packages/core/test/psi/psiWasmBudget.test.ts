@@ -6,7 +6,10 @@ import PSI from "@openmined/psi.js";
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
 import { isPsiLibraryFailure, ProtocolRefusalError } from "../../src/errors";
 import { classifyFailure } from "../../src/failureClass";
-import { MAX_PSI_DECODE_ELEMENTS } from "../../src/connection/frameSize";
+import {
+  BROWSER_PSI_SET_MAX_ELEMENTS,
+  MAX_PSI_DECODE_ELEMENTS,
+} from "../../src/connection/frameSize";
 import {
   PSI_CHUNK_MIN_ELEMENTS,
   chunkRangesOfSize,
@@ -14,190 +17,54 @@ import {
 } from "../../src/psi/psiChunks";
 import {
   WASM_MASKING_BYTES_PER_ELEMENT,
-  WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT,
-  WASM_MATCH_BYTES_PER_SETUP_ELEMENT,
-  WASM_PSI_MATCH_BUDGET_BYTES,
+  WASM_PSI_CALL_BUDGET_BYTES,
   WASM_PSI_MEMORY_MAX_BYTES,
-  assertStrictlyAscending,
   maskingChunkRanges,
-  matchSetupSliceElements,
   psiEngineOptionsForBackend,
-} from "../../src/psi/psiMatchSlices";
+  setupNotRawError,
+  setupNotStrictlyAscendingError,
+} from "../../src/psi/psiWasmBudget";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 
 vi.setConfig({ testTimeout: 60_000 });
 
 import type { PsiChunkRange } from "../../src/psi/psiChunks";
 
-// The setup slicing the joiner's WebAssembly match runs under. The slice
-// counts are the compute cost a round pays (each slice decrypts the whole
-// response it is matched against), so they are pinned at the sizes the
-// receive ceilings admit.
-
-function largestChunk(total: number): number {
-  return psiChunkRanges(total).reduce(
-    (largest, range) => Math.max(largest, range.end - range.start),
-    0,
-  );
-}
-
-function sliceCount(
-  setupElements: number,
-  responseElementsPerCall: number,
-): number {
-  return chunkRangesOfSize(
-    setupElements,
-    matchSetupSliceElements(
-      responseElementsPerCall,
-      WASM_PSI_MATCH_BUDGET_BYTES,
-    ),
-  ).length;
-}
-
 test("the budget leaves room under the engine's fixed maximum", () => {
-  expect(WASM_PSI_MATCH_BUDGET_BYTES).toBeLessThan(WASM_PSI_MEMORY_MAX_BYTES);
-});
-
-test("a slice holds what the budget leaves after the response", () => {
-  const response = 65_536;
-  const slice = matchSetupSliceElements(response, WASM_PSI_MATCH_BUDGET_BYTES);
-  const callBytes = (setup: number): number =>
-    WASM_MATCH_BYTES_PER_SETUP_ELEMENT * setup +
-    WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT * response;
-  expect(callBytes(slice)).toBeLessThanOrEqual(WASM_PSI_MATCH_BUDGET_BYTES);
-  expect(callBytes(slice + 1)).toBeGreaterThan(WASM_PSI_MATCH_BUDGET_BYTES);
+  expect(WASM_PSI_CALL_BUDGET_BYTES).toBeLessThan(WASM_PSI_MEMORY_MAX_BYTES);
 });
 
 test.each([
-  ["identifier-revealing", 65_536, 1],
-  ["identifier-revealing", 7_500_000, 2],
-  ["identifier-revealing", 2 ** 24, 3],
-  ["count-only", 65_536, 1],
-  ["count-only", 7_500_000, 2],
-  ["count-only", 2 ** 24, 7],
+  [
+    "setupNotStrictlyAscendingError",
+    setupNotStrictlyAscendingError,
+    "joiner protocol error: PSI server setup is not in strictly ascending element order",
+  ],
+  [
+    "setupNotRawError",
+    setupNotRawError,
+    "joiner protocol error: PSI server setup is not a Raw data structure",
+  ],
 ] as const)(
-  "a %s match of %i a side runs in %i slices",
-  (mode, elements, slices) => {
-    const perCall = mode === "count-only" ? elements : largestChunk(elements);
-    expect(sliceCount(elements, perCall)).toBe(slices);
+  "%s is the partner's protocol refusal, not a library failure",
+  (_name, refusal, message) => {
+    const caught = refusal("joiner");
+    expect(caught).toBeInstanceOf(ProtocolRefusalError);
+    expect(caught.message).toBe(message);
+    expect(classifyFailure(caught)).toBe("partner-refused");
+    expect(isPsiLibraryFailure(caught)).toBe(false);
   },
 );
 
-test("every response the decode bound admits leaves a slice above the floor", () => {
-  expect(
-    matchSetupSliceElements(
-      MAX_PSI_DECODE_ELEMENTS,
-      WASM_PSI_MATCH_BUDGET_BYTES,
-    ),
-  ).toBeGreaterThan(PSI_CHUNK_MIN_ELEMENTS);
-});
-
-test("a slice below the floor is an internal error, not a tiny slice", () => {
-  expect(() =>
-    matchSetupSliceElements(1, WASM_MATCH_BYTES_PER_SETUP_ELEMENT * 100),
-  ).toThrow(/below the floor/);
-  expect(() =>
-    matchSetupSliceElements(2 ** 26, WASM_PSI_MATCH_BUDGET_BYTES),
-  ).toThrow(/below the floor/);
-});
-
-test("slice ranges cover the setup contiguously", () => {
-  const ranges = chunkRangesOfSize(1_000_003, 300_000);
-  expect(ranges).toHaveLength(4);
-  expect(ranges[0]!.start).toBe(0);
-  expect(ranges.at(-1)!.end).toBe(1_000_003);
-  for (let index = 1; index < ranges.length; index += 1)
-    expect(ranges[index]!.start).toBe(ranges[index - 1]!.end);
-  for (const range of ranges)
-    expect(range.end - range.start).toBeLessThanOrEqual(300_000);
-});
-
-const bytes = (...values: number[]): Uint8Array => Uint8Array.from(values);
-
-test("a strictly ascending setup passes", () => {
-  expect(() =>
-    assertStrictlyAscending([bytes(1), bytes(1, 0), bytes(2), bytes(3)], "p"),
-  ).not.toThrow();
-  expect(() => assertStrictlyAscending([], "p")).not.toThrow();
-});
-
-test.each([
-  ["an equal pair", [bytes(1), bytes(2, 5), bytes(2, 5), bytes(3)]],
-  ["a descending pair", [bytes(1), bytes(3), bytes(2)]],
-  ["a prefix after its extension", [bytes(1, 0), bytes(1)]],
-])("a setup holding %s is refused by name", (_name, elements) => {
-  let caught: unknown;
-  try {
-    assertStrictlyAscending(elements, "joiner");
-  } catch (error) {
-    caught = error;
-  }
-  expect(caught).toBeInstanceOf(ProtocolRefusalError);
-  expect((caught as Error).message).toBe(
-    "joiner protocol error: PSI server setup is not in strictly ascending element order",
-  );
-  expect(classifyFailure(caught)).toBe("partner-refused");
-  expect(isPsiLibraryFailure(caught)).toBe(false);
-});
-
-test("a repeat straddling a slice boundary is refused", () => {
-  const elements = Array.from({ length: 10 }, (_, index) => bytes(index));
-  const ranges = chunkRangesOfSize(elements.length, 5);
-  elements[ranges[1]!.start] = elements[ranges[0]!.end - 1]!;
-  expect(() => assertStrictlyAscending(elements, "joiner")).toThrow(
-    /strictly ascending/,
-  );
-});
-
 test("only the WebAssembly backend is budgeted", () => {
   expect(psiEngineOptionsForBackend("wasm")).toStrictEqual({
-    matchMemoryBudgetBytes: WASM_PSI_MATCH_BUDGET_BYTES,
+    maskingMemoryBudgetBytes: WASM_PSI_CALL_BUDGET_BYTES,
   });
   expect(psiEngineOptionsForBackend("native")).toStrictEqual({});
 });
 
-test("a sliced match over a setup that fits the budget runs in one call whatever the slice size would be", async () => {
-  const library = await PSI();
-  const setupValues = ["a", "b", "c", "d", "e", "f", "g"];
-  const clientValues = ["c", "e", "z"];
-  const budget =
-    WASM_MATCH_BYTES_PER_SETUP_ELEMENT * setupValues.length +
-    WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT * clientValues.length;
-  expect(() => matchSetupSliceElements(clientValues.length, budget)).toThrow(
-    /below the floor/,
-  );
-  const options = {
-    matchMethod: "sliced",
-    matchMemoryBudgetBytes: budget,
-  } as const;
-  const sender = new InProcessPsiEngine(
-    library,
-    "starter",
-    "starter",
-    "count-only",
-    options,
-  );
-  const receiver = new InProcessPsiEngine(
-    library,
-    "joiner",
-    "joiner",
-    "count-only",
-    options,
-  );
-  try {
-    const { setup } = await sender.createServerSetup(setupValues);
-    await receiver.receiveServerSetup(setup);
-    const request = await receiver.createClientRequest(clientValues);
-    const response = await sender.processClientRequest(request);
-    expect(await receiver.computeIntersectionCardinality(response)).toBe(2);
-  } finally {
-    sender.dispose();
-    receiver.dispose();
-  }
-});
-
-// Masking chunks under the same budget: the chunk policy's sizes unless a
-// chunk would grow the engine's memory past it.
+// Masking chunks under the budget: the chunk policy's sizes unless a chunk
+// would grow the engine's memory past it.
 
 const OPERATIONS = [
   "createSetupMessage",
@@ -232,20 +99,20 @@ test.each(OPERATIONS)(
     const ranges = maskingChunkRanges(
       MAX_PSI_DECODE_ELEMENTS,
       operation,
-      WASM_PSI_MATCH_BUDGET_BYTES,
+      WASM_PSI_CALL_BUDGET_BYTES,
     );
     expect(
       largestRange(ranges) * WASM_MASKING_BYTES_PER_ELEMENT[operation],
-    ).toBeLessThanOrEqual(WASM_PSI_MATCH_BUDGET_BYTES);
+    ).toBeLessThanOrEqual(WASM_PSI_CALL_BUDGET_BYTES);
     expect(ranges[0]!.start).toBe(0);
     expect(ranges.at(-1)!.end).toBe(MAX_PSI_DECODE_ELEMENTS);
   },
 );
 
 test.each([
-  ["createSetupMessage", 7_643_790, 5],
-  ["createRequest", 7_643_790, 5],
-  ["processRequest", 7_643_790, 5],
+  ["createSetupMessage", BROWSER_PSI_SET_MAX_ELEMENTS, 5],
+  ["createRequest", BROWSER_PSI_SET_MAX_ELEMENTS, 5],
+  ["processRequest", BROWSER_PSI_SET_MAX_ELEMENTS, 5],
   ["createSetupMessage", 2 ** 24, 5],
   ["createRequest", 2 ** 24, 5],
   ["processRequest", 2 ** 24, 6],
@@ -253,8 +120,21 @@ test.each([
   "%s over %i elements runs in %i chunks under the budget",
   (operation, elements, chunks) => {
     expect(
-      maskingChunkRanges(elements, operation, WASM_PSI_MATCH_BUDGET_BYTES),
+      maskingChunkRanges(elements, operation, WASM_PSI_CALL_BUDGET_BYTES),
     ).toHaveLength(chunks);
+  },
+);
+
+test.each(OPERATIONS)(
+  "%s at the browser ceiling runs at the chunk policy's sizes",
+  (operation) => {
+    expect(
+      maskingChunkRanges(
+        BROWSER_PSI_SET_MAX_ELEMENTS,
+        operation,
+        WASM_PSI_CALL_BUDGET_BYTES,
+      ),
+    ).toStrictEqual(psiChunkRanges(BROWSER_PSI_SET_MAX_ELEMENTS));
   },
 );
 
@@ -281,35 +161,30 @@ test("a masking chunk below the floor is an internal error", () => {
 
 // What the budget answers to, measured on the WebAssembly engine in Node
 // (docs/spec/PROTOCOL.md, "The single-pass dataset ceiling: receiver memory
-// and masking compute"): the engine starts at 16.25 MiB, a 2^24 setup matched
-// against a 2^16 response in 3 slices peaked at 1,318 MiB, answering a request
+// and masking compute"): the engine starts at 16.25 MiB, answering a request
 // at the 2,960,685-element chunk the budget allows peaked at 1,424 MiB, and
 // creating a setup or a request at the policy's 3,355,444-element chunk at
 // 2^24 peaked at 1,263 MiB.
 const MEASURED_ENGINE_START_BYTES = 17_039_360;
-const MEASURED_SLICED_MATCH_PEAK_BYTES = 1_318 * 1024 * 1024;
 const MEASURED_MASKING_CHUNK_PEAK_BYTES = 1_493_172_224;
 const MEASURED_POLICY_CHUNK_PEAK_BYTES = 1_324_351_488;
 
 test("the budget sits above the measured calls and inside the maximum less the engine's start", () => {
-  expect(MEASURED_SLICED_MATCH_PEAK_BYTES).toBeLessThanOrEqual(
-    WASM_PSI_MATCH_BUDGET_BYTES,
-  );
   expect(MEASURED_MASKING_CHUNK_PEAK_BYTES).toBeLessThanOrEqual(
-    WASM_PSI_MATCH_BUDGET_BYTES,
+    WASM_PSI_CALL_BUDGET_BYTES,
   );
   expect(MEASURED_POLICY_CHUNK_PEAK_BYTES).toBeLessThanOrEqual(
-    WASM_PSI_MATCH_BUDGET_BYTES,
+    WASM_PSI_CALL_BUDGET_BYTES,
   );
   expect(
     maskingChunkRanges(
       MAX_PSI_DECODE_ELEMENTS,
       "processRequest",
-      WASM_PSI_MATCH_BUDGET_BYTES,
+      WASM_PSI_CALL_BUDGET_BYTES,
     )[0]!.end,
   ).toBeLessThanOrEqual(2_960_685);
   expect(
-    WASM_PSI_MATCH_BUDGET_BYTES + MEASURED_ENGINE_START_BYTES,
+    WASM_PSI_CALL_BUDGET_BYTES + MEASURED_ENGINE_START_BYTES,
   ).toBeLessThanOrEqual(WASM_PSI_MEMORY_MAX_BYTES);
 });
 
@@ -333,7 +208,7 @@ test("the engine runs each masking operation in the chunks its budget allows", a
   );
   expect(endsBetween(psiChunkRanges(elements))).toHaveLength(1);
 
-  const options = { matchMemoryBudgetBytes: budget };
+  const options = { maskingMemoryBudgetBytes: budget };
   const starter = new InProcessPsiEngine(
     library,
     "starter",

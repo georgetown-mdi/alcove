@@ -334,65 +334,40 @@ describe.each([
     raw: "receiver protocol error: PSI server setup is not a Raw data structure",
   };
 
-  test.for([
-    { method: "streamed", refused: "at setup arrival", atArrival: true },
-    { method: "sliced", refused: "at the match", atArrival: false },
-  ] as const)(
-    "a setup out of ascending order, refused $refused by the $method match, stays the partner's refusal after the worker round trip",
-    async ({ method, atArrival }, ctx) => {
-      if (!library) {
-        ctx.skip();
-        return;
-      }
-      const engine = inProcessWorkerEngine(
-        "joiner",
-        "receiver",
-        { matchMethod: method },
-        library,
-      );
-      try {
-        const { setup, response } = await swappedRound(library, engine);
-        const arrival = await rejection(engine.receiveServerSetup(setup));
-        const refused = atArrival
-          ? arrival
-          : await rejection(engine.computeAssociationTable(response));
-        if (!atArrival) expect(arrival).toBeUndefined();
-        expect(refused).toBeInstanceOf(ProtocolRefusalError);
-        expect(refused?.message).toBe(named.ascending);
-        expect(classifyFailure(refused)).toBe("partner-refused");
-      } finally {
-        engine.dispose();
-      }
-    },
-  );
+  test("a setup out of ascending order, refused as it arrives, stays the partner's refusal after the worker round trip", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const engine = inProcessWorkerEngine("joiner", "receiver", {}, library);
+    try {
+      const { setup } = await swappedRound(library, engine);
+      const refused = await rejection(engine.receiveServerSetup(setup));
+      expect(refused).toBeInstanceOf(ProtocolRefusalError);
+      expect(refused?.message).toBe(named.ascending);
+      expect(classifyFailure(refused)).toBe("partner-refused");
+    } finally {
+      engine.dispose();
+    }
+  });
 
-  test.for(["streamed", "sliced"] as const)(
-    "a setup that is not a Raw data structure, refused by the %s match, stays the partner's refusal after the worker round trip",
-    async (method, ctx) => {
-      if (!library) {
-        ctx.skip();
-        return;
-      }
-      const engine = inProcessWorkerEngine(
-        "joiner",
-        "receiver",
-        { matchMethod: method },
-        library,
+  test("a setup that is not a Raw data structure stays the partner's refusal after the worker round trip", async (ctx) => {
+    if (!library) {
+      ctx.skip();
+      return;
+    }
+    const engine = inProcessWorkerEngine("joiner", "receiver", {}, library);
+    try {
+      const refused = await rejection(
+        engine.receiveServerSetup(new library.serverSetup().serializeBinary()),
       );
-      try {
-        const refused = await rejection(
-          engine.receiveServerSetup(
-            new library.serverSetup().serializeBinary(),
-          ),
-        );
-        expect(refused).toBeInstanceOf(ProtocolRefusalError);
-        expect(refused?.message).toBe(named.raw);
-        expect(classifyFailure(refused)).toBe("partner-refused");
-      } finally {
-        engine.dispose();
-      }
-    },
-  );
+      expect(refused).toBeInstanceOf(ProtocolRefusalError);
+      expect(refused?.message).toBe(named.raw);
+      expect(classifyFailure(refused)).toBe("partner-refused");
+    } finally {
+      engine.dispose();
+    }
+  });
 });
 
 test("a discarded setup is freed inside the worker, so a new setup can be received", async () => {
@@ -563,7 +538,7 @@ test("a second concurrent call is rejected as a lockstep violation", async () =>
   expect(isPsiLibraryFailure(failure)).toBe(false);
 });
 
-test("a worker serves its engine options: a setup-sliced match equals the in-process one", async () => {
+test("a worker serves its engine options: a match fed in pieces equals the in-process one", async () => {
   const values = Array.from({ length: 200 }, (_, index) => `v-${index}`);
   const joinerValues = values.map((value, index) =>
     index % 2 === 0 ? value : `joiner-only-${index}`,
@@ -574,9 +549,8 @@ test("a worker serves its engine options: a setup-sliced match equals the in-pro
     "starter",
     "identifier-revealing",
   );
-  const sliced = inProcessWorkerEngine("joiner", "sliced", {
-    matchMethod: "sliced",
-    setupSliceElements: 40,
+  const pieced = inProcessWorkerEngine("joiner", "pieced", {
+    chunkElements: 40,
   });
   const whole = new InProcessPsiEngine(
     psiLibrary,
@@ -585,7 +559,7 @@ test("a worker serves its engine options: a setup-sliced match equals the in-pro
     "identifier-revealing",
   );
   const ticks: Array<number> = [];
-  sliced.observeProcessedElements((processed) => ticks.push(processed));
+  pieced.observeProcessedElements((processed) => ticks.push(processed));
   try {
     const { setup } = await starter.createServerSetup(values);
     const match = async (joiner: PsiEngine) => {
@@ -593,15 +567,16 @@ test("a worker serves its engine options: a setup-sliced match equals the in-pro
         await joiner.createClientRequest(joinerValues),
       );
       await joiner.receiveServerSetup(setup);
+      ticks.length = 0;
       return joiner.computeAssociationTable(response);
     };
     const expected = await match(whole);
     expect(expected[0]).toHaveLength(100);
-    expect(await match(sliced)).toStrictEqual(expected);
+    expect(await match(pieced)).toStrictEqual(expected);
     expect(ticks).toStrictEqual([40, 80, 120, 160]);
   } finally {
     starter.dispose();
-    sliced.dispose();
+    pieced.dispose();
     whole.dispose();
   }
 });

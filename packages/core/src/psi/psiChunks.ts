@@ -38,9 +38,7 @@ import { InternalConsistencyError } from "../errors";
 //     masks distinctValues); for a response repeating an element across
 //     chunks the merged table holds the same pairs as the single call but
 //     orders the ties differently (measured on both backends: the single call
-//     emits [250, 16] before [50, 16], the merge the reverse);
-//   - a match over a slice of the setup indexes partners within the slice, so
-//     setup slices merge by adding each slice's start to its partner indices.
+//     emits [250, 16] before [50, 16], the merge the reverse).
 
 /** A contiguous slice of a value or element list, covered by one chunk. */
 export interface PsiChunkRange {
@@ -184,13 +182,11 @@ export function mergeSetupChunks(
 }
 
 /**
- * One chunk's association result, indexed within the chunk's own slice:
- * `start` offsets its local indices (a response chunk) and `partnerStart`,
- * 0 when absent, its partner indices (a setup slice).
+ * One response chunk's association result, indexed within the chunk's own
+ * slice: `start` offsets its local indices.
  */
 export interface PsiAssociationChunk {
   readonly start: number;
-  readonly partnerStart?: number;
   readonly localIndices: ReadonlyArray<number>;
   readonly partnerIndices: ReadonlyArray<number>;
 }
@@ -203,18 +199,15 @@ export function mergeAssociationChunks(
   chunks: ReadonlyArray<PsiAssociationChunk>,
 ): [number[], number[]] {
   // Sorts one [number, number] per matched pair -- ~144 MB of heap at
-  // 2,000,000 pairs in the development container -- while the chunked table
-  // path holds the partner element list beside it. The setup merge's
+  // 2,000,000 pairs in the development container. The setup merge's
   // index-array shape above is not applied here.
   const pairs: Array<[number, number]> = [];
-  for (const chunk of chunks) {
-    const partnerStart = chunk.partnerStart ?? 0;
+  for (const chunk of chunks)
     for (let index = 0; index < chunk.localIndices.length; index += 1)
       pairs.push([
         chunk.start + chunk.localIndices[index]!,
-        partnerStart + chunk.partnerIndices[index]!,
+        chunk.partnerIndices[index]!,
       ]);
-  }
   pairs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
   return [pairs.map((pair) => pair[0]), pairs.map((pair) => pair[1])];
 }

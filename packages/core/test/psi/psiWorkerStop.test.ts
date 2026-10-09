@@ -20,7 +20,7 @@ import {
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 
 // A stop requested while an operation runs takes effect at the next chunk or
-// match slice boundary, so at most one more library call runs after the
+// response piece boundary, so at most one more library call runs after the
 // request: the worker is never torn down inside a library call.
 
 const psiLibrary = await PSI();
@@ -166,16 +166,9 @@ test("a stop flag once set is not cleared by a later request", async () => {
   }
 });
 
-// Five slices of the partner's 100-element setup, or five pieces of the
-// 100-element response a streamed match is fed.
-const SLICE_ELEMENTS = 20;
-const SPLIT_MATCHES: ReadonlyArray<[string, InProcessPsiEngineOptions]> = [
-  [
-    "first slice of a sliced",
-    { matchMethod: "sliced", setupSliceElements: SLICE_ELEMENTS },
-  ],
-  ["first piece of a streamed", { chunkElements: SLICE_ELEMENTS }],
-];
+// Five pieces of the 100-element response the match is fed.
+const PIECE_ELEMENTS = 20;
+const IN_PIECES: InProcessPsiEngineOptions = { chunkElements: PIECE_ELEMENTS };
 const JOINER_VALUES = VALUES.map((value, index) =>
   index % 2 === 0 ? value : `joiner-only-${index}`,
 );
@@ -228,14 +221,10 @@ async function joinerMatch(
   return { ...joiner, match };
 }
 
-test.each(
-  SPLIT_MATCHES.flatMap(([split, options]) =>
-    MODES.map((mode) => [split, mode, options] as const),
-  ),
-)(
-  "a stop requested at the %s %s match ends it at the next boundary, and nothing of the match leaves the worker",
-  async (_split, mode, options) => {
-    const { engine, posted, match } = await joinerMatch(mode, options);
+test.each(MODES)(
+  "a stop requested at the first piece of a %s match ends it at the next boundary, and nothing of the match leaves the worker",
+  async (mode) => {
+    const { engine, posted, match } = await joinerMatch(mode, IN_PIECES);
     const seen: Array<number> = [];
     engine.observeProcessedElements((processed) => {
       seen.push(processed);
@@ -247,10 +236,10 @@ test.each(
     } finally {
       engine.dispose();
     }
-    expect(seen).toStrictEqual([SLICE_ELEMENTS]);
+    expect(seen).toStrictEqual([PIECE_ELEMENTS]);
     const matchId = posted[before]!.id;
     expect(posted.slice(before)).toStrictEqual([
-      { id: matchId, processed: SLICE_ELEMENTS },
+      { id: matchId, processed: PIECE_ELEMENTS },
       {
         id: matchId,
         ok: false,
@@ -290,40 +279,37 @@ test.each(MODES)(
   },
 );
 
-test.each(SPLIT_MATCHES)(
-  "a partner lost at the %s participant's match fails it with the loss",
-  async (_split, options) => {
-    const { engine } = inProcessWorkerEngine(
-      { role: "joiner", id: "client", mode: "identifier-revealing" },
-      options,
+test("a partner lost at the first piece of the participant's match fails it with the loss", async () => {
+  const { engine } = inProcessWorkerEngine(
+    { role: "joiner", id: "client", mode: "identifier-revealing" },
+    IN_PIECES,
+  );
+  const participant = new PSIParticipant(
+    "client",
+    psiLibrary,
+    { role: "joiner", verbose: -1 },
+    UNBOUNDED_PSI_ELEMENTS,
+    engine,
+  );
+  const partnerLost = new Error("partner lost");
+  let lost = false;
+  participant.stopOperationsWhen(() => (lost ? partnerLost : undefined));
+  try {
+    const { setup, response } = await matchFrames(
+      "identifier-revealing",
+      (values) => participant.createClientRequest(values),
     );
-    const participant = new PSIParticipant(
-      "client",
-      psiLibrary,
-      { role: "joiner", verbose: -1 },
-      UNBOUNDED_PSI_ELEMENTS,
-      engine,
+    const seen: Array<number> = [];
+    engine.observeProcessedElements((processed) => {
+      seen.push(processed);
+      lost = true;
+      expect(participant.stopOperationInFlight()).toBe(true);
+    });
+    await expect(participant.computeValueMatches(setup, response)).rejects.toBe(
+      partnerLost,
     );
-    const partnerLost = new Error("partner lost");
-    let lost = false;
-    participant.stopOperationsWhen(() => (lost ? partnerLost : undefined));
-    try {
-      const { setup, response } = await matchFrames(
-        "identifier-revealing",
-        (values) => participant.createClientRequest(values),
-      );
-      const seen: Array<number> = [];
-      engine.observeProcessedElements((processed) => {
-        seen.push(processed);
-        lost = true;
-        expect(participant.stopOperationInFlight()).toBe(true);
-      });
-      await expect(
-        participant.computeValueMatches(setup, response),
-      ).rejects.toBe(partnerLost);
-      expect(seen).toStrictEqual([SLICE_ELEMENTS]);
-    } finally {
-      participant.dispose();
-    }
-  },
-);
+    expect(seen).toStrictEqual([PIECE_ELEMENTS]);
+  } finally {
+    participant.dispose();
+  }
+});

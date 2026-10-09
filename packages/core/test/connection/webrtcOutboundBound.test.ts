@@ -12,8 +12,6 @@ import {
   PSI_ENCODED_ELEMENT_BYTES,
   PSI_SET_MAX_FRAMING_BYTES,
   binaryPackByteStringLength,
-  largestOneFramePsiSetElements,
-  minimumPsiSetFrameBytes,
   webrtcFrameExceedsBound,
   webrtcFrameReceiveCharge,
 } from "../../src/connection/webrtcOutboundBound";
@@ -24,6 +22,11 @@ const psiLibrary = await PSI();
 // The largest frame, and the largest set, the bound admits. Derived by walking
 // the charge rather than restated from the spec, and pinned so a change to the
 // charge or the bound is a deliberate edit here and in docs/spec/PROTOCOL.md.
+// The fewest bytes the packed frame of a set of `n` elements can take.
+function minimumPsiSetFrameBytes(n: number): number {
+  return binaryPackByteStringLength(n * PSI_ENCODED_ELEMENT_BYTES);
+}
+
 function largestAdmitted(fits: (n: number) => boolean, upper: number): number {
   let lo = 0;
   let hi = upper;
@@ -102,13 +105,12 @@ test("the chunk floor stays at or below the last chunk's charge on the largest f
   expect(webrtcFrameReceiveCharge(267_532_686)).toBe(MAX_WEBRTC_FRAME_BYTES);
 });
 
-test("the browser receive ceiling is the largest set one frame holds", () => {
+test("the largest set one frame holds", () => {
   const largest = largestAdmitted(
     (n) => !webrtcFrameExceedsBound(minimumPsiSetFrameBytes(n)),
     MAX_WEBRTC_FRAME_BYTES,
   );
   expect(largest).toBe(7_643_790);
-  expect(largestOneFramePsiSetElements()).toBe(largest);
   expect(webrtcFrameExceedsBound(minimumPsiSetFrameBytes(largest - 1))).toBe(
     false,
   );
@@ -119,9 +121,9 @@ test("the browser receive ceiling is the largest set one frame holds", () => {
 });
 
 test("every set frame the PSI library builds is within the lengths the checks assume", async () => {
-  // The browser receive ceiling is the largest count whose fewest bytes fit
-  // one frame, so it holds only while every frame the library builds is at
-  // least that long.
+  // The largest set one frame holds is the largest count whose fewest bytes
+  // fit one frame, so it holds only while every frame the library builds is
+  // at least that long.
   // Driven against the real serializer, every message a round sends a set in.
   for (const n of [0, 1, 4, 100, 1000]) {
     const values = Array.from({ length: n }, (_unused, i) => `value-${i}`);

@@ -368,7 +368,7 @@ The process holds 62 MB before it reads any frame. These are the PSI set operati
 
 A round over `n` elements a side needs `271,000,000 + 1,176 * n` bytes: the joiner's full-round cost, the costlier role, plus the 209 MB intercept and the 62 MB baseline (`psiRoundMemoryNeedBytes`).
 
-The heap ceiling is that need at the protocol's per-set maximum, 2^24 = 16,777,216 elements a side (`MAX_PSI_DECODE_ELEMENTS`, [Round set size limits](#round-set-size-limits)): **20,001,006,016 bytes** (`PSI_HEAP_CEILING_BYTES`), passed to V8 as `--max-old-space-size=19075` (`PSI_HEAP_CEILING_MIB`, the byte figure in MiB rounded up). A unit test holds the ceiling at or above the need at that maximum, so the two cannot drift apart. The WebRTC channel's first round is smaller (7,643,790). V8 reserves heap as it is used, so a ceiling above the host's memory costs nothing by itself; the check below is what guards a small host.
+The heap ceiling is that need at the protocol's per-set maximum, 2^24 = 16,777,216 elements a side (`MAX_PSI_DECODE_ELEMENTS`, [Round set size limits](#round-set-size-limits)): **20,001,006,016 bytes** (`PSI_HEAP_CEILING_BYTES`), passed to V8 as `--max-old-space-size=19075` (`PSI_HEAP_CEILING_MIB`, the byte figure in MiB rounded up). A unit test holds the ceiling at or above the need at that maximum, so the two cannot drift apart. A browser partner's first round is smaller, held to its receive ceiling of 8,388,608 ([PROTOCOL.md, The receive ceiling](PROTOCOL.md#the-receive-ceiling)). V8 reserves heap as it is used, so a ceiling above the host's memory costs nothing by itself; the check below is what guards a small host.
 
 ### How the ceiling reaches the engine
 
