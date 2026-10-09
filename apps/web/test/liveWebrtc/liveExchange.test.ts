@@ -3,31 +3,10 @@
 import { afterAll, beforeAll, expect, test } from "vitest";
 import { commands } from "vitest/browser";
 
-import {
-  handshakeRoleForRendezvousRole,
-  loadCSVFile,
-  runExchange,
-} from "@alcove/core";
-// @ts-ignore this is really there
-import PSI from "@openmined/psi.js/psi_wasm_web";
+import { BROWSER_PAIRS, CLI_PAIRS, runBrowserAcceptor } from "./browserPeer";
 
-import {
-  acceptorColumnsEditorState,
-  acceptorInitialColumnsState,
-  acceptorLaunchPayload,
-} from "@exchange/acceptorColumnsModel";
-import { authenticateExchange } from "@psi/authenticateExchange";
-import { dialAsAcceptor } from "@psi/transport/rendezvous";
-import { openPeerMessageConnection } from "@psi/transport/peerMessageConnection";
-import { prepareAcceptedInvitation } from "@psi/acceptInvitation";
-import { prepareAcceptorExchange } from "@exchange/acceptorExchange";
-
-import { LEG_ENVIRONMENT_FAILURE } from "./legTypes";
-
-import type { LiveLegCliOutcome, LiveLegStart, MatchedPair } from "./legTypes";
-import type { DataConnection } from "peerjs";
-import type { PSILibrary } from "@openmined/psi.js/implementation/psi.d.ts";
-import type { PeerCloseOutcome } from "@psi/transport/waitForPeerClose";
+import type { LiveLegCliOutcome, LiveLegStart } from "./legTypes";
+import type { BrowserOutcome } from "./browserPeer";
 
 /**
  * A real `alcove` process and a real browser peer completing one WebRTC PSI
@@ -48,31 +27,9 @@ import type { PeerCloseOutcome } from "@psi/transport/waitForPeerClose";
  *
  * The Node side -- the broker and the `alcove` process -- runs behind the
  * vitest browser commands in `legCommands.ts`. Its failures are prefixed
- * {@link LEG_ENVIRONMENT_FAILURE}, so an environment that could not stand the
- * leg up is never read as an interop divergence.
+ * `LEG_ENVIRONMENT_FAILURE` (legTypes.ts), so an environment that could not
+ * stand the leg up is never read as an interop divergence.
  */
-
-/** What the browser peer links on. Two rows in common with the CLI party's
- * file, at different offsets on each side, so a party reading its own table
- * back cannot pass by symmetry: the CLI's rows 0 and 1 are this party's 1 and
- * 2. */
-const BROWSER_CSV =
-  "first_name,last_name,date_of_birth\n" +
-  "Zoe,Adams,2001-03-03\n" +
-  "Bob,Jones,1990-01-02\n" +
-  "Carol,Lee,1985-07-16\n";
-
-const BROWSER_IDENTITY = "Agency B, b@agency-b.example";
-
-/** The pairs each side must resolve: [own row, partner row]. */
-const CLI_PAIRS: Array<MatchedPair> = [
-  [0, 1],
-  [1, 2],
-];
-const BROWSER_PAIRS: Array<MatchedPair> = [
-  [1, 0],
-  [2, 1],
-];
 
 declare module "vitest/internal/browser" {
   interface BrowserCommands {
@@ -80,54 +37,6 @@ declare module "vitest/internal/browser" {
     liveWebrtcCliOutcome: () => Promise<LiveLegCliOutcome>;
     stopLiveWebrtcLeg: () => Promise<void>;
   }
-}
-
-/**
- * What ended the PeerJS connection before the browser party reached its own
- * close, which is what the two close orderings differ by: `none` is this party
- * closing first, `peer-close` is the CLI party having closed first. The other
- * two are the ways a run can reach the same cleared `open` flag with nothing
- * delivered.
- */
-type EndBeforeOwnClose =
-  "none" | "peer-close" | "link-failed" | "connection-error";
-
-/**
- * Read that ending off the connection the moment before this party closes.
- * PeerJS clears `open` whenever it ends the connection itself, so an open
- * connection is this party closing first and a cleared one is the CLI party's
- * close sentinel -- unless ICE gave up on the link or a send raised, the two
- * separated here. The remaining way PeerJS ends a connection, a broker-relayed
- * leave, cannot reach this party: it drops its broker socket on the exchange's
- * first frame.
- */
-function endBeforeOwnClose(
-  conn: DataConnection,
-  connectionError: boolean,
-): EndBeforeOwnClose {
-  if (connectionError) return "connection-error";
-  if (conn.open) return "none";
-  return conn.peerConnection.connectionState === "failed"
-    ? "link-failed"
-    : "peer-close";
-}
-
-/** What the browser peer's own half of the exchange produced. */
-interface BrowserOutcome {
-  /** The partner's declared identity, read off the agreed terms. */
-  partnerIdentity: string | undefined;
-  /** The matched (own row, partner row) pairs, ascending by own row. */
-  pairs: Array<MatchedPair>;
-  /** How the clean close's wait for the peer ended, or undefined where there
-   * was no wait to take. */
-  closeOutcome: PeerCloseOutcome | undefined;
-  /** Which close ordering the run took, which the outcome above is read
-   * against. */
-  endBeforeOwnClose: EndBeforeOwnClose;
-  /** How long that wait took: the span from asking for the flushing close --
-   * which queues the in-band close sentinel behind the final frame -- to the
-   * close returning. */
-  closeWaitMs: number;
 }
 
 let started: LiveLegStart;
@@ -138,105 +47,6 @@ let cliOutcome: LiveLegCliOutcome | undefined;
  * below. */
 const fetched: Array<string> = [];
 let realFetch: typeof globalThis.fetch;
-
-/** The matched pairs an exchange result holds, ordered so two parties' mirrored
- * tables compare directly. */
-function matchedPairs(
-  associationTable: [Array<number>, Array<number>] | undefined,
-): Array<MatchedPair> {
-  if (associationTable === undefined) return [];
-  const [own, partner] = associationTable;
-  return own
-    .map((row, index): MatchedPair => [row, partner[index]])
-    .sort((a, b) => a[0] - b[0]);
-}
-
-/** Run the browser peer's whole half: accept the invitation, dial the broker
- * the invitation names, authenticate, run the PSI rounds, and close cleanly. */
-async function runBrowserPeer(invitation: string): Promise<BrowserOutcome> {
-  // The app's own accept-path validation: checksum, expiry, an endpoint this
-  // build can drive, and the terms' fail-closed checks.
-  const accepted = await prepareAcceptedInvitation(invitation, {
-    profile: "hosted",
-  });
-  if (accepted.endpoint.channel !== "webrtc")
-    throw new Error(
-      `${LEG_ENVIRONMENT_FAILURE} the CLI party minted a ` +
-        `${accepted.endpoint.channel} endpoint, not a webrtc one`,
-    );
-
-  // Read through the app's own CSV reader, from a File as the accept seat
-  // acquires one, so a divergence here cannot be mistaken for a protocol one.
-  const parsed = await loadCSVFile(
-    new File([BROWSER_CSV], "input.csv", { type: "text/csv" }),
-  );
-  const rawRows = parsed.data;
-  const columns = parsed.meta.fields ?? [];
-  const { edits } = acceptorLaunchPayload(
-    acceptorColumnsEditorState(
-      acceptorInitialColumnsState(columns),
-      accepted.token.linkageTerms,
-      rawRows,
-    ),
-  );
-  const prepared = prepareAcceptorExchange({
-    linkageTerms: accepted.token.linkageTerms,
-    acceptorName: BROWSER_IDENTITY,
-    edits,
-    rawRows,
-    columns,
-    // The value an accept with no control of its own derives.
-    deduplicate: false,
-  });
-
-  // The app's own dial, against the endpoint the CLI party minted.
-  const [peer, conn] = await dialAsAcceptor(
-    accepted.token.sharedSecret,
-    accepted.endpoint,
-  );
-  // The lifecycle's own early broker drop: once a frame has arrived the
-  // rendezvous is over, and the close below happens with no broker socket left
-  // (apps/web/src/psi/exchangeLifecycle.ts).
-  conn.once("data", () => peer.disconnect());
-
-  let connectionError = false;
-  conn.on("error", () => {
-    connectionError = true;
-  });
-
-  let closeOutcome: PeerCloseOutcome | undefined;
-  const mc = await openPeerMessageConnection(conn, {
-    onCloseOutcome: (outcome) => {
-      closeOutcome = outcome;
-    },
-  });
-  const handshakeRole = handshakeRoleForRendezvousRole("acceptor");
-  await authenticateExchange(
-    mc,
-    handshakeRole,
-    accepted.token.sharedSecret,
-    accepted.token.expires,
-  );
-  const psiLibrary = await (PSI() as Promise<PSILibrary>);
-  const result = await runExchange(mc, handshakeRole, prepared, { psiLibrary });
-
-  const ending = endBeforeOwnClose(conn, connectionError);
-  // The measurement: a flushing close queues the in-band close sentinel behind
-  // the final frame and then waits for the peer to close the channel, so this
-  // span is what a browser operator waits after their result is on screen.
-  const closeStartedAt = performance.now();
-  await mc.close();
-  const closeWaitMs = Math.round(performance.now() - closeStartedAt);
-  peer.disconnect();
-
-  return {
-    partnerIdentity: result.partnerTerms.identity,
-    pairs: matchedPairs(result.associationTable),
-    closeOutcome,
-    endBeforeOwnClose: ending,
-    closeWaitMs,
-  };
-}
 
 beforeAll(async () => {
   realFetch = globalThis.fetch;
@@ -266,7 +76,7 @@ test("the standalone broker answers on an origin of its own (environment precond
 });
 
 test("a CLI peer and a browser peer resolve the same intersection", async () => {
-  browserOutcome = await runBrowserPeer(started.invitation);
+  browserOutcome = await runBrowserAcceptor(started.invitation);
   cliOutcome = await commands.liveWebrtcCliOutcome();
 
   expect(

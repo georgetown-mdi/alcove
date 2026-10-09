@@ -505,12 +505,14 @@ one WebRTC PSI exchange through the standalone signaling broker.
 
 ```sh
 npm run build -w apps/cli             # the party on the CLI side is the built program
+npm run build:console -w apps/web && npm run build:console-server -w apps/web
 npm run test:live-webrtc -w apps/web
 ```
 
-Unlike the interop suite, an absent `apps/cli/dist/` fails this leg rather than
-skipping it. The leg is on no script but its own, so a run that asked for it and
-got a skip would report a pass over the one thing it was asked to cover.
+Unlike the interop suite, an absent `apps/cli/dist/` or console build fails
+this leg rather than skipping it. The leg is on no script but its own, so a run
+that asked for it and got a skip would report a pass over the one thing it was
+asked to cover.
 
 It lives in `apps/web/test/liveWebrtc/`, beside the interop suite and for the
 same reason: only that workspace may import `apps/web/src`, and the CLI side is
@@ -524,6 +526,14 @@ its own rather than the page's: the invitation a CLI party creates from a `ws://
 coordination-server URL names that broker's host, port and mount, and the
 browser peer dials what the invitation names. A browser inviter would name its
 own page's origin instead.
+
+`consoleExchange.test.ts` puts the console in the CLI's place: the built
+console server, with the broker authored through `PUT /api/jobs/webrtc`, runs a
+webrtc job whose CLI child meets the browser peer, once in each seat. Where the
+browser invites, the app's listen registers at its build's own signaling
+address, which on the test page is the page's origin, so the harness hands the
+PeerJS constructor the broker's location instead; that is the one piece of the
+seat that is not the app's.
 
 A cross-origin broker is what lets the leg answer whether that broker needs a
 CORS header for the browser peer. It does not: PeerJS asks the broker for an id

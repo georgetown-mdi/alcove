@@ -171,7 +171,12 @@ export function resultFileIn(folder: string): string {
 export function pairsFromResultCsv(
   resultPath: string,
 ): Array<[number, number]> {
-  const [header, ...rows] = readFileSync(resultPath, "utf8").trim().split("\n");
+  return pairsFromResultText(readFileSync(resultPath, "utf8"));
+}
+
+/** The matched (own row, partner row) pairs a result CSV's text holds. */
+export function pairsFromResultText(text: string): Array<[number, number]> {
+  const [header, ...rows] = text.trim().split("\n");
   if (header !== "row_id,their_row_id")
     throw new Error(`unexpected result header: ${String(header)}`);
   return rows

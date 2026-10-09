@@ -44,13 +44,13 @@ permissions:
 
 jobs:
   live-webrtc:
-    name: Live CLI-to-browser WebRTC exchange
+    name: Live WebRTC exchange between the CLI, the console server and a browser
     runs-on: ubuntu-26.04
     # Bound the job: it drives a real browser, a real broker and a real
     # `alcove` process, workloads that can wedge in ways the leg's own
-    # timeouts do not all catch. The leg itself measures well under a minute
-    # once provisioned; the rest of this budget is the browser provisioning
-    # below and its own 22-minute bound.
+    # timeouts do not all catch. Once provisioned, the CLI leg measures under a
+    # minute and each console direction about 8 seconds; the rest of this
+    # budget is the browser provisioning below and its own 22-minute bound.
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
@@ -68,6 +68,10 @@ jobs:
       # skipping.
       - name: Build the CLI for the live leg
         run: npm run build -w apps/cli
+      # The console leg's party is the built console server running that CLI,
+      # and it too refuses to start without its build.
+      - name: Build the console for the live leg
+        run: npm run build:console -w apps/web && npm run build:console-server -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.
@@ -153,5 +157,5 @@ jobs:
       # The leg stands up the broker and the CLI party itself. A failure of
       # either is reported under the leg's own environment prefix, which is what
       # separates a broken runner from an interop divergence in this job's log.
-      - name: Live CLI-to-browser WebRTC exchange
+      - name: Live WebRTC exchange between the CLI, the console server and a browser
         run: npm run test:live-webrtc -w apps/web

@@ -23,6 +23,20 @@ export const LEG_ENVIRONMENT_FAILURE = "live-webrtc leg environment failure:";
  * partner's. */
 export type MatchedPair = [number, number];
 
+/** The identity the CLI party declares, which the browser peer reads back off
+ * the agreed terms. */
+export const CLI_IDENTITY = "Agency A, a@agency-a.example";
+
+/** What the CLI party links on, wherever the program runs: spawned directly as
+ * `alcove invite`, or by the console server for a webrtc job. Two rows in
+ * common with the browser peer's file, at different offsets on each side, so a
+ * party reading its own table back cannot pass by symmetry. */
+export const CLI_PARTY_CSV =
+  "first_name,last_name,date_of_birth\n" +
+  "Bob,Jones,1990-01-02\n" +
+  "Carol,Lee,1985-07-16\n" +
+  "Dave,Kim,1978-11-30\n";
+
 /** What the Node side has standing once the leg has started: a broker listening
  * on its own origin, and an `alcove invite` waiting at it. */
 export interface LiveLegStart {
@@ -77,4 +91,37 @@ export interface LiveLegCliOutcome {
   /** stdout and stderr interleaved in arrival order, which is what an operator
    * reads and what a failure here quotes. */
   output: string;
+}
+
+/** What the Node side of the console leg has standing: the broker on its own
+ * origin and the console server, with that broker authored as the coordination
+ * server the console's webrtc jobs dial. */
+export interface ConsoleLegStart {
+  /** The coordination server as `PUT /api/jobs/webrtc` reported it. */
+  signaling: {
+    host: string;
+    port?: number;
+    path: string;
+    secure: boolean;
+    warnings: Array<string>;
+  };
+  /** What the broker's readiness endpoint answered, held against
+   * `expectedReadinessBody` as {@link LiveLegStart} holds it. */
+  readinessBody: string;
+  expectedReadinessBody: string;
+}
+
+/** How the console's webrtc job ended, read once it left `running`. */
+export interface ConsoleJobOutcome {
+  /** The job's `status`, still `running` when the harness deadline came
+   * first. */
+  status: string;
+  /** The CLI's exit code, or null when the console has not reconciled one. */
+  exitCode: number | null;
+  /** The matched pairs the console's result file holds, ascending by this
+   * party's own row; null when the console serves no result. */
+  pairs: Array<MatchedPair> | null;
+  /** The job's event stream as the console replays it, which is what a failure
+   * here quotes. */
+  events: string;
 }
