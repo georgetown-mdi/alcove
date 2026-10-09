@@ -26,12 +26,12 @@ const vite = await createServer({
 const { jobRoutes } = (await vite.ssrLoadModule(
   "/server/console/routeTable.ts",
 )) as typeof RouteTableModule;
-const { startConsoleServer } = (await vite.ssrLoadModule(
+const { exitOnBootFailure, startConsoleServer } = (await vite.ssrLoadModule(
   "/server/console/start.ts",
 )) as typeof StartModule;
 
 const { hooks } = await startConsoleServer({
   routes: jobRoutes,
   clientMiddleware: vite.middlewares,
-});
+}).catch(exitOnBootFailure);
 hooks.hook("close", () => vite.close());

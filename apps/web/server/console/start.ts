@@ -7,6 +7,7 @@ import {
   warnJobRendezvousProvisioning,
 } from "@jobs/index";
 import { ConfigManager } from "@utils/serverConfig";
+import { JobApiConfigError } from "@jobs/gate";
 import { jobApiRequestTimeoutMs } from "@jobs/routeSupport";
 
 import {
@@ -50,6 +51,20 @@ function logUncaughtErrors(): void {
     process.on("unhandledRejection", logUnhandledRejection);
   if (!process.listeners("uncaughtException").includes(logUncaughtException))
     process.on("uncaughtException", logUncaughtException);
+}
+
+/**
+ * Report a failed {@link startConsoleServer} and exit with status 1. A {@link
+ * JobApiConfigError} is a refusal whose message says what to change, so it
+ * prints as one line; any other error prints with its stack. Exits rather than
+ * rethrowing: once the uncaught-error listeners are installed, a rethrown
+ * error is logged and the process keeps running.
+ */
+export function exitOnBootFailure(error: unknown): never {
+  if (error instanceof JobApiConfigError)
+    console.error(`The console did not start: ${error.message}`);
+  else console.error(error);
+  return process.exit(1);
 }
 
 /**
