@@ -301,7 +301,11 @@ export default defineConfig((configEnv) => {
         "../../scripts/lib/distFreshness.mjs",
         "./test/requireTestPrerequisites.ts",
       ],
-      reporters: ["default", "../../scripts/lib/skippedLegReporter.mjs"],
+      reporters: [
+        "default",
+        "../../scripts/lib/skippedLegReporter.mjs",
+        "../../scripts/lib/jsonReportReporter.mjs",
+      ],
       // Coverage is an informational REPORT, produced on demand by `npm run
       // coverage` (see package.json), never a gate: there is deliberately NO
       // `thresholds` line (see CONTRIBUTING.md, Coverage). The script runs the

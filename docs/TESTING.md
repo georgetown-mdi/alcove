@@ -585,7 +585,49 @@ across runs before anything tighter gates on them.
 
 `npm run test:stress -w packages/core` runs `packages/core/test/stress/`, the large-input cases kept out of `npm run test` and run on a schedule by `.github/workflows/nightly_core_stress.yaml`, which gives each file a job and a hosted runner of its own, except six short files that share one. The three engine files that take from 14 minutes to about three hours on a hosted runner (`psiRoundWalls`, `streamedMatchLarge`, `wasmMaskingGrowth`) run weekly, on Sunday, and every other file runs nightly; a manual dispatch runs either set or both, on the branch it is dispatched on. Stress files run one at a time, and a case that needs more memory than the machine has skips with a message naming the case, its need, and the memory it found: the free memory, or on macOS, whose free figure leaves out the cache it can reclaim, the available memory `memory_pressure` reports: free, inactive and speculative pages.
 
+Dispatch the `weekly` or `all` tier only to confirm a change to the PSI engine path or to one of those three files ahead of the Sunday run: each of their jobs holds a hosted runner for up to five hours, and a measurement that repeats one file multiplies that. Any other change is confirmed with the `nightly` tier.
+
 `npm run test:stress -w apps/cli` runs `apps/cli/test/stress/`, exchanges between processes of the built CLI (`npm run build -w apps/cli` first) at sizes only a large host holds. Nothing schedules it: a host with the memory runs it by hand. Its files skip the same way, and also without a built CLI; the interrupt run, which sends Ctrl-C during masking through a terminal of its own, also skips without util-linux `script`. Its file-sync and WebRTC completion runs can also drive one party on each of two hosts, when no one host holds the pair: `ALCOVE_STRESS_COMPLETION_PARTY` names the party this host runs, and each test file's header lists the other variables its mode needs (file sync: [docs/spec/FILE_SYNC.md, Measured runs at 2^24](spec/FILE_SYNC.md#measured-runs-at-224); WebRTC: the header of [`webrtcCompletion.stress.test.ts`](../apps/cli/test/stress/webrtcCompletion.stress.test.ts)).
+
+## Scheduled runs
+
+The `nightly_*` workflows (`nightly_core_stress.yaml`,
+`nightly_live_webrtc.yaml`, `nightly_mutation.yaml`, `nightly_platform.yaml`)
+check out `staging` by name, so their scheduled runs test the `staging` tip.
+The weekly dependency audit, CodeQL and image smoke workflows run on their
+default ref. GitHub fires a schedule from the workflow file on `main`, so a
+change to a scheduled workflow's own definition reaches its scheduled runs only
+once it is promoted there; a manual dispatch runs the definition on the branch
+it is dispatched on.
+
+A scheduled workflow red for more than `BLOCKING_STREAK` scheduled runs in a
+row (`scripts/scheduled-run-streak.mjs`) becomes a blocking item on the project
+board, closed by a fix or by retiring the workflow with its reason stated. The
+count is of runs, not days: for a weekly workflow it is that many weeks.
+`node scripts/scheduled-run-streak.mjs` tallies the current red streak of each
+scheduled workflow from `gh run list`, counting scheduled runs only, and marks
+a streak past the threshold as blocking. A workflow with more than one cron,
+such as the nightly and Sunday tiers of `nightly_core_stress.yaml`, gets one
+streak per tier. The script header states which run endings count as red.
+
+### Per-file test durations
+
+The CLI, web and static-check jobs set `ALCOVE_VITEST_JSON_DIR` on their test
+steps, so each vitest run writes vitest's JSON report into that directory
+(`scripts/lib/jsonReportReporter.mjs`, registered beside the skipped-leg
+reporter). `.github/actions/test-durations` then lists the job's slowest test
+files in the job summary, as many as `DEFAULT_TOP` in
+`scripts/slowest-test-files.mjs`, and uploads the reports as a
+`test-durations-*` artifact kept for the action's `retention-days`. To rank
+downloaded reports, or a local run's:
+
+```sh
+ALCOVE_VITEST_JSON_DIR=/tmp/vitest-json npm run test:unit -w apps/cli
+node scripts/slowest-test-files.mjs /tmp/vitest-json
+```
+
+What a file's duration includes is stated in the header of
+`scripts/slowest-test-files.mjs`.
 
 ## What a run did not cover
 
