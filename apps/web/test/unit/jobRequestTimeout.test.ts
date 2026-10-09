@@ -32,7 +32,7 @@ describe("the job API's whole-request bound", () => {
     expect(JOB_API_REQUEST_TIMEOUT_MS).toBeGreaterThan(
       SIGNALING_REQUEST_TIMEOUT_MS,
     );
-    // The value docs/spec/CHANNEL_SECURITY.md states.
+    // The value docs/spec/SIGNALING_SERVER_BOUNDS.md states.
     expect(JOB_API_REQUEST_TIMEOUT_MS).toBe(424_000);
   });
 

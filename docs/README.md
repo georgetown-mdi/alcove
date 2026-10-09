@@ -67,6 +67,7 @@ The documentation is organized in three tiers: this **overview** tier (`docs/`) 
 
 - [PROTOCOL.md](spec/PROTOCOL.md) - for an implementor or auditor of the matching: the PSI and PSI-C algorithms, linkage, datasets, the steps after linkage, and the P-256 key exchange at the wire level
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - for an auditor of the transport: the application-layer encryption, the memory and liveness bounds, SFTP crash safety on a fatal packet, and the authenticated abort marker
+- [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - for whoever deploys or assesses the coordination server: the bounds it holds against an unauthenticated client, from the upgrade handshake to the relay's queues
 - [FILE_SYNC.md](spec/FILE_SYNC.md) - for an implementor of the `sftp` and `filedrop` channels: the shared folder as a state machine, the file names, where each rule is enforced, and the preconditions for an exchange
 - [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md) - for an implementor of the `webrtc` channel, where the browser and command line ends must match: the rendezvous roles, the signaling messages, the data-channel framing and close, the ICE list rule, and the transport's limits
 - [EXCHANGE_RECORD.md](spec/EXCHANGE_RECORD.md) - for an implementor or auditor of the exchange record: its files, the commitment scheme, the governance metadata, and its privacy properties

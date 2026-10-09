@@ -60,14 +60,15 @@ export const MAX_MESSAGES_PER_QUEUE = 100;
 // serialization, whose length the wire cap does not bound, so at the size
 // extreme such a frame can account past the cap and be dropped. Real signaling
 // frames are KB-scale, so a queue still holds dozens of them and the drop costs
-// only that sender's own reconnect hold. See docs/spec/CHANNEL_SECURITY.md.
+// only that sender's own reconnect hold. See
+// docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const MAX_QUEUE_BYTES = 512 * 1024;
 // The number of distinct destinations one sender may hold frames for at once,
 // so no one sender takes more than this share of MAX_OUTSTANDING_QUEUES. A
 // rendezvous addresses the one partner it is waiting for. A destination
 // stops counting against its senders when its queue is drained or expires,
 // and against one sender when that sender is removed from the realm.
-// See docs/spec/CHANNEL_SECURITY.md.
+// See docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const MAX_QUEUED_DESTINATIONS_PER_SENDER = 8;
 
 export class Realm implements IRealm {

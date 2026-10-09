@@ -43,7 +43,7 @@ const WS_PATH = "peerjs";
 // single oversized frame from any unauthenticated client -- this server is
 // internet-facing in production, gated only by the well-known default key -- can
 // neither crash the broker (taking down rendezvous for every peer) nor pin its
-// memory. See docs/spec/CHANNEL_SECURITY.md.
+// memory. See docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const MAX_SIGNALING_PAYLOAD_BYTES = 256 * 1024;
 
 // Bound the length of each upgrade-handshake parameter (`id`, `token`, `key`)
@@ -70,7 +70,7 @@ export const MAX_SIGNALING_PAYLOAD_BYTES = 256 * 1024;
 // at the same point for a uniform "no handshake parameter is unbounded" invariant:
 // `token` is also retained per-client in the `clients` map (the same standing
 // memory surface as the id), while `key` is only compared and never stored.
-// See docs/spec/CHANNEL_SECURITY.md.
+// See docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const MAX_HANDSHAKE_PARAM_LENGTH = 256;
 
 // Bound every exit that leaves this server holding a socket it will not go on to
@@ -85,7 +85,7 @@ export const MAX_HANDSHAKE_PARAM_LENGTH = 256;
 // frame, and 30x below what `ws` would otherwise hold; it is equally the window a
 // co-resident `upgrade` listener gets to answer an upgrade this server left for
 // it, which sits far above the same-tick answer one gives, so a socket it adopted
-// is never taken back from it. See docs/spec/CHANNEL_SECURITY.md.
+// is never taken back from it. See docs/spec/SIGNALING_SERVER_BOUNDS.md.
 export const SOCKET_RELEASE_TIMEOUT_MS = 1_000;
 
 // Arm the release bound as a handle disposed of exactly once: expiring marks it
@@ -267,7 +267,7 @@ export class WebSocketServer extends EventEmitter implements IWebSocketServer {
   // `Error` is all that survives, so the source is what lets the sink
   // `CreateInstanceWSOnly` attaches tell them apart. It rides as a second event
   // argument, which a listener that wants only the error ignores. See
-  // docs/spec/CHANNEL_SECURITY.md.
+  // docs/spec/SIGNALING_SERVER_BOUNDS.md.
   private _onSocketError(
     error: unknown,
     source: SignalingDiagnosticSource,
@@ -491,9 +491,9 @@ export class WebSocketServer extends EventEmitter implements IWebSocketServer {
       // refuses a structurally pathological body before the parser can reach an
       // uncatchable engine abort, which on a broker every peer shares would end
       // rendezvous for all of them. The `ws` maxPayload cap above is the byte
-      // half of the same bound (docs/spec/CHANNEL_SECURITY.md). This is the
-      // chokepoint's string arm: `data.toString()` decodes ahead of the scan,
-      // so invalid UTF-8 is replaced here rather than refused.
+      // half of the same bound (docs/spec/SIGNALING_SERVER_BOUNDS.md). This
+      // is the chokepoint's string arm: `data.toString()` decodes ahead of
+      // the scan, so invalid UTF-8 is replaced here rather than refused.
       let message: Writable<IMessage>;
       try {
         message = parseBoundedJson(data.toString()) as Writable<IMessage>;
