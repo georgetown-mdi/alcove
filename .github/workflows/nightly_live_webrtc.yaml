@@ -68,6 +68,10 @@ jobs:
       # skipping.
       - name: Build the CLI for the live leg
         run: npm run build -w apps/cli
+      # The console leg's party is the built console server running that CLI,
+      # and it too refuses to start without its build.
+      - name: Build the console for the live leg
+        run: npm run build:console -w apps/web && npm run build:console-server -w apps/web
       # apt applies no network timeout of its own, so a mirror connection that
       # goes quiet hangs the --with-deps install below with nothing to time it
       # out.

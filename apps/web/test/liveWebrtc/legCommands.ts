@@ -4,9 +4,16 @@ import { startStandaloneBroker } from "../utils/standaloneBroker.ts";
 
 import { CLI_IDENTITY, startCliInviter } from "./cliPeer.ts";
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
+import { startConsoleParty } from "./consolePeer.ts";
 
-import type { LiveLegCliOutcome, LiveLegStart } from "./legTypes.ts";
+import type {
+  ConsoleJobOutcome,
+  ConsoleLegStart,
+  LiveLegCliOutcome,
+  LiveLegStart,
+} from "./legTypes.ts";
 import type { CliInviter } from "./cliPeer.ts";
+import type { ConsoleParty } from "./consolePeer.ts";
 import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
 
 /**
@@ -20,14 +27,17 @@ import type { StandaloneBroker } from "../utils/standaloneBroker.ts";
  * where a mismatch would report as a run-level error instead of a failed
  * assertion.
  *
- * The state below is per vitest node process. The leg's broker and the
- * signaling probe's broker (`signalingProbe.test.ts`) are held apart, so the two
- * files never stop each other's broker.
+ * The state below is per vitest node process. The leg's broker, the signaling
+ * probe's broker (`signalingProbe.test.ts`) and the console leg's broker
+ * (`consoleExchange.test.ts`) are held apart, so no file stops another's
+ * broker.
  */
 
 let broker: StandaloneBroker | undefined;
 let inviter: CliInviter | undefined;
 let probeBroker: StandaloneBroker | undefined;
+let consoleBroker: StandaloneBroker | undefined;
+let consoleParty: ConsoleParty | undefined;
 
 /**
  * Start the broker on its own loopback origin, then an `alcove invite` waiting
@@ -84,6 +94,38 @@ async function stopProbeBroker(): Promise<void> {
 }
 
 /**
+ * Start the broker on its own loopback origin and the console server beside
+ * it, with the broker authored as the console's coordination server over
+ * `ws://`, the scheme the plain-HTTP page resolves too.
+ */
+async function startConsoleLeg(): Promise<ConsoleLegStart> {
+  await stopConsoleLeg();
+  consoleBroker = await startStandaloneBroker(LEG_ENVIRONMENT_FAILURE);
+  consoleParty = await startConsoleParty(
+    `ws://127.0.0.1:${consoleBroker.port}${consoleBroker.path}`,
+  );
+  return {
+    signaling: consoleParty.signaling,
+    readinessBody: consoleBroker.readinessBody,
+    expectedReadinessBody: READINESS_BODY,
+  };
+}
+
+function runningConsoleParty(): ConsoleParty {
+  if (consoleParty === undefined)
+    throw new Error("no console party is running; the leg was never started");
+  return consoleParty;
+}
+
+/** Stop the console server and its broker. Idempotent. */
+async function stopConsoleLeg(): Promise<void> {
+  const running = [consoleParty?.stop(), consoleBroker?.stop()];
+  consoleParty = undefined;
+  consoleBroker = undefined;
+  await Promise.all(running);
+}
+
+/**
  * The commands `test.browser.commands` registers. Each takes the browser
  * command context, which this leg does not read: the processes are the Node
  * side's own, not the page's.
@@ -95,4 +137,12 @@ export const liveWebrtcLegCommands = {
   startSignalingProbeBroker: (): Promise<{ port: number; path: string }> =>
     startProbeBroker(),
   stopSignalingProbeBroker: (): Promise<void> => stopProbeBroker(),
+  startConsoleWebrtcLeg: (): Promise<ConsoleLegStart> => startConsoleLeg(),
+  createConsoleWebrtcJob: (
+    _context: unknown,
+    intent: unknown,
+  ): Promise<string> => runningConsoleParty().createJob(intent),
+  consoleWebrtcJobOutcome: (): Promise<ConsoleJobOutcome> =>
+    runningConsoleParty().outcome(),
+  stopConsoleWebrtcLeg: (): Promise<void> => stopConsoleLeg(),
 };
