@@ -11,8 +11,9 @@
 //   node scripts/single-pass-bench.mjs sweep [--keys K] [--overlap F] [--sizes N,N,...] [--gc]
 //     For each row count N, forks a sender and a receiver running the real
 //     linkViaSinglePassPSI over a parent-relayed pipe, and prints masking time,
-//     peak RSS and WASM heap per side. --gc forks the children under
-//     --expose-gc, as the shipped CLI runs, and adds the post-GC live heap.
+//     peak RSS, WASM heap and sampled peak arrayBuffers per side. --gc forks the
+//     children under --expose-gc, as the shipped CLI runs, and adds the post-GC
+//     live heap.
 //
 //   node scripts/single-pass-bench.mjs both-sided [--keys K] [--sizes N,N,...]
 //                                                [--group G] [--gc]
@@ -76,6 +77,21 @@ function wasmHeapBytes() {
   return wasmMemory ? wasmMemory.buffer.byteLength : 0;
 }
 
+// --- arrayBuffers peak sampler -------------------------------------------------
+//
+// process.memoryUsage().arrayBuffers has no kernel high-water mark like maxRSS,
+// so the child samples it at every stage mark, around every relayed frame, and
+// every ARRAY_BUFFER_SAMPLE_MS the event loop is free. The masking calls block
+// the loop, so a transient that rises and falls inside one call is missed: the
+// figure is a lower bound on the true peak.
+const ARRAY_BUFFER_SAMPLE_MS = 10;
+let peakArrayBufferBytes = 0;
+function sampleArrayBuffers() {
+  const bytes = process.memoryUsage().arrayBuffers;
+  if (bytes > peakArrayBufferBytes) peakArrayBufferBytes = bytes;
+  return bytes;
+}
+
 // --- shared dataset generation -------------------------------------------------
 
 function makeColumns(role, rows, keys, overlapRows) {
@@ -111,6 +127,14 @@ function makeBothSidedColumns(role, rows, keys, groupSize) {
 
 function mb(kib) {
   return (kib / 1024).toFixed(0);
+}
+
+function stageArrayBuffers(marks) {
+  return Object.fromEntries(marks.map((m) => [m.id, m.arrayBuffers]));
+}
+
+function abMB(bytes) {
+  return (bytes / 1048576).toFixed(1);
 }
 
 // --- mode: rates ---------------------------------------------------------------
@@ -303,19 +327,20 @@ async function runSweep(argv) {
   );
   // recv wasm MB is the receiver's grow-only WASM linear-heap floor; recv live MB
   // (--gc only) is its post-GC RSS, the retained term the transient peak sits above.
+  // send/recv AB MB is each side's sampled peak of process.memoryUsage().arrayBuffers.
   const gcCols = gc ? " | recv live MB" : "";
   const gcRule = gc ? "+-------------" : "";
   console.log(
     "   rows |       D | reply MB | recv mask s | " +
       "send RSS MB | recv RSS MB | recv wasm MB" +
       gcCols +
-      " | matches",
+      " | send AB MB | recv AB MB | matches",
   );
   console.log(
     "  ------+---------+----------+-------------+" +
       "-------------+-------------+-------------" +
       gcRule +
-      "+--------",
+      "+------------+------------+--------",
   );
 
   const rows = [];
@@ -335,6 +360,8 @@ async function runSweep(argv) {
         `${mb(r.receiver.maxRSS).padStart(11)} | ` +
         `${recvWasmMB.padStart(12)}` +
         liveCell +
+        ` | ${abMB(r.sender.peakArrayBufferBytes).padStart(10)}` +
+        ` | ${abMB(r.receiver.peakArrayBufferBytes).padStart(10)}` +
         ` | ${r.receiver.matches}`,
     );
     rows.push({
@@ -355,6 +382,14 @@ async function runSweep(argv) {
             ),
           }
         : {}),
+      senderStartArrayBufferBytes: r.sender.startArrayBufferBytes,
+      receiverStartArrayBufferBytes: r.receiver.startArrayBufferBytes,
+      senderPeakArrayBufferBytes: r.sender.peakArrayBufferBytes,
+      receiverPeakArrayBufferBytes: r.receiver.peakArrayBufferBytes,
+      // Read as each stage starts. Under --gc every stage after the first comes
+      // after a boundary collection, so the reading approximates the retained term.
+      senderStageArrayBufferBytes: stageArrayBuffers(r.sender.marks),
+      receiverStageArrayBufferBytes: stageArrayBuffers(r.receiver.marks),
       matches: r.receiver.matches,
     });
   }
@@ -431,6 +466,7 @@ function ipcConnection() {
   const waiters = [];
   process.on("message", (msg) => {
     if (!msg || msg.wire === undefined) return;
+    sampleArrayBuffers();
     const w = waiters.shift();
     if (w) w(msg.wire);
     else queue.push(msg.wire);
@@ -444,7 +480,12 @@ function ipcConnection() {
       // lost, deadlocking the sender on its receiveParsed. The post-flush callback
       // serialises the send before any later disconnect.
       new Promise((resolve, reject) => {
-        process.send({ wire: data }, (err) => (err ? reject(err) : resolve()));
+        sampleArrayBuffers();
+        process.send({ wire: data }, (err) => {
+          sampleArrayBuffers();
+          if (err) reject(err);
+          else resolve();
+        });
       }),
     receive: () =>
       queue.length
@@ -492,8 +533,15 @@ async function runChildRole(role, rows, keys, overlap, groupSize) {
   // Record stage boundaries so the masking phases can be separated from the
   // brief network waits between them.
   const marks = [];
-  const setStage = (id) => marks.push({ id, t: performance.now() });
+  const setStage = (id) =>
+    marks.push({
+      id,
+      t: performance.now(),
+      arrayBuffers: sampleArrayBuffers(),
+    });
 
+  const startArrayBufferBytes = sampleArrayBuffers();
+  const sampler = setInterval(sampleArrayBuffers, ARRAY_BUFFER_SAMPLE_MS);
   const start = performance.now();
   // partnerRecordCount must be the peer's real row count (equal to `rows` in this
   // symmetric sweep): the derived single-pass cap gate rejects a negative
@@ -521,6 +569,8 @@ async function runChildRole(role, rows, keys, overlap, groupSize) {
     setStage,
   );
   const wallMs = performance.now() - start;
+  clearInterval(sampler);
+  sampleArrayBuffers();
 
   // Masking wall-clock: the span from the first masking stage to "done", minus
   // the idle gap each side spends waiting on the peer's frame. Both sides' first
@@ -577,6 +627,8 @@ async function runChildRole(role, rows, keys, overlap, groupSize) {
         maxRSS: process.resourceUsage().maxRSS,
         wasmHeapBytes: wasmHeap,
         postGcLiveHeapKib,
+        startArrayBufferBytes,
+        peakArrayBufferBytes,
         marks,
       },
     },
