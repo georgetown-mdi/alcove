@@ -16,7 +16,7 @@ The front listens on IPv4 only.
 
 | path | what it is |
 | --- | --- |
-| `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as `nobody` under the sandbox in [Exposure](#exposure), on `127.0.0.1:9411` only |
+| `alcove-broker.service` | The broker: `npm start -w packages/peerjs-broker -- --path /api` from `/opt/alcove-broker/src`, as the system user `alcove-broker` under the sandbox in [Exposure](#exposure), on `127.0.0.1:9411` only |
 | `nginx.conf.tmpl` | The front's nginx configuration, with the host's name as `__ALCOVE_BROKER_NAME__`: TLS on 8443, `/api/` proxied to the broker with WebSocket upgrade, everything else `404` |
 | `render-config.sh` | Prints the template with the name from `broker.env` substituted; refuses a value that is not a DNS name |
 | `Dockerfile` | The front's nginx image, registry-qualified and pinned by digest: the one place it is named. Nothing builds it; `install.sh` reads its `FROM` line, refuses a reference without a digest, and writes the reference to `/etc/alcove-broker/front-image.env` for the front's unit, restarting the front when it changes |
@@ -24,7 +24,7 @@ The front listens on IPv4 only.
 | `renew.sh` | ACME DNS-01 issue and renewal through lego, installed as `/etc/alcove-broker/renew.sh`; then restarts each running unit whose inputs are newer than its start, whether or not the renewal succeeded, except under `install.sh`, which does that itself after its writes |
 | `unit-state.sh` | Sourced by both scripts and installed beside `renew.sh`: decides from systemd's state and file times which running units to restart |
 | `alcove-broker-cert.service`, `.timer` | Runs `renew.sh` daily at 04:30 UTC plus up to 15 minutes, after the relay's own renewal window |
-| `install.sh` | Installs all of the above and converges on a re-run, then checks `/api/health` through the front |
+| `install.sh` | Creates the broker's system user if it is missing, installs all of the above and converges on a re-run, then checks `/api/health` through the front |
 | `broker.env.example` | The host's one configuration file, copied to `/etc/alcove-broker/broker.env` |
 
 ## Install
@@ -52,6 +52,15 @@ install -d -m 700 /etc/alcove-broker
 install -m 600 broker.env.example /etc/alcove-broker/broker.env  # set ALCOVE_BROKER_NAME
 ./install.sh
 ```
+
+Before it writes the broker's unit, `install.sh` creates the system user and group `alcove-broker` that the unit runs as, if the user does not exist:
+
+```sh
+useradd --system --user-group --no-create-home --shell /usr/sbin/nologin alcove-broker
+```
+
+It refuses to run when only one of the user and the group exists.
+The account needs no files of its own: the broker reads the root-owned tree under `/opt/alcove-broker` and Node under `/usr/local/lib/nodejs`, both readable by all, and nothing under `/etc/alcove-broker`.
 
 The name's DNS record points at the host and is DNS-only, and the host's firewall admits TCP 8443; both are the operator's, outside this directory.
 The ACME contact and the DNS provider credential come from the relay's `/etc/alcove-relay/acme.env` by default ([`../relay/certs/env.example`](../relay/certs/env.example)); `ALCOVE_BROKER_ACME_ENV` in `broker.env` names another file.
@@ -110,16 +119,16 @@ Each forced renewal counts against Let's Encrypt's limit of five duplicate certi
 
 `systemd-analyze security alcove-broker.service` scored the unit 8.6 EXPOSED with `NoNewPrivileges=`, `PrivateTmp=`, `ProtectSystem=strict` and `ProtectHome=` as its only sandboxing.
 With the sandbox measured on the host on 2026-10-08 (systemd 252) and set in the tracked unit, it scored 1.3 OK, the broker answered `/api/health` and a CLI invite/accept exchange completed through the front ([the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)).
+The tracked unit, deployed on 2026-10-09, scored the same 1.3 OK, still as `nobody`, and `systemd-analyze verify` warned `Special user nobody configured, this is not safe!`.
+On the same day, the sandbox under the system user `alcove-broker` instead scored 0.9 SAFE, and the broker answered `/api/health` and a WebSocket upgrade, with no restarts; the tracked unit runs as that user.
 
-Two directives are left out because the broker did not start under them:
+`DynamicUser=yes` with a home directory also scored 0.9 SAFE and served, with `Environment=HOME=/run/alcove-broker` and `RuntimeDirectory=alcove-broker`.
+It is not used: it left `/run/alcove-broker` behind owned by the released uid, and `getent` does not resolve the dynamic user on this host.
+Without a home directory, npm exits at start with status 254 and the unit restarts in a loop.
+The journal line: `A system error occurred: uv_os_homedir returned ENOENT (no such file or directory)`.
 
-- **`DynamicUser=yes`**, with `User=` and `Group=` cleared: npm exits at start with status 254, and the unit restarts in a loop.
-  The journal line: `A system error occurred: uv_os_homedir returned ENOENT (no such file or directory)`.
-- **`MemoryDenyWriteExecute=yes`**: node aborts at start with a core dump on SIGTRAP; V8 cannot change a mapping's permissions.
-  The journal line: `# Check failed: 12 == (*__errno_location ()).`, from `v8::base::OS::SetPermissions`.
-
-So the unit still runs as `nobody`, and systemd still warns at load: `Special user nobody configured, this is not safe!`.
-A dedicated system user, or `DynamicUser=` with a home directory set, has not been measured.
+`MemoryDenyWriteExecute=yes` is left out because the broker did not start under it: node aborts at start with a core dump on SIGTRAP; V8 cannot change a mapping's permissions.
+The journal line: `# Check failed: 12 == (*__errno_location ()).`, from `v8::base::OS::SetPermissions`.
 
 A stop leaves the broker `inactive`, not `failed`: npm exits 143 on the stop's SIGTERM, and `SuccessExitStatus=143` counts that as a clean exit (measured on the host).
 

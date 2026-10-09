@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=nobody
-Group=nobody
+User=alcove-broker
+Group=alcove-broker
 WorkingDirectory=/opt/alcove-broker/src
 Environment=ALCOVE_BROKER_HOST=127.0.0.1
 Environment=ALCOVE_BROKER_PORT=9411

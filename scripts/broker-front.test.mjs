@@ -198,6 +198,7 @@ const NAME = "broker.example.org";
 const FRONT_UNIT = "alcove-broker-tls.service";
 const BROKER_UNIT = "alcove-broker.service";
 const TIMER_UNIT = "alcove-broker-cert.timer";
+const BROKER_USER = "alcove-broker";
 const UNITS = [
   BROKER_UNIT,
   FRONT_UNIT,
@@ -316,10 +317,25 @@ printf '%s %s\n' "$target" "$(date +%s%6N)" >> "$RENAMES"
 case "$target" in */nginx.conf) [ ! -f "$STOP_AFTER_CONF" ] || exit 1 ;; esac
 `;
 
+// The account database: getent reads PASSWD and GROUP, and useradd records its
+// arguments and whether the broker's unit file was installed yet, then adds the
+// user and its group.
+const GETENT_STUB = String.raw`
+case "$1" in passwd) db="$PASSWD" ;; group) db="$GROUP" ;; *) exit 1 ;; esac
+grep "^$2:" "$db"
+`;
+const USERADD_STUB = String.raw`
+for user; do :; done
+unit=absent; [ ! -f "$U/alcove-broker.service" ] || unit=present
+printf 'useradd %s unit=%s\n' "$*" "$unit" >> "$CALLS"
+printf '%s:x:993:992::/home/%s:/usr/sbin/nologin\n' "$user" "$user" >> "$PASSWD"
+printf '%s:x:992:\n' "$user" >> "$GROUP"
+`;
+
 /**
  * A host under a fixture root: infra/broker copied with a fixture pin, stubs
- * for systemctl, lego, docker, curl and id on PATH, and the broker workspace
- * install.sh checks for.
+ * for systemctl, lego, docker, curl, id, getent and useradd on PATH, and the
+ * broker workspace install.sh checks for.
  */
 const brokerHost = ({ client = "lego" } = {}) => {
   const root = fixtureDir("broker-host-");
@@ -364,6 +380,10 @@ const brokerHost = ({ client = "lego" } = {}) => {
   const stopFrontOnReload = join(root, "stop-front-on-reload");
   const stopAfterConf = join(root, "stop-after-conf");
   const serial = join(root, "serial");
+  const passwd = join(root, "passwd");
+  const group = join(root, "group");
+  writeFileSync(passwd, "root:x:0:0::/root:/bin/bash\n");
+  writeFileSync(group, "root:x:0:\n");
   const clearLogs = () => {
     for (const log of [calls, starts, envLog, renames]) writeFileSync(log, "");
   };
@@ -385,6 +405,8 @@ const brokerHost = ({ client = "lego" } = {}) => {
     ["STOP_FRONT_ON_RELOAD", stopFrontOnReload],
     ["STOP_AFTER_CONF", stopAfterConf],
     ["SERIAL", serial],
+    ["PASSWD", passwd],
+    ["GROUP", group],
     ["NAME", NAME],
   ]
     .map(([name, value]) => `${name}='${value}'`)
@@ -394,6 +416,8 @@ const brokerHost = ({ client = "lego" } = {}) => {
   writeStub(join(usrBin, "docker"), `${paths}\n${DOCKER_STUB}`);
   writeStub(join(bin, "mv"), `${paths}\n${MV_STUB}`);
   writeStub(join(bin, "curl"), "exit 0");
+  writeStub(join(bin, "getent"), `${paths}\n${GETENT_STUB}`);
+  writeStub(join(bin, "useradd"), `${paths}\n${USERADD_STUB}`);
   writeStub(
     join(bin, "id"),
     `if [ "$1" = -u ]; then echo 0; else exec /usr/bin/id "$@"; fi`,
@@ -481,6 +505,8 @@ const brokerHost = ({ client = "lego" } = {}) => {
     startFront: () => setFront(true),
     stopFront: () => setFront(false),
     renewTo: (next) => writeFileSync(serial, next),
+    addAccount: (database, line) =>
+      appendFileSync(database === "group" ? group : passwd, `${line}\n`),
     failDaemonReload: flag(failReload),
     failLego: flag(failLego),
     holdLego: flag(holdLego),
@@ -538,6 +564,9 @@ const touchesFront = (call) =>
   /^systemctl (try-restart|reload|start|enable|stop)\b.*alcove-broker-tls/.test(
     call,
   ) || /^docker exec /.test(call);
+
+const useraddCalls = (calls) =>
+  calls.filter((call) => call.startsWith("useradd "));
 
 const candidatesLeft = (etc) =>
   readdirSync(etc).filter((entry) => entry.startsWith("nginx.conf."));
@@ -688,6 +717,38 @@ describe("install.sh", { timeout: SCRIPT_TIMEOUT }, () => {
       frontStart(pinnedImage(), 1),
     ]);
   });
+
+  it("creates the account the broker's unit runs as before installing the unit, and only once", () => {
+    const unit = readFileSync(join(BROKER, BROKER_UNIT), "utf8");
+    const user = unit.match(/^User=(.*)$/m)?.[1];
+    expect(user).toBe(BROKER_USER);
+    expect(unit).toMatch(new RegExp(`^Group=${user}$`, "m"));
+    const host = brokerHost();
+    const result = host.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(useraddCalls(result.calls)).toEqual([
+      `useradd --system --user-group --no-create-home --shell /usr/sbin/nologin ${user} unit=absent`,
+    ]);
+    const again = host.run();
+    expect(again.status, again.stderr).toBe(0);
+    expect(useraddCalls(again.calls)).toEqual([]);
+  });
+
+  it.each([
+    ["group", `${BROKER_USER}:x:992:`, "user"],
+    ["passwd", `${BROKER_USER}:x:993:992::/:/usr/sbin/nologin`, "group"],
+  ])(
+    "refuses an existing %s entry for the broker's account whose pair is missing, before touching anything",
+    (database, line, missing) => {
+      const host = brokerHost();
+      host.addAccount(database, line);
+      const result = host.run();
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(`the ${missing} ${BROKER_USER} does not`);
+      expect(result.calls).toEqual([]);
+      expect(existsSync(join(host.unitDir, BROKER_UNIT))).toBe(false);
+    },
+  );
 
   it("leaves no live file when a first install's configuration fails nginx -t", () => {
     const host = brokerHost();
