@@ -4,6 +4,20 @@
 # iptables/ipset stack the egress firewall installs at startup, so the full suite
 # -- build, unit, lint, typecheck, web dev server, and both SFTP integration
 # backends -- runs inside with no Docker present.
+#
+# The build context is the repository root (devcontainer.json), so the image can
+# read package-lock.json; every COPY below names its path from that root.
+
+# The playwright-core version the lockfile installs, which decides the Chromium
+# build the browser suite launches. A stage of its own so the main stage's cache
+# keys on the version alone: a lockfile change that leaves playwright where it
+# was rebuilds nothing below.
+FROM node:26-bookworm AS playwright-pin
+COPY package-lock.json /pin/package-lock.json
+COPY scripts/check-playwright-browser.mjs /pin/scripts/check-playwright-browser.mjs
+COPY scripts/lib/lockfile.mjs /pin/scripts/lib/lockfile.mjs
+RUN node /pin/scripts/check-playwright-browser.mjs --pinned-version /pin/package-lock.json > /playwright-version
+
 FROM node:26-bookworm
 
 ARG TZ
@@ -22,8 +36,8 @@ ARG CLAUDE_CODE_VERSION=latest
 # the image gains no service unit, no default config listening on 8888, and no
 # tinyproxy-owned cron job or logrotate fragment; the system user and the
 # whole configuration are the script's own.
-# netcat-openbsd provides the `nc` that script and post-create.sh use to test
-# whether the proxy is listening.
+# netcat-openbsd provides the `nc` that script uses to test whether the proxy
+# is listening.
 RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
@@ -59,17 +73,23 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
   && apt-get install -y --no-install-recommends gh \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Shared-library dependencies for the headless Chromium the web app's
-# `test:browser` suite drives through Playwright. Only the apt libraries are baked
-# here (they need root and are version-stable across Chromium builds); the browser
-# BINARY is fetched in post-create.sh, after `npm ci`, so it always matches the
-# lockfile's playwright -- whereas a version baked here would have to be hand-kept
-# in lockstep, and a drift would make the runtime re-download a browser the egress
-# firewall then blocks. `install-deps` only runs apt (no zip extraction), so it is
-# unaffected by the Node 26 yauzl hang that the browser download hit before
-# playwright 1.60. The version here is just what npx runs to emit the apt list; it
-# is version-tolerant, so it need not track the lockfile exactly.
-RUN npx --yes playwright@1.61.0 install-deps chromium \
+# The Chromium build the web app's browser suites launch through Playwright,
+# with the shared libraries it links against, installed from the playwright-core
+# version the lockfile pins so the two match. It is baked rather than fetched at
+# container creation because the download redirects to storage.googleapis.com,
+# which the egress firewall refuses. Root-owned and world-readable: the node
+# user launches it but cannot replace or delete it.
+#
+# FRICTION: a playwright bump that moves the Chromium revision needs a container
+# rebuild (Dev Containers: Rebuild Container); until then post-create.sh and
+# `node scripts/check-playwright-browser.mjs` fail naming the missing build.
+# The layer adds about 680 MB (Chromium, its headless shell, and FFmpeg,
+# measured on linux-arm64 for playwright 1.64).
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=playwright-pin /playwright-version /usr/local/share/alcove-playwright-version
+RUN npx --yes "playwright-core@$(cat /usr/local/share/alcove-playwright-version)" install --with-deps chromium \
+  && chmod -R a+rX "$PLAYWRIGHT_BROWSERS_PATH" \
+  && rm -rf /root/.npm \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # The native sshd test backend spawns an unprivileged sshd, which still fatally
@@ -119,8 +139,8 @@ RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 # allowlist; init-egress-proxy.sh adds the hostname lane on top of it. Both
 # profiles run both scripts -- the allowlist is what differs, and the infra
 # block below appends its own patterns to the file COPYed here.
-COPY init-firewall.sh init-egress-proxy.sh /usr/local/bin/
-COPY egress-allowlist /usr/local/share/alcove-egress-allowlist
+COPY .devcontainer/init-firewall.sh .devcontainer/init-egress-proxy.sh /usr/local/bin/
+COPY .devcontainer/egress-allowlist /usr/local/share/alcove-egress-allowlist
 USER root
 RUN chmod +x /usr/local/bin/init-firewall.sh /usr/local/bin/init-egress-proxy.sh && \
   useradd --system --no-create-home --shell /usr/sbin/nologin tinyproxy && \
@@ -150,7 +170,7 @@ USER node
 # ssh://user@host` against a remote daemon. The host's Docker socket is root on
 # the host, so mounting it would delete the container boundary that is layer 1
 # of the security model in README.md.
-COPY infra/egress-allowlist /usr/local/share/alcove-egress-allowlist-infra
+COPY .devcontainer/infra/egress-allowlist /usr/local/share/alcove-egress-allowlist-infra
 
 ARG ALCOVE_INFRA=0
 # Pinned, and both digests were taken from an archive whose detached signature

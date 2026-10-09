@@ -25,29 +25,6 @@ npm run build -w packages/core
 # The CLI reads @alcove/cli-contract from its built dist/ the same way.
 npm run build -w packages/cli-contract
 
-# Fetch the Chromium build the web app's browser test suite drives via Playwright.
-# Here -- after `npm ci`, so it installs with the exact playwright the lockfile
-# just produced (the browser is keyed to a build revision tied to that version, so
-# this keeps them matched automatically). The shared libraries Chromium links
-# against are baked into the image (.devcontainer/Dockerfile); this pulls only the
-# browser binary, so it needs no root. Requires playwright >= 1.60 (the version
-# that fixed the Node 26 zip-extract hang); the lockfile floor is set accordingly
-# in apps/web/package.json.
-#
-# Playwright's download hosts are Azure Front Door names, admitted by hostname on
-# the loopback CONNECT proxy (.devcontainer/init-egress-proxy.sh) rather than by
-# address in the firewall's ipset, so the download is pointed at the proxy
-# whenever it is listening. On the creation run it is not: the proxy and the
-# firewall are both postStartCommands, so this script has the full network and
-# the download goes direct. Re-running this script, or the command below by hand
-# after a playwright bump, happens with the firewall up, where the proxy is the
-# route that works.
-if nc -z -w 2 127.0.0.1 8888 2>/dev/null; then
-  HTTPS_PROXY=http://127.0.0.1:8888 npx playwright install chromium
-else
-  npx playwright install chromium
-fi
-
 # Write this container's Claude user settings from the tracked template beside
 # this script, which is their single source of truth: prompt-free operation
 # (`bypassPermissions` -- the container's egress firewall plus the checked-in
@@ -116,5 +93,12 @@ if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}" ]; then
 else
   echo "post-create: no GH_TOKEN/GITHUB_TOKEN in env; skipping git credential setup (push/PR unauthenticated)."
 fi
+
+# The image bakes the Chromium build the browser suites launch (Dockerfile beside
+# this script), so nothing here downloads a browser. This fails in one line when
+# the lockfile's playwright expects a build the image does not hold, which a
+# playwright bump causes until the container is rebuilt. Last, so the setup above
+# completes either way.
+node "$SCRIPT_DIR/../scripts/check-playwright-browser.mjs"
 
 echo "post-create complete: dependencies installed; container Claude sessions default to prompt-free."
