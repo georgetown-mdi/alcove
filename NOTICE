@@ -82,4 +82,4 @@ distributions' operating-system packages, which no entry above reaches. Those
 packages are listed beside this file, one list per image, in
 NOTICE-os-packages-default.tsv and NOTICE-os-packages-fips.tsv;
 NOTICE-os-packages.md states where the corresponding source for them is
-published and what remains open about an offer of source.
+published, and that the project makes no separate offer of source.

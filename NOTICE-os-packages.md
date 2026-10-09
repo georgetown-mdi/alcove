@@ -168,15 +168,10 @@ packages from 89 source packages, queried at `linux/arm64` on 2026-10-04; the
   committed row's version is as of that list's generation
   ([`docs/spec/CONTAINER_IMAGES.md`](docs/spec/CONTAINER_IMAGES.md#the-os-layer-attribution-lists)).
 
-## The source-offer question is open
+## Source for the OS-layer packages
 
-Whether publishing these images obliges this project to make an offer of source
-for the OS-layer binaries they redistribute -- and if so, what discharges it:
-shipping source alongside the image, a written offer, or pointing at the
-distribution's published source -- is **not answered here**. It is a legal
-determination for the maintainer, taken with counsel if counsel is consulted,
-and the answer is recorded in this file when it is made.
-
-Until then this file states where the corresponding source is published. It is
-not itself an offer of source, and no other document in this repository makes
-one.
+The OS-layer binaries in these images are unmodified distribution packages. Their
+corresponding source is published by each distribution at the places this file
+names, and the retrieval steps above find it for a row's own version. This
+project makes no separate written offer of source and publishes no per-release
+source archive.
