@@ -332,10 +332,11 @@ absence, the entry separates the two.
 
 ## How the certificate claim is kept accurate
 
-Ten NVRs share the `openssl-fips-provider-latest` package name and have ten
-different modules with ten different `fips.so` hashes; exactly one of them is
-the build certificate 5438 names. A package name proves nothing, so the image
-asserts rather than assumes, and the assertions fail the build:
+More than ten NVRs share the `openssl-fips-provider-latest` package name. The
+ten measured have ten different modules with ten different `fips.so` hashes, and
+exactly one of them is the build certificate 5438 names. A package name proves
+nothing, so the image asserts rather than assumes, and the assertions fail the
+build:
 
 - The package that owns the installed `/usr/lib64/ossl-modules/fips.so` is the
   pinned `-certified-so` package at the pinned version, asked of the module file
@@ -580,11 +581,13 @@ a release to refuse it.
 
 ## What it costs
 
-Measured on the shipped build at the pins above, re-measured 2026-09-10
-(`scratch/handoffs/fips-provider-pin-3.2.2-report.md`): **63 to 165 OS
-packages**, and an image of 653 MB on `x86_64` and 802 MB on `aarch64` against
-the Alpine image's 576 MB. Of
-those 165, **37 have a GPL-3.0 or LGPL-3.0 term** -- the samba client stack that
+Measured on the shipped build at the pins above: **63 to 170 OS packages**,
+counted from the variant's attribution list at the 2023.12.20260930 base. The
+image size was last measured on 2026-09-30, at the earlier 2023.12.20260918
+base and its 165 packages
+(`scratch/handoffs/2026-09-30-bump-fips-base-report.md`): 659 MB on `x86_64`
+and 807 MB on `aarch64` against the Alpine image's 576 MB. Of those 170,
+**37 have a GPL-3.0 or LGPL-3.0 term** -- the samba client stack that
 the default image already pays for, plus a GPLv3 base userland Alpine's busybox
 and musl do not have (`bash`, `coreutils-single`, `diffutils`, `findutils`,
 `gawk`, `grep`, `gzip`, `sed`, `tar`, `readline`, `gnupg2-minimal`, `gnutls`) and
