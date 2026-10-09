@@ -4,11 +4,13 @@ import { beforeAll, describe, expect, test } from "vitest";
 
 import PSI from "@openmined/psi.js";
 
-import { ShardedPsiDriver } from "./shardedPsiWasmBench";
+import {
+  ShardedPsiDriver,
+  mergeAssociationChunks,
+} from "./shardedPsiWasmBench";
 import {
   chunkRanges,
   concatChunkElements,
-  mergeAssociationChunks,
   mergeSetupChunks,
   serializeRequest,
   serializeResponse,

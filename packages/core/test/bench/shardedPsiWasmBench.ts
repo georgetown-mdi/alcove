@@ -10,7 +10,6 @@ import type { Server as PSIServer } from "@openmined/psi.js/implementation/serve
 import {
   chunkRanges,
   concatChunkElements,
-  mergeAssociationChunks,
   mergeSetupChunks,
   serializeRequest,
   serializeResponse,
@@ -38,6 +37,8 @@ import type { MergedPsiSetup, PsiChunkRange } from "../../src/psi/psiChunks";
 // The ranges the split runs on and the merge rules each reassembly below
 // follows live beside the shipped engine that chunks one operation for the
 // same reasons: packages/core/src/psi/psiChunks.ts, whose header states them.
+// The association-table merge, which the shipped engine does not use, is
+// below with its rule.
 
 /** The keys a shard worker builds its own engine instances from. */
 export interface ShardKeys {
@@ -75,6 +76,38 @@ type ShardReply =
 const REVEAL_INTERSECTION = true;
 const SETUP_FALSE_POSITIVE_RATE = 0.0;
 const SETUP_CLIENT_INPUT_COUNT = -1;
+
+/**
+ * One shard's association result, indexed within the shard's own slice of the
+ * response: `start` offsets its local indices.
+ */
+export interface PsiAssociationChunk {
+  readonly start: number;
+  readonly localIndices: ReadonlyArray<number>;
+  readonly partnerIndices: ReadonlyArray<number>;
+}
+
+/**
+ * Reassembles an association table from per-shard results in the library's
+ * order: partner index ascending, ties by local index. That matches a single
+ * call for a response of DISTINCT elements, which a conforming partner sends
+ * (link.ts masks distinctValues); for an element repeated across shards the
+ * pairs match but the tie order differs (measured on both backends: the single
+ * call emits [250, 16] before [50, 16], the merge the reverse).
+ */
+export function mergeAssociationChunks(
+  chunks: ReadonlyArray<PsiAssociationChunk>,
+): [number[], number[]] {
+  const pairs: Array<[number, number]> = [];
+  for (const chunk of chunks)
+    for (let index = 0; index < chunk.localIndices.length; index += 1)
+      pairs.push([
+        chunk.start + chunk.localIndices[index]!,
+        chunk.partnerIndices[index]!,
+      ]);
+  pairs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  return [pairs.map((pair) => pair[0]), pairs.map((pair) => pair[1])];
+}
 
 function deserializeElements(
   psi: PSILibrary,

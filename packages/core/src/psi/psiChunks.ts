@@ -31,14 +31,7 @@ import { InternalConsistencyError } from "../errors";
 //     order, so those chunk results concatenate too, while a COUNT-ONLY
 //     response is sorted by element bytes -- the shuffle that keeps the
 //     receiver from pairing a response element with the request position it
-//     answers -- so its chunk results merge by that order instead;
-//   - an association table holds its pairs in partner-index order, ties broken
-//     by local index. That is the library's own order for a response whose
-//     elements are DISTINCT, which is what a conforming partner sends (link.ts
-//     masks distinctValues); for a response repeating an element across
-//     chunks the merged table holds the same pairs as the single call but
-//     orders the ties differently (measured on both backends: the single call
-//     emits [250, 16] before [50, 16], the merge the reverse).
+//     answers -- so its chunk results merge by that order instead.
 
 /** A contiguous slice of a value or element list, covered by one chunk. */
 export interface PsiChunkRange {
@@ -179,37 +172,6 @@ export function mergeSetupChunks(
     permutation[index] = inputIndices[source]!;
   }
   return { elements, permutation };
-}
-
-/**
- * One response chunk's association result, indexed within the chunk's own
- * slice: `start` offsets its local indices.
- */
-export interface PsiAssociationChunk {
-  readonly start: number;
-  readonly localIndices: ReadonlyArray<number>;
-  readonly partnerIndices: ReadonlyArray<number>;
-}
-
-/**
- * Reassembles an association table from chunk results, reproducing the pair
- * order a single engine emits: partner index ascending, ties by local index.
- */
-export function mergeAssociationChunks(
-  chunks: ReadonlyArray<PsiAssociationChunk>,
-): [number[], number[]] {
-  // Sorts one [number, number] per matched pair -- ~144 MB of heap at
-  // 2,000,000 pairs in the development container. The setup merge's
-  // index-array shape above is not applied here.
-  const pairs: Array<[number, number]> = [];
-  for (const chunk of chunks)
-    for (let index = 0; index < chunk.localIndices.length; index += 1)
-      pairs.push([
-        chunk.start + chunk.localIndices[index]!,
-        chunk.partnerIndices[index]!,
-      ]);
-  pairs.sort((a, b) => a[1] - b[1] || a[0] - b[0]);
-  return [pairs.map((pair) => pair[0]), pairs.map((pair) => pair[1])];
 }
 
 /** Concatenates chunk element lists, which the engine emits in input order. */
