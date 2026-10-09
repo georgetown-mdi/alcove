@@ -255,6 +255,35 @@ describe("the comparison", () => {
     expect(formatFailures(result).join("\n")).toContain("- Gone. -> -");
   });
 
+  it("pairs a listed line with differences of one kind", () => {
+    const base = new Map([
+      ["docs/spec/A.md", "# Keys rotate\n\nKeys rotate\n"],
+    ]);
+    const head = new Map([["docs/spec/A.md", "Keys rotate daily\n"]]);
+    expect(
+      compareSpecFiles(base, head, ["Keys rotate -> Keys rotate daily"]),
+    ).toEqual({
+      dropped: [
+        expect.objectContaining({ kind: "heading", text: "Keys rotate" }),
+      ],
+      added: [],
+      unmatched: [],
+    });
+    expect(
+      compareSpecFiles(base, head, [
+        "Keys rotate -> -",
+        "Keys rotate -> -",
+        "- -> Keys rotate daily",
+      ]),
+    ).toEqual({ dropped: [], added: [], unmatched: [] });
+
+    const headingOnly = new Map([["docs/spec/A.md", "# Keys rotate\n"]]);
+    expect(
+      compareSpecFiles(headingOnly, head, ["Keys rotate -> Keys rotate daily"])
+        .unmatched,
+    ).toEqual(["Keys rotate -> Keys rotate daily"]);
+  });
+
   it("counts a sentence written twice as two units", () => {
     const base = new Map([["docs/spec/A.md", "Twice.\n\nTwice.\n"]]);
     const head = new Map([["docs/spec/A.md", "Twice.\n"]]);
@@ -270,6 +299,14 @@ describe("the comparison", () => {
       ),
     ).toEqual(["c -> d", "e -> f"]);
     expect(parseWordingChanges("## Summary\n\n- a -> b\n")).toEqual([]);
+  });
+
+  it("skips fenced blocks in the body", () => {
+    expect(
+      parseWordingChanges(
+        "```\n## Wording changes\n- x -> y\n```\n\n## Wording changes\n\n- c -> d\n```sh\n# comment\n- a -> b\n```\n- e -> f\n\n## Checklist\n",
+      ),
+    ).toEqual(["c -> d", "e -> f"]);
   });
 });
 
@@ -287,12 +324,25 @@ describe("the command", () => {
     });
   }
 
+  it("with no body, prints the section to paste and passes", () => {
+    withMove(ONE_WORD_CHANGED, (dir) => {
+      const result = runScript(dir, ["--base", "staging"]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        `## Wording changes\n\n- ${CHANGED_SENTENCE} -> -\n- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
+      );
+      expect(result.stdout.trim().split("\n").at(-1)).toContain(
+        "PR Checklist workflow",
+      );
+    });
+  });
+
   it("fails the changed word, naming the sentence, and passes it once PR_BODY lists it", () => {
     withMove(ONE_WORD_CHANGED, (dir) => {
-      const failing = runScript(dir, ["--base", "staging"]);
+      const failing = runScript(dir, ["--base", "staging"], { PR_BODY: "" });
       expect(failing.status, failing.stdout).toBe(1);
       expect(failing.stderr).toContain(CHANGED_SENTENCE);
-      expect(failing.stderr).toContain("No pull request body was given");
+      expect(failing.stderr).toContain("read from PR_BODY");
 
       const body = `## Wording changes\n\n- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`;
       const listed = runScript(dir, ["--base", "staging"], { PR_BODY: body });

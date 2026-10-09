@@ -73,11 +73,7 @@ jobs:
         env:
           PR_JSON: ${{ runner.temp }}/pull-request.json
         run: npm run check:pr-checklist
-      # Every sentence a change to docs/spec/ adds, drops or rewords is listed
-      # under the body's Wording changes heading; a pull request changing no
-      # spec file passes in one line. It reads the body out of the same file,
-      # and runs here rather than in static_checks.yaml because its result
-      # depends on the body: a body edit re-runs it.
+      # Here rather than in static_checks.yaml so a body edit re-runs it.
       - name: Spec sentence comparison
         env:
           PR_JSON: ${{ runner.temp }}/pull-request.json

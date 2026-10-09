@@ -1,49 +1,29 @@
 #!/usr/bin/env node
-// Spec sentence comparison: `npm run check:spec-sentences`, run by `check:all`
-// and by pr_checklist.yaml on every pull request, a body edit included. A
-// pull request moving text between docs/spec files is reviewed on the claim
-// that every sentence arrives unchanged; this check holds that claim.
+// Spec sentence comparison: `npm run check:spec-sentences`.
 //
-// Between the merge base of a base and a head revision, it collects the units
-// of every Markdown file under docs/spec/ that changed, from both revisions,
-// and compares the two multisets across all those files together, so a
-// sentence moved from one file to another is unchanged. The units:
+// The units compared, across the changed Markdown files under docs/spec/
+// together, so a unit moved from one file to another is unchanged:
 //   - a prose sentence: paragraphs and list items are joined across their line
-//     breaks (hard wrap and semantic line breaks alike), list and blockquote
-//     markers are dropped, whitespace is collapsed, and the text is split after
-//     a `.`, `!` or `?` (and any closing quote, bracket or emphasis) followed by
+//     breaks, whitespace is collapsed, and the text is split after a `.`, `!`
+//     or `?` (and any closing quote, bracket or emphasis) followed by
 //     whitespace;
-//   - a heading, by its text without the `#` level, so a move that changes a
-//     section's depth changes nothing;
-//   - a table row, its cells trimmed, the alignment row dropped;
+//   - a heading, by its text;
+//   - a table row, its cells trimmed;
 //   - a fenced code line and a front-matter line, each trimmed.
 //
-// A unit added, dropped or changed fails the check unless the pull request
-// body lists it under a `## Wording changes` heading (up to the next `#` or
-// `##` heading), one list item per change:
+// Not compared: line breaks and indentation, a heading's `#` level, list and
+// blockquote markers, the table alignment row, thematic breaks, and any file
+// outside docs/spec/ or not ending in .md.
+//
+// The pull request body lists each unit added, dropped or reworded, one list
+// item per change, each side the unit's text as above and `-` standing for
+// none; a line naming both sides pairs two units of one kind:
 //
 //   ## Wording changes
 //
 //   - The sentence as it was. -> The sentence as it is.
 //   - - -> A sentence the pull request adds.
 //   - A sentence the pull request drops. -> -
-//
-// Each side is the unit's text as above, `-` standing for none; a side holding
-// ` -> ` itself is matched by trying each split. A listed line matching no
-// difference fails too, so the list stays what the review reads. HTML
-// comments in the body are ignored.
-//
-// The body comes from --body-file <path>, else the pull request JSON at PR_JSON
-// (pr_checklist.yaml fetches it), else the PR_BODY environment variable; with
-// none, every difference fails. The base is --base <ref>; without one it is
-// origin/staging, and when that does not resolve the check prints one line and
-// passes. The head is --head <ref>, default HEAD. On the runner with no body
-// the check prints one line and passes: that is the static_checks.yaml run of
-// check:all, whose result depends on the tree alone.
-//
-// Exit 0 clean, 1 on an unlisted difference or a listed line matching none, 2
-// on a usage error, an unreadable body, or an explicit revision that does not
-// resolve.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -85,6 +65,15 @@ export function splitSentences(text) {
   const normalized = normalizeWhitespace(text);
   if (normalized === "") return [];
   return normalized.split(SENTENCE_END).filter((sentence) => sentence !== "");
+}
+
+function closesFence(line, fence) {
+  const closing = FENCE_CLOSE.exec(line.replace(BLOCKQUOTE_MARKER, ""));
+  return (
+    closing !== null &&
+    closing[1][0] === fence[0] &&
+    closing[1].length >= fence.length
+  );
 }
 
 function tableRowText(line) {
@@ -129,12 +118,7 @@ export function specUnits(markdown) {
   for (; index < lines.length; index += 1) {
     const line = lines[index];
     if (fence !== null) {
-      const closing = FENCE_CLOSE.exec(line.replace(BLOCKQUOTE_MARKER, ""));
-      if (
-        closing &&
-        closing[1][0] === fence[0] &&
-        closing[1].length >= fence.length
-      ) {
+      if (closesFence(line, fence)) {
         fence = null;
         continue;
       }
@@ -183,21 +167,32 @@ export function specUnits(markdown) {
 
 /**
  * The lines listed under the pull request body's `## Wording changes` heading,
- * each the text of one list item with its marker dropped.
+ * up to the next `#` or `##` heading, each the text of one list item with its
+ * marker dropped. HTML comments and fenced blocks are skipped.
  */
 export function parseWordingChanges(body) {
   const lines = body
     .replace(/\r\n?/g, "\n")
     .replace(/<!--[\s\S]*?-->/g, "")
     .split("\n");
-  const start = lines.findIndex(
-    (line) =>
-      normalizeWhitespace(line).toLowerCase() ===
-      `## ${WORDING_CHANGES_HEADING.toLowerCase()}`,
-  );
-  if (start < 0) return [];
+  const heading = `## ${WORDING_CHANGES_HEADING.toLowerCase()}`;
   const entries = [];
-  for (const line of lines.slice(start + 1)) {
+  let inSection = false;
+  let fence = null;
+  for (const line of lines) {
+    if (fence !== null) {
+      if (closesFence(line, fence)) fence = null;
+      continue;
+    }
+    const opening = FENCE.exec(line.replace(BLOCKQUOTE_MARKER, ""));
+    if (opening) {
+      fence = opening[1];
+      continue;
+    }
+    if (!inSection) {
+      inSection = normalizeWhitespace(line).toLowerCase() === heading;
+      continue;
+    }
     if (/^\s{0,3}#{1,2}\s/.test(line)) break;
     const item = /^\s*[-*]\s+(.*)$/.exec(line);
     if (item) entries.push(normalizeWhitespace(item[1]));
@@ -228,19 +223,33 @@ function surplus(from, against) {
   return left;
 }
 
-function take(pool, text) {
-  if (text === NO_UNIT) return true;
-  const match = pool.find((entry) => entry.count > 0 && entry.text === text);
-  if (!match) return false;
-  match.count -= 1;
-  return true;
+function remaining(pool, kind, text) {
+  return pool.find(
+    (entry) => entry.count > 0 && entry.kind === kind && entry.text === text,
+  );
 }
 
-function available(pool, text) {
-  return (
-    text === NO_UNIT ||
-    pool.some((entry) => entry.count > 0 && entry.text === text)
-  );
+function available(pool, kind, text) {
+  return text === NO_UNIT || remaining(pool, kind, text) !== undefined;
+}
+
+function take(pool, kind, text) {
+  if (text !== NO_UNIT) remaining(pool, kind, text).count -= 1;
+}
+
+/**
+ * The kind under which both sides of a listed change name an outstanding
+ * difference (a `-` side names none), or null when no kind does.
+ */
+function listedKind(dropped, added, old, replacement) {
+  if (old === NO_UNIT && replacement === NO_UNIT) return null;
+  const kinds = new Set([...dropped, ...added].map((entry) => entry.kind));
+  for (const kind of kinds) {
+    if (available(dropped, kind, old) && available(added, kind, replacement)) {
+      return kind;
+    }
+  }
+  return null;
 }
 
 /**
@@ -262,13 +271,10 @@ export function compareSpecFiles(baseFiles, headFiles, wordingChanges = []) {
     while (at >= 0 && !matched) {
       const old = line.slice(0, at).trim();
       const replacement = line.slice(at + CHANGE_SEPARATOR.length).trim();
-      if (
-        !(old === NO_UNIT && replacement === NO_UNIT) &&
-        available(dropped, old) &&
-        available(added, replacement)
-      ) {
-        take(dropped, old);
-        take(added, replacement);
+      const kind = listedKind(dropped, added, old, replacement);
+      if (kind !== null) {
+        take(dropped, kind, old);
+        take(added, kind, replacement);
         matched = true;
       }
       at = line.indexOf(CHANGE_SEPARATOR, at + 1);
@@ -282,9 +288,31 @@ export function compareSpecFiles(baseFiles, headFiles, wordingChanges = []) {
   };
 }
 
+const PASTE_INSTRUCTION =
+  "joining a dropped and an added line of one kind into one where the change rewords a unit:";
+
+/**
+ * The `## Wording changes` section listing a comparison's unlisted
+ * differences, ready to paste into a pull request body. Empty when there are
+ * none.
+ */
+export function formatWordingChanges(result) {
+  if (result.dropped.length === 0 && result.added.length === 0) return [];
+  return [
+    `## ${WORDING_CHANGES_HEADING}`,
+    "",
+    ...result.dropped.map(
+      (entry) => `- ${entry.text}${CHANGE_SEPARATOR}${NO_UNIT}`,
+    ),
+    ...result.added.map(
+      (entry) => `- ${NO_UNIT}${CHANGE_SEPARATOR}${entry.text}`,
+    ),
+  ];
+}
+
 /**
  * Formats a comparison's failures, each unlisted difference named with its
- * files and followed by the line that would list it. Empty when it passes.
+ * files and followed by the section that would list it. Empty when it passes.
  */
 export function formatFailures(result) {
   const lines = [];
@@ -301,15 +329,10 @@ export function formatFailures(result) {
   if (differences.length > 0) {
     lines.push(
       "",
-      `To accept these, list each under "## ${WORDING_CHANGES_HEADING}" in the pull request body, joining a dropped and an added line into one where the change rewords a unit:`,
+      `To accept these, add this to the pull request body, ${PASTE_INSTRUCTION}`,
       "",
+      ...formatWordingChanges(result),
     );
-    for (const entry of result.dropped) {
-      lines.push(`- ${entry.text}${CHANGE_SEPARATOR}${NO_UNIT}`);
-    }
-    for (const entry of result.added) {
-      lines.push(`- ${NO_UNIT}${CHANGE_SEPARATOR}${entry.text}`);
-    }
   }
   if (result.unmatched.length > 0) {
     if (lines.length > 0) lines.push("");
@@ -477,18 +500,24 @@ function main(argv, env) {
     return 0;
   }
   const failures = formatFailures(result);
+  if (body === null && failures.length > 0) {
+    console.log(
+      `${PREFIX} the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}. No pull request body was given (--body-file, PR_JSON or PR_BODY); list these in the pull request body, ${PASTE_INSTRUCTION}\n`,
+    );
+    for (const line of formatWordingChanges(result)) console.log(line);
+    console.log(
+      "\nThe PR Checklist workflow fails a pull request whose body does not list these.",
+    );
+    return 0;
+  }
   if (failures.length === 0) {
     console.log(
       `${PREFIX} passed over ${files.length} changed file${files.length === 1 ? "" : "s"} under ${SPEC_DIRECTORY}.`,
     );
     return 0;
   }
-  const bodyNote =
-    body === null
-      ? "No pull request body was given (--body-file, PR_JSON or PR_BODY), so every difference is reported."
-      : `Wording changes were read from ${source}.`;
   console.error(
-    `${PREFIX} the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}. ${bodyNote}\n`,
+    `${PREFIX} the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}. Wording changes were read from ${source}.\n`,
   );
   for (const line of failures) console.error(line);
   return 1;
