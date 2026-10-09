@@ -404,6 +404,8 @@ export interface WebRtcPeerOptions {
   /**
    * Called once, when the coordination server first accepts this party's
    * registration (its `OPEN`); a later attempt's registration does not call it.
+   * A throw from it ends the run as an {@link InternalConsistencyError}, never
+   * as a transport failure.
    */
   onRegistered?: () => void;
 }
@@ -1063,6 +1065,19 @@ export async function openWebRtcPeerSession(
     }
   };
 
+  // Only attempt 0 can report: a first registration that fails ends the run.
+  const reportRegistered = (): void => {
+    try {
+      onRegistered?.();
+    } catch (err) {
+      throw new InternalConsistencyError(
+        "the action run after the coordination server accepted this " +
+          "party's registration failed",
+        { cause: err },
+      );
+    }
+  };
+
   const runAttempt = async (
     attempt: number,
     previous: NextAttempt | undefined,
@@ -1091,7 +1106,7 @@ export async function openWebRtcPeerSession(
     };
     try {
       broker = await register(negotiation, attempt > 0);
-      if (attempt === 0) onRegistered?.();
+      if (attempt === 0) reportRegistered();
       const remainingMs = deadline - Date.now();
       const finalAttempt = remainingMs <= attemptMs * FINAL_ATTEMPT_STRETCH;
       const result = await negotiation.run(broker, {

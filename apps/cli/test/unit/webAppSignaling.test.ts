@@ -162,6 +162,23 @@ describe("resolveWebAppSignalingServer", () => {
     expect(err.message).toContain("no answer within 50ms");
   });
 
+  test("a connection that fails while the answer is read is a transport failure", async () => {
+    const { address } = await webApp((_request, response) => {
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "content-length": "64",
+      });
+      response.write('{"signaling_server":"ws://');
+      setTimeout(() => response.socket?.destroy(), 20);
+    });
+    const err = await refusal(resolveWebAppSignalingServer(address));
+    expect(err).toBeInstanceOf(ConnectionError);
+    expect(exitCodeForError(err)).toBe(69);
+    expect(err.message).toContain(
+      "the connection failed while reading the answer",
+    );
+  });
+
   test("an app nothing listens at is a transport failure", async () => {
     const { address } = await webApp(json({}));
     await servers.splice(0)[0].close();

@@ -15,12 +15,14 @@ import { parseBoundedJson } from "./boundedJson.js";
  * - `too-large`: the body exceeded the cap.
  * - `invalid`: the body was absent, failed part-way through the stream, was not
  *   valid UTF-8, was not valid JSON, or exceeded the structural bound
- *   parseBoundedJson enforces.
+ *   parseBoundedJson enforces. `readFailed` is set when the stream itself
+ *   errored and the caller's signal had not aborted: the connection failed,
+ *   not the content.
  * - `parsed`: the decoded JSON value.
  */
 export type BoundedJsonBodyResult =
   | { kind: "too-large" }
-  | { kind: "invalid" }
+  | { kind: "invalid"; readFailed?: true }
   | { kind: "parsed"; value: unknown };
 
 /** Options for {@link readBoundedJsonBody}. */
@@ -59,8 +61,9 @@ function abortRejection(signal: AbortSignal): AbortRejection {
  * `Response`.
  *
  * Every failure is a returned refusal, never a raised one: a stream that errors
- * part-way through reads as `invalid`, so a caller's refusal path handles a
- * dropped connection the same way it handles an unparseable body. A read
+ * part-way through reads as `invalid` with `readFailed` set, so a caller's
+ * refusal path handles a dropped connection as it handles an unparseable body
+ * unless it checks that flag. A read
  * `options.signal` aborts also returns `invalid`, the reader cancelled, whether
  * or not the stream itself reacts to the abort; the caller tells it apart by
  * checking `signal.aborted`.
@@ -95,8 +98,11 @@ export async function readBoundedJsonBody(
     }
   } catch {
     // Not awaited: a source that ignores the abort may never settle a cancel.
-    if (signal?.aborted === true) void reader.cancel().catch(() => undefined);
-    return { kind: "invalid" };
+    if (signal?.aborted === true) {
+      void reader.cancel().catch(() => undefined);
+      return { kind: "invalid" };
+    }
+    return { kind: "invalid", readFailed: true };
   } finally {
     abort?.dispose();
     reader.releaseLock();

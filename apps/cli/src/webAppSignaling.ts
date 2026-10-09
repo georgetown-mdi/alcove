@@ -57,7 +57,8 @@ export interface ResolveWebAppSignalingServerOptions {
  * @throws {UsageError} when the address is not a bare web app address, or the
  *   app answers with no usable document (exit 64).
  * @throws {ConnectionError} (`transport`) when the app cannot be reached, does
- *   not answer in time, or answers 408, 429 or 5xx (exit 69).
+ *   not answer in time, answers 408, 429 or 5xx, or the connection fails while
+ *   the answer is read (exit 69).
  */
 export async function resolveWebAppSignalingServer(
   address: URL,
@@ -100,6 +101,8 @@ export async function resolveWebAppSignalingServer(
     { signal },
   );
   if (signal.aborted) throw timedOut();
+  if (body.kind === "invalid" && body.readFailed === true)
+    throw unreachable(origin, "the connection failed while reading the answer");
   if (body.kind === "too-large")
     throw notPublished(
       origin,

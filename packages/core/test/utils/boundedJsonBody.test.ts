@@ -131,7 +131,15 @@ describe("readBoundedJsonBody caps the read, not Content-Length", () => {
     // read rather than at the parse: it is a refusal the caller handles, not a
     // rejection escaping the read.
     const result = await readBoundedJsonBody(failingStreamResponse(), 1024);
-    expect(result.kind).toBe("invalid");
+    expect(result).toEqual({ kind: "invalid", readFailed: true });
+  });
+
+  test("a body that reads whole but does not parse is invalid with no read failure", async () => {
+    const result = await readBoundedJsonBody(
+      byteResponse(encoder.encode('{"status":"suc')),
+      1024,
+    );
+    expect(result).toEqual({ kind: "invalid" });
   });
 
   test("a bodyless response is invalid", async () => {

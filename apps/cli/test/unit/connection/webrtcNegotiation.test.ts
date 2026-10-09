@@ -8,6 +8,7 @@ import {
   deriveRendezvousPeerId,
   failureCauseOf,
   generateSharedSecret,
+  InternalConsistencyError,
   sanitizeErrorForDisplay,
   setDiagnosticSink,
   setLogLevel,
@@ -1820,16 +1821,43 @@ test("the first registration's OPEN is reported once, and a later attempt's is n
   expect(onRegistered).toHaveBeenCalledTimes(1);
 });
 
-test("a registration the broker never confirms is not reported", async () => {
-  const onRegistered = vi.fn();
-  const { socket, session } = await startRendezvous({
+// The gate on attempt 0 relies on this: a first registration that does not
+// succeed ends the run, so no later attempt can be the first to register.
+test.each([
+  ["refused as ID-TAKEN", refuseIdTaken],
+  ["dropped", (socket: ScriptedSocket) => socket.drop()],
+  ["failed", (socket: ScriptedSocket) => socket.fail()],
+])(
+  "a first registration %s is not reported, and no later attempt registers",
+  async (_label, answer) => {
+    const onRegistered = vi.fn();
+    const { socket, sockets, session } = await startRendezvous({
+      role: "inviter",
+      confirmRegistration: false,
+      onRegistered,
+    });
+    answer(socket);
+    await expect(session).rejects.toThrow();
+    expect(sockets).toHaveLength(1);
+    expect(onRegistered).not.toHaveBeenCalled();
+  },
+);
+
+test("a throw from the registration callback ends the run as an internal fault, not a transport failure", async () => {
+  const written = new Error("write EPIPE");
+  const { sockets, peer, session } = await startRendezvous({
     role: "inviter",
-    confirmRegistration: false,
-    onRegistered,
+    onRegistered: () => {
+      throw written;
+    },
   });
-  socket.fail();
-  await expect(session).rejects.toThrow();
-  expect(onRegistered).not.toHaveBeenCalled();
+  const err: unknown = await session.catch((caught: unknown) => caught);
+  expect(err).toBeInstanceOf(InternalConsistencyError);
+  expect((err as Error).cause).toBe(written);
+  expect(exitCodeForError(err)).toBe(70);
+  expect(sockets).toHaveLength(1);
+  expect(sockets[0].closeCalls).toBe(1);
+  expect(peer.closeCalls).toBe(1);
 });
 
 test("an acceptor's next attempt offers a new connection from a fresh registration", async () => {

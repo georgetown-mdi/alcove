@@ -255,7 +255,10 @@ by the static host like any other file, and holds one field:
 
 - **What the build writes.** The setting's `ws:` or `wss:` URL, its path ending
   in `/`. The build fails when the setting is one the reader below would
-  refuse. The console build writes no such file.
+  refuse. The console build writes no such file. The web app's dev server
+  (`vite dev`) serves the same document, naming `VITE_SIGNALING_SERVER_URL`
+  when it is set and otherwise the page origin's `/api/`, the server its own
+  page dials.
 - **Who reads it.** `alcove invite` given an `http:` or `https:` web app
   address, and nothing else. It requests `/alcove.json` at the address's own
   origin before the invitation is created, follows no redirect, and reads at
@@ -273,7 +276,8 @@ by the static host like any other file, and holds one field:
 - **Refusals.** A 3xx, a 4xx other than 408 and 429, an answer over the size
   bound, and an answer that is not such a document (a static host's page
   fallback included) are usage errors (exit 64). An unreachable app, no answer
-  within the budget, and 408, 429 or 5xx are transport failures (exit 69). Each
+  within the budget, 408, 429 or 5xx, and a connection that fails while the
+  answer is read are transport failures (exit 69). Each
   names the address and says what to give instead: the coordination server's
   own `wss://` URL, or `channel: webrtc` in `alcove.yaml`. All land before the
   invitation is created.

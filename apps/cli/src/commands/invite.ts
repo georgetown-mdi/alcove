@@ -637,8 +637,7 @@ export async function validateInvite(params: {
     // would silently become the budget of every later recurring run. It reaches
     // this run alone, through runOnlineBootstrap's runOnlyPeerTimeoutSeconds.
     const serverURL = isWebAppAddress(url)
-      ? // The accept link printed later stays on the address the operator gave.
-        await resolveWebAppSignalingServer(url)
+      ? await resolveWebAppSignalingServer(url)
       : url;
     const connection = withWebRTCPeerRole(
       inviterConnectionFromURL(
