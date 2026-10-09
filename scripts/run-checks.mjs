@@ -120,7 +120,7 @@ export const CHECKS = [
     script: "check:workflow-agent-models",
     expiresOn: "2026-12-31",
     description:
-      "Every agent() call in a committed Workflow script pins a literal model tier rather than inheriting the session model.",
+      "Every agent() call in a committed Workflow script pins a literal model tier and a literal effort rather than inheriting the session's.",
   },
   {
     script: "check:workflow-args-resolve",

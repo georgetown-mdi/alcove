@@ -1,6 +1,6 @@
 ---
 name: light-review
-description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs three independent schema-forced Sonnet reviewers and a Sonnet consolidator. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
+description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs three independent schema-forced Opus reviewers and an Opus consolidator, all at effort high. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
 ---
 
 You are ORCHESTRATING a code review. You do not review the code yourself and you
@@ -182,6 +182,19 @@ The script returns `{reviewerCount, simplerShapeVotes, clusters}` in lens mode a
 `{claims, findings, gate, summary}` in role mode; Step 3 turns whichever came back into
 that target's ledger row and findings file.
 
+In lens mode every cluster has `name`, `description`, `severity`, `file`, `flaggedBy`,
+`verification` and `verificationNote`, and two kinds of cluster have more:
+
+- A confirmed cluster whose fix the consolidator found determined also has `edits`
+  (each `{file, oldText, newText}`, the old text verbatim from the file at the ref)
+  and `verifyCommand`, the one command that shows the fix took. A cluster without
+  them needs a judgment call to fix.
+- Every nit that touches no user-visible string (UI copy, CLI output, a message shown
+  to a user or operator, user documentation) is folded by the script into one
+  cluster with `"statedLimit": true`, an empty `file`, and each folded nit's name,
+  file, outcome and description in its `description`. A nit touching such a string
+  stays its own cluster.
+
 ## Step 3 -- Trajectory, ledger, write
 
 Do this once per target that ran, keyed on that target's BRANCH. Both modes end the
@@ -216,7 +229,8 @@ Common to both:
    round put on the table -- each confirmed cluster in lens mode, and each gating claim
    plus each out-of-claim finding in role mode -- where `item` is the cluster name, the
    claim text, or the finding name. You write every one as `"open"` and triage none of
-   them; assess-review rewrites them in place to `fixed`, `contested`, `narrowed`,
+   them, the lens-mode nit batch (Lens mode, item 8) excepted;
+   assess-review rewrites them in place to `fixed`, `contested`, `narrowed`,
    `limit`, or `deferred` as it disposes of each, and a row still holding `open` after
    triage is a finding nobody decided. Triage adds fields as it disposes: a `fixed`
    entry gains `"commit": "<sha>"`, and a `deferred` entry gains `"board":
@@ -239,6 +253,10 @@ Common to both:
 8. Append one JSON line to the ledger:
    `{"round": N, "kind": "light", "date": "<date -I>", "ref": "<the target ref>", "reviewerCount": <reviewerCount>, "clusters": [{"name", "file", "severity", "verification"}], "simplerShapeVotes": <count of simpler=true>, "dispositions": [{"item": <confirmed cluster name>, "disposition": "open"}]}`.
    A branch's first row also contains `"cap": <the round budget>` (Common item 1).
+   The confirmed nit batch, the cluster with `"statedLimit": true`, is the one entry
+   written already disposed:
+   `{"item": <its name>, "disposition": "limit", "surface": "internal", "note": "nits touching no user-visible string, not fixed"}`.
+   It is a stated limit by rule, so it never reaches a fix brief.
 9. Write the findings file: a header line (branch, target ref, round N, kind `light`,
    `reviewerCount` reviewers), then the clusters sorted by severity (critical first) then
    flaggedBy (descending) -- one row each with issue number, name, description, severity,
@@ -247,6 +265,11 @@ Common to both:
    confirmed-repeat counts; the hotspot files; the contested list; and the simpler-shape
    vote ("N of `<reviewerCount>` reviewers see a materially simpler shape", each reason on
    its own line when N > 0).
+   Mark each confirmed cluster's row `mechanical` when it has `edits` and
+   `verifyCommand`, and `judgment` otherwise, and under a mechanical row write each
+   edit as its file and two fenced blocks, the old text and the new text, then the
+   verifying command in a fenced block. The fix brief for a mechanical item is drafted
+   from these: apply the edits, run the command. Mark the nit batch's row `stated limit`.
 
 `reviewerCount` is the number of reviewers that actually returned, which is 3 only when
 none was lost to schema exhaustion. Write the number the Workflow returned, never the
@@ -289,7 +312,10 @@ here: put the required list property first; name every required top-level key
 in the prompt itself; instruct "populate every property; empty array when
 none"; and set no `maxLength` on free text -- the validator
 counts characters, the model cannot, so retries never converge; ask for brevity
-in the property's description instead.
+in the property's description instead. Every `agent()` call pins a literal
+`model` and a literal `effort` in its own options object, as the lens seats,
+the consolidator and the role reviewer here do; an omitted one inherits the
+session's, and `npm run check:workflow-agent-models` refuses it.
 
 ## What you do NOT do
 

@@ -739,9 +739,14 @@ The PreToolUse hooks that gate the Agent tool see none of this, since the model 
 A `.claude/scripts/*-workflow.mjs` file is a script body, not a module, so it is not linted and cannot be imported; the check reads it whole as one block.
 Fable requires the owner's per-spawn approval and is never inherited, so it may not be pinned in a committed script at all.
 
+The same holds for `effort`: a call that omits it runs at the session's reasoning effort, whatever the session was started with.
+Effort decides how deep a reviewer reads: the same lens round replayed on ten branches raised 6 of 22 known majors at major with the effort raised, against 1 at the effort it inherited.
+So every call pins a literal `effort` beside its `model`, from the values the Workflow runtime accepts (`low`, `medium`, `high`, `xhigh`, `max`).
+A call missing both pins is reported once, naming both.
+
 ### Why the options object is spelled out
 
-A spread into the options object can carry a `model` of its own and decide the tier at run time, so a spread fails whether or not a literal sits beside it.
+A spread into the options object can carry a `model` or `effort` of its own and decide it at run time, so a spread fails whether or not a literal sits beside it.
 A hoisted options constant is treated as no pin, by design: the convention is an inline literal in the call.
 
 ### Why a lexer

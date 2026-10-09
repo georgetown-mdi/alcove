@@ -52,6 +52,9 @@ const CONSOLIDATOR_SCHEMA = {
           "flaggedBy",
           "verification",
           "verificationNote",
+          "userVisibleString",
+          "edits",
+          "verifyCommand",
         ],
         properties: {
           name: { type: "string" },
@@ -67,6 +70,34 @@ const CONSOLIDATOR_SCHEMA = {
             enum: ["confirmed", "refuted", "unverifiable"],
           },
           verificationNote: { type: "string" },
+          userVisibleString: {
+            type: "boolean",
+            description:
+              "True when the issue touches text a user or operator reads: UI copy, CLI output, an error, warning or log message shown to them, or user documentation.",
+          },
+          edits: {
+            type: "array",
+            description:
+              "The concrete fix of a confirmed cluster whose fix is determined. Populate every property; empty array when none.",
+            items: {
+              type: "object",
+              required: ["file", "oldText", "newText"],
+              properties: {
+                file: { type: "string" },
+                oldText: {
+                  type: "string",
+                  description:
+                    "Copied verbatim from the file at the ref under review, long enough to occur once in it.",
+                },
+                newText: { type: "string" },
+              },
+            },
+          },
+          verifyCommand: {
+            type: "string",
+            description:
+              "One shell command that shows the edits took; empty string when edits is empty.",
+          },
         },
       },
     },
@@ -297,6 +328,7 @@ ${requiredKeysClause(ROLE_SCHEMA)}`;
     agentType: input.role,
     schema: ROLE_SCHEMA,
     model: "opus",
+    effort: "high",
   });
   if (!result) throw new Error(salvage(input.role));
 
@@ -413,7 +445,8 @@ const reviews = (
           label: `reviewer-${n}`,
           phase: "Review",
           schema: REVIEWER_SCHEMA,
-          model: "sonnet",
+          model: "opus",
+          effort: "high",
         }),
     ),
   )
@@ -433,6 +466,8 @@ ${docsClause}In a single pass -- no sub-agents, no iteration:
 1. Drop any finding that is not about ${targetRef}'s own changes (anything describing the branch's base moving, or staging's progress since the fork) -- discard it before clustering, do not even list it as refuted.
 2. Cluster findings that describe the same underlying issue across reviewers; flaggedBy is the number of distinct reviewers in the cluster.
 3. Verify each cluster's core claim by reading only the specific hunks or files it names -- not the whole diff -- and set verification confirmed/refuted/unverifiable with a one-line verificationNote.
+4. Set userVisibleString on every cluster: true when the issue touches text a user or operator reads -- UI copy, CLI output, an error, warning or log message shown to them, or user documentation -- and false otherwise. Every nit with userVisibleString false is batched with the other such nits into one stated limit that nobody fixes, so judge it on what the text is, not on how much the nit matters.
+5. For each confirmed cluster whose fix is determined -- one edit any careful engineer would make, with no design choice or open question in it -- write the fix as edits, each with the file, oldText copied verbatim from that file at ${targetRef} and long enough to occur exactly once in it, and newText; and write verifyCommand, one shell command scoped to the tree as above that shows the fix took (a test file run, a check script, a grep). When the fix needs a judgment call, and for every refuted or unverifiable cluster, leave edits empty and verifyCommand an empty string. Describe the edits only: do not apply them.
 
 ${requiredKeysClause(CONSOLIDATOR_SCHEMA)}`;
 
@@ -440,12 +475,77 @@ const consolidated = await agent(consolidatorPrompt, {
   label: "consolidator",
   phase: "Consolidate",
   schema: CONSOLIDATOR_SCHEMA,
-  model: "sonnet",
+  model: "opus",
+  effort: "high",
 });
 if (!consolidated) throw new Error(salvage("The consolidator"));
+
+const NIT_BATCH_NAME =
+  "Nits touching no user-visible string, booked as one stated limit";
+
+// The cluster fields the round returns whatever the cluster's fix shape.
+const coreOf = ({ userVisibleString, edits, verifyCommand, ...core }) => core;
+
+// A confirmed cluster keeps its fix only when both halves came back: an edit
+// with no command to check it, or a command with nothing to check, is a
+// judgment item for the fix brief, not a mechanical one.
+function withFixShape(cluster) {
+  const core = coreOf(cluster);
+  const command =
+    typeof cluster.verifyCommand === "string"
+      ? cluster.verifyCommand.trim()
+      : "";
+  if (
+    core.verification !== "confirmed" ||
+    !Array.isArray(cluster.edits) ||
+    cluster.edits.length === 0 ||
+    command.length === 0
+  ) {
+    return core;
+  }
+  return { ...core, edits: cluster.edits, verifyCommand: command };
+}
+
+// One cluster standing in for every nit that touches no user-visible string.
+// Its file is empty so the batch never makes a REPEAT file or a hotspot; the
+// files are named in its description instead.
+function nitBatch(nits) {
+  const verification =
+    ["confirmed", "unverifiable", "refuted"].find((outcome) =>
+      nits.some((nit) => nit.verification === outcome),
+    ) ?? "unverifiable";
+  return {
+    name: NIT_BATCH_NAME,
+    description: nits
+      .map(
+        (nit) =>
+          `${nit.name} (${nit.file || "no file"}, ${nit.verification}): ${nit.description}`,
+      )
+      .join(" | "),
+    severity: "nit",
+    file: "",
+    flaggedBy: Math.max(...nits.map((nit) => Number(nit.flaggedBy) || 0)),
+    verification,
+    verificationNote: nits
+      .map((nit) => `${nit.name}: ${nit.verificationNote}`)
+      .join(" | "),
+    statedLimit: true,
+  };
+}
+
+const clusters = [];
+const batchedNits = [];
+for (const cluster of consolidated.clusters) {
+  if (cluster.severity === "nit" && cluster.userVisibleString !== true) {
+    batchedNits.push(coreOf(cluster));
+  } else {
+    clusters.push(withFixShape(cluster));
+  }
+}
+if (batchedNits.length > 0) clusters.push(nitBatch(batchedNits));
 
 return {
   reviewerCount: reviews.length,
   simplerShapeVotes: reviews.map((r) => r.simplerShape),
-  clusters: consolidated.clusters,
+  clusters,
 };
