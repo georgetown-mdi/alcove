@@ -117,15 +117,8 @@ Each forced renewal counts against Let's Encrypt's limit of five duplicate certi
 
 ## Exposure
 
-`systemd-analyze security alcove-broker.service` scored the unit 8.6 EXPOSED with `NoNewPrivileges=`, `PrivateTmp=`, `ProtectSystem=strict` and `ProtectHome=` as its only sandboxing.
-With the sandbox measured on the host on 2026-10-08 (systemd 252) and set in the tracked unit, it scored 1.3 OK, the broker answered `/api/health` and a CLI invite/accept exchange completed through the front ([the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md)).
-The tracked unit, deployed on 2026-10-09, scored the same 1.3 OK, still as `nobody`, and `systemd-analyze verify` warned `Special user nobody configured, this is not safe!`.
-On the same day, the sandbox under the system user `alcove-broker` instead scored 0.9 SAFE, and the broker answered `/api/health` and a WebSocket upgrade, with no restarts; the tracked unit runs as that user.
-
-`DynamicUser=yes` with a home directory also scored 0.9 SAFE and served, with `Environment=HOME=/run/alcove-broker` and `RuntimeDirectory=alcove-broker`.
-It is not used: it left `/run/alcove-broker` behind owned by the released uid, and `getent` does not resolve the dynamic user on this host.
-Without a home directory, npm exits at start with status 254 and the unit restarts in a loop.
-The journal line: `A system error occurred: uv_os_homedir returned ENOENT (no such file or directory)`.
+The unit runs as the dedicated system user `alcove-broker` and scores 0.9 SAFE under `systemd-analyze security` (measured on the host on 2026-10-09).
+The measurements, the earlier `nobody` result and the rejected `DynamicUser=yes` alternative are in [the deployment note's Unit exposure bullet](../../docs/notes/webrtc-relay-deployment.md).
 
 `MemoryDenyWriteExecute=yes` is left out because the broker did not start under it: node aborts at start with a core dump on SIGTRAP; V8 cannot change a mapping's permissions.
 The journal line: `# Check failed: 12 == (*__errno_location ()).`, from `v8::base::OS::SetPermissions`.
