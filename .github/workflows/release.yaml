@@ -1,7 +1,6 @@
 name: Release
 run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('Release dry run on {0}', github.ref_name) }}
 
-# A manual dispatch runs the dry run docs/RELEASES.md describes under "Dry run".
 on:
   push:
     tags:
@@ -59,7 +58,7 @@ jobs:
     name: Publish Docker image
     needs: test
     if: ${{ github.event_name == 'push' }}
-    # Held on Ubuntu 24.04 until the dry-run job's builds pass on 26.04.
+    # Runs on Ubuntu 24.04; the dry-run job proves 26.04 before this moves.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -517,9 +516,8 @@ jobs:
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
 
-  # A dispatch can come from any branch, so the dry run is a job of its own
-  # holding read access alone: it builds what the publish job pushes and has
-  # no login, push, sign, attest or release step.
+  # A dispatch can come from any branch, so this job holds no write permission
+  # by design.
   dry-run:
     name: Build both images without publishing
     if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -555,8 +553,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: false
           tags: alcove:dry-run
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=dry-run
+          cache-to: type=gha,mode=max,scope=dry-run
 
       - name: Build the FIPS variant for both platforms
         uses: docker/build-push-action@v7
@@ -566,5 +564,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: false
           tags: alcove:dry-run-fips
-          cache-from: type=gha,scope=fips
-          cache-to: type=gha,mode=max,scope=fips
+          cache-from: type=gha,scope=dry-run-fips
+          cache-to: type=gha,mode=max,scope=dry-run-fips

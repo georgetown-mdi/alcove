@@ -20,6 +20,7 @@ const RELEASE_WORKFLOW = `${WORKFLOW_DIR}/release.yaml`;
 const document = workflowDocument(repoRoot, RELEASE_WORKFLOW);
 
 const TAG_PUSH_ONLY = "${{ github.event_name == 'push' }}";
+const DISPATCH_ONLY = "${{ github.event_name == 'workflow_dispatch' }}";
 const PUBLISHING_JOBS = ["publish", "launchers"];
 const DRY_RUN_JOB = "dry-run";
 
@@ -48,6 +49,18 @@ function publishes(step) {
   return undefined;
 }
 
+/** The build-push-action steps of a job's step list. */
+function buildSteps(steps) {
+  return steps.filter((step) =>
+    (step.uses ?? "").startsWith("docker/build-push-action@"),
+  );
+}
+
+/** The `scope` of a gha cache spec; the unnamed default scope is "default". */
+function cacheScope(spec) {
+  return /(?:^|,)scope=([^,]+)/.exec(spec ?? "")?.[1] ?? "default";
+}
+
 const dryRun = document.jobs[DRY_RUN_JOB];
 const dryRunSteps = dryRun?.steps ?? [];
 
@@ -65,6 +78,19 @@ describe("the release workflow's dry run", () => {
       expect(document.jobs[job]?.if).toBe(TAG_PUSH_ONLY);
     });
   }
+
+  it("runs the dry-run job on a manual dispatch only", () => {
+    expect(dryRun?.if).toBe(DISPATCH_ONLY);
+  });
+
+  it("keeps the test job read-only", () => {
+    const permissions = document.jobs.test?.permissions;
+    if (permissions === undefined) {
+      expect(document.permissions).toEqual({ contents: "read" });
+    } else {
+      expect(permissions).toEqual({ contents: "read" });
+    }
+  });
 
   it("gives the dry-run job read access to the repository and nothing else", () => {
     expect(dryRun?.permissions).toEqual({ contents: "read" });
@@ -85,6 +111,30 @@ describe("the release workflow's dry run", () => {
     expect(builds.length).toBe(2);
     for (const step of builds) {
       expect(step.with?.push).toBe(false);
+    }
+  });
+
+  it("pushes nothing to a registry from a dry-run build", () => {
+    for (const step of buildSteps(dryRunSteps)) {
+      expect(step.with?.outputs ?? "").not.toMatch(/type=registry/);
+      expect(step.with).not.toHaveProperty("push-by-digest");
+    }
+  });
+
+  it("keeps the dry-run build cache scopes apart from every publish step's", () => {
+    const publishScopes = new Set();
+    for (const job of PUBLISHING_JOBS) {
+      for (const step of buildSteps(document.jobs[job]?.steps ?? [])) {
+        publishScopes.add(cacheScope(step.with?.["cache-from"]));
+        publishScopes.add(cacheScope(step.with?.["cache-to"]));
+      }
+    }
+    expect(publishScopes.size).toBeGreaterThan(0);
+    for (const step of buildSteps(dryRunSteps)) {
+      for (const input of ["cache-from", "cache-to"]) {
+        expect(step.with?.[input]).toBeDefined();
+        expect(publishScopes).not.toContain(cacheScope(step.with[input]));
+      }
     }
   });
 });
