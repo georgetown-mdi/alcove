@@ -114,9 +114,39 @@ describe("spec citation check", () => {
       [`// (${SPEC} ("The memory ceiling and the CSV intake cap"))`],
       [`// ${NAME}'s "Enforcement sites" lists four.`],
       [`// \`${SPEC}\`, "A tmpfs for the scratch directory"`],
-      [`// ${SPEC}, "Step 4 -- Report what you left, and more"`],
+      [`// ${SPEC}, "Step 4 -- Report what you left"`],
     ])("resolves %s", (source) => {
       expect(check(source)).toEqual({ problems: [], resolved: 1 });
+    });
+
+    it("resolves two words that open a heading", () => {
+      expect(check(`// ${SPEC}, "The memory".`)).toEqual({
+        problems: [],
+        resolved: 1,
+      });
+    });
+
+    it("resolves a quote equal to a bold paragraph label", () => {
+      expect(check(`// ${SPEC}, "When an entry is written".`)).toEqual({
+        problems: [],
+        resolved: 1,
+      });
+    });
+
+    it("resolves a label's whole lead sentence", () => {
+      expect(
+        check(`// ${SPEC}, "Enforcement sites. Four checks read the field."`),
+      ).toEqual({ problems: [], resolved: 1 });
+    });
+
+    it.each([
+      ["one word that opens a longer heading", `"Upgrading"`],
+      [
+        "a quote that runs on past a heading",
+        `"Step 4 -- Report what you left, and more"`,
+      ],
+    ])("fails %s", (_, quote) => {
+      expect(check(`// ${SPEC}, ${quote}.`).problems).toHaveLength(1);
     });
 
     it("fails quoted text no heading or label matches, naming the file and line", () => {

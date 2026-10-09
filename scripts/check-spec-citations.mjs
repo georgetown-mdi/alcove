@@ -27,9 +27,12 @@
 // text and its part before the first " -- ", " - " or ": " (headingNames in
 // check-rule-citations.mjs), and each bold paragraph label -- a `**...**` span
 // opening a line or list item, or one ending in a period or colon. Quoted
-// text resolves when it equals a name, opens a name, or a name opens it, each
-// at a word boundary. Prefix text resolves when a name opens it, or when its
-// words up to the first punctuation, two or more of them, open a name.
+// text resolves when it equals a name; when it is two or more words that
+// open a name, the section's leading words; or when a label opens it, since
+// a label leads its paragraph and the quote may run on into the sentence.
+// Prefix text resolves when a name opens it, or when its words up to the
+// first punctuation, two or more of them, open a name. Every comparison is
+// made at a word boundary.
 // A reference to a file that does not exist fails whatever form follows: a
 // `docs/spec/` path naming no file, or a bare capitalized `<name>.md` naming no
 // tracked Markdown file anywhere.
@@ -80,21 +83,28 @@ const HEADING_LINE = /^ {0,3}#{1,6}\s/;
 const LEADING_LABEL = /^\s*(?:[-*+]\s+|\d+\.\s+)?\*\*([^*]+?)\*\*/;
 const PUNCTUATED_LABEL = /\*\*([^*]+?)[.:]\*\*/g;
 
+/** The bold paragraph labels of a spec file's Markdown `source`, as slugs. */
+export function paragraphLabels(source, file = "<source>") {
+  const labels = new Set();
+  for (const line of stripFences(source, file).split("\n")) {
+    if (HEADING_LINE.test(line)) continue;
+    const leading = LEADING_LABEL.exec(line);
+    if (leading) labels.add(slugify(leading[1].replace(/[.:]$/, "")));
+    for (const match of line.matchAll(PUNCTUATED_LABEL)) {
+      labels.add(slugify(match[1]));
+    }
+  }
+  labels.delete("");
+  return labels;
+}
+
 /**
  * The citable names of a spec file's Markdown `source`: its heading names and
  * its bold paragraph labels, as slugs.
  */
 export function citableNames(source, file = "<source>") {
-  const names = new Set();
+  const names = new Set(paragraphLabels(source, file));
   for (const name of headingNames(source, file)) names.add(slugify(name));
-  for (const line of stripFences(source, file).split("\n")) {
-    if (HEADING_LINE.test(line)) continue;
-    const leading = LEADING_LABEL.exec(line);
-    if (leading) names.add(slugify(leading[1].replace(/[.:]$/, "")));
-    for (const match of line.matchAll(PUNCTUATED_LABEL)) {
-      names.add(slugify(match[1]));
-    }
-  }
   names.delete("");
   return names;
 }
@@ -186,9 +196,14 @@ export function resolves(form, text, spec) {
   if (form === "anchored") return spec.anchors.has(text.toLowerCase());
   const slug = slugify(text);
   if (form === "quoted") {
-    return [...spec.names].some(
-      (name) => slugOpensWith(slug, name) || slugOpensWith(name, slug),
-    );
+    if (spec.names.has(slug)) return true;
+    if (
+      text.trim().split(/\s+/).length >= 2 &&
+      [...spec.names].some((name) => slugOpensWith(name, slug))
+    ) {
+      return true;
+    }
+    return [...spec.labels].some((label) => slugOpensWith(slug, label));
   }
   if ([...spec.names].some((name) => slugOpensWith(slug, name))) return true;
   const lead = prefixLead(text);
@@ -225,6 +240,7 @@ export function citationProblems(
             : {
                 anchors: headingAnchors(specSource, target),
                 names: citableNames(specSource, target),
+                labels: paragraphLabels(specSource, target),
               },
         );
       }
@@ -310,8 +326,6 @@ export function main(root) {
   return 0;
 }
 
-// CLI entry: only runs when invoked directly, so the test can import the pure
-// functions without the process.exit.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv.includes("--help")) {
     const lines = readFileSync(fileURLToPath(import.meta.url), "utf8")
