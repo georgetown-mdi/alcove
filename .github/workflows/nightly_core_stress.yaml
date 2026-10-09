@@ -95,16 +95,14 @@ jobs:
           jobs=$(npx vitest list --project stress --filesOnly --json | node -e '
             const { relative } = require("node:path");
             // Measured job walls on a hosted runner: psiRoundWalls 2 h 45 min
-            // (per-test limit 241 min), wasmMatchSlices 40 min (61 min),
-            // wasmMaskingGrowth 14 to 21 min (31 min). The 270 minutes for
-            // psiRoundWalls cover one round, 2^22 (measured 2 h 44 min); its
-            // 2^23 round needs about 24 GiB, which a hosted runner lacks, so
-            // WALLS_SIZES pins the job to 2^22.
+            // (per-test limit 241 min), wasmMaskingGrowth 14 to 21 min (31
+            // min). The 270 minutes for psiRoundWalls cover one round, 2^22
+            // (measured 2 h 44 min); its 2^23 round needs about 24 GiB, which
+            // a hosted runner lacks, so WALLS_SIZES pins the job to 2^22.
             const WALLS_FILE = "test/stress/psiRoundWalls.stress.test.ts";
             const WALLS_SIZES = "4194304";
             const WEEKLY_MINUTES = {
               [WALLS_FILE]: 270,
-              "test/stress/wasmMatchSlices.stress.test.ts": 90,
               "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
             };
             // Each took 0.5 to 2.5 minutes as a job of its own.

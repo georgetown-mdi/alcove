@@ -63,7 +63,7 @@ const RUN_AT = "2026-07-14T09:00:00.000Z";
 
 const refusal = new RoundCapacityError(
   "Too large for this browser: your partner's set for one linkage key can " +
-    "hold up to 9000000 values, over the 7643790 a browser exchange can " +
+    "hold up to 9000000 values, over the 8388608 a browser exchange can " +
     "match, so the exchange stopped before any linkage key was sent and " +
     "told your partner.",
   "terms-exchange",

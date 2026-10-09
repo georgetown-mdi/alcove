@@ -1,5 +1,3 @@
-import { largestOneFramePsiSetElements } from "./webrtcOutboundBound";
-
 /**
  * Maximum size, in bytes, of a single inbound frame the transport reads into
  * memory, and the upper clamp for the single-pass cap below
@@ -17,11 +15,13 @@ export const MAX_FRAME_SIZE_BYTES = 536_870_888;
 export const MAX_PSI_DECODE_ELEMENTS = 2 ** 24;
 
 /**
- * The most elements a browser party accepts in a partner's PSI set: what one
- * WebRTC frame can contain. Stated as its receive ceiling on the terms exchange
- * (docs/spec/PROTOCOL.md, What a browser tab can match).
+ * The most elements a browser party accepts in a partner's PSI set: the
+ * largest same-size round measured to complete in a browser tab in both PSI
+ * roles. Stated as its receive ceiling on the terms exchange. Raise it only
+ * from a fresh measurement in both roles (docs/spec/PROTOCOL.md, What a
+ * browser tab can match).
  */
-export const BROWSER_PSI_SET_MAX_ELEMENTS = largestOneFramePsiSetElements();
+export const BROWSER_PSI_SET_MAX_ELEMENTS = 8_388_608;
 
 /**
  * The single-pass dataset ceiling, a per-party budget on value slots

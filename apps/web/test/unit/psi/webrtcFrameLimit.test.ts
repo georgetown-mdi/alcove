@@ -134,7 +134,7 @@ test("a set over the bound is handed to PeerJS in parts within the bound, holdin
 });
 
 test("a refusal over the partner's stated ceiling is shown as its own alert, with no retry", () => {
-  const message = roundOneSetOverPartnerCeilingMessage(8_000_000, 7_643_790);
+  const message = roundOneSetOverPartnerCeilingMessage(9_000_000, 8_388_608);
   const own = failureFor(
     "exchange",
     new RoundSetLimitError(message, "over-partner-ceiling"),

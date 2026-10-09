@@ -462,31 +462,6 @@ describe.each([
   });
 });
 
-test("a sliced match and a streamed one return the same table from the same setup pieces", async () => {
-  const round = frames(wasm, "identifier-revealing");
-  const results: Array<unknown> = [];
-  for (const options of [
-    { matchMethod: "sliced", setupSliceElements: 25 },
-    {},
-  ] as const) {
-    const engine = joiner(
-      fixedKeyPsiLibrary(wasm, SERVER_KEY, CLIENT_KEY),
-      "identifier-revealing",
-      options,
-    );
-    try {
-      for (const piece of pieces(round.setup, 333))
-        await engine.receiveServerSetupPiece(piece);
-      await engine.completeServerSetup();
-      results.push(await engine.computeAssociationTable(round.response));
-    } finally {
-      engine.dispose();
-    }
-  }
-  expect(results[0]).toStrictEqual(round.expected);
-  expect(results[1]).toStrictEqual(round.expected);
-});
-
 test("an association table out of response order is refused as a local fault", async () => {
   const round = frames(wasm, "identifier-revealing");
   const keyed = fixedKeyPsiLibrary(wasm, SERVER_KEY, CLIENT_KEY);

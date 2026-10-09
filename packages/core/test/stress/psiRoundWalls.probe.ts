@@ -23,7 +23,7 @@ import {
 } from "node:worker_threads";
 
 import { InProcessPsiEngine } from "../../src/psi/psiEngine";
-import { psiEngineOptionsForBackend } from "../../src/psi/psiMatchSlices";
+import { psiEngineOptionsForBackend } from "../../src/psi/psiWasmBudget";
 
 import type { PsiEngineMode } from "../../src/psi/psiEngine";
 

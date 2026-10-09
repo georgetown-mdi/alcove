@@ -17,64 +17,30 @@ import {
   appendChunkElements,
   buildRequest,
   buildResponse,
-  buildSetup,
   chunkRangesOfSize,
-  mergeAssociationChunks,
   mergeCountOnlyResponseChunks,
   mergeSetupChunks,
   serializeResponse,
   serializeSetup,
 } from "./psiChunks";
 import {
-  assertStrictlyAscending,
   setupNotRawError,
   setupNotStrictlyAscendingError,
-  WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT,
-  WASM_MATCH_BYTES_PER_SETUP_ELEMENT,
   maskingChunkRanges,
-  matchSetupSliceElements,
-} from "./psiMatchSlices";
+} from "./psiWasmBudget";
 
-import type { PsiAssociationChunk, PsiChunkRange } from "./psiChunks";
-import type { WasmMaskingOperation } from "./psiMatchSlices";
+import type { PsiChunkRange } from "./psiChunks";
+import type { WasmMaskingOperation } from "./psiWasmBudget";
 import type { Config } from "../types";
 
-// The deserialized server setup the sliced match holds between the setup's
-// completion and the match that consumes it.
-type DeserializedServerSetup = ReturnType<
-  PSILibrary["serverSetup"]["deserializeBinary"]
->;
-
 // The partner's setup until it completes; `bytes` counts the bytes received.
-type SetupInProgress =
-  | { readonly method: "streamed"; readonly match: PSIMatch; bytes: number }
-  | {
-      readonly method: "sliced";
-      readonly pieces: Array<Uint8Array>;
-      bytes: number;
-    };
+interface SetupInProgress {
+  readonly match: PSIMatch;
+  bytes: number;
+}
 
-// A completed setup awaiting its match: a live library object, so the engine
-// holds it rather than its caller.
-type CompletedSetup =
-  | { readonly method: "streamed"; readonly match: PSIMatch }
-  | { readonly method: "sliced"; readonly setup: DeserializedServerSetup };
-
-/**
- * How an {@link InProcessPsiEngine} matches the partner's setup.
- *
- * - `streamed` -- the engine's streaming match takes the setup in pieces,
- *   checking its shape and order as they arrive, and decrypts the response
- *   once.
- * - `sliced` -- the setup is joined, deserialized, and matched in one library
- *   call or, under a memory budget, in setup slices that each decrypt the
- *   whole response (psiMatchSlices.ts).
- */
-export type PsiMatchMethod = "streamed" | "sliced";
-
-// The streaming match's refusals of a setup that the engine names by the same
-// conditions the sliced match refuses as protocol errors. Each is the engine's
-// fixed status text; psiEngineStreamedMatch.test.ts pins them on every
+// The setup refusals the engine names by its fixed status text, each raised
+// as a protocol error. psiEngineStreamedMatch.test.ts pins them on every
 // backend, so a re-vendored engine whose text differs fails there.
 const ENGINE_SETUP_NOT_ASCENDING =
   "server setup is not in strictly ascending element order";
@@ -291,24 +257,12 @@ export interface PsiEngine {
 /** Settings for an {@link InProcessPsiEngine}; the worker entry points pass them through {@link ./psiWorkerEngine.servePsiWorker}. */
 export interface InProcessPsiEngineOptions {
   /**
-   * How the engine matches the partner's setup. Left out, `streamed`.
+   * The engine memory one masking call is sized to, in bytes: a masking
+   * operation runs over chunks that each fit (psiWasmBudget.ts). Left out,
+   * every masking operation runs at the chunk policy's sizes, as the native
+   * addon runs them.
    */
-  readonly matchMethod?: PsiMatchMethod;
-  /**
-   * The engine memory one library call is sized to, in bytes: a masking
-   * operation runs over chunks, and a sliced match over contiguous setup
-   * slices, that each fit (psiMatchSlices.ts). Left out, every masking
-   * operation runs at the chunk policy's sizes, as the native addon runs
-   * them, and every sliced match is one call.
-   */
-  readonly matchMemoryBudgetBytes?: number;
-  /**
-   * @internal
-   *
-   * The setup slice size each sliced match splits at, in place of the size
-   * the memory budget derives.
-   */
-  readonly setupSliceElements?: number;
+  readonly maskingMemoryBudgetBytes?: number;
   /**
    * @internal
    *
@@ -349,11 +303,11 @@ export class InProcessPsiEngine implements PsiEngine {
   private readonly revealsIdentifiers: boolean;
   private readonly server?: PSIServer;
   private readonly client?: PSIClient;
-  private readonly matchMethod: PsiMatchMethod;
   // The joiner's setup from its first piece until it completes, then until
-  // the match that consumes it. Undefined outside those windows.
+  // the match that consumes it. Undefined outside those windows. A completed
+  // setup is a live library object, so the engine holds it, not its caller.
   private receivingSetup: SetupInProgress | undefined;
-  private heldSetup: CompletedSetup | undefined;
+  private heldSetup: PSIMatch | undefined;
   // Latched by dispose() so freeing the library objects is idempotent: their
   // embind delete() is not safe to call twice.
   private disposed = false;
@@ -361,8 +315,7 @@ export class InProcessPsiEngine implements PsiEngine {
   // watches (see observeProcessedElements).
   private onProcessed: PsiProcessedElementsReporter | undefined;
   private readonly chunkElements: number | undefined;
-  private readonly matchMemoryBudgetBytes: number | undefined;
-  private readonly setupSliceElements: number | undefined;
+  private readonly maskingMemoryBudgetBytes: number | undefined;
 
   constructor(
     library: PSILibrary,
@@ -380,10 +333,8 @@ export class InProcessPsiEngine implements PsiEngine {
     this.library = library;
     this.id = id;
     this.revealsIdentifiers = modeRevealsIdentifiers(mode);
-    this.matchMethod = options.matchMethod ?? "streamed";
     this.chunkElements = options.chunkElements;
-    this.matchMemoryBudgetBytes = options.matchMemoryBudgetBytes;
-    this.setupSliceElements = options.setupSliceElements;
+    this.maskingMemoryBudgetBytes = options.maskingMemoryBudgetBytes;
     // Generate the fresh secret key for this exchange, held inside the
     // library's server / client object. An unresolved ("either") role
     // creates neither; the role-guarded methods below then reject.
@@ -406,44 +357,8 @@ export class InProcessPsiEngine implements PsiEngine {
     operation?: WasmMaskingOperation,
   ): PsiChunkRange[] {
     return this.chunkElements === undefined
-      ? maskingChunkRanges(total, operation, this.matchMemoryBudgetBytes)
+      ? maskingChunkRanges(total, operation, this.maskingMemoryBudgetBytes)
       : chunkRangesOfSize(total, this.chunkElements);
-  }
-
-  // The setup slices a match over `setupCount` setup elements runs in, beside
-  // `responseElementsPerCall` response elements a call: one range covering
-  // the whole setup unless a budget or a test sets a smaller slice.
-  private setupSlicesFor(
-    setupCount: number,
-    responseElementsPerCall: number,
-  ): PsiChunkRange[] {
-    const wholeSetup = [{ start: 0, end: setupCount }];
-    const budget = this.matchMemoryBudgetBytes;
-    if (
-      this.setupSliceElements === undefined &&
-      (budget === undefined ||
-        setupCount * WASM_MATCH_BYTES_PER_SETUP_ELEMENT +
-          responseElementsPerCall * WASM_MATCH_BYTES_PER_RESPONSE_ELEMENT <=
-          budget)
-    )
-      return wholeSetup;
-    const sliceElements =
-      this.setupSliceElements ??
-      matchSetupSliceElements(responseElementsPerCall, budget!);
-    if (sliceElements >= setupCount) return wholeSetup;
-    return chunkRangesOfSize(setupCount, sliceElements);
-  }
-
-  // The held setup's elements, refused unless strictly ascending: a sliced
-  // match equals the single call only over a setup no element of which
-  // appears in two slices, and every match refuses the same setups whatever
-  // its size.
-  private ascendingSetupElements(
-    setup: DeserializedServerSetup,
-  ): Array<Uint8Array> {
-    const elements = setup.getRaw()!.getEncryptedElementsList_asU8();
-    assertStrictlyAscending(elements, this.id);
-    return elements;
   }
 
   // Runs `maskChunk` over each range in turn, reporting the running processed
@@ -644,8 +559,8 @@ export class InProcessPsiEngine implements PsiEngine {
     const held = this.heldSetup;
     this.receivingSetup = undefined;
     this.heldSetup = undefined;
-    if (receiving?.method === "streamed") receiving.match.delete();
-    if (held?.method === "streamed") held.match.delete();
+    receiving?.match.delete();
+    held?.delete();
   }
 
   private takeSetupPiece(piece: Uint8Array): void {
@@ -653,21 +568,6 @@ export class InProcessPsiEngine implements PsiEngine {
       throw new InternalConsistencyError(
         `${this.id}: a PSI server setup piece arrived while a completed setup awaits its match`,
       );
-    if (this.matchMethod === "sliced") {
-      const receiving = this.receivingSetup ?? {
-        method: "sliced",
-        pieces: [],
-        bytes: 0,
-      };
-      if (receiving.method !== "sliced")
-        throw new InternalConsistencyError(
-          `${this.id}: a PSI server setup was started by another match method`,
-        );
-      receiving.pieces.push(piece);
-      receiving.bytes += piece.byteLength;
-      this.receivingSetup = receiving;
-      return;
-    }
     let receiving = this.receivingSetup;
     if (receiving === undefined) {
       const client = this.client;
@@ -676,18 +576,13 @@ export class InProcessPsiEngine implements PsiEngine {
           `${this.id}: receiveServerSetupPiece requires the client role`,
         );
       receiving = {
-        method: "streamed",
         match: fromLibrary(() => client.createMatch()),
         bytes: 0,
       };
       this.receivingSetup = receiving;
     }
-    if (receiving.method !== "streamed")
-      throw new InternalConsistencyError(
-        `${this.id}: a PSI server setup was started by another match method`,
-      );
     const match = receiving.match;
-    this.streamedSetupStep(receiving, () => match.addSetupBytes(piece));
+    this.setupStep(receiving, () => match.addSetupBytes(piece));
     receiving.bytes += piece.byteLength;
   }
 
@@ -697,41 +592,16 @@ export class InProcessPsiEngine implements PsiEngine {
       throw new InternalConsistencyError(
         `${this.id}: completeServerSetup called before any setup piece`,
       );
-    if (receiving.method === "streamed") {
-      const match = receiving.match;
-      this.streamedSetupStep(receiving, () => match.sealSetup());
-      this.receivingSetup = undefined;
-      this.heldSetup = { method: "streamed", match };
-      return;
-    }
+    const match = receiving.match;
+    this.setupStep(receiving, () => match.sealSetup());
     this.receivingSetup = undefined;
-    const setupBytes =
-      receiving.pieces.length === 1
-        ? receiving.pieces[0]!
-        : joinPieces(receiving.pieces, receiving.bytes);
-    const setup = fromLibrary(() =>
-      this.library.serverSetup.deserializeBinary(setupBytes),
-    );
-    // This protocol only ever sends a Raw server setup (createSetupMessage
-    // with dataStructure.Raw), so a received setup whose data-structure
-    // oneof is anything other than Raw -- or is unset -- is malformed:
-    // getRaw() reads undefined, and the reveal-intersection path requires
-    // Raw and aborts on it with a cryptic library error. Reject it here as
-    // a clean protocol abort. (A non-Raw setup holds a single bounded byte
-    // blob, not a repeated element list, so this is a correctness /
-    // fail-closed guard, not a memory bound -- the pre-deserialize element
-    // scan in PSIParticipant already bounded the setup's allocation.)
-    if (!setup.getRaw()) throw setupNotRawError(this.id);
-    this.heldSetup = { method: "sliced", setup };
+    this.heldSetup = match;
   }
 
-  // A refusal frees the setup and raises the sliced match's protocol error for
-  // the condition the engine names (an empty setup has no Raw data structure),
-  // or else the library's failure on the partner's frame.
-  private streamedSetupStep(
-    receiving: Extract<SetupInProgress, { method: "streamed" }>,
-    step: () => void,
-  ): void {
+  // A refusal frees the setup and raises a protocol error for the condition
+  // the engine names (an empty setup has no Raw data structure), or else the
+  // library's failure on the partner's frame.
+  private setupStep(receiving: SetupInProgress, step: () => void): void {
     try {
       step();
     } catch (error) {
@@ -754,24 +624,20 @@ export class InProcessPsiEngine implements PsiEngine {
   // by name here rather than deep in the library -- which reports the same
   // condition as an opaque marshalling error on the WebAssembly build. The held
   // setup is taken: one setup is matched at most once.
-  private beginMatch(
-    operation: string,
-    requiredMode: PsiEngineMode,
-  ): { client: PSIClient; setup: CompletedSetup } {
-    const client = this.client;
-    if (!client)
+  private beginMatch(operation: string, requiredMode: PsiEngineMode): PSIMatch {
+    if (!this.client)
       throw new Error(`${this.id}: ${operation} requires the client role`);
     if (this.revealsIdentifiers !== modeRevealsIdentifiers(requiredMode))
       throw new Error(
         `${this.id}: ${operation} requires a ${requiredMode} PSI engine; this one is ${modeName(this.revealsIdentifiers)}`,
       );
-    const setup = this.heldSetup;
-    if (setup === undefined)
+    const match = this.heldSetup;
+    if (match === undefined)
       throw new Error(
         `${this.id}: ${operation} called before the partner's setup completed`,
       );
     this.heldSetup = undefined;
-    return { client, setup };
+    return match;
   }
 
   // Each response piece ends where the policy's element range ends if every
@@ -830,72 +696,16 @@ export class InProcessPsiEngine implements PsiEngine {
   private associationTableOf(
     responseBytes: Uint8Array,
   ): Promise<[Array<number>, Array<number>]> {
-    const { client, setup: held } = this.beginMatch(
+    const match = this.beginMatch(
       "computeAssociationTable",
       "identifier-revealing",
     );
-    if (held.method === "streamed") {
-      const table = this.matchStreamed(
-        held.match,
-        responseBytes,
-      ).associationTable;
-      if (table === undefined)
-        throw new InternalConsistencyError(
-          `${this.id}: the PSI engine's identifier-revealing match returned no association table`,
-        );
-      return Promise.resolve(this.inPartnerIndexOrder(table[0], table[1]));
-    }
-    const setup = held.setup;
-    const setupElements = this.ascendingSetupElements(setup);
-    const response = fromLibrary(() =>
-      this.library.response.deserializeBinary(responseBytes),
-    );
-    const responseCount = response.getEncryptedElementsList().length;
-    const ranges = this.rangesFor(responseCount);
-    const slices = this.setupSlicesFor(
-      setupElements.length,
-      ranges.reduce(
-        (largest, range) => Math.max(largest, range.end - range.start),
-        0,
-      ),
-    );
-    if (slices.length > 1)
-      return Promise.resolve(
-        this.slicedAssociationTable(
-          client,
-          setupElements,
-          response,
-          ranges,
-          slices,
-        ),
+    const table = this.matchStreamed(match, responseBytes).associationTable;
+    if (table === undefined)
+      throw new InternalConsistencyError(
+        `${this.id}: the PSI engine's identifier-revealing match returned no association table`,
       );
-    if (ranges.length === 1) {
-      const table = fromLibrary(() =>
-        client.getAssociationTable(setup, response),
-      );
-      return Promise.resolve([table[0], table[1]]);
-    }
-    const elements = response.getEncryptedElementsList_asU8();
-    return Promise.resolve(
-      mergeAssociationChunks(
-        this.overChunks(ranges, (range) => {
-          const table = fromLibrary(() =>
-            client.getAssociationTable(
-              setup,
-              buildResponse(
-                this.library,
-                elements.slice(range.start, range.end),
-              ),
-            ),
-          );
-          return {
-            start: range.start,
-            localIndices: table[0]!,
-            partnerIndices: table[1]!,
-          };
-        }),
-      ),
-    );
+    return Promise.resolve(this.inPartnerIndexOrder(table[0], table[1]));
   }
 
   // The streamed match's pairs, in response order, put in the library call's
@@ -931,96 +741,16 @@ export class InProcessPsiEngine implements PsiEngine {
     return [local, partner];
   }
 
-  // Each setup slice against each response chunk, one library call apiece,
-  // reporting between calls a count scaled from the k * R call units to the R
-  // response elements the operation's settle report states.
-  private slicedAssociationTable(
-    client: PSIClient,
-    setupElements: ReadonlyArray<Uint8Array>,
-    response: ReturnType<PSILibrary["response"]["deserializeBinary"]>,
-    ranges: ReadonlyArray<PsiChunkRange>,
-    slices: ReadonlyArray<PsiChunkRange>,
-  ): [Array<number>, Array<number>] {
-    const responseCount = ranges[ranges.length - 1]!.end;
-    const responseElements = response.getEncryptedElementsList_asU8();
-    const responseChunks =
-      ranges.length === 1
-        ? [response]
-        : ranges.map((range) =>
-            buildResponse(
-              this.library,
-              responseElements.slice(range.start, range.end),
-            ),
-          );
-    const chunks: Array<PsiAssociationChunk> = [];
-    for (let s = 0; s < slices.length; s += 1) {
-      const slice = slices[s]!;
-      const sliceSetup = buildSetup(
-        this.library,
-        setupElements.slice(slice.start, slice.end),
-      );
-      for (let r = 0; r < ranges.length; r += 1) {
-        const table = fromLibrary(() =>
-          client.getAssociationTable(sliceSetup, responseChunks[r]!),
-        );
-        chunks.push({
-          start: ranges[r]!.start,
-          partnerStart: slice.start,
-          localIndices: table[0]!,
-          partnerIndices: table[1]!,
-        });
-        if (s < slices.length - 1 || r < ranges.length - 1)
-          this.onProcessed?.(
-            Math.floor((s * responseCount + ranges[r]!.end) / slices.length),
-          );
-      }
-    }
-    return mergeAssociationChunks(chunks);
-  }
-
   private intersectionCardinalityOf(
     responseBytes: Uint8Array,
   ): Promise<number> {
-    const { client, setup: held } = this.beginMatch(
+    const match = this.beginMatch(
       "computeIntersectionCardinality",
       "count-only",
     );
-    if (held.method === "streamed")
-      return Promise.resolve(
-        this.matchStreamed(held.match, responseBytes).intersectionSize,
-      );
-    // The sliced match never splits the response: the library deduplicates
-    // the response it is handed before sizing the intersection, and the
-    // response is the PARTNER's, so a sum over response chunks counts a value
-    // it repeated across a chunk boundary once per chunk (docs/spec/PROTOCOL.md,
-    // the count-only match). Setup slices of a strictly ascending setup are
-    // disjoint, so each call sees the whole response and the counts add.
-    const setup = held.setup;
-    const setupElements = this.ascendingSetupElements(setup);
-    const response = fromLibrary(() =>
-      this.library.response.deserializeBinary(responseBytes),
+    return Promise.resolve(
+      this.matchStreamed(match, responseBytes).intersectionSize,
     );
-    const responseCount = response.getEncryptedElementsList().length;
-    const slices = this.setupSlicesFor(setupElements.length, responseCount);
-    if (slices.length === 1)
-      return Promise.resolve(
-        fromLibrary(() => client.getIntersectionSize(setup, response)),
-      );
-    let size = 0;
-    for (let s = 0; s < slices.length; s += 1) {
-      const slice = slices[s]!;
-      size += fromLibrary(() =>
-        client.getIntersectionSize(
-          buildSetup(this.library, setupElements.slice(slice.start, slice.end)),
-          response,
-        ),
-      );
-      if (s < slices.length - 1)
-        this.onProcessed?.(
-          Math.floor((responseCount * (s + 1)) / slices.length),
-        );
-    }
-    return Promise.resolve(size);
   }
 
   dispose(): void {
@@ -1042,18 +772,4 @@ function settled<T>(run: () => T | PromiseLike<T>): Promise<T> {
   } catch (error) {
     return Promise.reject(error);
   }
-}
-
-// The sliced match's setup, joined from the pieces it arrived in.
-function joinPieces(
-  pieces: ReadonlyArray<Uint8Array>,
-  totalBytes: number,
-): Uint8Array {
-  const joined = new Uint8Array(totalBytes);
-  let filled = 0;
-  for (const piece of pieces) {
-    joined.set(piece, filled);
-    filled += piece.byteLength;
-  }
-  return joined;
 }

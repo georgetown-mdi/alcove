@@ -94,8 +94,8 @@ Each figure below is a fixed limit or a measured run recorded in the specificati
 ### In the browser
 
 - **The input file is at most 200 MiB.** That held 3.18 million rows of a six-column identifier file and 6.22 million rows of a two-column one in the measured runs ([The memory ceiling, and the CSV intake cap](spec/PROTOCOL.md#the-memory-ceiling-and-the-csv-intake-cap)).
-- **A set the browser receives holds at most 7,643,790 values**, about one per record for each linkage key. Your partner's run refuses to send a larger set, before sending it, and names the remedies: split the input, or run the exchange with the command line app ([The receive ceiling](spec/PROTOCOL.md#the-receive-ceiling)).
-- **The largest browser match measured to completion is 1,048,576 records a side.** Its match step took 444.5 s, about 7.5 minutes, on a 10-CPU machine in headless Chromium ([What a browser tab can match](spec/PROTOCOL.md#what-a-browser-tab-can-match)). An exchange runs one such round for each linkage key, over the records an earlier key has not matched. A same-size browser round larger than that is not measured.
+- **A set the browser receives holds at most 8,388,608 values**, about one per record for each linkage key. Your partner's run refuses to send a larger set, before sending it, and names the remedies: split the input, or run the exchange with the command line app ([The receive ceiling](spec/PROTOCOL.md#the-receive-ceiling)).
+- **The largest browser round measured to completion is 8,388,608 records a side, with the browser in either role.** Each took about 95 minutes on a 6-CPU machine with 31 GB of memory in headless Chromium ([What a browser tab can match](spec/PROTOCOL.md#what-a-browser-tab-can-match)). An exchange runs one such round for each linkage key, over the records an earlier key has not matched. At 10,000,000 records a side the round completed only with the browser as the joiner.
 
 A command line party exchanging with a browser partner is held to the browser's limits above.
 

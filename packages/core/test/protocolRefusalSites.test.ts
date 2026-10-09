@@ -87,8 +87,8 @@ const RECORDED_SITES: Readonly<Record<string, readonly string[]>> = {
     PARTNER,
   ],
   // The partner's PSI setup is not Raw, or not in ascending order.
-  "packages/core/src/psi/psiMatchSlices.ts :: setupNotRawError": [PARTNER],
-  "packages/core/src/psi/psiMatchSlices.ts :: setupNotStrictlyAscendingError": [
+  "packages/core/src/psi/psiWasmBudget.ts :: setupNotRawError": [PARTNER],
+  "packages/core/src/psi/psiWasmBudget.ts :: setupNotStrictlyAscendingError": [
     PARTNER,
   ],
   // A part of the partner's PSI set breaks the part sequence.

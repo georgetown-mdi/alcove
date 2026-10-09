@@ -9,10 +9,9 @@ import {
   psiElementBounds,
 } from "../../src/connection/frameSize";
 import {
-  minimumPsiSetFrameBytes,
-  webrtcFrameExceedsBound,
-} from "../../src/connection/webrtcOutboundBound";
-import { psiSetByteBound } from "../../src/psi/psiSetParts";
+  psiSetByteBound,
+  psiSetPartPayloadBytes,
+} from "../../src/psi/psiSetParts";
 import { MAX_LINKAGE_ENTRIES } from "../../src/config/linkageTermsSchema";
 import {
   MAX_EFFECTIVE_KEY_COUNT,
@@ -111,20 +110,21 @@ test("MAX_PSI_DECODE_ELEMENTS is 2^24, admits a full frame's elements, and bound
   );
 });
 
-test("a browser party's ceiling on a partner's set is the count the WebRTC first-round check admits", () => {
-  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBe(7_643_790);
-  expect(
-    webrtcFrameExceedsBound(
-      minimumPsiSetFrameBytes(BROWSER_PSI_SET_MAX_ELEMENTS),
-    ),
-  ).toBe(false);
-  expect(
-    webrtcFrameExceedsBound(
-      minimumPsiSetFrameBytes(BROWSER_PSI_SET_MAX_ELEMENTS + 1),
-    ),
-  ).toBe(true);
+test("a browser party's ceiling on a partner's set is the largest round measured in both roles, received in two WebRTC parts", () => {
+  // 2^23, the largest same-size round measured to complete in a browser tab
+  // as both the starter and the joiner (docs/spec/PROTOCOL.md, What a browser
+  // tab can match). Not derived from any frame bound: a set at it is sent in
+  // parts, each held to the per-frame bound.
+  expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBe(8_388_608);
   expect(BROWSER_PSI_SET_MAX_ELEMENTS).toBeLessThan(MAX_PSI_DECODE_ELEMENTS);
-  expect(psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS)).toBeLessThanOrEqual(
-    MAX_WEBRTC_FRAME_BYTES,
-  );
+  const heldBytes = psiSetByteBound(BROWSER_PSI_SET_MAX_ELEMENTS);
+  expect(heldBytes).toBe(293_601_286);
+  expect(heldBytes).toBeGreaterThan(MAX_WEBRTC_FRAME_BYTES);
+  const partBytes = psiSetPartPayloadBytes({
+    send: () => Promise.resolve(),
+    receive: () => Promise.resolve(undefined),
+    close: () => Promise.resolve(),
+    outboundWebRtcFrameBound: () => MAX_WEBRTC_FRAME_BYTES,
+  });
+  expect(Math.ceil(heldBytes / partBytes)).toBe(2);
 });

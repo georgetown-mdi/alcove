@@ -879,18 +879,18 @@ test("each party's receive ceiling rides its terms message and reads back as the
       undefined,
       undefined,
       undefined,
-      7_643_790,
+      8_388_608,
     ),
     exchangeTerms(recordingB, "responder", termsB, 200),
   ]);
 
-  expect(initiatorSent[0]).toMatchObject({ receiveCeiling: 7_643_790 });
+  expect(initiatorSent[0]).toMatchObject({ receiveCeiling: 8_388_608 });
   expect(responderSent[0]).toMatchObject({
     decision: "proceed",
     receiveCeiling: MAX_PSI_DECODE_ELEMENTS,
   });
   expect(a.partnerReceiveCeiling).toBe(MAX_PSI_DECODE_ELEMENTS);
-  expect(b.partnerReceiveCeiling).toBe(7_643_790);
+  expect(b.partnerReceiveCeiling).toBe(8_388_608);
 });
 
 const CEILINGS_OUT_OF_BOUNDS: Array<unknown> = [

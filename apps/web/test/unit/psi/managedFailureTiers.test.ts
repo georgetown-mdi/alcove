@@ -570,7 +570,7 @@ describe("the too-large tier: a set over a bound the exchange cannot send past",
 
   const roundRefusal = new RoundSetLimitError(
     "Too large for your partner: the set this party sends for this linkage " +
-      "key holds 8000000 values, over the 7643790 your partner can receive " +
+      "key holds 9000000 values, over the 8388608 your partner can receive " +
       "in one PSI set, so the exchange stopped before sending it and told " +
       "your partner.",
     "over-partner-ceiling",

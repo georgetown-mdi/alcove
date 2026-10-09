@@ -1,7 +1,7 @@
 // The send-side half of the WebRTC data-channel frame bound
 // (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"). The PSI
-// set part size (psi/psiSetParts.ts) and `BROWSER_PSI_SET_MAX_ELEMENTS` both go
-// through `webrtcFrameExceedsBound`, so they agree on where the bound falls.
+// set part size (psi/psiSetParts.ts) goes through `webrtcFrameExceedsBound`, so
+// it agrees with the receivers on where the bound falls.
 
 import {
   MAX_WEBRTC_FRAME_BYTES,
@@ -79,34 +79,4 @@ export function webrtcFrameExceedsBound(
   maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
 ): boolean {
   return webrtcFrameReceiveCharge(packedFrameBytes) > maxFrameBytes;
-}
-
-/**
- * The fewest bytes the packed frame of a PSI set of `elementCount` elements
- * can take, so a count this puts over the bound is one no set of it can fit.
- */
-export function minimumPsiSetFrameBytes(elementCount: number): number {
-  return binaryPackByteStringLength(elementCount * PSI_ENCODED_ELEMENT_BYTES);
-}
-
-/**
- * The most elements a PSI set can hold and still fit one WebRTC frame bounded
- * at `maxFrameBytes`. At {@link MAX_WEBRTC_FRAME_BYTES} it is a browser party's
- * receive ceiling, `BROWSER_PSI_SET_MAX_ELEMENTS`.
- *
- * @param maxFrameBytes - The receiver's bound, {@link MAX_WEBRTC_FRAME_BYTES}
- *   unless a test lowers it.
- */
-export function largestOneFramePsiSetElements(
-  maxFrameBytes: number = MAX_WEBRTC_FRAME_BYTES,
-): number {
-  let admitted = 0;
-  let refused = Math.floor(maxFrameBytes / PSI_ENCODED_ELEMENT_BYTES) + 1;
-  while (refused - admitted > 1) {
-    const mid = Math.floor((admitted + refused) / 2);
-    if (webrtcFrameExceedsBound(minimumPsiSetFrameBytes(mid), maxFrameBytes))
-      refused = mid;
-    else admitted = mid;
-  }
-  return admitted;
 }

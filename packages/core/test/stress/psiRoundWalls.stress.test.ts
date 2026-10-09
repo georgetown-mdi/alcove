@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { expect, test } from "vitest";
 
-import { WASM_PSI_MEMORY_MAX_BYTES } from "../../src/psi/psiMatchSlices";
+import { WASM_PSI_MEMORY_MAX_BYTES } from "../../src/psi/psiWasmBudget";
 
 import type { PsiEngineMode } from "../../src/psi/psiEngine";
 import type { WallsProbeResult } from "./psiRoundWalls.probe";

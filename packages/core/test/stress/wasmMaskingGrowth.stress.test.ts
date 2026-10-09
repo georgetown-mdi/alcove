@@ -5,14 +5,14 @@ import { promisify } from "node:util";
 
 import { beforeAll, expect, test } from "vitest";
 
-import { WASM_MASKING_BYTES_PER_ELEMENT } from "../../src/psi/psiMatchSlices";
+import { WASM_MASKING_BYTES_PER_ELEMENT } from "../../src/psi/psiWasmBudget";
 
-import type { WasmMaskingOperation } from "../../src/psi/psiMatchSlices";
+import type { WasmMaskingOperation } from "../../src/psi/psiWasmBudget";
 import type { MaskingProbeResult } from "./wasmMaskingGrowth.probe";
 
 // The WebAssembly engine's linear-memory growth for one masking call, per
 // element it is handed, against the figure the engine sizes its masking
-// chunks by (src/psi/psiMatchSlices.ts). Each call runs in its own process at
+// chunks by (src/psi/psiWasmBudget.ts). Each call runs in its own process at
 // each size in PSI_STRESS_MASKING_SIZES (2^20 by default), all at once. At
 // 2^20 a call took 11 to 20 minutes on a hosted 4-vCPU runner shared by six
 // calls, so the cases share one limit, PSI_STRESS_MASKING_TIMEOUT_MS.

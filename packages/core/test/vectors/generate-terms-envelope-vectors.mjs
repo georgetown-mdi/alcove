@@ -121,8 +121,8 @@ const scenarios = [
     initiator: {
       terms: "partyA",
       recordCount: 100,
-      // A browser party's receive ceiling; a party that passes none states
-      // the protocol's per-set maximum.
+      // A receive ceiling below the protocol's per-set maximum, as a browser
+      // party states one; a party that passes none states that maximum.
       receiveCeiling: 7_643_790,
       saveIntent: true,
       hostKey: initiatorHostKey,
