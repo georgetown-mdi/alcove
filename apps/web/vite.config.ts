@@ -77,7 +77,6 @@ const psiWorkerWasmEngine = "@openmined/psi.js/psi_wasm_worker";
 // copy against a real Chromium launch, failing on a bump that changes the list.
 const playwrightDisabledFeatures = [
   "AvoidUnnecessaryBeforeUnloadCheckSync",
-  "BoundaryEventDispatchTracksNodeRemoval",
   "DestroyProfileOnBrowserClose",
   "DialMediaRouteProvider",
   "GlobalMediaControls",
@@ -90,6 +89,8 @@ const playwrightDisabledFeatures = [
   "Translate",
   "AutoDeElevate",
   "OptimizationHints",
+  "NetworkTimeServiceQuerying",
+  "AimEnabled",
   "msForceBrowserSignIn",
   "msEdgeUpdateLaunchServicesPreferredVersion",
 ];

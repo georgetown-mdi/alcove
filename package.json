@@ -89,6 +89,6 @@
     "ssh2@1.17.0": true,
     "cpu-features@0.0.10": true,
     "unrs-resolver": false,
-    "fsevents@2.3.2 || 2.3.3": false
+    "fsevents@2.3.3": false
   }
 }
