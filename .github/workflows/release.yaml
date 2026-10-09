@@ -8,7 +8,9 @@ on:
 jobs:
   test:
     name: Test
-    runs-on: ubuntu-latest
+    # Held on Ubuntu 24.04: this workflow runs only on a pushed version tag,
+    # where it publishes, so no branch run has driven its jobs on 26.04.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -55,7 +57,8 @@ jobs:
   publish:
     name: Publish Docker image
     needs: test
-    runs-on: ubuntu-latest
+    # Held on Ubuntu 24.04 with the test job above, for the same reason.
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # The OIDC token Sigstore signs against, for both the keyless cosign
@@ -443,7 +446,8 @@ jobs:
   launchers:
     name: Publish the stamped launchers
     needs: publish
-    runs-on: ubuntu-latest
+    # Held on Ubuntu 24.04 with the test job above, for the same reason.
+    runs-on: ubuntu-24.04
     # The only job in this workflow holding contents: write, and what it writes
     # under it is release assets alone.
     permissions:

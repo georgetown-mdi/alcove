@@ -23,16 +23,23 @@ go_live() {
   touch -m -d "@$(date +%s.%N)" "${targets[@]}"
 }
 
+# Microseconds since the epoch, from date's %s%N. Not %6N: uutils date, the
+# date on Ubuntu 26.04, drops a fraction's leading zeros before cutting it to
+# six digits, so 0.024 s comes out as 0.240 s.
+ns_to_us() { local ns="$1"; echo "${ns%???}"; }
+
 # Microseconds since the epoch at which UNIT last became active, on the wall
 # clock file mtimes use; 0 if it never did or the stamp does not parse, which
 # makes every input count as newer.
 start_us() {
-  local stamp
+  local stamp ns
   stamp="$(systemctl show -p ActiveEnterTimestamp --value --timestamp=us+utc "$1")"
   if [ -z "$stamp" ]; then
     echo 0
+  elif ns="$(date -u -d "$stamp" +%s%N 2>/dev/null)"; then
+    ns_to_us "$ns"
   else
-    date -u -d "$stamp" +%s%6N 2>/dev/null || echo 0
+    echo 0
   fi
 }
 
@@ -45,7 +52,7 @@ stale() {
   start="$(start_us "$unit")"
   for file in "$@"; do
     [ -e "$file" ] || continue
-    [ "$(date -r "$file" +%s%6N)" -lt "$start" ] || return 0
+    [ "$(ns_to_us "$(date -r "$file" +%s%N)")" -lt "$start" ] || return 0
   done
   return 1
 }

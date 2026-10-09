@@ -34,7 +34,7 @@ jobs:
     # Bot PRs skip the check: bots (dependabot targets staging) do not use the PR
     # template, and dependency PRs are gated by dependency_review.yaml instead.
     if: github.event.pull_request.user.type != 'Bot'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       # The script is dependency-free, so a plain pinned Node suffices -- no npm

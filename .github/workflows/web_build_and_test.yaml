@@ -47,7 +47,7 @@ env:
 jobs:
   scope:
     name: Decide whether the web suites run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     # Off a pull request (the deploy's workflow_call) there is no diff to take,
     # so both steps skip and `run` defaults to true without a checkout.
@@ -115,7 +115,7 @@ jobs:
     name: Package the deploy artifact
     needs: scope
     if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Bound the job: pages_deploy.yaml gates its deploy on this workflow through
     # workflow_call, so a stalled install or build here holds a production
     # deploy rather than only a pull request. 15 min sits far above a normal
@@ -165,7 +165,7 @@ jobs:
     name: Test (${{ matrix.suite }})
     needs: scope
     if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Bound every leg: the integration and browser leg drives a real browser and a
     # live WebRTC exchange through a spawned dev server -- workloads that can
     # wedge in ways the suite's own 60s timeouts do not all catch (a stuck browser
@@ -287,7 +287,8 @@ jobs:
       # the cache below is keyed on the version `npm ci` actually installed rather
       # than the range apps/web declares. Resolved from apps/web, which owns the
       # dependency, so a layout that stops hoisting playwright to the repository
-      # root still finds it.
+      # root still finds it. The key also names the runner's OS release, so a
+      # runner image move restores no browser provisioned on the old image.
       - name: Resolve the installed Playwright version
         if: matrix.playwright == 'true'
         id: playwright
@@ -296,6 +297,9 @@ jobs:
           version="$(node -p "require('playwright/package.json').version")"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          os_release="$(. /etc/os-release && echo "$ID$VERSION_ID")"
+          test -n "$os_release"
+          echo "os-release=$os_release" >> "$GITHUB_OUTPUT"
       # A hit restores the browser build into the directory the install step below
       # reads, taking the download CDN out of the run entirely; the apt libraries
       # --with-deps installs are not in this cache and are installed on every run
@@ -312,14 +316,14 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{runner.os}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
+          key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
       # A hit that restores nothing falls through to a silent re-download -- the
       # cost this cache exists to remove -- so fail on the empty restore instead of
       # paying it unremarked.
       - name: Verify the restored browser build
         if: matrix.playwright == 'true' && steps.browser-cache.outputs.cache-hit == 'true'
         run: test -n "$(ls -A ~/.cache/ms-playwright)"
-      # The browser project drives real Chromium; the stock ubuntu-latest runner
+      # The browser project drives real Chromium; the stock Ubuntu runner image
       # ships none, so provision it and the apt libraries it links against here,
       # before that project runs. --with-deps installs those apt libraries;
       # on Node 26 this needs playwright >= 1.60 (earlier versions hang extracting
@@ -396,7 +400,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{runner.os}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
+          key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
       - name: Run the ${{ matrix.suite }} suite
         run: ${{ matrix.command }}
 
@@ -409,7 +413,7 @@ jobs:
   # jobs share the bare id.
   build-and-test:
     name: Web Build and Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     needs: [scope, package, suite]
     if: always()

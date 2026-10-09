@@ -226,7 +226,7 @@ for unit; do :; done
 load() { [ -f "$S/loaded/$1" ] || [ ! -f "$U/$1" ] || cp "$U/$1" "$S/loaded/$1"; }
 start() {
   load "$1"
-  date +%s%6N > "$S/started/$1"
+  date +%s%N | sed 's/...$//' > "$S/started/$1"
   : > "$S/active/$1"
   case "$1" in alcove-broker.service | alcove-broker-tls.service) ;; *) return 0 ;; esac
   def=current
@@ -242,7 +242,8 @@ case "$1" in
         [ -f "$S/started/$unit" ] || { echo; exit 0; }
         at="$(sed 's/\(......\)$/.\1/' "$S/started/$unit")"
         format='+%a %Y-%m-%d %H:%M:%S UTC'
-        case " $* " in *" --timestamp=us+utc "*) format='+%a %Y-%m-%d %H:%M:%S.%6N UTC' ;; esac
+        frac="$(sed 's/.*\(......\)$/\1/' "$S/started/$unit")"
+        case " $* " in *" --timestamp=us+utc "*) format="+%a %Y-%m-%d %H:%M:%S.$frac UTC" ;; esac
         date -u -d "@$at" "$format" ;;
       NeedDaemonReload)
         if [ -f "$S/loaded/$unit" ] && ! cmp -s "$U/$unit" "$S/loaded/$unit"; then echo yes; else echo no; fi ;;
@@ -313,7 +314,7 @@ const MV_STUB = String.raw`
 for real in /usr/bin/mv /bin/mv; do [ -x "$real" ] && break; done
 "$real" "$@" || exit
 for target; do :; done
-printf '%s %s\n' "$target" "$(date +%s%6N)" >> "$RENAMES"
+printf '%s %s\n' "$target" "$(date +%s%N | sed 's/...$//')" >> "$RENAMES"
 case "$target" in */nginx.conf) [ ! -f "$STOP_AFTER_CONF" ] || exit 1 ;; esac
 `;
 

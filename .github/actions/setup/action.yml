@@ -94,6 +94,8 @@ runs:
       # The install key names everything npm ci reads to decide what lands in
       # node_modules, plus the interpreter it lands for:
       #   - runner.os and runner.arch, because the tree carries native binaries;
+      #   - the OS release from /etc/os-release, because some of those binaries
+      #     are compiled at install time against the runner image's libraries;
       #   - the running Node version, read from the interpreter rather than
       #     restated from the pin above, so the two cannot disagree;
       #   - package-lock.json and every workspace package.json, because npm ci
@@ -125,7 +127,9 @@ runs:
       run: |
         test -n "$INSTALL_HASH"
         test -n "$CORE_HASH"
-        install="npm-install-$RUNNER_OS-$RUNNER_ARCH-node$(node -p 'process.versions.node')-$INSTALL_HASH"
+        os_release="$(. /etc/os-release && echo "$ID$VERSION_ID")"
+        test -n "$os_release"
+        install="npm-install-$RUNNER_OS-$os_release-$RUNNER_ARCH-node$(node -p 'process.versions.node')-$INSTALL_HASH"
         echo "install=$install" >> "$GITHUB_OUTPUT"
         echo "core=$install-core-$CORE_HASH" >> "$GITHUB_OUTPUT"
       shell: bash
