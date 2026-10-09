@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { JobApiConfigError } from "@jobs/gate";
 import { securityResponseHeaders } from "@utils/securityHeaders";
 
 import { createStaticFileHandler } from "../../../server/console/staticFiles";
@@ -235,12 +236,23 @@ describe("the static file handler", () => {
 });
 
 describe("creating the static file handler", () => {
-  test("throws when the root or its index document is missing", () => {
+  test("refuses a root that is missing or has no index document file", () => {
     const empty = scratchDir("console-static-empty");
-    expect(() => createStaticFileHandler(empty)).toThrow();
-    expect(() =>
-      createStaticFileHandler(path.join(empty, "missing")),
-    ).toThrow();
+    const directoryIndex = scratchDir("console-static-dir-index");
+    fs.mkdirSync(path.join(directoryIndex, "index.html"));
+    for (const clientRoot of [
+      empty,
+      path.join(empty, "missing"),
+      directoryIndex,
+    ]) {
+      const create = (): unknown => createStaticFileHandler(clientRoot);
+      expect(create).toThrow(JobApiConfigError);
+      expect(create).toThrow(
+        `the console client is not built (no file at ${path.join(clientRoot, "index.html")}); ` +
+          "from a source checkout run npm run build:console -w apps/web; a container image " +
+          "without it was built without the client",
+      );
+    }
   });
 });
 
