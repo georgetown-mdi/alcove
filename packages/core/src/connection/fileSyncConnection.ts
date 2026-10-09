@@ -42,18 +42,10 @@ import {
 } from "./fileSyncRendezvous";
 
 /**
- * Canonicalize a `filedrop` connection path to the form the connection uses on
- * disk: fold backslashes to forward slashes (so `${path}/${name}` constructions
- * work on Windows, where `fs` accepts forward slashes), then strip trailing
- * slashes while preserving root-like paths -- Unix "/" stays "/", and a Windows
- * drive root "C:/" stays "C:/" (the stripped form "C:" is not a valid path
- * argument on Windows). {@link FileSyncConnection.open} applies this to the
- * configured path before use.
- *
- * Exported so a caller that compares two filedrop paths for equality -- the
- * CLI's config reconcile -- can decide it exactly as the live connection would,
- * by normalizing both sides through this one function rather than
- * reimplementing, and drifting from, the rule.
+ * Canonicalize a `filedrop` connection path to its on-disk form: backslashes
+ * folded to forward slashes and trailing slashes stripped, keeping a root
+ * ("/", "C:/") intact. Exported so the CLI's config reconcile compares two
+ * paths exactly as {@link FileSyncConnection.open} does.
  */
 export function normalizeFiledropPath(rawPath: string): string {
   const normalized = rawPath.replace(/\\/g, "/");
@@ -61,22 +53,12 @@ export function normalizeFiledropPath(rawPath: string): string {
   return /^[A-Za-z]:$/.test(stripped) ? stripped + "/" : stripped || "/";
 }
 
-// Builds the terminal error for a transport await that outran the
-// peer-inactivity budget. `operation` names the call and its target (e.g.
-// "file write to .../temp-x.tmp"). It is a TransportOperationStalledError -- a
-// UsageError, so the poll loop treats it as terminal and the CLI exits 64, the
-// same classification the CLI adapter's per-operation read bounds raise. See
-// docs/spec/CHANNEL_SECURITY.md.
-//
-// `operation`'s target can embed a partner-chosen filename, so it gets a
-// labelled cause link of its own rather than riding the summary. An operation
-// naming more than one path passes each as its own `targets` link rather than
-// composing them into one string, so a truncated link cannot let one path
-// forge text introducing another. Values are redacted here (see
-// redactPrivateKeyMaterial) and interpolated raw, like every other fragment
-// composed into an error; sanitizeErrorForDisplay neutralizes their
-// control/ANSI/Unicode bytes where the message is shown. Core-side twin of the
-// CLI adapter's per-operation transportOperationStalledError.
+// The terminal error for a transport await that outran the peer-inactivity
+// budget: a UsageError, so the poll loop stops and the CLI exits 64. A path
+// can be partner-chosen, so each gets its own cause link and cannot forge the
+// label introducing another; values are redacted here and escaped where the
+// message is shown. See
+// docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
 const transportBudgetExceededError = (
   operation: string,
   budgetMs: number,
@@ -97,24 +79,10 @@ const transportBudgetExceededError = (
     },
   );
 
-// Races a transport operation against the peer-inactivity budget so a server
-// that withholds its callback cannot hang the await past `budgetMs`: settles
-// with the operation's own result if it finishes first, otherwise rejects with
-// `makeError()` once the budget elapses. This is the consumer-layer,
-// op-agnostic safety check beneath the CLI adapter's per-operation READ bounds
-// (see boundTransport): those fast-fail a stalled read in 60 s, this bounds
-// EVERY await -- writes, stat, delete, the filedrop/local-FS path, and any
-// future op -- so a withheld callback fails the exchange within the budget
-// instead of hanging forever (the silent-poller-stop S1 finding).
-//
-// Core-side analogue of the CLI adapter's `withSftpOperationDeadline`,
-// re-implemented here because `apps/` depends on `packages/core`, not the
-// reverse. Both share two critical properties: the timer is `unref`'d so the
-// safety bound never holds the process open on its own, and a `promise` that
-// loses the race and later rejects is absorbed by a no-op `catch` rather than
-// surfacing as an unhandled rejection. When the budget wins, the underlying
-// operation keeps running and is abandoned; the session tears down on the
-// terminal error.
+// Races `op` against `budgetMs`, rejecting with `makeError()` if the budget
+// elapses first; the losing operation is abandoned, not cancelled. The timer is
+// unref'd so it never holds the process open, and a late rejection from `op` is
+// absorbed. See docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
 function withTransportBudget<T>(
   op: Promise<T>,
   budgetMs: number,
@@ -130,13 +98,9 @@ function withTransportBudget<T>(
   return Promise.race([settled, deadline]);
 }
 
-// safeDelete variant of withTransportBudget: bounds the wait the same way but
-// RESOLVES (void) when the budget wins rather than rejecting, preserving
-// safeDelete's "never rejects" contract so callers may keep using it in `catch`
-// blocks. A hung safeDelete on a cleanup path is thus bounded for liveness without
-// turning best-effort cleanup into a thrown error. The underlying op should never
-// reject (safeDelete swallows its own errors), but a stray rejection is absorbed
-// for the same reason as above.
+// withTransportBudget for safeDelete: resolves rather than rejects when the
+// budget wins, keeping safeDelete's never-reject contract for callers in
+// `catch` blocks.
 function withTransportBudgetVoid(
   op: Promise<void>,
   budgetMs: number,
@@ -152,96 +116,44 @@ function withTransportBudgetVoid(
 }
 
 /**
- * Default arrival budget (1 hour) used when `peerTimeoutMs` is not supplied in
- * the connection options: the file-sync rendezvous time-to-live, how long this
- * side waits for the partner to arrive.
+ * Default arrival budget when `peerTimeoutMs` is unset: how long this side
+ * waits for the partner to arrive.
  */
 export const DEFAULT_PEER_TIMEOUT_MS = 1000 * 60 * 60;
 /**
- * Default peer-inactivity budget (1 hour) used when `inactivityTimeoutMs` is
- * not supplied in the connection options: how long one wait on a present peer
- * or one transport operation may take before the silence is a transport
- * failure. The fallback both for the file-sync per-await bound and for the
- * CLI's {@link fromEventConnection} inactivity deadline.
+ * Default peer-inactivity budget when `inactivityTimeoutMs` is unset: how long
+ * one wait on a present peer or one transport operation may take. Also the
+ * fallback for {@link fromEventConnection}'s inactivity deadline.
  */
 export const DEFAULT_PEER_INACTIVITY_TIMEOUT_MS = 1000 * 60 * 60;
-// Teardown-only bound on the close() terminal-frame drain (delete mode). The
-// drain waits for the peer to consume (delete) the last sent frame before
-// cleanup() sweeps it; this protects nothing durable -- the exchange result is
-// already computed and persisted, and cleanup() deletes the frame as a fallback
-// if the drain times out (durability is decoupled from deletion; see close()).
-// Sized to a sync tool's flush latency (a peer's poller listing the directory,
-// consuming the frame, and the deletion propagating back) and on the same order
-// as the per-operation liveness bounds, NOT the full inactivityTimeoutMs
-// (default one hour): a clean close against a crashed or departed peer
-// fast-fails in seconds instead of parking for up to the hour. close() applies
-// it as min(this, inactivityTimeoutMs) so a tiny configured inactivity budget
-// still never yields a LONGER teardown. Kept above single-digit seconds so an
-// ordinary filedrop last-frame propagation is not lost to a too-tight race.
-// Internal-only (not a config setting) for the same reason as
-// DEFAULT_JOINER_RECOVERY_MS: it matters only when a peer is mid-consumption at
-// teardown, which a correct peer resolves well inside it.
+// Teardown bound on close()'s delete-mode wait for the peer to consume the last
+// sent frame, applied as min(this, inactivityTimeoutMs); when it expires
+// cleanup() deletes the frame as a fallback. Not a config setting. See
+// docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
 /** @internal */
 export const TERMINAL_FRAME_DRAIN_TIMEOUT_MS = 1000 * 60;
-// Teardown-only bound on the wait for the transport's own `end()`, a sibling
-// of TERMINAL_FRAME_DRAIN_TIMEOUT_MS and applied the same way: `min(this,
-// inactivityTimeoutMs)`, so a tiny configured inactivity budget still never
-// yields a LONGER teardown. Closing a connection is nominally a two-party act,
-// and a peer or server that accepts the disconnect and then goes quiet never
-// completes it; this protects nothing durable -- the exchange result is
-// already computed and persisted -- so a transport that cannot finish its
-// close fails teardown in tens of seconds instead of parking for up to the
-// hour. It bounds core's WAIT for a transport it does not own, NOT the
-// transport's socket: a session-holding transport bounds its own close and
-// closes from its own side (see FileTransportClient.end), and this sits
-// comfortably above that bound so it does not ordinarily pre-empt it.
-// Internal-only (not a config setting) for the same reason as
-// TERMINAL_FRAME_DRAIN_TIMEOUT_MS: it matters only against a partner that
-// will not finish a close, which a correct one resolves in milliseconds.
+// Teardown bound on core's wait for the transport's end(), applied as
+// min(this, inactivityTimeoutMs). It abandons the wait only; a session-holding
+// transport bounds its own close below this (FileTransportClient.end). Not a
+// config setting. See docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
 /** @internal */
 export const CONNECTION_CLOSE_TIMEOUT_MS = 1000 * 30;
 /**
- * Default interval, in milliseconds, between polls for a partner's file when the
- * connection options do not set `pollIntervalMs`. Exported so the CLI's
- * configuration-template emitter pre-fills the same value it documents as the
- * default, instead of a literal that could drift from this one.
- *
- * By design conservative, not a sub-second value: the per-round PSI encryption
- * dominates an exchange's wall-clock time, so poll latency is negligible for a
- * real dataset, whereas a sub-second interval hammers the server with directory
- * listings and can trip an SFTP server's anti-flood/DoS protection and drop the
- * connection (observed in a partner deployment at 100 ms). A demo that wants a
- * snappier, WebRTC-like poll should set `pollIntervalMs` explicitly rather than
- * lowering this default.
+ * Default poll interval, in milliseconds, when `pollIntervalMs` is unset;
+ * exported so the CLI's config template pre-fills the same value. Not
+ * sub-second: a faster cadence can trip an SFTP server's anti-flood protection
+ * and drop the connection (seen at 100 ms), and PSI encryption dominates an
+ * exchange's time anyway.
  */
 export const DEFAULT_POLLING_FREQUENCY_MS = 5000;
 const DEFAULT_VERBOSITY = 1;
 
-// One wall-clock allowance for a peer's publish-and-rename to land on this
-// transport, read at two places.
-//
-// (1) The bounded window the lock-path peer waits for a joiner that has begun
-// arriving (its `<id>-joining.json` sentinel is visible) to finish renaming the
-// sentinel to its hello. The joiner's remaining work is one delete plus one
-// rename -- milliseconds on a direct transport, seconds on a sync-mediated one
-// -- so a window well under the arrival budget distinguishes a slow-but-live
-// joiner from a crashed one without making the peer wait out that budget.
-//
-// (2) The wall-clock FLOOR under every rendezvous bound derived from poll cycles
-// (rendezvousBoundMs in fileSyncRendezvous.ts): it governs the I5a peer-hello
-// read and the entry-present-hello ack window on EVERY rendezvous, in both
-// modes, with no joiner failure anywhere. A poll interval says how often a party
-// LOOKS, not how long the transport takes to ANSWER, so a bound counted purely
-// in cycles expires inside a single round trip whenever the configured cadence
-// sits below the transport's latency. LOWERING this value tightens both of those
-// bounds and can abort a live partner mid-round-trip; the full reasoning is at
-// rendezvousBoundMs.
-//
-// Internal-only (not a user-facing config option): one value serves both roles
-// on both transport classes, and every use is capped at the remaining
-// peerTimeoutMs budget. What a transport whose round trip exceeds it costs is a
-// stated limit (docs/spec/FILE_SYNC.md, "the window remains a wall-clock
-// heuristic").
+// Wall-clock allowance for a peer's publish-and-rename to land: how long the
+// lock-path peer waits for a joiner whose `<id>-joining.json` sentinel is
+// visible, and the floor under every poll-cycle rendezvous bound
+// (rendezvousBoundMs), so lowering it can abort a live partner mid-round-trip.
+// Capped at the remaining peerTimeoutMs; not a config setting. See
+// docs/spec/FILE_SYNC.md#phase-1----entry-present-peer-hello.
 const DEFAULT_JOINER_RECOVERY_MS = 1000 * 30;
 
 interface Events {
@@ -250,9 +162,7 @@ interface Events {
 }
 
 interface Options {
-  // Optional: when not supplied to the constructor, open() sets this from
-  // `config.options.peerTimeoutMs` (or DEFAULT_PEER_TIMEOUT_MS) so the budget
-  // is not consumed by the time between construction and synchronize().
+  // When unset, open() derives it from peerTimeoutMs after connecting.
   timeToLive?: Date;
   pollingFrequency: number;
   verbose: number;
@@ -260,37 +170,23 @@ interface Options {
   locklessRendezvous: boolean;
   peerId?: string;
   retainFiles: boolean;
-  // Policy for a file that appears mid-loop and is neither recognized for the
-  // exchange nor an in-flight temp write. Left optional (the raw preference):
-  // an unset value resolves to a mode-coupled effective default at the use
-  // site (see resolveUnexpectedFilesPolicy), so the resolution does not depend
-  // on the order in which retainFiles/locklessRendezvous are assigned during
-  // open(). An explicit value always wins.
+  // For a file that appears mid-loop and is neither an exchange file nor a
+  // temp write. Unset resolves to a mode-dependent default at the use site
+  // (resolveUnexpectedFilesPolicy); an explicit value wins.
   unexpectedFiles?: "error" | "warn" | "ignore";
-  // CLI-only, NON-persistable runtime controls for the entry sweep
-  // (--sweep-exchange-files / --force-retain-sweep). NOT mirrored on
-  // FileSyncOptions / the Zod config schema, where anything is persistable in
-  // alcove.yaml, contradicting "invocation-scoped, never persisted": a config
-  // spelling either flag resolves none of it (pinned in connection.test.ts).
-  // They reach this type through the constructor's Partial<Options> alone (the
-  // verbose/joinerRecoveryMs precedent). The CLI command layer threads them on a
-  // path separate from config construction (see docs/spec/FILE_SYNC.md).
+  // CLI-only and never persisted (--sweep-exchange-files): absent from
+  // FileSyncOptions and its schema, so it reaches here only through the
+  // constructor. See
+  // docs/spec/FILE_SYNC.md#bilateral-configuration-detect-and-fail-never-negotiate.
   sweepExchangeFiles: boolean;
-  // Escalation of sweepExchangeFiles: permits the sweep to wipe a directory that
-  // shows a retain signal (a durable audit transcript). Meaningless without
-  // sweepExchangeFiles, which the CLI enforces by rejecting it on its own.
+  // Lets the sweep clear a directory that shows a retain signal; the CLI
+  // refuses it without sweepExchangeFiles.
   forceRetainSweep: boolean;
-  // The wall-clock allowance for a peer's publish-and-rename on this transport:
-  // how long the lock-path peer waits for a mid-arrival joiner (a visible
-  // `<id>-joining.json` sentinel) to finish before treating it as crashed, AND
-  // the floor under every rendezvous-time bound, so lowering it tightens those
-  // too (see DEFAULT_JOINER_RECOVERY_MS and rendezvousBoundMs). Not surfaced in
-  // the public config; defaults to DEFAULT_JOINER_RECOVERY_MS. Tests lower it to
-  // exercise the abort path without a real-time wait.
+  // See DEFAULT_JOINER_RECOVERY_MS. Not in the public config; tests lower it to
+  // reach the abort path without a real-time wait.
   joinerRecoveryMs: number;
-  // A sentence the caller appends to a timeout failure to name the setting
-  // that bounds every wait the peer-inactivity budget bounds. Unset leaves the
-  // message bare.
+  // A sentence appended to a timeout failure naming the setting that bounds
+  // it. Unset leaves the message bare.
   inactivityTimeoutGuidance?: string;
 }
 
@@ -309,12 +205,10 @@ const getDefaultOptions = (): Options => {
 
 export interface FileInfo {
   name: string;
-  // Kept for downstream transport consumers. The rendezvous tiebreaker (see
-  // waitForPeer) does not read it -- it orders on UUID alone, because sync tools
-  // stamp transfer time rather than creation time.
+  // Not read by the rendezvous tiebreaker, which orders on UUID because sync
+  // tools stamp transfer time rather than creation time.
   modifyTime: number;
-  // On-disk byte count, populated by every FileTransportClient.list(). poll()
-  // compares it against the declared count encoded in a message filename so a
+  // poll() compares it against the byte count a message filename declares, so a
   // partially synced file is not read as a complete message.
   size: number;
 }
@@ -326,16 +220,10 @@ export interface PutOptions {
 }
 
 /**
- * Body accepted by {@link FileTransportClient.put}. Either a single contiguous
- * `Buffer` (a hello, a zero-length ack, an abort marker) or an ORDERED LIST of
- * `Uint8Array` chunks written back-to-back as one file WITHOUT concatenating
- * them in memory -- the message send path hands `put` its `[header, payload]`
- * pair this way so a binary frame holds ~1x its size live rather than ~2x (see
- * {@link FileSyncConnection.send}). A one-shot `NodeJS.ReadableStream` remains
- * in the transport-agnostic surface but is not produced by this codebase. A
- * `Uint8Array[]` src is re-iterable, so an adapter that retries a failed upload
- * can rebuild its source from it per attempt, exactly as it can from a `Buffer`
- * (a one-shot stream cannot, which is why a stream gets a single attempt).
+ * Body for {@link FileTransportClient.put}: one `Buffer`, or an ordered chunk
+ * list written back-to-back without concatenating, so a binary frame takes ~1x
+ * its size in memory. A chunk list, like a Buffer, can be re-read for a retry;
+ * a stream gets one attempt and is not produced by this codebase.
  */
 export type PutSource = Buffer | Uint8Array[] | NodeJS.ReadableStream;
 
@@ -345,19 +233,10 @@ export interface GetOptions {
   encoding?: null | string;
   handle?: null | string;
   /**
-   * Maximum number of bytes the read may pull into memory. A file larger than
-   * this is refused with a {@link FrameSizeExceededError} -- before any read for
-   * a stat-capable adapter, or after at most one stream chunk past the cap for a
-   * streaming one -- so allocation stays bounded to roughly `maxBytes` rather
-   * than the (possibly attacker-chosen) file size. This is the hard safety
-   * check behind the poll loop's pre-`get()` size check; it is what still
-   * bounds the read when a server under-reports a file's size in its
-   * directory listing. Required: no transport read is uncapped.
-   *
-   * A capped read always resolves to a raw Buffer; `encoding` is not applied
-   * (the streaming adapter drops it so the running byte count stays exact).
-   * Callers that need a string decode the result with `.toString()`, as they
-   * already do for the always-raw-Buffer {@link LocalFSClient}.
+   * Most bytes the read may pull into memory: a larger file is refused with a
+   * {@link FrameSizeExceededError}, so allocation stays near `maxBytes` even
+   * when a server under-reports the size in its listing. Required: no read is
+   * uncapped. A capped read resolves to a raw Buffer; `encoding` is ignored.
    */
   maxBytes: number;
 }
@@ -369,39 +248,21 @@ export interface GetOptions {
  */
 export interface FileTransportClient {
   /**
-   * Options are defined by transport providers and must match their expected
-   * names and types.
-   *
-   * Whether a client may be dialed again after its
-   * {@link FileTransportClient.end} is NOT part of this contract: it is each
-   * transport's own rule, and the two shipped ones differ.
-   * `LocalFSClient` holds no session -- its `connect()` is a read/write access
-   * check on a directory -- so it draws no distinction between a first call and
-   * a later one, which is what lets {@link FileSyncConnection.open} probe a
-   * split filedrop's second directory with a second call.
-   * {@link SSH2SFTPClientAdapter} memoizes the connection's terminal close and
-   * never clears it, so it throws on a dial once `end()` has latched, and it
-   * refuses a repeat `connect()` over a session still live, leaving that
-   * session in place (apps/cli/test/integration/sftpStackPremises.test.ts). A
-   * caller wanting the portable behavior builds a new client rather than
-   * calling `connect()` again on one it has dialed. Why the rule stays
-   * per-transport rather than binding here: D10 in
+   * Options are defined by each transport. Whether a client may be dialed
+   * again after {@link FileTransportClient.end} is per-transport:
+   * `LocalFSClient.connect()` is a stateless access check, while
+   * {@link SSH2SFTPClientAdapter} refuses a dial after `end()` and a repeat dial
+   * over a live session (apps/cli/test/integration/sftpStackPremises.test.ts).
+   * Build a new client to re-dial portably. See D10 in
    * docs/notes/sftp-adapter-state-machine.md.
    */
   connect: (options: Record<string, unknown>) => Promise<void>;
   /**
-   * Ends the connection. Implementations MUST return in teardown-scale time
-   * (seconds) and MAY return without a clean close: closing is nominally a
-   * two-party act, and a peer or server that accepts the disconnect and then goes
-   * quiet never completes it, so a session-holding transport bounds that wait
-   * itself and closes from its own side rather than leaving the process holding a
-   * half-open connection. Core bounds its own wait as a safety check
-   * ({@link CONNECTION_CLOSE_TIMEOUT_MS}), but a bound there only abandons the
-   * call -- it cannot close anything the transport owns.
-   *
-   * Best-effort by contract: {@link FileSyncConnection.close} logs a rejection at
-   * debug and proceeds, so an implementation reports a close it could not complete
-   * by returning or rejecting, never by waiting.
+   * Ends the connection. Must return within seconds and may return without a
+   * clean close: a session-holding transport bounds its own wait for the other
+   * side and closes from its own. Best-effort: {@link FileSyncConnection.close}
+   * logs a rejection at debug and proceeds. Core's own bound
+   * ({@link CONNECTION_CLOSE_TIMEOUT_MS}) abandons the wait only.
    */
   end: () => Promise<void>;
   list: (path: string) => Promise<Array<FileInfo>>;
@@ -423,42 +284,25 @@ export interface FileTransportClient {
   createExclusive: (path: string) => Promise<void>;
   exists: (remotePath: string) => Promise<boolean>;
   /**
-   * Optional cycle-boundary signal for a session-holding transport running in
-   * connection-per-poll (ephemeral-session) mode: the poll loop invokes it at an
-   * idle boundary (the inter-poll reschedule) so the transport may release its
-   * session for the idle gap rather than holding it across a server's
-   * max-session/idle cap. Modeled on {@link MessageConnection.setInboundFrameCap}:
-   * core calls it only when the transport implements it, so a connectionless
-   * transport (`LocalFSClient`) simply omits it and is unaffected, and a
-   * session-holding transport with the mode off implements it as a no-op. The
-   * release MUST be non-terminal -- it must not tear the transport down in a way
-   * that disables the next cycle's reconnect. See
-   * docs/notes/connection-per-poll-sftp.md.
+   * Called by the poll loop at the inter-poll reschedule so a session-holding
+   * transport in connection-per-poll mode can release its session for the idle
+   * gap. A connectionless transport omits it; with the mode off it is a no-op.
+   * The release must not prevent the next cycle's reconnect. See
+   * docs/spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary.
    */
   releaseForIdle?: () => Promise<void>;
   /**
-   * Optional companion to {@link FileTransportClient.releaseForIdle}: the poll
-   * loop invokes it at the START of a cycle (and close() invokes it before the
-   * terminal-frame drain) so a transport that released its session for the idle
-   * gap re-establishes one before the cycle's ops run, rather than lazily
-   * re-dialing on the next op's rejection. Resolves `true` once a session is live
-   * and `false` when the re-dial failed transiently (the caller skips this cycle
-   * and retries on the next tick); rejects only on a genuinely fatal condition (a
-   * host-key or credential rejection) that must terminate the exchange. Optional
-   * and mode-gated exactly like {@link FileTransportClient.releaseForIdle}.
+   * Companion to {@link FileTransportClient.releaseForIdle}, called at the start
+   * of a cycle and before close()'s drain: resolves `true` once a session is
+   * live, `false` on a transient re-dial failure (the cycle is skipped), and
+   * rejects only on a fatal host-key or credential refusal.
    */
   ensureConnected?: () => Promise<boolean>;
   /**
-   * Optional teardown signal for a session-holding transport that bounds its
-   * mid-exchange reconnections: {@link FileSyncConnection.close} invokes it once at
-   * the top of teardown so the transport can mark that the re-dials teardown still
-   * issues -- the authenticated abort-marker write and the terminal-frame drain --
-   * are exempt from that reconnection cap and neither counted nor warned. Without
-   * it a capping server that exhausted the budget mid-exchange would refuse the
-   * marker write's own re-dial, dropping the fast-fail marker exactly when a
-   * waiting peer most needs it. Optional and no-op-when-absent exactly like
-   * {@link FileTransportClient.releaseForIdle}: a connectionless transport
-   * (`LocalFSClient`) simply omits it.
+   * Called once at the top of {@link FileSyncConnection.close} so the re-dials
+   * teardown still makes (the abort-marker write, the terminal-frame drain) are
+   * exempt from the transport's reconnection cap. A connectionless transport
+   * omits it.
    */
   beginTeardown?: () => void;
 }
@@ -476,9 +320,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   role: string;
   options: Options;
   log: ReturnType<typeof getLoggerForVerbosity>;
-  // The per-session send-sequence counter lives on the composed message loop;
-  // expose it through a delegating getter/setter so external readers and tests
-  // that read or set conn.seq are unchanged (mirrors observedHostKey).
   get seq(): number {
     return this.messageLoop.seq;
   }
@@ -487,17 +328,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
   connected = false;
 
-  // The inbound directory: where this party READS the peer's files (hello,
-  // messages, acks, the peer's abort marker). `path` is the inbound directory's
-  // historical name, kept because tests and callers set it directly. undefined
+  // The inbound directory, where this party reads the peer's files; undefined
   // outside an open session.
   path: string | undefined;
-  // The configured separate OUTBOUND directory (split mode), or undefined when
-  // inbound and outbound are the same shared directory. When set it requires
-  // retain mode (enforced at config validation), so only the lockless+retain
-  // code paths ever observe a value different from `path`. Public so tests can
-  // set it directly, mirroring the `path`/`connected` direct-set pattern; open()
-  // sets it from the config. See docs/spec/FILE_SYNC.md (Split directories).
+  // The separate outbound directory in split mode, which requires retain mode;
+  // undefined in shared mode. See
+  // docs/spec/FILE_SYNC.md#split-inboundoutbound-directories.
   outbound: string | undefined;
   private config: SFTPConnectionConfig | FileDropConnectionConfig | undefined;
   // The partner-arrival budget open() derived timeToLive from; unset when the
@@ -506,108 +342,61 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
   peerId: string | undefined;
   handshakeRole: HandshakeRole | undefined;
-  // The host key the SFTP server presented on this connection, or `undefined` on
-  // every path that observes no host key (a file-drop mount, the browser/proxy
-  // SFTP path, or a refused connection that never establishes a session). Read
-  // post-handshake by the orchestrator to advertise this party's observed
-  // fingerprint for cross-party reconciliation. The live state lives on the
-  // sftpSession subsystem, written by the enforcing host-key verifier on its
-  // pin-match branch; this getter keeps the value readable where it always was.
+  // The host key the SFTP server presented, or undefined where none was
+  // observed (filedrop, the browser SFTP path, a refused connection). Read
+  // after the handshake for cross-party fingerprint reconciliation.
   get observedHostKey(): PresentedHostKey | undefined {
     return this.sftpSession.observedHostKey;
   }
-  // Cancellation primitive threaded through every wait site (see wait() and
-  // cancellableDelay). close() aborts it so an in-flight sleep rejects
-  // promptly; synchronize() re-arms a fresh one per session. Constructed inline
-  // so a never-opened/never-synchronized instance is safe (close() before any
-  // session cannot NPE), and re-armed at session start rather than in
-  // resetSessionState() so a recovery reset mid-rendezvous cannot wipe a
-  // concurrent close()'s abort (see synchronize()).
+  // Aborted by close() so an in-flight wait rejects. Re-armed per session in
+  // synchronize(), not in resetSessionState(), so a recovery reset
+  // mid-rendezvous cannot wipe a concurrent close()'s abort.
   private abortController = new AbortController();
   private responsibleFiles: Set<string>;
-  // Foreign (grammar-failing) file names present in the directory at
-  // synchronize() entry. Recorded so the poll loop tolerates them
-  // (isRecognizedLoopFile) and the "new foreign file" warning measures
-  // only names that appear AFTER entry. Grammar-MATCHING names are never stored
-  // here: a message-shaped <id>-<digits>.json is a protocol file, rejected at
-  // the no-flag entry guard or swept under --sweep-exchange-files, never
-  // snapshotted (see I0). Rebuilt fresh at each synchronize() entry; NOT
-  // cleared in resetSessionState, whose mid-rendezvous recovery resets would
-  // otherwise wipe a snapshot taken before the rendezvous loop.
+  // Grammar-failing names present at synchronize() entry, which the poll loop
+  // tolerates; the new-foreign-file warning counts only later arrivals. Rebuilt
+  // at each entry and not cleared by resetSessionState(). See
+  // docs/spec/FILE_SYNC.md#file-taxonomy.
   private foreignFileSnapshot = new Set<string>();
-  // Backing field for unconfirmedEntryPeerHello. Written by the rendezvous
-  // coordinator at both ends of its lifetime (set at the entry scan, cleared on
-  // the peer's ack) and cleared here on the first delivered peer message; see
-  // the getter for what it means and why it is not simply "a hello was present".
   private entryPeerHello: string | undefined;
-  // An `error` emitted while no listener is registered is held here so the
-  // next protocol-layer receive can detect failures that arrived in the gap
-  // between listener-registration cycles. Reading clears the value; only the
-  // most recent unhandled error is retained, since a subsequent error would
-  // supersede the first as the proximate cause.
+  // The most recent `error` emitted with no listener, held for the next
+  // receive (see emit).
   private bufferedError: unknown;
 
-  // The raw, unwrapped transport (this.client is its boundTransport wrap). Held
-  // so the abort marker write can be short-bounded directly (see
-  // writeAbortMarker / the abortMarker subsystem) instead of inheriting the
-  // 1h per-op budget the wrap applies. It is the same underlying transport as
-  // this.client, so what protects the marker write from client.end() killing it
-  // is the await-before-end() ordering in close(), not this separate reference.
+  // The unwrapped transport, so the abort-marker write gets its own short
+  // budget rather than the per-await one boundTransport applies. close()
+  // awaits that write before end(), which is what keeps end() from cutting it
+  // off.
   private rawClient: FileTransportClient;
 
-  // The authenticated cross-party abort-marker subsystem (armed post-handshake,
-  // cleared with the handshake identity). It owns the abort state (the two
-  // role-derived tokens, the captured write inputs, and the write-vs-seal
-  // decision one-shot); the delegating members below (armAbort /
-  // writeAbortMarker / sealAbort / abortArmed and the internal close()/poll()
-  // call sites) forward to it, keeping the connection's public and test
-  // surface unchanged. See ./abortMarker and docs/spec/CHANNEL_SECURITY.md
-  // ("Authenticated abort marker").
+  // See docs/spec/CHANNEL_SECURITY.md#authenticated-abort-marker.
   private readonly abortMarker: AbortMarkerSubsystem;
 
-  // The SFTP session-setup subsystem: builds the connect options, installs the
-  // connect path's host-key verifier, and runs the host-key probe. It owns the
-  // observedHostKey state the connection exposes through its delegating getter;
-  // the probeHostKeyFingerprint member below forwards to it. See ./sftpSession,
-  // docs/SECURITY_DESIGN.md (Transport-layer authentication), and
-  // docs/spec/CHANNEL_SECURITY.md (SFTP host-key verification).
+  // Connect options, the host-key verifier, and the host-key probe. See
+  // docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
   private readonly sftpSession: SftpSession;
 
-  // The stateful rendezvous coordinator: owns the entry scan/sweep and the
-  // lock-joiner and hello-exchange negotiations, writing this connection's
-  // role/peerId/handshakeRole through setter deps and mutating its
-  // responsibleFiles/foreignFileSnapshot Sets by shared reference. synchronize()
-  // validates entry and delegates to it. See ./fileSyncRendezvous,
-  // docs/spec/FILE_SYNC.md, and docs/spec/CHANNEL_SECURITY.md.
+  // The entry scan and sweep and both rendezvous paths. It sets this
+  // connection's identity through setters and mutates responsibleFiles and
+  // foreignFileSnapshot by reference. See
+  // docs/spec/FILE_SYNC.md#the-five-enforcement-sites.
   private readonly rendezvous: FileSyncRendezvous;
 
-  // The stateful poll/ack/seq message loop: owns the nine per-session counters
-  // and drives poll()/send() over the connection's shared/root state through
-  // MessageLoopDeps accessors, emitting only through this connection's overridden
-  // emit. The public send/start/stop/setInboundFrameCap/resetSessionState methods
-  // and the delegating seq getter/setter forward to it. See ./fileSyncMessageLoop,
-  // docs/spec/FILE_SYNC.md, and docs/spec/CHANNEL_SECURITY.md.
+  // The poll, ack and sequence loop behind send(), start() and stop(). See
+  // docs/spec/FILE_SYNC.md#the-five-enforcement-sites.
   private readonly messageLoop: FileSyncMessageLoop;
 
-  // True once armAbort() has run (derived, not stored): only an armed connection
-  // writes or verifies abort markers. Read by the orchestrator's catch gate and
-  // by close()/poll().
+  // True once armAbort() has run; only an armed connection writes or verifies
+  // abort markers.
   get abortArmed(): boolean {
     return this.abortMarker.armed;
   }
 
-  // Bound the next inbound frame the poll loop reads to `maxBytes`, replacing
-  // MAX_FRAME_SIZE_BYTES at the read gate until cleared (undefined restores the
-  // static cap). Clamped to min(maxBytes, MAX_FRAME_SIZE_BYTES) so a per-exchange
-  // cap can only tighten, never widen, the static memory safety check.
-  // Implements Connection.setInboundFrameCap; the single-pass receiver sets
-  // the derived reply cap before reading the reply and clears it after (see
-  // link.ts). It is safe against the poll loop's read-ahead because
-  // single-pass sets it after sending its request and before the reply -- one
-  // full peer round trip away -- so no frame is read between the set and the
-  // read it governs; and even a lost race only falls back to the static cap
-  // plus the decode-time count/length
-  // coherence checks, never to an unbounded read.
+  // Caps inbound frames at min(maxBytes, MAX_FRAME_SIZE_BYTES) until cleared
+  // with undefined, so it can only tighten the static cap. Single-pass sets it
+  // one peer round trip before the reply it governs; a lost race with the poll
+  // loop's read-ahead falls back to the static cap. See
+  // docs/spec/CHANNEL_SECURITY.md#single-pass-per-exchange-cap.
   setInboundFrameCap(maxBytes: number | undefined): void {
     this.messageLoop.setInboundFrameCap(maxBytes);
   }
@@ -622,58 +411,37 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return MAX_FRAME_SIZE_BYTES;
   }
 
-  // The last message this party sent, owned by the message loop; close()'s
-  // delete-mode drain reads it through this delegating getter so its teardown
-  // sequencing is unchanged.
   private get lastSentFile(): string | undefined {
     return this.messageLoop.lastSentFile;
   }
 
   /**
-   * The peer hello that was already in the inbound directory when this session's
-   * `synchronize()` scanned it, for as long as nothing has confirmed a live peer
-   * behind it -- `undefined` when no peer hello predated the run, and cleared
-   * for good at the first such confirmation (the peer's ack of this party's own
-   * hello, or a peer message delivered to the application).
-   *
-   * It is the local evidence for a distinction the transport cannot otherwise
-   * make. A hello found at entry is byte-identical whether a partner wrote it a
-   * moment ago or an interrupted run in this same directory left it behind, so a
-   * rendezvous that completed against one -- the lock joiner fast path in
-   * particular, which consumes it and commits with no answer from anyone -- has
-   * established nothing about a peer. A consumer that would otherwise attribute
-   * a later silence to the peer reads this first: while it is set, the run has
-   * never observed the peer at all, and the leftover named here is a likelier
-   * cause than a partner-side fault.
+   * The peer hello found in the inbound directory at `synchronize()` entry,
+   * until a live peer is confirmed (its ack of this party's hello, or a
+   * delivered peer message); `undefined` when none predated the run. Such a
+   * hello cannot be told apart from one an interrupted run left behind, so while
+   * this is set a later silence is more likely that leftover than a partner-side
+   * fault. See docs/spec/FILE_SYNC.md#phase-1----entry-present-peer-hello.
    */
   get unconfirmedEntryPeerHello(): string | undefined {
     return this.entryPeerHello;
   }
 
-  // The directory self-written files go to: the configured outbound directory
-  // in split mode, else the inbound `path` (shared mode). undefined only outside
-  // an open session (mirrors `path`). Every self-write site (the hello, message,
-  // ack, abort-marker, and in-flight temp writes) routes through this so a
-  // configured outbound directory takes effect uniformly; peer-file reads stay
-  // on `path` (inbound). In shared mode the two coincide, preserving the
-  // single-directory behavior exactly.
+  // Where every self-write goes: the outbound directory in split mode, else
+  // `path`. Peer-file reads stay on `path`.
   private get outboundPath(): string | undefined {
     return this.outbound ?? this.path;
   }
 
   constructor(client: FileTransportClient, options?: Partial<Options>) {
     super();
-    // Retain the raw transport for the short-bounded abort marker write, then
-    // wrap it so the peer-inactivity budget bounds every data-plane await as a
-    // safety check (see boundTransport). The wrap reads the budget lazily per
-    // call, so wrapping here -- before open() populates this.config -- is
-    // safe: no budget is read until a transport call is actually made.
+    // The wrap reads the budget per call, so installing it before open() sets
+    // the config is safe.
     this.rawClient = client;
     this.client = this.boundTransport(client);
-    // No peerId validation here: Options is an internal type, not the public
-    // FileSyncOptions. The validation boundary is FileSyncOptionsSchema
-    // (enforced by safeParseFileSyncOptions / applyConnectionOverrides). All
-    // production callers go through that path before reaching this constructor.
+    // No peerId validation here: production callers validate through
+    // FileSyncOptionsSchema (safeParseFileSyncOptions, applyConnectionOverrides)
+    // first.
     this.id = options?.peerId ?? uuidv4();
     this.role = "unknown role";
     this.responsibleFiles = new Set();
@@ -683,32 +451,20 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       `filesync-${this.id.substring(0, 8)}`,
       this.options.verbose,
     );
-    // Inject the transport-budget primitives (owned here, shared with
-    // boundTransport and close()'s drain) and the log/role accessors; the
-    // subsystem holds the rest of the abort state itself. `role` is read live so
-    // a post-construction role assignment is reflected in the marker's log lines.
+    // The subsystems read through accessors whatever open() or the rendezvous
+    // reassigns after this point (id, log, role, path, options, the abort
+    // signal), and share responsibleFiles and foreignFileSnapshot by reference.
     this.abortMarker = new AbortMarkerSubsystem({
       log: () => this.log,
       role: () => this.role,
       runBudgeted: withTransportBudget,
       stalledError: transportBudgetExceededError,
     });
-    // `log` and `role` are read live: open() rebinds this.log to a peerId-named
-    // logger, and this.role is assigned at rendezvous, both after this point.
-    // rawClient is the raw, unwrapped transport the host-key probe dials; it is
-    // set above and never reassigned, so it is injected by value.
     this.sftpSession = new SftpSession({
       log: () => this.log,
       role: () => this.role,
       rawClient: this.rawClient,
     });
-    // The rendezvous coordinator reads identity/config/client live (all are
-    // reassigned or mutated after this point -- id/log/path by open(), role at
-    // rendezvous, options fields by open()) and mutates the connection's
-    // responsibleFiles/foreignFileSnapshot by shared reference; signal() is read
-    // fresh per call so a concurrent close() abort reaches an in-flight
-    // rendezvous wait (the controller is swapped per session). Identity is
-    // committed in place through the setters at the coordinator's commit sites.
     this.rendezvous = new FileSyncRendezvous({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
@@ -740,13 +496,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       clearAbortMarker: () => this.abortMarker.clear(),
       writeAck: (dir, originalName) => this.writeAck(dir, originalName),
     });
-    // The message loop owns the poll/ack/seq counters and reads the connection's
-    // shared/root state live. It shares the responsibleFiles/foreignFileSnapshot
-    // Sets by reference (never copies); emit() is the SYNCHRONOUS pass-through to
-    // this connection's overridden emit, so a poll-loop error still buffers when
-    // no listener is registered; writeAck and verifyPeerAbortMarker forward to
-    // the connection and the abort-marker subsystem (the latter over the same
-    // boundTransport-wrapped this.client the read gate uses).
+    // emit() passes through synchronously to this connection's emit, so a
+    // poll-loop error with no listener is still buffered.
     this.messageLoop = new FileSyncMessageLoop({
       responsibleFiles: this.responsibleFiles,
       foreignFileSnapshot: this.foreignFileSnapshot,
@@ -769,42 +520,25 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     });
   }
 
-  // Override emit so that an error fired with no listener is retained rather
-  // than dropped. EventEmitter3 silently discards unhandled errors (unlike
-  // Node's EventEmitter, which throws); buffering them lets the next
-  // protocol-layer receive observe failures that occurred in the gap between
-  // listener-registration cycles. `eventNames()` returns the events that
-  // currently have listeners; an error-with-no-listener has the event absent.
+  // EventEmitter3 drops an `error` with no listener (Node's throws), so the
+  // most recent one is held for the next receive (takeBufferedError).
   emit<E extends keyof Events>(
     event: E,
     ...args: Parameters<Events[E]>
   ): boolean {
-    // A delivered peer message is an observation attributable to a live peer, so
-    // whatever hello was present at entry is confirmed from here on. Cleared at
-    // this single funnel rather than in the poll loop so no delivery path can
-    // bypass it.
+    // A delivered peer message confirms a live peer; cleared here, the one
+    // funnel every delivery passes through.
     if (event === "data") this.entryPeerHello = undefined;
     const hadListeners = super.emit(event, ...args);
     if (event === "error" && !hadListeners) {
-      // Only the most recent unhandled error is retained because a subsequent
-      // error usually supersedes the first as the proximate cause. Log a line
-      // when this happens so a chained failure is not invisible.
-      // When both the prior and new errors are Error instances and the new
-      // one has no `cause` set, chain the prior error as its cause so
-      // downstream diagnostic output (e.g. an "Error: ... { cause: ... }"
-      // formatter) can still show the earlier failure rather than losing
-      // it entirely. Mutation is gated on `cause === undefined` so we never
-      // overwrite a cause the caller already set, and on `incoming !==
-      // bufferedError` so a re-emit of the same Error reference cannot create
-      // a self-referential cause chain that loops a downstream walker.
+      // A superseded error is logged and chained as the new error's cause,
+      // unless the new one already has a cause or is the same object, which
+      // would make the chain loop.
       const incoming = args[0];
       if (this.bufferedError !== undefined) {
         this.log.warn(
           `[${this.role}] superseding earlier buffered error: ` +
-            // The buffered error can be a raw transport error whose message
-            // embeds a partner-controlled path (both the SFTP and filedrop
-            // adapters concatenate the operation path into their error text), so
-            // escape it before it reaches the operator's log.
+            // A transport error's message can embed a partner-controlled path.
             redactAndSanitizeForDisplay(errorMessage(this.bufferedError)),
         );
         if (
@@ -830,21 +564,15 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return e;
   }
 
-  // Cancellable replacement for `new Promise((r) => setTimeout(r, ms))` at every
-  // in-session wait site. Reads this.abortController.signal fresh per call. Do
-  // not hoist the signal: the controller is swapped at session start
-  // (synchronize()), so a cached `const signal = this.abortController.signal`
-  // above a loop would observe a stale controller and become uncancellable.
+  // A sleep close() can cancel. Reads the signal per call: the controller is
+  // swapped per session, so a hoisted signal would go stale.
   private wait(ms: number): Promise<void> {
     return cancellableDelay(ms, this.abortController.signal);
   }
 
   /**
-   * The peer-inactivity budget one await may spend, read live because open()
-   * populates the config after the constructor installs the transport wrap. Every
-   * consumer arms it FRESH per await -- see {@link boundTransport} for why a
-   * budget re-armed per step rather than an absolute deadline is what bounds
-   * silence from the peer without capping a healthy exchange's duration.
+   * The peer-inactivity budget for one await, read live because open() sets
+   * the config after the constructor installs the transport wrap.
    */
   private inactivityBudgetMs(): number {
     return (
@@ -853,45 +581,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     );
   }
 
-  // The whole-exchange liveness safety check (THE security control for the
-  // withheld-callback DoS; see docs/spec/CHANNEL_SECURITY.md). Wraps the
-  // transport so every data-plane await is raced against the peer-inactivity
-  // budget and cannot hang past it. It is the universal layer beneath the CLI
-  // adapter's per-operation READ bounds: those fast-fail a stalled
-  // list()/get()/createExclusive() in 60 s, but the always-executed
-  // write/stat/delete ops (put/rename/delete/exists) have no per-op bound, so
-  // without this a hostile or dead server that withholds the callback on the
-  // first put/delete hangs the exchange forever -- in synchronize()/send() the
-  // awaited call never settles, and in poll() the reschedule sits in a
-  // `finally` the hung await never reaches, so the poller stops silently.
-  // Bounding here, at the single consumer call site every transport call
-  // already flows through, is op-agnostic (covers ops not enumerated here and
-  // any added later) and adapter-agnostic (covers the SFTP adapter, and the
-  // filedrop/local-FS LocalFSClient whose post-connect ops are otherwise
-  // unbounded).
-  //
-  // Budget granularity: each await is raced against a FRESH
-  // inactivityTimeoutMs, not the remaining time until the rendezvous
-  // timeToLive. The budget bounds a single unresponsive await, not total
-  // exchange duration: poll() reschedules indefinitely, so racing it against an
-  // absolute open()+budget deadline would kill a healthy long-running exchange
-  // at the budget mark. A fresh per-await budget defeats the hang identically
-  // -- the first withheld callback fails after inactivityTimeoutMs and
-  // propagates -- without imposing a duration cap. It is the same single coarse
-  // setting the operator already tunes (inactivityTimeoutMs /
-  // DEFAULT_PEER_INACTIVITY_TIMEOUT_MS), by design coarse rather than a tight
-  // per-op timeout that would risk false-failing a legitimately large/slow
-  // transfer. close()'s ops get the same fresh per-await budget, with two
-  // teardown exceptions: the terminal-frame drain races each list() against the
-  // time remaining to its own TERMINAL_FRAME_DRAIN_TIMEOUT_MS deadline rather
-  // than this (potentially far larger) per-await budget (see close()), and
-  // end() is bounded by CONNECTION_CLOSE_TIMEOUT_MS below.
-  //
-  // The bound reads the budget lazily per call, so the wrap is installed once
-  // in the constructor. On an SFTP read the adapter's 60 s bound settles the
-  // op first and this race's timer is cleared, so the same hang is never
-  // failed twice; this budget is the sole bound only where no per-op bound
-  // exists (every write/stat/delete, and all LocalFSClient ops).
+  // Races every data-plane await against a fresh peer-inactivity budget: the
+  // safety check beneath the SFTP adapter's per-operation bounds, and the only
+  // bound on LocalFSClient's operations. Fresh per await rather than one
+  // absolute deadline, so it bounds a silent peer or server without capping a
+  // long healthy exchange. See
+  // docs/spec/CHANNEL_SECURITY.md#whole-exchange-budget.
   private boundTransport(raw: FileTransportClient): FileTransportClient {
     const budgetMs = (): number => this.inactivityBudgetMs();
     const bound = <T>(
@@ -911,14 +606,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       );
     };
     return {
-      // connect() runs before open() sets the budget and is already bounded by
-      // its own per-attempt deadline (ssh2 readyTimeout; LocalFSClient's
-      // withTimeout), so it passes through unwrapped.
+      // Each adapter bounds its own connect. See
+      // docs/spec/CHANNEL_SECURITY.md#connect-probe-bound.
       connect: (options) => raw.connect(options),
-      // The one operation bounded by something other than a fresh inactivity budget:
-      // teardown is not a peer round trip the exchange depends on, so it gets the
-      // short CONNECTION_CLOSE_TIMEOUT_MS (min'd with inactivityTimeoutMs)
-      // instead of riding the full peer-inactivity budget.
       end: () => {
         const ms = Math.min(CONNECTION_CLOSE_TIMEOUT_MS, budgetMs());
         return withTransportBudget(
@@ -937,10 +627,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       put: (src, dest, options) =>
         bound(raw.put(src, dest, options), `file write to ${dest}`),
       delete: (path) => bound(raw.delete(path), `delete of ${path}`),
-      // The one operation naming two paths, so neither rides the operation
-      // label: each takes a labelled link of its own, where the cap it spends is
-      // its own and the label introducing the other path is first-party text the
-      // first path cannot reach.
+      // Each path gets its own cause link, so one cannot forge the label that
+      // introduces the other.
       rename: (fromPath, toPath) =>
         bound(raw.rename(fromPath, toPath), "rename", [
           `rename source: ${fromPath}`,
@@ -949,22 +637,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       createExclusive: (path) =>
         bound(raw.createExclusive(path), `exclusive create of ${path}`),
       exists: (path) => bound(raw.exists(path), `existence check of ${path}`),
-      // safeDelete must never reject (callers use it in catch blocks), so it is
-      // bounded by the void variant: a hung cleanup delete stops waiting at the
-      // budget and resolves rather than throwing.
       safeDelete: (path) =>
         withTransportBudgetVoid(raw.safeDelete(path), budgetMs()),
-      // Forward the optional cycle-boundary signals unwrapped, and only when the
-      // transport implements them: releaseForIdle is a local session close (no
-      // peer round-trip to bound) and ensureConnected's re-dial has its own
-      // connect-time bounds, so neither belongs under the peer-inactivity budget.
-      // A connectionless transport omits them, leaving them undefined here so the
-      // poll loop's optional calls no-op.
+      // Unwrapped, and only when implemented: none is a peer round trip, and
+      // ensureConnected's re-dial has its own connect bounds.
       releaseForIdle: raw.releaseForIdle?.bind(raw),
       ensureConnected: raw.ensureConnected?.bind(raw),
-      // Forward the teardown signal unwrapped (it is a synchronous local latch
-      // set, no peer round-trip to bound), and only when the transport implements
-      // it, exactly like the two cycle-boundary signals above.
       beginTeardown: raw.beginTeardown?.bind(raw),
     };
   }
@@ -992,18 +670,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       );
     }
     this.config = config;
-    // timeToLive is computed after a successful connect (below) so that
-    // retry latency during connection setup does not eat into the
-    // peer-waiting budget. Applies to both peerTimeoutMs-supplied and
-    // default-fallback windows.
 
     if (config.channel === "filedrop") {
-      // Split mode (a separate outbound directory) requires both halves of the
-      // pair; the config schema rejects a half-set pair, mixing with `path`, and
-      // a split without retain mode, so by here either `path` or the full pair is
-      // present. Fold backslashes and strip trailing slashes to the on-disk form
-      // (see normalizeFiledropPath); the CLI reconcile compares paths through the
-      // same function so its verdict matches what this connection actually opens.
+      // The config schema guarantees either `path` or the full
+      // inbound/outbound pair.
       const split =
         config.inboundPath !== undefined && config.outboundPath !== undefined;
       const inboundDir = normalizeFiledropPath(
@@ -1012,14 +682,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       const outboundDir = split
         ? normalizeFiledropPath(config.outboundPath!)
         : inboundDir;
-      // Same distinctness rule the config schema applies (pathsResolveToSameDir),
-      // re-checked here so a caller that constructs a connection directly --
-      // bypassing the schema -- is still guarded: two paths that resolve to the
-      // same directory (e.g. "/x" vs "/x/", "/x//y" vs "/x/y", "/x/./y" vs
-      // "/x/y") would silently collapse split mode into a shared directory,
-      // defeating the separate-audit-trail purpose. See pathsResolveToSameDir for
-      // the textual cases it catches and the residuals (.. , Windows case) it
-      // cannot.
+      // The schema's distinctness rule, re-checked for a caller that builds a
+      // connection directly; pathsResolveToSameDir states what it cannot catch.
       if (split && pathsResolveToSameDir(inboundDir, outboundDir))
         throw new UsageError(
           "filedrop inbound and outbound directories resolve to the same " +
@@ -1032,10 +696,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
             : ""),
       );
       const connectTimeoutMs =
-        // ?? covers a config built without an options block at all (the schema
-        // default only fires when options is present); LocalFSClient applies the
-        // same 30000 ms as its own fallback, so the value is supplied explicitly
-        // here rather than relied on downstream.
+        // A config with no options block never got the schema default.
         config.options?.serverConnectTimeoutMs ??
         DEFAULT_SERVER_CONNECT_TIMEOUT_MS;
       const maxReconnectAttempts =
@@ -1045,11 +706,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         connectTimeoutMs,
         maxReconnectAttempts,
       });
-      // In split mode probe the outbound directory too, so an inaccessible
-      // write target fails fast at connect (with the access-retry the probe
-      // applies) rather than only at the first write. Safe to call connect()
-      // twice here: filedrop is always backed by LocalFSClient, whose connect()
-      // is a stateless read/write access check, not a persistent session.
+      // Probe the outbound directory too, so an inaccessible write target fails
+      // at connect. A second connect() is safe: filedrop runs on LocalFSClient,
+      // whose connect() is a stateless access check.
       if (split)
         await this.client.connect({
           path: outboundDir,
@@ -1059,11 +718,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.path = inboundDir;
       this.outbound = split ? outboundDir : undefined;
     } else {
-      // Split mode for SFTP mirrors filedrop: the schema guarantees either
-      // `server.path` (shared, possibly unset for login-home) or the full
-      // inbound/outbound pair. A single SSH session serves both directories;
-      // their existence is validated lazily at the first list/write, the same as
-      // `server.path` already is.
+      // The schema guarantees either `server.path` (unset for the login home)
+      // or the full pair. One SSH session serves both directories.
       const split =
         config.server.inboundPath !== undefined &&
         config.server.outboundPath !== undefined;
@@ -1075,21 +731,11 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       const outboundDir = split
         ? stripTrailingSlash(config.server.outboundPath!)
         : inboundDir;
-      // Distinctness check for split mode. The stored paths above keep their
-      // exact form (only a single trailing slash stripped, unchanged from shared
-      // mode); the comparison runs pathsResolveToSameDir on the raw configured
-      // paths -- the same rule, on the same inputs, that the config schema
-      // applies -- so the schema and the live connection give the same verdict,
-      // and textual near-misses ("in" vs "in//", "./in" vs "in", "a/./in" vs
-      // "a/in") are caught instead of silently collapsing split mode into one
-      // directory. It cannot determine every server-side equivalence -- a
-      // relative path and the absolute path it expands to under the
-      // (client-side-unknown) login home are indistinguishable, as are ".."
-      // segments across a symlink -- so that residual is the operator's
-      // responsibility (see docs/EXCHANGE_REFERENCE.md). Re-checked here (not
-      // only in the schema) to guard a caller that constructs a connection
-      // directly, and BEFORE the connect-option build and connect below, so a
-      // same-directory split is refused without ever dialing the server.
+      // The schema's rule on the same raw inputs, re-checked for a direct
+      // caller before any dial. It cannot see server-side equivalence (a
+      // relative path under the login home, ".." across a symlink); that stays
+      // the operator's (see
+      // docs/EXCHANGE_REFERENCE.md#connectioninbound_path--connectionoutbound_path).
       if (
         split &&
         pathsResolveToSameDir(
@@ -1105,11 +751,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       const connectOptions = this.sftpSession.buildConnectOptions(config, {
         includeCredentials: true,
       });
-      // Install the connect path's host-key verifier onto the options AFTER
-      // buildConnectOptions has applied providerOptions, so a providerOptions
-      // entry can never win even if the allowlist were loosened. The handle
-      // exposes the human-readable failure the verifier captures, which the
-      // connect catch below maps to a security-kind ConnectionError.
+      // Installed after buildConnectOptions applies providerOptions, so no
+      // providerOptions entry can replace it.
       const hostKeyVerifier = this.sftpSession.installEnforcingVerifier(
         connectOptions,
         config,
@@ -1117,30 +760,16 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
       const portString =
         config.server.port !== undefined ? `:${config.server.port}` : "";
-      // The configured SFTP username is a credential component, so log only that
-      // one is set, never its value -- consistent with redactUrlCredentials,
-      // which strips userinfo from any echoed URL. (The password is never
-      // logged.) A debug log reaches the terminal, shell history, and any
-      // --log-file, so the value must not ride along.
+      // The username is a credential component: log only that one is set.
       const usernameString =
         config.server.username !== undefined ? " as a configured user" : "";
-      // Escape the host and remote path before they reach the debug log. Both are
-      // partner-reachable: on an offline-accept-seeded config they come from the
-      // partner's invitation endpoint, whose host/path are charset-unconstrained
-      // and copied verbatim, so they can hold CR/LF or other control/ANSI/Unicode
-      // bytes; emitted raw they would enable log-line forging/spoofing on the
-      // operator's terminal or --log-file. A log call site is the sink for the
-      // values it shows, so it escapes them itself, unlike the error messages in
-      // this file, which are composed raw and escaped once where they render. The
-      // port is a validated integer and the username is logged only as a presence
-      // marker, so neither needs escaping.
+      // Host and path can come from the partner's invitation and hold control
+      // bytes; a log call site escapes what it shows. The port is a validated
+      // integer.
       this.log.debug(
         `[${this.role}] connecting to ` +
           `${redactAndSanitizeForDisplay(config.server.host)}${portString}` +
           `${usernameString}, path: ${redactAndSanitizeForDisplay(inboundDir)}` +
-          // Name the outbound directory too in split mode, so a misconfigured
-          // outbound path is diagnosable from the connect log rather than only
-          // at the first write. Mirrors the filedrop open() log above.
           (split
             ? ` (inbound), outbound: ${redactAndSanitizeForDisplay(outboundDir)}`
             : ""),
@@ -1150,10 +779,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       } catch (err) {
         const refusal = hostKeyVerifier.refusal();
         if (refusal !== undefined) {
-          // A host-identity failure -- a pinned-fingerprint mismatch or the
-          // no-pin fail-closed refusal (both verifier branches settle through
-          // refusal()) -- is an authentication failure against the server, so
-          // it has the class and the security kind consumers classify on.
+          // A pinned-fingerprint mismatch or the no-pin refusal.
           throw new AuthenticationError(
             `SFTP host-key verification failed: ${refusal.summary}`,
             { cause: chainDetailCauses(refusal.details, err) },
@@ -1162,19 +788,14 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         throw err;
       }
       // Set only once the server accepted the session: close() keys its
-      // teardown I/O on `path`, and a connect that failed has nothing to
-      // drain or sweep.
+      // teardown I/O on `path`.
       this.path = inboundDir;
       this.outbound = split ? outboundDir : undefined;
     }
 
     this.connected = true;
-    // Compute timeToLive only after connect() has resolved so that retry
-    // latency during connection setup does not eat into the peer-waiting
-    // budget. Two cases:
-    //   1. No constructor timeToLive: derive from config peerTimeoutMs (or the
-    //      default fallback) so the full budget is available for peer-waiting.
-    //   2. Constructor timeToLive present: it wins - do not recompute it.
+    // After connect(), so connection retries do not spend the arrival budget;
+    // a constructor-supplied timeToLive wins.
     if (this.options.timeToLive === undefined) {
       const ttlMs = config.options?.peerTimeoutMs ?? DEFAULT_PEER_TIMEOUT_MS;
       this.options.timeToLive = new Date(Date.now() + ttlMs);
@@ -1184,12 +805,9 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Connect only far enough to observe the server's presented host key, then
-   * REFUSE the connection -- the ssh-keyscan analogue used to establish a
-   * first-use pin. Delegates to the sftpSession subsystem, which drives the raw
-   * transport and returns the presented fingerprint/key-type without ever
-   * authenticating; see {@link SftpSession.probeHostKeyFingerprint}. The CLI's
-   * first-use trust flow (apps/cli/src/hostKeyTrust.ts) calls it directly.
+   * Connects only far enough to observe the server's host key, then refuses
+   * the connection without authenticating: the ssh-keyscan analogue for a
+   * first-use pin. See {@link SftpSession.probeHostKeyFingerprint}.
    */
   async probeHostKeyFingerprint(
     config: SFTPConnectionConfig,
@@ -1198,9 +816,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   async cleanup() {
-    // In retain mode, cleanup() removes nothing: in-flight temp-*.tmp writes
-    // are cleaned up inline in send()/writeAck() before reaching here,
-    // and all protocol files are the durable transcript that must persist.
+    // Retain mode removes nothing: the directory is the durable transcript, and
+    // temp writes are cleaned up inline where they fail.
     if (this.options.retainFiles) {
       this.log.debug(
         `[${this.role}] retain mode: directory is transcript, skipping cleanup`,
@@ -1217,13 +834,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       `[${this.role}] cleaning up ${this.responsibleFiles.size} file(s)` +
         `${responsibleFilesString}`,
     );
-    // responsibleFiles holds this party's own writes (hello, lock, joining, ack,
-    // message), which are all self-writes and therefore live in the OUTBOUND
-    // directory; sweep them there. cleanup() is a no-op in retain mode (the early
-    // return above), and a config-derived split connection requires retain, so in
-    // practice this only runs in shared mode (outbound === path); routing through
-    // outboundPath additionally keeps a direct-set library caller who configured a
-    // split outbound without retain mode from orphaning files in the wrong place.
+    // responsibleFiles are self-writes, so they live in the outbound directory.
     return Promise.all(
       Array.from(this.responsibleFiles).map((filename) =>
         this.client.safeDelete(
@@ -1234,15 +845,10 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Arms the authenticated cross-party abort marker, called by the orchestrator
-   * once post-handshake with the two derived per-direction tokens (self = the
-   * token written into `<myId>-abort.json` on a fault; peer = the token a
-   * `<peerId>-abort.json` is verified against). Delegates to the abortMarker
-   * subsystem, threading this party's id and the current OUTBOUND write directory
-   * (the abort marker is a self-write; see the subsystem's arm() capture comment)
-   * plus the raw transport the short-bounded write rides. Must be called after
-   * open() so a path is available; if it is not, the write degrades to a no-op
-   * rather than throwing.
+   * Arms the abort marker once after the handshake, with the token this party
+   * writes into `<myId>-abort.json` and the token a `<peerId>-abort.json` must
+   * verify against. Call after open(); without a path the write is a no-op.
+   * See docs/spec/CHANNEL_SECURITY.md#authenticated-abort-marker.
    */
   armAbort(
     selfToken: Uint8Array<ArrayBuffer>,
@@ -1258,154 +864,80 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Triggered by the orchestrator's catch on a terminal organic fault (directory
-   * still writable). Delegates to the abortMarker subsystem, which resolves the
-   * abort decision to "write" (pre-empting a later sealAbort) and memoizes the
-   * bounded marker write, returning the same promise to every caller -- the
-   * parked close() and the catch both await it. Idempotent and best-effort: a
-   * faulted write simply leaves no marker, and the peer falls back to the
-   * existing peer-silence hedge. Rejection is absorbed by both awaiters (close()
-   * must stay non-throwing).
+   * Writes this party's abort marker on a terminal fault, pre-empting a later
+   * sealAbort(). Idempotent: every caller gets the same promise, and absorbs its
+   * rejection. Best-effort: a failed write leaves no marker, and the peer falls
+   * back to its silence timeout.
    */
   writeAbortMarker(): Promise<void> {
     return this.abortMarker.writeMarker();
   }
 
   /**
-   * Declares "no marker coming" -- called at the top of the orchestrator's
-   * doCleanup on every terminal path. A no-op once a writeAbortMarker() has
-   * pre-empted it. This is the single chokepoint that frees a parked close() on
-   * the clean-completion, signal, and echo paths so teardown does not block on
-   * the fallback grace. Pure synchronous one-shot; safe on an unarmed
-   * connection (it just latches the resolution that the skipped close() gate
-   * never reads).
+   * Declares that no marker is coming, freeing a close() parked on that
+   * decision. Called on every terminal path; a no-op after writeAbortMarker()
+   * and safe on an unarmed connection.
    */
   sealAbort(): void {
     this.abortMarker.seal();
   }
 
   /**
-   * Tears the connection down in full: stops the poll loop, sweeps the files
-   * this side is responsible for, then ends the underlying client. Ordering is
-   * critical - the poller must stop before the client is ended (or its next
-   * cycle would run against a dead client and emit a spurious error), and
-   * cleanup must run before the client is ended (it deletes remote files
-   * through that client).
-   *
-   * Before cleanup, drains the last sent file: waits for the peer to consume it
-   * so a clean close never deletes an unconsumed terminal frame. The wait is
-   * bounded by the short fixed {@link TERMINAL_FRAME_DRAIN_TIMEOUT_MS} (capped
-   * at `inactivityTimeoutMs`), not the full peer-inactivity budget -- the
-   * result is already persisted by close() time and cleanup() deletes the frame
-   * as a fallback, so a departed peer fast-fails teardown in seconds rather
-   * than parking for up to an hour. An unresponsive peer causes the drain to
-   * time out and cleanup() to delete the file as a fallback. Idempotent: safe
-   * to call repeatedly and on a connection that was never opened.
-   *
-   * The client's own `end()` is bounded on the same footing, by the short
-   * {@link CONNECTION_CLOSE_TIMEOUT_MS} (capped at `inactivityTimeoutMs`), so a
-   * transport whose close the partner never completes cannot park teardown on the
-   * peer-inactivity budget. That bound abandons core's WAIT only; closing the
-   * connection itself is the transport's own responsibility (see
-   * {@link FileTransportClient.end}).
+   * Tears the connection down: stops the poll loop, drains the last sent
+   * frame, sweeps this side's files, then ends the client. The poller stops
+   * first so no cycle runs against a dead client, and cleanup deletes through
+   * the client so it runs before end(). The drain and end() waits use the short
+   * teardown bounds. Idempotent, and safe on a connection never opened. See
+   * docs/spec/FILE_SYNC.md#phase-3----cleanup-and-close.
    */
   async close() {
-    // Signal teardown to the transport FIRST, before the abort-marker gate below,
-    // so the terminal-frame drain's re-dial (and the marker write's, when close()
-    // wins the race with the catch-path write) is exempt from the transport's
-    // mid-exchange reconnection cap and is neither counted nor warned. No-op on a
-    // transport that does not bound reconnections. The abort-marker write also
-    // signals this itself, because a catch-path write can precede this close().
+    // Before the marker gate, so the drain's and the marker write's re-dials
+    // are exempt from the transport's reconnection cap. The marker write
+    // signals this too, since it can precede close().
     this.client.beginTeardown?.();
-    // Stop polling before the abort-marker gate below can wait: the decision
-    // it waits for is made locally, and a poll during that wait would consume
-    // a peer message nothing will receive.
+    // Stop polling before the gate can wait: a poll during the wait would
+    // consume a peer message nothing will receive.
     this.stop();
-    // Abort-marker gate, before the drain and client.end(), which would kill a
-    // marker write on the same transport. A fault fire-and-forgets close()
-    // before the orchestrator's catch decides, so an undecided close() waits
-    // for the decision or the fallback grace. Any marker write in flight is
-    // then awaited in full, however the decision stood when close() began;
-    // the write has its own budget, and close() stays non-throwing.
+    // Before the drain and end(), which would kill a marker write on the same
+    // transport. An undecided close() waits for the decision or the fallback
+    // grace, then awaits any write in flight.
     if (this.abortArmed && !this.abortMarker.decisionResolved)
       await this.abortMarker.awaitDecisionOrGrace();
     await this.abortMarker.pendingWrite?.catch(() => {});
 
-    // Cancel any in-flight wait (a rendezvous/send sleep parked between polls)
-    // so it rejects promptly instead of resuming against a connection that is
-    // tearing down. stop() (above) already cleared pollerActive and the poller
-    // timer -- both synchronous -- so by the time an abort-induced rejection
-    // reaches poll()'s catch, the !pollerActive guard swallows it. The drain
-    // loop below stays on a plain setTimeout (it is the teardown wait itself;
-    // see its comment). INVARIANT: every abort() in this class passes a
-    // ConnectionClosedError reason -- cancellableDelay rejects with
-    // signal.reason, and the plain-Error (exit 69) classification depends on it.
+    // Cancel any in-flight wait; stop() already cleared the poller, so poll()'s
+    // catch swallows the rejection. Every abort() here passes a
+    // ConnectionClosedError: cancellableDelay rejects with signal.reason, and
+    // the exit-69 classification depends on it.
     this.abortController.abort(
       new ConnectionClosedError("connection closed during wait"),
     );
 
     if (this.path !== undefined) {
-      // Connection-per-poll mode released the last cycle's session, so
-      // re-establish one BEFORE the drain deadline clock starts below: a
-      // re-dial handshake billed to the drain budget could time the drain out
-      // and drop the terminal frame to the cleanup fallback, and cleanup()'s
-      // sweeps below also need a live session. No-op when a session is
-      // already live (default whole-exchange mode, or the abort-marker write
-      // above already re-dialed via within-cycle recovery) and when the
-      // transport does not implement it (filedrop). Best-effort and
-      // non-throwing, as close() must be: a failed or refused re-dial leaves
-      // the drain to its cleanup fallback, exactly as a still-dropped session
-      // does. The abort-marker write above is NOT preceded by this call on
-      // purpose -- it rides its own within-cycle recovery, so a re-dial here
-      // would race that write's re-dial on the one shared session.
+      // Re-establish a session released for the idle gap before the drain clock
+      // starts, so a re-dial cannot time the drain out. The marker write above
+      // does not get this call: it re-dials through the transport's own
+      // recovery, which a second re-dial would race. See
+      // docs/spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary.
       try {
         await this.client.ensureConnected?.();
       } catch {
         /* best-effort; teardown proceeds against whatever session state results */
       }
-      // Drain the last sent file before sweeping: a clean close must not delete
-      // a terminal frame the peer has not yet consumed. Bounded by the short
-      // fixed TERMINAL_FRAME_DRAIN_TIMEOUT_MS (min'd with inactivityTimeoutMs),
-      // NOT the full peer-inactivity budget: at teardown the result is already
-      // persisted and cleanup() deletes the frame as a fallback, so a long wait
-      // protects nothing and would hang a clean close against a departed peer
-      // for up to inactivityTimeoutMs (default one hour). Drain failure (list()
-      // error or timeout) falls through to cleanup(), which deletes as a
-      // fallback. In retain mode the last sent file is never deleted, so the
-      // drain would spin to its deadline; skip it since cleanup() is a no-op
-      // anyway. This is safe, not a lost terminal frame: retain mode never
-      // deletes a message, so the final send persists on disk as part of the
-      // transcript and the peer's poller reads it whenever it next lists --
-      // durability is decoupled from deletion. The drain exists in delete mode
-      // only to stop cleanup() from deleting an unconsumed frame, a race that
-      // cannot occur here. Skipping it forgoes only sender-side confirmation
-      // that the peer consumed the final message, which matches the durable-ack
-      // contract (an ack means "durably received", not "consumed by the
-      // application").
+      // Delete mode only: wait for the peer to consume the terminal frame so
+      // cleanup() does not delete it unread. Retain mode never deletes a
+      // message, so the frame stays on disk for the peer.
       if (this.lastSentFile !== undefined && !this.options.retainFiles) {
         const path = this.path;
         const lastSentFile = this.lastSentFile;
-        // min() so a configured inactivity budget smaller than the fixed drain
-        // budget still caps teardown below it rather than above it (see
-        // TERMINAL_FRAME_DRAIN_TIMEOUT_MS).
         const drainTimeoutMs = Math.min(
           TERMINAL_FRAME_DRAIN_TIMEOUT_MS,
           this.inactivityBudgetMs(),
         );
         const deadline = Date.now() + drainTimeoutMs;
-        // Bound each drain list() by the time remaining to `deadline`, not the
-        // per-call transport budget: boundTransport arms a fresh
-        // inactivityTimeoutMs on every list() -- potentially far LARGER than
-        // this short drain deadline -- so a list issued late in the drain could
-        // otherwise run a full inactivity budget PAST `deadline`, blocking teardown
-        // well beyond it. Racing it against the remaining window keeps total
-        // teardown within the drain deadline (the documented "drain times out"
-        // contract). This is teardown-specific and does not contradict the
-        // fresh-per-await budget the live exchange uses: the drain has its own
-        // short deadline to honor, whereas a healthy long-running poll has none
-        // by design. A list() that loses this race rejects and the enclosing
-        // catch falls through to cleanup(), exactly as a list() error already
-        // does.
+        // Each list() races the time left to `deadline`, not a fresh inactivity
+        // budget, so a late list cannot hold teardown past the drain deadline;
+        // a lost race falls through to cleanup().
         const filePresent = async () => {
           const remaining = Math.max(0, deadline - Date.now());
           const files = await withTransportBudget(
@@ -1421,14 +953,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         };
         try {
           if (await filePresent()) {
-            // lastSentFile is NOT routed through the display boundary, unlike the
-            // partner/server-reachable strings elsewhere in close(). It is this
-            // party's own message filename (set only from send()'s outName, never
-            // adopted from a listing), whose sole non-numeric input is this.id --
-            // a local uuidv4() or the operator's own config peer_id. The partner
-            // ingress (the invitation endpoint) is a strict-object schema with no
-            // peerId key, so a peer cannot inject one; the name holds no
-            // partner-controlled bytes even at default verbosity.
+            // Not escaped: this party's own message name, built from this.id (a
+            // local UUID or the operator's peer_id), which no partner input sets.
             this.log.info(
               `[${this.role}] close: waiting up to ${drainTimeoutMs} ms for ` +
                 `peer to consume ${lastSentFile} before cleanup`,
@@ -1436,21 +962,14 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
             this.log.debug(
               `[${this.role}] draining ${lastSentFile} before cleanup`,
             );
-            // Tracks the last OBSERVED presence so the deadline-fired log gates
-            // on "peer never consumed the file", not on the clock alone. The
-            // loop exits on either deadline expiry or filePresent() going false;
-            // a clock-only check would mislabel a clean drain whose final
-            // filePresent() returned false at/after the deadline as a timeout.
+            // The last observed presence, so the timeout log fires only when
+            // the peer never consumed the file, not on the clock alone.
             let stillPresent = true;
             while (Date.now() < deadline) {
               stillPresent = await filePresent();
               if (!stillPresent) break;
-              // By design a plain setTimeout, not this.wait(): this drain IS
-              // the teardown wait and runs after the session controller is
-              // already aborted (above), so wiring it to that signal would make
-              // it reject on the first iteration and skip its bounded wait. It
-              // is hard-bounded by `Date.now() < deadline` and its catch
-              // swallows failures, so a separate controller buys nothing.
+              // Not this.wait(): the session signal is already aborted, so it
+              // would reject at once.
               await new Promise((resolve) =>
                 setTimeout(resolve, this.options.pollingFrequency),
               );
@@ -1467,15 +986,12 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         }
       }
 
-      // Best-effort sweep: a delete failure must not stop us from ending the
-      // client, so it is logged rather than propagated.
+      // Best-effort: a delete failure must not stop the client from ending.
       try {
         await this.cleanup();
       } catch (err: unknown) {
         this.log.debug(
-          // cleanup() deletes responsibleFiles (lock/ack names embed the
-          // peerId), so a delete error's message can hold partner bytes via the
-          // path; escape it.
+          // Lock and ack names embed the partner's peerId.
           `[${this.role}] cleanup during close: ` +
             `${redactAndSanitizeForDisplay(errorMessage(err))}`,
         );
@@ -1484,13 +1000,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
     if (this.connected) {
       this.log.debug(`[${this.role}] closing connection`);
-      // Clear `connected` BEFORE awaiting end(): the budget wrap can make end()
-      // reject when a server withholds the session-close callback, and close() is
-      // a best-effort teardown that must stay non-throwing and idempotent.
-      // Clearing first means a bounded end() rejection neither leaves `connected`
-      // stuck true nor lets a second close() re-enter this branch and call end()
-      // again on the abandoned client; the rejection is logged like the cleanup()
-      // failure above rather than propagated to the caller.
+      // Cleared before end(), which can reject at its bound, so `connected` does
+      // not stay true and a second close() does not call end() again.
       this.connected = false;
       try {
         await this.client.end();
@@ -1503,56 +1014,34 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     this.path = undefined;
     this.outbound = undefined;
     this.config = undefined;
-    // Clear the role-derived abort tokens with the handshake identity they
-    // derive from. close() does not clear peerId/handshakeRole.
-    // resetSessionState resets only per-session message counters, so the
-    // abort fields are cleared here (and at the two rendezvous recovery
-    // sites), NOT there.
+    // Here, not in resetSessionState(), which resets only the message loop's
+    // counters.
     this.abortMarker.clear();
     this.resetSessionState();
   }
 
   /**
-   * Negotiates rendezvous with the peer by exchanging `-hello.json` and
-   * `<peer1>-<peer2>-lock.json` files (lock mode) or `-hello.json` and
-   * zero-length `-ack.json` acknowledgment markers (lockless mode) in the
-   * shared directory, assigning `peerId` and `handshakeRole` on success.
-   *
-   * Failures throw synchronously rather than being emitted on the `error`
-   * channel: the `error` event is reserved for asynchronous failures from the
-   * poll loop (see {@link start}), which can occur at any time. Callers must
-   * await this method and catch its rejection; an attached `on("error", ...)`
-   * listener will not observe a synchronize-time failure.
+   * Negotiates rendezvous with the peer: `-hello.json` and
+   * `<peer1>-<peer2>-lock.json` files (lock mode) or hellos and zero-length
+   * `-ack.json` markers (lockless mode), assigning `peerId` and `handshakeRole`.
+   * A failure rejects this call and is not emitted on `error`, which is
+   * reserved for the poll loop (see {@link start}).
    */
   async synchronize() {
-    // Entry preconditions, cancellation re-arm, and the mode guards; returns the
-    // per-call path/display scope threaded through the coordinator, which owns
-    // the scan/sweep and the lock-joiner and hello-exchange negotiations.
     const scope = this.validateSynchronizeEntry();
     return this.rendezvous.run(scope);
   }
 
-  // Entry preconditions for synchronize(): the connected/re-entry guards, the
-  // per-session cancellation re-arm, and the three mode guards, plus the
-  // entry-time log line. Returns the path/display scope the phases below thread.
+  // The entry guards for synchronize(); returns the directory scope the
+  // rendezvous runs in.
   private validateSynchronizeEntry(): RendezvousScope {
     if (!this.connected || this.path === undefined)
       throw new InternalConsistencyError("not connected");
 
-    // Captured once, narrowed by the guard above (this.path is reset to
-    // undefined only by close(), which a single-caller synchronize() never races
-    // -- see the abortController note below). `inboundPath` is where this party
-    // reads the peer's files; `outboundPath` is where it writes its own. They
-    // coincide in shared mode; `split` is true only when a separate outbound
-    // directory is configured (which requires retain mode).
     const inboundPath = this.path;
     const outboundPath = this.outbound ?? this.path;
     const split = this.outbound !== undefined;
-    // Operator-facing directory scope for entry-time logs and errors: both
-    // directories in split mode (the entry scan reads inbound and reaches into
-    // outbound for the freshness check), or just the inbound path otherwise.
-    // Mirrors sweepProtocolFiles' dirsDisplay so a split exchange names both
-    // halves consistently wherever a path appears.
+    // Both directories in split mode, so entry-time logs and errors name both.
     const dirsDisplay = composeDirsDisplay(
       inboundPath,
       split ? outboundPath : undefined,
@@ -1560,29 +1049,14 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
 
     if (this.peerId) throw new InternalConsistencyError("already synchronized");
 
-    // Re-arm cancellation per session: each genuine rendezvous (including a
-    // retry on the same instance after a failed synchronize()) starts with a
-    // fresh signal. Placed here, after the re-entry guard, NOT in
-    // resetSessionState() -- that helper runs three times INSIDE a live
-    // synchronize() (the recovery resets), so re-arming there could wipe a
-    // concurrent close()'s abort mid-unwind. A no-op re-entry call throws at the
-    // guard above and never reaches this line, so it cannot swap a live
-    // session's controller. The teardown-stays-aborted invariant relies on a
-    // single, non-concurrent synchronize() caller per instance (the CLI drives
-    // exactly one at a time); a concurrent re-sync during a close() window is
-    // out of scope and not reachable in production.
+    // Re-armed after the re-entry guard and not in resetSessionState(), which
+    // runs inside a live synchronize() and would wipe a concurrent close()'s
+    // abort. Assumes one synchronize() caller at a time, as the CLI drives it.
     this.abortController = new AbortController();
 
-    // Library-level defense-in-depth, sibling to the two retain guards below: a
-    // configured outbound directory requires retain mode (the config schema
-    // rejects split-without-retain). A direct library consumer that sets
-    // `this.outbound` without retainFiles would otherwise reach a lock/delete
-    // path with two directories, where the lock branch's joining sentinel is
-    // written to inbound while the hello is written to outbound -- a
-    // cross-directory rename that is not atomic. Make that combination
-    // unreachable here, where the other mode guards already live, so it never
-    // depends on how `outbound` was set. (retain then forces lockless and
-    // timestamp via the two guards below, so this one check suffices.)
+    // The three mode guards below repeat the config schema's rules for a
+    // caller that builds a connection directly. See
+    // docs/spec/FILE_SYNC.md#two-orthogonal-mode-axes.
     if (this.outbound !== undefined && !this.options.retainFiles)
       throw new UsageError(
         "a separate outbound directory requires retain mode: without it the " +
@@ -1590,12 +1064,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           "directories, which is not atomic",
       );
 
-    // Library-level defense-in-depth: the schema refine and CLI imply cover the
-    // config/CLI entry points, but a direct library consumer that constructs
-    // FileSyncConnection with retainFiles: true and locklessRendezvous: false
-    // would otherwise reach the delete-based lock path, which is incompatible
-    // with retain mode (lock rendezvous is delete-based and cannot produce the
-    // whole-directory no-delete transcript). Make that combination unreachable.
     if (this.options.retainFiles && !this.options.locklessRendezvous)
       throw new UsageError(
         "retain mode requires lockless rendezvous: lock rendezvous is " +
@@ -1603,11 +1071,6 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
           "transcript required by retain mode",
       );
 
-    // Without timestampInFilename the message filename has no NNN segment, so
-    // poll()'s parseTimestampedMessageNNN() returns undefined for every file and the
-    // receiver silently skips every incoming message. Enforce at the class
-    // boundary so a direct library consumer hits a clear error rather than a
-    // stall.
     if (this.options.retainFiles && !this.options.timestampInFilename)
       throw new UsageError(
         "retain mode requires timestamp_in_filename: without it message " +
@@ -1623,30 +1086,18 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   }
 
   /**
-   * Writes one message to the shared directory for the peer to consume.
-   *
-   * Failures throw synchronously rather than being emitted on the `error`
-   * channel: the `error` event is reserved for asynchronous failures from the
-   * poll loop (see {@link start}). Callers must await this method and catch
-   * its rejection; an attached `on("error", ...)` listener will not observe
-   * a send-time failure.
+   * Writes one message for the peer to consume. A failure rejects this call
+   * and is not emitted on `error` (see {@link synchronize}).
    */
   send(data: unknown): Promise<void> {
     return this.messageLoop.send(data);
   }
 
-  // Writes a zero-length acknowledgment marker for the file `<originalName>.json`,
-  // named `<myId>-<originalName>-ack.json` (see {@link ackMarkerName}). The same
-  // construct is used for the lockless rendezvous ack and the retain-mode
-  // message ack; `originalName` is the acknowledged file's name minus `.json`.
-  //
-  // Published temp-then-rename so the final name never appears before the file
-  // is committed; the marker is matched by name existence only and is never read
-  // for content, so the body is zero bytes (no serialized empty envelope). The
-  // name is a pure function of this party's id and the acknowledged file's fixed
-  // name, so a re-write after a reprocess yields the identical name and cannot
-  // create a duplicate file (driven in fileSyncConnection.test.ts). Returns the
-  // final marker filename (without directory).
+  // Publishes the zero-length marker `<myId>-<originalName>-ack.json`
+  // (ackMarkerName) temp-then-rename, for the lockless rendezvous ack and the
+  // retain-mode message ack; `originalName` omits `.json`. The name depends only
+  // on this party's id and `originalName`, so a re-write after a reprocess
+  // cannot duplicate it. Returns the marker's file name.
   private async writeAck(dir: string, originalName: string): Promise<string> {
     const name = ackMarkerName(this.id, originalName);
     const tempFile = `temp-${uuidv4()}.tmp`;
@@ -1664,11 +1115,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
     return name;
   }
 
-  // Resets all per-session counters and tracking to their initial state. Called
-  // by the rendezvous coordinator's recovery resets (to allow retry on the same
-  // instance and at the joiner prefix-at-dash error path) and by close() (so a
-  // closed instance does not hold stale counters into a hypothetical re-open).
-  // The counters live on the message loop, so this forwards to it.
+  // Resets the message loop's per-session counters, for a rendezvous retry and
+  // on close().
   private resetSessionState() {
     this.messageLoop.resetSessionState();
   }
