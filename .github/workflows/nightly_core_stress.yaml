@@ -105,7 +105,7 @@ jobs:
             // match 144.8 min, WASM memory peak 860 MiB, heap peak 274 MiB,
             // peak RSS 2193 MiB. Its probe limits, each at least 1.5 times
             // its measured time rounded up to 5 min, are 50 min to build and
-            // 220 to match; the job's 290 are those plus 1 of test margin and
+            // 220 to match; its job limit of 290 is those plus 1 of test margin and
             // 15 for setup, rounded up. It needs 13 GiB free.
             const WALLS_FILE = "test/stress/psiRoundWalls.stress.test.ts";
             const WALLS_SIZES = "4194304";
