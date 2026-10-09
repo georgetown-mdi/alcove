@@ -113,10 +113,7 @@ candidate:
 Delivered by: #N (YYYY-MM-DD)
 ```
 
-A staged item lists each PR, oldest first (`Delivered by: #N, #M
-(YYYY-MM-DD)`, dated by the last), and gains the line only when its last
-stage merges; a partial delivery stays in the item's progress notes. It is a
-template line, not an enforced rule.
+The session's close-out board pass (`/follow-ups`) writes the line, through `.claude/scripts/edit-issue.mjs`, for each PR merged in its window; the PR's Implements line names the item. A staged item lists each PR, oldest first, as `Delivered by: #N, #M (YYYY-MM-DD)`, dated by the last, and gains the line only when its last stage merges; a partial delivery stays in the item's progress notes. The stages are the item body's numbered split, or the PRs' "Part of" lines in merge order, the last one dating the line. It is a template line, not an enforced rule.
 
 ## Style rules
 

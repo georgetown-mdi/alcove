@@ -39,22 +39,29 @@ dependencies the body names (an unmet "Depends on" disqualifies), and size
 (prefer issues that land as one 150-900 line PR; flag anything projecting
 past ~1,200 lines as needing a split first).
 
-Before listing any item, whatever its status, check whether merged work
+Before listing an In Progress item or a candidate (the up-to-10 pool you
+would otherwise list; not every item on the boards), check whether merged work
 already delivered it:
 - Its body: a "Delivered by:" line; a merged PR cited as landing the work
-  ("done, #N", "merged as #N", "Implemented by #N", "Settled ... in #N"); a
-  "Resolved" or "Settled" heading or line; a note that the item is ready for
-  the owner to close; or a sibling item named as carrying the rest that is
-  now Done (fetch it to see).
-- Merged PRs naming its id, up to 10 ids per call joined with OR:
+  ("done, #N", "merged as #N", "Implemented by #N", "Settled in #N",
+  "Resolved by #N"); a note that the item is ready for the owner to close; or
+  a sibling item named as carrying the rest that is now Done (fetch it to
+  see). A "Resolved" or "Settled" line counts only when it cites a merged PR:
+  a ruling with no PR is settled, not delivered, and the item stays a
+  candidate.
+- Merged PRs naming its id, in the quoted form the PR template produces,
+  one or several (up to 10) joined with OR:
     gh pr list --state merged --limit 50 --json number,title,body
-      --search "<id> OR <id> ..."
+      --search '"itemId=<id>" OR "itemId=<id>" ...'
+  If the result reaches --limit, raise it once and search again; if it is
+  still full, report the truncation.
   Read the line that names the id. "Implements" delivers the item. "Part of"
   is a partial delivery, and delivers the item when the body's split shows
   that PR was the last stage. "Depends on" and "Follow-on" do not count.
 - A fix that never named the id: search merged PR titles and bodies for the
   item title's 2-4 most specific words, and the staging log for its key
-  phrase (a squash commit's subject is its PR title):
+  phrase, at most one query of each per candidate (a squash commit's subject
+  is its PR title):
     gh pr list --state merged --limit 10 --json number,title --search "<words>"
     git log origin/staging --oneline -i --grep "<phrase>"
   A hit is a lead, not proof: read the PR (gh pr view <N> --json body) and
@@ -70,6 +77,8 @@ Return ONLY this, as raw text (it is data for the caller, not a message):
    line each, never among the candidates:
    <board> <itemId> [<status>] <title> -- satisfied by #N (<the evidence:
    body line, PR verb, or title match>), confirm and close
+   Every line here has a #N; an item with no merged PR to cite stays a
+   candidate.
 3. A closing 1-2 line recommendation naming the 2-4 picks for the next
    session (several small issues batch well together).
 Do not include issue bodies or full board listings in your return.
