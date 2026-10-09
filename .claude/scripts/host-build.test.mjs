@@ -1,15 +1,19 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { delimiter, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
 
 // host-build.sh runs on a host with Docker and the network; neither is here.
@@ -24,9 +28,24 @@ const REPO = fileURLToPath(new URL("../..", import.meta.url));
 const fixtures = createGitFixtures();
 afterEach(() => fixtures.cleanup());
 
+// A directory holding docker (on CI, /usr/bin beside bash and git) is swapped
+// for a copy made of symlinks to everything else in it, so the script still
+// finds bash, git and uname while docker is absent.
+const shadowRoot = mkdtempSync(join(tmpdir(), "host-build-path-"));
+afterAll(() => rmSync(shadowRoot, { recursive: true, force: true }));
+
 const PATH_WITHOUT_DOCKER = (process.env.PATH ?? "")
   .split(delimiter)
-  .filter((dir) => dir !== "" && !existsSync(join(dir, "docker")))
+  .filter((dir) => dir !== "")
+  .map((dir, index) => {
+    if (!existsSync(join(dir, "docker"))) return dir;
+    const shadow = join(shadowRoot, String(index));
+    mkdirSync(shadow);
+    for (const name of readdirSync(dir)) {
+      if (name !== "docker") symlinkSync(join(dir, name), join(shadow, name));
+    }
+    return shadow;
+  })
   .join(delimiter);
 
 const HOST_PLATFORM = {
