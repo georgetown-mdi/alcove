@@ -269,6 +269,13 @@ export const MAX_SFTP_AUTHOR_BODY_BYTES = 64 * 1024;
 export const MAX_SFTP_PROBE_BODY_BYTES = 4 * 1024;
 
 /**
+ * The byte cap on a `PUT /api/jobs/webrtc` body: one address of at most core's
+ * `MAX_SIGNALING_SERVER_URL_LENGTH` (2048) characters, so an oversized body is
+ * a `413` before any parse.
+ */
+export const MAX_SIGNALING_AUTHOR_BODY_BYTES = 16 * 1024;
+
+/**
  * The byte cap on a `POST /api/jobs/signing/fingerprint` body: an identity label
  * and an export toggle, nothing else. Sized like the probe cap -- no path and no
  * credential is representable -- so an oversized body is a `413` before any parse.

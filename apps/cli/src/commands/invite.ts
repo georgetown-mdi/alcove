@@ -28,6 +28,7 @@ import {
   TurnUrlSchema,
   InternalConsistencyError,
   UsageError,
+  isWebAppAddress,
 } from "@alcove/core";
 import type {
   ConnectionConfig,
@@ -89,7 +90,6 @@ import {
 } from "./provision";
 import {
   inviterConnectionFromURL,
-  isWebAppAddress,
   type InviterConnectionConfig,
   type InviterOwnRelay,
 } from "../connectionFromUrl";

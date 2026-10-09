@@ -12,7 +12,7 @@ export interface JobHandoff {
   /** `exchange` (config and key file) or `zeroSetup` (the positional command). */
   mode: "exchange" | "zeroSetup";
   /** The channel the run used. */
-  channel: "sftp" | "filedrop";
+  channel: "sftp" | "filedrop" | "webrtc";
   /** Whether the run wrote a `.alcove.key` the operator must copy; false for zero-setup. */
   usedKeyFile: boolean;
   /**

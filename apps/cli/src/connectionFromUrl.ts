@@ -4,6 +4,7 @@ import {
   InternalConsistencyError,
   UsageError,
   decodeUrlComponent,
+  isWebAppAddress,
   parseSftpUrl,
   redactUrlCredentials,
 } from "@alcove/core";
@@ -76,46 +77,6 @@ export const WEBRTC_URL_EXTRAS_REFUSED =
   "path; it cannot include a user, an API key, or any other query. For a " +
   "coordination server that needs a key, author `channel: webrtc` (with " +
   "`server.key`) in alcove.yaml and run 'alcove exchange'.";
-
-/**
- * The refusal an `http:`/`https:` URL naming anything past the web app's
- * address gets on the invite path. The URL is not echoed: a pasted invitation
- * link holds its token in the fragment.
- */
-export const WEB_APP_ADDRESS_REFUSED =
-  "an http:// or https:// URL must be the web app's own address with no " +
-  "path, user, query, or fragment (e.g. https://app.example.org/). Give that " +
-  "address, or give the coordination server itself as a ws:// or wss:// URL " +
-  "(e.g. wss://peers.example.org/psi).";
-
-/**
- * Whether `url` is a web app's address (`http:` or `https:`), the form an
- * online `alcove invite` resolves to the coordination server the app
- * publishes (./webAppSignaling.ts).
- */
-export function isWebAppAddress(url: URL): boolean {
-  return url.protocol === "http:" || url.protocol === "https:";
-}
-
-/**
- * The origin of the web app at `address`.
- *
- * @throws {UsageError} ({@link WEB_APP_ADDRESS_REFUSED}) when the address is
- *   not `http:`/`https:` or names a path other than `/`, a user, a query, or a
- *   fragment.
- */
-export function webAppOrigin(address: URL): string {
-  if (
-    !isWebAppAddress(address) ||
-    address.pathname !== "/" ||
-    address.username ||
-    address.password ||
-    address.search ||
-    address.hash
-  )
-    throw new UsageError(WEB_APP_ADDRESS_REFUSED);
-  return address.origin;
-}
 
 /**
  * The connection channel a server URL protocol (`sftp:`, `file:`, ...) maps

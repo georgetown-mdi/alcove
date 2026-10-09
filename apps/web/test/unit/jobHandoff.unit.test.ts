@@ -942,7 +942,7 @@ describe("GET /api/jobs/:jobId/handoff", () => {
 describe("handoffCaveats (the panel's before-you-schedule list)", () => {
   /** A hand-off on `channel` whose paths are held as read per `pathsAsRead`. */
   function handoffWith(
-    channel: "sftp" | "filedrop",
+    channel: "sftp" | "filedrop" | "webrtc",
     pathsAsRead: Partial<typeof NO_PATHS_AS_READ>,
     credentialPasted = false,
   ): Parameters<typeof handoffCaveats>[0] {
@@ -982,6 +982,12 @@ describe("handoffCaveats (the panel's before-you-schedule list)", () => {
         "schedule.",
     );
     expect(caveats.join(" ")).not.toContain("placeholder");
+  });
+
+  test("a webrtc hand-off reads back and names no path to set", () => {
+    const handoff = handoffWith("webrtc", {});
+    expect(parseHandoff(handoff)).toEqual(handoff);
+    expect(handoffCaveats(handoff)).toEqual([]);
   });
 
   test("a placeholder shared directory is one to set", () => {

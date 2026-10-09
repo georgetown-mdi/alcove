@@ -23,6 +23,7 @@ import { zeroSetupOptionsArgv, zeroSetupSftpArgv } from "./intentArgv";
 import {
   composeFiledropConfigSpec,
   composeSftpConfigSpec,
+  composeWebrtcConfigSpec,
 } from "./intentConfig";
 
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
@@ -41,6 +42,7 @@ import type {
   JobHandoff,
   JobHandoffTemplate,
 } from "@jobContract/jobHandoff";
+import type { AuthoredSignalingServer } from "./signalingServer";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
@@ -201,11 +203,17 @@ function buildExchangeHandoffTemplate(
 function exchangeHandoffSpec(
   intent: JobExchangeIntent,
   serverEntry: JobSftpServerEntry | undefined,
+  signalingServer: AuthoredSignalingServer | undefined,
   filedropSplit: boolean,
   mountedDocument: ExchangeSpec | undefined,
   mountedDocumentConverted: boolean,
 ): ExchangeSpec {
-  const composed = composedHandoffSpec(intent, serverEntry, filedropSplit);
+  const composed = composedHandoffSpec(
+    intent,
+    serverEntry,
+    signalingServer,
+    filedropSplit,
+  );
   return mountedDocument === undefined || mountedDocumentConverted
     ? composed
     : withPathsAsRead(composed, mountedDocument, intent);
@@ -394,10 +402,13 @@ function folderPathsOf(
   };
 }
 
-/** The composition the template states, over the placeholder paths above. */
+/** The composition the template states, over the placeholder paths above. A
+ * coordination server is the same from any machine, so it is stated as the
+ * run used it. */
 function composedHandoffSpec(
   intent: JobExchangeIntent,
   serverEntry: JobSftpServerEntry | undefined,
+  signalingServer: AuthoredSignalingServer | undefined,
   filedropSplit: boolean,
 ): ExchangeSpec {
   if (intent.channel === "sftp") {
@@ -406,6 +417,17 @@ function composedHandoffSpec(
     return composeSftpConfigSpec(
       intent,
       placeholderServerEntry(serverEntry),
+      HANDOFF_SIGNING_PATHS,
+    );
+  }
+  if (intent.channel === "webrtc") {
+    if (signalingServer === undefined)
+      throw new Error(
+        "webrtc handoff reached compose without a coordination server",
+      );
+    return composeWebrtcConfigSpec(
+      intent,
+      signalingServer,
       HANDOFF_SIGNING_PATHS,
     );
   }
@@ -667,6 +689,9 @@ interface JobHandoffRunFacts {
    * shared directory and the two-directory form.
    */
   filedropSplit: boolean;
+  /** The coordination server a webrtc run dialed. Read only on the webrtc
+   * channel, whose template states it. */
+  signalingServer?: AuthoredSignalingServer;
   /**
    * Whether the run used the key file beside the opened configuration rather
    * than one the console wrote into the run's own folder. Absent is false.
@@ -701,6 +726,7 @@ export function buildJobHandoff(
   {
     credentialPasted,
     filedropSplit,
+    signalingServer,
     keyFileBesideConfiguration = false,
     mountedDocument,
     mountedDocumentConverted = false,
@@ -726,6 +752,7 @@ export function buildJobHandoff(
   const handoffSpec = exchangeHandoffSpec(
     intent,
     serverEntry,
+    signalingServer,
     split,
     mergeBase,
     mountedDocumentConverted,

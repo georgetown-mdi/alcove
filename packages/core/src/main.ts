@@ -818,10 +818,20 @@ export {
 export type { RendezvousRole, SignalingLocationField } from "./rendezvous";
 export {
   MAX_SIGNALING_DISCOVERY_BYTES,
+  MAX_SIGNALING_SERVER_URL_LENGTH,
   SIGNALING_DISCOVERY_PATH,
+  publishedSignalingServerURL,
   signalingDiscoveryDocumentSource,
   signalingServerFromDiscoveryDocument,
 } from "./signalingDiscovery";
+export {
+  SIGNALING_DISCOVERY_TIMEOUT_MS,
+  WEB_APP_ADDRESS_REFUSED,
+  isWebAppAddress,
+  resolveWebAppSignalingServer,
+  webAppOrigin,
+} from "./webAppSignaling";
+export type { ResolveWebAppSignalingServerOptions } from "./webAppSignaling";
 export {
   deriveRelayKey,
   mintRelayCredential,

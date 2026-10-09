@@ -10,6 +10,8 @@ import {
   getLogger,
   InternalConsistencyError,
   UsageError,
+  WEB_APP_ADDRESS_REFUSED,
+  webAppOrigin,
 } from "@alcove/core";
 
 import {
@@ -17,11 +19,7 @@ import {
   validateInvite,
 } from "../../../src/commands/invite";
 import { saveConfig } from "../../../src/config";
-import {
-  inviterConnectionFromURL,
-  WEB_APP_ADDRESS_REFUSED,
-  webAppOrigin,
-} from "../../../src/connectionFromUrl";
+import { inviterConnectionFromURL } from "../../../src/connectionFromUrl";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 
 const tmpDirs: string[] = [];
