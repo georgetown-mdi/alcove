@@ -8,6 +8,10 @@ push:
   `lint-issues.mjs`), and `lib/projectItems.mjs` under them
 - `worktree-init.sh`, which places a fresh worktree on its branching base and
   provisions its `node_modules`
+- `host-build.sh`, which a host session runs from a hand-off brief to build a
+  commit in a fresh clone -- the workspaces the CLI needs and, on request,
+  Docker images -- without touching the checkout it shares with the dev
+  container
 - `squash-message.mjs`, which drafts the body of the squash message a pull
   request lands as, and `format-squash-message.mjs`, which rewraps a draft
   body, drops the markdown and list markers a commit message does not take,
