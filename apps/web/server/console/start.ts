@@ -73,8 +73,9 @@ export function exitOnBootFailure(error: unknown): never {
  * the server into the SIGINT/SIGTERM shutdown, then listen on `PORT` at
  * `HOST` ({@link DEFAULT_BIND_HOST} when unset). Paths no route names are
  * served from the built client under `staticRoot` when it is given, or by
- * `clientMiddleware` in development. A job API configuration error, or a
- * `staticRoot` holding no client, rejects before anything listens.
+ * `clientMiddleware` in development. A job API configuration error, a
+ * `staticRoot` holding no client, or a port already in use rejects with a
+ * {@link JobApiConfigError}.
  */
 export async function startConsoleServer(options: {
   routes: ReadonlyArray<JobRouteDefinition>;
@@ -101,7 +102,17 @@ export async function startConsoleServer(options: {
   installGracefulShutdown(server, hooks, { timeoutMs: shutdownTimeoutMs() });
 
   const host = process.env.HOST?.trim() || DEFAULT_BIND_HOST;
-  const url = await listenConsoleServer(server, { port: config.PORT, host });
+  const url = await listenConsoleServer(server, {
+    port: config.PORT,
+    host,
+  }).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE")
+      throw new JobApiConfigError(
+        `port ${config.PORT} at ${host} is already in use; set PORT to a ` +
+          "free port, or stop the program using it",
+      );
+    throw error;
+  });
   log.info(`Listening on ${url}`);
   return { server, hooks, url };
 }

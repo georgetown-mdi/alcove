@@ -2,9 +2,9 @@ import { Readable } from "node:stream";
 import fs from "node:fs";
 import path from "node:path";
 
+import { JobApiConfigError, jobEmptyResponse } from "@jobs/gate";
 import { isApiNamespacePath } from "@utils/apiNamespace";
 import { isPathWithin } from "@jobs/pathContainment";
-import { jobEmptyResponse } from "@jobs/gate";
 import { rejectDisallowedClientHost } from "@jobs/routeSupport";
 
 /** The document every client route is answered with. */
@@ -135,6 +135,30 @@ async function fileResponse(
   return new Response(body, { status: 200, headers });
 }
 
+/** The command that builds the client this server serves. */
+export const CLIENT_BUILD_COMMAND = "npm run build:console -w apps/web";
+
+/** The real path of `root`, refusing a root with no index document file. An
+ * error other than a missing path is rethrown as is. */
+function builtClientRoot(root: string): string {
+  const indexPath = path.join(root, INDEX_FILE);
+  const notBuilt = (): JobApiConfigError =>
+    new JobApiConfigError(
+      `the console client is not built (no file at ${indexPath}); run ` +
+        `${CLIENT_BUILD_COMMAND} from the repository root to build it`,
+    );
+  try {
+    const realRoot = fs.realpathSync(root);
+    if (!fs.statSync(path.join(realRoot, INDEX_FILE)).isFile())
+      throw notBuilt();
+    return realRoot;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") throw notBuilt();
+    throw error;
+  }
+}
+
 /**
  * The handler serving the built client under `root`: a `GET` or `HEAD`
  * outside the `/api` namespace whose `Host` the job routes would refuse
@@ -145,14 +169,12 @@ async function fileResponse(
  * lexically or through a symlink -- answers the empty no-store `404`. Content-hashed assets
  * are cacheable for a year; everything else is revalidated. `root` and its
  * index document are checked when the handler is created, so a missing
- * bundle throws at startup.
+ * bundle throws a {@link JobApiConfigError} at startup.
  */
 export function createStaticFileHandler(
   root: string,
 ): (request: Request) => Promise<Response> {
-  const realRoot = fs.realpathSync(root);
-  if (!fs.statSync(path.join(realRoot, INDEX_FILE)).isFile())
-    throw new Error(`The console client's ${INDEX_FILE} is not a file.`);
+  const realRoot = builtClientRoot(root);
 
   return async (request) => {
     if (request.method !== "GET" && request.method !== "HEAD")
