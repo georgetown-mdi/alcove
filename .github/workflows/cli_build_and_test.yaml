@@ -37,7 +37,7 @@ permissions:
 jobs:
   scope:
     name: Decide whether the CLI suites run
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       run: ${{ steps.scope.outputs.run }}
@@ -88,7 +88,7 @@ jobs:
     name: Test (${{ matrix.suite }})
     needs: scope
     if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -188,7 +188,7 @@ jobs:
   # required context matches this job alone.
   test:
     name: CLI Build and Test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     needs: [scope, suite]
     if: always()
@@ -222,7 +222,7 @@ jobs:
     name: Hardened native sshd (${{ matrix.profile }})
     needs: scope
     if: needs.scope.outputs.run == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -257,7 +257,7 @@ jobs:
   chroot-native:
     name: Hardened native sshd (chroot)
     needs: scope
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     if: >-
       needs.scope.outputs.run == 'true' &&
@@ -292,7 +292,7 @@ jobs:
   # a repository secret (which would also make it unavailable to fork PRs).
   smb-doctor:
     name: Doctor against a real Samba server
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     # Rewrites the runner's smb.conf, adds an account, restarts smbd, and
     # kernel-mounts CIFS under passwordless sudo -- the same class of host

@@ -58,7 +58,7 @@ permissions:
 jobs:
   files:
     name: List the stress test files
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     outputs:
       jobs: ${{ steps.list.outputs.jobs }}
@@ -154,7 +154,7 @@ jobs:
   stress:
     name: Core PSI stress (${{ matrix.job.name }})
     needs: files
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Sized per job in the listing step. Per-file wall times are in the verbose
     # output of each run.
     timeout-minutes: ${{ matrix.job.minutes }}

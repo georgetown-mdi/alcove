@@ -48,7 +48,7 @@ permissions:
 jobs:
   static-checks:
     name: Typecheck, Lint, Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
       # Pins Node, installs from the lockfile, and builds @alcove/core (built
@@ -64,7 +64,7 @@ jobs:
 
   repo-guards:
     name: Guards, Scripts, Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
         with:

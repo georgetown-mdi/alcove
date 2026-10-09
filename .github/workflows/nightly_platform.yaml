@@ -1,7 +1,7 @@
 name: Nightly Platform Tests
 
 # Scheduled nightly run of the CLI unit suite on platforms the pull-request gate
-# does not cover. cli_build_and_test.yaml runs only on ubuntu-latest, so every
+# does not cover. cli_build_and_test.yaml runs only on Ubuntu runners, so every
 # darwin-gated test in apps/cli/test/unit -- extendedAclCoverage.test.ts's
 # macOnly sites, fileUtils.test.ts's darwin describe -- and every win32-gated
 # test -- fileUtils.test.ts's "Windows owner-only ACL" describe, otherwise held
@@ -86,7 +86,7 @@ jobs:
     name: CLI unit tests (Windows)
     runs-on: windows-latest
     # Generous relative to the macOS leg: an npm install on windows-latest runs
-    # markedly slower than on macos-latest or ubuntu-latest, and the native
+    # markedly slower than on macos-latest or an Ubuntu runner, and the native
     # dependency's install path on this platform is untested going in -- see
     # the comment at the top of this file.
     timeout-minutes: 45

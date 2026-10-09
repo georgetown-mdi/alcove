@@ -24,7 +24,7 @@ import {
 //
 // The rule is about the hosts the suites are RUN on, which is what makes the
 // vacuous pass reachable rather than hypothetical: every workflow that runs
-// vitest runs it on `ubuntu-latest`, and a developer host is Linux or macOS. A
+// vitest runs it on an Ubuntu runner, and a developer host is Linux or macOS. A
 // gate that returns early when the platform is `linux` or `darwin` is therefore
 // one somebody's green run is already counting, and this check fails on it.
 //

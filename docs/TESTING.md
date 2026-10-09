@@ -676,7 +676,7 @@ counted as coverage and there is no skip for the reporter to see.
 static check) is what holds that, reading every test module the checkout
 contains rather than a maintained list. It fails on a gate that returns early
 when the platform is `linux` or `darwin` -- the hosts the suites are actually
-run on, CI being `ubuntu-latest` throughout -- and reports a gate it cannot
+run on, CI being Ubuntu throughout -- and reports a gate it cannot
 evaluate rather than passing it over. Its reach and what it leaves standing by
 design are in its own header.
 
@@ -966,7 +966,7 @@ npm run test:mutation
 ```
 
 It runs against an installed tree (`npm ci` plus the core build). On the
-nightly's `ubuntu-latest` runner, at the 4 test runners Stryker picks there, the
+nightly's Ubuntu runner, at the 4 test runners Stryker picks there, the
 three files' 366 mutants take 2.5 to 6.5 minutes, about 2.5 of them the initial
 run of the whole core unit tier. Stryker is not a repository dependency by
 design -- it drags in a second copy of Vitest and its own TypeScript -- so

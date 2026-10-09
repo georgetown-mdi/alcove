@@ -30,7 +30,7 @@ permissions:
 jobs:
   resolve:
     name: Resolve base image and provider builds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       base: ${{ steps.base.outputs.base }}
       matrix: ${{ steps.builds.outputs.matrix }}
@@ -98,7 +98,7 @@ jobs:
   probe:
     name: Probe ${{ matrix.leg }} (${{ matrix.tag }})
     needs: resolve
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Raised from the workflow default for the publish step alone: it commits the
     # transcript to this branch through the Contents API. The dev container that
     # reads these results is firewalled off from the blob storage that serves

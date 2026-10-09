@@ -49,7 +49,7 @@ permissions:
 jobs:
   mutation:
     name: Core security-file mutation score
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Upper bound on a hung run. The work fits well under this: the corpus
     # measures around two minutes plus install and the core build, and any
     # single mutant that reaches two minutes is failed as a timeout by the
@@ -83,7 +83,7 @@ jobs:
 
   mutation-cli:
     name: CLI accept command mutation score
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # Upper bound on a hung run. The accept command's 473 mutants measured
     # fourteen minutes at three test runners locally, plus install and the core
     # build here; a mutant that reaches two minutes fails as a timeout.
