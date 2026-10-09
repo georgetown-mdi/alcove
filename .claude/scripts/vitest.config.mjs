@@ -16,5 +16,7 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["**/*.test.mjs"],
     environment: "node",
+    // Tests that spawn git or npm fail the default 5s on load alone.
+    testTimeout: 30_000,
   },
 });

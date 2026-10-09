@@ -33,11 +33,15 @@ produce is your final message to the caller. Never end expecting a reply.
   Anything the change itself needs belongs in the commit.
 - Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
   and reports, says.
-- Before you report, run the repo-wide gates once, as `CLAUDE.md`, Writing,
-  tooling and commits, names them, after the tests relevant to your change pass
-  (a core change means every workspace unit suite); while working, check only
-  what you changed (`CONTRIBUTING.md`, Code Conventions). State in your report
-  whether the work is committed.
+- Before you report, run each command line `node scripts/required-suites.mjs`
+  prints for your diff: the builds, then the suites CI runs on the paths you
+  touched, then the repo-wide gates once at the end. Its comment lines and the
+  CI-only note are not commands. The gates are the ones CI runs, as the script
+  prints them, so `formatcheck` is the check where `CLAUDE.md` names `format`,
+  the fixer. The list is read from the workflows, so it holds whether or not
+  your prompt names a suite; report any suite you could not run, and why. While
+  working, check only what you changed (`CONTRIBUTING.md`, Code Conventions).
+  State in your report whether the work is committed.
 - Any Agent spawn you make passes an explicit model -- an omitted model silently
   inherits this session's model.
 - Bubble questions up in your final report rather than guessing or stalling; the

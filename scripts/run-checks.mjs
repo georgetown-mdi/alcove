@@ -16,6 +16,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
+import { availableParallelism, loadavg } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -350,10 +351,19 @@ export function rootScripts(root = repositoryRoot()) {
 }
 
 /**
- * Runs one check and reports how it went.
+ * The one-minute load average, or null on Windows, where Node reports zero.
+ */
+export function oneMinuteLoad() {
+  return process.platform === "win32" ? null : loadavg()[0];
+}
+
+/**
+ * Runs one check and reports how it went, with the one-minute load average
+ * when it started.
  *
  */
 export function runCheck(check, root) {
+  const load = oneMinuteLoad();
   const startedAt = Date.now();
   const [file, ...args] = check.command ?? ["npm", "run", check.script];
   const result = spawnSync(file, args, {
@@ -365,6 +375,7 @@ export function runCheck(check, root) {
     script: check.script,
     ok: result.status === 0,
     seconds: (Date.now() - startedAt) / 1000,
+    load,
   };
 }
 
@@ -400,19 +411,23 @@ export function runAll(
 }
 
 /**
- * Formats the closing summary: one line per check, then the failures.
+ * Formats the closing summary: one line per check with the one-minute load
+ * average it started under, then the failures. `cpuCount` puts the load in
+ * scale.
  *
  */
-export function summarize(results) {
+export function summarize(results, cpuCount = availableParallelism()) {
   const width = Math.max(...results.map((result) => result.script.length));
+  const loadText = (load) =>
+    typeof load === "number" ? `load ${load.toFixed(2)}` : "load n/a";
   const lines = results.map(
     (result) =>
-      `  ${result.ok ? "pass" : "FAIL"}  ${result.script.padEnd(width)}  ${result.seconds.toFixed(1)}s`,
+      `  ${result.ok ? "pass" : "FAIL"}  ${result.script.padEnd(width)}  ${`${result.seconds.toFixed(1)}s`.padStart(7)}  ${loadText(result.load)}`,
   );
   const total = results.reduce((sum, result) => sum + result.seconds, 0);
   const failed = results.filter((result) => !result.ok);
   lines.push(
-    `\n${results.length - failed.length} of ${results.length} checks passed in ${total.toFixed(1)}s.`,
+    `\n${results.length - failed.length} of ${results.length} checks passed in ${total.toFixed(1)}s, on ${cpuCount} CPUs; each load is the one-minute load average when the check started.`,
   );
   if (failed.length > 0) {
     lines.push(
