@@ -26,7 +26,10 @@ Run only when the owner invokes this command; never start the docket unasked.
    item or repository file. To find such a ruling, fetch the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
    body names (`node .claude/scripts/fetch-issues.mjs <project> <itemId> ...`),
-   and cite the ruling in the item's background when one bears on it.
+   and cite the ruling in the item's background when one bears on it. A
+   decision with no board item is filed as a Decision item first (the ruleset's
+   "the board is the only queue"), so the item, its board and its epic are
+   always known.
 3. One decision per item: an item holding two decisions is two items, never
    sub-questions under one.
 4. Number the items once, as N of M, and keep that numbering to the end.

@@ -213,7 +213,8 @@ there is the one the brief describes.
   `require-clean-tree-for-review.mjs` on the branch's next round.
 - **A small fix travels as its exact edit.** For a fix under roughly 20 lines,
   the brief contains the edit itself -- the file, the old text, the new text, and
-  the test to run -- and the spawn is a `sonnet` implementer applying it. Writing
+  the test to run -- and the spawn is a `haiku` implementer applying it during the
+  trial the ruleset names, otherwise `sonnet`. Writing
   the edit out is the cheap path: the reading and the judgment already happened
   here, and re-deriving them is what a full spawn would charge for. Dispatching
   it rather than making it inline buys something else on a security surface: the
