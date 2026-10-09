@@ -12,8 +12,8 @@ name: Core Stress Tests
 # Runs only on `schedule` and manual `workflow_dispatch` -- never on push or
 # pull_request -- so the PR gate is unaffected. Two tiers share this file:
 # nightly runs every file the `stress` project lists except the engine files
-# named in WEEKLY_MINUTES below, which run weekly: each took from 14 minutes to
-# nearly three hours on a hosted runner. A stress file added under test/stress/
+# named in WEEKLY_MINUTES below, which run weekly: each takes from 14 minutes to
+# about three hours on a hosted runner. A stress file added under test/stress/
 # joins the nightly tier without an edit. Each file runs in a job of its own,
 # except the short files named in GROUPED, which share one.
 
@@ -69,7 +69,8 @@ jobs:
           # A scheduled workflow otherwise takes the default branch, but staging
           # is promoted to main slowly, so checking out main here would catch a
           # regression late. staging is the branch this nightly exists to watch.
-          ref: staging
+          # A manual dispatch runs the branch it is dispatched on.
+          ref: ${{ github.event_name == 'schedule' && 'staging' || github.ref }}
       - uses: ./.github/actions/setup
       # Vitest lists the files, so the jobs below run exactly what the `stress`
       # project includes. Each job's limit is above the longest per-test limit
@@ -99,10 +100,16 @@ jobs:
             // min). The 270 minutes for psiRoundWalls cover one round, 2^22
             // (measured 2 h 44 min); its 2^23 round needs about 24 GiB, which
             // a hosted runner lacks, so WALLS_SIZES pins the job to 2^22.
+            // streamedMatchLarge is not yet measured here: the match took 99
+            // min on the 10-CPU arm64 host of the engine fork and is expected
+            // near 145 min on a hosted runner, so the job has the 75 and 210
+            // min limits of its two probes plus 15 for setup, and needs 13
+            // GiB free.
             const WALLS_FILE = "test/stress/psiRoundWalls.stress.test.ts";
             const WALLS_SIZES = "4194304";
             const WEEKLY_MINUTES = {
               [WALLS_FILE]: 270,
+              "test/stress/streamedMatchLarge.stress.test.ts": 300,
               "test/stress/wasmMaskingGrowth.stress.test.ts": 45,
             };
             // Each took 0.5 to 2.5 minutes as a job of its own.
