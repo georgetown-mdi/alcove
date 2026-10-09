@@ -1,11 +1,7 @@
 name: Release
 run-name: ${{ github.event_name == 'push' && format('Release {0}', github.ref_name) || format('Release dry run on {0}', github.ref_name) }}
 
-# A pushed version tag publishes. A manual dispatch, from any branch, is a dry
-# run: it runs every test, build, scan and stamp step and skips each step that
-# would push, sign, attest or create a release, so a branch can drive these jobs
-# on a new runner image before a tag does. Every publishing step is held by its
-# own `if: github.event_name == 'push'`, so a dispatch cannot publish.
+# A manual dispatch runs the dry run docs/RELEASES.md describes under "Dry run".
 on:
   push:
     tags:
@@ -62,9 +58,8 @@ jobs:
   publish:
     name: Publish Docker image
     needs: test
-    # Held on Ubuntu 24.04 until a dry run drives this job on 26.04: the first
-    # attempts stopped at the QEMU setup on Docker Hub's unauthenticated pull
-    # rate limit, on both labels.
+    if: ${{ github.event_name == 'push' }}
+    # Held on Ubuntu 24.04 until the dry-run job's builds pass on 26.04.
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -114,9 +109,7 @@ jobs:
       # comes from the pushed git tag, while the accept kit inside it names the
       # version apps/cli/package.json carries at build time. A release whose two
       # disagree hands the partner a `docker run` line for a different build.
-      # A dry run has no pushed tag to compare, so it skips this check.
       - name: Check the release version against the pushed tag
-        if: ${{ github.event_name == 'push' }}
         env:
           ALCOVE_TAG: ${{ github.ref_name }}
         run: npm run check:release-version
@@ -330,35 +323,6 @@ jobs:
             echo "ALCOVE_FIPS_TAGS"
           } >>"$GITHUB_OUTPUT"
 
-      # A dry run builds both published images for both platforms without
-      # pushing, in place of the build-and-push steps it skips below, so the
-      # arm64 build under QEMU is driven too. Same inputs as those steps apart
-      # from the push.
-      - name: Build the release image for both platforms (dry run, no push)
-        if: ${{ github.event_name != 'push' }}
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build the FIPS variant for both platforms (dry run, no push)
-        if: ${{ github.event_name != 'push' }}
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: Dockerfile.fips
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: ${{ steps.fips_meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=fips
-          cache-to: type=gha,mode=max,scope=fips
-
       # Ahead of the first push rather than after the last one: every step after
       # a failed step is skipped, so an installer that fails behind a push is a
       # published image this job can no longer sign. Installing the tool while
@@ -368,7 +332,6 @@ jobs:
         uses: sigstore/cosign-installer@v4.1.2
 
       - name: Log in to the GitHub Container Registry
-        if: ${{ github.event_name == 'push' }}
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -383,7 +346,6 @@ jobs:
       # is what holds that ordering.
       - name: Build and push
         id: build
-        if: ${{ github.event_name == 'push' }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -407,7 +369,6 @@ jobs:
       # what carries the signature is the manifest this run built rather than
       # whatever the tag resolves to later.
       - name: Sign the image
-        if: ${{ github.event_name == 'push' }}
         run: |
           set -euo pipefail
           cosign sign --yes \
@@ -421,7 +382,6 @@ jobs:
       # which are what the identity is made of -- by
       # `npm run check:release-signing`.
       - name: Verify the signature just produced
-        if: ${{ github.event_name == 'push' }}
         run: |
           set -euo pipefail
           cosign verify \
@@ -440,7 +400,6 @@ jobs:
       # false), so verifying it does not depend on what the registry can hold;
       # docs/RELEASES.md carries the matching verification command.
       - name: Attest build provenance
-        if: ${{ github.event_name == 'push' }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/georgetown-mdi/alcove
@@ -448,7 +407,6 @@ jobs:
 
       - name: Build and push the FIPS variant
         id: build_fips
-        if: ${{ github.event_name == 'push' }}
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -464,14 +422,12 @@ jobs:
           cache-to: type=gha,mode=max,scope=fips
 
       - name: Sign the FIPS variant image
-        if: ${{ github.event_name == 'push' }}
         run: |
           set -euo pipefail
           cosign sign --yes \
             ghcr.io/georgetown-mdi/alcove@${{ steps.build_fips.outputs.digest }}
 
       - name: Verify the FIPS variant's signature
-        if: ${{ github.event_name == 'push' }}
         run: |
           set -euo pipefail
           cosign verify \
@@ -480,7 +436,6 @@ jobs:
             ghcr.io/georgetown-mdi/alcove@${{ steps.build_fips.outputs.digest }}
 
       - name: Attest the FIPS variant's build provenance
-        if: ${{ github.event_name == 'push' }}
         uses: actions/attest-build-provenance@v4
         with:
           subject-name: ghcr.io/georgetown-mdi/alcove
@@ -493,7 +448,9 @@ jobs:
   launchers:
     name: Publish the stamped launchers
     needs: publish
-    # Held on Ubuntu 24.04 with the publish job above, which it needs.
+    if: ${{ github.event_name == 'push' }}
+    # Held on Ubuntu 24.04 with the publish job: it needs that job's image
+    # digest, so it moves when that job does.
     runs-on: ubuntu-24.04
     # The only job in this workflow holding contents: write, and what it writes
     # under it is release assets alone.
@@ -505,15 +462,9 @@ jobs:
       - name: Stamp the launchers with the signed digest
         env:
           ALCOVE_DIGEST: ${{ needs.publish.outputs.digest }}
-          ALCOVE_DRY_RUN: ${{ github.event_name != 'push' }}
         run: |
           set -euo pipefail
           ALCOVE_PLACEHOLDER='@@ALCOVE_IMAGE_DIGEST@@'
-          # A dry run pushes no image, so it stamps a stand-in digest of the
-          # same shape and uploads nothing.
-          if [ "$ALCOVE_DRY_RUN" = true ]; then
-            ALCOVE_DIGEST="sha256:$(printf '%064d' 0)"
-          fi
           mkdir -p launcher-assets
 
           # A whole-line replacement, guarded on both sides. A launcher that no
@@ -555,7 +506,6 @@ jobs:
       # A draft rather than a published release: the maintainer's own checklist
       # step still writes the notes and attaches the SBOM (docs/RELEASES.md).
       - name: Attach the launchers to the release
-        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ github.token }}
           ALCOVE_TAG: ${{ github.ref_name }}
@@ -566,3 +516,55 @@ jobs:
               --title "Alcove $ALCOVE_TAG" --notes ''
           fi
           gh release upload "$ALCOVE_TAG" launcher-assets/* --clobber
+
+  # A dispatch can come from any branch, so the dry run is a job of its own
+  # holding read access alone: it builds what the publish job pushes and has
+  # no login, push, sign, attest or release step.
+  dry-run:
+    name: Build both images without publishing
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verify vendored native tarball integrity
+        run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Verify vendored native tarball provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run check:prebuild-provenance
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build the release image for both platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: alcove:dry-run
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build the FIPS variant for both platforms
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.fips
+          platforms: linux/amd64,linux/arm64
+          push: false
+          tags: alcove:dry-run-fips
+          cache-from: type=gha,scope=fips
+          cache-to: type=gha,mode=max,scope=fips

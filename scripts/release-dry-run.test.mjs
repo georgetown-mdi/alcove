@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
 
-// The release workflow publishes on a pushed version tag and runs as a dry run
-// on a manual dispatch. What keeps a dispatch from publishing is a condition on
-// each publishing step, so this holds every such step to the tag-push
-// condition: a new push, signature, attestation, registry login or release
-// write added without it fails here rather than on the next dry run.
+// The release workflow publishes on a pushed version tag; a manual dispatch,
+// from any branch, runs the dry-run job instead. This holds the shape that
+// keeps a dispatch from holding a write permission: the publishing jobs run on
+// a tag push only, and the dry-run job has read access alone, no publishing
+// step, and builds with a literal `push: false`.
 //
-// What this cannot see: a publishing command this classification does not
-// recognize, such as a registry write through a plain `docker push`.
+// What this cannot see: a `run` that publishes through a script file, such as
+// `run: ./publish.sh`, since only the step's own text is read.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..");
@@ -20,57 +20,71 @@ const RELEASE_WORKFLOW = `${WORKFLOW_DIR}/release.yaml`;
 const document = workflowDocument(repoRoot, RELEASE_WORKFLOW);
 
 const TAG_PUSH_ONLY = "${{ github.event_name == 'push' }}";
-const DRY_RUN_ONLY = "${{ github.event_name != 'push' }}";
+const PUBLISHING_JOBS = ["publish", "launchers"];
+const DRY_RUN_JOB = "dry-run";
 
-const isPush = (value) => value === true || value === "true";
+const PUBLISHING_ACTIONS = [
+  /(^|\/)login-action@/,
+  /^actions\/attest/,
+  /release/i,
+];
+const PUBLISHING_COMMANDS = [
+  /\bcosign\s+sign(?![-\w])/,
+  /\bcosign\s+verify(?![-\w])/,
+  /\bdocker\s+push\b/,
+  /\bgh\s+release\b/,
+  /\bgh\s+api\b.*(-X|--method)[\s=]*['"]?(POST|PUT|PATCH|DELETE)\b/i,
+  /\bgh\s+api\b.*\s(-f|-F|--field|--raw-field|--input)\b/,
+];
 
 /** Why a step publishes, or undefined when it does not. */
 function publishes(step) {
   const uses = step.uses ?? "";
   const run = step.run ?? "";
-  if (uses.startsWith("docker/build-push-action@") && isPush(step.with?.push))
-    return "pushes an image";
-  if (uses.startsWith("docker/login-action@")) return "logs in to a registry";
-  if (uses.startsWith("actions/attest-build-provenance@"))
-    return "writes an attestation";
-  if (/\bcosign\s+sign(?![-\w])/.test(run)) return "signs an image";
-  if (/\bgh\s+release\b/.test(run)) return "writes a release";
+  const action = PUBLISHING_ACTIONS.find((pattern) => pattern.test(uses));
+  if (action !== undefined) return `uses ${uses}`;
+  const command = PUBLISHING_COMMANDS.find((pattern) => pattern.test(run));
+  if (command !== undefined) return `runs ${command.source}`;
   return undefined;
 }
 
-const steps = Object.entries(document.jobs).flatMap(([job, { steps = [] }]) =>
-  steps.map((step) => ({ job, step })),
-);
+const dryRun = document.jobs[DRY_RUN_JOB];
+const dryRunSteps = dryRun?.steps ?? [];
 
 describe("the release workflow's dry run", () => {
-  it("is triggered by a pushed version tag and by a manual dispatch", () => {
+  it("is triggered by a pushed version tag and by a manual dispatch alone", () => {
+    expect(Object.keys(document.on).sort()).toEqual([
+      "push",
+      "workflow_dispatch",
+    ]);
     expect(document.on.push.tags).toEqual(["v[0-9]+.[0-9]+.[0-9]+"]);
-    expect(document.on).toHaveProperty("workflow_dispatch");
   });
 
-  it("gates no job on the event, so a dry run drives every job", () => {
-    for (const job of Object.values(document.jobs)) {
-      expect(job.if).toBeUndefined();
-    }
-  });
-
-  const publishing = steps.filter(({ step }) => publishes(step) !== undefined);
-
-  it("finds the publishing steps it holds", () => {
-    expect(publishing.length).toBeGreaterThanOrEqual(8);
-  });
-
-  for (const { job, step } of publishing) {
-    it(`runs "${step.name}" (${job}, ${publishes(step)}) on a tag push only`, () => {
-      expect(step.if).toBe(TAG_PUSH_ONLY);
+  for (const job of PUBLISHING_JOBS) {
+    it(`runs the ${job} job on a tag push only`, () => {
+      expect(document.jobs[job]?.if).toBe(TAG_PUSH_ONLY);
     });
   }
 
-  it("pushes nothing from a step that runs on a dry run", () => {
-    const dryRunSteps = steps.filter(({ step }) => step.if === DRY_RUN_ONLY);
+  it("gives the dry-run job read access to the repository and nothing else", () => {
+    expect(dryRun?.permissions).toEqual({ contents: "read" });
+  });
+
+  it("has no login, attest, sign, verify, push or release step in the dry-run job", () => {
     expect(dryRunSteps.length).toBeGreaterThan(0);
-    for (const { step } of dryRunSteps) {
-      expect(publishes(step)).toBeUndefined();
+    const found = dryRunSteps
+      .map((step) => ({ name: step.name ?? step.uses, why: publishes(step) }))
+      .filter(({ why }) => why !== undefined);
+    expect(found).toEqual([]);
+  });
+
+  it("builds with a literal `push: false` in every dry-run build step", () => {
+    const builds = dryRunSteps.filter((step) =>
+      (step.uses ?? "").startsWith("docker/build-push-action@"),
+    );
+    expect(builds.length).toBe(2);
+    for (const step of builds) {
+      expect(step.with?.push).toBe(false);
     }
   });
 });
