@@ -159,6 +159,16 @@ function utcInstantLabel(ms: number): string {
   return `${iso.slice(0, 10)} ${clock} UTC`;
 }
 
+/** The label opening the partner copy's next-window line. The schedule form's
+ * paste-to-fill ({@link ./scheduleEntryModel.ts}) reads the line back by it. */
+export const PARTNER_SCHEDULE_NEXT_WINDOW_LABEL = "Next run window opens: ";
+
+/** The label opening the partner copy's repeat line. */
+export const PARTNER_SCHEDULE_REPEATS_LABEL = "Repeats: ";
+
+/** The label opening the partner copy's window-length line. */
+export const PARTNER_SCHEDULE_WINDOW_LABEL = "Each window stays open: ";
+
 /**
  * The agreed schedule as plain text for the operator to send their partner:
  * the next window in UTC, so each side converts it to their own clock rather
@@ -181,9 +191,9 @@ export function partnerScheduleText(
   return [
     "Schedule for our recurring Alcove exchange",
     "",
-    `Next run window opens: ${utcInstantLabel(next.opensAtMs)}`,
-    `Repeats: ${every}`,
-    `Each window stays open: ${lifetimeNoun(schedule.windowSeconds)}`,
+    `${PARTNER_SCHEDULE_NEXT_WINDOW_LABEL}${utcInstantLabel(next.opensAtMs)}`,
+    `${PARTNER_SCHEDULE_REPEATS_LABEL}${every}`,
+    `${PARTNER_SCHEDULE_WINDOW_LABEL}${lifetimeNoun(schedule.windowSeconds)}`,
     "",
     "On your side, enter that window as the first one, converted to your own " +
       "clock, with the same repeat and length. Then have your side running " +

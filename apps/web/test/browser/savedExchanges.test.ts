@@ -424,7 +424,7 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
       .element(page.getByText("Run window open now", { exact: false }))
       .toBeInTheDocument();
     expect(
-      page.getByText("check with your partner", { exact: false }).query(),
+      page.getByText("open different windows", { exact: false }).query(),
     ).toBeNull();
   });
 
@@ -441,9 +441,10 @@ describe("saved list route: an agreed schedule shows its due-ness", () => {
     await expect
       .element(page.getByText("2 scheduled runs in a row", { exact: false }))
       .toBeInTheDocument();
-    // Both checks: the partner, and this device's own clock.
+    // The likely cause, a schedule that differs from the partner's, and
+    // this device's own clock.
     await expect
-      .element(page.getByText("check with your partner", { exact: false }))
+      .element(page.getByText("open different windows", { exact: false }))
       .toBeInTheDocument();
     await expect
       .element(page.getByText("this device's clock", { exact: false }))

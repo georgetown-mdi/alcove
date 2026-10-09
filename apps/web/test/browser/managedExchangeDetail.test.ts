@@ -54,7 +54,11 @@ import {
   UNREADABLE_PARKED_RESULTS_NOTE,
 } from "@recurring/parkedResultsModel";
 import { PARKED_RESULTS_VERSION, runResultsFileName } from "@psi/parkedResults";
-import { UNCHANGED_INPUT_TITLE } from "@recurring/scheduleSurfacingModel";
+import {
+  UNCHANGED_INPUT_TITLE,
+  partnerScheduleText,
+} from "@recurring/scheduleSurfacingModel";
+import { PARTNER_SCHEDULE_NOT_A_SCHEDULE } from "@recurring/scheduleEntryModel";
 
 import {
   disclosureRecord,
@@ -731,6 +735,70 @@ describe("managed exchange detail schedule entry", () => {
     expect(entered?.consecutiveMisses).toBe(0);
   });
 
+  test("a pasted partner schedule fills every field and saves as the same windows", async () => {
+    const theirs: ManagedExchangeSchedule = {
+      anchor: new Date(2027, 0, 5, 9, 0, 0, 0).toISOString(),
+      intervalDays: 14,
+      windowSeconds: 4 * 3600,
+      nextWindow: new Date(2027, 0, 5, 9, 0, 0, 0).toISOString(),
+      consecutiveMisses: 0,
+    };
+    const { saved } = renderEntry();
+
+    await scheduleCheckbox().click();
+    await page
+      .getByRole("textbox", { name: "Your partner's schedule" })
+      .fill(partnerScheduleText(theirs, Date.now()));
+    await page
+      .getByRole("button", { name: "Fill in from this schedule" })
+      .click();
+
+    await expect
+      .element(page.getByLabelText("First agreed run window (date)"))
+      .toHaveValue("2027-01-05");
+    await expect
+      .element(page.getByLabelText("Time the window opens"))
+      .toHaveValue("09:00");
+    await expect
+      .element(page.getByLabelText("A window opens every (days)"))
+      .toHaveValue("14");
+    await expect
+      .element(page.getByLabelText("Each window stays open (hours)"))
+      .toHaveValue("4");
+
+    await page.getByRole("button", { name: "Save settings" }).click();
+    await vi.waitFor(() => expect(saved).toHaveLength(1));
+    expect(saved[0].schedule?.anchor).toBe(theirs.anchor);
+    expect(saved[0].schedule?.intervalDays).toBe(14);
+    expect(saved[0].schedule?.windowSeconds).toBe(4 * 3600);
+  });
+
+  test("a pasted text that is not a schedule is refused in one line and fills nothing", async () => {
+    renderEntry();
+
+    await scheduleCheckbox().click();
+    await page
+      .getByLabelText("First agreed run window (date)")
+      .fill("2026-08-04");
+    await page.getByLabelText("A window opens every (days)").fill("7");
+    await page
+      .getByRole("textbox", { name: "Your partner's schedule" })
+      .fill("Let's run this every Tuesday morning.");
+    await page
+      .getByRole("button", { name: "Fill in from this schedule" })
+      .click();
+
+    await expect
+      .element(page.getByRole("alert").filter({ hasText: "not a schedule" }))
+      .toHaveTextContent(PARTNER_SCHEDULE_NOT_A_SCHEDULE);
+    await expect
+      .element(page.getByLabelText("First agreed run window (date)"))
+      .toHaveValue("2026-08-04");
+    await expect
+      .element(page.getByLabelText("A window opens every (days)"))
+      .toHaveValue("7");
+  });
+
   test("turning scheduling off drops the stored schedule", async () => {
     const anchor = new Date(Date.now() + 3600_000).toISOString();
     const { saved } = renderEntry({
@@ -1281,10 +1349,31 @@ describe("managed exchange detail run schedule", () => {
         page.getByText("Runs are not happening on schedule", { exact: false }),
       )
       .toBeInTheDocument();
-    // Both checks -- the partner, and this device's own clock -- and no pause
-    // taken on the operator's behalf.
+    // The likely cause and how to compare, this device's own clock, and no
+    // pause taken on the operator's behalf.
     await expect
-      .element(page.getByText("still running this exchange", { exact: false }))
+      .element(
+        page.getByText(
+          "your schedule and your partner's open different windows",
+          {
+            exact: false,
+          },
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("Ask your partner for their copy of the schedule", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByRole("heading", {
+          name: "Copy this schedule for your partner",
+        }),
+      )
       .toBeInTheDocument();
     await expect
       .element(page.getByText("this device's clock", { exact: false }))

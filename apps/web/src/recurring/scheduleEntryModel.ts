@@ -1,7 +1,8 @@
 /**
  * The pure model behind schedule entry: what the operator types for an agreed run
  * cadence, what is wrong with it, what it resolves to, the one cross-field
- * problem a stored max-token-age policy raises against it, and the copy for the
+ * problem a stored max-token-age policy raises against it, the reading of a
+ * partner's pasted copy of the schedule back into fields, and the copy for the
  * working-folder grant.
  *
  * Entry is where the host time zone is READ. {@link resolveLocalCadenceAnchor}
@@ -34,6 +35,12 @@ import {
 import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
 
 import { dateTimeLabel } from "@psi/formatting";
+
+import {
+  PARTNER_SCHEDULE_NEXT_WINDOW_LABEL,
+  PARTNER_SCHEDULE_REPEATS_LABEL,
+  PARTNER_SCHEDULE_WINDOW_LABEL,
+} from "./scheduleSurfacingModel";
 
 import type { ManagedExchangeSchedule } from "@psi/managed/managedExchangeRecord";
 
@@ -372,6 +379,131 @@ export function defaultScheduleEntryFields(now: number): ScheduleEntryFields {
       consecutiveMisses: 0,
     }),
   };
+}
+
+/** The longest text the partner-schedule fill reads. The copy it reads back is
+ * a few hundred characters; anything far past that is not one. */
+export const MAX_PARTNER_SCHEDULE_TEXT_LENGTH = 4000;
+
+/** Why a pasted text filled nothing: it is not a schedule this app copied. */
+export const PARTNER_SCHEDULE_NOT_A_SCHEDULE =
+  'That text is not a schedule copied from this app. Paste the whole text your partner copied under "Copy this schedule for your partner".';
+
+/** Why a pasted schedule filled nothing: its window opens on a second the time
+ * field cannot hold. */
+export const PARTNER_SCHEDULE_HAS_SECONDS =
+  "That schedule's window opens at a time with seconds, which these fields cannot hold. Agree a window that opens on a whole minute with your partner and enter it below.";
+
+/** Why a pasted schedule filled nothing: its next few windows each fall in an
+ * hour this device's clock shows twice, so no wall-clock time names them. */
+export const PARTNER_SCHEDULE_REPEATED_HOUR =
+  "That schedule's windows open in an hour your clock shows twice, so these fields cannot name them. Agree a different time with your partner and enter it below.";
+
+/** What a pasted partner schedule fills: the entry fields, or the one-line
+ * reason it filled nothing. */
+export type PartnerScheduleFill =
+  | { kind: "filled"; fields: ScheduleEntryFields }
+  | { kind: "refused"; message: string };
+
+const PARTNER_NEXT_WINDOW_PATTERN =
+  /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})(:\d{2}|) UTC$/;
+const PARTNER_REPEATS_PATTERN = /^every (day|[2-9] days|[1-9]\d{1,5} days)$/;
+const PARTNER_WINDOW_PATTERN = /^([1-9]\d{0,5}) (hour|minute)(s?)$/;
+
+/** How many later windows the fill tries when the pasted one falls in an hour
+ * the local clock repeats. Such an hour comes at most a few times a year. */
+const REPEATED_HOUR_STEPS = 3;
+
+/** The value after `label` on the one line that starts with it, or `undefined`
+ * where no line or more than one does. */
+function partnerScheduleValue(
+  lines: ReadonlyArray<string>,
+  label: string,
+): string | undefined {
+  const matching = lines.filter((line) => line.startsWith(label));
+  return matching.length === 1 ? matching[0].slice(label.length) : undefined;
+}
+
+/** The entry fields that name `opensAtMs` on this device's clock, or
+ * `undefined` where the wall clock it reads as resolves to another instant
+ * (the second pass through an hour the zone repeats).
+ *
+ * @throws {RangeError} if the instant is outside the stored range. */
+function fieldsNamingInstant(
+  opensAtMs: number,
+): { firstWindowDate: string; firstWindowTime: string } | undefined {
+  const fields = anchorEntryFields(new Date(opensAtMs).toISOString());
+  const date = readDateFields(fields.firstWindowDate);
+  const time = readTimeFields(fields.firstWindowTime);
+  if (date === undefined || time === undefined) return undefined;
+  return Date.parse(resolveLocalCadenceAnchor({ ...date, ...time })) ===
+    opensAtMs
+    ? fields
+    : undefined;
+}
+
+/**
+ * Read the text the "Copy this schedule for your partner" control produces
+ * ({@link ./scheduleSurfacingModel.ts}, `partnerScheduleText`) back into entry
+ * fields: the next window converted to this device's clock as the first one,
+ * with the same repeat and length. Only that control's own lines are read, each
+ * once; surrounding lines are ignored, so a schedule pasted out of a longer
+ * message still fills.
+ *
+ * A window that opens in an hour this device's clock repeats is filled from the
+ * first later window that does not, which is on the same schedule. Bounds the
+ * fields check (the interval and width ceilings, the whole-hour width) are left
+ * to {@link scheduleEntryErrors}, so a value outside them shows at its field.
+ */
+export function scheduleEntryFieldsFromPartnerText(
+  text: string,
+): PartnerScheduleFill {
+  const refused = (message: string): PartnerScheduleFill => ({
+    kind: "refused",
+    message,
+  });
+  if (text.length > MAX_PARTNER_SCHEDULE_TEXT_LENGTH)
+    return refused(PARTNER_SCHEDULE_NOT_A_SCHEDULE);
+  const lines = text.split(/\r?\n/).map((line) => line.trim());
+  const nextWindow = PARTNER_NEXT_WINDOW_PATTERN.exec(
+    partnerScheduleValue(lines, PARTNER_SCHEDULE_NEXT_WINDOW_LABEL) ?? "",
+  );
+  const repeats = PARTNER_REPEATS_PATTERN.exec(
+    partnerScheduleValue(lines, PARTNER_SCHEDULE_REPEATS_LABEL) ?? "",
+  );
+  const width = PARTNER_WINDOW_PATTERN.exec(
+    partnerScheduleValue(lines, PARTNER_SCHEDULE_WINDOW_LABEL) ?? "",
+  );
+  if (nextWindow === null || repeats === null || width === null)
+    return refused(PARTNER_SCHEDULE_NOT_A_SCHEDULE);
+  const [, date, clock, seconds] = nextWindow;
+  const [, count, unit, plural] = width;
+  const opensAtMs = Date.parse(`${date}T${clock}:00.000Z`);
+  if (
+    Number.isNaN(opensAtMs) ||
+    !new Date(opensAtMs).toISOString().startsWith(`${date}T${clock}:`) ||
+    (Number(count) === 1) !== (plural === "")
+  )
+    return refused(PARTNER_SCHEDULE_NOT_A_SCHEDULE);
+  if (seconds !== "") return refused(PARTNER_SCHEDULE_HAS_SECONDS);
+  const intervalDays =
+    repeats[1] === "day" ? 1 : Number.parseInt(repeats[1], 10);
+  const windowHours = unit === "hour" ? Number(count) : Number(count) / 60;
+  try {
+    for (let step = 0; step <= REPEATED_HOUR_STEPS; step += 1) {
+      const named = fieldsNamingInstant(
+        opensAtMs + step * intervalDays * 86_400_000,
+      );
+      if (named !== undefined)
+        return {
+          kind: "filled",
+          fields: { ...named, intervalDays, windowHours },
+        };
+    }
+  } catch {
+    return refused(PARTNER_SCHEDULE_NOT_A_SCHEDULE);
+  }
+  return refused(PARTNER_SCHEDULE_REPEATED_HOUR);
 }
 
 /**

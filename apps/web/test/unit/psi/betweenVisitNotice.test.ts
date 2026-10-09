@@ -2,6 +2,10 @@ import { describe, expect, test } from "vitest";
 import { generateSharedSecret, getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  COMPROMISE_ACKNOWLEDGE_LABEL,
+  DOES_NOT_ADD_UP_OPTION,
+} from "@psi/managed/managedFailureConfirmation";
+import {
   MANAGED_EXCHANGE_SCHEMA_VERSION,
   NO_STANDING_CONDITION,
   composeManagedExchangeFile,
@@ -11,6 +15,7 @@ import {
   SINGLE_COLUMN_DELIMITER_REMEDY,
 } from "@psi/managed/managedFailureCopy";
 import { betweenVisitNotice } from "@psi/managed/betweenVisitNotice";
+import { dateTimeLabel } from "@psi/formatting";
 
 import { managedRunTierFailure } from "@recurring/managedRunLaunchModel";
 
@@ -159,8 +164,13 @@ describe("betweenVisitNotice: the missed window", () => {
 
     expect(notice?.kind).toBe("repeated-misses");
     expect(notice?.title).toBe(REPEATED_MISS_TITLE);
-    expect(notice?.body).toContain("check with your partner");
-    expect(notice?.body).toContain("check this device's clock");
+    expect(notice?.body).toBe(
+      "Riverbend quarterly: 2 scheduled runs in a row have not happened, " +
+        "most likely because your schedule and your partner's open " +
+        "different windows. Compare the next window in UTC, the repeat, and " +
+        "the window length under Run schedule on this exchange's page with " +
+        "your partner's, and check this device's clock.",
+    );
   });
 
   test("the escalated tag names the standing state, not the window", () => {
@@ -217,9 +227,51 @@ describe("betweenVisitNotice: the window an answer held back", () => {
     });
 
     expect(notice?.kind).toBe("skipped");
-    expect(notice?.body).toContain("Riverbend quarterly");
-    expect(notice?.body).toContain("Something does not add up");
-    expect(notice?.body).toContain("clear it");
+    expect(notice?.body).toBe(
+      "Riverbend quarterly skipped a scheduled run because on " +
+        `${dateTimeLabel(new Date("2026-07-13T10:00:00.000Z"))} you answered ` +
+        '"Something does not add up" about a failed run, and scheduled runs ' +
+        "stay stopped until you clear that answer. Once your partner " +
+        "confirms on a channel you trust, open this exchange from Recurring " +
+        'exchanges in this app and choose "Partner confirmed on another ' +
+        'channel", or delete the exchange.',
+    );
+  });
+
+  test("states the answer, its date, and the screen and control that clear it", () => {
+    const notice = betweenVisitNotice({
+      record: skipped(),
+      local: undefined,
+      caughtUpMisses: 0,
+      disposition: "skipped",
+      now: NOW,
+    });
+
+    expect(notice?.body).toContain(`"${DOES_NOT_ADD_UP_OPTION}"`);
+    // The answer's own instant, not the skipped window's or the failure's.
+    expect(notice?.body).toContain(
+      `on ${dateTimeLabel(new Date("2026-07-13T10:00:00.000Z"))} you answered`,
+    );
+    expect(notice?.body).not.toContain(
+      dateTimeLabel(new Date("2026-07-13T09:00:00.000Z")),
+    );
+    expect(notice?.body).toContain("from Recurring exchanges in this app");
+    expect(notice?.body).toContain(`"${COMPROMISE_ACKNOWLEDGE_LABEL}"`);
+  });
+
+  test("leaves the date out rather than inventing one where the record holds no answer", () => {
+    const notice = betweenVisitNotice({
+      record: record({ lastRun: { at: RUN_AT, outcome: "skipped" } }),
+      local: undefined,
+      caughtUpMisses: 0,
+      disposition: "skipped",
+      now: NOW,
+    });
+
+    expect(notice?.kind).toBe("skipped");
+    expect(notice?.body).toContain(
+      'because you answered "Something does not add up"',
+    );
   });
 
   test("is not the miss notice, whatever the misses beside it", () => {

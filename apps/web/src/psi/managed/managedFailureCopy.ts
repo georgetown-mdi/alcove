@@ -57,21 +57,32 @@ export const REPEATED_MISS_TITLE = "Runs are not happening on schedule";
 /**
  * The coordination state a run of missed windows earns, or `undefined` below
  * the escalation threshold (a single miss demands nothing beyond the last
- * run's own outcome). Both phrasings name BOTH checks, the partner and this
- * device's own clock, since a drifted clock produces exactly this pattern;
- * neither offers to pause anything -- the agreed cadence stands
- * (docs/notes/managed-exchange-design.md, "Repeated misses surface, they do
- * not auto-pause").
+ * run's own outcome). Both phrasings name a schedule that differs from the
+ * partner's as the likely cause, since each side enters the agreed window on
+ * its own clock, and say how to compare the two: the partner's copy against
+ * the one the exchange's page offers, both stated in UTC. Both also name this
+ * device's clock, since a drifted clock produces the same pattern. Neither
+ * offers to pause anything (docs/notes/managed-exchange-design.md, "Repeated
+ * misses surface, they do not auto-pause").
  */
 export function repeatedMissCoordination(
   schedule: ManagedExchangeSchedule,
 ): RepeatedMissCoordination | undefined {
   const misses = schedule.consecutiveMisses;
   if (misses < REPEATED_MISS_ESCALATION) return undefined;
+  const happened = `${misses.toString()} scheduled runs in a row have not happened, most likely because your schedule and your partner's open different windows`;
   return {
     misses,
-    line: `${misses} scheduled runs in a row have not happened; check with your partner, and check this device's clock.`,
-    prompt: `${misses} scheduled runs in a row have not happened. Ask your partner whether they are still running this exchange, and check this device's clock - if it is wrong, your run window and theirs never overlap. Nothing has been paused: the schedule stands, and the count resets after a successful run.`,
+    line:
+      `${happened}. Compare the next window in UTC, the repeat, and the ` +
+      `window length under Run schedule on this exchange's page with your ` +
+      `partner's, and check this device's clock.`,
+    prompt:
+      `${happened}; nothing has been paused, and the schedule stands. ` +
+      `Ask your partner for their copy of the schedule and compare its ` +
+      `next window in UTC, repeat, and window length with yours below, ` +
+      `paste theirs under Local settings if it is the one you agreed, and ` +
+      `check this device's clock.`,
   };
 }
 

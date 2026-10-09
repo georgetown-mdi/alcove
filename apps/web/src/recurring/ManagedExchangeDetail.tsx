@@ -7,6 +7,7 @@ import {
   Loader,
   Modal,
   TextInput,
+  Textarea,
 } from "@mantine/core";
 import { Link } from "@tanstack/react-router";
 
@@ -62,6 +63,7 @@ import {
   unfiledDisclosureShortfall,
 } from "./disclosureAccountingModel";
 import {
+  MAX_PARTNER_SCHEDULE_TEXT_LENGTH,
   MAX_SCHEDULE_INTERVAL_DAYS,
   MAX_SCHEDULE_WINDOW_HOURS,
   MIN_SCHEDULE_WINDOW_HOURS,
@@ -74,6 +76,7 @@ import {
   resolvedFirstWindowLabel,
   scheduleEntryErrors,
   scheduleEntryFieldsFrom,
+  scheduleEntryFieldsFromPartnerText,
   scheduleEntryUnchanged,
   scheduleEntryUsable,
   workingFolderGrant,
@@ -743,7 +746,10 @@ function LocalFieldsEditor({
  *
  * The date and time are native inputs rather than a date picker: the value is a
  * cadence agreed with a partner and read off a message, and typing it back is
- * the shortest path from that message to the field.
+ * the shortest path from that message to the field. Where the message is the
+ * partner's own copy of the schedule, pasting it fills every field at once; a
+ * text that is not one is refused at the paste field and the fields keep what
+ * they held.
  *
  * Where those runs' results go is settled below it rather than in it, by
  * {@link LocalFieldsEditor}: the grant stands whether or not the schedule does.
@@ -766,8 +772,64 @@ function ScheduleEntryFieldset({
   // the clamp is off entirely; scheduleEntryErrors still enforces the bounds
   // at the field.
   const widthNeedsDecimals = !Number.isInteger(fields.windowHours);
+  const [partnerText, setPartnerText] = useState("");
+  const [partnerTextError, setPartnerTextError] = useState<string | undefined>(
+    undefined,
+  );
+  const [filledFromPartner, setFilledFromPartner] = useState(false);
+
+  function fillFromPartnerText() {
+    const fill = scheduleEntryFieldsFromPartnerText(partnerText);
+    if (fill.kind === "refused") {
+      setPartnerTextError(fill.message);
+      setFilledFromPartner(false);
+      return;
+    }
+    onEdit(fill.fields);
+    setPartnerText("");
+    setPartnerTextError(undefined);
+    setFilledFromPartner(true);
+  }
+
   return (
     <>
+      <Textarea
+        label="Your partner's schedule"
+        description='Paste the schedule your partner copied from "Copy this schedule for your partner" in this app to fill in the fields below on your own clock.'
+        autosize
+        minRows={2}
+        maxRows={8}
+        value={partnerText}
+        error={partnerTextError}
+        errorProps={{ role: "alert" }}
+        onChange={(event) => {
+          // Held one past the bound, so the fill still sees an over-long paste
+          // and refuses it rather than reading a truncated one.
+          setPartnerText(
+            event.currentTarget.value.slice(
+              0,
+              MAX_PARTNER_SCHEDULE_TEXT_LENGTH + 1,
+            ),
+          );
+          setPartnerTextError(undefined);
+          setFilledFromPartner(false);
+        }}
+        mt="xs"
+      />
+      <Button
+        variant="default"
+        mt="xs"
+        disabled={partnerText.trim() === ""}
+        onClick={fillFromPartnerText}
+      >
+        Fill in from this schedule
+      </Button>
+      {filledFromPartner && (
+        <p className={`${styles.small} ${styles.statusLineOk}`}>
+          Filled in from your partner&apos;s schedule. Check the fields below,
+          then save.
+        </p>
+      )}
       <TextInput
         label="First agreed run window (date)"
         description="The date of the first window you and your partner agreed, on your own calendar."

@@ -240,7 +240,11 @@ agreed the schedule.
 
 To make matching entries easier, the Run schedule section of a page that holds
 a schedule offers it as plain text to send the partner, so both sides open the
-same windows; it holds no secret and no invitation.
+same windows; it holds no secret and no invitation. The text states the next
+window in UTC, so the two copies can be compared line by line. A partner using
+this app pastes it into the schedule fields under Local settings, which fills
+the date and time on their own clock, the repeat, and the window length; a text
+that is not such a schedule is refused and the fields keep what they held.
 
 ### When a window opens and closes
 
@@ -296,10 +300,12 @@ not by the app guessing. The record counts consecutive misses since the last
 success (see
 [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#the-schedule-object)),
 and once that count reaches the escalation threshold the next visit's surface
-and the between-visit notification escalate to the coordination prompt, which
-names **both** checks:
-check with your partner, and check this machine's own clock, since a wrong
-clock here produces the same pattern.
+and the between-visit notification escalate to the coordination prompt. It names
+the likely cause first: a schedule entered differently on the two sides, often
+from converting the agreed window between time zones by hand. It says how to
+compare the two -- the next window in UTC, the repeat, and the window length,
+as the copy for the partner states them -- and names this machine's own clock
+as the second check, since a wrong clock here produces the same pattern.
 
 Each miss also gets its own notification at its window (see [The between-visit
 notification](#the-between-visit-notification)), so you hear about a miss before
@@ -451,7 +457,8 @@ already defines:
   [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)),
   not one notification per slept-through window. Once the consecutive-miss count
   crosses the escalation threshold, the copy becomes the coordination prompt --
-  check with your partner, and check this machine's own clock -- and further
+  a schedule that differs from the partner's as the likely cause, how to
+  compare the two, and this machine's own clock -- and further
   misses stop firing individually while that state stands (the in-app state
   holds it), so a dead partnership on a short cadence does not become a daily
   nag.
@@ -464,8 +471,9 @@ already defines:
 - **This did not run: the window was skipped.** While a compromise response
   stands on the exchange, every due window is skipped rather than attempted (see
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)), so the
-  notification names what stopped the runs and the acknowledgement that starts
-  them again. It reports a standing state rather than an occurrence, so the
+  notification names the answer that stopped the runs, the date it was given,
+  and where to clear it: the exchange's page, opened from Recurring exchanges,
+  and the acknowledgement there that starts the runs again. It reports a standing state rather than an occurrence, so the
   windows after the first say nothing further while it stands.
 - **This needs you: the input file is missing or was rejected.** A benign
   pre-run input failure on an unattended run -- the handle's file gone at run
