@@ -25,15 +25,13 @@ import type { RelayLocator } from "../../../src/psi/transport/rendezvous.js";
 import type { WebRTCEndpoint } from "@alcove/core";
 
 // The ICE configuration the browser's peer connection is built with: the
-// default STUN pair alone with no relay, and with a relay its own urls in
+// default STUN server alone with no relay, and with a relay its own urls in
 // place of that pair, the TURN entry holding a credential minted for this run
 // from the exchange's shared secret.
 
 /** The configuration every run used before a relay could be supplied. */
 const NO_RELAY_CONFIG = {
-  iceServers: [
-    { urls: ["stun:stun.l.google.com:19302", "stun:44.247.30.68:443"] },
-  ],
+  iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
   sdpSemantics: "unified-plan",
   iceTransportPolicy: "all",
 };
@@ -84,13 +82,13 @@ afterEach(() => {
 });
 
 describe("buildIceServers", () => {
-  test("with no relay is the default STUN pair alone", async () => {
+  test("with no relay is the default STUN server alone", async () => {
     expect(
       await buildIceServers(undefined, generateSharedSecret(), NOW),
     ).toEqual(NO_RELAY_CONFIG.iceServers);
   });
 
-  test("with a relay naming no url is the default STUN pair alone", async () => {
+  test("with a relay naming no url is the default STUN server alone", async () => {
     expect(
       await buildIceServers(
         { turn: [], stun: [] },
@@ -139,7 +137,7 @@ describe("buildIceServers", () => {
     expect(iceServers[1].urls).toEqual(RELAY.turn);
   });
 
-  test("the relay's STUN urls replace the default pair", async () => {
+  test("the relay's STUN urls replace the default server", async () => {
     const relay: RelayLocator = {
       turn: [],
       stun: ["stun:stun.example.org:3478"],

@@ -116,15 +116,12 @@ export interface RelayLocator {
   /** `turn:` / `turns:` urls, served by one relay under one credential. */
   turn: ReadonlyArray<string>;
   /** `stun:` / `stuns:` urls; a relay naming any url replaces the default
-   * pair, so a relay naming TURN urls alone gathers no STUN candidate. */
+   * server, so a relay naming TURN urls alone gathers no STUN candidate. */
   stun: ReadonlyArray<string>;
 }
 
-/** The STUN pair a run with no relay, or a relay naming no url, uses. */
-const DEFAULT_STUN_URLS = [
-  "stun:stun.l.google.com:19302",
-  "stun:44.247.30.68:443",
-];
+/** The STUN server a run with no relay, or a relay naming no url, uses. */
+const DEFAULT_STUN_URLS = ["stun:stun.l.google.com:19302"];
 
 /**
  * Lifetime of the relay credential a run mints. It must outlast the peer wait
@@ -138,10 +135,10 @@ const RELAY_CREDENTIAL_LABEL = "alcove";
 
 /**
  * The ICE server list for one run. With no relay, or one naming no url, it is
- * the default STUN pair alone. Otherwise it holds the relay's STUN urls as one
+ * the default STUN server alone. Otherwise it holds the relay's STUN urls as one
  * entry when it names any, and its TURN urls as one entry holding a credential
  * minted at `now` from the relay key the exchange's shared secret derives, and
- * no default pair: the CLI's `connection.stun` / `connection.turn` rule, where
+ * no default server: the CLI's `connection.stun` / `connection.turn` rule, where
  * a configured list replaces the default. Nothing minted or derived outlives
  * the returned list.
  *

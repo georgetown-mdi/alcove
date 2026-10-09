@@ -57,11 +57,6 @@ export const ALLOWLIST = [
       "default public STUN server, the one third-party host the web app intends to reach; already named in PRIVACY.md's supporting-services table",
   },
   {
-    url: "stun:44.247.30.68:443",
-    match: "exact",
-    reason: "second default public STUN server, same basis as the first",
-  },
-  {
     url: "https://peerjs",
     match: "exact",
     reason:
