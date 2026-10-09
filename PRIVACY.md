@@ -1,7 +1,7 @@
 ---
 title: "Privacy Statement"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-07"
+last_reviewed: "2026-10-08"
 ---
 
 # Privacy statement
@@ -30,7 +30,7 @@ The answers below differ by deployment. Read the section matching what you are d
 This is the deployment supported for production use.
 
 - **What the project operates: nothing.** The container runs on your machine or in your infrastructure. No component of it reports to the project.
-- **What it connects to:** only the SFTP server or shared directory you configure for the exchange, or for a WebRTC exchange the coordination server, STUN and TURN servers, and relay registrar its configuration names (see [What supporting services can observe](#what-supporting-services-can-observe)). The container makes no other network connection.
+- **What it connects to:** only the SFTP server or shared directory you configure for the exchange, or for a WebRTC exchange the coordination server, STUN and TURN servers, and relay registrar its configuration names (see [What supporting services can observe](#what-supporting-services-can-observe)). One more request is made when you invite at a web app's address (`alcove invite https://...`): the CLI reads that app's public `/alcove.json` file, once, to learn which coordination server the app uses. The request sends nothing about the exchange; the app's host sees the request and your IP address, as for any page load. The container makes no other network connection.
 - **The local console** is served by that same container to your own machine over loopback and is not reachable beyond that host. It is a local interface to the CLI, not a hosted service. It runs SFTP and shared-directory exchanges only, by starting the CLI in the container, so it connects to nothing beyond what the CLI connects to for those channels. It does not run browser-to-browser or other WebRTC exchanges.
 - **What the project can observe about your exchanges: nothing.** It receives no data, no metadata, and no record that an exchange occurred.
 - **Distribution is the one third-party touch.** Pulling the container image from a public registry tells that registry's operator that the pull happened, as with any container image. The project does not operate the registry and receives only whatever aggregate pull counts the registry publishes to image owners.

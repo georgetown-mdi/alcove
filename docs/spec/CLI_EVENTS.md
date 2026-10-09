@@ -350,7 +350,7 @@ The guarantee applies from the moment the fd-3 preflight passes: every failure t
 
 Every other failure emits it at the command's exit boundary, in the `prepare` phase and with no `metrics` event before it:
 
-- The refusals ahead of the lifecycle: the retain-sweep flag guard, the configuration file failing to read, parse or validate, the key file failing to load, the `@path` credential reads, the decode of an `--invitation`, the online bootstrap's mutual-exclusion guard, signing-identity resolution, and an unreadable input CSV. A configuration file that does not exist, cannot be read, is not YAML, or fails the exchange schema is a `config` failure ([Error categories](#error-categories)); the rest keep the category their error classifies to.
+- The refusals ahead of the lifecycle: the retain-sweep flag guard, the read of the coordination server a web app address publishes (an online `invite`), the configuration file failing to read, parse or validate, the key file failing to load, the `@path` credential reads, the decode of an `--invitation`, the online bootstrap's mutual-exclusion guard, signing-identity resolution, and an unreadable input CSV. A configuration file that does not exist, cannot be read, is not YAML, or fails the exchange schema is a `config` failure ([Error categories](#error-categories)); the rest keep the category their error classifies to.
 - The write of the key file an `--invitation` provisions, the wake call a `connection.server.provision` block states, the unpinned-host refusal, the SSH host-key trust probe, and the relay key registration an earlier run left unconfirmed.
 - An error no command handler caught, which exits 1.
 

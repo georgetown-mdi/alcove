@@ -913,6 +913,8 @@ export async function runOnlineBootstrap(params: {
    * or the `--log-file` at every `--log-level`.
    */
   writePlainLine: (line: string) => void;
+  /** See {@link RunProtocolOptions.onSignalingRegistered}. */
+  onSignalingRegistered?: () => void;
 }): Promise<OnlineBootstrapResult> {
   // `connection` is already narrowed to the channels runProtocol supports
   // (ProtocolConnectionConfig); authentication is passed to runProtocol on its
@@ -1038,6 +1040,7 @@ export async function runOnlineBootstrap(params: {
         params.runOnlyPeerTimeoutSeconds === undefined
           ? "exchange"
           : "online-invitation",
+      onSignalingRegistered: params.onSignalingRegistered,
       writeOutcomeLine: outcomeLineWriter(
         getLogger(params.loggerName),
         params.writePlainLine,

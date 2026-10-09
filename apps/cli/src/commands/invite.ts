@@ -93,6 +93,7 @@ import {
   type InviterConnectionConfig,
   type InviterOwnRelay,
 } from "../connectionFromUrl";
+import { resolveWebAppSignalingServer } from "../webAppSignaling";
 import { withWebRTCPeerRole } from "../webrtcPeerRole";
 import {
   brokerLocationFromConnection,
@@ -635,8 +636,16 @@ export async function validateInvite(params: {
     // persists, and an accept-only wait written as the config's peer_timeout_ms
     // would silently become the budget of every later recurring run. It reaches
     // this run alone, through runOnlineBootstrap's runOnlyPeerTimeoutSeconds.
+    const serverURL = isWebAppAddress(url)
+      ? // The accept link printed later stays on the address the operator gave.
+        await resolveWebAppSignalingServer(url)
+      : url;
     const connection = withWebRTCPeerRole(
-      inviterConnectionFromURL(url, connectionOverridesFrom(options), ownRelay),
+      inviterConnectionFromURL(
+        serverURL,
+        connectionOverridesFrom(options),
+        ownRelay,
+      ),
       "inviter",
     );
     // Read before the invitation is printed: an unreadable file must not leave
@@ -1200,22 +1209,23 @@ export async function handler(argv: Arguments): Promise<void> {
       });
 
       if (ready.mode === "online") {
-        // The token is disclosed only now -- after all validation and prep above
-        // succeeded, the output folder check included. Only the network wait it
-        // is meant to precede can still fail.
-        printInvitation(ready.invitation, {
-          url: ready.url,
-          channel: ready.connection.channel,
-        });
-        // State the invitation's validity contract before announcing the wait: the
-        // inviter's exit (cancel, connection timeout, or accept-timeout) already
-        // makes the printed invitation unacceptable, since the setup secret is
-        // held only in memory until a handshake succeeds and the rendezvous is
-        // swept on cleanup. Logged here rather than at exit, since a SIGINT exits
-        // via the signal handler's process.exit before any post-wait line could
-        // run.
-        log.info(onlineWaitInvalidationNotice(acceptTimeout));
-        log.info("waiting for the partner to accept...");
+        const announceInvitation = (): void => {
+          printInvitation(ready.invitation, {
+            url: ready.url,
+            channel: ready.connection.channel,
+          });
+          // The validity contract goes before the wait is announced, and not at
+          // exit: a SIGINT exits through the signal handler's process.exit
+          // before any post-wait line could run.
+          log.info(onlineWaitInvalidationNotice(acceptTimeout));
+          log.info("waiting for the partner to accept...");
+        };
+        // The token is disclosed only after every check above. Over webrtc it
+        // waits until the coordination server has accepted this party's
+        // registration, so an invitation naming a server that does not answer
+        // is never printed; a file-sync channel prints it before connecting.
+        const announceOnRegistration = ready.connection.channel === "webrtc";
+        if (!announceOnRegistration) announceInvitation();
         const { outcome, configWriteError } = await runOnlineBootstrap({
           connection: ready.connection,
           credentials: ready.credentials,
@@ -1241,6 +1251,9 @@ export async function handler(argv: Arguments): Promise<void> {
           provision: options.serverProvisionRead,
           interactive: stdinAnswersPrompts(resolved.input),
           writePlainLine,
+          ...(announceOnRegistration
+            ? { onSignalingRegistered: announceInvitation }
+            : {}),
         });
         // The summary only; the exit code a failed persistence implies was set
         // where that persistence was lost, so nothing here can raise or lower it.
@@ -1639,7 +1652,8 @@ function printInvitation(
       `Your partner accepts and runs the exchange with:\n  alcove accept ` +
         `${IDENTITY_PLACEHOLDER} ${INVITATION_PLACEHOLDER} <INPUT_FILE>\nrun ` +
         `while this command is still waiting, where ` +
-        `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
+        `${INVITATION_PLACEHOLDER} is the invitation printed above. ` +
+        `${BROWSER_PARTNER_PASTE_INSTRUCTION}`,
     );
     return;
   }
@@ -1650,6 +1664,12 @@ function printInvitation(
       `${INVITATION_PLACEHOLDER} is the invitation printed above.`,
   );
 }
+
+/** How a partner who uses the web app accepts a bare invitation. */
+const BROWSER_PARTNER_PASTE_INSTRUCTION =
+  "A partner who uses the web app instead pastes the invitation under " +
+  '"Accept an invitation you were sent" on the app\'s start page, also ' +
+  "while this command is still waiting.";
 
 /**
  * The web app's accept link for `invitation`, at the app's `origin`. The

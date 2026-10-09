@@ -41,6 +41,7 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 - The URL's scheme must match the deployment's: `wss:` for one served over `https`, `ws:` for one served over `http`. A mismatch is refused when the app loads.
 - Every browser inviter of the deployment registers there, and every invitation it creates names that server, so a party accepting a fresh invitation dials it from whatever deployment they open it in. A saved exchange's later runs do the same: the accepting party's record keeps the server its invitation named and dials it on every run, so the two parties' deployments need not name the same server.
 - The value is fixed at build time, so changing it means rebuilding and redeploying; an invitation already sent keeps naming the server it was created with.
+- The hosted build also publishes it as a static file, `/alcove.json`, which `alcove invite` reads when given the web application's address, so a CLI inviter dials the same server ([WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-published-coordination-server)).
 
 How the address is resolved, and what the invitation endpoint states: [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#the-browser-partys-own-signaling-address).
 

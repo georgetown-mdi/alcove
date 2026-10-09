@@ -670,8 +670,10 @@ async function openRunTransport(params: {
   connection: ProtocolConnectionConfig;
   interrupted: AbortController;
   log: ReturnType<typeof getLogger>;
+  onSignalingRegistered?: () => void;
 }): Promise<HandshakeRole> {
-  const { build, run, connection, interrupted, log } = params;
+  const { build, run, connection, interrupted, log, onSignalingRegistered } =
+    params;
   let role: HandshakeRole;
   if (connection.channel === "webrtc") {
     // Resolved by the prepare block for exactly this channel; the check is
@@ -712,6 +714,7 @@ async function openRunTransport(params: {
     const dialed = await openWebRtcMessageConnection({
       ...build.webRtcDial.options,
       signal: interrupted.signal,
+      onRegistered: onSignalingRegistered,
     });
     build.transport = dialed;
     run.opened = true;
@@ -1526,6 +1529,12 @@ export interface RunProtocolOptions {
    * bounded by `--peer-timeout`.
    */
   arrivalWait?: ArrivalWait;
+  /**
+   * Called once, on a webrtc connection, when the coordination server first
+   * accepts this party's registration; never on the file-sync channels. An
+   * online invite prints its invitation here.
+   */
+  onSignalingRegistered?: () => void;
 }
 
 /**
@@ -1622,6 +1631,7 @@ export async function runProtocol(
     allowMemoryShortfall = false,
     memoryBudgetReported = false,
     arrivalWait = "exchange",
+    onSignalingRegistered,
   } = options;
   const log = getLogger(loggerName);
   const writeOutcomeLine =
@@ -1907,6 +1917,7 @@ export async function runProtocol(
       connection,
       interrupted,
       log,
+      onSignalingRegistered,
     });
 
     // Set by the prepare block on the file-sync channels and by the rendezvous

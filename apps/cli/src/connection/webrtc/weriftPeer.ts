@@ -401,6 +401,11 @@ export interface WebRtcPeerOptions {
   socketFactory?: (url: string) => WebSocket;
   /** Forwarded to {@link connectToBroker}, as `socketFactory` is. */
   certificateProbe?: SignalingCertificateProbe;
+  /**
+   * Called once, when the coordination server first accepts this party's
+   * registration (its `OPEN`); a later attempt's registration does not call it.
+   */
+  onRegistered?: () => void;
 }
 
 /**
@@ -912,6 +917,7 @@ export async function openWebRtcPeerSession(
     peerConnectionFactory,
     socketFactory,
     certificateProbe,
+    onRegistered,
   } = options;
 
   const [inviterId, acceptorId] = await Promise.all([
@@ -1085,6 +1091,7 @@ export async function openWebRtcPeerSession(
     };
     try {
       broker = await register(negotiation, attempt > 0);
+      if (attempt === 0) onRegistered?.();
       const remainingMs = deadline - Date.now();
       const finalAttempt = remainingMs <= attemptMs * FINAL_ATTEMPT_STRETCH;
       const result = await negotiation.run(broker, {

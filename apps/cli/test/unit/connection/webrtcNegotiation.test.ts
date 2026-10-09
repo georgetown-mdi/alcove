@@ -314,6 +314,7 @@ async function startRendezvous(options: {
   certificateProbe?: SignalingCertificateProbe;
   /** Shared with another rendezvous so the two derive the same pair of ids. */
   sharedSecret?: string;
+  onRegistered?: () => void;
 }): Promise<{
   socket: ScriptedSocket;
   /** Every broker socket opened, one per registration, in order; `socket` is the first. */
@@ -371,6 +372,7 @@ async function startRendezvous(options: {
         : AbortSignal.any([options.signal, teardown.signal]),
     attemptIceServers: options.attemptIceServers,
     certificateProbe: options.certificateProbe,
+    onRegistered: options.onRegistered,
     peerConnectionFactory: (configuration) => {
       const built = peers.length === 0 ? peer : new ScriptedPeer();
       peers.push(built);
@@ -1801,6 +1803,33 @@ test("an inviter's partner arriving between attempts is met by the next one", as
   peers[1].ondatachannel?.({ channel });
   channel.open();
   expect((await session).channel).toBe(channel);
+});
+
+test("the first registration's OPEN is reported once, and a later attempt's is not", async () => {
+  holdAttemptClock();
+  const onRegistered = vi.fn();
+  const { sockets } = await startRendezvous({
+    role: "inviter",
+    attemptMs: ONE_MINUTE_MS,
+    rendezvousTimeoutMs: TEN_MINUTES_MS,
+    onRegistered,
+  });
+  expect(onRegistered).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(ONE_MINUTE_MS);
+  await settleRegistration(sockets, 2);
+  expect(onRegistered).toHaveBeenCalledTimes(1);
+});
+
+test("a registration the broker never confirms is not reported", async () => {
+  const onRegistered = vi.fn();
+  const { socket, session } = await startRendezvous({
+    role: "inviter",
+    confirmRegistration: false,
+    onRegistered,
+  });
+  socket.fail();
+  await expect(session).rejects.toThrow();
+  expect(onRegistered).not.toHaveBeenCalled();
 });
 
 test("an acceptor's next attempt offers a new connection from a fresh registration", async () => {

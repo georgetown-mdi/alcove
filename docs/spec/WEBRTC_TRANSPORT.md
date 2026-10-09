@@ -240,6 +240,51 @@ origin is loopback. It mints no webrtc invitation; a webrtc mint there is
 refused before any token is built, and its SFTP and shared-folder invitations
 name no signaling address.
 
+### The published coordination server
+
+The hosted build writes one more static file, `/alcove.json`, naming the
+coordination server its browser parties use, so a CLI given the app's address
+can dial the same one. It is generated from `VITE_SIGNALING_SERVER_URL`, served
+by the static host like any other file, and holds one field:
+
+```json
+{
+  "signaling_server": "wss://signal.example.org:8443/api/"
+}
+```
+
+- **What the build writes.** The setting's `ws:` or `wss:` URL, its path ending
+  in `/`. The build fails when the setting is one the reader below would
+  refuse. The console build writes no such file.
+- **Who reads it.** `alcove invite` given an `http:` or `https:` web app
+  address, and nothing else. It requests `/alcove.json` at the address's own
+  origin before the invitation is created, follows no redirect, and reads at
+  most 4096 bytes, parsed under the bounded JSON parser. The request has a
+  15-second budget.
+- **What it accepts.** An object whose `signaling_server` is a `ws:` or `wss:`
+  URL of at most 2048 characters naming a host, with no user name, password,
+  query, fragment or percent-escape, and no host or path the delimiter rules
+  above refuse. Other fields are ignored. The scheme must match the address's:
+  `wss:` for an `https:` address, `ws:` for an `http:` one, the rule the web app
+  applies to its own setting.
+- **What it does with it.** The CLI dials that server and the invitation's
+  endpoint names it, exactly as when the server's URL is given directly. The
+  accept link it prints stays on the address the operator gave.
+- **Refusals.** A 3xx, a 4xx other than 408 and 429, an answer over the size
+  bound, and an answer that is not such a document (a static host's page
+  fallback included) are usage errors (exit 64). An unreachable app, no answer
+  within the budget, and 408, 429 or 5xx are transport failures (exit 69). Each
+  names the address and says what to give instead: the coordination server's
+  own `wss://` URL, or `channel: webrtc` in `alcove.yaml`. All land before the
+  invitation is created.
+
+### When a CLI inviter prints its invitation
+
+An online `alcove invite` over this channel prints its invitation only once the
+coordination server has answered the first registration with `OPEN`. A server
+that refuses or does not answer fails the run with no invitation printed. A
+connection attempt after the first registers again without printing anything.
+
 ### Connection attempts
 
 A CLI party waits for its partner in connection attempts. Each is a fresh

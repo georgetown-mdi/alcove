@@ -818,6 +818,12 @@ export {
 } from "./rendezvous";
 export type { RendezvousRole, SignalingLocationField } from "./rendezvous";
 export {
+  MAX_SIGNALING_DISCOVERY_BYTES,
+  SIGNALING_DISCOVERY_PATH,
+  signalingDiscoveryDocumentSource,
+  signalingServerFromDiscoveryDocument,
+} from "./signalingDiscovery";
+export {
   deriveRelayKey,
   mintRelayCredential,
   mintRunRelayCredential,
