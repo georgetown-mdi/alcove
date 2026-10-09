@@ -22,9 +22,12 @@
 import { dateTimeLabel } from "../formatting";
 
 import { deriveManagedBackupState } from "./managedBackupState";
-import { parseStoredInstant } from "./managedExchangeRecord";
 import { readManagedFailure } from "./managedFailureTiers";
 
+import {
+  COMPROMISE_ACKNOWLEDGE_LABEL,
+  DOES_NOT_ADD_UP_OPTION,
+} from "./managedFailureConfirmation";
 import {
   INPUT_FAILURE_TITLE,
   PARTIAL_ROTATION_FAILURE_TITLE,
@@ -50,6 +53,10 @@ import {
   tooLargeFailureTitle,
   tooLargeSetProblem,
 } from "./managedFailureCopy";
+import {
+  parseStoredInstant,
+  standingCompromiseResponse,
+} from "./managedExchangeRecord";
 
 import type {
   ManagedExchangeRecord,
@@ -188,16 +195,7 @@ export function betweenVisitNotice(
       break;
     }
     case "skipped":
-      return {
-        kind: "skipped",
-        title: NOTICE_TITLES.skipped,
-        body:
-          `${name} skipped a scheduled run. You answered "Something does not ` +
-          `add up" about a failed run, and scheduled runs stay stopped until ` +
-          `you clear that answer. Open this app and clear it once your partner ` +
-          `confirms on a channel you trust, or delete the exchange.`,
-        tag: noticeTag(record.id, "skipped"),
-      };
+      return skippedNotice(record, name);
     case "missed":
     case "unattempted":
     case undefined:
@@ -211,6 +209,36 @@ export function betweenVisitNotice(
   if (readManagedFailure(record, local, now).tier === "partial-rotation")
     return partialRotationNotice(record, name);
   return missNotice(record, name);
+}
+
+/** The name of the list a saved exchange's page is opened from. */
+const RECURRING_EXCHANGES_SCREEN = "Recurring exchanges";
+
+/** The notice a window skipped under the operator's compromise response earns:
+ * the answer, the date it was given where the record holds a readable one, and
+ * the control on the exchange's page that clears it. */
+function skippedNotice(
+  record: ManagedExchangeRecord,
+  name: string,
+): BetweenVisitNotice {
+  const response = standingCompromiseResponse(record);
+  const answeredAt =
+    response === undefined ? undefined : instantLabel(response.at);
+  const answered =
+    answeredAt === undefined
+      ? `you answered "${DOES_NOT_ADD_UP_OPTION}"`
+      : `on ${answeredAt} you answered "${DOES_NOT_ADD_UP_OPTION}"`;
+  return {
+    kind: "skipped",
+    title: NOTICE_TITLES.skipped,
+    body:
+      `${name} skipped a scheduled run because ${answered} about a failed ` +
+      `run, and scheduled runs stay stopped until you clear that answer. ` +
+      `Once your partner confirms on a channel you trust, open this exchange ` +
+      `from ${RECURRING_EXCHANGES_SCREEN} in this app and choose ` +
+      `"${COMPROMISE_ACKNOWLEDGE_LABEL}", or delete the exchange.`,
+    tag: noticeTag(record.id, "skipped"),
+  };
 }
 
 /** The notice a passed window earns where it follows a key exchange that never

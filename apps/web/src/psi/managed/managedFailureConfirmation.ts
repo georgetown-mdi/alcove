@@ -133,6 +133,9 @@ function laterFailureOfSameKind(
     : undefined;
 }
 
+/** The label of the gate option that routes to the compromise response. */
+export const DOES_NOT_ADD_UP_OPTION = "Something does not add up";
+
 /**
  * Compose the full Tier-2 confirmation for a record: the forwardable message and the
  * gate's two labeled outcomes. The option labels are fixed copy; the message is the
@@ -144,7 +147,7 @@ export function composeManagedFailureConfirmation(
   return {
     message: composeConfirmationMessage(record),
     confirmedOption: "Partner confirmed their own failure",
-    doesNotAddUpOption: "Something does not add up",
+    doesNotAddUpOption: DOES_NOT_ADD_UP_OPTION,
   };
 }
 

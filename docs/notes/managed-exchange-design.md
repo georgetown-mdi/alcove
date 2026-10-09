@@ -105,7 +105,8 @@ The absent side is not left permanently ignorant either.
 A runtime that wakes to find windows fully elapsed counts each one as a miss and lands on the next live window (the catch-up rule; see [MANAGED_EXCHANGE_RECORD.md](../spec/MANAGED_EXCHANGE_RECORD.md#catch-up-on-wake)), so its own repeated-miss surface fires at that wake.
 It learns late, but it does learn.
 
-The coordination prompt names both checks, the partner and this machine's own clock, because a wrong local time source produces the same pattern of misses, and a no-IT operator pointed only at the partner would never look at their own machine.
+The coordination prompt names a schedule that differs from the partner's as the likely cause, because each side enters the agreed window on its own clock and a hand conversion between time zones is the easiest way to get it wrong.
+It also names this machine's own clock, because a wrong local time source produces the same pattern of misses, and a no-IT operator pointed only at the partner would never look at their own machine.
 
 The escalation threshold is a window count, not a wall-clock age, so it is **cadence-relative**: on a monthly partnership the escalated state is months away.
 That is accepted because each miss already fires its own notification at its window, so the operator is not in the dark in the interim.

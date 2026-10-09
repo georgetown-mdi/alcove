@@ -197,6 +197,26 @@ describe("repeated-miss coordination", () => {
     expect(coordination?.line).toMatch(/^2 scheduled runs in a row/);
   });
 
+  test("both phrasings name a schedule mismatch as the likely cause and how to compare", () => {
+    const coordination = repeatedMissCoordination(withMisses(2));
+    expect(coordination?.line).toBe(
+      "2 scheduled runs in a row have not happened, most likely because " +
+        "your schedule and your partner's open different windows. Compare " +
+        "the next window in UTC, the repeat, and the window length under Run " +
+        "schedule on this exchange's page with your partner's, and check " +
+        "this device's clock.",
+    );
+    expect(coordination?.prompt).toBe(
+      "2 scheduled runs in a row have not happened, most likely because " +
+        "your schedule and your partner's open different windows; nothing " +
+        "has been paused, and the schedule stands. Ask your partner for " +
+        "their copy of the schedule and compare its next window in UTC, " +
+        "repeat, and window length with yours below, paste theirs under " +
+        "Local settings if it is the one you agreed, and check this device's " +
+        "clock.",
+    );
+  });
+
   test("both phrasings name both checks: the partner and this device's clock", () => {
     const coordination = repeatedMissCoordination(withMisses(3));
     for (const copy of [coordination?.line, coordination?.prompt]) {

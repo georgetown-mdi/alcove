@@ -1,9 +1,12 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  MAX_PARTNER_SCHEDULE_TEXT_LENGTH,
   MAX_SCHEDULE_INTERVAL_DAYS,
   MAX_SCHEDULE_WINDOW_HOURS,
   MIN_SCHEDULE_WINDOW_HOURS,
+  PARTNER_SCHEDULE_HAS_SECONDS,
+  PARTNER_SCHEDULE_NOT_A_SCHEDULE,
   WORKING_FOLDER_GRANT_NOTE,
   WORKING_FOLDER_SCOPE_NOTE,
   WORKING_FOLDER_UNSUPPORTED_NOTE,
@@ -13,6 +16,7 @@ import {
   resolvedFirstWindowLabel,
   scheduleEntryErrors,
   scheduleEntryFieldsFrom,
+  scheduleEntryFieldsFromPartnerText,
   scheduleEntryUnchanged,
   scheduleEntryUsable,
   workingFolderGrant,
@@ -22,10 +26,15 @@ import {
   MAX_SCHEDULE_WINDOW_SECONDS,
   scheduleSchema,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  catchUpManagedSchedule,
+  nextManagedScheduleWindowAfter,
+} from "@psi/managed/managedSchedule";
 import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
-import { catchUpManagedSchedule } from "@psi/managed/managedSchedule";
+import { partnerScheduleText } from "@recurring/scheduleSurfacingModel";
 import { withTimeZone } from "../../utils/hostTimeZone";
 
+import type { ManagedExchangeSchedule } from "@psi/managed/managedExchangeRecord";
 import type { ScheduleEntryFields } from "@recurring/scheduleEntryModel";
 
 // Schedule entry in Node, with the clock injected: what the operator types, what
@@ -591,5 +600,219 @@ describe("the working-folder grant the surfaces offer", () => {
       "you choose the input file",
     );
     expect(WORKING_FOLDER_UNSUPPORTED_NOTE).toContain("nobody present");
+  });
+});
+
+describe("filling the form from a partner's copy of the schedule", () => {
+  /** A weekly schedule whose window opens at 14:00Z, three hours wide. */
+  function partnerSchedule(
+    overrides: Partial<ManagedExchangeSchedule> = {},
+  ): ManagedExchangeSchedule {
+    return {
+      anchor: "2026-07-07T14:00:00.000Z",
+      intervalDays: 7,
+      windowSeconds: 3 * 3600,
+      nextWindow: "2026-07-07T14:00:00.000Z",
+      consecutiveMisses: 0,
+      ...overrides,
+    };
+  }
+
+  /** The fields a pasted text fills, failing the test where it fills none. */
+  function filled(text: string): ScheduleEntryFields {
+    const fill = scheduleEntryFieldsFromPartnerText(text);
+    if (fill.kind !== "filled")
+      throw new Error(`expected a fill, got: ${fill.message}`);
+    return fill.fields;
+  }
+
+  for (const zone of [
+    "UTC",
+    "America/New_York",
+    "Asia/Kolkata",
+    "Pacific/Chatham",
+  ])
+    test(`the copy control's own text fills a schedule that copies back the same, in ${zone}`, () => {
+      withTimeZone(zone, () => {
+        const theirs = partnerSchedule();
+        const text = partnerScheduleText(theirs, NOW);
+        const fields = filled(text);
+        expect(scheduleEntryErrors(fields)).toEqual({});
+
+        const ours = buildScheduleFromEntry(fields, NOW);
+        expect(ours.anchor).toBe("2026-07-14T14:00:00.000Z");
+        expect(ours.intervalDays).toBe(7);
+        expect(ours.windowSeconds).toBe(3 * 3600);
+        expect(partnerScheduleText(ours, NOW)).toBe(text);
+      });
+    });
+
+  test("a daily schedule at the widest window fills on the reader's own clock", () => {
+    withTimeZone("America/New_York", () => {
+      const text = partnerScheduleText(
+        partnerSchedule({
+          intervalDays: 1,
+          windowSeconds: MAX_SCHEDULE_WINDOW_SECONDS,
+        }),
+        NOW,
+      );
+      expect(text).toContain("Repeats: every day");
+      expect(text).toContain("Each window stays open: 12 hours");
+      expect(filled(text)).toEqual({
+        firstWindowDate: "2026-07-14",
+        firstWindowTime: "10:00",
+        intervalDays: 1,
+        windowHours: 12,
+      });
+    });
+  });
+
+  test("every window length and repeat the writer can emit is read back", () => {
+    withTimeZone("UTC", () => {
+      for (const intervalDays of [1, 2, 7, 30, MAX_SCHEDULE_INTERVAL_DAYS])
+        for (
+          let windowHours = 1;
+          windowHours <= MAX_SCHEDULE_WINDOW_HOURS;
+          windowHours++
+        ) {
+          const theirs = partnerSchedule({
+            intervalDays,
+            windowSeconds: windowHours * 3600,
+          });
+          const next = nextManagedScheduleWindowAfter(theirs, NOW);
+          const fields = filled(partnerScheduleText(theirs, NOW));
+          expect(fields.windowHours).toBe(windowHours);
+          expect(fields.intervalDays).toBe(intervalDays);
+          expect(Date.parse(buildScheduleFromEntry(fields, NOW).anchor)).toBe(
+            next.opensAtMs,
+          );
+        }
+    });
+  });
+
+  test("a schedule pasted out of a longer message, with Windows line endings, still fills", () => {
+    withTimeZone("UTC", () => {
+      const text = partnerScheduleText(partnerSchedule(), NOW);
+      const message = [
+        "Hi - here is the schedule from my side.",
+        "",
+        ...text.split("\n").map((line) => `  ${line}`),
+        "",
+        "Thanks",
+      ].join("\r\n");
+      expect(filled(message)).toEqual(filled(text));
+    });
+  });
+
+  test("a window that opens on the second the copy shows is refused, since the time field holds minutes", () => {
+    const text = partnerScheduleText(
+      partnerSchedule({ anchor: "2026-07-07T14:00:30.000Z" }),
+      NOW,
+    );
+    expect(text).toContain("14:00:30 UTC");
+    expect(scheduleEntryFieldsFromPartnerText(text)).toEqual({
+      kind: "refused",
+      message: PARTNER_SCHEDULE_HAS_SECONDS,
+    });
+  });
+
+  test("a width the copy states in minutes fills as the hours it is, and its field says why it cannot save", () => {
+    withTimeZone("UTC", () => {
+      const text = partnerScheduleText(
+        partnerSchedule({ windowSeconds: 5400 }),
+        NOW,
+      );
+      expect(text).toContain("Each window stays open: 90 minutes");
+      const fields = filled(text);
+      expect(fields.windowHours).toBe(1.5);
+      expect(scheduleEntryErrors(fields).windowHours).toBeDefined();
+    });
+  });
+
+  test("a window in an hour the local clock shows twice fills from the next window instead", () => {
+    // 2026 US daylight saving ends on 1 November: 01:30 local happens at 05:30Z
+    // and again at 06:30Z, and typing 01:30 names the first. The fill takes the
+    // next day's window, which is on the same schedule.
+    withTimeZone("America/New_York", () => {
+      const daily = partnerSchedule({
+        anchor: "2026-10-20T06:30:00.000Z",
+        intervalDays: 1,
+      });
+      const before = Date.parse("2026-11-01T05:45:00.000Z");
+      const text = partnerScheduleText(daily, before);
+      expect(text).toContain("2026-11-01 06:30 UTC");
+      const fields = filled(text);
+      expect(fields.firstWindowDate).toBe("2026-11-02");
+      expect(fields.firstWindowTime).toBe("01:30");
+      expect(buildScheduleFromEntry(fields, before).anchor).toBe(
+        "2026-11-02T06:30:00.000Z",
+      );
+    });
+  });
+
+  const notSchedules: Array<[string, string]> = [
+    ["an empty paste", ""],
+    ["prose", "Let's run this every Tuesday morning."],
+    ["an invitation link", "https://alcove.example/accept#abc123"],
+    [
+      "a schedule missing its window length",
+      "Next run window opens: 2026-07-21 14:00 UTC\nRepeats: every 7 days",
+    ],
+    [
+      "a schedule with two next-window lines",
+      "Next run window opens: 2026-07-21 14:00 UTC\n" +
+        "Next run window opens: 2026-07-22 14:00 UTC\n" +
+        "Repeats: every 7 days\nEach window stays open: 3 hours",
+    ],
+    [
+      "a date the calendar does not have",
+      "Next run window opens: 2026-02-30 14:00 UTC\n" +
+        "Repeats: every 7 days\nEach window stays open: 3 hours",
+    ],
+    [
+      "a time in a zone other than UTC",
+      "Next run window opens: 2026-07-21 14:00 EDT\n" +
+        "Repeats: every 7 days\nEach window stays open: 3 hours",
+    ],
+    [
+      "a repeat the copy never writes",
+      "Next run window opens: 2026-07-21 14:00 UTC\n" +
+        "Repeats: every week\nEach window stays open: 3 hours",
+    ],
+    [
+      "a length whose plural does not match its count",
+      "Next run window opens: 2026-07-21 14:00 UTC\n" +
+        "Repeats: every 7 days\nEach window stays open: 1 hours",
+    ],
+    [
+      "a length in days, which no schedule's window reaches",
+      "Next run window opens: 2026-07-21 14:00 UTC\n" +
+        "Repeats: every 7 days\nEach window stays open: 1 day",
+    ],
+  ];
+
+  for (const [name, text] of notSchedules)
+    test(`${name} is refused in one line`, () => {
+      expect(scheduleEntryFieldsFromPartnerText(text)).toEqual({
+        kind: "refused",
+        message: PARTNER_SCHEDULE_NOT_A_SCHEDULE,
+      });
+    });
+
+  test("a paste past the length bound is refused before it is read", () => {
+    const text = partnerScheduleText(partnerSchedule(), NOW);
+    const padded = text + " ".repeat(MAX_PARTNER_SCHEDULE_TEXT_LENGTH);
+    expect(scheduleEntryFieldsFromPartnerText(padded)).toEqual({
+      kind: "refused",
+      message: PARTNER_SCHEDULE_NOT_A_SCHEDULE,
+    });
+  });
+
+  test("every refusal is one line", () => {
+    for (const message of [
+      PARTNER_SCHEDULE_NOT_A_SCHEDULE,
+      PARTNER_SCHEDULE_HAS_SECONDS,
+    ])
+      expect(message).not.toContain("\n");
   });
 });
