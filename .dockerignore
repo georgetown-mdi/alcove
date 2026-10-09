@@ -24,6 +24,9 @@ scratch
 test_data
 *.csv
 
+# Gitignored SSH material must not reach the daemon.
+.devcontainer/infra/local/
+
 # Local environment and editor state.
 .env
 .env.*

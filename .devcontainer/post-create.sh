@@ -94,11 +94,15 @@ else
   echo "post-create: no GH_TOKEN/GITHUB_TOKEN in env; skipping git credential setup (push/PR unauthenticated)."
 fi
 
-# The image bakes the Chromium build the browser suites launch (Dockerfile beside
-# this script), so nothing here downloads a browser. This fails in one line when
-# the lockfile's playwright expects a build the image does not hold, which a
-# playwright bump causes until the container is rebuilt. Last, so the setup above
-# completes either way.
-node "$SCRIPT_DIR/../scripts/check-playwright-browser.mjs"
+# The image bakes the Chromium build the browser suites launch, so nothing here
+# downloads a browser. A playwright bump leaves the image stale until it is
+# rebuilt; that is reported loudly but must not fail post-create, since a failed
+# postCreateCommand skips postStartCommand, which starts the egress firewall.
+if ! playwright_report=$(node "$SCRIPT_DIR/../scripts/check-playwright-browser.mjs" 2>&1); then
+  banner="================================================================"
+  echo "$banner"
+  echo "REBUILD THE DEV CONTAINER: $playwright_report"
+  echo "$banner"
+fi
 
 echo "post-create complete: dependencies installed; container Claude sessions default to prompt-free."

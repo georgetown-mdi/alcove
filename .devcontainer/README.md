@@ -64,13 +64,13 @@ Four layers, so prompt-free operation inside is safe:
 
    The default profile's allowlist is `.devcontainer/egress-allowlist`, two
    hosts: `cdn.playwright.dev` and `playwright.download.prss.microsoft.com`,
-   where `npx playwright install chromium` starts its downloads. They are
+   kept for Playwright's own version and metadata requests
+   (`npx playwright install --dry-run`, the CLI's update check). They are
    admitted by name rather than by address because both are Azure Front Door
    names that answer a different edge per lookup, so an address resolved once
-   at container start misses on most later requests. They no longer get a
-   browser into the container: the Chrome-for-Testing builds answer with a
-   redirect to `storage.googleapis.com` (measured 2026-10-09, playwright 1.64),
-   which neither lane admits, so the image bakes the browser instead
+   at container start misses on most later requests. The browser download
+   itself redirects to `storage.googleapis.com`, which neither lane admits, so
+   the image bakes the browser
    ([Playwright and the baked browser](#playwright-and-the-baked-browser)).
    This profile sets no proxy variable, so nothing takes the lane unless it is
    pointed at it. The [infrastructure profile](#infrastructure-profile) runs the
@@ -136,8 +136,8 @@ the host filesystem, not an airtight seal:
   `update.code.visualstudio.com` or `marketplace.visualstudio.com` resolved to
   at start -- and those addresses are in the ipset. A direct connection to a
   Playwright host therefore succeeds some of the time. That is the shared-CDN
-  bullet above rather than anything the lane does; what the lane buys is a
-  download that works on every lookup instead of the lucky ones.
+  bullet above rather than anything the lane does; what the lane buys is
+  requests to them that work on every lookup instead of the lucky ones.
 - **A provided token grants real GitHub write access.** When `GH_TOKEN` is set in
   `.env` (see Prerequisites), the container can push feature branches and open
   PRs. The push hook refuses `staging`/`main` and branch protection rejects them
@@ -218,7 +218,8 @@ container, or use the `devcontainer` CLI. On first creation `post-create.sh` run
 bind-mounted host tree so Linux-built native modules do not collide with the
 host's macOS build), builds `@alcove/core` so the apps resolve it and then
 `@alcove/cli-contract` so the CLI does, and checks that the image holds the
-Chromium build the installed playwright expects. This runs *before* the egress
+Chromium build the installed playwright expects (a stale image is reported
+under a banner, and creation still completes). This runs *before* the egress
 firewall and the proxy lane (both start steps), so the initial install has full
 network access; they constrain subsequent sessions.
 
@@ -256,7 +257,7 @@ Nothing in the running container downloads a browser.
 
 - **A playwright bump that moves the Chromium revision needs an image rebuild**
   (Dev Containers: Rebuild Container). Until then `post-create.sh` and the
-  check below fail naming the missing build, and the browser suites fail with
+  check below name the missing build, and the browser suites fail with
   Playwright's "Executable doesn't exist" error, whose advice to run
   `npx playwright install` does not work here: the firewall refuses the
   download and `/ms-playwright` is not writable. A merged playwright bump
@@ -264,9 +265,9 @@ Nothing in the running container downloads a browser.
 - **Any change to the pinned version re-downloads the browser on the next
   rebuild**, even one that leaves the Chromium revision where it was, since the
   version is what the image layer is keyed on.
-- **The image is about 680 MB larger**: Chromium 401 MB, the headless shell
-  276 MB, FFmpeg 4 MB, measured on linux-arm64 for playwright 1.64, not
-  counting the shared libraries, which the image installs either way.
+- **The image is about 680 MB larger** on linux-arm64: Chromium 401 MB, the
+  headless shell 276 MB, FFmpeg 4 MB, not counting the shared libraries, which
+  the image installs either way.
 - **The build context is the repository root**, so the root `.dockerignore`,
   written for the product image, also applies to this build.
 
@@ -279,8 +280,10 @@ npx playwright install --dry-run chromium   # the build revisions it expects, an
 ls /ms-playwright                           # the build revisions the image holds
 ```
 
-`post-create.sh` runs the first command last, so a container created from a
-stale image fails its creation step with that one line.
+`post-create.sh` runs the first command last. A container created from a stale
+image prints that one line under a "REBUILD THE DEV CONTAINER" banner, and the
+browser suites report the stale image again when they run. Creation still
+completes, so the egress firewall and proxy still start.
 
 ## Infrastructure profile
 

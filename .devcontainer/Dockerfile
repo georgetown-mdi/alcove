@@ -80,11 +80,7 @@ RUN mkdir -p -m 755 /etc/apt/keyrings \
 # which the egress firewall refuses. Root-owned and world-readable: the node
 # user launches it but cannot replace or delete it.
 #
-# FRICTION: a playwright bump that moves the Chromium revision needs a container
-# rebuild (Dev Containers: Rebuild Container); until then post-create.sh and
-# `node scripts/check-playwright-browser.mjs` fail naming the missing build.
-# The layer adds about 680 MB (Chromium, its headless shell, and FFmpeg,
-# measured on linux-arm64 for playwright 1.64).
+# The frictions and the layer size: .devcontainer/README.md.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=playwright-pin /playwright-version /usr/local/share/alcove-playwright-version
 RUN npx --yes "playwright-core@$(cat /usr/local/share/alcove-playwright-version)" install --with-deps chromium \

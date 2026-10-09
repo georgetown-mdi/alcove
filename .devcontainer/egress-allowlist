@@ -7,13 +7,15 @@
 # Why these two hosts are here rather than in init-firewall.sh's ipset: both
 # are Azure Front Door names that answer a different edge address per lookup,
 # so an ipset entry resolved once at container start misses on most later
-# requests and the download fails with EHOSTUNREACH. The proxy admits a
-# destination by hostname, which does not depend on the address the name
-# resolved to at start.
+# requests and they fail with EHOSTUNREACH. The proxy admits a destination by
+# hostname, which does not depend on the address the name resolved to at start.
 
-# --- Playwright browser download -------------------------------------------
+# --- Playwright hosts ------------------------------------------------------
 #
-# The Chrome-for-Testing binaries `npx playwright install chromium` fetches for
-# the web app's browser test suite (.devcontainer/post-create.sh).
+# The browser for the web app's browser test suite is baked into the image
+# because the download redirects to storage.googleapis.com, a host outside this
+# allowlist. These two hosts stay for Playwright's own version and metadata
+# requests (`npx playwright install --dry-run`, the CLI's update check); a run
+# that needs the download itself rebuilds the image.
 cdn.playwright.dev
 playwright.download.prss.microsoft.com
