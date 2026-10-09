@@ -10,6 +10,8 @@ generator `image_smoke.yaml` regenerates each image's list beside `NOTICE` from,
 the container-pair wait its bind-mount smoke step runs the exchange under,
 [`required-suites.mjs`](required-suites.mjs), which prints the builds, test
 suites and gates a diff needs as read from the workflows CI runs,
+the ranking of slowest test files CI writes into each test job's summary, the
+tally of each scheduled workflow's red streak that docs/TESTING.md names,
 and the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or

@@ -1,0 +1,34 @@
+# Keeps a job's per-file test durations: ranks the slowest test files of the
+# vitest runs the job made in its summary, and uploads their JSON reports as an
+# artifact, so a test step that grows can be attributed to the files that grew.
+#
+# The job's test steps write the reports by setting ALCOVE_VITEST_JSON_DIR to
+# the `directory` given here (scripts/lib/jsonReportReporter.mjs). The caller
+# runs this with `if: ${{ !cancelled() }}`, so a red run keeps its timings too.
+name: "Test durations"
+description: "Rank the slowest test files in the job summary and upload the vitest JSON reports"
+
+inputs:
+  name:
+    description: "The artifact name, also the summary table's title; unique within the run."
+    required: true
+  directory:
+    description: "The directory the job's test steps named in ALCOVE_VITEST_JSON_DIR."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Rank the slowest test files
+      shell: bash
+      env:
+        TITLE: ${{ inputs.name }}
+        REPORT_DIR: ${{ inputs.directory }}
+      run: node scripts/slowest-test-files.mjs --title "$TITLE" "$REPORT_DIR" >> "$GITHUB_STEP_SUMMARY"
+    - name: Upload the vitest JSON reports
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ inputs.name }}
+        path: ${{ inputs.directory }}
+        if-no-files-found: warn
+        retention-days: 30

@@ -22,6 +22,10 @@ const SKIPPED_LEG_REPORTER = resolve(
   REPO_ROOT,
   "scripts/lib/skippedLegReporter.mjs",
 );
+const JSON_REPORT_REPORTER = resolve(
+  REPO_ROOT,
+  "scripts/lib/jsonReportReporter.mjs",
+);
 
 async function loadTestConfig(configPath) {
   const absolute = resolve(REPO_ROOT, configPath);
@@ -96,6 +100,11 @@ describe.each(CONFIGS)("$path", ({ path, distGuard, guardModule }) => {
     const { reporters } = loadedConfig(path);
     expect(reporters).toContain("default");
     expect(reporters).toContain(SKIPPED_LEG_REPORTER);
+  });
+
+  test("registers the JSON report reporter CI keeps per-file timings from", () => {
+    const { reporters } = loadedConfig(path);
+    expect(reporters).toContain(JSON_REPORT_REPORTER);
   });
 
   test(`${distGuard ? "guards" : "does not need a guard for"} the built dists`, () => {

@@ -8,7 +8,11 @@ export default defineConfig({
     // later. No dist guard beside it -- `pretest` rebuilds, these suites import
     // src rather than the built package, and the one that reads the built
     // package guards its own freshness.
-    reporters: ["default", "../../scripts/lib/skippedLegReporter.mjs"],
+    reporters: [
+      "default",
+      "../../scripts/lib/skippedLegReporter.mjs",
+      "../../scripts/lib/jsonReportReporter.mjs",
+    ],
     // Coverage is an informational REPORT, produced on demand by `npm run
     // coverage` (see package.json), never a gate: there is deliberately NO
     // `thresholds` line. A blanket "N% or the build fails" bar rewards vanity

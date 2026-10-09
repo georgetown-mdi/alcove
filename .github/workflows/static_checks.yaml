@@ -100,7 +100,16 @@ jobs:
           # replaced. When neither resolves the check falls back to its ref
           # candidates.
           ALCOVE_NARRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          # The script suites among the checks write their per-file timings
+          # here, kept by the step below.
+          ALCOVE_VITEST_JSON_DIR: ${{ runner.temp }}/vitest-json
         run: npm run check:all
+      - name: Keep the script suites' test durations
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/test-durations
+        with:
+          name: test-durations-static-checks
+          directory: ${{ runner.temp }}/vitest-json
       # Blocking half of the dependency audit, over the production tree the
       # shipped image runs: the release SBOM's scope -- the two workspaces the
       # Dockerfile's production install names, plus apps/web, whose

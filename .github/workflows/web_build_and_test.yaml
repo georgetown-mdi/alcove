@@ -92,6 +92,7 @@ jobs:
             packages/testkit/**
             .github/actions/setup/**
             .github/actions/path-scope/**
+            .github/actions/test-durations/**
             .github/workflows/web_build_and_test.yaml
             .github/workflows/pages_deploy.yaml
             !lib/**/*.md
@@ -403,6 +404,14 @@ jobs:
           key: playwright-${{runner.os}}-${{steps.playwright.outputs.os-release}}-${{runner.arch}}-${{steps.playwright.outputs.version}}
       - name: Run the ${{ matrix.suite }} suite
         run: ${{ matrix.command }}
+        env:
+          ALCOVE_VITEST_JSON_DIR: ${{ runner.temp }}/vitest-json
+      - name: Keep the ${{ matrix.suite }} suite's test durations
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/test-durations
+        with:
+          name: test-durations-web-${{ matrix.suite }}
+          directory: ${{ runner.temp }}/vitest-json
 
   # The one job name a required status check can name, standing for the package
   # job and every suite leg above. `if: always()` is what makes it usable as one:

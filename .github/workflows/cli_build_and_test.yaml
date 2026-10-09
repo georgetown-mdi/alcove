@@ -67,6 +67,7 @@ jobs:
             tsconfig.base.json
             .github/actions/setup/**
             .github/actions/path-scope/**
+            .github/actions/test-durations/**
             .github/workflows/cli_build_and_test.yaml
 
   # The six suites this gate runs share no mutable state, so they run as
@@ -179,6 +180,13 @@ jobs:
           # against the literal "1".
           ALCOVE_REQUIRE_WORKER_BUILD: ${{ matrix.require-worker-build }}
           ALCOVE_SFTP_BACKEND: ${{ matrix.sftp-backend }}
+          ALCOVE_VITEST_JSON_DIR: ${{ runner.temp }}/vitest-json
+      - name: Keep the ${{ matrix.suite }} suite's test durations
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/test-durations
+        with:
+          name: test-durations-cli-${{ matrix.suite }}
+          directory: ${{ runner.temp }}/vitest-json
 
   # The one job name a required status check can name, standing for every suite
   # leg above. `if: always()` is what makes it usable as one: without it a failed
