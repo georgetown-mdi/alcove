@@ -186,9 +186,10 @@ In lens mode every cluster has `name`, `description`, `severity`, `file`, `flagg
 `verification` and `verificationNote`, and two kinds of cluster have more:
 
 - A confirmed cluster whose fix the consolidator found determined also has `edits`
-  (each `{file, oldText, newText}`, the old text verbatim from the file at the ref)
-  and `verifyCommand`, the one command that shows the fix took. A cluster without
-  them needs a judgment call to fix.
+  (each `{file, oldText, newText}`, the old text the consolidator says it copied
+  verbatim from the file at the ref, which Step 3 verifies) and `verifyCommand`, the
+  one command that shows the fix took. A cluster without them needs a judgment call
+  to fix.
 - Every nit that touches no user-visible string (UI copy, CLI output, a message shown
   to a user or operator, user documentation) is folded by the script into one
   cluster with `"statedLimit": true`, an empty `file`, and each folded nit's name,
@@ -265,9 +266,17 @@ Common to both:
    confirmed-repeat counts; the hotspot files; the contested list; and the simpler-shape
    vote ("N of `<reviewerCount>` reviewers see a materially simpler shape", each reason on
    its own line when N > 0).
+   Before marking any row, save the Workflow's result to a file (the task output
+   file holding `{"result": ...}` serves as is) and run
+   `node .claude/scripts/verify-fix-shape.mjs <the target ref> <that file> [--worktree <TREE>]`,
+   naming `--worktree` when a tree holds the ref. It prints `mechanical <name>` for a
+   cluster whose every edit's `oldText` occurs exactly once in its file at the ref,
+   and `judgment <name> -- <reason>` otherwise; the Workflow passes the consolidator's
+   edits through unchecked, so this run is the check.
    Mark each confirmed cluster's row `mechanical` when it has `edits` and
-   `verifyCommand` (the Workflow keeps them only when each edit's `oldText` occurs
-   exactly once in its file at the target ref), and `judgment` otherwise, and under a mechanical row write each
+   `verifyCommand` and the run printed `mechanical` for it, and `judgment` otherwise:
+   a cluster the run reported as judgment loses its edits and command here and in the
+   fix brief, and its row carries the run's reason. Under a mechanical row write each
    edit as its file and two fenced blocks, the old text and the new text, then the
    verifying command in a fenced block. The fix brief for a mechanical item is drafted
    from these: apply the edits, run the command. Mark the nit batch's row `stated limit`.

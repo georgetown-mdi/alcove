@@ -25,6 +25,9 @@ push:
   survives a moved head; `verify-rebase-invariance.mjs`, which decides the same
   question for a head moved by a rebase; and `verify-additive-test-delta.mjs`,
   which decides it for a head that only added lines to test files.
+  `verify-fix-shape.mjs` checks, as `/light-review` books a lens round, that each
+  edit the round proposes as mechanical finds its old text exactly once at the
+  reviewed ref.
   `check-review-ledger-dispositions.mjs` checks, at merge-ready, that a
   branch's review ledger names a fix commit the PR head contains for every
   `fixed` finding, a home for every `deferred` one, and a spec limits line for
@@ -40,7 +43,9 @@ push:
   invoke by absolute path. Each is a script BODY, not a module: the harness
   injects `args`, `agent`, and `parallel`, and takes the top-level `return` as
   the run's result. No ES module parser accepts that, so eslint ignores them and
-  the test beside each one compiles it into a function to drive it.
+  the test beside each one compiles it into a function to drive it. The harness
+  refuses at launch a body containing `import(`, so a script body reads no file
+  and runs no command; work that needs either runs in a script beside it.
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:

@@ -1,41 +1,29 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 import { jsBlocks } from "../../scripts/lib/markdownFences.mjs";
-import { createGitFixtures } from "./lib/gitFixture.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const COMMAND = ".claude/commands/light-review.md";
 const SCRIPT = ".claude/scripts/light-review-workflow.mjs";
 
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
 // The checked-in script the command invokes by path IS the artifact under test.
-// It is a Workflow script body rather than a module, so wrap it in a module
-// exporting a function of the three names the Workflow runtime injects;
-// `export const meta` is the one module-only spelling in it, and the top-level
-// `return` of the role branch is legal in a function body. It is a module rather
-// than a Function-constructor body because the script imports node:child_process
-// dynamically, which a Function-constructor body has no callback to resolve.
-async function compileScript() {
+// It is a Workflow script body rather than a module, so compile it into a
+// function of the three names the Workflow runtime injects; `export const meta`
+// is the one module-only spelling in it, and the top-level `return` of the role
+// branch is legal in a function body.
+function compileScript() {
   const body = readFileSync(resolve(root, SCRIPT), "utf8").replace(
     /^export const meta =/m,
     "const meta =",
   );
-  const dir = mkdtempSync(join(tmpdir(), "light-review-script-"));
-  try {
-    const file = join(dir, "script.mjs");
-    writeFileSync(
-      file,
-      `export default async function (args, agent, parallel) {\n${body}\n}\n`,
-    );
-    return (await import(pathToFileURL(file).href)).default;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  return new AsyncFunction("args", "agent", "parallel", body);
 }
 
-const script = await compileScript();
+const script = compileScript();
 const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
 const runner = (deliver) => (args, respond) =>
   script(deliver(args), respond, parallel);
@@ -53,6 +41,13 @@ describe("light-review command wiring", () => {
     const command = readFileSync(resolve(root, COMMAND), "utf8");
     expect(command).toContain(SCRIPT);
     expect(jsBlocks(command)).toEqual([]);
+  });
+
+  // The Workflow tool refuses at launch a script whose body loads a module.
+  it("loads no module, so the Workflow tool will launch it", () => {
+    const body = readFileSync(resolve(root, SCRIPT), "utf8");
+    expect(body).not.toContain("import(");
+    expect(body).not.toContain("require(");
   });
 });
 
@@ -585,97 +580,37 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     expect(result.clusters).toEqual([clusterCore({ severity: "nit" })]);
   });
 
-  describe("with a tree holding the target ref", () => {
-    const { makeFixture, cleanup } = createGitFixtures();
-    let tree;
-    beforeAll(() => {
-      const fixture = makeFixture("light-review-tree-");
-      fixture.write("a.ts", "let x = 1;\nlet y = 2;\nlet y = 3;\n");
-      fixture.commit("fixture");
-      fixture.git(["branch", "-m", TARGET]);
-      tree = fixture.dir;
-    });
-    afterAll(cleanup);
-
-    const treeRound = (consolidatorClusters) =>
-      run({ ...lensArgs, worktreePath: tree }, (prompt, options) =>
-        options.label === "consolidator"
-          ? { clusters: consolidatorClusters }
-          : review,
-      );
-    const edit = (oldText, file = "a.ts") => [
-      { file, oldText, newText: "const x" },
-    ];
-
-    it("returns the edit and its command for a confirmed cluster that has both", async () => {
-      const edits = edit("let x");
-      const result = await treeRound([
-        consolidatorCluster({
-          name: "mechanical",
-          edits,
-          verifyCommand: "  npx vitest run a.test.ts ",
-        }),
-        consolidatorCluster({
-          name: "no command",
-          edits,
-          verifyCommand: "  ",
-        }),
-        consolidatorCluster({
-          name: "refuted",
-          verification: "refuted",
-          edits,
-          verifyCommand: "true",
-        }),
-        consolidatorCluster({ name: "judgment" }),
-      ]);
-      expect(result.clusters).toEqual([
-        clusterCore({
-          name: "mechanical",
-          edits,
-          verifyCommand: "npx vitest run a.test.ts",
-        }),
-        clusterCore({ name: "no command" }),
-        clusterCore({ name: "refuted", verification: "refuted" }),
-        clusterCore({ name: "judgment" }),
-      ]);
-    });
-
-    it("keeps an edit whose old text occurs exactly once at the target ref", async () => {
-      const edits = edit("let y = 2;");
-      const result = await treeRound([
-        consolidatorCluster({ edits, verifyCommand: "true" }),
-      ]);
-      expect(result.clusters).toEqual([
-        clusterCore({ edits, verifyCommand: "true" }),
-      ]);
-    });
-
-    it("drops the fix when an edit's old text is absent from its file", async () => {
-      const result = await treeRound([
-        consolidatorCluster({
-          edits: [...edit("let x"), ...edit("let z")],
-          verifyCommand: "true",
-        }),
-      ]);
-      expect(result.clusters).toEqual([clusterCore()]);
-    });
-
-    it("drops the fix when an edit's old text occurs more than once", async () => {
-      const result = await treeRound([
-        consolidatorCluster({ edits: edit("let y"), verifyCommand: "true" }),
-      ]);
-      expect(result.clusters).toEqual([clusterCore()]);
-    });
-
-    it("drops the fix when the edit's file is not at the target ref", async () => {
-      const result = await treeRound([
-        consolidatorCluster({
-          edits: edit("let x", "missing.ts"),
-          verifyCommand: "true",
-        }),
-      ]);
-      expect(result.clusters).toEqual([clusterCore()]);
-    });
+  it("returns the edit and its command for a confirmed cluster that has both", async () => {
+    const edits = [{ file: "a.ts", oldText: "let x", newText: "const x" }];
+    const result = await lensRound(run, [
+      consolidatorCluster({
+        name: "mechanical",
+        edits,
+        verifyCommand: "  npx vitest run a.test.ts ",
+      }),
+      consolidatorCluster({
+        name: "no command",
+        edits,
+        verifyCommand: "  ",
+      }),
+      consolidatorCluster({
+        name: "refuted",
+        verification: "refuted",
+        edits,
+        verifyCommand: "true",
+      }),
+      consolidatorCluster({ name: "judgment" }),
+    ]);
+    expect(result.clusters).toEqual([
+      clusterCore({
+        name: "mechanical",
+        edits,
+        verifyCommand: "npx vitest run a.test.ts",
+      }),
+      clusterCore({ name: "no command" }),
+      clusterCore({ name: "refuted", verification: "refuted" }),
+      clusterCore({ name: "judgment" }),
+    ]);
   });
 
   it("asks the consolidator for the nit flag and the fix shape", async () => {
