@@ -26,8 +26,11 @@ import {
   MAX_SCHEDULE_WINDOW_SECONDS,
   scheduleSchema,
 } from "@psi/managed/managedExchangeRecord";
+import {
+  catchUpManagedSchedule,
+  nextManagedScheduleWindowAfter,
+} from "@psi/managed/managedSchedule";
 import { MANAGED_INPUT_FILE_NAME } from "@psi/managed/managedInputHandle";
-import { catchUpManagedSchedule } from "@psi/managed/managedSchedule";
 import { partnerScheduleText } from "@recurring/scheduleSurfacingModel";
 import { withTimeZone } from "../../utils/hostTimeZone";
 
@@ -661,6 +664,29 @@ describe("filling the form from a partner's copy of the schedule", () => {
         intervalDays: 1,
         windowHours: 12,
       });
+    });
+  });
+
+  test("every window length and repeat the writer can emit is read back", () => {
+    withTimeZone("UTC", () => {
+      for (const intervalDays of [1, 2, 7, 30, MAX_SCHEDULE_INTERVAL_DAYS])
+        for (
+          let windowHours = 1;
+          windowHours <= MAX_SCHEDULE_WINDOW_HOURS;
+          windowHours++
+        ) {
+          const theirs = partnerSchedule({
+            intervalDays,
+            windowSeconds: windowHours * 3600,
+          });
+          const next = nextManagedScheduleWindowAfter(theirs, NOW);
+          const fields = filled(partnerScheduleText(theirs, NOW));
+          expect(fields.windowHours).toBe(windowHours);
+          expect(fields.intervalDays).toBe(intervalDays);
+          expect(Date.parse(buildScheduleFromEntry(fields, NOW).anchor)).toBe(
+            next.opensAtMs,
+          );
+        }
     });
   });
 

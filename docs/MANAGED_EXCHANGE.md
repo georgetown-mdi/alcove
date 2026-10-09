@@ -473,7 +473,8 @@ already defines:
   [Telling a desync from an attack](#telling-a-desync-from-an-attack)), so the
   notification names the answer that stopped the runs, the date it was given,
   and where to clear it: the exchange's page, opened from Recurring exchanges,
-  and the acknowledgement there that starts the runs again. It reports a standing state rather than an occurrence, so the
+  and the acknowledgement there that starts the runs again. It reports a
+  standing state rather than an occurrence, so the
   windows after the first say nothing further while it stands.
 - **This needs you: the input file is missing or was rejected.** A benign
   pre-run input failure on an unattended run -- the handle's file gone at run
