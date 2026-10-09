@@ -15,6 +15,7 @@ import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { JobManager } from "@jobs/jobManager";
 
 import { route as CreateRoute } from "../../../server/console/routes/index";
+import { route as JobRoute } from "../../../server/console/routes/$jobId/index";
 import { route as WebrtcRoute } from "../../../server/console/routes/webrtc";
 
 import {
@@ -422,5 +423,30 @@ describe("POST /api/jobs on the webrtc channel", () => {
     const response = await postJob({ ...validWebrtcIntent(), ...overrides });
     expect(response.status).toBe(400);
     expect(fs.readdirSync(root)).toEqual([JOB_FILE_NAMES.key]);
+  });
+});
+
+describe("DELETE /api/jobs/:jobId on the webrtc channel", () => {
+  test("forgets the authored coordination server", async () => {
+    seedManager();
+    expect((await putWebrtc({ address: "wss://peers.test/psi" })).status).toBe(
+      200,
+    );
+    const created = await postJob(validWebrtcIntent());
+    expect(created.status).toBe(201);
+    const { id } = (await created.json()) as { id: string };
+    expect(await getWebrtc()).toMatchObject({ configured: true });
+
+    const deleted = (await handler(
+      JobRoute,
+      "DELETE",
+    )({
+      request: request(`http://localhost/api/jobs/${id}`, {
+        method: "DELETE",
+      }),
+      params: { jobId: id },
+    })) as Response;
+    expect(deleted.status).toBe(204);
+    expect(await getWebrtc()).toEqual({ configured: false });
   });
 });

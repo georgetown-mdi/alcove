@@ -1,3 +1,5 @@
+import { createServer } from "node:http";
+
 import { describe, expect, test } from "vitest";
 
 import { ConnectionError, UsageError } from "../src/errors";
@@ -7,6 +9,9 @@ import {
   resolveWebAppSignalingServer,
   webAppOrigin,
 } from "../src/webAppSignaling";
+
+import type { IncomingMessage, ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 
 const REMEDY = "Give the server itself.";
 const APP = new URL("https://app.example.org/");
@@ -195,5 +200,74 @@ describe("resolveWebAppSignalingServer", () => {
     expect(webAppOrigin(new URL("http://127.0.0.1:8080"))).toBe(
       "http://127.0.0.1:8080",
     );
+  });
+});
+
+async function loopbackApp(
+  answer: (request: IncomingMessage, response: ServerResponse) => void,
+): Promise<{ address: URL; close: () => Promise<void> }> {
+  const server = createServer(answer);
+  await new Promise<void>((resolve) =>
+    server.listen(0, "127.0.0.1", () => resolve()),
+  );
+  return {
+    address: new URL(
+      `http://127.0.0.1:${(server.address() as AddressInfo).port}/`,
+    ),
+    close: () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  };
+}
+
+describe("resolveWebAppSignalingServer against a real socket", () => {
+  test("a redirect answered over the wire is refused, not followed", async () => {
+    const paths: Array<string | undefined> = [];
+    const app = await loopbackApp((request, response) => {
+      paths.push(request.url);
+      response.writeHead(302, { location: "/elsewhere.json" });
+      response.end();
+    });
+    try {
+      const err = await resolveWebAppSignalingServer(app.address, {
+        remedy: REMEDY,
+      }).then(
+        () => {
+          throw new Error("expected a refusal");
+        },
+        (caught: Error) => caught,
+      );
+      expect(err).toBeInstanceOf(UsageError);
+      expect(err.message).toMatch(
+        /redirect \(HTTP 302\), which is not followed/,
+      );
+      expect(err.message.endsWith(` ${REMEDY}`)).toBe(true);
+      expect(paths).toEqual(["/alcove.json"]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test("a server that never answers is a transport failure at the time bound", async () => {
+    const app = await loopbackApp(() => {});
+    try {
+      const err = await resolveWebAppSignalingServer(app.address, {
+        remedy: REMEDY,
+        timeoutMs: 50,
+      }).then(
+        () => {
+          throw new Error("expected a refusal");
+        },
+        (caught: Error) => caught,
+      );
+      expect(err).toBeInstanceOf(ConnectionError);
+      expect((err as ConnectionError).kind).toBe("transport");
+      expect(err.message).toContain("no answer within 50ms");
+      expect(err.message.endsWith(` ${REMEDY}`)).toBe(true);
+    } finally {
+      await app.close();
+    }
   });
 });
