@@ -77,6 +77,13 @@ run's commit. Then, from a branch in this repository:
      --deny-self-hosted-runners
    ```
 
+   The exit code is the result: 0 means verified. With its output captured
+   rather than sent to a terminal, a successful run prints nothing, neither the
+   policy it enforced nor the attestation that matched. To keep a record of
+   what verified, add `--format json`, which writes the matched attestation and
+   its verification result to stdout when captured, and save that file with the
+   pull request's evidence.
+
    If the fork does not attest yet, this returns HTTP 404 for the digest. That
    is the disarmed case: record it in the pull request and leave the marker's
    `attestation_expected` at `false`.

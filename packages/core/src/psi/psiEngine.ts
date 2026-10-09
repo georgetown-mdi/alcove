@@ -453,13 +453,12 @@ export class InProcessPsiEngine implements PsiEngine {
     const request = fromLibrary(() =>
       this.library.request.deserializeBinary(requestBytes),
     );
-    // The reveal flag rides the request, and the library refuses to serve a
+    // The request states the reveal flag, and the library refuses to serve a
     // request whose flag disagrees with the key this server was created
     // under -- the wire-enforced mode agreement (docs/spec/PROTOCOL.md,
-    // PSI-C). Read the flag and name the condition here: the native addon
-    // names it, but the WebAssembly build reports the same refusal as an
-    // opaque embind marshalling error, indistinguishable from a malformed
-    // frame. Fixed literals only: the request is partner-supplied.
+    // PSI-C). Read the flag and name both modes here, rather than leave the
+    // library's refusal, which the frame boundary reports as a request that
+    // failed to decode. Fixed literals only: the request is partner-supplied.
     if (request.getRevealIntersection() !== this.revealsIdentifiers)
       throw new Error(
         `${this.id} protocol error: the partner's PSI request ran the ` +
@@ -621,15 +620,15 @@ export class InProcessPsiEngine implements PsiEngine {
 
   // The client role, the mode, and the held setup each operation below requires,
   // checked in that order so a call the engine's construction rules out is refused
-  // by name here rather than deep in the library -- which reports the same
-  // condition as an opaque marshalling error on the WebAssembly build. The held
-  // setup is taken: one setup is matched at most once.
+  // by name here, as this party's own fault, rather than deep in the library as a
+  // failure on the partner's frame. The held setup is taken: one setup is matched
+  // at most once.
   private beginMatch(operation: string, requiredMode: PsiEngineMode): PSIMatch {
     if (!this.client)
       throw new Error(`${this.id}: ${operation} requires the client role`);
     if (this.revealsIdentifiers !== modeRevealsIdentifiers(requiredMode))
       throw new Error(
-        `${this.id}: ${operation} requires a ${requiredMode} PSI engine; this one is ${modeName(this.revealsIdentifiers)}`,
+        `${this.id}: ${operation} needs a PSI engine that is ${requiredMode}; this one is ${modeName(this.revealsIdentifiers)}`,
       );
     const match = this.heldSetup;
     if (match === undefined)

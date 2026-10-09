@@ -19,7 +19,7 @@
     "coverage": "vitest run --project unit --project integration --project webrtc --project backend-agnostic --coverage"
   },
   "dependencies": {
-    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.5.tgz",
+    "@openmined/psi.js": "file:../../lib/openmined-psi.js-2.0.6-seclink.6.tgz",
     "@alcove/core": "file:../../packages/core",
     "@alcove/cli-contract": "file:../../packages/cli-contract",
     "loglevel": "^1.9.2",
