@@ -277,9 +277,9 @@ The rest are limits rather than refusals:
 Every action a workflow uses is pinned by ref (`actions/checkout@v7`,
 `docker/build-push-action@v7`, `sigstore/cosign-installer@v4.1.2`). The
 `github-actions` block in `.github/dependabot.yml` is configured against
-`.github/workflows`, and its `ignore` entries hold four orgs (`actions/*`,
-`docker/*`, `aws-actions/*`, `github/*`) to major bumps only, so a within-major
-re-pin does not open a pull request. `cosign-installer` is absent by design
+`.github/workflows`, and its `ignore` entries hold three orgs (`actions/*`,
+`docker/*`, `github/*`) to major bumps only, so a within-major re-pin does not
+open a pull request. `cosign-installer` is absent by design
 from that list, so its patch bumps show up.
 
 Two invariants keep that configuration accurate, each held by a check rather than
