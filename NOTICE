@@ -25,7 +25,7 @@ Source: https://github.com/OpenMined/PSI
 Fork: https://github.com/georgetown-mdi/OpenMinedPSI
 
 The OpenMined PSI module is vendored in this repository at
-lib/openmined-psi.js-2.0.6-seclink.5.tgz, built from the fork above. It is a
+lib/openmined-psi.js-2.0.6-seclink.6.tgz, built from the fork above. It is a
 JavaScript binding for the Google Private Join and Compute library, shipping a
 WebAssembly build alongside native N-API prebuilds.
 
@@ -51,7 +51,7 @@ BoringSSL is Google's fork of OpenSSL, embedded in the Google Private Join and
 Compute library and compiled into both the OpenMined PSI WebAssembly module and
 its native prebuilds. BoringSSL does not use numbered releases; the specific
 commit is determined by the OpenMined PSI build configuration. The
-openmined-psi.js-2.0.6-seclink.5.tgz package ships no NOTICE file of its own.
+openmined-psi.js-2.0.6-seclink.6.tgz package ships no NOTICE file of its own.
 
 This product includes software developed by the OpenSSL Project for use in the
 OpenSSL Toolkit (https://www.openssl.org/).

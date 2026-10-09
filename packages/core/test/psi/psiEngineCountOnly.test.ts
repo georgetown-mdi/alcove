@@ -22,10 +22,9 @@ import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
 // The count-only (psi-c) construction at the PsiEngine boundary: a round
 // resolving to the intersection cardinality and nothing that names a match.
 // Tested properties are the normative rows of docs/spec/PROTOCOL.md, PSI-C;
-// countOnlyRun.test.ts drives the exchange built on it. A library refusal is
-// asserted generically since WASM reports an opaque marshalling error where
-// the native addon names it (docs/notes/psi-c-count-only.md), except the mode
-// mismatch, which the engine names itself off the request.
+// countOnlyRun.test.ts drives the exchange built on it. A refusal is asserted
+// by the engine's own wording, which names the mode before the library is
+// asked (docs/notes/psi-c-count-only.md).
 
 const wasm = await PSI();
 
@@ -111,6 +110,11 @@ async function runCountOnlyRound(
   const response = await sender.processClientRequest(request);
   return receiver.computeIntersectionCardinality(response);
 }
+
+const countOnlyRefusesAssociationTable =
+  /computeAssociationTable requires a identifier-revealing PSI engine; this one is count-only/;
+const revealingRefusesCardinality =
+  /computeIntersectionCardinality requires a count-only PSI engine; this one is identifier-revealing/;
 
 const mismatchedOrientations: Array<[PsiEngineMode, PsiEngineMode]> = [
   ["count-only", "identifier-revealing"],
@@ -206,7 +210,7 @@ describe.each([
 
     await expect(
       settled(() => countOnlyReceiver.computeAssociationTable(response)),
-    ).rejects.toThrow();
+    ).rejects.toThrow(countOnlyRefusesAssociationTable);
     // The refusal is not destructive: the round still resolves to its count.
     await expect(
       countOnlyReceiver.computeIntersectionCardinality(response),
@@ -228,7 +232,7 @@ describe.each([
 
     await expect(
       settled(() => revealingReceiver.computeIntersectionCardinality(response)),
-    ).rejects.toThrow();
+    ).rejects.toThrow(revealingRefusesCardinality);
     // The disclosure this engine WAS built for is still available: the matched
     // receiver rows, and the sender rows they pair with once its permutation maps
     // the library's sorted slots back to input order.
@@ -336,7 +340,7 @@ describe.each([
       const response = await unrecognizedSender.processClientRequest(request);
       await expect(
         settled(() => unrecognizedReceiver.computeAssociationTable(response)),
-      ).rejects.toThrow();
+      ).rejects.toThrow(countOnlyRefusesAssociationTable);
       await expect(
         unrecognizedReceiver.computeIntersectionCardinality(response),
       ).resolves.toBe(1);
@@ -357,12 +361,11 @@ describe.each([
       const request =
         await mismatchedReceiver.createClientRequest(receiverValues);
 
-      // The sender enforces the agreement when it processes the request: the mode
-      // rides the request, so a completed round implies the two flags agreed. The
-      // refusal NAMES the condition -- which mode the partner ran, and which this
-      // exchange runs -- rather than passing through the library's own throw, which
-      // on the WebAssembly build is an opaque marshalling error a party could not
-      // tell from a malformed frame.
+      // The sender enforces the agreement when it processes the request: the
+      // request states the mode, so a completed round implies the two flags
+      // agreed. The refusal names which mode the partner ran and which this
+      // exchange runs, rather than passing through the library's own throw, which
+      // the frame boundary would report as a request that failed to decode.
       await expect(
         settled(() => mismatchedSender.processClientRequest(request)),
       ).rejects.toThrow(
@@ -586,14 +589,12 @@ describe.each(backendPairs)("count-only backend parity: $name", (pair) => {
 
     await expect(
       settled(() => countOnlyReceiver.computeAssociationTable(response)),
-    ).rejects.toThrow();
+    ).rejects.toThrow(countOnlyRefusesAssociationTable);
 
     // The refusal is pinned to the reveal flag the request holds disagreeing
-    // with the one this sender's key was generated under, on EITHER backend:
+    // with the one this sender's key was generated under, on either backend:
     // the flag is read off the request and the condition named before the
-    // library is asked, which is what makes the WebAssembly sender's
-    // diagnosis as good as the addon's (the library itself reports this as
-    // an opaque marshalling error there).
+    // library is asked.
     const revealingRequest =
       await revealingReceiver.createClientRequest(receiverValues);
     await expect(

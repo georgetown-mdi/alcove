@@ -27,6 +27,7 @@ import {
 import type { Config } from "../../src/types";
 import { sortAssociationTable } from "../../src/testing";
 import { classifyFailure } from "../../src/failureClass";
+import { sanitizeErrorForDisplay } from "../../src/utils/sanitizeErrorForDisplay";
 import { serializeSetup } from "../../src/psi/psiChunks";
 import { UNBOUNDED_PSI_ELEMENTS } from "../utils/psiElementBounds";
 import { loadNativeAddonOrSkip } from "../utils/nativeAddon";
@@ -272,6 +273,111 @@ test("a library failure stays recognizable after the worker round trip", async (
     "receiver protocol error: inbound PSI serverSetup failed to decode",
   );
   expect(isPsiLibraryFailure(failure?.cause)).toBe(true);
+});
+
+describe("an engine failure keeps the engine's own status message", () => {
+  // A request element that is no curve point passes every check this side runs
+  // and fails inside the engine, so what is raised is the engine's status.
+  const enginePointDecodeFailure =
+    /^ECGroup::CreateECPoint\(string\) - Could not decode point\./;
+  const undecodableRequest = (): Uint8Array => {
+    const request = new psiLibrary.request();
+    request.setRevealIntersection(true);
+    request.setEncryptedElementsList([new Uint8Array([9, 9, 9])]);
+    return request.serializeBinary();
+  };
+  const backends: Array<[string, PSILibrary | undefined]> = [
+    ["WebAssembly build", psiLibrary],
+    ["native addon", nativeLibrary],
+  ];
+
+  describe.each([
+    {
+      name: "in-process",
+      create: (library: PSILibrary): PsiEngine =>
+        new InProcessPsiEngine(
+          library,
+          "starter",
+          "sender",
+          "identifier-revealing",
+        ),
+    },
+    {
+      name: "worker-backed",
+      create: (library: PSILibrary): PsiEngine =>
+        inProcessWorkerEngine("starter", "sender", {}, library),
+    },
+  ])("$name", ({ create }) => {
+    test.for(backends)("on the %s", async ([, library], ctx) => {
+      if (!library) {
+        ctx.skip();
+        return;
+      }
+      const engine = create(library);
+      try {
+        const failure = await rejection(
+          Promise.resolve().then(() =>
+            engine.processClientRequest(undecodableRequest()),
+          ),
+        );
+        expect(failure?.message).toMatch(enginePointDecodeFailure);
+        expect(isPsiLibraryFailure(failure)).toBe(true);
+      } finally {
+        engine.dispose();
+      }
+    });
+  });
+
+  test("the WebAssembly build's message is the native addon's", async (ctx) => {
+    if (!nativeLibrary) {
+      ctx.skip();
+      return;
+    }
+    const messageOn = async (library: PSILibrary): Promise<string> => {
+      const engine = new InProcessPsiEngine(
+        library,
+        "starter",
+        "sender",
+        "identifier-revealing",
+      );
+      try {
+        const failure = await rejection(
+          Promise.resolve().then(() =>
+            engine.processClientRequest(undecodableRequest()),
+          ),
+        );
+        return failure?.message ?? "";
+      } finally {
+        engine.dispose();
+      }
+    };
+    const wasmMessage = await messageOn(psiLibrary);
+    expect(wasmMessage).toMatch(enginePointDecodeFailure);
+    expect(wasmMessage).toBe(await messageOn(nativeLibrary));
+  });
+
+  test("the operator's rendering of the refused frame names the engine's status", async () => {
+    const participant = new PSIParticipant(
+      "sender",
+      psiLibrary,
+      { role: "starter", verbose: -1 },
+      UNBOUNDED_PSI_ELEMENTS,
+      inProcessWorkerEngine("starter", "sender"),
+    );
+
+    const failure = await rejection(
+      participant.processClientRequest(undecodableRequest()),
+    );
+
+    expect(failure).toBeInstanceOf(ConnectionError);
+    expect(failure?.message).toBe(
+      "sender protocol error: inbound PSI request failed to decode",
+    );
+    expect(classifyFailure(failure)).toBe("partner-refused");
+    expect(sanitizeErrorForDisplay(failure)).toContain(
+      "ECGroup::CreateECPoint(string) - Could not decode point.",
+    );
+  });
 });
 
 test("a response refused as the partner's stays a protocol refusal after the worker round trip", async () => {
