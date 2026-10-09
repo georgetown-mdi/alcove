@@ -46,5 +46,6 @@ A failure to encrypt our *own* outbound data - or any comparable local crypto/ru
 ## See also
 
 - [COMMUNICATION.md](../COMMUNICATION.md) - the channels, synchronization, message-delivery contract, error-handling overview, and supporting services this document complements
-- [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) - the application-layer AEAD and the transport memory/liveness bounds, whose terminal errors use this taxonomy
+- [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) - the application-layer AEAD
+- [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](../spec/TRANSPORT_LIVENESS.md) - the transport memory and liveness bounds, whose terminal errors use this taxonomy
 - [FILE_SYNC.md](../spec/FILE_SYNC.md) - the file-sync transport state machine and its `UsageError` -> exit-code mapping

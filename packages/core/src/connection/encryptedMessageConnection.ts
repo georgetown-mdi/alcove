@@ -396,7 +396,7 @@ export class EncryptedMessageConnection implements MessageConnection {
 
     // Binary length bound. The transport read layer already refuses an over-cap
     // inbound file before reading it (see MAX_FRAME_SIZE_BYTES and
-    // docs/spec/CHANNEL_SECURITY.md); this is the same single value applied here
+    // docs/spec/TRANSPORT_BOUNDS.md); this is the same single value applied here
     // as defense-in-depth.
     if (bytes.length > MAX_FRAME_SIZE_BYTES) {
       throw this.fail(

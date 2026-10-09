@@ -54,7 +54,7 @@ export type Connection = {
   // Bounds subsequent inbound frame reads to `maxBytes` in place of the
   // static cap; `undefined` restores it. Omitted by a transport bounded another
   // way (WebRTC). See
-  // docs/spec/CHANNEL_SECURITY.md#single-pass-per-exchange-cap.
+  // docs/spec/TRANSPORT_BOUNDS.md#single-pass-per-exchange-cap.
   setInboundFrameCap?: (maxBytes: number | undefined) => void;
   // The inbound poll interval, which a request/response wait adds to its
   // bound. Omitted by a transport that pushes frames (WebRTC).

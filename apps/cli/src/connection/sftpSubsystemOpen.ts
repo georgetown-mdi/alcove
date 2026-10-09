@@ -1,6 +1,6 @@
 // The bound on the `subsystem sftp` request after authentication, which ssh2's
 // `readyTimeout` does not cover:
-// docs/spec/CHANNEL_SECURITY.md#connect-probe-bound.
+// docs/spec/TRANSPORT_LIVENESS.md#connect-probe-bound.
 
 import { DEFAULT_SERVER_CONNECT_TIMEOUT_MS, TimeoutError } from "@alcove/core";
 

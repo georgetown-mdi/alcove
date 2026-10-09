@@ -295,7 +295,7 @@ export class PSIParticipant {
   private onProgress?: PsiProgressReporter;
   private setCeilings: PsiSetCeilings;
   // The request this party sent that no response has answered yet, which
-  // bounds that response (docs/spec/CHANNEL_SECURITY.md, PSI set parts).
+  // bounds that response (docs/spec/TRANSPORT_BOUNDS.md, PSI set parts).
   private sentRequest: SentRequest | undefined;
   // The operation now dispatched to the engine, for the mid-operation reports
   // the engine raises against it and for operationInFlight. Undefined between

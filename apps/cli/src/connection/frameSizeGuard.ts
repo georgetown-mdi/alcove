@@ -14,7 +14,7 @@ import {
  * {@link ../connection/ssh2SftpAdapter.SSH2SFTPClientAdapter}): an inbound
  * file larger than the cap is refused with a {@link FrameSizeExceededError}
  * before an unbounded buffer can be allocated. Why the two adapters differ:
- * docs/spec/CHANNEL_SECURITY.md, "Inbound frame-size bound".
+ * docs/spec/TRANSPORT_BOUNDS.md, "Inbound frame-size bound".
  */
 
 const INBOUND_FILE_LINK_LABEL = "inbound file: ";
@@ -88,9 +88,9 @@ export interface CappedSink {
  * liveness: bytes past `maxBytes` are counted but never retained, and an
  * idle timer (armed before the first chunk, reset on each chunk) tears the
  * transfer down after `stallDeadlineMs` of silence, defaulting to
- * {@link SFTP_STALL_DEADLINE_MS}. Rationale for both bounds: docs/spec/
- * CHANNEL_SECURITY.md, "Inbound frame-size bound" and "Per-operation
- * liveness bounds".
+ * {@link SFTP_STALL_DEADLINE_MS}. Rationale for both bounds:
+ * docs/spec/TRANSPORT_BOUNDS.md, "Inbound frame-size bound", and
+ * docs/spec/TRANSPORT_LIVENESS.md, "Per-operation liveness bounds".
  */
 export function createCappedSink(
   path: string,

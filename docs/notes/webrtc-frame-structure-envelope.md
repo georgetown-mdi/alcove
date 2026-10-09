@@ -4,7 +4,7 @@ title: "Retiring the WebRTC Frame-Structure Weight Model"
 
 # Retiring the WebRTC frame-structure weight model: a measured envelope in place of a modelled one
 
-_Status: decided by a 3-panelist design panel converging 3-0 on the retirement and 2-1 on keeping no count ceiling, then corrected by measurement to keep a cumulative one, and built. The rules that remain, the constants they use, and the measured envelope are specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound); this note records why the model was retired rather than tuned, and what the replacement does and does not bound. See [docs/notes/README.md](README.md)._
+_Status: decided by a 3-panelist design panel converging 3-0 on the retirement and 2-1 on keeping no count ceiling, then corrected by measurement to keep a cumulative one, and built. The rules that remain, the constants they use, and the measured envelope are specified in [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound); this note records why the model was retired rather than tuned, and what the replacement does and does not bound. See [docs/notes/README.md](README.md)._
 
 The WebRTC receive path scans an inbound BinaryPack frame before PeerJS unpacks it. The scan used to charge each declared value a modelled retained-byte weight and refuse the frame when the running sum passed a 1 GiB budget. This note records why that model is gone.
 

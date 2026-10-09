@@ -72,7 +72,7 @@ runs unmodified in Node, where `pack` and `unpack` are synchronous for the
 it had to be written. The web app also depends on the `binary` default
 concretely: its inbound reassembly bound reaches into PeerJS's internal chunk
 map (`apps/web/src/psi/transport/boundedReassembly.ts`,
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound)),
+[TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)),
 so BinaryPack chunking is wired into a security control, not merely a default.
 
 **Rejected: a media-stripped vendored fork, for install weight.** Vendoring
@@ -348,7 +348,7 @@ certificate handling drags in, not by media.
 - [PROTOCOL.md](../spec/PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) -- the
   normative rendezvous peer-id derivation the CLI must reproduce to meet a web
   peer.
-- [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound)
+- [TRANSPORT_BOUNDS.md](../spec/TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)
   -- the web app's inbound reassembly bound, which rests on PeerJS's BinaryPack
   chunking.
 - [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack)

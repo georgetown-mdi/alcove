@@ -854,7 +854,7 @@ export class FileSyncMessageLoop {
         const { file: messageFile, declaredSize } = messages[0];
 
         // Frame-size bound (the primary enforcement point; see
-        // docs/spec/CHANNEL_SECURITY.md). Refused before the sync-gate and
+        // docs/spec/TRANSPORT_BOUNDS.md). Refused before the sync-gate and
         // before get() loads the body into memory, so a hostile server admin
         // cannot exhaust memory with an arbitrarily large file. Checked
         // against both the filename-declared count and the listed on-disk

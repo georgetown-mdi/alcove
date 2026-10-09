@@ -1,5 +1,5 @@
 // The transport-agnostic half of the WebRTC data-channel inbound bound
-// (docs/spec/CHANNEL_SECURITY.md): the fixed bound constants and the
+// (docs/spec/TRANSPORT_BOUNDS.md): the fixed bound constants and the
 // BinaryPack structural pre-scan that rejects a frame before it is unpacked.
 // It lives here, not beside a transport, because every WebRTC transport
 // speaks the same PeerJS BinaryPack wire and must enforce one implementation
@@ -30,7 +30,7 @@
  * `EncryptedMessageConnection` and its ~512 MiB `MAX_FRAME_SIZE_BYTES`
  * envelope never bind here; this is the WebRTC transport's own inbound byte
  * bound, the analogue of the file-sync frame-size cap
- * (docs/spec/CHANNEL_SECURITY.md) for the one transport that cap does not
+ * (docs/spec/TRANSPORT_BOUNDS.md) for the one transport that cap does not
  * reach. Without it a hostile or buggy peer can stream an oversized PSI set
  * frame, or a flood of never-completed chunk reassemblies, and drive the
  * receiving tab toward memory exhaustion.
@@ -43,7 +43,7 @@
  * (reassembled) bytes. BinaryPack `unpack` retains a multiple of them, so this
  * is the quantity the retained structure is bounded against: the measured
  * amplification per frame shape, and what the structural rules
- * ({@link scanFrameStructure}) close, are in docs/spec/CHANNEL_SECURITY.md.
+ * ({@link scanFrameStructure}) close, are in docs/spec/TRANSPORT_BOUNDS.md.
  * Fixed, not operator-configurable: a configurable cap risks being raised to
  * reintroduce the denial of service.
  *
@@ -60,7 +60,7 @@
  * check already admitted. `MAX_SINGLE_PASS_CELLS` is held below the point
  * where that derived cap would reach this envelope; raising it past that
  * point would require this path to gate on a per-exchange cell budget too.
- * See docs/spec/CHANNEL_SECURITY.md and docs/spec/PROTOCOL.md.
+ * See docs/spec/TRANSPORT_BOUNDS.md and docs/spec/PROTOCOL.md.
  */
 export const MAX_WEBRTC_FRAME_BYTES = 256 * 1024 * 1024;
 
@@ -109,7 +109,7 @@ export const MAX_CHUNKS_PER_REASSEMBLY = 131_072;
  * it holds rather than by its payload. It is at least the per-chunk overhead of
  * a minimal chunk on either receive path at the most chunks the caps let a
  * receiver retain at once; the measurements and the limit for chunks just under
- * it are in docs/spec/CHANNEL_SECURITY.md, "Retained chunk-count cap".
+ * it are in docs/spec/TRANSPORT_BOUNDS.md, "Retained chunk-count cap".
  *
  * It must not exceed the last chunk's charge on the largest frame a sender
  * admits, or it would lower that frame (`webrtcFrameReceiveCharge`,
@@ -364,7 +364,7 @@ function readValueHeader(
  * What the rules leave admitted is at most one declared node per wire byte,
  * each retaining a measured number of bytes, so a frame retains its wire bytes
  * times the worst per-node figure -- the envelope in
- * docs/spec/CHANNEL_SECURITY.md, pinned against the real unpacker by
+ * docs/spec/TRANSPORT_BOUNDS.md, pinned against the real unpacker by
  * `packages/core/test/connection/binaryPackRetention.test.ts`. The wire-byte
  * cap ({@link MAX_WEBRTC_FRAME_BYTES}) is what that multiple applies to.
  *

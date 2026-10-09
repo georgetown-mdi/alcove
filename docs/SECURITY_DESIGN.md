@@ -312,7 +312,7 @@ The AEAD construction is in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md).
 
 The wrap begins once the key exchange has produced the session key, so the handshake frames that establish it -- the ephemeral public keys and the confirmation MACs -- precede it and are not covered by it: in a shared folder they are ordinary files in the shared folder, and on SFTP the SSH session is what protects them. They contain no linkage identifiers and no exchange data, and the handshake is authenticated, so tampering with them fails the exchange rather than passing unnoticed. Two other artifacts sit outside the wrap: the rendezvous hello and joining files, written before the key exchange, which hold the two bilateral mode flags; and the abort marker a failing party leaves for its partner, which holds a version marker and one token derived from the session key. Neither holds exchange data. [COMPLIANCE.md's SC-8 row](COMPLIANCE.md#nist-sp-800-53) states the exceptions in the form an assessor asks for.
 
-Beyond confidentiality, the file-sync channels are hardened against a hostile server admin along two axes, memory exhaustion and liveness, plus crash-safety and a parked-peer concern. Each is specified with its constant values in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md).
+Beyond confidentiality, the file-sync channels are hardened against a hostile server admin along two axes, memory exhaustion and liveness, plus crash-safety and a parked-peer concern. Each is specified with its constant values in [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md), [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) and [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md).
 
 - **Application-layer integrity, replay, and gap detection.** The AEAD decorator validates and decrypts each inbound frame, rejecting any integrity, replay, reordering, or mid-stream-gap failure as a `security` error at the protocol layer. Truncated-tail detection is a deliberate deferral, resting on the matching loop's self-driven lockstep.
 - **Inbound frame-size bound.** A hostile server could otherwise write an arbitrarily large file that is read and parsed before any integrity check, exhausting memory; the transport refuses an oversized inbound frame before reading it.
@@ -496,7 +496,9 @@ The [NIST SP 800-53 Rev. 5](https://doi.org/10.6028/NIST.SP.800-53r5) control ma
 The spec-tier counterparts that specify how these controls are built:
 
 - [PROTOCOL.md](spec/PROTOCOL.md) - the PSI/PSI-C algorithms and the P-256 key-exchange wire format
-- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction, transport bounds, and display-sanitization format
+- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction, parsed-input bounds, and display-sanitization format
+- [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - the transport memory bounds, file-sync and WebRTC
+- [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - the file-sync transport liveness bounds and the SFTP heartbeat
 - [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - the coordination server's signaling-surface bounds
 - [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - the owner-only on-disk write path for the key file, signing identity, and result CSV
 - [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - the RFC 8785 byte encoding receipts and commitments are computed over

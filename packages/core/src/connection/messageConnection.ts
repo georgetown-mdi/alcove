@@ -55,7 +55,7 @@ export interface MessageConnection {
    * before reading the reply, so the read gate refuses a frame larger than the
    * exchanged record counts imply. Absent on a transport that bounds its inbound
    * path another way (the WebRTC data channel, fixed at `MAX_WEBRTC_FRAME_BYTES`),
-   * where the call is a no-op. See docs/spec/CHANNEL_SECURITY.md.
+   * where the call is a no-op. See docs/spec/TRANSPORT_BOUNDS.md.
    */
   setInboundFrameCap?(maxBytes: number | undefined): void;
   /**
@@ -71,7 +71,7 @@ export interface MessageConnection {
    * data channel, or `undefined` for a transport with no such bound. A round
    * sizes the parts of each PSI set it sends to it (`psiSetPartPayloadBytes`),
    * so no part is one the partner refuses on receipt. See
-   * docs/spec/CHANNEL_SECURITY.md.
+   * docs/spec/TRANSPORT_BOUNDS.md.
    */
   outboundWebRtcFrameBound?(): number | undefined;
   /**
@@ -409,7 +409,7 @@ export class QueuedMessageConnection implements MessageConnection {
   // orphaned write (the CLI SFTP adapter's 60 s bound, the core whole-exchange
   // budget) is `.unref()`'d by design, so without this timer the loop would
   // drain and the process would exit 0 before any of them could fire (see
-  // docs/spec/CHANNEL_SECURITY.md, "Whole-exchange budget").
+  // docs/spec/TRANSPORT_LIVENESS.md, "Whole-exchange budget").
   //
   // One ref'd timer, held only while the hand-off is outstanding, keeps the
   // loop open long enough for a faster `.unref()`'d per-operation deadline to

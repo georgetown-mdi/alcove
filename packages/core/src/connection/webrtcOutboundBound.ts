@@ -1,5 +1,5 @@
 // The send-side half of the WebRTC data-channel frame bound
-// (docs/spec/CHANNEL_SECURITY.md, "WebRTC data-channel inbound bound"). The PSI
+// (docs/spec/TRANSPORT_BOUNDS.md, "WebRTC data-channel inbound bound"). The PSI
 // set part size (psi/psiSetParts.ts) goes through `webrtcFrameExceedsBound`, so
 // it agrees with the receivers on where the bound falls.
 

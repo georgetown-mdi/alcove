@@ -16,7 +16,7 @@ import { classifyInboundValue, concatChunks, unpackFrame } from "./peerjsWire";
  * The CLI's WebRTC data-channel inbound bound: the reassembler the transport
  * feeds every datagram through, so a hostile or buggy peer cannot drive this
  * process toward memory exhaustion by choosing what it sends. It is the CLI half
- * of the control specified in docs/spec/CHANNEL_SECURITY.md ("WebRTC data-channel
+ * of the control specified in docs/spec/TRANSPORT_BOUNDS.md ("WebRTC data-channel
  * inbound bound"); the web half wraps PeerJS's own reassembly internals
  * (apps/web/src/psi/transport/boundedReassembly.ts). Both enforce the SAME
  * constants and the SAME BinaryPack structural pre-scan, which is why those

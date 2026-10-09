@@ -9,7 +9,7 @@ _Status: decided and built. Alcove's connect budget bounds one attempt, as
 dials once, so its `--connect-timeout` is the whole wait, plus at most two
 further seconds diagnosing a dial that fails before the peer identifies
 itself. The normative rows are in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#connect-probe-bound) and
+[TRANSPORT_LIVENESS.md](../spec/TRANSPORT_LIVENESS.md#connect-probe-bound) and
 the operator-facing description in
 [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md); this note is kept for the
 measurements and the reasoning. See [docs/notes/README.md](README.md)._

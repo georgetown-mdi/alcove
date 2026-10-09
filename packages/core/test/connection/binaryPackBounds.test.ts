@@ -52,7 +52,7 @@ function fixstr(s: string): Array<number> {
 }
 
 describe("the WebRTC inbound bound constants", () => {
-  // Each value is specified normatively in docs/spec/CHANNEL_SECURITY.md (WebRTC
+  // Each value is specified normatively in docs/spec/TRANSPORT_BOUNDS.md (WebRTC
   // data-channel inbound bound). Pinned here as literals so a silent retune of a
   // bound fails rather than quietly widening the memory envelope a security
   // review signed off on; changing one means changing the spec with it.
@@ -66,7 +66,7 @@ describe("the WebRTC inbound bound constants", () => {
   });
 
   // Resident bytes one retained one-byte chunk costs, by how many are retained,
-  // on each receive path (docs/spec/CHANNEL_SECURITY.md, "Retained chunk-count
+  // on each receive path (docs/spec/TRANSPORT_BOUNDS.md, "Retained chunk-count
   // cap"). The cost falls as the count grows.
   const measuredResidentBytesPerChunk = [
     { chunks: 262_144, node: 632, chromium: 701 },
@@ -197,7 +197,7 @@ function ceilingScaleIndex(records: number, i: number): number {
 
 /** Wire bytes per declared element each shape keeps at the ceiling, at least,
  * against the one element per byte the cumulative element rule refuses at.
- * docs/spec/CHANNEL_SECURITY.md states this margin; the narrowest of the three
+ * docs/spec/TRANSPORT_BOUNDS.md states this margin; the narrowest of the three
  * shapes below measures 3.5. */
 const MIN_CEILING_HEADROOM = 3;
 

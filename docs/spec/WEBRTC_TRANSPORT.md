@@ -20,7 +20,8 @@ pin the libraries are in [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md).
 
 It does not cover the rendezvous peer-id derivation (see
 [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation), which is
-normative for it), the inbound reassembly bound and the AEAD envelope (see
+normative for it), the inbound reassembly bound (see
+[TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) and the AEAD envelope (see
 [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), the delivery contract every channel
 owes (see [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown)),
 or the operator-facing configuration (see
@@ -354,7 +355,7 @@ an envelope whose message id is not an integer, whose count is not a positive
 integer, whose index is outside that count, or whose chunk bytes are not binary.
 `MAX_WEBRTC_FRAME_BYTES`, the chunk-count cap, and the structural scan that goes
 with them are specified in
-[CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound).
+[TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound).
 
 ### Outbound encoding
 
@@ -1068,8 +1069,9 @@ own ICE agent.
 
 - [PROTOCOL.md](PROTOCOL.md#webrtc-rendezvous-peer-id-derivation) - the
   normative rendezvous peer-id derivation both implementations reproduce.
-- [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#webrtc-data-channel-inbound-bound) -
-  the inbound reassembly bound and the AEAD envelope.
+- [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) -
+  the inbound reassembly bound.
+- [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) - the AEAD envelope.
 - [COMMUNICATION.md](../COMMUNICATION.md#message-delivery-and-teardown) - the
   delivery contract every channel owes.
 - [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md) - why `peerjs` and `werift` are
