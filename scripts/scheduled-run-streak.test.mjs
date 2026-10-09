@@ -124,14 +124,14 @@ describe("workflowStreaks", () => {
     );
   });
 
-  test("counts a run that started no tier job toward every tier", () => {
+  test("counts a run that started no tier job toward no tier", () => {
     const [nightly, weekly] = workflowStreaks(STRESS, [
       tierRun(3, 3, "failure", ["List the stress test files"]),
       tierRun(2, 2, "success", NIGHTLY_JOBS),
       tierRun(1, 1, "success", WEEKLY_JOBS),
     ]);
-    expect(nightly.streak.runIds).toEqual([3]);
-    expect(weekly.streak.runIds).toEqual([3]);
+    expect(nightly.streak.count).toBe(0);
+    expect(weekly.streak.count).toBe(0);
   });
 
   test("gives a workflow with one cron one streak under its own name", () => {

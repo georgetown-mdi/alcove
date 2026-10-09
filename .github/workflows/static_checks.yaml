@@ -110,7 +110,7 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/test-durations
         with:
-          name: test-durations-static-checks
+          name: test-durations-static-checks-${{ github.run_attempt }}
           directory: ${{ runner.temp }}/vitest-json
       # Blocking half of the dependency audit, over the production tree the
       # shipped image runs: the release SBOM's scope -- the two workspaces the

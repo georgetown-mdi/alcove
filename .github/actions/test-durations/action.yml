@@ -26,7 +26,6 @@ runs:
         REPORT_DIR: ${{ inputs.directory }}
       run: node scripts/slowest-test-files.mjs --title "$TITLE" "$REPORT_DIR" >> "$GITHUB_STEP_SUMMARY"
     - name: Upload the vitest JSON reports
-      # Uploads even when ranking failed, the run whose reports are most wanted.
       if: always()
       uses: actions/upload-artifact@v7
       with:

@@ -59,7 +59,7 @@ export function redStreak(runs) {
 /**
  * Workflows whose crons start different jobs, by file name: `tierOf` names a
  * run's tier from its job names, or returns undefined for a run that ended
- * before starting a tier's jobs, which then counts toward every tier.
+ * before starting a tier's jobs, which then counts toward no tier.
  */
 export const TIERED_WORKFLOWS = {
   "nightly_core_stress.yaml": {
@@ -85,10 +85,7 @@ export function workflowStreaks(workflow, runs) {
   return tiered.tiers.map((tier) => ({
     name: `${workflow} (${tier})`,
     streak: redStreak(
-      runs.filter((run) => {
-        const runTier = tiered.tierOf(run.jobNames ?? []);
-        return runTier === undefined || runTier === tier;
-      }),
+      runs.filter((run) => tiered.tierOf(run.jobNames ?? []) === tier),
     ),
   }));
 }

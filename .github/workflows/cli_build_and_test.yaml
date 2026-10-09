@@ -187,7 +187,7 @@ jobs:
         continue-on-error: true
         uses: ./.github/actions/test-durations
         with:
-          name: test-durations-cli-${{ matrix.suite }}
+          name: test-durations-cli-${{ matrix.suite }}-${{ github.run_attempt }}
           directory: ${{ runner.temp }}/vitest-json
 
   # The one job name a required status check can name, standing for every suite
