@@ -37,7 +37,7 @@ import type { PsiEngineMode } from "../../src/psi/psiEngine";
 
 /** What `generate` prints. */
 export interface GenerateProbeResult {
-  readonly backend: "native" | "wasm";
+  readonly backend: MatchBackend;
   readonly setupMs: number;
   readonly requestMs: number;
   readonly responseMs: number;
