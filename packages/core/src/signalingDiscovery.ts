@@ -75,9 +75,12 @@ export function signalingServerFromDiscoveryDocument(
 ): URL | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return undefined;
-  const parsed = signalingDiscoveryDocumentSchema.safeParse(
-    camelizeKeys(value),
-  );
+  let parsed;
+  try {
+    parsed = signalingDiscoveryDocumentSchema.safeParse(camelizeKeys(value));
+  } catch {
+    return undefined;
+  }
   if (!parsed.success) return undefined;
   return publishedSignalingServerURL(parsed.data.signalingServer);
 }

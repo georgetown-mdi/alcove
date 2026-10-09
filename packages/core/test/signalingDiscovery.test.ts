@@ -58,6 +58,26 @@ describe("signalingServerFromDiscoveryDocument", () => {
   ])("refuses %j", (value) => {
     expect(signalingServerFromDiscoveryDocument(value)).toBeUndefined();
   });
+
+  test("refuses keys that fold to one name", () => {
+    expect(
+      signalingServerFromDiscoveryDocument({
+        signaling_server: "wss://signal.example.org/api/",
+        signalingServer: "wss://signal.example.org/api/",
+      }),
+    ).toBeUndefined();
+  });
+
+  test("refuses a document nested past the depth bound", () => {
+    let nested: unknown = {};
+    for (let i = 0; i < 300; i++) nested = { a: nested };
+    expect(
+      signalingServerFromDiscoveryDocument({
+        signaling_server: "wss://signal.example.org/api/",
+        nested,
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("signalingDiscoveryDocumentSource", () => {

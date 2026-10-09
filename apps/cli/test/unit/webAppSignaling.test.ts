@@ -120,6 +120,25 @@ describe("resolveWebAppSignalingServer", () => {
       /redirect \(HTTP 302\), which is not followed/,
     ],
     [
+      "a document with colliding keys",
+      json({
+        signaling_server: "ws://signal.example.org/api/",
+        signalingServer: "ws://signal.example.org/api/",
+      }),
+      /not a document naming/,
+    ],
+    [
+      "a document nested 300 levels deep",
+      (_request: IncomingMessage, response: ServerResponse) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          `{"signaling_server":"ws://signal.example.org/api/","n":` +
+            `${'{"a":'.repeat(300)}0${"}".repeat(300)}}`,
+        );
+      },
+      /not a document naming/,
+    ],
+    [
       "a server whose scheme differs from the address's",
       json({ signaling_server: "wss://signal.example.org/api/" }),
       /names a wss:\/\/ server, and an http:\/\/ address needs a ws:\/\/ one/,
