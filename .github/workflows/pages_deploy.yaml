@@ -67,9 +67,7 @@ jobs:
   deploy:
     name: Upload to Cloudflare Pages
     needs: build-and-test
-    # Held on Ubuntu 24.04: this job runs only on a push to main or staging,
-    # where it deploys, so no branch run has driven it on 26.04.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
     permissions: {}
