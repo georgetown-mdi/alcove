@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -52,7 +53,11 @@ describe("jsonReportFile", () => {
 // reporter, since what it writes is vitest's own JSON reporter's output.
 describe("a vitest run with the reporter registered", () => {
   const project = () => {
-    const root = mkdtempSync(join(tmpdir(), "json-report-reporter-"));
+    // Resolved, as vitest reports a module: macOS's temporary directory sits
+    // behind the /var -> /private/var link.
+    const root = realpathSync(
+      mkdtempSync(join(tmpdir(), "json-report-reporter-")),
+    );
     dirs.push(root);
     writeFileSync(
       join(root, "vitest.config.mjs"),
