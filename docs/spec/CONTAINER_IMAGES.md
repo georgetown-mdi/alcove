@@ -264,14 +264,13 @@ published snapshots, every snapshot from the packages' first appearance (between
 `2023.6.20250107` and `2023.7.20250428`) onward still resolves and still serves
 both certified NVRs, from a content-addressed blobstore.
 
-Unverified as of 2026-09-29: the snapshot sampling above, the count of ten NVRs below, their module hashes, the two certificate numbers and the per-architecture image labels were read from AWS's published packages and registry in earlier sessions. The 2026-09-29 audit could not reach those services and did not repeat the readings.
+Unverified as of 2026-09-29: the snapshot sampling above, the ten NVRs below whose modules were measured, their module hashes, the two certificate numbers and the per-architecture image labels were read from AWS's published packages and registry in earlier sessions. The 2026-09-29 audit could not reach those services and did not repeat the readings.
 
 The module-version pin is the one that cannot be skipped. At least eleven NVRs
-share the `openssl-fips-provider-latest` package name. The ten counted when this
-image was first built hold ten different modules with ten different `fips.so`
-hashes, exactly one of them certified; the eleventh, below, is the stock
-provider of the pinned rootfs, published after that count and with its module
-unmeasured. The package name determines nothing:
+share the `openssl-fips-provider-latest` package name. Ten of them hold ten
+different modules with ten different `fips.so` hashes, exactly one of them
+certified; the eleventh, below, is the stock provider of the pinned rootfs, and
+its module is unmeasured. The package name determines nothing:
 
     3.2.2-1.amzn2023.0.1 -> 3.2.2-799901ad7ab41d45   <- the one certificate 5438 names
     3.2.2-1.amzn2023.0.2 -> 3.2.2-6a2d04a6952ab14a
@@ -682,6 +681,10 @@ difference in either direction.
 | `Dockerfile` | empty -- no setuid or setgid file |
 | `Dockerfile.fips` | empty -- no setuid or setgid file |
 
+For the FIPS variant the inventory was also measured on 2026-10-09, on
+`linux/amd64` and `linux/arm64` builds without a layer cache, with
+`find / -xdev -perm /6000 -type f` run as root: both results were empty.
+
 Both inventories are empty because each runtime stage takes off every bit its
 own OS install brings in, and neither stage's base has another. Both images
 declare `USER node`, so a bit left in place would be a boundary an unprivileged
@@ -783,10 +786,10 @@ closure their helper scripts were written against.
 > sizes) was measured on an earlier image build. The 2026-09-29 documentation
 > audit had no Docker and could not reach the image registries, so none of it was
 > re-run; a figure here may be out of date. The FIPS variant's attribution list,
-> package count and GPL-3.0/LGPL-3.0 count were re-measured on 2026-10-09 (UTC)
-> at the base pinned above, on `amd64` only. Its image size and its comparison
-> between architectures date from 2026-09-30, at the earlier
-> `2023.12.20260918` base.
+> package count, GPL-3.0/LGPL-3.0 count, image size, comparison between
+> architectures and setuid and setgid inventory were measured on 2026-10-09
+> (UTC) at the base pinned above, on `linux/amd64` (emulated on Docker Desktop on
+> an Apple Silicon Mac) and `linux/arm64` builds without a layer cache.
 
 ### The OS-layer attribution lists
 
@@ -840,18 +843,10 @@ tag.
   architectures of an image disagree on.
 
 **What was measured.** Both images built without a layer cache at both
-architectures, the FIPS variant on 2026-09-30 (at the earlier
-`2023.12.20260918` base) and the default image on 2026-09-24. A first attempt
-with a warm cache reported an architecture difference that was a stale layer
-rather than a property of the image, so a re-measurement builds with
-`--no-cache` or it measures the cache.
-
-The FIPS variant's list at the current base comes from one `amd64` build on
-2026-10-09 (UTC), outside CI: the package inventory a Trivy 0.70.0 scan read
-from that image's rpm database, given to the generator as `--query-output`.
-The same read of the image at the earlier base matched the committed rpm-query
-list on every row's name, version and license. That list's header states no
-comparison between architectures.
+architectures, the FIPS variant on 2026-10-09 and the default image on
+2026-09-24. A first attempt with a warm cache reported an architecture
+difference that was a stale layer rather than a property of the image, so a
+re-measurement builds with `--no-cache` or it measures the cache.
 
 - Default image: 63 packages, 6 of which declare a disjunction and 18 of which
   hold a GPL-3.0 or LGPL-3.0 term.
@@ -860,11 +855,10 @@ comparison between architectures.
   Amazon Linux signing key is stored as rather than an installed package; it is
   listed as the rpm database reports it, so 170 is the row count and 169 the
   count of real packages.
-- When last compared, the two architectures of each image produced
-  byte-identical lists: every package agreed on name, version and license, and
-  the only per-architecture difference in either capture was the architecture
-  column the lists drop. For the FIPS variant that comparison was made at the
-  earlier `2023.12.20260918` base.
+- The two architectures of each image produce byte-identical lists: every
+  package agrees on name, version and license, the FIPS variant's 170 included,
+  and the only per-architecture difference in either capture is the
+  architecture column the lists drop.
 
 **The limits.**
 
@@ -1010,14 +1004,13 @@ installs. At this pin the 37 is counted from the rows of that list whose license
 holds a GPL-3.0 or LGPL-3.0 term. Five of the 170 -- `libselinux-utils`,
 `policycoreutils`, `rpm-plugin-selinux`, `selinux-policy` and
 `selinux-policy-targeted` -- are dependencies the build's `samba-client` and
-`openssl` install resolves at snapshot `2023.12.20260930` and did not at
-`2023.12.20260918`; none holds a v3 term.
+`openssl` install resolves at snapshot `2023.12.20260930`; none holds a v3 term,
+and none adds a setuid or setgid file.
 
-The image size is not re-measured at this pin. Measured on 2026-09-30 at the
-earlier `2023.12.20260918` base and its 165 packages, on builds without a layer
-cache (`x86_64` emulated on an `arm64` host, `aarch64` native), it was
-658,650,027 bytes (659 MB) on `x86_64` and 807,119,724 bytes (807 MB) on
-`aarch64`.
+The image weighs 652,573,417 bytes (653 MB) on `x86_64` and 806,470,282 bytes
+(806 MB) on `aarch64`, as `docker image inspect --format '{{.Size}}'` reports
+it, measured on 2026-10-09 on builds without a layer cache (`x86_64` emulated
+on Docker Desktop on an Apple Silicon Mac, `aarch64` native).
 
 The table below is the older one-off reference build `Dockerfile.fips` was
 derived from, measured on `aarch64` against the Alpine image built the same day.
@@ -1025,10 +1018,11 @@ That reference installed `binutils` (29,160,927 bytes installed) to read the
 module version out of `fips.so` with `strings`, which the shipped build does not
 need because it reads the version back through `openssl list` instead.
 `binutils` and its `elfutils-debuginfod-client` dependency are the only two
-packages the reference installs that the shipped build does not, so it held 167
-packages against the shipped build's 165 at the `2023.12.20260918` base; its
-absolute size is a separate earlier measurement, not the shipped build's size
-plus `binutils`.
+packages the reference installs that the shipped build does not, and the five
+SELinux packages above are the only ones the shipped build installs that the
+reference, resolved at an older snapshot, does not: hence its 167 against the
+shipped 170. Its absolute size is a separate earlier measurement, not the
+shipped build's size plus `binutils`.
 
 | | Alpine image | FIPS variant (reference build, with binutils) |
 | --- | --- | --- |

@@ -332,11 +332,11 @@ absence, the entry separates the two.
 
 ## How the certificate claim is kept accurate
 
-More than ten NVRs share the `openssl-fips-provider-latest` package name. The
-ten measured have ten different modules with ten different `fips.so` hashes, and
-exactly one of them is the build certificate 5438 names. A package name proves
-nothing, so the image asserts rather than assumes, and the assertions fail the
-build:
+Many NVRs share the `openssl-fips-provider-latest` package name with different
+modules, and exactly one of them is the build certificate 5438 names
+([the list](../spec/CONTAINER_IMAGES.md#the-fips-variant-images-pins)). A
+package name proves nothing, so the image asserts rather than assumes, and the
+assertions fail the build:
 
 - The package that owns the installed `/usr/lib64/ossl-modules/fips.so` is the
   pinned `-certified-so` package at the pinned version, asked of the module file
@@ -581,19 +581,16 @@ a release to refuse it.
 
 ## What it costs
 
-Measured on the shipped build at the pins above: **63 to 170 OS packages**,
-counted from the variant's attribution list at the 2023.12.20260930 base. The
-image size was last measured on 2026-09-30, at the earlier 2023.12.20260918
-base and its 165 packages
-(`scratch/handoffs/2026-09-30-bump-fips-base-report.md`): 659 MB on `x86_64`
-and 807 MB on `aarch64` against the Alpine image's 576 MB. Of those 170,
-**37 have a GPL-3.0 or LGPL-3.0 term** -- the samba client stack that
-the default image already pays for, plus a GPLv3 base userland Alpine's busybox
-and musl do not have (`bash`, `coreutils-single`, `diffutils`, `findutils`,
-`gawk`, `grep`, `gzip`, `sed`, `tar`, `readline`, `gnupg2-minimal`, `gnutls`) and
-the LGPL-3.0 samba record stores. The count is 37 rather than the older
-reference build's 39 because the shipped build installs neither `binutils` nor
-its `elfutils-debuginfod-client` dependency, both of which hold a v3 term. Whether
+The variant installs far more OS packages than the default image, is larger
+than the Alpine image on both architectures, and has more packages with a
+GPL-3.0 or LGPL-3.0 term; the counts and sizes, measured on the shipped build at
+the pins above, are in
+[CONTAINER_IMAGES.md](../spec/CONTAINER_IMAGES.md#the-fips-reference-builds-inventory).
+The v3 terms are the samba client stack that the default image already pays
+for, plus a GPLv3 base userland Alpine's busybox and musl do not have (`bash`,
+`coreutils-single`, `diffutils`, `findutils`, `gawk`, `grep`, `gzip`, `sed`,
+`tar`, `readline`, `gnupg2-minimal`, `gnutls`) and the LGPL-3.0 samba record
+stores. Whether
 that breadth changes this project's distribution posture is a licensing call, not
 a measurement, and it is open. The per-package inventory, the older reference
 build's figures, and the caveats on all of them are in

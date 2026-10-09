@@ -25,11 +25,11 @@ ARG NODE_VERSION=v26.7.0
 ARG AL2023_RELEASEVER=2023.12.20260930
 
 # CMVP certificate 5438. The package and version pin which build is installed;
-# the module version string is what the module itself reports. More than ten
-# NVRs share the openssl-fips-provider-latest package name, the ten measured
-# holding ten different modules with only one of them certified, so a package
-# name alone proves nothing. Both are asserted against the built image below,
-# and a mismatch fails the build.
+# the module version string is what the module itself reports. Many NVRs share
+# the openssl-fips-provider-latest package name with different modules, only one
+# of them certified (docs/spec/CONTAINER_IMAGES.md, "The FIPS variant image's
+# pins"), so a package name alone proves nothing. Both are asserted against the
+# built image below, and a mismatch fails the build.
 ARG FIPS_PROVIDER_PACKAGE=openssl-fips-provider-certified
 ARG FIPS_PROVIDER_VERSION=3.2.2-1.amzn2023
 ARG FIPS_MODULE_VERSION=3.2.2-799901ad7ab41d45
