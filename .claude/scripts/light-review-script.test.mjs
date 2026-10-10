@@ -42,6 +42,13 @@ describe("light-review command wiring", () => {
     expect(command).toContain(SCRIPT);
     expect(jsBlocks(command)).toEqual([]);
   });
+
+  // The Workflow tool refuses at launch a script whose body loads a module.
+  it("loads no module, so the Workflow tool will launch it", () => {
+    const body = readFileSync(resolve(root, SCRIPT), "utf8");
+    expect(body).not.toContain("import(");
+    expect(body).not.toContain("require(");
+  });
 });
 
 const TARGET = "feature-branch";
@@ -164,6 +171,8 @@ describe.each(SHAPES)("light-review role mode ($shape args)", ({ deliver }) => {
     );
     expect(options.agentType).toBe("security-reviewer");
     expect(options.label).toBe("security-reviewer");
+    expect(options.model).toBe("opus");
+    expect(options.effort).toBe("high");
     expect(asked).toContain(
       "First read these docs for design context: docs/spec/FILE_SYNC.md",
     );
@@ -290,21 +299,34 @@ const review = {
   findings: [{ name: "n", description: "d", severity: "nit", file: "a.ts" }],
   simplerShape: { simpler: false, reason: "no" },
 };
-const clusters = {
-  clusters: [
-    {
-      name: "n",
-      description: "d",
-      severity: "nit",
-      file: "a.ts",
-      flaggedBy: 1,
-      verification: "confirmed",
-      verificationNote: "read it",
-    },
-  ],
-};
+// The fields every returned cluster keeps, which the round-booking step reads.
+const clusterCore = (fields = {}) => ({
+  name: "n",
+  description: "d",
+  severity: "minor",
+  file: "a.ts",
+  flaggedBy: 1,
+  verification: "confirmed",
+  verificationNote: "read it",
+  ...fields,
+});
+// A cluster as the consolidator's schema has it return one.
+const consolidatorCluster = (fields = {}) => ({
+  ...clusterCore(),
+  userVisibleString: false,
+  edits: [],
+  verifyCommand: "",
+  ...fields,
+});
+const clusters = { clusters: [consolidatorCluster()] };
 const lensReply = (prompt, options) =>
   options.label === "consolidator" ? clusters : review;
+const lensRound = (run, consolidatorClusters) =>
+  run(lensArgs, (prompt, options) =>
+    options.label === "consolidator"
+      ? { clusters: consolidatorClusters }
+      : review,
+  );
 
 // Every delivery that is not an object of named arguments, and so resolves no
 // field the round needs. Tolerating one runs the whole round on prompts whose
@@ -331,7 +353,7 @@ describe.each(SHAPES)(
 
     it("resolves an object of named arguments and runs the round on it", async () => {
       const result = await run(lensArgs, lensReply);
-      expect(result.reviewerCount).toBe(3);
+      expect(result.reviewerCount).toBe(1);
     });
   },
 );
@@ -362,7 +384,7 @@ describe.each(SHAPES)(
 
     it("puts the target ref, never HEAD, in every reviewer prompt", async () => {
       const prompts = await promptsFor(deliver, {});
-      expect(prompts).toHaveLength(5);
+      expect(prompts).toHaveLength(3);
       for (const prompt of prompts) {
         expect(prompt).toContain(`origin/staging...${TARGET}`);
         expect(prompt).not.toContain("origin/staging...HEAD");
@@ -399,7 +421,7 @@ describe.each(SHAPES)(
         roleArgs(["a claim"]),
         record(() => roleReply([verdict("a claim")])),
       );
-      expect(spawned).toHaveLength(5);
+      expect(spawned).toHaveLength(3);
       const keysByLabel = {};
       for (const { prompt, options } of spawned) {
         expect(options.schema.required.length).toBeGreaterThan(0);
@@ -409,7 +431,7 @@ describe.each(SHAPES)(
         keysByLabel[options.label] = options.schema.required;
       }
       expect(keysByLabel).toMatchObject({
-        "reviewer-1": ["findings", "simplerShape"],
+        reviewer: ["findings", "simplerShape"],
         consolidator: ["clusters"],
         "adversarial-verifier": ["claims", "findings", "summary"],
       });
@@ -469,8 +491,142 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
 
   it("consolidates what the reviewers that returned found", async () => {
     const result = await run(lensArgs, lensReply);
-    expect(result.reviewerCount).toBe(3);
-    expect(result.clusters).toEqual(clusters.clusters);
+    expect(result.reviewerCount).toBe(1);
+    expect(result.clusters).toEqual([clusterCore()]);
+    expect(result.simplerShapeVotes).toEqual([review.simplerShape]);
+  });
+
+  it("runs one Opus seat and an Opus consolidator at high effort", async () => {
+    const spawned = [];
+    await run(lensArgs, (prompt, options) => {
+      spawned.push(options);
+      return lensReply(prompt, options);
+    });
+    expect(spawned.map((options) => options.label)).toEqual([
+      "reviewer",
+      "consolidator",
+    ]);
+    for (const options of spawned) {
+      expect(options.model, options.label).toBe("opus");
+      expect(options.effort, options.label).toBe("high");
+    }
+  });
+
+  it("batches every nit that touches no user-visible string into one stated limit", async () => {
+    const result = await lensRound(run, [
+      consolidatorCluster({ name: "major one", severity: "major" }),
+      consolidatorCluster({
+        name: "nit one",
+        severity: "nit",
+        file: "a.ts",
+        description: "rename x",
+        flaggedBy: 2,
+      }),
+      consolidatorCluster({
+        name: "nit two",
+        severity: "nit",
+        file: "b.ts",
+        description: "tidy y",
+        verification: "refuted",
+        verificationNote: "not so",
+        edits: [{ file: "b.ts", oldText: "y", newText: "z" }],
+        verifyCommand: "true",
+      }),
+      consolidatorCluster({
+        name: "copy nit",
+        severity: "nit",
+        userVisibleString: true,
+      }),
+    ]);
+    expect(result.clusters.map((cluster) => cluster.name)).toEqual([
+      "major one",
+      "copy nit",
+      "Nits touching no user-visible string, booked as one stated limit",
+    ]);
+    const batch = result.clusters[2];
+    expect(batch).toMatchObject({
+      severity: "nit",
+      file: "",
+      flaggedBy: 2,
+      verification: "confirmed",
+      statedLimit: true,
+    });
+    expect(batch.description).toContain("nit one (a.ts, confirmed): rename x");
+    expect(batch.description).not.toContain("nit two");
+    expect(batch.description).not.toContain("tidy y");
+    expect(batch.verificationNote).not.toContain("nit two");
+    expect(batch.verificationNote).not.toContain("not so");
+    expect(batch).not.toHaveProperty("edits");
+    expect(result.clusters[1]).not.toHaveProperty("statedLimit");
+  });
+
+  it("names the strongest outcome among the nits a batch holds", async () => {
+    const result = await lensRound(run, [
+      consolidatorCluster({ severity: "nit", verification: "refuted" }),
+      consolidatorCluster({ severity: "nit", verification: "unverifiable" }),
+    ]);
+    expect(result.clusters).toHaveLength(1);
+    expect(result.clusters[0].verification).toBe("unverifiable");
+  });
+
+  it("adds no batch when every batched nit is refuted", async () => {
+    const result = await lensRound(run, [
+      consolidatorCluster({ severity: "nit", verification: "refuted" }),
+    ]);
+    expect(result.clusters).toEqual([]);
+  });
+
+  it("adds no batch when no nit is batched", async () => {
+    const result = await lensRound(run, [
+      consolidatorCluster({ severity: "nit", userVisibleString: true }),
+    ]);
+    expect(result.clusters).toEqual([clusterCore({ severity: "nit" })]);
+  });
+
+  it("returns the edit and its command for a confirmed cluster that has both", async () => {
+    const edits = [{ file: "a.ts", oldText: "let x", newText: "const x" }];
+    const result = await lensRound(run, [
+      consolidatorCluster({
+        name: "mechanical",
+        edits,
+        verifyCommand: "  npx vitest run a.test.ts ",
+      }),
+      consolidatorCluster({
+        name: "no command",
+        edits,
+        verifyCommand: "  ",
+      }),
+      consolidatorCluster({
+        name: "refuted",
+        verification: "refuted",
+        edits,
+        verifyCommand: "true",
+      }),
+      consolidatorCluster({ name: "judgment" }),
+    ]);
+    expect(result.clusters).toEqual([
+      clusterCore({
+        name: "mechanical",
+        edits,
+        verifyCommand: "npx vitest run a.test.ts",
+      }),
+      clusterCore({ name: "no command" }),
+      clusterCore({ name: "refuted", verification: "refuted" }),
+      clusterCore({ name: "judgment" }),
+    ]);
+  });
+
+  it("asks the consolidator for the nit flag and the fix shape", async () => {
+    let asked = null;
+    await run(lensArgs, (prompt, options) => {
+      if (options.label === "consolidator") asked = prompt;
+      return lensReply(prompt, options);
+    });
+    expect(asked).toContain("userVisibleString");
+    expect(asked).toContain(
+      `oldText copied verbatim from that file at ${TARGET}`,
+    );
+    expect(asked).toContain("do not apply them");
   });
 
   it("gives every agent it spawns the docs to read", async () => {
@@ -479,7 +635,7 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
       asked.push(prompt);
       return options.label === "consolidator" ? clusters : review;
     });
-    expect(asked).toHaveLength(4);
+    expect(asked).toHaveLength(2);
     for (const prompt of asked) {
       expect(prompt).toContain(
         "First read these docs for design context: docs/DESIGN.md",
@@ -487,9 +643,9 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     }
   });
 
-  it("throws a salvage path when every reviewer is lost", async () => {
+  it("throws a salvage path when the reviewer is lost", async () => {
     await expect(run(lensArgs, () => null)).rejects.toThrow(
-      /Every lens reviewer returned no structured result/,
+      /The lens reviewer returned no structured result/,
     );
   });
 

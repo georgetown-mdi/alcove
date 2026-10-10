@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-// Workflow agent model-pin check: `npm run check:workflow-agent-models`, run
-// by static_checks.yaml on every pull request. Scans the committed Workflow
-// scripts in both shapes: a fenced js block under .claude/commands/,
-// .claude/agents/ or .claude/skills/, and a whole
-// .claude/scripts/*-workflow.mjs file. Fails unless every `agent(` call passes
-// a literal `model:` from ALLOWED_TIERS at the top level of its own inline
-// options object; a spread into that object, a computed or hoisted value, a
-// non-call use of `agent`, and a pinned Fable each fail. The lexer, block
-// reader and file listing are shared with check-workflow-args-resolve.mjs in
-// scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when no
-// `agent(` call is found at all. Rationale and limits:
+// Workflow agent model- and effort-pin check:
+// `npm run check:workflow-agent-models`, run by static_checks.yaml on every
+// pull request. Scans the committed Workflow scripts in both shapes: a fenced
+// js block under .claude/commands/, .claude/agents/ or .claude/skills/, and a
+// whole .claude/scripts/*-workflow.mjs file. Fails unless every `agent(` call
+// passes a literal `model:` from ALLOWED_TIERS and a literal `effort:` from
+// ALLOWED_EFFORTS at the top level of its own inline options object; a spread
+// into that object, a computed or hoisted value, a non-call use of `agent`,
+// and a pinned Fable each fail. The lexer, block reader and file listing are
+// shared with check-workflow-args-resolve.mjs
+// in scripts/lib/workflowScripts.mjs. Exit 0 clean, 1 on a finding or when
+// no `agent(` call is found at all. Rationale and limits:
 // docs/notes/repo-check-scripts.md.
 
 import { readFileSync } from "node:fs";
@@ -29,6 +30,8 @@ import {
 } from "./lib/workflowScripts.mjs";
 
 const ALLOWED_TIERS = ["opus", "sonnet", "haiku"];
+// The values the Workflow runtime's `agent()` accepts for `effort`.
+const ALLOWED_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 const SUMMARY_LENGTH = 100;
 
 // Index of the `)` balancing the `(` at openIndex, or -1 when the call never
@@ -70,10 +73,11 @@ const literalValue = (token) =>
 
 // What a call's options object -- its second argument, and only when that
 // argument is an object literal spelled out in the call -- pins at its top level:
-// the `model` literals it writes, and whether it spreads anything in. A key may be
-// quoted; a value that is not a string or a substitution-free template is not a
-// literal and yields nothing, so the call is treated as unpinned. A spread nested
-// deeper cannot reach the top-level `model` key, so only a top-level one counts.
+// the `model` and `effort` literals it writes, and whether it spreads anything
+// in. A key may be quoted; a value that is not a string or a substitution-free
+// template is not a literal and yields nothing, so the call is treated as
+// unpinned. A spread nested deeper cannot reach a top-level key, so only a
+// top-level one counts.
 function optionsPins(tokens, openIndex, closeIndex) {
   const options = argumentSpans(tokens, openIndex, closeIndex)[1];
   if (
@@ -81,10 +85,10 @@ function optionsPins(tokens, openIndex, closeIndex) {
     !isPunct(tokens[options.start], "{") ||
     !isPunct(tokens[options.end - 1], "}")
   ) {
-    return { models: [], spread: false };
+    return { models: [], efforts: [], spread: false };
   }
 
-  const models = [];
+  const pins = { model: [], effort: [] };
   let spread = false;
   let depth = 0;
   for (let i = options.start + 1; i < options.end - 1; i++) {
@@ -104,11 +108,12 @@ function optionsPins(tokens, openIndex, closeIndex) {
     }
     if (depth !== 0) continue;
     const key = token.kind === "ident" ? token.text : literalValue(token);
-    if (key !== "model" || !isPunct(tokens[i + 1], ":")) continue;
+    if (!Object.hasOwn(pins, key ?? "") || !isPunct(tokens[i + 1], ":"))
+      continue;
     const value = literalValue(tokens[i + 2]);
-    if (value !== undefined) models.push(value);
+    if (value !== undefined) pins[key].push(value);
   }
-  return { models, spread };
+  return { models: pins.model, efforts: pins.effort, spread };
 }
 
 function summarize(text) {
@@ -121,7 +126,8 @@ function summarize(text) {
 /**
  * Every appearance of the injected `agent` binding in a block, in source order,
  * as `{kind: "call" | "alias", text, line}`; a call also has the literal
- * `models` its options object pins and whether that object `spread`s anything in.
+ * `models` and `efforts` its options object pins and whether that object
+ * `spread`s anything in.
  * A member access (`runner.agent`) is somebody else's method and is not an
  * appearance at all.
  */
@@ -164,9 +170,47 @@ export function pinnedModels(callText) {
   return agentCalls(callText)[0]?.models ?? [];
 }
 
+/** The literal `effort` values a single call's options object pins. */
+export function pinnedEfforts(callText) {
+  return agentCalls(callText)[0]?.efforts ?? [];
+}
+
+// What is wrong with one call's model and effort pins, as message fragments
+// that join into the call's single violation.
+function pinProblems(use) {
+  const problems = [];
+  if (use.models.length === 0) {
+    problems.push(
+      `passes no literal \`model:\` in its options object, so it inherits the session model rather than the tier the round intended -- pin one of ${ALLOWED_TIERS.join(", ")}`,
+    );
+  }
+  for (const model of use.models) {
+    if (ALLOWED_TIERS.includes(model)) continue;
+    const fable = /fable/i.test(model)
+      ? " -- Fable needs the owner's explicit per-spawn approval and is never pinned in a committed script"
+      : "";
+    problems.push(
+      `pins \`model: '${model}'\`, which is not one of ${ALLOWED_TIERS.join(", ")}${fable}`,
+    );
+  }
+  if (use.efforts.length === 0) {
+    problems.push(
+      `passes no literal \`effort:\` in its options object, so it inherits the session's reasoning effort rather than the effort the round intended -- pin one of ${ALLOWED_EFFORTS.join(", ")}`,
+    );
+  }
+  for (const effort of use.efforts) {
+    if (ALLOWED_EFFORTS.includes(effort)) continue;
+    problems.push(
+      `pins \`effort: '${effort}'\`, which is not one of ${ALLOWED_EFFORTS.join(", ")}`,
+    );
+  }
+  return problems;
+}
+
 /**
  * Every way a source file's Workflow agent spawns can be off the tiering rule,
- * as `{file, line, problem}` triples. Empty means every call pins a literal tier.
+ * as `{file, line, problem}` triples, at most one per use of `agent`. Empty
+ * means every call pins a literal tier and a literal effort.
  */
 export function modelViolations(file, source) {
   const violations = [];
@@ -178,7 +222,7 @@ export function modelViolations(file, source) {
         violations.push({
           file,
           line,
-          problem: `${where}: \`${use.text}\` uses \`agent\` as a value rather than calling it; the tier pin is read off the call's own options object, so aliasing defeats this check -- spawn through a direct \`agent(...)\` call`,
+          problem: `${where}: \`${use.text}\` uses \`agent\` as a value rather than calling it; the tier and effort pins are read off the call's own options object, so aliasing defeats this check -- spawn through a direct \`agent(...)\` call`,
         });
         continue;
       }
@@ -186,27 +230,16 @@ export function modelViolations(file, source) {
         violations.push({
           file,
           line,
-          problem: `${where}: \`${summarize(use.text)}\` spreads into its options object, which can carry a \`model\` of its own and decide the tier at run time -- write the options out in the call with a literal \`model:\``,
+          problem: `${where}: \`${summarize(use.text)}\` spreads into its options object, which can carry a \`model\` or \`effort\` of its own and decide it at run time -- write the options out in the call with a literal \`model:\` and \`effort:\``,
         });
         continue;
       }
-      if (use.models.length === 0) {
+      const problems = pinProblems(use);
+      if (problems.length > 0) {
         violations.push({
           file,
           line,
-          problem: `${where}: \`${summarize(use.text)}\` passes no literal \`model:\` in its options object, so it inherits the session model rather than the tier the round intended -- pin one of ${ALLOWED_TIERS.join(", ")}`,
-        });
-        continue;
-      }
-      for (const model of use.models) {
-        if (ALLOWED_TIERS.includes(model)) continue;
-        const fable = /fable/i.test(model)
-          ? " -- Fable needs the owner's explicit per-spawn approval and is never pinned in a committed script"
-          : "";
-        violations.push({
-          file,
-          line,
-          problem: `${where}: \`${summarize(use.text)}\` pins \`model: '${model}'\`, which is not one of ${ALLOWED_TIERS.join(", ")}${fable}`,
+          problem: `${where}: \`${summarize(use.text)}\` ${problems.join("; ")}`,
         });
       }
     }
@@ -246,6 +279,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Workflow agent model check passed: ${calls} agent() calls across ${files.length} files in ${scanned} each pin a literal ${ALLOWED_TIERS.join("/")} model.`,
+    `Workflow agent model check passed: ${calls} agent() calls across ${files.length} files in ${scanned} each pin a literal ${ALLOWED_TIERS.join("/")} model and a literal ${ALLOWED_EFFORTS.join("/")} effort.`,
   );
 }

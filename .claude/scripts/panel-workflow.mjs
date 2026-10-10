@@ -265,6 +265,7 @@ if (!deliberating) {
           phase: "Panel",
           schema: SCHEMA,
           model: "opus",
+          effort: "high",
         }),
     ),
   );
@@ -306,6 +307,7 @@ const revisions = await parallel(
         phase: "Deliberate",
         schema: REVISED_SCHEMA,
         model: "opus",
+        effort: "high",
       }),
   ),
 );

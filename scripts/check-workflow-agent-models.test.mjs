@@ -7,6 +7,7 @@ import {
   agentCalls,
   agentUses,
   modelViolations,
+  pinnedEfforts,
   pinnedModels,
 } from "./check-workflow-agent-models.mjs";
 import { sourceFiles, workflowScriptFiles } from "./lib/workflowScripts.mjs";
@@ -157,7 +158,7 @@ describe("workflow agent model check", () => {
     const violations = modelViolations(
       "cmd.md",
       block(
-        "agent(a, { model: 'opus', label: names.first })\nagent(b, { model: 'opus', extra: { ...more } })",
+        "agent(a, { model: 'opus', effort: 'high', label: names.first })\nagent(b, { model: 'opus', effort: 'high', extra: { ...more } })",
       ),
     );
     expect(violations).toEqual([]);
@@ -189,10 +190,60 @@ describe("workflow agent model check", () => {
     const violations = modelViolations(
       "cmd.md",
       block(
-        "agent(a, { model: 'opus' })\nagent(b, { model: \"sonnet\" })\nagent(c, { model: `haiku` })",
+        "agent(a, { model: 'opus', effort: 'high' })\nagent(b, { model: \"sonnet\", effort: 'high' })\nagent(c, { model: `haiku`, effort: 'high' })",
       ),
     );
     expect(violations).toEqual([]);
+  });
+
+  it("reads every quoted effort literal in a call", () => {
+    expect(pinnedEfforts("agent(p, { effort: 'high' })")).toEqual(["high"]);
+    expect(pinnedEfforts('agent(p, { "effort": "low" })')).toEqual(["low"]);
+    expect(pinnedEfforts("agent(p, { effort: `xhigh` })")).toEqual(["xhigh"]);
+    expect(pinnedEfforts("agent(p, { effort: args.effort })")).toEqual([]);
+  });
+
+  it("flags a call that pins a tier but no literal effort", () => {
+    for (const code of [
+      "agent(prompt, { model: 'opus' })",
+      "agent(prompt, { model: 'opus', effort: args.effort })",
+      "agent(prompt, { model: 'opus', options: { effort: 'high' } })",
+    ]) {
+      const violations = modelViolations("cmd.md", block(code));
+      expect(violations, code).toHaveLength(1);
+      expect(violations[0].problem).toContain("no literal `effort:`");
+      expect(violations[0].problem).not.toContain("no literal `model:`");
+      expect(violations[0].problem).toContain("low, medium, high, xhigh, max");
+    }
+  });
+
+  it("flags an effort outside the set the runtime accepts", () => {
+    const violations = modelViolations(
+      "cmd.md",
+      block("agent(prompt, { model: 'opus', effort: 'extreme' })"),
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0].problem).toContain("effort: 'extreme'");
+    expect(violations[0].problem).toContain(
+      "not one of low, medium, high, xhigh, max",
+    );
+  });
+
+  it("accepts every effort the runtime accepts", () => {
+    const code = ["low", "medium", "high", "xhigh", "max"]
+      .map((effort) => `agent(p, { model: 'opus', effort: '${effort}' })`)
+      .join("\n");
+    expect(modelViolations("cmd.md", block(code))).toEqual([]);
+  });
+
+  it("reports a call missing both pins once, naming both", () => {
+    const violations = modelViolations(
+      "cmd.md",
+      block("agent(prompt, { label: 'x' })"),
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0].problem).toContain("no literal `model:`");
+    expect(violations[0].problem).toContain("no literal `effort:`");
   });
 
   it("ignores an agent() call outside a js fence", () => {
@@ -219,7 +270,7 @@ describe("workflow agent model check", () => {
     const violations = modelViolations(
       "cmd.md",
       block(
-        "agent(`a stray ( in prose`, { label: 'x' })\nagent(b, {model: 'opus'})",
+        "agent(`a stray ( in prose`, { label: 'x' })\nagent(b, {model: 'opus', effort: 'high'})",
       ),
     );
     expect(violations).toHaveLength(1);
@@ -230,7 +281,7 @@ describe("workflow agent model check", () => {
   it("is not desynchronized by a quote inside a regex literal", () => {
     const violations = modelViolations(
       "cmd.md",
-      block("const q = /'[a-z]'/\nagent(p, { model: 'opus' })"),
+      block("const q = /'[a-z]'/\nagent(p, { model: 'opus', effort: 'high' })"),
     );
     expect(violations).toEqual([]);
   });
@@ -238,7 +289,9 @@ describe("workflow agent model check", () => {
   it("does not accept a nested call's pin for the outer call", () => {
     const violations = modelViolations(
       "cmd.md",
-      block("agent(await agent(inner, { model: 'sonnet' }), { label: 'x' })"),
+      block(
+        "agent(await agent(inner, { model: 'sonnet', effort: 'high' }), { label: 'x' })",
+      ),
     );
     expect(violations).toHaveLength(1);
     expect(violations[0].problem).toContain("no literal `model:`");

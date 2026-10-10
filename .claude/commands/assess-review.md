@@ -95,10 +95,9 @@ round.
    (two, for a diff under ~150 lines).
 2. This round confirmed as many findings as the previous round's fixes closed,
    or more.
-3. Reviewers propose contradictory remedies for the same hunk, or the contested
-   list (high-severity, single-reviewer findings) grew from the previous round.
-   A role round has one reviewer, so this trigger reads light rounds only.
-4. Two or more reviewers voted that a materially simpler shape exists. Only a
+3. Reviewers propose contradictory remedies for the same hunk. A role round
+   has one reviewer, so this trigger reads light rounds only.
+4. The lens reviewer voted that a materially simpler shape exists. Only a
    light round holds that vote.
 5. A fix you are about to order would grow the branch's diff by roughly a third
    or more.
