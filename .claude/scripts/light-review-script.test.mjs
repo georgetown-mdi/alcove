@@ -431,7 +431,7 @@ describe.each(SHAPES)(
         keysByLabel[options.label] = options.schema.required;
       }
       expect(keysByLabel).toMatchObject({
-        "reviewer-1": ["findings", "simplerShape"],
+        reviewer: ["findings", "simplerShape"],
         consolidator: ["clusters"],
         "adversarial-verifier": ["claims", "findings", "summary"],
       });
@@ -503,7 +503,7 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
       return lensReply(prompt, options);
     });
     expect(spawned.map((options) => options.label)).toEqual([
-      "reviewer-1",
+      "reviewer",
       "consolidator",
     ]);
     for (const options of spawned) {
@@ -552,8 +552,10 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
       statedLimit: true,
     });
     expect(batch.description).toContain("nit one (a.ts, confirmed): rename x");
-    expect(batch.description).toContain("nit two (b.ts, refuted): tidy y");
-    expect(batch.verificationNote).toContain("nit two: not so");
+    expect(batch.description).not.toContain("nit two");
+    expect(batch.description).not.toContain("tidy y");
+    expect(batch.verificationNote).not.toContain("nit two");
+    expect(batch.verificationNote).not.toContain("not so");
     expect(batch).not.toHaveProperty("edits");
     expect(result.clusters[1]).not.toHaveProperty("statedLimit");
   });
@@ -565,6 +567,13 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     ]);
     expect(result.clusters).toHaveLength(1);
     expect(result.clusters[0].verification).toBe("unverifiable");
+  });
+
+  it("adds no batch when every batched nit is refuted", async () => {
+    const result = await lensRound(run, [
+      consolidatorCluster({ severity: "nit", verification: "refuted" }),
+    ]);
+    expect(result.clusters).toEqual([]);
   });
 
   it("adds no batch when no nit is batched", async () => {
@@ -634,9 +643,9 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     }
   });
 
-  it("throws a salvage path when every reviewer is lost", async () => {
+  it("throws a salvage path when the reviewer is lost", async () => {
     await expect(run(lensArgs, () => null)).rejects.toThrow(
-      /Every lens reviewer returned no structured result/,
+      /The lens reviewer returned no structured result/,
     );
   });
 

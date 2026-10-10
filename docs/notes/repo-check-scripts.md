@@ -744,6 +744,8 @@ Effort decides how deep a reviewer reads: the same lens round replayed on ten br
 So every call pins a literal `effort` beside its `model`, from the values the Workflow runtime accepts (`low`, `medium`, `high`, `xhigh`, `max`).
 A call missing both pins is reported once, naming both.
 
+The seats of the `/light-review` lens round, one Opus reviewer at high effort and an Opus consolidator at high, were chosen by the owner on 2026-10-09 after two ten-branch replays, and are revisited at the next retro.
+
 ### Why the options object is spelled out
 
 A spread into the options object can carry a `model` or `effort` of its own and decide it at run time, so a spread fails whether or not a literal sits beside it.

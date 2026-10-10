@@ -14,7 +14,8 @@
 //
 // The check lives here rather than in light-review-workflow.mjs because the
 // Workflow tool refuses at launch a script whose body contains `import(`, so a
-// workflow script cannot read a file or run git.
+// workflow script cannot read a file or run git; the no-import assertion in
+// .claude/scripts/light-review-script.test.mjs holds that the script has none.
 //
 // Exit codes: 0 every cluster carrying edits is mechanical; 1 at least one is
 // judgment; 2 usage, or a result file that cannot be read as a lens result.

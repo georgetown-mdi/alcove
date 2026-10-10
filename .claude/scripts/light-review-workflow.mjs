@@ -437,21 +437,15 @@ Separately from the findings, answer the shape question: is there a materially s
 
 ${requiredKeysClause(REVIEWER_SCHEMA)}`;
 
-const reviews = (
-  await parallel(
-    [1].map(
-      (n) => () =>
-        agent(reviewerPrompt, {
-          label: `reviewer-${n}`,
-          phase: "Review",
-          schema: REVIEWER_SCHEMA,
-          model: "opus",
-          effort: "high",
-        }),
-    ),
-  )
-).filter(Boolean);
-if (reviews.length === 0) throw new Error(salvage("Every lens reviewer"));
+const review = await agent(reviewerPrompt, {
+  label: "reviewer",
+  phase: "Review",
+  schema: REVIEWER_SCHEMA,
+  model: "opus",
+  effort: "high",
+});
+if (!review) throw new Error(salvage("The lens reviewer"));
+const reviews = [review];
 
 const consolidatorPrompt = `You are consolidating a code review of the ref ${targetRef}. ${reviews.length} independent ${reviews.length === 1 ? "reviewer" : "reviewers"} examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). ${reviews.length === 1 ? "Its" : "Their"} findings:
 ${JSON.stringify(
@@ -506,14 +500,16 @@ function withFixShape(cluster) {
 }
 
 // One cluster standing in for every nit that touches no user-visible string.
-// It carries the strongest verification outcome among its nits (confirmed over
-// unverifiable over refuted): a batch holding one confirmed nit is a confirmed
-// limit entry, and the ledger is the record of it. Its file is empty so the
+// A refuted nit is left out entirely, so a limit entry never names one. The
+// batch carries the strongest verification outcome among the rest (confirmed
+// over unverifiable), and is absent when none remain. Its file is empty so the
 // batch never makes a REPEAT file or a hotspot; the files are named in its
 // description instead.
-function nitBatch(nits) {
+function nitBatch(allNits) {
+  const nits = allNits.filter((nit) => nit.verification !== "refuted");
+  if (nits.length === 0) return null;
   const verification =
-    ["confirmed", "unverifiable", "refuted"].find((outcome) =>
+    ["confirmed", "unverifiable"].find((outcome) =>
       nits.some((nit) => nit.verification === outcome),
     ) ?? "unverifiable";
   return {
@@ -544,7 +540,8 @@ for (const cluster of consolidated.clusters) {
     clusters.push(withFixShape(cluster));
   }
 }
-if (batchedNits.length > 0) clusters.push(nitBatch(batchedNits));
+const batch = nitBatch(batchedNits);
+if (batch) clusters.push(batch);
 
 return {
   reviewerCount: reviews.length,
