@@ -65,6 +65,10 @@ jobs:
   repo-guards:
     name: Guards, Scripts, Audit
     runs-on: ubuntu-26.04
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -81,6 +85,16 @@ jobs:
       # vectors check reads the built dist, since its generators import the
       # package the way the apps do.
       - uses: ./.github/actions/setup
+      # The relay schema test among the checks below runs the coturn image
+      # infra/relay/Dockerfile pins, pulled from Docker Hub, which limits
+      # anonymous pulls per source IP and hosted runners share theirs. A run
+      # without the token, a fork's, pulls anonymously.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       # Every repo-wide guard, driven from the one list in
       # scripts/run-checks.mjs: a line per check saying what it holds, with each
       # check's reasoning reached from its script header. `npm run check:all` is

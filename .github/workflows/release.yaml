@@ -71,6 +71,10 @@ jobs:
       # The image push: the login step below authenticates to ghcr.io with
       # this job's own token, so no long-lived registry credential is held.
       packages: write
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     outputs:
       # The manifest-list digest, carried to the launcher job so the reference it
       # stamps and the reference cosign signs below are the same value. The
@@ -113,8 +117,25 @@ jobs:
           ALCOVE_TAG: ${{ github.ref_name }}
         run: npm run check:release-version
 
+      # The QEMU and builder images and both base images come from Docker Hub,
+      # which limits anonymous pulls per source IP, and hosted runners share
+      # theirs. The token reads public images only and publishes nothing.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The emulator image, pinned by digest (binfmt e29e7d7, QEMU v10.2.3)
+      # where the action's default floats on `latest`. Dependabot does not
+      # track this input: to move it, take the index digest
+      # `docker buildx imagetools inspect tonistiigi/binfmt:latest` prints and
+      # set it in both of this workflow's QEMU steps.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
+        with:
+          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -123,11 +144,11 @@ jobs:
       # whose image carries a fixable HIGH or CRITICAL vulnerability in an OS or
       # language package never reaches the registry at all, rather than being pushed
       # under `latest` and then withheld from signing. Nothing in this job has
-      # authenticated to the registry yet when it runs. The publish sequence below
-      # holds the same property once the gate is past: each image is signed and
-      # attested immediately after its own push, so the window in which a published
-      # image is unsigned is that image's own signing step and nothing else --
-      # never another artifact's build.
+      # authenticated to the registry it publishes to yet when it runs. The
+      # publish sequence below holds the same property once the gate is past:
+      # each image is signed and attested immediately after its own push, so the
+      # window in which a published image is unsigned is that image's own signing
+      # step and nothing else -- never another artifact's build.
       #
       # The scan needs an image to read, so this builds one single-arch and
       # loads it -- the same shape image_smoke.yaml uses for its pre-merge scan.
@@ -524,6 +545,10 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       contents: read
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -540,8 +565,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: npm run check:prebuild-provenance
 
+      # The publish job's pull login, for the same images. It publishes
+      # nothing: the token reads public images only.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The publish job's emulator pin; move the two together.
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
+        with:
+          image: docker.io/tonistiigi/binfmt@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4

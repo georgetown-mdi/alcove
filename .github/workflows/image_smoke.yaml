@@ -99,6 +99,10 @@ jobs:
     # The FIPS leg's exchange step runs a real two-party exchange over a polled
     # file drop, so this bound is well above the default-image leg's needs.
     timeout-minutes: 60
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     strategy:
       # One image failing to build says nothing about the other, and the FIPS
       # leg's findings are the more expensive to re-run.
@@ -134,6 +138,16 @@ jobs:
       - name: Verify vendored native tarball integrity
         run: sha256sum -c lib/openmined-psi.js-*.tgz.sha256
 
+      # The builder's own image and each base image come from Docker Hub,
+      # which limits anonymous pulls per source IP, and hosted runners share
+      # theirs. A run without the token, a fork's, pulls anonymously.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -146,8 +160,8 @@ jobs:
       # builds the new week's scope from the mirror, and every pull request
       # can read it from then on. The variant's dnf transactions resolve
       # against a fixed release snapshot, so on that leg the week costs one
-      # cold build a week and changes nothing it installs; one rule for both
-      # legs keeps the scope names the restricted-egress job reads simple.
+      # cold build a week and changes nothing it installs, and one rule serves
+      # both legs.
       - name: Compute the layer cache week
         id: cache_week
         run: echo "week=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
@@ -166,6 +180,21 @@ jobs:
           tags: ${{ matrix.tag }}
           cache-from: type=gha,scope=${{ matrix.variant }}-${{ steps.cache_week.outputs.week }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}-${{ steps.cache_week.outputs.week }}
+
+      # The restricted-egress job below runs this image rather than building
+      # the Dockerfile a second time. Handed over straight after the build, so
+      # a failing smoke step further down does not withhold it.
+      - name: Save the default image for the restricted-egress job
+        if: ${{ matrix.variant == 'default' }}
+        run: docker save --output "$RUNNER_TEMP/alcove-image.tar" "${{ matrix.tag }}"
+      - name: Hand the default image to the restricted-egress job
+        if: ${{ matrix.variant == 'default' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: alcove-image-default
+          path: ${{ runner.temp }}/alcove-image.tar
+          retention-days: 1
+          if-no-files-found: error
 
       # Both published images run unprivileged, and every other step here would
       # pass just as happily as uid 0 -- so a dropped or widened USER line is
@@ -973,6 +1002,8 @@ jobs:
   # Its own job on its own runner, so the firewall rules it writes cannot reach
   # the smoke job's containers. Within the job every rule is scoped to the
   # subnet created here, and the teardown deletes them whatever the probes did.
+  # It runs the default image the smoke job built, so it waits for that job;
+  # a failure on the FIPS leg does not skip it.
   #
   # The endpoints sit off every Docker network, on a subnet reached through the
   # host, because that is where an operator's SFTP server and resolver sit: the
@@ -984,12 +1015,18 @@ jobs:
   # host does not require and the GitHub runner does not have.
   restricted_egress:
     name: Drive the documented restricted-egress recipe
+    needs: smoke
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
     env:
-      ALCOVE_IMAGE: alcove:egress-smoke
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+      # The tag the smoke job's default leg saved the image under.
+      ALCOVE_IMAGE: alcove:smoke
       ENDPOINT_IMAGE: alcove:egress-endpoint
       # The network name and subnet docs/DEPLOYMENT.md names, used literally.
       EGRESS_NET: alcove-egress
@@ -1016,29 +1053,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      # The smoke job's week stamp, computed the same way, so this reads the
-      # scope that job writes. A run straddling midnight UTC on a Monday can
-      # compute the next week here and build cold, which costs time only.
-      - name: Compute the layer cache week
-        id: cache_week
-        run: echo "week=$(date -u +%G-W%V)" >>"$GITHUB_OUTPUT"
-
-      # The subject is the image an operator runs, so it is built here rather
-      # than approximated by the CLI on the runner. Reads the smoke job's cache
-      # scope and writes none of its own: the two jobs run concurrently, and a
-      # second writer on one scope would have them evicting each other.
-      - name: Build image (amd64, load into local Docker)
-        uses: docker/build-push-action@v7
+      # The subject is the image an operator runs, so it is the image the
+      # smoke job built rather than the CLI on the runner.
+      - name: Fetch the default image the smoke job built
+        uses: actions/download-artifact@v8
         with:
-          context: .
-          file: Dockerfile
-          load: true
-          push: false
-          tags: ${{ env.ALCOVE_IMAGE }}
-          cache-from: type=gha,scope=default-${{ steps.cache_week.outputs.week }}
+          name: alcove-image-default
+          path: ${{ runner.temp }}/alcove-image
+      - name: Load the default image into local Docker
+        run: docker load --input "$RUNNER_TEMP/alcove-image/alcove-image.tar"
+
+      # The endpoint fixture below builds on a base image from Docker Hub,
+      # which limits anonymous pulls per source IP, and hosted runners share
+      # theirs. A run without the token, a fork's, pulls anonymously.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # The SSH server whose host key the probe reads. It listens on the
       # permitted port AND on a second one, so the denied-port row below

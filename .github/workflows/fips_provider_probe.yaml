@@ -31,11 +31,24 @@ jobs:
   resolve:
     name: Resolve base image and provider builds
     runs-on: ubuntu-26.04
+    env:
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     outputs:
       base: ${{ steps.base.outputs.base }}
       matrix: ${{ steps.builds.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
+
+      # The base image comes from Docker Hub, which limits anonymous pulls per
+      # source IP, and hosted runners share theirs.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Derive the base image from the Dockerfile runtime stage
         id: base
@@ -115,8 +128,20 @@ jobs:
       LEG: ${{ matrix.leg }}
       TAG: ${{ matrix.tag }}
       BASE: ${{ needs.resolve.outputs.base }}
+      # A step's `if:` is not given the secrets context, so whether the Docker
+      # Hub token is set reaches the login step below through this.
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v7
+
+      # The probe image builds on a base from Docker Hub, which limits
+      # anonymous pulls per source IP, and hosted runners share theirs.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # The build log is teed into the transcript because a failure here is
       # invisible to the firewalled reader otherwise: run logs are not fetchable
