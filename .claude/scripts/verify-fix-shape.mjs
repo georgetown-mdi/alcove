@@ -84,8 +84,7 @@ function usage(message) {
   process.exit(2);
 }
 
-// CLI entry: only runs when invoked directly, so the test can import the pure
-// functions without the process.exit.
+// Not run on import, so the test can load the pure functions.
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const positional = [];
   let worktree = null;

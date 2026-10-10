@@ -43,9 +43,10 @@ push:
   invoke by absolute path. Each is a script BODY, not a module: the harness
   injects `args`, `agent`, and `parallel`, and takes the top-level `return` as
   the run's result. No ES module parser accepts that, so eslint ignores them and
-  the test beside each one compiles it into a function to drive it. A script body reads no file
-  and runs no command; work that needs either runs in a script beside it
-  (`verify-fix-shape.mjs` states why).
+  the test beside each one compiles it into a function to drive it. The
+  light-review workflow script imports and requires nothing (asserted by its
+  test), because the harness refuses a script that does; work that needs a file
+  or a command runs in a script beside it (`verify-fix-shape.mjs` states why).
 
 Tests sit beside their subject, in the vitest project named `scripts` -- the
 project covering the repository's own `scripts/` is `repo-scripts`:

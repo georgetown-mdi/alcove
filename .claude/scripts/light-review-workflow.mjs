@@ -447,18 +447,14 @@ const review = await agent(reviewerPrompt, {
 if (!review) throw new Error(salvage("The lens reviewer"));
 const reviews = [review];
 
-const consolidatorPrompt = `You are consolidating a code review of the ref ${targetRef}. ${reviews.length} independent ${reviews.length === 1 ? "reviewer" : "reviewers"} examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). ${reviews.length === 1 ? "Its" : "Their"} findings:
-${JSON.stringify(
-  reviews.map((r, i) => ({ reviewer: i + 1, findings: r.findings })),
-  null,
-  1,
-)}
+const consolidatorPrompt = `You are consolidating a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
+${JSON.stringify(review.findings, null, 1)}
 
 ${groundRules}
 
 ${docsClause}In a single pass -- no sub-agents, no iteration:
 1. Drop any finding that is not about ${targetRef}'s own changes (anything describing the branch's base moving, or staging's progress since the fork) -- discard it before clustering, do not even list it as refuted.
-2. Cluster findings that describe the same underlying issue across reviewers when there are several; flaggedBy is the number of distinct reviewers in the cluster (1 when a single reviewer examined the diff).
+2. Cluster findings that describe the same underlying issue; flaggedBy is 1 on every cluster.
 3. Verify each cluster's core claim by reading only the specific hunks or files it names -- not the whole diff -- and set verification confirmed/refuted/unverifiable with a one-line verificationNote.
 4. Set userVisibleString on every cluster: true when the issue touches text a user or operator reads -- UI copy, CLI output, an error, warning or log message shown to them, or user documentation -- and false otherwise. Every nit with userVisibleString false is batched with the other such nits into one stated limit that nobody fixes, so judge it on what the text is, not on how much the nit matters.
 5. For each confirmed cluster whose fix is determined -- one edit any careful engineer would make, with no design choice or open question in it -- write the fix as edits, each with the file, oldText copied verbatim from that file at ${targetRef} and long enough to occur exactly once in it, and newText; and write verifyCommand, one shell command scoped to the tree as above that shows the fix took (a test file run, a check script, a grep). When the fix needs a judgment call, and for every refuted or unverifiable cluster, leave edits empty and verifyCommand an empty string. Describe the edits only: do not apply them.
@@ -499,12 +495,7 @@ function withFixShape(cluster) {
   return { ...core, edits: cluster.edits, verifyCommand: command };
 }
 
-// One cluster standing in for every nit that touches no user-visible string.
-// A refuted nit is left out entirely, so a limit entry never names one. The
-// batch carries the strongest verification outcome among the rest (confirmed
-// over unverifiable), and is absent when none remain. Its file is empty so the
-// batch never makes a REPEAT file or a hotspot; the files are named in its
-// description instead.
+// Absent when every nit is refuted: a refuted nit is left out, never listed.
 function nitBatch(allNits) {
   const nits = allNits.filter((nit) => nit.verification !== "refuted");
   if (nits.length === 0) return null;

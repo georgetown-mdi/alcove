@@ -258,7 +258,10 @@ Common to both:
    The confirmed nit batch, the cluster with `"statedLimit": true`, is the one entry
    written already disposed:
    `{"item": <its name>, "disposition": "limit", "surface": "internal", "note": "nits touching no user-visible string, not fixed"}`.
-   It is a stated limit by rule, so it never reaches a fix brief.
+   It is a stated limit by rule, so it never reaches a fix brief. A batch whose
+   verification is `unverifiable` is written `open` like any other cluster. A nit
+   the consolidator refuted is left out of the batch, so it does not appear in the
+   round's output.
 9. Write the findings file: a header line (branch, target ref, round N, kind `light`,
    `reviewerCount` reviewers), then the clusters sorted by severity (critical first) then
    flaggedBy (descending) -- one row each with issue number, name, description, severity,
@@ -269,7 +272,7 @@ Common to both:
    its own line when N > 0).
    Before marking any row, save the Workflow's result to a file (the task output
    file holding `{"result": ...}` serves as is) and run
-   `node .claude/scripts/verify-fix-shape.mjs <the target ref> <that file> [--worktree <TREE>]`,
+   `node <PRIMARY>/.claude/scripts/verify-fix-shape.mjs <the target ref> <that file> [--worktree <TREE>]`,
    naming `--worktree` when a tree holds the ref. It prints `mechanical <name>` for a
    cluster whose every edit's `oldText` occurs exactly once in its file at the ref,
    and `judgment <name> -- <reason>` otherwise; the Workflow passes the consolidator's
@@ -333,6 +336,8 @@ session's, and `npm run check:workflow-agent-models` refuses it.
 - Do not enter a target's worktree, check a ref out, or change your working directory.
 - Do not review the diff yourself or add your own findings.
 - Do not edit, drop, or reorder the consolidator's clusters, or a role's verdicts.
+  The one exception: a cluster `verify-fix-shape.mjs` reports as judgment loses its
+  `edits` and `verifyCommand`, nothing else.
 - Do not soften a verdict, and do not re-verdict a role's claims yourself -- the role's
   own output is the artifact.
 - Do not fix anything -- that is assess-review's job.
