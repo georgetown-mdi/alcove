@@ -147,8 +147,8 @@ jobs:
       # authenticated to the registry it publishes to yet when it runs. The
       # publish sequence below holds the same property once the gate is past:
       # each image is signed and attested immediately after its own push, so the
-      # window in which a published image is unsigned is that image's own signing step and nothing else --
-      # never another artifact's build.
+      # window in which a published image is unsigned is that image's own signing
+      # step and nothing else -- never another artifact's build.
       #
       # The scan needs an image to read, so this builds one single-arch and
       # loads it -- the same shape image_smoke.yaml uses for its pre-merge scan.

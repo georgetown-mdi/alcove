@@ -42,7 +42,7 @@ const PUBLISHING_COMMANDS = [
 // repository's pull token, which is created read-only. That scope is the
 // owner's setting on Docker Hub, which nothing here can read.
 const isHubPullLogin = (step) =>
-  /(^|\/)login-action@/.test(step.uses ?? "") &&
+  /^docker\/login-action@/.test(step.uses ?? "") &&
   step.with?.registry === undefined &&
   step.with?.password === "${{ secrets.DOCKERHUB_TOKEN }}";
 
