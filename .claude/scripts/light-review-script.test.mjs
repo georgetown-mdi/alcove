@@ -353,7 +353,7 @@ describe.each(SHAPES)(
 
     it("resolves an object of named arguments and runs the round on it", async () => {
       const result = await run(lensArgs, lensReply);
-      expect(result.reviewerCount).toBe(3);
+      expect(result.reviewerCount).toBe(1);
     });
   },
 );
@@ -384,7 +384,7 @@ describe.each(SHAPES)(
 
     it("puts the target ref, never HEAD, in every reviewer prompt", async () => {
       const prompts = await promptsFor(deliver, {});
-      expect(prompts).toHaveLength(5);
+      expect(prompts).toHaveLength(3);
       for (const prompt of prompts) {
         expect(prompt).toContain(`origin/staging...${TARGET}`);
         expect(prompt).not.toContain("origin/staging...HEAD");
@@ -421,7 +421,7 @@ describe.each(SHAPES)(
         roleArgs(["a claim"]),
         record(() => roleReply([verdict("a claim")])),
       );
-      expect(spawned).toHaveLength(5);
+      expect(spawned).toHaveLength(3);
       const keysByLabel = {};
       for (const { prompt, options } of spawned) {
         expect(options.schema.required.length).toBeGreaterThan(0);
@@ -491,16 +491,12 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
 
   it("consolidates what the reviewers that returned found", async () => {
     const result = await run(lensArgs, lensReply);
-    expect(result.reviewerCount).toBe(3);
+    expect(result.reviewerCount).toBe(1);
     expect(result.clusters).toEqual([clusterCore()]);
-    expect(result.simplerShapeVotes).toEqual([
-      review.simplerShape,
-      review.simplerShape,
-      review.simplerShape,
-    ]);
+    expect(result.simplerShapeVotes).toEqual([review.simplerShape]);
   });
 
-  it("runs three Opus seats and an Opus consolidator at high effort", async () => {
+  it("runs one Opus seat and an Opus consolidator at high effort", async () => {
     const spawned = [];
     await run(lensArgs, (prompt, options) => {
       spawned.push(options);
@@ -508,8 +504,6 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
     });
     expect(spawned.map((options) => options.label)).toEqual([
       "reviewer-1",
-      "reviewer-2",
-      "reviewer-3",
       "consolidator",
     ]);
     for (const options of spawned) {
@@ -632,7 +626,7 @@ describe.each(SHAPES)("light-review lens mode ($shape args)", ({ deliver }) => {
       asked.push(prompt);
       return options.label === "consolidator" ? clusters : review;
     });
-    expect(asked).toHaveLength(4);
+    expect(asked).toHaveLength(2);
     for (const prompt of asked) {
       expect(prompt).toContain(
         "First read these docs for design context: docs/DESIGN.md",

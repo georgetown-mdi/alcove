@@ -1,6 +1,6 @@
 ---
 name: light-review
-description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs three independent schema-forced Opus reviewers and an Opus consolidator, all at effort high. Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
+description: Code review of one or more target refs against staging, one Workflow per ref. Default lens mode runs one schema-forced Opus 5.5 reviewer and an Opus consolidator, both at effort high (the owner's 2026-10-10 ruling after two replays of the three-seat round, to be revisited at the next retro). Role mode (--role security-reviewer|adversarial-verifier --claims <file>) runs one schema-forced Opus role reviewer at effort high against a named list of claims to refute. Either mode computes each round's trajectory against prior rounds of its kind and writes branch-keyed artifacts under the primary checkout's scratch/review-rounds/. Takes an optional list of documentation files every agent it spawns should consult for design justification. Pure orchestration -- it does not review the code itself, and it never enters a branch's worktree.
 ---
 
 You are ORCHESTRATING a code review. You do not review the code yourself and you
@@ -249,8 +249,9 @@ Common to both:
 6. CONFIRMED = clusters with verification `confirmed`. A confirmed file that also held
    a confirmed cluster in the PREVIOUS light round is a REPEAT; repeat files are the
    round's hotspots.
-7. CONTESTED = clusters with `flaggedBy` 1, severity critical or major, and verification
-   not `refuted`.
+7. CONTESTED = clusters flagged by only one of several reviewers (`flaggedBy` 1 while
+   `reviewerCount` is above 1), severity critical or major, and verification not
+   `refuted`. With a single reviewer no cluster is contested.
 8. Append one JSON line to the ledger:
    `{"round": N, "kind": "light", "date": "<date -I>", "ref": "<the target ref>", "reviewerCount": <reviewerCount>, "clusters": [{"name", "file", "severity", "verification"}], "simplerShapeVotes": <count of simpler=true>, "dispositions": [{"item": <confirmed cluster name>, "disposition": "open"}]}`.
    A branch's first row also contains `"cap": <the round budget>` (Common item 1).
@@ -281,8 +282,8 @@ Common to both:
    verifying command in a fenced block. The fix brief for a mechanical item is drafted
    from these: apply the edits, run the command. Mark the nit batch's row `stated limit`.
 
-`reviewerCount` is the number of reviewers that actually returned, which is 3 only when
-none was lost to schema exhaustion. Write the number the Workflow returned, never the
+`reviewerCount` is the number of reviewers that actually returned, which is the number the
+round seats (one) only when none was lost to schema exhaustion. Write the number the Workflow returned, never the
 number you asked for.
 
 ### Role mode -- the Workflow returned `{claims, findings, gate, summary}`
