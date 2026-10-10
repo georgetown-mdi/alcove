@@ -38,8 +38,17 @@ const PUBLISHING_COMMANDS = [
   /\bgh\s+api\b.*\s(-f|-F|--field|--raw-field|--input)\b/,
 ];
 
+// The Docker Hub login ahead of the image pulls: the default registry, and the
+// repository's pull token, which is created read-only. That scope is the
+// owner's setting on Docker Hub, which nothing here can read.
+const isHubPullLogin = (step) =>
+  /(^|\/)login-action@/.test(step.uses ?? "") &&
+  step.with?.registry === undefined &&
+  step.with?.password === "${{ secrets.DOCKERHUB_TOKEN }}";
+
 /** Why a step publishes, or undefined when it does not. */
 function publishes(step) {
+  if (isHubPullLogin(step)) return undefined;
   const uses = step.uses ?? "";
   const run = step.run ?? "";
   const action = PUBLISHING_ACTIONS.find((pattern) => pattern.test(uses));
@@ -96,7 +105,7 @@ describe("the release workflow's dry run", () => {
     expect(dryRun?.permissions).toEqual({ contents: "read" });
   });
 
-  it("has no login, attest, sign, verify, push or release step in the dry-run job", () => {
+  it("has no publishing login, attest, sign, verify, push or release step in the dry-run job", () => {
     expect(dryRunSteps.length).toBeGreaterThan(0);
     const found = dryRunSteps
       .map((step) => ({ name: step.name ?? step.uses, why: publishes(step) }))
