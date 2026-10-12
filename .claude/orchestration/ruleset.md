@@ -2,7 +2,7 @@
 
 The rules for CONDUCTING an Alcove session -- one that spawns agents, runs review rounds, dispatches fixes, and reports decisions to the owner. `CONTRIBUTING.md` and `CLAUDE.md` hold what binds every agent; this file holds only what binds the session doing the conducting.
 
-An orchestrating session reads this file before its first `Agent` or `Workflow` call, and again after a context reset. Enforced by `require-orchestration-ruleset-read.mjs`, which refuses that first `Agent` or `Workflow` call until `record-orchestration-ruleset-read.mjs` has recorded a read of this file in the session; the marker and how long a read stands for are in their headers. Ten front doors load it as their first step: `.claude/commands/start-issue.md`, `.claude/commands/light-review.md`, `.claude/commands/assess-review.md`, `.claude/commands/panel.md`, `.claude/commands/docket.md`, `.claude/commands/follow-ups.md`, `.claude/commands/wind-down.md`, `.claude/commands/close-out.md`, `.claude/commands/compact-prep.md`, and `.claude/skills/shortlist-backlog/SKILL.md`.
+An orchestrating session reads this file before its first `Agent` or `Workflow` call, and again after a context reset. Enforced by `require-orchestration-ruleset-read.mjs`, which refuses that first `Agent` or `Workflow` call until `record-orchestration-ruleset-read.mjs` has recorded a read of this file in the session; the marker and how long a read stands for are in their headers. The front doors that load it as their first step are the `FRONT_DOORS` list in `scripts/check-rule-ledgers.mjs`, which that check keeps wired.
 
 A spawned agent does not read it. `CLAUDE.md` alone holds the rules that bind it, and a spawn that reads this file pays for rules addressed to its caller.
 
@@ -36,13 +36,16 @@ A spawned agent does not read it. `CLAUDE.md` alone holds the rules that bind it
 
 ## Session lifecycle
 
-A session is always in one of the five states below, and an owner turn naming one -- by its command or by the words listed with it -- means that state and nothing else. Sessions read these words differently each time: a request to compact launched eight new fix branches, a request to reach a conclusion started the docket instead of landing the PRs, and a clean break was answered with a continuation brief. Each state's steps live in its command; this section states only what each one means.
+A session is always in one of the six states below, and an owner turn naming one -- by its command or by the words listed with it -- means that state and nothing else. Each state's steps live in its command; this section states only what each one means.
 
 - **Working**, the default. An orchestration session keeps working: as its pull requests merge it takes the next workable items, and it carries on across compactions of its context. It does not wind down or hand off on its own, and an owner turn naming an event to come -- a promotion, an image build, going away for a while -- changes nothing until it names a state below; when to compact is the owner's call. What carries the work across a compaction is a continuation brief kept current in a file -- the branches in flight, their review state, and what comes next -- named by path, never pasted into a prompt: a paste enters the context at full width and is re-billed on every call, while a path costs one Read. Decisions surfaced mid-work are parked as Decision items, and the docket (`/docket`) and the filing pass (`/follow-ups`) run ONLY on the owner's trigger -- at the end of the day, or earlier when the owner judges parked items are piling up and blocking work -- never because the session judges it is time.
 - **Wind-down** (`/wind-down`; "wind down", "hold after the last PR lands", "find a natural conclusion"): finish the work in flight, start nothing new, then hold. A branch's conclusion is its intended final state -- for an implementation branch, an open PR with its review rounds done and green CI -- never the docket.
 - **Close-out** (`/close-out`; "close out", "wrap up", "finished means finished"; `/close-out clean` for "a clean break"): wind down, then leave every open thread where the next session finds it -- a continuation brief by default, the board alone on a clean break -- and report only the final action items the owner alone can take. The docket and the filing pass run within it only on the owner's trigger, a clean break being the filing pass's trigger.
 - **Compact-prep** (`/compact-prep`; "compact", "prepare for compaction"): bring the continuation brief current and print the two short messages the owner needs to compact and resume. Nothing in flight stops and nothing new starts for it; after the compaction the session is Working again.
-- **Docket** (`/docket`; "present the docket"): present the parked decisions one per message and record each ruling without executing it. The bare command is the whole instruction; the owner never retypes it.
+- **Docket** (`/docket`; "present the docket"): present the parked decisions one per message and record each ruling without executing it. `.claude/commands/docket.md` holds the steps and what the bare command carries.
+- **Follow-ups** (`/follow-ups`; the filing pass): file, update or decline the session's potential follow-ups on the board, as `.claude/commands/follow-ups.md` sets out. Owner-triggered, like the docket.
+
+After a docket or a follow-ups pass the session is Working again, unless the owner names another state.
 
 ## Decisions, briefs and reporting
 

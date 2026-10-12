@@ -28,13 +28,19 @@ const parallel = (thunks) => Promise.all(thunks.map((thunk) => thunk()));
 // Every convening call names the clean checkout it was given; a deliberation
 // takes it from the first round's result instead.
 const BASE = "/tmp/tmp.panelBase";
+// A convening call also names its seats: the script has no default. A case that
+// passes a `seats` key of its own, even undefined, is delivered as it is.
+const TEST_SEATS = ["failure-modes", "architecture", "pragmatics"];
 const withBase = (args) =>
   args !== null &&
   typeof args === "object" &&
   !Array.isArray(args) &&
-  !Object.hasOwn(args, "deliberate") &&
-  !Object.hasOwn(args, "base")
-    ? { base: BASE, ...args }
+  !Object.hasOwn(args, "deliberate")
+    ? {
+        ...(Object.hasOwn(args, "base") ? {} : { base: BASE }),
+        ...(Object.hasOwn(args, "seats") ? {} : { seats: TEST_SEATS }),
+        ...args,
+      }
     : args;
 const runner = (deliver) => (args, respond) =>
   script(deliver(withBase(args)), respond, parallel);
@@ -189,11 +195,7 @@ const NAMED_SEATS = [
   "pragmatics",
   "design-ux",
 ];
-const DEFAULT_LENSES = [
-  "correctness and failure modes",
-  "architecture and maintenance cost",
-  "operational and cost pragmatics",
-];
+const FAILURE_MODES_LENS = "correctness and failure modes";
 
 // A panelist whose answer names its own seat, so a prompt that shows another
 // panelist's answer is caught by that seat's name.
@@ -214,12 +216,14 @@ describe("panel seats", () => {
 describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
   const run = runner(deliver);
 
-  it("sits the three default lenses when no seats are named", async () => {
-    const result = await run({ question: QUESTION }, answerFor);
+  it("sits the seats it is given and no others", async () => {
+    const result = await run(
+      { question: QUESTION, seats: ["failure-modes", "architecture"] },
+      answerFor,
+    );
     expect(result.seats).toEqual([
-      { name: "failure-modes", lens: DEFAULT_LENSES[0] },
-      { name: "architecture", lens: DEFAULT_LENSES[1] },
-      { name: "pragmatics", lens: DEFAULT_LENSES[2] },
+      { name: "failure-modes", lens: FAILURE_MODES_LENS },
+      { name: "architecture", lens: "architecture and maintenance cost" },
     ]);
   });
 
@@ -242,7 +246,7 @@ describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
       "panelist: accessibility",
     ]);
     expect(spawned[0].prompt).toContain("design and user experience");
-    expect(spawned[1].prompt).toContain(DEFAULT_LENSES[0]);
+    expect(spawned[1].prompt).toContain(FAILURE_MODES_LENS);
     expect(spawned[2].prompt).toContain(stated.lens);
     expect(result.positions.map((p) => p.seat)).toEqual([
       "design-ux",
@@ -280,6 +284,7 @@ describe.each(SHAPES)("panel seats ($shape args)", ({ deliver }) => {
         { seats: ["failure-modes", "nonexistent"] },
         /Unknown seat "nonexistent"/,
       ],
+      [{ seats: undefined }, /with no default/],
       [{ seats: ["failure-modes"] }, /at least two seats/],
       [{ seats: [] }, /at least two seats/],
       [{ seats: "design-ux" }, /at least two seats/],

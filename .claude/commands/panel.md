@@ -14,21 +14,20 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /panel "<question>" [context-file ...] [--seats <seat> ...] [--deliberate]
+    /panel "<question>" [context-file ...] --seats <seat> ... [--deliberate]
 
 - `<question>`: one settle-able question of technical judgment, phrased
   neutrally -- no candidate answer, no hint of which way you or the issue lean.
   If you cannot phrase it without a candidate, it is not ready for a panel.
 - `[context-file ...]`: optional repo-relative paths (docs, specs) every
   panelist should read for context. Call this list DOCS; there may be none.
-- `--seats`: the panelists to seat, at least two. Call this list SEATS; with
-  none given, the panel seats `failure-modes`, `architecture`, and
-  `pragmatics`. Choose seats for the dimensions the question has, never for
-  the answer you expect, and never by rote: a seat is not added because a
-  note, a habit or an earlier panel had it. Seats and side lenses added that
-  way drew three owner corrections, among them a user-experience lens on a
-  question about a cryptographic call that no user sees. Your report names, for each seat, the
-  dimension of the question it covers. The named seats:
+- `--seats`: required. The panelists to seat, at least two. Call this list
+  SEATS. There is no default roster: without `--seats`, stop and name each
+  seat and the dimension of the question it covers before convening. Choose
+  seats for the dimensions the question has, never for the answer you expect
+  and never by rote: a seat is not added because a note, a habit or an earlier
+  panel had it. Your report names, for each seat, the dimension of the
+  question it covers. The named seats:
   - `failure-modes`: correctness and failure modes.
   - `architecture`: architecture and maintenance cost.
   - `pragmatics`: operational and cost pragmatics.
@@ -63,12 +62,7 @@ lens prompt, which on a security surface skips the refutation contract.
 ## Before the panel -- Test the premise and the option set
 
 Panelists read code and run nothing, so a fact only a measurement can give
-never reaches them unless you measure it first. On a question about computing
-a receipt MAC over a large input on the FIPS path, every seat argued from the
-options given, and the input that decided the ruling -- that the limit was the
-string conversion, not the WebCrypto call, which accepted a 1.5 GiB byte
-buffer -- came from a side agent that ran a measurement and opened an option
-the panel never saw.
+never reaches them unless you measure it first.
 
 Before Step 1, for the question's premise and each option it names:
 
@@ -79,7 +73,9 @@ Before Step 1, for the question's premise and each option it names:
    has `node_modules`, or through a spawn that runs it.
 3. A refuted premise or a new option reframes the question before any seat is
    convened, phrased as neutrally as before. A measured quantity that settles
-   the question ends it here, as the ruleset's deferred-decision rule states.
+   the question ends it here, as the ruleset's deferred-decision rule states,
+   unless the owner asked for the panel: then the measurement goes to the
+   owner with the question, and the owner decides whether the panel still runs.
    Otherwise the measurements go to the panel as a file in `<base>` named in
    DOCS (after Step 1), each stating the command, the number and its limits,
    and no reading of what it means for the options.
@@ -106,9 +102,9 @@ Invoke the Workflow tool with `scriptPath` set to the ABSOLUTE path of
 `.claude/scripts/panel-workflow.mjs` in this repository (`git rev-parse --show-toplevel`
 gives the root) -- the bare relative spelling fails the call with "script file
 not found" -- and `args` set to
-`{"question": "<the question>", "base": "<base>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`,
-leaving `seats` out for the default three. For example,
+`{"question": "<the question>", "base": "<base>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`, for example
 `"seats": ["failure-modes", "design-ux", {"name": "accessibility", "lens": "..."}]`.
+The script refuses a call with no `seats`.
 
 The script is checked in and passed by path: do not paste its text into the call
 and do not copy it out to edit it -- it spawns one panelist per seat on the tier

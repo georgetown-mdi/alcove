@@ -69,11 +69,9 @@ Each message holds exactly one item and ends the turn:
 - One recommended option, with its reason in a sentence or two, argued as
   `.claude/product-principles.md` sets out.
 
-An option that adds a bound, a refusal, a consent step or a new mechanism on a
-surface a user reaches names, in its own line, who asked for it and which
-legitimate use it blocks (`.claude/orchestration/ruleset.md`, Decisions,
-briefs and reporting). An item with such an option and no such line is not
-presented until it has one.
+An option the ruleset's proposal rule covers (`.claude/orchestration/ruleset.md`,
+Decisions, briefs and reporting) carries that rule's line; an item whose such
+option lacks it is not presented until it has one.
 
 Never open the item with AskUserQuestion, and never put a follow-up filing in a
 docket message.

@@ -37,7 +37,8 @@ before proceeding -- its Session lifecycle section defines this state.
    be, and the next session's first step. Print one sentence the owner gives
    the next session, naming the brief by path.
 5. With `clean`: run `/follow-ups` now, the owner's `clean` being its trigger,
-   so every thread from step 2 is filed, updated or declined on the board.
+   so every thread from step 2 other than the parked Decision items is
+   filed, updated or declined on the board.
    Parked Decision items stay on the board for the next session's docket. For
    each run still under way, print one sentence the owner can give a new
    session to watch it and act on its result.
