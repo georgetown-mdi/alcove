@@ -354,7 +354,8 @@ Each path is recorded on the checklist line naming both shas:
   leaves the attested head no ancestor of the new one -- is re-attested by
   verifying that the move changed nothing the branch itself authored: the
   branch's diff against its base holds the same paths, and each holds the same
-  program at both ends, once comments are removed and markdown is excluded.
+  program at both ends, once comments are removed and markdown and the spec
+  wording-change list (`docs/spec/wording-changes.txt`) are excluded.
   Verified mechanically or not at all, by `node
   .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
   <pre-rebase-head> <post-rebase-base> <post-rebase-head>`, which runs the
