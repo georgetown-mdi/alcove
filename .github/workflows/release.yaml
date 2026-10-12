@@ -484,6 +484,10 @@ jobs:
           ALCOVE_DIGEST: ${{ needs.publish.outputs.digest }}
         run: |
           set -euo pipefail
+          if ! [[ "${ALCOVE_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::the publish job's digest output is empty or not sha256: followed by 64 lowercase hex characters" >&2
+            exit 1
+          fi
           ALCOVE_PLACEHOLDER='@@ALCOVE_IMAGE_DIGEST@@'
           mkdir -p launcher-assets
 

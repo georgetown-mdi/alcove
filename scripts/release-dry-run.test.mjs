@@ -1,4 +1,7 @@
-import { dirname, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -145,5 +148,67 @@ describe("the release workflow's dry run", () => {
         expect(publishScopes).not.toContain(cacheScope(step.with[input]));
       }
     }
+  });
+});
+
+describe("the launchers job's digest stamp", () => {
+  const stampStep = (document.jobs.launchers?.steps ?? []).find(
+    (step) => step.name === "Stamp the launchers with the signed digest",
+  );
+  const WELL_FORMED_DIGEST = `sha256:${"a".repeat(64)}`;
+
+  /** The step's script, run in an empty directory with the given digest. */
+  function runStamp(digest) {
+    const workingDirectory = mkdtempSync(join(tmpdir(), "stamp-guard-"));
+    try {
+      const result = spawnSync("bash", ["-c", stampStep.run], {
+        cwd: workingDirectory,
+        env: { PATH: process.env.PATH, ALCOVE_DIGEST: digest },
+        encoding: "utf8",
+      });
+      return {
+        status: result.status,
+        stderr: result.stderr,
+        wroteLaunchers: existsSync(join(workingDirectory, "launcher-assets")),
+      };
+    } finally {
+      rmSync(workingDirectory, { recursive: true, force: true });
+    }
+  }
+
+  it("takes the digest from the publish job's output", () => {
+    expect(stampStep?.env?.ALCOVE_DIGEST).toBe(
+      "${{ needs.publish.outputs.digest }}",
+    );
+  });
+
+  it("checks the digest before it creates the launcher directory", () => {
+    const script = stampStep.run;
+    const guard = script.indexOf("sha256:[0-9a-f]{64}");
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(script.indexOf("mkdir -p launcher-assets"));
+  });
+
+  for (const [label, digest] of [
+    ["is empty", ""],
+    ["lacks the sha256: prefix", "a".repeat(64)],
+    ["is too short", `sha256:${"a".repeat(63)}`],
+    ["is too long", `sha256:${"a".repeat(65)}`],
+    ["has uppercase hex", `sha256:${"A".repeat(64)}`],
+    ["has a non-hex character", `sha256:${"g".repeat(64)}`],
+    ["has a trailing newline", `${WELL_FORMED_DIGEST}\n`],
+  ]) {
+    it(`fails with an error line before writing any launcher when the digest ${label}`, () => {
+      const outcome = runStamp(digest);
+      expect(outcome.status).not.toBe(0);
+      expect(outcome.stderr).toMatch(/^::error::/m);
+      expect(outcome.wroteLaunchers).toBe(false);
+    });
+  }
+
+  it("passes the guard for a well-formed digest", () => {
+    const outcome = runStamp(WELL_FORMED_DIGEST);
+    expect(outcome.stderr).not.toMatch(/digest output is empty or not sha256/);
+    expect(outcome.wroteLaunchers).toBe(true);
   });
 });
