@@ -151,7 +151,7 @@ const CLIENT_CLOSE_TIMEOUT_MS = 5_000;
 const FORCED_CLOSE_TIMEOUT_MS = 1_000;
 
 // Upper bound (ms) on a queued session transition's wait for the transition
-// ahead of it. Derivation: docs/spec/CHANNEL_SECURITY.md, "The
+// ahead of it. Derivation: docs/spec/SFTP_SESSION_RECOVERY.md, "The
 // session-transition lock".
 const TRANSITION_ACQUIRE_TIMEOUT_MS = 10_000;
 
@@ -710,8 +710,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Acquire this adapter's one session-transition lock and run `transition`
   // under it. The ordering, the teardown latch, the bounded acquire and each
-  // kind's abandoned disposition are in docs/spec/CHANNEL_SECURITY.md, "The
-  // session-transition lock".
+  // kind's abandoned disposition are in docs/spec/SFTP_SESSION_RECOVERY.md,
+  // "The session-transition lock".
   private runTransition<T>(transition: SessionTransition<T>): Promise<T> {
     const predecessor = this.transitionTail;
     let leaveQueue!: () => void;
@@ -954,8 +954,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // round below it: one span from issue to final settlement, covering the first
   // attempt, the re-dial that may follow it, and the re-issue. The
   // idle-boundary release's precondition is that count (see
-  // docs/spec/CHANNEL_SECURITY.md, "The outstanding-operation hold on an idle
-  // boundary").
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "The outstanding-operation hold on an
+  // idle boundary").
   //
   // `spec` is the operation's re-issue policy, applied ONLY on the second
   // attempt: `verbatim` re-runs the operation as it stands, `reissued` applies
@@ -980,8 +980,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Bracket one ATTEMPT of a server-driven operation with the heartbeat's
   // activity accounting. Why per-attempt, and the three round trips outside it,
-  // are in docs/spec/CHANNEL_SECURITY.md, "The outstanding-operation hold on an
-  // idle boundary".
+  // are in docs/spec/SFTP_SESSION_RECOVERY.md, "The outstanding-operation hold
+  // on an idle boundary".
   private tracked<T>(op: Promise<T>): Promise<T> {
     const epoch = this.heartbeat.opStarted();
     return op.finally(() => {
@@ -1034,7 +1034,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Attach a single guarded 'error' listener to the raw ssh2 SFTPWrapper, once
   // per wrapper instance. What it closes, and what bounds an in-flight operation
-  // after it fires, are in docs/spec/CHANNEL_SECURITY.md, "SFTP fatal-packet
+  // after it fires, are in docs/spec/SFTP_CONNECTION.md, "SFTP fatal-packet
   // crash safety".
   private attachFatalErrorListener(
     sftp: NonNullable<Ssh2SftpClientInternals["sftp"]>,
@@ -1151,7 +1151,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // The outermost layer around a recovery-wrapped op: run it once and, on a
   // clean session loss, re-dial ONCE and re-issue ONCE before giving up. What
   // triggers it, what stays terminal, and what each bound protects are in
-  // docs/spec/CHANNEL_SECURITY.md, "SFTP mid-exchange session recovery".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "SFTP mid-exchange session recovery".
   private withSessionRecovery<T>(
     op: () => Promise<T>,
     reissue: (op: () => Promise<T>) => Promise<T> = (run) => run(),
@@ -1203,8 +1203,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // The connection-per-poll session precondition, applied at the recovery
   // chokepoint. Which operations it covers, why it is adapter-owned rather than
   // spread over core's call sites, and its best-effort contract are in
-  // docs/spec/CHANNEL_SECURITY.md, "Operations concurrent with a re-dial or a
-  // release".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "Operations concurrent with a re-dial
+  // or a release".
   private reestablishAfterIdleRelease(): Promise<void> | undefined {
     if (!this.idleReleaseLeftNoSession()) return undefined;
     return this.ensureConnected().then(
@@ -1247,7 +1247,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Report a transparently-recovered mid-exchange session drop to the operator
   // at default verbosity; what is counted, charged and warned is in
-  // docs/spec/CHANNEL_SECURITY.md, "What the accounting counts".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "What the accounting counts".
   //
   // Paced like every other repeating condition here (see the ledger's
   // pacedWarn), plus the LAST re-dial the budget permits:
@@ -1275,8 +1275,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // Decide whether an op rejection is the session loss recovery re-dials on --
   // every condition post-state, never error-message matching. The trigger, the
   // readings that stay terminal, and the live-session-over-an-ended-transport
-  // case are in docs/spec/CHANNEL_SECURITY.md, "What is re-dialed, and what
-  // stays terminal".
+  // case are in docs/spec/SFTP_SESSION_RECOVERY.md, "What is re-dialed, and
+  // what stays terminal".
   private shouldRecoverFromSessionLoss(error: unknown): boolean {
     if (this.session.isClosing) return false;
     if (this.originalConnectOptions === undefined) return false;
@@ -1312,8 +1312,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
 
   // Re-dial the dropped session through the same locked dial sequence connect()
   // runs, never a bare client.connect(), and charge the lost generation here.
-  // docs/spec/CHANNEL_SECURITY.md, "What is re-dialed, and what stays terminal"
-  // and "What the accounting counts".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "What is re-dialed, and what stays
+  // terminal" and "What the accounting counts".
   private redialForRecovery(): Promise<RecoveryRedialOutcome> {
     return this.runTransition<RecoveryRedialOutcome>({
       kind: "redialForRecovery",
@@ -1428,7 +1428,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // Retire the transport the dropped session ran on, so the re-dial meets
   // neither state ssh2-sftp-client's connect() cannot survive. Both states, the
   // shortcut's positive reading, and what each way it can fail warns are in
-  // docs/spec/CHANNEL_SECURITY.md, "SFTP mid-exchange session recovery".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "SFTP mid-exchange session recovery".
   private async retireTransportForRedial(
     held: HeldSessionTransition,
     internals: Ssh2SftpClientInternals,
@@ -1922,7 +1922,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // of the peer's first bytes says about it (see ./sftpPeerIdentification, which
   // owns the gate, the read and the copy). Why it is seated at this one layer,
   // and the constraints the read runs under, are in
-  // docs/spec/CHANNEL_SECURITY.md, "SFTP host-key verification", under
+  // docs/spec/SFTP_CONNECTION.md, "SFTP host-key verification", under
   // "Diagnosing a peer that never identifies itself".
   private async diagnoseDialFailure(
     error: unknown,
@@ -1962,8 +1962,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * Ends the connection for good (see {@link FileTransportClient.end}), at most
    * once per connection and under the session-transition queue like every other
    * transition. Its two bounds, the forced close behind them, and the degraded
-   * branches are in docs/spec/CHANNEL_SECURITY.md, "The connection's terminal
-   * close".
+   * branches are in docs/spec/SFTP_SESSION_RECOVERY.md, "The connection's
+   * terminal close".
    */
   async end(): Promise<void> {
     // Latch teardown and memoize the close in one synchronous step, before the
@@ -2270,7 +2270,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * field and {@link FileTransportClient.releaseForIdle}). Closes the SFTP
    * session NON-TERMINALLY so the next cycle's {@link ensureConnected} re-dials.
    * Its bounds, the outstanding-operation hold that can defer it, and what each
-   * outcome records are in docs/spec/CHANNEL_SECURITY.md, "The
+   * outcome records are in docs/spec/SFTP_SESSION_RECOVERY.md, "The
    * outstanding-operation hold on an idle boundary".
    */
   releaseForIdle(): Promise<void> {
@@ -2405,7 +2405,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // close is driven so an operation that close tears reads the boundary. How
     // the two half-close flags are read is in docs/spec/DEPENDENCY_PINS.md,
     // "Upgrading the SFTP Stack"; what each reading records, counts and warns
-    // is in docs/spec/CHANNEL_SECURITY.md, "What the accounting counts".
+    // is in docs/spec/SFTP_SESSION_RECOVERY.md, "What the accounting counts".
     const entry: IdleBoundaryOutcome =
       socket.readableEnded === true
         ? "closedByPeer"
@@ -2614,8 +2614,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
    * {@link releaseForIdle} released, reusing the retained connect options with
    * no re-prompt and no re-pinning, and drains the deferred cleanup deletes
    * behind it. What it resolves, rejects and warns is in
-   * docs/spec/CHANNEL_SECURITY.md, "SFTP mid-exchange session recovery" and
-   * "The deferred cleanup-delete record".
+   * docs/spec/SFTP_SESSION_RECOVERY.md, "SFTP mid-exchange session recovery"
+   * and "The deferred cleanup-delete record".
    */
   ensureConnected(): Promise<boolean> {
     if (!this.ephemeralSessions) return Promise.resolve(true);
@@ -3109,8 +3109,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // that RESOLVES rather than rejecting like the other guarded methods. The
     // entry guard, the deadline that bounds a withheld callback beneath it, and
     // what the rejection arm offers to the record are in
-    // docs/spec/CHANNEL_SECURITY.md, "SFTP fatal-packet crash safety" and "The
-    // deferred cleanup-delete record".
+    // docs/spec/SFTP_CONNECTION.md, "SFTP fatal-packet crash safety", and
+    // docs/spec/SFTP_SESSION_RECOVERY.md, "The deferred cleanup-delete record".
     if (this.fatalSftpError !== undefined) return Promise.resolve();
     // Taken BEFORE the delete is issued, because what it reads is a boundary the
     // delete itself does not move: the release that took the session away is
@@ -3139,7 +3139,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // the cleanup delete's own short-circuit refuses to do -- a latched teardown
   // has end() already closing the client, and with no live session the record
   // keeps for the next re-establishment. Each is in
-  // docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record".
+  // docs/spec/SFTP_SESSION_RECOVERY.md, "The deferred cleanup-delete record".
   private canDrainDeferredCleanup(): boolean {
     if (this.fatalSftpError !== undefined) return false;
     if (this.session.isClosing) return false;
@@ -3149,8 +3149,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // The round trip a re-issued cleanup delete makes, kept here rather than in the
   // record so it stays where the adapter's two source checks examine it. Why it
   // is issued OUTSIDE the tracked() bracket, and why a release may tear it, are
-  // in docs/spec/CHANNEL_SECURITY.md, "The deferred cleanup-delete record". The
-  // allowance is registered, with that reason, in
+  // in docs/spec/SFTP_SESSION_RECOVERY.md, "The deferred cleanup-delete
+  // record". The allowance is registered, with that reason, in
   // scripts/sftp-tracked-round-trips.test.mjs.
   private reissueCleanupDelete(path: string): Promise<void> {
     return this.client.delete(path, true).then(() => {});
@@ -3175,7 +3175,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
         // self-prefixed publish, so a rename that landed durably and was then
         // consumed inside the recovery window reports the identical state a
         // rename that never landed does. Nothing the adapter can read separates
-        // them (see CHANNEL_SECURITY.md), so that state is reported as the
+        // them (see SFTP_SESSION_RECOVERY.md), so that state is reported as the
         // indeterminate outcome it is. Every OTHER failure keeps propagating
         // verbatim.
         reissue: (run) =>

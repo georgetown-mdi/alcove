@@ -43,7 +43,7 @@ function acceptedKeyType(typeBytes: Uint8Array): string | undefined {
  * `(unknown:<hex>)` for a rejected type, encoding its first
  * {@link PLACEHOLDER_SOURCE_BYTES} bytes so rejected types that differ there
  * stay distinguishable. See
- * docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
+ * docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification.
  */
 function placeholderKeyType(typeBytes: Uint8Array): string {
   let hex = "";
@@ -57,7 +57,7 @@ function placeholderKeyType(typeBytes: Uint8Array): string {
  * verbatim when it is at most {@link MAX_KEY_TYPE_BYTES} bytes in the accepted
  * charset, a {@link placeholderKeyType} otherwise, and `"(unknown)"` rather
  * than a throw when the blob has no readable type. See
- * docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
+ * docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification.
  */
 function keyTypeFromBlob(blob: Uint8Array): string {
   if (blob.length < 4) return UNREADABLE_KEY_TYPE;
@@ -93,7 +93,7 @@ function fromBase64Unpadded(b64: string): Uint8Array {
 
 /**
  * The OpenSSH SHA256 fingerprint of a raw host-key blob, as `ssh-keygen -lf`
- * prints it. See docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
+ * prints it. See docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification.
  *
  * @param keyBlob - raw blob from ssh2's `hostVerifier`; `hostHash` must not be
  *   set, since it makes ssh2 pass a pre-hashed key.
@@ -108,7 +108,7 @@ export async function computeHostKeyFingerprint(
 /**
  * The first pin in `pins` that the raw host-key blob matches, returned
  * verbatim, or `undefined`. A pin `atob` cannot decode is skipped. See
- * docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
+ * docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification.
  *
  * @param keyBlob - raw host-key blob from ssh2's `hostVerifier`
  * @param pins - pinned fingerprints in OpenSSH SHA256 format

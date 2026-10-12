@@ -18,7 +18,7 @@ import { descendants, parseSource } from "./lib/typeScriptSources.mjs";
 // round trip a release cannot see, so a boundary can close the session out from
 // under it.
 //
-// docs/spec/CHANNEL_SECURITY.md states which round trips are excluded, and prose
+// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, and prose
 // asserting a code fact rots silently. This is that claim as a check, and it is
 // an INCLUSION check -- it fails on any request-issuing call site no span
 // encloses, whether or not anyone thought to list it, so an entry added later
@@ -207,7 +207,7 @@ describe("SFTP adapter round trips run inside a runOperation span", () => {
         `them and can close the session out from under one. Route each entry ` +
         `through ${OPERATION_ENTRY}(), or add it to ALLOWED_OUTSIDE_THE_SPAN ` +
         `in ${SELF} with the reason no span may cover it, and update the ` +
-        `enumeration in docs/spec/CHANNEL_SECURITY.md.`,
+        `enumeration in docs/spec/SFTP_SESSION_RECOVERY.md.`,
     ).toEqual([]);
   });
 

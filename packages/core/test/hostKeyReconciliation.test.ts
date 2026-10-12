@@ -144,7 +144,7 @@ test("a charset-conforming marker lookalike reaches the operator verbatim", () =
   // has spaces) can never arrive in a LOCAL key type. Its hyphenated
   // lookalike passes that bound AND matches no redaction pattern, so it renders
   // as itself. The cost is operator confusion, not disclosure; a stated limit in
-  // docs/spec/CHANNEL_SECURITY.md, not a bug the patterns should widen to catch.
+  // docs/spec/SFTP_CONNECTION.md, not a bug the patterns should widen to catch.
   const lookalike = observedKeyType("-----BEGIN-OPENSSH-PRIVATE-KEY-----");
   expect(lookalike).toBe("-----BEGIN-OPENSSH-PRIVATE-KEY-----");
   const msg = reconcileHostKeyFingerprints(

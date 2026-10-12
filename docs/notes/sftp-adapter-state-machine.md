@@ -9,7 +9,7 @@ adapter's session accounting -- what a session, a boundary and an operation each
 are, and the decisions taken when the three were named -- and the reasoning that
 produced it. The normative rows the model yielded are specified elsewhere: what
 each bound protects and what each trigger counts in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery),
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#sftp-mid-exchange-session-recovery),
 the idle-boundary outcome partition in
 [FILE_SYNC.md](../spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary),
 and the operator-facing surface in
@@ -151,7 +151,7 @@ no-op outcome. What each outcome is reached by, and what session it leaves the
 poll loop, is specified in
 [FILE_SYNC.md](../spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary);
 what each one counts, charges and warns is a row in the trigger table in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#what-the-accounting-counts).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#what-the-accounting-counts).
 
 Two facts the partition makes visible that scattered control flow could not:
 
@@ -202,7 +202,7 @@ has three arms -- `verbatim` for an operation whose re-run is the whole policy,
 `reissued` for one holding its own idempotency relaxation as a closure, and
 `none` for one that never enters recovery -- and `runOperation` is where each
 operation states its arm. The policies themselves are documented normatively in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#re-issuing-an-operation).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#re-issuing-an-operation).
 
 The lifecycle:
 
@@ -226,7 +226,7 @@ is about to use. The model closed it structurally rather than documenting it:
 with one span there is no reading of the count that names the window, because the
 window does not exist. What the outstanding hold covers, and the two
 directions in which issued-and-unsettled departs from on-the-wire, are in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#the-outstanding-operation-hold-on-an-idle-boundary).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#the-outstanding-operation-hold-on-an-idle-boundary).
 
 Three round trips the adapter issues sit outside the operation classification
 entirely -- the heartbeat's keepalive, a listing's post-settle handle close, and
@@ -236,7 +236,7 @@ claim: `scripts/sftp-tracked-round-trips.test.mjs` and
 request-issuing site the per-attempt bracket, or the operation span above it,
 does not cover and their allowances do not name. What each analysis decides, and
 where it stops, is in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#the-outstanding-operation-hold-on-an-idle-boundary).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#the-outstanding-operation-hold-on-an-idle-boundary).
 
 ## The ledger
 
@@ -318,7 +318,7 @@ Stated once, so the model does not get re-litigated a tier at a time.
 | document | owns |
 | --- | --- |
 | [FILE_SYNC.md](../spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary) | when the loop's session exists, and the idle-boundary outcome partition |
-| [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery) | what is counted, capped, exempt and bounded |
+| [SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#sftp-mid-exchange-session-recovery) | what is counted, capped, exempt and bounded |
 | [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#sftp-only-options) | when an operator should choose the mode |
 | [CLI_EVENTS.md](../spec/CLI_EVENTS.md) | the machine event field's contract |
 | this note | the model, the decisions, and why each was taken |
@@ -348,7 +348,7 @@ reason measured during implementation:
 
 ## See also
 
-- [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery) --
+- [SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#sftp-mid-exchange-session-recovery) --
   the normative recovery section: the trigger table, the bounds table, the
   re-issue policies, and the outstanding-operation hold.
 - [FILE_SYNC.md](../spec/FILE_SYNC.md#session-lifetime-across-an-idle-boundary) --

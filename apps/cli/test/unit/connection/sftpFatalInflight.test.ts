@@ -29,7 +29,7 @@ import type { InProcessSftpServer } from "../../sftpServer/types";
 // delete the request from `_requests` before the malformed-packet check that calls
 // doFatalSFTPError runs, so cleanupRequests has nothing left to fail for that reqid.
 // The in-flight list()/get() is bounded only by the adapter's own deadline, never by
-// cleanupRequests (see ssh2SftpAdapter.ts and docs/spec/CHANNEL_SECURITY.md).
+// cleanupRequests (see ssh2SftpAdapter.ts and docs/spec/SFTP_CONNECTION.md).
 //
 // The same in-process ssh2 server the conformance suite runs against backs this test
 // through its fault hooks (a malformed NAME reply to READDIR, a malformed DATA reply

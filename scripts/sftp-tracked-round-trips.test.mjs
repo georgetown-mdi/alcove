@@ -25,7 +25,7 @@ import { descendants } from "./lib/typeScriptSources.mjs";
 // coverage and nothing about the span above it: the inclusion check over that
 // span is the sibling file, scripts/sftp-operation-spans.test.mjs.
 //
-// docs/spec/CHANNEL_SECURITY.md states which round trips are excluded, and prose
+// docs/spec/SFTP_SESSION_RECOVERY.md states which round trips are excluded, and prose
 // asserting a code fact rots silently: the exclusion set has been wrong before
 // (rename()'s re-issue existence probe was issued a layer above the bracket).
 // This is that claim as a check, and it is an INCLUSION check -- it fails on any
@@ -280,7 +280,7 @@ describe("SFTP adapter round trips are bracketed by tracked()", () => {
         `outstanding span encloses), or add it to ` +
         `ALLOWED_OUTSIDE_THE_BRACKET in ${SELF} with the reason it must not ` +
         `be bracketed, and update the enumeration in ` +
-        `docs/spec/CHANNEL_SECURITY.md.`,
+        `docs/spec/SFTP_SESSION_RECOVERY.md.`,
     ).toEqual([]);
   });
 

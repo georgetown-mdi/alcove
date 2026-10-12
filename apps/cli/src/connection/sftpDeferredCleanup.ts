@@ -8,7 +8,7 @@ import {
 /**
  * Cap on the record of unperformed cleanup deletes; overflow refuses rather
  * than evicts. This constant and the two below are derived in
- * docs/spec/CHANNEL_SECURITY.md#the-deferred-cleanup-delete-record.
+ * docs/spec/SFTP_SESSION_RECOVERY.md#the-deferred-cleanup-delete-record.
  */
 export const MAX_DEFERRED_CLEANUP_DELETES = 64;
 
@@ -64,7 +64,7 @@ export interface DeferredCleanupDeletesOptions {
 /**
  * The connection-per-poll record of cleanup deletes that were not performed,
  * and the single-flight drain that re-issues them:
- * docs/spec/CHANNEL_SECURITY.md#the-deferred-cleanup-delete-record.
+ * docs/spec/SFTP_SESSION_RECOVERY.md#the-deferred-cleanup-delete-record.
  */
 export class DeferredCleanupDeletes {
   private readonly enabled: boolean;

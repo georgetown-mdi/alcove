@@ -6,7 +6,7 @@ title: "Transport Liveness Bounds"
 
 This document specifies the liveness bounds on Alcove's file-sync transport operations, with their constant values and enforcement points: the per-operation deadlines, the whole-exchange budget, the send-window guard, the connect-probe bound, the rule a consumer applies to a bound's refusal, and the slow-operation warning, together with the SFTP session heartbeat and TCP keepalive that keep a quiet session from being dropped.
 It is the implementation-level complement to the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what each control protects against and why the design is sufficient.
-It does not cover the memory bounds on what a transport reads (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the authenticated abort marker and SFTP session recovery (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)).
+It does not cover the memory bounds on what a transport reads (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), the authenticated abort marker (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), or SFTP session recovery (see [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md)).
 Intended readers are security auditors and implementors.
 
 ## Per-operation liveness bounds
@@ -89,7 +89,7 @@ A sixth liveness control bounds the connect probe itself, the one transport call
 `connect()` runs before the exchange begins and is wrapped by neither the per-operation bounds nor the whole-exchange budget - it passes through `boundTransport` unwrapped - so each adapter bounds its own connect attempt instead.
 The SFTP adapter bounds it by ssh2's `readyTimeout`, which tears down the socket on expiry and strands nothing.
 An unresponsive SFTP connect is retried, so its total caller-visible latency stacks to roughly `maxReconnectAttempts + 1` such per-attempt windows - bounded wait, not accumulating resource, since each expiry strands nothing - unlike the local-filesystem timeout below, which is terminal at one window.
-The two host-key probes are the exception -- the `probe-host-key` dial and the first-use trust probe (see [SFTP host-key verification](CHANNEL_SECURITY.md#sftp-host-key-verification)): each sets that count to 0, so one window is its whole latency (the reasoning, and what comparable tools' connect timeouts bound: [connect-timeout-prior-art.md](../notes/connect-timeout-prior-art.md)).
+The two host-key probes are the exception -- the `probe-host-key` dial and the first-use trust probe (see [SFTP host-key verification](SFTP_CONNECTION.md#sftp-host-key-verification)): each sets that count to 0, so one window is its whole latency (the reasoning, and what comparable tools' connect timeouts bound: [connect-timeout-prior-art.md](../notes/connect-timeout-prior-art.md)).
 The local-filesystem adapter bounds it by a per-attempt `withTimeout` deadline around its `fs.access` reachability probe and the `fs.stat` folder check that follows it.
 On the local-filesystem adapter a stalled NFS/CIFS hard mount turns that probe into the same liveness hazard the post-connect bounds address, with a sharper resource cost.
 `fs.access` blocks a libuv thread-pool worker (not the event loop), and nothing in-process can cancel an already-dispatched blocking syscall - `fs.access` does not honor an `AbortSignal`, and libuv's `uv_cancel` only removes still-queued work, never work a pool thread is already executing - so the worker stays pinned until the OS releases the syscall, minutes on a hard mount.
@@ -99,7 +99,7 @@ The connect therefore treats a per-attempt timeout as terminal: it fails fast af
 A fast-returning transient error - `EACCES` while a share's permissions are still settling - still retries under `max_reconnect_attempts`.
 A path with nothing at it (`ENOENT`) or naming something other than a folder (`ENOTDIR`) is refused on the first attempt instead, exiting 66 and 64 respectively ([CLI.md](../CLI.md#exit-69-on-a-shared-folder-path)).
 For the local-filesystem adapter that budget governs only this initial connect: `filedrop` holds no persistent session, so it has no mid-exchange reconnection.
-The SFTP adapter is the exception - it holds one long-lived session that a server can drop mid-exchange - so the same budget also bounds each of its mid-exchange re-dial bursts (see [SFTP mid-exchange session recovery](CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery)).
+The SFTP adapter is the exception - it holds one long-lived session that a server can drop mid-exchange - so the same budget also bounds each of its mid-exchange re-dial bursts (see [SFTP mid-exchange session recovery](SFTP_SESSION_RECOVERY.md#sftp-mid-exchange-session-recovery)).
 This bounds concurrent stalled workers to one and the caller-visible latency to roughly one `serverConnectTimeoutMs` window.
 It does not bound the lifetime of that one worker, which only the OS reclaims, because no in-process mechanism can free a thread wedged in a single blocking syscall - only a killable worker thread or child process could, which is disproportionate for a connect pre-check.
 

@@ -10,7 +10,7 @@ depends on. The direction was reached by an independent four-lens expert panel a
 its critical claims were adversarially verified against the tree; see [How this was
 decided](#how-this-was-decided). The normative mechanism is specified in
 [FILE_SYNC.md](../spec/FILE_SYNC.md) and
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md), and the operator-facing
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md), and the operator-facing
 description lives in [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md); this note
 is kept for the reasoning behind that direction. See
 [docs/notes/README.md](README.md).*
@@ -43,7 +43,7 @@ to success, a rename confirms its self-owned destination, a `createExclusive`
 resolves its own `EEXIST`). Only a clean loss re-dials; a fatal protocol error, a
 memory bound, and a host-key mismatch stay terminal, as does a liveness stall
 except against a session the transport has already ended under (see
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md)).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#what-is-re-dialed-and-what-stays-terminal)).
 
 For the scenario above this means the exchange **survives** each drop rather than
 aborting on it: the session dies in each idle gap, and the next poll's first op
@@ -192,7 +192,7 @@ the smaller change and the safer one:
   against an in-flight re-dial covers the session transitions themselves, not the
   operations riding on them, and needs nothing from how those operations are
   issued -- they are issued concurrently (see
-  [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md)). What makes it sound is the
+  [SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#operations-concurrent-with-a-re-dial-or-a-release)). What makes it sound is the
   FIFO lock every session transition takes: each takes its queue slot
   synchronously at the call, so a transition runs behind whichever one holds the
   client rather than under it, whatever operations are in flight meanwhile. An
@@ -367,7 +367,7 @@ boundary concluded, not who ended the transport beneath it, so it does not by
 itself make the loss this side's: a boundary forced over a partner drop this side
 had already observed is still counted and warned as that drop, while one forced
 over an ordinary deliberate release is exempt as any release is
-([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-mid-exchange-session-recovery)
+([SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#sftp-mid-exchange-session-recovery)
 states the per-outcome rule).
 
 The same partner silence at TEARDOWN is a defect of the SFTP transport itself,
@@ -413,7 +413,7 @@ anywhere: the release returns rather than draining the operation. The run's tota
 are kept and stated once at the end, as the forced and declined releases' are. What
 the count covers, how that set differs from what is on the wire, what bounds the
 hold, the ops for which nothing does, and what the totals measure, are in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#the-outstanding-operation-hold-on-an-idle-boundary).
 
 One op is outside both of those, and it is the cleanup delete a torn send sweeps
 its own temp with. Its never-reject contract keeps it outside the recovery
@@ -430,7 +430,7 @@ shape is recorded: `safeDelete` is also handed durable protocol files and names
 the peer wrote, and a re-issue deferred to a later point could reach a different
 file at such a name. The mechanism, the shape narrowing, and the bounds on both
 the record and the drain are in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md).
+[SFTP_SESSION_RECOVERY.md](../spec/SFTP_SESSION_RECOVERY.md#the-deferred-cleanup-delete-record).
 
 The re-issue that drain makes is then the one op still owing a settlement that the
 release may TEAR, and that inverts the rule above for it alone. (A listing's

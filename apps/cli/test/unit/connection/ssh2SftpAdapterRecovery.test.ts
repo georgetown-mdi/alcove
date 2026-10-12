@@ -222,8 +222,9 @@ describe("session recovery", () => {
     // just filled. The refusal is fail-closed: the sibling raises the terminal
     // error rather than being given a dial the budget cannot pay for, so the whole
     // fan buys exactly the one re-dial their single lost session paid for. The
-    // reading and what it costs an operator are in docs/spec/CHANNEL_SECURITY.md,
-    // "What the accounting counts"; the case below is its serial counterpart.
+    // reading and what it costs an operator are in
+    // docs/spec/SFTP_SESSION_RECOVERY.md, "What the accounting counts"; the case
+    // below is its serial counterpart.
     vi.useFakeTimers();
     const { client, connect, state } = undialableAfterFirst();
     const adapter = new SSH2SFTPClientAdapter();

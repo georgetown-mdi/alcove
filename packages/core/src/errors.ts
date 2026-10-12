@@ -557,7 +557,7 @@ export class PartnerProtocolRefusalError extends ProtocolRefusalError {
 /**
  * A publish torn by a session drop whose outcome the transport cannot determine:
  * the operation rejects, and whether the peer holds the file is unknown
- * (docs/spec/CHANNEL_SECURITY.md). {@link FileSyncMessageLoop}'s send path, which
+ * (docs/spec/SFTP_SESSION_RECOVERY.md). {@link FileSyncMessageLoop}'s send path, which
  * must not reuse a name the peer may have consumed, tells it apart from a
  * determined failure. A plain `Error`, so the poll loop reschedules
  * (`fileSyncConnection.test.ts`); only an instance whose message states the
