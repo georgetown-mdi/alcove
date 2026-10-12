@@ -48,6 +48,7 @@ jobs:
       contents: read
     outputs:
       archive: ${{ steps.pack.outputs.archive }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
     steps:
       - uses: actions/checkout@v7
 
@@ -72,6 +73,8 @@ jobs:
             -C broker-core -cf - -- "${members[@]}" | gzip -n -9 >"${archive}"
           tar -tzvf "${archive}"
           echo "archive=${archive}" >>"$GITHUB_OUTPUT"
+          digest="$(sha256sum "${archive}")"
+          echo "sha256=${digest%% *}" >>"$GITHUB_OUTPUT"
 
       - name: Upload the unsigned archive
         uses: actions/upload-artifact@v7
@@ -92,6 +95,7 @@ jobs:
       id-token: write
     env:
       ALCOVE_ARCHIVE: ${{ needs.build.outputs.archive }}
+      ALCOVE_ARCHIVE_SHA256: ${{ needs.build.outputs.sha256 }}
     steps:
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
@@ -100,6 +104,19 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: broker-core-unsigned
+
+      - name: Check the archive is the one the build produced
+        run: |
+          set -euo pipefail
+          if [ -z "${ALCOVE_ARCHIVE_SHA256}" ]; then
+            echo "the build reported no archive digest"
+            exit 1
+          fi
+          digest="$(sha256sum "${ALCOVE_ARCHIVE}")"
+          if [ "${digest%% *}" != "${ALCOVE_ARCHIVE_SHA256}" ]; then
+            echo "${ALCOVE_ARCHIVE} does not match the digest the build reported"
+            exit 1
+          fi
 
       # Keyless, as release.yaml signs the images: the certificate names this
       # workflow's path and the ref the run came from, and the bundle written
@@ -152,10 +169,25 @@ jobs:
       GH_REPO: ${{ github.repository }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
       - name: Fetch the signed archive and its bundle
         uses: actions/download-artifact@v8
         with:
           name: alcove-broker-core-${{ github.sha }}
+
+      # The same command the broker's host runs, before anything is uploaded or
+      # deleted: this job runs on main, so the identity is main's.
+      - name: Verify the signature before publishing
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_ARCHIVE}.sigstore.json" \
+            --certificate-identity "https://github.com/georgetown-mdi/alcove/.github/workflows/broker_core_build.yaml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "${GITHUB_SHA}" \
+            "${ALCOVE_ARCHIVE}"
 
       # The new commit's assets are uploaded before the earlier commits' are
       # deleted, so the prerelease never holds no build. Never marked latest:
