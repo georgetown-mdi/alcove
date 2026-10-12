@@ -293,9 +293,10 @@ distinct non-empty values, no extra round-trip:
 node .claude/scripts/list-issues.mjs --json --all 9   # the `epic` field on each item
 ```
 
-If one fits, create the draft with `--format json` to capture the new item's id
-(or read `?itemId=N` from its URL), then set both fields in one `edit-issue.mjs`
-call, choosing the order from the epic's current items:
+If one fits, create the draft, then read its numeric id back from
+`list-issues.mjs <N> --json` by title -- `item-create --format json` prints the
+body's newlines raw, so its output does not parse -- and set both fields in one
+`edit-issue.mjs` call, choosing the order from the epic's current items:
 
 ```sh
 node .claude/scripts/list-epic.mjs 9 "<epic>"   # see the epic's existing orders

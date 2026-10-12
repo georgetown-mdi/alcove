@@ -31,6 +31,9 @@ produce is your final message to the caller. Never end expecting a reply.
   branch's work: an untracked leftover there blocks
   `require-clean-tree-for-review.mjs` on the branch's next review round.
   Anything the change itself needs belongs in the commit.
+- Kill every background or load process you start before you report, by the
+  PID you started: it outlives you, and nothing reaps it. Never wait on a
+  process by a `pgrep -f` pattern your own wait command also matches.
 - Worktree isolation refuses a Bash command it cannot read as written.
   Write and change files with the Write and Edit tools, never a heredoc,
   `tee` or `cat >`, and run no inline `python3 -` or `node -e` program: Write

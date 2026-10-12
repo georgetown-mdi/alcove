@@ -21,7 +21,10 @@ Run only when the owner invokes this command; never start the docket unasked.
 
 1. Collect every open decision the session holds for the owner. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
-   those wait for `/follow-ups`.
+   those wait for `/follow-ups` -- and each ratification of a judgment a branch
+   already took. Those go in a closing list, its own final message after the
+   last decision item, with one line per ratification; the owner's word on each
+   line is recorded the same way as a ruling.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, fetch the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
@@ -39,6 +42,8 @@ Run only when the owner invokes this command; never start the docket unasked.
    under the refutation contract in `.claude/orchestration/ruleset.md`,
    Review flow; an item
    touching both takes both. Their findings go into the item's background.
+   An item on a security surface also takes a `/panel` round, its seats chosen
+   for the question's dimensions as `.claude/commands/panel.md` says.
 
 ## Present, one message per item
 
@@ -48,7 +53,10 @@ Each message holds exactly one item and ends the turn:
 - Background, in plain language: what exists, what is in question, and who it
   affects.
 - The options, each with its effect on users and the product and its cost to
-  development -- costs and benefits, not line counts.
+  development -- costs and benefits, not line counts. Name each by what it
+  does, never by a bare label like "A1". One option is the design that gives
+  the best user experience, even one that redesigns the approach, priced
+  against what merged code already provides.
 - One recommended option, with its reason in a sentence or two, argued as
   `.claude/product-principles.md` sets out.
 
@@ -57,6 +65,8 @@ docket message.
 
 ## Record, do not execute
 
-Record each ruling as the owner gives it, then present the next item. Execute
-nothing, and write nothing to the board, until the owner says so. When no item
-is left, say so in one line.
+Record each ruling as the owner gives it, then present the next item. A
+question the owner asks is not a ruling: answer it, say the decision is still
+open, and end the turn; record a ruling only when the owner's words pick an
+option. Execute nothing, and write nothing to the board, until the owner says
+so. When no item is left, say so in one line.

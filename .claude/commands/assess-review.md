@@ -162,6 +162,12 @@ the branch is worse for leaving. Absent that line, state it and move on.
   missing sites, a repeated idiom misused), the brief orders one focused pass
   over that class across the whole branch -- a review round samples; the sweep
   completes.
+- **A second finding in one screen state gets a shape brief.** When a round
+  confirms a finding in a UI state an earlier fix touched, the brief prescribes
+  the state's shape rather than its next transition: which values derive at
+  render from the committed input, which control is withheld while a
+  precondition fails, and the tests that pin both. Derived state has no stale
+  case for the next round to find.
 - **Prose findings get a high bar.** Order a fix for a finding that asks for a
   comment, JSDoc, or doc paragraph only when the missing constraint is
   unrecoverable from the code, names, types, and tests AND its absence enables a
@@ -416,8 +422,9 @@ ranges over, and the merge composes the branch with content no round has read --
 while re-verifying a claim that held costs little inside the one round that must
 run anyway. The round reads the effective diff at the merge head, so the
 resolution delta is inside what it reads. It counts against the branch's round
-budget like any other round; a spent cap is the owner's to raise, noted in the
-ledger. The checklist line then attests the merge head citing that round. An n/a
+budget like any other round; only the owner, or an orchestrating session the owner has
+delegated budgets to, raises a spent cap (when it delivers value, stepping back on a
+repeat hotspot), noted in the ledger. The checklist line then attests the merge head citing that round. An n/a
 line keeps its own path above -- the enumeration re-runs against the merged
 head's diff the same way -- and a head moved by anything other than that merge
 shape is not a base sync: a rebase takes its own path above, and any other
