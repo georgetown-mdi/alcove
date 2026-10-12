@@ -421,8 +421,9 @@ const SignedReceiptPartySchema: z.ZodType<SignedReceiptParty> = z.object({
 // The carried terms are partner-authored, so they are read through
 // safeParseLinkageTerms -- the same capped camelize pre-pass and bounded
 // schema every other path that parses a partner's terms takes
-// (docs/spec/CHANNEL_SECURITY.md, "Application-layer parsed-input bounds" and
-// "Transform-parameter declared types"). The pre-pass is what holds the width
+// (docs/spec/PARSED_INPUT_BOUNDS.md, "Application-layer parsed-input bounds";
+// docs/spec/TRANSFORM_PARAMETER_BOUNDS.md, "Transform-parameter declared
+// types"). The pre-pass is what holds the width
 // budget: the schema's own well-formedness walk is unbounded over a single
 // `transform.params` value, so a document past MAX_NODE_COUNT is refused
 // before that walk runs. The non-throwing helper keeps this schema's

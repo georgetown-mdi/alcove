@@ -8,7 +8,7 @@ import type { GenerateFuzzyComparisons } from "./config/linkageTermsSchema.js";
  * of the value's length, the value is local row data nothing upstream bounds,
  * and the partner's terms decide whether to expand it. A longer value is
  * refused, not matched on its exact value alone. See
- * docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection.
+ * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection.
  */
 export const MAX_FUZZY_EXPANSION_INPUT_LENGTH = 128;
 
@@ -49,7 +49,7 @@ function nonCanonicalDateRefusal(kind: GenerateFuzzyComparisons): UsageError {
  * Refuse a value the declared expansion cannot be applied to: the one place
  * both input conditions live, so `buildKeyStrings` screens an element's whole
  * pre-expansion list on exactly what the expansion refuses. See
- * docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection.
+ * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection.
  *
  * @throws {UsageError} if `value` is above
  * {@link MAX_FUZZY_EXPANSION_INPUT_LENGTH}, or if `kind` is

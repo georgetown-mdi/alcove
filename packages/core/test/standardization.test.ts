@@ -2674,7 +2674,7 @@ describe("buildKeyStrings", () => {
   // --- the transformed-value ceiling -----------------------------------------
   // One magnitude invariant on the partner-authored path, checked on what an
   // element READS and on what each of its steps PRODUCES. The three
-  // amplification shapes measured in docs/spec/CHANNEL_SECURITY.md (Unbounded
+  // amplification shapes measured in docs/spec/TRANSFORM_PARAMETER_BOUNDS.md (Unbounded
   // transform-parameter rejection) are pinned here as BOUNDED: the schema's
   // param bound accepts each of these replacements, and none of them assembles.
 
@@ -3828,7 +3828,7 @@ describe("buildKeyStrings", () => {
 
   // What the shipped shapes spend, in the meter's own reading of a run rather
   // than the charge rule applied by hand. These are the figures
-  // docs/spec/CHANNEL_SECURITY.md states for this limb: an amplifier is not
+  // docs/spec/TRANSFORM_PARAMETER_BOUNDS.md states for this limb: an amplifier is not
   // needed to reach the budget, only the element and step counts the schema
   // admits over values long enough to matter, so the boundary between the
   // pipelines that fit and the ones that do not is pinned here.
@@ -4375,7 +4375,7 @@ describe("buildKeyStrings", () => {
 
   test("the widest key no producer can expand assembles rather than crossing", () => {
     // The no-producer arm of the accumulation classification is a fail-closed
-    // default (docs/spec/CHANNEL_SECURITY.md): nothing expands a value there, so
+    // default (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md): nothing expands a value there, so
     // what holds such a key is the per-value ceiling on each element, at most
     // MAX_KEY_ELEMENTS of them (where the terms schema bounds a key). Driven
     // rather than computed, so an edit to the ceiling or the row's key-string

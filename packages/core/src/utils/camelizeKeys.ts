@@ -7,7 +7,7 @@ import { exceedsOwnKeyCount } from "./objectKeyCount.js";
  * input: it recurses natively and runs ahead of Zod on partner input, so the
  * bound must fire before the call stack overflows (a few thousand levels). The
  * deepest schema path is under a dozen levels. Spec:
- * docs/spec/CHANNEL_SECURITY.md.
+ * docs/spec/PARSED_INPUT_BOUNDS.md.
  */
 export const MAX_NESTING_DEPTH = 256;
 
@@ -16,7 +16,7 @@ export const MAX_NESTING_DEPTH = 256;
  * total across the walk) {@link transformKeysDeep} rewrites before rejecting
  * the input. Bounds partner CPU spent ahead of Zod, including on a subtree the
  * schema would strip. Far above a realistic `ExchangeSpec`, yet a pathological
- * schema-valid config can still trip it. Spec: docs/spec/CHANNEL_SECURITY.md.
+ * schema-valid config can still trip it. Spec: docs/spec/PARSED_INPUT_BOUNDS.md.
  */
 export const MAX_NODE_COUNT = 262144;
 

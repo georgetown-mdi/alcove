@@ -2244,7 +2244,7 @@ function compiledElementSteps(
  * byte-identical keys, so a unilateral clamp would break matching and show up
  * as a terms mismatch against the hashed agreement -- the same reason the param
  * bounds refuse rather than trim. The recorded rationale and the limits this
- * placement does not reach live in docs/spec/CHANNEL_SECURITY.md.
+ * placement does not reach live in docs/spec/TRANSFORM_PARAMETER_BOUNDS.md.
  */
 const MAX_TRANSFORMED_VALUE_LENGTH = 4096;
 
@@ -2471,7 +2471,7 @@ function columnDeclaringElementIndex(
  * per-row byte total would scale with the operator's own longest cell times
  * this cap. What holds it is the byte limb beside this one,
  * {@link MAX_ASSEMBLED_KEY_LENGTH_PER_ROW}, measured on the same projection.
- * Both are recorded in docs/spec/CHANNEL_SECURITY.md.
+ * Both are recorded in docs/spec/TRANSFORM_PARAMETER_BOUNDS.md.
  */
 const MAX_KEY_STRINGS_PER_ROW = MAX_KEY_CANDIDATE_WIDTH;
 
@@ -2724,8 +2724,9 @@ class AccumulatedCandidatesDrop extends Error {
  * since every character it keeps was produced, read into a following step, and
  * produced again. What an honest pipeline spends against this limb, and the
  * residual per-row CPU the limb leaves, are measured in
- * docs/spec/CHANNEL_SECURITY.md rather than argued here. A row over it takes the
- * fate its key already has ({@link keyAccumulationFate}), like the byte limb.
+ * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md rather than argued here. A row over
+ * it takes the fate its key already has ({@link keyAccumulationFate}), like the
+ * byte limb.
  */
 const MAX_TRANSFORM_WORK_PER_ROW = 8 * MAX_ASSEMBLED_KEY_LENGTH_PER_ROW;
 

@@ -126,7 +126,7 @@ to start, and the cleaning coverage check cannot run over a step whose input
 column is named that way. Both say which column by its position in the file,
 show the name, and state the bound -- the file itself is fine, so choosing it
 again changes nothing and the fix is the header row. The bound itself is in
-[CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+[PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
 
 ### Split inbound and outbound shared folders
 

@@ -281,7 +281,7 @@ function matchesDeclaredType(
  * array up through each nested frame, so an issue per entry of a long list
  * costs heap in proportion to the list and, deep enough in, overflows the call
  * stack -- a throw out of a `safeParse` that contracts to return failure
- * instead (docs/spec/CHANNEL_SECURITY.md, "Application-layer parsed-input
+ * instead (docs/spec/PARSED_INPUT_BOUNDS.md, "Application-layer parsed-input
  * bounds").
  *
  * `options` reaches the message builder unchanged, so a caller states there

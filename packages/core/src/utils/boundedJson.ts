@@ -7,7 +7,7 @@ import { exceedsJsonStructureBound } from "./jsonStructureBound";
 // members of one object (above the widest legitimate one, the 256-entry
 // transform.params), elements of one array (at the engine limit; longer lists are
 // sent in parts), and nesting depth. Values and derivation:
-// docs/spec/CHANNEL_SECURITY.md, Application-layer parsed-input bounds.
+// docs/spec/PARSED_INPUT_BOUNDS.md, Application-layer parsed-input bounds.
 /** @internal */
 export const MAX_JSON_OBJECT_KEYS = 65536;
 /** @internal */

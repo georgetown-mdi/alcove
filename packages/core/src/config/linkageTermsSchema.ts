@@ -39,7 +39,7 @@ import {
 // exchange wire. Every partner-controlled free-text string has a length ceiling
 // in `maxCodeUnits` code units, and every partner-controlled collection a count
 // bound applied before per-element validation
-// (docs/spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+// (docs/spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
 
 /**
  * Upper bound on a short identifier-like string: every name-class field
@@ -81,7 +81,7 @@ export const TEXT_CONTROL_CHAR_MESSAGE =
  * verbatim (`identity`, `purpose`, a payload `description`): the nine
  * bidirectional characters `BIDI_CONTROL_PATTERN` names. A constraint `exclude`
  * value is a data value that reaches no record, so it is outside the rule
- * (docs/spec/CHANNEL_SECURITY.md#linkage-terms-name-class-character-rule). A
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#linkage-terms-name-class-character-rule). A
  * fixed literal, as {@link TEXT_CONTROL_CHAR_MESSAGE} is.
  */
 export const TEXT_DIRECTION_MESSAGE =
@@ -127,7 +127,7 @@ export function reasonTermsCannotStateIdentity(
  * {@link MAX_NAME_LENGTH} cap: no {@link TEXT_CONTROL_CHAR_PATTERN} character
  * and none of the nine `BIDI_CONTROL_PATTERN` characters. Applied at each
  * field, a `params` record key included and its value not
- * (docs/spec/CHANNEL_SECURITY.md#linkage-terms-name-class-character-rule).
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#linkage-terms-name-class-character-rule).
  *
  * One literal rather than a composition. nameShapeParity.test.ts sweeps every
  * BMP code point to keep it equal to the union and to the class the CSV header
@@ -170,14 +170,14 @@ export const MAX_PARAMS_ENTRIES = 256;
 /**
  * Upper bound on `pad_left`'s numeric `length`, which drives a per-row
  * `padStart` allocation
- * (docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection).
+ * (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection).
  */
 export const MAX_PAD_LEFT_LENGTH = 256;
 
 /**
  * Upper bound on `parse_date`'s `inputFormat` and `outputFormat`, which drive
  * a per-row regex build and allocation
- * (docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection).
+ * (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection).
  */
 export const MAX_DATE_FORMAT_LENGTH = 256;
 
@@ -185,21 +185,21 @@ export const MAX_DATE_FORMAT_LENGTH = 256;
  * Upper bound on a raw partner-controlled regex: the `pattern` of
  * `replace_regex`, `extract_regex` and `filter_regex`, and `split_on`'s
  * `delimiter`. A compile-cost ceiling, checked per step and by the dialect gate
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 export const MAX_TRANSFORM_PATTERN_LENGTH = 1000;
 
 /**
  * Upper bound on every string value of a `transform.params` record. Bounds what
  * the partner may write; {@link MAX_TRANSFORMED_VALUE_LENGTH} bounds what a row
- * derives (docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection).
+ * derives (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection).
  */
 export const MAX_TRANSFORM_PARAM_LENGTH = 1000;
 
 /**
  * Upper bound on the entry count of every list value of a `transform.params`
  * record, equal to {@link MAX_EXCLUDE_ENTRIES} since `null_if`'s `values` is a
- * denylist (docs/spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+ * denylist (docs/spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
  */
 export const MAX_TRANSFORM_PARAM_ENTRIES = 4096;
 
@@ -349,7 +349,7 @@ const NameConstraintsSchema: z.ZodType<NameConstraints> = z.object({
   // Must compile as a class under the engine that runs it (re2js,
   // valueConstraints.ts), a leading `^` escaped. An over-length value skips the
   // compile and is refused by the ceiling alone
-  // (docs/spec/CHANNEL_SECURITY.md#name-constraint-character-class).
+  // (docs/spec/TRANSFORM_REGEX_DIALECT.md#name-constraint-character-class).
   allowedCharacters: z
     .string()
     .check(maxCodeUnits(MAX_NAME_LENGTH))
@@ -562,7 +562,7 @@ const TransformStepBaseSchema = z.object({
   function: nameValue(z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH))),
   // Keys take the name shape; the entry count is checked by a bare key count
   // before any per-key parse
-  // (docs/spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+  // (docs/spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
   params: z
     .unknown()
     .refine(
@@ -587,7 +587,7 @@ const TransformStepBaseSchema = z.object({
 
 // Per-function bounds on values whose magnitude drives per-row work, stricter
 // than the uniform string bound; on this wire schema, not the editor descriptor
-// (docs/spec/CHANNEL_SECURITY.md#unbounded-transform-parameter-rejection).
+// (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection).
 const TransformStepBoundsSchema = TransformStepBaseSchema
   // `pad_left` allocates a `padStart` of `length` per row. A non-integer is
   // refused by the type check below, and padLeftFactory throws on a
@@ -642,7 +642,7 @@ const TransformStepBoundsSchema = TransformStepBaseSchema
     },
   )
   // A source-length compile-cost bound on the four regex-tier functions
-  // (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect). Only a
+  // (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect). Only a
   // string is measured: another type is refused by the type check, and
   // coercing it would run a partner-declared `toString`.
   .refine(
@@ -1029,7 +1029,7 @@ const linkageTermsBaseSchema = (options: TransformParamRefusalOptions) =>
     // insufficient here: these flat top-level arrays sit directly below the
     // root, so a pathological count does not overflow the call stack, but
     // still throws building the error string from one issue per invalid
-    // entry. See boundedArray and docs/spec/CHANNEL_SECURITY.md,
+    // entry. See boundedArray and docs/spec/PARSED_INPUT_BOUNDS.md,
     // "Application-layer parsed-input bounds".
     linkageFields: boundedArray(
       LinkageFieldSchema,
@@ -1170,7 +1170,7 @@ const linkageTermsSchema = (
       path: ["linkageKeys"],
     })
     // Placed here so every parse path refuses a partner's transform regex
-    // before it runs: docs/spec/CHANNEL_SECURITY.md, "Transform-regex linear-time dialect".
+    // before it runs: docs/spec/TRANSFORM_REGEX_DIALECT.md, "Transform-regex linear-time dialect".
     .superRefine((terms, ctx) => {
       const refusal = findTransformRegexRefusal(terms, {
         maxPatternLength: MAX_TRANSFORM_PATTERN_LENGTH,
@@ -1308,7 +1308,7 @@ const LinkageTermsSchemaForItsAuthor: z.ZodType<LinkageTerms> =
  * {@link camelizeKeys}). Only `transform.params` is partner-controlled and
  * key-count-bounded; the bound matches {@link MAX_PARAMS_ENTRIES}, so any
  * record left verbatim here is one the schema also rejects. Full reasoning:
- * docs/spec/CHANNEL_SECURITY.md, "Application-layer parsed-input bounds".
+ * docs/spec/PARSED_INPUT_BOUNDS.md, "Application-layer parsed-input bounds".
  */
 const PARAMS_WIDTH_BOUND: ReadonlyMap<string, number> = new Map([
   ["params", MAX_PARAMS_ENTRIES],

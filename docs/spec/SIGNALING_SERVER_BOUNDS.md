@@ -6,12 +6,12 @@ title: "Peer-Coordination Server Bounds"
 
 This document specifies the bounds the PeerJS-compatible signaling broker (`packages/peerjs-broker`) and the servers that embed it hold against an unauthenticated internet client, with their constant values and enforcement points.
 It is the implementation-level complement to the coordination-server paragraph of the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security) and to [Hardening the coordination server](../DEPLOYMENT.md#hardening-the-coordination-server) in DEPLOYMENT.md, which say what each guard covers and which controls are the reverse proxy's.
-It does not cover the JSON-decode chokepoint the broker reuses (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)) or the WebRTC data channel the two parties exchange over once the broker has introduced them (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the signaling envelopes themselves (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md)).
+It does not cover the JSON-decode chokepoint the broker reuses (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md)) or the WebRTC data channel the two parties exchange over once the broker has introduced them (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)), or the signaling envelopes themselves (see [WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md)).
 Intended readers are whoever deploys or assesses the broker, security auditors, and implementors.
 
 ## Signaling-server inbound frame bound
 
-The decode-layer bound in [Application-layer parsed-input bounds](CHANNEL_SECURITY.md#application-layer-parsed-input-bounds) lives in `@alcove/core` and covers the AEAD application channel and the file-sync transport - a self-limited adversary (the authenticated counterparty, or a hostile server admin).
+The decode-layer bound in [Application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) lives in `@alcove/core` and covers the AEAD application channel and the file-sync transport - a self-limited adversary (the authenticated counterparty, or a hostile server admin).
 The PeerJS signaling broker (`packages/peerjs-broker`) is a separate surface with a broader adversary: it runs in production as a public service to broker the WebRTC rendezvous, and its only authentication gate is the well-known default key `peerjs` (the id and token are free strings), so its inbound parse is reachable by ANY unauthenticated internet client.
 Its `socket.on("message")` handler in `packages/peerjs-broker/src/contrib/services/webSocketServer/index.ts` decodes each frame as JSON, the same uncatchable-V8-abort class as the core bound - a single wide-enough object or long-enough array drives `JSON.parse` into a process-terminating internal engine limit that no `try`/`catch` can intercept.
 Because the broker process is shared by every peer, that abort is an availability loss for all of them, not one self-controlled session; and even short of the crash ceiling, a single oversized frame is independently a memory pin.
@@ -25,7 +25,7 @@ Like the file-sync [frame-size cap](TRANSPORT_BOUNDS.md#inbound-frame-size-bound
 It would only need revisiting if the signaling protocol began carrying a legitimately large payload through this socket - it does not, and a redesign that routed bulk data through the broker rather than the data channel would be the change to re-evaluate against.
 As net-new security behavior on an internet-facing surface, this control is subject to the explicit security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy) before release.
 
-The structural half is core's chokepoint: the handler decodes each frame through `parseBoundedJson`, so the per-object key, per-array element and nesting-depth ceilings of [Application-layer parsed-input bounds](CHANNEL_SECURITY.md#application-layer-parsed-input-bounds) bound a signaling frame as they bound a core wire message.
+The structural half is core's chokepoint: the handler decodes each frame through `parseBoundedJson`, so the per-object key, per-array element and nesting-depth ceilings of [Application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) bound a signaling frame as they bound a core wire message.
 Only those ceilings do.
 The handler passes an already-decoded string (`data.toString()`), which takes the chokepoint's string arm, so its byte-arm properties do not apply here: there is no UTF-8-fatal decode, and the structural scan runs on the decoded string rather than ahead of any decode.
 A frame whose bytes are not valid UTF-8 is decoded with replacement characters and is then accepted or refused on its structure and syntax, not on its encoding.

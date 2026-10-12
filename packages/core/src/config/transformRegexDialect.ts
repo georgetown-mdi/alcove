@@ -12,7 +12,7 @@ import {
 // engine's dialect or over its weighted-size cap at terms validation, before
 // either party commits. See
 // docs/spec/PROTOCOL.md#transform-regular-expression-dialect and
-// docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect.
+// docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect.
 
 /**
  * The `params` key for the raw pattern of each standardization function
@@ -46,7 +46,7 @@ const REGEX_DIALECT_TOTAL_BUDGET_MS = 2000;
 /**
  * Upper bound on one pattern's {@link patternWeightedSize}, a count, so the
  * verdict is the same on every machine. See
- * docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect.
+ * docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect.
  */
 export const MAX_TRANSFORM_PATTERN_WEIGHTED_SIZE = 1000;
 

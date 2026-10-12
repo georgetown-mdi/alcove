@@ -66,7 +66,7 @@ The cut counts code points, so it never splits a surrogate pair, and an override
 The wire's ceilings count UTF-16 units, so the two units disagree in one direction only:
 a name long enough to cut is always past the wire ceiling too, so the mark never elides a name that transmits.
 The reverse case is silent, and the browser tests pin it.
-The wire limit is stated in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+The wire limit is stated in [PARSED_INPUT_BOUNDS.md](../spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
 
 ## The isolate's residual
 

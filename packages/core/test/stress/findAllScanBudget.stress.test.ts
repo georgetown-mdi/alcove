@@ -24,7 +24,7 @@ import type {
   TransformStep,
 } from "../../src/config/linkageTermsSchema";
 
-// The figures docs/spec/CHANNEL_SECURITY.md states for the regex search charge
+// The figures docs/spec/TRANSFORM_REGEX_DIALECT.md states for the regex search charge
 // and for the work budget's dearest charged unit. Rescanning shapes are
 // timed unbudgeted and on the exchange path under the budget, which is why this
 // is the opt-in tier: unbudgeted they run for seconds. Timings are printed

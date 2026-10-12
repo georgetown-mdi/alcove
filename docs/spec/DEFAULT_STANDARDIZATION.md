@@ -643,5 +643,7 @@ role wins over the transform (see
 - [PROTOCOL.md](PROTOCOL.md) - the regex dialect and `parse_date` semantics the
   steps run under, the field-to-column binding rule, and how a standardized
   value becomes a linkage key
-- [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) - the bounds on partner-authored
-  transform patterns and parameters
+- [TRANSFORM_REGEX_DIALECT.md](TRANSFORM_REGEX_DIALECT.md) - the bounds on
+  partner-authored transform patterns
+- [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md) - the bounds on
+  partner-authored transform parameters

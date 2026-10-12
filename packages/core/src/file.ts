@@ -13,7 +13,7 @@ import { stripNameControlChars } from "./utils/nameControls.js";
  * before yielding a chunk, so a no-newline file, an enormous field or a huge
  * header fails fast instead. Lines are counted by LF and CR alone, whatever
  * the delimiter. Operator-local robustness, not a partner-reachable bound
- * (docs/spec/CHANNEL_SECURITY.md#csv-read-single-line-byte-ceiling).
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#csv-read-single-line-byte-ceiling).
  */
 export const CSV_LINE_BYTE_CEILING = 8 * 1024 * 1024;
 
@@ -146,7 +146,7 @@ type StreamSource = {
  *
  * Ignores RFC 4180 quoting, so a valid file is never rejected; a quoted field
  * holding embedded newlines is not bounded here
- * (docs/spec/CHANNEL_SECURITY.md#csv-read-single-line-byte-ceiling).
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#csv-read-single-line-byte-ceiling).
  *
  * @internal exported for the unit tests.
  */
@@ -288,7 +288,7 @@ function papaParseDelimiter(delimiter: string | undefined): string {
  * {@link stripNameControlChars}, and the 1-based position of a changed name is
  * appended to `strippedPositions`. At the parse boundary, so rows are keyed by
  * the cleaned name and every reader sends the partner the same string
- * (docs/spec/CHANNEL_SECURITY.md#csv-header-sanitation-at-ingestion). A name
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#csv-header-sanitation-at-ingestion). A name
  * stripped to empty or onto another name meets the existing refusals.
  */
 function sanitizingHeaderTransform(

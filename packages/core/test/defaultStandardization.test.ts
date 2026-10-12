@@ -760,9 +760,9 @@ describe("default email_address pipeline", () => {
     expect(run("user@nodot")).toBeNull();
   });
 
-  test("strips non-ASCII before the @-pattern filter (CHANNEL_SECURITY ordering claim)", () => {
+  test("strips non-ASCII before the @-pattern filter (TRANSFORM_REGEX_DIALECT ordering claim)", () => {
     // The RE2 dialect's `\s` is ASCII-only, narrower than JavaScript's. The
-    // email filter pattern uses `[^\s@]`, so CHANNEL_SECURITY.md relies on
+    // email filter pattern uses `[^\s@]`, so TRANSFORM_REGEX_DIALECT.md relies on
     // `remove_non_ascii` running before this filter_regex, so no non-ASCII code
     // point ever reaches that class. Pin the ordering so the doc's runtime claim
     // cannot rot silently (CONTRIBUTING: encode a runtime fact as a check).

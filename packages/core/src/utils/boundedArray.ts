@@ -3,7 +3,7 @@ import * as z from "zod";
 /**
  * Wrap an array schema so an over-count array is rejected with one issue before
  * per-element validation runs; a plain `.max()` runs after it, too late to stop
- * Zod's per-element issues from throwing a `RangeError` (docs/spec/CHANNEL_SECURITY.md,
+ * Zod's per-element issues from throwing a `RangeError` (docs/spec/PARSED_INPUT_BOUNDS.md,
  * Application-layer parsed-input bounds). The count refine is `abort` so a
  * cross-field refine never runs on the raw elements. For collections legitimately
  * in the millions use {@link singleIssueArray}.
