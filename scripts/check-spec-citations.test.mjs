@@ -255,6 +255,45 @@ describe("spec citation check", () => {
     });
   });
 
+  describe("the wording-changes list", () => {
+    const LIST = "docs/spec/wording-changes.txt";
+    const LIVE = "the-memory-ceiling-and-the-csv-intake-cap";
+
+    it("does not read the old side of an entry", () => {
+      const source = [
+        "# A comment.",
+        "",
+        `- Old text citing ${SPEC}#gone-heading. -> New text citing ${SPEC}#${LIVE}.`,
+      ].join("\n");
+      expect(check(source, LIST)).toEqual({ problems: [], resolved: 1 });
+    });
+
+    it("reads the new side of an entry, naming its line", () => {
+      const source = [
+        "# A comment.",
+        `- Old text. -> New text citing ${SPEC}#gone-heading.`,
+      ].join("\n");
+      const { problems } = check(source, LIST);
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toMatch(
+        /^docs\/spec\/wording-changes\.txt:2: cites .*#gone-heading/,
+      );
+    });
+
+    it("reads the whole of an entry with no separator", () => {
+      const { problems } = check(`- Text citing ${SPEC}#gone-heading.`, LIST);
+      expect(problems).toHaveLength(1);
+    });
+
+    it("reads the old side of an entry in any other file", () => {
+      const { problems } = check(
+        `- Old text citing ${SPEC}#gone-heading. -> New text.`,
+        "docs/spec/other.txt",
+      );
+      expect(problems).toHaveLength(1);
+    });
+  });
+
   describe("files that do not exist", () => {
     it("fails a citation into a docs/spec/ path that does not exist", () => {
       const { problems } = check(`// ${GONE_SPEC}#anything`);

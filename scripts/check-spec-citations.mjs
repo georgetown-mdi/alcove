@@ -46,7 +46,11 @@
 // A spec file mentioned with none of the forms above is prose and is not read.
 //
 // Where it reads: every tracked or untracked-but-not-ignored file that is not
-// Markdown and holds no NUL byte, apart from FIXTURE_FILES below.
+// Markdown and holds no NUL byte, apart from FIXTURE_FILES below. In
+// docs/spec/wording-changes.txt only the new side of each entry (the text after
+// its first " -> ") is read: the old side quotes text as it stood before the
+// change, which may cite a heading the change retired. Comment and blank lines
+// of that file are read as in any other file.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -55,6 +59,11 @@ import { fileURLToPath } from "node:url";
 
 import { headingAnchors, slugify } from "./check-doc-links.mjs";
 import { headingNames } from "./check-rule-citations.mjs";
+import {
+  CHANGE_SEPARATOR,
+  WORDING_CHANGES_FILE,
+  parseWordingChanges,
+} from "./check-spec-sentence-moves.mjs";
 import { stripFences } from "./lib/markdownFences.mjs";
 
 export const SPEC_DIRECTORY = "docs/spec/";
@@ -188,6 +197,23 @@ export function citations(source, specNames, isTrackedName = () => true) {
   return found;
 }
 
+/**
+ * The wording-changes `list` with each entry reduced to its new side, one
+ * output line per input line so citation line numbers stay true. An entry
+ * with no separator is kept whole.
+ */
+export function wordingNewSides(list) {
+  return list
+    .split("\n")
+    .map((line) => {
+      const [entry] = parseWordingChanges(line);
+      if (entry === undefined) return line;
+      const at = entry.indexOf(CHANGE_SEPARATOR);
+      return at < 0 ? entry : entry.slice(at + CHANGE_SEPARATOR.length);
+    })
+    .join("\n");
+}
+
 /** Prefix text up to its first punctuation, the part a reader cites. */
 const prefixLead = (text) => text.split(PREFIX_LEAD_END)[0].trim();
 
@@ -229,7 +255,9 @@ export function citationProblems(
   const specs = new Map();
   let resolved = 0;
   for (const { file, source } of citing) {
-    for (const citation of citations(source, specNames, isTrackedName)) {
+    const read =
+      file === WORDING_CHANGES_FILE ? wordingNewSides(source) : source;
+    for (const citation of citations(read, specNames, isTrackedName)) {
       const { line, target, form, text } = citation;
       if (!specs.has(target)) {
         const specSource = readSpec(target);
