@@ -59,14 +59,16 @@ its local `staging` falls behind `origin/staging`. Sync it before branching:
 2. Bring local `staging` up to `origin/staging` with `git checkout staging &&
    git reset --hard origin/staging`. You never commit to `staging`, so resetting
    it onto `origin/staging` is safe.
-3. If the sync moved the lockfile, reinstall: `git diff --quiet ORIG_HEAD HEAD --
-   package-lock.json || npm ci`. The reset in step 2 points `ORIG_HEAD` at the
-   pre-sync commit, so `npm ci` runs only when `package-lock.json` actually
-   changed. Skip it while `git worktree list` shows any tree besides the clone:
-   `worktree-init.sh` symlinks this install's packages into each live tree, and
-   a reinstall that re-hoists one leaves their links dangling. Step 4's tree
-   then installs its own, since `worktree-init.sh` falls back to `npm ci` when
-   the mirror lags its lockfile.
+3. If the clone's install lags its lockfile, reinstall: `node
+   scripts/check-node-modules-drift.mjs || npm ci`. This is the same check
+   `worktree-init.sh` runs to refuse a stale mirror (see its header), so a
+   lockfile change skipped at an earlier sync is caught at the next one, not
+   only the sync that moved it. Skip the `npm ci` while `git worktree list`
+   shows any tree besides the clone: `worktree-init.sh` symlinks this install's
+   packages into each live tree, and a reinstall that re-hoists one leaves
+   their links dangling. Step 4's tree then installs its own, since
+   `worktree-init.sh` falls back to `npm ci` when the mirror lags its lockfile;
+   the drift check runs again at the first sync with no other live tree.
 4. Cut the per-issue branch off the synced `staging` in a worktree of its own --
    `git worktree add -b <branch> .claude/worktrees/<branch> origin/staging`, then
    `bash .claude/scripts/worktree-init.sh` from it, which provisions that tree
@@ -162,7 +164,9 @@ State the bucket, the numbers behind it, and any file that forces the third
 bucket. Whether to run the tier is the owner's call in the plain flow (stop at
 the commit and recommend); when orchestrating, determining the bucket and
 running it are the same act. Either way the bucket binds as a ceiling: rounds
-of every kind count against it, and only the owner raises it.
+of every kind count against it, and only the owner, or an orchestrating session
+the owner has delegated budgets to, raises it (raising when it delivers value,
+stepping back on a repeat hotspot).
 
 ## Orchestrating
 
@@ -183,7 +187,7 @@ steps above. When the instruction is to orchestrate:
 - **Run the tier yourself.** Size Step 5's bucket from the diff and run exactly
   what it names without pausing for permission -- asking to run a tier you
   already determined is deferral, not caution. The ceiling still binds; only
-  the owner raises it. Keep a running sum of the subagent spend each task
+  the owner, or a session the owner has delegated budgets to, raises it. Keep a running sum of the subagent spend each task
   notification reports; crossing the bucket's expected band is a step-back --
   stop, report the sum and what consumed it, and ask.
 - **Proceed to an open PR, and stop there.** The terminal state is a pushed

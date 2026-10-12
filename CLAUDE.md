@@ -48,7 +48,7 @@ Beyond the conventions in `CONTRIBUTING.md`:
 - Encode a "does not happen at runtime" claim as a check, never a comment or doc note. Full rule: `CONTRIBUTING.md`, Code Conventions.
 - Settle a question about an external tool's behavior -- npm, Docker, `ssh2` / `ssh2-sftp-client` -- by driving the real tool and asserting the outcome, or by stating the limit; reading its source or reimplementing its parser to predict it is a review finding. The SFTP adapter's harness: `docs/TESTING.md`.
 - Prettier ignores markdown.
-- The Bash tool runs zsh: unquoted `$var` does not word-split, bare `grep` is ugrep, and an unmatched glob is an error -- quote globs, and use arrays or `xargs` for multi-file commands. `$R:apps/x` expands `$R:a` as a path modifier: quote `'ref:path'` whole.
+- The Bash tool runs zsh: unquoted `$var` does not word-split, bare `grep` is ugrep, and an unmatched glob is an error -- quote globs, and use arrays or `xargs` for multi-file commands. `$R:apps/x` expands `$R:a` as a path modifier, even inside double quotes: brace the parameter (`${R}:apps/x`), and quote a literal `'ref:path'` whole.
 - `vitest -w` is watch mode and hangs a non-interactive session; use `npx vitest run` or `npm test -w <workspace>`.
 - Never sleep-poll a background run: wait for its completion notification, or loop on the condition inside one `timeout`-bounded call. Enforced by `block-sleep-poll.mjs` on Bash, whose refusal names the admitted forms; why: `docs/notes/agent-hooks-and-scripts.md`, Sleep-poll guard.
 

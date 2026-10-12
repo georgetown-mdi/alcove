@@ -114,8 +114,9 @@ no full diff enters this conversation's context.
 Also read each target's rounds ledger (`PRIMARY/scratch/review-rounds/<key>.jsonl`)
 if it exists: its first row's `cap` is that branch's round budget (a first row
 without `cap` predates the field -- treat the budget as unset). When a ledger already
-holds `cap` rows, drop that target and say its round budget is spent -- only the owner
-raises it.
+holds `cap` rows, drop that target and say its round budget is spent -- only the owner,
+or an orchestrating session the owner has delegated budgets to, raises it (raising
+when it delivers value, stepping back on a repeat hotspot).
 
 When you ask the owner to raise a spent budget, state the default recommendations
 below with the ask. The size thresholds are measured -- the quartiles of branch diff
@@ -213,8 +214,8 @@ Common to both:
    exists; this round's number is its line count + 1, counting rounds of every kind.
    The first row written for a branch also contains `"cap"`: the Step 5 bucket's total
    round allowance for this diff (1 for the second bucket or the instruction-file
-   floor, 3 for the full pipeline; a cap the owner raises is edited in place with a
-   note).
+   floor, 3 for the full pipeline; a cap the owner, or an orchestrating session the owner has delegated budgets to,
+   raises is edited in place with a note).
 2. Delete `PRIMARY/scratch/review-rounds/<key>.lock`, the in-flight round lock
    `record-review-round-lock.mjs` wrote when this round launched. A lock left behind refuses the
    branch's next round until it ages out, so releasing it is part of booking the

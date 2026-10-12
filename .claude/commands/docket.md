@@ -22,7 +22,9 @@ Run only when the owner invokes this command; never start the docket unasked.
 1. Collect every open decision the session holds for the owner. Leave out each
    potential follow-up -- a question of whether to file or update a board item;
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
-   already took, which goes in a closing list after the last item.
+   already took. Those go in a closing list, its own final message after the
+   last decision item, with one line per ratification; the owner's word on each
+   line is recorded the same way as a ruling.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, fetch the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its

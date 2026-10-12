@@ -422,8 +422,9 @@ ranges over, and the merge composes the branch with content no round has read --
 while re-verifying a claim that held costs little inside the one round that must
 run anyway. The round reads the effective diff at the merge head, so the
 resolution delta is inside what it reads. It counts against the branch's round
-budget like any other round; a spent cap is the owner's to raise, noted in the
-ledger. The checklist line then attests the merge head citing that round. An n/a
+budget like any other round; only the owner, or an orchestrating session the owner has
+delegated budgets to, raises a spent cap (when it delivers value, stepping back on a
+repeat hotspot), noted in the ledger. The checklist line then attests the merge head citing that round. An n/a
 line keeps its own path above -- the enumeration re-runs against the merged
 head's diff the same way -- and a head moved by anything other than that merge
 shape is not a base sync: a rebase takes its own path above, and any other
