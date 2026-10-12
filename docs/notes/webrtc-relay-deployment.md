@@ -403,7 +403,7 @@ static site with no server framework
 
 ### One listener on 443
 
-_Status: built in the relay reference, not yet run on the relay host._
+_Status: installed on the project's relay host and measured there on 2026-10-12, without a registrar and without a relayed exchange from a 443-only client._
 
 With coturn on 443, the registrar and the broker's front, each on a port of
 its own, are out of reach of a network admitting outbound TCP to 443 only: the
@@ -431,21 +431,48 @@ The rule, and what was weighed:
 
 The front puts a proxy between coturn and the client: coturn sees
 `127.0.0.1` as every client's address, reports it to the client as its
-reflexive address, and names it in its log lines. Whether that leaves a
-browser's and werift's relayed exchange intact is the first thing the host run
-measures.
+reflexive address, and names it in its log lines.
 
-Owed to the host run before the front is called deployed:
+Measured on the project's relay host on 2026-10-12, with the front routing
+`signal.data-bridge.org` to the broker's front on 8443 and every other
+connection to coturn on `127.0.0.1:5349` (the host runs no registrar and no
+registrar name is set):
 
+- **Install.** One coturn restart; the front's image built and `nginx -t`
+  passed before coturn's configuration changed; the front held 443 with no
+  restart and dropped every capability but `NET_BIND_SERVICE`, `SETUID` and
+  `SETGID`.
+- **`verify.sh` through the front.** 13 checks passed, none failed: the TLS
+  handshake and its issuer and validity, the front routing the broker's name to
+  a certified service, a relay allocation, the refusals of internal addresses
+  and of a TCP allocation, and the per-exchange key checks (an allocation for a
+  registered key and for a hex key, refusals of an unregistered key, a 32-byte
+  key and a revoked key). The registrar check was skipped.
+- **Reach.** The realm's name and `signal.data-bridge.org` each presented their
+  own certificate; no server name, and an ALPN offer of `http/1.1`, reached
+  coturn; bytes that were not TLS were closed without an answer. The
+  broker answered `/api/health` on 443 with 200 and a signaling WebSocket
+  opened there.
+- **TURN through the front.** A TURN allocation through the front succeeded
+  with coturn seeing the client as `127.0.0.1`.
+- **Memory.** The front's cgroup was 8.08 MB (1.3 MiB in `docker stats`);
+  `free` reported 117 MB available after against 137 MB before, mostly page
+  cache; swap used rose 12 MB; no out-of-memory kill. coturn's cgroup stayed at
+  5.6 to 6.5 MB.
+- **The error log.** Past start-up, five lines named a client's address, each
+  `recv() failed (104: Connection reset by peer) while proxying and reading
+  from upstream` with coturn's port as the upstream: coturn resetting
+  connections whose credential or allocation it refused, and the probes that
+  sent no server name, an ALPN offer or bytes that were not TLS.
+
+Not measured, and so owed before the front is called deployed:
+
+- the registrar behind the front at a name of its own: the project's host has
+  no registrar, so no name was set, no certificate was issued for one, and
+  the registrar's `OPTIONS` and `PUT` calls were not made through the front;
 - a relayed exchange through the front from a browser and from the CLI, each
-  on a network admitting outbound TCP to 443 only, with the registrar reached
-  at its own name;
-- the broker's `/api/health` and a signaling WebSocket at its name on 443;
-- the front's resident memory beside coturn, the registrar and the broker,
-  against the instance's headroom (the broker's own front measured 8 to 13 MB
-  above);
-- what coturn's and the broker front's log lines record for a connection
-  through the front.
+  on a network admitting outbound TCP to 443 only, which needs a registrar to
+  register the exchange's key.
 
 ## The proposed epic
 

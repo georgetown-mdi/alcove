@@ -46,7 +46,10 @@ your own environment:
 - The registrar, the lapse sweep, and `max-allocate-lifetime` run beside the
   pinned coturn image on a docker host and a podman host, both installed by
   `install.sh`.
-- [The 443 front](#the-443-front) has not run on a relay host; its tests
+- [The 443 front](#the-443-front) is installed on the project's relay host
+  and passed `verify.sh` through it (13 checks), with signaling answering on
+  443; the registrar behind it and a relayed exchange from a 443-only
+  client are not measured, since the host runs no registrar today. Its tests
   under `scripts/` drive `render-front.sh` and hold the template to coturn's
   listener, not nginx.
 - `verify.sh` probes the allocation and its refusals, not exchange traffic,
@@ -474,10 +477,14 @@ so the front sees what any network hop on the path sees.
   it does so.
 - **What it logs.** No access log: one line per connection would record which
   client asked for which service. Its error log, warnings and above, goes to
-  the journal. When coturn or a routed service refuses a connection or does
-  not accept it within 5 s, the line nginx writes there names the client's
-  address beside the service's loopback port, which identifies the service
-  the client asked for.
+  the journal. When coturn or a routed service refuses a connection, does
+  not accept it within 5 s, or resets it, the line nginx writes there names
+  the client's address beside the service's loopback port, which identifies
+  the service the client asked for. On the project's relay host, coturn
+  resetting a connection whose credential or allocation it refused, or a probe
+  that sent no server name, an ALPN offer or bytes that were not TLS, each
+  wrote such a line (`recv() failed (104: Connection reset by peer) while
+  proxying and reading from upstream`).
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
@@ -488,12 +495,14 @@ so the front sees what any network hop on the path sees.
   under a name of its own, and its route is one more `name=port` pair.
 - **Memory.** The front is one nginx worker beside coturn and the registrar,
   on an instance with 412 MB and no headroom (a full `npm ci` there
-  OOM-killed coturn); its resident size on the host is the measure of whether
-  the instance size holds.
+  OOM-killed coturn). On the project's host, without a registrar, its cgroup
+  measured 8.08 MB and `free` reported 20 MB less available memory, mostly
+  page cache, with no out-of-memory kill.
 
-What has not yet been measured on a relay host -- a TURN client's relayed
-exchange through the front, the memory, a 443-only machine registering -- is
-listed in [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
+What was measured on the project's relay host on 2026-10-12, and what has
+not been -- the registrar behind the front, and a relayed exchange from a
+443-only client -- is in
+[the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
 with the alternative if the front fails a TURN client: a second public
 address on the instance.
 
