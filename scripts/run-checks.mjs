@@ -264,7 +264,7 @@ export const CHECKS = [
     script: "check:spec-sentences",
     expiresOn: "2027-01-31",
     description:
-      "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed under Wording changes in the pull request body, so text moved between spec files arrives unchanged. With no pull request body it prints the section to paste and passes; pr_checklist.yaml enforces it against the body.",
+      "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed in docs/spec/wording-changes.txt, so text moved between spec files arrives unchanged. On a failure it prints the lines to list.",
   },
   {
     script: "check:release-signing",

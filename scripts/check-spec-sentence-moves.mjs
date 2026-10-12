@@ -12,32 +12,36 @@
 //   - a fenced code line and a front-matter line, each trimmed.
 //
 // Not compared: line breaks and indentation, a heading's `#` level, list and
-// blockquote markers, the table alignment row, thematic breaks, and any file
-// outside docs/spec/ or not ending in .md.
+// blockquote markers, the table alignment row, thematic breaks, the target of
+// an inline Markdown link outside a code span (its text is compared), and any
+// file outside docs/spec/ or not ending in .md.
 //
-// The pull request body lists each unit added, dropped or reworded, one list
-// item per change, each side the unit's text as above and `-` standing for
-// none; a line naming both sides pairs two units of one kind:
-//
-//   ## Wording changes
+// docs/spec/wording-changes.txt lists each unit added, dropped or reworded,
+// one `- ` line per change and per occurrence, each side the unit's text as
+// above and `-` standing for none; a line naming both sides pairs two units of
+// one kind. A pull request changing docs/spec/ replaces the list; the file is
+// read only when it differs from the merge base, so an earlier pull request's
+// list is never matched. Lines starting with `#` are comments:
 //
 //   - The sentence as it was. -> The sentence as it is.
 //   - - -> A sentence the pull request adds.
 //   - A sentence the pull request drops. -> -
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 /** The directory whose Markdown files are compared. */
 export const SPEC_DIRECTORY = "docs/spec/";
 
+/** The only pull request base branch whose changes the comparison checks. */
+const STAGING_BRANCH = "staging";
+
 /** The base revision when none is given. */
 export const DEFAULT_BASE = "origin/staging";
 
-/** The pull request body heading the wording changes are listed under. */
-export const WORDING_CHANGES_HEADING = "Wording changes";
+/** The file listing the wording changes, read at the head revision. */
+export const WORDING_CHANGES_FILE = "docs/spec/wording-changes.txt";
 
 /** The separator between the old and the new side of a listed change. */
 export const CHANGE_SEPARATOR = " -> ";
@@ -54,6 +58,8 @@ const THEMATIC_BREAK = /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/;
 const BLOCKQUOTE_MARKER = /^\s*(?:>\s?)+/;
 const LIST_MARKER = /^\s*(?:[-*+]|\d{1,9}[.)])\s+/;
 const SENTENCE_END = /(?<=[.!?]["'`)\]*_]*)\s+/;
+const CODE_SPAN_OR_LINK =
+  /(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)|(!?\[(?:[^[\]`]|`[^`]*`|\[[^[\]]*\])*\])\((?:<[^<>\n]*>|(?:[^()\s]|\([^()\s]*\))*)(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)/g;
 
 /** Collapses every run of whitespace to one space and trims the ends. */
 export function normalizeWhitespace(text) {
@@ -65,6 +71,23 @@ export function splitSentences(text) {
   const normalized = normalizeWhitespace(text);
   if (normalized === "") return [];
   return normalized.split(SENTENCE_END).filter((sentence) => sentence !== "");
+}
+
+/**
+ * The text with each inline link's target emptied, `[text](target)` becoming
+ * `[text]()`; a code span is left whole.
+ */
+export function withoutLinkTargets(text) {
+  return text.replace(CODE_SPAN_OR_LINK, (match, codeTicks, linkText) =>
+    codeTicks === undefined ? `${linkText}()` : match,
+  );
+}
+
+/** The text two units of one kind are compared by. */
+function comparedText(kind, text) {
+  return kind === "code line" || kind === "front matter"
+    ? text
+    : withoutLinkTargets(text);
 }
 
 function closesFence(line, fence) {
@@ -166,36 +189,17 @@ export function specUnits(markdown) {
 }
 
 /**
- * The lines listed under the pull request body's `## Wording changes` heading,
- * up to the next `#` or `##` heading, each the text of one list item with its
- * marker dropped. HTML comments and fenced blocks are skipped.
+ * The changes listed in the wording-changes file, one per line: a `- ` line
+ * gives its text after the marker, a blank line or one starting with `#` gives
+ * none, and any other line is returned whole and read like a `- ` line's text.
  */
-export function parseWordingChanges(body) {
-  const lines = body
-    .replace(/\r\n?/g, "\n")
-    .replace(/<!--[\s\S]*?-->/g, "")
-    .split("\n");
-  const heading = `## ${WORDING_CHANGES_HEADING.toLowerCase()}`;
+export function parseWordingChanges(list) {
   const entries = [];
-  let inSection = false;
-  let fence = null;
-  for (const line of lines) {
-    if (fence !== null) {
-      if (closesFence(line, fence)) fence = null;
-      continue;
-    }
-    const opening = FENCE.exec(line.replace(BLOCKQUOTE_MARKER, ""));
-    if (opening) {
-      fence = opening[1];
-      continue;
-    }
-    if (!inSection) {
-      inSection = normalizeWhitespace(line).toLowerCase() === heading;
-      continue;
-    }
-    if (/^\s{0,3}#{1,2}\s/.test(line)) break;
-    const item = /^\s*[-*]\s+(.*)$/.exec(line);
-    if (item) entries.push(normalizeWhitespace(item[1]));
+  for (const line of list.replace(/\r\n?/g, "\n").split("\n")) {
+    const text = normalizeWhitespace(line);
+    if (text === "" || text.startsWith("#")) continue;
+    const item = /^-\s+(.*)$/.exec(text);
+    entries.push(item ? item[1] : text);
   }
   return entries;
 }
@@ -204,8 +208,14 @@ function countUnits(files) {
   const counts = new Map();
   for (const [file, markdown] of files) {
     for (const unit of specUnits(markdown)) {
-      const key = `${unit.kind}\u0000${unit.text}`;
-      const entry = counts.get(key) ?? { ...unit, count: 0, files: new Set() };
+      const compared = comparedText(unit.kind, unit.text);
+      const key = `${unit.kind}\u0000${compared}`;
+      const entry = counts.get(key) ?? {
+        ...unit,
+        compared,
+        count: 0,
+        files: new Set(),
+      };
       entry.count += 1;
       entry.files.add(file);
       counts.set(key, entry);
@@ -224,8 +234,10 @@ function surplus(from, against) {
 }
 
 function remaining(pool, kind, text) {
+  const compared = comparedText(kind, text);
   return pool.find(
-    (entry) => entry.count > 0 && entry.kind === kind && entry.text === text,
+    (entry) =>
+      entry.count > 0 && entry.kind === kind && entry.compared === compared,
   );
 }
 
@@ -288,26 +300,25 @@ export function compareSpecFiles(baseFiles, headFiles, wordingChanges = []) {
   };
 }
 
-const PASTE_INSTRUCTION =
-  "joining a dropped and an added line of one kind into one where the change rewords a unit:";
+const LIST_INSTRUCTION = `list them in ${WORDING_CHANGES_FILE}, in place of any list an earlier pull request left there, joining a dropped and an added line of one kind into one where the change rewords a unit:`;
 
 /**
- * The `## Wording changes` section listing a comparison's unlisted
- * differences, ready to paste into a pull request body. Empty when there are
- * none.
+ * The lines listing a comparison's unlisted differences, one per occurrence,
+ * ready to paste into the wording-changes file. Empty when there are none.
  */
 export function formatWordingChanges(result) {
-  if (result.dropped.length === 0 && result.added.length === 0) return [];
-  return [
-    `## ${WORDING_CHANGES_HEADING}`,
-    "",
-    ...result.dropped.map(
-      (entry) => `- ${entry.text}${CHANGE_SEPARATOR}${NO_UNIT}`,
-    ),
-    ...result.added.map(
-      (entry) => `- ${NO_UNIT}${CHANGE_SEPARATOR}${entry.text}`,
-    ),
-  ];
+  const lines = [];
+  for (const entry of result.dropped) {
+    for (let at = 0; at < entry.count; at += 1) {
+      lines.push(`- ${entry.text}${CHANGE_SEPARATOR}${NO_UNIT}`);
+    }
+  }
+  for (const entry of result.added) {
+    for (let at = 0; at < entry.count; at += 1) {
+      lines.push(`- ${NO_UNIT}${CHANGE_SEPARATOR}${entry.text}`);
+    }
+  }
+  return lines;
 }
 
 /**
@@ -329,7 +340,7 @@ export function formatFailures(result) {
   if (differences.length > 0) {
     lines.push(
       "",
-      `To accept these, add this to the pull request body, ${PASTE_INSTRUCTION}`,
+      `To accept these, ${LIST_INSTRUCTION}`,
       "",
       ...formatWordingChanges(result),
     );
@@ -337,7 +348,7 @@ export function formatFailures(result) {
   if (result.unmatched.length > 0) {
     if (lines.length > 0) lines.push("");
     lines.push(
-      `Listed under "## ${WORDING_CHANGES_HEADING}" but matching no difference; correct or remove each:`,
+      `Listed in ${WORDING_CHANGES_FILE} but matching no difference; correct or remove each:`,
     );
     for (const line of result.unmatched) lines.push(`  - ${line}`);
   }
@@ -390,10 +401,12 @@ function readAt(root, commit, file) {
 }
 
 /**
- * Runs the comparison between the merge base of `base` and `head`, and `head`.
- * Returns `{ files, result }`, or `{ error }` when a revision does not resolve.
+ * Runs the comparison between the merge base of `base` and `head`, and `head`,
+ * against the wording-changes file at `head` when it differs from the merge
+ * base. Returns `{ files, listChanged, result }`, or `{ error }` when a
+ * revision does not resolve.
  */
-export function compareRevisions(root, base, head, wordingChanges) {
+export function compareRevisions(root, base, head) {
   const baseCommit = resolveCommit(root, base);
   if (baseCommit === null) return { error: `${base} does not resolve.` };
   const headCommit = resolveCommit(root, head);
@@ -411,27 +424,22 @@ export function compareRevisions(root, base, head, wordingChanges) {
   const headFiles = new Map(
     files.map((file) => [file, readAt(root, headCommit, file)]),
   );
+  const list = readAt(root, headCommit, WORDING_CHANGES_FILE);
+  const listChanged = list !== readAt(root, mergeBase, WORDING_CHANGES_FILE);
+  const wordingChanges = listChanged ? parseWordingChanges(list) : [];
   return {
     files,
+    listChanged,
     result: compareSpecFiles(baseFiles, headFiles, wordingChanges),
   };
 }
 
 /**
- * The pull request body and where it came from, or `{ body: null }` when none
- * is given. Throws when a named source cannot be read.
+ * The base revision when none is given: on the runner, the pull request's
+ * base branch.
  */
-export function readBody(bodyFile, env) {
-  if (bodyFile !== undefined) {
-    return { body: readFileSync(bodyFile, "utf8"), source: bodyFile };
-  }
-  if (env.PR_JSON) {
-    const pullRequest = JSON.parse(readFileSync(env.PR_JSON, "utf8"));
-    return { body: pullRequest.body ?? "", source: "the pull request" };
-  }
-  if (env.PR_BODY !== undefined)
-    return { body: env.PR_BODY, source: "PR_BODY" };
-  return { body: null, source: null };
+export function defaultBase(env) {
+  return env.GITHUB_BASE_REF ? `origin/${env.GITHUB_BASE_REF}` : DEFAULT_BASE;
 }
 
 /** The top level of the repository holding the working directory. */
@@ -449,36 +457,29 @@ function main(argv, env) {
       options: {
         base: { type: "string" },
         head: { type: "string", default: "HEAD" },
-        "body-file": { type: "string" },
       },
     }));
   } catch (error) {
     console.error(`${PREFIX} ${error.message}`);
     console.error(
-      "usage: node scripts/check-spec-sentence-moves.mjs [--base <ref>] [--head <ref>] [--body-file <path>]",
+      "usage: node scripts/check-spec-sentence-moves.mjs [--base <ref>] [--head <ref>]",
     );
     return 2;
   }
 
-  let body;
-  let source;
-  try {
-    ({ body, source } = readBody(options["body-file"], env));
-  } catch (error) {
-    console.error(
-      `${PREFIX} the pull request body could not be read: ${error.message}`,
-    );
-    return 2;
-  }
-  if (body === null && env.GITHUB_ACTIONS === "true") {
+  if (
+    options.base === undefined &&
+    env.GITHUB_BASE_REF &&
+    env.GITHUB_BASE_REF !== STAGING_BRANCH
+  ) {
     console.log(
-      `${PREFIX} skipped, no pull request body on this run; the PR Checklist workflow runs this check with the body.`,
+      `${PREFIX} skipped on a pull request into ${env.GITHUB_BASE_REF}, because the per-pull-request lists were checked as each pull request entered ${STAGING_BRANCH}.`,
     );
     return 0;
   }
 
   const root = repositoryRoot();
-  const base = options.base ?? DEFAULT_BASE;
+  const base = options.base ?? defaultBase(env);
   if (options.base === undefined && resolveCommit(root, base) === null) {
     console.log(
       `${PREFIX} skipped, ${base} does not resolve in this checkout. Fetch it, or pass --base <ref>.`,
@@ -486,13 +487,12 @@ function main(argv, env) {
     return 0;
   }
 
-  const wordingChanges = body === null ? [] : parseWordingChanges(body);
-  const comparison = compareRevisions(root, base, options.head, wordingChanges);
+  const comparison = compareRevisions(root, base, options.head);
   if (comparison.error) {
     console.error(`${PREFIX} ${comparison.error}`);
     return 2;
   }
-  const { files, result } = comparison;
+  const { files, listChanged, result } = comparison;
   if (files.length === 0 && result.unmatched.length === 0) {
     console.log(
       `${PREFIX} no Markdown file under ${SPEC_DIRECTORY} changed since the merge base with ${base}.`,
@@ -500,25 +500,20 @@ function main(argv, env) {
     return 0;
   }
   const failures = formatFailures(result);
-  if (body === null && failures.length > 0) {
-    console.log(
-      `${PREFIX} the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}. No pull request body was given (--body-file, PR_JSON or PR_BODY); list these in the pull request body, ${PASTE_INSTRUCTION}\n`,
-    );
-    for (const line of formatWordingChanges(result)) console.log(line);
-    console.log(
-      "\nThe PR Checklist workflow fails a pull request whose body does not list these.",
-    );
-    return 0;
-  }
   if (failures.length === 0) {
     console.log(
       `${PREFIX} passed over ${files.length} changed file${files.length === 1 ? "" : "s"} under ${SPEC_DIRECTORY}.`,
     );
     return 0;
   }
-  console.error(
-    `${PREFIX} the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}. Wording changes were read from ${source}.\n`,
-  );
+  const compared =
+    files.length === 0
+      ? `no Markdown file under ${SPEC_DIRECTORY} changed between the merge base with ${base} and ${options.head}.`
+      : `the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}.`;
+  const read = listChanged
+    ? `Wording changes were read from ${WORDING_CHANGES_FILE} at ${options.head}.`
+    : `${WORDING_CHANGES_FILE} is unchanged since the merge base, so it lists no change on this branch.`;
+  console.error(`${PREFIX} ${compared} ${read}\n`);
   for (const line of failures) console.error(line);
   return 1;
 }
