@@ -20,8 +20,10 @@ die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
 . "$ENV_FILE"
 
 # nginx's map matches server names whatever their case, so every name is
-# compared here in lowercase.
+# compared here in lowercase, without the one trailing dot that makes a DNS
+# name absolute.
 REALM="${ALCOVE_RELAY_REALM:-}"
+REALM="${REALM%.}"
 REALM="${REALM,,}"
 [ -n "$REALM" ] || die "ALCOVE_RELAY_REALM is unset in $ENV_FILE; refusing to guess a realm"
 
@@ -41,7 +43,7 @@ claim_port() {
   PORT_OWNERS+=("$name")
 }
 add_route() {
-  local name="$1" port="$2" source="$3"
+  local name="${1%.}" port="$2" source="$3"
   # Lowercase DNS names only, so a value cannot end the map entry it is
   # written into and one name has one spelling.
   [[ "$name" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] \
@@ -67,6 +69,7 @@ add_route() {
 # The registrar listens on its port on every address wherever the host holds
 # its token, so that port is taken whether or not the registrar has a name.
 REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
+REGISTRAR_NAME="${REGISTRAR_NAME%.}"
 REGISTRAR_NAME="${REGISTRAR_NAME,,}"
 REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
 REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-/etc/alcove-relay/registrar-token}"

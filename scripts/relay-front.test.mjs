@@ -225,6 +225,48 @@ describe("render-front.sh", () => {
     expect(result.stdout).toBe("");
   });
 
+  it.each([
+    [
+      "a listed route",
+      [`ALCOVE_RELAY_FRONT_ROUTES="${REALM}=8443"`],
+      "ALCOVE_RELAY_FRONT_ROUTES routes the realm",
+    ],
+    [
+      "a listed route written with a trailing dot",
+      [`ALCOVE_RELAY_FRONT_ROUTES="${REALM}.=8443"`],
+      "ALCOVE_RELAY_FRONT_ROUTES routes the realm",
+    ],
+    [
+      "the registrar's name",
+      [`ALCOVE_RELAY_REGISTRAR_NAME=${REALM}`],
+      "ALCOVE_RELAY_REGISTRAR_NAME routes the realm",
+    ],
+    [
+      "the registrar's name written with a trailing dot",
+      [`ALCOVE_RELAY_REGISTRAR_NAME=${REALM}.`],
+      "ALCOVE_RELAY_REGISTRAR_NAME routes the realm",
+    ],
+  ])(
+    "refuses %s for a realm written with a trailing dot",
+    (_, envLines, message) => {
+      const result = render(envLines, { realm: `${REALM}.` });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(result.stdout).toBe("");
+    },
+  );
+
+  it("writes a route given with a trailing dot without it", () => {
+    const result = render([
+      'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org.=8443"',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(mapEntries(result.stdout)).toContainEqual([
+      "signal.example.org",
+      "127.0.0.1:8443",
+    ]);
+  });
+
   it("lowercases a registrar's name given with capitals before it compares or writes it", () => {
     const result = render([
       "ALCOVE_RELAY_REGISTRAR_NAME=Registrar.Example.org",
