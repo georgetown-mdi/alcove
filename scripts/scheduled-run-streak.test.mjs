@@ -157,7 +157,11 @@ describe("workflowStreaks", () => {
       "utf8",
     );
     expect(source).toContain("name: Core PSI stress (${{ matrix.job.name }})");
-    expect(source).toContain('{ name: "short files",');
+    const listing = readFileSync(
+      join(ROOT, "scripts/list-stress-jobs.mjs"),
+      "utf8",
+    );
+    expect(listing).toContain('name: "short files"');
   });
 });
 
