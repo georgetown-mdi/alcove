@@ -1,4 +1,16 @@
 import {
+  COORDINATION_SERVER_CHANGED_REFUSAL,
+  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
+  MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
+  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+} from "@jobContract/jobCreateRefusal";
+import {
   ConsoleShuttingDownError,
   ExchangeBusyError,
   JobIntentUncomposableError,
@@ -8,6 +20,7 @@ import {
   JobSigningIdentityExposedError,
   MountedSigningPathsUnconvertedError,
   SftpUnavailableError,
+  SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
 import {
@@ -15,17 +28,6 @@ import {
   gateJobRoute,
   readJobRequestBody,
 } from "@jobs/routeSupport";
-import {
-  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
-  MOUNTED_KEY_FILE_INVALID_REFUSAL,
-  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
-  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
-  SFTP_FINGERPRINT_LIST_REFUSAL,
-  SFTP_URL_DIRECTORY_REFUSAL,
-  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
-  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
-  WORKING_FOLDER_UNWRITABLE_REFUSAL,
-} from "@jobContract/jobCreateRefusal";
 import {
   ZeroSetupFingerprintListError,
   ZeroSetupRemoteDirectoryError,
@@ -159,16 +161,24 @@ export const route = defineJobRoute({
             { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
             400,
           );
-        // A webrtc run's alcove.yaml or .alcove.key cannot go into the working
-        // folder: another exchange's file is there, or the write failed.
+        // The working folder already holds an alcove.yaml or .alcove.key a
+        // webrtc run would write at its handshake: the token says whether an
+        // earlier exchange on this console wrote them.
         if (error instanceof WorkingFolderFilesRefusedError)
           return jobJsonResponse(
             {
-              reason:
-                error.fault === "present"
-                  ? WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
-                  : WORKING_FOLDER_UNWRITABLE_REFUSAL,
+              reason: error.heldByConsoleExchange
+                ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+                : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
             },
+            400,
+          );
+        // The invitation names a coordination server other than the one the
+        // console holds, which a later change on another tab or a restart
+        // replaced or forgot.
+        if (error instanceof SignalingServerChangedError)
+          return jobJsonResponse(
+            { reason: COORDINATION_SERVER_CHANGED_REFUSAL },
             400,
           );
         // Core refused the configuration or hand-off composed from the

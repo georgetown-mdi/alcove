@@ -25,6 +25,17 @@ import {
 import { PARTNER_REFUSED_EXIT_CODE } from "@alcove/cli-contract";
 
 import {
+  COORDINATION_SERVER_CHANGED_REFUSAL,
+  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
+  MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  isZeroSetupSftpRefusalReason,
+} from "@jobContract/jobCreateRefusal";
+import {
   JobApiRequestError,
   JobIntentColumnNameError,
   RelayedSelfExplainingError,
@@ -32,16 +43,6 @@ import {
   createFetchJobApiClient,
   createServerJobExchangeDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
-import {
-  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
-  MOUNTED_KEY_FILE_INVALID_REFUSAL,
-  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
-  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
-  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
-  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
-  WORKING_FOLDER_UNWRITABLE_REFUSAL,
-  isZeroSetupSftpRefusalReason,
-} from "@jobContract/jobCreateRefusal";
 import {
   discardServerJob,
   writeAttachment,
@@ -381,35 +382,45 @@ function failureContentFor(
         "connection on the SFTP connection, and choose the file that holds " +
         "your SFTP password or private key.",
     };
-  // A WebRTC run refused over the alcove.yaml and .alcove.key it writes into
-  // the working folder, as alcove invite does. Classified `config`: a retry
-  // refuses identically until the folder is changed.
+  // A WebRTC run refused over the alcove.yaml and .alcove.key it saves in the
+  // working folder once the partner connects, as alcove invite does.
+  // Classified `config`: a retry refuses identically until the folder is
+  // changed.
   if (
     error instanceof JobApiRequestError &&
-    error.refusalReason === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
+    (error.refusalReason === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
+      error.refusalReason === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL)
   )
     return {
       category: "config",
       title: "Your working folder already holds an exchange",
       message:
-        "The console did not start this exchange. A WebRTC exchange writes " +
-        "alcove.yaml and .alcove.key into your working folder, as alcove " +
-        "invite does, and an exchange already set up there has one or both. " +
-        "Move them to a folder of their own if you mean to keep that " +
-        "exchange, then start over with a fresh invitation.",
+        (error.refusalReason === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+          ? "The console did not start this exchange. Your working folder " +
+            "holds alcove.yaml and .alcove.key from an exchange this console " +
+            "started with an earlier invitation. "
+          : "The console did not start this exchange. Your working folder " +
+            "already holds an alcove.yaml or .alcove.key, the configuration " +
+            "of another exchange. ") +
+        "To start a new one, move alcove.yaml and .alcove.key out of the " +
+        "folder, then start over with a fresh invitation.",
     };
+  // A WebRTC run whose invitation names a coordination server other than the
+  // one the console holds: it was changed or cleared since the invitation was
+  // created. Classified `config`: start-over returns to the review step,
+  // where the server is set.
   if (
     error instanceof JobApiRequestError &&
-    error.refusalReason === WORKING_FOLDER_UNWRITABLE_REFUSAL
+    error.refusalReason === COORDINATION_SERVER_CHANGED_REFUSAL
   )
     return {
       category: "config",
-      title: "The console could not write to your working folder",
+      title: "The coordination server changed",
       message:
-        "The console did not start this exchange. A WebRTC exchange writes " +
-        "alcove.yaml and .alcove.key into your working folder, and the " +
-        "console could not write them there. Check that the folder is " +
-        "mounted writable, then start over with a fresh invitation.",
+        "The console did not start this exchange. The coordination server " +
+        "set on this console is not the one this invitation names, so your " +
+        "partner would not find you. Start over, check the coordination " +
+        "server, then create a fresh invitation.",
     };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
@@ -783,6 +794,30 @@ function failureContentFor(
       error instanceof Error ? sanitizedFailureMessage(error) : "",
     ),
   };
+}
+
+/**
+ * The transport a console server-job run rides. No arm has a connection
+ * field: the console holds the authored SFTP connection and coordination
+ * server. The webrtc arm names the server the invitation sends the partner
+ * to, for the console to refuse the run unless it is the one it holds.
+ */
+export function inviterServerJobTransport(
+  channel: Exclude<Transport, "browser">,
+  minted: Pick<GeneratedInvitation, "connectionEndpoint">,
+): ServerJobExchangeTransport {
+  if (channel !== "webrtc") return { channel };
+  const endpoint = minted.connectionEndpoint;
+  return endpoint?.channel === "webrtc" && endpoint.path !== undefined
+    ? {
+        channel,
+        signalingServer: {
+          host: endpoint.host,
+          ...(endpoint.port !== undefined ? { port: endpoint.port } : {}),
+          path: endpoint.path,
+        },
+      }
+    : { channel };
 }
 
 /**
@@ -1177,14 +1212,12 @@ export function useInviterExchange({
         generateOutput,
       });
 
-    // The transport a server-job run rides. No arm has a connection field:
-    // the console holds the authored SFTP connection and coordination
-    // server. Reached only for a server-job selection, which the selector
-    // never produces for `browser`.
+    // Reached only for a server-job selection, which the selector never
+    // produces for `browser`.
     const serverJobTransport = (): ServerJobExchangeTransport => {
       if (channel === "browser")
         throw new Error("a browser exchange reached the server-job driver");
-      return { channel };
+      return inviterServerJobTransport(channel, minted);
     };
 
     // The console conducts the exchange: the driver POSTs the sealed

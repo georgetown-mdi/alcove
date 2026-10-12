@@ -693,8 +693,10 @@ interface JobHandoffRunFacts {
    * channel, whose template states it. */
   signalingServer?: AuthoredSignalingServer;
   /**
-   * Whether the run used the key file beside the opened configuration rather
-   * than one the console wrote into the run's own folder. Absent is false.
+   * Whether the run used the key file beside the working folder's
+   * `alcove.yaml` -- an opened configuration's, or the one a webrtc run wrote
+   * there -- rather than one the console wrote into the run's own folder.
+   * Absent is false.
    */
   keyFileBesideConfiguration?: boolean;
   /**

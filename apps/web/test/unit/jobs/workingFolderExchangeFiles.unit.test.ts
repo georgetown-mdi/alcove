@@ -5,11 +5,16 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import {
   WorkingFolderFilesRefusedError,
+  refreshWorkingFolderExchangeFiles,
+  workingFolderExchangeFilePaths,
+  workingFolderExchangeFilesPresent,
   writeWorkingFolderExchangeFiles,
 } from "@jobs/workingFolderExchangeFiles";
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 
 import { tempDataRoot } from "../../utils/jobFixtures";
+
+import type { ExchangeFilePaths } from "@jobs/workingFolderExchangeFiles";
 
 const CONFIG = "connection:\n  channel: webrtc\n";
 const KEY = JSON.stringify({ sharedSecret: "secret-one" });
@@ -28,6 +33,19 @@ function folder(): string {
   return root;
 }
 
+/** A run's own pair, in a run folder inside `root`. */
+function runPair(root: string, config = CONFIG, key = KEY): ExchangeFilePaths {
+  const workdir = path.join(root, "run");
+  fs.mkdirSync(workdir, { recursive: true });
+  const pair = {
+    configPath: path.join(workdir, JOB_FILE_NAMES.config),
+    keyPath: path.join(workdir, JOB_FILE_NAMES.key),
+  };
+  fs.writeFileSync(pair.configPath, config);
+  fs.writeFileSync(pair.keyPath, key);
+  return pair;
+}
+
 function refusal(write: () => unknown): string | undefined {
   try {
     write();
@@ -39,9 +57,10 @@ function refusal(write: () => unknown): string | undefined {
 }
 
 describe("writeWorkingFolderExchangeFiles", () => {
-  test("writes both files owner-only into an empty folder", () => {
+  test("copies the run's pair owner-only into an empty folder", () => {
     const root = folder();
-    const written = writeWorkingFolderExchangeFiles(root, CONFIG, KEY);
+    const written = writeWorkingFolderExchangeFiles(root, runPair(root));
+    expect(written).toEqual(workingFolderExchangeFilePaths(root));
     expect(written).toEqual({
       configPath: path.join(root, JOB_FILE_NAMES.config),
       keyPath: path.join(root, JOB_FILE_NAMES.key),
@@ -56,44 +75,74 @@ describe("writeWorkingFolderExchangeFiles", () => {
     const root = folder();
     const target = path.join(root, "elsewhere");
     fs.symlinkSync(target, path.join(root, JOB_FILE_NAMES.key));
+    expect(workingFolderExchangeFilesPresent(root)).toEqual({
+      config: false,
+      key: true,
+    });
     expect(
-      refusal(() => writeWorkingFolderExchangeFiles(root, CONFIG, KEY)),
+      refusal(() => writeWorkingFolderExchangeFiles(root, runPair(root))),
     ).toBe("present");
     expect(fs.existsSync(target)).toBe(false);
     expect(fs.existsSync(path.join(root, JOB_FILE_NAMES.config))).toBe(false);
   });
 
-  test("another exchange's key file is refused, with nothing written", () => {
+  test("a key file already there is never replaced, whatever it holds", () => {
     const root = folder();
-    const other = JSON.stringify({ sharedSecret: "secret-two" });
-    fs.writeFileSync(path.join(root, JOB_FILE_NAMES.key), other);
+    fs.writeFileSync(path.join(root, JOB_FILE_NAMES.key), KEY);
     expect(
-      refusal(() => writeWorkingFolderExchangeFiles(root, CONFIG, KEY)),
+      refusal(() => writeWorkingFolderExchangeFiles(root, runPair(root))),
     ).toBe("present");
-    expect(fs.readdirSync(root)).toEqual([JOB_FILE_NAMES.key]);
-  });
-
-  test("this invitation's own key file is kept, and a removed alcove.yaml written again", () => {
-    const root = folder();
-    writeWorkingFolderExchangeFiles(root, CONFIG, KEY);
-    fs.writeFileSync(path.join(root, JOB_FILE_NAMES.config), "edited\n");
-    writeWorkingFolderExchangeFiles(root, CONFIG, KEY);
-    expect(
-      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
-    ).toBe("edited\n");
-
-    fs.rmSync(path.join(root, JOB_FILE_NAMES.config));
-    writeWorkingFolderExchangeFiles(root, CONFIG, KEY);
-    expect(
-      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
-    ).toBe(CONFIG);
+    expect(fs.readdirSync(root).sort()).toEqual([JOB_FILE_NAMES.key, "run"]);
   });
 
   test("a folder that refuses the write is unwritable, leaving nothing", () => {
-    const root = path.join(folder(), "not-a-folder");
-    fs.writeFileSync(root, "");
+    const root = folder();
+    const source = runPair(root);
+    const notAFolder = path.join(root, "not-a-folder");
+    fs.writeFileSync(notAFolder, "");
     expect(
-      refusal(() => writeWorkingFolderExchangeFiles(root, CONFIG, KEY)),
+      refusal(() => writeWorkingFolderExchangeFiles(notAFolder, source)),
     ).toBe("unwritable");
+  });
+});
+
+describe("refreshWorkingFolderExchangeFiles", () => {
+  test("brings the folder's pair up to date with the run's, owner-only", () => {
+    const root = folder();
+    const source = runPair(root);
+    const target = writeWorkingFolderExchangeFiles(root, source);
+    fs.writeFileSync(source.configPath, `${CONFIG}signing: {}\n`);
+    fs.writeFileSync(source.keyPath, JSON.stringify({ sharedSecret: "two" }));
+    refreshWorkingFolderExchangeFiles(source, target);
+    expect(fs.readFileSync(target.configPath, "utf8")).toBe(
+      `${CONFIG}signing: {}\n`,
+    );
+    expect(JSON.parse(fs.readFileSync(target.keyPath, "utf8"))).toEqual({
+      sharedSecret: "two",
+    });
+    for (const file of [target.configPath, target.keyPath])
+      expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(fs.readdirSync(root).sort()).toEqual(
+      [JOB_FILE_NAMES.key, JOB_FILE_NAMES.config, "run"].sort(),
+    );
+  });
+
+  test("a file moved out of the folder is not written again", () => {
+    const root = folder();
+    const source = runPair(root);
+    const target = writeWorkingFolderExchangeFiles(root, source);
+    fs.rmSync(target.configPath);
+    fs.writeFileSync(source.configPath, "changed\n");
+    refreshWorkingFolderExchangeFiles(source, target);
+    expect(fs.existsSync(target.configPath)).toBe(false);
+  });
+
+  test("a run folder already removed copies nothing", () => {
+    const root = folder();
+    const source = runPair(root);
+    const target = writeWorkingFolderExchangeFiles(root, source);
+    fs.rmSync(path.dirname(source.configPath), { recursive: true });
+    refreshWorkingFolderExchangeFiles(source, target);
+    expect(fs.readFileSync(target.configPath, "utf8")).toBe(CONFIG);
   });
 });

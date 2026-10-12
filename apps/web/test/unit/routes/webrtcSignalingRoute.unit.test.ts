@@ -20,6 +20,8 @@ import { route as WebrtcRoute } from "../../../server/console/routes/webrtc";
 
 import {
   STUB_CLI_PATH,
+  TEST_SIGNALING_ADDRESS,
+  TEST_SIGNALING_SERVER,
   VALID_SHARED_SECRET,
   tempDataRoot,
   validWebrtcIntent,
@@ -52,8 +54,14 @@ afterEach(async () => {
     fs.rmSync(root, { recursive: true, force: true });
 });
 
-/** Seed the global manager the routes use, pointed at the stub CLI. */
-function seedManager(): { manager: JobManager; root: string } {
+/** Seed the global manager the routes use, pointed at the stub CLI, which by
+ * default waits without reaching a handshake. */
+function seedManager(
+  childEnv: Record<string, string> = {
+    STUB_FD3_EVENTS: JSON.stringify([]),
+    STUB_DELAY_MS: "5000",
+  },
+): { manager: JobManager; root: string } {
   const root = tempDataRoot("routes-webrtc");
   roots.push(root);
   fs.mkdirSync(root, { recursive: true });
@@ -61,7 +69,7 @@ function seedManager(): { manager: JobManager; root: string } {
   const manager = new JobManager({
     dataRoot: root,
     binaryPath: STUB_CLI_PATH,
-    childEnv: { STUB_FD3_EVENTS: JSON.stringify([]), STUB_DELAY_MS: "5000" },
+    childEnv,
   });
   (globalThis as { jobManagerInstance?: JobManager }).jobManagerInstance =
     manager;
@@ -353,14 +361,40 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
 });
 
 describe("POST /api/jobs on the webrtc channel", () => {
-  test("with no coordination server authored is an empty 400 leaving nothing on disk", async () => {
+  test("with no coordination server authored or named is an empty 400 leaving nothing on disk", async () => {
     const { manager, root } = seedManager();
-    const response = await postJob(validWebrtcIntent());
+    const response = await postJob(
+      validWebrtcIntent({ signalingServer: undefined }),
+    );
     expect(response.status).toBe(400);
     expect(await response.text()).toBe("");
     expect(fs.readdirSync(root)).toEqual([]);
     expect(manager.occupiedSlotId()).toBeNull();
   });
+
+  test.each([
+    ["another server", { host: "elsewhere.test", path: "/psi/" }, true],
+    ["another port", { host: "peers.test", port: 8443, path: "/psi/" }, true],
+    ["another path", { host: "peers.test", path: "/" }, true],
+    ["no server", undefined, true],
+    ["a server while the console holds none", TEST_SIGNALING_SERVER, false],
+  ])(
+    "refuses an invitation naming %s, leaving nothing on disk",
+    async (_, signalingServer, authored) => {
+      const { manager, root } = seedManager();
+      if (authored)
+        await manager.authorSignalingServer({
+          address: TEST_SIGNALING_ADDRESS,
+        });
+      const response = await postJob(validWebrtcIntent({ signalingServer }));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        reason: "coordination-server-changed",
+      });
+      expect(fs.readdirSync(root)).toEqual([]);
+      expect(manager.occupiedSlotId()).toBeNull();
+    },
+  );
 
   test("composes the authored server with the intent's side and no relay", async () => {
     const { manager, root } = seedManager();
@@ -369,7 +403,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
     expect(response.status).toBe(201);
     const { id } = (await response.json()) as { id: string };
     const composed = parseYaml(
-      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
     ) as { connection: Record<string, unknown> };
     expect(composed.connection).toEqual({
       channel: "webrtc",
@@ -390,9 +424,15 @@ describe("POST /api/jobs on the webrtc channel", () => {
   test("states secure: false for a ws:// server", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: "ws://127.0.0.1:9000/" });
-    expect((await postJob(validWebrtcIntent())).status).toBe(201);
+    const response = await postJob(
+      validWebrtcIntent({
+        signalingServer: { host: "127.0.0.1", port: 9000, path: "/" },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const { id } = (await response.json()) as { id: string };
     const composed = parseYaml(
-      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
     ) as { connection: { server: unknown } };
     expect(composed.connection.server).toEqual({
       host: "127.0.0.1",
@@ -425,25 +465,23 @@ describe("POST /api/jobs on the webrtc channel", () => {
   });
 });
 
-describe("POST /api/jobs on the webrtc channel writes the working folder's files", () => {
-  test("writes alcove.yaml and .alcove.key owner-only beside the run's folder", async () => {
+describe("POST /api/jobs on the webrtc channel and the working folder's files", () => {
+  test("writes alcove.yaml and .alcove.key into the run's own folder until the handshake", async () => {
     const { manager, root } = seedManager();
-    await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const response = await postJob(validWebrtcIntent());
     expect(response.status).toBe(201);
     const { id } = (await response.json()) as { id: string };
-    for (const name of [JOB_FILE_NAMES.config, JOB_FILE_NAMES.key])
-      expect(fs.statSync(path.join(root, name)).mode & 0o777).toBe(0o600);
+    expect(fs.readdirSync(root)).toEqual([id]);
     expect(
-      JSON.parse(fs.readFileSync(path.join(root, JOB_FILE_NAMES.key), "utf8")),
+      JSON.parse(
+        fs.readFileSync(path.join(root, id, JOB_FILE_NAMES.key), "utf8"),
+      ),
     ).toEqual({ sharedSecret: VALID_SHARED_SECRET });
     // Written as alcove invite writes it, guidance comments included.
     expect(
-      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
+      fs.readFileSync(path.join(root, id, JOB_FILE_NAMES.config), "utf8"),
     ).toMatch(/^#/m);
-    expect(fs.readdirSync(path.join(root, id))).not.toContain(
-      JOB_FILE_NAMES.config,
-    );
     expect(manager.getJobHandoff(id)?.keyFileBesideConfiguration).toBe(true);
   });
 
@@ -451,7 +489,7 @@ describe("POST /api/jobs on the webrtc channel writes the working folder's files
     "refuses, naming the reason, when %s is already there",
     async (name) => {
       const { manager, root } = seedManager();
-      await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+      await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
       fs.writeFileSync(path.join(root, name), "another exchange's file\n");
       const response = await postJob(validWebrtcIntent());
       expect(response.status).toBe(400);
@@ -466,15 +504,42 @@ describe("POST /api/jobs on the webrtc channel writes the working folder's files
     },
   );
 
-  test("a retry of the same invitation runs over the files it wrote", async () => {
-    const { manager } = seedManager();
-    await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+  test("refuses a fresh invitation over the files an earlier exchange on this console wrote", async () => {
+    const { manager, root } = seedManager({
+      STUB_FD3_EVENTS: JSON.stringify([
+        { v: 1, type: "stage", id: "confirming protocol", label: "Confirming" },
+        { v: 1, type: "error", category: "exchange", message: "dropped" },
+      ]),
+      STUB_EXIT_CODE: "69",
+    });
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+    const first = await postJob(validWebrtcIntent());
+    const { id } = (await first.json()) as { id: string };
+    await vi.waitFor(() => expect(manager.getJob(id)?.terminal).not.toBeNull());
+    expect(fs.existsSync(path.join(root, JOB_FILE_NAMES.key))).toBe(true);
+    await manager.deleteJob(id);
+    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+
+    const fresh = await postJob(
+      validWebrtcIntent({ sharedSecret: "B".repeat(42) + "A" }),
+    );
+    expect(fresh.status).toBe(400);
+    expect(await fresh.json()).toEqual({
+      reason: "working-folder-console-exchange",
+    });
+  });
+
+  test("a retry before the handshake runs in a folder of its own again", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const first = await postJob(validWebrtcIntent());
     const { id } = (await first.json()) as { id: string };
     await manager.deleteJob(id);
     await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
     const retry = await postJob(validWebrtcIntent());
     expect(retry.status).toBe(201);
+    const { id: retryId } = (await retry.json()) as { id: string };
+    expect(fs.readdirSync(root)).toEqual([retryId]);
   });
 });
 

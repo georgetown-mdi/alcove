@@ -16,8 +16,9 @@ export interface JobHandoff {
   /** Whether the run wrote a `.alcove.key` the operator must copy; false for zero-setup. */
   usedKeyFile: boolean;
   /**
-   * Whether the run used the `.alcove.key` beside the opened configuration,
-   * which the handshake rotated in place. False for zero-setup.
+   * Whether the run used the `.alcove.key` beside the working folder's
+   * `alcove.yaml` -- an opened configuration's, or the one a webrtc run wrote
+   * there -- which the handshake rotated in place. False for zero-setup.
    */
   keyFileBesideConfiguration: boolean;
   /** Whether the SFTP credential was pasted rather than a file the operator owns. */

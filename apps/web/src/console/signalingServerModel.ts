@@ -25,6 +25,28 @@ export const HOSTED_WEB_APP_FILL_NOTE =
 export const COORDINATION_SERVER_MISSING =
   "Set the coordination server above to continue.";
 
+/** What the review step says when the coordination server changed between
+ * this page reading it and the create: no invitation was made. */
+export const SIGNALING_SERVER_CHANGED_ALERT = {
+  title: "The coordination server changed",
+  message:
+    "The coordination server set on this console changed since this page " +
+    "showed it, so no invitation was created. Check the coordination server " +
+    "above, then create the invitation again.",
+};
+
+/** Whether `a` and `b` are the same server, reached the same way and found
+ * through the same web app. */
+export function sameSignalingServer(
+  a: SignalingServerProjection,
+  b: SignalingServerProjection,
+): boolean {
+  return (
+    signalingServerAddress(a) === signalingServerAddress(b) &&
+    a.webAppOrigin === b.webAppOrigin
+  );
+}
+
 /** The coordination server as a `ws://` or `wss://` address. */
 export function signalingServerAddress(
   server: SignalingServerProjection,

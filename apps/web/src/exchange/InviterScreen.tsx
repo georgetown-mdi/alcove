@@ -108,6 +108,11 @@ import {
   exchangeFilesOptions,
 } from "@console/exchangeFilesModel";
 import {
+  SIGNALING_SERVER_CHANGED_ALERT,
+  sameSignalingServer,
+  webrtcEndpointForSignalingServer,
+} from "@console/signalingServerModel";
+import {
   acceptKitEndpointForRendezvous,
   filedropEndpointForRendezvous,
   splitRendezvousRetainProblem,
@@ -121,7 +126,6 @@ import {
   splitDirectoryRetainProblem,
 } from "@console/sftpConnectionChoice";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
-import { webrtcEndpointForSignalingServer } from "@console/signalingServerModel";
 
 import {
   configurationSaveShown,
@@ -754,6 +758,10 @@ export function InviterScreen() {
     // create. A no-op on a browser run.
     abandonRun();
     dispatch({ type: "started-over" });
+    // The coordination server may have changed since this page read it, as
+    // a run refused for naming another server reports.
+    if (transport === "webrtc")
+      void fetchSignalingServer().then(setSignalingServer);
     goTo("review");
   }
 
@@ -1222,11 +1230,25 @@ export function InviterScreen() {
     if (transport === "webrtc") {
       // The endpoint names the coordination server the console run dials and
       // no relay. The link opens in the web app the server was found through;
-      // with no web app there is no link to share (`shareLink` below).
+      // with no web app there is no link to share (`shareLink` below). The
+      // server is read again first: another tab or a console restart may
+      // have changed it since this page read it, and the invitation must
+      // name the one the run dials.
       if (signalingServer == null) return;
-      connectionEndpoint = webrtcEndpointForSignalingServer(signalingServer);
-      if (signalingServer.webAppOrigin !== undefined)
-        location = { ...location, origin: signalingServer.webAppOrigin };
+      dispatch({ type: "mint-started" });
+      const current = await fetchSignalingServer();
+      if (current === null || !sameSignalingServer(current, signalingServer)) {
+        setSignalingServer(current);
+        dispatch({
+          type: "mint-failed",
+          alert: SIGNALING_SERVER_CHANGED_ALERT,
+        });
+        dispatch({ type: "mint-finished" });
+        return;
+      }
+      connectionEndpoint = webrtcEndpointForSignalingServer(current);
+      if (current.webAppOrigin !== undefined)
+        location = { ...location, origin: current.webAppOrigin };
     } else if (transport === "sftp") {
       if (sftpConnection == null) return;
       // The create gate holds a split-directory connection whose retain mode was

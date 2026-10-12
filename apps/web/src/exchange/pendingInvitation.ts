@@ -428,6 +428,9 @@ async function pendingInvitationOf(
       ...(stored.includeOwnColumns !== undefined
         ? { includeOwnColumns: stored.includeOwnColumns }
         : {}),
+      ...(token.connectionEndpoint !== undefined
+        ? { connectionEndpoint: token.connectionEndpoint }
+        : {}),
     },
     inviterName: stored.inviterName,
     fileName: stored.fileName,

@@ -13,6 +13,7 @@ import {
   signalingServerProjectionOf,
 } from "@psi/jobClient/signalingServerClient";
 import {
+  sameSignalingServer,
   signalingServerAddress,
   signalingServerReachProblem,
   webrtcEndpointForSignalingServer,
@@ -150,5 +151,21 @@ describe("a WebRTC run's connection tuning", () => {
         WEBRTC_CONNECTION_TUNING,
       ),
     ).toBe("Default");
+  });
+});
+
+describe("sameSignalingServer", () => {
+  test("is the same server only at the same address through the same web app", () => {
+    expect(sameSignalingServer(HOSTED, { ...HOSTED, warnings: ["x"] })).toBe(
+      true,
+    );
+    for (const other of [
+      { ...HOSTED, host: "elsewhere.example.org" },
+      { ...HOSTED, port: undefined },
+      { ...HOSTED, path: "/" },
+      { ...HOSTED, secure: false },
+      { ...HOSTED, webAppOrigin: undefined },
+    ])
+      expect(sameSignalingServer(HOSTED, other)).toBe(false);
   });
 });

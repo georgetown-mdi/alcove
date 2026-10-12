@@ -1,6 +1,9 @@
+import crypto from "node:crypto";
+
 import { ZodError } from "zod";
 
 import {
+  CONFIRMING_PROTOCOL_STAGE_ID,
   MAX_ERROR_CAUSE_DEPTH,
   NestingDepthExceededError,
   NodeCountExceededError,
@@ -33,6 +36,13 @@ import {
   recordedPartnerFingerprint,
 } from "./partnerPinNotice";
 import {
+  WorkingFolderFilesRefusedError,
+  refreshWorkingFolderExchangeFiles,
+  workingFolderExchangeFilePaths,
+  workingFolderExchangeFilesPresent,
+  writeWorkingFolderExchangeFiles,
+} from "./workingFolderExchangeFiles";
+import {
   composeConfigDocument,
   composeKeyFileDocument,
   composeSftpConfigDocument,
@@ -41,7 +51,6 @@ import {
 import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
 import { readJobFolderContents } from "./jobFolder";
 import { resolveAuthoredSignalingServer } from "./signalingServer";
-import { writeWorkingFolderExchangeFiles } from "./workingFolderExchangeFiles";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -105,6 +114,7 @@ import type {
   JobInputFileReference,
   JobSigningIdentityLocation,
   JobSigningPaths,
+  JobWebrtcExchangeIntent,
 } from "@jobContract/intentSchemas";
 
 import type { TermsProposalApplyResult } from "./termsProposal";
@@ -119,6 +129,7 @@ import type {
   OpenedMountedConfiguration,
 } from "./configLoad";
 import type { AuthoredSignalingServer } from "./signalingServer";
+import type { ExchangeFilePaths } from "./workingFolderExchangeFiles";
 import type { JobFolderView } from "@jobContract/jobFolderContents";
 import type { JobHandoff } from "@jobContract/jobHandoff";
 import type { RecordUnavailableReason } from "@jobContract/recordUnavailableReason";
@@ -149,6 +160,20 @@ export class SignalingServerUnavailableError extends Error {
   constructor() {
     super("a webrtc intent arrived but no coordination server is authored");
     this.name = "SignalingServerUnavailableError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} when a webrtc intent names a
+ * coordination server other than the one the console holds, or names none
+ * while the console holds one: the invitation would send the partner to a
+ * server this run does not dial. The route maps it to a 400 naming the
+ * refusal.
+ */
+export class SignalingServerChangedError extends Error {
+  constructor() {
+    super("the webrtc intent names another coordination server");
+    this.name = "SignalingServerChangedError";
   }
 }
 
@@ -456,6 +481,25 @@ export interface JobRecord {
    * ({@link rewrittenPartnerPinNotice}).
    */
   partnerFingerprintPinnedAtCreation: boolean;
+  /**
+   * The configuration and key file the CLI was started with, or null for a
+   * zero-setup run, which has neither.
+   */
+  exchangeFiles: ExchangeFilePaths | null;
+  /**
+   * The configuration this run's exchange is kept in: the one in
+   * {@link exchangeFiles} until a webrtc run's handshake writes the working
+   * folder's `alcove.yaml`, and that one from then on.
+   */
+  configPath: string | null;
+  /**
+   * For a webrtc run, the working folder's `alcove.yaml` and `.alcove.key`:
+   * `written` once this job wrote them at its handshake, or from the start
+   * for a retry of the invitation whose job wrote them, which runs over them.
+   * `invitation` identifies that invitation ({@link invitationIdOf}). Null for
+   * every other run.
+   */
+  workingFolderPair: { written: boolean; invitation: string } | null;
   status: JobStatus;
   events: Array<BufferedEvent>;
   /** True once a terminal event has been buffered; the SSE stream closes after it. */
@@ -649,6 +693,13 @@ export class JobManager {
    * creating the next.
    */
   private authoredSignalingServer: AuthoredSignalingServer | undefined;
+  /**
+   * The invitation whose job wrote the working folder's `alcove.yaml` and
+   * `.alcove.key` ({@link invitationIdOf}). Kept after that job is deleted,
+   * so a retry of the same invitation runs over them; cleared by a webrtc
+   * create that finds neither file there.
+   */
+  private workingFolderPairInvitation: string | undefined;
   /** The advisories {@link authoredSignalingServer} was authored with. */
   private authoredSignalingWarnings: Array<string> = [];
   /** The ticket of the latest authoring or clearing request to arrive. */
@@ -739,10 +790,19 @@ export class JobManager {
       serverEntry = this.authoredSftpServer;
     }
     let signalingServer: AuthoredSignalingServer | undefined;
+    let runsOverWorkingFolderPair = false;
     if (intent.channel === "webrtc") {
-      if (this.authoredSignalingServer === undefined)
+      const authored = this.authoredSignalingServer;
+      if (authored === undefined && intent.signalingServer === undefined)
         throw new SignalingServerUnavailableError();
-      signalingServer = this.authoredSignalingServer;
+      if (
+        authored === undefined ||
+        intent.signalingServer === undefined ||
+        !namesSignalingServer(intent.signalingServer, authored)
+      )
+        throw new SignalingServerChangedError();
+      signalingServer = authored;
+      runsOverWorkingFolderPair = this.webrtcRunsOverWorkingFolderPair(intent);
     }
     if (intent.channel === "filedrop") {
       if (
@@ -827,6 +887,7 @@ export class JobManager {
         identityPath,
         mountedKeyPath,
         opened,
+        runsOverWorkingFolderPair,
       );
     } catch (error) {
       // spawnExchangeJob is the final fallible step of startJobInWorkdir, so
@@ -970,6 +1031,37 @@ export class JobManager {
     return this.slot !== null && this.slot.phase === "active"
       ? this.slot.record
       : null;
+  }
+
+  /**
+   * Whether a webrtc create runs over the `alcove.yaml` and `.alcove.key`
+   * already in the working folder: only a retry of the invitation whose job
+   * wrote them there, with both still in place. Any other create finding
+   * either name taken is refused, so the pair the handshake writes never
+   * meets a file this check did not see. Which invitation wrote them is what
+   * this manager recorded, never anything read from the files.
+   *
+   * @throws {WorkingFolderFilesRefusedError} when either name is taken and
+   *   this is not that retry.
+   */
+  private webrtcRunsOverWorkingFolderPair(
+    intent: JobWebrtcExchangeIntent,
+  ): boolean {
+    const present = workingFolderExchangeFilesPresent(this.dataRoot);
+    if (!present.config && !present.key) {
+      this.workingFolderPairInvitation = undefined;
+      return false;
+    }
+    const written = this.workingFolderPairInvitation;
+    if (
+      written !== undefined &&
+      present.config &&
+      present.key &&
+      intent.sharedSecret !== undefined &&
+      invitationIdOf(intent.sharedSecret) === written
+    )
+      return true;
+    throw new WorkingFolderFilesRefusedError("present", written !== undefined);
   }
 
   /**
@@ -1227,23 +1319,26 @@ export class JobManager {
     identityPath: string,
     mountedKeyPath: string | undefined,
     opened: OpenedMountedConfiguration | undefined,
+    runsOverWorkingFolderPair: boolean,
   ): Promise<string> {
     // Exchange composes a config document into the workdir, and a key file
     // beside it unless the run uses the one beside the opened configuration;
     // zero-setup writes NEITHER -- its connection rides argv and it has no
     // shared secret, so the workdir holds only input (when inline) and the run's
-    // own artifacts.
-    const exchangeDocuments =
-      intent.mode === "zeroSetup"
-        ? undefined
-        : await this.writeExchangeDocuments(
-            intent,
-            workdir,
-            serverEntry,
-            signalingServer,
-            identityPath,
-            mountedKeyPath,
-          );
+    // own artifacts. A webrtc retry over the working folder's pair writes
+    // none, and runs on that pair.
+    let exchangeDocuments: ExchangeFilePaths | undefined;
+    if (runsOverWorkingFolderPair)
+      exchangeDocuments = workingFolderExchangeFilePaths(this.dataRoot);
+    else if (intent.mode !== "zeroSetup")
+      exchangeDocuments = await this.writeExchangeDocuments(
+        intent,
+        workdir,
+        serverEntry,
+        signalingServer,
+        identityPath,
+        mountedKeyPath,
+      );
 
     const inputPath = await this.writeJobInput(
       intent,
@@ -1297,6 +1392,15 @@ export class JobManager {
       partnerFingerprintPinnedAtCreation:
         intent.mode !== "zeroSetup" &&
         intent.signing?.partnerFingerprint !== undefined,
+      exchangeFiles: exchangeDocuments ?? null,
+      configPath: exchangeDocuments?.configPath ?? null,
+      workingFolderPair:
+        intent.channel === "webrtc" && intent.sharedSecret !== undefined
+          ? {
+              written: runsOverWorkingFolderPair,
+              invitation: invitationIdOf(intent.sharedSecret),
+            }
+          : null,
       status: "running",
       events: [],
       terminalEmitted: false,
@@ -1385,9 +1489,7 @@ export class JobManager {
    * resources ({@link composeDocumentByChannel}); the key file holds the shared
    * secret. Given `mountedKeyPath`, no key file is written: the run reads the one
    * beside the opened configuration, and the CLI writes its rotated secret back
-   * there. A webrtc run writes both into the working folder instead
-   * ({@link writeWorkingFolderExchangeFiles}). Not reached on the zero-setup
-   * path, which writes neither.
+   * there. Not reached on the zero-setup path, which writes neither.
    */
   private async writeExchangeDocuments(
     intent: JobExchangeIntent,
@@ -1396,7 +1498,7 @@ export class JobManager {
     signalingServer: AuthoredSignalingServer | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
-  ): Promise<{ configPath: string; keyPath: string }> {
+  ): Promise<ExchangeFilePaths> {
     const configDocument = composedFromIntent(() =>
       composeDocumentByChannel(
         intent,
@@ -1407,14 +1509,6 @@ export class JobManager {
         this.signingPathsFor(identityPath),
       ),
     );
-    // A webrtc run writes both files where `alcove invite` would, so the
-    // working folder continues the exchange from the command line.
-    if (intent.channel === "webrtc")
-      return writeWorkingFolderExchangeFiles(
-        this.dataRoot,
-        configDocument,
-        composeKeyFileDocument(intent),
-      );
     const configPath = await writeJobFile(
       workdir,
       JOB_FILE_NAMES.config,
@@ -1621,6 +1715,7 @@ export class JobManager {
       this.failOnOverflow(record);
       return;
     }
+    if (!this.followWorkingFolderPair(record, event)) return;
     const entry: BufferedEvent = {
       id: record.events.length + 1,
       event: relayedForConsole(record, event),
@@ -1642,6 +1737,106 @@ export class JobManager {
     }
     if (event.type === "result" || event.type === "error")
       this.markTerminalEmitted(record, event.type);
+  }
+
+  /**
+   * Keep a webrtc run's working-folder pair in step with its events. The
+   * handshake, which the CLI reports by starting its first protocol stage
+   * once the rotated secret is saved, writes the pair, as `alcove invite`
+   * does at that point; after it, the CLI goes on writing its own copy, so a
+   * warning or a terminal event brings the working folder's copy up to date
+   * before the event is relayed. False where the handshake write failed the
+   * run, whose own terminal then stands in for the event.
+   */
+  private followWorkingFolderPair(
+    record: JobRecord,
+    event: RelayEvent,
+  ): boolean {
+    const pair = record.workingFolderPair;
+    if (pair === null) return true;
+    if (!pair.written) {
+      if (event.type === "stage" && event.id === CONFIRMING_PROTOCOL_STAGE_ID)
+        return this.writeWorkingFolderPair(record, pair);
+      return true;
+    }
+    if (
+      event.type === "warning" ||
+      event.type === "result" ||
+      event.type === "error"
+    )
+      this.refreshWorkingFolderPair(record);
+    return true;
+  }
+
+  /**
+   * Write the run's pair into the working folder at its handshake, never over
+   * a file there: one that appeared since the create checked fails the run.
+   * Whether the pair was written.
+   */
+  private writeWorkingFolderPair(
+    record: JobRecord,
+    pair: { written: boolean; invitation: string },
+  ): boolean {
+    if (record.exchangeFiles === null)
+      throw new Error(
+        "a webrtc run reached its handshake with no exchange files",
+      );
+    try {
+      record.configPath = writeWorkingFolderExchangeFiles(
+        this.dataRoot,
+        record.exchangeFiles,
+      ).configPath;
+    } catch (error) {
+      record.workingFolderPair = null;
+      this.failRun(
+        record,
+        error instanceof WorkingFolderFilesRefusedError &&
+          error.fault === "present"
+          ? WORKING_FOLDER_FILE_APPEARED_FAILURE
+          : WORKING_FOLDER_WRITE_FAILURE,
+      );
+      return false;
+    }
+    pair.written = true;
+    this.workingFolderPairInvitation = pair.invitation;
+    return true;
+  }
+
+  /**
+   * Bring the working folder's pair up to date with the files the CLI writes,
+   * where the run wrote that pair as a copy of them. A copy the folder refuses
+   * is logged: the run and the CLI's own files are unaffected.
+   */
+  private refreshWorkingFolderPair(record: JobRecord): void {
+    if (
+      record.workingFolderPair?.written !== true ||
+      record.exchangeFiles === null ||
+      record.configPath === record.exchangeFiles.configPath
+    )
+      return;
+    try {
+      refreshWorkingFolderExchangeFiles(
+        record.exchangeFiles,
+        workingFolderExchangeFilePaths(this.dataRoot),
+      );
+    } catch (error) {
+      log.warn(
+        "Could not update alcove.yaml and .alcove.key in the working folder:",
+        sanitizeErrorForDisplay(error),
+      );
+    }
+  }
+
+  /** Fail a running job with the console's own `config` failure and stop its
+   * child. */
+  private failRun(record: JobRecord, message: string): void {
+    this.synthesizeTerminal(record, {
+      v: 1,
+      type: "error",
+      category: "config",
+      message,
+    });
+    this.cancelJob(record);
   }
 
   /**
@@ -1781,6 +1976,7 @@ export class JobManager {
     diagnostics: CliRunDiagnostics,
   ): void {
     record.terminal = state;
+    this.refreshWorkingFolderPair(record);
     if (!record.runStampResolved) {
       record.runStamp = latestRunStampIn(record.workdir);
       record.runStampResolved = true;
@@ -1972,6 +2168,7 @@ export class JobManager {
       this.discardMaterializedCredential();
       this.authoredSftpServer = undefined;
       this.authoredCredentialWarnings = [];
+      this.refreshWorkingFolderPair(record);
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);
@@ -2214,6 +2411,43 @@ function openedConfigurationWarning(
   );
 }
 
+/**
+ * What identifies an invitation to {@link JobManager}: a digest of its
+ * original shared secret, so the manager keeps no secret past the run that
+ * used it.
+ */
+function invitationIdOf(sharedSecret: string): string {
+  return crypto.createHash("sha256").update(sharedSecret).digest("hex");
+}
+
+/** Whether a create intent's coordination server is `authored`: the host,
+ * port and path the invitation names. */
+function namesSignalingServer(
+  named: NonNullable<JobWebrtcExchangeIntent["signalingServer"]>,
+  authored: AuthoredSignalingServer,
+): boolean {
+  return (
+    named.host === authored.host &&
+    named.port === authored.port &&
+    named.path === authored.path
+  );
+}
+
+/** Why a webrtc run stopped at its handshake: a file appeared in the working
+ * folder after the create found it clear. */
+export const WORKING_FOLDER_FILE_APPEARED_FAILURE =
+  "An alcove.yaml or .alcove.key appeared in your working folder while this " +
+  "exchange waited for your partner, so the console stopped the exchange " +
+  "rather than replace it. Move those files out of the folder, then start " +
+  "over with a fresh invitation.";
+
+/** Why a webrtc run stopped at its handshake: the working folder refused the
+ * write. */
+export const WORKING_FOLDER_WRITE_FAILURE =
+  "The console could not save alcove.yaml and .alcove.key in your working " +
+  "folder, so it stopped the exchange. Check that the folder is mounted " +
+  "writable, then start over with a fresh invitation.";
+
 function workdirArtifactPath(workdir: string, name: string): string {
   const artifactPath = resolveWorkdirFile(workdir, name);
   if (artifactPath === null)
@@ -2297,9 +2531,10 @@ function rewrittenTermsProposalRefusal(
  *
  * The CLI's wording names the configuration file it wrote the pin into, a path
  * inside this container: every other console surface holds paths back, and a
- * relayed warning is no exception. The value is read out of that same
- * configuration rather than out of the sentence
- * ({@link recordedPartnerFingerprint}).
+ * relayed warning is no exception. The value is read out of the configuration
+ * the run is kept in ({@link JobRecord.configPath}) rather than out of the
+ * sentence ({@link recordedPartnerFingerprint}); for a webrtc run that is the
+ * working folder's `alcove.yaml`, brought up to date before this is read.
  *
  * A run whose composed configuration already named a partner fingerprint had no
  * first contact to report, so its warning relays in the CLI's own words rather
@@ -2324,9 +2559,10 @@ function rewrittenPartnerPinNotice(
   return {
     ...event,
     message: partnerCertificatePinnedNotice(
-      recordedPartnerFingerprint(
-        workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config),
-      ),
+      record.configPath === null
+        ? undefined
+        : recordedPartnerFingerprint(record.configPath),
+      record.workingFolderPair?.written === true,
     ),
   };
 }
@@ -2338,9 +2574,10 @@ function rewrittenPartnerPinNotice(
  * mount of it, neither of which a console operator can act on.
  *
  * The failure is identified from what this server knows rather than from the
- * child's wording: the run signs receipts, its composed configuration holds no
- * pin, so no first contact has been recorded, and the message states the path
- * of that configuration, which is the whole of what must not cross. Both the
+ * child's wording: the run signs receipts, its configuration holds no pin, so
+ * no first contact has been recorded, and the message states the path the CLI
+ * was given for that configuration, which is the whole of what must not cross.
+ * Both the
  * flat field and the derived chain are read, since the path may sit in either,
  * and both are replaced together so the seat shows the console's sentence
  * whichever it reads ({@link ERROR_MESSAGE_CHAIN_FIELD}).
@@ -2358,12 +2595,17 @@ function rewrittenPartnerPinFailure(
   record: JobRecord,
   event: RelayEvent,
 ): RelayEvent {
-  if (event.category !== "config" || !record.receiptRequested) return event;
-  const configPath = workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config);
-  const searchedPath = configPathAsRelayed(configPath);
+  if (
+    event.category !== "config" ||
+    !record.receiptRequested ||
+    record.exchangeFiles === null ||
+    record.configPath === null
+  )
+    return event;
+  const searchedPath = configPathAsRelayed(record.exchangeFiles.configPath);
   if (
     !errorDisplayStrings(event).some((text) => text.includes(searchedPath)) ||
-    recordedPartnerFingerprint(configPath) !== undefined
+    recordedPartnerFingerprint(record.configPath) !== undefined
   )
     return event;
   return {

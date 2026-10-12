@@ -101,8 +101,8 @@ interface StubOptions {
   profileErrorCode?: string;
   sftp?: unknown;
   rendezvous?: unknown;
-  /** The coordination server `GET /api/jobs/webrtc` reports, and what a `PUT`
-   * answers; unset, none is set and a `PUT` answers `webrtcSet`. */
+  /** The coordination server `GET /api/jobs/webrtc` reports until a `PUT`
+   * answers `webrtcSet`, which it reports from then on; unset, none is set. */
   webrtc?: unknown;
   webrtcSet?: unknown;
   coverageStatus?: number;
@@ -151,6 +151,7 @@ function stubJobApi(options: StubOptions = {}): {
   setListing: (listing: unknown) => void;
   setProfile: (profile: unknown) => void;
   setJobStatus: (status: string) => void;
+  setWebrtc: (server: unknown) => void;
   emitEvent: (event: object) => void;
   closeEvents: () => void;
   resolveProbe: () => void;
@@ -179,6 +180,7 @@ function stubJobApi(options: StubOptions = {}): {
     files: [CLIENTS_FILE],
   };
   let profile: unknown = options.profile ?? CLIENTS_PROFILE;
+  let webrtc: unknown = options.webrtc ?? { configured: false };
   // The run status the job's GET status endpoint reports (the discard poll reads
   // it); a test flips it to a terminal value to let a discard complete promptly.
   let jobStatus = "running";
@@ -245,12 +247,11 @@ function stubJobApi(options: StubOptions = {}): {
         return Promise.resolve(
           jsonResponse(options.rendezvous ?? { configured: false }),
         );
-      if (url === "/api/jobs/webrtc")
-        return Promise.resolve(
-          (init?.method ?? "GET") === "PUT"
-            ? jsonResponse(options.webrtcSet ?? { configured: false })
-            : jsonResponse(options.webrtc ?? { configured: false }),
-        );
+      if (url === "/api/jobs/webrtc") {
+        if ((init?.method ?? "GET") === "PUT")
+          webrtc = options.webrtcSet ?? { configured: false };
+        return Promise.resolve(jsonResponse(webrtc));
+      }
       if (url === "/api/jobs")
         return Promise.resolve(
           options.conflict !== undefined
@@ -352,6 +353,9 @@ function stubJobApi(options: StubOptions = {}): {
     },
     setJobStatus: (next) => {
       jobStatus = next;
+    },
+    setWebrtc: (next) => {
+      webrtc = next;
     },
     emitEvent: (event) =>
       sse?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)),
@@ -1023,6 +1027,45 @@ describe("console inviter over WebRTC", () => {
     expect(intent.channel).toBe("webrtc");
     expect(intent.side).toBe("inviter");
     expect(intent.sweepExchangeFiles).toBeUndefined();
+    expect(intent.signalingServer).toStrictEqual({
+      host: "signal.example.org",
+      port: 8443,
+      path: "/api/",
+    });
+  });
+
+  test("creates no invitation when the coordination server changed since the page read it", async () => {
+    const shown = {
+      configured: true,
+      host: "signal.example.org",
+      path: "/api/",
+      secure: true,
+      warnings: [],
+    };
+    const api = stubJobApi({ webrtc: shown });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await expect
+      .element(page.getByText("wss://signal.example.org/api/"))
+      .toBeInTheDocument();
+
+    // Another tab sets a different server.
+    api.setWebrtc({ ...shown, host: "other.example.org" });
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByText("The coordination server changed"))
+      .toBeInTheDocument();
+    // The review step shows the server the console now holds, and no run
+    // started.
+    await expect
+      .element(page.getByText("wss://other.example.org/api/"))
+      .toBeInTheDocument();
+    expect(
+      api.captured.some(
+        (request) => request.url === "/api/jobs" && request.method === "POST",
+      ),
+    ).toBe(false);
   });
 });
 

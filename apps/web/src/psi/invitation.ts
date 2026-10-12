@@ -138,6 +138,8 @@ export interface GeneratedInvitation {
    * reads it from here. Never in the token.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /** Where the token sends the partner: the endpoint inside {@link encoded}. */
+  connectionEndpoint?: ConnectionEndpoint;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -483,12 +485,16 @@ export async function generateInvitation(params: {
     connectionEndpoint,
     retainsFiles,
   });
+  const resolvedEndpoint = resolveConnectionEndpoint(
+    connectionEndpoint,
+    location,
+  );
   const token: InvitationToken = {
     version: "1",
     linkageTerms,
     sharedSecret,
     expires,
-    connectionEndpoint: resolveConnectionEndpoint(connectionEndpoint, location),
+    connectionEndpoint: resolvedEndpoint,
     ...(declaresRetainedFiles ? { inviterRetainsFiles: true } : {}),
   };
 
@@ -505,5 +511,6 @@ export async function generateInvitation(params: {
     standardization,
     // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
+    connectionEndpoint: resolvedEndpoint,
   };
 }

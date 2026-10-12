@@ -48,13 +48,21 @@ export const SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL =
   "sftp-credential-console-file";
 
 /** The token for a webrtc run refused because the working folder already
- * holds an `alcove.yaml` or `.alcove.key`, which the run would write. */
+ * holds an `alcove.yaml` or `.alcove.key`, which the run would write at its
+ * handshake. */
 export const WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL =
   "working-folder-configuration-present";
 
-/** The token for a webrtc run refused because the console could not write
- * `alcove.yaml` or `.alcove.key` into the working folder. */
-export const WORKING_FOLDER_UNWRITABLE_REFUSAL = "working-folder-unwritable";
+/** The token for a webrtc run refused because the working folder holds the
+ * `alcove.yaml` and `.alcove.key` an earlier exchange on this console wrote,
+ * and the run is not a retry of that exchange's invitation. */
+export const WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL =
+  "working-folder-console-exchange";
+
+/** The token for a webrtc run refused because its invitation names a
+ * coordination server other than the one the console holds. */
+export const COORDINATION_SERVER_CHANGED_REFUSAL =
+  "coordination-server-changed";
 
 /** The refusal tokens a create rejection can name. */
 export type JobCreateRefusalReason =
@@ -66,7 +74,8 @@ export type JobCreateRefusalReason =
   | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
   | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
   | typeof WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
-  | typeof WORKING_FOLDER_UNWRITABLE_REFUSAL;
+  | typeof WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+  | typeof COORDINATION_SERVER_CHANGED_REFUSAL;
 
 /** Whether a value read off a create rejection's body is a refusal token this
  * bundle knows. An unknown token is treated as no token at all, so an older
@@ -83,7 +92,8 @@ export function isJobCreateRefusalReason(
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
     value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL ||
     value === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
-    value === WORKING_FOLDER_UNWRITABLE_REFUSAL
+    value === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL ||
+    value === COORDINATION_SERVER_CHANGED_REFUSAL
   );
 }
 
