@@ -77,7 +77,7 @@ VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps
 ## Testing
 
 ```sh
-npm run test   # unit tests of every workspace; run before pushing a core change, since the apps mock core
+npm run test   # unit tests of core, cli-contract, cli and web (not test:scripts); run before pushing a core change, since the apps mock core
 npm test -w packages/core
 npm test -w packages/cli-contract
 npm run test:unit -w apps/cli
