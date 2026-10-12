@@ -38,6 +38,8 @@ import {
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
   isZeroSetupSftpRefusalReason,
 } from "@jobContract/jobCreateRefusal";
 import {
@@ -378,6 +380,36 @@ function failureContentFor(
         "and none of them is a server credential. Start over, choose Edit " +
         "connection on the SFTP connection, and choose the file that holds " +
         "your SFTP password or private key.",
+    };
+  // A WebRTC run refused over the alcove.yaml and .alcove.key it writes into
+  // the working folder, as alcove invite does. Classified `config`: a retry
+  // refuses identically until the folder is changed.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "Your working folder already holds an exchange",
+      message:
+        "The console did not start this exchange. A WebRTC exchange writes " +
+        "alcove.yaml and .alcove.key into your working folder, as alcove " +
+        "invite does, and an exchange already set up there has one or both. " +
+        "Move them to a folder of their own if you mean to keep that " +
+        "exchange, then start over with a fresh invitation.",
+    };
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === WORKING_FOLDER_UNWRITABLE_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "The console could not write to your working folder",
+      message:
+        "The console did not start this exchange. A WebRTC exchange writes " +
+        "alcove.yaml and .alcove.key into your working folder, and the " +
+        "console could not write them there. Check that the folder is " +
+        "mounted writable, then start over with a fresh invitation.",
     };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
@@ -755,8 +787,8 @@ function failureContentFor(
 
 /**
  * Assemble the {@link ServerJobExchangeDriverConfig} for a console server-job
- * invite -- a file-drop or an SFTP exchange the console runs on this party's
- * behalf. `transport` picks the intent arm; the SFTP arm has no connection
+ * invite -- a file-drop, SFTP or WebRTC exchange the console runs on this
+ * party's behalf. `transport` picks the intent arm; the SFTP arm has no connection
  * field because the console reads the operator-authored connection off
  * `GET /api/jobs/sftp`, so no host, credential, or fingerprint transits the
  * browser. Everything below the discriminant is channel-independent.
@@ -1145,12 +1177,15 @@ export function useInviterExchange({
         generateOutput,
       });
 
-    // The transport a server-job run rides: an sftp channel has no
-    // connection field (the console holds the authored server), any other
-    // server-job channel is filedrop. Reached only for a server-job selection,
-    // which the selector never produces for `browser`.
-    const serverJobTransport = (): ServerJobExchangeTransport =>
-      channel === "sftp" ? { channel: "sftp" } : { channel: "filedrop" };
+    // The transport a server-job run rides. No arm has a connection field:
+    // the console holds the authored SFTP connection and coordination
+    // server. Reached only for a server-job selection, which the selector
+    // never produces for `browser`.
+    const serverJobTransport = (): ServerJobExchangeTransport => {
+      if (channel === "browser")
+        throw new Error("a browser exchange reached the server-job driver");
+      return { channel };
+    };
 
     // The console conducts the exchange: the driver POSTs the sealed
     // terms, this party's authored metadata/standardization (when

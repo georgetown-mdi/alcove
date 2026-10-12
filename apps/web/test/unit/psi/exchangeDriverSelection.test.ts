@@ -10,7 +10,12 @@ import type { ExchangeDriverSelection } from "@psi/exchangeDriverSelection";
 import type { Transport } from "@psi/transportChooser";
 
 const PROFILES: ReadonlyArray<DeploymentProfile> = ["hosted", "console"];
-const CHANNELS: ReadonlyArray<Transport> = ["browser", "sftp", "filedrop"];
+const CHANNELS: ReadonlyArray<Transport> = [
+  "browser",
+  "sftp",
+  "filedrop",
+  "webrtc",
+];
 const SFTP_CONFIGURED: ReadonlyArray<boolean> = [false, true];
 
 // Every (channel x profile x sftp-configured) cell, asserting the fixed
@@ -21,6 +26,8 @@ const SFTP_CONFIGURED: ReadonlyArray<boolean> = [false, true];
 //   sftp     + console + server configured   -> server-job
 //   sftp     + console + none configured     -> server-job (runs here once authored)
 //   sftp     + hosted  (any sftp)            -> save-file
+//   webrtc   + console (any sftp)            -> server-job
+//   webrtc   + hosted  (never offered)       -> browser
 const EXPECTED: Record<
   Transport,
   Record<
@@ -38,6 +45,10 @@ const EXPECTED: Record<
   },
   sftp: {
     hosted: { false: "save-file", true: "save-file" },
+    console: { false: "server-job", true: "server-job" },
+  },
+  webrtc: {
+    hosted: { false: "browser", true: "browser" },
     console: { false: "server-job", true: "server-job" },
   },
 };
@@ -77,7 +88,7 @@ describe("selectExchangeDriver", () => {
   });
 
   test("the sftp-configured flag never changes a non-sftp routing", () => {
-    for (const channel of ["browser", "filedrop"] as const)
+    for (const channel of ["browser", "filedrop", "webrtc"] as const)
       for (const profile of PROFILES)
         expect(selectExchangeDriver(channel, profile, true).kind).toBe(
           selectExchangeDriver(channel, profile, false).kind,

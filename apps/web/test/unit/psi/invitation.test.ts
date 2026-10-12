@@ -34,6 +34,7 @@ import {
   webrtcEndpointFromAddress,
 } from "../../../src/psi/invitation.js";
 import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js";
+import { webrtcEndpointForSignalingServer } from "../../../src/console/signalingServerModel.js";
 import { writeOwnRelaySetting } from "../../../src/psi/transport/ownRelaySetting.js";
 
 import type { LinkageTerms, Metadata } from "@alcove/core";
@@ -154,8 +155,49 @@ describe("generateInvitation", () => {
 
     test("tells the operator which transports to use instead", () => {
       expect(() => invitationSignalingAddress(consoleLocation)).toThrow(
-        "Run the exchange over SFTP or a shared folder, or create the invitation in the Alcove web app.",
+        "Choose WebRTC, SFTP or a shared folder, which the console runs itself.",
       );
+    });
+
+    test("mints the console's webrtc invitation for the server it names, with no relay", async () => {
+      const values = new Map<string, string>();
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => void values.set(key, value),
+        removeItem: (key: string) => void values.delete(key),
+      });
+      writeOwnRelaySetting({
+        turn: ["turns:relay.example.org:443?transport=tcp"],
+        stun: [],
+      });
+      try {
+        const connectionEndpoint = webrtcEndpointForSignalingServer({
+          host: "signal.example.org",
+          port: 8443,
+          path: "/api/",
+          secure: true,
+          webAppOrigin: "https://app.example.org",
+          warnings: [],
+        });
+        const { encoded, deepLink } = await generateInvitation({
+          inviterName: "County Health Dept",
+          file: csvStream(),
+          location: { ...consoleLocation, origin: "https://app.example.org" },
+          connectionEndpoint,
+        });
+        const token = await decodeInvitation(encoded);
+        expect(token.connectionEndpoint).toStrictEqual({
+          channel: "webrtc",
+          host: "signal.example.org",
+          port: 8443,
+          path: "/api/",
+        });
+        expect(deepLink.startsWith("https://app.example.org/accept#")).toBe(
+          true,
+        );
+      } finally {
+        vi.unstubAllGlobals();
+      }
     });
 
     test.each([

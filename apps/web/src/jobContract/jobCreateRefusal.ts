@@ -47,6 +47,15 @@ export const MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL =
 export const SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL =
   "sftp-credential-console-file";
 
+/** The token for a webrtc run refused because the working folder already
+ * holds an `alcove.yaml` or `.alcove.key`, which the run would write. */
+export const WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL =
+  "working-folder-configuration-present";
+
+/** The token for a webrtc run refused because the console could not write
+ * `alcove.yaml` or `.alcove.key` into the working folder. */
+export const WORKING_FOLDER_UNWRITABLE_REFUSAL = "working-folder-unwritable";
+
 /** The refusal tokens a create rejection can name. */
 export type JobCreateRefusalReason =
   | typeof SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL
@@ -55,7 +64,9 @@ export type JobCreateRefusalReason =
   | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
   | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
   | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
-  | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL;
+  | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
+  | typeof WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
+  | typeof WORKING_FOLDER_UNWRITABLE_REFUSAL;
 
 /** Whether a value read off a create rejection's body is a refusal token this
  * bundle knows. An unknown token is treated as no token at all, so an older
@@ -70,7 +81,9 @@ export function isJobCreateRefusalReason(
     value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
-    value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
+    value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL ||
+    value === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
+    value === WORKING_FOLDER_UNWRITABLE_REFUSAL
   );
 }
 

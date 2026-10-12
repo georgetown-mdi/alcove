@@ -41,6 +41,7 @@ import {
 import { latestRunStampIn, runArtifactPaths } from "./runArtifacts";
 import { readJobFolderContents } from "./jobFolder";
 import { resolveAuthoredSignalingServer } from "./signalingServer";
+import { writeWorkingFolderExchangeFiles } from "./workingFolderExchangeFiles";
 
 import { JobInputNotFoundError, jobInputFilePath } from "./workInputs";
 import {
@@ -641,11 +642,11 @@ export class JobManager {
    */
   private authoredMaterializedCredentialPath: string | undefined;
   /**
-   * The coordination server a webrtc job dials, held in memory for the single
-   * exchange as {@link authoredSftpServer} is. Set by
-   * {@link authorSignalingServer}, cleared by
-   * {@link clearAuthoredSignalingServer} and when the active exchange is
-   * deleted.
+   * The coordination server a webrtc job dials, held in memory. Set by
+   * {@link authorSignalingServer} and cleared by
+   * {@link clearAuthoredSignalingServer}; deleting an exchange keeps it, since
+   * it holds no credential and a retry deletes the failed exchange before
+   * creating the next.
    */
   private authoredSignalingServer: AuthoredSignalingServer | undefined;
   /** The advisories {@link authoredSignalingServer} was authored with. */
@@ -1273,7 +1274,8 @@ export class JobManager {
         credentialPasted: this.authoredMaterializedCredentialPath !== undefined,
         filedropSplit: this.jobRendezvousOutboundDir !== undefined,
         ...(signalingServer !== undefined ? { signalingServer } : {}),
-        keyFileBesideConfiguration: mountedKeyPath !== undefined,
+        keyFileBesideConfiguration:
+          mountedKeyPath !== undefined || intent.channel === "webrtc",
         ...(mountedDocument !== undefined
           ? {
               mountedDocument,
@@ -1383,7 +1385,9 @@ export class JobManager {
    * resources ({@link composeDocumentByChannel}); the key file holds the shared
    * secret. Given `mountedKeyPath`, no key file is written: the run reads the one
    * beside the opened configuration, and the CLI writes its rotated secret back
-   * there. Not reached on the zero-setup path, which writes neither.
+   * there. A webrtc run writes both into the working folder instead
+   * ({@link writeWorkingFolderExchangeFiles}). Not reached on the zero-setup
+   * path, which writes neither.
    */
   private async writeExchangeDocuments(
     intent: JobExchangeIntent,
@@ -1403,6 +1407,14 @@ export class JobManager {
         this.signingPathsFor(identityPath),
       ),
     );
+    // A webrtc run writes both files where `alcove invite` would, so the
+    // working folder continues the exchange from the command line.
+    if (intent.channel === "webrtc")
+      return writeWorkingFolderExchangeFiles(
+        this.dataRoot,
+        configDocument,
+        composeKeyFileDocument(intent),
+      );
     const configPath = await writeJobFile(
       workdir,
       JOB_FILE_NAMES.config,
@@ -1954,11 +1966,12 @@ export class JobManager {
       slot.deleted = true;
       // The authored connection is scoped to this single exchange; deleting the
       // exchange forgets it and its warnings (and deletes any materialized pasted
-      // credential), so the next exchange starts from a clean slate.
+      // credential), so the next exchange starts from a clean slate. The
+      // coordination server holds no credential and is kept, so a webrtc
+      // retry, which deletes the failed exchange first, dials it again.
       this.discardMaterializedCredential();
       this.authoredSftpServer = undefined;
       this.authoredCredentialWarnings = [];
-      this.clearAuthoredSignalingServer();
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);

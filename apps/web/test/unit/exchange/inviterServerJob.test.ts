@@ -4,6 +4,8 @@ import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { inviterServerJobConfig } from "@exchange/useInviterExchange";
 import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 
+import { VALID_SHARED_SECRET } from "../../utils/jobFixtures";
+
 import type { LinkageTerms, Metadata, Standardization } from "@alcove/core";
 
 // The terms embedded in the minted token: this party is the identity, it SENDS
@@ -137,6 +139,26 @@ describe("inviterServerJobConfig", () => {
     const intent = intentFor(config);
     expect("sharedSecret" in intent).toBe(false);
     expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
+  });
+
+  test("builds the webrtc arm, which names no server and runs no opened file", () => {
+    const config = inviterServerJobConfig({
+      minted: { ...minted, sharedSecret: VALID_SHARED_SECRET },
+      inputSource: { kind: "inline", csv: inputCsv },
+      transport: { channel: "webrtc" },
+      options: { peerTimeoutMs: 60_000 },
+    });
+    const intent = intentFor(config);
+    expect(intent.channel).toBe("webrtc");
+    expect(intent.side).toBe("inviter");
+    expect(intent.sharedSecret).toBe(VALID_SHARED_SECRET);
+    expect("server" in intent).toBe(false);
+    expect(
+      jobExchangeIntentSchema.safeParse(intent).error?.issues,
+    ).toBeUndefined();
+    expect(() =>
+      intentFor({ ...config, mountedConfigurationOpened: true }),
+    ).toThrow();
   });
 
   test("forwards the operator's conversion of the opened configuration", () => {

@@ -1902,9 +1902,10 @@ describe("console lobby copy and sample data", () => {
     app.render(createElement(Lobby));
     await expect
       .element(
-        page.getByText("This console runs an exchange over an SFTP server", {
-          exact: false,
-        }),
+        page.getByText(
+          "This console runs the exchange itself, over an SFTP server",
+          { exact: false },
+        ),
       )
       .toBeInTheDocument();
     expect(

@@ -369,7 +369,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
     expect(response.status).toBe(201);
     const { id } = (await response.json()) as { id: string };
     const composed = parseYaml(
-      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
     ) as { connection: Record<string, unknown> };
     expect(composed.connection).toEqual({
       channel: "webrtc",
@@ -390,10 +390,9 @@ describe("POST /api/jobs on the webrtc channel", () => {
   test("states secure: false for a ws:// server", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: "ws://127.0.0.1:9000/" });
-    const response = await postJob(validWebrtcIntent());
-    const { id } = (await response.json()) as { id: string };
+    expect((await postJob(validWebrtcIntent())).status).toBe(201);
     const composed = parseYaml(
-      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
     ) as { connection: { server: unknown } };
     expect(composed.connection.server).toEqual({
       host: "127.0.0.1",
@@ -426,8 +425,61 @@ describe("POST /api/jobs on the webrtc channel", () => {
   });
 });
 
+describe("POST /api/jobs on the webrtc channel writes the working folder's files", () => {
+  test("writes alcove.yaml and .alcove.key owner-only beside the run's folder", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+    const response = await postJob(validWebrtcIntent());
+    expect(response.status).toBe(201);
+    const { id } = (await response.json()) as { id: string };
+    for (const name of [JOB_FILE_NAMES.config, JOB_FILE_NAMES.key])
+      expect(fs.statSync(path.join(root, name)).mode & 0o777).toBe(0o600);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(root, JOB_FILE_NAMES.key), "utf8")),
+    ).toEqual({ sharedSecret: VALID_SHARED_SECRET });
+    // Written as alcove invite writes it, guidance comments included.
+    expect(
+      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
+    ).toMatch(/^#/m);
+    expect(fs.readdirSync(path.join(root, id))).not.toContain(
+      JOB_FILE_NAMES.config,
+    );
+    expect(manager.getJobHandoff(id)?.keyFileBesideConfiguration).toBe(true);
+  });
+
+  test.each([JOB_FILE_NAMES.config, JOB_FILE_NAMES.key])(
+    "refuses, naming the reason, when %s is already there",
+    async (name) => {
+      const { manager, root } = seedManager();
+      await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+      fs.writeFileSync(path.join(root, name), "another exchange's file\n");
+      const response = await postJob(validWebrtcIntent());
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        reason: "working-folder-configuration-present",
+      });
+      expect(fs.readdirSync(root)).toEqual([name]);
+      expect(fs.readFileSync(path.join(root, name), "utf8")).toBe(
+        "another exchange's file\n",
+      );
+      expect(manager.occupiedSlotId()).toBeNull();
+    },
+  );
+
+  test("a retry of the same invitation runs over the files it wrote", async () => {
+    const { manager } = seedManager();
+    await manager.authorSignalingServer({ address: "wss://peers.test/psi" });
+    const first = await postJob(validWebrtcIntent());
+    const { id } = (await first.json()) as { id: string };
+    await manager.deleteJob(id);
+    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+    const retry = await postJob(validWebrtcIntent());
+    expect(retry.status).toBe(201);
+  });
+});
+
 describe("DELETE /api/jobs/:jobId on the webrtc channel", () => {
-  test("forgets the authored coordination server", async () => {
+  test("keeps the authored coordination server for the next create", async () => {
     seedManager();
     expect((await putWebrtc({ address: "wss://peers.test/psi" })).status).toBe(
       200,
@@ -447,6 +499,9 @@ describe("DELETE /api/jobs/:jobId on the webrtc channel", () => {
       params: { jobId: id },
     })) as Response;
     expect(deleted.status).toBe(204);
-    expect(await getWebrtc()).toEqual({ configured: false });
+    expect(await getWebrtc()).toMatchObject({
+      configured: true,
+      host: "peers.test",
+    });
   });
 });

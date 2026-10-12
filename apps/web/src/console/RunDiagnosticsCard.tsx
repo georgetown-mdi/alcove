@@ -43,20 +43,28 @@ function draftSummary(draft: RunDiagnosticsDraft): string {
  * exchange's own, and whether a retain-mode transcript may be deleted, are
  * decided there. The escalation past that guard is named here in fixed copy and
  * not offered; nothing a run says decides what this card tells the operator.
+ *
+ * A run with no shared folder (`sweepOffered` false) has nothing to clear, so
+ * the card offers the log alone and reads the draft with the sweep off.
  */
 export function RunDiagnosticsCard({
-  draft,
+  draft: heldDraft,
+  sweepOffered = true,
   onChange,
 }: {
   draft: RunDiagnosticsDraft;
+  sweepOffered?: boolean;
   onChange: (draft: RunDiagnosticsDraft) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const draft = sweepOffered
+    ? heldDraft
+    : { ...heldDraft, sweepExchangeFiles: false };
   const problems = runDiagnosticsProblems(draft);
   const set = <TField extends keyof RunDiagnosticsDraft>(
     key: TField,
     value: RunDiagnosticsDraft[TField],
-  ): void => onChange(runDiagnosticsWithControl(draft, key, value));
+  ): void => onChange(runDiagnosticsWithControl(heldDraft, key, value));
 
   return (
     <DisclosureSection
@@ -68,9 +76,12 @@ export function RunDiagnosticsCard({
     >
       <Stack gap="md" mt="sm">
         <Text size="sm" c="dimmed">
-          Use these after a run has failed, to capture what the exchange did or
-          to clear out what a crashed run left in the shared folder. Both apply
-          to this run only.
+          {sweepOffered
+            ? "Use these after a run has failed, to capture what the exchange " +
+              "did or to clear out what a crashed run left in the shared " +
+              "folder. Both apply to this run only."
+            : "Use this after a run has failed, to capture what the exchange " +
+              "did. It applies to this run only."}
         </Text>
 
         <Checkbox
@@ -96,18 +107,20 @@ export function RunDiagnosticsCard({
           </Alert>
         )}
 
-        <Checkbox
-          checked={draft.sweepExchangeFiles}
-          onChange={(event) =>
-            set("sweepExchangeFiles", event.currentTarget.checked)
-          }
-          label={SWEEP_CONTROL_LABEL}
-          description={
-            "Use this when a previous run crashed or stopped mismatched and " +
-            "left files in the shared folder that stop the next run from " +
-            "starting."
-          }
-        />
+        {sweepOffered && (
+          <Checkbox
+            checked={draft.sweepExchangeFiles}
+            onChange={(event) =>
+              set("sweepExchangeFiles", event.currentTarget.checked)
+            }
+            label={SWEEP_CONTROL_LABEL}
+            description={
+              "Use this when a previous run crashed or stopped mismatched and " +
+              "left files in the shared folder that stop the next run from " +
+              "starting."
+            }
+          />
+        )}
 
         {draft.sweepExchangeFiles && (
           <>

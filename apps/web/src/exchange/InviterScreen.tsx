@@ -39,6 +39,7 @@ import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
 import { fetchSftpConnection } from "@psi/jobClient/serverJobExchangeDriver";
+import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { invitationLocation } from "@psi/invitationLocation";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
@@ -107,20 +108,20 @@ import {
   exchangeFilesOptions,
 } from "@console/exchangeFilesModel";
 import {
-  FILEDROP_CONNECTION_TUNING,
-  SFTP_CONNECTION_TUNING,
-  withConnectionTuning,
-} from "@console/connectionTuningModel";
-import {
   acceptKitEndpointForRendezvous,
   filedropEndpointForRendezvous,
   splitRendezvousRetainProblem,
 } from "@console/filedropRendezvousChoice";
 import {
+  connectionTuningCapabilitiesFor,
+  withConnectionTuning,
+} from "@console/connectionTuningModel";
+import {
   sftpEndpointForConnection,
   splitDirectoryRetainProblem,
 } from "@console/sftpConnectionChoice";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
+import { webrtcEndpointForSignalingServer } from "@console/signalingServerModel";
 
 import {
   configurationSaveShown,
@@ -224,6 +225,7 @@ import type { ManageOfferChoices } from "./manageOfferModel";
 import type { PendingInvitation } from "./pendingInvitation";
 import type { Section } from "./stepRestore";
 import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
+import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 import type {
   CSVRow,
@@ -428,6 +430,22 @@ export function InviterScreen() {
     };
   }, [sftpInfo]);
 
+  // The coordination server a WebRTC run connects through, read once on a
+  // console build and replaced when the operator sets or clears it.
+  const [signalingServer, setSignalingServer] = useState<
+    SignalingServerProjection | null | undefined
+  >(undefined);
+  useEffect(() => {
+    if (!isConsoleBuild()) return;
+    let cancelled = false;
+    void fetchSignalingServer().then((server) => {
+      if (!cancelled) setSignalingServer((held) => held ?? server);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Open the configuration the operator mounted. The read answers here and the
   // reducer decides what it may change, the delimiter included: an invitation
   // minted while this fetch is in flight leaves every field the document states
@@ -544,11 +562,13 @@ export function InviterScreen() {
     sftpInfo === undefined ? undefined : sftpInfo.connection;
   const sftpConfigured = sftpConnection != null;
   const rendezvousConfigured = rendezvous?.configured === true;
+  const configurationOpened = mountedConfiguration.status === "opened";
   const available = availableTransports(
     isConsoleBuild(),
     sftpConfigured,
     rendezvousConfigured,
     sftpSaveFilePreferred,
+    configurationOpened,
   );
   const transport = editor?.transport ?? available.defaultTransport;
   // How the chosen transport runs, from the chooser's own policy (which offers a
@@ -597,15 +617,23 @@ export function InviterScreen() {
   const runsLive = chosenRunMode !== "save-file";
   // Which tuning controls the chosen transport can hold: the SFTP session mode
   // applies only where a session exists.
-  const tuningCapabilities =
-    transport === "sftp" ? SFTP_CONNECTION_TUNING : FILEDROP_CONNECTION_TUNING;
+  const tuningCapabilities = connectionTuningCapabilitiesFor(transport);
   // The tuning options the run holds, resolved from both authored drafts in one
   // place: the run and the partner's accept kit read the same block, so the
-  // sheet cannot describe a file-handling regime the run does not have.
+  // sheet cannot describe a file-handling regime the run does not have. A
+  // WebRTC run handles no files, so it takes the tuning alone.
   const runOptions = withConnectionTuning(
-    exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES),
+    transport === "webrtc"
+      ? undefined
+      : exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES),
     connectionTuning,
     tuningCapabilities,
+  );
+  // Nor has it a shared folder to clear before it starts.
+  const runDiagnosticsFields = runDiagnosticsIntentFields(
+    transport === "webrtc"
+      ? { ...runDiagnostics, sweepExchangeFiles: false }
+      : runDiagnostics,
   );
   const {
     run,
@@ -627,7 +655,7 @@ export function InviterScreen() {
     inputSource,
     sftpConfigured,
     options: runOptions,
-    runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
+    runDiagnostics: runDiagnosticsFields,
     receipts: receiptsIntentFields(receipts),
     loadedEnforcementRecords,
     mountedConfigurationOpened: runsOpenedConfiguration(mountedConfiguration),
@@ -1190,7 +1218,16 @@ export function InviterScreen() {
     // from the one place it is built, so the sheet can print back only what the
     // partner's own invitation already contains.
     let kitEndpoint: AcceptKitEndpoint | undefined;
-    if (transport === "sftp") {
+    let location = invitationLocation();
+    if (transport === "webrtc") {
+      // The endpoint names the coordination server the console run dials and
+      // no relay. The link opens in the web app the server was found through;
+      // with no web app there is no link to share (`shareLink` below).
+      if (signalingServer == null) return;
+      connectionEndpoint = webrtcEndpointForSignalingServer(signalingServer);
+      if (signalingServer.webAppOrigin !== undefined)
+        location = { ...location, origin: signalingServer.webAppOrigin };
+    } else if (transport === "sftp") {
       if (sftpConnection == null) return;
       // The create gate holds a split-directory connection whose retain mode was
       // turned off after it was authored; repeated here because everything past
@@ -1246,7 +1283,7 @@ export function InviterScreen() {
       const minted = await generateInvitation({
         inviterName: editor.draft.identity,
         ...source,
-        location: invitationLocation(),
+        location,
         lifetimeSeconds: editor.draft.lifetimeSeconds,
         linkageTerms: validation.terms,
         metadata: editor.draft.metadata,
@@ -1697,6 +1734,9 @@ export function InviterScreen() {
                 problems={openProblems}
                 minting={minting}
                 sftpConnection={sftpConnection}
+                signalingServer={signalingServer}
+                onSignalingServer={setSignalingServer}
+                configurationOpened={configurationOpened}
                 loadedSftpForm={loadedSftpForm}
                 sftpSaveFilePreferred={sftpSaveFilePreferred}
                 runWithheld={
@@ -1902,7 +1942,14 @@ export function InviterScreen() {
               failure={failure}
               runRecord={runRecord}
               warnings={warnings}
-              partnerAcceptsByCli={isCliTransport(transport)}
+              partnerAcceptsByCli={
+                isCliTransport(transport) || transport === "webrtc"
+              }
+              shareLink={
+                transport !== "webrtc" ||
+                new URL(invitation.deepLink).origin !== window.location.origin
+              }
+              webAppPartner={transport === "webrtc"}
               onDownloadAcceptKit={
                 acceptKitExchange === undefined ? undefined : downloadAcceptKit
               }

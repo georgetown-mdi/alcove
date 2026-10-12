@@ -3,11 +3,11 @@ import type { Transport } from "./transportChooser";
 
 /**
  * How a chosen channel runs in a given build. `browser` runs the live WebRTC
- * exchange in this tab; `server-job` runs a filedrop or sftp exchange through
- * the console's job API; `save-file` mints an exchange file the operator runs
- * with the command-line tool. The console consumes this at two call sites: the
- * Create branch, which routes `save-file` to the save surface and both live
- * kinds to the run, and the run hooks, which build the matching
+ * exchange in this tab; `server-job` runs a filedrop, sftp or webrtc exchange
+ * through the console's job API; `save-file` mints an exchange file the
+ * operator runs with the command-line tool. The console consumes this at two
+ * call sites: the Create branch, which routes `save-file` to the save surface
+ * and both live kinds to the run, and the run hooks, which build the matching
  * {@link ExchangeDriver}.
  */
 export type ExchangeDriverSelection =
@@ -73,5 +73,11 @@ export function selectExchangeDriver(
         ? { kind: "save-file" }
         : { kind: "server-job" };
     }
+    // Offered on the console alone; a hosted build's WebRTC exchange is the
+    // `browser` transport.
+    case "webrtc":
+      return profile === "console"
+        ? { kind: "server-job" }
+        : { kind: "browser" };
   }
 }

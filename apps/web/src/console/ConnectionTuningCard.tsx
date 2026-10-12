@@ -148,14 +148,16 @@ export function ConnectionTuningCard({
           the default shown in it.
         </Text>
 
-        <DurationRow
-          label="How often to check for your partner's files"
-          description="Each check looks for new files from your partner. Checking less often is gentler on the server; checking more often finds your partner's files sooner."
-          units={DURATION_FIELD_UNITS.pollInterval}
-          defaultMs={TUNING_DEFAULT_MS.pollInterval}
-          value={draft.pollInterval}
-          onChange={(next) => set("pollInterval", next)}
-        />
+        {capabilities.pollInterval && (
+          <DurationRow
+            label="How often to check for your partner's files"
+            description="Each check looks for new files from your partner. Checking less often is gentler on the server; checking more often finds your partner's files sooner."
+            units={DURATION_FIELD_UNITS.pollInterval}
+            defaultMs={TUNING_DEFAULT_MS.pollInterval}
+            value={draft.pollInterval}
+            onChange={(next) => set("pollInterval", next)}
+          />
+        )}
 
         <DurationRow
           label={PEER_TIMEOUT_LABEL}

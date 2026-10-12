@@ -246,8 +246,9 @@ export function configurationOpenedMessage(
  * the console does not conduct, naming the channel as the file spells it. */
 export function channelNotConductedNotice(channel: UnconductedChannel): string {
   return (
-    `This configuration runs over ${channel}, and the console runs SFTP ` +
-    "and shared-folder exchanges only. Change its settings in the steps below, " +
+    `This configuration runs over ${channel}, and the console runs a ` +
+    `${channel} exchange only when it is set up here, not from a file you ` +
+    "open. Change its settings in the steps below, " +
     `then save them to alcove.yaml on the review step: its ${channel} ` +
     "connection is kept exactly as your file states it. Run the saved file " +
     `with Alcove on the command line, which conducts ${channel} exchanges.`
@@ -275,9 +276,9 @@ export function runWithheldReason(
   if (state.status !== "opened" || state.notConducted === undefined)
     return undefined;
   return (
-    `The console cannot run this ${state.notConducted} configuration, ` +
-    "because it runs SFTP and shared-folder exchanges only. Save your " +
-    "changes to alcove.yaml, then run it with Alcove on the command line."
+    `The console cannot run a ${state.notConducted} configuration opened ` +
+    "from your folder. Save your changes to alcove.yaml, then run it with " +
+    "Alcove on the command line."
   );
 }
 

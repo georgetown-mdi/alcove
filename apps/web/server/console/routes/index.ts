@@ -23,6 +23,8 @@ import {
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
 import {
   ZeroSetupFingerprintListError,
@@ -32,6 +34,7 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { MountedKeyFileRefusedError } from "@jobs/mountedKeyFile";
 import { SigningIdentityLocationError } from "@jobs/signingIdentity";
+import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
@@ -154,6 +157,18 @@ export const route = defineJobRoute({
         if (error instanceof MountedSigningPathsUnconvertedError)
           return jobJsonResponse(
             { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
+            400,
+          );
+        // A webrtc run's alcove.yaml or .alcove.key cannot go into the working
+        // folder: another exchange's file is there, or the write failed.
+        if (error instanceof WorkingFolderFilesRefusedError)
+          return jobJsonResponse(
+            {
+              reason:
+                error.fault === "present"
+                  ? WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
+                  : WORKING_FOLDER_UNWRITABLE_REFUSAL,
+            },
             400,
           );
         // Core refused the configuration or hand-off composed from the

@@ -101,6 +101,10 @@ interface StubOptions {
   profileErrorCode?: string;
   sftp?: unknown;
   rendezvous?: unknown;
+  /** The coordination server `GET /api/jobs/webrtc` reports, and what a `PUT`
+   * answers; unset, none is set and a `PUT` answers `webrtcSet`. */
+  webrtc?: unknown;
+  webrtcSet?: unknown;
   coverageStatus?: number;
   /** When set, `POST /api/jobs` returns a busy (409) holding this id (the slot is
    * occupied), and the id's status/events routes are served so the client can
@@ -240,6 +244,12 @@ function stubJobApi(options: StubOptions = {}): {
       if (url === "/api/jobs/rendezvous")
         return Promise.resolve(
           jsonResponse(options.rendezvous ?? { configured: false }),
+        );
+      if (url === "/api/jobs/webrtc")
+        return Promise.resolve(
+          (init?.method ?? "GET") === "PUT"
+            ? jsonResponse(options.webrtcSet ?? { configured: false })
+            : jsonResponse(options.webrtc ?? { configured: false }),
         );
       if (url === "/api/jobs")
         return Promise.resolve(
@@ -598,10 +608,14 @@ describe("console inviter transports and sample data", () => {
     await reachReviewCreate();
     const browser = page.getByLabelText("Live, in this browser");
     await expect.element(browser).toBeDisabled();
-    // The disabled card states the console does not run in-browser exchanges
-    // (this phrasing is unique to the Browser card's description).
+    // The disabled option states the console runs no exchange in the browser
+    // (this phrasing is unique to the Browser option's description).
     await expect
-      .element(page.getByText("This console does not run in-browser exchanges"))
+      .element(
+        page.getByText(
+          "This console runs each exchange itself rather than in this browser",
+        ),
+      )
       .toBeInTheDocument();
   });
 
@@ -923,6 +937,92 @@ describe("console inviter split-rendezvous retain gate", () => {
     await expect
       .element(page.getByRole("heading", { level: 1 }))
       .toMatchTextContent("Review & create");
+  });
+});
+
+describe("console inviter over WebRTC", () => {
+  test("starts with no address, fills the web app's only when asked, and mints for its server", async () => {
+    const api = stubJobApi({
+      webrtcSet: {
+        configured: true,
+        host: "signal.example.org",
+        port: 8443,
+        path: "/api/",
+        secure: true,
+        webAppOrigin: "https://psi.data-bridge.org",
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    const field = page.getByLabelText("Coordination server or web app address");
+    await expect.element(field).toHaveValue("");
+    await expect
+      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .toBeDisabled();
+    await expect
+      .element(
+        page.getByText("Set the coordination server above to continue.").last(),
+      )
+      .toBeInTheDocument();
+
+    await page
+      .getByRole("button", { name: "Use the Alcove web app's server" })
+      .click();
+    await expect.element(field).toHaveValue("https://psi.data-bridge.org");
+    await page.getByRole("button", { name: "Set address" }).click();
+    await expect
+      .element(page.getByText("wss://signal.example.org:8443/api/"))
+      .toBeInTheDocument();
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(put?.body ?? "{}")).toEqual({
+      address: "https://psi.data-bridge.org",
+    });
+    // A WebRTC run handles no files, so the file-handling settings are not
+    // offered.
+    expect(
+      page.getByRole("button", { name: /How files are handled/ }).query(),
+    ).toBeNull();
+
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    await expect
+      .element(page.getByText("Invitation as a link"))
+      .toBeInTheDocument();
+
+    await page.getByRole("button", { name: "Show full invitation" }).click();
+    const encoded = (
+      document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
+    ).value;
+    const token = await decodeInvitation(encoded);
+    expect(token.connectionEndpoint).toStrictEqual({
+      channel: "webrtc",
+      host: "signal.example.org",
+      port: 8443,
+      path: "/api/",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        api.captured.some(
+          (request) => request.url === "/api/jobs" && request.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    const post = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    const intent = JSON.parse(post?.body ?? "{}") as Record<string, unknown>;
+    expect(intent.channel).toBe("webrtc");
+    expect(intent.side).toBe("inviter");
+    expect(intent.sweepExchangeFiles).toBeUndefined();
   });
 });
 

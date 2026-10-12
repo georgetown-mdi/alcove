@@ -76,9 +76,17 @@ const log = getLogger("serverJobExchangeDriver");
  * discriminant so the driver stays transport-blind past intent construction.
  * The sftp variant has no connection field at all: the console runs the one
  * authored SFTP connection (`GET /api/jobs/sftp`), so every host, port, path,
- * and credential reference lives on the console, never in the browser. */
+ * and credential reference lives on the console, never in the browser. The
+ * webrtc variant likewise dials the coordination server the console holds
+ * (`GET /api/jobs/webrtc`). */
 export type ServerJobExchangeTransport =
-  { channel: "filedrop" } | { channel: "sftp" };
+  { channel: "filedrop" } | { channel: "sftp" } | { channel: "webrtc" };
+
+/** The channels a zero-setup run takes, which has no webrtc form. */
+type ServerJobZeroSetupTransport = Exclude<
+  ServerJobExchangeTransport,
+  { channel: "webrtc" }
+>;
 
 /**
  * Where the console reads this party's input from. `inline` holds the CSV
@@ -1303,9 +1311,10 @@ function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
 }
 
 /** Build the {@link JobExchangeIntent} a run POSTs from the driver config: the
- * `transport` picks the arm (neither adds a connection field -- the sftp arm
- * has no `remote`, the console runs the one authored connection), and
- * everything after the discriminant is channel-independent.
+ * `transport` picks the arm (none adds a connection field -- the sftp arm
+ * has no `remote` and the webrtc arm no server, the console runs what the
+ * operator authored there), and everything after the discriminant is
+ * channel-independent.
  *
  * @internal
  */
@@ -1354,9 +1363,22 @@ export function intentFor(
     ...receipts,
     eventStream: true,
   };
-  return transport.channel === "sftp"
-    ? { channel: "sftp", ...shared }
-    : { channel: "filedrop", ...shared };
+  switch (transport.channel) {
+    case "sftp":
+      return { channel: "sftp", ...shared };
+    case "filedrop":
+      return { channel: "filedrop", ...shared };
+    case "webrtc":
+      if (mountedConfigurationOpened === true)
+        throw new Error(
+          "a webrtc run of an opened configuration was requested",
+        );
+      return {
+        channel: "webrtc",
+        ...shared,
+        mountedConfigurationOpened: false,
+      };
+  }
 }
 
 /** The construction-time inputs a zero-setup server-job driver needs. The
@@ -1368,7 +1390,7 @@ export function intentFor(
  * only the channel, input source, tuning subset, and the zero-setup intent's
  * four optional bounded selectors. */
 export interface ServerJobZeroSetupDriverConfig {
-  transport: ServerJobExchangeTransport;
+  transport: ServerJobZeroSetupTransport;
   /** Where the console reads this party's input from ({@link JobInputSource}):
    * inline CSV content, or a reference to a file in the operator-mounted
    * work-input directory. Mapped to the intent's `inputCsv` / `inputFile` arm. */

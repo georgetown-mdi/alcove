@@ -70,6 +70,8 @@ export function InviterExchangeSection({
   runRecord,
   warnings,
   partnerAcceptsByCli,
+  shareLink = true,
+  webAppPartner = false,
   onDownloadAcceptKit,
   serverJob,
   continuesOpenedExchange = false,
@@ -105,6 +107,13 @@ export function InviterExchangeSection({
    * (tokenFromInput), so the bare code adds nothing but a second secret to
    * leave on screen. */
   partnerAcceptsByCli: boolean;
+  /** Whether the invitation's link is one to share. False for a console
+   * WebRTC exchange set up with a coordination server's own address, which
+   * names no web app for the link to open in, so the code alone is offered. */
+  shareLink?: boolean;
+  /** Whether the partner of a code-carrying invitation may also accept in the
+   * Alcove web app (a console WebRTC exchange), which the screen then says. */
+  webAppPartner?: boolean;
   /** Write the partner's accept kit -- the printable instruction sheet sent
    * alongside the invitation -- to the operator's disk. Omitted wherever no kit
    * applies: a WebRTC partner accepts in their browser and needs none, and the
@@ -344,16 +353,19 @@ export function InviterExchangeSection({
         !recovering && (
           <>
             <h2>Share this invitation</h2>
-            <LimitedReachAlert
-              link={invitation.deepLink}
-              partnerAcceptsByCli={partnerAcceptsByCli}
-            />
+            {shareLink && (
+              <LimitedReachAlert
+                link={invitation.deepLink}
+                partnerAcceptsByCli={partnerAcceptsByCli}
+              />
+            )}
             {partnerAcceptsByCli ? (
               <p>
-                Send one of these to your partner over a trusted channel (for
-                example, secure email). It contains a one-time secret, so treat
-                it as confidential. Keep this tab open while your partner
-                accepts.
+                {shareLink
+                  ? "Send one of these to your partner over a trusted channel (for example, secure email)."
+                  : "Send this invitation to your partner over a trusted channel (for example, secure email)."}{" "}
+                It contains a one-time secret, so treat it as confidential. Keep
+                this tab open while your partner accepts.
               </p>
             ) : (
               <p>
@@ -364,7 +376,12 @@ export function InviterExchangeSection({
                 while your partner accepts.
               </p>
             )}
-            <CopyRow label="Invitation as a link" value={invitation.deepLink} />
+            {shareLink && (
+              <CopyRow
+                label="Invitation as a link"
+                value={invitation.deepLink}
+              />
+            )}
             {!partnerAcceptsByCli && (
               <CopyRow
                 label="A message to send"
@@ -386,6 +403,15 @@ export function InviterExchangeSection({
                 hint="Your partner accepts with this same text, whichever transport they run"
                 value={invitation.encoded}
               />
+            )}
+            {webAppPartner && (
+              <p className={styles.small}>
+                {shareLink
+                  ? "Your partner opens the link in the Alcove web app, or "
+                  : 'Your partner pastes the invitation under "Accept an invitation you were sent" on the Alcove web app\'s start page, or '}
+                accepts with <span className={styles.mono}>alcove accept</span>{" "}
+                on the command line, while this exchange is still waiting.
+              </p>
             )}
             {onDownloadAcceptKit !== undefined && (
               <>

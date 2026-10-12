@@ -374,7 +374,7 @@ describe("the open configuration over the files it is derived across", () => {
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeDisabled();
     await expect
-      .element(page.getByText(/cannot run this webrtc configuration/).first())
+      .element(page.getByText(/cannot run a webrtc configuration/).first())
       .toBeInTheDocument();
     await expect
       .element(
