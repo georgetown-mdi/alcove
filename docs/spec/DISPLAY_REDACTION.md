@@ -13,7 +13,7 @@ Every net-new control specified here is subject to the explicit pre-release secu
 
 ## Private-key redaction
 
-The private-key strip has a second, separate assignment, because it is not escaping and does not double.
+The private-key strip has an assignment separate from the escape's [single altitude](DISPLAY_ESCAPE.md#display-sanitization-escape-format), because it is not escaping and does not double.
 A whole `BEGIN`..`END` block is replaced where it sits; a truncated block -- a `BEGIN` with no `END`, which is what a key sliced into an error looks like -- is replaced from the marker to the end of the unit the pass runs over: a cause-chain link at the error renderer, one log argument at the log sink.
 That reach is fail-closed: a key that reaches an error has whatever structure the thing that held it left behind, and the separators are not predictable -- real line breaks from a file read, single spaces from a folded or plain multi-line YAML scalar, backslash escapes from a JSON scalar, or no separator at all.
 So a rule that consumes only armor organised into lines leaks the entire body of every other delivery.
@@ -72,7 +72,7 @@ The rule matches the raw error where it sits directly in a sink argument and doe
 The sentinel observes only `console` calls, so a direct `process.stderr.write` is outside it, as is a dependency that writes the file descriptor itself.
 The sentinel's framing strip is also a literal one with no notion of who emitted the sequence, so a line whose unescaped payload itself contains `\ncaused by: ` passes the byte test.
 Neither is a claim about every byte that lands on the terminal.
-The composition side of the assignment is banned by a second rule, over `packages/` and `apps/cli/` and their test sources: a call returning `Displayable` -- the brand below -- or a `displayText` template may not sit in an argument, a template interpolation, a concatenation, a ternary branch, an arrow body, an array element, or the `cause` property of a `...Error` construction or of the two cause-chain composers (`chainDetailCauses`, `fittedCauseLink`), since an `Error` is not a sink and that fragment is escaped again where the chain is rendered.
+The composition side of the [single-altitude assignment](DISPLAY_ESCAPE.md#display-sanitization-escape-format) is banned by a second rule, over `packages/` and `apps/cli/` and their test sources: a call returning `Displayable` -- the brand below -- or a `displayText` template may not sit in an argument, a template interpolation, a concatenation, a ternary branch, an arrow body, an array element, or the `cause` property of a `...Error` construction or of the two cause-chain composers (`chainDetailCauses`, `fittedCauseLink`), since an `Error` is not a sink and that fragment is escaped again where the chain is rendered.
 It is syntactic in the same way: a value reaching an `Error` through an intermediate -- a local, a property, a function returning `string` -- is outside it.
 And it has no runtime half, the sentinel failing on a byte outside printable ASCII while a fragment escaped twice is printable ASCII throughout, so what stands behind it is a check over the governed sources instead (`scripts/eslint-displayable-error-argument-ban.test.mjs`), holding the producing calls the rule names to every exported function that declares a `Displayable` return type.
 
