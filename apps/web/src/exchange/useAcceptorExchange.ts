@@ -12,6 +12,10 @@ import {
 } from "@alcove/core";
 
 import {
+  AcceptedSignalingServerUnsetError,
+  putSignalingServer,
+} from "@psi/jobClient/signalingServerClient";
+import {
   createFetchJobApiClient,
   createServerJobExchangeDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
@@ -21,7 +25,6 @@ import {
 } from "@psi/jobClient/consoleJobAttachment";
 import { createBrowserExchangeDriver } from "@psi/exchangeDriver";
 import { dialAsAcceptor } from "@psi/transport/rendezvous";
-import { putSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 
 import { deploymentProfile } from "@utils/clientConfig";
@@ -258,7 +261,7 @@ export interface AcceptorLaunch {
  * and return the transport whose create names them, so the console refuses
  * the run if a later change replaced them.
  *
- * @throws {Error} with the console's own message when it refuses the address.
+ * @throws {AcceptedSignalingServerUnsetError} when the console is not set to it.
  */
 export async function acceptorWebrtcTransport(
   accepted: AcceptedSignalingServer,
@@ -269,10 +272,14 @@ export async function acceptorWebrtcTransport(
     fetchImpl,
     accepted.signalingServer.relay,
   );
-  if (put.kind === "refused") throw new Error(put.message);
+  if (put.kind === "refused")
+    throw new AcceptedSignalingServerUnsetError(true, put.message);
   if (put.kind !== "ok")
-    throw new Error(
-      "The console could not be set to the invitation's coordination server.",
+    throw new AcceptedSignalingServerUnsetError(
+      false,
+      put.kind === "superseded"
+        ? "The coordination server setting changed while it was being set."
+        : "The console did not answer when it was set.",
     );
   return { channel: "webrtc", signalingServer: accepted.signalingServer };
 }

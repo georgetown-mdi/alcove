@@ -285,7 +285,7 @@ export function Lobby() {
             records you both hold are revealed, and only to the people the terms
             name.{" "}
             {isConsoleBuild()
-              ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can invite you or accept in the public Alcove web app."
+              ? "This console runs the exchange itself, over an SFTP server, a shared folder or WebRTC, reading your file from your working folder. Over WebRTC your partner can use the public Alcove web app to invite you or to accept your invitation."
               : "Your browser connects directly to your partner's."}
           </p>
         </div>

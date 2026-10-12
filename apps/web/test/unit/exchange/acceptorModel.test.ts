@@ -700,14 +700,21 @@ describe("acceptUnsupported (runnability by endpoint shape)", () => {
     expect(acceptUnsupported(WEBRTC_ENDPOINT, NO_MOUNT)).toBeUndefined();
   });
 
-  test("a WebRTC endpoint whose path holds a query is refused, asking for a new invitation", () => {
-    const unsupported = acceptUnsupported(
-      { ...WEBRTC_ENDPOINT, path: "/api/?key=x" },
-      SHARED_MOUNT,
-    );
-    expect(unsupported?.message).toContain("not a plain host, port and path");
-    expect(unsupported?.message).toContain("new invitation");
-  });
+  test.each(["/api/?key=x", "/a b/"])(
+    "a WebRTC endpoint whose path is %s is refused, asking for an invitation through another server",
+    (path) => {
+      const unsupported = acceptUnsupported(
+        { ...WEBRTC_ENDPOINT, path },
+        SHARED_MOUNT,
+      );
+      expect(unsupported?.message).toBe(
+        "This invitation names a coordination server that is not at an " +
+          "address this console can connect to. Ask your partner to send a " +
+          "new invitation through a different coordination server, such as " +
+          "the Alcove web app's.",
+      );
+    },
+  );
 
   test("a split-directory filedrop endpoint runs on a split-provisioned console", () => {
     expect(acceptUnsupported(SPLIT_FILEDROP, SPLIT_MOUNT)).toBeUndefined();

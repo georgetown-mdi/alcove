@@ -17,6 +17,7 @@ import {
   RunWarningsAlert,
   SERVER_JOB_KEEP_OPEN_BODY,
   SERVER_JOB_PEER_WINDOW_BODY,
+  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   leftBehindConfirm,
   recoveredExchangeHeading,
   untakenRecordConfirm,
@@ -279,7 +280,11 @@ export function AcceptorExchangeSection({
           {serverJob ? (
             <>
               <p className={styles.small}>{SERVER_JOB_KEEP_OPEN_BODY}</p>
-              <p className={styles.small}>{SERVER_JOB_PEER_WINDOW_BODY}</p>
+              <p className={styles.small}>
+                {invitation.endpoint.channel === "webrtc"
+                  ? SERVER_JOB_WEBRTC_PEER_WINDOW_BODY
+                  : SERVER_JOB_PEER_WINDOW_BODY}
+              </p>
             </>
           ) : (
             <p className={styles.small}>{BROWSER_RUN_KEEP_OPEN_BODY}</p>

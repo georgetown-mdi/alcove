@@ -516,9 +516,10 @@ export function acceptUnsupported(
       ? {
           title: ACCEPT_UNSUPPORTED_TITLE,
           message:
-            "This invitation names a coordination server whose address is " +
-            "not a plain host, port and path, so this console cannot connect " +
-            "to it. Ask your partner to send a new invitation.",
+            "This invitation names a coordination server that is not at an " +
+            "address this console can connect to. Ask your partner to send a " +
+            "new invitation through a different coordination server, such as " +
+            "the Alcove web app's.",
         }
       : undefined;
   // An SFTP accept connects to the partner-named server (no rendezvous mount), so

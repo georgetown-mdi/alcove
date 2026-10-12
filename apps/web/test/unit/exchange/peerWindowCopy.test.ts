@@ -4,6 +4,7 @@ import { DEFAULT_PEER_TIMEOUT_MS } from "@alcove/core";
 
 import {
   SERVER_JOB_PEER_WINDOW_BODY,
+  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   peerWindowDurationPhrase,
 } from "@exchange/RunSurface";
 
@@ -18,6 +19,16 @@ describe("SERVER_JOB_PEER_WINDOW_BODY", () => {
       "Your partner's console must run its half while yours is running. Yours " +
         `waits about ${peerWindowDurationPhrase(DEFAULT_PEER_TIMEOUT_MS)} for the ` +
         "partner before the exchange stops; if it stops, coordinate a time and " +
+        "run it again.",
+    );
+  });
+
+  test("has a WebRTC accept variant naming the partner's web app page or command", () => {
+    expect(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY).toBe(
+      "Your partner's side must be open while yours runs: their Alcove web " +
+        "app page or their alcove command. Yours waits about " +
+        `${peerWindowDurationPhrase(DEFAULT_PEER_TIMEOUT_MS)} for them before ` +
+        "the exchange stops; if it stops, agree a time with your partner and " +
         "run it again.",
     );
   });

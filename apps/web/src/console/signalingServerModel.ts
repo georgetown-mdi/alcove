@@ -113,7 +113,8 @@ export interface AcceptedSignalingServer {
  * where the console already holds that same server at a `ws://` address, as
  * an operator testing with a server on this machine sets it; otherwise over
  * `wss://`, as `alcove accept` dials it. Undefined when the endpoint's host
- * and path do not make an address the console can hold.
+ * and path do not make an address the console can hold, as written or as
+ * parsed.
  */
 export function acceptedSignalingServer(
   endpoint: WebRTCEndpoint,
@@ -125,7 +126,10 @@ export function acceptedSignalingServer(
   if (url === undefined) return undefined;
   if (held !== null && !held.secure && heldNames(held, url, endpoint.port))
     url = publishedSignalingServerURL(`ws://${authority}`);
-  if (url === undefined) return undefined;
+  // The console checks the parsed address again when it is set, where a
+  // percent-escape the parser wrote into the path is refused.
+  if (url === undefined || publishedSignalingServerURL(url.href) === undefined)
+    return undefined;
   return {
     address: url.href,
     signalingServer: {

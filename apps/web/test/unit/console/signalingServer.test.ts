@@ -240,6 +240,13 @@ describe("the coordination server a console accept dials", () => {
       );
   });
 
+  test("is none where parsing the invitation's path writes an escape into it", () => {
+    for (const path of ["/a b/", "/café/", "/{z}/"])
+      expect(acceptedSignalingServer({ ...ENDPOINT, path }, null)).toBe(
+        undefined,
+      );
+  });
+
   test("is set on the console with the invitation's relay, and named to the create", async () => {
     const accepted = acceptedSignalingServer(
       { ...ENDPOINT, relay: RELAY },
@@ -263,7 +270,7 @@ describe("the coordination server a console accept dials", () => {
     });
   });
 
-  test("stops the run with the console's own message when the console refuses it", async () => {
+  test("stops the run, refused only where the console refuses the address", async () => {
     const accepted = acceptedSignalingServer(ENDPOINT, null);
     if (accepted === undefined) throw new Error("no accepted server");
     await expect(
@@ -271,9 +278,17 @@ describe("the coordination server a console accept dials", () => {
         accepted,
         answering(400, { error: "That address is refused. Type another." }),
       ),
-    ).rejects.toThrow("That address is refused. Type another.");
-    await expect(
-      acceptorWebrtcTransport(accepted, answering(409, undefined)),
-    ).rejects.toThrow("could not be set");
+    ).rejects.toMatchObject({
+      name: "AcceptedSignalingServerUnsetError",
+      refused: true,
+      message: "That address is refused. Type another.",
+    });
+    for (const status of [409, 500])
+      await expect(
+        acceptorWebrtcTransport(accepted, answering(status, undefined)),
+      ).rejects.toMatchObject({
+        name: "AcceptedSignalingServerUnsetError",
+        refused: false,
+      });
   });
 });

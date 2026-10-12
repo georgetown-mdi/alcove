@@ -94,6 +94,22 @@ export type PutSignalingServerResult =
   | { kind: "superseded" }
   | { kind: "error" };
 
+/**
+ * A console WebRTC accept could not set the console to the invitation's
+ * coordination server, so no run was created. `refused` when the console
+ * refused the address, which a retry repeats; otherwise the setting changed
+ * meanwhile or the console did not answer.
+ */
+export class AcceptedSignalingServerUnsetError extends Error {
+  /** Whether the console refused the address itself. */
+  readonly refused: boolean;
+  constructor(refused: boolean, message: string) {
+    super(message);
+    this.name = "AcceptedSignalingServerUnsetError";
+    this.refused = refused;
+  }
+}
+
 /** Set the coordination server from the address the operator typed, or
  * from an accepted invitation's server and relay. */
 export async function putSignalingServer(

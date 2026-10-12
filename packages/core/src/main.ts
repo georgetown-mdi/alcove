@@ -317,6 +317,7 @@ export {
   UNALLOCATED_SERVER_HOST_MESSAGE,
   generateSharedSecret,
   hasMintedTurnEntry,
+  relayLocatorSchema,
   safeParseConnectionConfig,
   safeParseConnectionConfigAwaitingAddress,
   safeParseFileSyncOptions,

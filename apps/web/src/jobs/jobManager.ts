@@ -2404,8 +2404,6 @@ function openedConfigurationWarning(
   );
 }
 
-/** Whether a create intent's coordination server is `authored`: the host,
- * port and path the invitation names. */
 /**
  * Whether `named` is the authored server: the same host, the same port once
  * an omitted one is read as the authored scheme's default, and the same path

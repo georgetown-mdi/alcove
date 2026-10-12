@@ -13,8 +13,6 @@ import {
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
   MAX_RECONNECT_ATTEMPTS,
-  MAX_RELAY_LOCATOR_URLS,
-  MAX_RELAY_LOCATOR_URL_LENGTH,
   MAX_SIGNALING_SERVER_URL_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_TIMEOUT_SECONDS,
@@ -23,13 +21,12 @@ import {
   OwnColumnSelectionSchema,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
-  StunUrlSchema,
-  TurnUrlSchema,
   csvDelimiterRefusal,
   holdsPrivateKeyMaterial,
   isCsvDelimiterChoice,
   maxCodeUnits,
   normalizeCsvDelimiter,
+  relayLocatorSchema,
   safeParseFileSyncOptions,
 } from "@alcove/core";
 
@@ -764,20 +761,14 @@ const jobSftpExchangeIntentSchema = z
   })
   .strict();
 
-const relayUrlList = (url: z.ZodType<string>) =>
-  z
-    .array(url.check(maxCodeUnits(MAX_RELAY_LOCATOR_URL_LENGTH)))
-    .min(1)
-    .max(MAX_RELAY_LOCATOR_URLS);
-
-/** An accepted invitation's relay: its TURN and STUN url lists, each url held
- * to core's url rule, and nothing else. */
-export const jobInvitationRelaySchema: z.ZodType<RelayLocator> = z
-  .strictObject({
-    turn: relayUrlList(TurnUrlSchema).optional(),
-    stun: relayUrlList(StunUrlSchema).optional(),
-  })
-  .refine((relay) => relay.turn !== undefined || relay.stun !== undefined);
+/** An accepted invitation's relay: its TURN and STUN url lists under core's
+ * relay locator rule, and nothing else. */
+export const jobInvitationRelaySchema: z.ZodType<RelayLocator> =
+  relayLocatorSchema(
+    (keys) =>
+      `the invitation's relay has no ${keys.length === 1 ? "key" : "keys"} ` +
+      `${keys.join(", ")}; it holds only turn and stun url lists`,
+  );
 
 const jobSignalingServerEndpointSchema: z.ZodType<JobSignalingServerEndpoint> =
   z.strictObject({
