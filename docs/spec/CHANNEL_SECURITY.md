@@ -1,12 +1,13 @@
 ---
-title: "Channel Security Construction"
+title: "Channel Encryption"
 ---
 
-# Channel security construction
+# Channel encryption
 
 This document specifies the construction and implementation of Alcove's
-channel-security controls, the section headings below indexing the individual
-controls. It is
+application-layer channel encryption and of the authenticated abort marker keyed
+from the same session key. The other channel-security controls are specified in
+the files listed under [Contents](#contents). It is
 the implementation-level complement to the **Channel security** overview in
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what
 each control protects against and why the design is sufficient; this document
@@ -20,10 +21,22 @@ security auditors and implementors.
 
 Every net-new control specified here is subject to the explicit pre-release
 security review required by
-[CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy); the per-section notes
-below repeat this only where a control has an extra scope nuance (an
-internet-facing surface, a new security-relevant dependency, or a modification
-layered on an existing control).
+[CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy).
+
+# Contents
+
+The channel-security controls are specified in this file and in these files:
+
+- [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) - the transport memory bounds: the inbound frame size, the directory listing, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound
+- [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) - the transport liveness bounds: per-operation liveness, the slow-operation warning, and the SFTP heartbeat and TCP keepalive
+- [SFTP_CONNECTION.md](SFTP_CONNECTION.md) - the SFTP connection controls: the server-provisioning endpoint call, fatal-packet crash safety, and host-key verification
+- [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md) - the SFTP adapter's recovery of a session the server drops mid-exchange
+- [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md) - the bounds the signaling broker holds against an unauthenticated internet client: the inbound frame bound, the upgrade-handshake timeouts, the liveness reaper, and the relay queue bounds
+- [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md) - the application-layer bounds on parsed input: collection counts, the JSON-decode chokepoint, the CSV-read line ceiling and header sanitation, the name-class character rule, and the web linkage-terms import bounds
+- [TRANSFORM_REGEX_DIALECT.md](TRANSFORM_REGEX_DIALECT.md) - the linear-time dialect partner-supplied transform patterns run under, and the name-constraint character class
+- [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md) - the declared types of transform parameters and the bounds on the values that drive unbounded per-row work
+- [DISPLAY_ESCAPE.md](DISPLAY_ESCAPE.md) - the display sanitization escape format and the compatibility diagnostic value delimiting
+- [DISPLAY_REDACTION.md](DISPLAY_REDACTION.md) - the private-key redaction and the message display budgets on operator displays
 
 # Application-layer AEAD
 
@@ -94,12 +107,3 @@ The marker is best-effort and has no cause, both deliberate. Its absence is stri
 - [COMMUNICATION.md](../COMMUNICATION.md) - the network channels and the message-delivery/teardown transport contract these controls run within
 - [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client) - the SFTP-stack upgrade checklist for the ssh2 internal assumptions these controls depend on
 - [DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#upgrading-the-peerjs-stack-peerjs--peerjs-js-binarypack) - the PeerJS-stack upgrade checklist for the PeerJS and BinaryPack internal assumptions the WebRTC data-channel bound (specified in [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound)) depends on
-- [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) - the transport memory bounds: the inbound frame size, the directory listing, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound
-- [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) - the transport liveness bounds: per-operation liveness, the slow-operation warning, and the SFTP heartbeat and TCP keepalive
-- [SFTP_CONNECTION.md](SFTP_CONNECTION.md) - the SFTP connection controls: the server-provisioning endpoint call, fatal-packet crash safety, and host-key verification
-- [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md) - the SFTP adapter's recovery of a session the server drops mid-exchange
-- [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md) - the application-layer bounds on parsed input: collection counts, the JSON-decode chokepoint, the CSV-read line ceiling and header sanitation, the name-class character rule, and the web linkage-terms import bounds
-- [TRANSFORM_REGEX_DIALECT.md](TRANSFORM_REGEX_DIALECT.md) - the linear-time dialect partner-supplied transform patterns run under, and the name-constraint character class
-- [TRANSFORM_PARAMETER_BOUNDS.md](TRANSFORM_PARAMETER_BOUNDS.md) - the declared types of transform parameters and the bounds on the values that drive unbounded per-row work
-- [DISPLAY_ESCAPE.md](DISPLAY_ESCAPE.md) - the display sanitization escape format and the compatibility diagnostic value delimiting
-- [DISPLAY_REDACTION.md](DISPLAY_REDACTION.md) - the private-key redaction and the message display budgets on operator displays
