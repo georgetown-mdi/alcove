@@ -10,6 +10,11 @@ The owner's instruction this command stands for:
 > plain language, options and their tradeoffs, and recommendations. Save
 > executing decisions until I say so.
 
+The bare command is that whole instruction, so the owner never types it out. A
+note after the command -- a merge report, a handoff result path -- is acted on
+first, as the same note sent alone would be. To land the work in flight and
+hold before the docket, the owner runs `/wind-down` first.
+
 ## First
 
 If `.claude/orchestration/ruleset.md` is not already in your context, read it
@@ -24,7 +29,11 @@ Run only when the owner invokes this command; never start the docket unasked.
    those wait for `/follow-ups` -- and each ratification of a judgment a branch
    already took. Those go in a closing list, its own final message after the
    last decision item, with one line per ratification; the owner's word on each
-   line is recorded the same way as a ruling.
+   line is recorded the same way as a ruling. Leave out each operation too -- a
+   step whose way forward no option changes, such as a run, a check, a filing
+   or a host-side step: do it, or hand it off, as the ruleset's line on why the
+   session cannot do something itself requires. An item is a decision only when
+   its options differ in their effect on users or the product.
 2. Drop any item the owner has already ruled on, in this session or in a board
    item or repository file. To find such a ruling, fetch the item's epic siblings
    (`node .claude/scripts/list-epic.mjs <project> "<Epic>"`) and every item its
@@ -59,6 +68,10 @@ Each message holds exactly one item and ends the turn:
   against what merged code already provides.
 - One recommended option, with its reason in a sentence or two, argued as
   `.claude/product-principles.md` sets out.
+
+An option the ruleset's proposal rule covers (`.claude/orchestration/ruleset.md`,
+Decisions, briefs and reporting) carries that rule's line; an item whose such
+option lacks it is not presented until it has one.
 
 Never open the item with AskUserQuestion, and never put a follow-up filing in a
 docket message.

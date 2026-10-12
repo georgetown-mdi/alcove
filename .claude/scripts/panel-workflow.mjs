@@ -46,7 +46,7 @@ const REVISED_SCHEMA = {
 };
 
 // The seats a caller may name. A caller may instead state a lens of its own as
-// {name, lens}; a call that names no seats sits DEFAULT_SEATS.
+// {name, lens}; a call that names no seats is refused.
 const SEATS = {
   "failure-modes": "correctness and failure modes",
   architecture: "architecture and maintenance cost",
@@ -54,7 +54,6 @@ const SEATS = {
   "design-ux":
     "design and user experience -- the user-facing flows, the states a user can reach, the copy, and what the operator sees and does at each step",
 };
-const DEFAULT_SEATS = ["failure-modes", "architecture", "pragmatics"];
 
 const DELIBERATION_NOTE =
   "A converged deliberation informs the owner and settles nothing: the question goes to the owner with every panelist's first and revised positions.";
@@ -123,10 +122,9 @@ function resolveSeat(seat) {
 }
 
 function resolveSeats(seats) {
-  if (seats === undefined) return DEFAULT_SEATS.map(resolveSeat);
   if (!Array.isArray(seats) || seats.length < 2) {
     throw new Error(
-      `seats is a list of at least two seats; got ${JSON.stringify(seats)}.`,
+      `seats is a list of at least two seats, each chosen for a dimension of the question, with no default; got ${JSON.stringify(seats)}.`,
     );
   }
   const resolved = seats.map(resolveSeat);

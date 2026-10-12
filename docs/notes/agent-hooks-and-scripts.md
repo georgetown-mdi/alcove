@@ -526,7 +526,7 @@ The hook applies the same rule when the title is written.
 ### Why it exists
 
 The ruleset contains the rules for conducting an orchestration: the review contracts and round caps, how a fix is dispatched, the spawn and SendMessage mechanics, where a decision goes.
-A pointer in CLAUDE.md and seven front doors load it, and nothing else confirms the session doing the conducting has it.
+A pointer in CLAUDE.md and the front doors its preamble lists load it, and nothing else confirms the session doing the conducting has it.
 A session that starts spawning without it runs the flow from whatever it remembers of an earlier one,
 and the rules it skips are the ones no later check catches: a round dispatched wrongly is a wasted round, not a red test.
 

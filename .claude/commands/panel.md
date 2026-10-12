@@ -14,17 +14,20 @@ before proceeding -- it holds the session rules this command's steps assume.
 
 ## Input
 
-    /panel "<question>" [context-file ...] [--seats <seat> ...] [--deliberate]
+    /panel "<question>" [context-file ...] --seats <seat> ... [--deliberate]
 
 - `<question>`: one settle-able question of technical judgment, phrased
   neutrally -- no candidate answer, no hint of which way you or the issue lean.
   If you cannot phrase it without a candidate, it is not ready for a panel.
 - `[context-file ...]`: optional repo-relative paths (docs, specs) every
   panelist should read for context. Call this list DOCS; there may be none.
-- `--seats`: the panelists to seat, at least two. Call this list SEATS; with
-  none given, the panel seats `failure-modes`, `architecture`, and
-  `pragmatics`. Choose seats for the dimensions the question has, never for
-  the answer you expect. The named seats:
+- `--seats`: required. The panelists to seat, at least two. Call this list
+  SEATS. There is no default roster: without `--seats`, stop and name each
+  seat and the dimension of the question it covers before convening. Choose
+  seats for the dimensions the question has, never for the answer you expect
+  and never by rote: a seat is not added because a note, a habit or an earlier
+  panel had it. Your report names, for each seat, the dimension of the
+  question it covers. The named seats:
   - `failure-modes`: correctness and failure modes.
   - `architecture`: architecture and maintenance cost.
   - `pragmatics`: operational and cost pragmatics.
@@ -52,7 +55,30 @@ surface also takes a `ux-reviewer` spawn on the code it concerns, besides the
 run under the refutation contract in `.claude/orchestration/ruleset.md`,
 Review flow; one that
 touches both takes both. Their findings go beside the panel's positions to
-whoever decides.
+whoever decides. Those two roles are the only side lenses, each spawned only
+when the question has its dimension: never a `general-purpose` spawn given a
+lens prompt, which on a security surface skips the refutation contract.
+
+## Before the panel -- Test the premise and the option set
+
+Panelists read code and run nothing, so a fact only a measurement can give
+never reaches them unless you measure it first.
+
+Before Step 1, for the question's premise and each option it names:
+
+1. Write down the constraint that rules the option in or out, and the
+   assumption the question rests on.
+2. Check each one that is a fact of the code with one call, and measure each
+   one that is a quantity -- a size, a time, a limit -- in your own tree, which
+   has `node_modules`, or through a spawn that runs it.
+3. A refuted premise or a new option reframes the question before any seat is
+   convened, phrased as neutrally as before. A measured quantity that settles
+   the question ends it here, as the ruleset's deferred-decision rule states,
+   unless the owner asked for the panel: then the measurement goes to the
+   owner with the question, and the owner decides whether the panel still runs.
+   Otherwise the measurements go to the panel as a file in `<base>` named in
+   DOCS (after Step 1), each stating the command, the number and its limits,
+   and no reading of what it means for the options.
 
 ## Step 1 -- Clean base
 
@@ -67,8 +93,8 @@ the panel's `<base>`:
 A base is never shared between panels: a fixed name would let a second panel
 remove the first one's checkout while its panelists read it.
 
-The base has no `node_modules`: a question that needs code RUN rather
-than read is out of this command's scope -- measure it yourself first instead.
+The base has no `node_modules`: anything that needs code RUN rather than
+read is measured in the step before, never by a panelist.
 
 ## Step 2 -- Run the panel Workflow
 
@@ -76,9 +102,9 @@ Invoke the Workflow tool with `scriptPath` set to the ABSOLUTE path of
 `.claude/scripts/panel-workflow.mjs` in this repository (`git rev-parse --show-toplevel`
 gives the root) -- the bare relative spelling fails the call with "script file
 not found" -- and `args` set to
-`{"question": "<the question>", "base": "<base>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`,
-leaving `seats` out for the default three. For example,
+`{"question": "<the question>", "base": "<base>", "docs": [<DOCS, possibly empty>], "seats": [<SEATS>]}`, for example
 `"seats": ["failure-modes", "design-ux", {"name": "accessibility", "lens": "..."}]`.
+The script refuses a call with no `seats`.
 
 The script is checked in and passed by path: do not paste its text into the call
 and do not copy it out to edit it -- it spawns one panelist per seat on the tier
