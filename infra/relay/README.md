@@ -440,10 +440,15 @@ so the front sees what any network hop on the path sees.
 
   coturn takes every connection no route claims, so a TURN client reaches it
   whatever name it sends, or none. A route names a port on `127.0.0.1` and
-  never another host. `render-front.sh` refuses a route for the realm, a
-  name two routes claim, a name that is not a lowercase DNS name, port 443,
-  and a port another route or the registrar already uses; `install.sh` runs it
-  before it installs or restarts anything.
+  never another host. `render-front.sh` compares names in lowercase, as
+  nginx's map matches them, and refuses a route for the realm, a name two
+  routes claim, a name that is not a lowercase DNS name, a name nginx's map
+  reads as a keyword (`default`, `include`, `hostnames`, `volatile`), port
+  443, and a port another route or the registrar already uses; `install.sh`
+  runs it before it installs or restarts anything. `install.sh` then builds
+  the front's image and checks the rendered configuration with `nginx -t`
+  before it installs the scripts under `/opt` or renders coturn's
+  configuration, so a front that fails either leaves coturn as it was.
 - **Why the server name.** The alternatives weighed against it, a test of the
   first bytes and ALPN, are in
   [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443).
@@ -458,12 +463,21 @@ so the front sees what any network hop on the path sees.
   `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
   not cut. At most 1024 connections are open at once, a client's side and the
   service's side each counting one (`worker_connections`). These are
-  arbitrary working values in `front.conf.tmpl`, raised on request. The
-  registrar's own bounds ([The registrar](#the-registrar), Bounds on a
-  connection) apply behind the front unchanged.
+  working values in `front.conf.tmpl`, not measured bounds, raised on
+  request. The registrar's own bounds ([The registrar](#the-registrar),
+  Bounds on a connection) apply behind the front unchanged.
+- **One limit for all three services.** The 1024 connections are shared by
+  coturn, the registrar and every routed service, and the front sets no limit
+  per client address. One host that opens that many connections, and holds
+  them or replaces each as the 10 s or 900 s bound closes it, keeps every
+  other client from TURN, the registrar and the broker on 443 for as long as
+  it does so.
 - **What it logs.** No access log: one line per connection would record which
   client asked for which service. Its error log, warnings and above, goes to
-  the journal, and a line there can name a client's address.
+  the journal. When coturn or a routed service refuses a connection or does
+  not accept it within 5 s, the line nginx writes there names the client's
+  address beside the service's loopback port, which identifies the service
+  the client asked for.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443

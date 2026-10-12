@@ -49,12 +49,12 @@ const settings = (text) =>
     .filter((line) => line !== "" && !line.startsWith("#"));
 
 /** Renders the front for a host holding a registrar token only when asked. */
-const render = (envLines, { registrarToken = false } = {}) => {
+const render = (envLines, { registrarToken = false, realm = REALM } = {}) => {
   const root = fixtureDir();
   const envFile = join(root, "relay.env");
   writeFileSync(
     envFile,
-    [`ALCOVE_RELAY_REALM=${REALM}`, ...envLines, ""].join("\n"),
+    [`ALCOVE_RELAY_REALM=${realm}`, ...envLines, ""].join("\n"),
   );
   const tokenFile = join(root, "registrar-token");
   if (registrarToken) writeFileSync(tokenFile, "fixture-token\n");
@@ -115,8 +115,20 @@ describe("render-front.sh", () => {
 
   it.each([
     [
-      ["ALCOVE_RELAY_REGISTRAR_NAME=Registrar.example.org"],
+      ["ALCOVE_RELAY_REGISTRAR_NAME=registrar_x.example.org"],
       "not a lowercase DNS name",
+    ],
+    [
+      ['ALCOVE_RELAY_FRONT_ROUTES="Signal.example.org=8443"'],
+      "not a lowercase DNS name",
+    ],
+    ...["default", "include", "hostnames", "volatile"].map((keyword) => [
+      [`ALCOVE_RELAY_FRONT_ROUTES="${keyword}=9000"`],
+      `names '${keyword}', which nginx's map reads as a keyword`,
+    ]),
+    [
+      ["ALCOVE_RELAY_REGISTRAR_NAME=Default"],
+      "names 'default', which nginx's map reads as a keyword",
     ],
     [['ALCOVE_RELAY_FRONT_ROUTES="bad;name=8443"'], "not a lowercase DNS name"],
     [[`ALCOVE_RELAY_REGISTRAR_NAME=${REALM}`], "the realm's name is coturn's"],
@@ -192,6 +204,46 @@ describe("render-front.sh", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(message);
     expect(result.stdout).toBe("");
+  });
+
+  // nginx's map matches a server name whatever its case.
+  it.each([
+    [
+      "a listed route",
+      [`ALCOVE_RELAY_FRONT_ROUTES="${REALM}=8443"`],
+      "ALCOVE_RELAY_FRONT_ROUTES routes the realm",
+    ],
+    [
+      "the registrar's name",
+      ["ALCOVE_RELAY_REGISTRAR_NAME=RELAY.example.org"],
+      "ALCOVE_RELAY_REGISTRAR_NAME routes the realm",
+    ],
+  ])("refuses %s for a realm written with capitals", (_, envLines, message) => {
+    const result = render(envLines, { realm: "Relay.Example.ORG" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(message);
+    expect(result.stdout).toBe("");
+  });
+
+  it("lowercases a registrar's name given with capitals before it compares or writes it", () => {
+    const result = render([
+      "ALCOVE_RELAY_REGISTRAR_NAME=Registrar.Example.org",
+      "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+      'ALCOVE_RELAY_FRONT_ROUTES="registrar.example.org=9000"',
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "routes registrar.example.org, which another route already claims",
+    );
+    const alone = render([
+      "ALCOVE_RELAY_REGISTRAR_NAME=Registrar.Example.org",
+      "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+    ]);
+    expect(alone.status, alone.stderr).toBe(0);
+    expect(mapEntries(alone.stdout)).toContainEqual([
+      "registrar.example.org",
+      "127.0.0.1:8444",
+    ]);
   });
 
   it("routes to the registrar's unset port on a host with no registrar token", () => {
@@ -354,6 +406,39 @@ describe("install.sh and the front", () => {
     const live = install.indexOf('mv "$FRONT_CANDIDATE" "$FRONT_CONF"');
     expect(check).toBeGreaterThan(0);
     expect(live).toBeGreaterThan(check);
+  });
+
+  // turnserver.conf moves coturn onto loopback, so a front that fails after it
+  // leaves nothing on 443 once coturn restarts.
+  it("builds and checks the front before it changes anything coturn runs from", () => {
+    const build = install.indexOf(
+      'podman build --pull=newer -t "$FRONT_IMAGE" "$HERE/front"',
+    );
+    const render = install.indexOf(
+      '"$HERE/render-front.sh" > "$FRONT_CANDIDATE"',
+    );
+    const check = install.indexOf('--entrypoint nginx "$FRONT_IMAGE" -t');
+    expect(build).toBeGreaterThan(0);
+    expect(render).toBeGreaterThan(build);
+    expect(check).toBeGreaterThan(render);
+    expect(install).not.toContain('"$LIBEXEC/render-front.sh"');
+    for (const change of [
+      'install -d -m 755 "$LIBEXEC"',
+      'install -m 755 "$HERE/render-config.sh"',
+      '"$HERE/turnserver.conf.tmpl"',
+      '"$LIBEXEC/render-config.sh"',
+      'install -m 644 "$HERE/$service.container"',
+      "systemctl restart ",
+    ]) {
+      const first = install.indexOf(change);
+      expect(first, change).toBeGreaterThan(check);
+    }
+    const buildRefused = install.indexOf(
+      "esac \\\n  || die \"the front's image did not build;",
+      build,
+    );
+    expect(buildRefused).toBeGreaterThan(build);
+    expect(buildRefused).toBeLessThan(render);
   });
 
   it("restarts coturn off 443 before it starts the front on it", () => {

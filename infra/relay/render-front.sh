@@ -19,7 +19,10 @@ die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
 # shellcheck disable=SC1090
 . "$ENV_FILE"
 
+# nginx's map matches server names whatever their case, so every name is
+# compared here in lowercase.
 REALM="${ALCOVE_RELAY_REALM:-}"
+REALM="${REALM,,}"
 [ -n "$REALM" ] || die "ALCOVE_RELAY_REALM is unset in $ENV_FILE; refusing to guess a realm"
 
 ROUTES=()
@@ -43,6 +46,10 @@ add_route() {
   # written into and one name has one spelling.
   [[ "$name" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] \
     || die "$source names '$name', which is not a lowercase DNS name"
+  case "$name" in
+    default|include|hostnames|volatile)
+      die "$source names '$name', which nginx's map reads as a keyword rather than a server name" ;;
+  esac
   [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -le 65535 ] \
     || die "$source routes $name to '$port', which is not a port number"
   [ "$port" != 443 ] || die "$source routes $name to port 443, the front's own"
@@ -60,6 +67,7 @@ add_route() {
 # The registrar listens on its port on every address wherever the host holds
 # its token, so that port is taken whether or not the registrar has a name.
 REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
+REGISTRAR_NAME="${REGISTRAR_NAME,,}"
 REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
 REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-/etc/alcove-relay/registrar-token}"
 if [ -n "$REGISTRAR_NAME" ]; then

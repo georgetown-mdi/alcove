@@ -4,13 +4,14 @@
 #
 #   install.sh [--skip-verify]
 #
-# What it does, in order: installs a container runtime, builds the relay's image
-# and the 443 front's from the pinned Dockerfiles, creates the data directory
-# that holds the per-exchange secrets table, obtains a certificate if none is
-# present, renders and checks the configurations, installs the units and the
-# three timers, and starts the relay, the front, and the registrar where the
-# host holds its token. It then runs verify.sh, which is the only step that says
-# whether the result carries an exchange.
+# What it does, in order: installs a container runtime, builds the 443 front's
+# image and checks its configuration with nginx -t, builds the relay's image,
+# creates the data directory that holds the per-exchange secrets table, installs
+# the scripts under /opt, obtains a certificate if none is present, renders
+# coturn's configuration, installs the units and the three timers, and starts
+# the relay, the front, and the registrar where the host holds its token. It
+# then runs verify.sh, which is the only step that says whether the result
+# carries an exchange.
 #
 # The runtime is podman where the distribution carries it and docker where it
 # does not, and that decides one thing: which file defines alcove-relay.service.
@@ -129,6 +130,33 @@ if [ "$RUNTIME" = docker ]; then
     || die "docker is at $DOCKER_BIN and alcove-relay-docker.service names /usr/bin/docker; point its ExecStart lines at $DOCKER_BIN and run again"
 fi
 
+# --- the 443 front ------------------------------------------------------------
+# Built and checked by nginx -t before anything coturn runs from changes: the
+# turnserver.conf rendered below moves coturn onto loopback, so a front that
+# fails after it would leave nothing on 443 at coturn's next restart. A failure
+# here leaves the scripts in $LIBEXEC, turnserver.conf, the units and the
+# running services as they were.
+FRONT_IMAGE=localhost/alcove-relay-front:installed
+log "building $FRONT_IMAGE from the pinned base in $HERE/front/Dockerfile"
+case "$RUNTIME" in
+  podman) podman build --pull=newer -t "$FRONT_IMAGE" "$HERE/front" ;;
+  docker) docker build --pull -t "$FRONT_IMAGE" "$HERE/front" ;;
+esac \
+  || die "the front's image did not build; nothing coturn runs from was changed. Fix the cause above and run again"
+install -d -m 700 "$ETC"
+FRONT_CONF="$ETC/front.conf"
+FRONT_CANDIDATE="$(mktemp "$FRONT_CONF.XXXXXX")"
+trap 'rm -f "$FRONT_CANDIDATE"' EXIT
+"$HERE/render-front.sh" > "$FRONT_CANDIDATE" \
+  || die "the front's routes in $ENV_FILE are refused (above); nothing coturn runs from was changed"
+chmod 644 "$FRONT_CANDIDATE"
+"$RUNTIME" run --rm --network host --read-only --tmpfs /tmp \
+  -v "$FRONT_CANDIDATE:/etc/nginx/nginx.conf:ro" \
+  --entrypoint nginx "$FRONT_IMAGE" -t \
+  || die "the rendered front configuration fails nginx -t; $FRONT_CONF, coturn's configuration and the running services are unchanged. Fix front.conf.tmpl or the routes in $ENV_FILE and run again"
+mv "$FRONT_CANDIDATE" "$FRONT_CONF"
+trap - EXIT
+
 command -v openssl >/dev/null 2>&1 || dnf -y install openssl
 command -v curl >/dev/null 2>&1 || dnf -y install curl
 
@@ -157,7 +185,6 @@ fi
 # per-exchange secrets table, until the operator deletes it (README.md,
 # Per-exchange keys).
 SECRET_FILE="${ALCOVE_RELAY_SECRET_FILE:-$ETC/static-auth-secret}"
-install -d -m 700 "$ETC"
 install -d -m 755 "$ETC/certs"
 if [ -f "$SECRET_FILE" ]; then
   log "keeping the static authentication secret at $SECRET_FILE"
@@ -173,12 +200,6 @@ log "building $IMAGE from the pinned base in $HERE/Dockerfile"
 case "$RUNTIME" in
   podman) podman build --pull=newer -t "$IMAGE" "$HERE" ;;
   docker) docker build --pull -t "$IMAGE" "$HERE" ;;
-esac
-FRONT_IMAGE=localhost/alcove-relay-front:installed
-log "building $FRONT_IMAGE from the pinned base in $HERE/front/Dockerfile"
-case "$RUNTIME" in
-  podman) podman build --pull=newer -t "$FRONT_IMAGE" "$HERE/front" ;;
-  docker) docker build --pull -t "$FRONT_IMAGE" "$HERE/front" ;;
 esac
 
 # The account the image runs as, asked of the image rather than assumed: the ACME
@@ -236,22 +257,6 @@ fi
 
 # --- the configuration ------------------------------------------------------
 "$LIBEXEC/render-config.sh"
-
-# The front's configuration is checked by nginx -t in the front's image before
-# it replaces the live file, so a route that nginx refuses leaves the running
-# front on the configuration it has.
-FRONT_CONF="$ETC/front.conf"
-FRONT_CANDIDATE="$(mktemp "$FRONT_CONF.XXXXXX")"
-trap 'rm -f "$FRONT_CANDIDATE"' EXIT
-"$LIBEXEC/render-front.sh" > "$FRONT_CANDIDATE" \
-  || die "the front's routes in $ENV_FILE are refused (above); $FRONT_CONF is unchanged"
-chmod 644 "$FRONT_CANDIDATE"
-"$RUNTIME" run --rm --network host --read-only --tmpfs /tmp \
-  -v "$FRONT_CANDIDATE:/etc/nginx/nginx.conf:ro" \
-  --entrypoint nginx "$FRONT_IMAGE" -t \
-  || die "the rendered front configuration fails nginx -t; $FRONT_CONF and the running front are unchanged. Fix front.conf.tmpl or the routes in $ENV_FILE and run again"
-mv "$FRONT_CANDIDATE" "$FRONT_CONF"
-trap - EXIT
 
 # --- units ------------------------------------------------------------------
 # One service name whichever runtime this is: certs/deploy-hook.sh restarts
