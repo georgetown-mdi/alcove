@@ -7,7 +7,7 @@ title: "Channel Encryption"
 This document specifies the construction and implementation of Alcove's
 application-layer channel encryption and of the authenticated abort marker keyed
 from the same session key. The other channel-security controls are specified in
-the ten files listed under [Contents](#contents). It is
+the files listed under [Contents](#contents). It is
 the implementation-level complement to the **Channel security** overview in
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what
 each control protects against and why the design is sufficient; this document
@@ -25,7 +25,7 @@ security review required by
 
 # Contents
 
-The channel-security controls are specified in this file and in these ten:
+The channel-security controls are specified in this file and in these files:
 
 - [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) - the transport memory bounds: the inbound frame size, the directory listing, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound
 - [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md) - the transport liveness bounds: per-operation liveness, the slow-operation warning, and the SFTP heartbeat and TCP keepalive

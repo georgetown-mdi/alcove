@@ -23,9 +23,9 @@ note below.)
 
 ### Channel security
 
-The channel-security controls are specified across these eleven files.
+The channel-security controls are specified across these files.
 [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) holds the application-layer
-encryption and lists the other ten.
+encryption and the authenticated abort marker, and lists the others.
 
 | File | Scope | Audience | Does not cover |
 | ---- | ----- | -------- | -------------- |
