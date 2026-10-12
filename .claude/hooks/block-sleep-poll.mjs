@@ -11,9 +11,15 @@
 //   encloses it, or when its condition or body does shell arithmetic
 //   (`$((n+=1))`, `((...))`, `let`, `expr`), reads `SECONDS`, or reads
 //   `date +%s`. A `for` loop over a finite list is not read.
-// - An unbounded background command: a `run_in_background` call must open with
-//   `timeout <N>` or `gtimeout <N>`, N not zero, and hold no later `;`, `&&`,
-//   `||`, lone `&` or newline outside quotes. Any non-zero N is accepted.
+// - An unbounded background command: split on `;`, `&&`, `||` and newline
+//   outside quotes, every element of a `run_in_background` call must be one
+//   of: setup (`cd DIR`, bare or exported assignments); a read-only pipeline
+//   (`echo`, `tail -5 log`, `grep -c x log | wc -l`) that does not follow a
+//   file or read a device; or a command opening with `timeout <N>` or
+//   `gtimeout <N>`, N not zero, after optional assignments and `env -C DIR`.
+//   At least one element must be that bounded command, and a lone `&`, a
+//   heredoc or a command substitution outside a bounded element refuses. Any
+//   non-zero N is accepted.
 //
 // Probe: block-sleep-poll.probe.md beside this file, last run 2026-09-25 on
 // Claude Code 2.1.282 (macOS host); a `Workflow` `agent()` call was not probed.
@@ -112,13 +118,15 @@ function opensWithTimeout(command) {
   return i + 1 < words.length;
 }
 
-// True when a `;`, `&&`, `||`, lone `&`, or newline stands outside quotes,
-// where the command after it runs as a separate list element. An `&` inside a
-// redirection (`2>&1`, `&>`, `>&`) or a `|&` pipe is not a separator.
-function hasTopLevelListSeparator(command) {
+// Split text at the separators `separatorWidth(text, i)` finds outside quotes:
+// it returns the separator's width at i, 0 for none, or -1 to refuse the whole
+// text, in which case this returns null. Pieces are trimmed; empty ones dropped.
+function splitOutsideQuotes(text, separatorWidth) {
+  const pieces = [];
+  let start = 0;
   let quote = null;
-  for (let i = 0; i < command.length; i += 1) {
-    const char = command[i];
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
     if (quote === "'") {
       if (char === "'") quote = null;
       continue;
@@ -135,23 +143,119 @@ function hasTopLevelListSeparator(command) {
       quote = char;
       continue;
     }
-    if (char === ";" || char === "\n") return true;
-    const pair = command.slice(i, i + 2);
-    if (pair === "&&" || pair === "||") return true;
-    if (char === "&") {
-      const before = command[i - 1];
-      const after = command[i + 1];
-      const inRedirection =
-        before === ">" || before === "<" || before === "|" || after === ">";
-      if (!inRedirection) return true;
+    const width = separatorWidth(text, i);
+    if (width < 0) return null;
+    if (width > 0) {
+      pieces.push(text.slice(start, i));
+      start = i + width;
+      i += width - 1;
     }
   }
-  return false;
+  pieces.push(text.slice(start));
+  return pieces.map((piece) => piece.trim()).filter((piece) => piece !== "");
 }
 
+// A list separator: `;`, `&&`, `||` or a newline. A lone `&` refuses, since
+// what it backgrounds outlives the bound; an `&` inside a redirection (`2>&1`,
+// `&>`, `>&`) or a `|&` pipe is not one.
+function listSeparatorWidth(text, i) {
+  const pair = text.slice(i, i + 2);
+  if (pair === "&&" || pair === "||") return 2;
+  const char = text[i];
+  if (char === ";" || char === "\n") return 1;
+  if (char !== "&") return 0;
+  const before = text[i - 1];
+  const after = text[i + 1];
+  const inRedirection =
+    before === ">" || before === "<" || before === "|" || after === ">";
+  return inRedirection ? 0 : -1;
+}
+
+function pipeSeparatorWidth(text, i) {
+  if (text[i] !== "|") return 0;
+  return text[i + 1] === "&" ? 2 : 1;
+}
+
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const SUBSTITUTION = /\$\(|`|<\(|<</;
+
+// A list element that runs nothing: `cd DIR`, or bare or exported assignments.
+function isSetup(element) {
+  if (SUBSTITUTION.test(element)) return false;
+  const words = tokenizeRaw(element);
+  if (words[0] === "cd") return words.length <= 2;
+  const assignments = words[0] === "export" ? words.slice(1) : words;
+  return assignments.length > 0 && assignments.every((w) => ASSIGNMENT.test(w));
+}
+
+// Commands that only read or report, each ending once its input does.
+const READ_ONLY = new Set([
+  "echo",
+  "grep",
+  "tail",
+  "head",
+  "cat",
+  "ls",
+  "wc",
+  "free",
+  "uptime",
+  "date",
+  "pwd",
+  "true",
+  "sort",
+  "uniq",
+  "tr",
+  "cut",
+]);
+const FOLLOW_OPTION = /^(?:-[A-Za-z0-9]*[fF]|--follow)/;
+const DEVICE_OTHER_THAN_NULL = /^\/dev\/(?!null$)/;
+
+// A list element whose every pipe stage is a READ_ONLY command that does not
+// follow a file (`tail -f`) or read a device (`/dev/zero`).
+function isReadOnly(element) {
+  if (SUBSTITUTION.test(element)) return false;
+  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
+  if (stages === null || stages.length === 0) return false;
+  return stages.every((stage) => {
+    const words = tokenizeRaw(stage);
+    if (!READ_ONLY.has(words[0])) return false;
+    if (words.some((w) => DEVICE_OTHER_THAN_NULL.test(w))) return false;
+    return words[0] !== "tail" || !words.some((w) => FOLLOW_OPTION.test(w));
+  });
+}
+
+// True when the element opens with `timeout <N>` once leading assignments and
+// an `env` carrying only `-C DIR` and assignments are set aside.
+function isBounded(element) {
+  const words = tokenizeRaw(element);
+  let i = 0;
+  const isPlainAssignment = (word) =>
+    ASSIGNMENT.test(word) && !SUBSTITUTION.test(word);
+  while (i < words.length && isPlainAssignment(words[i])) i += 1;
+  if (words[i] === "env") {
+    i += 1;
+    for (;;) {
+      if (words[i] === "-C" || words[i] === "--chdir") i += 2;
+      else if (/^(?:-C.|--chdir=)/.test(words[i] ?? "")) i += 1;
+      else if (isPlainAssignment(words[i] ?? "")) i += 1;
+      else break;
+    }
+  }
+  return opensWithTimeout(words.slice(i).join(" "));
+}
+
+// A background command is bounded when every list element is setup, read-only
+// or bounded by its own timeout, and at least one is bounded.
 function isUnboundedBackground(command) {
-  const trimmed = command.trim();
-  return !opensWithTimeout(trimmed) || hasTopLevelListSeparator(trimmed);
+  const elements = splitOutsideQuotes(command.trim(), listSeparatorWidth);
+  if (elements === null) return true;
+  let bounded = 0;
+  for (const element of elements) {
+    if (isSetup(element) || isReadOnly(element)) continue;
+    if (!isBounded(element)) return true;
+    bounded += 1;
+  }
+  return bounded === 0;
 }
 
 function blockUnboundedLoop() {
@@ -170,11 +274,13 @@ function blockUnboundedLoop() {
 function blockUnboundedBackground() {
   process.stderr.write(
     "Blocked by block-sleep-poll hook: a run_in_background command has no timeout " +
-      "of its own, so it must open with `timeout <N>` (N not zero) and hold no " +
-      "later `;`, `&&`, `||`, lone `&`, or newline outside quotes.\n" +
-      "Wrap the whole command -- `timeout 900 npm run lint`, or " +
-      "`timeout 900 sh -c 'cd apps/web && npm test'` -- or, where no `timeout` " +
-      "is on PATH, run it in the foreground with a raised timeout.\n",
+      "of its own, so every command it runs must open with `timeout <N>` (N not " +
+      "zero), apart from a leading `cd DIR` or `VAR=value` and a trailing `echo` " +
+      "or read-only `tail`/`grep`/`cat`; no lone `&`, heredoc or `$(...)`.\n" +
+      "Bound each command -- `timeout 900 npm run lint > /tmp/lint.log 2>&1; " +
+      "echo exit=$?`, or `timeout 900 sh -c 'npm run build && npm test'` -- or, " +
+      "where no `timeout` is on PATH, run it in the foreground with a raised " +
+      "timeout.\n",
   );
   process.exit(2);
 }

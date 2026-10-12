@@ -16,7 +16,10 @@
 // light-review's Step 1 uses to name the round's artifacts, and deleted by
 // light-review's Step 3 when the round is booked. A lock younger than
 // ROUND_LOCK_TTL_MS refuses the target; an older one is stale and ignored. The
-// lock bounds concurrent rounds, not commits into the target tree.
+// lock bounds concurrent rounds, not commits into the target tree. The harness
+// runs a call's hooks in parallel, so before writing a lock this hook runs the
+// other Workflow PreToolUse hooks `.claude/settings.json` registers on the same
+// event and writes none when one of them refuses the call.
 //
 // Fails closed: every state where a target cannot be confirmed clean blocks (a
 // non-git or missing cwd, a git error, unreadable `args`, an unresolvable ref, a
@@ -25,6 +28,7 @@
 // blocks it and feeds stderr back to Claude. Rationale:
 // docs/notes/agent-hooks-and-scripts.md.
 
+import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   readFileSync,
@@ -32,7 +36,8 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   eventCwd,
@@ -52,6 +57,9 @@ const LOCK_SUFFIX = ".lock";
 const ROUND_LOCK_TTL_MS = 90 * 60 * 1000;
 const LIGHT_REVIEW_MARKER = "light-review";
 const UNCONFIRMED = "could not confirm a clean tree; commit and retry";
+const SELF = basename(fileURLToPath(import.meta.url));
+const PROJECT_DIR = fileURLToPath(new URL("../..", import.meta.url));
+const SIBLING_TIMEOUT_MS = 20_000;
 
 function block(reason) {
   // A multi-line reason (the dirty-entry list) is self-terminating; only a
@@ -151,6 +159,59 @@ function removeLock(path) {
     // A lock that cannot be removed expires on its TTL, which is the same
     // outcome the roll-back is avoiding, only slower.
   }
+}
+
+// The commands of the other PreToolUse hooks `.claude/settings.json` registers
+// for Workflow, or none when the file cannot be read.
+function siblingHookCommands(projectDir) {
+  let settings;
+  try {
+    settings = JSON.parse(
+      readFileSync(join(projectDir, ".claude", "settings.json"), "utf8"),
+    );
+  } catch {
+    return [];
+  }
+  const groups = settings?.hooks?.PreToolUse;
+  if (!Array.isArray(groups)) return [];
+  const commands = [];
+  for (const group of groups) {
+    const matcher = group?.matcher ?? "";
+    let matches;
+    try {
+      matches =
+        matcher === "" ||
+        matcher === "*" ||
+        new RegExp(`^(?:${matcher})$`).test("Workflow");
+    } catch {
+      matches = false;
+    }
+    if (!matches || !Array.isArray(group.hooks)) continue;
+    for (const hook of group.hooks) {
+      const command = hook?.command;
+      if (typeof command !== "string" || command.includes(SELF)) continue;
+      commands.push(command);
+    }
+  }
+  return commands;
+}
+
+// True when another hook on this Workflow call exits 2, so the harness refuses
+// the call and a lock taken for it would refuse the retry. Each sibling runs
+// with the same event, as the harness runs it; one that cannot be run or does
+// not finish counts as passing, which keeps the lock.
+function siblingRefuses(event) {
+  const projectDir = process.env.CLAUDE_PROJECT_DIR || PROJECT_DIR;
+  const input = JSON.stringify(event);
+  return siblingHookCommands(projectDir).some((command) => {
+    const { status } = spawnSync("sh", ["-c", command], {
+      input,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+      stdio: ["pipe", "ignore", "ignore"],
+      timeout: SIBLING_TIMEOUT_MS,
+    });
+    return status === 2;
+  });
 }
 
 function describeMinutes(ms) {
@@ -272,9 +333,11 @@ function main() {
     locks.push({ path, ref });
   }
 
-  // Locks are written only once every target has passed, and a write that fails
-  // part-way through rolls back the ones already written, so a refused call
-  // leaves none of them behind to expire.
+  // Locks are written only once every target has passed and no sibling hook
+  // refuses the call, and a write that fails part-way through rolls back the
+  // ones already written, so a refused call leaves none of them behind to
+  // expire.
+  if (locks.length > 0 && siblingRefuses(event)) process.exit(0);
   const written = [];
   for (const { path, ref } of locks) {
     if (writeLock(path, ref)) {

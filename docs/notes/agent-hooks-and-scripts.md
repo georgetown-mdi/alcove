@@ -423,6 +423,9 @@ A round takes tens of minutes and no hook can observe a background Workflow fini
 The age-out is sized well above the longest observed round:
 a crashed round that wedged its branch forever is the worse failure, and a rare double round after the age-out is the accepted cost.
 The lock does not stop an implementer committing into the target tree while a round reads it; the round's diff is by ref, and the ledger records the sha.
+The harness runs a call's hooks in parallel, so a lock taken for a call another hook refuses would refuse the retry as a round in flight.
+The gate therefore runs the other Workflow hooks `.claude/settings.json` registers on the same event before writing a lock, and writes none when one refuses;
+a sibling that cannot be run counts as passing, which keeps the lock.
 
 ### Why fail closed
 
@@ -455,7 +458,9 @@ A sleep under `MINIMUM_BLOCKED_SECONDS` is a settle, not a poll.
 The Bash tool's own timeout does not apply to a background run, so the `timeout` wrapper is its only bound.
 `gtimeout` is the name Homebrew's coreutils installs it under.
 GNU `timeout 0` disables the limit, measured against coreutils 9.1, so zero is refused.
-A command after a separator runs outside the bound, so none may follow.
+A command after a separator runs outside the bound, so each one must carry its own `timeout`, or run nothing (`cd`, an assignment), or only read and report (`echo`, `tail -5 log`, a `grep` piped to `head`).
+A read-only command ends once its input does unless it follows a file or reads a device, and those two forms are refused.
+A background run's stdin was `/dev/null` when probed on Claude Code 2.1.296 (2026-10-12), so a read-only command given no file reads nothing and ends.
 Any non-zero N is accepted: a background run is used precisely for work longer than the foreground ceiling, so a hook-enforced cap would be a number with nothing behind it.
 A host with no `timeout` on PATH, macOS without coreutils, can run the command in the foreground instead.
 

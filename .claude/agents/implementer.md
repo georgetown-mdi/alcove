@@ -31,6 +31,17 @@ produce is your final message to the caller. Never end expecting a reply.
   branch's work: an untracked leftover there blocks
   `require-clean-tree-for-review.mjs` on the branch's next review round.
   Anything the change itself needs belongs in the commit.
+- Worktree isolation refuses a Bash command it cannot read as written.
+  Write and change files with the Write and Edit tools, never a heredoc,
+  `tee` or `cat >`, and run no inline `python3 -` or `node -e` program: Write
+  the script to a literal path and run it as its own call.
+  Give each call a literal, plain command line: no `$(...)`, subshell, loop,
+  leading `VAR=value`, or variable as a path operand -- write the path out.
+  Chaining with `&&` or `;`, and a leading `cd` into your own tree, are fine.
+- A deletion names a literal path the owner can read as a path, never a
+  command's result: no variable, `$(...)`, or path read from a file. Remove a
+  worktree with `git worktree remove <literal path>`. The harness asks the
+  owner to approve each deletion, and one he cannot read he refuses.
 - Wait on a long command as the one-shot wait rule in `CLAUDE.md`, Spawns
   and reports, says.
 - Before you report, run each command line `node scripts/required-suites.mjs`

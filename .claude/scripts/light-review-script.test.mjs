@@ -402,6 +402,10 @@ describe.each(SHAPES)(
     it("gives every reviewer the worktree path and the scratch rule", async () => {
       const prompts = await promptsFor(deliver, {});
       for (const prompt of prompts) {
+        expect(prompt.split("\n")[0]).toContain(
+          `Run EVERY command as \`env -C ${TREE} <command>\``,
+        );
+        expect(prompt.startsWith("Run EVERY command")).toBe(true);
         expect(prompt).toContain(`env -C ${TREE} <command>`);
         expect(prompt).toContain(`git -C ${TREE} <args>`);
         expect(prompt).not.toContain(`cd ${TREE}`);

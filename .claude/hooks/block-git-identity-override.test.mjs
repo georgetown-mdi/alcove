@@ -137,6 +137,22 @@ describe("block-git-identity-override hook", () => {
     ]);
   });
 
+  it("reads a redirection as the shell's, not as a value written", () => {
+    expectAllowed([
+      "git config --global user.email",
+      "git config --global user.email 2>/dev/null; git config --global user.name 2>/dev/null",
+      "git config user.email > /tmp/email.txt",
+      "git config user.name 2>&1",
+      "git config user.email &> /tmp/out",
+    ]);
+    expectBlocked([
+      "git config user.email agent@example.com 2>/dev/null",
+      "git config user.email '>agent@example.com'",
+      'git config user.name ">Agent"',
+      "2>/dev/null GIT_AUTHOR_EMAIL=agent@example.com git commit -m x",
+    ]);
+  });
+
   it("allows clearing the configured identity", () => {
     expectAllowed([
       "git config --unset user.email",
