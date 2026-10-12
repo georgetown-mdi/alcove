@@ -1,9 +1,6 @@
-import crypto from "node:crypto";
-
 import { ZodError } from "zod";
 
 import {
-  CONFIRMING_PROTOCOL_STAGE_ID,
   MAX_ERROR_CAUSE_DEPTH,
   NestingDepthExceededError,
   NodeCountExceededError,
@@ -37,6 +34,8 @@ import {
 } from "./partnerPinNotice";
 import {
   WorkingFolderFilesRefusedError,
+  invitationIdOf,
+  keyFileRotatedFrom,
   refreshWorkingFolderExchangeFiles,
   workingFolderExchangeFilePaths,
   workingFolderExchangeFilesPresent,
@@ -494,10 +493,10 @@ export interface JobRecord {
   configPath: string | null;
   /**
    * For a webrtc run, the working folder's `alcove.yaml` and `.alcove.key`:
-   * `written` once this job wrote them at its handshake, or from the start
+   * `written` once this job wrote them after its handshake, or from the start
    * for a retry of the invitation whose job wrote them, which runs over them.
    * `invitation` identifies that invitation ({@link invitationIdOf}). Null for
-   * every other run.
+   * every other run, and once the job is deleted.
    */
   workingFolderPair: { written: boolean; invitation: string } | null;
   status: JobStatus;
@@ -1053,15 +1052,15 @@ export class JobManager {
       return false;
     }
     const written = this.workingFolderPairInvitation;
+    const heldByConsoleExchange =
+      written !== undefined && present.config && present.key;
     if (
-      written !== undefined &&
-      present.config &&
-      present.key &&
+      heldByConsoleExchange &&
       intent.sharedSecret !== undefined &&
       invitationIdOf(intent.sharedSecret) === written
     )
       return true;
-    throw new WorkingFolderFilesRefusedError("present", written !== undefined);
+    throw new WorkingFolderFilesRefusedError("present", heldByConsoleExchange);
   }
 
   /**
@@ -1715,7 +1714,7 @@ export class JobManager {
       this.failOnOverflow(record);
       return;
     }
-    if (!this.followWorkingFolderPair(record, event)) return;
+    if (!this.syncWorkingFolderPair(record)) return;
     const entry: BufferedEvent = {
       id: record.events.length + 1,
       event: relayedForConsole(record, event),
@@ -1740,61 +1739,41 @@ export class JobManager {
   }
 
   /**
-   * Keep a webrtc run's working-folder pair in step with its events. The
-   * handshake, which the CLI reports by starting its first protocol stage
-   * once the rotated secret is saved, writes the pair, as `alcove invite`
-   * does at that point; after it, the CLI goes on writing its own copy, so a
-   * warning or a terminal event brings the working folder's copy up to date
-   * before the event is relayed. False where the handshake write failed the
-   * run, whose own terminal then stands in for the event.
+   * Put a webrtc run's pair in the working folder, as `alcove invite` does,
+   * exactly when the run's own key file no longer holds the invitation's
+   * original secret: the CLI saves the rotated one right after the handshake
+   * authenticates, whatever it reports next. Run before each event is relayed
+   * and once at the child's exit. The first copy never replaces a file; after
+   * it, each call brings the files this run wrote up to date with the CLI's
+   * later writes. A deleted job holds no pair, so nothing is written for it.
+   * False where the first copy failed the run, whose own terminal then stands
+   * in for the event.
    */
-  private followWorkingFolderPair(
-    record: JobRecord,
-    event: RelayEvent,
-  ): boolean {
+  private syncWorkingFolderPair(record: JobRecord): boolean {
     const pair = record.workingFolderPair;
     if (pair === null) return true;
-    if (!pair.written) {
-      if (event.type === "stage" && event.id === CONFIRMING_PROTOCOL_STAGE_ID)
-        return this.writeWorkingFolderPair(record, pair);
+    const source = record.exchangeFiles;
+    if (source === null) throw new Error("a webrtc run has no exchange files");
+    if (pair.written) {
+      if (record.configPath !== source.configPath)
+        this.refreshWorkingFolderPair(source);
       return true;
     }
-    if (
-      event.type === "warning" ||
-      event.type === "result" ||
-      event.type === "error"
-    )
-      this.refreshWorkingFolderPair(record);
-    return true;
-  }
-
-  /**
-   * Write the run's pair into the working folder at its handshake, never over
-   * a file there: one that appeared since the create checked fails the run.
-   * Whether the pair was written.
-   */
-  private writeWorkingFolderPair(
-    record: JobRecord,
-    pair: { written: boolean; invitation: string },
-  ): boolean {
-    if (record.exchangeFiles === null)
-      throw new Error(
-        "a webrtc run reached its handshake with no exchange files",
-      );
+    if (!keyFileRotatedFrom(source.keyPath, pair.invitation)) return true;
     try {
       record.configPath = writeWorkingFolderExchangeFiles(
         this.dataRoot,
-        record.exchangeFiles,
+        source,
       ).configPath;
     } catch (error) {
       record.workingFolderPair = null;
-      this.failRun(
-        record,
+      const failure =
         error instanceof WorkingFolderFilesRefusedError &&
-          error.fault === "present"
+        error.fault === "present"
           ? WORKING_FOLDER_FILE_APPEARED_FAILURE
-          : WORKING_FOLDER_WRITE_FAILURE,
-      );
+          : WORKING_FOLDER_WRITE_FAILURE;
+      if (record.terminalEmitted) log.warn(failure);
+      else this.failRun(record, failure);
       return false;
     }
     pair.written = true;
@@ -1803,20 +1782,14 @@ export class JobManager {
   }
 
   /**
-   * Bring the working folder's pair up to date with the files the CLI writes,
-   * where the run wrote that pair as a copy of them. A copy the folder refuses
-   * is logged: the run and the CLI's own files are unaffected.
+   * Bring the working-folder pair a run wrote up to date with the run's own
+   * `source` pair. A copy the folder refuses is logged: the run and the CLI's
+   * own files are unaffected.
    */
-  private refreshWorkingFolderPair(record: JobRecord): void {
-    if (
-      record.workingFolderPair?.written !== true ||
-      record.exchangeFiles === null ||
-      record.configPath === record.exchangeFiles.configPath
-    )
-      return;
+  private refreshWorkingFolderPair(source: ExchangeFilePaths): void {
     try {
       refreshWorkingFolderExchangeFiles(
-        record.exchangeFiles,
+        source,
         workingFolderExchangeFilePaths(this.dataRoot),
       );
     } catch (error) {
@@ -1976,7 +1949,7 @@ export class JobManager {
     diagnostics: CliRunDiagnostics,
   ): void {
     record.terminal = state;
-    this.refreshWorkingFolderPair(record);
+    this.syncWorkingFolderPair(record);
     if (!record.runStampResolved) {
       record.runStamp = latestRunStampIn(record.workdir);
       record.runStampResolved = true;
@@ -2157,18 +2130,18 @@ export class JobManager {
       !slot.deleted
     ) {
       const record = slot.record;
+      // Before the kill, so no event or exit of a discarded run writes to
+      // the working folder.
+      record.workingFolderPair = null;
       this.clearCancelTimers(record);
       if (record.handle?.isRunning()) record.handle.signal("SIGKILL");
       slot.deleted = true;
       // The authored connection is scoped to this single exchange; deleting the
       // exchange forgets it and its warnings (and deletes any materialized pasted
-      // credential), so the next exchange starts from a clean slate. The
-      // coordination server holds no credential and is kept, so a webrtc
-      // retry, which deletes the failed exchange first, dials it again.
+      // credential), so the next exchange starts from a clean slate.
       this.discardMaterializedCredential();
       this.authoredSftpServer = undefined;
       this.authoredCredentialWarnings = [];
-      this.refreshWorkingFolderPair(record);
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);
@@ -2409,15 +2382,6 @@ function openedConfigurationWarning(
     "opened them, not the changed file. To use the changed file, open the " +
     "configuration again and start a new run."
   );
-}
-
-/**
- * What identifies an invitation to {@link JobManager}: a digest of its
- * original shared secret, so the manager keeps no secret past the run that
- * used it.
- */
-function invitationIdOf(sharedSecret: string): string {
-  return crypto.createHash("sha256").update(sharedSecret).digest("hex");
 }
 
 /** Whether a create intent's coordination server is `authored`: the host,

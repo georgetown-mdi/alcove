@@ -564,9 +564,12 @@ describe("failureFor", () => {
       WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
       "an exchange this console started",
     ],
-    [WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL, "of another exchange"],
+    [
+      WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+      "already holds an alcove.yaml or .alcove.key.",
+    ],
   ] as const)(
-    "a WebRTC run refused over the working folder's files (%s) says whose they are and what to move",
+    "a WebRTC run refused over the working folder's files (%s) says what is there and what to move",
     (reason, whose) => {
       const failure = failureFor(
         "exchange",

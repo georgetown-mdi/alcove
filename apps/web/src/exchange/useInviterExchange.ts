@@ -400,8 +400,7 @@ function failureContentFor(
             "holds alcove.yaml and .alcove.key from an exchange this console " +
             "started with an earlier invitation. "
           : "The console did not start this exchange. Your working folder " +
-            "already holds an alcove.yaml or .alcove.key, the configuration " +
-            "of another exchange. ") +
+            "already holds an alcove.yaml or .alcove.key. ") +
         "To start a new one, move alcove.yaml and .alcove.key out of the " +
         "folder, then start over with a fresh invitation.",
     };

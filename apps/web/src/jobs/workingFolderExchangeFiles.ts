@@ -2,14 +2,17 @@
  * The `alcove.yaml` and `.alcove.key` a webrtc run leaves in the working
  * folder, where `alcove invite` writes them on the command line, so a later
  * `alcove exchange` in that folder continues the exchange. As on the command
- * line they are written once the handshake has succeeded, never over a file
- * already there: until then the run's pair lives in its own workdir, so a run
- * that fails before the handshake leaves nothing in the working folder.
+ * line they are written once the handshake has rotated the secret, never over
+ * a file already there: until then the run's pair lives in its own workdir,
+ * so a run that fails before the handshake leaves nothing in the working
+ * folder.
  */
 
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+
+import { KeyFileSchema, parseSensitiveJson } from "@alcove/core";
 
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 
@@ -22,10 +25,40 @@ export interface ExchangeFilePaths {
 }
 
 /**
+ * What identifies an invitation: a digest of its original shared secret, so
+ * the console keeps no secret past the run that used it.
+ */
+export function invitationIdOf(sharedSecret: string): string {
+  return crypto.createHash("sha256").update(sharedSecret).digest("hex");
+}
+
+/**
+ * Whether the key file at `keyPath` holds a secret other than the original
+ * one of the invitation `invitation` identifies: the rotated secret the CLI
+ * saves right after the handshake authenticates. False where no key file can
+ * be read there.
+ */
+export function keyFileRotatedFrom(
+  keyPath: string,
+  invitation: string,
+): boolean {
+  let parsed: unknown;
+  try {
+    parsed = parseSensitiveJson(fs.readFileSync(keyPath, "utf8"), "key file");
+  } catch {
+    return false;
+  }
+  const keyFile = KeyFileSchema.safeParse(parsed);
+  return (
+    keyFile.success && invitationIdOf(keyFile.data.sharedSecret) !== invitation
+  );
+}
+
+/**
  * Thrown when the run's files cannot go into the working folder: `present`
  * when an `alcove.yaml` or `.alcove.key` is already there, `unwritable` when
- * the folder refused the write. `heldByConsoleExchange` says the files there
- * are the ones an earlier exchange on this console wrote. Nothing is left
+ * the folder refused the write. `heldByConsoleExchange` says both files are
+ * there and an earlier exchange on this console wrote them. Nothing is left
  * behind.
  */
 export class WorkingFolderFilesRefusedError extends Error {

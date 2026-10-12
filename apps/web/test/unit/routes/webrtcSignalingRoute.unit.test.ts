@@ -506,6 +506,7 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
 
   test("refuses a fresh invitation over the files an earlier exchange on this console wrote", async () => {
     const { manager, root } = seedManager({
+      STUB_KEY_FILE: JSON.stringify({ sharedSecret: "C".repeat(42) + "A" }),
       STUB_FD3_EVENTS: JSON.stringify([
         { v: 1, type: "stage", id: "confirming protocol", label: "Confirming" },
         { v: 1, type: "error", category: "exchange", message: "dropped" },

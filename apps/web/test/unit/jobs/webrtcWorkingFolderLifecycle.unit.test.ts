@@ -132,6 +132,60 @@ describe("before the handshake", () => {
   });
 });
 
+describe("a discarded run", () => {
+  test("a stage event arriving after the discard writes nothing, though the run's key rotated", async () => {
+    const gate = path.join(scratchDir("webrtc-gate"), "go");
+    const { manager, dataRoot } = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_FD3_EVENTS: JSON.stringify([]),
+      STUB_READY_FILE: gate,
+      STUB_DELAY_MS: "5000",
+    });
+    const id = await manager.createJob(validWebrtcIntent());
+    await vi.waitFor(() => expect(fs.existsSync(gate)).toBe(true), {
+      timeout: 20_000,
+    });
+    const record = manager.getJob(id)!;
+    const discarded = manager.deleteJob(id);
+    // The event a killed child left in the pipe, relayed after the discard
+    // began and before the run's folder is gone.
+    (
+      manager as unknown as {
+        appendEvent: (record: JobRecord, event: unknown) => void;
+      }
+    ).appendEvent(record, HANDSHAKE);
+    await discarded;
+    await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull(), {
+      timeout: 20_000,
+    });
+    expect(fs.readdirSync(dataRoot)).toEqual([]);
+    expect(
+      record.events.some(
+        (entry) =>
+          entry.event.type === "error" && entry.event.category === "config",
+      ),
+    ).toBe(false);
+  });
+
+  test("discarding a finished run leaves the working folder's files as they are now", async () => {
+    const { manager, dataRoot } = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, RESULT]),
+    });
+    const id = await manager.createJob(validWebrtcIntent());
+    await exited(manager, id);
+    // A later `alcove exchange` in the same folder rotated the secret again.
+    const keyPath = folderFile(dataRoot, JOB_FILE_NAMES.key);
+    const configPath = folderFile(dataRoot, JOB_FILE_NAMES.config);
+    fs.writeFileSync(keyPath, LATER_KEY);
+    fs.writeFileSync(configPath, "graduated: true\n");
+
+    await discard(manager, id);
+    expect(fs.readFileSync(keyPath, "utf8")).toBe(LATER_KEY);
+    expect(fs.readFileSync(configPath, "utf8")).toBe("graduated: true\n");
+  });
+});
+
 describe("at the handshake", () => {
   test("the run's pair, rotated secret included, is written into the working folder owner-only", async () => {
     const { manager, dataRoot } = await managerFor({
@@ -150,6 +204,30 @@ describe("at the handshake", () => {
       expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(record.configPath).toBe(configPath);
     expect(record.workingFolderPair?.written).toBe(true);
+  });
+
+  test("a run that stops right after its key rotated, before any event, still saves its pair, and a retry runs over it", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
+    const { manager, dataRoot } = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_ARGV_FILE: argvFile,
+      STUB_FD3_EVENTS: JSON.stringify([]),
+      STUB_EXIT_CODE: "69",
+    });
+    const first = await manager.createJob(validWebrtcIntent());
+    const record = await exited(manager, first);
+    const configPath = folderFile(dataRoot, JOB_FILE_NAMES.config);
+    const keyPath = folderFile(dataRoot, JOB_FILE_NAMES.key);
+    expect(fs.readFileSync(keyPath, "utf8")).toBe(ROTATED_KEY);
+    expect(record.workingFolderPair?.written).toBe(true);
+    expect(record.status).toBe("failed");
+    await discard(manager, first);
+
+    const retry = await manager.createJob(validWebrtcIntent());
+    await exited(manager, retry);
+    const argv = JSON.parse(fs.readFileSync(argvFile, "utf8")) as Array<string>;
+    expect(argv[argv.indexOf("--config-file") + 1]).toBe(configPath);
+    expect(argv[argv.indexOf("--key-file") + 1]).toBe(keyPath);
   });
 
   test("a later write by the CLI reaches the working folder's copy", async () => {
@@ -250,6 +328,29 @@ describe("after the handshake", () => {
       validWebrtcIntent({ sharedSecret: OTHER_SECRET }),
     );
     await exited(manager, fresh);
+  });
+
+  test("one file of the pair left in the folder refuses without naming the console's exchange", async () => {
+    const { manager, dataRoot } = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, DROPPED]),
+      STUB_EXIT_CODE: "69",
+    });
+    const first = await manager.createJob(validWebrtcIntent());
+    await exited(manager, first);
+    await discard(manager, first);
+    fs.rmSync(folderFile(dataRoot, JOB_FILE_NAMES.config));
+
+    for (const sharedSecret of [OTHER_SECRET, VALID_SHARED_SECRET]) {
+      const refusal = await manager
+        .createJob(validWebrtcIntent({ sharedSecret }))
+        .catch((error: unknown) => error);
+      expect(refusal).toBeInstanceOf(WorkingFolderFilesRefusedError);
+      expect(refusal).toMatchObject({
+        fault: "present",
+        heldByConsoleExchange: false,
+      });
+    }
   });
 
   test("a pair this console did not write refuses even the same invitation", async () => {
