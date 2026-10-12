@@ -7,15 +7,19 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
+  WORDING_CHANGES_FILE,
   compareRevisions,
   compareSpecFiles,
+  defaultBase,
   formatFailures,
+  formatWordingChanges,
   parseWordingChanges,
   specUnits,
   splitSentences,
+  withoutLinkTargets,
 } from "./check-spec-sentence-moves.mjs";
 import { WORKFLOW_DIR, workflowDocument } from "./lib/workflows.mjs";
-import { rootScripts } from "./run-checks.mjs";
+import { CHECKS, rootScripts } from "./run-checks.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = resolve(ROOT, "scripts/check-spec-sentence-moves.mjs");
@@ -116,9 +120,9 @@ function commit(dir, message) {
 }
 
 /** A repository whose staging holds the hard-wrapped file and HEAD a branch. */
-function withMove(headFiles, run) {
+function withMove(headFiles, run, baseFiles = {}) {
   withRepository((dir) => {
-    write(dir, { "docs/spec/CHANNEL_SECURITY.md": HARD_WRAPPED });
+    write(dir, { "docs/spec/CHANNEL_SECURITY.md": HARD_WRAPPED, ...baseFiles });
     commit(dir, "base");
     execFileSync("git", ["checkout", "-q", "-b", "move"], { cwd: dir });
     write(dir, headFiles);
@@ -142,6 +146,8 @@ const ONE_WORD_CHANGED = {
 
 const CHANGED_SENTENCE =
   "The receiver MUST reject a frame whose tag does not verify, and it closes the channel.";
+
+const CHANGED_SENTENCE_LISTED = `- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`;
 
 describe("the units of a document", () => {
   it("joins a hard-wrapped paragraph and splits it into sentences", () => {
@@ -183,7 +189,7 @@ describe("the units of a document", () => {
 describe("the comparison", () => {
   it("passes a pure move between files with a reflow to semantic line breaks", () => {
     withMove(PURE_MOVE, (dir) => {
-      const comparison = compareRevisions(dir, "staging", "HEAD", []);
+      const comparison = compareRevisions(dir, "staging", "HEAD");
       expect(comparison.files.sort()).toEqual([
         "docs/spec/CHANNEL_SECURITY.md",
         "docs/spec/ENVELOPE.md",
@@ -198,7 +204,7 @@ describe("the comparison", () => {
 
   it("fails one changed word, naming the sentence on both sides", () => {
     withMove(ONE_WORD_CHANGED, (dir) => {
-      const { result } = compareRevisions(dir, "staging", "HEAD", []);
+      const { result } = compareRevisions(dir, "staging", "HEAD");
       expect(result.dropped.map((entry) => entry.text)).toEqual([
         CHANGED_SENTENCE,
       ]);
@@ -213,16 +219,104 @@ describe("the comparison", () => {
     });
   });
 
-  it("passes the changed word once the body lists it old -> new", () => {
-    withMove(ONE_WORD_CHANGED, (dir) => {
-      const body = `## Summary\n\nSplit the envelope out.\n\n## Wording changes\n\n<!-- one per line -->\n- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n\n## Test plan\n\n- n/a -> n/a\n`;
-      const { result } = compareRevisions(
-        dir,
-        "staging",
-        "HEAD",
-        parseWordingChanges(body),
-      );
-      expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+  it("passes the changed word once the branch lists it old -> new in the wording-changes file", () => {
+    withMove(
+      {
+        ...ONE_WORD_CHANGED,
+        [WORDING_CHANGES_FILE]: `# A comment.\n\n${CHANGED_SENTENCE_LISTED}`,
+      },
+      (dir) => {
+        const { listChanged, result } = compareRevisions(
+          dir,
+          "staging",
+          "HEAD",
+        );
+        expect(listChanged).toBe(true);
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+    );
+  });
+
+  it("does not read a list the branch left as the merge base had it", () => {
+    withMove(
+      PURE_MOVE,
+      (dir) => {
+        const { listChanged, result } = compareRevisions(
+          dir,
+          "staging",
+          "HEAD",
+        );
+        expect(listChanged).toBe(false);
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+      { [WORDING_CHANGES_FILE]: "- Earlier. -> -\n" },
+    );
+  });
+
+  it("does not require a unit whose only change is a link target", () => {
+    const base = new Map([
+      [
+        "docs/spec/A.md",
+        "The cap is fixed (see [frame cap](#inbound-frame-size-bound)).\n\n| [cap](#cap) | 16 |\n",
+      ],
+    ]);
+    const head = new Map([
+      [
+        "docs/spec/B.md",
+        'The cap is fixed (see [frame cap](limits.md#inbound-frame-size-bound "Bounds")).\n\n| [cap](limits.md#cap) | 16 |\n',
+      ],
+    ]);
+    expect(compareSpecFiles(base, head, [])).toEqual({
+      dropped: [],
+      added: [],
+      unmatched: [],
+    });
+    expect(
+      compareSpecFiles(base, head, [
+        "The cap is fixed (see [frame cap](#inbound-frame-size-bound)). -> -",
+      ]).unmatched,
+    ).toHaveLength(1);
+  });
+
+  it("requires a unit whose link text changed with its target", () => {
+    const old = "The bounds are in [channel.md](channel.md#bounds).";
+    const retargeted = "The bounds are in [limits.md](limits.md#bounds).";
+    const base = new Map([["docs/spec/A.md", `${old}\n`]]);
+    const head = new Map([["docs/spec/A.md", `${retargeted}\n`]]);
+    expect(compareSpecFiles(base, head, [])).toMatchObject({
+      dropped: [{ text: old }],
+      added: [{ text: retargeted }],
+    });
+    expect(compareSpecFiles(base, head, [`${old} -> ${retargeted}`])).toEqual({
+      dropped: [],
+      added: [],
+      unmatched: [],
+    });
+  });
+
+  it("requires a unit whose other words changed beside a retargeted link", () => {
+    const base = new Map([["docs/spec/A.md", "See [the cap](#cap) above.\n"]]);
+    const head = new Map([
+      ["docs/spec/A.md", "See [the cap](limits.md#cap).\n"],
+    ]);
+    expect(compareSpecFiles(base, head, [])).toMatchObject({
+      dropped: [{ text: "See [the cap](#cap) above." }],
+      added: [{ text: "See [the cap](limits.md#cap)." }],
+    });
+  });
+
+  it("compares link-shaped text in a code span or a code line whole", () => {
+    expect(withoutLinkTargets("Write `[a](b)` or [a](b) or ![i](c.png).")).toBe(
+      "Write `[a](b)` or [a]() or ![i]().",
+    );
+    expect(withoutLinkTargets("Nest [`x`](a.md#y) and [a](f(x).md).")).toBe(
+      "Nest [`x`]() and [a]().",
+    );
+    const base = new Map([["docs/spec/A.md", "```\n[a](b)\n```\n"]]);
+    const head = new Map([["docs/spec/A.md", "```\n[a](c)\n```\n"]]);
+    expect(compareSpecFiles(base, head, [])).toMatchObject({
+      dropped: [{ kind: "code line", text: "[a](b)" }],
+      added: [{ kind: "code line", text: "[a](c)" }],
     });
   });
 
@@ -292,30 +386,39 @@ describe("the comparison", () => {
     ]);
   });
 
-  it("reads only the wording-changes section of the body", () => {
+  it("prints a sentence added twice twice, and requires both lines", () => {
+    const base = new Map([["docs/spec/A.md", "Kept.\n"]]);
+    const head = new Map([["docs/spec/A.md", "Kept.\n\nTwice.\n\nTwice.\n"]]);
+    const result = compareSpecFiles(base, head, []);
+    expect(result.added).toMatchObject([{ text: "Twice.", count: 2 }]);
+    const listed = formatWordingChanges(result);
+    expect(listed).toEqual(["- - -> Twice.", "- - -> Twice."]);
+    expect(formatFailures(result).join("\n")).toContain(
+      "added sentence (2 times) in docs/spec/A.md:",
+    );
+
     expect(
-      parseWordingChanges(
-        "## Changes\n\n- a -> b\n\n## Wording changes\r\n\r\n- c ->  d\r\nprose\n### Note\n- e -> f\n## Checklist\n- g -> h\n",
-      ),
-    ).toEqual(["c -> d", "e -> f"]);
-    expect(parseWordingChanges("## Summary\n\n- a -> b\n")).toEqual([]);
+      compareSpecFiles(base, head, parseWordingChanges(listed.join("\n"))),
+    ).toEqual({ dropped: [], added: [], unmatched: [] });
+    expect(compareSpecFiles(base, head, ["- -> Twice."]).added).toMatchObject([
+      { text: "Twice.", count: 1 },
+    ]);
   });
 
-  it("skips fenced blocks in the body", () => {
+  it("reads each `- ` line of the list, skipping blank and `#` lines", () => {
     expect(
       parseWordingChanges(
-        "```\n## Wording changes\n- x -> y\n```\n\n## Wording changes\n\n- c -> d\n```sh\n# comment\n- a -> b\n```\n- e -> f\n\n## Checklist\n",
+        "# Header -> comment\r\n\r\n- c ->  d\r\n  - e -> f\n- - -> # a code comment\nstray -> line\n",
       ),
-    ).toEqual(["c -> d", "e -> f"]);
+    ).toEqual(["c -> d", "e -> f", "- -> # a code comment", "stray -> line"]);
+    expect(parseWordingChanges("# only a header\n")).toEqual([]);
   });
 });
 
 describe("the command", () => {
   function runScript(dir, args, env = {}) {
     const childEnv = { ...process.env };
-    delete childEnv.GITHUB_ACTIONS;
-    delete childEnv.PR_JSON;
-    delete childEnv.PR_BODY;
+    delete childEnv.GITHUB_BASE_REF;
     Object.assign(childEnv, env);
     return spawnSync(process.execPath, [SCRIPT, ...args], {
       cwd: dir,
@@ -324,51 +427,31 @@ describe("the command", () => {
     });
   }
 
-  it("with no body, prints the section to paste and passes", () => {
+  it("fails the changed word, printing the lines to list, and passes once the branch lists them", () => {
     withMove(ONE_WORD_CHANGED, (dir) => {
-      const result = runScript(dir, ["--base", "staging"]);
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain(
-        `## Wording changes\n\n- ${CHANGED_SENTENCE} -> -\n- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
-      );
-      expect(result.stdout.trim().split("\n").at(-1)).toContain(
-        "PR Checklist workflow",
-      );
-    });
-  });
-
-  it("fails the changed word, naming the sentence, and passes it once PR_BODY lists it", () => {
-    withMove(ONE_WORD_CHANGED, (dir) => {
-      const failing = runScript(dir, ["--base", "staging"], { PR_BODY: "" });
+      const failing = runScript(dir, ["--base", "staging"]);
       expect(failing.status, failing.stdout).toBe(1);
-      expect(failing.stderr).toContain(CHANGED_SENTENCE);
-      expect(failing.stderr).toContain("read from PR_BODY");
+      expect(failing.stderr).toContain(
+        `${WORDING_CHANGES_FILE} is unchanged since the merge base`,
+      );
+      expect(failing.stderr).toContain(
+        `- ${CHANGED_SENTENCE} -> -\n- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
+      );
 
-      const body = `## Wording changes\n\n- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`;
-      const listed = runScript(dir, ["--base", "staging"], { PR_BODY: body });
+      write(dir, { [WORDING_CHANGES_FILE]: CHANGED_SENTENCE_LISTED });
+      commit(dir, "list");
+      const listed = runScript(dir, ["--base", "staging"]);
       expect(listed.status, listed.stderr).toBe(0);
+      expect(listed.stdout).toContain("passed over 2 changed files");
     });
   });
 
-  it("reads the body from the pull request JSON at PR_JSON", () => {
-    withMove(ONE_WORD_CHANGED, (dir) => {
-      const scratch = mkdtempSync(resolve(tmpdir(), "spec-sentences-pr-"));
-      try {
-        const json = resolve(scratch, "pull-request.json");
-        writeFileSync(
-          json,
-          JSON.stringify({
-            body: `## Wording changes\r\n\r\n- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\r\n`,
-          }),
-        );
-        const result = runScript(dir, ["--base", "staging"], {
-          GITHUB_ACTIONS: "true",
-          PR_JSON: json,
-        });
-        expect(result.status, result.stderr).toBe(0);
-      } finally {
-        rmSync(scratch, { recursive: true, force: true });
-      }
+  it("fails a list naming a change when no spec file changed", () => {
+    withMove({ [WORDING_CHANGES_FILE]: "- Gone. -> -\n" }, (dir) => {
+      const result = runScript(dir, ["--base", "staging"]);
+      expect(result.status, result.stdout).toBe(1);
+      expect(result.stderr).toContain("no Markdown file under docs/spec/");
+      expect(result.stderr).toContain("  - Gone. -> -");
     });
   });
 
@@ -385,6 +468,12 @@ describe("the command", () => {
     });
   });
 
+  it("takes the pull request's base branch on the runner", () => {
+    expect(defaultBase({ GITHUB_BASE_REF: "main" })).toBe("origin/main");
+    expect(defaultBase({ GITHUB_BASE_REF: "" })).toBe("origin/staging");
+    expect(defaultBase({})).toBe("origin/staging");
+  });
+
   it("passes with one line when no spec file changed", () => {
     const result = runScript(ROOT, ["--base", "HEAD"]);
     expect(result.status, result.stderr).toBe(0);
@@ -396,27 +485,26 @@ describe("the command", () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("does not resolve");
   });
-
-  it("passes with one line on the runner when no body is given", () => {
-    const result = runScript(ROOT, [], { GITHUB_ACTIONS: "true" });
-    expect(result.status).toBe(0);
-    expect(result.stdout.trim().split("\n")).toHaveLength(1);
-    expect(result.stdout).toContain("PR Checklist workflow");
-  });
 });
 
 describe("where it runs", () => {
   const scripts = rootScripts(ROOT);
 
-  it("is a root check script", () => {
+  it("is a root check script that check:all runs", () => {
     expect(scripts["check:spec-sentences"]).toBe(
       "node scripts/check-spec-sentence-moves.mjs",
     );
+    expect(CHECKS.map((check) => check.script)).toContain(
+      "check:spec-sentences",
+    );
   });
 
-  it("runs in the PR Checklist workflow with the base branch, the fetched body, and the history to hold both", () => {
-    const job = workflowDocument(ROOT, `${WORKFLOW_DIR}/pr_checklist.yaml`)
-      .jobs["pr-checklist"];
+  it("runs in a CI job holding the history the merge base needs", () => {
+    const job = workflowDocument(ROOT, `${WORKFLOW_DIR}/static_checks.yaml`)
+      .jobs["repo-guards"];
+    expect(job.steps.some((step) => step.run === "npm run check:all")).toBe(
+      true,
+    );
     const checkout = job.steps.find((step) =>
       step.uses?.startsWith("actions/checkout"),
     );
@@ -424,10 +512,5 @@ describe("where it runs", () => {
       checkout.with?.["fetch-depth"],
       "the spec sentence comparison reads the base branch out of the checkout, which a single-commit fetch does not carry",
     ).toBe(0);
-    const step = job.steps.find((candidate) =>
-      candidate.run?.includes("npm run check:spec-sentences"),
-    );
-    expect(step.run).toContain('--base "origin/$GITHUB_BASE_REF"');
-    expect(step.env?.PR_JSON).toBe("${{ runner.temp }}/pull-request.json");
   });
 });
