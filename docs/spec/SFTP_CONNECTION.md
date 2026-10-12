@@ -9,6 +9,8 @@ It is the implementation-level complement to the host-key pinning in [SECURITY_D
 It does not cover the recovery of a session the server drops mid-exchange (see [SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md)) or the memory and liveness bounds on the transport operations (see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md) and [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md)).
 Intended readers are security auditors and implementors.
 
+Every net-new control specified here is subject to the explicit pre-release security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy); the per-section notes below repeat this only where a control has an extra scope nuance (an internet-facing surface, a new security-relevant dependency, or a modification layered on an existing control).
+
 ## Server-provisioning endpoint call
 
 `connection.server.provision` names an HTTP endpoint that, in `start` mode, wakes a primary server kept down between exchanges and, in `create` mode, makes a new server and answers with its address; see the [On-demand server provisioning](../EXCHANGE_REFERENCE.md#on-demand-server-provisioning) overview for the field table and which command calls it.

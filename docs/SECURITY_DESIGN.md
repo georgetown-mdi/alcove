@@ -499,6 +499,8 @@ The spec-tier counterparts that specify how these controls are built:
 - [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction, parsed-input bounds, and display-sanitization format
 - [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - the transport memory bounds, file-sync and WebRTC
 - [TRANSPORT_LIVENESS.md](spec/TRANSPORT_LIVENESS.md) - the file-sync transport liveness bounds and the SFTP heartbeat
+- [SFTP_CONNECTION.md](spec/SFTP_CONNECTION.md) - the server-provisioning endpoint call, SFTP fatal-packet crash safety, and host-key verification
+- [SFTP_SESSION_RECOVERY.md](spec/SFTP_SESSION_RECOVERY.md) - the SFTP adapter's recovery of a session the server drops mid-exchange
 - [SIGNALING_SERVER_BOUNDS.md](spec/SIGNALING_SERVER_BOUNDS.md) - the coordination server's signaling-surface bounds
 - [CREDENTIAL_STORAGE.md](spec/CREDENTIAL_STORAGE.md) - the owner-only on-disk write path for the key file, signing identity, and result CSV
 - [CANONICAL_ENCODING.md](spec/CANONICAL_ENCODING.md) - the RFC 8785 byte encoding receipts and commitments are computed over

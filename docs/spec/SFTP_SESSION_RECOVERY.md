@@ -9,6 +9,8 @@ It is the implementation-level complement to [Server-enforced session limits](..
 It does not cover the heartbeat that keeps a quiet session from being dropped (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md#sftp-session-heartbeat-and-tcp-keepalive)), the crash safety on a fatal packet and the host-key verification (see [SFTP_CONNECTION.md](SFTP_CONNECTION.md)), or the file-sync state machine across an idle boundary (see [FILE_SYNC.md](FILE_SYNC.md#session-lifetime-across-an-idle-boundary)).
 Intended readers are security auditors and implementors.
 
+Every net-new control specified here is subject to the explicit pre-release security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy).
+
 ## SFTP mid-exchange session recovery
 
 The [SFTP session heartbeat](TRANSPORT_LIVENESS.md#sftp-session-heartbeat-and-tcp-keepalive) keeps a *friendly* server from dropping a quiet session, but some servers enforce a **max-session or idle cap the operator cannot change** (observed at ~10 minutes; an observation on one service that was not repeated as of 2026-09-29) and drop the one long-lived session regardless.
