@@ -16,13 +16,18 @@
 //   of: setup (`cd DIR`, bare or exported assignments); a read-only pipeline
 //   (`echo`, `tail -5 log`, `grep -c x log | wc -l`) that does not follow a
 //   file or read a device; or a command opening with `timeout <N>` or
-//   `gtimeout <N>`, N not zero, after optional assignments and `env -C DIR`.
-//   At least one element must be that bounded command, and a lone `&`, a
-//   heredoc or a command substitution outside a bounded element refuses. Any
-//   non-zero N is accepted.
+//   `gtimeout <N>`, N not zero, after optional assignments and `env -C DIR`,
+//   each later pipe stage of which is bounded the same way or read-only. At
+//   least one element must be bounded. A lone `&`, a heredoc, or a command or
+//   process substitution outside single quotes refuses wherever it appears. A
+//   word is read with its quotes removed; a path with any `dev` component other
+//   than `/dev/null` is a device, and a FIFO or a symlink to a device is not
+//   seen. Any non-zero N is accepted.
 //
-// Probe: block-sleep-poll.probe.md beside this file, last run 2026-09-25 on
-// Claude Code 2.1.282 (macOS host); a `Workflow` `agent()` call was not probed.
+// Probes: block-sleep-poll.probe.md beside this file. The background-resume
+// probe last ran 2026-09-25 on Claude Code 2.1.282 (macOS host), and a
+// `Workflow` `agent()` call was not probed; the background-stdin probe, which
+// the read-only allowance rests on, last ran 2026-10-12 on 2.1.296.
 //
 // Not a shell parser (see lib/shell.mjs): a loop in a variable, a function or
 // an `eval` string is not seen. Exit 0 allows the call; exit 2 blocks it and
@@ -30,6 +35,8 @@
 // Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { commandOf, eventForTools } from "./lib/event.mjs";
+import { posix } from "node:path";
+
 import { tokenizeRaw } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
@@ -177,18 +184,53 @@ function pipeSeparatorWidth(text, i) {
 }
 
 const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
-const SUBSTITUTION = /\$\(|`|<\(|<</;
+const SUBSTITUTION = /\$\(|`|<\(|>\(|<</;
+
+// The text with every single-quoted span dropped, since the shell expands
+// nothing inside one: a `$(...)` there is a literal, or the script of a
+// `sh -c` the timeout bounds.
+function outsideSingleQuotes(text) {
+  let kept = "";
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (char === "\\") {
+      kept += text.slice(i, i + 2);
+      i += 1;
+      continue;
+    }
+    if (char === '"') quote = quote === '"' ? null : '"';
+    else if (char === "'" && quote === null) {
+      quote = "'";
+      continue;
+    }
+    kept += char;
+  }
+  return kept;
+}
+
+// True when the shell running the element would itself run a command
+// substitution, a process substitution or a heredoc, which no timeout in the
+// element bounds.
+function hasSubstitution(element) {
+  return SUBSTITUTION.test(outsideSingleQuotes(element));
+}
 
 // A list element that runs nothing: `cd DIR`, or bare or exported assignments.
 function isSetup(element) {
-  if (SUBSTITUTION.test(element)) return false;
+  if (hasSubstitution(element)) return false;
   const words = tokenizeRaw(element);
   if (words[0] === "cd") return words.length <= 2;
   const assignments = words[0] === "export" ? words.slice(1) : words;
   return assignments.length > 0 && assignments.every((w) => ASSIGNMENT.test(w));
 }
 
-// Commands that only read or report, each ending once its input does.
+// Commands that only read or report, each ending once its input does; `tee`
+// writes what it reads, and ends the same way.
 const READ_ONLY = new Set([
   "echo",
   "grep",
@@ -206,38 +248,74 @@ const READ_ONLY = new Set([
   "uniq",
   "tr",
   "cut",
+  "tee",
 ]);
-const FOLLOW_OPTION = /^(?:-[A-Za-z0-9]*[fF]|--follow)/;
-const DEVICE_OTHER_THAN_NULL = /^\/dev\/(?!null$)/;
+// A short-option cluster holding `f` or `F` (`-f`, `-nF`), or a long option
+// `tail` would take as `--follow`: any prefix of it, with or without a value.
+const SHORT_FOLLOW = /^-[A-Za-z0-9]*[fF]/;
+const LONG_OPTION_NAME = /^--([^=]+)/;
+const REDIRECTION_OPERATOR = /^(?:\d*|&)(?:>>?|<)[&|]?/;
 
-// A list element whose every pipe stage is a READ_ONLY command that does not
-// follow a file (`tail -f`) or read a device (`/dev/zero`).
-function isReadOnly(element) {
-  if (SUBSTITUTION.test(element)) return false;
-  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
-  if (stages === null || stages.length === 0) return false;
-  return stages.every((stage) => {
-    const words = tokenizeRaw(stage);
-    if (!READ_ONLY.has(words[0])) return false;
-    if (words.some((w) => DEVICE_OTHER_THAN_NULL.test(w))) return false;
-    return words[0] !== "tail" || !words.some((w) => FOLLOW_OPTION.test(w));
-  });
+// A word as the command sees it once the shell removes quotes and backslashes.
+function unquoted(word) {
+  return word.replace(/['"\\]/g, "");
 }
 
-// True when the element opens with `timeout <N>` once leading assignments and
-// an `env` carrying only `-C DIR` and assignments are set aside.
+function isFollowOption(word) {
+  if (SHORT_FOLLOW.test(word)) return true;
+  const name = LONG_OPTION_NAME.exec(word)?.[1];
+  return name !== undefined && "follow".startsWith(name);
+}
+
+// True when the word, or a redirection's target, is a path with a `dev`
+// component (`/dev/zero`, `//dev/zero`, `../../dev/zero`, `</dev/urandom`)
+// other than `/dev/null`. A component named `dev` anywhere refuses, since a
+// relative path's directory is not known here.
+function readsDevice(word) {
+  const path = word.replace(REDIRECTION_OPERATOR, "");
+  if (path === "" || posix.normalize(path) === "/dev/null") return false;
+  return path.split("/").includes("dev");
+}
+
+// A pipe stage running a READ_ONLY command that does not follow a file
+// (`tail -f`) or read a device (`/dev/zero`).
+function isReadOnlyStage(stage) {
+  const words = tokenizeRaw(stage).map(unquoted);
+  if (!READ_ONLY.has(words[0])) return false;
+  if (words.some(readsDevice)) return false;
+  return words[0] !== "tail" || !words.some(isFollowOption);
+}
+
+// A list element whose every pipe stage is read-only.
+function isReadOnly(element) {
+  if (hasSubstitution(element)) return false;
+  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
+  if (stages === null || stages.length === 0) return false;
+  return stages.every(isReadOnlyStage);
+}
+
+// True when the element opens with `timeout <N>` once leading assignments and an
+// `env` carrying only `-C DIR` and assignments are set aside, holds no
+// substitution, and every later pipe stage is bounded the same way or read-only.
 function isBounded(element) {
-  const words = tokenizeRaw(element);
+  if (hasSubstitution(element)) return false;
+  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
+  if (stages === null || stages.length === 0) return false;
+  const [first, ...rest] = stages;
+  if (!opensBounded(first)) return false;
+  return rest.every((stage) => opensBounded(stage) || isReadOnlyStage(stage));
+}
+
+function opensBounded(stage) {
+  const words = tokenizeRaw(stage);
   let i = 0;
-  const isPlainAssignment = (word) =>
-    ASSIGNMENT.test(word) && !SUBSTITUTION.test(word);
-  while (i < words.length && isPlainAssignment(words[i])) i += 1;
+  while (i < words.length && ASSIGNMENT.test(words[i])) i += 1;
   if (words[i] === "env") {
     i += 1;
     for (;;) {
       if (words[i] === "-C" || words[i] === "--chdir") i += 2;
       else if (/^(?:-C.|--chdir=)/.test(words[i] ?? "")) i += 1;
-      else if (isPlainAssignment(words[i] ?? "")) i += 1;
+      else if (ASSIGNMENT.test(words[i] ?? "")) i += 1;
       else break;
     }
   }
@@ -276,7 +354,10 @@ function blockUnboundedBackground() {
     "Blocked by block-sleep-poll hook: a run_in_background command has no timeout " +
       "of its own, so every command it runs must open with `timeout <N>` (N not " +
       "zero), apart from a leading `cd DIR` or `VAR=value` and a trailing `echo` " +
-      "or read-only `tail`/`grep`/`cat`; no lone `&`, heredoc or `$(...)`.\n" +
+      "or read-only `tail`/`grep`/`cat`, and every stage piped after it must be " +
+      "bounded the same way or read-only. A read-only command may not follow a file " +
+      "or read a device, and no lone `&`, heredoc, `$(...)`, backtick or `<(...)` " +
+      "may appear outside single quotes.\n" +
       "Bound each command -- `timeout 900 npm run lint > /tmp/lint.log 2>&1; " +
       "echo exit=$?`, or `timeout 900 sh -c 'npm run build && npm test'` -- or, " +
       "where no `timeout` is on PATH, run it in the foreground with a raised " +

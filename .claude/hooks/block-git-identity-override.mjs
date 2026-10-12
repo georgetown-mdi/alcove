@@ -164,8 +164,9 @@ const CONFIG_ACTION_MODES = new Map([
 // An unquoted redirection word (`2>/dev/null`, `>`, `&>log`, `2>&1`), which is
 // the shell's and not an argument of the command; group 1 is its target, empty
 // when the target is the next word. Read on raw words, so a quoted value such
-// as `">x"` stays an argument.
-const REDIRECTION = /^(?:\d*|&)(?:>>?|<|>&|<&)\|?(.*)$/;
+// as `">x"` stays an argument. A word opening `>(` or `<(` is a process
+// substitution, which expands to an argument, and is not matched.
+const REDIRECTION = /^(?![<>]\()(?:\d*|&)(?:>>?|<|>&|<&)\|?(.*)$/;
 
 // A segment's words with its redirections and their targets dropped, quotes
 // then stripped as `tokenize` strips them.

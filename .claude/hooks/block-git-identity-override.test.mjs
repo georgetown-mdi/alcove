@@ -150,6 +150,8 @@ describe("block-git-identity-override hook", () => {
       "git config user.email '>agent@example.com'",
       'git config user.name ">Agent"',
       "2>/dev/null GIT_AUTHOR_EMAIL=agent@example.com git commit -m x",
+      "git config user.name >(cat)",
+      "git config user.email <(echo agent@example.com)",
     ]);
   });
 

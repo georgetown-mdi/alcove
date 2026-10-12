@@ -198,6 +198,13 @@ describe("block-sleep-poll hook", () => {
       "timeout 600 npm run build && timeout 900 npm test",
       "timeout 600 npm run build || echo build failed",
       "timeout 600 npm test > /tmp/t.log 2>/dev/null; cat /tmp/t.log | grep 'a|b'",
+      "timeout 5 a | tail -n 5",
+      "timeout 5 a 2>&1 | grep -v x | head -3",
+      "timeout 5 a | timeout 5 b",
+      "timeout 5 a; grep x log 2>/dev/null; cat log 2>//dev/null",
+      "timeout 5 a; tail -n 5 --retry log",
+      "timeout 900 sh -c 'echo $(date) `pwd`'",
+      "timeout 5 a; grep '$(x)' log",
     ]) {
       expect(background(command).status, command).toBe(0);
     }
@@ -239,11 +246,47 @@ describe("block-sleep-poll hook", () => {
       "timeout 5 a; cat <(npm test)",
       "timeout 5 a; git status",
       "timeout 5 a; rm -rf /tmp/x",
+      'timeout 5 a "$(sleep 9999)"',
+      "timeout 5 a `sleep 9999`",
+      'timeout 900 sh -c "echo $(sleep 9999)"',
+      "timeout 5 a > >(npm run dev)",
+      "timeout 5 a | npm run dev",
+      "timeout 5 a | tail -n 1 | npm run dev",
+      "timeout 5 a |& sleep 9999",
+      "timeout 5 a | tail -f log",
     ];
     for (const command of refused) {
       const { status, stderr } = background(command);
       expect(status, command).toBe(2);
       expect(stderr, command).toContain("run_in_background");
+    }
+  });
+
+  it("refuses a read-only element that follows a file or reads a device, however written", () => {
+    const refused = [
+      "timeout 5 a; tail --fol log",
+      "timeout 5 a; tail --f log",
+      "timeout 5 a; tail --follow log",
+      "timeout 5 a; tail --foll=descriptor log",
+      'timeout 5 a; tail "-f" log',
+      "timeout 5 a; tail '-F' log",
+      'timeout 5 a; tail "--follow" log',
+      "timeout 5 a; tail -n5f log",
+      "timeout 5 a; tail -qF log",
+      "timeout 5 a; \\tail -f log",
+      'timeout 5 a; "tail" -f log',
+      'timeout 5 a; cat "/dev/zero"',
+      "timeout 5 a; cat '/dev/zero'",
+      "timeout 5 a; cat //dev/zero",
+      "timeout 5 a; cat /dev/./zero",
+      "timeout 5 a; cat ../../dev/zero",
+      "timeout 5 a; cat < /dev/zero",
+      "timeout 5 a; cat </dev/urandom",
+      "timeout 5 a; grep -f/dev/zero log",
+      "timeout 5 a; cat /dev/stdin",
+    ];
+    for (const command of refused) {
+      expect(background(command).status, command).toBe(2);
     }
   });
 

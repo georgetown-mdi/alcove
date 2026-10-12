@@ -246,6 +246,15 @@
             "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-orchestration-ruleset-read.mjs\""
           }
         ]
+      },
+      {
+        "matcher": "Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/record-review-round-lock.mjs\""
+          }
+        ]
       }
     ]
   }
