@@ -13,6 +13,7 @@ That front passes a connection asking for the broker's name, TLS unopened, to th
 ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"
 ```
 
+The relay's registrar, where the host runs one, then listens on another port: `ALCOVE_RELAY_REGISTRAR_PORT` defaults to 8443, so set it, as `relay.env.example` does to 8444; the relay's `render-front.sh` refuses two services on one port.
 The broker's URL then names no port (`wss://signal.example.org/api/`), and a party whose network admits outbound TCP only to 443 reaches it.
 The published URL is the web build's `VITE_SIGNALING_SERVER_URL` ([docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); an invitation or a kept exchange that names `:8443` reaches the broker only while the host's firewall admits 8443.
 A connection through 443 reaches this front from `127.0.0.1`, so its access log line names that address rather than the client's.

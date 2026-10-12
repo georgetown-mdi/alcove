@@ -24,13 +24,26 @@ REALM="${ALCOVE_RELAY_REALM:-}"
 
 ROUTES=()
 SEEN=" $REALM "
+# Each loopback port a route or the registrar takes, and what takes it: two
+# services cannot both listen on one.
+PORT_NUMBERS=()
+PORT_OWNERS=()
+claim_port() {
+  local name="$1" port="$2" source="$3" i
+  for i in ${PORT_NUMBERS[@]+"${!PORT_NUMBERS[@]}"}; do
+    [ "${PORT_NUMBERS[$i]}" != "$port" ] \
+      || die "$source routes $name to port $port, which ${PORT_OWNERS[$i]} also uses; give each its own port"
+  done
+  PORT_NUMBERS+=("$port")
+  PORT_OWNERS+=("$name")
+}
 add_route() {
   local name="$1" port="$2" source="$3"
   # Lowercase DNS names only, so a value cannot end the map entry it is
   # written into and one name has one spelling.
   [[ "$name" =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] \
     || die "$source names '$name', which is not a lowercase DNS name"
-  [[ "$port" =~ ^[0-9]{1,5}$ ]] && [ "$port" -ge 1 ] && [ "$port" -le 65535 ] \
+  [[ "$port" =~ ^[1-9][0-9]{0,4}$ ]] && [ "$port" -le 65535 ] \
     || die "$source routes $name to '$port', which is not a port number"
   [ "$port" != 443 ] || die "$source routes $name to port 443, the front's own"
   if [ "$name" = "$REALM" ]; then
@@ -40,12 +53,20 @@ add_route() {
     *" $name "*) die "$source routes $name, which another route already claims" ;;
   esac
   SEEN="$SEEN$name "
+  claim_port "$name" "$port" "$source"
   ROUTES+=("    $name 127.0.0.1:$port;")
 }
 
+# The registrar listens on its port on every address wherever the host holds
+# its token, so that port is taken whether or not the registrar has a name.
 REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
+REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
+REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-/etc/alcove-relay/registrar-token}"
 if [ -n "$REGISTRAR_NAME" ]; then
-  add_route "$REGISTRAR_NAME" "${ALCOVE_RELAY_REGISTRAR_PORT:-8443}" ALCOVE_RELAY_REGISTRAR_NAME
+  add_route "$REGISTRAR_NAME" "$REGISTRAR_PORT" ALCOVE_RELAY_REGISTRAR_NAME
+elif [ -f "$REGISTRAR_TOKEN_FILE" ]; then
+  PORT_NUMBERS+=("$REGISTRAR_PORT")
+  PORT_OWNERS+=("the registrar (ALCOVE_RELAY_REGISTRAR_PORT)")
 fi
 read -r -a PAIRS <<< "${ALCOVE_RELAY_FRONT_ROUTES:-}"
 for pair in ${PAIRS[@]+"${PAIRS[@]}"}; do

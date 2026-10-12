@@ -21,6 +21,9 @@ Network=host
 Volume=/etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro
 ReadOnly=true
 Tmpfs=/tmp
+# nginx's master binds 443 and starts its worker as the image's nginx user.
+DropCapability=ALL
+AddCapability=NET_BIND_SERVICE SETUID SETGID
 LogDriver=journald
 
 [Service]

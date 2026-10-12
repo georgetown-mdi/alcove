@@ -91,11 +91,9 @@ fi
 [ -n "$RUNTIME" ] || die "no container runtime on this host and ALCOVE_RELAY_RUNTIME is unset in $ENV_FILE; the allocation probes run the relay's image"
 command -v "$RUNTIME" >/dev/null 2>&1 || die "ALCOVE_RELAY_RUNTIME names $RUNTIME, which is not on PATH"
 
-# The wait budget the listener retry below spends, validated up front and not
-# where it is read: under `set -uo pipefail` (no -e), a non-numeric value
-# makes the `[ -ge ]` comparison in that loop error and evaluate false on every
-# iteration rather than halting the script, so the loop would retry forever
-# instead of reporting a bound failure. Measured 2026-09-03. Mirrors the
+# The wait budget the handshake retry below spends, validated up front: the
+# loop's deadline is shell arithmetic, which reads a non-numeric value as a
+# variable name or an expression rather than refusing it. Mirrors the
 # case-statement validation this reference already uses for its other knobs
 # (ALCOVE_RELAY_RUNTIME in install.sh).
 WAIT="${ALCOVE_RELAY_VERIFY_WAIT:-30}"
@@ -118,19 +116,16 @@ printf 'Alcove relay verification: %s\n' "$REALM"
 [ "$CONNECT" = "$REALM" ] || printf '(connecting via %s)\n' "$CONNECT"
 printf '\n'
 
-# --- wait for the listener ----------------------------------------------------
-# install.sh restarts the relay's supervised service and calls this script
-# within about a second, but the listener takes a few seconds longer to come
-# up. Measured 2026-09-03: a probe at t+0.3s after restart got
-# connection-refused, and the listener was accepting by t+1.3s. Retry a bare
-# TCP connect against the same target/port the probes below use, once per
-# second, before running the first probe -- an install-time run should not
-# fail a relay that is merely still starting.
-waited=0
-until bounded 1 bash -c "exec 3<>\"/dev/tcp/$CONNECT/443\"" 2>/dev/null; do
-  waited=$((waited + 1))
-  if [ "$waited" -ge "$WAIT" ]; then
-    report fail "no TCP listener at $CONNECT:443 after ${WAIT}s" "ALCOVE_RELAY_VERIFY_WAIT to allow longer"
+# --- wait for the relay -------------------------------------------------------
+# install.sh restarts coturn, then the 443 front, and runs this script about a
+# second later; coturn was measured accepting 1.3 s after a restart
+# (2026-09-03). The front accepts a connection while coturn is still starting,
+# so retry a TLS handshake for the realm through the front, which completes
+# only once both are up. Its certificate is checked by the probe below.
+DEADLINE=$((SECONDS + WAIT))
+until echo | bounded 5 openssl s_client -connect "$CONNECT:443" -servername "$REALM" >/dev/null 2>&1; do
+  if [ "$SECONDS" -ge "$DEADLINE" ]; then
+    report fail "no TLS handshake through $CONNECT:443 after ${WAIT}s" "ALCOVE_RELAY_VERIFY_WAIT to allow longer"
     break
   fi
   sleep 1

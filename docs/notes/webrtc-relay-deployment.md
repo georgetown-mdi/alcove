@@ -405,9 +405,9 @@ static site with no server framework
 
 _Status: built in the relay reference, not yet run on the relay host._
 
-With coturn on 443, the registrar and the broker's front, each on 8443, are out
-of reach of a network admitting outbound TCP to 443 only: the 2026-10-03
-restricted CLI exited 73 on the registrar. The owner chose one
+With coturn on 443, the registrar and the broker's front, each on a port of
+its own, are out of reach of a network admitting outbound TCP to 443 only: the
+2026-10-03 restricted CLI exited 73 on the registrar. The owner chose one
 proxy on 443 (2026-10-04). The reference builds it as
 [the 443 front](../../infra/relay/README.md#the-443-front): nginx's stream
 module reads each connection's TLS server name and passes the connection,

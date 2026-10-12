@@ -76,6 +76,8 @@ log "installing the relay for realm $ALCOVE_RELAY_REALM"
 if [ ! -s "$ETC/certs/fullchain.pem" ] && [ ! -f "${ALCOVE_RELAY_ACME_ENV:-$ETC/acme.env}" ]; then
   die "no certificate and no ${ALCOVE_RELAY_ACME_ENV:-$ETC/acme.env}. Copy certs/env.example there at mode 600 and fill in the DNS provider credential"
 fi
+"$HERE/render-front.sh" > /dev/null \
+  || die "the front's routes in $ENV_FILE are refused (above); nothing was installed or restarted"
 
 # --- the container runtime --------------------------------------------------
 # podman where the distribution carries it, docker where it does not. Measured on

@@ -117,7 +117,7 @@ or the Dockerfile and it converges.
 | `import-legacy-mapping.sh` | Carries the text mapping an install from before the secrets table's own mapping kept into the table, and deletes it once the table reads back every row; `install.sh` runs it. See [Per-exchange keys](#per-exchange-keys), The mapping |
 | `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, hourly. See [Per-exchange keys](#per-exchange-keys), Lifetime |
 | `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
-| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a bare TCP connect before its first probe, waiting for a just-(re)started listener to come up; 30 by default |
+| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front before its first probe, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
@@ -376,10 +376,13 @@ token, overwrite the file and
   authenticate a cross-origin call. `Access-Control-Allow-Origin: *` is safe for
   that reason. `scripts/relay-exchange-keys.test.mjs` holds both.
 - **Where it listens.** HTTPS on `ALCOVE_RELAY_REGISTRAR_PORT` in `relay.env`,
-  8443 by default, on every address, with the relay's own certificate from
+  on every address, with the relay's own certificate from
   `/etc/alcove-relay/certs`; the certificate deploy hook restarts it when the
-  certificate changes. Where `ALCOVE_RELAY_REGISTRAR_NAME` gives it a name of
-  its own, [the 443 front](#the-443-front) passes a connection asking for that
+  certificate changes. The port is 8443 where unset; `relay.env.example` sets
+  8444, because the broker's TLS front holds 8443 on a host that runs it. An
+  existing host's registrar port is whatever its `relay.env` sets. Where
+  `ALCOVE_RELAY_REGISTRAR_NAME` gives it a name of its own,
+  [the 443 front](#the-443-front) passes a connection asking for that
   name to this port on loopback, so its address is `https://<that name>`, on
   443. The certificate is issued for the name beside the realm.
 - **Who must reach it.** Every machine that registers: the machine
@@ -438,13 +441,12 @@ so the front sees what any network hop on the path sees.
   coturn takes every connection no route claims, so a TURN client reaches it
   whatever name it sends, or none. A route names a port on `127.0.0.1` and
   never another host. `render-front.sh` refuses a route for the realm, a
-  name two routes claim, a name that is not a lowercase DNS name, and port 443.
-- **Why the server name.** Every service on this 443 speaks TLS, so a test of
-  the first bytes -- a STUN header against a TLS record -- separates none of
-  them: it tells plain TURN over TCP, which this relay does not serve, from
-  TLS. A name per service does separate them. ALPN could let the registrar
-  share the realm's name, but only if no TURN client offers an HTTP protocol
-  identifier, which no client has been measured on.
+  name two routes claim, a name that is not a lowercase DNS name, port 443,
+  and a port another route or the registrar already uses; `install.sh` runs it
+  before it installs or restarts anything.
+- **Why the server name.** The alternatives weighed against it, a test of the
+  first bytes and ALPN, are in
+  [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443).
 - **What the services see.** A connection through the front arrives at coturn
   and at each routed service from `127.0.0.1`. coturn's log lines name that
   address rather than the client's, and so do the broker front's access log
@@ -465,7 +467,8 @@ so the front sees what any network hop on the path sees.
 - **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
   listens on 8443 and presents its own certificate, so on a host that runs it,
   `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
-  under its own name.
+  under its own name. The registrar then needs another port, such as the 8444
+  `relay.env.example` sets.
 - **The WebSocket relay.** It runs on this host when it is built
   ([docs/notes/web-websocket-transport.md](../../docs/notes/web-websocket-transport.md)),
   under a name of its own, and its route is one more `name=port` pair.

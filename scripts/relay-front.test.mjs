@@ -48,16 +48,23 @@ const settings = (text) =>
     .map((line) => line.trim())
     .filter((line) => line !== "" && !line.startsWith("#"));
 
-const render = (envLines) => {
+/** Renders the front for a host holding a registrar token only when asked. */
+const render = (envLines, { registrarToken = false } = {}) => {
   const root = fixtureDir();
   const envFile = join(root, "relay.env");
   writeFileSync(
     envFile,
     [`ALCOVE_RELAY_REALM=${REALM}`, ...envLines, ""].join("\n"),
   );
+  const tokenFile = join(root, "registrar-token");
+  if (registrarToken) writeFileSync(tokenFile, "fixture-token\n");
   return spawnSync(BASH, [join(RELAY, "render-front.sh")], {
     encoding: "utf8",
-    env: { ...process.env, ALCOVE_RELAY_ENV_FILE: envFile },
+    env: {
+      ...process.env,
+      ALCOVE_RELAY_ENV_FILE: envFile,
+      ALCOVE_RELAY_REGISTRAR_TOKEN_FILE: tokenFile,
+    },
   });
 };
 
@@ -131,6 +138,10 @@ describe("render-front.sh", () => {
     ],
     [['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=0"'], "not a port number"],
     [
+      ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=0443"'],
+      "not a port number",
+    ],
+    [
       ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org"'],
       "write each route as name=port",
     ],
@@ -140,6 +151,72 @@ describe("render-front.sh", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(message);
     expect(result.stdout).toBe("");
+  });
+
+  it.each([
+    [
+      "two listed routes",
+      [
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=9500 ws.example.org=9500"',
+      ],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes ws.example.org to port 9500, which signal.example.org also uses",
+    ],
+    [
+      "a listed route and the registrar's name",
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        "ALCOVE_RELAY_REGISTRAR_PORT=8444",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8444"',
+      ],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8444, which registrar.example.org also uses",
+    ],
+    [
+      "a listed route and the registrar's name on its unset port",
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+      ],
+      {},
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8443, which registrar.example.org also uses",
+    ],
+    [
+      "a listed route and a registrar with no name on a host holding its token",
+      ['ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"'],
+      { registrarToken: true },
+      "ALCOVE_RELAY_FRONT_ROUTES routes signal.example.org to port 8443, which the registrar (ALCOVE_RELAY_REGISTRAR_PORT) also uses",
+    ],
+  ])("refuses one port for %s", (_, envLines, options, message) => {
+    const result = render(envLines, options);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(message);
+    expect(result.stdout).toBe("");
+  });
+
+  it("routes to the registrar's unset port on a host with no registrar token", () => {
+    const result = render([
+      'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+    ]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(mapEntries(result.stdout)).toContainEqual([
+      "signal.example.org",
+      "127.0.0.1:8443",
+    ]);
+  });
+
+  it("accepts the shipped example's registrar port beside the broker's route", () => {
+    const example = read("relay.env.example");
+    const port = example.match(/^ALCOVE_RELAY_REGISTRAR_PORT=(\d+)$/m)[1];
+    const result = render(
+      [
+        "ALCOVE_RELAY_REGISTRAR_NAME=registrar.example.org",
+        `ALCOVE_RELAY_REGISTRAR_PORT=${port}`,
+        'ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"',
+      ],
+      { registrarToken: true },
+    );
+    expect(result.status, result.stderr).toBe(0);
   });
 
   it("refuses a host with no realm", () => {
@@ -236,6 +313,16 @@ describe("the front's units", () => {
     expect(docker.match(/ -v /g)).toHaveLength(1);
     expect(quadlet.match(/^Volume=/gm)).toHaveLength(1);
   });
+
+  it("drop every capability but the three nginx needs to bind 443 and start its worker", () => {
+    const listed = (text, pattern) =>
+      [...text.matchAll(pattern)].flatMap((match) => match[1].split(/\s+/));
+    const kept = ["NET_BIND_SERVICE", "SETGID", "SETUID"];
+    expect(listed(docker, /--cap-drop (\S+)/g)).toEqual(["ALL"]);
+    expect(listed(quadlet, /^DropCapability=(.+)$/gm)).toEqual(["ALL"]);
+    expect(listed(docker, /--cap-add (\S+)/g).sort()).toEqual(kept);
+    expect(listed(quadlet, /^AddCapability=(.+)$/gm).sort()).toEqual(kept);
+  });
 });
 
 describe("install.sh and the front", () => {
@@ -244,6 +331,22 @@ describe("install.sh and the front", () => {
   it("installs the renderer and the template beside the other scripts", () => {
     expect(install).toContain('"$HERE/render-front.sh" "$LIBEXEC/"');
     expect(install).toContain('"$HERE/front.conf.tmpl"');
+  });
+
+  it("checks the routes before it installs or restarts anything", () => {
+    const check = install.indexOf('"$HERE/render-front.sh" > /dev/null');
+    expect(check).toBeGreaterThan(0);
+    for (const change of [
+      "dnf -y install",
+      "record_env_value ALCOVE_RELAY_RUNTIME",
+      "systemctl enable",
+      "install -d ",
+      " build ",
+      "systemctl restart ",
+    ]) {
+      const first = install.indexOf(change);
+      expect(first, change).toBeGreaterThan(check);
+    }
   });
 
   it("checks the rendered configuration with nginx -t before it goes live", () => {
