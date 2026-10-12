@@ -247,7 +247,13 @@ describe("RecurringHandoff panel", () => {
     expect(text()).toContain(
       "your partner's fingerprint once a run has recorded it",
     );
-    expect(text()).toContain("set signing.identity_file in alcove.yaml");
+    const identityPath = "/path/to/your/signing-identity.json";
+    expect(text()).toContain(
+      `set signing.identity_file in alcove.yaml to ${identityPath}`,
+    );
+    expect(text()).toContain(`dst=${identityPath},readonly`);
+    expect(text()).not.toContain("into that folder");
+    expect(text()).toContain("every Docker schedule line below");
     expect(text()).toContain("exchange --log-file=exchange.log input.csv ./");
     expect(text()).not.toContain("Save this as alcove.yaml");
     expect(text()).not.toContain("filled in below");

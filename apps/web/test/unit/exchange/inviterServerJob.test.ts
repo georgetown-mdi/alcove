@@ -195,6 +195,17 @@ describe("inviterServerJobConfig", () => {
     expect(inviterServerJobTransport("webrtc", {})).toEqual({
       channel: "webrtc",
     });
+    // An endpoint the console cannot mint is a defect, never a guessed path.
+    expect(() =>
+      inviterServerJobTransport("webrtc", {
+        connectionEndpoint: { channel: "webrtc", host: "peers.test" },
+      }),
+    ).toThrow("no host or no path");
+    expect(() =>
+      inviterServerJobTransport("webrtc", {
+        connectionEndpoint: { channel: "webrtc", host: "", path: "/psi/" },
+      }),
+    ).toThrow("no host or no path");
     expect(inviterServerJobTransport("sftp", {})).toEqual({ channel: "sftp" });
   });
 

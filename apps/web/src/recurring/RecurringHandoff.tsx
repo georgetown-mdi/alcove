@@ -11,6 +11,7 @@ import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import styles from "@styles/app.module.css";
 
+import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
@@ -350,18 +351,24 @@ function WorkingFolderSteps({
       {usedSigningIdentity && (
         <li>
           <p className={styles.handoffStepLabel}>
-            Copy your signing identity into that folder
+            Copy your signing identity to the scheduling machine, outside that
+            folder
           </p>
           <p className={styles.small}>
             This run signs its receipt with the signing identity at the location
             you chose on the console: your working folder, or the file you
             picked in your secrets folder. Copy that file to the scheduling
-            machine, readable only by you (chmod 600 on Linux/macOS), and set
-            signing.identity_file in alcove.yaml to where you put it - the path
-            there is where the console reads it, which the scheduling machine
-            does not have. Copy it; do not run alcove fingerprint there to make
-            a new one. That mints a different key with a different fingerprint,
-            and your partner has pinned the old one.
+            machine, readable only by you (chmod 600 on Linux/macOS). In the
+            Docker command and every Docker schedule line below, replace{" "}
+            {HANDOFF_SIGNING_IDENTITY_PLACEHOLDER} after src= with the real path
+            of that copy, and leave the dst= path as it is. Then set
+            signing.identity_file in alcove.yaml to{" "}
+            {HANDOFF_SIGNING_IDENTITY_PLACEHOLDER}, the path the command mounts
+            it at. If you run an installed Alcove instead, set
+            signing.identity_file to the real path of the copy. Copy the
+            identity; do not run alcove fingerprint there to make a new one.
+            That mints a different key with a different fingerprint, and your
+            partner has pinned the old one.
           </p>
         </li>
       )}
