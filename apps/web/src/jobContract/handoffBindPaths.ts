@@ -21,6 +21,20 @@ export interface HandoffBindPath {
 export const HANDOFF_LOG_FILE_NAME = "exchange.log";
 
 /**
+ * The placeholder the signing identity file is shown as in the exchange
+ * config's `signing.identity_file`.
+ *
+ * The identity is a real file on the operator's host, but the console loads
+ * it by the CONTAINER's path, which their host does not have -- whether that
+ * is the mounted data root's default or the secrets-mount file the operator
+ * chose, since the console resolves either to a container path. The template
+ * names the file rather than the location, and the panel says which file to
+ * point it at.
+ */
+export const HANDOFF_SIGNING_IDENTITY_PLACEHOLDER =
+  "/path/to/your/signing-identity.json";
+
+/**
  * The absolute paths `handoffSpec` names outside the folder the run starts in
  * (`JobHandoff.bindPaths` in `./jobHandoff`): each sftp credential `@path`, each
  * filedrop folder, and the signing identity.

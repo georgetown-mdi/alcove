@@ -11,6 +11,7 @@ import { CopyableCode } from "@components/CopyableCode";
 import { DisclosureSection } from "@components/DisclosureSection";
 import styles from "@styles/app.module.css";
 
+import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { buildImageReference } from "@psi/dockerRunCommand";
 
 import {
@@ -142,11 +143,7 @@ function HandoffBody({
         <WorkingFolderSteps
           command={shown?.runCommand}
           inputName={inputName}
-          signingIdentityPath={
-            handoff.usedSigningIdentity
-              ? handoff.bindPaths.at(0)?.path
-              : undefined
-          }
+          usedSigningIdentity={handoff.usedSigningIdentity}
         />
       ) : (
         <CommandSteps command={shown?.runCommand} inputName={inputName} />
@@ -327,14 +324,12 @@ function ConfigSteps({
 function WorkingFolderSteps({
   command,
   inputName,
-  signingIdentityPath,
+  usedSigningIdentity,
 }: {
   command: string | undefined;
   inputName: string;
-  /** The path the command mounts the signing identity at, where the run signed. */
-  signingIdentityPath: string | undefined;
+  usedSigningIdentity: boolean;
 }) {
-  const usedSigningIdentity = signingIdentityPath !== undefined;
   return (
     <ol className={styles.handoffSteps}>
       <li>
@@ -364,14 +359,16 @@ function WorkingFolderSteps({
             you chose on the console: your working folder, or the file you
             picked in your secrets folder. Copy that file to the scheduling
             machine, readable only by you (chmod 600 on Linux/macOS). In the
-            Docker command below, replace {signingIdentityPath} after src= with
-            the real path of that copy, and leave the dst= path as it is. Then
-            set signing.identity_file in alcove.yaml to {signingIdentityPath},
-            the path the command mounts it at. If you run an installed Alcove
-            instead, set signing.identity_file to the real path of the copy.
-            Copy the identity; do not run alcove fingerprint there to make a new
-            one. That mints a different key with a different fingerprint, and
-            your partner has pinned the old one.
+            Docker command and every Docker schedule line below, replace{" "}
+            {HANDOFF_SIGNING_IDENTITY_PLACEHOLDER} after src= with the real path
+            of that copy, and leave the dst= path as it is. Then set
+            signing.identity_file in alcove.yaml to{" "}
+            {HANDOFF_SIGNING_IDENTITY_PLACEHOLDER}, the path the command mounts
+            it at. If you run an installed Alcove instead, set
+            signing.identity_file to the real path of the copy. Copy the
+            identity; do not run alcove fingerprint there to make a new one.
+            That mints a different key with a different fingerprint, and your
+            partner has pinned the old one.
           </p>
         </li>
       )}

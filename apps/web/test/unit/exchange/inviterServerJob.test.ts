@@ -4,7 +4,6 @@ import {
   inviterServerJobConfig,
   inviterServerJobTransport,
 } from "@exchange/useInviterExchange";
-import { OWN_SIGNALING_PATH } from "@psi/transport/signalingAddress";
 import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 
@@ -196,15 +195,17 @@ describe("inviterServerJobConfig", () => {
     expect(inviterServerJobTransport("webrtc", {})).toEqual({
       channel: "webrtc",
     });
-    // A server with no path is named at the path a dial uses.
-    expect(
+    // An endpoint the console cannot mint is a defect, never a guessed path.
+    expect(() =>
       inviterServerJobTransport("webrtc", {
         connectionEndpoint: { channel: "webrtc", host: "peers.test" },
       }),
-    ).toEqual({
-      channel: "webrtc",
-      signalingServer: { host: "peers.test", path: OWN_SIGNALING_PATH },
-    });
+    ).toThrow("no host or no path");
+    expect(() =>
+      inviterServerJobTransport("webrtc", {
+        connectionEndpoint: { channel: "webrtc", host: "", path: "/psi/" },
+      }),
+    ).toThrow("no host or no path");
     expect(inviterServerJobTransport("sftp", {})).toEqual({ channel: "sftp" });
   });
 

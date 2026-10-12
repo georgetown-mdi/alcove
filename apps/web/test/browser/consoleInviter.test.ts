@@ -1053,6 +1053,9 @@ describe("console inviter over WebRTC", () => {
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeDisabled();
+    expect(app.container.textContent).toContain(
+      "Checking the coordination server.",
+    );
     expect(app.container.textContent).not.toContain(
       "Set the coordination server above to continue.",
     );

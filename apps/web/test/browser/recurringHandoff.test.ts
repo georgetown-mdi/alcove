@@ -253,6 +253,7 @@ describe("RecurringHandoff panel", () => {
     );
     expect(text()).toContain(`dst=${identityPath},readonly`);
     expect(text()).not.toContain("into that folder");
+    expect(text()).toContain("every Docker schedule line below");
     expect(text()).toContain("exchange --log-file=exchange.log input.csv ./");
     expect(text()).not.toContain("Save this as alcove.yaml");
     expect(text()).not.toContain("filled in below");
