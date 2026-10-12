@@ -159,10 +159,17 @@ jobs:
 
       # The new commit's assets are uploaded before the earlier commits' are
       # deleted, so the prerelease never holds no build. Never marked latest:
-      # the release list's latest entry stays a tagged release.
+      # the release list's latest entry stays a tagged release. A re-run of a
+      # commit main has moved past publishes nothing, so it cannot replace the
+      # tip's build with an older one.
       - name: Replace the prerelease's assets
         run: |
           set -euo pipefail
+          tip="$(gh api "repos/${GH_REPO}/commits/main" --jq .sha)"
+          if [ "${tip}" != "${GITHUB_SHA}" ]; then
+            echo "main is at ${tip}, not ${GITHUB_SHA}: the prerelease is left as it is, and the run for ${tip} publishes."
+            exit 0
+          fi
           bundle="${ALCOVE_ARCHIVE}.sigstore.json"
           notes="The core build the signaling broker runs, for commit ${GITHUB_SHA} on main. Not a release of Alcove: see docs/RELEASES.md, The broker core build."
           if ! gh release view "${ALCOVE_RELEASE_TAG}" >/dev/null 2>&1; then
