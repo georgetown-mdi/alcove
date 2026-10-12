@@ -13,7 +13,7 @@ Every net-new control specified here is subject to the explicit pre-release secu
 
 ## Transform-regex linear-time dialect
 
-A second control against the same mutually-distrusting counterparty bounds the *complexity*, not the count, of one partner-supplied field: the regular-expression pattern in a linkage-key element transform.
+A second control against the [same mutually-distrusting counterparty](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) bounds the *complexity*, not the count, of one partner-supplied field: the regular-expression pattern in a linkage-key element transform.
 The four regex step functions (`replace_regex`, `extract_regex`, `filter_regex`, `split_on`) compile their pattern and run it per row over the acceptor's full dataset (`packages/core/src/standardization.ts`); `parse_date` likewise *expands* its partner-controlled `inputFormat` into a per-row regex whose adjacent `(\d{1,2})` groups (one per `MM`/`DD` token) are a catastrophic-backtracking construct - a ~48-character format reaches a hang.
 On the JavaScript `RegExp` engine a catastrophic-backtracking (ReDoS) pattern would hang the single, non-interruptible thread.
 The pattern cannot be rewritten - PSI requires byte-identical keys and the terms are canonically hashed into the exchange-agreement receipt, so a unilateral rewrite both breaks matching and is reported as a terms mismatch.
@@ -67,11 +67,11 @@ The refusal locates the pattern by key, element and step index and states its si
   Ordinary patterns at 4096 characters (`[^A-Za-z0-9]+`, `\s+` and `[aeiou]` under `replace_regex`; `\s*;\s*` and `[,;]` under `split_on`) spend 11,736 to 28,672 units in all, the cell's read, the step's read, its first pass and its output included, under 0.1% of the budget, and derive the same keys as with no budget.
 - Limits of the regex search bound: the operator's own standardization pipeline runs outside the budget, as it runs outside every other limb of this control, so a regex step authored there keeps the unbounded cost, and a `` $` `` or `$'` expansion there still ends in the engine's string-length error.
   The literal text of a replacement template is not counted as it is copied: it adds at most the template's length per match, where the param length cap (`MAX_TRANSFORM_PARAM_LENGTH`) is checked before NFC normalization and NFC can triple a replacement, so about 12,300,000 code units at the value and param ceilings, charged with the step's output; the step's output then stays under about 46,000,000 code units, below the engine's maximum string length.
-  The bound is a volume of scanned text rather than a time, so what a row can still spend is the budget times the dearest charged unit, which the work budget's second measurement states.
+  The bound is a volume of scanned text rather than a time, so what a row can still spend is the budget times the dearest charged unit, which the [work budget's second measurement](TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection) states.
 
 The cap bounds one pattern: a row's total is that times the regex steps the document declares, which `TRANSFORM_COMPILE_MAX_STEPS` caps.
 The verdict depends on the engine build, so an re2js upgrade that changes a program's size is a dialect change ([PROTOCOL.md](PROTOCOL.md#transform-regular-expression-dialect), Versioning).
-`parse_date` is outside the cap: its format-length cap below bounds its regex, whose worst measured shape (128 `MM` tokens) costs about 5 ms per row.
+`parse_date` is outside the cap: its [format-length cap](TRANSFORM_PARAMETER_BOUNDS.md#unbounded-transform-parameter-rejection) bounds its regex, whose worst measured shape (128 `MM` tokens) costs about 5 ms per row.
 
 The mint and accept boundaries bound a second compile cost over the same content.
 `assertTransformsCompile` (`packages/core/src/linkageSatisfiability.ts`) builds every step a document declares - each `standardization` step and each linkage-key element transform - where the terms are authored or minted, so a step whose factory refuses its parameters is refused while the author still holds the document rather than at the first row of an exchange the partner has already accepted.

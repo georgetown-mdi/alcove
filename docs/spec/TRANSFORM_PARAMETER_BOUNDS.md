@@ -60,7 +60,7 @@ The checks behind all of it are `packages/core/test/consent/invitationSummary.te
 
 ## Unbounded transform-parameter rejection
 
-A third control against the same mutually-distrusting counterparty bounds the *magnitude* of the partner-supplied transform-param values whose size drives unbounded per-row work - the `transform.params` values whose entry count the count gates bound and whose declared type the section above fixes, but whose content neither reaches into.
+A third control against the same mutually-distrusting counterparty bounds the *magnitude* of the partner-supplied transform-param values whose size drives unbounded per-row work - the `transform.params` values whose entry count the [count gates](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) bound and whose declared type the section above fixes, but whose content neither reaches into.
 It has five members: a per-function cap on each of the two params whose magnitude drives work in a shape a string length does not describe.
 Beneath them is a uniform content bound on every string-valued param, and beside all three is a ceiling on the value a row produces, since a bound on what the partner may write is not a bound on what a row derives from it.
 The fifth is a budget on the work a row's transforms may spend, since a bound on what a row produces is not a bound on what producing it cost.
@@ -124,7 +124,7 @@ The bound on a row's live retained bytes is therefore three times `MAX_ASSEMBLED
 That figure is a code-unit count and not a memory bound.
 The short-candidate shape this limb exists for has the same per-string overhead the `split_on` measurement below records (12-17x for short tokens), so at the cap in short candidates the heap cost runs roughly 5-10x what a code-unit reading suggests.
 One charge of 1,048,576 distinct four-character candidates (exactly 4,194,304 charged code units) measures 46.1 MB heapUsed / about 89.5 MB RSS, putting three charges near 140 MB heap / 270 MB RSS.
-Size an acceptor against the heap figure rather than the code-unit one, the browser's ~512 MiB ceiling above included.
+Size an acceptor against the heap figure rather than the code-unit one, the browser's ~512 MiB [ceiling](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) included.
 The figure is measured on the non-fuzzy path, and it was re-measured on 2026-09-29 under Node v26.10.0: a script run with `node --expose-gc` adds 1,048,576 distinct four-character strings to a `Set`, and the figures are the `process.memoryUsage()` differences before and after two forced collections (six runs, 46.1 MB heapUsed each; RSS 89.4 to 93.7 MB).
 The heap and RSS depend on the Node version, so read them as an order of magnitude.
 
@@ -245,7 +245,7 @@ Charging realized rather than retained candidates is not the closer, since it re
 The proxy is volume rather than cost, and the spread between the cheapest and the dearest charged unit is the four orders of magnitude the second measurement records, so a partner who makes each unit expensive spends that worst per-unit cost whatever the budget: what the budget removes is the REPLICATION of that work across a row's candidates, steps and elements, and the residual is the per-row ceiling stated with that measurement.
 And the charge is read after an invocation returns, so one value's amplification is allocated before the budget sees it, bounded by the per-value ceiling exactly as the first limit above records.
 
-The severity mirrors the ReDoS sibling: a fail-open denial of service reachable from the authenticated counterparty, bounded to DoS (no data, no code execution), and not meaningfully self-inflicted.
+The severity mirrors the [ReDoS sibling](TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect): a fail-open denial of service reachable from the authenticated counterparty, bounded to DoS (no data, no code execution), and not meaningfully self-inflicted.
 A human reviewing the consent screen cannot vet a numeric `length`, a date-format string, or a replacement literal for an allocation or compile blow-up, and the handshake authenticates identity, not that the authored terms are benign.
 The bound is fixed defense-in-depth, fail-closed, not a semantic limit.
 The sibling numeric vector audited alongside it is latent, not live, and holds its bound in its own implementation: `substring` reads a partner `length` but slices with `String.slice`, which cannot exceed its input.
