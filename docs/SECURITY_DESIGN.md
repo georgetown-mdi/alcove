@@ -59,7 +59,7 @@ A reviewer's recurring questions -- the data classes Alcove is designed for, enc
 What lives elsewhere:
 
 - The PSI and PSI-C algorithms and the wire-level key exchange: [PROTOCOL.md](spec/PROTOCOL.md).
-- The channel-security constructions and constant values: [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md); the bounds on parsed input and on transforms: [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md).
+- The channel-security constructions and constant values: [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md); the display escape, redaction and budgets: [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md); the bounds on parsed input and on transforms: [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md), [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md).
 - The network channels exchanges run over: [COMMUNICATION.md](COMMUNICATION.md).
 - CLI configuration for authentication: [CLI.md](CLI.md).
 
@@ -341,11 +341,11 @@ Separately, Alcove escapes untrusted partner- and server-controlled strings at e
 - **Escape at display, compare raw.** Only the displayed copy is escaped; every value used for a path, equality, or hash comparison is kept byte-exact.
 - **Escape once, at the sink.** Text destined for an error message is composed raw and escaped where the error is rendered, so what an operator is shown still names the bytes it refers to. A second escape would silently rewrite a filename they are being told to act on.
 - **A private-key fallback uses the same mechanism.** It keeps the operator's own secret-bearing files (config, key file, signing identity, and imported terms documents) from echoing a credential into an error or log: a narrow pass strips PEM/OpenSSH private-key blocks at three renderings -- a rendered error, a diagnostic log line at either CLI sink or the browser console, and the machine-readable event stream -- so an unanticipated code path that interpolated key material into one of those is contained rather than trusted. It is defense in depth, not the primary control, which stays the secret-bearing parse chokepoint above.
-- **The private-key fallback's reach is bounded.** The pass runs over one rendered unit at a time and over strings only, and an operator-facing sink that writes the console directly instead of through the diagnostic logger runs no pass at all. The bounds are recorded with the escape format rather than implied here.
+- **The private-key fallback's reach is bounded.** The pass runs over one rendered unit at a time and over strings only, and an operator-facing sink that writes the console directly instead of through the diagnostic logger runs no pass at all. The bounds are recorded in [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md#private-key-redaction) rather than implied here.
 
 The display boundary does not cover partner cell values written to the result CSV: those are data, not display. They are written with RFC 4180 quoting only, with no spreadsheet formula neutralization, so a partner value that begins with a formula character reaches a spreadsheet as the partner sent it.
 
-First-party web console sinks that can expose raw partner bytes are gated behind the per-session diagnostic flag, so a production console has none. The byte-level escape format is in [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#display-sanitization-escape-format).
+First-party web console sinks that can expose raw partner bytes are gated behind the per-session diagnostic flag, so a production console has none. The byte-level escape format is in [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md#display-sanitization-escape-format).
 
 ## Hosted at-rest threat model for managed exchanges
 
@@ -496,7 +496,8 @@ The [NIST SP 800-53 Rev. 5](https://doi.org/10.6028/NIST.SP.800-53r5) control ma
 The spec-tier counterparts that specify how these controls are built:
 
 - [PROTOCOL.md](spec/PROTOCOL.md) - the PSI/PSI-C algorithms and the P-256 key-exchange wire format
-- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction and display-sanitization format
+- [CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md) - the AEAD construction
+- [DISPLAY_ESCAPE.md](spec/DISPLAY_ESCAPE.md) and [DISPLAY_REDACTION.md](spec/DISPLAY_REDACTION.md) - the display-sanitization format, the private-key redaction and the display budgets
 - [PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md) - the parsed-input bounds
 - [TRANSFORM_REGEX_DIALECT.md](spec/TRANSFORM_REGEX_DIALECT.md) and [TRANSFORM_PARAMETER_BOUNDS.md](spec/TRANSFORM_PARAMETER_BOUNDS.md) - the bounds on partner-authored transform patterns and parameters
 - [TRANSPORT_BOUNDS.md](spec/TRANSPORT_BOUNDS.md) - the transport memory bounds, file-sync and WebRTC

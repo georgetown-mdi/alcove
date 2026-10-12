@@ -27,7 +27,7 @@ const INBOUND_FILE_LINK_LABEL = "inbound file: ";
  * {@link ./causeLink.fittedCauseLink} rather than composed into the
  * summary, so a hostile server's arbitrarily wide filename is bounded to a
  * value's budget, not the renderer's whole-message one. Why: docs/spec/
- * CHANNEL_SECURITY.md, "Display sanitization escape format".
+ * DISPLAY_REDACTION.md, "Message display budgets".
  */
 export function frameSizeExceededError(
   path: string,

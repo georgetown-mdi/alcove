@@ -233,7 +233,7 @@ interface InvitationTransformSummary {
    * {@link MAX_DISPLAYED_PARAMS} with a trailing "... N more" entry. Decode
    * refuses parameters this view would misstate. What differs at compile is in
    * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md, "Transform-parameter declared
-   * types"; the escape format is in docs/spec/CHANNEL_SECURITY.md, "Display
+   * types"; the escape format is in docs/spec/DISPLAY_ESCAPE.md, "Display
    * sanitization escape format".
    */
   params: Array<Displayable>;

@@ -80,7 +80,7 @@ export function warnOnIdentityDivergence(
  * as soon as the certificate is loaded and before anything is sent. Both values
  * are the operator's own, composed raw and last so the fixed text survives the
  * renderer's per-link budget
- * (docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format).
+ * (docs/spec/DISPLAY_REDACTION.md#message-display-budgets).
  *
  * @throws {OperatorConfigError} when the certificate is bound to a different
  *   identity than the run's agreed terms hold.

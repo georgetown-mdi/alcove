@@ -1314,7 +1314,7 @@ describe("a transform param the consent summary displays", () => {
   // own case below rather than measured away: the compile NFC-normalizes the
   // literal a step injects or compares against. A second difference is a
   // rendering of the value rather than a change to it -- the display doubles a
-  // backslash (docs/spec/CHANNEL_SECURITY.md, Display sanitization escape
+  // backslash (docs/spec/DISPLAY_ESCAPE.md, Display sanitization escape
   // format) -- and is reversed here before the comparison.
   const PROBE_ROWS = [
     "",

@@ -723,7 +723,7 @@ export function compareTerms(
   // here. The CLI escapes each warning again downstream, which stays
   // unobservable because every value interpolated below is
   // schema-constrained to a shape the escape does not rewrite. Full
-  // reasoning: docs/spec/CHANNEL_SECURITY.md, "Display sanitization escape
+  // reasoning: docs/spec/DISPLAY_ESCAPE.md, "Display sanitization escape
   // format".
   //
   // The equality CHECKS always compare the RAW values either way -- both

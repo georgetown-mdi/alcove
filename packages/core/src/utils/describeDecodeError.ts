@@ -26,7 +26,7 @@ export const fittedPathSegment = (segment: PropertyKey): string =>
  * It escapes nothing (the rendered error is escaped once where shown) but fits
  * each partner-chosen fragment, so none spends the budget of the reason beside
  * it. A caller that redacts does so where it interpolates this. The split between
- * this and {@link describeDecodeError}: docs/spec/CHANNEL_SECURITY.md, Display
+ * this and {@link describeDecodeError}: docs/spec/DISPLAY_ESCAPE.md, Display
  * sanitization escape format.
  */
 export function rawDecodeErrorDescription(err: unknown): string {

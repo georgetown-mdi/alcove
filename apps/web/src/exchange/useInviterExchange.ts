@@ -187,8 +187,8 @@ function retryDispositionFor(
  * alone holds a chain the relay already rendered and escaped link-by-link, so
  * it alone is safe to split on the renderer's framing and rejoin -- escaping
  * that chain as one value instead cuts it inside the first link or two
- * (docs/spec/CLI_EVENTS.md, "Sanitization"; docs/spec/CHANNEL_SECURITY.md,
- * "Display sanitization escape format"). Every other failure is raw, thrown in
+ * (docs/spec/CLI_EVENTS.md, "Sanitization"; docs/spec/DISPLAY_REDACTION.md,
+ * "Message display budgets"). Every other failure is raw, thrown in
  * this browser, and goes straight through `sanitizeErrorForDisplay`. The
  * framing is the renderer's own newline, laid out as a line break by
  * `FailureMessage` in `./RunSurface`.

@@ -5,7 +5,7 @@ title: "Showing the Operator's Own Column Names"
 # Showing the operator's own column names: isolated, not escaped
 
 _Status: decided and built.
-The display treatment is `apps/web/src/components/ColumnName.tsx`; the partner-text escape it contrasts with is specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) (Display sanitization escape format).
+The display treatment is `apps/web/src/components/ColumnName.tsx`; the partner-text escape it contrasts with is specified in [DISPLAY_ESCAPE.md](../spec/DISPLAY_ESCAPE.md) (Display sanitization escape format).
 See [docs/notes/README.md](README.md)._
 
 The acceptor's confirm-columns screen and the consent screen show column names from two sources.

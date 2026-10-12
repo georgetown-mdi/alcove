@@ -649,7 +649,7 @@ function RecordPurposeNote() {
  * The marker a line break inside a message's own value arrives as, read off the
  * treatment that writes it rather than restated: a value composed onto a cause
  * link has its control characters replaced where it is composed, so its breaks
- * reach this sink as printable text (docs/spec/CHANNEL_SECURITY.md, "Display
+ * reach this sink as printable text (docs/spec/DISPLAY_ESCAPE.md, "Display
  * sanitization escape format").
  */
 const VALUE_LINE_BREAK_MARKER = replaceControlCharactersForDisplay("\n");

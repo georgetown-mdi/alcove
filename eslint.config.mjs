@@ -202,7 +202,7 @@ const noDisplayableAsErrorArgument = ERROR_TEXT_POSITIONS.map((position) => ({
 // without a trailing Arg or Args, which a positional or flag argument takes
 // its name from. A name outside all three -- output, destination,
 // source -- is not reached, so what this holds is the shape it can recognize
-// and not every operator path (docs/spec/CHANNEL_SECURITY.md,
+// and not every operator path (docs/spec/DISPLAY_ESCAPE.md,
 // display-sanitization escape format).
 //
 // The name says nothing about WHO CHOSE the bytes, so a value a partner or a

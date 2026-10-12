@@ -2,7 +2,7 @@
 // diagnostic: redacted, control characters replaced, and delimited so it cannot
 // pass for one of Alcove's own clauses. The brand makes a raw value there a
 // compile error. See
-// docs/spec/CHANNEL_SECURITY.md#compatibility-diagnostic-value-delimiting.
+// docs/spec/DISPLAY_ESCAPE.md#compatibility-diagnostic-value-delimiting.
 
 import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay.js";
 import { replaceControlCharactersForDisplay } from "../utils/sanitizeForDisplay.js";

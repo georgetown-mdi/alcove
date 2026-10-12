@@ -4,7 +4,7 @@ title: "Control Characters in an Operator-Facing Message"
 
 # Control characters in an operator-facing message: a per-value treatment, not a schema bound
 
-_Status: decided and built. The control, where it sits, its marker, and the limits it does not close are specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md) (the compatibility-message composition, and the accept-time reconcile refusal); this note records why the mechanism is the one it is. See [docs/notes/README.md](README.md)._
+_Status: decided and built. The control, where it sits, its marker, and the limits it does not close are specified in [DISPLAY_ESCAPE.md](../spec/DISPLAY_ESCAPE.md) (the compatibility-message composition) and [DISPLAY_REDACTION.md](../spec/DISPLAY_REDACTION.md) (the accept-time reconcile refusal); this note records why the mechanism is the one it is. See [docs/notes/README.md](README.md)._
 
 Operator-facing text is escaped at ONE altitude, the display sink. That assignment is what keeps a backslash in a partner filename from reaching the operator doubled four times over, and it is not in question here. What it leaves open is narrower: a message composed as one link, whose OWN structure is a control character, is escaped together with the values it names, so the escape renders the composition's line break and a value's own to the same visible token. The delimiting quotation does not distinguish them either -- it bounds what a value can do in the message's printable structure, and a line break is not printable.
 

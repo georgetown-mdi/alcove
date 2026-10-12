@@ -230,7 +230,7 @@ const WRAP_COLUMNS = 76;
 // Redaction runs HERE, over the whitespace-normalized text, ahead of the re-flow
 // -- normalizing before redacting matters, not the reverse, or a marker whose
 // separators are non-ASCII whitespace would be re-formed post-redaction. See
-// docs/spec/CHANNEL_SECURITY.md, "Display sanitization escape format".
+// docs/spec/DISPLAY_REDACTION.md, "Private-key redaction".
 function wrapLabelled(label: string, text: string): string[] {
   const indent = " ".repeat(label.length);
   const lines: string[] = [];

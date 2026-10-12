@@ -16,7 +16,7 @@ import type { Displayable, PreparedExchange } from "@alcove/core";
  * driver `onWarning` slot folds through this function; the seat warning-sink
  * lint rule (`apps/web/eslint.config.js`) holds that routing. `maxLength` is a
  * whole-message composition budget, not the per-value default -- see
- * docs/spec/CHANNEL_SECURITY.md, "Display sanitization escape format".
+ * docs/spec/DISPLAY_ESCAPE.md, "Display sanitization escape format".
  */
 export function appendSanitizedRunWarning<TWarning extends string>(
   current: ReadonlyArray<TWarning>,

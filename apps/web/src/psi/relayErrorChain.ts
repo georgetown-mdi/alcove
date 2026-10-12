@@ -12,7 +12,7 @@
  * own links (`diagnosedTerminal` in `@jobs/jobManager`), and composes them RAW:
  * text crossing fd 3 is escaped at the relay as defense in depth and again at the
  * seat, while text the console raises itself takes the seat's pass alone, which is
- * the single escape its own bytes are due (docs/spec/CHANNEL_SECURITY.md, Display
+ * the single escape its own bytes are due (docs/spec/DISPLAY_ESCAPE.md, Display
  * sanitization escape format).
  */
 export const ERROR_MESSAGE_CHAIN_FIELD = "messageChain";

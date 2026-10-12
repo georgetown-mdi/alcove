@@ -38,7 +38,7 @@ const DIRECTORY_LINK_LABEL = "directory: ";
 /**
  * The labelled `directory:` cause link both refusals below include, fitted here
  * because `dirPath` is bounded nowhere upstream and can come from a partner
- * invitation: docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+ * invitation: docs/spec/DISPLAY_REDACTION.md#message-display-budgets.
  */
 function directoryLink(dirPath: string): string {
   // eslint-disable-next-line no-restricted-syntax -- an offline-accept config seeds this directory from the partner's invitation, so it keeps the escape.

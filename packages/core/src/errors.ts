@@ -436,7 +436,7 @@ export class BilateralModeMismatchError extends UsageError {
  * held in memory. A {@link UsageError}, so the poller stops instead of re-reading
  * it. The class-wide next step takes a cause link of its own; call sites pass a
  * message with no terminal punctuation and every value someone else chose as a
- * `details` fragment (docs/spec/CHANNEL_SECURITY.md).
+ * `details` fragment (docs/spec/DISPLAY_REDACTION.md).
  */
 export class FrameSizeExceededError extends UsageError {
   constructor(message: string, options?: TransportRefusalOptions) {

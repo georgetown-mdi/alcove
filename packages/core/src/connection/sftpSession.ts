@@ -340,7 +340,7 @@ export class SftpSession {
               // The type is the server's choice within keyTypeFromBlob's bound,
               // so it rides a link of its own and is escaped where the error is
               // rendered. It is redacted where it is interpolated, per the
-              // composition-site convention in docs/spec/CHANNEL_SECURITY.md.
+              // composition-site convention in docs/spec/DISPLAY_REDACTION.md.
               const keyType = redactPrivateKeyMaterial(keyTypeFromBlob(blob));
               // Singular vs. plural adapts to the pin COUNT, a number; the pin
               // VALUES take a link of their own because the connection schema

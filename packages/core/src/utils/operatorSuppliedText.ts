@@ -8,7 +8,7 @@ declare const operatorSuppliedBrand: unique symbol;
  * The control class is left out either way
  * ({@link ./sanitizeForDisplay.renderOperatorSuppliedText}). No parse produces
  * the symbol key the brand uses. See
- * docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+ * docs/spec/DISPLAY_ESCAPE.md#display-sanitization-escape-format.
  */
 export interface OperatorSuppliedText {
   readonly [operatorSuppliedBrand]: string;

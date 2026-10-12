@@ -9,7 +9,7 @@ shared display model in `@alcove/core` rather than one per surface, what each
 classified line claims on that basis, and what the arrangement does and does not
 guarantee. The escaping contract it rests on
 is specified normatively in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#display-sanitization-escape-format);
+[DISPLAY_ESCAPE.md](../spec/DISPLAY_ESCAPE.md#display-sanitization-escape-format);
 the operator-facing description of what `alcove accept` prints is in
 [CLI.md](../CLI.md#offline-acceptance). See
 [docs/notes/README.md](README.md)._

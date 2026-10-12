@@ -22,7 +22,7 @@ declare const partnerOriginBrand: unique symbol;
  * `.toString()` still compile (pinned by `test/utils/partnerOriginText.test.ts`).
  * The brand is over `symbol`, since a `string`-based brand leaves `+` and
  * interpolation compiling. A schema-pinned protocol token is not branded.
- * Design: docs/spec/CHANNEL_SECURITY.md, Display sanitization escape format.
+ * Design: docs/spec/DISPLAY_ESCAPE.md, Display sanitization escape format.
  */
 export type PartnerOriginText = symbol & {
   readonly [partnerOriginBrand]: "one";

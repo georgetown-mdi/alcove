@@ -261,7 +261,7 @@ const ACCEPTANCE_OUTCOME: Record<AcceptMode, string> = {
  *
  * Does not cover a NON-EMPTY declared `send` that disagrees with the disclosed
  * set -- a different comparison with different remedies. Column names are
- * escaped per docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format,
+ * escaped per docs/spec/DISPLAY_ESCAPE.md#display-sanitization-escape-format,
  * one per line so a name holding the list separator is not treated as two.
  */
 export function warnColumnsTheInvitationWillNotAccept(params: {

@@ -142,7 +142,7 @@ test("a key marker in the operator's own mount path costs that line its predicat
   // an operator-supplied value ahead of its own predicate, so the fail-closed
   // rule takes the predicate with the value. These bytes are the operator's own
   // and no partner reaches them, so the cost stands and is pinned here rather
-  // than closed; CHANNEL_SECURITY.md records it as the second pass's price.
+  // than closed; DISPLAY_REDACTION.md records it as the second pass's price.
   const marked = path.join(tmpDir, "-----BEGIN RSA PRIVATE KEY-----");
   fs.mkdirSync(marked);
   const { stderr } = await runMount({ directory: marked });
