@@ -136,7 +136,7 @@ test("a charset-conforming marker lookalike is not redacted", () => {
   // send a key type that LOOKS like a BEGIN marker with hyphens where the armor
   // has spaces. It matches no redaction pattern and reaches the operator
   // verbatim. The cost is operator confusion, not disclosure; recorded as a
-  // stated limit in docs/spec/CHANNEL_SECURITY.md rather than fixed by widening
+  // stated limit in docs/spec/SFTP_CONNECTION.md rather than fixed by widening
   // the patterns, which would start matching legitimate text.
   const lookalike = "-----BEGIN-OPENSSH-PRIVATE-KEY-----";
   const { stderr, file } = logToBothSinks(`presented a ${lookalike} host key`);

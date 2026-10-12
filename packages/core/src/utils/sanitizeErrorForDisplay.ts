@@ -35,7 +35,7 @@ export { MAX_ERROR_CAUSE_DEPTH };
  * Plain ASCII, so it is not authenticated: a link ending in the same text
  * renders identically. A copy can claim a loss that did not happen but cannot
  * conceal one that did, so the marker's absence is what an operator can rely
- * on (docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format).
+ * on (docs/spec/DISPLAY_REDACTION.md#message-display-budgets).
  */
 export const CAUSE_DEPTH_ELISION_MARKER = "...[further causes elided]";
 
@@ -97,7 +97,7 @@ const PRIVATE_KEY_DANGLING = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*/g;
  * (CONTRIBUTING.md, Operator-facing escaping). It does not scrub by secret
  * shape, since a shared secret and a host-key fingerprint share one and
  * fingerprints are shown on purpose. The three sinks and their reach limits:
- * docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+ * docs/spec/DISPLAY_REDACTION.md#private-key-redaction.
  */
 export function redactPrivateKeyMaterial(text: string): string {
   return text

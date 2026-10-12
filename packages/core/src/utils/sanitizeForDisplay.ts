@@ -32,8 +32,8 @@ export const DEFAULT_MAX_DISPLAY_LENGTH = 256;
  * link of an error chain. A link composes first-party text with raw fragments,
  * so the per-value default would cut the sentence the operator acts on. A site
  * holding another party's bytes still gives them a link of their own, since the
- * budget bounds a link, not who spends it (docs/spec/CHANNEL_SECURITY.md,
- * Display sanitization escape format).
+ * budget bounds a link, not who spends it (docs/spec/DISPLAY_REDACTION.md,
+ * Message display budgets).
  */
 export const COMPOSED_MESSAGE_MAX_DISPLAY_LENGTH = 1024;
 
@@ -64,7 +64,7 @@ export interface SanitizeForDisplayOptions {
  * and a literal backslash is doubled, which neutralizes controls, ANSI, line
  * breaks, bidi overrides, zero-width and confusable characters at the cost of
  * showing non-ASCII as escapes. Lossy: apply at the display boundary only, never
- * to a value compared, stored or hashed (docs/spec/CHANNEL_SECURITY.md, Display
+ * to a value compared, stored or hashed (docs/spec/DISPLAY_ESCAPE.md, Display
  * sanitization escape format).
  */
 export function sanitizeForDisplay(

@@ -130,7 +130,7 @@ const setLogPrefixer = (logger: logLibrary.Logger) => {
       // Redacted here so both routings below are covered. Per string argument
       // only: a key split across two arguments is not seen, and joining them
       // would let a dangling marker consume every later argument. See
-      // docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+      // docs/spec/DISPLAY_REDACTION.md#private-key-redaction.
       const redactedArgs = messageArgs.map((arg) =>
         typeof arg === "string" ? redactPrivateKeyMaterial(arg) : arg,
       );

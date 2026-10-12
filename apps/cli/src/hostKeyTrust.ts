@@ -58,7 +58,7 @@ export interface HostKeyTrustDeps {
  * `cause` link of its own, in order -- first-party copy on its own link(s),
  * then one labelled link per chooser of the rest -- so the display cap
  * (`sanitizeErrorForDisplay`) bounds each chooser to its own budget. See
- * docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+ * docs/spec/DISPLAY_REDACTION.md#message-display-budgets.
  *
  * Each link installs its `cause` with `Object.defineProperty` rather than the
  * two-argument `Error` constructor: this app's emit target predates
@@ -156,7 +156,7 @@ export function assertHostKeyTrustCanBeEstablished(
   // operator's own, and unbounded too. Each rides a labelled link of its own
   // in the refusal, passed through the private-key redaction where it is
   // interpolated -- see
-  // docs/spec/CHANNEL_SECURITY.md#display-sanitization-escape-format.
+  // docs/spec/DISPLAY_REDACTION.md#message-display-budgets.
   const hostDetail = hostDetailOf(connection.server.host);
   const lines = [
     `no host_key_fingerprint is pinned for this SFTP server and this run is ` +

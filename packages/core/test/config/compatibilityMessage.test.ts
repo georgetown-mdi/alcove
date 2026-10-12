@@ -471,7 +471,7 @@ const warningStartingWith = (
  * a second time: at the stderr log line (`apps/cli/src/protocol.ts`) and at the
  * fd-3 warning event (`buildWarningEvent` in `apps/cli/src/eventStream.ts`,
  * whose whole-warning budget is the cap taken here). That two-pass route is one
- * CHANNEL_SECURITY.md records rather than closes.
+ * DISPLAY_ESCAPE.md records rather than closes.
  */
 const renderForRoute = ({ route, message }: RoutedDiagnostic): string =>
   route === "errors"
@@ -1199,7 +1199,7 @@ describe.each(SWEPT)("$id", (diagnostic) => {
           // so nothing is left for the treatment to act on and the sink's
           // second pass doubles the backslash the first wrote. The value's
           // control character therefore arrives one backslash wider than
-          // a composition's own would -- the doubling CHANNEL_SECURITY.md
+          // a composition's own would -- the doubling DISPLAY_ESCAPE.md
           // records for this route, standing here as the same distinction.
           expect(rendered).toContain(TWICE_ESCAPED_ESC);
         }

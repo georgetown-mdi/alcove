@@ -4,7 +4,7 @@ title: "Showing a Failed Exchange's Reported Cause"
 
 # A failed exchange's reported cause: shown in a block of its own, not folded into the copy
 
-_Status: decided on the maintainer's ruling and built. The escaping the decision rests on is specified in [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#display-sanitization-escape-format) and [SERVER_JOB_API.md](../spec/SERVER_JOB_API.md#relay-validation-at-the-trust-boundary); this note records why the shape is the one it is. See [docs/notes/README.md](README.md)._
+_Status: decided on the maintainer's ruling and built. The escaping the decision rests on is specified in [DISPLAY_ESCAPE.md](../spec/DISPLAY_ESCAPE.md#display-sanitization-escape-format) and [SERVER_JOB_API.md](../spec/SERVER_JOB_API.md#relay-validation-at-the-trust-boundary); this note records why the shape is the one it is. See [docs/notes/README.md](README.md)._
 
 Three of the four failure categories a web or console seat renders show the operator the cause chain the exchange delivered (`failureFor` in `apps/web/src/exchange/useInviterExchange.ts`). The retryable `exchange` category did not: it showed fixed copy and wrote the chain to a diagnostic-only `console.error`. An operator whose unattended run failed there was told the exchange failed and given nothing to act on.
 

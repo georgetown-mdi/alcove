@@ -311,7 +311,7 @@ test("changedPartnerBoundTerms ignores descriptions and unbound fields", () => {
 test("every value a warning can hold is already escape-stable", () => {
   // The CLI escapes a warning again at its log line and its event stream, so a
   // warning makes two passes on that route (recorded as a limit in
-  // CHANNEL_SECURITY.md). That second pass is unobservable only while every
+  // DISPLAY_ESCAPE.md). That second pass is unobservable only while every
   // value interpolated into a warning is constrained to a shape the escape does
   // not rewrite. This pins that assumption where it actually holds -- the
   // schema -- so a future warning holding free text fails here rather than

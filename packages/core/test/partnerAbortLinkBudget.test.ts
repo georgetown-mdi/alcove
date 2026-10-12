@@ -404,7 +404,7 @@ for (const [className, render] of Object.entries(MESSAGE_CLASSES)) {
 // link. A full chain spends every link the renderer walks, so one wrapper
 // around the abort error would push the tail past that bound and leave the
 // renderer's own elision marker, which holds no count, in its place
-// (docs/spec/CHANNEL_SECURITY.md). Nothing wraps it on any path today, and a
+// (docs/spec/DISPLAY_ESCAPE.md). Nothing wraps it on any path today, and a
 // wrapper added later reddens here rather than costing the operator the count
 // in silence.
 test("terms exchange message 2: the counted tail is the chain's last link", async () => {

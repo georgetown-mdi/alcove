@@ -31,7 +31,7 @@ export function platformFileUrl(posixPath: string): URL {
  * A local path as the display sanitizer renders it: unchanged off Windows,
  * and with every separator doubled on it, since the escape doubles a literal
  * backslash so that an escape it emits cannot be spelled by a value's own
- * bytes (docs/spec/CHANNEL_SECURITY.md, Display sanitization escape format).
+ * bytes (docs/spec/DISPLAY_ESCAPE.md, Display sanitization escape format).
  *
  * An assertion that a message names a path compares against this rather than
  * the path itself: the raw form is what the operator typed, the escaped form
