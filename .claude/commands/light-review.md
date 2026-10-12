@@ -320,6 +320,12 @@ any other. An echo that instead extends the claim with added text is not restore
 verified a different, more specific assertion, so the Workflow leaves it unpaired and
 the round fails rather than attaching its verdict to the contract claim.
 
+A role round that returns no verdicts at all is re-run fresh once its lock is
+released, never resumed with `resumeFromRunId`, which replays the cached empty
+result. A round that fails on pairing keeps its verdicts in the reviewer's
+`StructuredOutput` call in its transcript; book it from there with the
+contract's text rather than paying for a re-run.
+
 ## Authoring a Workflow schema
 
 This command's own scripts are checked in and never edited here, but they are

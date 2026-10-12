@@ -62,7 +62,11 @@ its local `staging` falls behind `origin/staging`. Sync it before branching:
 3. If the sync moved the lockfile, reinstall: `git diff --quiet ORIG_HEAD HEAD --
    package-lock.json || npm ci`. The reset in step 2 points `ORIG_HEAD` at the
    pre-sync commit, so `npm ci` runs only when `package-lock.json` actually
-   changed.
+   changed. Skip it while `git worktree list` shows any tree besides the clone:
+   `worktree-init.sh` symlinks this install's packages into each live tree, and
+   a reinstall that re-hoists one leaves their links dangling. Step 4's tree
+   then installs its own, since `worktree-init.sh` falls back to `npm ci` when
+   the mirror lags its lockfile.
 4. Cut the per-issue branch off the synced `staging` in a worktree of its own --
    `git worktree add -b <branch> .claude/worktrees/<branch> origin/staging`, then
    `bash .claude/scripts/worktree-init.sh` from it, which provisions that tree

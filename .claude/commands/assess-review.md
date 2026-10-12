@@ -162,6 +162,12 @@ the branch is worse for leaving. Absent that line, state it and move on.
   missing sites, a repeated idiom misused), the brief orders one focused pass
   over that class across the whole branch -- a review round samples; the sweep
   completes.
+- **A second finding in one screen state gets a shape brief.** When a round
+  confirms a finding in a UI state an earlier fix touched, the brief prescribes
+  the state's shape rather than its next transition: which values derive at
+  render from the committed input, which control is withheld while a
+  precondition fails, and the tests that pin both. Derived state has no stale
+  case for the next round to find.
 - **Prose findings get a high bar.** Order a fix for a finding that asks for a
   comment, JSDoc, or doc paragraph only when the missing constraint is
   unrecoverable from the code, names, types, and tests AND its absence enables a

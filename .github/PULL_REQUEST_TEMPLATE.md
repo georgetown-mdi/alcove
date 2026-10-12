@@ -12,7 +12,7 @@ One short paragraph, outcome first: what this PR delivers and why it matters. Th
 
 Implements [<id>](https://github.com/orgs/georgetown-mdi/projects/<board>/views/1?pane=issue&itemId=<id>).
 <!--
-Board items are GitHub Project draft itemIds, not issue numbers -- `Closes #<id>` renders as a broken link. Use the full itemId URL; board is 9 (Product) or 10 (Release & Operations). Pick one verb for the line above, or delete the line for a bug fix or doc tweak with no board item:
+Board items are GitHub Project draft itemIds, not issue numbers -- `Closes #<id>` renders as a broken link. Use the full itemId URL; board is 9 (Product) or 10 (Release & Operations). Nothing follows the line's period; a scope note goes in the paragraph above. Pick one verb for the line above, or delete the line for a bug fix or doc tweak with no board item:
   Implements -- closes the task
   Part of -- partial delivery
   Depends on -- needs another item merged first

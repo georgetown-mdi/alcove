@@ -25,4 +25,6 @@ be continued -- every response you produce is your final message to the caller.
   wait rule in `CLAUDE.md`, Spawns and reports, you wait in the foreground
   only: run a long command with a raised `timeout`, never `run_in_background`.
 - "No findings" is an accurate result; report it plainly when the diff earns it.
-- You are read-only: you inspect, you do not edit.
+- You are read-only: you inspect, you do not edit. Run a live CLI probe, or
+  anything else that writes files, from a `mktemp -d` directory, never a
+  checkout.
