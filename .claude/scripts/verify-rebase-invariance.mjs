@@ -2,7 +2,8 @@
 // Rebase-invariance verifier, run by an agent re-attesting a review across a
 // rebase (.claude/commands/assess-review.md, Step 4): decides whether the rebase
 // left the branch's own diff unchanged -- the same paths, each the same program
-// at both ends once comments are removed and markdown is excluded.
+// at both ends once comments are removed and markdown and the spec wording-change
+// list (docs/spec/wording-changes.txt) are excluded.
 //
 // Usage: node .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
 // <pre-rebase-head> <post-rebase-base> <post-rebase-head>, run from the worktree
@@ -92,6 +93,8 @@ const RANK = {
 
 const IDENTICAL = { verdict: "identical" };
 
+export const WORDING_LIST_PATH = "docs/spec/wording-changes.txt";
+
 /**
  * One result per path, rolling the two comparisons into the worst verdict
  * either of them reported. A path absent from a comparison is identical at that
@@ -128,13 +131,17 @@ export function collectInvariance({ oldBase, oldHead, newBase, newHead, git }) {
   const unreadable = [...before.unreadable, ...after.unreadable];
   if (unreadable.length > 0) return { results: [], unreadable };
   const paths = new Set([...before.paths, ...after.paths]);
+  const compared = [...paths].filter((path) => path !== WORDING_LIST_PATH);
   const compare = (attested, head) =>
-    collectVerdicts({ attested, head, git, paths: [...paths] });
+    collectVerdicts({ attested, head, git, paths: compared });
+  const exempt = paths.has(WORDING_LIST_PATH)
+    ? [{ path: WORDING_LIST_PATH, verdict: "exempt" }]
+    : [];
   return {
     results: rollUpVerdicts({
       paths,
-      base: compare(oldBase, newBase),
-      head: compare(oldHead, newHead),
+      base: [...compare(oldBase, newBase), ...exempt],
+      head: [...compare(oldHead, newHead), ...exempt],
     }),
     unreadable,
   };

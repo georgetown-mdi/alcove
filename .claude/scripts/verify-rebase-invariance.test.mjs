@@ -112,6 +112,38 @@ describe("across a real rebase", () => {
     ).toContain("src/shared.ts");
   });
 
+  it("holds when the branch rewrites the spec wording-change list and the rebase conflicts on it", () => {
+    const list = "docs/spec/wording-changes.txt";
+    const fixture = rebaseFixture({
+      [list]: "- old -> older\n",
+      "src/shared.ts": "export const a = 1;\n",
+    });
+    fixture.write(list, "- old -> branch\n");
+    const oldHead = fixture.commit("Branch list");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write(list, "- old -> staging\n");
+    const newBase = fixture.commit("Staging list");
+
+    const newHead = rebaseOntoStaging(fixture, () =>
+      fixture.write(list, "- old -> branch\n- other -> staging\n"),
+    );
+
+    const { results, unreadable } = collectInvariance({
+      oldBase: fixture.oldBase,
+      oldHead,
+      newBase,
+      newHead,
+      git: fixture.git,
+    });
+    expect(unreadable).toEqual([]);
+    expect(byPath(results)).toEqual({ [list]: "exempt" });
+    expect(summarizeInvariance(results)).toMatchObject({
+      holds: true,
+      exitCode: 0,
+    });
+  });
+
   it("violates when the conflict resolution changed an executable line", () => {
     const fixture = rebaseFixture({
       "src/shared.ts": "// the shared note\nexport const a = 1;\n",
