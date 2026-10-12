@@ -52,7 +52,7 @@ your own environment:
   client are not measured, since the host runs no registrar today. Its tests
   under `scripts/` drive `render-front.sh` and hold the template to coturn's
   listener, not nginx.
-- [The OS update](#os-security-updates) has not yet run on the project's relay
+- [The OS update](#os-updates) has not yet run on the project's relay
   host, so where the host records its release lock, and what its first run
   restarted, are not yet recorded here.
 - `verify.sh` probes the allocation and its refusals, not exchange traffic,
@@ -92,7 +92,7 @@ other repository-level coupling is the docker Dependabot entry for
 4. Run `install.sh` as root. It installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
    renders the configuration, installs the unit and the three timers, and on
-   Amazon Linux 2023 the [OS security update](#os-security-updates) timer,
+   Amazon Linux 2023 the [OS update](#os-updates) timer,
    starts the relay, starts the registrar where the host holds its token, and
    runs `verify.sh`.
 5. Read `verify.sh`'s output. A relay that starts and cannot allocate looks
@@ -118,7 +118,7 @@ or the Dockerfile and it converges.
 | `alcove-relay.container` | The Quadlet unit for a podman host, installed at `/etc/containers/systemd/`. systemd is the only supervisor; there is no container daemon under it |
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |
 | `alcove-relay-verify.service`, `.timer` | The daily verification. A standing relay is idle between exchanges, so nothing else notices it stopped carrying allocations until a partner is waiting on one |
-| `alcove-relay-os-update.service`, `.timer` | The daily OS security update on Amazon Linux 2023, followed by the verification. See [OS security updates](#os-security-updates) |
+| `alcove-relay-os-update.service`, `.timer` | The daily OS update on Amazon Linux 2023, followed by the verification. See [OS updates](#os-updates) |
 | `install.sh` | The whole install, idempotent |
 | `relay_table.py` | The one write path to the secrets table: register, revoke, and sweep, each one SQLite transaction, as the relay image's account. Everything below that touches the table calls it. See [Per-exchange keys](#per-exchange-keys) |
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
@@ -600,7 +600,7 @@ from the copy already in `/etc/alcove-relay/certs` in content or owner -- on
 most days the timer fires, the ACME client renews nothing and the relay keeps
 running -- and the timer runs at a fixed early hour for the day it does renew.
 
-## OS security updates
+## OS updates
 
 On Amazon Linux 2023, `install.sh` installs `alcove-relay-os-update.timer`,
 which upgrades the host to the newest distribution release unattended and
@@ -661,7 +661,7 @@ provider, or on-prem changes three things and nothing else:
   cloud is a sibling of that file, and a host with a static pair is two lines of
   `printf`.
 - **The DNS-01 provider.** Two variables in `acme.env`.
-- **OS security updates.** [The update unit](#os-security-updates) is
+- **OS updates.** [The update unit](#os-updates) is
   installed only on Amazon Linux 2023; elsewhere the distribution's own
   automatic updates take its place.
 

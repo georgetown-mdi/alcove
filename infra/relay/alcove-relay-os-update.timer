@@ -1,5 +1,5 @@
 [Unit]
-Description=Install OS security updates on the Alcove relay host daily, 05:00-05:30 UTC
+Description=Install OS updates on the Alcove relay host daily, 05:00-05:30 UTC
 
 [Timer]
 # After the certificate renewal windows of the relay (03:00-04:00 UTC) and of a

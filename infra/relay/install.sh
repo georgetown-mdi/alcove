@@ -9,7 +9,7 @@
 # creates the data directory that holds the per-exchange secrets table, installs
 # the scripts under /opt, obtains a certificate if none is present, renders
 # coturn's configuration, installs the units and the three timers, on Amazon
-# Linux 2023 the OS security update timer too, and starts the relay, the front,
+# Linux 2023 the OS update timer too, and starts the relay, the front,
 # and the registrar where the host holds its token. It then runs verify.sh,
 # which is the only step that says whether the result carries an exchange.
 #
@@ -329,11 +329,11 @@ systemctl enable --now alcove-relay-sweep.timer \
 
 if [ "$OS_UPDATES" = 1 ]; then
   systemctl enable --now alcove-relay-os-update.timer \
-    || die "alcove-relay-os-update.timer did not start; this host would take no security updates. journalctl -u alcove-relay-os-update.timer"
-  log "OS security updates install daily between 05:00 and 05:30 UTC, then verify.sh runs"
+    || die "alcove-relay-os-update.timer did not start; this host would take no OS updates. journalctl -u alcove-relay-os-update.timer"
+  log "OS updates install daily between 05:00 and 05:30 UTC, then verify.sh runs"
 else
   systemctl disable --now alcove-relay-os-update.timer 2>/dev/null || true
-  log "WARNING: not Amazon Linux 2023, so no automatic OS security updates are set up; configure the distribution's own"
+  log "WARNING: not Amazon Linux 2023, so no automatic OS updates are set up; configure the distribution's own"
 fi
 
 if [ "$RUNTIME" = docker ]; then

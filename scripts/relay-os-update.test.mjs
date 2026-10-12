@@ -3,8 +3,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// Holds the relay host's OS security update units to infra/relay/README.md, OS
-// security updates: the window it states, apart from the relay's and the
+// Holds the relay host's OS update units to infra/relay/README.md, OS
+// updates: the window it states, apart from the relay's and the
 // broker's certificate renewals on the same host, and the release the upgrade
 // reads. It reads the unit files, not a host.
 
