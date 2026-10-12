@@ -12,7 +12,6 @@ It does not cover the split-directory role swap or the meaning of the retain-mod
 Intended readers are security auditors and implementors.
 
 The encoder and decoder are `encodeInvitation` and `decodeInvitation` in `packages/core/src/config/invitation.ts`, the module every constant and schema below is defined in unless another is named.
-Every Alcove invitation is minted through `encodeInvitation` and read through `decodeInvitation`, by the CLI and the web application alike.
 The token is partner-supplied input: an accepting party decodes a string an unauthenticated counterparty wrote.
 
 ## Encoding

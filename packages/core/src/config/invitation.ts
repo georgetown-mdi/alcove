@@ -629,6 +629,7 @@ export class InvitationDecodeError extends Error {
  * @throws {ZodError} on schema validation failure.
  * @throws {NestingDepthExceededError|NodeCountExceededError} from the
  *   camelCase pre-pass; both are `UsageError` subclasses.
+ * @throws {KeyFoldCollisionError} if two keys of one object fold to one name.
  */
 export async function decodeInvitation(
   encoded: string,
