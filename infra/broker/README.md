@@ -49,9 +49,40 @@ On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` 
    nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --workspace packages/peerjs-broker
    ```
 
-4. Build core on another machine at the same commit (`npm run build -w packages/core`) and copy `packages/core/dist/untrusted-text.esm.js` and the one chunk it imports into the clone's `packages/core/dist/`, checking their sha256 sums on arrival.
-   That entry point is the whole of the broker's reach into core.
-5. Leave the tree owned by root and readable by all, so the broker's account cannot rewrite the code it runs: `chown -R root:root /opt/alcove-broker && chmod -R u=rwX,go=rX /opt/alcove-broker`.
+4. Install Cosign v3.0.6, the version the repository's workflows run through `sigstore/cosign-installer@v4.1.2`, from its release binary for the host's architecture: `cosign-linux-arm64` on the project's t4g instance, `cosign-linux-amd64` on an x86-64 host (`uname -m` prints `aarch64` or `x86_64`).
+   The repository states no checksum for that binary, so check it against the `cosign_checksums.txt` the same Cosign release publishes:
+
+   ```sh
+   version=v3.0.6
+   binary=cosign-linux-arm64  # cosign-linux-amd64 on x86-64
+   curl -fsSLO "https://github.com/sigstore/cosign/releases/download/${version}/${binary}"
+   curl -fsSLO "https://github.com/sigstore/cosign/releases/download/${version}/cosign_checksums.txt"
+   grep " ${binary}\$" cosign_checksums.txt | sha256sum -c -
+   install -m 755 "${binary}" /usr/local/bin/cosign
+   ```
+
+   The checksums file comes from the same release as the binary, so it catches a damaged download, not a replaced release.
+5. Take core's build for that commit from the `broker-core-build` prerelease ([docs/RELEASES.md, The broker core build](../../docs/RELEASES.md#the-broker-core-build)): `alcove-broker-core-<commit>.tar.gz` and its bundle `alcove-broker-core-<commit>.tar.gz.sigstore.json`, `<commit>` being the full commit the clone is at.
+   The archive holds `untrusted-text.esm.js`, the chunks it imports and a `SHA256SUMS` manifest; that entry point is the whole of the broker's reach into core.
+   Verify its signature with Cosign, which needs no credential on the host, then unpack it into the clone and check the manifest:
+
+   ```sh
+   commit=<the full commit the clone is at>
+   cosign verify-blob \
+     --bundle "alcove-broker-core-${commit}.tar.gz.sigstore.json" \
+     --certificate-identity https://github.com/georgetown-mdi/alcove/.github/workflows/broker_core_build.yaml@refs/heads/main \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+     --certificate-github-workflow-sha "${commit}" \
+     "alcove-broker-core-${commit}.tar.gz"
+   mkdir -p packages/core/dist
+   tar -xzf "alcove-broker-core-${commit}.tar.gz" -C packages/core/dist
+   (cd packages/core/dist && sha256sum -c SHA256SUMS)
+   ```
+
+   The identity names the publishing workflow on `main`, and `--certificate-github-workflow-sha` refuses a correctly signed build of any other commit.
+   The prerelease holds the latest commit on `main` only.
+   For any other commit, build core on another machine at that commit (`npm run build -w packages/core`), pack it with `node scripts/pack-broker-core.mjs packages/core/dist <out-dir>`, and copy the files `<out-dir>` holds into the clone's `packages/core/dist/`, checking the manifest on arrival.
+6. Leave the tree owned by root and readable by all, so the broker's account cannot rewrite the code it runs: `chown -R root:root /opt/alcove-broker && chmod -R u=rwX,go=rX /opt/alcove-broker`.
 
 Then the host's configuration, and the install:
 

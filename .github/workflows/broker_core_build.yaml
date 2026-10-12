@@ -1,0 +1,219 @@
+name: Broker Core Build
+run-name: ${{ github.event_name == 'push' && format('Broker core build {0}', github.sha) || format('Broker core build dry run on {0}', github.ref_name) }}
+
+# Builds the part of @alcove/core the standalone signaling broker runs, signs
+# it keylessly with Cosign, and on a push to main publishes it as assets of the
+# one `broker-core-build` prerelease, named by commit. The broker's host cannot
+# build core itself; infra/broker/README.md, Install, is how it takes and
+# verifies this build, and docs/RELEASES.md says why the prerelease is not a
+# release.
+#
+# A pull request that can change the build runs the build, the signature and
+# its verification under its own ref, and publishes nothing. Not a merge gate.
+#
+# Three jobs so each holds one permission: the build runs the repository's
+# dependencies with read access only, the signing job runs no repository code,
+# and the publishing job, the only one holding contents: write, runs neither.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "packages/core/**"
+      - "package-lock.json"
+      - "lib/**"
+      - ".github/actions/setup/**"
+      - ".github/workflows/broker_core_build.yaml"
+      - "scripts/pack-broker-core.mjs"
+
+# A run on main is never cancelled, so a publish is never cut off between its
+# upload and its pruning; a newer push waits for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and pack the broker's core
+    # A pull request from a fork is given no OIDC token, so the signing job
+    # below could not run for it.
+    if: ${{ github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      archive: ${{ steps.pack.outputs.archive }}
+      sha256: ${{ steps.pack.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Uncached, as release.yaml's test job is: what is signed is built from
+      # an install of the lockfile, not a cache entry any run could have written.
+      - uses: ./.github/actions/setup
+        with:
+          cache: "false"
+
+      # Owner, group and times fixed, so a rebuild of one commit packs the same
+      # archive bytes whenever the built files are the same.
+      - name: Pack the entry point and the chunks it imports
+        id: pack
+        run: |
+          set -euo pipefail
+          archive="alcove-broker-core-${GITHUB_SHA}.tar.gz"
+          node scripts/pack-broker-core.mjs packages/core/dist broker-core >"${RUNNER_TEMP}/members"
+          mapfile -t members <"${RUNNER_TEMP}/members"
+          commit_time="$(git log -1 --format=%ct HEAD)"
+          tar --sort=name --owner=0 --group=0 --numeric-owner \
+            --mtime="@${commit_time}" --mode=u=rw,go=r \
+            -C broker-core -cf - -- "${members[@]}" | gzip -n -9 >"${archive}"
+          tar -tzvf "${archive}"
+          echo "archive=${archive}" >>"$GITHUB_OUTPUT"
+          digest="$(sha256sum "${archive}")"
+          echo "sha256=${digest%% *}" >>"$GITHUB_OUTPUT"
+
+      - name: Upload the unsigned archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: broker-core-unsigned
+          path: ${{ steps.pack.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    name: Sign and verify the archive
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # The OIDC token Fulcio issues the signing certificate against.
+      id-token: write
+    env:
+      ALCOVE_ARCHIVE: ${{ needs.build.outputs.archive }}
+      ALCOVE_ARCHIVE_SHA256: ${{ needs.build.outputs.sha256 }}
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Fetch the unsigned archive
+        uses: actions/download-artifact@v8
+        with:
+          name: broker-core-unsigned
+
+      - name: Check the archive is the one the build produced
+        run: |
+          set -euo pipefail
+          if [ -z "${ALCOVE_ARCHIVE_SHA256}" ]; then
+            echo "the build reported no archive digest"
+            exit 1
+          fi
+          digest="$(sha256sum "${ALCOVE_ARCHIVE}")"
+          if [ "${digest%% *}" != "${ALCOVE_ARCHIVE_SHA256}" ]; then
+            echo "${ALCOVE_ARCHIVE} does not match the digest the build reported"
+            exit 1
+          fi
+
+      # Keyless, as release.yaml signs the images: the certificate names this
+      # workflow's path and the ref the run came from, and the bundle written
+      # beside the archive is all a verifier needs besides Sigstore's root.
+      - name: Sign the archive
+        run: |
+          set -euo pipefail
+          cosign sign-blob --yes \
+            --bundle "${ALCOVE_ARCHIVE}.sigstore.json" "${ALCOVE_ARCHIVE}"
+
+      # The identity is this run's: refs/heads/main on a push, which is the
+      # identity the broker's host pins (infra/broker/README.md), and the pull
+      # request's merge ref on a dry run. The workflow SHA binds the signature
+      # to this commit.
+      - name: Verify the signature just produced
+        env:
+          ALCOVE_SIGNED_REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_ARCHIVE}.sigstore.json" \
+            --certificate-identity "https://github.com/georgetown-mdi/alcove/.github/workflows/broker_core_build.yaml@${ALCOVE_SIGNED_REF}" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "${GITHUB_SHA}" \
+            "${ALCOVE_ARCHIVE}"
+
+      - name: Upload the signed archive and its bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: alcove-broker-core-${{ github.sha }}
+          path: |
+            ${{ env.ALCOVE_ARCHIVE }}
+            ${{ env.ALCOVE_ARCHIVE }}.sigstore.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish to the broker-core-build prerelease
+    needs: [build, sign]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    # The only job in this workflow holding contents: write, and what it writes
+    # under it is the one prerelease's assets alone.
+    permissions:
+      contents: write
+    env:
+      ALCOVE_ARCHIVE: ${{ needs.build.outputs.archive }}
+      ALCOVE_RELEASE_TAG: broker-core-build
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v4.1.2
+
+      - name: Fetch the signed archive and its bundle
+        uses: actions/download-artifact@v8
+        with:
+          name: alcove-broker-core-${{ github.sha }}
+
+      # The same command the broker's host runs, before anything is uploaded or
+      # deleted: this job runs on main, so the identity is main's.
+      - name: Verify the signature before publishing
+        run: |
+          set -euo pipefail
+          cosign verify-blob \
+            --bundle "${ALCOVE_ARCHIVE}.sigstore.json" \
+            --certificate-identity "https://github.com/georgetown-mdi/alcove/.github/workflows/broker_core_build.yaml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-github-workflow-sha "${GITHUB_SHA}" \
+            "${ALCOVE_ARCHIVE}"
+
+      # The new commit's assets are uploaded before the earlier commits' are
+      # deleted, so the prerelease never holds no build. Never marked latest:
+      # the release list's latest entry stays a tagged release. A re-run of a
+      # commit main has moved past publishes nothing, so it cannot replace the
+      # tip's build with an older one.
+      - name: Replace the prerelease's assets
+        run: |
+          set -euo pipefail
+          tip="$(gh api "repos/${GH_REPO}/commits/main" --jq .sha)"
+          if [ "${tip}" != "${GITHUB_SHA}" ]; then
+            echo "main is at ${tip}, not ${GITHUB_SHA}: the prerelease is left as it is, and the run for ${tip} publishes."
+            exit 0
+          fi
+          bundle="${ALCOVE_ARCHIVE}.sigstore.json"
+          notes="The core build the signaling broker runs, for commit ${GITHUB_SHA} on main. Not a release of Alcove: see docs/RELEASES.md, The broker core build."
+          if ! gh release view "${ALCOVE_RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release create "${ALCOVE_RELEASE_TAG}" --prerelease --latest=false \
+              --target "${GITHUB_SHA}" --title "Broker core build (not a release)" \
+              --notes "${notes}"
+          fi
+          gh release upload "${ALCOVE_RELEASE_TAG}" "${ALCOVE_ARCHIVE}" "${bundle}" --clobber
+          gh release edit "${ALCOVE_RELEASE_TAG}" --prerelease --latest=false --notes "${notes}"
+          gh release view "${ALCOVE_RELEASE_TAG}" --json assets --jq '.assets[].name' |
+            while IFS= read -r name; do
+              if [ "${name}" != "${ALCOVE_ARCHIVE}" ] && [ "${name}" != "${bundle}" ]; then
+                gh release delete-asset "${ALCOVE_RELEASE_TAG}" "${name}" --yes
+              fi
+            done

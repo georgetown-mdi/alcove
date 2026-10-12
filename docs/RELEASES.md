@@ -77,6 +77,14 @@ The three launcher files are the host-side front door an operator runs to open t
 
 `@alcove/core` is not currently published to the npm registry. If that changes, add an npm row to the table above.
 
+## The broker core build
+
+The `broker-core-build` prerelease on the repository's Releases page is not a release of Alcove, and nothing above or in the [Release Checklist](#release-checklist) touches it.
+
+- **What it holds.** The part of `@alcove/core` the standalone signaling broker runs -- `untrusted-text.esm.js` and the chunks it imports, with a `SHA256SUMS` manifest -- built from the latest commit on `main`, as `alcove-broker-core-<commit>.tar.gz` beside its Sigstore bundle, `alcove-broker-core-<commit>.tar.gz.sigstore.json`.
+- **Who writes it.** `.github/workflows/broker_core_build.yaml`, on every push to `main`: it signs the archive keylessly under its own identity at `refs/heads/main`, uploads the new commit's assets and then deletes the earlier commit's. Its tag marks the commit of the first publish and is not moved; the asset names state the commit built.
+- **Why it is not a release.** It is never marked latest, and its tag does not have the `vX.Y.Z` form that starts the release workflow. It exists because the broker's host cannot build core; how that host verifies and unpacks it is in [infra/broker/README.md, Install](../infra/broker/README.md#install).
+
 ## Stamped launchers
 
 A launcher is plaintext an operator reads before running, and it names the image by digest rather than by a floating tag, so a release copy runs exactly the manifest this release signed. The digest is not in the repository: each launcher has a placeholder line, and the release workflow fills it in.

@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, posix, resolve } from "node:path";
+import { dirname, join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
@@ -19,6 +19,7 @@ import {
   parseFile,
   sourceModules,
 } from "./lib/typeScriptSources.mjs";
+import { BROKER_CORE_ENTRY, brokerCoreFiles } from "./pack-broker-core.mjs";
 
 // What the standalone signaling broker can reach at run time. It is the one
 // process here that listens on the internet with no application around it, so
@@ -141,11 +142,12 @@ function packageOf(specifier) {
 }
 
 /**
- * Every package the module graph rooted at `entry` reaches, following the
- * relative chunk imports rollup emits and stopping at anything else. Reads the
- * BUILT output, which is what a consumer resolves.
+ * The module graph rooted at `entry`, following the relative chunk imports
+ * rollup emits and stopping at anything else: the packages it reaches and the
+ * absolute paths of the files it read. Reads the BUILT output, which is what a
+ * consumer resolves.
  */
-function resolvedClosure(entry) {
+function walkBuiltGraph(entry) {
   const external = new Set();
   const seen = new Set();
   const visit = (path) => {
@@ -161,7 +163,20 @@ function resolvedClosure(entry) {
     }
   };
   visit(entry);
-  return [...external].sort();
+  return { external: [...external].sort(), files: [...seen] };
+}
+
+/** Every package the module graph rooted at `entry` reaches. */
+function resolvedClosure(entry) {
+  return walkBuiltGraph(entry).external;
+}
+
+/** The files the module graph rooted at `entry` reads, relative to core's
+ * dist directory in POSIX form and sorted. */
+function closureFiles(entry) {
+  return walkBuiltGraph(entry)
+    .files.map((path) => relative(coreDist, path).split(sep).join("/"))
+    .sort();
 }
 
 function requireBuiltDist(file) {
@@ -344,6 +359,15 @@ describe("the built @alcove/core/untrusted-text closure", () => {
     const reached = resolvedClosure(requireBuiltDist("untrusted-text.esm.js"));
     expect(reached.filter((name) => coreDependencies.includes(name))).toEqual(
       [],
+    );
+  });
+
+  it("is the file set the published broker core archive packs", () => {
+    // pack-broker-core.mjs walks the same graph with its own parser. An import
+    // form one follows and the other does not would ship a closure this suite
+    // never measured.
+    expect(closureFiles(requireBuiltDist(BROKER_CORE_ENTRY))).toEqual(
+      brokerCoreFiles(coreDist),
     );
   });
 
