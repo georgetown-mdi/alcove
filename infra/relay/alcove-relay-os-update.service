@@ -1,0 +1,21 @@
+[Unit]
+Description=Install Amazon Linux 2023 security updates, then verify the Alcove relay
+Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Amazon Linux 2023 locks dnf to the release the host was launched from, so a
+# plain upgrade only ever sees that release's repository. --releasever=latest
+# points this run at the newest release, where new security advisories land.
+# It is on the command line rather than in /etc/dnf/vars, so install.sh's own
+# dnf calls keep the locked release.
+ExecStart=/usr/bin/dnf -y --releasever=latest upgrade --security
+# Runs only after a successful upgrade, and its failure fails this unit. The
+# verify unit is started rather than verify.sh run here, so both runs connect
+# the same way.
+ExecStartPost=/usr/bin/systemctl start alcove-relay-verify.service
+# A download that hangs would hold this unit active, and the timer starts no
+# run while it is.
+TimeoutStartSec=2h

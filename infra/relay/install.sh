@@ -8,10 +8,10 @@
 # image and checks its configuration with nginx -t, builds the relay's image,
 # creates the data directory that holds the per-exchange secrets table, installs
 # the scripts under /opt, obtains a certificate if none is present, renders
-# coturn's configuration, installs the units and the three timers, and starts
-# the relay, the front, and the registrar where the host holds its token. It
-# then runs verify.sh, which is the only step that says whether the result
-# carries an exchange.
+# coturn's configuration, installs the units and the three timers, on Amazon
+# Linux 2023 the OS security update timer too, and starts the relay, the front,
+# and the registrar where the host holds its token. It then runs verify.sh,
+# which is the only step that says whether the result carries an exchange.
 #
 # The runtime is podman where the distribution carries it and docker where it
 # does not, and that decides one thing: which file defines alcove-relay.service.
@@ -290,6 +290,14 @@ done
 install -m 644 "$HERE/certs/alcove-relay-cert.service" "$HERE/certs/alcove-relay-cert.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-verify.service" "$HERE/alcove-relay-verify.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-sweep.timer" "$UNIT_DIR/"
+# The update unit passes --releasever=latest, a release name Amazon Linux 2023's
+# versioned repositories define, so it is installed only there; elsewhere the
+# distribution's own automatic updates are the operator's to set up.
+OS_UPDATES=0
+if [ -r /etc/os-release ] && (. /etc/os-release && [ "${ID:-}" = amzn ] && [ "${VERSION_ID:-}" = 2023 ]); then
+  OS_UPDATES=1
+  install -m 644 "$HERE/alcove-relay-os-update.service" "$HERE/alcove-relay-os-update.timer" "$UNIT_DIR/"
+fi
 # The two units that run as the image's account, with its uid and gid filled in.
 for unit in alcove-relay-sweep.service alcove-relay-registrar.service; do
   sed -e "s/__ALCOVE_RELAY_IMAGE_UID__/$IMAGE_UID/g" -e "s/__ALCOVE_RELAY_IMAGE_GID__/$IMAGE_GID/g" \
@@ -318,6 +326,15 @@ systemctl enable --now alcove-relay-verify.timer \
   || die "alcove-relay-verify.timer did not start; nothing would notice a relay that stopped allocating. journalctl -u alcove-relay-verify.timer"
 systemctl enable --now alcove-relay-sweep.timer \
   || die "alcove-relay-sweep.timer did not start; lapsed exchange keys would stay registered. journalctl -u alcove-relay-sweep.timer"
+
+if [ "$OS_UPDATES" = 1 ]; then
+  systemctl enable --now alcove-relay-os-update.timer \
+    || die "alcove-relay-os-update.timer did not start; this host would take no security updates. journalctl -u alcove-relay-os-update.timer"
+  log "OS security updates install daily between 05:00 and 05:30 UTC, then verify.sh runs"
+else
+  systemctl disable --now alcove-relay-os-update.timer 2>/dev/null || true
+  log "WARNING: not Amazon Linux 2023, so no automatic OS security updates are set up; configure the distribution's own"
+fi
 
 if [ "$RUNTIME" = docker ]; then
   # A Quadlet-generated service is enabled by the unit's own [Install] section at

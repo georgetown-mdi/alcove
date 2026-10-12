@@ -7,7 +7,7 @@ Description=Renew the Alcove relay's TLS certificate daily
 # key changed; the fixed early hour is when that restart is least likely to land
 # on an exchange in flight. The randomized delay keeps several relays off the
 # same second at the authority.
-OnCalendar=*-*-* 03:00:00
+OnCalendar=*-*-* 03:00:00 UTC
 RandomizedDelaySec=1h
 Persistent=true
 
