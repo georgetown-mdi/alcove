@@ -403,7 +403,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
     expect(response.status).toBe(201);
     const { id } = (await response.json()) as { id: string };
     const composed = parseYaml(
-      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
     ) as { connection: Record<string, unknown> };
     expect(composed.connection).toEqual({
       channel: "webrtc",
@@ -430,9 +430,8 @@ describe("POST /api/jobs on the webrtc channel", () => {
       }),
     );
     expect(response.status).toBe(201);
-    const { id } = (await response.json()) as { id: string };
     const composed = parseYaml(
-      fs.readFileSync(`${root}/${id}/alcove.yaml`, "utf8"),
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
     ) as { connection: { server: unknown } };
     expect(composed.connection.server).toEqual({
       host: "127.0.0.1",
@@ -466,36 +465,39 @@ describe("POST /api/jobs on the webrtc channel", () => {
 });
 
 describe("POST /api/jobs on the webrtc channel and the working folder's files", () => {
-  test("writes alcove.yaml and .alcove.key into the run's own folder until the handshake", async () => {
+  test("writes alcove.yaml and .alcove.key into the working folder when the run starts", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const response = await postJob(validWebrtcIntent());
     expect(response.status).toBe(201);
     const { id } = (await response.json()) as { id: string };
-    expect(fs.readdirSync(root)).toEqual([id]);
+    expect(fs.readdirSync(root).sort()).toEqual(
+      [JOB_FILE_NAMES.config, JOB_FILE_NAMES.key, id].sort(),
+    );
     expect(
-      JSON.parse(
-        fs.readFileSync(path.join(root, id, JOB_FILE_NAMES.key), "utf8"),
-      ),
+      JSON.parse(fs.readFileSync(path.join(root, JOB_FILE_NAMES.key), "utf8")),
     ).toEqual({ sharedSecret: VALID_SHARED_SECRET });
     // Written as alcove invite writes it, guidance comments included.
     expect(
-      fs.readFileSync(path.join(root, id, JOB_FILE_NAMES.config), "utf8"),
+      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
     ).toMatch(/^#/m);
+    expect(fs.readdirSync(path.join(root, id))).not.toContain(
+      JOB_FILE_NAMES.key,
+    );
     expect(manager.getJobHandoff(id)?.keyFileBesideConfiguration).toBe(true);
   });
 
   test.each([JOB_FILE_NAMES.config, JOB_FILE_NAMES.key])(
-    "refuses, naming the reason, when %s is already there",
+    "refuses with the reason alone when %s is already there",
     async (name) => {
       const { manager, root } = seedManager();
       await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
       fs.writeFileSync(path.join(root, name), "another exchange's file\n");
       const response = await postJob(validWebrtcIntent());
       expect(response.status).toBe(400);
-      expect(await response.json()).toEqual({
-        reason: "working-folder-configuration-present",
-      });
+      expect(await response.text()).toBe(
+        JSON.stringify({ reason: "working-folder-configuration-present" }),
+      );
       expect(fs.readdirSync(root)).toEqual([name]);
       expect(fs.readFileSync(path.join(root, name), "utf8")).toBe(
         "another exchange's file\n",
@@ -504,7 +506,7 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     },
   );
 
-  test("refuses a fresh invitation over the files an earlier exchange on this console wrote", async () => {
+  test("refuses a fresh invitation over the files an earlier exchange on this console left", async () => {
     const { manager, root } = seedManager({
       STUB_KEY_FILE: JSON.stringify({ sharedSecret: "C".repeat(42) + "A" }),
       STUB_FD3_EVENTS: JSON.stringify([
@@ -517,30 +519,51 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
     const first = await postJob(validWebrtcIntent());
     const { id } = (await first.json()) as { id: string };
     await vi.waitFor(() => expect(manager.getJob(id)?.terminal).not.toBeNull());
-    expect(fs.existsSync(path.join(root, JOB_FILE_NAMES.key))).toBe(true);
     await manager.deleteJob(id);
     await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+    expect(fs.existsSync(path.join(root, JOB_FILE_NAMES.key))).toBe(true);
 
     const fresh = await postJob(
       validWebrtcIntent({ sharedSecret: "B".repeat(42) + "A" }),
     );
     expect(fresh.status).toBe(400);
-    expect(await fresh.json()).toEqual({
-      reason: "working-folder-console-exchange",
-    });
+    expect(await fresh.text()).toBe(
+      JSON.stringify({ reason: "working-folder-console-exchange" }),
+    );
   });
 
-  test("a retry before the handshake runs in a folder of its own again", async () => {
+  test.skipIf(process.getuid?.() === 0)(
+    "a working folder that refuses the write is an empty 500 leaving nothing behind",
+    async () => {
+      const { manager, root } = seedManager();
+      await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+      fs.chmodSync(root, 0o500);
+      try {
+        const response = await postJob(validWebrtcIntent());
+        expect(response.status).toBe(500);
+        expect(await response.text()).toBe("");
+        expect(fs.readdirSync(root)).toEqual([]);
+        expect(manager.occupiedSlotId()).toBeNull();
+      } finally {
+        fs.chmodSync(root, 0o700);
+      }
+    },
+  );
+
+  test("a run discarded while it waits takes its unchanged files, so a retry writes them again", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
     const first = await postJob(validWebrtcIntent());
     const { id } = (await first.json()) as { id: string };
     await manager.deleteJob(id);
     await vi.waitFor(() => expect(manager.occupiedSlotId()).toBeNull());
+    expect(fs.readdirSync(root)).toEqual([]);
     const retry = await postJob(validWebrtcIntent());
     expect(retry.status).toBe(201);
     const { id: retryId } = (await retry.json()) as { id: string };
-    expect(fs.readdirSync(root)).toEqual([retryId]);
+    expect(fs.readdirSync(root).sort()).toEqual(
+      [JOB_FILE_NAMES.config, JOB_FILE_NAMES.key, retryId].sort(),
+    );
   });
 });
 

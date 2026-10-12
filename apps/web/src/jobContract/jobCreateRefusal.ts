@@ -48,8 +48,8 @@ export const SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL =
   "sftp-credential-console-file";
 
 /** The token for a webrtc run refused because the working folder already
- * holds an `alcove.yaml` or `.alcove.key`, which the run would write at its
- * handshake. */
+ * holds an `alcove.yaml` or `.alcove.key`, which the run would write when it
+ * starts. */
 export const WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL =
   "working-folder-configuration-present";
 

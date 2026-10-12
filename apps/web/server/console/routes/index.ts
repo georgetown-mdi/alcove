@@ -162,9 +162,13 @@ export const route = defineJobRoute({
             400,
           );
         // The working folder already holds an alcove.yaml or .alcove.key a
-        // webrtc run would write at its handshake: the token says whether an
-        // earlier exchange on this console wrote them.
-        if (error instanceof WorkingFolderFilesRefusedError)
+        // webrtc run would write when it starts: the token says whether they
+        // are the pair an earlier exchange on this console left. A folder that
+        // refused the write is the 500 below.
+        if (
+          error instanceof WorkingFolderFilesRefusedError &&
+          error.fault === "present"
+        )
           return jobJsonResponse(
             {
               reason: error.heldByConsoleExchange
@@ -200,8 +204,9 @@ export const route = defineJobRoute({
           error instanceof SigningIdentityLocationError
         )
           return jobEmptyResponse(400);
-        // Workdir creation or an input write failed (the manager has already
-        // cleaned up); no internal detail crosses the boundary.
+        // Workdir creation, an input write, or a webrtc run's write into the
+        // working folder failed (the manager has already cleaned up); no
+        // internal detail crosses the boundary.
         return jobEmptyResponse(500);
       }
       return jobJsonResponse({ id }, 201);

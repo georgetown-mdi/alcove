@@ -45,13 +45,6 @@
 //                     --key-file before the fd-3 events, as the real CLI saves
 //                     its rotated secret at the handshake, before the first
 //                     protocol stage begins.
-//   STUB_KEY_FILE_AT_EXIT  When set, this content replaces the file named by
-//                     --key-file after the fd-3 events, standing in for a
-//                     later key-file write such as a cleared marker.
-//   STUB_WAIT_FOR_FILE  When set, the exchange emulation waits, before
-//                     anything else it writes, until this path exists (at
-//                     most 20 s), so a test can change the filesystem while
-//                     the run is waiting for its partner.
 //   STUB_TERMS_PROPOSAL  When set, this content is written beside the document
 //                     --config-file names, as `<name>.proposed-terms`, before
 //                     the fd-3 events, as the real CLI writes a partner's
@@ -284,9 +277,6 @@ function runExchangeStub() {
     fs.writeFileSync(writtenResultPath, process.env.STUB_OUTPUT_FILE);
   }
 
-  if (process.env.STUB_WAIT_FOR_FILE !== undefined)
-    waitForFile(process.env.STUB_WAIT_FOR_FILE);
-
   if (process.env.STUB_KEY_FILE !== undefined)
     writeKeyFile(process.env.STUB_KEY_FILE);
 
@@ -349,9 +339,6 @@ function runExchangeStub() {
   );
   for (const event of events) writeFd3(JSON.stringify(event) + "\n");
 
-  if (process.env.STUB_KEY_FILE_AT_EXIT !== undefined)
-    writeKeyFile(process.env.STUB_KEY_FILE_AT_EXIT);
-
   if (process.env.STUB_STDERR !== undefined)
     writeStdio(process.stderr, withConfigFile(process.env.STUB_STDERR));
   if (process.env.STUB_STDOUT !== undefined)
@@ -396,14 +383,6 @@ function runExchangeStub() {
     fs.writeFileSync(process.env.STUB_READY_FILE, "ready");
 
   exitAfterDelay(exitCode);
-}
-
-/** Block until `filePath` exists, for at most 20 s. */
-function waitForFile(filePath) {
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  const deadline = Date.now() + 20_000;
-  while (!fs.existsSync(filePath) && Date.now() < deadline)
-    Atomics.wait(pause, 0, 0, 10);
 }
 
 /** Replace the file --key-file names, through a rename, as the real CLI's

@@ -382,8 +382,8 @@ function failureContentFor(
         "connection on the SFTP connection, and choose the file that holds " +
         "your SFTP password or private key.",
     };
-  // A WebRTC run refused over the alcove.yaml and .alcove.key it saves in the
-  // working folder once the partner connects, as alcove invite does.
+  // A WebRTC run refused over the alcove.yaml and .alcove.key it writes into
+  // the working folder when it starts, as alcove invite does.
   // Classified `config`: a retry refuses identically until the folder is
   // changed.
   if (
