@@ -1735,6 +1735,33 @@ describe("createFetchJobApiClient over an injected fetch", () => {
     }
   });
 
+  test("a 500 create reads its reason, and an empty 500 has none", async () => {
+    for (const [body, reason] of [
+      [
+        JSON.stringify({ reason: "working-folder-unwritable" }),
+        "working-folder-unwritable",
+      ],
+      [null, undefined],
+    ] as const) {
+      const fetchImpl = (() =>
+        Promise.resolve(new Response(body, { status: 500 }))) as typeof fetch;
+      const error = (await createFetchJobApiClient(fetchImpl)
+        .createJob(
+          {
+            channel: "filedrop",
+            linkageTerms: validLinkageTerms(),
+            sharedSecret: VALID_SHARED_SECRET,
+            inputCsv: "x\n",
+            eventStream: true,
+          },
+          new AbortController().signal,
+        )
+        .catch((thrown: unknown) => thrown)) as JobApiRequestError;
+      expect(error.status).toBe(500);
+      expect(error.refusalReason).toBe(reason);
+    }
+  });
+
   test("fetchFinalRunStatus reads the record pair, the report, and the exit", async () => {
     const statusResponse =
       (body: unknown): typeof fetch =>

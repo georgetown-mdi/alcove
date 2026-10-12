@@ -65,16 +65,17 @@ export interface InvitationLocation {
   /** Deep-link origin, e.g. `https://example.org:3000` (no trailing slash). */
   origin: string;
   /** Where this app's inviter registers, or undefined on a build with no
-   * browser signaling (the console), which mints no webrtc invitation. */
+   * browser signaling (the console), which mints no invitation for an exchange
+   * in this browser. */
   signaling: SignalingAddress | undefined;
 }
 
-/** A webrtc mint refused because the build names no signaling address. Its
- * message is fixed operator-facing copy. */
+/** A mint for an exchange in this browser refused because the build names no
+ * signaling address. Its message is fixed operator-facing copy. */
 export class NoSignalingAddressError extends Error {
   constructor() {
     super(
-      "This console does not make browser-to-browser invitations: it coordinates no browser connections, so your partner could not reach you. Run the exchange over SFTP or a shared folder, or create the invitation in the Alcove web app.",
+      "This console does not run the exchange in this browser, so it cannot make an invitation for that. Choose WebRTC, SFTP or a shared folder, which the console runs itself.",
     );
     this.name = "NoSignalingAddressError";
   }
@@ -137,6 +138,8 @@ export interface GeneratedInvitation {
    * reads it from here. Never in the token.
    */
   includeOwnColumns?: OwnColumnSelection;
+  /** Where the token sends the partner: the endpoint inside {@link encoded}. */
+  connectionEndpoint?: ConnectionEndpoint;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -247,20 +250,22 @@ export function tokenFromInput(input: string): string {
 
 /**
  * The endpoint to put in an invitation: `{ channel: "webrtc" }` for this
- * app's signaling locator, or an authored sftp or filedrop locator. No endpoint
- * type has a credential field, and `encodeInvitation` re-validates the token
- * through the strict schema.
+ * app's signaling locator, a webrtc endpoint naming its host for a server
+ * the console runs against, or an authored sftp or filedrop locator. No
+ * endpoint type has a credential field, and `encodeInvitation` re-validates
+ * the token through the strict schema.
  */
 export type ConnectionEndpointRequest =
-  { channel: "webrtc" } | SFTPEndpoint | FileDropEndpoint;
+  { channel: "webrtc" } | WebRTCEndpoint | SFTPEndpoint | FileDropEndpoint;
 
-/** Resolve a request to the token's endpoint; webrtc names the relay
- * this inviter's own run uses ({@link relayForRun}). */
+/** Resolve a request to the token's endpoint; this app's own webrtc locator
+ * names the relay this inviter's own run uses ({@link relayForRun}), and a
+ * webrtc endpoint naming its host is taken as given. */
 function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
 ): ConnectionEndpoint {
-  if (request.channel === "webrtc")
+  if (request.channel === "webrtc" && !("host" in request))
     return invitationWebrtcEndpoint(location, relayForRun());
   return request;
 }
@@ -480,12 +485,16 @@ export async function generateInvitation(params: {
     connectionEndpoint,
     retainsFiles,
   });
+  const resolvedEndpoint = resolveConnectionEndpoint(
+    connectionEndpoint,
+    location,
+  );
   const token: InvitationToken = {
     version: "1",
     linkageTerms,
     sharedSecret,
     expires,
-    connectionEndpoint: resolveConnectionEndpoint(connectionEndpoint, location),
+    connectionEndpoint: resolvedEndpoint,
     ...(declaresRetainedFiles ? { inviterRetainsFiles: true } : {}),
   };
 
@@ -502,5 +511,6 @@ export async function generateInvitation(params: {
     standardization,
     // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
+    connectionEndpoint: resolvedEndpoint,
   };
 }

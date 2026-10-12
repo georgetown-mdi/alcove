@@ -148,7 +148,7 @@ For a first recurring exchange step by step, every command, and what each exit c
 
 ## Web Console Quickstart
 
-The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP or a shared folder) on that machine rather than browser-to-browser. It serves one party and is never shared beyond that host. For a partner who has only a browser, create the invitation in the [web app](#web-app) instead: the console does not run browser-to-browser exchanges.
+The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP, a shared folder, or WebRTC) on that machine rather than in the browser. It serves one party and is never shared beyond that host. A partner who has only a browser accepts a WebRTC invitation from the console in the [web app](#web-app); the console does not run an exchange in which both parties are browsers.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 2. From a directory holding your input CSV, for Mac / Linux, run the command below. Replace `/path/to/shared-folder` with the folder your sync tool shares with your partner, and `shared-folder` on the line above it with the name you and your partner know that folder by:
@@ -168,9 +168,9 @@ docker run --rm -p 127.0.0.1:3000:3000 --env JOB_DATA_ROOT=/work -v "${PWD}:/wor
 
 Your directory holds your input, the exchange's working files, and its results; the console reads your CSV in place. The shared folder is the one a shared-folder exchange runs through, and the name you give it is the name an invitation tells your partner to look for.
 
-For an SFTP exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. For a shared-folder exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
+For an SFTP or WebRTC exchange, which syncs no folder with your partner, the three shared-folder lines can be left out. A WebRTC exchange writes `alcove.yaml` and `.alcove.key` into your directory, as `alcove invite` does. For a shared-folder exchange, keep them: without them, this console's shared folder is the folder holding your files. Whoever syncs it gets your input, configuration and results.
 
-Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP exchanges and the other settings, see [CONSOLE.md](docs/CONSOLE.md).
+Publishing to `127.0.0.1` keeps the unauthenticated console reachable only from this machine, and works the same on Linux, macOS, and Windows. For SFTP and WebRTC exchanges and the other settings, see [CONSOLE.md](docs/CONSOLE.md).
 
 The `serve` role is the one that cannot instead be run as your own account with `--user`: it keeps container-internal state belonging to uid 1000, so what it leaves behind in the mounted directory belongs to uid 1000 as well, and `sudo` may be needed to move or delete it afterwards. See the uid 1000 guidance above, and [The user the image runs as](docs/DEPLOYMENT.md#the-user-the-image-runs-as).
 

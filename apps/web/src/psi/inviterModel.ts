@@ -284,6 +284,10 @@ export interface InviterCreateGates {
   offlineBlocked: boolean;
   /** An SFTP exchange chosen to run here has no connection authored yet. */
   connectionIncomplete: boolean;
+  /** Why a WebRTC exchange chosen to run here cannot be created yet, with no
+   * coordination server set or with the choice withheld, `undefined` when
+   * neither. Already a complete sentence, used as-is. */
+  coordinationServerHeld: string | undefined;
   /** Why the split rendezvous and the retain choice disagree, `undefined` when
    * they do not. Already a complete, remedy-naming sentence, used as-is. */
   splitDirectoryProblem: string | undefined;
@@ -351,6 +355,11 @@ export function inviterCreateStatus(
     return heldCreate(
       "Set up the SFTP connection above to continue.",
       "Set up the SFTP connection above before you can create.",
+    );
+  if (gates.coordinationServerHeld !== undefined)
+    return heldCreate(
+      gates.coordinationServerHeld,
+      gates.coordinationServerHeld,
     );
   if (gates.splitDirectoryProblem !== undefined)
     return heldCreate(gates.splitDirectoryProblem, gates.splitDirectoryProblem);

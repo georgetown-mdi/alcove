@@ -57,6 +57,12 @@ export const ALLOWLIST = [
       "default public STUN server, the one third-party host the web app intends to reach; already named in PRIVACY.md's supporting-services table",
   },
   {
+    url: "https://psi.data-bridge.org",
+    match: "exact",
+    reason:
+      "the hosted web app, filled into the console's coordination-server field only when the operator asks; the console reads its /alcove.json only once the operator sets it, as PRIVACY.md's console entry states, and the host is named there",
+  },
+  {
     url: "https://peerjs",
     match: "exact",
     reason:

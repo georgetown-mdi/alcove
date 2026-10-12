@@ -12,18 +12,22 @@ import {
 } from "@alcove/core";
 
 import {
-  JobApiRequestError,
-  RelayedSelfExplainingError,
-  RelayedTerminalError,
-} from "@psi/jobClient/serverJobExchangeDriver";
-import {
+  COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
+import {
+  JobApiRequestError,
+  RelayedSelfExplainingError,
+  RelayedTerminalError,
+} from "@psi/jobClient/serverJobExchangeDriver";
 import {
   WEBRTC_ENDPOINT_HOST_REFUSED,
   WEBRTC_ENDPOINT_PATH_REFUSED,
@@ -554,6 +558,76 @@ describe("failureFor", () => {
     expect(failure.message).toContain("signing identity");
     expect(failure.message).toContain("Edit connection");
     expect(failure.message).toContain("SFTP password or private key");
+  });
+
+  test.each([
+    [
+      WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+      "an exchange this console started",
+    ],
+    [
+      WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+      "already holds an alcove.yaml or .alcove.key.",
+    ],
+  ] as const)(
+    "a WebRTC run refused over the working folder's files (%s) says what is there and what to move",
+    (reason, whose) => {
+      const failure = failureFor(
+        "exchange",
+        new JobApiRequestError(400, "refused", undefined, reason),
+        WORK_FILE,
+        "webrtc",
+      );
+      expect(failure.category).toBe("config");
+      expect(failure.retry).toBe("withheld");
+      expect(failure.title).toBe(
+        "Your working folder already holds an exchange",
+      );
+      expect(failure.message).toContain(whose);
+      expect(failure.message).toContain(
+        "move alcove.yaml and .alcove.key out of the folder",
+      );
+    },
+  );
+
+  test("a WebRTC run whose working folder refused its files names the files and the mount, and offers a retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new JobApiRequestError(
+        500,
+        "POST /api/jobs failed with status 500",
+        undefined,
+        WORKING_FOLDER_UNWRITABLE_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+    );
+    expect(failure.category).toBe("exchange");
+    expect(failure.retry).toBe("offered");
+    expect(failure.message).toBe(
+      "The console could not write alcove.yaml and .alcove.key into the " +
+        "working folder. Check that the folder is mounted writable, then try " +
+        "again.",
+    );
+  });
+
+  test("a WebRTC run refused for naming another coordination server sends the operator back to check it", () => {
+    const failure = failureFor(
+      "exchange",
+      new JobApiRequestError(
+        400,
+        "refused",
+        undefined,
+        COORDINATION_SERVER_CHANGED_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe("The coordination server changed");
+    expect(failure.message).toMatch(
+      /Start over, check the coordination server/,
+    );
   });
 
   test.each([

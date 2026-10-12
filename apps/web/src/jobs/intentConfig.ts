@@ -3,6 +3,7 @@ import { stringify as stringifyYaml } from "yaml";
 import {
   ExchangeSpecSchema,
   mintExchangeSpec,
+  serializeExchangeDocument,
   snakeizeKeys,
 } from "@alcove/core";
 
@@ -219,16 +220,16 @@ export function composeWebrtcConfigSpec(
   );
 }
 
-/** {@link composeWebrtcConfigSpec}'s spec as a YAML document. */
+/** {@link composeWebrtcConfigSpec}'s spec as the document `alcove invite`
+ * writes, guidance comments included, since it is written into the working
+ * folder for the command line to run again. */
 export function composeWebrtcConfigDocument(
   intent: JobWebrtcExchangeIntent,
   signalingServer: AuthoredSignalingServer,
   signingPaths?: JobSigningPaths,
 ): string {
-  return stringifyYaml(
-    snakeizeKeys(
-      composeWebrtcConfigSpec(intent, signalingServer, signingPaths),
-    ),
+  return serializeExchangeDocument(
+    composeWebrtcConfigSpec(intent, signalingServer, signingPaths),
   );
 }
 

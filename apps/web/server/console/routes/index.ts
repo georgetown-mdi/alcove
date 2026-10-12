@@ -1,4 +1,17 @@
 import {
+  COORDINATION_SERVER_CHANGED_REFUSAL,
+  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
+  MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
+  SFTP_FINGERPRINT_LIST_REFUSAL,
+  SFTP_URL_DIRECTORY_REFUSAL,
+  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
+  WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+  WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
+} from "@jobContract/jobCreateRefusal";
+import {
   ConsoleShuttingDownError,
   ExchangeBusyError,
   JobIntentUncomposableError,
@@ -8,6 +21,7 @@ import {
   JobSigningIdentityExposedError,
   MountedSigningPathsUnconvertedError,
   SftpUnavailableError,
+  SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
 import {
@@ -16,15 +30,6 @@ import {
   readJobRequestBody,
 } from "@jobs/routeSupport";
 import {
-  MOUNTED_KEY_FILE_ABSENT_REFUSAL,
-  MOUNTED_KEY_FILE_INVALID_REFUSAL,
-  MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
-  SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
-  SFTP_FINGERPRINT_LIST_REFUSAL,
-  SFTP_URL_DIRECTORY_REFUSAL,
-  SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
-} from "@jobContract/jobCreateRefusal";
-import {
   ZeroSetupFingerprintListError,
   ZeroSetupRemoteDirectoryError,
 } from "@jobs/intentArgv";
@@ -32,6 +37,7 @@ import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { JobInputNotFoundError } from "@jobs/workInputs";
 import { MountedKeyFileRefusedError } from "@jobs/mountedKeyFile";
 import { SigningIdentityLocationError } from "@jobs/signingIdentity";
+import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { jobCreateIntentSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
@@ -84,7 +90,9 @@ import { defineJobRoute } from "../jobRoute";
  * `{ "reason": "mounted-signing-paths-unconverted" }`, and a saved SFTP
  * credential naming a console file answers its `jobCreateRefusal.ts` token.
  * Each is about console state rather than the intent, so the browser cannot
- * otherwise say what to fix.
+ * otherwise say what to fix. For the same reason a webrtc run whose files the
+ * working folder refused is a 500 `{ "reason": "working-folder-unwritable" }`
+ * rather than the empty 500 of every other server-side failure.
  *
  * A schema-valid intent that core refuses while the CLI configuration or the
  * hand-off is composed from it is a 400 `{ "error": "<field>: <reason>" }`,
@@ -154,6 +162,33 @@ export const route = defineJobRoute({
         if (error instanceof MountedSigningPathsUnconvertedError)
           return jobJsonResponse(
             { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
+            400,
+          );
+        // The working folder already holds an alcove.yaml or .alcove.key a
+        // webrtc run would write when it starts: the token says whether they
+        // are the pair an earlier exchange on this console left. A folder that
+        // refused the write is a server-side 500, named so the operator is
+        // sent to the mount.
+        if (error instanceof WorkingFolderFilesRefusedError)
+          return error.fault === "present"
+            ? jobJsonResponse(
+                {
+                  reason: error.heldByConsoleExchange
+                    ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+                    : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+                },
+                400,
+              )
+            : jobJsonResponse(
+                { reason: WORKING_FOLDER_UNWRITABLE_REFUSAL },
+                500,
+              );
+        // The invitation names a coordination server other than the one the
+        // console holds, which a later change on another tab or a restart
+        // replaced or forgot.
+        if (error instanceof SignalingServerChangedError)
+          return jobJsonResponse(
+            { reason: COORDINATION_SERVER_CHANGED_REFUSAL },
             400,
           );
         // Core refused the configuration or hand-off composed from the

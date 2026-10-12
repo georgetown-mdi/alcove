@@ -21,9 +21,9 @@ import type { Transport } from "@psi/transportChooser";
  * the narrowed CLI transport to make that unrepresentable.
  */
 
-/** The command-line transports the save surface serves -- {@link Transport}
- * minus `browser`, which never routes here. */
-export type CliTransport = Exclude<Transport, "browser">;
+/** The command-line transports the save surface serves -- the file-sync
+ * {@link Transport} values; `browser` and `webrtc` never route here. */
+export type CliTransport = Extract<Transport, "sftp" | "filedrop">;
 
 /**
  * The fields the operator authors on the save surface. SFTP needs a host and a

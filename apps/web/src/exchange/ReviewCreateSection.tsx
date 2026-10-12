@@ -47,10 +47,10 @@ import {
   exchangeFilesProblems,
 } from "@console/exchangeFilesModel";
 import {
-  FILEDROP_CONNECTION_TUNING,
-  SFTP_CONNECTION_TUNING,
+  connectionTuningCapabilitiesFor,
   connectionTuningProblems,
 } from "@console/connectionTuningModel";
+import { COORDINATION_SERVER_MISSING } from "@console/signalingServerModel";
 import { ConnectionTuningCard } from "@console/ConnectionTuningCard";
 import { EditedTermsNotice } from "@console/MountedConfigurationCard";
 import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
@@ -58,6 +58,7 @@ import { ReceiptsCard } from "@console/ReceiptsCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { SftpConnectionCard } from "@console/SftpConnectionCard";
 import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
+import { SignalingServerCard } from "@console/SignalingServerCard";
 import { splitDirectoryRetainProblem } from "@console/sftpConnectionChoice";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 import styles from "@styles/app.module.css";
@@ -82,6 +83,7 @@ import type { ReceiptsDraft } from "@psi/receiptsModel";
 import type { RunDiagnosticsDraft } from "@psi/runDiagnosticsModel";
 import type { SftpConnectionFormValues } from "@console/sftpConnectionForm";
 import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
+import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 const DIRECTION_CHOICES: ReadonlyArray<{
   value: OutputDirection;
@@ -104,6 +106,8 @@ const DIRECTION_CHOICES: ReadonlyArray<{
  * exchange file for the command-line tool. On a console build, choosing SFTP
  * shows the authored connection's locator under the card: the exchange runs here
  * through that connection, and the connection material stays on the console.
+ * The console also offers WebRTC, run here through the coordination server set
+ * under its card.
  */
 export function ReviewCreateSection({
   editor,
@@ -111,6 +115,9 @@ export function ReviewCreateSection({
   problems,
   minting,
   sftpConnection,
+  signalingServer,
+  onSignalingServer,
+  configurationOpened = false,
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
@@ -148,6 +155,15 @@ export function ReviewCreateSection({
    * updated when the operator authors or clears one); undefined before the fetch
    * resolves (or off a console), null when none is effective. */
   sftpConnection: SftpConnectionProjection | null | undefined;
+  /** The coordination server a WebRTC run connects through, as the console
+   * holds it: undefined before the fetch resolves (or off a console), null
+   * when none is set. */
+  signalingServer?: SignalingServerProjection | null;
+  /** The operator set or cleared the coordination server. */
+  onSignalingServer?: (server: SignalingServerProjection | null) => void;
+  /** Whether a configuration from the mounted folder is open, which withholds
+   * WebRTC: its run writes an alcove.yaml of its own into that folder. */
+  configurationOpened?: boolean;
   /** The connection form a configuration opened from the mounted folder seeds,
    * forwarded to the SFTP card for the case where no connection is authored yet. */
   loadedSftpForm?: SftpConnectionFormValues;
@@ -248,6 +264,7 @@ export function ReviewCreateSection({
     sftpConfigured,
     rendezvousConfigured,
     sftpSaveFilePreferred,
+    configurationOpened,
   );
   const transport = editor.transport ?? available.defaultTransport;
   const disabledFor = (candidate: Transport): boolean =>
@@ -255,6 +272,10 @@ export function ReviewCreateSection({
       ?.disabled === true;
   const browserDisabled = disabledFor("browser");
   const filedropDisabled = disabledFor("filedrop");
+  const webrtcOffered = available.options.some(
+    (option) => option.transport === "webrtc",
+  );
+  const webrtcDisabled = disabledFor("webrtc");
   const sftpAuthoringRequired =
     available.options.find((option) => option.transport === "sftp")
       ?.authoringRequired === true;
@@ -265,6 +286,8 @@ export function ReviewCreateSection({
     filedropDescription,
     sftpLabel,
     sftpDescription,
+    webrtcLabel,
+    webrtcDescription,
     capabilityNote,
   } = transportChooserCopy(
     consoleBuild,
@@ -277,29 +300,43 @@ export function ReviewCreateSection({
         ? { problem: rendezvous.problem }
         : {}),
     },
+    configurationOpened,
   );
   // An sftp exchange chosen to run here cannot be created until a connection is
   // set up: block the seal and say so, rather than minting a code with no
   // rendezvous.
   const connectionIncomplete = transport === "sftp" && sftpAuthoringRequired;
-  // The console conducts a file-sync run there, so its file-handling card is
-  // offered there and nowhere else: a browser exchange has no shared directory,
-  // and a save-a-file transport hands the settings to the operator's own command
+  // Likewise a WebRTC exchange with no coordination server to name, or one
+  // chosen before a configuration was opened.
+  const coordinationServerHeld =
+    transport !== "webrtc"
+      ? undefined
+      : webrtcDisabled
+        ? webrtcDescription
+        : signalingServer == null
+          ? COORDINATION_SERVER_MISSING
+          : undefined;
+  // The console conducts the run there, so its settings cards are offered
+  // there and nowhere else: a browser exchange has no shared directory, and a
+  // save-a-file transport hands the settings to the operator's own command
   // line, where the flags already live.
   const exchangeFilesOffered =
     consoleBuild &&
     transport !== "browser" &&
     available.options.find((option) => option.transport === transport)
       ?.runMode === "server-job";
+  // A WebRTC run has no folder whose files these settings handle.
+  const fileSyncRun = exchangeFilesOffered && transport !== "webrtc";
   const connectionSettingsEditable =
     exchangeFilesOffered && connectionSettingsHeld === undefined;
   // A combination core refuses is a form problem here, before the invitation is
   // sealed, rather than a job that fails at composition or at rendezvous.
   const exchangeFilesBlocked =
+    fileSyncRun &&
     connectionSettingsEditable &&
     exchangeFilesProblems(exchangeFiles, CONFIG_EXCHANGE_FILES).length > 0;
   const runDiagnosticsBlocked =
-    exchangeFilesOffered && runDiagnosticsProblems(runDiagnostics).length > 0;
+    fileSyncRun && runDiagnosticsProblems(runDiagnostics).length > 0;
   const receiptsBlocked =
     exchangeFilesOffered &&
     receiptsProblems(receipts, termsIdentity).length > 0;
@@ -309,10 +346,7 @@ export function ReviewCreateSection({
   const identityDivergence = !exchangeFilesOffered
     ? undefined
     : signingIdentityDivergence(receipts, termsIdentity);
-  // The SFTP session mode applies only where a session exists, so the card
-  // withholds it on the shared-directory transport.
-  const tuningCapabilities =
-    transport === "sftp" ? SFTP_CONNECTION_TUNING : FILEDROP_CONNECTION_TUNING;
+  const tuningCapabilities = connectionTuningCapabilitiesFor(transport);
   const connectionTuningBlocked =
     connectionSettingsEditable &&
     connectionTuningProblems(connectionTuning, tuningCapabilities).length > 0;
@@ -323,7 +357,7 @@ export function ReviewCreateSection({
   // partner-facing accept kit for a rendezvous the run would then refuse. Read
   // only where this console conducts the run, since the file-handling choices
   // reach no other transport's run.
-  const splitDirectoryProblem = !exchangeFilesOffered
+  const splitDirectoryProblem = !fileSyncRun
     ? undefined
     : transport === "sftp"
       ? splitDirectoryRetainProblem(sftpConnection, exchangeFiles.retainFiles)
@@ -340,6 +374,7 @@ export function ReviewCreateSection({
     runWithheld,
     offlineBlocked,
     connectionIncomplete,
+    coordinationServerHeld,
     splitDirectoryProblem,
     exchangeFilesBlocked,
     connectionTuningBlocked,
@@ -466,17 +501,44 @@ export function ReviewCreateSection({
             />
           )}
         </div>
+        {webrtcOffered && (
+          <div
+            className={
+              transport === "webrtc"
+                ? `${styles.radioCard} ${styles.radioCardSelected}`
+                : styles.radioCard
+            }
+          >
+            <Radio
+              name="transport"
+              checked={transport === "webrtc"}
+              disabled={webrtcDisabled}
+              onChange={() => onTransport("webrtc")}
+              label={webrtcLabel}
+              description={webrtcDescription}
+            />
+            {transport === "webrtc" && !webrtcDisabled && (
+              <SignalingServerCard
+                server={signalingServer}
+                onSet={(server) => onSignalingServer?.(server)}
+                onCleared={() => onSignalingServer?.(null)}
+              />
+            )}
+          </div>
+        )}
         <p className={`${styles.small} ${styles.sub}`}>{capabilityNote}</p>
       </fieldset>
       {exchangeFilesOffered && (
         <>
           {connectionSettingsEditable ? (
             <>
-              <ExchangeFilesCard
-                draft={exchangeFiles}
-                capabilities={CONFIG_EXCHANGE_FILES}
-                onChange={onExchangeFiles}
-              />
+              {fileSyncRun && (
+                <ExchangeFilesCard
+                  draft={exchangeFiles}
+                  capabilities={CONFIG_EXCHANGE_FILES}
+                  onChange={onExchangeFiles}
+                />
+              )}
               <ConnectionTuningCard
                 draft={connectionTuning}
                 capabilities={tuningCapabilities}
@@ -490,6 +552,7 @@ export function ReviewCreateSection({
           )}
           <RunDiagnosticsCard
             draft={runDiagnostics}
+            sweepOffered={fileSyncRun}
             onChange={onRunDiagnostics}
           />
           <ReceiptsCard

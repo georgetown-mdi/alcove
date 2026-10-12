@@ -206,6 +206,56 @@ describe("RecurringHandoff panel", () => {
     expect(text()).not.toContain("Copy your signing identity");
   });
 
+  test("a WebRTC run's hand-off has the working folder's alcove.yaml and .alcove.key copied, and shows no configuration of its own", async () => {
+    stubHandoff({
+      mode: "exchange",
+      channel: "webrtc",
+      usedKeyFile: true,
+      keyFileBesideConfiguration: true,
+      credentialPasted: false,
+      usedSigningIdentity: true,
+      pathsAsRead: {
+        credential: false,
+        sharedDirectory: false,
+        signing: false,
+      },
+      bindPaths: [
+        { path: "/path/to/your/signing-identity.json", readOnly: true },
+      ],
+      template: {
+        kind: "workingFolder",
+        argv: [
+          "alcove",
+          "exchange",
+          "--log-file=exchange.log",
+          "input.csv",
+          "./",
+        ],
+      },
+    } satisfies JobHandoff);
+    app.render(createElement(RecurringHandoff, { jobId: JOB_ID }));
+
+    await expect
+      .element(page.getByRole("heading", { name: HANDOFF_HEADING }))
+      .toBeInTheDocument();
+
+    const text = () => app.container.textContent;
+    expect(text()).toContain(
+      "Copy alcove.yaml and .alcove.key from your working folder into a " +
+        "folder on the scheduling machine",
+    );
+    expect(text()).toContain(
+      "your partner's fingerprint once a run has recorded it",
+    );
+    expect(text()).toContain("set signing.identity_file in alcove.yaml");
+    expect(text()).toContain("exchange --log-file=exchange.log input.csv ./");
+    expect(text()).not.toContain("Save this as alcove.yaml");
+    expect(text()).not.toContain("filled in below");
+    await expect
+      .element(page.getByLabelText("alcove.yaml configuration"))
+      .not.toBeInTheDocument();
+  });
+
   test("the invitation run's command and schedule lines are the hand-off's own", async () => {
     stubHandoff({
       ...CONFIG_HANDOFF,

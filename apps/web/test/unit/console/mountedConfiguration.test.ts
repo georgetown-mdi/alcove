@@ -291,11 +291,11 @@ describe("a configuration on a channel the console does not conduct", () => {
     expect(read.loaded?.receipts.retentionDisposition).toBe("Filed.");
   });
 
-  test("withholds the run, naming the channel and what the console runs", () => {
+  test("withholds the run of an opened webrtc file, naming the channel", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     const reason = runWithheldReason(state);
     expect(reason).toContain("webrtc");
-    expect(reason).toContain("SFTP and shared-folder exchanges only");
+    expect(reason).toContain("opened from your folder");
     expect(reason).toMatch(/Alcove on the command line/);
     expect(reason).toMatch(/Save your changes to alcove\.yaml/);
   });

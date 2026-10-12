@@ -33,6 +33,16 @@ import {
   recordedPartnerFingerprint,
 } from "./partnerPinNotice";
 import {
+  WorkingFolderFilesRefusedError,
+  createWorkingFolderExchangeFiles,
+  invitationIdOf,
+  removeUnchangedWorkingFolderExchangeFiles,
+  workingFolderExchangeFileDigests,
+  workingFolderExchangeFilePaths,
+  workingFolderExchangeFilesMatch,
+  workingFolderExchangeFilesPresent,
+} from "./workingFolderExchangeFiles";
+import {
   composeConfigDocument,
   composeKeyFileDocument,
   composeSftpConfigDocument,
@@ -104,10 +114,15 @@ import type {
   JobInputFileReference,
   JobSigningIdentityLocation,
   JobSigningPaths,
+  JobWebrtcExchangeIntent,
 } from "@jobContract/intentSchemas";
 
 import type { TermsProposalApplyResult } from "./termsProposal";
 
+import type {
+  ExchangeFileDigests,
+  ExchangeFilePaths,
+} from "./workingFolderExchangeFiles";
 import type { ExchangeRecordOutcome, PartnerOriginText } from "@alcove/core";
 import type {
   JobSftpServerEntry,
@@ -148,6 +163,20 @@ export class SignalingServerUnavailableError extends Error {
   constructor() {
     super("a webrtc intent arrived but no coordination server is authored");
     this.name = "SignalingServerUnavailableError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} when a webrtc intent names a
+ * coordination server other than the one the console holds, or names none
+ * while the console holds one: the invitation would send the partner to a
+ * server this run does not dial. The route maps it to a 400 naming the
+ * refusal.
+ */
+export class SignalingServerChangedError extends Error {
+  constructor() {
+    super("the webrtc intent names another coordination server");
+    this.name = "SignalingServerChangedError";
   }
 }
 
@@ -420,6 +449,20 @@ interface JobView {
   resultFileName: string | null;
 }
 
+/**
+ * The working folder's `alcove.yaml` and `.alcove.key` a webrtc run wrote when
+ * it started, which every retry of its invitation runs over.
+ */
+export interface WorkingFolderPair {
+  /** The invitation the pair belongs to ({@link invitationIdOf}). */
+  invitation: string;
+  /** The bytes written when the pair was created. */
+  written: ExchangeFileDigests;
+  /** The bytes when the pair was created or the latest run over it ended;
+   * undefined where either file was gone then. */
+  latest: ExchangeFileDigests | undefined;
+}
+
 /** A job record. Lives in server memory only; never persisted. */
 export interface JobRecord {
   id: string;
@@ -455,6 +498,15 @@ export interface JobRecord {
    * ({@link rewrittenPartnerPinNotice}).
    */
   partnerFingerprintPinnedAtCreation: boolean;
+  /**
+   * The configuration and key file the CLI was started with, or null for a
+   * zero-setup run, which has neither. A webrtc run's are the working
+   * folder's.
+   */
+  exchangeFiles: ExchangeFilePaths | null;
+  /** For a webrtc run, the working folder's pair it runs over; null for every
+   * other run. */
+  workingFolderPair: WorkingFolderPair | null;
   status: JobStatus;
   events: Array<BufferedEvent>;
   /** True once a terminal event has been buffered; the SSE stream closes after it. */
@@ -641,13 +693,19 @@ export class JobManager {
    */
   private authoredMaterializedCredentialPath: string | undefined;
   /**
-   * The coordination server a webrtc job dials, held in memory for the single
-   * exchange as {@link authoredSftpServer} is. Set by
-   * {@link authorSignalingServer}, cleared by
-   * {@link clearAuthoredSignalingServer} and when the active exchange is
-   * deleted.
+   * The coordination server a webrtc job dials, held in memory. Set by
+   * {@link authorSignalingServer} and cleared by
+   * {@link clearAuthoredSignalingServer}; deleting an exchange keeps it, since
+   * it holds no credential and a retry deletes the failed exchange before
+   * creating the next.
    */
   private authoredSignalingServer: AuthoredSignalingServer | undefined;
+  /**
+   * The working folder's pair the latest webrtc run wrote, kept after its
+   * job is deleted so a retry of the same invitation runs over it. Held in
+   * memory only: after a restart no pair in the folder is this console's.
+   */
+  private workingFolderPair: WorkingFolderPair | undefined;
   /** The advisories {@link authoredSignalingServer} was authored with. */
   private authoredSignalingWarnings: Array<string> = [];
   /** The ticket of the latest authoring or clearing request to arrive. */
@@ -738,10 +796,19 @@ export class JobManager {
       serverEntry = this.authoredSftpServer;
     }
     let signalingServer: AuthoredSignalingServer | undefined;
+    let pairToRunOver: WorkingFolderPair | undefined;
     if (intent.channel === "webrtc") {
-      if (this.authoredSignalingServer === undefined)
+      const authored = this.authoredSignalingServer;
+      if (authored === undefined && intent.signalingServer === undefined)
         throw new SignalingServerUnavailableError();
-      signalingServer = this.authoredSignalingServer;
+      if (
+        authored === undefined ||
+        intent.signalingServer === undefined ||
+        !namesSignalingServer(intent.signalingServer, authored)
+      )
+        throw new SignalingServerChangedError();
+      signalingServer = authored;
+      pairToRunOver = this.workingFolderPairToRunOver(intent);
     }
     if (intent.channel === "filedrop") {
       if (
@@ -807,6 +874,7 @@ export class JobManager {
     this.slot = { phase: "starting", id, channel: intent.channel };
 
     let workdir: string | null = null;
+    let pairCreated: WorkingFolderPair | undefined;
     try {
       // Resolve the mounted input before creating the workdir, inside the try so a
       // rejection frees the slot and leaves nothing on disk.
@@ -814,19 +882,31 @@ export class JobManager {
         intent.inputFile !== undefined
           ? this.resolveWorkInputPath(intent.inputFile)
           : undefined;
+      let workingFolderPair = pairToRunOver;
+      if (intent.channel === "webrtc" && workingFolderPair === undefined) {
+        pairCreated = this.createWorkingFolderPair(
+          intent,
+          signalingServer,
+          identityPath,
+        );
+        workingFolderPair = pairCreated;
+      }
       const created = await createWorkdir(this.dataRoot, id);
       workdir = created.workdir;
-      return await this.startJobInWorkdir(
+      const started = await this.startJobInWorkdir(
         intent,
         id,
         created.workdir,
         serverEntry,
-        signalingServer,
         mountedInputPath,
         identityPath,
         mountedKeyPath,
         opened,
+        workingFolderPair,
       );
+      if (workingFolderPair !== undefined)
+        this.workingFolderPair = workingFolderPair;
+      return started;
     } catch (error) {
       // spawnExchangeJob is the final fallible step of startJobInWorkdir, so
       // this catch is reachable only before any child was spawned. A slot
@@ -838,6 +918,8 @@ export class JobManager {
           "createJob cleanup reached with a spawned child; refusing to free the slot",
         );
       this.slot = null;
+      if (pairCreated !== undefined)
+        this.removeUnchangedPair(pairCreated, "failed to start");
       if (workdir !== null)
         await removeWorkdir(workdir).catch((cleanupError: unknown) => {
           log.warn(
@@ -969,6 +1051,101 @@ export class JobManager {
     return this.slot !== null && this.slot.phase === "active"
       ? this.slot.record
       : null;
+  }
+
+  /**
+   * The working folder's pair a webrtc create runs over, or undefined where
+   * neither name is taken and the create writes a new pair. Only a retry of
+   * the invitation whose run wrote the pair runs over it, and only while its
+   * content is what this console recorded: the configuration's bytes as the
+   * latest run over it left them, and a key file with either those bytes or
+   * the invitation's original secret. Anything else at either name refuses.
+   *
+   * @throws {WorkingFolderFilesRefusedError} when either name is taken and
+   *   this is not that retry.
+   */
+  private workingFolderPairToRunOver(
+    intent: JobWebrtcExchangeIntent,
+  ): WorkingFolderPair | undefined {
+    if (!workingFolderExchangeFilesPresent(this.dataRoot)) return undefined;
+    const pair = this.workingFolderPair;
+    const heldByConsoleExchange =
+      pair?.latest !== undefined &&
+      workingFolderExchangeFilesMatch(
+        this.dataRoot,
+        pair.latest,
+        pair.invitation,
+      );
+    if (
+      heldByConsoleExchange &&
+      intent.sharedSecret !== undefined &&
+      invitationIdOf(intent.sharedSecret) === pair.invitation
+    )
+      return pair;
+    throw new WorkingFolderFilesRefusedError("present", heldByConsoleExchange);
+  }
+
+  /**
+   * Compose a webrtc run's configuration and key file and write them into the
+   * working folder, where `alcove invite` writes them, never over anything
+   * already at either name.
+   *
+   * @throws {WorkingFolderFilesRefusedError} when either name is taken or the
+   *   folder cannot be written.
+   */
+  private createWorkingFolderPair(
+    intent: JobWebrtcExchangeIntent,
+    signalingServer: AuthoredSignalingServer | undefined,
+    identityPath: string,
+  ): WorkingFolderPair {
+    if (signalingServer === undefined || intent.sharedSecret === undefined)
+      throw new Error(
+        "a webrtc run reached its files without a server or a secret",
+      );
+    const config = composedFromIntent(() =>
+      composeWebrtcConfigDocument(
+        intent,
+        signalingServer,
+        this.signingPathsFor(identityPath),
+      ),
+    );
+    const written = createWorkingFolderExchangeFiles(this.dataRoot, {
+      config,
+      key: composeKeyFileDocument(intent),
+    });
+    return {
+      invitation: invitationIdOf(intent.sharedSecret),
+      written,
+      latest: written,
+    };
+  }
+
+  /**
+   * Remove the working folder's pair `pair` describes where both files still
+   * have the bytes written when it was created, which a run that never
+   * reached its partner leaves. Anything else is left in place, and the log
+   * says so.
+   */
+  private removeUnchangedPair(pair: WorkingFolderPair, outcome: string): void {
+    let removed: boolean;
+    try {
+      removed = removeUnchangedWorkingFolderExchangeFiles(
+        this.dataRoot,
+        pair.written,
+      );
+    } catch (error) {
+      log.warn(
+        `Could not remove alcove.yaml and .alcove.key from the working folder after an exchange ${outcome}:`,
+        sanitizeErrorForDisplay(error),
+      );
+      return;
+    }
+    if (removed) {
+      if (this.workingFolderPair === pair) this.workingFolderPair = undefined;
+    } else if (workingFolderExchangeFilesPresent(this.dataRoot))
+      log.info(
+        `Left alcove.yaml and .alcove.key in the working folder after an exchange ${outcome}: they changed since the exchange started.`,
+      );
   }
 
   /**
@@ -1221,28 +1398,29 @@ export class JobManager {
     id: string,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
-    signalingServer: AuthoredSignalingServer | undefined,
     mountedInputPath: string | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
     opened: OpenedMountedConfiguration | undefined,
+    workingFolderPair: WorkingFolderPair | undefined,
   ): Promise<string> {
     // Exchange composes a config document into the workdir, and a key file
     // beside it unless the run uses the one beside the opened configuration;
     // zero-setup writes NEITHER -- its connection rides argv and it has no
     // shared secret, so the workdir holds only input (when inline) and the run's
-    // own artifacts.
-    const exchangeDocuments =
-      intent.mode === "zeroSetup"
-        ? undefined
-        : await this.writeExchangeDocuments(
-            intent,
-            workdir,
-            serverEntry,
-            signalingServer,
-            identityPath,
-            mountedKeyPath,
-          );
+    // own artifacts. A webrtc run writes neither there: it runs on the
+    // working folder's pair.
+    let exchangeDocuments: ExchangeFilePaths | undefined;
+    if (workingFolderPair !== undefined)
+      exchangeDocuments = workingFolderExchangeFilePaths(this.dataRoot);
+    else if (intent.mode !== "zeroSetup" && intent.channel !== "webrtc")
+      exchangeDocuments = await this.writeExchangeDocuments(
+        intent,
+        workdir,
+        serverEntry,
+        identityPath,
+        mountedKeyPath,
+      );
 
     const inputPath = await this.writeJobInput(
       intent,
@@ -1272,7 +1450,6 @@ export class JobManager {
       buildJobHandoff(intent, serverEntry, {
         credentialPasted: this.authoredMaterializedCredentialPath !== undefined,
         filedropSplit: this.jobRendezvousOutboundDir !== undefined,
-        ...(signalingServer !== undefined ? { signalingServer } : {}),
         keyFileBesideConfiguration: mountedKeyPath !== undefined,
         ...(mountedDocument !== undefined
           ? {
@@ -1295,6 +1472,8 @@ export class JobManager {
       partnerFingerprintPinnedAtCreation:
         intent.mode !== "zeroSetup" &&
         intent.signing?.partnerFingerprint !== undefined,
+      exchangeFiles: exchangeDocuments ?? null,
+      workingFolderPair: workingFolderPair ?? null,
       status: "running",
       events: [],
       terminalEmitted: false,
@@ -1386,20 +1565,18 @@ export class JobManager {
    * there. Not reached on the zero-setup path, which writes neither.
    */
   private async writeExchangeDocuments(
-    intent: JobExchangeIntent,
+    intent: WorkdirComposedExchangeIntent,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
-    signalingServer: AuthoredSignalingServer | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
-  ): Promise<{ configPath: string; keyPath: string }> {
+  ): Promise<ExchangeFilePaths> {
     const configDocument = composedFromIntent(() =>
       composeDocumentByChannel(
         intent,
         this.jobRendezvousDir,
         this.jobRendezvousOutboundDir,
         serverEntry,
-        signalingServer,
         this.signingPathsFor(identityPath),
       ),
     );
@@ -1769,6 +1946,13 @@ export class JobManager {
     diagnostics: CliRunDiagnostics,
   ): void {
     record.terminal = state;
+    if (record.workingFolderPair !== null) {
+      record.workingFolderPair.latest = workingFolderExchangeFileDigests(
+        this.dataRoot,
+      );
+      if (this.slotDeleted(record))
+        this.removeUnchangedPair(record.workingFolderPair, "was discarded");
+    }
     if (!record.runStampResolved) {
       record.runStamp = latestRunStampIn(record.workdir);
       record.runStampResolved = true;
@@ -1841,6 +2025,17 @@ export class JobManager {
 
     this.maybeFreeSlot(record);
     this.shutdownWaits.get(record)?.resolveExited();
+  }
+
+  /** Whether the slot holds this record, deleted. */
+  private slotDeleted(record: JobRecord): boolean {
+    const slot = this.slot;
+    return (
+      slot !== null &&
+      slot.phase === "active" &&
+      slot.record === record &&
+      slot.deleted
+    );
   }
 
   /**
@@ -1952,13 +2147,16 @@ export class JobManager {
       this.clearCancelTimers(record);
       if (record.handle?.isRunning()) record.handle.signal("SIGKILL");
       slot.deleted = true;
+      // A child still running is gone only once reconcileTerminal sees it
+      // exit, which removes the pair then.
+      if (record.workingFolderPair !== null && record.terminal !== null)
+        this.removeUnchangedPair(record.workingFolderPair, "was discarded");
       // The authored connection is scoped to this single exchange; deleting the
       // exchange forgets it and its warnings (and deletes any materialized pasted
       // credential), so the next exchange starts from a clean slate.
       this.discardMaterializedCredential();
       this.authoredSftpServer = undefined;
       this.authoredCredentialWarnings = [];
-      this.clearAuthoredSignalingServer();
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);
@@ -2201,6 +2399,19 @@ function openedConfigurationWarning(
   );
 }
 
+/** Whether a create intent's coordination server is `authored`: the host,
+ * port and path the invitation names. */
+function namesSignalingServer(
+  named: NonNullable<JobWebrtcExchangeIntent["signalingServer"]>,
+  authored: AuthoredSignalingServer,
+): boolean {
+  return (
+    named.host === authored.host &&
+    named.port === authored.port &&
+    named.path === authored.path
+  );
+}
+
 function workdirArtifactPath(workdir: string, name: string): string {
   const artifactPath = resolveWorkdirFile(workdir, name);
   if (artifactPath === null)
@@ -2284,9 +2495,10 @@ function rewrittenTermsProposalRefusal(
  *
  * The CLI's wording names the configuration file it wrote the pin into, a path
  * inside this container: every other console surface holds paths back, and a
- * relayed warning is no exception. The value is read out of that same
- * configuration rather than out of the sentence
- * ({@link recordedPartnerFingerprint}).
+ * relayed warning is no exception. The value is read out of the configuration
+ * the CLI was started with rather than out of the sentence
+ * ({@link recordedPartnerFingerprint}); for a webrtc run that is the working
+ * folder's `alcove.yaml`, where the pin stays for the next exchange.
  *
  * A run whose composed configuration already named a partner fingerprint had no
  * first contact to report, so its warning relays in the CLI's own words rather
@@ -2311,11 +2523,19 @@ function rewrittenPartnerPinNotice(
   return {
     ...event,
     message: partnerCertificatePinnedNotice(
-      recordedPartnerFingerprint(
-        workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config),
-      ),
+      recordedPartnerFingerprint(runConfigurationPath(record)),
+      record.workingFolderPair !== null,
     ),
   };
+}
+
+/** The configuration the CLI was started with: the working folder's for a
+ * webrtc run, the one composed into the workdir for any other exchange. */
+function runConfigurationPath(record: JobRecord): string {
+  return (
+    record.exchangeFiles?.configPath ??
+    workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config)
+  );
 }
 
 /**
@@ -2346,7 +2566,7 @@ function rewrittenPartnerPinFailure(
   event: RelayEvent,
 ): RelayEvent {
   if (event.category !== "config" || !record.receiptRequested) return event;
-  const configPath = workdirArtifactPath(record.workdir, JOB_FILE_NAMES.config);
+  const configPath = runConfigurationPath(record);
   const searchedPath = configPathAsRelayed(configPath);
   if (
     !errorDisplayStrings(event).some((text) => text.includes(searchedPath)) ||
@@ -2446,33 +2666,31 @@ function liveJobView(record: JobRecord): JobView {
   };
 }
 
+/** An exchange whose configuration is composed into its workdir. A webrtc
+ * exchange runs on the working folder's files instead. */
+type WorkdirComposedExchangeIntent = Exclude<
+  JobExchangeIntent,
+  JobWebrtcExchangeIntent
+>;
+
 /**
  * Compose the CLI config document for the intent's channel: filedrop
  * rendezvous in the operator-configured rendezvous mount; sftp rendezvous at
- * the operator-authored connection; webrtc through the operator-authored
- * coordination server. Each arm requires the resource `createJob` already
- * resolved, so a missing one here is a caller bug reported as a hard error,
- * not a silent fallback.
+ * the operator-authored connection. Each arm requires the resource `createJob`
+ * already resolved, so a missing one here is a caller bug reported as a hard
+ * error, not a silent fallback.
  */
 function composeDocumentByChannel(
-  intent: JobExchangeIntent,
+  intent: WorkdirComposedExchangeIntent,
   rendezvousDir: string | undefined,
   outboundRendezvousDir: string | undefined,
   serverEntry: JobSftpServerEntry | undefined,
-  signalingServer: AuthoredSignalingServer | undefined,
   signingPaths: JobSigningPaths,
 ): string {
   if (intent.channel === "sftp") {
     if (serverEntry === undefined)
       throw new Error("sftp job reached compose without a resolved server");
     return composeSftpConfigDocument(intent, serverEntry, signingPaths);
-  }
-  if (intent.channel === "webrtc") {
-    if (signalingServer === undefined)
-      throw new Error(
-        "webrtc job reached compose without a coordination server",
-      );
-    return composeWebrtcConfigDocument(intent, signalingServer, signingPaths);
   }
   if (rendezvousDir === undefined)
     throw new Error("filedrop job reached compose without a shared folder");

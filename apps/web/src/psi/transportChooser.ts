@@ -14,17 +14,19 @@ import type { ExchangeDriverSelection } from "./exchangeDriverSelection";
  * The transport an exchange runs over, chosen at Review & create. `browser`
  * runs the live WebRTC exchange in this tab; `sftp` and `filedrop` are the two
  * command-line transports whose Create routes to the save-exchange-file surface
- * instead of listening for a partner. The value is editor state so it survives
- * a trip into a Customize tab and reflects into the ledger's How-it-runs row
- * and the review answers.
+ * instead of listening for a partner; `webrtc` is the console's WebRTC
+ * exchange, which the command-line tool runs on the console. The value is
+ * editor state so it survives a trip into a Customize tab and reflects into
+ * the ledger's How-it-runs row and the review answers.
  */
-export type Transport = "browser" | "sftp" | "filedrop";
+export type Transport = "browser" | "sftp" | "filedrop" | "webrtc";
 
 /** The ledger's How-it-runs row phrasing for each {@link Transport}. */
 export const TRANSPORT_LEDGER_LABELS: Record<Transport, string> = {
   browser: "Browser",
   sftp: "SFTP (command-line tool)",
   filedrop: "Shared folder (command-line tool)",
+  webrtc: "WebRTC (command-line tool)",
 };
 
 /** The review answers-table phrasing for each {@link Transport}. */
@@ -32,16 +34,18 @@ export const TRANSPORT_ANSWER_LABELS: Record<Transport, string> = {
   browser: "Live, in this browser",
   sftp: "SFTP (command-line tool)",
   filedrop: "Shared folder (command-line tool)",
+  webrtc: "WebRTC (command-line tool)",
 };
 
-/** Whether a transport runs in the command-line tool rather than this browser
- * -- the discriminant Create branches on: a CLI transport mints nothing and
- * routes to the save surface, and the browser must never listen for it. A type
- * guard so a narrowed transport reaches the save surface's CLI-only model. */
+/** Whether a transport is one the command-line tool runs from a saved exchange
+ * file -- the discriminant Create branches on: such a transport mints nothing
+ * and routes to the save surface where the build saves a file, and the browser
+ * must never listen for it. A type guard so a narrowed transport reaches the
+ * save surface's file-sync model. `webrtc` is not one: the console runs it. */
 export function isCliTransport(
   transport: Transport,
-): transport is Exclude<Transport, "browser"> {
-  return transport !== "browser";
+): transport is "sftp" | "filedrop" {
+  return transport === "sftp" || transport === "filedrop";
 }
 
 /** How a chosen transport would run on this build: the
@@ -72,34 +76,45 @@ interface AvailableTransports {
   defaultTransport: Transport;
 }
 
-const TRANSPORT_ORDER: ReadonlyArray<Transport> = [
+const HOSTED_TRANSPORT_ORDER: ReadonlyArray<Transport> = [
   "browser",
   "sftp",
   "filedrop",
 ];
 
+const CONSOLE_TRANSPORT_ORDER: ReadonlyArray<Transport> = [
+  ...HOSTED_TRANSPORT_ORDER,
+  "webrtc",
+];
+
 /**
  * The transport matrix for a build ({@link AvailableTransports}). Hosted offers
- * all three, defaulting to browser. The console disables Browser, runs filedrop
- * here as a server job when `JOB_RENDEZVOUS_DIR` is set, and defaults to SFTP,
- * else filedrop when mounted, else SFTP for its own authoring.
+ * browser, SFTP and filedrop, defaulting to browser. The console disables
+ * Browser, runs filedrop here as a server job when `JOB_RENDEZVOUS_DIR` is set,
+ * adds `webrtc` as a server job, and defaults to SFTP, else filedrop when
+ * mounted, else SFTP for its own authoring.
  *
  * `sftpConfigured` means authored-and-complete; an unconfigured SFTP card still
  * offers to run here with `authoringRequired` set. `sftpSaveFilePreferred` runs
  * SFTP through the operator's own command-line tool instead.
+ * `configurationOpened` disables `webrtc`, whose run writes an `alcove.yaml`
+ * of its own into the folder the open configuration was read from.
  */
 export function availableTransports(
   consoleBuild: boolean,
   sftpConfigured: boolean,
   rendezvousConfigured: boolean,
   sftpSaveFilePreferred = false,
+  configurationOpened = false,
 ): AvailableTransports {
   const profile: DeploymentProfile = consoleBuild ? "console" : "hosted";
-  const options = TRANSPORT_ORDER.map((transport): TransportOption => {
+  const order = consoleBuild ? CONSOLE_TRANSPORT_ORDER : HOSTED_TRANSPORT_ORDER;
+  const options = order.map((transport): TransportOption => {
     const disabled =
       consoleBuild &&
       (transport === "browser" ||
-        (transport === "filedrop" && !rendezvousConfigured));
+        (transport === "filedrop" && !rendezvousConfigured) ||
+        (transport === "webrtc" && configurationOpened));
     const runMode: TransportRunMode = selectExchangeDriver(
       transport,
       profile,
@@ -125,8 +140,9 @@ export function availableTransports(
 
 /** The run mode of a chosen transport in an {@link AvailableTransports} matrix;
  * `browser` when the matrix does not model the transport, which keeps callers
- * total. That every build models all three -- so this answer is the matrix's own
- * and never the fallback -- is checked in inviterModel.test.ts. */
+ * total. That each build models every transport it offers -- so this answer
+ * is the matrix's own and never the fallback -- is checked in
+ * inviterModel.test.ts. */
 export function transportRunMode(
   available: AvailableTransports,
   transport: Transport,
@@ -154,6 +170,7 @@ const TRANSPORT_RUN_NOUN: Record<Transport, string> = {
   browser: "live",
   sftp: "SFTP",
   filedrop: "shared-folder",
+  webrtc: "WebRTC",
 };
 
 function joinNouns(nouns: ReadonlyArray<string>): string {
@@ -191,7 +208,7 @@ function capabilityNoteFor(
         ? `${joinNouns(cli)} exchanges save a file for the command-line tool`
         : `This console saves a file for the command-line tool to run ${joinNouns(cli)} exchanges`,
     );
-  parts.push("in-tab browser exchanges are out of scope on this console");
+  parts.push("no exchange runs in this browser tab");
   return `${parts.join("; ")}.`;
 }
 
@@ -200,7 +217,8 @@ function capabilityNoteFor(
  * On the console (`consoleBuild`) Browser is disabled as out of scope; filedrop
  * runs here when `rendezvousConfigured`; SFTP runs here reading the file on the
  * console when `sftpConfigured`, else inviting the operator to author a
- * connection unless `sftpSaveFilePreferred`. Both the SFTP copy and the
+ * connection unless `sftpSaveFilePreferred`; WebRTC runs here, unless a
+ * configuration from the folder is open. Both the SFTP copy and the
  * capability note derive from {@link availableTransports}. */
 interface TransportChooserCopy {
   browserLabel: string;
@@ -209,6 +227,8 @@ interface TransportChooserCopy {
   filedropDescription: string;
   sftpLabel: string;
   sftpDescription: string;
+  webrtcLabel: string;
+  webrtcDescription: string;
   capabilityNote: string;
 }
 
@@ -232,12 +252,14 @@ export function transportChooserCopy(
   rendezvousConfigured: boolean,
   sftpSaveFilePreferred = false,
   rendezvousShape: RendezvousShape = {},
+  configurationOpened = false,
 ): TransportChooserCopy {
   const available = availableTransports(
     consoleBuild,
     sftpConfigured,
     rendezvousConfigured,
     sftpSaveFilePreferred,
+    configurationOpened,
   );
   const sftpOption = available.options.find(
     (option) => option.transport === "sftp",
@@ -248,7 +270,7 @@ export function transportChooserCopy(
   return {
     browserLabel: "Live, in this browser",
     browserDescription: consoleBuild
-      ? "This console does not run in-browser exchanges; the public Alcove web app runs those. Run the exchange over SFTP or a shared folder instead."
+      ? "This console runs each exchange itself rather than in this browser. For a partner who uses the Alcove web app, choose WebRTC below."
       : "Your browsers connect directly. You get an invitation to share, as a link or as text; keep this tab open while your partner accepts.",
     filedropLabel: filedropRunsHere
       ? "Over a shared folder, run here"
@@ -273,6 +295,10 @@ export function transportChooserCopy(
         ? "Runs the exchange here over an SFTP connection you set up below. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation."
         : "Runs the exchange here through the SFTP connection set up on this machine. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation."
       : "Saves an exchange file that runs the command-line tool over your SFTP server. Your partner accepts with the same invitation.",
+    webrtcLabel: "Over WebRTC, run here",
+    webrtcDescription: configurationOpened
+      ? "Unavailable while a configuration from your folder is open: this exchange writes its own alcove.yaml into your folder. Close the configuration on the first step to set the exchange up here."
+      : "Runs the exchange here, connecting directly to your partner through the coordination server you set below. Your partner accepts in the Alcove web app or with the command-line tool. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect.",
     capabilityNote: capabilityNoteFor(consoleBuild, available),
   };
 }

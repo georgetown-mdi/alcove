@@ -106,7 +106,8 @@ export function validSftpIntent(
   };
 }
 
-/** A valid webrtc job intent (no connection field); overrides merge over it. */
+/** A valid webrtc job intent naming {@link TEST_SIGNALING_SERVER}; overrides
+ * merge over it. */
 export function validWebrtcIntent(
   overrides: Partial<JobWebrtcExchangeIntent> = {},
 ): JobWebrtcExchangeIntent {
@@ -116,9 +117,17 @@ export function validWebrtcIntent(
     linkageTerms: validLinkageTerms(),
     sharedSecret: VALID_SHARED_SECRET,
     inputCsv: "ssn,last_name,date_of_birth\n111223333,smith,1990-01-01\n",
+    signalingServer: TEST_SIGNALING_SERVER,
     ...overrides,
   };
 }
+
+/** The coordination server address the webrtc tests author. */
+export const TEST_SIGNALING_ADDRESS = "wss://peers.test/psi";
+
+/** The server {@link TEST_SIGNALING_ADDRESS} names, as an invitation names
+ * it. */
+export const TEST_SIGNALING_SERVER = { host: "peers.test", path: "/psi/" };
 
 /** A sample SFTP server entry (an @path credential, a pinned fingerprint) for the
  * compose/argv tests that take an entry directly. */

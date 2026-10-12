@@ -59,6 +59,7 @@ import type {
   JobExchangeIntent,
   JobExchangeOptions,
   JobExchangeSide,
+  JobSignalingServerEndpoint,
   JobZeroSetupIntent,
   JobZeroSetupLinkageStrategy,
 } from "@jobContract/intentSchemas";
@@ -76,9 +77,20 @@ const log = getLogger("serverJobExchangeDriver");
  * discriminant so the driver stays transport-blind past intent construction.
  * The sftp variant has no connection field at all: the console runs the one
  * authored SFTP connection (`GET /api/jobs/sftp`), so every host, port, path,
- * and credential reference lives on the console, never in the browser. */
+ * and credential reference lives on the console, never in the browser. The
+ * webrtc variant likewise dials the coordination server the console holds
+ * (`GET /api/jobs/webrtc`), and names the one its invitation sends the
+ * partner to, which the console refuses to run unless it is that server. */
 export type ServerJobExchangeTransport =
-  { channel: "filedrop" } | { channel: "sftp" };
+  | { channel: "filedrop" }
+  | { channel: "sftp" }
+  | { channel: "webrtc"; signalingServer?: JobSignalingServerEndpoint };
+
+/** The channels a zero-setup run takes, which has no webrtc form. */
+type ServerJobZeroSetupTransport = Exclude<
+  ServerJobExchangeTransport,
+  { channel: "webrtc" }
+>;
 
 /**
  * Where the console reads this party's input from. `inline` holds the CSV
@@ -272,9 +284,9 @@ export type JobStatusProbe =
  * re-attaches to it rather than surfacing the "already running" alert (see
  * `exchange/reattachOnBusy`). Present only on a 409 whose body held one.
  * {@link JobApiRequestError.refusalReason} is the counterpart on a refused (400)
- * create: the fixed token naming a refusal about the console's own mounts, which
- * the intent this browser holds cannot explain. Present only on a 400 whose body
- * held one this bundle knows. */
+ * or failed (500) create: the fixed token naming a refusal about the console's
+ * own mounts, which the intent this browser holds cannot explain. Present only
+ * on a 400 or 500 whose body held one this bundle knows. */
 export class JobApiRequestError extends Error {
   constructor(
     readonly status: number,
@@ -449,9 +461,9 @@ export function createFetchJobApiClient(
           // single slot -- so the caller can re-attach to it. Absent on every
           // other status (an empty-bodied 400/413/500 is treated as no id).
           response.status === 409 ? await readBodyJobId(response) : undefined,
-          // A refused (400) body may hold `{ reason }`; every other 400 is
-          // empty-bodied and reads as no reason.
-          response.status === 400
+          // A refused (400) or failed (500) body may hold `{ reason }`; an
+          // empty body reads as no reason.
+          response.status === 400 || response.status === 500
             ? await readBodyRefusalReason(response)
             : undefined,
         );
@@ -1303,9 +1315,10 @@ function relayedTerminalErrorOf(event: RelayEvent): RelayedTerminalError {
 }
 
 /** Build the {@link JobExchangeIntent} a run POSTs from the driver config: the
- * `transport` picks the arm (neither adds a connection field -- the sftp arm
- * has no `remote`, the console runs the one authored connection), and
- * everything after the discriminant is channel-independent.
+ * `transport` picks the arm (none adds a connection field -- the sftp arm
+ * has no `remote`, and the webrtc arm names its server only for the console to
+ * check against the one it runs -- the console runs what the operator authored
+ * there), and everything after the discriminant is channel-independent.
  *
  * @internal
  */
@@ -1354,9 +1367,25 @@ export function intentFor(
     ...receipts,
     eventStream: true,
   };
-  return transport.channel === "sftp"
-    ? { channel: "sftp", ...shared }
-    : { channel: "filedrop", ...shared };
+  switch (transport.channel) {
+    case "sftp":
+      return { channel: "sftp", ...shared };
+    case "filedrop":
+      return { channel: "filedrop", ...shared };
+    case "webrtc":
+      if (mountedConfigurationOpened === true)
+        throw new Error(
+          "a webrtc run of an opened configuration was requested",
+        );
+      return {
+        channel: "webrtc",
+        ...shared,
+        mountedConfigurationOpened: false,
+        ...(transport.signalingServer !== undefined
+          ? { signalingServer: transport.signalingServer }
+          : {}),
+      };
+  }
 }
 
 /** The construction-time inputs a zero-setup server-job driver needs. The
@@ -1368,7 +1397,7 @@ export function intentFor(
  * only the channel, input source, tuning subset, and the zero-setup intent's
  * four optional bounded selectors. */
 export interface ServerJobZeroSetupDriverConfig {
-  transport: ServerJobExchangeTransport;
+  transport: ServerJobZeroSetupTransport;
   /** Where the console reads this party's input from ({@link JobInputSource}):
    * inline CSV content, or a reference to a file in the operator-mounted
    * work-input directory. Mapped to the intent's `inputCsv` / `inputFile` arm. */

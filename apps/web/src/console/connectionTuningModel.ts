@@ -12,6 +12,7 @@ import {
 } from "@alcove/core";
 
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
+import type { Transport } from "@psi/transportChooser";
 
 /**
  * The pure model behind the console's "Connection tuning" authoring card: how the
@@ -167,14 +168,17 @@ export const CONNECTION_TUNING_DEFAULT: ConnectionTuningDraft = {
  * is an sftp-only dialing choice -- a filedrop client holds no socket -- so the
  * intent's filedrop arms refuse it and the card withholds it there. The silence
  * wait has no command-line flag, so a zero-setup run, which reaches the CLI
- * through flags alone, cannot hold it and its intent arms refuse it. */
+ * through flags alone, cannot hold it and its intent arms refuse it. A webrtc
+ * run checks no folder, so its intent arm refuses the check interval. */
 export interface ConnectionTuningCapabilities {
+  pollInterval: boolean;
   connectionPerPoll: boolean;
   inactivityTimeout: boolean;
 }
 
 /** The capabilities of an sftp flow: every control the card offers applies. */
 export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  pollInterval: true,
   connectionPerPoll: true,
   inactivityTimeout: true,
 };
@@ -182,19 +186,38 @@ export const SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
 /** The capabilities of a shared-directory (filedrop) flow, whose connectionless
  * client has no session to cycle. */
 export const FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  pollInterval: true,
   connectionPerPoll: false,
   inactivityTimeout: true,
 };
 
+/** The capabilities of a webrtc flow, which has no folder to check. */
+export const WEBRTC_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  pollInterval: false,
+  connectionPerPoll: false,
+  inactivityTimeout: true,
+};
+
+/** The capabilities of an invitation flow over `transport`. */
+export function connectionTuningCapabilitiesFor(
+  transport: Transport,
+): ConnectionTuningCapabilities {
+  if (transport === "sftp") return SFTP_CONNECTION_TUNING;
+  if (transport === "webrtc") return WEBRTC_CONNECTION_TUNING;
+  return FILEDROP_CONNECTION_TUNING;
+}
+
 /** The capabilities of a zero-setup sftp exchange, which composes no
  * configuration for the silence wait to be written into. */
 export const DIRECT_SFTP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  pollInterval: true,
   connectionPerPoll: true,
   inactivityTimeout: false,
 };
 
 /** The capabilities of a zero-setup shared-directory exchange. */
 export const DIRECT_FILEDROP_CONNECTION_TUNING: ConnectionTuningCapabilities = {
+  pollInterval: true,
   connectionPerPoll: false,
   inactivityTimeout: false,
 };
@@ -274,7 +297,9 @@ export function connectionTuningOptions(
   draft: ConnectionTuningDraft,
   capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): JobExchangeOptions | undefined {
-  const pollIntervalMs = pollIntervalMsOf(draft.pollInterval);
+  const pollIntervalMs = capabilities.pollInterval
+    ? pollIntervalMsOf(draft.pollInterval)
+    : undefined;
   const peerTimeoutMs = timeoutMs(draft.peerTimeout);
   const inactivityTimeoutMs = capabilities.inactivityTimeout
     ? timeoutMs(draft.inactivityTimeout)
@@ -363,14 +388,16 @@ export function connectionTuningProblems(
   capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): Array<string> {
   const problems: Array<string> = [];
-  if (durationMs(draft.pollInterval) === null)
-    problems.push(durationProblem("The check interval"));
-  else if (pollIntervalMsOf(draft.pollInterval) === null)
-    problems.push(
-      `The check interval cannot be longer than ${MAX_TIMER_MS} ms ` +
-        `(about ${Math.floor(MAX_TIMER_MS / 86_400_000)} days), ` +
-        "the longest interval an exchange accepts.",
-    );
+  if (capabilities.pollInterval) {
+    if (durationMs(draft.pollInterval) === null)
+      problems.push(durationProblem("The check interval"));
+    else if (pollIntervalMsOf(draft.pollInterval) === null)
+      problems.push(
+        `The check interval cannot be longer than ${MAX_TIMER_MS} ms ` +
+          `(about ${Math.floor(MAX_TIMER_MS / 86_400_000)} days), ` +
+          "the longest interval an exchange accepts.",
+      );
+  }
   const peerProblem = timeoutProblem(
     draft.peerTimeout,
     "The wait for your partner",
@@ -438,6 +465,7 @@ export function connectionTuningAdvisories(
   capabilities: ConnectionTuningCapabilities = SFTP_CONNECTION_TUNING,
 ): Array<string> {
   const advisories: Array<string> = [];
+  if (!capabilities.pollInterval) return advisories;
   const pollIntervalMs = durationMs(draft.pollInterval);
   if (
     typeof pollIntervalMs === "number" &&
@@ -470,7 +498,7 @@ export function connectionTuningSummary(
   capabilities: ConnectionTuningCapabilities,
 ): string {
   const touched =
-    draft.pollInterval.magnitude.trim() !== "" ||
+    (capabilities.pollInterval && draft.pollInterval.magnitude.trim() !== "") ||
     draft.peerTimeout.magnitude.trim() !== "" ||
     (capabilities.inactivityTimeout &&
       draft.inactivityTimeout.magnitude.trim() !== "") ||

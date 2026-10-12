@@ -13,8 +13,27 @@ export type BoundedMountedFileRead =
   | { outcome: "unreadable" }
   | { outcome: "over-large" };
 
+/** {@link BoundedMountedFileRead} with the file's bytes rather than text. */
+export type BoundedMountedBytesRead =
+  | { outcome: "read"; bytes: Buffer }
+  | Exclude<BoundedMountedFileRead, { outcome: "read" }>;
+
 /**
- * The UTF-8 contents of a mounted regular file no larger than `maxBytes`.
+ * The UTF-8 contents of a mounted regular file no larger than `maxBytes`
+ * ({@link readBoundedMountedBytes}).
+ */
+export function readBoundedMountedFile(
+  filePath: string,
+  maxBytes: number,
+): BoundedMountedFileRead {
+  const read = readBoundedMountedBytes(filePath, maxBytes);
+  return read.outcome === "read"
+    ? { outcome: "read", source: read.bytes.toString("utf8") }
+    : read;
+}
+
+/**
+ * The bytes of a mounted regular file no larger than `maxBytes`.
  *
  * Every check and the read itself go through the one descriptor `openSync`
  * returns, so nothing between them can swap what the path names. The file is
@@ -22,11 +41,13 @@ export type BoundedMountedFileRead =
  * descriptor that is not a regular file, or a failed read is `unreadable`. A
  * file is `over-large` when `fstat` reports more than the bound or when more
  * than the bound arrives, the read being bounded to one byte past the cap.
+ * With `followLink` false, a link at the name is `unreadable`.
  */
-export function readBoundedMountedFile(
+export function readBoundedMountedBytes(
   filePath: string,
   maxBytes: number,
-): BoundedMountedFileRead {
+  { followLink = true }: { followLink?: boolean } = {},
+): BoundedMountedBytesRead {
   let fd: number;
   try {
     // O_NONBLOCK, not the plain "r" flag: opening a FIFO for read-only blocks
@@ -35,7 +56,12 @@ export function readBoundedMountedFile(
     // open return immediately instead; the fstat below then refuses it as not
     // a regular file. A regular file ignores the flag, so its open and read
     // are unchanged.
-    fd = fs.openSync(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+    fd = fs.openSync(
+      filePath,
+      fs.constants.O_RDONLY |
+        fs.constants.O_NONBLOCK |
+        (followLink ? 0 : fs.constants.O_NOFOLLOW),
+    );
   } catch (error) {
     return {
       outcome:
@@ -62,10 +88,7 @@ export function readBoundedMountedFile(
       bytesRead += read;
     }
     if (bytesRead > maxBytes) return { outcome: "over-large" };
-    return {
-      outcome: "read",
-      source: buffer.subarray(0, bytesRead).toString("utf8"),
-    };
+    return { outcome: "read", bytes: buffer.subarray(0, bytesRead) };
   } catch {
     return { outcome: "unreadable" };
   } finally {

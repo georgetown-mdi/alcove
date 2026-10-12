@@ -52,9 +52,11 @@ import {
   availableTransports,
   isCliTransport,
   transportChooserCopy,
+  transportOffered,
   transportRunMode,
 } from "@psi/transportChooser";
 
+import { COORDINATION_SERVER_MISSING } from "@console/signalingServerModel";
 import { OFFLINE_EXCHANGE_REASON } from "@psi/offlineExchangeGate";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { signingIdentityDivergence } from "@psi/receiptsModel";
@@ -480,12 +482,13 @@ describe("the create gate and the two sentences that state it", () => {
   if (DIVERGENCE_STATEMENT === undefined)
     throw new Error("the diverging draft above states no divergence");
   const RUN_WITHHELD =
-    "The console cannot run this webrtc configuration, because it runs " +
-    "SFTP and shared-folder exchanges only.";
+    "The console cannot run a webrtc configuration opened from your " +
+    "folder.";
   const clearGates: InviterCreateGates = {
     runWithheld: undefined,
     offlineBlocked: false,
     connectionIncomplete: false,
+    coordinationServerHeld: undefined,
     splitDirectoryProblem: undefined,
     exchangeFilesBlocked: false,
     connectionTuningBlocked: false,
@@ -521,6 +524,15 @@ describe("the create gate and the two sentences that state it", () => {
       gates: { ...clearGates, connectionIncomplete: true },
       statusLine: "Set up the SFTP connection above to continue.",
       announcement: "Set up the SFTP connection above before you can create.",
+    },
+    {
+      gate: "coordinationServerHeld",
+      gates: {
+        ...clearGates,
+        coordinationServerHeld: COORDINATION_SERVER_MISSING,
+      },
+      statusLine: COORDINATION_SERVER_MISSING,
+      announcement: COORDINATION_SERVER_MISSING,
     },
     {
       gate: "splitDirectoryProblem",
@@ -881,6 +893,17 @@ describe("transport choice", () => {
     );
   });
 
+  test("choosing WebRTC on the console reflects it and saves no file", () => {
+    const editor = editorWithTransport(editorFromCsv("Dana", csv), "webrtc");
+    expect(isCliTransport("webrtc")).toBe(false);
+    expect(transportRow(inviterLedgerRows(editor)).value).toBe(
+      "WebRTC (command-line tool)",
+    );
+    expect(transportRow(answersRows(editor, csv)).value).toBe(
+      "WebRTC (command-line tool)",
+    );
+  });
+
   test("choosing a shared directory reflects the CLI transport", () => {
     const editor = editorWithTransport(editorFromCsv("Dana", csv), "filedrop");
     expect(editor.transport).toBe("filedrop");
@@ -984,39 +1007,66 @@ describe("availableTransports matrix", () => {
     });
   });
 
-  test("models every transport on every build, so no reader falls back", () => {
+  test("models every transport its build offers, so no reader falls back", () => {
     // transportRunMode answers `browser` for a transport the matrix does not
     // model. Whether that answer can ever be given is this matrix's property, so
     // it is checked here rather than assumed at the reader: a build that stopped
     // offering a card would otherwise report it as a live browser exchange.
-    const everyTransport: Record<Transport, true> = {
-      browser: true,
-      sftp: true,
-      filedrop: true,
+    const offeredByBuild: Record<
+      "hosted" | "console",
+      Record<Transport, boolean>
+    > = {
+      hosted: { browser: true, sftp: true, filedrop: true, webrtc: false },
+      console: { browser: true, sftp: true, filedrop: true, webrtc: true },
     };
-    const transports = Object.keys(everyTransport) as Array<Transport>;
-    for (const consoleBuild of [false, true])
+    for (const consoleBuild of [false, true]) {
+      const offered = offeredByBuild[consoleBuild ? "console" : "hosted"];
+      const transports = (Object.keys(offered) as Array<Transport>).filter(
+        (transport) => offered[transport],
+      );
       for (const sftpConfigured of [false, true])
         for (const rendezvous of [false, true])
-          for (const saveFilePreferred of [false, true]) {
-            const available = availableTransports(
-              consoleBuild,
-              sftpConfigured,
-              rendezvous,
-              saveFilePreferred,
-            );
-            expect(
-              available.options.map((option) => option.transport).sort(),
-            ).toEqual([...transports].sort());
-            for (const transport of transports) {
-              const option = available.options.find(
-                (entry) => entry.transport === transport,
+          for (const saveFilePreferred of [false, true])
+            for (const configurationOpened of [false, true]) {
+              const available = availableTransports(
+                consoleBuild,
+                sftpConfigured,
+                rendezvous,
+                saveFilePreferred,
+                configurationOpened,
               );
-              expect(transportRunMode(available, transport)).toBe(
-                option?.runMode,
-              );
+              expect(
+                available.options.map((option) => option.transport).sort(),
+              ).toEqual([...transports].sort());
+              for (const transport of transports) {
+                const option = available.options.find(
+                  (entry) => entry.transport === transport,
+                );
+                expect(transportRunMode(available, transport)).toBe(
+                  option?.runMode,
+                );
+              }
             }
-          }
+    }
+  });
+
+  test("the console runs WebRTC here, withheld while a configuration is open", () => {
+    const open = new Map(
+      availableTransports(true, false, false, false, false).options.map(
+        (option) => [option.transport, option],
+      ),
+    );
+    expect(open.get("webrtc")).toMatchObject({
+      disabled: false,
+      runMode: "server-job",
+      authoringRequired: false,
+    });
+    const opened = availableTransports(true, true, false, false, true);
+    expect(transportOffered(opened, "webrtc")).toBe(false);
+    expect(opened.defaultTransport).toBe("sftp");
+    expect(
+      transportOffered(availableTransports(false, false, false), "webrtc"),
+    ).toBe(false);
   });
 
   test("console with a rendezvous mount and no sftp server defaults to filedrop", () => {
@@ -1053,10 +1103,30 @@ describe("transport chooser copy by deployment", () => {
     const copy = transportChooserCopy(true, false, true);
     expect(copy.filedropLabel).toBe("Over a shared folder, run here");
     expect(copy.filedropDescription).toContain("Runs the exchange here");
-    // The Browser card states the console does not run in-browser exchanges.
-    expect(copy.browserDescription).toContain("does not run in-browser");
-    expect(copy.capabilityNote).toContain("shared-folder exchanges here");
-    expect(copy.capabilityNote).toContain("out of scope on this console");
+    // The Browser option states the console runs no exchange in the browser.
+    expect(copy.browserDescription).toContain("rather than in this browser");
+    expect(copy.capabilityNote).toContain(
+      "shared-folder, and WebRTC exchanges here",
+    );
+    expect(copy.capabilityNote).toContain(
+      "no exchange runs in this browser tab",
+    );
+  });
+
+  test("a console build offers WebRTC through a coordination server, direct only", () => {
+    const copy = transportChooserCopy(true, false, true);
+    expect(copy.webrtcLabel).toBe("Over WebRTC, run here");
+    expect(copy.webrtcDescription).toContain("coordination server");
+    expect(copy.webrtcDescription).toContain("Alcove web app");
+    expect(copy.webrtcDescription).toContain("Direct connections only");
+    expect(copy.capabilityNote).toContain("WebRTC exchanges here");
+    const opened = transportChooserCopy(true, false, true, false, {}, true);
+    expect(opened.webrtcDescription).toContain(
+      "Unavailable while a configuration from your folder is open",
+    );
+    expect(
+      transportChooserCopy(false, false, false).capabilityNote,
+    ).not.toContain("WebRTC");
   });
 
   test("a console build without a rendezvous mount names JOB_RENDEZVOUS_DIR", () => {
@@ -1120,7 +1190,9 @@ describe("transport chooser copy by deployment", () => {
     );
     // The console SFTP card states the file is read on this console.
     expect(copy.sftpDescription).toContain("read on this console");
-    expect(copy.capabilityNote).toContain("out of scope on this console");
+    expect(copy.capabilityNote).toContain(
+      "no exchange runs in this browser tab",
+    );
   });
 });
 

@@ -87,7 +87,7 @@ import type { MountedKeyFileFault } from "./mountedKeyFile";
  * takes ({@link ../psi/managed/managedCommandLineImport}): both are small
  * operator-held documents.
  */
-const MAX_CONFIGURATION_FILE_BYTES = 1_000_000;
+export const MAX_CONFIGURATION_FILE_BYTES = 1_000_000;
 
 /**
  * Raised when the mounted file is not a configuration the console can open. Its

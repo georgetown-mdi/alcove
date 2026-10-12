@@ -149,3 +149,57 @@ describe("share screen message", () => {
     expect(app.container.textContent).not.toContain("A message to send");
   });
 });
+
+describe("share screen for a console WebRTC invitation", () => {
+  function renderWebrtcShare(origin: string, shareLink: boolean): void {
+    app.render(
+      createElement(InviterExchangeSection, {
+        invitation: invitationAt(origin),
+        inviterName: "County Health Department",
+        run: initialRun("inviter"),
+        outputs: undefined,
+        failure: undefined,
+        runRecord: undefined,
+        warnings: [],
+        partnerAcceptsByCli: true,
+        shareLink,
+        webAppPartner: true,
+        serverJob: true,
+        jobId: undefined,
+        reattached: undefined,
+        reattaching: false,
+        onTryAgain: () => {},
+        onStartOver: () => {},
+        onReviewAppliedTerms: () => {},
+        onAbandon: () => {},
+      }),
+    );
+  }
+
+  test("set up through a web app, it offers that app's link and the text", async () => {
+    renderWebrtcShare("https://psi.data-bridge.org", true);
+    await expect
+      .element(page.getByText("Invitation as a link"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("Invitation as text"))
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      "Your partner opens the link in the Alcove web app",
+    );
+    expect(app.container.textContent).not.toContain("only works on");
+  });
+
+  test("set up with a server's own address, it offers the text alone, never the console's link", async () => {
+    renderWebrtcShare("http://127.0.0.1:3000", false);
+    await expect
+      .element(page.getByText("Invitation as text"))
+      .toBeInTheDocument();
+    expect(page.getByText("Invitation as a link").query()).toBeNull();
+    expect(app.container.textContent).not.toContain("127.0.0.1:3000");
+    expect(app.container.textContent).not.toContain("only works on");
+    expect(app.container.textContent).toContain(
+      "Accept an invitation you were sent",
+    );
+  });
+});

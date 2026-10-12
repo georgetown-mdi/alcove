@@ -41,6 +41,10 @@
 //                     document named by --config-file before the fd-3 events,
 //                     as the real first-contact adoption does (it persists the
 //                     pin and only then emits its warning).
+//   STUB_KEY_FILE     When set, this content replaces the file named by
+//                     --key-file before the fd-3 events, as the real CLI saves
+//                     its rotated secret at the handshake, before the first
+//                     protocol stage begins.
 //   STUB_TERMS_PROPOSAL  When set, this content is written beside the document
 //                     --config-file names, as `<name>.proposed-terms`, before
 //                     the fd-3 events, as the real CLI writes a partner's
@@ -273,6 +277,9 @@ function runExchangeStub() {
     fs.writeFileSync(writtenResultPath, process.env.STUB_OUTPUT_FILE);
   }
 
+  if (process.env.STUB_KEY_FILE !== undefined)
+    writeKeyFile(process.env.STUB_KEY_FILE);
+
   // The real CLI persists an adopted pin into its configuration file and only
   // then emits the warning naming it, so the stub writes before its fd-3 events
   // too: a relay that reads the value back must find it already on file.
@@ -376,6 +383,16 @@ function runExchangeStub() {
     fs.writeFileSync(process.env.STUB_READY_FILE, "ready");
 
   exitAfterDelay(exitCode);
+}
+
+/** Replace the file --key-file names, through a rename, as the real CLI's
+ * owner-only key-file write does. */
+function writeKeyFile(content) {
+  const keyPath = separatedFlagValue(process.argv, "--key-file");
+  if (keyPath === undefined) return;
+  const temporaryPath = `${keyPath}.stub-tmp`;
+  fs.writeFileSync(temporaryPath, content, { mode: 0o600 });
+  fs.renameSync(temporaryPath, keyPath);
 }
 
 /** Text with the placeholder token spelled as the --config-file value, so a
