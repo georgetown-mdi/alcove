@@ -20,6 +20,11 @@ import {
   workflowStreaks,
 } from "./scheduled-run-streak.mjs";
 import { parseWorkflow, readWorkflows } from "./lib/workflows.mjs";
+import {
+  GROUPED,
+  WEEKLY_MINUTES,
+  listStressJobs,
+} from "./list-stress-jobs.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -157,11 +162,17 @@ describe("workflowStreaks", () => {
       "utf8",
     );
     expect(source).toContain("name: Core PSI stress (${{ matrix.job.name }})");
-    const listing = readFileSync(
-      join(ROOT, "scripts/list-stress-jobs.mjs"),
-      "utf8",
+    const directory = "/stress";
+    const listing = [...Object.keys(WEEKLY_MINUTES), ...GROUPED].map(
+      (file) => ({ file: `${directory}/${file}` }),
     );
-    expect(listing).toContain('name: "short files"');
+    const { tierOf } = TIERED_WORKFLOWS[STRESS];
+    const jobNamesOf = (tier) =>
+      listStressJobs(listing, directory, tier).map(
+        (job) => `Core PSI stress (${job.name})`,
+      );
+    expect(tierOf(jobNamesOf("nightly"))).toBe("nightly");
+    expect(tierOf(jobNamesOf("weekly"))).toBe("weekly");
   });
 });
 
