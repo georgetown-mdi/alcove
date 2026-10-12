@@ -104,8 +104,8 @@ describe("rule ledger split", () => {
     expect(mentions("b", "a")).toBe(0);
   });
 
-  it("names seven front doors, each a file that exists", () => {
-    expect(FRONT_DOORS).toHaveLength(7);
+  it("names ten front doors, each a file that exists", () => {
+    expect(FRONT_DOORS).toHaveLength(10);
     for (const file of FRONT_DOORS) {
       expect(read(file).length, file).toBeGreaterThan(0);
     }

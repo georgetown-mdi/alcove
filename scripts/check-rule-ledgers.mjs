@@ -4,7 +4,7 @@
 // The agent rules live in two ledgers with different readers. CLAUDE.md is
 // injected into every spawn, so a rule there is billed to every agent whether or
 // not it binds one; .claude/orchestration/ruleset.md is read by the orchestrating
-// session and by the seven front doors that open one, so a rule there costs a
+// session and by the front doors that open one, so a rule there costs a
 // single Read. The split only holds while each rule sits in exactly one of them:
 // a rule copied back into CLAUDE.md is paid for by every spawn again, and a rule
 // stated in both drifts until the two statements disagree and an agent follows
@@ -41,6 +41,9 @@ export const FRONT_DOORS = [
   ".claude/commands/panel.md",
   ".claude/commands/docket.md",
   ".claude/commands/follow-ups.md",
+  ".claude/commands/wind-down.md",
+  ".claude/commands/close-out.md",
+  ".claude/commands/compact-prep.md",
   ".claude/skills/shortlist-backlog/SKILL.md",
 ];
 
