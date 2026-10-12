@@ -42,7 +42,7 @@ export async function fetchRecurringHandoff(
  * Validate a hand-off response body into a {@link JobHandoff}, or null when it is
  * not a well-formed hand-off -- a partial or ill-formed body renders nothing
  * rather than a half-built panel. The template is discriminated on `kind`: a
- * `config` holds a `yaml` string, and both kinds hold the command they run as
+ * `config` holds a `yaml` string, and every kind holds the command it runs as
  * an `argv` array of strings.
  *
  * @internal exported for the unit test.
@@ -233,6 +233,7 @@ function parseTemplate(value: unknown): JobHandoffTemplate | null {
       ? { kind: "config", yaml, argv }
       : null;
   }
+  if (kind === "workingFolder") return { kind: "workingFolder", argv };
   if (kind === "command") return { kind: "command", argv };
   return null;
 }

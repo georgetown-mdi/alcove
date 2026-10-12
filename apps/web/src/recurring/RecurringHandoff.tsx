@@ -118,8 +118,13 @@ function HandoffBody({
       <p className={styles.small}>
         This exchange runs here as a prototype. To run the recurring production
         version, run it from the command line with cron (Linux/macOS) or Task
-        Scheduler (Windows). The settings from this run are filled in below; set
-        the file paths for the machine that will run the schedule.
+        Scheduler (Windows).{" "}
+        {handoff.template.kind === "workingFolder"
+          ? "This exchange's settings are in alcove.yaml in your working " +
+            "folder, which the steps below have you copy to the machine that " +
+            "will run the schedule."
+          : "The settings from this run are filled in below; set the file " +
+            "paths for the machine that will run the schedule."}
       </p>
       {notice !== undefined && <p className={styles.small}>{notice}</p>}
 
@@ -132,6 +137,12 @@ function HandoffBody({
           keyFileBesideConfiguration={handoff.keyFileBesideConfiguration}
           usedSigningIdentity={handoff.usedSigningIdentity}
           runFolder={jobId}
+        />
+      ) : handoff.template.kind === "workingFolder" ? (
+        <WorkingFolderSteps
+          command={shown?.runCommand}
+          inputName={inputName}
+          usedSigningIdentity={handoff.usedSigningIdentity}
         />
       ) : (
         <CommandSteps command={shown?.runCommand} inputName={inputName} />
@@ -286,6 +297,71 @@ function ConfigSteps({
             configuration above is a placeholder. Copy it; do not run alcove
             fingerprint there to make a new one. That mints a different key with
             a different fingerprint, and your partner has pinned the old one.
+          </p>
+        </li>
+      )}
+      {command !== undefined && (
+        <li>
+          <p className={styles.handoffStepLabel}>Run the exchange</p>
+          <CopyableCode code={command} ariaLabel="recurring exchange command" />
+          {usedSigningIdentity && (
+            <p className={styles.small}>
+              Each scheduled run writes its own timestamped receipt into the
+              folder it runs in, beside its result, so the schedule accumulates
+              a trail rather than overwriting one file.
+            </p>
+          )}
+        </li>
+      )}
+    </ol>
+  );
+}
+
+/** The WebRTC steps: copy the working folder's alcove.yaml and .alcove.key,
+ * which the run wrote and the CLI keeps current, and run the exchange command
+ * on them. */
+function WorkingFolderSteps({
+  command,
+  inputName,
+  usedSigningIdentity,
+}: {
+  command: string | undefined;
+  inputName: string;
+  usedSigningIdentity: boolean;
+}) {
+  return (
+    <ol className={styles.handoffSteps}>
+      <li>
+        <p className={styles.handoffStepLabel}>
+          Copy alcove.yaml and .alcove.key from your working folder into a
+          folder on the scheduling machine
+        </p>
+        <p className={styles.small}>
+          These two files are this exchange&apos;s configuration as your last
+          run left it. alcove.yaml holds its settings, and your partner&apos;s
+          fingerprint once a run has recorded it. .alcove.key holds the shared
+          secret, which each run replaces at its handshake, before any data
+          moves - even a run that later failed has usually replaced it. Copy
+          both as they stand after your last run here, never an earlier copy,
+          and keep .alcove.key readable only by you (chmod 600 on Linux/macOS).
+        </p>
+      </li>
+      <InputStep inputName={inputName} />
+      {usedSigningIdentity && (
+        <li>
+          <p className={styles.handoffStepLabel}>
+            Copy your signing identity into that folder
+          </p>
+          <p className={styles.small}>
+            This run signs its receipt with the signing identity at the location
+            you chose on the console: your working folder, or the file you
+            picked in your secrets folder. Copy that file to the scheduling
+            machine, readable only by you (chmod 600 on Linux/macOS), and set
+            signing.identity_file in alcove.yaml to where you put it - the path
+            there is where the console reads it, which the scheduling machine
+            does not have. Copy it; do not run alcove fingerprint there to make
+            a new one. That mints a different key with a different fingerprint,
+            and your partner has pinned the old one.
           </p>
         </li>
       )}

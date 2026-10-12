@@ -898,7 +898,6 @@ export class JobManager {
         id,
         created.workdir,
         serverEntry,
-        signalingServer,
         mountedInputPath,
         identityPath,
         mountedKeyPath,
@@ -1399,7 +1398,6 @@ export class JobManager {
     id: string,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
-    signalingServer: AuthoredSignalingServer | undefined,
     mountedInputPath: string | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
@@ -1415,12 +1413,11 @@ export class JobManager {
     let exchangeDocuments: ExchangeFilePaths | undefined;
     if (workingFolderPair !== undefined)
       exchangeDocuments = workingFolderExchangeFilePaths(this.dataRoot);
-    else if (intent.mode !== "zeroSetup")
+    else if (intent.mode !== "zeroSetup" && intent.channel !== "webrtc")
       exchangeDocuments = await this.writeExchangeDocuments(
         intent,
         workdir,
         serverEntry,
-        signalingServer,
         identityPath,
         mountedKeyPath,
       );
@@ -1453,9 +1450,7 @@ export class JobManager {
       buildJobHandoff(intent, serverEntry, {
         credentialPasted: this.authoredMaterializedCredentialPath !== undefined,
         filedropSplit: this.jobRendezvousOutboundDir !== undefined,
-        ...(signalingServer !== undefined ? { signalingServer } : {}),
-        keyFileBesideConfiguration:
-          mountedKeyPath !== undefined || intent.channel === "webrtc",
+        keyFileBesideConfiguration: mountedKeyPath !== undefined,
         ...(mountedDocument !== undefined
           ? {
               mountedDocument,
@@ -1570,10 +1565,9 @@ export class JobManager {
    * there. Not reached on the zero-setup path, which writes neither.
    */
   private async writeExchangeDocuments(
-    intent: JobExchangeIntent,
+    intent: WorkdirComposedExchangeIntent,
     workdir: string,
     serverEntry: JobSftpServerEntry | undefined,
-    signalingServer: AuthoredSignalingServer | undefined,
     identityPath: string,
     mountedKeyPath: string | undefined,
   ): Promise<ExchangeFilePaths> {
@@ -1583,7 +1577,6 @@ export class JobManager {
         this.jobRendezvousDir,
         this.jobRendezvousOutboundDir,
         serverEntry,
-        signalingServer,
         this.signingPathsFor(identityPath),
       ),
     );
@@ -2673,33 +2666,31 @@ function liveJobView(record: JobRecord): JobView {
   };
 }
 
+/** An exchange whose configuration is composed into its workdir. A webrtc
+ * exchange runs on the working folder's files instead. */
+type WorkdirComposedExchangeIntent = Exclude<
+  JobExchangeIntent,
+  JobWebrtcExchangeIntent
+>;
+
 /**
  * Compose the CLI config document for the intent's channel: filedrop
  * rendezvous in the operator-configured rendezvous mount; sftp rendezvous at
- * the operator-authored connection; webrtc through the operator-authored
- * coordination server. Each arm requires the resource `createJob` already
- * resolved, so a missing one here is a caller bug reported as a hard error,
- * not a silent fallback.
+ * the operator-authored connection. Each arm requires the resource `createJob`
+ * already resolved, so a missing one here is a caller bug reported as a hard
+ * error, not a silent fallback.
  */
 function composeDocumentByChannel(
-  intent: JobExchangeIntent,
+  intent: WorkdirComposedExchangeIntent,
   rendezvousDir: string | undefined,
   outboundRendezvousDir: string | undefined,
   serverEntry: JobSftpServerEntry | undefined,
-  signalingServer: AuthoredSignalingServer | undefined,
   signingPaths: JobSigningPaths,
 ): string {
   if (intent.channel === "sftp") {
     if (serverEntry === undefined)
       throw new Error("sftp job reached compose without a resolved server");
     return composeSftpConfigDocument(intent, serverEntry, signingPaths);
-  }
-  if (intent.channel === "webrtc") {
-    if (signalingServer === undefined)
-      throw new Error(
-        "webrtc job reached compose without a coordination server",
-      );
-    return composeWebrtcConfigDocument(intent, signalingServer, signingPaths);
   }
   if (rendezvousDir === undefined)
     throw new Error("filedrop job reached compose without a shared folder");

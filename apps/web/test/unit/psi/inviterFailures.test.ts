@@ -21,6 +21,7 @@ import {
   SFTP_URL_DIRECTORY_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
   WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
 import {
   JobApiRequestError,
@@ -588,6 +589,27 @@ describe("failureFor", () => {
       );
     },
   );
+
+  test("a WebRTC run whose working folder refused its files names the files and the mount, and offers a retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new JobApiRequestError(
+        500,
+        "POST /api/jobs failed with status 500",
+        undefined,
+        WORKING_FOLDER_UNWRITABLE_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+    );
+    expect(failure.category).toBe("exchange");
+    expect(failure.retry).toBe("offered");
+    expect(failure.message).toBe(
+      "The console could not write alcove.yaml and .alcove.key into the " +
+        "working folder. Check that the folder is mounted writable, then try " +
+        "again.",
+    );
+  });
 
   test("a WebRTC run refused for naming another coordination server sends the operator back to check it", () => {
     const failure = failureFor(

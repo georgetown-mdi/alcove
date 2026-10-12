@@ -15,6 +15,7 @@ import {
   HANDOFF_PASSPHRASE_PATH_PLACEHOLDER,
   HANDOFF_SHARED_DIRECTORY_PLACEHOLDER,
   HANDOFF_SHARED_DIRECTORY_URL_PLACEHOLDER,
+  HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
   buildJobHandoff,
 } from "@jobs/handoff";
 import {
@@ -47,6 +48,7 @@ import {
   validIntent,
   validLinkageTerms,
   validSftpIntent,
+  validWebrtcIntent,
   validZeroSetupIntent,
   validZeroSetupSftpIntent,
 } from "../utils/jobFixtures";
@@ -349,6 +351,40 @@ describe("buildJobHandoff composes a portable, secret-free template", () => {
     expect(argv).toContain("--peer-timeout=7200s");
     expect(argv).toContain("--max-reconnect-attempts=12");
     expect(argv).toContain("--connection-per-poll");
+  });
+
+  test("a webrtc exchange runs the working folder's own alcove.yaml and .alcove.key rather than a recomposed one", () => {
+    for (const signing of [
+      { mode: "certificate" as const },
+      { mode: "none" as const },
+    ]) {
+      const handoff = buildJobHandoff(
+        validWebrtcIntent({ signing }),
+        undefined,
+        { credentialPasted: false, filedropSplit: false },
+      );
+      expect(handoff.template).toEqual({
+        kind: "workingFolder",
+        argv: [
+          "alcove",
+          "exchange",
+          "--log-file=exchange.log",
+          "input.csv",
+          "./",
+        ],
+      });
+      expect(handoff.keyFileBesideConfiguration).toBe(true);
+      const signs = signing.mode === "certificate";
+      expect(handoff.usedSigningIdentity).toBe(signs);
+      expect(handoff.bindPaths).toEqual(
+        signs
+          ? [{ path: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER, readOnly: true }]
+          : [],
+      );
+      expect(parseHandoff(JSON.parse(JSON.stringify(handoff)))).toEqual(
+        handoff,
+      );
+    }
   });
 
   test("a filedrop exchange placeholders the shared directory path", () => {

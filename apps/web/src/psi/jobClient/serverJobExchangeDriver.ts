@@ -284,9 +284,9 @@ export type JobStatusProbe =
  * re-attaches to it rather than surfacing the "already running" alert (see
  * `exchange/reattachOnBusy`). Present only on a 409 whose body held one.
  * {@link JobApiRequestError.refusalReason} is the counterpart on a refused (400)
- * create: the fixed token naming a refusal about the console's own mounts, which
- * the intent this browser holds cannot explain. Present only on a 400 whose body
- * held one this bundle knows. */
+ * or failed (500) create: the fixed token naming a refusal about the console's
+ * own mounts, which the intent this browser holds cannot explain. Present only
+ * on a 400 or 500 whose body held one this bundle knows. */
 export class JobApiRequestError extends Error {
   constructor(
     readonly status: number,
@@ -461,9 +461,9 @@ export function createFetchJobApiClient(
           // single slot -- so the caller can re-attach to it. Absent on every
           // other status (an empty-bodied 400/413/500 is treated as no id).
           response.status === 409 ? await readBodyJobId(response) : undefined,
-          // A refused (400) body may hold `{ reason }`; every other 400 is
-          // empty-bodied and reads as no reason.
-          response.status === 400
+          // A refused (400) or failed (500) body may hold `{ reason }`; an
+          // empty body reads as no reason.
+          response.status === 400 || response.status === 500
             ? await readBodyRefusalReason(response)
             : undefined,
         );

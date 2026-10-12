@@ -82,14 +82,30 @@ export function workingFolderExchangeFilesPresent(dataRoot: string): boolean {
   return jobPathPresent(configPath) || jobPathPresent(keyPath);
 }
 
-/** Create `filePath` owner-only, failing when anything is at the name. */
+/** Remove `filePath` if present, leaving the caller's own error the one
+ * reported. */
+function removeQuietly(filePath: string): void {
+  try {
+    fs.rmSync(filePath, { force: true });
+  } catch {
+    // The failure that led here is the one the caller reports.
+  }
+}
+
+/** Create `filePath` owner-only, failing when anything is at the name. A file
+ * this call created is removed when its write fails. */
 function createOwnerOnly(filePath: string, content: Buffer): void {
   const fd = fs.openSync(filePath, "wx", JOB_FILE_MODE);
   try {
-    fs.writeFileSync(fd, content);
-    fs.fchmodSync(fd, JOB_FILE_MODE);
-  } finally {
-    fs.closeSync(fd);
+    try {
+      fs.writeFileSync(fd, content);
+      fs.fchmodSync(fd, JOB_FILE_MODE);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch (error) {
+    removeQuietly(filePath);
+    throw error;
   }
 }
 
@@ -116,7 +132,7 @@ export function createWorkingFolderExchangeFiles(
     configWritten = true;
     createOwnerOnly(target.keyPath, key);
   } catch (error) {
-    if (configWritten) fs.rmSync(target.configPath, { force: true });
+    if (configWritten) removeQuietly(target.configPath);
     throw new WorkingFolderFilesRefusedError(
       (error as NodeJS.ErrnoException).code === "EEXIST"
         ? "present"

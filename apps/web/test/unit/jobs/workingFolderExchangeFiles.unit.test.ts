@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   WorkingFolderFilesRefusedError,
@@ -115,6 +115,42 @@ describe("createWorkingFolderExchangeFiles", () => {
       ),
     ).toBe("unwritable");
   });
+
+  test.each([
+    ["alcove.yaml", 1],
+    [".alcove.key", 2],
+  ])(
+    "a write that fails after %s is opened leaves neither file behind",
+    (_name, failingWrite) => {
+      const root = folder();
+      const realWrite = fs.writeFileSync;
+      let writes = 0;
+      const write = vi
+        .spyOn(fs, "writeFileSync")
+        .mockImplementation((...args: Parameters<typeof fs.writeFileSync>) => {
+          writes += 1;
+          if (writes === failingWrite)
+            throw Object.assign(new Error("no space left on device"), {
+              code: "ENOSPC",
+            });
+          realWrite(...args);
+        });
+      try {
+        expect(
+          refusal(() =>
+            createWorkingFolderExchangeFiles(root, {
+              config: CONFIG,
+              key: KEY,
+            }),
+          ),
+        ).toBe("unwritable");
+      } finally {
+        write.mockRestore();
+      }
+      expect(writes).toBe(failingWrite);
+      expect(fs.readdirSync(root)).toEqual([]);
+    },
+  );
 });
 
 describe("workingFolderExchangeFilesMatch", () => {

@@ -33,6 +33,7 @@ import {
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
   WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
   isZeroSetupSftpRefusalReason,
 } from "@jobContract/jobCreateRefusal";
 import {
@@ -403,6 +404,22 @@ function failureContentFor(
             "already holds an alcove.yaml or .alcove.key. ") +
         "To start a new one, move alcove.yaml and .alcove.key out of the " +
         "folder, then start over with a fresh invitation.",
+    };
+  // A WebRTC run whose alcove.yaml and .alcove.key the working folder refused.
+  // Nothing was written, so once the mount is fixed a retry of the same
+  // invitation starts: the create's 500 keeps the retryable `exchange`
+  // category.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === WORKING_FOLDER_UNWRITABLE_REFUSAL
+  )
+    return {
+      category: "exchange",
+      title: "The console could not write to your working folder",
+      message:
+        "The console could not write alcove.yaml and .alcove.key into the " +
+        "working folder. Check that the folder is mounted writable, then try " +
+        "again.",
     };
   // A WebRTC run whose invitation names a coordination server other than the
   // one the console holds: it was changed or cleared since the invitation was

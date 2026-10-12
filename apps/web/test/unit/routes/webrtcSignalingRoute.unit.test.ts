@@ -414,11 +414,8 @@ describe("POST /api/jobs on the webrtc channel", () => {
     const handoff = manager.getJobHandoff(id);
     expect(handoff?.channel).toBe("webrtc");
     expect(handoff?.template.argv.slice(0, 2)).toEqual(["alcove", "exchange"]);
-    expect(handoff?.template.kind).toBe("config");
-    const template = handoff?.template as { yaml: string };
-    expect(
-      (parseYaml(template.yaml) as { connection: unknown }).connection,
-    ).toEqual(composed.connection);
+    expect(handoff?.template.kind).toBe("workingFolder");
+    expect(handoff?.template).not.toHaveProperty("yaml");
   });
 
   test("states secure: false for a ws:// server", async () => {
@@ -533,7 +530,7 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
   });
 
   test.skipIf(process.getuid?.() === 0)(
-    "a working folder that refuses the write is an empty 500 leaving nothing behind",
+    "a working folder that refuses the write is a 500 naming the reason alone, leaving nothing behind",
     async () => {
       const { manager, root } = seedManager();
       await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
@@ -541,7 +538,9 @@ describe("POST /api/jobs on the webrtc channel and the working folder's files", 
       try {
         const response = await postJob(validWebrtcIntent());
         expect(response.status).toBe(500);
-        expect(await response.text()).toBe("");
+        expect(await response.text()).toBe(
+          JSON.stringify({ reason: "working-folder-unwritable" }),
+        );
         expect(fs.readdirSync(root)).toEqual([]);
         expect(manager.occupiedSlotId()).toBeNull();
       } finally {

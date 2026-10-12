@@ -23,7 +23,6 @@ import { zeroSetupOptionsArgv, zeroSetupSftpArgv } from "./intentArgv";
 import {
   composeFiledropConfigSpec,
   composeSftpConfigSpec,
-  composeWebrtcConfigSpec,
 } from "./intentConfig";
 
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
@@ -33,6 +32,7 @@ import type {
   JobExchangeIntent,
   JobHandBackSigning,
   JobSigningPaths,
+  JobWebrtcExchangeIntent,
   JobZeroSetupIntent,
 } from "@jobContract/intentSchemas";
 
@@ -42,7 +42,6 @@ import type {
   JobHandoff,
   JobHandoffTemplate,
 } from "@jobContract/jobHandoff";
-import type { AuthoredSignalingServer } from "./signalingServer";
 import type { HandoffBindPath } from "@jobContract/handoffBindPaths";
 import type { JobSftpServerEntry } from "@jobContract/sftpConnection";
 
@@ -169,6 +168,42 @@ const HANDOFF_SIGNING_PATHS: JobSigningPaths = {
   identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
 };
 
+/** An exchange whose hand-off states a recomposed `alcove.yaml`. */
+type TemplatedExchangeIntent = Exclude<
+  JobExchangeIntent,
+  JobWebrtcExchangeIntent
+>;
+
+/**
+ * A webrtc run's hand-off: the `alcove exchange` command alone, run on the
+ * working folder's `alcove.yaml` and `.alcove.key` as they stand. The run
+ * wrote both there, and the CLI rotates the key and records the partner's
+ * pin in them, so no recomposed template states what the next run needs.
+ * The signing identity is named by the placeholder the panel has the
+ * operator set `signing.identity_file` to.
+ */
+function workingFolderHandoff(intent: JobWebrtcExchangeIntent): JobHandoff {
+  const usedSigningIdentity = intent.signing?.mode === "certificate";
+  return {
+    mode: "exchange",
+    channel: "webrtc",
+    usedKeyFile: true,
+    keyFileBesideConfiguration: true,
+    credentialPasted: false,
+    usedSigningIdentity,
+    pathsAsRead: NO_PATHS_AS_READ,
+    bindPaths: usedSigningIdentity
+      ? uniqueAbsoluteBindPaths([
+          { path: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER, readOnly: true },
+        ])
+      : [],
+    template: {
+      kind: "workingFolder",
+      argv: ["alcove", "exchange", ...handoffRunArgs(intent)],
+    },
+  };
+}
+
 /**
  * The exchange mode's portable template: the `alcove.yaml` text of
  * `handoffSpec` ({@link exchangeHandoffSpec}), beside the command that runs
@@ -201,19 +236,13 @@ function buildExchangeHandoffTemplate(
  * in by {@link handoffConfigDocument}.
  */
 function exchangeHandoffSpec(
-  intent: JobExchangeIntent,
+  intent: TemplatedExchangeIntent,
   serverEntry: JobSftpServerEntry | undefined,
-  signalingServer: AuthoredSignalingServer | undefined,
   filedropSplit: boolean,
   mountedDocument: ExchangeSpec | undefined,
   mountedDocumentConverted: boolean,
 ): ExchangeSpec {
-  const composed = composedHandoffSpec(
-    intent,
-    serverEntry,
-    signalingServer,
-    filedropSplit,
-  );
+  const composed = composedHandoffSpec(intent, serverEntry, filedropSplit);
   return mountedDocument === undefined || mountedDocumentConverted
     ? composed
     : withPathsAsRead(composed, mountedDocument, intent);
@@ -402,13 +431,10 @@ function folderPathsOf(
   };
 }
 
-/** The composition the template states, over the placeholder paths above. A
- * coordination server is the same from any machine, so it is stated as the
- * run used it. */
+/** The composition the template states, over the placeholder paths above. */
 function composedHandoffSpec(
-  intent: JobExchangeIntent,
+  intent: TemplatedExchangeIntent,
   serverEntry: JobSftpServerEntry | undefined,
-  signalingServer: AuthoredSignalingServer | undefined,
   filedropSplit: boolean,
 ): ExchangeSpec {
   if (intent.channel === "sftp") {
@@ -417,17 +443,6 @@ function composedHandoffSpec(
     return composeSftpConfigSpec(
       intent,
       placeholderServerEntry(serverEntry),
-      HANDOFF_SIGNING_PATHS,
-    );
-  }
-  if (intent.channel === "webrtc") {
-    if (signalingServer === undefined)
-      throw new Error(
-        "webrtc handoff reached compose without a coordination server",
-      );
-    return composeWebrtcConfigSpec(
-      intent,
-      signalingServer,
       HANDOFF_SIGNING_PATHS,
     );
   }
@@ -689,14 +704,10 @@ interface JobHandoffRunFacts {
    * shared directory and the two-directory form.
    */
   filedropSplit: boolean;
-  /** The coordination server a webrtc run dialed. Read only on the webrtc
-   * channel, whose template states it. */
-  signalingServer?: AuthoredSignalingServer;
   /**
-   * Whether the run used the key file beside the working folder's
-   * `alcove.yaml` -- an opened configuration's, or the one a webrtc run wrote
-   * there -- rather than one the console wrote into the run's own folder.
-   * Absent is false.
+   * Whether the run used the key file beside the opened configuration rather
+   * than one the console wrote into the run's own folder. Absent is false; a
+   * webrtc run always uses the working folder's.
    */
   keyFileBesideConfiguration?: boolean;
   /**
@@ -720,7 +731,9 @@ interface JobHandoffRunFacts {
  * Build the recurring-run hand-off from a job's create intent and the resources it
  * ran against, captured at job creation so it reflects exactly what ran (rather
  * than re-reading authored state that a later action could change). The exchange
- * arm recomposes the config template; the zero-setup arm the command template.
+ * arm recomposes the config template, except on webrtc, whose run's own
+ * configuration is in the working folder; the zero-setup arm the command
+ * template.
  */
 export function buildJobHandoff(
   intent: JobCreateIntent,
@@ -728,7 +741,6 @@ export function buildJobHandoff(
   {
     credentialPasted,
     filedropSplit,
-    signalingServer,
     keyFileBesideConfiguration = false,
     mountedDocument,
     mountedDocumentConverted = false,
@@ -747,6 +759,7 @@ export function buildJobHandoff(
       pathsAsRead: NO_PATHS_AS_READ,
       ...buildZeroSetupHandoffTemplate(intent, serverEntry, split),
     };
+  if (intent.channel === "webrtc") return workingFolderHandoff(intent);
   const mergeBase =
     mountedDocument === undefined
       ? undefined
@@ -754,7 +767,6 @@ export function buildJobHandoff(
   const handoffSpec = exchangeHandoffSpec(
     intent,
     serverEntry,
-    signalingServer,
     split,
     mergeBase,
     mountedDocumentConverted,

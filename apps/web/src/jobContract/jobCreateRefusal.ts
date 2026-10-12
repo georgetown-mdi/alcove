@@ -59,6 +59,11 @@ export const WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL =
 export const WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL =
   "working-folder-console-exchange";
 
+/** The token for a webrtc run that could not start because the working
+ * folder refused the write of its `alcove.yaml` and `.alcove.key`. The one
+ * token on a `500` rather than a `400`. */
+export const WORKING_FOLDER_UNWRITABLE_REFUSAL = "working-folder-unwritable";
+
 /** The token for a webrtc run refused because its invitation names a
  * coordination server other than the one the console holds. */
 export const COORDINATION_SERVER_CHANGED_REFUSAL =
@@ -75,6 +80,7 @@ export type JobCreateRefusalReason =
   | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
   | typeof WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
   | typeof WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+  | typeof WORKING_FOLDER_UNWRITABLE_REFUSAL
   | typeof COORDINATION_SERVER_CHANGED_REFUSAL;
 
 /** Whether a value read off a create rejection's body is a refusal token this
@@ -93,6 +99,7 @@ export function isJobCreateRefusalReason(
     value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL ||
     value === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||
     value === WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL ||
+    value === WORKING_FOLDER_UNWRITABLE_REFUSAL ||
     value === COORDINATION_SERVER_CHANGED_REFUSAL
   );
 }

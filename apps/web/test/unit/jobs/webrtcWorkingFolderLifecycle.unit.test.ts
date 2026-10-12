@@ -373,6 +373,35 @@ describe("after the handshake", () => {
       ADOPTED_FINGERPRINT,
     );
   });
+
+  test("a certificate-mode run's hand-off runs the working folder's alcove.yaml, which holds the pin, and offers no template without it", async () => {
+    const { manager, dataRoot } = await managerFor({
+      STUB_KEY_FILE: ROTATED_KEY,
+      STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
+      STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, RESULT]),
+    });
+    const id = await manager.createJob(
+      validWebrtcIntent({ signing: { mode: "certificate" } }),
+    );
+    await exited(manager, id);
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toContain(
+      ADOPTED_FINGERPRINT,
+    );
+    const handoff = manager.getJobHandoff(id);
+    expect(handoff?.template).toEqual({
+      kind: "workingFolder",
+      argv: [
+        "alcove",
+        "exchange",
+        "--log-file=exchange.log",
+        "input.csv",
+        "./",
+      ],
+    });
+    expect(handoff?.keyFileBesideConfiguration).toBe(true);
+    expect(handoff?.usedSigningIdentity).toBe(true);
+    expect(JSON.stringify(handoff)).not.toContain("partner_fingerprint");
+  });
 });
 
 describe("the coordination server the invitation names", () => {

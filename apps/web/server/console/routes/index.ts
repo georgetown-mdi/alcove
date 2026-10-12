@@ -9,6 +9,7 @@ import {
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
   WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL,
+  WORKING_FOLDER_UNWRITABLE_REFUSAL,
 } from "@jobContract/jobCreateRefusal";
 import {
   ConsoleShuttingDownError,
@@ -89,7 +90,9 @@ import { defineJobRoute } from "../jobRoute";
  * `{ "reason": "mounted-signing-paths-unconverted" }`, and a saved SFTP
  * credential naming a console file answers its `jobCreateRefusal.ts` token.
  * Each is about console state rather than the intent, so the browser cannot
- * otherwise say what to fix.
+ * otherwise say what to fix. For the same reason a webrtc run whose files the
+ * working folder refused is a 500 `{ "reason": "working-folder-unwritable" }`
+ * rather than the empty 500 of every other server-side failure.
  *
  * A schema-valid intent that core refuses while the CLI configuration or the
  * hand-off is composed from it is a 400 `{ "error": "<field>: <reason>" }`,
@@ -164,19 +167,22 @@ export const route = defineJobRoute({
         // The working folder already holds an alcove.yaml or .alcove.key a
         // webrtc run would write when it starts: the token says whether they
         // are the pair an earlier exchange on this console left. A folder that
-        // refused the write is the 500 below.
-        if (
-          error instanceof WorkingFolderFilesRefusedError &&
-          error.fault === "present"
-        )
-          return jobJsonResponse(
-            {
-              reason: error.heldByConsoleExchange
-                ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
-                : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
-            },
-            400,
-          );
+        // refused the write is a server-side 500, named so the operator is
+        // sent to the mount.
+        if (error instanceof WorkingFolderFilesRefusedError)
+          return error.fault === "present"
+            ? jobJsonResponse(
+                {
+                  reason: error.heldByConsoleExchange
+                    ? WORKING_FOLDER_CONSOLE_EXCHANGE_REFUSAL
+                    : WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
+                },
+                400,
+              )
+            : jobJsonResponse(
+                { reason: WORKING_FOLDER_UNWRITABLE_REFUSAL },
+                500,
+              );
         // The invitation names a coordination server other than the one the
         // console holds, which a later change on another tab or a restart
         // replaced or forgot.
@@ -204,9 +210,8 @@ export const route = defineJobRoute({
           error instanceof SigningIdentityLocationError
         )
           return jobEmptyResponse(400);
-        // Workdir creation, an input write, or a webrtc run's write into the
-        // working folder failed (the manager has already cleaned up); no
-        // internal detail crosses the boundary.
+        // Workdir creation or an input write failed (the manager has already
+        // cleaned up); no internal detail crosses the boundary.
         return jobEmptyResponse(500);
       }
       return jobJsonResponse({ id }, 201);

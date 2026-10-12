@@ -64,8 +64,12 @@ export type HandoffSigningSetting =
 
 /**
  * The exchange mode's `alcove.yaml` with the `alcove exchange` argv that
- * loads it, or the zero-setup command's argv.
+ * loads it; for a webrtc run, the `alcove exchange` argv alone, run on the
+ * working folder's own `alcove.yaml` and `.alcove.key`, which hold the
+ * exchange's configuration as the CLI left it; or the zero-setup command's
+ * argv.
  */
 export type JobHandoffTemplate =
   | { kind: "config"; yaml: string; argv: Array<string> }
+  | { kind: "workingFolder"; argv: Array<string> }
   | { kind: "command"; argv: Array<string> };
