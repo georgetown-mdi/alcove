@@ -62,16 +62,21 @@ const DEPENDENCY_FIELDS = [
  * dependent, or a new range, is a new edge and fails until recorded.
  */
 export const OUT_OF_RANGE_BY_DESIGN = [
-  "react",
-  "react-dom",
-  "@types/react",
-].map((dependency) => ({
-  dependent: "@docsearch/react",
-  dependency,
-  range: ">= 16.8.0 < 19.0.0",
-  reason:
-    "VitePress (the project site's generator) depends on @docsearch for its Algolia search provider, and that copy resolves to the web app's React 19. The site's search provider is local, which scripts/site-deploy-trigger.test.mjs holds, so VitePress bundles none of @docsearch and its React code never runs.",
-}));
+  ...["react", "react-dom", "@types/react"].map((dependency) => ({
+    dependent: "@docsearch/react",
+    dependency,
+    range: ">= 16.8.0 < 19.0.0",
+    reason:
+      "VitePress (the project site's generator) depends on @docsearch for its Algolia search provider, and that copy resolves to the web app's React 19. The site's search provider is local, which scripts/site-deploy-trigger.test.mjs holds, so VitePress bundles none of @docsearch and its React code never runs.",
+  })),
+  {
+    dependent: "vitepress",
+    dependency: "vite",
+    range: "^5.4.14",
+    reason:
+      "The root overrides block moves VitePress's own vite copy to 6.4.3: every vite 5 release depends on an esbuild with a published advisory, and no non-prerelease VitePress declares vite 6. site_deploy.yaml builds the site on every pull request changing package.json or package-lock.json, so a break on this edge fails there.",
+  },
+];
 
 /** The package a lockfile entry holds: its `name` field, else its directory. */
 const identity = (path, entry) => packageIdentity(installedAs(path), entry);

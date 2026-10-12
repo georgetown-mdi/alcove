@@ -252,11 +252,12 @@ The check and the flag act at different moments, which is why the flag earns its
 
 Where the lockfile cannot answer, the check refuses the input rather than guessing, failing red and naming what has to be modeled: an `overrides` form outside the one below, and any key npm-package-arg does not read as a package name -- a `file:` path, a tarball URL, a git spec, a bare `owner/repo`. Matching those means canonicalizing a source the way npm does, and refusing is what keeps the check from reporting a verdict npm enforces as a dead key to delete.
 
-**What the check models about a root `overrides` entry.** An override rewrites the dependency edges npm reads each package's source from, and the lockfile records neither the override nor the rewritten spec -- every dependent entry keeps the range it declared. The source class a verdict is read against therefore comes from the override's own spec, over the flat `"<name>": "<spec>"` form only:
+**What the check models about a root `overrides` entry.** An override rewrites the dependency edges npm reads each package's source from, and the lockfile records neither the override nor the rewritten spec -- every dependent entry keeps the range it declared. The source class a verdict is read against therefore comes from the override's own spec, read in the flat `"<name>": "<spec>"` form and the one nested form below:
 
 - **A comparator-set semver range** -- comparators (`5.0.8`, `^5.0.8`, `>=5.0.8 <6.0.0`, `1.x`, `*`) optionally joined by `||` -- leaves the identity model untouched: the lockfile records the tarball npm resolved the override to, and npm decides the verdict at that version. Measured 2026-10-01 on npm 11.17.0 and 11.19.1, an override moving the `@parcel/watcher` that `listhen@1.10.0` declares at `^2.5.6` (resolving to 2.6.0 unoverridden) to 2.5.4 fails the install under a verdict keyed at 2.6.0 or at 2.5.6 (`ESTRICTALLOWSCRIPTS`, naming 2.5.4) and installs clean under one keyed at 2.5.4, so a verdict naming the version the dependent's range would resolve to is a dead key. That grammar is narrower than the specs npm resolves from the registry, and the gap costs a refusal rather than a verdict: a hyphen range (`"1.0.0 - 2.0.0"`) and a `v`-prefixed version (`"v2.0.1"`) are ordinary registry spellings npm honors. Measured 2026-10-01 on npm 11.17.0 and 11.19.1, each resolves the `brace-expansion` under `minimatch@3.1.2`, to 2.0.0 and 2.0.1 respectively, and each reddens the check as an unmodeled spec, whose message names modeling the form here as the way through. Refusing is the idiom rather than a gap to widen away: an unmodeled spelling costs a red check, never a verdict reported as in force.
 - **A source spec** -- a scheme, a path shape, or the bare `owner/repo` shorthand npm treats as a git host or a directory -- takes every name-keyed verdict for that name out of force. The check names such a package as unreviewed when the lockfile records an install script for it and passes it when it does not. Measured on npm 11.17, and re-driven 2026-10-01 on 11.17.0 and 11.19.1 with the `core-js` under `babel-runtime@6.26.0` overridden, a transitive dependency overridden to a `file:` tarball, or to a remote tarball URL spelled in the registry's own `<name>/-/<name>-<version>.tgz` shape, is reported uncovered under a name-keyed `true` and a name-keyed `false` alike, exactly as with no verdict at all. The lockfile entry npm writes has that URL in `resolved`, though, which the identity model would otherwise read a name and version out of.
-- **Every other form is refused** in the register of the key-shape refusal above: a nested per-parent object, a `"."` self key and a `"name@range"` key each rewrite some edges on a name and not others, which the lockfile cannot answer. A dist-tag, an `npm:` alias and a `$name` reference to a root dependency each name a source this does not model.
+- **A nested per-parent object whose every spec is a comparator-set range** (`"vitepress": { "vite": "6.4.3" }`) rewrites only the edges under that parent, and leaves the identity model untouched for the same reason as the flat range. Measured 2026-10-12 on npm 11.20.0, that override fails the install `ESTRICTALLOWSCRIPTS` naming the `esbuild@0.25.12` vite 6.4.3 resolves to, and installs clean under a verdict keyed at 0.25.12.
+- **Every other form is refused** in the register of the key-shape refusal above: a nested object holding a source spec or any other unmodeled spec, a `"."` self key and a `"name@range"` key each rewrite some edges on a name and not others, which the lockfile cannot answer. A dist-tag, an `npm:` alias and a `$name` reference to a root dependency each name a source this does not model.
 
 Three residuals sit under that model, all of which cost a refusal rather than a verdict:
 
@@ -373,14 +374,14 @@ reading there may be nothing to open.
 
 ## npm resolution residuals
 
-Three records of what npm's resolver leaves behind in this workspace: the
+Four records of what npm's resolver leaves behind in this workspace: the
 packages the release SBOM omits, what a root `overrides` block does to the
-lockfile it is added to or removed from and to later installs, and the
-`brace-expansion` copy the development tree holds. Their normative residue is
-short -- the root `package.json` holds no `overrides` block, and two CI checks
-watch what an `overrides` block leaves behind, the out-of-range edges and the
-split hoist. The measurement behind each is kept so the dead ends are not
-re-walked.
+lockfile it is added to or removed from and to later installs, the one override
+the root `package.json` holds, and the `brace-expansion` copy the development
+tree holds. Their normative residue is short -- the root `package.json` holds
+one `overrides` entry, for the project site's `vite`, and two CI checks watch
+what an `overrides` block leaves behind, the out-of-range edges and the split
+hoist. The measurement behind each is kept so the dead ends are not re-walked.
 
 ### The release SBOM's hoisting residual
 
@@ -394,8 +395,10 @@ The residual is a property of how `npm sbom` walks a hoisted entry shared with a
 
 ### What a root `overrides` block changes about later installs
 
-The root `package.json` holds no `overrides` block. Adding one is the answer of
-last resort here rather than a routine fix, for the three npm behaviors below:
+The root `package.json` holds one `overrides` entry, recorded in
+[The project site's vite override](#the-project-sites-vite-override). Adding
+another is the answer of last resort here rather than a routine fix, for the
+three npm behaviors below:
 the block is not applied or removed by an ordinary install, it can hand a
 dependent a version its declared range excludes, and its mere presence changes
 how a later range bump is hoisted.
@@ -448,7 +451,8 @@ each workspace, and each installed package. An edge meant to stand is recorded
 with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, whose only
 entries are the three React peer edges of `@docsearch/react`, the Algolia
 search package the project site's generator installs and the site does not
-build; an override-forced edge fails until it is recorded, and a recorded edge
+build, and the `vite` edge of `vitepress` the root override forces; an
+override-forced edge fails until it is recorded, and a recorded edge
 that comes back into range fails until its entry is deleted. It compares
 declared ranges with locked versions only, and does not model npm's resolution
 or which override forced an edge.
@@ -503,6 +507,33 @@ with its reason, in the check's own `NESTED_BY_DESIGN` map, which is empty. What
 it reports is the split the lockfile records, not one npm would resolve, and
 only at that one depth: a copy nested under another package is ordinary conflict
 resolution, which this tree has dozens of.
+
+### The project site's vite override
+
+The root `package.json` holds `"overrides": { "vitepress": { "vite": "6.4.3" } }`.
+VitePress 1.6.4, the newest non-prerelease, declares `vite` `^5.4.14`, and every
+vite 5 release depends on an esbuild below 0.25, which GHSA-67mh-4wv8-2f99 covers
+(a website can send requests to esbuild's development server and read the
+response). Without the override, `npm audit --package-lock-only` reports
+esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available. vite 6.4.3
+is the lowest release outside the advisory's range and depends on esbuild
+`^0.25.0`, which resolves to 0.25.12.
+
+Measured 2026-10-12 on npm 11.20.0 with the override in force:
+
+- `npm audit --package-lock-only` answers `found 0 vulnerabilities`.
+- `npm run site:build` completes, with VitePress's dead-link check running.
+- The lockfile change is confined to the entries under
+  `node_modules/vitepress/node_modules`, applied by the route
+  [above](#what-a-root-overrides-block-changes-about-later-installs): delete those
+  `vite`, `esbuild` and `@esbuild/*` entries, then `npm install --package-lock-only`.
+- `esbuild@0.25.12` declares an install script, and the `allowScripts` map denies
+  it as it denied 0.21.5; the site build above runs with that script blocked.
+- `npm run site:dev` serves the site on the overridden copy.
+
+The edge is recorded in `OUT_OF_RANGE_BY_DESIGN`, and the nested form is one the
+`allowScripts` check reads. Remove the override when a non-prerelease VitePress
+declares a `vite` range outside the advisory.
 
 ### The development tree's brace-expansion copy
 

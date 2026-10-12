@@ -122,12 +122,6 @@ export const ALLOWLIST = [
     reason:
       "operator-clicked hyperlinks into this project's own repository documentation: user navigation, not app-initiated egress; a prefix because UI work adds these routinely, scoped to this repository so a link to any other host still fails",
   },
-  {
-    url: "https://data-bridge.org",
-    match: "prefix",
-    reason:
-      "operator-clicked hyperlinks into the project site, which publishes this repository's documentation: user navigation, not app-initiated egress; a prefix for the same reason as the repository entry, and the apex only, so another name in the zone still fails",
-  },
 ];
 
 // Extensions whose bytes are not text. Everything else is read and scanned.

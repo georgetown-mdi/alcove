@@ -49,7 +49,7 @@ const UNHONORED =
 const UNMODELED_KEY =
   'this check reads only a package-name key. A "file:" path, a tarball URL and a git spec are matched by npm against the source an entry resolves to, through a canonicalization this does not model -- model that form here before recording such a verdict';
 const UNMODELED_OVERRIDE_KEY =
-  'this check reads only a flat "<name>": "<spec>" override, which rewrites every edge on that name. A nested per-parent object, a "." self key and a "name@range" key each rewrite some edges and not others, and the lockfile records neither the override nor which edge it rewrote -- model that form here before declaring one';
+  'this check reads a flat "<name>": "<spec>" override, which rewrites every edge on that name, and a nested per-parent object whose every spec is a registry version or range. A nested object holding any other spec, a "." self key and a "name@range" key each rewrite some edges and not others, and the lockfile records neither the override nor which edge it rewrote -- model that form here before declaring one';
 const UNMODELED_OVERRIDE_SPEC =
   'this check reads only a semver version or range, which npm resolves from the registry, and a source spec carrying a scheme, a path shape, or npm\'s "owner/repo" shorthand, for which npm honors no name-keyed verdict at all. A dist-tag, an "npm:" alias and a "$name" reference to a root dependency each name a source this does not model -- model that form here before declaring one';
 
@@ -143,14 +143,37 @@ const REGISTRY_OVERRIDE_SPEC = new RegExp(
 const SOURCE_OVERRIDE_SPEC =
   /^(?!npm:)(?:[A-Za-z][A-Za-z0-9+.-]*:|~?\.{0,2}\/)|^[^@\s/]+\/\S+$/;
 
+// A nested per-parent object rewrites only the edges under that parent. With a
+// registry version or range at every leaf the identity model is untouched, as
+// for the flat range above: measured on npm 11.20.0, `vitepress: { vite:
+// "6.4.3" }` fails the install ESTRICTALLOWSCRIPTS naming the esbuild 0.25.12
+// that vite resolves to, and installs under a verdict keyed at that version.
+const isRegistryOnlyNestedOverride = (spec) =>
+  spec !== null &&
+  typeof spec === "object" &&
+  !Array.isArray(spec) &&
+  Object.keys(spec).length > 0 &&
+  Object.entries(spec).every(
+    ([key, value]) =>
+      PACKAGE_NAME_KEY.test(key) &&
+      (typeof value === "string"
+        ? REGISTRY_OVERRIDE_SPEC.test(value.trim())
+        : isRegistryOnlyNestedOverride(value)),
+  );
+
 /**
  * What each root override states about a package name: the source class npm
  * resolves it from, or the reason this check cannot read one from it.
  */
 function overrideEntries(overrides) {
   return Object.entries(overrides ?? {}).map(([key, spec]) => {
-    if (typeof spec !== "string" || !PACKAGE_NAME_KEY.test(key)) {
+    if (!PACKAGE_NAME_KEY.test(key)) {
       return { key, unmodeled: UNMODELED_OVERRIDE_KEY };
+    }
+    if (typeof spec !== "string") {
+      return isRegistryOnlyNestedOverride(spec)
+        ? { key, name: key, source: null }
+        : { key, unmodeled: UNMODELED_OVERRIDE_KEY };
     }
     const trimmed = spec.trim();
     if (SOURCE_OVERRIDE_SPEC.test(trimmed)) {
@@ -672,9 +695,26 @@ describe("the overrides form this check models", () => {
     }
   });
 
+  it("reads a nested per-parent object holding only registry ranges", () => {
+    for (const nested of [
+      { child: "6.4.3" },
+      { child: "^6.4.3 || 8.x", other: "1.0.0" },
+      { child: { grandchild: ">=2.0.0 <3.0.0" } },
+    ]) {
+      expect(unmodeledOverrides({ pkg: nested })).toEqual([]);
+      expect(namesOverriddenToSource({ pkg: nested }).size).toBe(0);
+    }
+  });
+
   it("refuses a form rewriting some edges on a name and not others", () => {
     for (const overrides of [
-      { pkg: { nested: "1.0.0" } },
+      { pkg: { nested: "file:vendor/pkg.tgz" } },
+      { pkg: { nested: { deeper: "owner/repo" } } },
+      { pkg: { nested: "latest" } },
+      { pkg: { ".": "1.0.0" } },
+      { pkg: { "nested@^2": "3.0.0" } },
+      { pkg: {} },
+      { pkg: ["1.0.0"] },
       { "pkg@^2": "3.0.0" },
       { ".": "1.0.0" },
       { "file:vendor/pkg.tgz": "1.0.0" },

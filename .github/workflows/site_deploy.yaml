@@ -66,7 +66,8 @@ jobs:
         uses: actions/checkout@v7
       - name: Set up and build core
         uses: ./.github/actions/setup
-      # Fails on a relative link to a file that does not exist.
+      # Fails on a relative link to a Markdown page that does not exist.
+      # Other relative links and anchors are checked by `npm run linkcheck`.
       - name: Build the site
         run: npm run site:build
       - name: Upload artifact

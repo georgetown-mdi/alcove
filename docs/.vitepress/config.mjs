@@ -109,6 +109,46 @@ function escapeTemplateDelimiters(md) {
   }
 }
 
+// With raw HTML off, an HTML comment GitHub hides would print as text. A block
+// comment is dropped from its `<!--` line through the line holding `-->`, as
+// CommonMark ends an HTML comment block; an inline one is dropped through its
+// `-->`. An unterminated comment is left as text.
+function dropHtmlComments(md) {
+  md.block.ruler.before(
+    "html_block",
+    "alcove_html_comment_block",
+    (state, startLine, endLine, silent) => {
+      if (state.sCount[startLine] - state.blkIndent >= 4) return false;
+      const lineText = (line) =>
+        state.src.slice(
+          state.bMarks[line] + state.tShift[line],
+          state.eMarks[line],
+        );
+      if (!lineText(startLine).startsWith("<!--")) return false;
+      let line = startLine;
+      let closing = lineText(line).indexOf("-->", 4);
+      while (closing === -1 && ++line < endLine) {
+        closing = lineText(line).indexOf("-->");
+      }
+      if (closing === -1) return false;
+      if (!silent) state.line = line + 1;
+      return true;
+    },
+    { alt: ["paragraph", "reference", "blockquote"] },
+  );
+  md.inline.ruler.before(
+    "html_inline",
+    "alcove_html_comment_inline",
+    (state) => {
+      if (!state.src.startsWith("<!--", state.pos)) return false;
+      const closing = state.src.indexOf("-->", state.pos + 4);
+      if (closing === -1) return false;
+      state.pos = closing + 3;
+      return true;
+    },
+  );
+}
+
 /** A sidebar entry for a page, refusing one whose file does not exist. */
 function page(text, path) {
   if (!isSitePage(path)) {
@@ -131,14 +171,15 @@ export default {
   cleanUrls: true,
   lastUpdated: false,
   markdown: {
-    // Raw HTML is shown as text. The documents are written for GitHub and use
-    // none, and a `<name>` placeholder in prose would otherwise reach the Vue
-    // template compiler as an element that is never closed.
+    // Raw HTML is shown as text, and HTML comments are dropped
+    // (dropHtmlComments): a `<name>` placeholder in prose would otherwise reach
+    // the Vue template compiler as an element that is never closed.
     html: false,
     // Heading anchors follow GitHub's rule, the one `npm run linkcheck` checks
     // every `#anchor` link against, so a link that resolves there resolves here.
     anchor: { slugify },
     config: (md) => {
+      dropHtmlComments(md);
       linkRepositoryFiles(md);
       escapeTemplateDelimiters(md);
     },
