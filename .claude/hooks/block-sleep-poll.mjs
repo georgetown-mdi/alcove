@@ -15,7 +15,9 @@
 //   outside quotes, every element of a `run_in_background` call must be one
 //   of: setup (`cd DIR`, bare or exported assignments); a read-only pipeline
 //   (`echo`, `tail -5 log`, `grep -c x log | wc -l`) that does not follow a
-//   file or read a device; or a command opening with `timeout <N>` or
+//   file or read a device (`tail` takes only count and header options; a
+//   word is a device path only when it has a `/` or follows a redirection);
+//   or a command opening with `timeout <N>` or
 //   `gtimeout <N>`, N not zero, after optional assignments and `env -C DIR`,
 //   each later pipe stage of which is bounded the same way or read-only. At
 //   least one element must be bounded. A lone `&`, a heredoc, or a command or
@@ -250,31 +252,50 @@ const READ_ONLY = new Set([
   "cut",
   "tee",
 ]);
-// A short-option cluster holding `f` or `F` (`-f`, `-nF`), or a long option
-// `tail` would take as `--follow`: any prefix of it, with or without a value.
-const SHORT_FOLLOW = /^-[A-Za-z0-9]*[fF]/;
-const LONG_OPTION_NAME = /^--([^=]+)/;
 const REDIRECTION_OPERATOR = /^(?:\d*|&)(?:>>?|<)[&|]?/;
+
+// The only options `tail` may take and stay read-only: a line or byte count
+// (`-n 5`, `-n5`, `-5`, `--lines=5`, `-c 5`, `-c5`, `--bytes=5`) and header
+// control. Every other option word, `-f` and `--retry` included, is refused.
+const TAIL_COUNT_FLAG = /^-[nc]$/;
+const TAIL_ALLOWED_WORD =
+  /^(?:-\d+|-[nc]\d+|--lines=\d+|--bytes=\d+|-q|-v|--quiet|--silent|--verbose)$/;
+const DIGITS = /^-?\d+$/;
 
 // A word as the command sees it once the shell removes quotes and backslashes.
 function unquoted(word) {
   return word.replace(/['"\\]/g, "");
 }
 
-function isFollowOption(word) {
-  if (SHORT_FOLLOW.test(word)) return true;
-  const name = LONG_OPTION_NAME.exec(word)?.[1];
-  return name !== undefined && "follow".startsWith(name);
+// True when every option word of a `tail` stage is on the allowlist; a word
+// starting with `+` or any other `-` word is not.
+function isReadOnlyTail(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const word = args[i];
+    if (TAIL_COUNT_FLAG.test(word)) {
+      i += 1;
+      if (!DIGITS.test(args[i] ?? "")) return false;
+    } else if (word.startsWith("+")) {
+      return false;
+    } else if (word.startsWith("-") && word !== "-") {
+      if (!TAIL_ALLOWED_WORD.test(word)) return false;
+    }
+  }
+  return true;
 }
 
 // True when the word, or a redirection's target, is a path with a `dev`
 // component (`/dev/zero`, `//dev/zero`, `../../dev/zero`, `</dev/urandom`)
-// other than `/dev/null`. A component named `dev` anywhere refuses, since a
-// relative path's directory is not known here.
+// other than `/dev/null`. A word with no `/` and no redirection operator is
+// not a path. A component named `dev` anywhere refuses, since a relative
+// path's directory is not known here.
 function readsDevice(word) {
-  const path = word.replace(REDIRECTION_OPERATOR, "");
-  if (path === "" || posix.normalize(path) === "/dev/null") return false;
-  return path.split("/").includes("dev");
+  const target = word.replace(REDIRECTION_OPERATOR, "");
+  const isPath = target !== word || target.includes("/");
+  if (!isPath || target === "" || posix.normalize(target) === "/dev/null") {
+    return false;
+  }
+  return target.split("/").includes("dev");
 }
 
 // A pipe stage running a READ_ONLY command that does not follow a file
@@ -283,7 +304,7 @@ function isReadOnlyStage(stage) {
   const words = tokenizeRaw(stage).map(unquoted);
   if (!READ_ONLY.has(words[0])) return false;
   if (words.some(readsDevice)) return false;
-  return words[0] !== "tail" || !words.some(isFollowOption);
+  return words[0] !== "tail" || isReadOnlyTail(words.slice(1));
 }
 
 // A list element whose every pipe stage is read-only.

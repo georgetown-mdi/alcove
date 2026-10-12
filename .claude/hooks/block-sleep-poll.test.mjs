@@ -202,7 +202,13 @@ describe("block-sleep-poll hook", () => {
       "timeout 5 a 2>&1 | grep -v x | head -3",
       "timeout 5 a | timeout 5 b",
       "timeout 5 a; grep x log 2>/dev/null; cat log 2>//dev/null",
-      "timeout 5 a; tail -n 5 --retry log",
+      "timeout 5 a; tail -n 5 log",
+      "timeout 5 a; tail -5 log",
+      "timeout 5 a; tail -n5 -q log",
+      "timeout 5 a; tail --lines=20 log",
+      "timeout 5 a; tail -c 100 --quiet log",
+      "timeout 5 a; echo dev",
+      "timeout 5 a; grep -c dev log",
       "timeout 900 sh -c 'echo $(date) `pwd`'",
       "timeout 5 a; grep '$(x)' log",
     ]) {
@@ -264,6 +270,14 @@ describe("block-sleep-poll hook", () => {
 
   it("refuses a read-only element that follows a file or reads a device, however written", () => {
     const refused = [
+      "timeout 5 a; tail +1f log",
+      "timeout 5 a; tail +f log",
+      "timeout 5 a; tail -f log",
+      "timeout 5 a; tail -s 1 log",
+      "timeout 5 a; tail --retry log",
+      "timeout 5 a; tail -n 5 --retry log",
+      "timeout 5 a; tail -n +5 log",
+      "timeout 5 a; tail -n log",
       "timeout 5 a; tail --fol log",
       "timeout 5 a; tail --f log",
       "timeout 5 a; tail --follow log",

@@ -33,4 +33,6 @@ Last run 2026-10-12, Claude Code 2.1.296, Linux dev container: the hook fired at
 }
 ```
 
-Not probed: whether PostToolUse fires for a `Workflow` call that fails to launch, and a call passing `scriptPath` or `args`, whose `tool_input` is expected to carry them the same way.
+A second run, 2026-10-12 on Claude Code 2.1.296, called `Workflow` with a `scriptPath` and `args` (`targetRef` and the other review fields): the hook fired at launch, `tool_input` held `scriptPath`, `args` and the resolved `script`, and `tool_response.status` was `async_launched`.
+
+Not probed: whether PostToolUse fires for a `Workflow` call that fails to launch.
