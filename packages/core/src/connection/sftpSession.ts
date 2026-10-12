@@ -10,7 +10,7 @@
 // fail-closed default, the first-use trust flow, the provider-options
 // interaction, and the constant-time-compare hygiene -- is owned by
 // docs/SECURITY_DESIGN.md (Transport-layer authentication) and, at the
-// implementation tier, docs/spec/CHANNEL_SECURITY.md (SFTP host-key
+// implementation tier, docs/spec/SFTP_CONNECTION.md (SFTP host-key
 // verification). The pure host-key primitives it builds on -- the
 // connect-option allowlists, the defensive verdict delivery, the blob view --
 // live in ./sftpConnect, and the fingerprint digest / set-membership match /
@@ -93,7 +93,7 @@ interface HostKeyRefusal {
  * exposes the connect-option building, host-key-verifier install, and host-key
  * probe the connection delegates to. See
  * docs/SECURITY_DESIGN.md (Transport-layer authentication) and
- * docs/spec/CHANNEL_SECURITY.md (SFTP host-key verification).
+ * docs/spec/SFTP_CONNECTION.md (SFTP host-key verification).
  *
  * @internal
  */

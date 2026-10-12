@@ -21,7 +21,7 @@ import { waitFor } from "../support";
 // What the adapter does with a partner server that goes silent rather than
 // failing: nothing closes, nothing resets, and no further byte arrives, so the
 // client can learn of it only from its own liveness deadline -- and a stall is
-// never a reconnect trigger (docs/spec/CHANNEL_SECURITY.md). Each case observes
+// never a reconnect trigger (docs/spec/SFTP_SESSION_RECOVERY.md). Each case observes
 // the ssh2 Client, the socket beneath it, and the server's own request meter,
 // rather than reasoning about the adapter.
 //

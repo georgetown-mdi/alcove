@@ -141,7 +141,7 @@ inProcessOnly(
 // mode-gated, so a teardown requested while the FIRST dial is parked mid-
 // handshake waits it out only to the bound, then destroys the transport, and
 // the parked dial rejects with the code a peer close produces a moment later.
-// The figures docs/spec/CHANNEL_SECURITY.md states for this ordering.
+// The figures docs/spec/SFTP_SESSION_RECOVERY.md states for this ordering.
 inProcessOnly(
   "a teardown concurrent with a first dial that will not settle closes the " +
     "transport at the bound and the dial rejects as a peer close",

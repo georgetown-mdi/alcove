@@ -200,7 +200,7 @@ export function assertHostKeyTrustCanBeEstablished(
  * ssh's trust-on-first-use; shared by every interactive connect path
  * (`exchange`, the online `invite`/`accept`, and `zero-setup`), persistence
  * differing per command. Full behavior:
- * docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification ("First-use trust
+ * docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification ("First-use trust
  * (ssh-style)").
  *
  * Not sftp, or a pin already set, is a no-op: the caller proceeds and the

@@ -1,7 +1,7 @@
 // Pure helpers and constants the SFTP connect path shares across its three
 // host-key verifier forms; the methods that close over session state live on
 // SftpSession (./sftpSession). Host-key rationale: docs/SECURITY_DESIGN.md and
-// docs/spec/CHANNEL_SECURITY.md, SFTP host-key verification.
+// docs/spec/SFTP_CONNECTION.md, SFTP host-key verification.
 
 /**
  * The host key a server presented on the SFTP channel, as observed by

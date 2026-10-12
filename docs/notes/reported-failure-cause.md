@@ -22,7 +22,7 @@ Show the chain on both seats, in a block of its own inside the alert, labeled as
 - Its label is DOM text ahead of it rather than an accessible name, so a reading of the alert -- visual, or flattened to one run by an assistive technology -- meets the attribution before the words it attributes.
 - It is set on the code background in the mono face this design reserves for data and protocol state, so words this application did not write display as somebody else's.
 
-Those three are measured in `apps/web/test/browser/failureReportedCause.test.ts`, against a report written in console voice. It is the partition the host-key probe's peer excerpt already holds ([CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-host-key-verification)), in the weaker form an alert body admits: the probe can put the peer's bytes outside the announced region entirely, while these seats' alert is itself the element the failure appears in.
+Those three are measured in `apps/web/test/browser/failureReportedCause.test.ts`, against a report written in console voice. It is the partition the host-key probe's peer excerpt already holds ([SFTP_CONNECTION.md](../spec/SFTP_CONNECTION.md#sftp-host-key-verification)), in the weaker form an alert body admits: the probe can put the peer's bytes outside the announced region entirely, while these seats' alert is itself the element the failure appears in.
 
 ## The two shapes declined
 

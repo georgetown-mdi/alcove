@@ -1,7 +1,7 @@
 // The encoder that builds every machine-readable JSON line the CLI prints
 // (probe-host-key --json, doctor --json, and each line of the opt-in fd-3
 // NDJSON event stream, which eventStream.test.ts pins). See
-// docs/spec/CHANNEL_SECURITY.md, SFTP host-key verification, for why
+// docs/spec/SFTP_CONNECTION.md, SFTP host-key verification, for why
 // `JSON.stringify` alone is not enough and how this stays off the
 // display-escaping ladder (CONTRIBUTING.md, Operator-facing escaping).
 

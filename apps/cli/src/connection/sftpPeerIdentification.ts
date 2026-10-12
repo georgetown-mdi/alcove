@@ -2,7 +2,7 @@
 // server. ssh2 discards the peer's bytes and rejects every such cause with one
 // message (docs/spec/DEPENDENCY_PINS.md#upgrading-the-sftp-stack-ssh2--ssh2-sftp-client),
 // so this module reads them on a second, bounded, credential-free connection.
-// Rules: docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification, "Diagnosing
+// Rules: docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification, "Diagnosing
 // a peer that never identifies itself".
 
 import net from "node:net";

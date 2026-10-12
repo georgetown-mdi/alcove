@@ -15,7 +15,7 @@ import { InternalConsistencyError } from "@alcove/core";
  * Warn cadence for the adapter's repeating operator conditions: the first
  * occurrence draws a line, then every `SFTP_REDIAL_WARN_INTERVAL`-th. An
  * observability cadence only, independent of every bound the adapter enforces.
- * Rationale: docs/spec/CHANNEL_SECURITY.md, "What each bound protects".
+ * Rationale: docs/spec/SFTP_SESSION_RECOVERY.md, "What each bound protects".
  */
 export const SFTP_REDIAL_WARN_INTERVAL = 10;
 

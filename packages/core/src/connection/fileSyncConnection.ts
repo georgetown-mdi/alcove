@@ -373,7 +373,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   private readonly abortMarker: AbortMarkerSubsystem;
 
   // Connect options, the host-key verifier, and the host-key probe. See
-  // docs/spec/CHANNEL_SECURITY.md#sftp-host-key-verification.
+  // docs/spec/SFTP_CONNECTION.md#sftp-host-key-verification.
   private readonly sftpSession: SftpSession;
 
   // The entry scan and sweep and both rendezvous paths. It sets this

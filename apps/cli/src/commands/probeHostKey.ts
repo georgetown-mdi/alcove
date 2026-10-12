@@ -200,7 +200,7 @@ function probeJsonLine(presented: PresentedHostKey): string {
  * {@link asciiSafeJsonLine}. Its escapes are JSON's own, not a display
  * boundary: a consumer parses back the peer's bytes unchanged, and one that
  * renders the excerpt to a human still escapes it once at that sink (see
- * docs/spec/CHANNEL_SECURITY.md, "SFTP host-key verification", and
+ * docs/spec/SFTP_CONNECTION.md, "SFTP host-key verification", and
  * CONTRIBUTING.md, Operator-facing escaping).
  *
  * @internal exported for testing

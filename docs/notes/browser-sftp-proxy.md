@@ -9,7 +9,7 @@ The note frames what a browser SFTP path would need, recommends where it can, an
 Nothing here is normative: the channel-security rules are in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
 the host-key rules in
-[CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#sftp-host-key-verification),
+[SFTP_CONNECTION.md](../spec/SFTP_CONNECTION.md#sftp-host-key-verification),
 and the console's trust boundary in
 [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#single-party-console-trust-boundary).
 See [docs/notes/README.md](README.md)._
@@ -170,7 +170,7 @@ The CLI adapter's transport [memory](../spec/TRANSPORT_BOUNDS.md) and [liveness]
 
 ### Host-key verification
 
-[Host-key verification](../spec/CHANNEL_SECURITY.md#sftp-host-key-verification) is scoped to the CLI `sftp` channel, so a browser path needs a client that exposes the raw host-key blob before authentication.
+[Host-key verification](../spec/SFTP_CONNECTION.md#sftp-host-key-verification) is scoped to the CLI `sftp` channel, so a browser path needs a client that exposes the raw host-key blob before authentication.
 Core's fingerprint computation and match run on WebCrypto (`packages/core/src/utils/sshHostKey.ts`), so the comparison can run in the tab, and the CLI's first-use prompt becomes a confirm step.
 With a raw relay the browser observes the real server's key, so cross-party host-key reconciliation works as on the CLI.
 With a terminating proxy the browser observes none and reconciles to no divergence (`packages/core/src/hostKeyReconciliation.ts`), losing the check that catches a one-sided interception.
