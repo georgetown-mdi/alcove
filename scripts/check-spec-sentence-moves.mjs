@@ -34,6 +34,9 @@ import { parseArgs } from "node:util";
 /** The directory whose Markdown files are compared. */
 export const SPEC_DIRECTORY = "docs/spec/";
 
+/** The only pull request base branch whose changes the comparison checks. */
+const STAGING_BRANCH = "staging";
+
 /** The base revision when none is given. */
 export const DEFAULT_BASE = "origin/staging";
 
@@ -188,7 +191,7 @@ export function specUnits(markdown) {
 /**
  * The changes listed in the wording-changes file, one per line: a `- ` line
  * gives its text after the marker, a blank line or one starting with `#` gives
- * none, and any other line is returned whole, so it matches no difference.
+ * none, and any other line is returned whole and read like a `- ` line's text.
  */
 export function parseWordingChanges(list) {
   const entries = [];
@@ -462,6 +465,17 @@ function main(argv, env) {
       "usage: node scripts/check-spec-sentence-moves.mjs [--base <ref>] [--head <ref>]",
     );
     return 2;
+  }
+
+  if (
+    options.base === undefined &&
+    env.GITHUB_BASE_REF &&
+    env.GITHUB_BASE_REF !== STAGING_BRANCH
+  ) {
+    console.log(
+      `${PREFIX} skipped on a pull request into ${env.GITHUB_BASE_REF}, because the per-pull-request lists were checked as each pull request entered ${STAGING_BRANCH}.`,
+    );
+    return 0;
   }
 
   const root = repositoryRoot();

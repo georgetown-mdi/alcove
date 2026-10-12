@@ -474,6 +474,24 @@ describe("the command", () => {
     expect(defaultBase({})).toBe("origin/staging");
   });
 
+  it("skips with one line on a pull request into a branch other than staging, and still checks one into staging", () => {
+    withMove(ONE_WORD_CHANGED, (dir) => {
+      const release = runScript(dir, [], { GITHUB_BASE_REF: "main" });
+      expect(release.status, release.stderr).toBe(0);
+      expect(release.stdout.trim().split("\n")).toHaveLength(1);
+      expect(release.stdout).toContain("pull request into main");
+
+      execFileSync(
+        "git",
+        ["update-ref", "refs/remotes/origin/staging", "staging"],
+        { cwd: dir },
+      );
+      const intoStaging = runScript(dir, [], { GITHUB_BASE_REF: "staging" });
+      expect(intoStaging.status, intoStaging.stdout).toBe(1);
+      expect(intoStaging.stderr).toContain("merge base with origin/staging");
+    });
+  });
+
   it("passes with one line when no spec file changed", () => {
     const result = runScript(ROOT, ["--base", "HEAD"]);
     expect(result.status, result.stderr).toBe(0);
