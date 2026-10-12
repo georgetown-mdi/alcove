@@ -247,6 +247,16 @@ describe("the coordination server a console accept dials", () => {
       );
   });
 
+  test("is none where the invitation's host or path would move the address", () => {
+    for (const endpoint of [
+      { ...ENDPOINT, host: "h.example/evil" },
+      { ...ENDPOINT, host: "h.example\\x" },
+      { ...ENDPOINT, host: "h.example:99" },
+      { ...ENDPOINT, path: "a" },
+    ])
+      expect(acceptedSignalingServer(endpoint, null)).toBe(undefined);
+  });
+
   test("is set on the console with the invitation's relay, and named to the create", async () => {
     const accepted = acceptedSignalingServer(
       { ...ENDPOINT, relay: RELAY },

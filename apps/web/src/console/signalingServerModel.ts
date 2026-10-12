@@ -6,6 +6,7 @@
 import { publishedSignalingServerURL } from "@alcove/core";
 
 import { invitationReach } from "@exchange/invitationReach";
+import { refusedSignalingEndpointField } from "@psi/transport/signalingAddress";
 
 import type { InvitationReach } from "@exchange/invitationReach";
 import type { JobSignalingServerEndpoint } from "@jobContract/intentSchemas";
@@ -120,6 +121,13 @@ export function acceptedSignalingServer(
   endpoint: WebRTCEndpoint,
   held: SignalingServerProjection | null,
 ): AcceptedSignalingServer | undefined {
+  if (
+    refusedSignalingEndpointField({
+      host: endpoint.host,
+      path: endpoint.path ?? "/",
+    }) !== undefined
+  )
+    return undefined;
   const port = endpoint.port !== undefined ? `:${endpoint.port}` : "";
   const authority = `${endpoint.host}${port}${endpoint.path ?? "/"}`;
   let url = publishedSignalingServerURL(`wss://${authority}`);
