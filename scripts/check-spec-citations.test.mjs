@@ -315,4 +315,24 @@ describe("spec citation check over a planted tree", () => {
     ]);
     expect(errors[3]).toMatch(/3 spec citation\(s\)/);
   });
+
+  it("does not read the wording list, whose old sides cite retired anchors", () => {
+    dir = mkdtempSync(resolve(tmpdir(), "spec-citations-"));
+    execFileSync("git", ["init", "-q"], { cwd: dir, stdio: "ignore" });
+    const files = {
+      [SPEC]: GUIDE,
+      "src/planted.ts": `// ${SPEC}#the-memory-ceiling-and-the-csv-intake-cap`,
+      "docs/spec/wording-changes.txt": `- Old text citing ${SPEC}#gone-anchor. -> New text.`,
+    };
+    for (const [file, text] of Object.entries(files)) {
+      mkdirSync(resolve(dir, dirname(file)), { recursive: true });
+      writeFileSync(resolve(dir, file), text);
+    }
+    const errors = [];
+    vi.spyOn(console, "error").mockImplementation((line) => errors.push(line));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    expect(main(dir)).toBe(0);
+    expect(errors).toEqual([]);
+  });
 });

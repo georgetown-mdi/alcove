@@ -46,7 +46,8 @@
 // A spec file mentioned with none of the forms above is prose and is not read.
 //
 // Where it reads: every tracked or untracked-but-not-ignored file that is not
-// Markdown and holds no NUL byte, apart from FIXTURE_FILES below.
+// Markdown and holds no NUL byte, apart from FIXTURE_FILES below, which names
+// docs/spec/wording-changes.txt and the reason it is not read.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -64,6 +65,10 @@ export const FIXTURE_FILES = new Map([
   [
     ".claude/scripts/check-review-ledger-dispositions.test.mjs",
     "Its ledger fixtures cite anchors in a spec file that does not exist.",
+  ],
+  [
+    "docs/spec/wording-changes.txt",
+    "Its old sides quote text from before a change, retired anchors included; its new sides repeat text the spec files already hold.",
   ],
 ]);
 
