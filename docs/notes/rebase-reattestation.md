@@ -27,7 +27,8 @@ unchanged by the rebase:
 
 - the same paths, and
 - the same program at each path, at both ends of the move, once comments are
-  removed and markdown is excluded.
+  removed and markdown and the spec wording-change list
+  (`docs/spec/wording-changes.txt`) are excluded.
 
 `.claude/scripts/verify-rebase-invariance.mjs` decides it by running the
 non-executable-delta comparison twice over exactly the paths the branch's diff
@@ -80,8 +81,8 @@ answer at a round's price.
   every test while being wrong -- the residual risk this path accepts, and the
   reason a single executable line inside the branch's own diff sends the head
   to a full round.
-- **Markdown.** Excluded, as it is under the non-executable-delta path, where a
-  markdown-only delta already holds. So a conflict resolved inside a governing
+- **Markdown.** Excluded, with the spec wording-change list, as both are under
+  the non-executable-delta path, where a markdown-only delta already holds. So a conflict resolved inside a governing
   document -- a `docs/spec/` file -- is not read by this path. That is a stated
   limit rather than a verified property; excluding markdown in one path and not
   the other would have been the inconsistency, and the alternative was to make

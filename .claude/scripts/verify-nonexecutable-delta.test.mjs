@@ -132,6 +132,14 @@ describe("path classification", () => {
     expect(classifyPath("README.MD")).toBe("exempt");
   });
 
+  it("exempts the spec wording-change list, whose content only the sentence check reads", () => {
+    expect(classifyPath("docs/spec/wording-changes.txt")).toBe("exempt");
+    expect(
+      verdictOf("old line\n", "new line\n", "docs/spec/wording-changes.txt"),
+    ).toBe("exempt");
+    expect(classifyPath("docs/spec/other.txt")).toBe("unverifiable");
+  });
+
   it("treats .yml and .yaml as parseable YAML", () => {
     for (const path of [
       ".github/workflows/static_checks.yaml",

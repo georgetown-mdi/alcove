@@ -2,7 +2,8 @@
 // Rebase-invariance verifier, run by an agent re-attesting a review across a
 // rebase (.claude/commands/assess-review.md, Step 4): decides whether the rebase
 // left the branch's own diff unchanged -- the same paths, each the same program
-// at both ends once comments are removed and markdown is excluded.
+// at both ends once comments are removed and markdown and the spec wording-change
+// list (docs/spec/wording-changes.txt) are excluded.
 //
 // Usage: node .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
 // <pre-rebase-head> <post-rebase-base> <post-rebase-head>, run from the worktree
