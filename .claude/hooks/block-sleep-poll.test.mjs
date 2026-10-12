@@ -144,7 +144,6 @@ describe("block-sleep-poll hook", () => {
     const refused = [
       "npm run lint",
       "sleep 20; echo done",
-      "cd apps/web && timeout 900 npm test",
       "timeout 0 npm run dev",
       "timeout 0s npm run dev",
       "timeout 600",
@@ -155,7 +154,6 @@ describe("block-sleep-poll hook", () => {
       "timeout 600 npm run build\nnpm run dev",
       "timeout 5 true & sleep 999",
       "timeout 5 true &",
-      "env timeout 600 npm run lint",
     ];
     for (const command of refused) {
       const { status, stderr } = background(command);
@@ -183,6 +181,126 @@ describe("block-sleep-poll hook", () => {
       "timeout 900 npm test |& tee /tmp/test.log",
     ]) {
       expect(background(command).status, command).toBe(0);
+    }
+  });
+
+  it("allows setup before, and a read-only tail after, a bounded background command", () => {
+    for (const command of [
+      "cd apps/web && timeout 900 npm test",
+      "env timeout 600 npm run lint",
+      "env -C /w timeout 600 npm run lint",
+      "W=/w; env -C $W timeout 590 npm run x > /tmp/l 2>&1; echo exit=$?",
+      'cd /w && timeout 9 npm t; echo "e $?"',
+      'PORT=3471 timeout 1500 npm run test:browser > /tmp/b.log 2>&1; echo "exit $?" >> /tmp/b.log',
+      "export CI=1; timeout 900 npm test",
+      "timeout 900 npm run lint > /tmp/l.log 2>&1; echo exit=$?; tail -20 /tmp/l.log",
+      "timeout 900 npm test > /tmp/t.log 2>&1; grep -c FAIL /tmp/t.log | head -3",
+      "timeout 600 npm run build && timeout 900 npm test",
+      "timeout 600 npm run build || echo build failed",
+      "timeout 600 npm test > /tmp/t.log 2>/dev/null; cat /tmp/t.log | grep 'a|b'",
+      "timeout 5 a | tail -n 5",
+      "timeout 5 a 2>&1 | grep -v x | head -3",
+      "timeout 5 a | timeout 5 b",
+      "timeout 5 a; grep x log 2>/dev/null; cat log 2>//dev/null",
+      "timeout 5 a; tail -n 5 log",
+      "timeout 5 a; tail -5 log",
+      "timeout 5 a; tail -n5 -q log",
+      "timeout 5 a; tail --lines=20 log",
+      "timeout 5 a; tail -c 100 --quiet log",
+      "timeout 5 a; echo dev",
+      "timeout 5 a; grep -c dev log",
+      "timeout 900 sh -c 'echo $(date) `pwd`'",
+      "timeout 5 a; grep '$(x)' log",
+    ]) {
+      expect(background(command).status, command).toBe(0);
+    }
+  });
+
+  it("blocks a background command any unbounded element of which runs on", () => {
+    const refused = [
+      "cd /w && npm test",
+      "W=/w; env -C $W npm test",
+      "timeout 0 npm test; echo $?",
+      "echo hi; npm test",
+      "cd /w; timeout 5 a; sleep 1000",
+      "X=$(sleep 99) timeout 5 a",
+      "timeout 5 a; npm test",
+      "npm test; echo $?",
+      'env -C /w npm test; echo "exit=$?"',
+      "W=1 npm test",
+      "cd /w; tail -f log",
+      "timeout 5 a; tail -f log",
+      "timeout 5 a; tail -n 5 -F log",
+      "timeout 5 a; tail --follow=name log",
+      "timeout 5 a && npm run dev",
+      "timeout 5 a || npm run dev",
+      "timeout 5 a & npm run dev",
+      "echo $(npm test)",
+      "W=$(npm test); timeout 5 a",
+      "cd /w",
+      "echo done",
+      "tail -5 /tmp/log",
+      "(npm test; echo $?)",
+      "cat <<EOF\nx\nEOF",
+      "timeout 5 cat <<EOF\nx\nEOF",
+      "timeout 5 a;\nnpm test",
+      "sleep 1000; echo $?",
+      "while true; do :; done; echo $?",
+      "timeout 5 a; echo `npm test`",
+      "cd /w; cat /dev/zero | tail -F f",
+      "timeout 5 a; cat /dev/zero | grep x",
+      "timeout 5 a; cat <(npm test)",
+      "timeout 5 a; git status",
+      "timeout 5 a; rm -rf /tmp/x",
+      'timeout 5 a "$(sleep 9999)"',
+      "timeout 5 a `sleep 9999`",
+      'timeout 900 sh -c "echo $(sleep 9999)"',
+      "timeout 5 a > >(npm run dev)",
+      "timeout 5 a | npm run dev",
+      "timeout 5 a | tail -n 1 | npm run dev",
+      "timeout 5 a |& sleep 9999",
+      "timeout 5 a | tail -f log",
+    ];
+    for (const command of refused) {
+      const { status, stderr } = background(command);
+      expect(status, command).toBe(2);
+      expect(stderr, command).toContain("run_in_background");
+    }
+  });
+
+  it("refuses a read-only element that follows a file or reads a device, however written", () => {
+    const refused = [
+      "timeout 5 a; tail +1f log",
+      "timeout 5 a; tail +f log",
+      "timeout 5 a; tail -f log",
+      "timeout 5 a; tail -s 1 log",
+      "timeout 5 a; tail --retry log",
+      "timeout 5 a; tail -n 5 --retry log",
+      "timeout 5 a; tail -n +5 log",
+      "timeout 5 a; tail -n log",
+      "timeout 5 a; tail --fol log",
+      "timeout 5 a; tail --f log",
+      "timeout 5 a; tail --follow log",
+      "timeout 5 a; tail --foll=descriptor log",
+      'timeout 5 a; tail "-f" log',
+      "timeout 5 a; tail '-F' log",
+      'timeout 5 a; tail "--follow" log',
+      "timeout 5 a; tail -n5f log",
+      "timeout 5 a; tail -qF log",
+      "timeout 5 a; \\tail -f log",
+      'timeout 5 a; "tail" -f log',
+      'timeout 5 a; cat "/dev/zero"',
+      "timeout 5 a; cat '/dev/zero'",
+      "timeout 5 a; cat //dev/zero",
+      "timeout 5 a; cat /dev/./zero",
+      "timeout 5 a; cat ../../dev/zero",
+      "timeout 5 a; cat < /dev/zero",
+      "timeout 5 a; cat </dev/urandom",
+      "timeout 5 a; grep -f/dev/zero log",
+      "timeout 5 a; cat /dev/stdin",
+    ];
+    for (const command of refused) {
+      expect(background(command).status, command).toBe(2);
     }
   });
 

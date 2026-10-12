@@ -11,28 +11,19 @@
 // workflow or `name` must name its targets; any other form gets the cwd check.
 // `scratch/` is gitignored, so a round's own artifacts never dirty a tree.
 //
-// Round lock: a target that passes gets a branch-keyed lock file under the
-// primary checkout's `scratch/review-rounds/`, keyed by the transform
-// light-review's Step 1 uses to name the round's artifacts, and deleted by
-// light-review's Step 3 when the round is booked. A lock younger than
-// ROUND_LOCK_TTL_MS refuses the target; an older one is stale and ignored. The
-// lock bounds concurrent rounds, not commits into the target tree.
+// Round lock: a review round against a ref whose lock (lib/reviewLock.mjs)
+// is younger than ROUND_LOCK_TTL_MS is refused; an older one is stale and
+// ignored. This hook only reads the lock. record-review-round-lock.mjs writes
+// it after the harness has run the call, so a call any hook or permission
+// prompt refused leaves none behind, and light-review's Step 3 deletes it when
+// the round is booked. The lock bounds concurrent rounds, not commits into the
+// target tree.
 //
 // Fails closed: every state where a target cannot be confirmed clean blocks (a
 // non-git or missing cwd, a git error, unreadable `args`, an unresolvable ref, a
-// dirty status, an unwritable lock, a non-object payload). Only an unparseable
-// event or one naming another tool passes. Exit 0 allows the call; exit 2
-// blocks it and feeds stderr back to Claude. Rationale:
-// docs/notes/agent-hooks-and-scripts.md.
-
-import {
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join } from "node:path";
+// dirty status, a non-object payload). Only an unparseable event or one naming
+// another tool passes. Exit 0 allows the call; exit 2 blocks it and feeds
+// stderr back to Claude. Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import {
   eventCwd,
@@ -40,6 +31,14 @@ import {
   readEvent,
   workflowArgs,
 } from "./lib/event.mjs";
+import {
+  branchName,
+  lockAgeMs,
+  lockPath,
+  namesLightReview,
+  ROUND_LOCK_TTL_MS,
+  targetRefs,
+} from "./lib/reviewLock.mjs";
 import { git } from "./lib/shell.mjs";
 import { worktreeRecords } from "./lib/worktrees.mjs";
 
@@ -47,10 +46,6 @@ import { worktreeRecords } from "./lib/worktrees.mjs";
 export const EXPIRES_ON = "2026-12-31";
 
 const DIRTY_ENTRIES_SHOWN = 10;
-const ROUNDS_DIR = join("scratch", "review-rounds");
-const LOCK_SUFFIX = ".lock";
-const ROUND_LOCK_TTL_MS = 90 * 60 * 1000;
-const LIGHT_REVIEW_MARKER = "light-review";
 const UNCONFIRMED = "could not confirm a clean tree; commit and retry";
 
 function block(reason) {
@@ -64,30 +59,6 @@ function block(reason) {
   process.exit(2);
 }
 
-// The refs this call reviews: none, one, or several. Null when `targetRef` is
-// present but not readable as refs, which blocks rather than reviewing nothing.
-function targetRefs(args) {
-  const target = args.targetRef;
-  if (target === undefined || target === null) return [];
-  const refs = Array.isArray(target) ? target : [target];
-  if (refs.some((ref) => typeof ref !== "string" || ref.trim().length === 0)) {
-    return null;
-  }
-  return refs.map((ref) => ref.trim());
-}
-
-// Whether this Workflow call is a review round, which is what makes a named
-// target mandatory and puts the call under the in-flight lock.
-function namesLightReview(toolInput) {
-  return [toolInput?.scriptPath, toolInput?.workflow, toolInput?.name].some(
-    (field) => typeof field === "string" && field.includes(LIGHT_REVIEW_MARKER),
-  );
-}
-
-function branchName(ref) {
-  return ref.replace(/^refs\/heads\//, "");
-}
-
 function treesHolding(records, ref, sha) {
   const name = branchName(ref);
   return records.filter(
@@ -95,62 +66,6 @@ function treesHolding(records, ref, sha) {
       (record.branch !== null && branchName(record.branch) === name) ||
       record.head === sha,
   );
-}
-
-// A filename-safe key for a ref. Branch names contain no `/` by repo convention;
-// this sanitizes anyway, and strips leading dots so no key can name a directory
-// component of its own.
-function refKey(ref) {
-  const key = branchName(ref)
-    .replace(/[^A-Za-z0-9._-]+/g, "_")
-    .replace(/^\.+/, "");
-  return key.length === 0 ? "ref" : key;
-}
-
-function lockPath(mainRoot, ref) {
-  return join(mainRoot, ROUNDS_DIR, `${refKey(ref)}${LOCK_SUFFIX}`);
-}
-
-// How long ago the round holding this lock started, or null when no lock is
-// there. The recorded timestamp is authoritative; a lock whose contents cannot
-// be read as one falls back to its mtime, so a corrupt lock still expires
-// rather than wedging its branch forever.
-function lockAgeMs(path) {
-  let mtimeMs;
-  try {
-    mtimeMs = statSync(path).mtimeMs;
-  } catch {
-    return null;
-  }
-  let startedAt = NaN;
-  try {
-    startedAt = Date.parse(JSON.parse(readFileSync(path, "utf8"))?.startedAt);
-  } catch {
-    startedAt = NaN;
-  }
-  return Date.now() - (Number.isFinite(startedAt) ? startedAt : mtimeMs);
-}
-
-function writeLock(path, ref) {
-  try {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(
-      path,
-      `${JSON.stringify({ ref, startedAt: new Date().toISOString() })}\n`,
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function removeLock(path) {
-  try {
-    rmSync(path, { force: true });
-  } catch {
-    // A lock that cannot be removed expires on its TTL, which is the same
-    // outcome the roll-back is avoiding, only slower.
-  }
 }
 
 function describeMinutes(ms) {
@@ -237,7 +152,6 @@ function main() {
   }
   const mainRoot = records[0].path;
   const locked = namesLightReview(toolInput);
-  const locks = [];
 
   for (const ref of refs) {
     const sha = git([
@@ -269,23 +183,6 @@ function main() {
           `after ${describeMinutes(ROUND_LOCK_TTL_MS)})`,
       );
     }
-    locks.push({ path, ref });
-  }
-
-  // Locks are written only once every target has passed, and a write that fails
-  // part-way through rolls back the ones already written, so a refused call
-  // leaves none of them behind to expire.
-  const written = [];
-  for (const { path, ref } of locks) {
-    if (writeLock(path, ref)) {
-      written.push(path);
-      continue;
-    }
-    for (const done of written) removeLock(done);
-    block(
-      `could not write the in-flight round lock '${path}', so a second concurrent ` +
-        `round against '${ref}' could not be refused; fix the path and retry`,
-    );
   }
   process.exit(0);
 }

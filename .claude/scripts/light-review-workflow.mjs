@@ -258,13 +258,15 @@ Review the branch's own changes and nothing else. Anything attributable to stagi
 // tool calls, so an unscoped command runs against whatever tree the harness
 // dropped it in; and a scratch file left in the tree under review wedges every
 // later round of that branch, because the clean-tree gate statuses that tree.
+// The working-tree clause is each prompt's first line, so an agent has read it
+// before its first command.
 const workingTreeClause = worktreePath
-  ? `The tree holding ${targetRef} is checked out at ${worktreePath}. Scope EVERY command to it -- \`env -C ${worktreePath} <command>\` or \`git -C ${worktreePath} <args>\` -- rather than relying on an earlier cd, which does not persist from one call to the next.`
+  ? `Run EVERY command as \`env -C ${worktreePath} <command>\`, or \`git -C ${worktreePath} <args>\` for git. ${worktreePath} is the tree holding ${targetRef}. Never start a command with a \`cd\` into it: a hook refuses that, and a directory change does not persist from one call to the next anyway.`
   : `No working tree holds ${targetRef}. Read files at the ref with \`git show ${targetRef}:<path>\` and never check it out; if judging this diff needs code RUN rather than read, say so and stop rather than checking anything out.`;
 
 const scratchClause = `Put every file you create -- probe scripts, temporary tests, scratch notes -- under /tmp, never inside a repository working tree.`;
 
-const groundRules = `${workingTreeClause} ${scratchClause}`;
+const groundRules = scratchClause;
 
 const requiredKeysClause = (schema) =>
   `Your structured result must have every one of these top-level keys: ${schema.required.map((key) => `\`${key}\``).join(", ")}.`;
@@ -308,7 +310,9 @@ if (input.role !== undefined && input.role !== null) {
     if (!claims.includes(claim)) claims.push(claim);
   }
 
-  const rolePrompt = `You are reviewing the ref ${targetRef} of this repository under a refutation contract.
+  const rolePrompt = `${workingTreeClause}
+
+You are reviewing the ref ${targetRef} of this repository under a refutation contract.
 ${diffScope}
 
 ${groundRules}
@@ -424,7 +428,9 @@ if (
   );
 }
 
-const reviewerPrompt = `You are a senior software engineer reviewing the ref ${targetRef} of this repository.
+const reviewerPrompt = `${workingTreeClause}
+
+You are a senior software engineer reviewing the ref ${targetRef} of this repository.
 ${diffScope}
 
 ${groundRules}
@@ -447,7 +453,9 @@ const review = await agent(reviewerPrompt, {
 if (!review) throw new Error(salvage("The lens reviewer"));
 const reviews = [review];
 
-const consolidatorPrompt = `You are consolidating a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
+const consolidatorPrompt = `${workingTreeClause}
+
+You are consolidating a code review of the ref ${targetRef}. One reviewer examined git diff "origin/staging...${targetRef}" (three-dot; that ref's own changes only -- never widen the diff, and never substitute HEAD). Its findings:
 ${JSON.stringify(review.findings, null, 1)}
 
 ${groundRules}

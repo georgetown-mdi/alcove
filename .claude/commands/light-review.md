@@ -176,7 +176,9 @@ is the point; a prompt-side "return only JSON" instruction does not hold here.
 Each target must be committed before you invoke it: the round reviews the ref, and
 `require-clean-tree-for-review.mjs` blocks the call when the tree holding any target
 is dirty -- and when a round against that same branch is already in flight, which is
-the lock Step 3 releases.
+the lock `record-review-round-lock.mjs` writes once the call has launched and Step 3
+releases. Launch one round per branch at a time: two calls against the same branch in
+one message both start before either lock is written.
 
 The script returns `{reviewerCount, simplerShapeVotes, clusters}` in lens mode and
 `{claims, findings, gate, summary}` in role mode; Step 3 turns whichever came back into
@@ -213,8 +215,8 @@ Common to both:
    round allowance for this diff (1 for the second bucket or the instruction-file
    floor, 3 for the full pipeline; a cap the owner raises is edited in place with a
    note).
-2. Delete `PRIMARY/scratch/review-rounds/<key>.lock`, the in-flight round lock the
-   clean-tree gate wrote when it let this round start. A lock left behind refuses the
+2. Delete `PRIMARY/scratch/review-rounds/<key>.lock`, the in-flight round lock
+   `record-review-round-lock.mjs` wrote when this round launched. A lock left behind refuses the
    branch's next round until it ages out, so releasing it is part of booking the
    round, not cleanup you may skip. Delete it even when the round failed or you are
    abandoning its result.

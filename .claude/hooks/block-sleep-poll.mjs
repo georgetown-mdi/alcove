@@ -11,12 +11,25 @@
 //   encloses it, or when its condition or body does shell arithmetic
 //   (`$((n+=1))`, `((...))`, `let`, `expr`), reads `SECONDS`, or reads
 //   `date +%s`. A `for` loop over a finite list is not read.
-// - An unbounded background command: a `run_in_background` call must open with
-//   `timeout <N>` or `gtimeout <N>`, N not zero, and hold no later `;`, `&&`,
-//   `||`, lone `&` or newline outside quotes. Any non-zero N is accepted.
+// - An unbounded background command: split on `;`, `&&`, `||` and newline
+//   outside quotes, every element of a `run_in_background` call must be one
+//   of: setup (`cd DIR`, bare or exported assignments); a read-only pipeline
+//   (`echo`, `tail -5 log`, `grep -c x log | wc -l`) that does not follow a
+//   file or read a device (`tail` takes only count and header options; a
+//   word is a device path only when it has a `/` or follows a redirection);
+//   or a command opening with `timeout <N>` or
+//   `gtimeout <N>`, N not zero, after optional assignments and `env -C DIR`,
+//   each later pipe stage of which is bounded the same way or read-only. At
+//   least one element must be bounded. A lone `&`, a heredoc, or a command or
+//   process substitution outside single quotes refuses wherever it appears. A
+//   word is read with its quotes removed; a path with any `dev` component other
+//   than `/dev/null` is a device, and a FIFO or a symlink to a device is not
+//   seen. Any non-zero N is accepted.
 //
-// Probe: block-sleep-poll.probe.md beside this file, last run 2026-09-25 on
-// Claude Code 2.1.282 (macOS host); a `Workflow` `agent()` call was not probed.
+// Probes: block-sleep-poll.probe.md beside this file. The background-resume
+// probe last ran 2026-09-25 on Claude Code 2.1.282 (macOS host), and a
+// `Workflow` `agent()` call was not probed; the background-stdin probe, which
+// the read-only allowance rests on, last ran 2026-10-12 on 2.1.296.
 //
 // Not a shell parser (see lib/shell.mjs): a loop in a variable, a function or
 // an `eval` string is not seen. Exit 0 allows the call; exit 2 blocks it and
@@ -24,6 +37,8 @@
 // Rationale: docs/notes/agent-hooks-and-scripts.md.
 
 import { commandOf, eventForTools } from "./lib/event.mjs";
+import { posix } from "node:path";
+
 import { tokenizeRaw } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
@@ -112,13 +127,15 @@ function opensWithTimeout(command) {
   return i + 1 < words.length;
 }
 
-// True when a `;`, `&&`, `||`, lone `&`, or newline stands outside quotes,
-// where the command after it runs as a separate list element. An `&` inside a
-// redirection (`2>&1`, `&>`, `>&`) or a `|&` pipe is not a separator.
-function hasTopLevelListSeparator(command) {
+// Split text at the separators `separatorWidth(text, i)` finds outside quotes:
+// it returns the separator's width at i, 0 for none, or -1 to refuse the whole
+// text, in which case this returns null. Pieces are trimmed; empty ones dropped.
+function splitOutsideQuotes(text, separatorWidth) {
+  const pieces = [];
+  let start = 0;
   let quote = null;
-  for (let i = 0; i < command.length; i += 1) {
-    const char = command[i];
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
     if (quote === "'") {
       if (char === "'") quote = null;
       continue;
@@ -135,23 +152,209 @@ function hasTopLevelListSeparator(command) {
       quote = char;
       continue;
     }
-    if (char === ";" || char === "\n") return true;
-    const pair = command.slice(i, i + 2);
-    if (pair === "&&" || pair === "||") return true;
-    if (char === "&") {
-      const before = command[i - 1];
-      const after = command[i + 1];
-      const inRedirection =
-        before === ">" || before === "<" || before === "|" || after === ">";
-      if (!inRedirection) return true;
+    const width = separatorWidth(text, i);
+    if (width < 0) return null;
+    if (width > 0) {
+      pieces.push(text.slice(start, i));
+      start = i + width;
+      i += width - 1;
     }
   }
-  return false;
+  pieces.push(text.slice(start));
+  return pieces.map((piece) => piece.trim()).filter((piece) => piece !== "");
 }
 
+// A list separator: `;`, `&&`, `||` or a newline. A lone `&` refuses, since
+// what it backgrounds outlives the bound; an `&` inside a redirection (`2>&1`,
+// `&>`, `>&`) or a `|&` pipe is not one.
+function listSeparatorWidth(text, i) {
+  const pair = text.slice(i, i + 2);
+  if (pair === "&&" || pair === "||") return 2;
+  const char = text[i];
+  if (char === ";" || char === "\n") return 1;
+  if (char !== "&") return 0;
+  const before = text[i - 1];
+  const after = text[i + 1];
+  const inRedirection =
+    before === ">" || before === "<" || before === "|" || after === ">";
+  return inRedirection ? 0 : -1;
+}
+
+function pipeSeparatorWidth(text, i) {
+  if (text[i] !== "|") return 0;
+  return text[i + 1] === "&" ? 2 : 1;
+}
+
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+const SUBSTITUTION = /\$\(|`|<\(|>\(|<</;
+
+// The text with every single-quoted span dropped, since the shell expands
+// nothing inside one: a `$(...)` there is a literal, or the script of a
+// `sh -c` the timeout bounds.
+function outsideSingleQuotes(text) {
+  let kept = "";
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quote === "'") {
+      if (char === "'") quote = null;
+      continue;
+    }
+    if (char === "\\") {
+      kept += text.slice(i, i + 2);
+      i += 1;
+      continue;
+    }
+    if (char === '"') quote = quote === '"' ? null : '"';
+    else if (char === "'" && quote === null) {
+      quote = "'";
+      continue;
+    }
+    kept += char;
+  }
+  return kept;
+}
+
+// True when the shell running the element would itself run a command
+// substitution, a process substitution or a heredoc, which no timeout in the
+// element bounds.
+function hasSubstitution(element) {
+  return SUBSTITUTION.test(outsideSingleQuotes(element));
+}
+
+// A list element that runs nothing: `cd DIR`, or bare or exported assignments.
+function isSetup(element) {
+  if (hasSubstitution(element)) return false;
+  const words = tokenizeRaw(element);
+  if (words[0] === "cd") return words.length <= 2;
+  const assignments = words[0] === "export" ? words.slice(1) : words;
+  return assignments.length > 0 && assignments.every((w) => ASSIGNMENT.test(w));
+}
+
+// Commands that only read or report, each ending once its input does; `tee`
+// writes what it reads, and ends the same way.
+const READ_ONLY = new Set([
+  "echo",
+  "grep",
+  "tail",
+  "head",
+  "cat",
+  "ls",
+  "wc",
+  "free",
+  "uptime",
+  "date",
+  "pwd",
+  "true",
+  "sort",
+  "uniq",
+  "tr",
+  "cut",
+  "tee",
+]);
+const REDIRECTION_OPERATOR = /^(?:\d*|&)(?:>>?|<)[&|]?/;
+
+// The only options `tail` may take and stay read-only: a line or byte count
+// (`-n 5`, `-n5`, `-5`, `--lines=5`, `-c 5`, `-c5`, `--bytes=5`) and header
+// control. Every other option word, `-f` and `--retry` included, is refused.
+const TAIL_COUNT_FLAG = /^-[nc]$/;
+const TAIL_ALLOWED_WORD =
+  /^(?:-\d+|-[nc]\d+|--lines=\d+|--bytes=\d+|-q|-v|--quiet|--silent|--verbose)$/;
+const DIGITS = /^-?\d+$/;
+
+// A word as the command sees it once the shell removes quotes and backslashes.
+function unquoted(word) {
+  return word.replace(/['"\\]/g, "");
+}
+
+// True when every option word of a `tail` stage is on the allowlist; a word
+// starting with `+` or any other `-` word is not.
+function isReadOnlyTail(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const word = args[i];
+    if (TAIL_COUNT_FLAG.test(word)) {
+      i += 1;
+      if (!DIGITS.test(args[i] ?? "")) return false;
+    } else if (word.startsWith("+")) {
+      return false;
+    } else if (word.startsWith("-") && word !== "-") {
+      if (!TAIL_ALLOWED_WORD.test(word)) return false;
+    }
+  }
+  return true;
+}
+
+// True when the word, or a redirection's target, is a path with a `dev`
+// component (`/dev/zero`, `//dev/zero`, `../../dev/zero`, `</dev/urandom`)
+// other than `/dev/null`. A word with no `/` and no redirection operator is
+// not a path. A component named `dev` anywhere refuses, since a relative
+// path's directory is not known here.
+function readsDevice(word) {
+  const target = word.replace(REDIRECTION_OPERATOR, "");
+  const isPath = target !== word || target.includes("/");
+  if (!isPath || target === "" || posix.normalize(target) === "/dev/null") {
+    return false;
+  }
+  return target.split("/").includes("dev");
+}
+
+// A pipe stage running a READ_ONLY command that does not follow a file
+// (`tail -f`) or read a device (`/dev/zero`).
+function isReadOnlyStage(stage) {
+  const words = tokenizeRaw(stage).map(unquoted);
+  if (!READ_ONLY.has(words[0])) return false;
+  if (words.some(readsDevice)) return false;
+  return words[0] !== "tail" || isReadOnlyTail(words.slice(1));
+}
+
+// A list element whose every pipe stage is read-only.
+function isReadOnly(element) {
+  if (hasSubstitution(element)) return false;
+  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
+  if (stages === null || stages.length === 0) return false;
+  return stages.every(isReadOnlyStage);
+}
+
+// True when the element opens with `timeout <N>` once leading assignments and an
+// `env` carrying only `-C DIR` and assignments are set aside, holds no
+// substitution, and every later pipe stage is bounded the same way or read-only.
+function isBounded(element) {
+  if (hasSubstitution(element)) return false;
+  const stages = splitOutsideQuotes(element, pipeSeparatorWidth);
+  if (stages === null || stages.length === 0) return false;
+  const [first, ...rest] = stages;
+  if (!opensBounded(first)) return false;
+  return rest.every((stage) => opensBounded(stage) || isReadOnlyStage(stage));
+}
+
+function opensBounded(stage) {
+  const words = tokenizeRaw(stage);
+  let i = 0;
+  while (i < words.length && ASSIGNMENT.test(words[i])) i += 1;
+  if (words[i] === "env") {
+    i += 1;
+    for (;;) {
+      if (words[i] === "-C" || words[i] === "--chdir") i += 2;
+      else if (/^(?:-C.|--chdir=)/.test(words[i] ?? "")) i += 1;
+      else if (ASSIGNMENT.test(words[i] ?? "")) i += 1;
+      else break;
+    }
+  }
+  return opensWithTimeout(words.slice(i).join(" "));
+}
+
+// A background command is bounded when every list element is setup, read-only
+// or bounded by its own timeout, and at least one is bounded.
 function isUnboundedBackground(command) {
-  const trimmed = command.trim();
-  return !opensWithTimeout(trimmed) || hasTopLevelListSeparator(trimmed);
+  const elements = splitOutsideQuotes(command.trim(), listSeparatorWidth);
+  if (elements === null) return true;
+  let bounded = 0;
+  for (const element of elements) {
+    if (isSetup(element) || isReadOnly(element)) continue;
+    if (!isBounded(element)) return true;
+    bounded += 1;
+  }
+  return bounded === 0;
 }
 
 function blockUnboundedLoop() {
@@ -170,11 +373,16 @@ function blockUnboundedLoop() {
 function blockUnboundedBackground() {
   process.stderr.write(
     "Blocked by block-sleep-poll hook: a run_in_background command has no timeout " +
-      "of its own, so it must open with `timeout <N>` (N not zero) and hold no " +
-      "later `;`, `&&`, `||`, lone `&`, or newline outside quotes.\n" +
-      "Wrap the whole command -- `timeout 900 npm run lint`, or " +
-      "`timeout 900 sh -c 'cd apps/web && npm test'` -- or, where no `timeout` " +
-      "is on PATH, run it in the foreground with a raised timeout.\n",
+      "of its own, so every command it runs must open with `timeout <N>` (N not " +
+      "zero), apart from a leading `cd DIR` or `VAR=value` and a trailing `echo` " +
+      "or read-only `tail`/`grep`/`cat`, and every stage piped after it must be " +
+      "bounded the same way or read-only. A read-only command may not follow a file " +
+      "or read a device, and no lone `&`, heredoc, `$(...)`, backtick or `<(...)` " +
+      "may appear outside single quotes.\n" +
+      "Bound each command -- `timeout 900 npm run lint > /tmp/lint.log 2>&1; " +
+      "echo exit=$?`, or `timeout 900 sh -c 'npm run build && npm test'` -- or, " +
+      "where no `timeout` is on PATH, run it in the foreground with a raised " +
+      "timeout.\n",
   );
   process.exit(2);
 }

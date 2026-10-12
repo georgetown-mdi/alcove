@@ -21,7 +21,7 @@ import {
   COMMAND_PREFIX_WORDS,
   peelCommandPrefix,
   splitSegments,
-  tokenize,
+  tokenizeRaw,
 } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
@@ -161,6 +161,33 @@ const CONFIG_ACTION_MODES = new Map([
   ["remove-section", "clear"],
 ]);
 
+// An unquoted redirection word (`2>/dev/null`, `>`, `&>log`, `2>&1`), which is
+// the shell's and not an argument of the command; group 1 is its target, empty
+// when the target is the next word. Read on raw words, so a quoted value such
+// as `">x"` stays an argument. A word opening `>(` or `<(` is a process
+// substitution, which expands to an argument, and is not matched.
+const REDIRECTION = /^(?![<>]\()(?:\d*|&)(?:>>?|<|>&|<&)\|?(.*)$/;
+
+// A segment's words with its redirections and their targets dropped, quotes
+// then stripped as `tokenize` strips them.
+function argumentWords(segment) {
+  const words = [];
+  let skipTarget = false;
+  for (const raw of tokenizeRaw(segment)) {
+    if (skipTarget) {
+      skipTarget = false;
+      continue;
+    }
+    const redirection = REDIRECTION.exec(raw);
+    if (redirection !== null) {
+      skipTarget = redirection[1] === "";
+      continue;
+    }
+    words.push(raw.replace(/['"]/g, ""));
+  }
+  return words;
+}
+
 // The identity key a `git config` invocation records a value under, or null when
 // it only reads or clears one. Clearing is left alone: it takes an identity out
 // of resolution rather than substituting another, which leaves git resolving from
@@ -209,7 +236,7 @@ function main() {
   if (!command.includes("git") && !command.includes("GIT_")) process.exit(0);
 
   for (const segment of splitSegments(command)) {
-    const { assignments, rest } = splitCommandPrefix(tokenize(segment));
+    const { assignments, rest } = splitCommandPrefix(argumentWords(segment));
     const variable = identityAssignment(assignments);
     if (variable) {
       block(`'${variable}=...' sets the commit identity in the environment`);

@@ -5,7 +5,6 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,11 +16,15 @@ const HOOK = fileURLToPath(
   new URL("./require-clean-tree-for-review.mjs", import.meta.url),
 );
 
+const RECORDER = fileURLToPath(
+  new URL("./record-review-round-lock.mjs", import.meta.url),
+);
+
 // Run the hook as a real subprocess with a synthesized PreToolUse payload on
 // stdin. Exit 0 allows the Workflow call, exit 2 blocks it and feeds stderr back
 // to Claude, so both are expected outcomes and neither may throw.
-function runHook(payload) {
-  const { status, stderr } = spawnSync("node", [HOOK], {
+function runHook(payload, hook = HOOK) {
+  const { status, stderr } = spawnSync("node", [hook], {
     input: JSON.stringify(payload),
     encoding: "utf8",
   });
@@ -40,6 +43,16 @@ const review = (targetRef, rest = {}) => ({
 
 function workflowIn(cwd, tool_input = PANEL) {
   return runHook({ tool_name: "Workflow", tool_input, cwd });
+}
+
+// What the harness does once the gate and every other hook let a call through:
+// run it, then the PostToolUse hook that writes the round lock.
+function launched(cwd, tool_input) {
+  const { status } = runHook(
+    { tool_name: "Workflow", tool_input, cwd },
+    RECORDER,
+  );
+  expect(status).toBe(0);
 }
 
 // A throwaway repo with `untracked` extra files left uncommitted, and `scratch`
@@ -235,7 +248,7 @@ describe("require-clean-tree-for-review hook", () => {
     expect(stderr).toContain("does not resolve to a commit");
   });
 
-  it("blocks a multi-target round when any one target is dirty, and locks none", () => {
+  it("blocks a multi-target round when any one target is dirty", () => {
     const main = track(makeRepo());
     track(addWorktree(main, "clean-one"));
     const messy = track(addWorktree(main, "messy-one"));
@@ -249,32 +262,15 @@ describe("require-clean-tree-for-review hook", () => {
     expect(existsSync(lockFor(main, "clean-one"))).toBe(false);
   });
 
-  it("locks every target of a multi-target round that passes", () => {
+  it("writes no lock itself, so a call another hook refuses leaves the retry free", () => {
+    // The harness runs a call's hooks in parallel: a lock written here for a
+    // call a sibling hook or a permission prompt then refused would refuse the
+    // retry as a round in flight.
     const main = track(makeRepo());
-    track(addWorktree(main, "one"));
-    track(addWorktree(main, "two"));
-    expect(workflowIn(main, review(["one", "two"])).status).toBe(0);
-    for (const branch of ["one", "two"]) {
-      expect(JSON.parse(readFileSync(lockFor(main, branch), "utf8")).ref).toBe(
-        branch,
-      );
-    }
-  });
-
-  it("rolls back the locks it wrote when a later one cannot be written", () => {
-    // A directory where the second lock file belongs makes its write fail, aged
-    // past the TTL so the round reaches the write rather than being refused as
-    // in flight; the first target's lock must not survive the refused call.
-    const main = track(makeRepo());
-    track(addWorktree(main, "one"));
-    track(addWorktree(main, "two"));
-    mkdirSync(lockFor(main, "two"), { recursive: true });
-    const aged = new Date(Date.now() - 24 * 60 * 60_000);
-    utimesSync(lockFor(main, "two"), aged, aged);
-    const { status, stderr } = workflowIn(main, review(["one", "two"]));
-    expect(status).toBe(2);
-    expect(stderr).toContain("could not write the in-flight round lock");
-    expect(existsSync(lockFor(main, "one"))).toBe(false);
+    track(addWorktree(main, "feature"));
+    expect(workflowIn(main, review("feature")).status).toBe(0);
+    expect(existsSync(lockFor(main, "feature"))).toBe(false);
+    expect(workflowIn(main, review("feature")).status).toBe(0);
   });
 
   it("gates a round named by a saved workflow's name", () => {
@@ -284,7 +280,7 @@ describe("require-clean-tree-for-review hook", () => {
     track(addWorktree(main, "feature"));
     const named = { name: "light-review", args: { targetRef: "feature" } };
     expect(workflowIn(main, named).status).toBe(0);
-    expect(existsSync(lockFor(main, "feature"))).toBe(true);
+    launched(main, named);
     expect(workflowIn(main, named).status).toBe(2);
     expect(
       workflowIn(main, { name: "light-review", args: { docs: [] } }).stderr,
@@ -342,6 +338,7 @@ describe("require-clean-tree-for-review hook", () => {
     const main = track(makeRepo());
     track(addWorktree(main, "feature"));
     expect(workflowIn(main, review("feature")).status).toBe(0);
+    launched(main, review("feature"));
     const { status, stderr } = workflowIn(main, review("feature"));
     expect(status).toBe(2);
     expect(stderr).toContain("has not booked its result yet");
@@ -354,6 +351,7 @@ describe("require-clean-tree-for-review hook", () => {
     const path = writeLockAgedMinutes(main, "feature", 24 * 60);
     expect(workflowIn(main, review("feature")).status).toBe(0);
     // The stale lock is replaced by this round's own, not merely ignored.
+    launched(main, review("feature"));
     const age =
       Date.now() - Date.parse(JSON.parse(readFileSync(path, "utf8")).startedAt);
     expect(age).toBeLessThan(60_000);
@@ -377,7 +375,9 @@ describe("require-clean-tree-for-review hook", () => {
       args: { targetRef: "feature" },
     };
     expect(workflowIn(main, targeted).status).toBe(0);
+    launched(main, targeted);
     expect(existsSync(lockFor(main, "feature"))).toBe(false);
+    expect(workflowIn(main, targeted).status).toBe(0);
     dirty(tree);
     expect(workflowIn(main, targeted).status).toBe(2);
   });
