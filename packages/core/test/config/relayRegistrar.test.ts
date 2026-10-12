@@ -39,6 +39,24 @@ test("a registrar with an https address and an exchange id parses", () => {
   });
 });
 
+// The reference relay's front answers the registrar on 443 under a name of its
+// own, so the address a refusal suggests names no port.
+test("a registrar url naming no port parses, and a refusal's example names none", () => {
+  const result = webrtc({
+    url: "https://registrar.example.org",
+    exchange_id: "exchange-1",
+  });
+  expect(result.success).toBe(true);
+  expect(
+    messages(webrtc({ url: "registrar.example.org", exchange_id: "x-1" })),
+  ).toContain("write it as https://registrar.example.org");
+  expect(
+    messages(
+      webrtc({ url: "http://registrar.example.org", exchange_id: "x-1" }),
+    ),
+  ).toMatch(/for example https:\/\/registrar\.example\.org(?!:)/);
+});
+
 test.each([
   ["http://relay.example.org:8443", "https://"],
   ["https://relay.example.org:8443/exchanges", "no path"],

@@ -4,13 +4,13 @@
 #
 #   install.sh [--skip-verify]
 #
-# What it does, in order: installs a container runtime, builds the image from the
-# pinned Dockerfile beside this file, creates the data directory that holds the
-# per-exchange secrets table, obtains a certificate if none is present, renders
-# the configuration, installs the relay's unit and its three timers, and starts
-# the relay, and the registrar where the host holds its token. It then runs
-# verify.sh, which is the only step that says whether the result carries an
-# exchange.
+# What it does, in order: installs a container runtime, builds the relay's image
+# and the 443 front's from the pinned Dockerfiles, creates the data directory
+# that holds the per-exchange secrets table, obtains a certificate if none is
+# present, renders and checks the configurations, installs the units and the
+# three timers, and starts the relay, the front, and the registrar where the
+# host holds its token. It then runs verify.sh, which is the only step that says
+# whether the result carries an exchange.
 #
 # The runtime is podman where the distribution carries it and docker where it
 # does not, and that decides one thing: which file defines alcove-relay.service.
@@ -172,6 +172,12 @@ case "$RUNTIME" in
   podman) podman build --pull=newer -t "$IMAGE" "$HERE" ;;
   docker) docker build --pull -t "$IMAGE" "$HERE" ;;
 esac
+FRONT_IMAGE=localhost/alcove-relay-front:installed
+log "building $FRONT_IMAGE from the pinned base in $HERE/front/Dockerfile"
+case "$RUNTIME" in
+  podman) podman build --pull=newer -t "$FRONT_IMAGE" "$HERE/front" ;;
+  docker) docker build --pull -t "$FRONT_IMAGE" "$HERE/front" ;;
+esac
 
 # The account the image runs as, asked of the image rather than assumed: the ACME
 # deploy hook has to hand it a readable private key, and the measurement record
@@ -204,8 +210,9 @@ install -d -m 700 -o "$IMAGE_UID" -g "$IMAGE_GID" /var/lib/alcove-relay
 install -d -m 755 "$LIBEXEC" "$LIBEXEC/aws" "$LIBEXEC/certs"
 install -m 755 "$HERE/render-config.sh" "$HERE/verify.sh" "$HERE/mint-credential.sh" \
   "$HERE/register-exchange.sh" "$HERE/revoke-exchange.sh" "$HERE/sweep-exchanges.sh" \
-  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$LIBEXEC/"
-install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/exchange-keys.sh" "$HERE/relay_table.py" "$LIBEXEC/"
+  "$HERE/import-legacy-mapping.sh" "$HERE/registrar.py" "$HERE/render-front.sh" "$LIBEXEC/"
+install -m 644 "$HERE/turnserver.conf.tmpl" "$HERE/front.conf.tmpl" "$HERE/exchange-keys.sh" \
+  "$HERE/relay_table.py" "$LIBEXEC/"
 install -m 755 "$HERE/aws/external-ip.sh" "$LIBEXEC/aws/"
 install -m 755 "$HERE/certs/renew.sh" "$HERE/certs/deploy-hook.sh" "$LIBEXEC/certs/"
 
@@ -228,32 +235,51 @@ fi
 # --- the configuration ------------------------------------------------------
 "$LIBEXEC/render-config.sh"
 
+# The front's configuration is checked by nginx -t in the front's image before
+# it replaces the live file, so a route that nginx refuses leaves the running
+# front on the configuration it has.
+FRONT_CONF="$ETC/front.conf"
+FRONT_CANDIDATE="$(mktemp "$FRONT_CONF.XXXXXX")"
+trap 'rm -f "$FRONT_CANDIDATE"' EXIT
+"$LIBEXEC/render-front.sh" > "$FRONT_CANDIDATE" \
+  || die "the front's routes in $ENV_FILE are refused (above); $FRONT_CONF is unchanged"
+chmod 644 "$FRONT_CANDIDATE"
+"$RUNTIME" run --rm --network host --read-only --tmpfs /tmp \
+  -v "$FRONT_CANDIDATE:/etc/nginx/nginx.conf:ro" \
+  --entrypoint nginx "$FRONT_IMAGE" -t \
+  || die "the rendered front configuration fails nginx -t; $FRONT_CONF and the running front are unchanged. Fix front.conf.tmpl or the routes in $ENV_FILE and run again"
+mv "$FRONT_CANDIDATE" "$FRONT_CONF"
+trap - EXIT
+
 # --- units ------------------------------------------------------------------
 # One service name whichever runtime this is: certs/deploy-hook.sh restarts
 # alcove-relay.service by name and alcove-relay-verify.service requires it, so
 # only the file that defines it differs.
-if [ "$RUNTIME" = podman ]; then
-  install -d -m 755 "$QUADLET_DIR"
-  install -m 644 "$HERE/alcove-relay.container" "$QUADLET_DIR/"
-  STALE_UNIT="$UNIT_DIR/alcove-relay.service"
-else
-  install -m 644 "$HERE/alcove-relay-docker.service" "$UNIT_DIR/alcove-relay.service"
-  STALE_UNIT="$QUADLET_DIR/alcove-relay.container"
-fi
-# A unit left by an install on the other runtime would supervise a second
-# container on the same ports, and a plain unit of this name shadows the Quadlet
-# generator's output besides.
-if [ -e "$STALE_UNIT" ]; then
-  log "removing $STALE_UNIT, left by an install on the other runtime"
-  systemctl stop alcove-relay.service || true
-  # A plain unit (the docker shape) was `systemctl enable`d at install time and
-  # so left a multi-user.target.wants symlink; a Quadlet unit (the podman
-  # shape) is generator-provided and was never enabled this way, so disabling
-  # it fails with nothing to disable. Tolerated the same way either shape
-  # answers, so a docker-to-podman switch does not leave that symlink dangling.
-  systemctl disable alcove-relay.service 2>/dev/null || true
-  rm -f "$STALE_UNIT"
-fi
+for service in alcove-relay alcove-relay-front; do
+  if [ "$RUNTIME" = podman ]; then
+    install -d -m 755 "$QUADLET_DIR"
+    install -m 644 "$HERE/$service.container" "$QUADLET_DIR/"
+    STALE_UNIT="$UNIT_DIR/$service.service"
+  else
+    install -m 644 "$HERE/$service-docker.service" "$UNIT_DIR/$service.service"
+    STALE_UNIT="$QUADLET_DIR/$service.container"
+  fi
+  # A unit left by an install on the other runtime would supervise a second
+  # container on the same ports, and a plain unit of this name shadows the
+  # Quadlet generator's output besides.
+  if [ -e "$STALE_UNIT" ]; then
+    log "removing $STALE_UNIT, left by an install on the other runtime"
+    systemctl stop "$service.service" || true
+    # A plain unit (the docker shape) was `systemctl enable`d at install time
+    # and so left a multi-user.target.wants symlink; a Quadlet unit (the podman
+    # shape) is generator-provided and was never enabled this way, so disabling
+    # it fails with nothing to disable. Tolerated the same way either shape
+    # answers, so a docker-to-podman switch does not leave that symlink
+    # dangling.
+    systemctl disable "$service.service" 2>/dev/null || true
+    rm -f "$STALE_UNIT"
+  fi
+done
 install -m 644 "$HERE/certs/alcove-relay-cert.service" "$HERE/certs/alcove-relay-cert.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-verify.service" "$HERE/alcove-relay-verify.timer" "$UNIT_DIR/"
 install -m 644 "$HERE/alcove-relay-sweep.timer" "$UNIT_DIR/"
@@ -290,12 +316,17 @@ if [ "$RUNTIME" = docker ]; then
   # A Quadlet-generated service is enabled by the unit's own [Install] section at
   # generation time. A plain unit file is not enabled by being installed, and a
   # host that rebooted without this would come up with no relay.
-  systemctl enable alcove-relay.service \
-    || die "alcove-relay.service could not be enabled; the relay would not come back after a reboot"
+  systemctl enable alcove-relay.service alcove-relay-front.service \
+    || die "alcove-relay.service and alcove-relay-front.service could not be enabled; the relay would not come back after a reboot"
 fi
+# coturn first: on a host where an earlier install had coturn on 443, its
+# restart onto loopback frees the port the front then binds.
 systemctl restart alcove-relay.service \
   || die "alcove-relay.service did not start; journalctl -u alcove-relay.service carries coturn's own output"
 log "alcove-relay.service started"
+systemctl restart alcove-relay-front.service \
+  || die "alcove-relay-front.service did not start, so nothing answers on 443; journalctl -u alcove-relay-front.service, and ss -ltnp 'sport = :443' for another listener on the port"
+log "alcove-relay-front.service started on 443"
 
 # An install from before the mapping moved into the secrets table kept it as a
 # text file under /etc, holding every key in plaintext; its exchanges are
@@ -320,7 +351,11 @@ if [ "$REGISTRAR" = 1 ]; then
     || die "alcove-relay-registrar.service could not be enabled; the registrar would not come back after a reboot"
   systemctl restart alcove-relay-registrar.service \
     || die "alcove-relay-registrar.service did not start; journalctl -u alcove-relay-registrar.service"
-  log "alcove-relay-registrar.service started on port ${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
+  if [ -n "${ALCOVE_RELAY_REGISTRAR_NAME:-}" ]; then
+    log "alcove-relay-registrar.service started on port ${ALCOVE_RELAY_REGISTRAR_PORT:-8443}, and on 443 as $ALCOVE_RELAY_REGISTRAR_NAME through the front"
+  else
+    log "alcove-relay-registrar.service started on port ${ALCOVE_RELAY_REGISTRAR_PORT:-8443}; set ALCOVE_RELAY_REGISTRAR_NAME to reach it on 443"
+  fi
 else
   systemctl disable --now alcove-relay-registrar.service 2>/dev/null || true
   log "no $REGISTRAR_TOKEN_FILE, so the registrar is not running"
@@ -337,9 +372,9 @@ log "verifying"
 # against the public name, even while the relay serves correctly to everyone
 # else. Measured on the relay instance 2026-09-03. render-config.sh already
 # derived this host's private address from ALCOVE_RELAY_EXTERNAL_IP_HELPER to
-# render listening-ip=; read it back from there rather than asking the helper
-# again.
+# render relay-ip=; read it back from there rather than asking the helper
+# again. The front listens on every address, so the probes reach it there.
 CONF="${ALCOVE_RELAY_CONF:-$ETC/turnserver.conf}"
-PRIVATE_IP="$(sed -n 's/^listening-ip=//p' "$CONF" | head -1)"
-[ -n "$PRIVATE_IP" ] || die "could not read listening-ip from $CONF; render-config.sh should have written it"
+PRIVATE_IP="$(sed -n 's/^relay-ip=//p' "$CONF" | head -1)"
+[ -n "$PRIVATE_IP" ] || die "could not read relay-ip from $CONF; render-config.sh should have written it"
 ALCOVE_RELAY_VERIFY_CONNECT="$PRIVATE_IP" "$LIBEXEC/verify.sh"

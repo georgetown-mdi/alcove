@@ -8,10 +8,12 @@
 # shapes assumed in advance. Fix what a later run gets wrong rather than
 # loosening a probe until it passes.
 #
-# Five probes, in the order a failure matters:
+# Six probes, in the order a failure matters:
 #
 #   handshake     a real TLS handshake on 443/tcp, and the certificate the relay
 #                 serves for its own realm
+#   front routes  each name ALCOVE_RELAY_FRONT_ROUTES routes, answered on 443
+#                 with a certificate that verifies for it
 #   allocation    a real TURN allocation through that handshake, with a
 #                 credential minted for this run
 #   internal-peer the same client asking to reach the cloud metadata endpoint and
@@ -24,9 +26,10 @@
 #   registrar     where the host holds a registrar token: a call without the
 #                 token, or with a wrong one, is refused and writes nothing, and
 #                 a registration and a revocation with it reach the mapping and
-#                 the table. Skipped, and said so, where the host holds none
+#                 the table, through the front where the registrar has a name
+#                 of its own. Skipped, and said so, where the host holds none
 #
-# The third is the one that cannot be inferred from the second: a relay that
+# internal-peer is the one that cannot be inferred from allocation: a relay that
 # allocates is working, and a relay that allocates toward its own VPC and the
 # metadata endpoint is a proxy into the deployment. It passes only on an observed
 # refusal. A probe that could not be asked at all reports UNCLEAR and fails the
@@ -176,6 +179,22 @@ else
   report pass "TLS handshake on $REALM:443"
   certificate_report "$HS"
 fi
+
+# --- front routes ----------------------------------------------------------------
+# Each name ALCOVE_RELAY_FRONT_ROUTES routes must reach a service that presents
+# a certificate verifying for that name. One the front sent to coturn instead
+# presents the realm's certificate and fails here.
+read -r -a FRONT_ROUTES <<< "${ALCOVE_RELAY_FRONT_ROUTES:-}"
+for route in ${FRONT_ROUTES[@]+"${FRONT_ROUTES[@]}"}; do
+  name="${route%%=*}"
+  if ROUTE_HS="$(echo | bounded 20 openssl s_client -connect "$CONNECT:443" -servername "$name" \
+    -verify_hostname "$name" -verify_return_error 2>&1)"; then
+    report pass "the front routes $name to a service holding a certificate for it"
+  else
+    report fail "the front did not reach a service holding a certificate for $name" \
+      "$(printf '%s' "$ROUTE_HS" | tr '\n' ' ' | cut -c1-160)"
+  fi
+done
 
 # --- keys for this run --------------------------------------------------------
 # Two exchanges registered under fixed ids, so a run that died before its cleanup
@@ -375,15 +394,23 @@ fi
 
 # --- the registrar ---------------------------------------------------------------
 # Configured when the host holds the relay-owner token. Every request goes over
-# HTTPS to the realm's name, and the token and key reach curl on stdin, never
-# its command line. Judged by the status code and by reading the mapping and the
-# table back, never by the response text.
+# HTTPS -- to the registrar's own name on 443, through the front, where the host
+# routes one, and otherwise to the realm's name on the registrar's port -- and
+# the token and key reach curl on stdin, never its command line. Judged by the
+# status code and by reading the mapping and the table back, never by the
+# response text.
 REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-$ETC/registrar-token}"
-REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
+if [ -n "${ALCOVE_RELAY_REGISTRAR_NAME:-}" ]; then
+  REGISTRAR_HOST="$ALCOVE_RELAY_REGISTRAR_NAME"
+  REGISTRAR_PORT=443
+else
+  REGISTRAR_HOST="$REALM"
+  REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
+fi
 registrar_status() {
   local method="$1" token="$2" body="$3"
   {
-    printf 'url = "https://%s:%s/exchanges/%s"\n' "$REALM" "$REGISTRAR_PORT" "$VERIFY_R"
+    printf 'url = "https://%s:%s/exchanges/%s"\n' "$REGISTRAR_HOST" "$REGISTRAR_PORT" "$VERIFY_R"
     printf 'request = "%s"\n' "$method"
     printf 'header = "Alcove-Relay-Verify-Run: 1"\n'
     [ -z "$token" ] || printf 'header = "Authorization: Bearer %s"\n' "$token"
@@ -391,7 +418,7 @@ registrar_status() {
       printf 'header = "Content-Type: application/json"\n'
       printf 'data = "%s"\n' "${body//\"/\\\"}"
     fi
-  } | bounded 150 curl -sS -K - --connect-to "$REALM:$REGISTRAR_PORT:$CONNECT:$REGISTRAR_PORT" \
+  } | bounded 150 curl -sS -K - --connect-to "$REGISTRAR_HOST:$REGISTRAR_PORT:$CONNECT:$REGISTRAR_PORT" \
     -o /dev/null -w '%{http_code}' 2>/dev/null
 }
 # 0 when the mapping points the id at this run's key and the table lists it, 3

@@ -49,6 +49,26 @@ EMAIL="${ALCOVE_RELAY_ACME_EMAIL:-}"
 PROVIDER="${ALCOVE_RELAY_DNS_PROVIDER:-cloudflare}"
 CLIENT="${ALCOVE_RELAY_ACME_CLIENT:-lego}"
 
+# The registrar's own name, where the host's 443 front routes one to it, is a
+# second name on the same certificate. The realm stays the first, which names
+# the client's stored files. A certificate issued before the name was set
+# covers the realm alone until a forced renewal (ALCOVE_RELAY_RENEW_FORCE=1)
+# reissues it; verify.sh's registrar probe fails until then.
+REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
+LEGO_DOMAINS=(--domains "$REALM")
+ACMESH_DOMAINS=(-d "$REALM")
+NAMES="$REALM"
+if [ -n "$REGISTRAR_NAME" ] && [ "$REGISTRAR_NAME" != "$REALM" ]; then
+  LEGO_DOMAINS+=(--domains "$REGISTRAR_NAME")
+  ACMESH_DOMAINS+=(-d "$REGISTRAR_NAME")
+  NAMES="$REALM and $REGISTRAR_NAME"
+fi
+case "${ALCOVE_RELAY_RENEW_FORCE:-}" in
+  '') RENEW_DAYS=30; ACMESH_FORCE=() ;;
+  1) RENEW_DAYS=365; ACMESH_FORCE=(--force) ;;
+  *) die "ALCOVE_RELAY_RENEW_FORCE is '${ALCOVE_RELAY_RENEW_FORCE}'; set it to 1 to force a renewal, or leave it unset" ;;
+esac
+
 install -d -m 700 "$ACME_HOME"
 
 case "$CLIENT" in
@@ -60,9 +80,9 @@ case "$CLIENT" in
     # lego v5.4.1: the v4 top-level flags moved under `run`, and the v4
     # `renew` command is gone.
     if [ -f "$ACME_HOME/certificates/$REALM.crt" ]; then
-      log "renewing the certificate for $REALM through $PROVIDER (no-op outside the window)"
+      log "renewing the certificate for $NAMES through $PROVIDER (renew-days $RENEW_DAYS; no-op outside the window)"
     else
-      log "issuing a first certificate for $REALM through $PROVIDER"
+      log "issuing a first certificate for $NAMES through $PROVIDER"
     fi
     # The provider credential must reach lego's process environment: a plain
     # `.` sets shell variables the client never sees, so export-all around a
@@ -74,8 +94,8 @@ case "$CLIENT" in
       # shellcheck disable=SC1090
       . "$ACME_ENV"
       set +a
-      lego run --accept-tos --email "$EMAIL" --dns "$PROVIDER" --domains "$REALM" \
-        --path "$ACME_HOME" --renew-days 30
+      lego run --accept-tos --email "$EMAIL" --dns "$PROVIDER" "${LEGO_DOMAINS[@]}" \
+        --path "$ACME_HOME" --renew-days "$RENEW_DAYS"
     )
     SRC_CRT="$ACME_HOME/certificates/$REALM.crt"
     SRC_KEY="$ACME_HOME/certificates/$REALM.key"
@@ -87,8 +107,8 @@ case "$CLIENT" in
       # shellcheck disable=SC1090
       . "$ACME_ENV"
       set +a
-      acme.sh --home "$ACME_HOME" --issue --dns "dns_$PROVIDER" -d "$REALM" \
-        --accountemail "$EMAIL"
+      acme.sh --home "$ACME_HOME" --issue --dns "dns_$PROVIDER" "${ACMESH_DOMAINS[@]}" \
+        --accountemail "$EMAIL" ${ACMESH_FORCE[@]+"${ACMESH_FORCE[@]}"}
     ) || [ $? -eq 2 ] # 2 is acme.sh for "not due for renewal"
     SRC_CRT="$ACME_HOME/$REALM/fullchain.cer"
     SRC_KEY="$ACME_HOME/$REALM/$REALM.key"

@@ -21,7 +21,7 @@
 # on a stand-in Fedora 42 host, not an instance.
 
 [Unit]
-Description=alcove WebRTC relay (coturn, TURNS on 443/tcp)
+Description=alcove WebRTC relay (coturn, TURNS on loopback behind the 443 front)
 Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
 Requires=docker.service
 After=docker.service network-online.target

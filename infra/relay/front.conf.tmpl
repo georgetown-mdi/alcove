@@ -1,0 +1,32 @@
+# The relay host's one listener on 443/tcp: an nginx stream proxy that reads
+# the TLS ClientHello's server name and passes the connection on unchanged.
+# It terminates no TLS and holds no key; each service behind it serves its own
+# certificate. render-front.sh writes the routes into the map below and
+# install.sh writes the result to /etc/alcove-relay/front.conf.
+#
+# A connection whose server name no route claims -- the realm's own name, no
+# server name, or bytes that are not TLS -- goes to coturn's TURNS listener on
+# loopback, the port turnserver.conf.tmpl sets, so a TURN client reaches coturn
+# whatever server name it sends. scripts/relay-front.test.mjs holds the two
+# files to the same port, and holds this file to writing no access log.
+worker_processes 1;
+error_log /dev/stderr warn;
+pid /tmp/nginx.pid;
+events { worker_connections 1024; }
+stream {
+  access_log off;
+  map $ssl_preread_server_name $alcove_route {
+    default 127.0.0.1:5349;
+    __ROUTES__
+  }
+  server {
+    listen 443;
+    ssl_preread on;
+    preread_timeout 10s;
+    proxy_connect_timeout 5s;
+    # Longer than coturn's max-allocate-lifetime, so an allocation its client
+    # refreshes is not cut by the front between refreshes.
+    proxy_timeout 900s;
+    proxy_pass $alcove_route;
+  }
+}

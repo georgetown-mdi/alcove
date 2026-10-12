@@ -4,11 +4,18 @@ The units, the TLS front's configuration and the certificate renewal that run th
 The project runs it on the standing relay's instance, beside coturn ([`../relay/README.md`](../relay/README.md)).
 What the deployment measured is recorded in [the deployment record](../../docs/notes/webrtc-relay-deployment.md#does-the-coordination-server-leave-the-web-apps-deployment).
 
-## Port 8443, and the limit it sets
+## Port 8443, and 443 through the relay's front
 
-The front listens on **8443**, not 443, because coturn listens on 443 on the same host for TURN over TLS.
-A party whose network admits outbound TCP only to 443 cannot reach the broker there.
-That remains so until 443 is split between coturn and the front on the one host; until then, the broker's URL names `:8443`.
+The front listens on **8443**, because the relay's front holds 443 on the same host ([`../relay/README.md`, The 443 front](../relay/README.md#the-443-front)).
+That front passes a connection asking for the broker's name, TLS unopened, to this one on loopback, where a host's `relay.env` routes it:
+
+```sh
+ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"
+```
+
+The broker's URL then names no port (`wss://signal.example.org/api/`), and a party whose network admits outbound TCP only to 443 reaches it.
+The published URL is the web build's `VITE_SIGNALING_SERVER_URL` ([docs/DEPLOYMENT.md](../../docs/DEPLOYMENT.md)); an invitation or a kept exchange that names `:8443` reaches the broker only while the host's firewall admits 8443.
+A connection through 443 reaches this front from `127.0.0.1`, so its access log line names that address rather than the client's.
 
 The front listens on IPv4 only.
 
@@ -62,7 +69,7 @@ useradd --system --user-group --no-create-home --shell /usr/sbin/nologin alcove-
 It refuses to run when only one of the user and the group exists.
 The account needs no files of its own: the broker reads the root-owned tree under `/opt/alcove-broker` and Node under `/usr/local/lib/nodejs`, both readable by all, and nothing under `/etc/alcove-broker`.
 
-The name's DNS record points at the host and is DNS-only, and the host's firewall admits TCP 8443; both are the operator's, outside this directory.
+The name's DNS record points at the host and is DNS-only, and the host's firewall admits TCP 443 for the relay's front, and TCP 8443 while any client still names that port; both are the operator's, outside this directory.
 The ACME contact and the DNS provider credential come from the relay's `/etc/alcove-relay/acme.env` by default ([`../relay/certs/env.example`](../relay/certs/env.example)); `ALCOVE_BROKER_ACME_ENV` in `broker.env` names another file.
 
 ## Logging

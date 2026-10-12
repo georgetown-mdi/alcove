@@ -165,6 +165,22 @@ updates:
       # ecosystems; the semver-*-days keys are supported for npm only.
       default-days: 7
 
+  # The relay host's 443 front, the same nginx image. infra/relay/front/Dockerfile
+  # is a single pinned FROM that install.sh builds into the tag its units name.
+  # The front parses every client's first bytes on 443, so an nginx advisory
+  # reaches it.
+  - package-ecosystem: docker
+    directory: "/infra/relay/front"
+    target-branch: "staging"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      # Only default-days is valid for the docker and github-actions
+      # ecosystems; the semver-*-days keys are supported for npm only.
+      default-days: 7
+
   # GitHub Actions used by the workflows in .github/workflows. Every action is
   # tag-pinned (e.g. actions/checkout@v7) except cloudflare/wrangler-action,
   # which holds the Pages deploy token and is pinned to a commit with its

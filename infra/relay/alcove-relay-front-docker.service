@@ -1,0 +1,33 @@
+# The relay host's 443 front on a host that runs docker rather than podman.
+# install.sh puts this at /etc/systemd/system/alcove-relay-front.service.
+#
+# PAIRED WITH alcove-relay-front.container, the podman Quadlet unit. The two
+# carry the same image, the same mounts, and the same container flags; edit them
+# together. The directive-to-flag mapping is the one alcove-relay-docker.service
+# states.
+#
+# The front holds no key and terminates no TLS: it reads the server name from a
+# connection's first bytes and passes the connection to coturn, the registrar,
+# or a routed service on loopback (README.md, The 443 front).
+
+[Unit]
+Description=alcove relay front (nginx stream, 443/tcp)
+Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
+Requires=docker.service
+After=docker.service network-online.target alcove-relay.service
+Wants=network-online.target
+
+[Service]
+ExecStartPre=-/usr/bin/docker rm -f alcove-relay-front
+ExecStart=/usr/bin/docker run --rm --name alcove-relay-front \
+  --network host \
+  --read-only --tmpfs /tmp \
+  --log-driver journald \
+  -v /etc/alcove-relay/front.conf:/etc/nginx/nginx.conf:ro \
+  localhost/alcove-relay-front:installed
+ExecStop=-/usr/bin/docker stop alcove-relay-front
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

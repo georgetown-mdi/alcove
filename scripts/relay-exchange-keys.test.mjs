@@ -3146,6 +3146,26 @@ describe.skipIf(runningAsRoot)(
       );
       expect(result.stdout).not.toContain("SKIP     the registrar");
     });
+
+    // No front runs here, so nothing answers on 443: the probe's target is
+    // what the line names.
+    it("asks the registrar through the front on 443 where it has a name of its own", () => {
+      const host = fixtureHost();
+      const result = spawnSync(BASH, [join(relay, "verify.sh")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          ALCOVE_RELAY_REGISTRAR_NAME: "registrar.example.org",
+          ALCOVE_RELAY_REGISTRAR_PORT: "1",
+          ALCOVE_RELAY_VERIFY_CONNECT: "127.0.0.1",
+          ALCOVE_RELAY_VERIFY_WAIT: "0",
+        },
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  a registration with the token got no answer from 127.0.0.1:443",
+      );
+    });
   },
 );
 
@@ -3230,6 +3250,11 @@ describe("render-config.sh and the secrets table", () => {
       .filter((line) => !line.startsWith("#"));
     expect(settings).toContain("use-auth-secret");
     expect(settings).toContain("userdb=/var/lib/coturn/turndb");
+    // coturn listens on loopback behind the 443 front and relays from the
+    // private address the helper printed.
+    expect(settings).toContain("listening-ip=127.0.0.1");
+    expect(settings).toContain("relay-ip=10.0.0.5");
+    expect(settings).toContain("external-ip=192.0.2.10/10.0.0.5");
     expect(settings.some((line) => line.startsWith("static-auth-secret"))).toBe(
       false,
     );
