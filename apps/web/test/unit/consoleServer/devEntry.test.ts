@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { stripVTControlCharacters } from "node:util";
 
 import { afterEach, expect, test } from "vitest";
 
@@ -119,7 +120,14 @@ test("the dev script prints a boot refusal as one line and exits 1", async () =>
   const dev = spawnDev({ JOB_SFTP_CREDENTIAL_DIR: credentialDir });
 
   expect(await dev.exited).toBe(1);
-  expect(dev.output().trim().split("\n")).toEqual([
+  // Vite's dependency optimizer for the client runs alongside the boot and
+  // may log before the refusal; any other line is the console's own.
+  const viteClientLine = /^[^[]*\[vite\] \(client\) /;
+  const consoleLines = stripVTControlCharacters(dev.output())
+    .trim()
+    .split("\n")
+    .filter((line) => !viteClientLine.test(line));
+  expect(consoleLines).toEqual([
     "The console did not start: the pasted-credential scratch directory " +
       `${credentialDir} could not be created (ENOTDIR); set ` +
       "JOB_SFTP_CREDENTIAL_DIR to a directory the account this server runs " +
