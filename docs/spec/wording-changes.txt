@@ -9,4 +9,5 @@
 # only when the branch changes it.
 
 - The value is a normative constant, not operator-configurable, for the same reason the single-pass budget is not: it is what a partner-supplied frame's bounds are derived from. -> The value is fixed by the protocol and not operator-configurable, for the same reason the single-pass budget is not: it is what a partner-supplied frame's bounds are derived from.
-- - -> The 20 itself is an arbitrary working value, neither derived from a measurement nor a privacy or consent bound, and it is raised on request.
+- - -> The 20 itself is an arbitrary working value, neither derived from a measurement nor a privacy or consent bound.
+- - -> It can be raised on request; a raise is a protocol change for both parties, bounded by `MAX_KEY_CANDIDATE_WIDTH` and `MAX_EFFECTIVE_KEY_COUNT` below.
