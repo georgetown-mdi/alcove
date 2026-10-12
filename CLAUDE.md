@@ -4,7 +4,7 @@ Alcove does Privacy Preserving Record Linkage (PPRL) via Private Set Intersectio
 
 It is a npm workspaces monorepo (`packages/core`, `packages/peerjs-broker`, `apps/cli`, `apps/web`); apps consume packages, not the reverse.
 
-**Read `CONTRIBUTING.md` before your first edit or commit.** It holds the build/test/dev reference and every coding and commit convention (enforced by CI and review), not reproduced here in full. This file is only the complement: project operations and agent-specific rules.
+**Read `CONTRIBUTING.md` before your first edit or commit.** It holds the build/test/dev reference and every coding and commit convention (enforced by CI and review); this file holds only project operations and agent-specific rules.
 
 ## Applications
 
@@ -18,35 +18,17 @@ The console is NOT a store of named connections, a recurring-exchange or schedul
 
 ## Commands
 
-Non-obvious ones (full reference in `CONTRIBUTING.md`):
-
-```sh
-npm run build -w packages/core # required after any core change
-npm run test # unit tests only (root fans out to each workspace); run before pushing a core change -- the apps mock core
-npx vitest run path/to/file.test.ts # single test file, from workspace root
-```
+Rebuild core after any change to it (`npm run build -w packages/core`), and run `npm run test` before pushing it: the apps mock core. Single-file runs and the rest: `CONTRIBUTING.md`, Testing.
 
 ## GitHub project items
 
-Read and edit drafts by numeric ID (the `?itemId=N` URL value) or a `PVTI_` node id via the scripts -- never hand-write the gh/GraphQL. Run any with no args for usage.
-
-- `node .claude/scripts/fetch-issues.mjs <project> <itemId> ...` -- read; shows custom fields
-- `node .claude/scripts/edit-issue.mjs <project> <itemId> ...` -- edit status/title/body/fields
-- `node .claude/scripts/list-epic.mjs <project> "<Epic>"` -- list an epic's items by Order
-- `node .claude/scripts/list-issues.mjs <project>` -- list a board's non-Done items, fully paginated; `--all` includes Done, `--status NAME` filters, `--json` emits a machine array. A session choosing what to work on next prefers the `shortlist-backlog` skill over reading listings and bodies itself
-
-Create a draft (the one board op still on `gh`): `gh project item-create <project> --owner georgetown-mdi --title "..." --body "..."`.
+Read and edit board items only through `.claude/scripts/` -- `fetch-issues.mjs`, `edit-issue.mjs`, `list-epic.mjs`, `list-issues.mjs`, each printing its usage when run with no args -- by numeric `?itemId=N` or `PVTI_` node id, never hand-written gh/GraphQL. To choose the next work, prefer the `shortlist-backlog` skill over reading listings. Creating a draft, the one op on `gh`: `.claude/pm/ruleset.md`, Filing and updating items.
 
 An item's board is not encoded in its id, and versions or paths quoted in its body are as-of-filing -- verify both before acting on them.
 
 ## Project manager
 
-The PM ruleset lives once at `.claude/pm/ruleset.md`; two front doors load it:
-
-- **`/pm` skill** -- interactive persona for board hygiene, epic scoping, and drafting/revising tasks in conversation. Confirms before board writes.
-- **`project-manager` consult agent** -- one-shot, spawned to advise on a finding or capture a deferred task. Returns one terminal result (FEEDBACK / FILED / APPENDED / DECLINED / NEEDS INPUT) and **cannot be continued** (no `SendMessage`).
-
-The main thread owns the consult loop. On a NEEDS INPUT result, relay its questions via AskUserQuestion and re-spawn with the answers folded in -- the only form of "continuation". Coding subagents raise PM requests to their caller, which raises them onward until they reach the top-level session, rather than spawning the consult themselves: AskUserQuestion and the human live only at the top level. A mechanical board write goes straight through `.claude/scripts/edit-issue.mjs`; the consult is for judgment -- whether to file at all, which board, what scope -- never for typing.
+The PM ruleset, `.claude/pm/ruleset.md`, is loaded by the interactive `/pm` skill and the one-shot `project-manager` consult agent, which **cannot be continued**. Only the top-level session spawns the consult, since AskUserQuestion and the human live there alone: a coding subagent raises a PM request to its caller, which raises it onward. A mechanical board write goes straight through `.claude/scripts/edit-issue.mjs`; the consult is for judgment -- whether to file at all, which board, what scope -- never for typing.
 
 ## Agent conventions
 
@@ -56,25 +38,25 @@ Beyond the conventions in `CONTRIBUTING.md`:
 
 - Prefer ASCII: `-` not an en-dash or em-dash, `->` not an arrow character; no emoji anywhere, including as severity or status markers in reviews and reports. No em dash appears anywhere a user reads: user copy splits a sentence a dash joins, and uses a spaced single hyphen (" - ") where a dash remains.
 - Write the plainest accurate word: no coined metaphor where a domain word exists, no internal name in text a user reads, and a user-visible string states what happened and what to do. The rule, the comment length bound and the negative wordlist: `CONTRIBUTING.md`, Code Conventions.
-- Never set the commit identity yourself -- no `git config` write to `user.*`, no `-c`/`--author=`/environment override: git resolves it from `.git/config`, and the harness context block's address is not it. Report a wrong configured identity to the maintainer; never override it. Enforced by `block-git-identity-override.mjs` on Bash.
+- Never set the commit identity yourself -- no `git config` write to `user.*`, no `-c`/`--author=`/environment override: git resolves it from config, and the harness context block's address is not it. Report a wrong configured identity to the maintainer. Enforced by `block-git-identity-override.mjs` on Bash; why in its header.
 - Commit messages use no markdown and no top-level lists (other format rules in `CONTRIBUTING.md`, Commit Messages).
 - Make a scratch directory with `mktemp -d`: fixed `/tmp` names collide, and a stale symlink lands a write in a repo. Enforced by `block-tmp-symlink-worktree-writes.mjs` on Bash.
 - The owner approves each deletion, so its operand is a literal path, never a command's result: no `$var`, `$(...)` or path read from a file. Remove a worktree with `git worktree remove <literal path>`.
 - Before committing, sweep your own diff: delete every comment that restates the code, narrates change history ("now", "previously", "moved here"), or cites a board item id. Thoroughness lives in tests and checks, not prose.
-- After the last edit, run `npm run typecheck && npm run lint && npm run format && npm run check:all` (all four are CI checks), once, at the end: `CONTRIBUTING.md`, Code Conventions; the LSP server often has a stale cache. `check:all` runs every repo-wide guard in `scripts/run-checks.mjs` (what each covers, what it skips), so a guarded-root, CI-config or `packages/peerjs-broker` change needs no command of its own.
+- After the last edit, run `npm run typecheck && npm run lint && npm run format && npm run check:all` once, at the end, whatever the LSP's stale cache shows: `CONTRIBUTING.md`, Code Conventions. `check:all` runs every guard `scripts/run-checks.mjs` lists, so a guarded-root, CI-config or `packages/peerjs-broker` change needs no command of its own.
 - Encode a "does not happen at runtime" claim as a check, never a comment or doc note. Full rule: `CONTRIBUTING.md`, Code Conventions.
 - Settle a question about an external tool's behavior -- npm, Docker, `ssh2` / `ssh2-sftp-client` -- by driving the real tool and asserting the outcome, or by stating the limit; reading its source or reimplementing its parser to predict it is a review finding. The SFTP adapter's harness: `docs/TESTING.md`.
 - Prettier ignores markdown.
 - The Bash tool runs zsh: unquoted `$var` does not word-split, bare `grep` is ugrep, and an unmatched glob is an error -- quote globs, and use arrays or `xargs` for multi-file commands.
 - `vitest -w` is watch mode and hangs a non-interactive session; use `npx vitest run` or `npm test -w <workspace>`.
-- Never sleep-poll a background run: every poll re-bills the polling session's whole context. Wait for the completion notification, or loop on the condition inside one bounded call (`timeout 600 sh -c 'until <test>; do sleep 2; done'`). Enforced by `block-sleep-poll.mjs` on Bash.
+- Never sleep-poll a background run: wait for its completion notification, or loop on the condition inside one `timeout`-bounded call. Enforced by `block-sleep-poll.mjs` on Bash, whose refusal names the admitted forms; why: `docs/notes/agent-hooks-and-scripts.md`, Sleep-poll guard.
 
 ### Branches, worktrees and checkouts
 
 - Branches are cut from `staging` and pull requests target `staging` -- the harness's default `main` base does not apply. Never commit to staging or main by yourself; don't attribute yourself on commits or pull requests.
 - Branch names shouldn't use '/'.
 - Rebase and merge in a detached /tmp worktree (`git worktree add --detach`), never in a tree the IDE watches -- /workspace or a tree under `.claude/worktrees/`: the IDE formatter/LSP races a live tree, and no ignore file fences it. Afterwards `git reset --hard` the branch in /workspace and remove the worktree.
-- An orchestrating session writes no branch content, and neither does a checkout it is not working in -- the MAIN worktree always, a sibling worktree from inside a linked one -- since a stray write lands on the wrong branch. Only gitignored paths (`scratch/`, briefs, round artifacts) and paths outside the repository are writable. Enforced by `block-primary-checkout-writes.mjs` on `Edit`, `Write`, and `NotebookEdit`; details in its header.
+- An orchestrating session writes no branch content, and neither does a checkout it is not working in -- the MAIN worktree always, a sibling worktree from inside a linked one. Only gitignored paths (`scratch/`, briefs, round artifacts) and paths outside the repository are writable. Enforced by `block-primary-checkout-writes.mjs` on `Edit`, `Write`, and `NotebookEdit`; details in its header.
 
 ### Spawns and reports
 
@@ -98,8 +80,8 @@ Beyond the conventions in `CONTRIBUTING.md`:
 
 - Route documentation detail by tier: spec-level -> `docs/spec/`; conceptual and operational -> `docs/`; design rationale and decisions taken -> `docs/notes/`, which points at the spec rather than restating it -- regardless of which doc you have open. Full rule: `CONTRIBUTING.md`, Documentation.
 - `CONTRIBUTING.md` is a pre-contribution quickstart, not a reference: route deep material per its "Scope of this document" section. `npm run check:contributing` catches two mechanical tells only, so keep deep material out even when it would pass.
-- `CHANGELOG.md` is reader-facing release notes, not a commit log: pre-release, the default is no entry -- add one only for a major feature a reader browsing the repository needs to know exists, or a breaking change to something already listed. Full rule: `CONTRIBUTING.md`, Changelog.
+- `CHANGELOG.md` is reader-facing release notes, not a commit log: pre-release, an entry is added only for a major feature or a breaking change to something already listed (`CONTRIBUTING.md`, Changelog).
 
 ### Orchestrating a session
 
-- The rules for conducting a session -- spawns, rounds, fix dispatch, owner decisions -- live in `.claude/orchestration/ruleset.md`. A session reads it before its first `Agent` or `Workflow` call and again after a context reset; `require-orchestration-ruleset-read.mjs` refuses that call until it has. A spawned agent does not read it; its rules are above.
+- The rules for conducting a session -- spawns, rounds, fix dispatch, owner decisions -- live in `.claude/orchestration/ruleset.md`, read before a session's first `Agent` or `Workflow` call and after a context reset (`require-orchestration-ruleset-read.mjs` refuses that call until then). A spawned agent does not read it; its rules are above.
