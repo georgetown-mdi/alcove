@@ -13,6 +13,7 @@ the container-pair wait its bind-mount smoke step runs the exchange under,
 suites and gates a diff needs as read from the workflows CI runs,
 the ranking of slowest test files CI writes into each test job's summary, the
 tally of each scheduled workflow's red streak that docs/TESTING.md names,
+the job list `nightly_core_stress.yaml` runs its tiers from,
 and the helper modules the checks import, in [`lib/`](lib).
 
 A check's test sits beside it; a guard that asserts a workflow, Dockerfile or
