@@ -170,11 +170,16 @@ allowlist considerably and carries residuals of its own, listed with it.
 ## Prerequisites
 
 - Docker on the host (Docker Desktop on macOS).
-- Git identity: VS Code's Dev Containers feature shares the host `~/.gitconfig`
-  into the container automatically. With the bare `devcontainer` CLI, set it once
-  inside (`git config --global user.name/.email`) if you need to commit. Run it
-  yourself rather than asking a session to: agents are blocked from setting a git
-  identity, so that a commit's author is always the one git resolves from config.
+- Git identity: set it once in the checkout's own git config, on the host or
+  inside (`git config --local user.name/.email`), if you need to commit.
+  `.git/config` is in the bind-mounted workspace, so the setting outlasts a rebuild
+  and applies in every worktree. The host `~/.gitconfig` does not reach the
+  container: VS Code's Dev Containers extension skips its copy when the container
+  already has a `~/.gitconfig`, and `post-create.sh` writes one first. An identity
+  set with `--global` inside the container is lost at the next rebuild. Run the
+  command yourself rather than asking a session to: agents are blocked from setting
+  a git identity, so that a commit's author is always the one git resolves from
+  config.
 - Push/PR credentials (optional): to let a session push and open PRs from inside,
   copy `.env.example` to `.env` at the repository root and set `GH_TOKEN` to a
   GitHub PAT. The container loads `.env` via docker `--env-file` (`devcontainer.json`
