@@ -49,6 +49,7 @@ import {
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
+import { OWN_SIGNALING_PATH } from "@psi/transport/signalingAddress";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
 import { consolePartnerCertificateRefusal } from "@console/partnerCertificateRefusal";
@@ -816,7 +817,8 @@ function failureContentFor(
  * The transport a console server-job run rides. No arm has a connection
  * field: the console holds the authored SFTP connection and coordination
  * server. The webrtc arm names the server the invitation sends the partner
- * to, for the console to refuse the run unless it is the one it holds.
+ * to, at the path a dial uses where the invitation states none, for the
+ * console to refuse the run unless it is the one it holds.
  */
 export function inviterServerJobTransport(
   channel: Exclude<Transport, "browser">,
@@ -824,13 +826,13 @@ export function inviterServerJobTransport(
 ): ServerJobExchangeTransport {
   if (channel !== "webrtc") return { channel };
   const endpoint = minted.connectionEndpoint;
-  return endpoint?.channel === "webrtc" && endpoint.path !== undefined
+  return endpoint?.channel === "webrtc"
     ? {
         channel,
         signalingServer: {
           host: endpoint.host,
           ...(endpoint.port !== undefined ? { port: endpoint.port } : {}),
-          path: endpoint.path,
+          path: endpoint.path ?? OWN_SIGNALING_PATH,
         },
       }
     : { channel };

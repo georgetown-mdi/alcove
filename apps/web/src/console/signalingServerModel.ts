@@ -25,6 +25,10 @@ export const HOSTED_WEB_APP_FILL_NOTE =
 export const COORDINATION_SERVER_MISSING =
   "Set the coordination server above to continue.";
 
+/** Why the review step holds the create while the console has not yet said
+ * whether a coordination server is set. */
+export const COORDINATION_SERVER_LOADING = "Checking the coordination server.";
+
 /** What the review step says when the coordination server changed between
  * this page reading it and the create: no invitation was made. */
 export const SIGNALING_SERVER_CHANGED_ALERT = {

@@ -105,6 +105,8 @@ interface StubOptions {
    * answers `webrtcSet`, which it reports from then on; unset, none is set. */
   webrtc?: unknown;
   webrtcSet?: unknown;
+  /** Withholds the `GET /api/jobs/webrtc` answer until `releaseWebrtc()`. */
+  holdWebrtc?: boolean;
   coverageStatus?: number;
   /** When set, `POST /api/jobs` returns a busy (409) holding this id (the slot is
    * occupied), and the id's status/events routes are served so the client can
@@ -157,6 +159,7 @@ function stubJobApi(options: StubOptions = {}): {
   resolveProbe: () => void;
   releaseStatus: () => void;
   releaseDeletes: () => void;
+  releaseWebrtc: () => void;
 } {
   const captured: Array<CapturedRequest> = [];
   const encoder = new TextEncoder();
@@ -184,6 +187,10 @@ function stubJobApi(options: StubOptions = {}): {
   // The run status the job's GET status endpoint reports (the discard poll reads
   // it); a test flips it to a terminal value to let a discard complete promptly.
   let jobStatus = "running";
+  let releaseWebrtc: (() => void) | undefined;
+  const webrtcGate = new Promise<void>((resolve) => {
+    releaseWebrtc = resolve;
+  });
   let releaseDeletes: (() => void) | undefined;
   const deleteGate = new Promise<void>((resolve) => {
     releaseDeletes = resolve;
@@ -250,6 +257,8 @@ function stubJobApi(options: StubOptions = {}): {
       if (url === "/api/jobs/webrtc") {
         if ((init?.method ?? "GET") === "PUT")
           webrtc = options.webrtcSet ?? { configured: false };
+        if (options.holdWebrtc === true && (init?.method ?? "GET") === "GET")
+          return webrtcGate.then(() => jsonResponse(webrtc));
         return Promise.resolve(jsonResponse(webrtc));
       }
       if (url === "/api/jobs")
@@ -363,6 +372,7 @@ function stubJobApi(options: StubOptions = {}): {
     resolveProbe: () => releaseProbe?.(),
     releaseStatus: () => releaseStatus?.(),
     releaseDeletes: () => releaseDeletes?.(),
+    releaseWebrtc: () => releaseWebrtc?.(),
   };
 }
 
@@ -1032,6 +1042,27 @@ describe("console inviter over WebRTC", () => {
       port: 8443,
       path: "/api/",
     });
+  });
+
+  test("holds the create without asking for a server while the console has not answered", async () => {
+    const api = stubJobApi({ holdWebrtc: true });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await expect
+      .element(page.getByRole("button", { name: "Create the invitation" }))
+      .toBeDisabled();
+    expect(app.container.textContent).not.toContain(
+      "Set the coordination server above to continue.",
+    );
+
+    api.releaseWebrtc();
+    await expect
+      .element(
+        page.getByText("Set the coordination server above to continue.").last(),
+      )
+      .toBeInTheDocument();
   });
 
   test("creates no invitation when the coordination server changed since the page read it", async () => {

@@ -47,10 +47,13 @@ import {
   exchangeFilesProblems,
 } from "@console/exchangeFilesModel";
 import {
+  COORDINATION_SERVER_LOADING,
+  COORDINATION_SERVER_MISSING,
+} from "@console/signalingServerModel";
+import {
   connectionTuningCapabilitiesFor,
   connectionTuningProblems,
 } from "@console/connectionTuningModel";
-import { COORDINATION_SERVER_MISSING } from "@console/signalingServerModel";
 import { ConnectionTuningCard } from "@console/ConnectionTuningCard";
 import { EditedTermsNotice } from "@console/MountedConfigurationCard";
 import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
@@ -313,9 +316,11 @@ export function ReviewCreateSection({
       ? undefined
       : webrtcDisabled
         ? webrtcDescription
-        : signalingServer == null
-          ? COORDINATION_SERVER_MISSING
-          : undefined;
+        : signalingServer === undefined
+          ? COORDINATION_SERVER_LOADING
+          : signalingServer === null
+            ? COORDINATION_SERVER_MISSING
+            : undefined;
   // The console conducts the run there, so its settings cards are offered
   // there and nowhere else: a browser exchange has no shared directory, and a
   // save-a-file transport hands the settings to the operator's own command
