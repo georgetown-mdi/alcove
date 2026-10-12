@@ -46,7 +46,7 @@ export function describeTransformParamValue(value: unknown): string {
  * material, which keeps its authored spelling so the redaction still matches
  * it. A line too long for the engine renders `""`, so the RangeError cannot
  * escape `safeParse`. See
- * docs/spec/CHANNEL_SECURITY.md#transform-parameter-declared-types.
+ * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#transform-parameter-declared-types.
  */
 export function describedTransformParamEntry(
   param: string,
@@ -110,9 +110,9 @@ export interface TransformParamDisplayRefusal {
  * than what the run applies; empty when the summary states it as it runs.
  * An over-count step yields no per-parameter refusal, which keeps the issues
  * one step raises bounded
- * (docs/spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+ * (docs/spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
  * Lookups are own-property only, since names are partner-authored. See
- * docs/spec/CHANNEL_SECURITY.md#transform-parameter-declared-types.
+ * docs/spec/TRANSFORM_PARAMETER_BOUNDS.md#transform-parameter-declared-types.
  */
 export function transformParamDisplayRefusals(
   step: {

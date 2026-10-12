@@ -6,7 +6,7 @@ title: "Transport Memory Bounds"
 
 This document specifies the memory bounds Alcove's transports hold against what a hostile party writes for them to read, with their constant values and enforcement points: the file-sync inbound frame-size bound and the per-exchange and per-part bounds beneath it, the directory-listing bound, the rendezvous symlink refusal, and the WebRTC data-channel inbound bound.
 It is the implementation-level complement to the **Channel security** overview in [SECURITY_DESIGN.md](../SECURITY_DESIGN.md#channel-security), which covers what each control protects against and why the design is sufficient.
-It does not cover how long a transport operation may take (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md)), the application-layer encryption and the bounds on partner-parsed input (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), or the coordination server's bounds (see [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)).
+It does not cover how long a transport operation may take (see [TRANSPORT_LIVENESS.md](TRANSPORT_LIVENESS.md)), the application-layer encryption (see [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md)), the bounds on partner-parsed input (see [PARSED_INPUT_BOUNDS.md](PARSED_INPUT_BOUNDS.md)), or the coordination server's bounds (see [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md)).
 Intended readers are security auditors and implementors.
 
 ## Inbound frame-size bound
@@ -130,7 +130,7 @@ The bounds that hold over partner content across the whole list:
   The unparsed bytes a list holds at any moment are therefore at most one per-frame bound, whatever its part count, and a part refused on its header or its body ends the receive at that part.
 - **The parsed list is held to the declared entry count.**
   The first part's declared entry count is held to the bound PROTOCOL.md derives from the agreed terms and this party's own result, and the part count to at most that entry count (1 for an empty list).
-  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the parsed parts hold at most that many entries between them, each part parsed under the [application-layer parsed-input bounds](CHANNEL_SECURITY.md#application-layer-parsed-input-bounds).
+  Every part of a non-empty list holds at least one entry and no part runs past the declared count, so the parsed parts hold at most that many entries between them, each part parsed under the [application-layer parsed-input bounds](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds).
 
 Frames the transport has delivered but the receive has not yet read sit in the inbound queue, which bounds them by count, as the [WebRTC data-channel inbound bound](#webrtc-data-channel-inbound-bound) states for every frame.
 `packages/core/test/psi/matchedListParts.test.ts` drives a refused part ending the receive before the next is read, and a part parsed before the next one arrives.
@@ -277,10 +277,10 @@ Before delegating to `unpack`, `scanFrameStructure` walks the frame's BinaryPack
 - **Nesting depth**, above **`MAX_WEBRTC_REASSEMBLY_DEPTH` = 256**.
   This bounds the scan's own working stack, and with it the number of levels that can each reserve a backing store over the same wire bytes.
 - **Per-string declared length**, above **`MAX_WEBRTC_STRING_BYTES`**, which is the web app's CSV intake cap `MAX_CSV_FILE_BYTES` (`apps/web/src/components/csvIntake.ts`).
-  A payload cell is not length-bounded upstream -- only column names are (see [Linkage-terms name-class character rule](CHANNEL_SECURITY.md#linkage-terms-name-class-character-rule)) -- so a cap below the intake cap could refuse a cell that reached the wire from an admitted file, while a cap at it bounds one value's retention at the largest file a party can bring.
+  A payload cell is not length-bounded upstream -- only column names are (see [Linkage-terms name-class character rule](PARSED_INPUT_BOUNDS.md#linkage-terms-name-class-character-rule)) -- so a cap below the intake cap could refuse a cell that reached the wire from an admitted file, while a cap at it bounds one value's retention at the largest file a party can bring.
   The two constants are held equal by a unit test, core having no import of an app.
   That sizing answers the browser dropzone, whose gate counts bytes; the other two input paths are bounded differently, and the cap covers them only as far as their own bounds reach.
-  The CLI reads its input file from disk under no file-size gate at all -- what bounds a row there is the 8 MiB [single-line byte ceiling](CHANNEL_SECURITY.md#csv-read-single-line-byte-ceiling), which a quoted field of embedded newlines does not trip -- and the job-intent route bounds a request body at `MAX_JOB_BODY_BYTES` (424 MiB) while `MAX_INPUT_CSV_LENGTH` counts UTF-16 code units rather than bytes.
+  The CLI reads its input file from disk under no file-size gate at all -- what bounds a row there is the 8 MiB [single-line byte ceiling](PARSED_INPUT_BOUNDS.md#csv-read-single-line-byte-ceiling), which a quoted field of embedded newlines does not trip -- and the job-intent route bounds a request body at `MAX_JOB_BODY_BYTES` (424 MiB) while `MAX_INPUT_CSV_LENGTH` counts UTF-16 code units rather than bytes.
   A cell that reaches the wire from either path above 200 MiB of UTF-8 is refused by the receiving party's scan: a stated limit of what the cap's sizing covers, not a hole in the rule.
 - **Byte-backed elements**: no container may declare more elements than the bytes that follow it can encode, each element needing at least one byte.
   This ties a container's declared count to the wire.

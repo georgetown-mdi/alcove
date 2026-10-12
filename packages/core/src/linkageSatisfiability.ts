@@ -153,14 +153,14 @@ export function assertFanOutImplemented(
  * The most transform steps one document may declare across its standardization
  * and every linkage-key element, checked before anything compiles so the
  * verdict is the same on every machine
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 const TRANSFORM_COMPILE_MAX_STEPS = 512;
 
 /**
  * Wall-clock budget, in milliseconds, for compiling one document's steps under
  * {@link TRANSFORM_COMPILE_MAX_STEPS}; steps past it are refused unchecked
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 const TRANSFORM_COMPILE_TOTAL_BUDGET_MS = 2000;
 
@@ -284,7 +284,7 @@ function stepCountRefusal(
  * The walk is bounded by {@link TRANSFORM_COMPILE_MAX_STEPS} and
  * {@link TRANSFORM_COMPILE_TOTAL_BUDGET_MS}; the grading path's compiles are
  * bounded separately
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 export function assertTransformsCompile(
   terms: LinkageTerms,
@@ -515,7 +515,7 @@ type MeasuredRunOutcome =
 // Charges the per-value ceiling and the work budget as the runtime does, but
 // not the per-row assembled charge, which one probe cannot reach. A work-budget
 // crossing throws, leaving the probe unread
-// (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+// (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
 function runCompiledSteps(
   input: string,
   compiled: ReadonlyArray<CompiledStep>,
@@ -714,7 +714,7 @@ function parsedDateSpanReading(span: ParsedDateSpan): ParsedDateRunReading {
  * maximal `substring` run with a `parse_date` ahead whose input format can
  * parse a date; the nearest such `parse_date` laid out the value. One forward
  * pass per span keeps the walk linear in the declared steps
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  */
 function parsedDateRunReadings(
   steps: ReadonlyArray<TransformStep>,
@@ -900,7 +900,7 @@ export interface ElementPipelineGrading {
 /**
  * Both element-level gradings over one compiled-step memo and one forward pass,
  * so the consent header compiles each measured step once for the pair
- * (docs/spec/CHANNEL_SECURITY.md#transform-regex-linear-time-dialect).
+ * (docs/spec/TRANSFORM_REGEX_DIALECT.md#transform-regex-linear-time-dialect).
  * Neither verdict is measured unasked.
  */
 export function gradeElementPipeline(

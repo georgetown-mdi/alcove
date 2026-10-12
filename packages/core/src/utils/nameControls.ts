@@ -2,7 +2,7 @@
  * The characters no name may contain: the C0 controls, DEL, the C1 controls, and
  * {@link BIDI_CONTROL_PATTERN}. Header sanitation (`file.ts`) removes exactly this
  * class and `NAME_SHAPE_PATTERN` refuses it, held equal by
- * packages/core/test/config/nameShapeParity.test.ts (docs/spec/CHANNEL_SECURITY.md,
+ * packages/core/test/config/nameShapeParity.test.ts (docs/spec/PARSED_INPUT_BOUNDS.md,
  * CSV header sanitation at ingestion). Written as escapes, never raw bytes.
  */
 export const NAME_CONTROL_CHAR_PATTERN =

@@ -7,7 +7,7 @@ import { parseBoundedJson } from "./boundedJson.js";
  * streamed under a hard byte cap and parsed through {@link parseBoundedJson},
  * so no caller can buffer an unbounded body or drive `JSON.parse` into the
  * uncatchable engine abort that bound forestalls (see ./boundedJson.ts and
- * docs/spec/CHANNEL_SECURITY.md).
+ * docs/spec/PARSED_INPUT_BOUNDS.md).
  */
 
 /**

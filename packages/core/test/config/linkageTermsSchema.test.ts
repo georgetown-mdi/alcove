@@ -1600,7 +1600,7 @@ test("a replacement holding substitution sequences parses at the bound", () => {
   // the row runs, by the ceiling on the produced value (pinned in
   // valueConstraints.test.ts); neutralizing the sequences here would have been a
   // wire-semantics change, and is not the closer taken
-  // (docs/spec/CHANNEL_SECURITY.md, Unbounded transform-parameter rejection).
+  // (docs/spec/TRANSFORM_PARAMETER_BOUNDS.md, Unbounded transform-parameter rejection).
   const substituting = "$'".repeat(MAX_TRANSFORM_PARAM_LENGTH / 2);
   expect(substituting.length).toBe(MAX_TRANSFORM_PARAM_LENGTH);
   const result = safeParseLinkageTerms(

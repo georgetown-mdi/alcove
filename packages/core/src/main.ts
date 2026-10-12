@@ -205,7 +205,7 @@ export { snakeizeKey } from "./utils/camelizeKeys";
 // params is rejected at decode like it is on every other parse path; the CLI's
 // invitation-vs-config reconcile (apps/cli/src/config/reconcileDiffs.ts,
 // withoutUndefinedDeep) keeps its own depth guard as a safety check for
-// that independent recursive walk. See docs/spec/CHANNEL_SECURITY.md.
+// that independent recursive walk. See docs/spec/PARSED_INPUT_BOUNDS.md.
 export {
   MAX_NESTING_DEPTH,
   NestingDepthExceededError,

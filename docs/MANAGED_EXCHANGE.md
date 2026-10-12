@@ -46,9 +46,9 @@ The stored document holds every column name the exchange declares, bounds each
 one's length, refuses a name holding an invisible control or text-direction
 character, and refuses a name a second column already uses. The length bound is
 in
-[CHANNEL_SECURITY.md](spec/CHANNEL_SECURITY.md#application-layer-parsed-input-bounds)
+[PARSED_INPUT_BOUNDS.md](spec/PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds)
 and the character class in its
-[name-class rule](spec/CHANNEL_SECURITY.md#linkage-terms-name-class-character-rule).
+[name-class rule](spec/PARSED_INPUT_BOUNDS.md#linkage-terms-name-class-character-rule).
 The bound covers **every** declared column, including one the exchange never
 sends: a wide vendor export whose header exceeds it can run as a one-off
 exchange and still not be storable as a recurring one.

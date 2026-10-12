@@ -342,7 +342,7 @@ export function reconcileClauseConflict(
  * walk's own check: an unguarded deep value overflows with an uncaught
  * `RangeError` instead of the clean {@link NestingDepthExceededError}
  * (`UsageError`, exit 64) this raises well ahead of the real limit. See
- * docs/spec/CHANNEL_SECURITY.md.
+ * docs/spec/PARSED_INPUT_BOUNDS.md.
  */
 function withoutUndefinedDeep(value: unknown, depth = 0): unknown {
   if (depth >= MAX_NESTING_DEPTH) throw new NestingDepthExceededError();

@@ -35,7 +35,7 @@ const CLOSE_BRACKET = 0x5d; // ]
  * abort. The bound must fire ahead of the parse, since it cannot catch the
  * parse's failure. The depth cap also bounds THIS scan's own per-container
  * stack, so a degenerate body that is all `{`/`[` is rejected here rather
- * than exhausting memory in the pre-pass. See docs/spec/CHANNEL_SECURITY.md.
+ * than exhausting memory in the pre-pass. See docs/spec/PARSED_INPUT_BOUNDS.md.
  *
  * Counting is structural. An object's members are counted by their colons;
  * an array's elements by their separating commas (the element count is the

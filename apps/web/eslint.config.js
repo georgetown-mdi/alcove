@@ -387,8 +387,9 @@ export default [
     // are input this app did not produce, so each is parsed through
     // `@alcove/core`'s parseBoundedJson; its bound and the rationale for it are
     // in packages/core/src/utils/boundedJson.ts and
-    // docs/spec/CHANNEL_SECURITY.md. A parse of a value this process serialized
-    // itself opts out with an eslint-disable-next-line carrying a one-line why.
+    // docs/spec/PARSED_INPUT_BOUNDS.md. A parse of a value this process
+    // serialized itself opts out with an eslint-disable-next-line carrying a
+    // one-line why.
     //
     // Beside it, the `json` ban closes the platform `.json()`, which a JSON.parse
     // ban does not see, since that parse happens inside the method. What a client

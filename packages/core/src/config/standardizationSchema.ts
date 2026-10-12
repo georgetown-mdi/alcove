@@ -108,7 +108,7 @@ const StandardizationTransformationSchema: z.ZodType<StandardizationTransformati
     // declares and a column of this party's own input -- so each takes the
     // ceiling every other name in a configuration has. Neither is sent to the
     // partner, which is why the bound stands alone here and the terms names'
-    // character rule does not (docs/spec/CHANNEL_SECURITY.md).
+    // character rule does not (docs/spec/PARSED_INPUT_BOUNDS.md).
     output: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
     input: z.string().min(1).check(maxCodeUnits(MAX_NAME_LENGTH)),
     steps: z.array(StandardizationStepSchema).optional(),
