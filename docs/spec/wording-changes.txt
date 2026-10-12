@@ -8,17 +8,5 @@
 # whose only change is a link target, is not listed. The check reads this file
 # only when the branch changes it.
 
-- title: "Channel Security Construction" -> title: "Channel Encryption"
-- Channel security construction -> Channel encryption
-- This document specifies the construction and implementation of Alcove's channel-security controls, the section headings below indexing the individual controls. -> This document specifies the construction and implementation of Alcove's application-layer channel encryption and of the authenticated abort marker keyed from the same session key.
-- - -> The other channel-security controls are specified in the files listed under [Contents](#contents).
-- Every net-new control specified here is subject to the explicit pre-release security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy); the per-section notes below repeat this only where a control has an extra scope nuance (an internet-facing surface, a new security-relevant dependency, or a modification layered on an existing control). -> Every net-new control specified here is subject to the explicit pre-release security review required by [CONTRIBUTING](../../CONTRIBUTING.md#dependency-policy).
-- - -> Contents
-- - -> The channel-security controls are specified in this file and in these files:
-- - -> [SIGNALING_SERVER_BOUNDS.md](SIGNALING_SERVER_BOUNDS.md) - the bounds the signaling broker holds against an unauthenticated internet client: the inbound frame bound, the upgrade-handshake timeouts, the liveness reaper, and the relay queue bounds
-- - -> Channel security
-- - -> The channel-security controls are specified across these files.
-- - -> [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md) holds the application-layer encryption and the authenticated abort marker, and lists the others.
-- - -> File | Scope | Audience | Does not cover
-- - -> Other specifications
-- **The AEAD envelope or key derivation** -> [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md). -> **The AEAD envelope, its key derivation, or the authenticated abort marker** -> [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md).
+- Size an acceptor against the heap figure rather than the code-unit one, the browser's ~512 MiB [ceiling](PARSED_INPUT_BOUNDS.md#application-layer-parsed-input-bounds) included. -> Size an acceptor against the heap figure rather than the code-unit one, the browser's 256 MiB [WebRTC frame ceiling](TRANSPORT_BOUNDS.md#webrtc-data-channel-inbound-bound) (`MAX_WEBRTC_FRAME_BYTES`) included.
+- The measurement that established the vector - a 1 MB `replace_regex` replacement over a 10-character operator cell, producing a 1,000,000-character retained candidate at ~12 MB peak, held only by the ~512 MiB frame ceiling - is refused at terms validation by that bound. -> The measurement that established the vector - a 1 MB `replace_regex` replacement over a 10-character operator cell, producing a 1,000,000-character retained candidate at ~12 MB peak, held only by the transport's frame ceiling (~512 MiB on file-sync, 256 MiB on the browser's WebRTC channel; see [TRANSPORT_BOUNDS.md](TRANSPORT_BOUNDS.md)) - is refused at terms validation by that bound.
