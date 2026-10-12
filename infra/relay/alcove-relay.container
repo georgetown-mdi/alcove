@@ -12,7 +12,7 @@
 # together. That file's header carries the directive-to-flag mapping.
 
 [Unit]
-Description=alcove WebRTC relay (coturn, TURNS on 443/tcp)
+Description=alcove WebRTC relay (coturn, TURNS on loopback behind the 443 front)
 Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/relay/README.md
 After=network-online.target
 Wants=network-online.target

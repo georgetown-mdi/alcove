@@ -38,7 +38,9 @@ started, is the opposite trade and takes a short-TTL record instead.
 **A DNS A record**, created before the first install: the ACME DNS-01 challenge
 proves control of the zone, and the certificate is issued for this name. One
 name serves as the TURN realm, the certificate subject, and the host in the
-`turns:` URL a partner is given.
+`turns:` URL a partner is given. Each name [the 443 front](../README.md#the-443-front)
+routes -- the registrar's, the broker's -- gets an A record for the same
+address.
 
 ## Ports
 
@@ -46,10 +48,10 @@ Inbound, in the instance's security group:
 
 | Port | Protocol | Source | Why |
 | --- | --- | --- | --- |
-| 443 | TCP | 0.0.0.0/0, ::/0 | TURNS. The whole client-facing surface, and the one port a restrictive network leaves open |
+| 443 | TCP | 0.0.0.0/0, ::/0 | [The 443 front](../README.md#the-443-front): TURNS, and, where the host runs a registrar, the registrar, and each other service it routes by name. The whole client-facing surface, and the one port a restrictive network leaves open |
 | 49152-49200 | UDP | 0.0.0.0/0, ::/0 | The relay range. A peer's traffic leaves here whatever transport the client arrived on |
 | 22 | TCP | the owner's address only | Administration. Not open to the internet |
-| 8443 | TCP | the operator's addresses | The registrar, only where the host runs one ([README.md, The registrar](../README.md#the-registrar)). Enrolling an exchange needs the relay-owner token; a caller holding the exchange's key rotates or revokes it with a proof instead. The addresses include every machine that runs an exchange through this relay, and each needs this port open outbound on its own network as well as 443 |
+| `ALCOVE_RELAY_REGISTRAR_PORT` | TCP | the operator's addresses | The registrar's own port, 8443 where unset, only for an exchange still configured with it ([README.md, The registrar](../README.md#the-registrar)); one configured with the registrar's name reaches it on 443. Each machine that uses this port needs it open outbound on its own network as well |
 
 Outbound: unrestricted, or at minimum UDP to the relay range and TCP/443 to the
 ACME authority and the DNS provider's API.

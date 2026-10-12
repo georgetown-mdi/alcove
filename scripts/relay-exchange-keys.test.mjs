@@ -5,6 +5,7 @@ import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -3146,6 +3147,26 @@ describe.skipIf(runningAsRoot)(
       );
       expect(result.stdout).not.toContain("SKIP     the registrar");
     });
+
+    // No front runs here, so nothing answers on 443: the probe's target is
+    // what the line names.
+    it("asks the registrar through the front on 443 where it has a name of its own", () => {
+      const host = fixtureHost();
+      const result = spawnSync(BASH, [join(relay, "verify.sh")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          ALCOVE_RELAY_REGISTRAR_NAME: "registrar.example.org",
+          ALCOVE_RELAY_REGISTRAR_PORT: "1",
+          ALCOVE_RELAY_VERIFY_CONNECT: "127.0.0.1",
+          ALCOVE_RELAY_VERIFY_WAIT: "0",
+        },
+      });
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "UNCLEAR  a registration with the token got no answer from 127.0.0.1:443",
+      );
+    });
   },
 );
 
@@ -3190,6 +3211,68 @@ describe.skipIf(runningAsRoot)("verify.sh cleanup", { timeout: 60000 }, () => {
 });
 
 describe.skipIf(runningAsRoot)(
+  "verify.sh waiting for the relay",
+  { timeout: 60000 },
+  () => {
+    // An openssl whose s_client fails its first `failures` runs and then
+    // completes, logging each run's arguments; every other subcommand is the
+    // real openssl.
+    const verifyWithHandshakes = (failures, wait) => {
+      const host = fixtureHost();
+      const stubDir = join(host.root, "openssl-stub");
+      mkdirSync(stubDir);
+      const log = join(host.root, "s_client.log");
+      writeFileSync(log, "");
+      const realOpenssl = process.env.PATH.split(":")
+        .map((dir) => join(dir, "openssl"))
+        .find(existsSync);
+      writeFileSync(
+        join(stubDir, "openssl"),
+        [
+          "#!/bin/bash",
+          'if [ "$1" = s_client ]; then',
+          `  printf '%s\\n' "$*" >> '${log}'`,
+          `  [ "$(grep -c . '${log}')" -gt ${failures} ] && exit 0`,
+          "  exit 1",
+          "fi",
+          `exec ${realOpenssl} "$@"`,
+          "",
+        ].join("\n"),
+      );
+      chmodSync(join(stubDir, "openssl"), 0o755);
+      const result = host.verify({
+        PATH: `${stubDir}:${host.env.PATH}`,
+        ALCOVE_RELAY_VERIFY_WAIT: String(wait),
+      });
+      return {
+        result,
+        runs: readFileSync(log, "utf8").split("\n").filter(Boolean),
+      };
+    };
+    const waitRun = `s_client -connect 127.0.0.1:443 -servername ${REALM}`;
+
+    it("retries a TLS handshake for the realm through 443 until it completes, then probes", () => {
+      const { result, runs } = verifyWithHandshakes(2, 20);
+      expect(runs.slice(0, 3)).toEqual([waitRun, waitRun, waitRun]);
+      expect(runs[3]).toBe(`${waitRun} -verify_return_error`);
+      expect(result.stdout).not.toContain("no TLS handshake through");
+    });
+
+    it("fails once the budget is spent and still runs the probes", () => {
+      const { result, runs } = verifyWithHandshakes(1000, 2);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toContain(
+        "FAIL     no TLS handshake through 127.0.0.1:443 after 2s",
+      );
+      const waits = runs.indexOf(`${waitRun} -verify_return_error`);
+      expect(waits).toBeGreaterThanOrEqual(2);
+      expect(runs.slice(0, waits).every((run) => run === waitRun)).toBe(true);
+      expect(result.stdout).toContain(`FAIL     TLS handshake on ${REALM}:443`);
+    });
+  },
+);
+
+describe.skipIf(runningAsRoot)(
   "verify.sh TURNS client runs",
   { timeout: 60000 },
   () => {
@@ -3230,6 +3313,11 @@ describe("render-config.sh and the secrets table", () => {
       .filter((line) => !line.startsWith("#"));
     expect(settings).toContain("use-auth-secret");
     expect(settings).toContain("userdb=/var/lib/coturn/turndb");
+    // coturn listens on loopback behind the 443 front and relays from the
+    // private address the helper printed.
+    expect(settings).toContain("listening-ip=127.0.0.1");
+    expect(settings).toContain("relay-ip=10.0.0.5");
+    expect(settings).toContain("external-ip=192.0.2.10/10.0.0.5");
     expect(settings.some((line) => line.startsWith("static-auth-secret"))).toBe(
       false,
     );

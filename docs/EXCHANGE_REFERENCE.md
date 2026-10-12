@@ -897,7 +897,7 @@ connection:
   turn:
     - url: "turns:relay.example.org:443?transport=tcp"
   relay_registrar:
-    url: "https://relay.example.org:8443"
+    url: "https://registrar.example.org"
     exchange_id: "q3-linkage-7f2c"
 ```
 

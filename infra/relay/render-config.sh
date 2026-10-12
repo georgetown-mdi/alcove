@@ -85,7 +85,7 @@ TMP="$(mktemp "$OUT.XXXXXX")"
 chmod 600 "$TMP"
 trap 'rm -f "$TMP"' EXIT
 
-sed -e "s#__LISTENING_IP__#$PRIVATE_IP#g" \
+sed -e "s#__RELAY_IP__#$PRIVATE_IP#g" \
     -e "s#__EXTERNAL_IP__#$PUBLIC_IP/$PRIVATE_IP#g" \
     -e "s#__REALM__#$REALM#g" \
     -e "s#__MIN_PORT__#$MIN_PORT#g" \

@@ -1197,7 +1197,7 @@ export const MAX_RELAY_REGISTRAR_URL_LENGTH = 1024;
 // own verify.sh (infra/relay/README.md, Per-exchange keys).
 const RELAY_VERIFY_EXCHANGE_ID_PREFIX = "alcove-verify-";
 
-const RELAY_REGISTRAR_URL_EXAMPLE = "https://relay.example.org:8443";
+const RELAY_REGISTRAR_URL_EXAMPLE = "https://registrar.example.org";
 
 // Why `url` cannot name a registrar, or undefined when it can. The url is never
 // repeated, since one holding a user may hold a password.

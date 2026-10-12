@@ -3,7 +3,8 @@
 Everything needed to bring up a self-hosted TURN relay that carries an Alcove
 WebRTC exchange for a party on a network that blocks UDP or admits only TCP/443:
 a digest-pinned coturn image, a hardened configuration, the systemd unit that
-supervises it, an ACME renewal that keeps its certificate current, scripts that
+supervises it, a front that holds 443 and routes each connection by the name
+it asks for, an ACME renewal that keeps its certificate current, scripts that
 register and revoke each exchange's relay key, an optional HTTPS registrar that
 enrolls an exchange under the relay-owner token and rotates or revokes it under
 a proof of holding its key, a sweep that revokes
@@ -45,6 +46,12 @@ your own environment:
 - The registrar, the lapse sweep, and `max-allocate-lifetime` run beside the
   pinned coturn image on a docker host and a podman host, both installed by
   `install.sh`.
+- [The 443 front](#the-443-front) is installed on the project's relay host
+  and passed `verify.sh` through it (13 checks), with signaling answering on
+  443; the registrar behind it and a relayed exchange from a 443-only
+  client are not measured, since the host runs no registrar today. Its tests
+  under `scripts/` drive `render-front.sh` and hold the template to coturn's
+  listener, not nginx.
 - `verify.sh` probes the allocation and its refusals, not exchange traffic,
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
@@ -71,10 +78,12 @@ other repository-level coupling is the docker Dependabot entry for
 ## Order of operations
 
 1. Hold an elastic address, create the DNS A record for the relay's name, and
-   launch the instance -- [`aws/provision.md`](aws/provision.md).
+   one for the registrar's name where it gets one, and launch the instance --
+   [`aws/provision.md`](aws/provision.md).
 2. Put `/etc/alcove-relay/relay.env` on the host from
-   [`relay.env.example`](relay.env.example) and set the realm. Every script
-   refuses to run without it; nothing defaults to a hostname.
+   [`relay.env.example`](relay.env.example) and set the realm, and the names
+   [the 443 front](#the-443-front) routes. Every script refuses to run without
+   it; nothing defaults to a hostname.
 3. Put `/etc/alcove-relay/acme.env` from [`certs/env.example`](certs/env.example)
    at mode 600, with the DNS provider's credential.
 4. Run `install.sh` as root. It installs a container runtime, builds the image,
@@ -98,7 +107,9 @@ or the Dockerfile and it converges.
 | path | what it is |
 | --- | --- |
 | `Dockerfile` | The base image pin, and nothing else. One line of instruction: `coturn/coturn` at a tag and its multi-arch index digest. The single home of that digest -- every other file names the locally built `localhost/alcove-relay:installed` tag, so a base move is exactly one edit. Its comment carries the fallback if the community image stops publishing |
-| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. It sets `no-tcp-relay`, because the exchange never asks for a TCP relay transport to a peer, and `verify.sh` probes that such an allocation is refused. Tracked; the rendered file is not |
+| `turnserver.conf.tmpl` | The hardened coturn configuration, with `__PLACEHOLDER__` values. coturn's TURNS listener is on loopback, port 5349, behind [the 443 front](#the-443-front). It sets `no-tcp-relay`, because the exchange never asks for a TCP relay transport to a peer, and `verify.sh` probes that such an allocation is refused. Tracked; the rendered file is not |
+| `front.conf.tmpl`, `render-front.sh` | [The 443 front](#the-443-front)'s nginx configuration and the script that writes this host's routes into it. `install.sh` checks the result with `nginx -t` before it writes `/etc/alcove-relay/front.conf` |
+| `front/Dockerfile`, `alcove-relay-front.container`, `alcove-relay-front-docker.service` | The front's nginx image pin, and its unit on a podman host and on a docker host, paired as the relay's two units are. Both run `alcove-relay-front.service` from the tag `install.sh` builds |
 | `render-config.sh` | Substitutes the template at mode 600. Run at install and again on every start, because a stopped and started instance comes back on a different address and a stale `external-ip` advertises a candidate nobody can reach. The cloud seam is one variable: an executable printing `<public>/<private>` |
 | `alcove-relay.container` | The Quadlet unit for a podman host, installed at `/etc/containers/systemd/`. systemd is the only supervisor; there is no container daemon under it |
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |
@@ -109,7 +120,7 @@ or the Dockerfile and it converges.
 | `import-legacy-mapping.sh` | Carries the text mapping an install from before the secrets table's own mapping kept into the table, and deletes it once the table reads back every row; `install.sh` runs it. See [Per-exchange keys](#per-exchange-keys), The mapping |
 | `sweep-exchanges.sh`, `alcove-relay-sweep.service`, `.timer` | Revokes every exchange whose registration has lapsed, hourly. See [Per-exchange keys](#per-exchange-keys), Lifetime |
 | `registrar.py`, `alcove-relay-registrar.service` | The optional HTTPS registrar, which registers and revokes through `relay_table.py`: it enrolls an exchange for a caller holding the relay-owner token, and rotates or revokes it for a caller proving it holds the exchange's key. See [The registrar](#the-registrar) |
-| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Where the host holds a registrar token it also asks the registrar: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a bare TCP connect before its first probe, waiting for a just-(re)started listener to come up; 30 by default |
+| `verify.sh` | Drives a real TURNS handshake, a real allocation, a probe that an allocation toward an internal address is refused, and the secrets table: two keys registered for the run both allocate, an unregistered key and a credential keyed with a key's decoded bytes are refused, and a revoked key's new allocation is refused. Each name in `ALCOVE_RELAY_FRONT_ROUTES` must answer on 443 with a certificate that verifies for it. Where the host holds a registrar token it also asks the registrar, at its own name on 443 where it has one: a registration with the token reaches the mapping and the table, calls with no token or a wrong one are then answered 401 and change nothing, and a revocation with the token removes the key from both; with no token it says it skipped the registrar. Its exchanges are under the ids `alcove-verify-a`, `-b`, and `-registrar`, a prefix every other caller is refused. On exit it revokes them, each in one transaction, and warns naming the exchange id, never the key, for any it could not revoke. Passes only on an observed refusal: a question that could not be asked reports UNCLEAR and fails. Connects to the realm's name by default; `ALCOVE_RELAY_VERIFY_CONNECT` overrides the TCP connect target while the realm still names the SNI and TURN realm -- `install.sh` sets it to the instance's private address for the end-of-install run, because EC2 does not hairpin an instance's traffic back to its own Elastic IP, while the daily timer stays on the public name so it fails if that path breaks. `ALCOVE_RELAY_VERIFY_WAIT` sets how many seconds it retries a TLS handshake for the realm through the 443 front before its first probe, waiting for a just-(re)started front and coturn behind it to come up; 30 by default |
 | `mint-credential.sh` | One time-limited credential under the static secret, on a host that holds one: `<expiry>:<name>` as the username, the base64 HMAC-SHA1 of it as the password |
 | `relay.env.example` | The host's one configuration file, copied to `/etc/alcove-relay/relay.env` |
 | `certs/` | ACME DNS-01 renewal: the timer and its unit, the client-neutral `renew.sh`, the deploy hook, and the provider credential's example |
@@ -368,18 +379,27 @@ token, overwrite the file and
   authenticate a cross-origin call. `Access-Control-Allow-Origin: *` is safe for
   that reason. `scripts/relay-exchange-keys.test.mjs` holds both.
 - **Where it listens.** HTTPS on `ALCOVE_RELAY_REGISTRAR_PORT` in `relay.env`,
-  8443 by default, on every address, with the relay's own certificate from
+  on every address, with the relay's own certificate from
   `/etc/alcove-relay/certs`; the certificate deploy hook restarts it when the
-  certificate changes. TURNS holds 443, so the registrar cannot share it. Open
-  the port in the instance's security group to the addresses the operator
-  registers from ([aws/provision.md](aws/provision.md), Ports).
-- **Who must reach that port.** Every machine that registers needs outbound
-  TCP to the relay's host on this port, as well as on 443 for TURNS: the
-  machine `alcove enroll-relay` runs on, and every CLI that runs an exchange
-  through this relay, since each run registers its rotated key. A network
-  that allows only 443 out lets the exchange relay but blocks the
-  registration, and the CLI's failure names this host and port
+  certificate changes. The port is 8443 where unset; `relay.env.example` sets
+  8444, because the broker's TLS front holds 8443 on a host that runs it. An
+  existing host's registrar port is whatever its `relay.env` sets. Where
+  `ALCOVE_RELAY_REGISTRAR_NAME` gives it a name of its own,
+  [the 443 front](#the-443-front) passes a connection asking for that
+  name to this port on loopback, so its address is `https://<that name>`, on
+  443. The certificate is issued for the name beside the realm.
+- **Who must reach it.** Every machine that registers: the machine
+  `alcove enroll-relay` runs on, and every CLI or browser that runs an
+  exchange through this relay, since each run registers its rotated key. At
+  the registrar's own name, that is outbound TCP to 443, the port TURNS uses,
+  so a network that allows only 443 out both relays and registers. At the
+  realm's name and the registrar's port, each machine also needs that port
+  open outbound, and the instance's security group must admit it
+  ([aws/provision.md](aws/provision.md), Ports); the CLI's failure names the
+  host and port it could not reach
   ([docs/CLI.md](../../docs/CLI.md#registering-the-relay-key-at-your-relay)).
+  An exchange configured with that address keeps it until its configuration
+  names the registrar's own name, so close the port only once none does.
 - **How it reaches the table, and as whom.** In-process, through
   `relay_table.py`, so the table and mapping have one write path. It runs as the
   relay image's uid and gid, which `install.sh` reads from the image and fills
@@ -403,6 +423,88 @@ token, overwrite the file and
   request line, is replaced by a fixed placeholder, since it could hold a key
   sent in the wrong place. Neither the token, a key, nor the caller's address
   is logged.
+
+## The 443 front
+
+One listener holds 443/tcp on every address: nginx's stream module in a
+container of its own, `alcove-relay-front.service`. It reads the server name
+from a connection's TLS ClientHello and passes the connection, its bytes
+unchanged, to a service on loopback. It terminates no TLS and holds no key:
+coturn, the registrar and each routed service present their own certificate,
+so the front sees what any network hop on the path sees.
+
+- **The rule.** By server name (SNI), from `relay.env`:
+
+  | the connection asks for | it goes to |
+  | --- | --- |
+  | `ALCOVE_RELAY_REGISTRAR_NAME` | the registrar, on `127.0.0.1` at `ALCOVE_RELAY_REGISTRAR_PORT` |
+  | a name in `ALCOVE_RELAY_FRONT_ROUTES` (`name=port` pairs) | that port on `127.0.0.1` |
+  | the realm, any other name, no name, or bytes that are not TLS | coturn, `127.0.0.1:5349` |
+
+  coturn takes every connection no route claims, so a TURN client reaches it
+  whatever name it sends, or none. A route names a port on `127.0.0.1` and
+  never another host. `render-front.sh` compares names in lowercase, as
+  nginx's map matches them, and refuses a route for the realm, a name two
+  routes claim, a name that is not a lowercase DNS name, a name nginx's map
+  reads as a keyword (`default`, `include`, `hostnames`, `volatile`), port
+  443, and a port another route or the registrar already uses; `install.sh`
+  runs it before it installs or restarts anything. `install.sh` then builds
+  the front's image and checks the rendered configuration with `nginx -t`
+  before it installs the scripts under `/opt` or renders coturn's
+  configuration, so a front that fails either leaves coturn as it was.
+- **Why the server name.** The alternatives weighed against it, a test of the
+  first bytes and ALPN, are in
+  [the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443).
+- **What the services see.** A connection through the front arrives at coturn
+  and at each routed service from `127.0.0.1`. coturn's log lines name that
+  address rather than the client's, and so do the broker front's access log
+  lines for a connection through 443. coturn reports it to a TURN client as
+  the client's reflexive address.
+- **Bounds.** A connection's first bytes must arrive within 10 s
+  (`preread_timeout`) and the service behind must accept within 5 s. An
+  established connection idle for 900 s is closed, longer than coturn's
+  `max-allocate-lifetime` of 600 s, so an allocation its client refreshes is
+  not cut. At most 1024 connections are open at once, a client's side and the
+  service's side each counting one (`worker_connections`). These are
+  working values in `front.conf.tmpl`, not measured bounds, raised on
+  request. The registrar's own bounds ([The registrar](#the-registrar),
+  Bounds on a connection) apply behind the front unchanged.
+- **One limit for all three services.** The 1024 connections are shared by
+  coturn, the registrar and every routed service, and the front sets no limit
+  per client address. One host that opens that many connections, and holds
+  them or replaces each as the 10 s or 900 s bound closes it, keeps every
+  other client from TURN, the registrar and the broker on 443 for as long as
+  it does so.
+- **What it logs.** No access log: one line per connection would record which
+  client asked for which service. Its error log, warnings and above, goes to
+  the journal. When coturn or a routed service refuses a connection, does
+  not accept it within 5 s, or resets it, the line nginx writes there names
+  the client's address beside the service's loopback port, which identifies
+  the service the client asked for. On the project's relay host, coturn
+  resetting a connection whose credential or allocation it refused, or a probe
+  that sent no server name, an ALPN offer or bytes that were not TLS, each
+  wrote such a line (`recv() failed (104: Connection reset by peer) while
+  proxying and reading from upstream`).
+- **The broker.** The broker's TLS front ([infra/broker](../broker/README.md))
+  listens on 8443 and presents its own certificate, so on a host that runs it,
+  `ALCOVE_RELAY_FRONT_ROUTES="signal.example.org=8443"` answers it on 443
+  under its own name. The registrar then needs another port, such as the 8444
+  `relay.env.example` sets.
+- **The WebSocket relay.** It runs on this host when it is built
+  ([docs/notes/web-websocket-transport.md](../../docs/notes/web-websocket-transport.md)),
+  under a name of its own, and its route is one more `name=port` pair.
+- **Memory.** The front is one nginx worker beside coturn and the registrar,
+  on an instance with 412 MB and no headroom (a full `npm ci` there
+  OOM-killed coturn). On the project's host, without a registrar, its cgroup
+  measured 8.08 MB and `free` reported 20 MB less available memory, mostly
+  page cache, with no out-of-memory kill.
+
+What was measured on the project's relay host on 2026-10-12, and what has
+not been -- the registrar behind the front, and a relayed exchange from a
+443-only client -- is in
+[the deployment record](../../docs/notes/webrtc-relay-deployment.md#one-listener-on-443),
+with the alternative if the front fails a TURN client: a second public
+address on the instance.
 
 ## Supervision and the container runtime
 
@@ -460,6 +562,15 @@ v5 or later -- `renew.sh` drives the v5 `run` flag shape, which a v4 binary
 rejects) or `acme.sh`. DNS-01 rather than HTTP-01 because the relay already
 terminates TLS on 443 for TURNS -- an HTTP-01 challenge would need a second
 service on 80 whose only job is to answer it.
+
+The certificate names the realm, and `ALCOVE_RELAY_REGISTRAR_NAME` beside it
+where that is set, since the registrar presents the same certificate under its
+own name. A certificate issued before the name was set covers the realm alone
+until a forced renewal reissues it:
+`ALCOVE_RELAY_RENEW_FORCE=1 /opt/alcove-relay/certs/renew.sh`, which widens
+lego's window to 365 days or passes acme.sh `--force`. Until then `verify.sh`'s
+registrar probe fails on the name. Each forced renewal counts against Let's
+Encrypt's limit of five duplicate certificates a week.
 
 The provider is a variable, and the credential lives in `/etc/alcove-relay/acme.env`
 at mode 600. `certs/env.example` carries the Cloudflare shape (a token scoped to

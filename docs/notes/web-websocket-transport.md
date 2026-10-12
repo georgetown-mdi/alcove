@@ -50,7 +50,7 @@ The pieces a WebSocket path would build on, with where each is stated:
   Enrolling an exchange needs the relay-owner token: the CLI's `alcove enroll-relay`, or a saved exchange's page in the browser ([MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#when-your-relay-runs-a-registrar)); a one-shot browser exchange enrolls nothing ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), the registrar row).
 - **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)).
   The browser keeps its own relay setting in `localStorage` (`apps/web/src/psi/transport/ownRelaySetting.ts`).
-- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn, which holds 443 on the same host; a network admitting outbound TCP to 443 alone cannot reach the broker ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-the-limit-it-sets)).
+- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host; a network admitting outbound TCP to 443 alone reaches the broker only where the host's 443 front routes its name ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
   The front closes a WebSocket idle for 300 s; the PeerJS heartbeat every 5 s keeps a signaling socket alive.
 - **What the relay measurements established.**
   TURN over TLS on 443 carried a UDP-blocked CLI party on a real path, and through a TLS-inspecting proxy once that proxy's CA was trusted on the CLI host; the interception point read the STUN and TURN envelope in the clear and passed it ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-1-does-turn-over-tls-on-443-carry-a-restrictive-network)).
@@ -168,11 +168,12 @@ The rows it adds to [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-o
   That is a difference from TURN, where a vendor is a supported alternative, and it is the cost of the protocol being ours.
 
 **Port 443 is a prerequisite, not a detail.**
-The broker is on 8443 because coturn holds 443, and the relay needs 443 for the same reason the broker does.
-The cleanest fix is a second public address on the relay instance: coturn already binds one address (`listening-ip` in `infra/relay/turnserver.conf.tmpl`), so the nginx front serves the broker and the relay on 443 at the second address under their own names.
+The broker and the relay each need 443 for the reason TURN does.
+The owner's choice (2026-10-04) is one proxy on 443, and the relay reference builds it: [the 443 front](../../infra/relay/README.md#the-443-front) routes each TLS connection by its server name, gives coturn every connection no route claims, and takes the relay as one more named route.
+It puts a proxy between coturn and the client's address, which TURN reports back to the client; whether TURN clients complete a relayed exchange through it is a host measurement ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
+The alternative, kept for that measurement, is a second public address on the relay instance, with the nginx front serving the broker and the relay on 443 there under their own names.
 At the rate the relay measurement computed, a public address is about $0.005 an hour, about $3.60 a month, with no rate here confirmed against a bill ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-2-what-exchange-provisioned-means)).
-Routing both names on one address by SNI without terminating coturn's TLS is possible in principle and unverified; it would put a proxy between coturn and the client's address, which TURN reports back to the client, so the second address is recommended and SNI routing is not.
-The fix serves the WebRTC path too: today a 443-only network cannot reach signaling at all ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-the-limit-it-sets)), so [S2](#the-spikes) comes before any relay work.
+The fix serves the WebRTC path too: a 443-only network reaches signaling only through it ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)), so [S2](#the-spikes) comes before any relay work.
 
 ### How the relay fits the existing bounds
 

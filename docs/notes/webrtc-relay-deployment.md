@@ -401,6 +401,79 @@ The web app runs no broker and no other runtime service: the hosted app is a
 static site with no server framework
 ([web-server-runtime-role.md](web-server-runtime-role.md)).
 
+### One listener on 443
+
+_Status: installed on the project's relay host and measured there on 2026-10-12, without a registrar and without a relayed exchange from a 443-only client._
+
+With coturn on 443, the registrar and the broker's front, each on a port of
+its own, are out of reach of a network admitting outbound TCP to 443 only: the
+2026-10-03 restricted CLI exited 73 on the registrar. The owner chose one
+proxy on 443 (2026-10-04). The reference builds it as
+[the 443 front](../../infra/relay/README.md#the-443-front): nginx's stream
+module reads each connection's TLS server name and passes the connection,
+unopened, to coturn on loopback, the registrar under a name of its own, or a
+routed service such as the broker's front.
+
+The rule, and what was weighed:
+
+- **First bytes.** A STUN header and a TLS record differ in their first byte,
+  but the relay serves TURN over TLS only, so every connection on 443 starts
+  with a TLS record and the test separates nothing here.
+- **ALPN.** It would let the registrar keep the realm's name, but only if no
+  TURN client offers `http/1.1` or `h2`, which is not measured for Chrome,
+  Firefox or werift.
+- **Server name, chosen.** A name per service, with coturn taking every
+  connection no route claims, so a TURN client that sends the realm, another
+  name or none still reaches coturn.
+- **A second public address.** coturn on one address and the nginx front on
+  the other, about $3.60 a month, with no proxy on the TURN path. It is the
+  fallback if TURN clients fail through the front.
+
+The front puts a proxy between coturn and the client: coturn sees
+`127.0.0.1` as every client's address, reports it to the client as its
+reflexive address, and names it in its log lines.
+
+Measured on the project's relay host on 2026-10-12, with the front routing
+`signal.data-bridge.org` to the broker's front on 8443 and every other
+connection to coturn on `127.0.0.1:5349` (the host runs no registrar and no
+registrar name is set):
+
+- **Install.** One coturn restart; the front's image built and `nginx -t`
+  passed before coturn's configuration changed; the front held 443 with no
+  restart and dropped every capability but `NET_BIND_SERVICE`, `SETUID` and
+  `SETGID`.
+- **`verify.sh` through the front.** 13 checks passed, none failed: the TLS
+  handshake and its issuer and validity, the front routing the broker's name to
+  a certified service, a relay allocation, the refusals of internal addresses
+  and of a TCP allocation, and the per-exchange key checks (an allocation for a
+  registered key and for a hex key, refusals of an unregistered key, a 32-byte
+  key and a revoked key). The registrar check was skipped.
+- **Reach.** The realm's name and `signal.data-bridge.org` each presented their
+  own certificate; no server name, and an ALPN offer of `http/1.1`, reached
+  coturn; bytes that were not TLS were closed without an answer. The
+  broker answered `/api/health` on 443 with 200 and a signaling WebSocket
+  opened there.
+- **TURN through the front.** A TURN allocation through the front succeeded
+  with coturn seeing the client as `127.0.0.1`.
+- **Memory.** The front's cgroup was 8.08 MB (1.3 MiB in `docker stats`);
+  `free` reported 117 MB available after against 137 MB before, mostly page
+  cache; swap used rose 12 MB; no out-of-memory kill. coturn's cgroup stayed at
+  5.6 to 6.5 MB.
+- **The error log.** Past start-up, five lines named a client's address, each
+  `recv() failed (104: Connection reset by peer) while proxying and reading
+  from upstream` with coturn's port as the upstream: coturn resetting
+  connections whose credential or allocation it refused, and the probes that
+  sent no server name, an ALPN offer or bytes that were not TLS.
+
+Not measured, and so owed before the front is called deployed:
+
+- the registrar behind the front at a name of its own: the project's host has
+  no registrar, so no name was set, no certificate was issued for one, and
+  the registrar's `OPTIONS` and `PUT` calls were not made through the front;
+- a relayed exchange through the front from a browser and from the CLI, each
+  on a network admitting outbound TCP to 443 only, which needs a registrar to
+  register the exchange's key.
+
 ## The proposed epic
 
 **A proposal for the owner to ratify.** Nothing in this section is filed,
@@ -631,13 +704,13 @@ change to the drop-in.
 | question | the one thing that would determine it |
 | --- | --- |
 | Real partner and agency networks | a run from a machine on one, which the owner scoped as a follow-on rather than a blocker |
-| A restrictive-network browser's registrar path (the browser itself is measured) | on 2026-10-03 a staging web-app browser with outbound UDP refused, TCP admitted only to 443 of the relay and the app, accepted a CLI invitation naming the standing relay and completed over a relayed pair (local relay, relayProtocol tls), with the CLI unrestricted and with the CLI blocked the same way, relay-to-relay. The blocked CLI exited 73 because the registrar on 8443 was unreachable; what remains is the registrar on 443, which is the follow-on item for the standing broker service |
+| A restrictive-network browser's registrar path (the browser itself is measured) | on 2026-10-03 a staging web-app browser with outbound UDP refused, TCP admitted only to 443 of the relay and the app, accepted a CLI invitation naming the standing relay and completed over a relayed pair (local relay, relayProtocol tls), with the CLI unrestricted and with the CLI blocked the same way, relay-to-relay. The blocked CLI exited 73 because the registrar on 8443 was unreachable; what remains is the registrar on 443 through [the 443 front](#one-listener-on-443) |
 | The standing relay across real NAT | a relayed exchange between two parties on separate networks, rather than the two on the relay host the bring-up ran |
 | A browser party against the standing relay | the same relayed exchange with a browser on one side of it |
 | coturn on Fargate | a credential granted the container service; the one used here is denied it outright |
 | Whether the account's real cost matches the computed figure | reading Cost Explorer a day later, once its lag has passed |
 | The managed vendor's own charge | the vendor's bill, which never appears on this account |
-| The standing broker on 443, and across a reboot, repeated crashes and memory pressure | the broker on 443 once coturn and the front share that port, and an instance reboot, a repeatedly killed broker and an exchange under memory pressure, each observed on the standing deployment ([Does the coordination server leave the web app's deployment](#does-the-coordination-server-leave-the-web-apps-deployment)) |
+| The standing broker on 443, and across a reboot, repeated crashes and memory pressure | the broker on 443 through [the 443 front](#one-listener-on-443), and an instance reboot, a repeatedly killed broker and an exchange under memory pressure, each observed on the standing deployment ([Does the coordination server leave the web app's deployment](#does-the-coordination-server-leave-the-web-apps-deployment)) |
 | A relayed exchange longer than `max-allocate-lifetime` | a relayed run past 600 s, which shows whether werift and the browser refresh their allocations; every relayed run measured here took seconds |
 | Whether coturn reports usage or metrics mid-session for a long or high-volume allocation | one relayed session longer than `max-allocate-lifetime`, with its usage and `/metrics` read while it is open; the host run's sessions were short |
 | Published rates | a credential with pricing-API access; no rate behind any figure here was confirmed from AWS's own API |
