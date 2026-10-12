@@ -78,11 +78,12 @@ describe("alcove-relay-os-update.timer", () => {
 describe("alcove-relay-os-update.service", () => {
   const unit = read("infra/relay/alcove-relay-os-update.service");
 
-  it("takes security updates from the newest release, not the locked one", () => {
+  it("upgrades every package to the newest release, not the locked one", () => {
     const argv = setting(unit, "ExecStart").split(/\s+/);
     expect(argv[0]).toBe("/usr/bin/dnf");
     expect(argv).toContain("--releasever=latest");
-    expect(argv).toContain("--security");
+    expect(argv).toContain("upgrade");
+    expect(argv).not.toContain("--security");
     expect(argv).toContain("-y");
   });
 

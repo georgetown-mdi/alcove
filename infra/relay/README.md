@@ -52,9 +52,9 @@ your own environment:
   client are not measured, since the host runs no registrar today. Its tests
   under `scripts/` drive `render-front.sh` and hold the template to coturn's
   listener, not nginx.
-- [The OS security update](#os-security-updates) has not yet run on the
-  project's relay host, so which release its `--releasever=latest` reads there,
-  and what its first run restarted, are not yet recorded here.
+- [The OS update](#os-security-updates) has not yet run on the project's relay
+  host, so where the host records its release lock, and what its first run
+  restarted, are not yet recorded here.
 - `verify.sh` probes the allocation and its refusals, not exchange traffic,
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
@@ -603,9 +603,9 @@ running -- and the timer runs at a fixed early hour for the day it does renew.
 ## OS security updates
 
 On Amazon Linux 2023, `install.sh` installs `alcove-relay-os-update.timer`,
-which installs the distribution's security updates unattended and then runs
-`verify.sh`. On any other distribution it installs neither unit and says so;
-set up that distribution's own automatic updates there.
+which upgrades the host to the newest distribution release unattended and
+then runs `verify.sh`. On any other distribution it installs neither unit and
+says so; set up that distribution's own automatic updates there.
 
 **The window.** Every day between 05:00 and 05:30 UTC: the timer fires at 05:00
 UTC with up to 30 minutes of randomized delay. That is after the relay's
@@ -615,20 +615,19 @@ on the same host, 04:30 to 04:45 UTC
 not land with a certificate's. A host that is down at that time skips the day
 rather than updating at boot.
 
-**What it updates.** It runs `dnf -y --releasever=latest upgrade --security`:
-each installed package that has a security advisory in the newest Amazon Linux
-2023 release, and whatever those upgrades require. Bug-fix-only updates are not
-taken. Nothing outside dnf is touched: the relay and front images are pinned in
-their Dockerfiles and move by `install.sh`, and Node on a host that also runs
-the broker is the tarball under `/usr/local/lib/nodejs`
-([`infra/broker/README.md`](../broker/README.md)), which dnf does not manage.
+**What it updates.** It runs `dnf -y upgrade --releasever=latest`: every
+installed package, to its version in the newest Amazon Linux 2023 release, so
+the host stays on one published package set. Nothing outside dnf is touched:
+the relay and front images are pinned in their Dockerfiles and move by
+`install.sh`, and Node on a host that also runs the broker is the tarball under
+`/usr/local/lib/nodejs` ([`infra/broker/README.md`](../broker/README.md)),
+which dnf does not manage.
 
 **The release.** Amazon Linux 2023 locks dnf to the release the host was
-launched from, so a plain `dnf upgrade` reads only that release's repository and
-never sees an advisory published in a later one. The unit passes
-`--releasever=latest` on its own command line instead, and leaves the lock in
-`/etc/dnf/vars` as it is, so `install.sh`'s `dnf install` calls and any run by
-hand still use the locked release. To see the repository the unit reads, run
+launched from, so a plain `dnf upgrade` reads only that release's
+repository. The unit passes `--releasever=latest` to upgrade to the newest
+release, which moves that lock forward, so `install.sh`'s `dnf install` calls
+and any run by hand follow it. To see the repository the unit reads, run
 `dnf -v --releasever=latest repolist` on the host and read each repository's
 URL.
 
