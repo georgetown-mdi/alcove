@@ -7,8 +7,10 @@ import { startCliInviter } from "./cliPeer.ts";
 import { startConsoleParty } from "./consolePeer.ts";
 
 import type {
+  ConsoleAnswer,
   ConsoleJobOutcome,
   ConsoleLegStart,
+  ConsoleWorkingFolderFiles,
   LiveLegCliOutcome,
   LiveLegStart,
 } from "./legTypes.ts";
@@ -138,10 +140,16 @@ export const liveWebrtcLegCommands = {
     startProbeBroker(),
   stopSignalingProbeBroker: (): Promise<void> => stopProbeBroker(),
   startConsoleWebrtcLeg: (): Promise<ConsoleLegStart> => startConsoleLeg(),
+  putConsoleSignalingServer: (
+    _context: unknown,
+    body: string,
+  ): Promise<ConsoleAnswer> => runningConsoleParty().putSignalingServer(body),
   createConsoleWebrtcJob: (
     _context: unknown,
     intent: unknown,
   ): Promise<string> => runningConsoleParty().createJob(intent),
+  consoleWorkingFolderFiles: (): ConsoleWorkingFolderFiles =>
+    runningConsoleParty().workingFolderFiles(),
   consoleWebrtcJobOutcome: (): Promise<ConsoleJobOutcome> =>
     runningConsoleParty().outcome(),
   stopConsoleWebrtcLeg: (): Promise<void> => stopConsoleLeg(),

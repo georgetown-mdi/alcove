@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import { ZodError } from "zod";
 
 import {
@@ -804,7 +806,7 @@ export class JobManager {
       if (
         authored === undefined ||
         intent.signalingServer === undefined ||
-        !namesSignalingServer(intent.signalingServer, authored)
+        !namesSignalingServer(intent.signalingServer, authored, intent.side)
       )
         throw new SignalingServerChangedError();
       signalingServer = authored;
@@ -1229,6 +1231,9 @@ export class JobManager {
       secure: server.secure,
       ...(server.webAppOrigin !== undefined
         ? { webAppOrigin: server.webAppOrigin }
+        : {}),
+      ...(server.invitationRelay !== undefined
+        ? { invitationRelay: server.invitationRelay }
         : {}),
       warnings: this.authoredSignalingWarnings,
     };
@@ -2401,14 +2406,27 @@ function openedConfigurationWarning(
 
 /** Whether a create intent's coordination server is `authored`: the host,
  * port and path the invitation names. */
+/**
+ * Whether `named` is the authored server: the same host, the same port once
+ * an omitted one is read as the authored scheme's default, and the same path
+ * once it ends in `/`, as the authored one does. An acceptor's run also names
+ * the authored relay, or none where none is authored; an inviter's names no
+ * relay.
+ */
 function namesSignalingServer(
   named: NonNullable<JobWebrtcExchangeIntent["signalingServer"]>,
   authored: AuthoredSignalingServer,
+  side: JobWebrtcExchangeIntent["side"],
 ): boolean {
+  const defaultPort = authored.secure ? 443 : 80;
+  const path = named.path.endsWith("/") ? named.path : `${named.path}/`;
   return (
     named.host === authored.host &&
-    named.port === authored.port &&
-    named.path === authored.path
+    (named.port ?? defaultPort) === (authored.port ?? defaultPort) &&
+    path === authored.path &&
+    (side === "acceptor"
+      ? isDeepStrictEqual(named.relay, authored.invitationRelay)
+      : named.relay === undefined)
   );
 }
 

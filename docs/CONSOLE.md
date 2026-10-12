@@ -226,7 +226,7 @@ Choose **Over WebRTC, run here** on the review step to have the console's `alcov
 - **A web app's address gives a link to share.** The share screen offers that web app's accept link and the invitation as text. A coordination server's own address names no web app, so the share screen offers the invitation as text alone, as `alcove invite` prints it; never a link to this console, which your partner cannot reach.
 - **A `ws://` address is allowed, with a warning.** The invitation does not record the scheme, so your partner's side connects over `wss://`. Use `ws://` only for a server on this machine, such as one you test with.
 - **A server on this computer or your local network is named as such**, since a partner elsewhere cannot reach it.
-- **Direct connections only.** The console's run uses no relay (TURN) server, so a network that blocks direct connections on either side stops the exchange from connecting.
+- **Direct connections only.** An invitation the console creates names no relay (TURN) server and its run uses none, so a network that blocks direct connections on either side stops the exchange from connecting.
 - **The container needs outbound network access** to the coordination server, to a STUN server that tells it its public address (the command line's default), and, for the exchange itself, to your partner's computer.
 
 The address is held in memory until you clear it or restart the console; it holds no credential. **Create the invitation** reads it again first: if it changed since the page showed it, in another tab or by a restart, no invitation is created and the review step says so, and a run whose invitation names a server other than the one the console holds does not start. The endpoint contract is in [SERVER_JOB_API.md](spec/SERVER_JOB_API.md#the-coordination-server).
@@ -242,6 +242,18 @@ When the run starts, the console writes its `alcove.yaml` and `.alcove.key` into
 - **An open configuration withholds this choice.** It writes an `alcove.yaml` of its own into the folder the open configuration came from: close the configuration on the first step to set the exchange up here.
 
 The review step offers no file-handling settings for a WebRTC exchange, and connection tuning without the check interval.
+
+### Accepting a WebRTC invitation
+
+A WebRTC invitation from a partner in the Alcove web app, or from `alcove invite`, is accepted on the console as `alcove accept` accepts it: the console's `alcove` runs the exchange, not the browser tab.
+
+- **The invitation names the coordination server.** The first step shows it under **How this console connects**, with nothing to type or change. The relay the invitation names, if any, is shown with the terms.
+- **The console connects over `wss://`.** The invitation does not say which scheme its server uses. The one exception is a server the console already holds at that same `ws://` address, as you set it for a server on this machine you test with; the first step then shows the `ws://` address and says it is not encrypted.
+- **The invitation's relay is used as `alcove accept` uses it.** The run can connect through the TURN and STUN servers the invitation names, presenting a credential it derives from the shared secret. With no relay named, the run connects directly, and a network that blocks direct connections on either side stops the exchange from connecting.
+- **Starting the exchange sets the console to that server.** It replaces the coordination server set for an invitation of your own, with the invitation's relay beside it. Creating an invitation afterwards uses the server but never the relay.
+- **The files go into your working folder.** When the exchange starts, the console writes `alcove.yaml`, with `role: acceptor` and the relay as `invitation_relay`, and `.alcove.key` into your working folder and runs `alcove exchange` on them, under the rules for an exchange you invite to above: neither file may already be there, trying again continues the exchange the folder holds, and the same folder runs it again from the command line.
+
+The consent step and the columns step are the same as for an SFTP or shared-folder invitation, without the file-handling settings.
 
 ## Choosing how the exchange handles its files
 

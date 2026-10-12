@@ -13,6 +13,8 @@ import {
   LinkageTermsSchema,
   MAX_NAME_LENGTH,
   MAX_RECONNECT_ATTEMPTS,
+  MAX_RELAY_LOCATOR_URLS,
+  MAX_RELAY_LOCATOR_URL_LENGTH,
   MAX_SIGNALING_SERVER_URL_LENGTH,
   MAX_TEXT_LENGTH,
   MAX_TIMEOUT_SECONDS,
@@ -21,6 +23,8 @@ import {
   OwnColumnSelectionSchema,
   SHARED_SECRET_REGEX,
   StandardizationSchema,
+  StunUrlSchema,
+  TurnUrlSchema,
   csvDelimiterRefusal,
   holdsPrivateKeyMaterial,
   isCsvDelimiterChoice,
@@ -39,6 +43,7 @@ import type {
   LinkageTerms,
   Metadata,
   OwnColumnSelection,
+  RelayLocator,
   SigningConfig,
   Standardization,
 } from "@alcove/core";
@@ -469,19 +474,22 @@ export interface JobWebrtcExchangeIntent extends JobExchangeIntentBase {
   /**
    * The coordination server the invitation names, which the create refuses
    * unless it is the one the console holds, so the run dials the server the
-   * partner was sent to. Optional in the schema so a create naming none is
-   * refused with a reason rather than as a malformed body.
+   * partner was sent to; an acceptor's names the console's relay too. Compared
+   * only: nothing in it is composed. Optional in the schema so a create naming
+   * none is refused with a reason rather than as a malformed body.
    */
   signalingServer?: JobSignalingServerEndpoint;
 }
 
-/** A coordination server as an invitation names it: no scheme, no relay. */
+/** A coordination server as an invitation names it, with no scheme. */
 export interface JobSignalingServerEndpoint {
   host: string;
   /** Absent for the scheme's default port. */
   port?: number;
   /** The server's mount, ending in `/`. */
   path: string;
+  /** The relay an accepted invitation names; an inviter's run names none. */
+  relay?: RelayLocator;
 }
 
 /**
@@ -756,6 +764,21 @@ const jobSftpExchangeIntentSchema = z
   })
   .strict();
 
+const relayUrlList = (url: z.ZodType<string>) =>
+  z
+    .array(url.check(maxCodeUnits(MAX_RELAY_LOCATOR_URL_LENGTH)))
+    .min(1)
+    .max(MAX_RELAY_LOCATOR_URLS);
+
+/** An accepted invitation's relay: its TURN and STUN url lists, each url held
+ * to core's url rule, and nothing else. */
+export const jobInvitationRelaySchema: z.ZodType<RelayLocator> = z
+  .strictObject({
+    turn: relayUrlList(TurnUrlSchema).optional(),
+    stun: relayUrlList(StunUrlSchema).optional(),
+  })
+  .refine((relay) => relay.turn !== undefined || relay.stun !== undefined);
+
 const jobSignalingServerEndpointSchema: z.ZodType<JobSignalingServerEndpoint> =
   z.strictObject({
     host: z
@@ -764,6 +787,7 @@ const jobSignalingServerEndpointSchema: z.ZodType<JobSignalingServerEndpoint> =
       .check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
     port: z.number().int().min(1).max(65535).optional(),
     path: z.string().check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
+    relay: jobInvitationRelaySchema.optional(),
   });
 
 const jobWebrtcExchangeIntentSchema = z

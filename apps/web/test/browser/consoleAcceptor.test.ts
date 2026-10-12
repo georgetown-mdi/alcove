@@ -46,10 +46,11 @@ import type { JobHandoff } from "@jobContract/jobHandoff";
 
 // This suite exercises the CONSOLE acceptor seat: the accurate unsupported-shape
 // gate, the shared-folder confirmation, and the server-job run surface (the
-// keep-open callout through a stubbed filedrop accept). The dev server has no
-// rendezvous mount configured, so a WebRTC accept is out of scope on the console,
-// and a single-directory file-drop accept needs JOB_RENDEZVOUS_DIR; both stop at
-// review with an accurate state naming where the operator CAN run the exchange.
+// keep-open callout through a stubbed filedrop accept), and the WebRTC accept the
+// console runs through the invitation's coordination server. The dev server has no
+// rendezvous mount configured, so a single-directory file-drop accept needs
+// JOB_RENDEZVOUS_DIR and stops at review with an accurate state naming where the
+// operator CAN run the exchange.
 // The hosted acceptor journey stays pinned by acceptJourney.test.ts.
 
 // The exchange screens and their recovery links touch the router boundary.
@@ -208,20 +209,21 @@ describe("console acceptor unsupported-shape gate", () => {
     ).toBeNull();
   });
 
-  test("a webrtc invitation is out of scope on the console, pointing at the web app", async () => {
-    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+  test("a webrtc invitation with a query in its server path is blocked, asking for a new invitation", async () => {
+    const endpoint: ConnectionEndpoint = {
+      ...WEBRTC_ENDPOINT,
+      path: "/api/?key=x",
+    };
+    window.location.hash = await encodeToken(endpoint);
     app.render(createElement(AcceptorScreen));
 
-    await expect
-      .element(page.getByText("Invitation from County Health Department"))
-      .toBeInTheDocument();
     await expect
       .element(page.getByText(ACCEPT_UNSUPPORTED_TITLE))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByText(
-          acceptUnsupported(WEBRTC_ENDPOINT, { configured: false })!.message,
+          acceptUnsupported(endpoint, { configured: false })!.message,
         ),
       )
       .toBeInTheDocument();
@@ -233,28 +235,127 @@ describe("console acceptor unsupported-shape gate", () => {
   });
 });
 
-describe("console acceptor never renders the recurring-save offer", () => {
-  // The offer's only acceptor render site is gated on a webrtc endpoint reaching the
-  // launched step (AcceptorScreen: `endpoint.channel === "webrtc" && launched`). A
-  // console build classifies a webrtc accept as unsupported and stops it at the review
-  // step, so the offer -- whose /saved link is gated out of the console build -- never
-  // mounts. Pin the webrtc accept blocked at review, before the launched step, with no
-  // offer panel.
-  test("a webrtc invitation is blocked at review with no offer", async () => {
+describe("console acceptor of a webrtc invitation", () => {
+  test("shows the coordination server it dials read-only and goes on to consent", async () => {
+    stubServerJobAccept();
     window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
     app.render(createElement(AcceptorScreen));
 
-    // The unsupported block replaces the Continue action, so the flow never reaches the
-    // launched step the offer needs.
     await expect
-      .element(page.getByText(ACCEPT_UNSUPPORTED_TITLE))
+      .element(page.getByText("How this console connects"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("wss://127.0.0.1:3000/api/"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("The run connects directly", { exact: false }))
+      .toBeInTheDocument();
+    expect(page.getByText(ACCEPT_UNSUPPORTED_TITLE).query()).toBeNull();
+    expect(page.getByRole("textbox", { name: /server/i }).query()).toBeNull();
+    await expect
+      .element(
+        page.getByRole("button", { name: "Continue: consent & your file" }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("dials over ws:// where the console already holds that server at ws://", async () => {
+    stubServerJobAccept({
+      signalingServer: {
+        configured: true,
+        host: "127.0.0.1",
+        port: 3000,
+        path: "/api/",
+        secure: false,
+        warnings: [],
+      },
+    });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+
+    await expect
+      .element(page.getByText("ws://127.0.0.1:3000/api/"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("which is not encrypted", { exact: false }))
+      .toBeInTheDocument();
+  });
+
+  test("sets the console to the invitation's server and relay, then creates a run naming them", async () => {
+    const relay = { turn: ["turn:relay.example.org:3478"] };
+    const api = stubServerJobAccept();
+    window.location.hash = await encodeToken({ ...WEBRTC_ENDPOINT, relay });
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(page.getByText("The run uses the relay", { exact: false }))
+      .toBeInTheDocument();
+    await reachAcceptColumns();
+    // A WebRTC run handles no exchange files, so their settings are not offered.
+    expect(
+      page.getByRole("button", { name: /How files are handled/ }).query(),
+    ).toBeNull();
+    await page.getByRole("button", { name: "Start the exchange" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange in progress");
+
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(String(put?.body))).toEqual({
+      address: "wss://127.0.0.1:3000/api/",
+      invitationRelay: relay,
+    });
+    const createIndex = api.captured.findIndex(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    expect(createIndex).toBeGreaterThan(api.captured.indexOf(put!));
+    const intent = JSON.parse(String(api.captured[createIndex]?.body)) as {
+      channel: string;
+      side: string;
+      signalingServer: unknown;
+      options?: unknown;
+    };
+    expect(intent.channel).toBe("webrtc");
+    expect(intent.side).toBe("acceptor");
+    expect(intent.signalingServer).toEqual({
+      host: "127.0.0.1",
+      port: 3000,
+      path: "/api/",
+      relay,
+    });
+    expect(intent.options).toBeUndefined();
+
+    // The console keeps the rotated secret in the working folder, so the
+    // recurring-save offer, whose /saved link is gated out of the console
+    // build, never mounts.
+    await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+    api.emitEvent({ v: 1, type: "result", resultWritten: true });
+    api.closeEvents();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange complete");
+    expect(page.getByText("Save as a recurring exchange").query()).toBeNull();
+  });
+
+  test("stops before any run is created when the console refuses the server", async () => {
+    expectConsole("error", "Error: That address is refused. Type another.");
+    const api = stubServerJobAccept({
+      signalingRefusal: "That address is refused. Type another.",
+    });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachAcceptStart();
+
+    await expect
+      .element(page.getByText("That address is refused.", { exact: false }))
       .toBeInTheDocument();
     expect(
-      page
-        .getByRole("button", { name: "Continue: consent & your file" })
-        .query(),
-    ).toBeNull();
-    expect(page.getByText("Save as a recurring exchange").query()).toBeNull();
+      api.captured.some(
+        (request) => request.url === "/api/jobs" && request.method === "POST",
+      ),
+    ).toBe(false);
   });
 });
 
@@ -476,6 +577,11 @@ interface AcceptStubOptions {
   /** When true every `DELETE /api/jobs/job-7` is held open until
    * `releaseDeletes()`, so a test can act while a discard is still in flight. */
   holdDeletes?: boolean;
+  /** The body `GET /api/jobs/webrtc` serves; none is set when unset. */
+  signalingServer?: unknown;
+  /** When set, `PUT /api/jobs/webrtc` is a 400 with this message; otherwise
+   * it reports the invitation's server set. */
+  signalingRefusal?: string;
 }
 
 // The full same-origin job API a console server-job accept drives: a mounted
@@ -549,6 +655,24 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
         return Promise.resolve(jsonResponse(options.profile ?? ACCEPT_PROFILE));
       if (url === "/api/jobs/inputs/coverage")
         return Promise.resolve(jsonResponse({ rates: [] }));
+      if (url === "/api/jobs/webrtc") {
+        if ((init?.method ?? "GET") === "GET")
+          return Promise.resolve(
+            jsonResponse(options.signalingServer ?? { configured: false }),
+          );
+        return Promise.resolve(
+          options.signalingRefusal !== undefined
+            ? jsonResponse({ error: options.signalingRefusal }, 400)
+            : jsonResponse({
+                configured: true,
+                host: "127.0.0.1",
+                port: 3000,
+                path: "/api/",
+                secure: true,
+                warnings: [],
+              }),
+        );
+      }
       if (url === "/api/jobs")
         return Promise.resolve(
           options.conflict !== undefined

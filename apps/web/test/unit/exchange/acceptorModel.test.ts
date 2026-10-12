@@ -695,10 +695,18 @@ const SHARED_MOUNT = { configured: true };
 const SPLIT_MOUNT = { configured: true, split: true };
 
 describe("acceptUnsupported (runnability by endpoint shape)", () => {
-  test("a WebRTC endpoint is out of scope on the console, pointing at the web app", () => {
-    const unsupported = acceptUnsupported(WEBRTC_ENDPOINT, SHARED_MOUNT);
-    expect(unsupported?.message).toContain("out of scope");
-    expect(unsupported?.message).toContain("web app");
+  test("a WebRTC endpoint runs on the console, whatever its mounts", () => {
+    expect(acceptUnsupported(WEBRTC_ENDPOINT, SHARED_MOUNT)).toBeUndefined();
+    expect(acceptUnsupported(WEBRTC_ENDPOINT, NO_MOUNT)).toBeUndefined();
+  });
+
+  test("a WebRTC endpoint whose path holds a query is refused, asking for a new invitation", () => {
+    const unsupported = acceptUnsupported(
+      { ...WEBRTC_ENDPOINT, path: "/api/?key=x" },
+      SHARED_MOUNT,
+    );
+    expect(unsupported?.message).toContain("not a plain host, port and path");
+    expect(unsupported?.message).toContain("new invitation");
   });
 
   test("a split-directory filedrop endpoint runs on a split-provisioned console", () => {
@@ -801,8 +809,14 @@ describe("acceptorHowItRunsLabel", () => {
     expect(acceptorHowItRunsLabel(SINGLE_DIR_SFTP, true)).toContain("SFTP");
   });
 
-  test("a WebRTC accept, or any hosted accept, runs in the browser", () => {
-    expect(acceptorHowItRunsLabel(WEBRTC_ENDPOINT, true)).toBe("Browser");
+  test("a console WebRTC accept runs over WebRTC on the command-line tool", () => {
+    expect(acceptorHowItRunsLabel(WEBRTC_ENDPOINT, true)).toBe(
+      "WebRTC (command-line tool)",
+    );
+  });
+
+  test("any hosted accept runs in the browser", () => {
+    expect(acceptorHowItRunsLabel(WEBRTC_ENDPOINT, false)).toBe("Browser");
     expect(acceptorHowItRunsLabel(SINGLE_DIR_FILEDROP, false)).toBe("Browser");
     expect(acceptorHowItRunsLabel(SINGLE_DIR_SFTP, false)).toBe("Browser");
   });
@@ -816,21 +830,26 @@ describe("acceptorTransportNote", () => {
     );
   });
 
-  test("a WebRTC accept, or any hosted accept, notes the browser", () => {
-    expect(acceptorTransportNote(WEBRTC_ENDPOINT, true)).toBe("Browser");
+  test("a console WebRTC accept notes WebRTC", () => {
+    expect(acceptorTransportNote(WEBRTC_ENDPOINT, true)).toBe("WebRTC");
+  });
+
+  test("any hosted accept notes the browser", () => {
+    expect(acceptorTransportNote(WEBRTC_ENDPOINT, false)).toBe("Browser");
     expect(acceptorTransportNote(SINGLE_DIR_SFTP, false)).toBe("Browser");
     expect(acceptorTransportNote(SINGLE_DIR_FILEDROP, false)).toBe("Browser");
   });
 });
 
 describe("acceptorRunsAsServerJob", () => {
-  test("a console file-drop or SFTP accept runs as a server job on the console", () => {
+  test("a console file-drop, SFTP or WebRTC accept runs as a server job on the console", () => {
     expect(acceptorRunsAsServerJob(SINGLE_DIR_FILEDROP, true)).toBe(true);
     expect(acceptorRunsAsServerJob(SINGLE_DIR_SFTP, true)).toBe(true);
+    expect(acceptorRunsAsServerJob(WEBRTC_ENDPOINT, true)).toBe(true);
   });
 
-  test("a WebRTC accept, or any hosted accept, runs in the browser", () => {
-    expect(acceptorRunsAsServerJob(WEBRTC_ENDPOINT, true)).toBe(false);
+  test("any hosted accept runs in the browser", () => {
+    expect(acceptorRunsAsServerJob(WEBRTC_ENDPOINT, false)).toBe(false);
     expect(acceptorRunsAsServerJob(SINGLE_DIR_SFTP, false)).toBe(false);
     expect(acceptorRunsAsServerJob(SINGLE_DIR_FILEDROP, false)).toBe(false);
   });

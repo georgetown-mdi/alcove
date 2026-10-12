@@ -4,6 +4,7 @@ import {
   readJsonOrNull,
 } from "./jobApiBody";
 
+import type { RelayLocator } from "@alcove/core";
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 /**
@@ -93,17 +94,22 @@ export type PutSignalingServerResult =
   | { kind: "superseded" }
   | { kind: "error" };
 
-/** Set the coordination server from the address the operator typed. */
+/** Set the coordination server from the address the operator typed, or
+ * from an accepted invitation's server and relay. */
 export async function putSignalingServer(
   address: string,
   fetchImpl: typeof fetch = fetch,
+  invitationRelay?: RelayLocator,
 ): Promise<PutSignalingServerResult> {
   let response: Response;
   try {
     response = await fetchImpl(ROUTE, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({
+        address,
+        ...(invitationRelay !== undefined ? { invitationRelay } : {}),
+      }),
     });
   } catch {
     return { kind: "error" };

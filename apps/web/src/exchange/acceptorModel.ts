@@ -16,6 +16,7 @@ import { COUNT_ONLY_RECEIVE_ROW_VALUE, settledReceiveValue } from "@psi/ledger";
 import { dateTimeLabel } from "@psi/formatting";
 
 import { TRANSPORT_LEDGER_LABELS } from "@psi/transportChooser";
+import { acceptedSignalingServer } from "@console/signalingServerModel";
 import { saveRailNote } from "./saveExchangeModel";
 
 import type { InvitationToken, LinkageTerms, Metadata } from "@alcove/core";
@@ -447,10 +448,10 @@ type AcceptEndpoint = AcceptableInvitation["endpoint"];
 export const ACCEPT_UNSUPPORTED_TITLE = "This console cannot run this exchange";
 
 /** The accurate unsupported-accept copy for a console build, deciding runnability by
- * the endpoint's SHAPE rather than a channel kill-switch: a WebRTC accept has no
- * in-tab exchange on the console (WebRTC is the public web app's domain); a
- * split-directory SFTP accept needs the command-line tool; and a file-drop accept
- * needs the console's own mounts to be the shape the invitation names. */
+ * the endpoint's SHAPE rather than a channel kill-switch: a WebRTC accept needs a
+ * coordination server address the console can hold; a split-directory SFTP
+ * accept needs the command-line tool; and a file-drop accept needs the console's
+ * own mounts to be the shape the invitation names. */
 interface AcceptUnsupported {
   title: string;
   message: string;
@@ -511,13 +512,15 @@ export function acceptUnsupported(
   rendezvous: AcceptRendezvous,
 ): AcceptUnsupported | undefined {
   if (endpoint.channel === "webrtc")
-    return {
-      title: ACCEPT_UNSUPPORTED_TITLE,
-      message:
-        "This invitation runs an in-browser (WebRTC) exchange, which is out of " +
-        "scope on this console. Accept it from a standard Alcove web app in " +
-        "your browser instead.",
-    };
+    return acceptedSignalingServer(endpoint, null) === undefined
+      ? {
+          title: ACCEPT_UNSUPPORTED_TITLE,
+          message:
+            "This invitation names a coordination server whose address is " +
+            "not a plain host, port and path, so this console cannot connect " +
+            "to it. Ask your partner to send a new invitation.",
+        }
+      : undefined;
   // An SFTP accept connects to the partner-named server (no rendezvous mount), so
   // it needs no `JOB_RENDEZVOUS_DIR`; only the split-directory shape and a
   // non-bare host are refused, the file-sync siblings of the file-drop split gate
@@ -586,51 +589,53 @@ export function acceptUnsupported(
 }
 
 /** Whether a console accept runs as a server job: a console build
- * accepting a file-drop endpoint (against the mounted shared directory) or an SFTP
- * endpoint (against the operator-authored server) runs the exchange through the
+ * accepting a file-drop endpoint (against the mounted shared directory), an SFTP
+ * endpoint (against the operator-authored server) or a WebRTC endpoint (through
+ * the invitation's coordination server) runs the exchange through the
  * command-line tool, not in the browser. Every other admitted accept runs the live
  * exchange in this browser. This one signal drives both the "How it runs" ledger row
  * and the settled footer's "never left this browser" claim, so the two cannot
- * disagree. */
+ * disagree. The switch has no default, so a widened channel union fails to
+ * build here until it is vetted. */
 export function acceptorRunsAsServerJob(
   endpoint: AcceptEndpoint,
   consoleBuild: boolean,
 ): boolean {
-  return (
-    consoleBuild &&
-    (endpoint.channel === "filedrop" || endpoint.channel === "sftp")
-  );
+  if (!consoleBuild) return false;
+  switch (endpoint.channel) {
+    case "filedrop":
+    case "sftp":
+    case "webrtc":
+      return true;
+  }
 }
 
 /** The ledger's "How it runs" phrasing for an accepted endpoint. A console
- * single-directory file-drop accept runs on the console against the shared
- * directory, and a console SFTP accept against the partner-named server (both the
- * command-line tool), not in the browser; every other admitted accept runs the live
- * exchange in this browser. */
+ * accept runs in the command-line tool, against the shared directory, the
+ * partner-named SFTP server, or the invitation's coordination server; every
+ * other admitted accept runs the live exchange in this browser. */
 export function acceptorHowItRunsLabel(
   endpoint: AcceptEndpoint,
   consoleBuild: boolean,
 ): string {
   if (!acceptorRunsAsServerJob(endpoint, consoleBuild))
     return TRANSPORT_LEDGER_LABELS.browser;
-  return endpoint.channel === "sftp"
-    ? TRANSPORT_LEDGER_LABELS.sftp
-    : TRANSPORT_LEDGER_LABELS.filedrop;
+  return TRANSPORT_LEDGER_LABELS[endpoint.channel];
 }
 
 /**
  * The launched run's top-bar transport note for an accepted endpoint: the short
  * label naming where the exchange runs, reusing the inviter's share/save top-bar
  * terminology so the two seats read alike. A console server-job accept names its
- * transport through {@link saveRailNote} ("SFTP" or "Shared folder"); every
- * browser-run accept reads "Browser".
+ * transport ("SFTP", "Shared folder" or "WebRTC"); every browser-run accept
+ * reads "Browser".
  */
 export function acceptorTransportNote(
   endpoint: AcceptEndpoint,
   consoleBuild: boolean,
 ): string {
   if (!acceptorRunsAsServerJob(endpoint, consoleBuild)) return "Browser";
-  return endpoint.channel === "sftp"
-    ? saveRailNote("sftp")
-    : saveRailNote("filedrop");
+  return endpoint.channel === "webrtc"
+    ? "WebRTC"
+    : saveRailNote(endpoint.channel);
 }

@@ -2,6 +2,7 @@
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { commands } from "vitest/browser";
+import { parse as parseYaml } from "yaml";
 
 import { decodeInvitation } from "@alcove/core";
 
@@ -10,9 +11,17 @@ import {
   acceptorInitialColumnsState,
   acceptorLaunchPayload,
 } from "@exchange/acceptorColumnsModel";
-import { acceptorServerJobConfig } from "@exchange/useAcceptorExchange";
+import {
+  acceptorServerJobConfig,
+  acceptorWebrtcTransport,
+} from "@exchange/useAcceptorExchange";
+import {
+  inviterServerJobConfig,
+  inviterServerJobTransport,
+} from "@exchange/useInviterExchange";
+import { acceptedSignalingServer } from "@console/signalingServerModel";
 import { generateInvitation } from "@psi/invitation";
-import { inviterServerJobConfig } from "@exchange/useInviterExchange";
+import { intentFor } from "@psi/jobClient/serverJobExchangeDriver";
 import { jobExchangeIntentSchema } from "@jobContract/intentSchemas";
 import { prepareAcceptedInvitation } from "@psi/acceptInvitation";
 
@@ -27,7 +36,12 @@ import {
 } from "./browserPeer";
 import { CLI_IDENTITY, CLI_PARTY_CSV } from "./legTypes";
 
-import type { ConsoleJobOutcome, ConsoleLegStart } from "./legTypes";
+import type {
+  ConsoleAnswer,
+  ConsoleJobOutcome,
+  ConsoleLegStart,
+  ConsoleWorkingFolderFiles,
+} from "./legTypes";
 import type { BrowserOutcome } from "./browserPeer";
 import type { InvitationLocation } from "@psi/invitation";
 import type { JobWebrtcExchangeIntent } from "@jobContract/intentSchemas";
@@ -36,25 +50,28 @@ import type { SignalingAddress } from "@psi/transport/signalingAddress";
 
 /**
  * The console conducting a WebRTC exchange: the built console server runs the
- * real `alcove` program as a webrtc job against the coordination server the
- * operator authored, and a real browser peer meets it there, in each seat.
+ * real `alcove` program as a webrtc job against the coordination server it
+ * holds, and a real browser peer meets it there, in each seat.
  *
  * The Node side -- the standalone broker and the console server -- runs behind
- * the vitest browser commands in `legCommands.ts`, and its failures carry the
+ * the vitest browser commands in `legCommands.ts`, and its failures have the
  * leg's environment prefix, as the CLI leg's do (`liveExchange.test.ts`). The
- * console is reached as its browser reaches it: `PUT /api/jobs/webrtc` with a
- * `ws://` address, then `POST /api/jobs`. The intent is the app's own
- * server-job config is the app's own, and the harness composes the webrtc
- * intent from it and checks the result against the console's intent schema;
- * the app's own webrtc path is not exercised here.
+ * console is reached as its browser reaches it: `PUT /api/jobs/webrtc`, then
+ * `POST /api/jobs`. The intent is composed by the app's own server-job
+ * config and transport helpers and checked against the console's intent
+ * schema; the accept sets the console's server through the app's own
+ * {@link acceptorWebrtcTransport}, its request forwarded to the console by a
+ * command, since the page cannot reach the console's origin.
  */
 
 declare module "vitest/internal/browser" {
   interface BrowserCommands {
     startConsoleWebrtcLeg: () => Promise<ConsoleLegStart>;
+    putConsoleSignalingServer: (body: string) => Promise<ConsoleAnswer>;
     createConsoleWebrtcJob: (
       intent: JobWebrtcExchangeIntent,
     ) => Promise<string>;
+    consoleWorkingFolderFiles: () => Promise<ConsoleWorkingFolderFiles>;
     consoleWebrtcJobOutcome: () => Promise<ConsoleJobOutcome>;
     stopConsoleWebrtcLeg: () => Promise<void>;
   }
@@ -68,44 +85,26 @@ const CONSOLE_IDENTITY = CLI_IDENTITY;
  * read. */
 const CONSOLE_INPUT = { kind: "inline", csv: CLI_PARTY_CSV } as const;
 
-/** The webrtc intent for a server-job config, composed here from the fields
- * the webrtc arm carries and parsed by the console's own intent schema, so a
- * schema change fails this test where it is made. The config's `transport` is
- * the filedrop or sftp choice the app's config helpers require and is not
- * read. */
+/** The webrtc intent the app posts for a server-job config, parsed by the
+ * console's own intent schema, so a schema change fails this test where it is
+ * made. */
 function webrtcIntent(
   config: ServerJobExchangeDriverConfig,
 ): JobWebrtcExchangeIntent {
-  if (config.inputSource.kind !== "inline")
-    throw new Error("the console party's input is inline");
-  const intent = jobExchangeIntentSchema.parse({
-    channel: "webrtc",
-    side: config.side,
-    linkageTerms: config.linkageTerms,
-    ...(config.sharedSecret !== undefined
-      ? { sharedSecret: config.sharedSecret }
-      : {}),
-    inputCsv: config.inputSource.csv,
-    ...(config.metadata !== undefined ? { metadata: config.metadata } : {}),
-    ...(config.standardization !== undefined
-      ? { standardization: config.standardization }
-      : {}),
-    ...(config.expectedPartnerDeduplicate !== undefined
-      ? { expectedPartnerDeduplicate: config.expectedPartnerDeduplicate }
-      : {}),
-    ...(config.includeOwnColumns !== undefined
-      ? { includeOwnColumns: config.includeOwnColumns }
-      : {}),
-    ...(config.csvDelimiter !== undefined
-      ? { csvDelimiter: config.csvDelimiter }
-      : {}),
-    ...(config.options !== undefined ? { options: config.options } : {}),
-    eventStream: true,
-  });
+  const intent = jobExchangeIntentSchema.parse(intentFor(config));
   if (intent.channel !== "webrtc")
     throw new Error("the schema returned a non-webrtc intent");
   return intent;
 }
+
+/** A fetch that forwards the app's `PUT /api/jobs/webrtc` to the console. */
+const consoleFetch: typeof fetch = async (_input, init) => {
+  const answer = await commands.putConsoleSignalingServer(String(init?.body));
+  return new Response(answer.body, {
+    status: answer.status,
+    headers: { "content-type": "application/json" },
+  });
+};
 
 /** The authored coordination server as an address an invitation names. */
 function authoredAddress(started: ConsoleLegStart): SignalingAddress {
@@ -153,6 +152,17 @@ function expectSameIntersection(
   expect(consoleJob.pairs, consoleJob.events).toEqual(CLI_PAIRS);
 }
 
+/** The connection the working folder's `alcove.yaml` states once the run has
+ * ended, beside the key file the run rotated in place. */
+async function workingFolderConnection(): Promise<Record<string, unknown>> {
+  const files = await commands.consoleWorkingFolderFiles();
+  expect(files.keyPresent).toBe(true);
+  if (files.config === null)
+    throw new Error("the working folder holds no alcove.yaml");
+  return (parseYaml(files.config) as { connection: Record<string, unknown> })
+    .connection;
+}
+
 describe("a console webrtc job invites and a browser peer accepts", () => {
   const leg = withConsoleLeg();
 
@@ -191,12 +201,16 @@ describe("a console webrtc job invites and a browser peer accepts", () => {
         inviterServerJobConfig({
           minted,
           inputSource: CONSOLE_INPUT,
-          transport: { channel: "filedrop" },
+          transport: inviterServerJobTransport("webrtc", minted),
         }),
       ),
     );
     const browser = await runBrowserAcceptor(minted.encoded);
     expectSameIntersection(browser, await commands.consoleWebrtcJobOutcome());
+    expect(await workingFolderConnection()).toMatchObject({
+      channel: "webrtc",
+      role: "inviter",
+    });
   }, 420_000);
 });
 
@@ -205,8 +219,7 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
 
   test("the console job and the browser peer resolve the same intersection", async () => {
     const started = leg();
-    // The browser inviter's deployment and the console share the one broker,
-    // so the invitation names the server the console already holds.
+    // The browser inviter's deployment and the console share the one broker.
     const minted = await generateInvitation({
       inviterName: BROWSER_IDENTITY,
       file: new File([BROWSER_CSV], "input.csv", { type: "text/csv" }),
@@ -221,6 +234,19 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
       const accepted = await prepareAcceptedInvitation(minted.encoded, {
         profile: "console",
       });
+      if (accepted.endpoint.channel !== "webrtc")
+        throw new Error("the invitation names no coordination server");
+      // The console already holds the broker over ws://, so the accept dials
+      // it that way rather than over wss://, which the broker does not serve.
+      const server = acceptedSignalingServer(
+        accepted.endpoint,
+        started.signaling,
+      );
+      if (server === undefined)
+        throw new Error("the console cannot hold the invitation's server");
+      expect(server.address).toBe(
+        `ws://127.0.0.1:${started.signaling.port}${started.signaling.path}`,
+      );
       const { rawRows, columns } = await readBrowserCsv(CLI_PARTY_CSV);
       const { edits } = acceptorLaunchPayload(
         acceptorColumnsEditorState(
@@ -236,13 +262,25 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
             acceptorName: CONSOLE_IDENTITY,
             edits,
             inputSource: CONSOLE_INPUT,
-            transport: { channel: "filedrop" },
+            transport: await acceptorWebrtcTransport(server, consoleFetch),
             deduplicate: false,
           }),
         ),
       );
       const browser = await inviter.run();
       expectSameIntersection(browser, await commands.consoleWebrtcJobOutcome());
+      // The run wrote its configuration and key file into the working folder,
+      // as `alcove accept` does, and ran over them there.
+      expect(await workingFolderConnection()).toMatchObject({
+        channel: "webrtc",
+        role: "acceptor",
+        server: {
+          host: "127.0.0.1",
+          port: started.signaling.port,
+          path: started.signaling.path,
+          secure: false,
+        },
+      });
     } finally {
       inviter.destroy();
     }

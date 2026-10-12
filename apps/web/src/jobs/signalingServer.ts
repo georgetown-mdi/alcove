@@ -9,13 +9,17 @@ import {
   resolveWebAppSignalingServer,
 } from "@alcove/core";
 
+import { jobInvitationRelaySchema } from "@jobContract/intentSchemas";
+
 import { JobApiConfigError } from "./gate";
+
+import type { RelayLocator } from "@alcove/core";
 
 /**
  * The coordination server the operator authored for a webrtc job: where the
  * run dials, as its `connection.server` states it, plus the web app the
- * address was resolved through. Contract: docs/spec/SERVER_JOB_API.md, "The
- * coordination server".
+ * address was resolved through and, for an accepted invitation, the relay it
+ * names. Contract: docs/spec/SERVER_JOB_API.md, "The coordination server".
  */
 export interface AuthoredSignalingServer {
   host: string;
@@ -25,6 +29,9 @@ export interface AuthoredSignalingServer {
   path: string;
   secure: boolean;
   webAppOrigin?: string;
+  /** The relay an accepted invitation names, which only an acceptor's run
+   * uses, as `connection.invitation_relay`. */
+  invitationRelay?: RelayLocator;
 }
 
 /**
@@ -48,8 +55,9 @@ export interface ResolveAuthoredSignalingServerOptions {
 }
 
 const BODY_REFUSED =
-  "The request body must be an object whose only field is address, a string " +
-  `of at most ${MAX_SIGNALING_SERVER_URL_LENGTH} characters.`;
+  "The request body must be an object with address, a string of at most " +
+  `${MAX_SIGNALING_SERVER_URL_LENGTH} characters, and optionally ` +
+  "invitationRelay, the turn and stun lists of an accepted invitation's relay.";
 
 const TYPE_INSTEAD =
   "Type the coordination server's wss:// address or the web app's https:// " +
@@ -87,6 +95,7 @@ export const SIGNALING_UNENCRYPTED_WARNING =
 
 const authorBodySchema = z.strictObject({
   address: z.string().check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
+  invitationRelay: jobInvitationRelaySchema.optional(),
 });
 
 /** The server a web app address names, through the file it publishes. */
@@ -115,7 +124,8 @@ async function serverPublishedBy(
  * {@link publishedSignalingServerURL}, the rule the web app's build applies
  * to the server it publishes, or an `http:`/`https:` web app address resolved
  * through the server that app publishes. A `ws:` server is admitted with
- * {@link SIGNALING_UNENCRYPTED_WARNING}.
+ * {@link SIGNALING_UNENCRYPTED_WARNING}. An `invitationRelay` is held beside
+ * it, each url held to core's TURN or STUN url rule.
  *
  * @throws {JobApiConfigError} when the body or address is refused, or the web
  *   app publishes no usable server.
@@ -149,12 +159,14 @@ export async function resolveAuthoredSignalingServer(
 
   if (dialed.port === "0") throw new JobApiConfigError(PORT_REFUSED);
   const secure = dialed.protocol === "wss:";
+  const { invitationRelay } = body.data;
   const server: AuthoredSignalingServer = {
     host: dialed.hostname,
     ...(dialed.port !== "" ? { port: Number(dialed.port) } : {}),
     path: dialed.pathname,
     secure,
     ...(webAppOrigin !== undefined ? { webAppOrigin } : {}),
+    ...(invitationRelay !== undefined ? { invitationRelay } : {}),
   };
   return { server, warnings: secure ? [] : [SIGNALING_UNENCRYPTED_WARNING] };
 }
