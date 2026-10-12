@@ -262,7 +262,9 @@ docker run --rm ghcr.io/georgetown-mdi/alcove:latest --help
 
 ## Documentation
 
-The full documentation set lives in [docs/](docs/README.md) and covers the protocol, threat model, exchange specification, deployment, and operations. The user guides are [docs/WEB_APP.md](docs/WEB_APP.md) for the web app, [docs/CONSOLE.md](docs/CONSOLE.md) for the console, and [docs/CLI.md](docs/CLI.md) for the command line app. The role-based reading guide in [docs/README.md](docs/README.md) points each audience (analysts, invited partners, program officers, security reviewers, IT staff, contributors) to the most relevant documents. An agency security review starts with [docs/SHARED_RESPONSIBILITY.md](docs/SHARED_RESPONSIBILITY.md), which states the deployment model and what the project operates versus what the deploying agency operates.
+The user documentation is published at [data-bridge.org](https://data-bridge.org/), with the changelog, the security policy and the contribution guide: start with [the web app guide](https://data-bridge.org/docs/WEB_APP), [the console guide](https://data-bridge.org/docs/CONSOLE) or [the command line guide](https://data-bridge.org/docs/CLI).
+
+The site is built from the full documentation set in [docs/](docs/README.md), which covers the protocol, threat model, exchange specification, deployment, and operations. In the repository, the user guides are [docs/WEB_APP.md](docs/WEB_APP.md) for the web app, [docs/CONSOLE.md](docs/CONSOLE.md) for the console, and [docs/CLI.md](docs/CLI.md) for the command line app. The role-based reading guide in [docs/README.md](docs/README.md) points each audience (analysts, invited partners, program officers, security reviewers, IT staff, contributors) to the most relevant documents. An agency security review starts with [docs/SHARED_RESPONSIBILITY.md](docs/SHARED_RESPONSIBILITY.md), which states the deployment model and what the project operates versus what the deploying agency operates.
 
 Repository-level resources:
 

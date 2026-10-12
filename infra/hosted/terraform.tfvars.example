@@ -4,6 +4,9 @@ cloudflare_zone_id    = "<Cloudflare zone id>"
 cloudflare_account_id = "<Cloudflare account id>"
 pages_project_name    = "<CLOUDFLARE_PAGES_PROJECT>"
 
+site_pages_project_name = "<CLOUDFLARE_SITE_PAGES_PROJECT>"
+site_name               = "<zone apex>"
+
 public_names = {
   production = "<production public name>"
   staging    = "<staging public name>"

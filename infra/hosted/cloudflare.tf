@@ -78,3 +78,40 @@ resource "cloudflare_pages_domain" "staging" {
   project_name = cloudflare_pages_project.hosted.name
   name         = var.public_names["staging"]
 }
+
+# The project site, built from docs/, in a Pages project of its own so it
+# shares no origin with the web app. Direct upload, as above: site_deploy.yaml
+# uploads each build, a deployment to main is the production one, and one to
+# staging is a preview on that branch's alias.
+resource "cloudflare_pages_project" "site" {
+  account_id        = var.cloudflare_account_id
+  name              = var.site_pages_project_name
+  production_branch = "main"
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The site's name, the zone apex, proxied to the site project's pages.dev name.
+# A CNAME at the apex is served by Cloudflare's CNAME flattening.
+resource "cloudflare_dns_record" "site_name" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.site_name
+  type    = "CNAME"
+  content = cloudflare_pages_project.site.subdomain
+  proxied = true
+  ttl     = 1
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+# The site's name on the site project. It verifies once the record above
+# points at the project's pages.dev name.
+resource "cloudflare_pages_domain" "site" {
+  account_id   = var.cloudflare_account_id
+  project_name = cloudflare_pages_project.site.name
+  name         = var.site_name
+}

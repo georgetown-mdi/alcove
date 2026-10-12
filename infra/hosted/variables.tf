@@ -25,3 +25,13 @@ variable "pages_project_name" {
   type        = string
   description = "The Cloudflare Pages project the hosted site is uploaded to: the deploy workflow's CLOUDFLARE_PAGES_PROJECT variable."
 }
+
+variable "site_pages_project_name" {
+  type        = string
+  description = "The Cloudflare Pages project the project site is uploaded to: site_deploy.yaml's CLOUDFLARE_SITE_PAGES_PROJECT variable."
+}
+
+variable "site_name" {
+  type        = string
+  description = "The name the project site is served on: the zone apex."
+}

@@ -7,3 +7,5 @@
 # adds, drops or rewords, "-" standing for none. A unit moved unchanged, or
 # whose only change is a link target, is not listed. The check reads this file
 # only when the branch changes it.
+
+- An edge meant to stand is recorded with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which is empty; an override-forced edge fails until it is recorded, and a recorded edge that comes back into range fails until its entry is deleted. -> An edge meant to stand is recorded with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, whose only entries are the three React peer edges of `@docsearch/react`, the Algolia search package the project site's generator installs and the site does not build; an override-forced edge fails until it is recorded, and a recorded edge that comes back into range fails until its entry is deleted.

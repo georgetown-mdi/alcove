@@ -26,13 +26,13 @@ Alcove is organized as an npm workspaces monorepo. The workspaces and the suppor
 | `packages/testkit/` | Test-only material shared by more than one workspace's test tree (`@alcove/testkit`), consumed as raw TypeScript with no build step; what qualifies and why: [docs/TESTING.md](docs/TESTING.md#shared-test-material) and [docs/notes/cross-workspace-test-material.md](docs/notes/cross-workspace-test-material.md) |
 | `apps/cli/`      | Node.js CLI (`alcove`), built with Rollup, distributed as a Docker image                  |
 | `apps/web/`      | React web app, built for hosting as a static site (`dist/hosted/`) and for the console; mounts no broker, and its browser parties dial the one above |
-| `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records |
+| `docs/`          | Documentation, three tiers: `docs/` overview (conceptual/operational), `docs/spec/` technical, `docs/notes/` design records. `docs/.vitepress/` configures the [project site](docs/DEPLOYMENT.md#the-project-site) built from them |
 | `scripts/`       | [Repository checks CI runs](scripts/README.md) (doc links, PR checklist, claim and drift guards) with their tests |
 | `support/`       | [Field guides](support/README.md) for the environment around Alcove -- Windows, Docker, agency networks -- plus the FIPS measurement harness |
 | `lib/`           | The vendored `@openmined/psi.js` tarball and its checksum                                  |
 | `test_data/`     | Two synthetic CSVs with partial overlap, for practicing a complete exchange                |
 | `design/`        | Interface design records: [`design/web-redesign/`](design/web-redesign/README.md) is the linkage-bench mockup and rationale the web app implements. Not a build input |
-| `infra/`         | [OpenTofu for the project's hosted environment](infra/hosted/README.md): the Cloudflare Pages project, its custom domains and the Cloudflare zone settings, applied by the maintainer and run by nothing here -- CI deploys the site itself through `pages_deploy.yaml`. Beside it, [the standing WebRTC relay's reference deployment](infra/relay/README.md) and [the standalone broker's host units](infra/broker/README.md), also run by nothing here |
+| `infra/`         | [OpenTofu for the project's hosted environment](infra/hosted/README.md): the Cloudflare Pages projects of the web app and the project site, their custom domains and the Cloudflare zone settings, applied by the maintainer and run by nothing here -- CI deploys the sites themselves through `pages_deploy.yaml` and `site_deploy.yaml`. Beside it, [the standing WebRTC relay's reference deployment](infra/relay/README.md) and [the standalone broker's host units](infra/broker/README.md), also run by nothing here |
 | `.github/`       | The workflows CI runs, the [pull-request template](.github/PULL_REQUEST_TEMPLATE.md), and the dependabot configuration |
 | `.claude/`       | The agent harness: role definitions, slash commands, tool hooks, the project-manager and orchestration rulesets, and [the session scripts](.claude/scripts/README.md), governed by the conventions in [CLAUDE.md](CLAUDE.md) |
 | `.devcontainer/` | The [development container](.devcontainer/README.md) and its egress firewall |
@@ -72,6 +72,7 @@ npm run build -w packages/core   # must build before the apps and the broker; re
 npm run build -w packages/cli-contract   # after core, before the CLI; rebuild after any change to it
 npm run build -w apps/cli        # -> apps/cli/dist/; Docker image built separately (docs/RELEASES.md)
 VITE_SIGNALING_SERVER_URL=wss://signaling.example.org/api/ npm run build -w apps/web  # -> apps/web/dist/hosted/, a static site; names the broker (docs/DEPLOYMENT.md)
+npm run site:build               # -> docs/.vitepress/dist/, the project site built from docs/ (docs/DEPLOYMENT.md)
 ```
 
 ## Testing

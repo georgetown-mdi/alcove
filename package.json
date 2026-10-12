@@ -17,6 +17,8 @@
     "format": "prettier --write .",
     "formatcheck": "prettier --list-different .",
     "linkcheck": "node scripts/check-doc-links.mjs",
+    "site:build": "vitepress build docs",
+    "site:dev": "vitepress dev docs",
     "check:all": "node scripts/run-checks.mjs",
     "check:no-legacy-names": "node scripts/check-no-legacy-names.mjs",
     "check:contributing": "node scripts/check-contributing-scope.mjs",
@@ -83,10 +85,12 @@
     "prettier": "^3.9.9",
     "semver": "^7.8.5",
     "typescript": "^6.0.3",
+    "vitepress": "^1.6.4",
     "vitest": "^5.0.0",
     "yaml": "^2.9.1"
   },
   "allowScripts": {
+    "esbuild@0.21.5": false,
     "esbuild@0.28.1": true,
     "ssh2@1.17.0": true,
     "cpu-features@0.0.10": true,

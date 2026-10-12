@@ -2,11 +2,12 @@
 // Deploy-trigger check: `npm run check:deploy-trigger-graph`, run by
 // `npm run check:all` in static_checks.yaml. It fails unless:
 //
-//   - pages_deploy.yaml holds the only deploy. Across every workflow exactly one
-//     job uploads with DEPLOY_ACTION, names a Cloudflare secret or runs in a
-//     GitHub environment; that job is in pages_deploy.yaml and runs no
-//     repository code (no `run` step, no checkout, no local action, no called
-//     workflow); and no workflow passes `secrets: inherit` or `toJSON(secrets)`.
+//   - The CREDENTIAL_WORKFLOWS hold the only deploys. A job uploads with
+//     DEPLOY_ACTION, names a Cloudflare secret or runs in a GitHub environment
+//     in exactly one job of each of them and in no other workflow; each such
+//     job runs no repository code (no `run` step, no checkout, no local
+//     action, no called workflow); and no workflow passes `secrets: inherit`
+//     or `toJSON(secrets)`.
 //   - Every tracked source the hosted static build reads matches a push filter of
 //     pages_deploy.yaml. The graph is the module ids rolldown resolves in the page
 //     and worker bundles of a real `npm run build -w apps/web`, recorded by
@@ -40,6 +41,12 @@ import {
 
 /** The workflow whose push filter decides when a deploy runs. */
 export const DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/pages_deploy.yaml`;
+
+/** The workflow that uploads the project site built from docs/. */
+export const SITE_DEPLOY_WORKFLOW = `${WORKFLOW_DIR}/site_deploy.yaml`;
+
+/** The workflows each allowed one job holding the deploy credentials. */
+export const CREDENTIAL_WORKFLOWS = [DEPLOY_WORKFLOW, SITE_DEPLOY_WORKFLOW];
 
 /** The build output the deploy uploads. */
 export const BUILD_OUTPUT = "apps/web/dist/hosted";
@@ -133,7 +140,7 @@ const DEPLOY_SECRET = /\bsecrets\.CLOUDFLARE_/;
 const ALL_SECRETS = /\btoJSON\(\s*secrets\s*\)/;
 
 /**
- * Findings against the single-deploy rule (see the header), as strings, over
+ * Findings against the deploy-credential rule (see the header), as strings, over
  * `[{path, document}]` parsed workflows. Empty when the rule holds.
  */
 export function deployCredentialFindings(workflows) {
@@ -166,10 +173,22 @@ export function deployCredentialFindings(workflows) {
       if (holds) holders.push({ path, id, job, steps });
     }
   }
-  const named = holders.map(({ path, id }) => `${path} job ${id}`);
-  if (holders.length !== 1 || holders[0].path !== DEPLOY_WORKFLOW) {
+  const holding = `upload with ${DEPLOY_ACTION}, name a Cloudflare secret or run in a GitHub environment`;
+  const named = (list) => list.map(({ path, id }) => `${path} job ${id}`);
+  for (const workflow of CREDENTIAL_WORKFLOWS) {
+    const inWorkflow = holders.filter(({ path }) => path === workflow);
+    if (inWorkflow.length !== 1) {
+      findings.push(
+        `Exactly one job in ${workflow} may ${holding}; found ${inWorkflow.length}${inWorkflow.length > 0 ? `: ${named(inWorkflow).join(", ")}` : ""}.`,
+      );
+    }
+  }
+  const outside = holders.filter(
+    ({ path }) => !CREDENTIAL_WORKFLOWS.includes(path),
+  );
+  if (outside.length > 0) {
     findings.push(
-      `Exactly one job, in ${DEPLOY_WORKFLOW}, may upload with ${DEPLOY_ACTION}, name a Cloudflare secret or run in a GitHub environment; found ${holders.length}${named.length > 0 ? `: ${named.join(", ")}` : ""}.`,
+      `No job outside ${CREDENTIAL_WORKFLOWS.join(" and ")} may ${holding}; found ${named(outside).join(", ")}.`,
     );
   }
   for (const { path, id, job, steps } of holders) {
@@ -421,7 +440,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   );
   if (credentialFindings.length > 0) {
     console.error(
-      "Deploy trigger check failed: the deploy credentials reach more than the one upload job.\n",
+      "Deploy trigger check failed: the deploy credentials reach a job other than the one upload job of each deploy workflow.\n",
     );
     for (const finding of credentialFindings) console.error(`  ${finding}`);
     process.exit(1);
@@ -480,6 +499,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(1);
   }
   console.log(
-    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}, and its upload job is the one job holding the deploy credentials.`,
+    `Deploy trigger coverage check passed: all ${graph.length} repository sources the deployed build reads match one of ${filter.patterns.length} push filters in ${DEPLOY_WORKFLOW}, and the upload jobs of ${CREDENTIAL_WORKFLOWS.join(" and ")} are the only jobs holding the deploy credentials.`,
   );
 }

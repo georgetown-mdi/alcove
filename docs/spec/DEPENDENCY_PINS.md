@@ -445,8 +445,10 @@ committed lockfile and fails on any edge whose locked version lies outside the
 range its dependent declared, naming the dependent, the declared range and the
 locked version, for every dependent the lockfile records: the root project,
 each workspace, and each installed package. An edge meant to stand is recorded
-with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which is empty;
-an override-forced edge fails until it is recorded, and a recorded edge
+with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, whose only
+entries are the three React peer edges of `@docsearch/react`, the Algolia
+search package the project site's generator installs and the site does not
+build; an override-forced edge fails until it is recorded, and a recorded edge
 that comes back into range fails until its entry is deleted. It compares
 declared ranges with locked versions only, and does not model npm's resolution
 or which override forced an edge.

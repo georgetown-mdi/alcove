@@ -61,7 +61,17 @@ const DEPENDENCY_FIELDS = [
  * key so a patch release on either side does not churn the entry; a new
  * dependent, or a new range, is a new edge and fails until recorded.
  */
-export const OUT_OF_RANGE_BY_DESIGN = [];
+export const OUT_OF_RANGE_BY_DESIGN = [
+  "react",
+  "react-dom",
+  "@types/react",
+].map((dependency) => ({
+  dependent: "@docsearch/react",
+  dependency,
+  range: ">= 16.8.0 < 19.0.0",
+  reason:
+    "VitePress (the project site's generator) depends on @docsearch for its Algolia search provider, and that copy resolves to the web app's React 19. The site's search provider is local, which scripts/site-deploy-trigger.test.mjs holds, so VitePress bundles none of @docsearch and its React code never runs.",
+}));
 
 /** The package a lockfile entry holds: its `name` field, else its directory. */
 const identity = (path, entry) => packageIdentity(installedAs(path), entry);

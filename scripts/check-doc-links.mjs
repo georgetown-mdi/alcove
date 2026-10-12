@@ -17,6 +17,7 @@ import { readFileSync, existsSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { slugify } from "./lib/headingSlug.mjs";
 import {
   stripCodeSpans,
   stripFences,
@@ -37,19 +38,7 @@ function listMarkdown(root) {
   return out.split("\n").filter(Boolean);
 }
 
-// GitHub-style heading slug: lowercase, drop characters that are not word
-// characters (letters, digits, underscore), whitespace, or hyphen, then turn
-// each remaining whitespace character into a hyphen without collapsing runs
-// (so "ssh2 / ssh2" -> "ssh2--ssh2"). Inline links and code spans in a heading
-// are reduced to their text first.
-export function slugify(text) {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [text](url) -> text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, "") // drop punctuation; \w keeps underscores, as GitHub does
-    .trim()
-    .replace(/\s/g, "-"); // each whitespace char -> hyphen, runs not collapsed
-}
+export { slugify };
 
 // A fence error names the document it read, so a target reached by absolute
 // path is named the way a reader would type it.

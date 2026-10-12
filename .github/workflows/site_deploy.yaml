@@ -1,0 +1,111 @@
+name: Deploy the Project Site
+
+# Builds the project site from docs/ (`npm run site:build`, configured in
+# docs/.vitepress/config.mjs) and uploads it to its own Cloudflare Pages
+# project by direct upload, the way pages_deploy.yaml uploads the web app. A
+# pull request builds the site and uploads nothing; a push to main is the
+# production deployment, and a push to staging a preview deployment on the
+# `staging` branch alias. The secrets and the variable it reads:
+# docs/DEPLOYMENT.md, "The project site".
+# The two path lists are the same: the sources the site build reads.
+on:
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE.md"
+      - "PRIVACY.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "scripts/lib/headingSlug.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/actions/setup/**"
+      - ".github/workflows/site_deploy.yaml"
+  push:
+    branches: [main, staging]
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
+      - "LICENSE.md"
+      - "PRIVACY.md"
+      - "SECURITY.md"
+      - "SUPPORT.md"
+      - "scripts/lib/headingSlug.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/actions/setup/**"
+      - ".github/workflows/site_deploy.yaml"
+  workflow_dispatch:
+
+# One run per ref: a newer push cancels an older run of the same branch, so
+# only the newest commit deploys. Safe because a Pages deployment exists only
+# once its upload completes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACT_NAME: project-site-${{ github.sha }}
+
+jobs:
+  build:
+    name: Build the project site
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      artifactName: ${{ steps.artifact-name.outputs.artifactName }}
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v7
+      - name: Set up and build core
+        uses: ./.github/actions/setup
+      # Fails on a relative link to a file that does not exist.
+      - name: Build the site
+        run: npm run site:build
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: docs/.vitepress/dist
+          retention-days: 1
+          if-no-files-found: error
+      - name: Output artifact name
+        id: artifact-name
+        run: echo "artifactName=${{ env.ARTIFACT_NAME }}" >> "$GITHUB_OUTPUT"
+
+  # The only job of this workflow given the Cloudflare credentials, and it runs
+  # only on a push or a dispatch on main or staging. It checks out nothing and
+  # runs no repository code: it downloads the site the build job built, and
+  # uploads it.
+  deploy:
+    name: Upload to Cloudflare Pages
+    needs: build
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Staging' }}
+    permissions: {}
+    steps:
+      - name: Download the site
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.build.outputs.artifactName }}
+          path: site
+      # As in pages_deploy.yaml: wrangler gets the command as arguments with no
+      # shell, the project name is a variable only a repository admin sets, the
+      # branch is main or staging under the job's gate, and the sha is hex, so
+      # none can add an argument. Pinned to the same commit and wrangler.
+      - name: Deploy
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4.1.3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: "4.147.0"
+          command: pages deploy site --project-name=${{ vars.CLOUDFLARE_SITE_PAGES_PROJECT }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
