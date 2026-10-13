@@ -696,14 +696,30 @@ describe("a run of the webrtc configuration the operator opened", () => {
       expect(identityFileIn(dataRoot)).toBe("/home/operator/identity.json");
     });
 
-    test("runs unsigned over a file signing with another identity", async () => {
+    test("is refused over a file signing with another identity, whatever the intent's signing says", async () => {
+      const { manager, dataRoot } = await opened(
+        {},
+        {},
+        signedBy("/home/operator/.alcove/identity.json"),
+      );
+      const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+      await expect(
+        manager.createJob({ ...signedRun, signing: { mode: "none" } }),
+      ).rejects.toBeInstanceOf(MountedSigningIdentityMismatchError);
+      expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
+      expect(manager.occupiedSlotId()).toBeNull();
+    });
+
+    test("runs unsigned over a file signing with the console's own identity", async () => {
+      const dataRoot = scratchDir("webrtc-folder");
       const { manager } = await opened(
         {
           STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
           STUB_EXIT_CODE: "69",
         },
         {},
-        signedBy("/home/operator/.alcove/identity.json"),
+        signedBy(signingIdentityPath(dataRoot)),
+        dataRoot,
       );
       const id = await manager.createJob({
         ...signedRun,
@@ -775,6 +791,7 @@ describe("a run of the webrtc configuration the operator opened", () => {
   });
 
   test("opened again after a run recorded a pin, the next start saves nothing and runs", async () => {
+    const folder = scratchDir("webrtc-folder");
     const { manager, dataRoot } = await opened(
       {
         STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
@@ -784,9 +801,10 @@ describe("a run of the webrtc configuration the operator opened", () => {
       {
         signing: {
           mode: "certificate",
-          identity_file: "/home/county/.alcove/identity.json",
+          identity_file: signingIdentityPath(folder),
         },
       },
+      folder,
     );
     const first = await manager.createJob(openedRun);
     await exited(manager, first);
