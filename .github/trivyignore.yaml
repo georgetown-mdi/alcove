@@ -41,7 +41,33 @@
 #       expired_at: 2026-01-01
 
 vulnerabilities:
-  # Accepted 2026-10-13. The Amazon Linux openssl packages.
+  # Accepted 2026-10-13. The Amazon Linux openssl packages, openssl and
+  # openssl-libs at 1:3.5.8-1.amzn2023.0.1.
+  #
+  # The basis shared by every entry in this group:
+  #
+  # - Alcove's own cryptography does not run on these two packages. Node comes
+  #   from the official tarball rather than from a package and runs on its own
+  #   bundled libcrypto, with the CMVP-validated AWS provider (certificate
+  #   5438, openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
+  #   package with no finding here) loaded into that process. The flagged
+  #   packages are the system OpenSSL library and command line tool, which node
+  #   does not use.
+  # - The only program a run reaches that may load the system OpenSSL is
+  #   smbclient, an SMB client over TCP that logs in with a password, which
+  #   Alcove's doctor command runs to probe a Windows file-drop share
+  #   (docs/spec/CLI_DOCTOR.md, docs/spec/CONTAINER_IMAGES.md). Every other
+  #   connection Alcove makes is made by node.
+  # - The openssl command line tool runs at build time only, to read the loaded
+  #   provider back with `openssl list`; the entrypoint does not run it.
+  # - What clears them is moving Dockerfile.fips to the amazonlinux:2023 rootfs
+  #   at release 2023.12.20261012 or later, with AL2023_RELEASEVER moved to
+  #   match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3 (the procedure is
+  #   "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md). No such
+  #   rootfs is published: the newest, measured 2026-10-13, is 2023.12.20260930,
+  #   the release Dockerfile.fips pins, and the build asserts that the rootfs
+  #   release equals the dnf releasever, so a snapshot-only bump fails by
+  #   design. Each entry comes out in the same diff as that bump.
   - id: CVE-2026-35189
     purls:
       - pkg:rpm/amazon/openssl
@@ -49,36 +75,16 @@ vulnerabilities:
     statement: >-
       A certificate carrying many nameRelativeToCRLIssuer CRL distribution
       points, received from a peer in a TLS handshake, makes OpenSSL hold
-      hundreds of MiB while it caches the certificate's extensions. This
-      entry covers the FIPS variant image's Amazon Linux openssl and
-      openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      hundreds of MiB while it caches the certificate's extensions. Covers
+      openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
       1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
       vulnerable path is a peer certificate received over TLS, and no TLS
-      handshake in a run is made on these packages: smbclient's SMB
-      session runs over TCP port 445 and authenticates with a username and
-      password, with no certificate exchanged, and every connection Alcove
-      itself makes is made by node. The build's own downloads -- the Node
-      tarball through curl, and dnf's repositories -- run during the build
-      and not in a container the entrypoint starts. Alcove's own
-      cryptography does not run on these two packages: node comes from the
-      official tarball rather than from a package and links its own
-      libcrypto, and the certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      handshake in a run is made on these packages: smbclient's SMB session
+      runs over TCP and authenticates with a username and password, with no
+      certificate exchanged. The build's own downloads, the Node tarball
+      through curl and dnf's repositories, run during the build and not in a
+      container the entrypoint starts. Shared basis and clearing bump: the
+      comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-35191
     purls:
@@ -86,34 +92,15 @@ vulnerabilities:
       - pkg:rpm/amazon/openssl-libs
     statement: >-
       OpenSSL's QUIC server, with client address validation turned off,
-      counts a datagram's whole length once per QUIC packet it carries, so
-      a peer spoofing its address can use the server to amplify traffic
-      past RFC 9000's threefold limit. This entry covers the FIPS variant
-      image's Amazon Linux openssl and openssl-libs at
+      counts a datagram's whole length once per QUIC packet it carries, so a
+      peer spoofing its address can use the server to amplify traffic past
+      RFC 9000's threefold limit. Covers openssl and openssl-libs at
       1:3.5.8-1.amzn2023.0.1, fixed at 1:3.5.8-1.amzn2023.0.3, and no other
-      package. Accepted because the vulnerable path is OpenSSL's QUIC
-      server, and nothing in this image runs one: the only listener a run
-      opens is the console server, a node process (docker-entrypoint.sh),
-      and smbclient is an SMB client over TCP port 445. Alcove's own
-      cryptography does not run on these two packages: node comes from the
-      official tarball rather than from a package and links its own
-      libcrypto, and the certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      package. Accepted because the vulnerable path is OpenSSL's QUIC server,
+      and nothing in this image runs one: the only listener a run opens is
+      the console server, a node process (docker-entrypoint.sh), and
+      smbclient is an SMB client over TCP. Shared basis and clearing bump:
+      the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-42772
     purls:
@@ -122,32 +109,12 @@ vulnerabilities:
     statement: >-
       OpenSSL's QUIC stream reassembly searches its list of received
       fragments linearly for data that arrives out of order, so a peer that
-      completes the handshake can drive quadratic CPU work. This entry
-      covers the FIPS variant image's Amazon Linux openssl and openssl-libs
-      at 1:3.5.8-1.amzn2023.0.1, fixed at 1:3.5.8-1.amzn2023.0.3, and no
-      other package. Accepted because the vulnerable path is OpenSSL's QUIC
-      stack, and nothing in this image speaks QUIC on these packages:
-      smbclient's SMB session runs over TCP port 445, and every connection
-      Alcove itself makes is made by node. Alcove's own cryptography does
-      not run on these two packages: node comes from the official tarball
-      rather than from a package and links its own libcrypto, and the
-      certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      completes the handshake can drive quadratic CPU work. Covers openssl
+      and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
+      vulnerable path is OpenSSL's QUIC stack, and nothing in this image
+      speaks QUIC on these packages: smbclient's SMB session runs over TCP.
+      Shared basis and clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-54872
     purls:
@@ -155,40 +122,19 @@ vulnerabilities:
       - pkg:rpm/amazon/openssl-libs
     statement: >-
       ECDSA and SM2 signing over a curve with no dedicated constant-time
-      implementation, such as brainpoolP384r1, leaks the per-signature
-      nonce through timing, and enough measured signatures can recover the
-      private key. This entry covers the FIPS variant image's Amazon Linux
-      openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
-      1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because
+      implementation, such as brainpoolP384r1, leaks the per-signature nonce
+      through timing, and enough measured signatures can recover the private
+      key. Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed
+      at 1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because
       nothing in this image signs over such a curve with these packages.
       Every signature Alcove makes is made in node, and its receipt
-      signatures are ECDSA over P-256
-      (packages/core/src/records/signingKeys.ts), a curve the advisory
-      excludes. smbclient holds no private key: it authenticates with the
-      username and password the doctor command writes to its credentials
-      file, and Kerberos PKINIT, the certificate login that would sign with
-      one, needs krb5-pkinit, which the image's package list
-      (NOTICE-os-packages-fips.tsv) does not hold. The build runs the
-      openssl CLI for `openssl list` alone. Alcove's own cryptography does
-      not run on these two packages: node comes from the official tarball
-      rather than from a package and links its own libcrypto, and the
-      certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      signatures are ECDSA over P-256 (packages/core/src/records/signingKeys.ts),
+      a curve the advisory excludes. smbclient holds no private key: it
+      authenticates with the username and password the doctor command writes
+      to its credentials file, and Kerberos PKINIT, the certificate login
+      that would sign with one, needs krb5-pkinit, which the image's package
+      list (NOTICE-os-packages-fips.tsv) does not hold. Shared basis and
+      clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-54873
     purls:
@@ -197,100 +143,41 @@ vulnerabilities:
     statement: >-
       OpenSSL's QUIC stack keeps a received packet's whole buffer until the
       application reads the stream data inside it, so a peer can hold far
-      more memory than that data needs, for as long as it chooses. This
-      entry covers the FIPS variant image's Amazon Linux openssl and
-      openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      more memory than that data needs, for as long as it chooses. Covers
+      openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
       1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
       vulnerable path is OpenSSL's QUIC stack, and nothing in this image
-      speaks QUIC on these packages: smbclient's SMB session runs over TCP
-      port 445, and every connection Alcove itself makes is made by node.
-      Alcove's own cryptography does not run on these two packages: node
-      comes from the official tarball rather than from a package and links
-      its own libcrypto, and the certified module this image is built
-      around (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
-      package with no finding here) is what serves that cryptography,
-      cross-loaded into the libcrypto node links. The one executable a run
-      reaches that may load these two is smbclient, which Alcove's doctor
-      command runs to probe a Windows file-drop share; the openssl CLI is
-      run once by the build, to read the loaded provider back, and not by
-      the entrypoint. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      1:3.5.8-1.amzn2023.0.3. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      speaks QUIC on these packages: smbclient's SMB session runs over TCP.
+      Shared basis and clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-72897
     purls:
       - pkg:rpm/amazon/openssl
       - pkg:rpm/amazon/openssl-libs
     statement: >-
-      A TLS server that switches a connection to a different SSL_CTX part
-      way through a handshake, one aware of more provider signature
-      algorithms than the first, reads and can write past the end of an
-      internal array. This entry covers the FIPS variant image's Amazon
-      Linux openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      A TLS server that switches a connection to a different SSL_CTX part way
+      through a handshake, one aware of more provider signature algorithms
+      than the first, reads and can write past the end of an internal array.
+      Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
       1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
       vulnerable path is a TLS server calling SSL_set_SSL_CTX(), and nothing
-      in this image runs a TLS server on these packages: the only listener
-      a run opens is the console server, a node process
-      (docker-entrypoint.sh), and smbclient is an SMB client over TCP port
-      445. Alcove's own cryptography does not run on these two packages:
-      node comes from the official tarball rather than from a package and
-      links its own libcrypto, and the certified module this image is built
-      around (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
-      package with no finding here) is what serves that cryptography,
-      cross-loaded into the libcrypto node links. The one executable a run
-      reaches that may load these two is smbclient, which Alcove's doctor
-      command runs to probe a Windows file-drop share; the openssl CLI is
-      run once by the build, to read the loaded provider back, and not by
-      the entrypoint. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      1:3.5.8-1.amzn2023.0.3. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      in this image runs a TLS server on these packages: the only listener a
+      run opens is the console server, a node process (docker-entrypoint.sh),
+      and smbclient is an SMB client over TCP. Shared basis and clearing
+      bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-75804
     purls:
       - pkg:rpm/amazon/openssl
       - pkg:rpm/amazon/openssl-libs
     statement: >-
-      OpenSSL's QUIC stack enforces the per-stream flow-control limit but
-      not the per-connection one, so a peer can make it buffer about 100 MB
-      per connection. This entry covers the FIPS variant image's Amazon
-      Linux openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
-      1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
-      vulnerable path is OpenSSL's QUIC stack, and nothing in this image
-      speaks QUIC on these packages: smbclient's SMB session runs over TCP
-      port 445, and every connection Alcove itself makes is made by node.
-      Alcove's own cryptography does not run on these two packages: node
-      comes from the official tarball rather than from a package and links
-      its own libcrypto, and the certified module this image is built
-      around (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
-      package with no finding here) is what serves that cryptography,
-      cross-loaded into the libcrypto node links. The one executable a run
-      reaches that may load these two is smbclient, which Alcove's doctor
-      command runs to probe a Windows file-drop share; the openssl CLI is
-      run once by the build, to read the loaded provider back, and not by
-      the entrypoint. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      1:3.5.8-1.amzn2023.0.3. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      OpenSSL's QUIC stack enforces the per-stream flow-control limit but not
+      the per-connection one, so a peer can make it buffer about 100 MB per
+      connection. Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1,
+      fixed at 1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because
+      the vulnerable path is OpenSSL's QUIC stack, and nothing in this image
+      speaks QUIC on these packages: smbclient's SMB session runs over TCP.
+      Shared basis and clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-75805
     purls:
@@ -299,31 +186,12 @@ vulnerabilities:
     statement: >-
       A CMP client that asks to revoke a certificate it identifies by a
       PKCS#10 CSR dereferences a NULL pointer on a crafted revocation
-      response. This entry covers the FIPS variant image's Amazon Linux
-      openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
-      1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
-      vulnerable path is the CMP certificate-management protocol, which
+      response. Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1,
+      fixed at 1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because
+      the vulnerable path is the CMP certificate-management protocol, which
       nothing in this image speaks: Alcove enrolls and revokes no
       certificates, and the build runs the openssl CLI for `openssl list`
-      alone. Alcove's own cryptography does not run on these two packages:
-      node comes from the official tarball rather than from a package and
-      links its own libcrypto, and the certified module this image is built
-      around (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
-      package with no finding here) is what serves that cryptography,
-      cross-loaded into the libcrypto node links. The one executable a run
-      reaches that may load these two is smbclient, which Alcove's doctor
-      command runs to probe a Windows file-drop share; the openssl CLI is
-      run once by the build, to read the loaded provider back, and not by
-      the entrypoint. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      1:3.5.8-1.amzn2023.0.3. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      alone. Shared basis and clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-75806
     purls:
@@ -332,33 +200,13 @@ vulnerabilities:
     statement: >-
       A single unauthenticated datagram shorter than an AEAD record's
       explicit IV and tag tears down an established DTLS 1.2 association.
-      This entry covers the FIPS variant image's Amazon Linux openssl and
-      openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
       1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
-      vulnerable path is OpenSSL's DTLS record layer, and the only DTLS in
-      an Alcove run is the CLI's WebRTC transport, which is werift, a
-      TypeScript stack with no native content
-      (docs/notes/cli-webrtc-stack.md) running in node; smbclient's SMB
-      session runs over TCP port 445. Alcove's own cryptography does not
-      run on these two packages: node comes from the official tarball
-      rather than from a package and links its own libcrypto, and the
-      certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      vulnerable path is OpenSSL's DTLS record layer, and the only DTLS in an
+      Alcove run is the CLI's WebRTC transport, which is werift, a TypeScript
+      stack with no native content (docs/notes/cli-webrtc-stack.md) running
+      in node; smbclient's SMB session runs over TCP. Shared basis and
+      clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-84782
     purls:
@@ -367,33 +215,14 @@ vulnerabilities:
     statement: >-
       A DTLS retransmission that fires while a handshake write is suspended
       part way resends from the wrong position, which can disclose heap
-      memory to the peer or crash the process. This entry covers the FIPS
-      variant image's Amazon Linux openssl and openssl-libs at
-      1:3.5.8-1.amzn2023.0.1, fixed at 1:3.5.8-1.amzn2023.0.3, and no other
-      package. Accepted because the vulnerable path is OpenSSL's DTLS
-      handshake, and the only DTLS in an Alcove run is the CLI's WebRTC
-      transport, which is werift, a TypeScript stack with no native content
-      (docs/notes/cli-webrtc-stack.md) running in node; smbclient's SMB
-      session runs over TCP port 445. Alcove's own cryptography does not
-      run on these two packages: node comes from the official tarball
-      rather than from a package and links its own libcrypto, and the
-      certified module this image is built around
-      (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate package
-      with no finding here) is what serves that cryptography, cross-loaded
-      into the libcrypto node links. The one executable a run reaches that
-      may load these two is smbclient, which Alcove's doctor command runs
-      to probe a Windows file-drop share; the openssl CLI is run once by
-      the build, to read the loaded provider back, and not by the
-      entrypoint. Cleared by moving Dockerfile.fips to the amazonlinux:2023
-      rootfs carrying 2023.12.20261012 or later, with AL2023_RELEASEVER
-      moved to match, the first snapshot serving 1:3.5.8-1.amzn2023.0.3. No
-      published rootfs carries that release -- the newest, measured
-      2026-10-13, is 2023.12.20260930, the release Dockerfile.fips pins --
-      and the build asserts that the rootfs release equals the dnf
-      releasever, so a snapshot-only bump fails by design and there is no
-      base to bump to. This entry comes out in the same diff as that bump,
-      which "Bumping the FIPS base image" in docs/spec/DEPENDENCY_PINS.md
-      describes.
+      memory to the peer or crash the process. Covers openssl and
+      openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
+      vulnerable path is OpenSSL's DTLS handshake, and the only DTLS in an
+      Alcove run is the CLI's WebRTC transport, which is werift, a TypeScript
+      stack with no native content (docs/notes/cli-webrtc-stack.md) running
+      in node; smbclient's SMB session runs over TCP. Shared basis and
+      clearing bump: the comment above this group.
     expired_at: 2026-11-09
   - id: CVE-2026-84784
     purls:
@@ -402,61 +231,36 @@ vulnerabilities:
     statement: >-
       A peer that floods OpenSSL's QUIC stack with NEW_CONNECTION_ID frames
       while withholding acknowledgements makes it queue a
-      RETIRE_CONNECTION_ID frame for each, growing its memory by hundreds
-      of MB. This entry covers the FIPS variant image's Amazon Linux
-      openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
+      RETIRE_CONNECTION_ID frame for each, growing its memory by hundreds of
+      MB. Covers openssl and openssl-libs at 1:3.5.8-1.amzn2023.0.1, fixed at
       1:3.5.8-1.amzn2023.0.3, and no other package. Accepted because the
       vulnerable path is OpenSSL's QUIC stack, and nothing in this image
-      speaks QUIC on these packages: smbclient's SMB session runs over TCP
-      port 445, and every connection Alcove itself makes is made by node.
-      Alcove's own cryptography does not run on these two packages: node
-      comes from the official tarball rather than from a package and links
-      its own libcrypto, and the certified module this image is built
-      around (openssl-fips-provider-certified 3.2.2-1.amzn2023, a separate
-      package with no finding here) is what serves that cryptography,
-      cross-loaded into the libcrypto node links. The one executable a run
-      reaches that may load these two is smbclient, which Alcove's doctor
-      command runs to probe a Windows file-drop share; the openssl CLI is
-      run once by the build, to read the loaded provider back, and not by
-      the entrypoint. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      1:3.5.8-1.amzn2023.0.3. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      speaks QUIC on these packages: smbclient's SMB session runs over TCP.
+      Shared basis and clearing bump: the comment above this group.
     expired_at: 2026-11-09
 
-  # Accepted 2026-10-13. The base closure's python3-pip-wheel.
+  # Accepted 2026-10-13. The base closure's python3-pip-wheel at
+  # 21.3.1-2.amzn2023.0.21. Cleared by the same base bump as the group above:
+  # the first snapshot serving 21.3.1-2.amzn2023.0.22 is 2023.12.20261012, and
+  # no rootfs at that release is published (see the comment on the openssl
+  # group).
   - id: CVE-2026-97689
     purls:
       - pkg:rpm/amazon/python3-pip-wheel
     statement: >-
-      urllib3, which pip carries inside it, buffers the chunk-size line of
-      a chunked HTTP response without bound, so a malicious server sending
-      a long unterminated line exhausts the client's memory. This entry
-      covers the FIPS variant image's Amazon Linux python3-pip-wheel at
+      urllib3, which pip carries inside it, buffers the chunk-size line of a
+      chunked HTTP response without bound, so a malicious server sending a
+      long unterminated line exhausts the client's memory. Covers the FIPS
+      variant image's Amazon Linux python3-pip-wheel at
       21.3.1-2.amzn2023.0.21, fixed at 21.3.1-2.amzn2023.0.22, and no other
       package. Accepted because reaching the vulnerable path needs pip, or
       another program importing this copy of urllib3, to fetch from an
-      attacker's HTTP server, and nothing in the image runs pip. This
-      package holds pip as a wheel archive for Python's own environment
-      bootstrap, and is in this image as part of the base package closure,
-      installed by no name in Dockerfile.fips; the image's Python is the
-      dnf stack the base carries, which runs during the build and not in a
-      container the entrypoint starts. Both roles are node processes, and
-      the only other executables a run reaches are the two shell
-      entrypoints and smbclient. Cleared by moving Dockerfile.fips to the
-      amazonlinux:2023 rootfs carrying 2023.12.20261012 or later, with
-      AL2023_RELEASEVER moved to match, the first snapshot serving
-      21.3.1-2.amzn2023.0.22. No published rootfs carries that release --
-      the newest, measured 2026-10-13, is 2023.12.20260930, the release
-      Dockerfile.fips pins -- and the build asserts that the rootfs release
-      equals the dnf releasever, so a snapshot-only bump fails by design and
-      there is no base to bump to. This entry comes out in the same diff as
-      that bump, which "Bumping the FIPS base image" in
-      docs/spec/DEPENDENCY_PINS.md describes.
+      attacker's HTTP server, and nothing in the image runs pip. This package
+      holds pip as a wheel archive for Python's own environment bootstrap,
+      and is in this image as part of the base package closure, installed by
+      no name in Dockerfile.fips; the image's Python is the dnf stack the
+      base carries, which runs during the build and not in a container the
+      entrypoint starts. Both roles are node processes, and the only other
+      executables a run reaches are the two shell entrypoints and smbclient.
+      Clearing bump: the comment above this entry.
     expired_at: 2026-11-09
