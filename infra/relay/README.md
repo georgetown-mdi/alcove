@@ -52,6 +52,9 @@ your own environment:
   client are not measured, since the host runs no registrar today. Its tests
   under `scripts/` drive `render-front.sh` and hold the template to coturn's
   listener, not nginx.
+- [The OS update](#os-updates) has not yet run on the project's relay
+  host, so where the host records its release lock, and what its first run
+  restarted, are not yet recorded here.
 - `verify.sh` probes the allocation and its refusals, not exchange traffic,
   unless `ALCOVE_RELAY_VERIFY_PEER` names a responsive peer. What a relayed
   exchange through this relay covers is in
@@ -88,9 +91,10 @@ other repository-level coupling is the docker Dependabot entry for
    at mode 600, with the DNS provider's credential.
 4. Run `install.sh` as root. It installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
-   renders the configuration, installs the unit and the three timers, starts the
-   relay, starts the registrar where the host holds its token, and runs
-   `verify.sh`.
+   renders the configuration, installs the unit and the three timers, and on
+   Amazon Linux 2023 the [OS update](#os-updates) timer,
+   starts the relay, starts the registrar where the host holds its token, and
+   runs `verify.sh`.
 5. Read `verify.sh`'s output. A relay that starts and cannot allocate looks
    identical from the console.
 6. Per exchange: `register-exchange.sh <exchange-id> <max-age-days|none>`
@@ -114,6 +118,7 @@ or the Dockerfile and it converges.
 | `alcove-relay.container` | The Quadlet unit for a podman host, installed at `/etc/containers/systemd/`. systemd is the only supervisor; there is no container daemon under it |
 | `alcove-relay-docker.service` | The same container on a docker host: a plain systemd unit running `docker run` in the foreground, installed as `/etc/systemd/system/alcove-relay.service`. Same image, mounts, and flags as the Quadlet unit -- the two are edited together |
 | `alcove-relay-verify.service`, `.timer` | The daily verification. A standing relay is idle between exchanges, so nothing else notices it stopped carrying allocations until a partner is waiting on one |
+| `alcove-relay-os-update.service`, `.timer` | The daily OS update on Amazon Linux 2023, followed by the verification. See [OS updates](#os-updates) |
 | `install.sh` | The whole install, idempotent |
 | `relay_table.py` | The one write path to the secrets table: register, revoke, and sweep, each one SQLite transaction, as the relay image's account. Everything below that touches the table calls it. See [Per-exchange keys](#per-exchange-keys) |
 | `register-exchange.sh`, `revoke-exchange.sh`, `exchange-keys.sh` | Add and remove one exchange's relay key, through `relay_table.py`; the third is the shared part both source, and `sweep-exchanges.sh` and `verify.sh` too. See [Per-exchange keys](#per-exchange-keys) |
@@ -595,10 +600,60 @@ from the copy already in `/etc/alcove-relay/certs` in content or owner -- on
 most days the timer fires, the ACME client renews nothing and the relay keeps
 running -- and the timer runs at a fixed early hour for the day it does renew.
 
+## OS updates
+
+On Amazon Linux 2023, `install.sh` installs `alcove-relay-os-update.timer`,
+which upgrades the host to the newest distribution release unattended and
+then runs `verify.sh`. On any other distribution it installs neither unit and
+says so; set up that distribution's own automatic updates there.
+
+**The window.** Every day between 05:00 and 05:30 UTC: the timer fires at 05:00
+UTC with up to 30 minutes of randomized delay. That is after the relay's
+certificate renewal window, 03:00 to 04:00 UTC, and after the window of a broker
+on the same host, 04:30 to 04:45 UTC
+([`infra/broker/README.md`](../broker/README.md)), so a package's restart does
+not land with a certificate's. A host that is down at that time skips the day
+rather than updating at boot.
+
+**What it updates.** It runs `dnf -y upgrade --releasever=latest`: every
+installed package, to its version in the newest Amazon Linux 2023 release, so
+the host stays on one published package set. Nothing outside dnf is touched:
+the relay and front images are pinned in their Dockerfiles and move by
+`install.sh`, and Node on a host that also runs the broker is the tarball under
+`/usr/local/lib/nodejs` ([`infra/broker/README.md`](../broker/README.md)),
+which dnf does not manage.
+
+**The release.** Amazon Linux 2023 locks dnf to the release the host was
+launched from, so a plain `dnf upgrade` reads only that release's
+repository. The unit passes `--releasever=latest` to upgrade to the newest
+release, which moves that lock forward, so `install.sh`'s `dnf install` calls
+and any run by hand follow it. To see the repository the unit reads, run
+`dnf -v --releasever=latest repolist` on the host and read each repository's
+URL.
+
+**What restarts.** The unit restarts no service by name and never reboots.
+
+- A package's own install scripts may restart that package's service. Where a
+  Docker update restarts `docker.service`, systemd restarts every unit that
+  `Requires=` it with it: `alcove-relay.service`, `alcove-relay-front.service`,
+  and on a host that also runs the broker, `alcove-broker-tls.service`. Those
+  restarts drop the allocations and WebSockets in flight.
+- A new kernel, and a new library under a process that is still running, take
+  effect only at the next reboot or restart of that process.
+  `dnf needs-restarting -r` says whether a reboot is pending; the reboot is the
+  operator's to schedule.
+
+**The verification.** After a successful upgrade the unit starts
+`alcove-relay-verify.service` and waits for it, so the relay is checked the same
+way the daily verification checks it. A failed upgrade or a failed verification
+fails `alcove-relay-os-update.service`:
+`journalctl -u alcove-relay-os-update.service -u alcove-relay-verify.service`
+shows which.
+
 ## Portability
 
 The core of this directory is cloud-neutral. Moving it to Azure, to another
-provider, or on-prem changes two things and nothing else:
+provider, or on-prem changes three things and nothing else:
 
 - **The external address.** `render-config.sh` calls whatever
   `ALCOVE_RELAY_EXTERNAL_IP_HELPER` names and requires only that it print
@@ -606,6 +661,9 @@ provider, or on-prem changes two things and nothing else:
   cloud is a sibling of that file, and a host with a static pair is two lines of
   `printf`.
 - **The DNS-01 provider.** Two variables in `acme.env`.
+- **OS updates.** [The update unit](#os-updates) is
+  installed only on Amazon Linux 2023; elsewhere the distribution's own
+  automatic updates take its place.
 
 The image, the configuration, the units, the credential model, and the
 verification are the same everywhere. Neither `install.sh`'s `dnf` lines nor the
