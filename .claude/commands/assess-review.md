@@ -355,8 +355,8 @@ Each path is recorded on the checklist line naming both shas:
   verifying that the move changed nothing the branch itself authored: the
   branch's diff against its base holds the same paths, and each holds the same
   program at both ends, once comments are removed and markdown and the spec
-  wording-change lists (the `.txt` files under `docs/spec/wording-changes/`)
-  are excluded.
+  wording-change lists (the `.txt` files under `docs/spec/wording-changes/` and
+  the legacy `docs/spec/wording-changes.txt`) are excluded.
   Verified mechanically or not at all, by `node
   .claude/scripts/verify-rebase-invariance.mjs <pre-rebase-base>
   <pre-rebase-head> <post-rebase-base> <post-rebase-head>`, which runs the

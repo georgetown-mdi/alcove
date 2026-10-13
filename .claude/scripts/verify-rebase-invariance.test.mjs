@@ -145,6 +145,79 @@ describe("across a real rebase", () => {
     });
   });
 
+  it("holds when the branch deletes the legacy wording-change file that the staging range also changed", () => {
+    const legacy = "docs/spec/wording-changes.txt";
+    const list = "docs/spec/wording-changes/branch.txt";
+    const fixture = rebaseFixture({
+      [legacy]: "- old -> base\n",
+      "src/shared.ts": "export const a = 1;\n",
+    });
+    fixture.remove(legacy);
+    fixture.write(list, "- old -> branch\n");
+    const oldHead = fixture.commit("Move the list");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.write(legacy, "- old -> staging\n");
+    const newBase = fixture.commit("Staging rewrites the legacy list");
+
+    const newHead = rebaseOntoStaging(fixture, () => fixture.remove(legacy));
+
+    const { results, unreadable } = collectInvariance({
+      oldBase: fixture.oldBase,
+      oldHead,
+      newBase,
+      newHead,
+      git: fixture.git,
+    });
+    expect(unreadable).toEqual([]);
+    expect(byPath(results)).toEqual({
+      [legacy]: "exempt",
+      [list]: "identical",
+    });
+    expect(summarizeInvariance(results)).toMatchObject({
+      holds: true,
+      exitCode: 0,
+    });
+  });
+
+  it("holds when the branch modifies the legacy wording-change file that staging deleted and the resolution moves it to a per-branch list", () => {
+    const legacy = "docs/spec/wording-changes.txt";
+    const list = "docs/spec/wording-changes/branch.txt";
+    const fixture = rebaseFixture({
+      [legacy]: "- old -> base\n",
+      "src/shared.ts": "export const a = 1;\n",
+    });
+    fixture.write(legacy, "- old -> branch\n");
+    const oldHead = fixture.commit("Branch list");
+
+    fixture.git(["switch", "-q", "staging"]);
+    fixture.remove(legacy);
+    fixture.write("docs/spec/wording-changes/README.txt", "# The lists.\n");
+    const newBase = fixture.commit("Staging splits the list");
+
+    const newHead = rebaseOntoStaging(fixture, () => {
+      fixture.remove(legacy);
+      fixture.write(list, "- old -> branch\n");
+    });
+
+    const { results, unreadable } = collectInvariance({
+      oldBase: fixture.oldBase,
+      oldHead,
+      newBase,
+      newHead,
+      git: fixture.git,
+    });
+    expect(unreadable).toEqual([]);
+    expect(byPath(results)).toEqual({
+      [legacy]: "exempt",
+      [list]: "exempt",
+    });
+    expect(summarizeInvariance(results)).toMatchObject({
+      holds: true,
+      exitCode: 0,
+    });
+  });
+
   it("violates when the conflict resolution changed an executable line", () => {
     const fixture = rebaseFixture({
       "src/shared.ts": "// the shared note\nexport const a = 1;\n",

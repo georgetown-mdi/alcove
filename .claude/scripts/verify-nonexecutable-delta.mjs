@@ -6,9 +6,9 @@
 // Usage: node .claude/scripts/verify-nonexecutable-delta.mjs <attested-sha>
 // <head-sha>, run from the worktree the refs belong to; git runs at that
 // worktree's top level, never the one holding this file, and the run names it
-// above its verdicts. Per changed path: markdown and the spec wording-change lists
-// (the .txt files under docs/spec/wording-changes/) are exempt; JS/TS source holds
-// when both sides print identically with comments suppressed; YAML holds when
+// above its verdicts. Per changed path: markdown and the spec wording-change
+// lists (the .txt files under docs/spec/wording-changes/ and the legacy
+// docs/spec/wording-changes.txt) are exempt; JS/TS source holds when both sides print identically with comments suppressed; YAML holds when
 // both sides materialize to deep-equal values; a missing side is the empty
 // program or `null`. Every other path, a mode change between existing sides, a
 // multi-document YAML stream, a YAML diagnostic (a duplicate key included), and
@@ -30,6 +30,7 @@ import ts from "typescript";
 import { parseAllDocuments } from "yaml";
 import { WORDING_CHANGES_DIRECTORY } from "../../scripts/check-spec-sentence-moves.mjs";
 
+const LEGACY_WORDING_CHANGES_FILE = "docs/spec/wording-changes.txt";
 const EXEMPT_EXTENSIONS = new Set([".md"]);
 const YAML_EXTENSIONS = new Set([".yml", ".yaml"]);
 
@@ -48,12 +49,15 @@ const printer = ts.createPrinter({ removeComments: true });
 
 /**
  * How a changed path is handled: `exempt` (markdown, which the rule allows, and
- * the spec wording-change lists, which only the CI sentence check reads),
+ * the spec wording-change lists and the legacy single list, which at most the
+ * CI sentence check reads),
  * `source` (parsed and compared as TypeScript/JavaScript), `yaml` (parsed and
  * compared as YAML), or `unverifiable` (anything else, which fails the run).
  */
 export function classifyPath(path) {
   const extension = extname(path).toLowerCase();
+  // The legacy single list is exempt like the directory's lists; no check reads it.
+  if (path === LEGACY_WORDING_CHANGES_FILE) return "exempt";
   if (path.startsWith(WORDING_CHANGES_DIRECTORY) && extension === ".txt") {
     return "exempt";
   }
