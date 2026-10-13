@@ -7,12 +7,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  WORDING_CHANGES_FILE,
+  WORDING_CHANGES_DIRECTORY,
+  branchListFiles,
   compareRevisions,
   compareSpecFiles,
   defaultBase,
   formatFailures,
   formatWordingChanges,
+  listFileFor,
   parseWordingChanges,
   specUnits,
   splitSentences,
@@ -149,6 +151,14 @@ const CHANGED_SENTENCE =
 
 const CHANGED_SENTENCE_LISTED = `- ${CHANGED_SENTENCE} -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`;
 
+/** The list file of the branch `withMove` checks out. */
+const BRANCH_LIST = `${WORDING_CHANGES_DIRECTORY}move.txt`;
+
+/** A list file an earlier pull request left on staging. */
+const EARLIER_LIST = `${WORDING_CHANGES_DIRECTORY}earlier.txt`;
+
+const LIST_README = `${WORDING_CHANGES_DIRECTORY}README.txt`;
+
 describe("the units of a document", () => {
   it("joins a hard-wrapped paragraph and splits it into sentences", () => {
     const sentences = specUnits(HARD_WRAPPED)
@@ -219,38 +229,88 @@ describe("the comparison", () => {
     });
   });
 
-  it("passes the changed word once the branch lists it old -> new in the wording-changes file", () => {
+  it("passes the changed word once the branch lists it old -> new in its list file", () => {
     withMove(
       {
         ...ONE_WORD_CHANGED,
-        [WORDING_CHANGES_FILE]: `# A comment.\n\n${CHANGED_SENTENCE_LISTED}`,
+        [BRANCH_LIST]: `# A comment.\n\n${CHANGED_SENTENCE_LISTED}`,
       },
       (dir) => {
-        const { listChanged, result } = compareRevisions(
-          dir,
-          "staging",
-          "HEAD",
-        );
-        expect(listChanged).toBe(true);
+        const { listFiles, result } = compareRevisions(dir, "staging", "HEAD");
+        expect(listFiles).toEqual([BRANCH_LIST]);
         expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
       },
     );
   });
 
-  it("does not read a list the branch left as the merge base had it", () => {
+  it("does not read a list file the branch left as the merge base had it", () => {
     withMove(
       PURE_MOVE,
       (dir) => {
-        const { listChanged, result } = compareRevisions(
-          dir,
-          "staging",
-          "HEAD",
-        );
-        expect(listChanged).toBe(false);
+        const { listFiles, result } = compareRevisions(dir, "staging", "HEAD");
+        expect(listFiles).toEqual([]);
         expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
       },
-      { [WORDING_CHANGES_FILE]: "- Earlier. -> -\n" },
+      { [EARLIER_LIST]: "- Earlier. -> -\n" },
     );
+  });
+
+  it("reads the branch's own list file and ignores an earlier one it did not touch", () => {
+    withMove(
+      { ...ONE_WORD_CHANGED, [BRANCH_LIST]: CHANGED_SENTENCE_LISTED },
+      (dir) => {
+        const { listFiles, result } = compareRevisions(dir, "staging", "HEAD");
+        expect(listFiles).toEqual([BRANCH_LIST]);
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+      { [EARLIER_LIST]: `- Earlier. -> -\n${CHANGED_SENTENCE_LISTED}` },
+    );
+  });
+
+  it("reads every list file the branch added or modified, as one list", () => {
+    const [dropped, added] = [
+      `- ${CHANGED_SENTENCE} -> -\n`,
+      `- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
+    ];
+    withMove(
+      {
+        ...ONE_WORD_CHANGED,
+        [BRANCH_LIST]: dropped,
+        [EARLIER_LIST]: added,
+      },
+      (dir) => {
+        const { listFiles, result } = compareRevisions(dir, "staging", "HEAD");
+        expect(listFiles).toEqual([EARLIER_LIST, BRANCH_LIST].sort());
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+      { [EARLIER_LIST]: "- Earlier. -> -\n" },
+    );
+  });
+
+  it("reads neither the directory's README nor a list file the branch deleted", () => {
+    withMove(
+      {
+        ...PURE_MOVE,
+        [LIST_README]: "- Not a list. -> -\n",
+        [EARLIER_LIST]: null,
+      },
+      (dir) => {
+        expect(branchListFiles(dir, "staging", "HEAD")).toEqual([]);
+        const { result } = compareRevisions(dir, "staging", "HEAD");
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+      { [LIST_README]: "# The lists.\n", [EARLIER_LIST]: "- Earlier. -> -\n" },
+    );
+  });
+
+  it("names a branch's list file by the branch, replacing any character outside A-Za-z0-9._-", () => {
+    expect(listFileFor("spec-move_2.1")).toBe(
+      `${WORDING_CHANGES_DIRECTORY}spec-move_2.1.txt`,
+    );
+    expect(listFileFor("feature/a b")).toBe(
+      `${WORDING_CHANGES_DIRECTORY}feature-a-b.txt`,
+    );
+    expect(listFileFor(null)).toBe(`${WORDING_CHANGES_DIRECTORY}<branch>.txt`);
   });
 
   it("does not require a unit whose only change is a link target", () => {
@@ -419,6 +479,7 @@ describe("the command", () => {
   function runScript(dir, args, env = {}) {
     const childEnv = { ...process.env };
     delete childEnv.GITHUB_BASE_REF;
+    delete childEnv.GITHUB_HEAD_REF;
     Object.assign(childEnv, env);
     return spawnSync(process.execPath, [SCRIPT, ...args], {
       cwd: dir,
@@ -432,13 +493,14 @@ describe("the command", () => {
       const failing = runScript(dir, ["--base", "staging"]);
       expect(failing.status, failing.stdout).toBe(1);
       expect(failing.stderr).toContain(
-        `${WORDING_CHANGES_FILE} is unchanged since the merge base`,
+        `No file under ${WORDING_CHANGES_DIRECTORY} was added or modified since the merge base, so this branch lists no change; write its list to ${BRANCH_LIST}.`,
       );
+      expect(failing.stderr).toContain(`list them in ${BRANCH_LIST},`);
       expect(failing.stderr).toContain(
         `- ${CHANGED_SENTENCE} -> -\n- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`,
       );
 
-      write(dir, { [WORDING_CHANGES_FILE]: CHANGED_SENTENCE_LISTED });
+      write(dir, { [BRANCH_LIST]: CHANGED_SENTENCE_LISTED });
       commit(dir, "list");
       const listed = runScript(dir, ["--base", "staging"]);
       expect(listed.status, listed.stderr).toBe(0);
@@ -446,11 +508,33 @@ describe("the command", () => {
     });
   });
 
+  it("names the list file by the pull request's head branch on the runner, and by a placeholder on a detached head", () => {
+    withMove(ONE_WORD_CHANGED, (dir) => {
+      const onRunner = runScript(dir, ["--base", "staging"], {
+        GITHUB_HEAD_REF: "spec/reword",
+      });
+      expect(onRunner.status, onRunner.stdout).toBe(1);
+      expect(onRunner.stderr).toContain(
+        `write its list to ${WORDING_CHANGES_DIRECTORY}spec-reword.txt.`,
+      );
+
+      execFileSync("git", ["checkout", "-q", "--detach"], { cwd: dir });
+      const detached = runScript(dir, ["--base", "staging"]);
+      expect(detached.status, detached.stdout).toBe(1);
+      expect(detached.stderr).toContain(
+        `write its list to ${WORDING_CHANGES_DIRECTORY}<branch>.txt.`,
+      );
+    });
+  });
+
   it("fails a list naming a change when no spec file changed", () => {
-    withMove({ [WORDING_CHANGES_FILE]: "- Gone. -> -\n" }, (dir) => {
+    withMove({ [BRANCH_LIST]: "- Gone. -> -\n" }, (dir) => {
       const result = runScript(dir, ["--base", "staging"]);
       expect(result.status, result.stdout).toBe(1);
       expect(result.stderr).toContain("no Markdown file under docs/spec/");
+      expect(result.stderr).toContain(
+        `Listed in ${BRANCH_LIST} but matching no difference`,
+      );
       expect(result.stderr).toContain("  - Gone. -> -");
     });
   });
@@ -489,6 +573,67 @@ describe("the command", () => {
       const intoStaging = runScript(dir, [], { GITHUB_BASE_REF: "staging" });
       expect(intoStaging.status, intoStaging.stdout).toBe(1);
       expect(intoStaging.stderr).toContain("merge base with origin/staging");
+    });
+  });
+
+  it("merges two branches that each change docs/spec/ and write their own list into staging one after the other with no conflict", () => {
+    const LIVENESS = "A silent peer is dropped after the idle bound.";
+    const branches = [
+      {
+        branch: "reword",
+        file: "docs/spec/CHANNEL_SECURITY.md",
+        text: HARD_WRAPPED.replace(
+          "receiver MUST reject",
+          "receiver SHOULD reject",
+        ),
+        listed: CHANGED_SENTENCE_LISTED,
+      },
+      {
+        branch: "liveness",
+        file: "docs/spec/LIVENESS.md",
+        text: LEFT_BEHIND.replace("idle bound", "idle timeout"),
+        listed: `- ${LIVENESS} -> ${LIVENESS.replace("idle bound", "idle timeout")}\n`,
+      },
+    ];
+    withRepository((dir) => {
+      const gitIn = (args) =>
+        spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+      write(dir, {
+        "docs/spec/CHANNEL_SECURITY.md": HARD_WRAPPED,
+        "docs/spec/LIVENESS.md": LEFT_BEHIND,
+        [LIST_README]: "# The lists.\n",
+        [EARLIER_LIST]: "- Earlier. -> -\n",
+      });
+      commit(dir, "base");
+      for (const { branch, file, text, listed } of branches) {
+        gitIn(["checkout", "-q", "-b", branch, "staging"]);
+        write(dir, { [file]: text, [listFileFor(branch)]: listed });
+        commit(dir, branch);
+      }
+
+      for (const { branch } of branches) {
+        gitIn(["checkout", "-q", branch]);
+        const checked = runScript(dir, ["--base", "staging"]);
+        expect(checked.status, checked.stderr).toBe(0);
+        expect(checked.stdout).toContain("passed over 1 changed file");
+        gitIn(["checkout", "-q", "staging"]);
+        const merged = gitIn(["merge", "--no-ff", "-m", branch, branch]);
+        expect(merged.status, merged.stdout + merged.stderr).toBe(0);
+        expect(merged.stdout + merged.stderr).not.toMatch(/CONFLICT/);
+      }
+      expect(
+        gitIn(["ls-tree", "--name-only", "HEAD", WORDING_CHANGES_DIRECTORY])
+          .stdout.trim()
+          .split("\n")
+          .sort(),
+      ).toEqual(
+        [
+          LIST_README,
+          EARLIER_LIST,
+          listFileFor("reword"),
+          listFileFor("liveness"),
+        ].sort(),
+      );
     });
   });
 

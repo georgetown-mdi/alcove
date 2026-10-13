@@ -112,22 +112,23 @@ describe("across a real rebase", () => {
     ).toContain("src/shared.ts");
   });
 
-  it("holds when the branch rewrites the spec wording-change list and the rebase conflicts on it", () => {
-    const list = "docs/spec/wording-changes.txt";
+  it("holds when the branch rewrites its spec wording-change list as it rebases cleanly onto another branch's list", () => {
+    const list = "docs/spec/wording-changes/branch.txt";
     const fixture = rebaseFixture({
-      [list]: "- old -> older\n",
+      "docs/spec/wording-changes/README.txt": "# The lists.\n",
       "src/shared.ts": "export const a = 1;\n",
     });
     fixture.write(list, "- old -> branch\n");
     const oldHead = fixture.commit("Branch list");
 
     fixture.git(["switch", "-q", "staging"]);
-    fixture.write(list, "- old -> staging\n");
-    const newBase = fixture.commit("Staging list");
+    fixture.write("docs/spec/wording-changes/other.txt", "- old -> other\n");
+    const newBase = fixture.commit("Another branch's list");
 
-    const newHead = rebaseOntoStaging(fixture, () =>
-      fixture.write(list, "- old -> branch\n- other -> staging\n"),
-    );
+    rebaseOntoStaging(fixture);
+    fixture.write(list, "- old -> branch, reworded\n");
+    fixture.git(["commit", "-q", "--amend", "-a", "--no-edit"]);
+    const newHead = fixture.head();
 
     const { results, unreadable } = collectInvariance({
       oldBase: fixture.oldBase,
