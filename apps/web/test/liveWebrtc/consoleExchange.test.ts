@@ -1,10 +1,10 @@
 /// <reference types="@vitest/browser-playwright/context" />
 
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { commands } from "vitest/browser";
-import { parse as parseYaml } from "yaml";
 
-import { decodeInvitation } from "@alcove/core";
+import { decodeInvitation, snakeizeKeys } from "@alcove/core";
 
 import {
   acceptorColumnsEditorState,
@@ -42,9 +42,12 @@ import type {
   ConsoleLegStart,
   ConsoleWorkingFolderFiles,
 } from "./legTypes";
+import type {
+  JobConfigurationHandBack,
+  JobWebrtcExchangeIntent,
+} from "@jobContract/intentSchemas";
 import type { BrowserOutcome } from "./browserPeer";
 import type { InvitationLocation } from "@psi/invitation";
-import type { JobWebrtcExchangeIntent } from "@jobContract/intentSchemas";
 import type { ServerJobExchangeDriverConfig } from "@psi/jobClient/serverJobExchangeDriver";
 import type { SignalingAddress } from "@psi/transport/signalingAddress";
 
@@ -72,6 +75,11 @@ declare module "vitest/internal/browser" {
       intent: JobWebrtcExchangeIntent,
     ) => Promise<string>;
     consoleWorkingFolderFiles: () => Promise<ConsoleWorkingFolderFiles>;
+    openConsoleConfiguration: (files: {
+      config: string;
+      key: string;
+    }) => Promise<ConsoleAnswer>;
+    saveConsoleConfiguration: (body: string) => Promise<ConsoleAnswer>;
     consoleWebrtcJobOutcome: () => Promise<ConsoleJobOutcome>;
     stopConsoleWebrtcLeg: () => Promise<void>;
   }
@@ -284,5 +292,81 @@ describe("a browser peer invites and a console webrtc job accepts", () => {
     } finally {
       inviter.destroy();
     }
+  }, 420_000);
+});
+
+describe("a webrtc alcove.yaml opened in the console runs in place", () => {
+  const leg = withConsoleLeg();
+
+  test("the console job and the browser peer resolve the same intersection", async () => {
+    const started = leg();
+    const { columns } = await readBrowserCsv(CLI_PARTY_CSV);
+    const minted = await generateInvitation({
+      inviterName: CONSOLE_IDENTITY,
+      profiledColumns: columns,
+      location: locationFor(started),
+    });
+    // The pair an inviter's `alcove invite` leaves in the working folder,
+    // naming the broker the console holds.
+    const { host, port, path } = authoredAddress(started);
+    const opened = await commands.openConsoleConfiguration({
+      config: stringifyYaml(
+        snakeizeKeys({
+          connection: {
+            channel: "webrtc",
+            role: "inviter",
+            server: { host, port, path, secure: false },
+          },
+          linkageTerms: minted.linkageTerms,
+          ...(minted.metadata !== undefined
+            ? { metadata: minted.metadata }
+            : {}),
+        }),
+      ),
+      key: JSON.stringify({ sharedSecret: minted.sharedSecret }),
+    });
+    expect(opened.status, opened.body).toBe(200);
+    const answer = JSON.parse(opened.body) as {
+      document: { signalingServer?: string };
+      relaySettings?: Array<string>;
+      keyFileFault?: string;
+    };
+    expect(answer.relaySettings).toBeUndefined();
+    expect(answer.keyFileFault).toBeUndefined();
+    // The screen sets the server the file names, then saves its steps into
+    // the file before the run.
+    const address = answer.document.signalingServer;
+    expect(address).toBe(`ws://${host}:${port}${path}`);
+    const set = await commands.putConsoleSignalingServer(
+      JSON.stringify({ address }),
+    );
+    expect(set.status, set.body).toBe(200);
+    const handBack: JobConfigurationHandBack = {
+      linkageTerms: minted.linkageTerms,
+      ...(minted.metadata !== undefined ? { metadata: minted.metadata } : {}),
+      signing: { mode: "none" },
+    };
+    const saved = await commands.saveConsoleConfiguration(
+      JSON.stringify(handBack),
+    );
+    expect(saved.status, saved.body).toBe(200);
+
+    await commands.createConsoleWebrtcJob(
+      webrtcIntent(
+        inviterServerJobConfig({
+          minted,
+          inputSource: CONSOLE_INPUT,
+          transport: inviterServerJobTransport("webrtc", minted),
+          mountedConfigurationOpened: true,
+        }),
+      ),
+    );
+    const browser = await runBrowserAcceptor(minted.encoded);
+    expectSameIntersection(browser, await commands.consoleWebrtcJobOutcome());
+    expect(await workingFolderConnection()).toMatchObject({
+      channel: "webrtc",
+      role: "inviter",
+      server: { host, port, path, secure: false },
+    });
   }, 420_000);
 });

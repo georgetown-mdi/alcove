@@ -144,7 +144,7 @@ describe("inviterServerJobConfig", () => {
     expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
   });
 
-  test("builds the webrtc arm, which names no server and runs no opened file", () => {
+  test("builds the webrtc arm, which names no server", () => {
     const config = inviterServerJobConfig({
       minted: { ...minted, sharedSecret: VALID_SHARED_SECRET },
       inputSource: { kind: "inline", csv: inputCsv },
@@ -159,9 +159,25 @@ describe("inviterServerJobConfig", () => {
     expect(
       jobExchangeIntentSchema.safeParse(intent).error?.issues,
     ).toBeUndefined();
-    expect(() =>
-      intentFor({ ...config, mountedConfigurationOpened: true }),
-    ).toThrow();
+  });
+
+  test("a webrtc run of the opened configuration sends no secret", () => {
+    const intent = intentFor(
+      inviterServerJobConfig({
+        minted: { ...minted, sharedSecret: VALID_SHARED_SECRET },
+        inputSource: { kind: "inline", csv: inputCsv },
+        transport: { channel: "webrtc" },
+        mountedConfigurationOpened: true,
+      }),
+    );
+    expect(intent).toMatchObject({
+      channel: "webrtc",
+      mountedConfigurationOpened: true,
+    });
+    expect(intent.sharedSecret).toBeUndefined();
+    expect(
+      jobExchangeIntentSchema.safeParse(intent).error?.issues,
+    ).toBeUndefined();
   });
 
   test("the webrtc arm names the server its invitation names", () => {

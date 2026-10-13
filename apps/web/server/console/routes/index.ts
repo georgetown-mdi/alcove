@@ -3,6 +3,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
@@ -20,6 +21,7 @@ import {
   JobSftpCredentialConsoleOwnedError,
   JobSigningIdentityExposedError,
   MountedSigningPathsUnconvertedError,
+  OpenedConfigurationNotRunnableError,
   SftpUnavailableError,
   SignalingServerChangedError,
   SignalingServerUnavailableError,
@@ -87,7 +89,10 @@ import { defineJobRoute } from "../jobRoute";
  * answers `{ "reason": "mounted-key-file-absent" }` or
  * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
  * unconverted signing paths answers
- * `{ "reason": "mounted-signing-paths-unconverted" }`, and a saved SFTP
+ * `{ "reason": "mounted-signing-paths-unconverted" }`, a webrtc run of it
+ * whose working folder `alcove.yaml` no longer runs here over the console's
+ * coordination server answers
+ * `{ "reason": "opened-configuration-not-runnable" }`, and a saved SFTP
  * credential naming a console file answers its `jobCreateRefusal.ts` token.
  * Each is about console state rather than the intent, so the browser cannot
  * otherwise say what to fix. For the same reason a webrtc run whose files the
@@ -162,6 +167,11 @@ export const route = defineJobRoute({
         if (error instanceof MountedSigningPathsUnconvertedError)
           return jobJsonResponse(
             { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
+            400,
+          );
+        if (error instanceof OpenedConfigurationNotRunnableError)
+          return jobJsonResponse(
+            { reason: OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL },
             400,
           );
         // The working folder already holds an alcove.yaml or .alcove.key a

@@ -1373,14 +1373,9 @@ export function intentFor(
     case "filedrop":
       return { channel: "filedrop", ...shared };
     case "webrtc":
-      if (mountedConfigurationOpened === true)
-        throw new Error(
-          "a webrtc run of an opened configuration was requested",
-        );
       return {
         channel: "webrtc",
         ...shared,
-        mountedConfigurationOpened: false,
         ...(transport.signalingServer !== undefined
           ? { signalingServer: transport.signalingServer }
           : {}),

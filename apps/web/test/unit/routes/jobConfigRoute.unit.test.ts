@@ -15,16 +15,21 @@ import { STUB_CLI_PATH, trackScratchDirs } from "../../utils/jobFixtures";
 
 const { scratchDir, cleanup: removeScratchDirs } = trackScratchDirs();
 
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.unstubAllEnvs();
-  // The route reads through the memoized manager, which holds the data root it
-  // was built with; each test enables its own.
+/** Drop the memoized manager, which holds the data root it was built with and
+ * the configuration it last opened, so the next request builds one over the
+ * data root then enabled. */
+function forgetManager(): void {
   (
     globalThis as { jobManagerInstance?: { shutdown: () => void } }
   ).jobManagerInstance?.shutdown();
   (globalThis as { jobManagerInstance?: unknown }).jobManagerInstance =
     undefined;
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  forgetManager();
   removeScratchDirs();
 });
 
@@ -253,8 +258,10 @@ describe("the webrtc connection's credentials never reach the browser", () => {
 
   test("the hand-back answers none of them and writes every one back", async () => {
     for (const document of webrtcDocuments()) {
+      forgetManager();
       const dataRoot = enable();
       writeConfiguration(dataRoot, document);
+      await load();
       const response = await handBack({
         linkageTerms: getDefaultLinkageTerms("County Health West"),
         csvDelimiter: ";",
@@ -302,6 +309,7 @@ describe("PUT /api/jobs/config", () => {
   test("refuses a configuration the console runs itself", async () => {
     const dataRoot = enable();
     writeConfiguration(dataRoot, savedSftpDocument());
+    await load();
     const response = await handBack(settings);
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: string }).error).toContain(
@@ -309,12 +317,45 @@ describe("PUT /api/jobs/config", () => {
     );
   });
 
-  test("refuses a mount holding no configuration", async () => {
-    enable();
+  test("refuses a mount whose configuration was never opened", async () => {
+    const dataRoot = enable();
+    writeConfiguration(dataRoot, webrtcDocuments()[0]);
+    const before = fs.readFileSync(path.join(dataRoot, "alcove.yaml"));
     const response = await handBack(settings);
     expect(response.status).toBe(400);
     expect(((await response.json()) as { error: string }).error).toContain(
-      "no longer holds an alcove.yaml",
+      "open it again",
     );
+    expect(fs.readFileSync(path.join(dataRoot, "alcove.yaml"))).toEqual(before);
+  });
+
+  test("refuses a file changed since it was opened, leaving it as it is", async () => {
+    // A run in place records a partner's fingerprint into the file; a save
+    // of the steps as they were opened would write over it.
+    const dataRoot = enable();
+    writeConfiguration(dataRoot, webrtcDocuments()[0]);
+    await load();
+    fs.appendFileSync(path.join(dataRoot, "alcove.yaml"), "# changed\n");
+    const before = fs.readFileSync(path.join(dataRoot, "alcove.yaml"));
+    const response = await handBack(settings);
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: string }).error).toContain(
+      "changed since you opened it",
+    );
+    expect(fs.readFileSync(path.join(dataRoot, "alcove.yaml"))).toEqual(before);
+    fs.rmSync(path.join(dataRoot, "alcove.yaml"));
+    expect((await handBack(settings)).status).toBe(400);
+  });
+
+  test("admits a second save over the file the first one wrote", async () => {
+    const dataRoot = enable();
+    writeConfiguration(dataRoot, webrtcDocuments()[0]);
+    await load();
+    expect((await handBack(settings)).status).toBe(200);
+    const second = await handBack({ ...settings, csvDelimiter: ";" });
+    expect(second.status).toBe(200);
+    expect(
+      fs.readFileSync(path.join(dataRoot, "alcove.yaml"), "utf8"),
+    ).toContain("csv_delimiter: ;");
   });
 });

@@ -13,6 +13,7 @@ import {
   CREATE_INVITATION_FROM_SETTINGS_LABEL,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
+  OPENED_EXCHANGE_RUNS_IN_PLACE,
   RELAY_ENROLLMENT_NOTICE,
   carriedThroughNotice,
   channelNotConductedNotice,
@@ -30,6 +31,7 @@ import {
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   mountedConfigurationRead,
+  opensInPlace,
   runWithheldReason,
   runsOpenedConfiguration,
   termsNotAppliedNotice,
@@ -258,21 +260,32 @@ describe("an opened configuration's own paths, until converted", () => {
   });
 });
 
-describe("a configuration on a channel the console does not conduct", () => {
+/** A webrtc configuration as the load answers it, stating the relay settings
+ * named, or none. */
+function openedWebrtcFile(
+  relaySettings: Array<string>,
+  overrides: Partial<DisclosedExchangeDocument> = {},
+  carriedThrough: Array<string> = ["authentication.token_max_age_days"],
+): MountedConfigurationAnswer {
+  return {
+    kind: "opened",
+    document: {
+      channel: "webrtc",
+      signalingServer: "wss://signal.example.org/api/",
+      linkageTerms: getDefaultLinkageTerms("County Health"),
+      ...overrides,
+    },
+    carriedThrough,
+    warnings: [],
+    ...(relaySettings.length > 0 ? { relaySettings } : {}),
+  };
+}
+
+describe("a webrtc configuration stating relay settings", () => {
   function openedWebrtc(
     overrides: Partial<DisclosedExchangeDocument> = {},
-    carriedThrough: Array<string> = ["authentication.token_max_age_days"],
   ): MountedConfigurationAnswer {
-    return {
-      kind: "opened",
-      document: {
-        channel: "webrtc",
-        linkageTerms: getDefaultLinkageTerms("County Health"),
-        ...overrides,
-      },
-      carriedThrough,
-      warnings: [],
-    };
+    return openedWebrtcFile(["connection.turn"], overrides);
   }
 
   test("opens with its channel named on the state, and every step seeded", () => {
@@ -284,6 +297,7 @@ describe("a configuration on a channel the console does not conduct", () => {
       carriedThrough: ["authentication.token_max_age_days"],
       warnings: [],
       notConducted: "webrtc",
+      relaySettings: ["connection.turn"],
     });
     expect(read.loaded?.channel).toBe("webrtc");
     expect(read.loaded?.sftpForm).toBeUndefined();
@@ -291,11 +305,11 @@ describe("a configuration on a channel the console does not conduct", () => {
     expect(read.loaded?.receipts.retentionDisposition).toBe("Filed.");
   });
 
-  test("withholds the run of an opened webrtc file, naming the channel", () => {
+  test("withholds the run of an opened webrtc file, naming its relay", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     const reason = runWithheldReason(state);
     expect(reason).toContain("webrtc");
-    expect(reason).toContain("opened from your folder");
+    expect(reason).toContain("uses a relay (connection.turn)");
     expect(reason).toMatch(/Alcove on the command line/);
     expect(reason).toMatch(/Save your changes to alcove\.yaml/);
   });
@@ -320,8 +334,11 @@ describe("a configuration on a channel the console does not conduct", () => {
       openedWebrtc({ expectedPartnerDeduplicate: true }),
     );
     const notices = mountedConfigurationNotices(state, {});
-    expect(notices).toEqual([channelNotConductedNotice("webrtc")]);
-    expect(notices[0]).toContain("runs over webrtc");
+    expect(notices).toEqual([
+      channelNotConductedNotice("webrtc", ["connection.turn"]),
+    ]);
+    expect(notices[0]).toContain("uses a relay, under connection.turn");
+    expect(notices[0]).toContain("connects directly only");
     expect(notices[0]).toMatch(/save them to alcove\.yaml/);
     expect(notices[0]).toMatch(/connection is kept exactly as your file/);
   });
@@ -335,7 +352,7 @@ describe("a configuration on a channel the console does not conduct", () => {
     });
     expect(state).toMatchObject({ relayEnrollment: true });
     expect(mountedConfigurationNotices(state, {})).toEqual([
-      channelNotConductedNotice("webrtc"),
+      channelNotConductedNotice("webrtc", ["connection.turn"]),
       RELAY_ENROLLMENT_NOTICE,
     ]);
     expect(RELAY_ENROLLMENT_NOTICE).toMatch(/^If this exchange is not yet/);
@@ -699,17 +716,54 @@ describe("columns the configuration does not state", () => {
   });
 });
 
+describe("a webrtc configuration stating no relay settings", () => {
+  const { state, loaded } = mountedConfigurationRead(openedWebrtcFile([]));
+
+  test("opens to run in place", () => {
+    expect(state).toEqual({
+      status: "opened",
+      carriedThrough: ["authentication.token_max_age_days"],
+      warnings: [],
+      runsInPlace: true,
+    });
+    expect(loaded?.channel).toBe("webrtc");
+    expect(opensInPlace(state)).toBe(true);
+    expect(runsOpenedConfiguration(state)).toBe(true);
+    expect(runWithheldReason(state)).toBeUndefined();
+    expect(configurationOpenedMessage(state)).toBe(CONFIGURATION_OPENED);
+  });
+
+  test("an sftp configuration does not run in place", () => {
+    expect(opensInPlace(mountedConfigurationRead(opened()).state)).toBe(false);
+  });
+
+  test("its connection settings are held from the file, as the run uses them", () => {
+    const notice = connectionSettingsHeldNotice(state);
+    expect(notice).toContain("webrtc connection");
+    expect(notice).toMatch(/the run uses it as it is/);
+  });
+
+  test("names no channel notice, and no conversion", () => {
+    expect(mountedConfigurationNotices(state, {})).toEqual([
+      carriedThroughNotice(["authentication.token_max_age_days"]),
+    ]);
+    expect(conversionOffered(state, false)).toBe(false);
+    expect(withNewInvitation(state)).toBe(state);
+  });
+
+  test("the review step says the run saves the file first, then runs it", () => {
+    expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toContain(
+      PREVIOUS_CONFIGURATION_FILE_NAME,
+    );
+    expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(/as alcove exchange does/);
+  });
+});
+
 describe("the terms of an opened configuration changed here", () => {
   const conducted = mountedConfigurationRead(opened()).state;
-  const saveBackOnly = mountedConfigurationRead({
-    kind: "opened",
-    document: {
-      channel: "webrtc",
-      linkageTerms: getDefaultLinkageTerms("County Health"),
-    },
-    carriedThrough: [],
-    warnings: [],
-  }).state;
+  const saveBackOnly = mountedConfigurationRead(
+    openedWebrtcFile(["connection.turn"], {}, []),
+  ).state;
 
   test("a run of the opened configuration names update and apply", () => {
     const warning = editedTermsWarning(conducted, {
@@ -765,11 +819,13 @@ describe("an opened configuration whose key file would refuse its run", () => {
   function openedWithoutKeyFile(
     fault: "absent" | "invalid" = "absent",
     channel: DisclosedExchangeDocument["channel"] = "sftp",
+    relaySettings: Array<string> = [],
   ) {
     return mountedConfigurationRead({
       ...opened({ channel }),
       signingPathSettings: ["signing.identity_file"],
       keyFileFault: fault,
+      ...(relaySettings.length > 0 ? { relaySettings } : {}),
     } as MountedConfigurationAnswer).state;
   }
 
@@ -782,10 +838,24 @@ describe("an opened configuration whose key file would refuse its run", () => {
     }
   });
 
-  test("a configuration the console does not conduct names no key file", () => {
-    const state = openedWithoutKeyFile("absent", "webrtc");
+  test("a configuration the console does not run names no key file", () => {
+    const state = openedWithoutKeyFile("absent", "webrtc", ["connection.turn"]);
     expect(keyFileNotice(state)).toBeUndefined();
     expect(withNewInvitation(state)).toBe(state);
+  });
+
+  test("a webrtc one run in place withholds the run and offers no new invitation", () => {
+    for (const fault of ["absent", "invalid"] as const) {
+      const state = openedWithoutKeyFile(fault, "webrtc");
+      const notice = keyFileNotice(state);
+      expect(notice?.message).toContain("open the configuration again");
+      expect(notice?.message).toContain("Alcove on the command line");
+      expect(notice?.message).not.toContain(
+        CREATE_INVITATION_FROM_SETTINGS_LABEL,
+      );
+      expect(runWithheldReason(state)).toContain(".alcove.key");
+      expect(withNewInvitation(state)).toBe(state);
+    }
   });
 
   test("a new invitation from its settings stops continuing the opened exchange", () => {

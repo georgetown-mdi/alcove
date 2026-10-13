@@ -14,6 +14,7 @@ import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
 import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
+  opensInPlace,
   withConversion,
   withNewInvitation,
   withTermsNotApplied,
@@ -756,11 +757,12 @@ function applyAction(
       // build this offer is rendered on (`InviterScreen`). An unresolved mount
       // reads as no mount, the same conservative reading the chooser itself
       // gives it, so the load never selects a transport this console has not
-      // confirmed it can run. A channel no job conducts selects none, and the
-      // read's own state already withholds its run.
-      const conducted = isJobChannel(loaded.channel)
-        ? loaded.channel
-        : undefined;
+      // confirmed it can run. A webrtc file runs in place over webrtc; one with
+      // relay settings selects none, and the read's own state already
+      // withholds its run.
+      const inPlace = opensInPlace(read.state);
+      const conducted =
+        isJobChannel(loaded.channel) || inPlace ? loaded.channel : undefined;
       const offeredTransport =
         conducted !== undefined &&
         transportOffered(
@@ -768,6 +770,9 @@ function applyAction(
             true,
             state.sftpInfo?.connection != null,
             state.rendezvous?.configured === true,
+            false,
+            true,
+            inPlace,
           ),
           conducted,
         )

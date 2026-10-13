@@ -37,6 +37,9 @@ export type MountedConfigurationAnswer =
       /** The retired settings the file states, which the console ignores. */
       retiredSettings?: Array<string>;
       relayRegistrarNamed?: true;
+      /** The relay settings a webrtc configuration states, which withhold its
+       * run here. */
+      relaySettings?: Array<string>;
       /** The `.alcove.key` beside the configuration would refuse its run: none
        * is there, or the file is not a key file. */
       keyFileFault?: "absent" | "invalid";
@@ -119,6 +122,8 @@ export async function fetchMountedConfiguration(
     const folderPathSettings = namesOf(body.folderPathSettings);
     const retiredSettings =
       body.retiredSettings === undefined ? [] : namesOf(body.retiredSettings);
+    const relaySettings =
+      body.relaySettings === undefined ? [] : namesOf(body.relaySettings);
     const { relayRegistrarNamed, keyFileFault } = body;
     if (
       document === null ||
@@ -127,6 +132,7 @@ export async function fetchMountedConfiguration(
       signingPathSettings === null ||
       folderPathSettings === null ||
       retiredSettings === null ||
+      relaySettings === null ||
       (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
       (keyFileFault !== undefined &&
         keyFileFault !== "absent" &&
@@ -144,6 +150,7 @@ export async function fetchMountedConfiguration(
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
         : {}),
+      ...(relaySettings.length > 0 ? { relaySettings } : {}),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
     };
   } catch {
@@ -168,8 +175,7 @@ const UNNAMED_HAND_BACK_REFUSAL =
 
 /**
  * Hand the settings the authoring steps edit back into the configuration the
- * operator opened (`PUT /api/jobs/config`), for a channel the console does not
- * conduct. The console keeps the file's connection itself, so nothing of it is
+ * operator opened (`PUT /api/jobs/config`): a webrtc configuration. The console keeps the file's connection itself, so nothing of it is
  * sent or read back.
  */
 export async function saveOpenedConfiguration(

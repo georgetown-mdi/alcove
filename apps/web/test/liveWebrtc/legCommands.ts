@@ -150,6 +150,14 @@ export const liveWebrtcLegCommands = {
   ): Promise<string> => runningConsoleParty().createJob(intent),
   consoleWorkingFolderFiles: (): ConsoleWorkingFolderFiles =>
     runningConsoleParty().workingFolderFiles(),
+  openConsoleConfiguration: (
+    _context: unknown,
+    files: { config: string; key: string },
+  ): Promise<ConsoleAnswer> => runningConsoleParty().openConfiguration(files),
+  saveConsoleConfiguration: (
+    _context: unknown,
+    body: string,
+  ): Promise<ConsoleAnswer> => runningConsoleParty().saveConfiguration(body),
   consoleWebrtcJobOutcome: (): Promise<ConsoleJobOutcome> =>
     runningConsoleParty().outcome(),
   stopConsoleWebrtcLeg: (): Promise<void> => stopConsoleLeg(),

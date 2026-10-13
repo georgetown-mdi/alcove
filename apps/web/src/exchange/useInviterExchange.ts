@@ -29,6 +29,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
@@ -471,6 +472,23 @@ function failureContentFor(
             "partner would not find you. Start over, check the coordination " +
             "server, then create a fresh invitation.",
         };
+  // A WebRTC run of the opened configuration whose file no longer runs here,
+  // or names another coordination server than the console holds. Classified
+  // `config`: a retry refuses identically until the configuration is opened
+  // again, which sets the server it names.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "Your alcove.yaml changed since you opened it",
+      message:
+        "The console did not start this exchange. The alcove.yaml in your " +
+        "working folder is no longer one the console runs, or the " +
+        "coordination server set here is not the one it names. Start over, " +
+        "close the configuration on the first step, and open it again.",
+    };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
   // `config`: a retry refuses identically until the folder is fixed.

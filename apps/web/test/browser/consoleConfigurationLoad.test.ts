@@ -17,6 +17,7 @@ import {
   EDITED_TERMS_TITLE,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_CONTINUES,
+  OPENED_EXCHANGE_RUNS_IN_PLACE,
   OPEN_CONFIGURATION_LABEL,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
@@ -119,14 +120,31 @@ const savedBodies: Array<unknown> = [];
 /** Each body a `POST /api/jobs` sent, in order. */
 const createdBodies: Array<unknown> = [];
 
+/** Each address a `PUT /api/jobs/webrtc` sent, in order. */
+const serverAddresses: Array<string> = [];
+
+/** The writes the job API received, in the order they arrived. */
+const writes: Array<"save" | "create"> = [];
+
+/** The coordination server `wss://signal.example.org/api/` as the console
+ * answers it once set. */
+const SIGNALING_PROJECTION = {
+  configured: true,
+  host: "signal.example.org",
+  path: "/api/",
+  secure: true,
+  warnings: [],
+};
+
 /** Answer the console's job API, with `GET /api/jobs/config` under this test's
  * control. The work directory is empty and nothing else is provisioned unless
  * the test says otherwise. */
 function stubConfigRoute(
   answer: { status: number; body: unknown },
-  mount: { files?: Array<unknown>; sftp?: unknown } = {},
+  mount: { files?: Array<unknown>; sftp?: unknown; saveRefusal?: string } = {},
 ): void {
   const realFetch = window.fetch.bind(window);
+  let signalingServerSet = false;
   vi.stubGlobal(
     "fetch",
     (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -141,7 +159,21 @@ function stubConfigRoute(
         );
       if (url === "/api/jobs/config" && init?.method === "PUT") {
         savedBodies.push(JSON.parse(String(init.body)) as unknown);
+        if (mount.saveRefusal !== undefined)
+          return json({ error: mount.saveRefusal }, 400);
+        writes.push("save");
         return json({ written: true });
+      }
+      if (url === "/api/jobs/webrtc") {
+        if (init?.method === "PUT") {
+          serverAddresses.push(
+            (JSON.parse(String(init.body)) as { address: string }).address,
+          );
+          signalingServerSet = true;
+        }
+        return json(
+          signalingServerSet ? SIGNALING_PROJECTION : { configured: false },
+        );
       }
       if (url === "/api/jobs/config") return json(answer.body, answer.status);
       if (url === "/api/jobs/inputs")
@@ -153,6 +185,7 @@ function stubConfigRoute(
         return json(mount.sftp ?? { configured: false });
       if (url === "/api/jobs") {
         createdBodies.push(JSON.parse(String(init?.body)) as unknown);
+        writes.push("create");
         return json({ id: "job-7" }, 201);
       }
       if (url === "/api/jobs/job-7/events")
@@ -194,6 +227,8 @@ afterEach(() => {
   vi.unstubAllGlobals();
   savedBodies.splice(0);
   createdBodies.splice(0);
+  serverAddresses.splice(0);
+  writes.splice(0);
 });
 
 describe("the load offer on the file step", () => {
@@ -337,15 +372,19 @@ describe("the open configuration over the files it is derived across", () => {
       .toHaveValue("payload");
   });
 
-  test("a webrtc configuration opens for review and holds the create", async () => {
+  test("a webrtc configuration stating a relay opens for review and holds the create", async () => {
     stubConfigRoute(
       {
         status: 200,
-        body: openedBody({
-          channel: "webrtc",
-          linkageTerms: CONFIG_DOCUMENT.linkageTerms,
-          metadata: STATED_COLUMNS,
-        }),
+        body: {
+          ...(openedBody({
+            channel: "webrtc",
+            signalingServer: "wss://signal.example.org/api/",
+            linkageTerms: CONFIG_DOCUMENT.linkageTerms,
+            metadata: STATED_COLUMNS,
+          }) as Record<string, unknown>),
+          relaySettings: ["connection.turn"],
+        },
       },
       {
         files: [CLIENTS_FILE],
@@ -361,7 +400,7 @@ describe("the open configuration over the files it is derived across", () => {
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     await openConfiguration();
     await expect
-      .element(page.getByText(/runs over webrtc/).first())
+      .element(page.getByText(/uses a relay, under connection\.turn/).first())
       .toBeInTheDocument();
     await commitFile();
     await page
@@ -374,8 +413,13 @@ describe("the open configuration over the files it is derived across", () => {
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeDisabled();
     await expect
-      .element(page.getByText(/cannot run a webrtc configuration/).first())
+      .element(
+        page
+          .getByText(/cannot run a webrtc configuration that uses a relay/)
+          .first(),
+      )
       .toBeInTheDocument();
+    expect(serverAddresses).toEqual([]);
     await expect
       .element(
         page.getByText(/webrtc connection, its tuning and file handling/),
@@ -405,6 +449,80 @@ describe("the open configuration over the files it is derived across", () => {
     await expect
       .element(page.getByText(CONFIGURATION_SAVED).first())
       .not.toBeInTheDocument();
+  });
+
+  /** Open a webrtc configuration stating no relay and reach its review step. */
+  async function reviewInPlaceRun(saveRefusal?: string): Promise<void> {
+    stubConfigRoute(
+      {
+        status: 200,
+        body: openedBody({
+          channel: "webrtc",
+          signalingServer: "wss://signal.example.org/api/",
+          linkageTerms: CONFIG_DOCUMENT.linkageTerms,
+          metadata: STATED_COLUMNS,
+        }),
+      },
+      {
+        files: [CLIENTS_FILE],
+        ...(saveRefusal !== undefined ? { saveRefusal } : {}),
+      },
+    );
+    app.render(createElement(InviterScreen));
+    await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
+    await openConfiguration();
+    await commitFile();
+    await page
+      .getByRole("button", { name: "Continue to matching & sharing" })
+      .click();
+    await page
+      .getByRole("button", { name: "Continue to review & create" })
+      .click();
+  }
+
+  test("a webrtc configuration stating no relay is saved and then run in place", async () => {
+    await reviewInPlaceRun();
+    expect(serverAddresses).toEqual(["wss://signal.example.org/api/"]);
+    await expect
+      .element(page.getByRole("radio", { name: /Over WebRTC, run here/ }))
+      .toBeChecked();
+    await expect
+      .element(page.getByText("wss://signal.example.org/api/", { exact: true }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(OPENED_EXCHANGE_RUNS_IN_PLACE).first())
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(/the run uses it as it is/).first())
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(writes).toEqual(["save", "create"]);
+    expect(savedBodies[0]).toMatchObject({
+      linkageTerms: { identity: "County Health" },
+    });
+    expect(createdBodies[0]).toMatchObject({
+      channel: "webrtc",
+      mountedConfigurationOpened: true,
+      signalingServer: { host: "signal.example.org", path: "/api/" },
+    });
+    expect(createdBodies[0]).not.toHaveProperty("sharedSecret");
+  });
+
+  test("a refused save starts no run and says why", async () => {
+    const refusal =
+      "The alcove.yaml in your working folder changed since you opened it.";
+    await reviewInPlaceRun(refusal);
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await expect
+      .element(page.getByText("Your changes were not saved to alcove.yaml"))
+      .toBeInTheDocument();
+    await expect.element(page.getByText(refusal).first()).toBeInTheDocument();
+    expect(createdBodies).toEqual([]);
   });
 
   test("a run started while it is open withholds both controls and sends no invitation", async () => {

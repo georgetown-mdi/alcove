@@ -14,6 +14,7 @@ import {
   disclosedDocument,
   loadMountedConfiguration,
   mountedConfigurationUnchanged,
+  mountedInPlaceConfiguration,
   openMountedConfiguration,
   readMountedConfiguration,
 } from "@jobs/configLoad";
@@ -378,7 +379,7 @@ describe("the shared-folder paths a filedrop file states", () => {
   });
 });
 
-describe("a configuration on a channel the console does not conduct", () => {
+describe("a webrtc configuration", () => {
   /** A webrtc document of the shape the web application writes, its broker key
    * and TURN credential among the connection settings. */
   function webrtcDocument(
@@ -433,14 +434,93 @@ describe("a configuration on a channel the console does not conduct", () => {
     expect(document?.linkageTerms.identity).toBe("County Health");
   });
 
-  test("discloses nothing of its connection", () => {
+  test("discloses only its coordination server's address of its connection", () => {
     const response = loadDocument(webrtcDocument());
     expect(response.document?.server).toBeUndefined();
     expect(response.document?.options).toBeUndefined();
+    expect(response.document?.signalingServer).toBe(
+      "wss://broker.example:443/",
+    );
     const body = JSON.stringify(response);
-    expect(body).not.toContain("broker.example");
     expect(body).not.toContain("turn.example.org");
+    expect(body).not.toContain("broker-key");
     expect(body).not.toMatch(/"@/);
+  });
+
+  test("states the coordination server as the command line dials it", () => {
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    const address = (server: Record<string, unknown>): string | undefined =>
+      loadDocument(webrtcDocument({ connection: { ...connection, server } }))
+        .document?.signalingServer;
+    expect(address({ host: "broker.example" })).toBe("wss://broker.example/");
+    expect(
+      address({
+        host: "127.0.0.1",
+        port: 9000,
+        path: "/api/",
+        secure: false,
+      }),
+    ).toBe("ws://127.0.0.1:9000/api/");
+  });
+
+  test("names each relay setting it states, as the file spells them", () => {
+    expect(loadDocument(webrtcDocument()).relaySettings).toEqual([
+      "connection.turn",
+      "connection.ice_transport_policy",
+    ]);
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    const direct = {
+      channel: "webrtc",
+      role: "inviter",
+      server: connection.server,
+      stun: connection.stun,
+    };
+    expect(
+      loadDocument(webrtcDocument({ connection: direct })).relaySettings,
+    ).toBeUndefined();
+    expect(
+      loadDocument(
+        webrtcDocument({
+          connection: {
+            ...direct,
+            invitation_relay: { turn: ["turns:relay.example.org:5349"] },
+          },
+        }),
+      ).relaySettings,
+    ).toEqual(["connection.invitation_relay"]);
+  });
+
+  test("is run in place only where it states no relay setting", () => {
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    expect(mountedInPlaceConfiguration(mountHolding(webrtcDocument()))).toBe(
+      undefined,
+    );
+    const direct = mountHolding(
+      webrtcDocument({
+        connection: {
+          channel: "webrtc",
+          role: "acceptor",
+          server: connection.server,
+        },
+      }),
+    );
+    expect(mountedInPlaceConfiguration(direct)).toMatchObject({
+      source: fs.readFileSync(path.join(direct, "alcove.yaml"), "utf8"),
+      connection: {
+        channel: "webrtc",
+        role: "acceptor",
+        server: { host: "broker.example", port: 443 },
+      },
+    });
+    expect(
+      mountedInPlaceConfiguration(mountHolding(savedSftpDocument())),
+    ).toBeUndefined();
+    expect(mountedInPlaceConfiguration(scratchDir("empty"))).toBeUndefined();
+  });
+
+  test("names its key file's fault, as a run in place reads it", () => {
+    const dir = mountHolding(webrtcDocument());
+    expect(loadMountedConfiguration(dir).keyFileFault).toBe("absent");
   });
 
   test("holds settings outside its connection, and measures nothing in it", () => {

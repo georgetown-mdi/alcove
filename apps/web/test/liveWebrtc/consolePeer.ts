@@ -1,4 +1,10 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -58,6 +64,16 @@ export interface ConsoleParty {
   /** The working folder's `alcove.yaml` and whether a `.alcove.key` is
    * beside it. */
   workingFolderFiles: () => ConsoleWorkingFolderFiles;
+  /** Write `config` and `key` into the working folder owner-only, as
+   * `alcove invite` leaves them, then open the configuration as the console's
+   * load does (`GET /api/jobs/config`), resolving its answer. */
+  openConfiguration: (files: {
+    config: string;
+    key: string;
+  }) => Promise<ConsoleAnswer>;
+  /** Send `body` as a `PUT /api/jobs/config`, resolving the console's
+   * answer. */
+  saveConfiguration: (body: string) => Promise<ConsoleAnswer>;
   /** Wait for the job to leave `running` and report what it did. */
   outcome: () => Promise<ConsoleJobOutcome>;
   /** Stop the server and its CLI child, and remove the data root.
@@ -160,6 +176,29 @@ export async function startConsoleParty(
       };
     };
 
+    const openConfiguration = async (files: {
+      config: string;
+      key: string;
+    }): Promise<ConsoleAnswer> => {
+      writeFileSync(path.join(dataRoot, "alcove.yaml"), files.config, {
+        mode: 0o600,
+      });
+      writeFileSync(path.join(dataRoot, ".alcove.key"), files.key, {
+        mode: 0o600,
+      });
+      const response = await fetch(`${origin}/api/jobs/config`);
+      return { status: response.status, body: await response.text() };
+    };
+
+    const saveConfiguration = async (body: string): Promise<ConsoleAnswer> => {
+      const response = await fetch(`${origin}/api/jobs/config`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return { status: response.status, body: await response.text() };
+    };
+
     const createJob = async (intent: unknown): Promise<string> => {
       const created = await fetch(`${origin}/api/jobs`, {
         method: "POST",
@@ -229,6 +268,8 @@ export async function startConsoleParty(
       putSignalingServer,
       createJob,
       workingFolderFiles,
+      openConfiguration,
+      saveConfiguration,
       outcome,
       stop,
     };

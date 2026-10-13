@@ -16,6 +16,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SFTP_FINGERPRINT_LIST_REFUSAL,
   SFTP_URL_DIRECTORY_REFUSAL,
@@ -610,6 +611,23 @@ describe("failureFor", () => {
         "working folder. Check that the folder is mounted writable, then try " +
         "again.",
     );
+  });
+
+  test("a WebRTC run of the opened configuration refused over its file sends the operator back to open it again", () => {
+    const failure = failureFor(
+      "exchange",
+      new JobApiRequestError(
+        400,
+        "refused",
+        undefined,
+        OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe("Your alcove.yaml changed since you opened it");
+    expect(failure.message).toMatch(/close the configuration .* open it again/);
   });
 
   test("a WebRTC run refused for naming another coordination server sends the operator back to check it", () => {

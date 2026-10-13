@@ -98,7 +98,9 @@ const CONSOLE_TRANSPORT_ORDER: ReadonlyArray<Transport> = [
  * offers to run here with `authoringRequired` set. `sftpSaveFilePreferred` runs
  * SFTP through the operator's own command-line tool instead.
  * `configurationOpened` disables `webrtc`, whose run writes an `alcove.yaml`
- * of its own into the folder the open configuration was read from.
+ * of its own into the folder the open configuration was read from, unless
+ * `openedRunsInPlace`: the open configuration is a webrtc one, which the run
+ * runs as it is.
  */
 export function availableTransports(
   consoleBuild: boolean,
@@ -106,6 +108,7 @@ export function availableTransports(
   rendezvousConfigured: boolean,
   sftpSaveFilePreferred = false,
   configurationOpened = false,
+  openedRunsInPlace = false,
 ): AvailableTransports {
   const profile: DeploymentProfile = consoleBuild ? "console" : "hosted";
   const order = consoleBuild ? CONSOLE_TRANSPORT_ORDER : HOSTED_TRANSPORT_ORDER;
@@ -114,7 +117,7 @@ export function availableTransports(
       consoleBuild &&
       (transport === "browser" ||
         (transport === "filedrop" && !rendezvousConfigured) ||
-        (transport === "webrtc" && configurationOpened));
+        (transport === "webrtc" && configurationOpened && !openedRunsInPlace));
     const runMode: TransportRunMode = selectExchangeDriver(
       transport,
       profile,
@@ -253,6 +256,7 @@ export function transportChooserCopy(
   sftpSaveFilePreferred = false,
   rendezvousShape: RendezvousShape = {},
   configurationOpened = false,
+  openedRunsInPlace = false,
 ): TransportChooserCopy {
   const available = availableTransports(
     consoleBuild,
@@ -260,6 +264,7 @@ export function transportChooserCopy(
     rendezvousConfigured,
     sftpSaveFilePreferred,
     configurationOpened,
+    openedRunsInPlace,
   );
   const sftpOption = available.options.find(
     (option) => option.transport === "sftp",
@@ -296,9 +301,11 @@ export function transportChooserCopy(
         : "Runs the exchange here through the SFTP connection set up on this machine. Your file is read on this console, not uploaded from your browser. Your partner accepts with the same invitation."
       : "Saves an exchange file that runs the command-line tool over your SFTP server. Your partner accepts with the same invitation.",
     webrtcLabel: "Over WebRTC, run here",
-    webrtcDescription: configurationOpened
-      ? "Unavailable while a configuration from your folder is open: this exchange writes its own alcove.yaml into your folder. Close the configuration on the first step to set the exchange up here."
-      : "Runs the exchange here, connecting directly to your partner through the coordination server you set below. Your partner accepts in the Alcove web app or with the command-line tool. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect.",
+    webrtcDescription: openedRunsInPlace
+      ? "Runs the alcove.yaml you opened here, connecting directly to your partner through the coordination server it names, shown below. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect."
+      : configurationOpened
+        ? "Unavailable while a configuration from your folder is open: this exchange writes its own alcove.yaml into your folder. Close the configuration on the first step to set the exchange up here."
+        : "Runs the exchange here, connecting directly to your partner through the coordination server you set below. Your partner accepts in the Alcove web app or with the command-line tool. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect.",
     capabilityNote: capabilityNoteFor(consoleBuild, available),
   };
 }

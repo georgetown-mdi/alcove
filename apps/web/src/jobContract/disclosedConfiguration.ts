@@ -63,6 +63,10 @@ export interface DisclosedFileSyncOptions {
 export interface DisclosedExchangeDocument {
   channel: OpenedChannel;
   server?: DisclosedSftpServer;
+  /** A webrtc connection's coordination server as the `ws://` or `wss://`
+   * address the run dials: its host, port, path and scheme, and not its key
+   * or user name. */
+  signalingServer?: string;
   options?: DisclosedFileSyncOptions;
   linkageTerms: ExchangeSpec["linkageTerms"];
   metadata?: ExchangeSpec["metadata"];

@@ -530,19 +530,21 @@ describe("a new invitation from an opened configuration's settings", () => {
   });
 });
 
-describe("a webrtc configuration opens for review with its run withheld", () => {
+describe("a webrtc configuration stating a relay opens for review with its run withheld", () => {
   const state = inviterScreenReducer(INVITER_SCREEN_INITIAL, {
     type: "mounted-configuration-read",
     answer: {
       kind: "opened",
       document: {
         channel: "webrtc",
+        signalingServer: "wss://signal.example.org/api/",
         linkageTerms: getDefaultLinkageTerms("County Health"),
         csvDelimiter: "|",
         retentionDisposition: "Filed with the 2026 intake.",
       },
       carriedThrough: [],
       warnings: [],
+      relaySettings: ["connection.turn"],
     },
   });
 
@@ -557,11 +559,12 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
     expect(state.loadedSftpForm).toBeUndefined();
   });
 
-  test("it selects no transport, and names its channel instead", () => {
+  test("it selects no transport, and names its relay settings instead", () => {
     expect(state.loadedConfiguration?.transport).toBeUndefined();
     expect(state.mountedConfiguration).toMatchObject({
       status: "opened",
       notConducted: "webrtc",
+      relaySettings: ["connection.turn"],
     });
     expect(state.mountedConfiguration).not.toHaveProperty(
       "transportUnavailable",
@@ -593,6 +596,32 @@ describe("a webrtc configuration opens for review with its run withheld", () => 
       type: "loaded-configuration-discarded",
     });
     expect(runWithheldReason(closed.mountedConfiguration)).toBeUndefined();
+  });
+});
+
+describe("a webrtc configuration stating no relay opens to run in place", () => {
+  const state = inviterScreenReducer(INVITER_SCREEN_INITIAL, {
+    type: "mounted-configuration-read",
+    answer: {
+      kind: "opened",
+      document: {
+        channel: "webrtc",
+        signalingServer: "wss://signal.example.org/api/",
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+      },
+      carriedThrough: [],
+      warnings: [],
+    },
+  });
+
+  test("it selects the WebRTC transport and withholds nothing", () => {
+    expect(state.loadedConfiguration?.transport).toBe("webrtc");
+    expect(state.mountedConfiguration).toMatchObject({
+      status: "opened",
+      runsInPlace: true,
+    });
+    expect(state.mountedConfiguration).not.toHaveProperty("notConducted");
+    expect(runWithheldReason(state.mountedConfiguration)).toBeUndefined();
   });
 });
 

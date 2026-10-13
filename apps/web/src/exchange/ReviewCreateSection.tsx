@@ -40,6 +40,7 @@ import {
   CONFIGURATION_SAVED,
   CONVERT_CONFIGURATION_LABEL,
   OPENED_EXCHANGE_CONTINUES,
+  OPENED_EXCHANGE_RUNS_IN_PLACE,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
 import {
@@ -121,6 +122,7 @@ export function ReviewCreateSection({
   signalingServer,
   onSignalingServer,
   configurationOpened = false,
+  openedRunsInPlace = false,
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
@@ -167,6 +169,9 @@ export function ReviewCreateSection({
   /** Whether a configuration from the mounted folder is open, which withholds
    * WebRTC: its run writes an alcove.yaml of its own into that folder. */
   configurationOpened?: boolean;
+  /** Whether that configuration is a webrtc one the run runs in place, which
+   * offers WebRTC for it. */
+  openedRunsInPlace?: boolean;
   /** The connection form a configuration opened from the mounted folder seeds,
    * forwarded to the SFTP card for the case where no connection is authored yet. */
   loadedSftpForm?: SftpConnectionFormValues;
@@ -268,6 +273,7 @@ export function ReviewCreateSection({
     rendezvousConfigured,
     sftpSaveFilePreferred,
     configurationOpened,
+    openedRunsInPlace,
   );
   const transport = editor.transport ?? available.defaultTransport;
   const disabledFor = (candidate: Transport): boolean =>
@@ -304,6 +310,7 @@ export function ReviewCreateSection({
         : {}),
     },
     configurationOpened,
+    openedRunsInPlace,
   );
   // An sftp exchange chosen to run here cannot be created until a connection is
   // set up: block the seal and say so, rather than minting a code with no
@@ -680,7 +687,11 @@ export function ReviewCreateSection({
       )}
       <EditedTermsNotice warning={editedTermsWarning} />
       {continuesOpenedExchange && (
-        <p className={styles.small}>{OPENED_EXCHANGE_CONTINUES}</p>
+        <p className={styles.small}>
+          {openedRunsInPlace && transport === "webrtc"
+            ? OPENED_EXCHANGE_RUNS_IN_PLACE
+            : OPENED_EXCHANGE_CONTINUES}
+        </p>
       )}
       <div className={styles.workFoot}>
         <Button disabled={!canCreate} loading={minting} onClick={onCreate}>

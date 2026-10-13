@@ -1,17 +1,10 @@
 import {
-  ConfigurationHandBackRefusedError,
-  handBackMountedConfiguration,
-} from "@jobs/configHandBack";
-import {
   MAX_CONFIG_HAND_BACK_BODY_BYTES,
   gateJobRoute,
   readJobRequestBody,
 } from "@jobs/routeSupport";
-import {
-  jobEmptyResponse,
-  jobJsonResponse,
-  readJobApiConfig,
-} from "@jobs/gate";
+import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { ConfigurationLoadRefusedError } from "@jobs/configLoad";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
@@ -45,11 +38,12 @@ import { defineJobRoute } from "../jobRoute";
  * is not.
  *
  * `PUT /api/jobs/config` hands the operator's edits back into that file, for a
- * configuration on a channel the console does not conduct: the body is a
- * {@link jobConfigurationHandBackSchema} hand-back, the file's `connection` and
- * every setting no step edits are kept from the file itself, and the answer is
- * `{ written: true }` -- nothing of the document crosses back. A hand-back the
- * file or the settings refuse is a `400 { error }`.
+ * webrtc configuration: the body is a {@link jobConfigurationHandBackSchema}
+ * hand-back, the file's `connection` and every setting no step edits are kept
+ * from the file itself, and the answer is `{ written: true }` -- nothing of the
+ * document crosses back. A hand-back the file or the settings refuse is a
+ * `400 { error }`, as is one over a file that changed since it was opened or
+ * last saved here, or that a run is using.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/config",
@@ -83,7 +77,7 @@ export const route = defineJobRoute({
           400,
         );
       try {
-        handBackMountedConfiguration(readJobApiConfig().dataRoot, parsed.data);
+        gate.manager.handBackOpenedConfiguration(parsed.data);
       } catch (error) {
         if (
           error instanceof ConfigurationLoadRefusedError ||

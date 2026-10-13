@@ -18,7 +18,9 @@ import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 /**
  * Handing the configuration the operator opened back into their working folder,
- * for a channel the console does not conduct (`PUT /api/jobs/config`).
+ * for a channel the console does not compose into a job folder (`PUT
+ * /api/jobs/config`): a webrtc configuration, saved before the console runs it
+ * in place or for the command line to run.
  *
  * A run's hand-off shows the operator a template to copy; this one cannot, since
  * the document's connection can hold a credential no browser receives. It is
@@ -43,9 +45,25 @@ const UNWRITABLE_CONFIGURATION_MESSAGE =
   "The console could not write alcove.yaml in your working folder. Check " +
   "that the folder and the file are writable, then save again.";
 
+/** The message reaching the operator when the file changed since it was
+ * opened or last saved here, as a run that records a partner's fingerprint
+ * changes it, or the console restarted since: the steps may no longer hold
+ * what the file does. */
+export const CONFIGURATION_CHANGED_SINCE_OPENED_MESSAGE =
+  "The alcove.yaml in your working folder changed since you opened it, or " +
+  "the console restarted, so your changes were not saved. Close the " +
+  "configuration on the first step and open it again.";
+
+/** The message reaching the operator when an exchange is running over the
+ * file. */
+export const CONFIGURATION_IN_USE_MESSAGE =
+  "An exchange is running over the alcove.yaml in your working folder, so " +
+  "your changes were not saved. Save again once it ends.";
+
 /**
  * Write `handBack` into the mounted configuration: re-read the file, compose
  * the edited settings over it with its connection unchanged, and replace it.
+ * Returns the text written.
  *
  * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
  *   configuration this hand-back applies to (see `mountedUnconductedDocument`).
@@ -55,7 +73,7 @@ const UNWRITABLE_CONFIGURATION_MESSAGE =
 export function handBackMountedConfiguration(
   dataRoot: string,
   handBack: JobConfigurationHandBack,
-): void {
+): string {
   const mountedDocument = mountedUnconductedDocument(dataRoot);
   let text: string;
   try {
@@ -70,6 +88,7 @@ export function handBackMountedConfiguration(
     throw error;
   }
   replaceMountedConfiguration(dataRoot, text);
+  return text;
 }
 
 /**

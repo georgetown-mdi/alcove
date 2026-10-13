@@ -34,12 +34,15 @@ import {
   savedExchangeColumnRefusalAlert,
   unnameableColumnsAlert,
 } from "@psi/columnNames";
+import {
+  fetchSignalingServer,
+  putSignalingServer,
+} from "@psi/jobClient/signalingServerClient";
 import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
 import { fetchSftpConnection } from "@psi/jobClient/serverJobExchangeDriver";
-import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { invitationLocation } from "@psi/invitationLocation";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
@@ -128,11 +131,13 @@ import {
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 
 import {
+  CONFIGURATION_SAVE_UNAVAILABLE,
   configurationSaveShown,
   configurationSaveState,
   connectionSettingsHeldNotice,
   conversionStatement,
   editedTermsWarning,
+  opensInPlace,
   runWithheldReason,
   runsOpenedConfiguration,
   unconvertedSigningWithheldReason,
@@ -456,10 +461,20 @@ export function InviterScreen() {
   // where the sealed terms had it.
   async function openMountedConfiguration(): Promise<void> {
     dispatch({ type: "mounted-configuration-reading" });
-    dispatch({
-      type: "mounted-configuration-read",
-      answer: await fetchMountedConfiguration(),
-    });
+    const answer = await fetchMountedConfiguration();
+    dispatch({ type: "mounted-configuration-read", answer });
+    // A webrtc configuration the console runs in place dials the server it
+    // names, so that server becomes the console's: the review step then shows
+    // it, and the run is refused if it is changed there.
+    if (
+      answer.kind === "opened" &&
+      answer.document.channel === "webrtc" &&
+      answer.document.signalingServer !== undefined &&
+      answer.relaySettings === undefined
+    ) {
+      const set = await putSignalingServer(answer.document.signalingServer);
+      if (set.kind === "ok") setSignalingServer(set.server);
+    }
   }
 
   // Where saving the opened configuration back to the folder stands. Cleared
@@ -472,11 +487,14 @@ export function InviterScreen() {
   }, [mountedConfiguration.status]);
 
   // The hand-back the steps hold now, where the opened configuration is one
-  // the console saves back rather than runs: what a save sends, and what a
-  // written save is compared against to say whether it still holds.
+  // the console saves back rather than runs, or saves before it runs it in
+  // place: what a save sends, and what a written save is compared against to
+  // say whether it still holds.
   const saveBackOffered = runWithheldReason(mountedConfiguration) !== undefined;
+  const openedRunsInPlace = opensInPlace(mountedConfiguration);
   const currentHandBack = useMemo(() => {
-    if (!saveBackOffered || editor === undefined) return undefined;
+    if ((!saveBackOffered && !openedRunsInPlace) || editor === undefined)
+      return undefined;
     const validation = reviewValidation(editor);
     if (!validation.canGenerate || validation.terms === undefined)
       return undefined;
@@ -486,7 +504,7 @@ export function InviterScreen() {
       csvDelimiter,
       receipts,
     });
-  }, [saveBackOffered, editor, csvDelimiter, receipts]);
+  }, [saveBackOffered, openedRunsInPlace, editor, csvDelimiter, receipts]);
 
   // Write the settings these steps edit into the opened configuration's file,
   // for a channel the console does not conduct: the console keeps the file's
@@ -573,6 +591,7 @@ export function InviterScreen() {
     rendezvousConfigured,
     sftpSaveFilePreferred,
     configurationOpened,
+    openedRunsInPlace,
   );
   const transport = editor?.transport ?? available.defaultTransport;
   // How the chosen transport runs, from the chooser's own policy (which offers a
@@ -1236,6 +1255,30 @@ export function InviterScreen() {
       // name the one the run dials.
       if (signalingServer == null) return;
       dispatch({ type: "mint-started" });
+      // A run of the opened configuration runs its file in place, so the
+      // settings on these steps are saved into it first, as an operator edits
+      // alcove.yaml before running alcove exchange.
+      if (continuesOpenedExchange && openedRunsInPlace) {
+        if (currentHandBack === undefined) {
+          dispatch({ type: "mint-finished" });
+          return;
+        }
+        const saved = await saveOpenedConfiguration(currentHandBack);
+        if (saved.kind !== "written") {
+          dispatch({
+            type: "mint-failed",
+            alert: {
+              title: "Your changes were not saved to alcove.yaml",
+              message:
+                saved.kind === "refused"
+                  ? saved.error
+                  : CONFIGURATION_SAVE_UNAVAILABLE,
+            },
+          });
+          dispatch({ type: "mint-finished" });
+          return;
+        }
+      }
       const current = await fetchSignalingServer();
       if (current === null || !sameSignalingServer(current, signalingServer)) {
         setSignalingServer(current);
@@ -1759,6 +1802,7 @@ export function InviterScreen() {
                 signalingServer={signalingServer}
                 onSignalingServer={setSignalingServer}
                 configurationOpened={configurationOpened}
+                openedRunsInPlace={openedRunsInPlace}
                 loadedSftpForm={loadedSftpForm}
                 sftpSaveFilePreferred={sftpSaveFilePreferred}
                 runWithheld={
