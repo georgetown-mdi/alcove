@@ -24,6 +24,7 @@ import { SERVER_JOB_KEEP_OPEN_BODY } from "@exchange/RunSurface";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
+import { expectConsole } from "./expectedConsole";
 
 import type {
   ConnectionEndpoint,
@@ -150,12 +151,17 @@ const SPLIT_RENDEZVOUS = {
  * its profile, the sftp connection endpoints (GET reports the effective connection,
  * PUT authors it and flips GET to report it), and the job POST plus event stream.
  * PUT/POST bodies are captured so the test can assert what left the browser.
- * `rendezvous` is the console's own filedrop provisioning, unmounted by default. */
-function stubSftpAccept(rendezvous: unknown = { configured: false }): {
+ * `rendezvous` is the console's own filedrop provisioning, unmounted by default;
+ * `jobStatus` is what the job's status GET reports. */
+function stubSftpAccept(
+  rendezvous: unknown = { configured: false },
+  jobStatus = "running",
+): {
   captured: Array<CapturedRequest>;
   emitEvent: (event: object) => void;
   closeEvents: () => void;
   hasEventStream: () => boolean;
+  heldConnection: () => unknown;
 } {
   const captured: Array<CapturedRequest> = [];
   const realFetch = window.fetch.bind(window);
@@ -222,7 +228,15 @@ function stubSftpAccept(rendezvous: unknown = { configured: false }): {
           ),
         );
       if (url === "/api/jobs/job-7")
-        return Promise.resolve(jsonResponse({ recordAvailable: false }));
+        return Promise.resolve(
+          method === "DELETE"
+            ? new Response(null, { status: 204 })
+            : jsonResponse({
+                status: jobStatus,
+                recordAvailable: false,
+                recordUnavailableReason: "no-record",
+              }),
+        );
       if (url === "/api/jobs/job-7/cancel")
         return Promise.resolve(new Response(null, { status: 200 }));
       return Promise.resolve(new Response(null, { status: 404 }));
@@ -234,6 +248,7 @@ function stubSftpAccept(rendezvous: unknown = { configured: false }): {
       sse?.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)),
     closeEvents: () => sse?.close(),
     hasEventStream: () => sse !== undefined,
+    heldConnection: () => sftp,
   };
 }
 
@@ -428,5 +443,105 @@ describe("console SFTP accept: author-then-launch", () => {
     expect(app.container.textContent).not.toContain(
       SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT,
     );
+  });
+});
+
+describe("console SFTP accept: the connection the console holds", () => {
+  const isSftpDelete = (request: CapturedRequest) =>
+    request.url === "/api/jobs/sftp" && request.method === "DELETE";
+  const isSftpPut = (request: CapturedRequest) =>
+    request.url === "/api/jobs/sftp" && request.method === "PUT";
+
+  async function authorConnection() {
+    await page.getByRole("button", { name: "Set up connection" }).click();
+    await userEvent.fill(page.getByLabelText("Username"), "linkage");
+    await userEvent.fill(
+      page.getByLabelText("Server identity fingerprint"),
+      FINGERPRINT,
+    );
+    await userEvent.fill(
+      page.getByLabelText("File reference"),
+      "@/run/secrets/partner-key",
+    );
+    await page.getByRole("button", { name: "Save connection" }).click();
+    await expect.element(page.getByText("Ready to try")).toBeInTheDocument();
+  }
+
+  test("accepting a new invitation clears the connection held for the last one", async () => {
+    const api = stubSftpAccept();
+    window.location.hash = await encodeToken(SFTP_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachColumnsStep();
+    await authorConnection();
+    const putIndex = api.captured.findIndex(isSftpPut);
+    expect(api.heldConnection()).toMatchObject({ configured: true });
+
+    await flushPendingUpdates();
+    app.unmount();
+    window.location.hash = await encodeToken({
+      channel: "sftp",
+      host: "sftp.next-partner.example",
+      path: "/drop",
+    });
+    app.render(createElement(AcceptorScreen));
+
+    await vi.waitFor(() =>
+      expect(api.captured.map(isSftpDelete).lastIndexOf(true)).toBeGreaterThan(
+        putIndex,
+      ),
+    );
+    expect(api.heldConnection()).toEqual({ configured: false });
+    await reachColumnsStep();
+    await expect
+      .element(page.getByRole("button", { name: "Set up connection" }))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Start the exchange" }))
+      .toBeDisabled();
+  });
+
+  test("Try again runs over the connection the operator authored", async () => {
+    expectConsole(
+      "error",
+      "RelayedTerminalError: the exchange stopped before it finished",
+    );
+    const api = stubSftpAccept(undefined, "failed");
+    window.location.hash = await encodeToken(SFTP_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachColumnsStep();
+    await authorConnection();
+    const putIndex = api.captured.findIndex(isSftpPut);
+
+    await page.getByRole("button", { name: "Start the exchange" }).click();
+    await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+    api.emitEvent({
+      v: 1,
+      type: "error",
+      category: "exchange",
+      message: "the exchange stopped before it finished",
+    });
+    api.closeEvents();
+    await expect
+      .element(page.getByRole("button", { name: "Try again" }))
+      .not.toHaveAttribute("aria-haspopup");
+
+    await page.getByRole("button", { name: "Try again" }).click();
+    await vi.waitFor(() =>
+      expect(
+        api.captured.filter(
+          (request) => request.url === "/api/jobs" && request.method === "POST",
+        ),
+      ).toHaveLength(2),
+    );
+    expect(
+      api.captured.some(
+        (request) =>
+          request.url === "/api/jobs/job-7" && request.method === "DELETE",
+      ),
+    ).toBe(true);
+    expect(api.captured.map(isSftpDelete).lastIndexOf(true)).toBeLessThan(
+      putIndex,
+    );
+    expect(api.heldConnection()).toMatchObject({ configured: true });
   });
 });
