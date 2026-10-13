@@ -1,5 +1,18 @@
 import { posix } from "node:path";
 
+import {
+  DEFAULT_DEPLOYED_MARKER_PATH,
+  DEFAULT_PULL_STATUS_PATH,
+  DEPLOYED_MARKER_ENV,
+  PULL_STATUS_ENV,
+  UNKNOWN_DEPLOYMENT_STATUS,
+  deploymentStatusHeaders,
+} from "./deploymentStatus.ts";
+
+import type {
+  DeploymentStatus,
+  DeploymentStatusReader,
+} from "./deploymentStatus.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 /**
@@ -83,6 +96,10 @@ export interface StandaloneOptions {
   key: string;
   /** Request path the readiness probe answers on, derived from {@link path}. */
   readinessPath: string;
+  /** The host pull's deployed-commit marker, read for the probe's headers. */
+  deployedMarkerPath: string;
+  /** The host pull's status record, read for the probe's headers. */
+  pullStatusPath: string;
 }
 
 function isFlagName(name: string): name is FlagName {
@@ -241,7 +258,15 @@ export function resolveStandaloneOptions(
     path: mountPath,
     key: requireNonEmpty(flags.get("key") ?? DEFAULT_REALM_KEY, "--key"),
     readinessPath: posix.join(mountPath, READINESS_SEGMENT),
+    deployedMarkerPath:
+      envPath(env[DEPLOYED_MARKER_ENV]) ?? DEFAULT_DEPLOYED_MARKER_PATH,
+    pullStatusPath: envPath(env[PULL_STATUS_ENV]) ?? DEFAULT_PULL_STATUS_PATH,
   };
+}
+
+/** A path from the environment, or undefined when it is unset or blank. */
+function envPath(value: string | undefined): string | undefined {
+  return value === undefined || value.trim() === "" ? undefined : value;
 }
 
 /** The path of a request URL, without the query a probe may append. Compared
@@ -263,12 +288,17 @@ function requestPathname(url: string | undefined): string {
  * connections and its upgrade route is attached -- which is the whole of what
  * the answer states.
  *
+ * The answer's headers also hold what `readDeploymentStatus` returns: the
+ * host's deployed commit and its last pull run's outcome and time, each
+ * `unknown` when it could not be read. The body stays the fixed line.
+ *
  * Every other request is refused rather than 404'd silently against a route
  * that might exist: the broker handles WebSocket upgrades and this one
  * endpoint, and nothing else is part of any wire it serves.
  */
 export function createStandaloneRequestHandler(
   readinessPath: string,
+  readDeploymentStatus: DeploymentStatusReader,
 ): (request: IncomingMessage, response: ServerResponse) => void {
   return (request, response) => {
     const isProbe =
@@ -279,10 +309,18 @@ export function createStandaloneRequestHandler(
       response.end();
       return;
     }
-    response.writeHead(200, {
-      "content-type": "text/plain; charset=utf-8",
-      "cache-control": "no-store",
-    });
-    response.end(request.method === "HEAD" ? undefined : READINESS_BODY);
+    const answer = (status: DeploymentStatus): void => {
+      response.writeHead(200, {
+        "content-type": "text/plain; charset=utf-8",
+        "cache-control": "no-store",
+        ...deploymentStatusHeaders(status),
+      });
+      response.end(request.method === "HEAD" ? undefined : READINESS_BODY);
+    };
+    // A fault while answering ends this response, never the process.
+    void readDeploymentStatus()
+      .catch(() => UNKNOWN_DEPLOYMENT_STATUS)
+      .then(answer)
+      .catch(() => response.destroy());
   };
 }

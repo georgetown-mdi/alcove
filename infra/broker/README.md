@@ -169,6 +169,43 @@ The journal line: `# Check failed: 12 == (*__errno_location ()).`, from `v8::bas
 
 A stop leaves the broker `inactive`, not `failed`: npm exits 143 on the stop's SIGTERM, and `SuccessExitStatus=143` counts that as a clean exit (measured on the host).
 
+## The deployment check
+
+The broker's `/api/health` answer has three headers about the host's deployment: the commit [the host pull](../host-pull/README.md) last deployed, and its last run's outcome and time.
+The broker reads them from the pull's deployed marker and status record under `/var/lib/alcove-host-pull`, and publishes nothing else from those files: no `reason` line, no other commit, no path and no error detail.
+The headers, their values and the `unknown` each takes when it cannot be read: [`packages/peerjs-broker/README.md`, Deployment headers](../../packages/peerjs-broker/README.md#deployment-headers).
+The unit's sandbox leaves `/var/lib` readable; that the broker reads the two files under it has not yet been measured on the host.
+
+[`nightly_relay_deployment.yaml`](../../.github/workflows/nightly_relay_deployment.yaml) reads those headers every day at 07:23 UTC, after the pull's window, through [`scripts/relay-deployment-check.mjs`](../../scripts/relay-deployment-check.mjs).
+It finds the broker from the repository variable `VITE_SIGNALING_SERVER_URL`, the web build's `wss:` URL of this broker, and reads `/api/health` at the same host over `https:`.
+It goes red when:
+
+- a header is missing, or its value is `unknown`;
+- the last pull run ended `refused`, `failed`, `rolled-back` or `rollback-failed`;
+- the deployed commit is not on `main`;
+- `main` has held commits the host has not deployed for more than 48 hours, counted from the update of `main` that first moved it past the deployed commit, as GitHub's repository activity API records it.
+
+The 48 hours are a working value, not a measured one, and can be raised on request (`MAX_LAG_HOURS` in the script).
+The pull runs daily and skips a commit whose CI has not finished, so 48 hours admit one skipped day.
+The run's log and its summary print the published values and one `red (<kind>)` line per finding.
+
+### When it is red
+
+- **Before anything else**, confirm the host has pulled a `main` that has this check's broker change.
+  Until it has, the broker publishes no deployment headers, and every run is red with `red (missing)`.
+  The host pull's timer is the operator's to enable ([`../host-pull/README.md`, Install](../host-pull/README.md#install)); until a pull deploys such a commit, this red is expected.
+- **`missing`**: the broker answering does not publish the headers, so it runs a commit from before them, or `/api/health` is answered by something other than this broker.
+  Read the commit the host's tree is at: `readlink /opt/alcove-broker/src`.
+- **`unknown`**: the broker could not read a file or found a value out of shape.
+  Either the host has not run a pull that wrote the files yet, or the broker cannot read them: check that `/var/lib/alcove-host-pull/deployed` and `/var/lib/alcove-host-pull/status` exist, are regular files readable by all (the pull writes them mode 644), and hold what [the pull's Outcomes](../host-pull/README.md#outcomes) shows.
+  A host without the pull has neither file, so this check is red for it by design.
+- **`failed-pull`**: read the status record, `cat /var/lib/alcove-host-pull/status`, whose `reason` names the step that failed, and `journalctl -u alcove-host-pull.service` for the run.
+  After `rolled-back`, the host runs the deployed commit again and the failing commit is tried again at the next run ([`../host-pull/README.md`, What a run does](../host-pull/README.md#what-a-run-does), step 6); after `rollback-failed`, the units are as far as the second attempt got, and the host needs the operator.
+- **`lag`**: check that the timer is enabled and has fired, `systemctl list-timers alcove-host-pull.timer`, and read the status record: a run of `skipped` outcomes names what the pull is waiting for, such as CI on the tip or the tip's core build.
+- **`not-on-main`**: the marker names a commit `main` does not contain; read the marker and correct it as the pull's Install step 1 says.
+- **`unread`**: the check could not reach `/api/health`, read `main`'s history or read GitHub's record of `main`'s updates; the line names which.
+  Check that `VITE_SIGNALING_SERVER_URL` is set to a `wss:` URL and that `/api/health` answers `200` at its host and port.
+
 ## What is not tracked
 
 Each is ignored by this directory's `.gitignore`, and every script refuses to run rather than defaulting to a value it was not given.

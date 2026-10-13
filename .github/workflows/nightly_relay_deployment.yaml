@@ -1,0 +1,70 @@
+name: Nightly Relay Deployment
+
+# Scheduled nightly check that the relay host runs main. The host pulls main
+# daily (infra/host-pull/README.md), and its broker publishes the commit the
+# pull last deployed and the outcome and time of the pull's last run as headers
+# on its readiness endpoint, which answers without a credential. This workflow
+# reads them and goes red when a field is missing or unknown, when the last
+# pull run failed, or when main has held commits the host has not deployed for
+# longer than MAX_LAG_HOURS in scripts/relay-deployment-check.mjs. What each
+# red finding means and what to do about it: infra/broker/README.md, The
+# deployment check.
+#
+# The broker's address is the repository variable VITE_SIGNALING_SERVER_URL,
+# the wss: URL the web build names; the check reads the readiness endpoint at
+# the same host over https. When main moved past the deployed commit comes from
+# GitHub's repository activity API, read with this run's token.
+#
+# Runs only on schedule and manual workflow_dispatch -- never on push or
+# pull_request -- so the pull-request gate is unaffected. It runs no repository
+# code beyond the one script, and installs nothing.
+
+on:
+  schedule:
+    # 07:23 UTC nightly, off the hour per GitHub's guidance to avoid top-of-hour
+    # congestion on the shared scheduler, and after the host pull's window: the
+    # timer fires at 06:00 to 06:05 UTC and a run is stopped at one hour, so the
+    # pull has ended by 07:05. Clear of the other nightlies (03:43 to 04:57) and
+    # of the weekly scans (05:30 to 05:47 on Monday, 06:17 on Sunday). Two GitHub
+    # behaviors to know: a `schedule` trigger only fires from the workflow as it
+    # exists on the default branch, so no nightly runs until this file lands
+    # there (use the manual dispatch below to exercise it before then); and
+    # GitHub disables a scheduled workflow after ~60 days without repo activity,
+    # emailing the last committer -- re-enable it from the Actions tab if a
+    # long-quiet repo needs this check back.
+    - cron: "23 7 * * *"
+  # On-demand run, e.g. to confirm a host fix without waiting for the schedule.
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least privilege: the check reads the repository's history and its activity.
+permissions:
+  contents: read
+
+jobs:
+  relay-deployment:
+    name: The relay host runs main
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The host pulls main, so a scheduled run checks out main. A manual
+          # dispatch takes the ref it was dispatched on, so a change to the
+          # check can be confirmed on its own branch; either way the full
+          # history fetched below holds main as origin/main, which the deployed
+          # commit is compared with.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || 'main' }}
+          fetch-depth: 0
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+      - name: Compare the relay host's deployed commit with main
+        env:
+          VITE_SIGNALING_SERVER_URL: ${{ vars.VITE_SIGNALING_SERVER_URL }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/relay-deployment-check.mjs
