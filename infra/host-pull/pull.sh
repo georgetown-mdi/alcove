@@ -10,8 +10,9 @@
 # file): unchanged or updated, skipped when there is nothing to take yet (exit
 # 0), refused when the commit or its build fails a check, and failed when a
 # step could not run (both exit 1). It holds no credential and builds nothing.
-# Only an updated run rewrites the deployed marker, so a run whose installs
-# did not complete is installed again by the next.
+# Only an updated run rewrites the deployed marker, so a commit whose installs
+# did not complete is checked, downloaded, staged and installed again by the
+# next run; a tree already on disk is never reused.
 set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -122,14 +123,6 @@ download() {
   return "$status"
 }
 
-# A tree an earlier run staged and linked: its build still matches its
-# SHA256SUMS.
-intact() {
-  local dist="$1/packages/core/dist"
-  [ -s "$dist/untrusted-text.esm.js" ] && [ -f "$dist/SHA256SUMS" ] \
-    && (cd "$dist" && sha256sum --quiet -c SHA256SUMS) >&2
-}
-
 # Every push-triggered workflow run on the tip completed as success; runs of
 # other events do not gate (README.md, What a run does).
 require_green() {
@@ -199,7 +192,9 @@ stage() {
     || finish refused 1 "the files in $archive do not match its SHA256SUMS"
   [ -s "$dist/untrusted-text.esm.js" ] || finish refused 1 "$archive has no untrusted-text.esm.js"
 
-  (cd "$PARTIAL" && nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --workspace packages/peerjs-broker) >&2 \
+  # No package's install script runs as root (README.md, What a run does).
+  (cd "$PARTIAL" && nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --ignore-scripts \
+    --workspace packages/peerjs-broker) >&2 \
     || finish failed 1 "npm ci of the broker workspace failed at $TIP"
 
   # Owned by root and readable by all, so the broker's account cannot rewrite the
@@ -222,12 +217,8 @@ stage() {
   log "$SRC links to $TIP"
 }
 
-if [ "$(linked)" = "$TIP" ] && intact "$TREES/$TIP"; then
-  log "$SRC links to $TIP, whose installs have not completed; running them again"
-else
-  require_green
-  stage
-fi
+require_green
+stage
 
 # The broker's install.sh restarts the broker only for a changed unit file, and
 # a switched tree is not one.

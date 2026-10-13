@@ -11,8 +11,8 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 1. Reads the tip of `main` with `git ls-remote` over HTTPS.
    When the deployed marker, `/var/lib/alcove-host-pull/deployed`, and the broker's tree link, `/opt/alcove-broker/src`, both name that commit, the run records `unchanged` and stops.
    Only a run whose installs and `verify.sh` all passed writes the marker.
-   When the link names the tip and the marker does not, an earlier run switched the link and did not finish installing.
-   If that tree's build still matches its `SHA256SUMS`, the run goes straight to step 5 on it; otherwise it starts again from step 2.
+   Otherwise the run takes every step below, even when the link already names the tip because an earlier run switched it and did not finish installing.
+   A tree already on disk for the tip is never reused: step 4 stages a new one and replaces it.
 2. Reads the tip's GitHub Actions workflow runs from GitHub's API without a token: `GET /repos/georgetown-mdi/alcove/actions/runs?head_sha=<commit>&event=push&per_page=100`, reading further pages while the answer's `total_count` is larger than the runs read, up to 10 pages.
    The tip is green when it has at least one workflow run triggered by a `push` and every one has completed with conclusion `success`.
    A push of the commit to `staging` counts as well as its push to `main`.
@@ -20,7 +20,8 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 3. Downloads `alcove-broker-core-<commit>.tar.gz` and its Sigstore bundle from the `broker-core-build` prerelease ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) and verifies the signature with the command in [`infra/broker/README.md`, Install](../broker/README.md#install), step 5.
    The identity is the publishing workflow on `refs/heads/main`, and `--certificate-github-workflow-sha` is the tip from step 1, so a correctly signed build of any other commit is refused.
 4. Fetches `main` into a new tree, `/opt/alcove-broker/trees/<commit>`, and refuses it unless the fetched commit is the tip from step 1.
-   It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci` at low priority, and makes the tree owned by root and readable by all.
+   It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
+   No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, declares one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
    When both pass, it writes the tip to the deployed marker.
 
@@ -90,7 +91,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 ## Limits
 
 - **No rollback.** A failed install or `verify.sh` leaves `/opt/alcove-broker/src` on the new commit with the units as far as the install got, and records `failed`; the previous tree stays under `/opt/alcove-broker/trees`.
-  The deployed marker keeps the previous commit, so the next run installs the new one again, and records `failed` again until the installs pass.
+  The deployed marker keeps the previous commit, so the next run checks, downloads and stages the new one again from step 2 and installs it, and records `failed` again until the installs pass.
 - **Every tree is kept.** Nothing removes a tree, so each update adds one, with its `node_modules`, to the disk.
 - **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.

@@ -117,7 +117,8 @@ process.stdout.write(
 );`;
 
 // Passes only for the README's identity and issuer, and a workflow SHA equal
-// to the commit the fixture's build was signed for.
+// to the commit the fixture's build was signed for. It never reads the bundle
+// or the archive, so whether a signature covers the bytes is untested here.
 const COSIGN_STUB = String.raw`
 printf 'cosign %s\n' "$*" >> "$F/calls"
 [ "$1" = verify-blob ] || exit 99
@@ -341,6 +342,40 @@ const untouched = (h) => {
   expect(named(h.lastCalls, "systemctl")).toEqual([]);
 };
 
+/** Every step of a run that stages and installs TIP, in order. */
+const fullRun = (h) => {
+  const work = join(h.root, "var/lib/alcove-host-pull/work");
+  return [
+    `git ls-remote --exit-code ${REPOSITORY_URL} refs/heads/main`,
+    runsUrl(1),
+    `${RELEASE_URL}/${ARCHIVE}`,
+    `${RELEASE_URL}/${BUNDLE}`,
+    [
+      "cosign verify-blob",
+      `--bundle ${work}/${BUNDLE}`,
+      `--certificate-identity ${IDENTITY}`,
+      `--certificate-oidc-issuer ${ISSUER}`,
+      `--certificate-github-workflow-sha ${TIP}`,
+      `${work}/${ARCHIVE}`,
+    ].join(" "),
+    "git init -q",
+    `git fetch -q --depth 1 ${REPOSITORY_URL} refs/heads/main`,
+    "git rev-parse FETCH_HEAD",
+    "git checkout -q --detach FETCH_HEAD",
+    "npm ci --no-audit --no-fund --ignore-scripts --workspace packages/peerjs-broker in ",
+    "chown -R 0:0 ",
+    "systemctl try-restart alcove-broker.service",
+    `broker-install trees/${TIP}`,
+    `relay-install trees/${TIP}`,
+  ];
+};
+
+const expectFullRun = (h, calls) => {
+  const steps = fullRun(h);
+  expect(calls).toHaveLength(steps.length);
+  steps.forEach((step, index) => expect(calls[index]).toContain(step));
+};
+
 const outcome = (h, name, status) => {
   const r = h.run();
   h.lastCalls = r.calls;
@@ -379,35 +414,18 @@ describe("pull.sh", () => {
     expect(existsSync(join(tree, "node_modules/.bin/tsx"))).toBe(true);
     expect(lstatSync(join(h.broker, "src")).isSymbolicLink()).toBe(true);
 
-    const work = join(h.root, "var/lib/alcove-host-pull/work");
-    const steps = [
-      `git ls-remote --exit-code ${REPOSITORY_URL} refs/heads/main`,
-      runsUrl(1),
-      `${RELEASE_URL}/${ARCHIVE}`,
-      `${RELEASE_URL}/${BUNDLE}`,
-      [
-        "cosign verify-blob",
-        `--bundle ${work}/${BUNDLE}`,
-        `--certificate-identity ${IDENTITY}`,
-        `--certificate-oidc-issuer ${ISSUER}`,
-        `--certificate-github-workflow-sha ${TIP}`,
-        `${work}/${ARCHIVE}`,
-      ].join(" "),
-      "git init -q",
-      `git fetch -q --depth 1 ${REPOSITORY_URL} refs/heads/main`,
-      "git rev-parse FETCH_HEAD",
-      "git checkout -q --detach FETCH_HEAD",
-      "npm ci --no-audit --no-fund --workspace packages/peerjs-broker in ",
-      "chown -R 0:0 ",
-      "systemctl try-restart alcove-broker.service",
-      `broker-install trees/${TIP}`,
-      `relay-install trees/${TIP}`,
-    ];
-    expect(r.calls).toHaveLength(steps.length);
-    steps.forEach((step, index) => expect(r.calls[index]).toContain(step));
+    expectFullRun(h, r.calls);
     for (const call of named(r.calls, "curl ")) {
       expect(call).toContain("--proto =https --proto-redir =https");
     }
+  });
+
+  it("installs the broker workspace without running any package's install scripts", () => {
+    const h = host();
+    const r = outcome(h, "updated", 0);
+    const installs = named(r.calls, "npm ");
+    expect(installs).toHaveLength(1);
+    expect(installs[0].split(" ")).toContain("--ignore-scripts");
   });
 
   it("installs on a host with no broker tree yet", () => {
@@ -636,10 +654,12 @@ describe("pull.sh", () => {
     },
   );
 
-  it("installs a tree whose installs failed again on the next run, without downloading it", () => {
+  it("checks, downloads, verifies and stages a fresh tree on the run after a failed install", () => {
     const h = host();
     h.set("fail-relay-install");
     outcome(h, "failed", 1);
+    const leftover = join(h.broker, "trees", TIP, "left-by-the-failed-run");
+    writeFileSync(leftover, "");
 
     const again = outcome(h, "failed", 1);
     expect(again.record).toMatchObject({
@@ -648,12 +668,9 @@ describe("pull.sh", () => {
       main_commit: TIP,
     });
     expect(again.record.reason).toContain("infra/relay/install.sh");
-    expect(again.calls).toEqual([
-      `git ls-remote --exit-code ${REPOSITORY_URL} refs/heads/main`,
-      "systemctl try-restart alcove-broker.service",
-      `broker-install trees/${TIP}`,
-      `relay-install trees/${TIP}`,
-    ]);
+    expectFullRun(h, again.calls);
+    expect(existsSync(leftover)).toBe(false);
+    expect(h.trees()).toEqual([TIP, DEPLOYED]);
 
     h.unset("fail-relay-install");
     const passed = outcome(h, "updated", 0);
@@ -662,33 +679,60 @@ describe("pull.sh", () => {
       linked_commit: TIP,
     });
     expect(h.marker()).toBe(`${TIP}\n`);
-    expect(named(passed.calls, "curl ")).toEqual([]);
+    expectFullRun(h, passed.calls);
 
     outcome(h, "unchanged", 0);
   });
 
-  it("stages the tip again when the linked tree's build no longer matches its SHA256SUMS", () => {
-    const h = host();
-    h.set("fail-broker-install");
-    outcome(h, "failed", 1);
-    writeFileSync(
-      join(h.broker, "trees", TIP, "packages/core/dist/shared2.esm.js"),
-      "tampered\n",
-    );
-    h.unset("fail-broker-install");
+  describe("a tree placed by hand at the tip's path, its build matching its SHA256SUMS", () => {
+    // Linked, with an install script of its own that the pull must never run.
+    const handPlaced = () => {
+      const h = host();
+      const tree = join(h.broker, "trees", TIP);
+      const dist = join(tree, "packages/core/dist");
+      mkdirSync(dist, { recursive: true });
+      const build = "export {};\n";
+      writeFileSync(join(dist, "untrusted-text.esm.js"), build);
+      writeFileSync(
+        join(dist, "SHA256SUMS"),
+        `${sha256(build)}  untrusted-text.esm.js\n`,
+      );
+      for (const dir of ["broker", "relay"]) {
+        writeStub(
+          join(tree, "infra", dir, "install.sh"),
+          `printf 'hand-placed ${dir}\\n' >> '${h.root}/calls'`,
+        );
+      }
+      rmSync(join(h.broker, "src"));
+      symlinkSync(`trees/${TIP}`, join(h.broker, "src"));
+      return { h, tree };
+    };
 
-    const r = outcome(h, "updated", 0);
-    expect(downloads(r.calls)).toHaveLength(2);
-    expect(named(r.calls, "npm ci")).toHaveLength(1);
-    expect(h.trees()).toEqual([TIP, DEPLOYED]);
-    expect(h.link()).toBe(`trees/${TIP}`);
-    expect(
-      readFileSync(
-        join(h.broker, "trees", TIP, "packages/core/dist/shared2.esm.js"),
-        "utf8",
-      ),
-    ).toBe("export const shared = 1;\n");
-    expect(h.marker()).toBe(`${TIP}\n`);
+    it("is replaced by a fresh tree through every step", () => {
+      const { h, tree } = handPlaced();
+      const r = outcome(h, "updated", 0);
+      expectFullRun(h, r.calls);
+      expect(named(r.calls, "hand-placed")).toEqual([]);
+      expect(
+        readFileSync(
+          join(tree, "packages/core/dist/untrusted-text.esm.js"),
+          "utf8",
+        ),
+      ).toContain("shared2.esm.js");
+      expect(h.trees()).toEqual([TIP, DEPLOYED]);
+    });
+
+    it("is not installed when CI did not pass on the tip", () => {
+      const { h } = handPlaced();
+      h.runs([
+        ...GREEN,
+        workflowRun("Static Checks", { conclusion: "failure" }),
+      ]);
+      const r = outcome(h, "refused", 1);
+      expect(named(r.calls, "hand-placed")).toEqual([]);
+      expect(named(r.calls, "systemctl")).toEqual([]);
+      expect(h.marker()).toBe(`${DEPLOYED}\n`);
+    });
   });
 
   it("records failed when a signal stops it during a long step", async () => {
