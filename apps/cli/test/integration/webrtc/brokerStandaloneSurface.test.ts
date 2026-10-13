@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { connect, createServer } from "node:net";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -111,6 +113,36 @@ test("the readiness probe answers on the mount once the broker is listening", as
   );
   expect(response.status).toBe(200);
   expect(await response.text()).toBe("ready\n");
+}, 60_000);
+
+test("the readiness probe publishes the host pull's files the environment names", async () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "broker-pull-files-"));
+  try {
+    const commit = "0123456789abcdef0123456789abcdef01234567";
+    writeFileSync(path.join(directory, "deployed"), `${commit}\n`);
+    writeFileSync(
+      path.join(directory, "status"),
+      "outcome=unchanged\nreason=main is deployed\ntime=2026-10-13T06:01:02Z\n",
+    );
+    broker = await startBrokerProcess({
+      env: {
+        ALCOVE_BROKER_DEPLOYED_MARKER: path.join(directory, "deployed"),
+        ALCOVE_BROKER_PULL_STATUS: path.join(directory, "status"),
+      },
+    });
+    const response = await fetch(
+      `http://127.0.0.1:${broker.port}${broker.path}/health`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("alcove-deployed-commit")).toBe(commit);
+    expect(response.headers.get("alcove-last-pull-outcome")).toBe("unchanged");
+    expect(response.headers.get("alcove-last-pull-time")).toBe(
+      "2026-10-13T06:01:02Z",
+    );
+    expect(await response.text()).toBe("ready\n");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }, 60_000);
 
 test("nothing beside the probe answers on the broker's HTTP surface", async () => {

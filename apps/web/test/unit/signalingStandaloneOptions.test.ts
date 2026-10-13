@@ -10,6 +10,13 @@ import {
   createStandaloneRequestHandler,
   resolveStandaloneOptions,
 } from "@alcove/peerjs-broker/standaloneOptions";
+import {
+  DEFAULT_DEPLOYED_MARKER_PATH,
+  DEFAULT_PULL_STATUS_PATH,
+  DEPLOYED_MARKER_ENV,
+  PULL_STATUS_ENV,
+  UNKNOWN_DEPLOYMENT_STATUS,
+} from "@alcove/peerjs-broker/deploymentStatus";
 
 import type { AddressInfo } from "node:net";
 
@@ -31,7 +38,27 @@ describe("resolveStandaloneOptions", () => {
       path: "/api",
       key: "peerjs",
       readinessPath: "/api/health",
+      deployedMarkerPath: "/var/lib/alcove-host-pull/deployed",
+      pullStatusPath: "/var/lib/alcove-host-pull/status",
     });
+  });
+
+  test("takes the host pull's file paths from the environment", () => {
+    const options = resolveStandaloneOptions([], {
+      [DEPLOYED_MARKER_ENV]: "/srv/pull/deployed",
+      [PULL_STATUS_ENV]: "/srv/pull/status",
+    });
+    expect(options.deployedMarkerPath).toBe("/srv/pull/deployed");
+    expect(options.pullStatusPath).toBe("/srv/pull/status");
+  });
+
+  test("treats a blank host pull path as unset", () => {
+    const options = resolveStandaloneOptions([], {
+      [DEPLOYED_MARKER_ENV]: "",
+      [PULL_STATUS_ENV]: "  ",
+    });
+    expect(options.deployedMarkerPath).toBe(DEFAULT_DEPLOYED_MARKER_PATH);
+    expect(options.pullStatusPath).toBe(DEFAULT_PULL_STATUS_PATH);
   });
 
   test("takes each setting from its flag, deriving the probe from the mount", () => {
@@ -55,6 +82,8 @@ describe("resolveStandaloneOptions", () => {
       path: "/signal",
       key: "a-realm-key",
       readinessPath: "/signal/health",
+      deployedMarkerPath: DEFAULT_DEPLOYED_MARKER_PATH,
+      pullStatusPath: DEFAULT_PULL_STATUS_PATH,
     });
   });
 
@@ -217,7 +246,9 @@ describe("the standalone readiness probe", () => {
    * what this handler answers. */
   async function servedAt(readinessPath: string): Promise<string> {
     const server = http.createServer(
-      createStandaloneRequestHandler(readinessPath),
+      createStandaloneRequestHandler(readinessPath, () =>
+        Promise.resolve(UNKNOWN_DEPLOYMENT_STATUS),
+      ),
     );
     servers.push(server);
     await new Promise<void>((resolve) => {

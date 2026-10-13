@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { redactAndSanitizeForDisplay } from "@alcove/core/untrusted-text";
 
 import { CreatePeerServerWSOnly } from "./contrib/index.ts";
+import { createDeploymentStatusReader } from "./deploymentStatus.ts";
 import {
   createStandaloneRequestHandler,
   resolveStandaloneOptions,
@@ -107,7 +108,10 @@ function readOptions(): StandaloneOptions {
 const options = readOptions();
 
 const server = createServer(
-  createStandaloneRequestHandler(options.readinessPath),
+  createStandaloneRequestHandler(
+    options.readinessPath,
+    createDeploymentStatusReader(options),
+  ),
 );
 
 applyStandaloneUpgradeBounds(server);

@@ -79,6 +79,8 @@ After `rolled-back` or `rollback-failed`, `main_commit` is the commit whose inst
 
 `journalctl -u alcove-host-pull.service` shows each step of every run.
 
+The broker publishes the deployed marker's commit and the record's `outcome` and `time`, and nothing else from either file, as headers on its `/api/health` answer, which [the deployment check](../broker/README.md#the-deployment-check) reads every night.
+
 ## Install
 
 On a host already set up as [`infra/broker/README.md`, Install](../broker/README.md#install) and [`infra/relay/README.md`](../relay/README.md) describe, with Node and Cosign in `/usr/local/bin`:
@@ -122,7 +124,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 - **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `rollback-failed` leaves the tip's tree, and the next run removes it before staging. A run that ends `failed` leaves the link on the tip's tree, which stays until the link moves to another tree.
 - **Each install script is cut off after 5 minutes 15 seconds, and killed 30 seconds later if it ignores the stop.** Each runs in a session of its own, and when it fails or is cut off, the script and every descendant still in its process group are killed before the run goes on. A forward attempt and a rollback run two scripts each. A script that hangs is an ordinary failure and is rolled back. `ALCOVE_HOST_PULL_INSTALL_TIMEOUT` can only lower the bound; an unset, zero, non-numeric or larger value uses the default. `ALCOVE_HOST_PULL_KILL_AFTER` sets the wait before the kill and likewise can only lower it.
 - **A probe in its own process group is not killed.** Relay `verify.sh` runs its probes through `timeout`, which starts a process group of its own, so a probe still running when an install fails (each at most its own timeout, the longest 150 seconds) can still be running when the rollback restarts the relay. They are read-only checks.
-- **A run can still outlast `TimeoutStartSec=1h`.** A run whose unbounded steps (cosign trust fetches, restarts, git, tar and checksum steps) or many pages of push runs push it past `TimeoutStartSec` is stopped by systemd mid-step and recorded `failed`, not rolled back. The next run retries the full path, and the lag check reports it.
+- **A run can still outlast `TimeoutStartSec=1h`.** A run whose unbounded steps (cosign trust fetches, restarts, git, tar and checksum steps) or many pages of push runs push it past `TimeoutStartSec` is stopped by systemd mid-step and recorded `failed`, not rolled back. The next run retries the full path, and [the deployment check](../broker/README.md#the-deployment-check) reports the failed run.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
 - **The tree is not signed.** Only core's build is. What binds the tree to `main` is the fetch over HTTPS from github.com and the check that the fetched commit is the tip `git ls-remote` named.
 

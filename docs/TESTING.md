@@ -594,6 +594,9 @@ Dispatch the `weekly` or `all` tier only to confirm a change to the PSI engine p
 The `nightly_*` workflows (`nightly_core_stress.yaml`,
 `nightly_live_webrtc.yaml`, `nightly_mutation.yaml`, `nightly_platform.yaml`)
 check out `staging` by name, so their scheduled runs test the `staging` tip.
+`nightly_relay_deployment.yaml` tests no code: it checks out `main`, the branch
+the relay host pulls, and checks that the host has deployed it
+([infra/broker/README.md, The deployment check](../infra/broker/README.md#the-deployment-check)).
 The weekly dependency audit, CodeQL and image smoke workflows run on their
 default ref. GitHub fires a schedule from the workflow file on `main`, so a
 change to a scheduled workflow's own definition reaches its scheduled runs only

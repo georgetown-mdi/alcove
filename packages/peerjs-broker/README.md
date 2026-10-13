@@ -21,6 +21,8 @@ By default it listens on `127.0.0.1` on an ephemeral port, mounts the signaling 
 | Port         | `--port <number>`  | `ALCOVE_BROKER_PORT` | `0` (ephemeral) |
 | Mount path   | `--path <mount>`   | --                    | `/api`          |
 | Realm key    | `--key <api-key>`  | --                    | `peerjs`        |
+| Deployed-commit marker | -- | `ALCOVE_BROKER_DEPLOYED_MARKER` | `/var/lib/alcove-host-pull/deployed` |
+| Pull status record | -- | `ALCOVE_BROKER_PULL_STATUS` | `/var/lib/alcove-host-pull/status` |
 
 A flag takes precedence over the environment variable beside it, and an environment variable set to an empty value counts as unset. A port that is not a whole number from 0 to 65535, a blank value, a repeated flag, a flag with no value, a mount that does not begin with `/` or that holds `?`, `#`, `%`, an empty segment, or a `.` or `..` segment, and any unrecognized argument are each refused before the broker starts, with a message naming the flag or the variable the value came from; the process exits 64, the same usage exit the CLI uses. A mount is held to a literal path so the readiness endpoint below is a literal child of it; a trailing slash on the mount is dropped rather than refused. A bind the operating system refuses -- an address that is not this host's, a port already taken -- is reported the same way and exits 69, as is a later fault on the listening socket.
 
@@ -30,7 +32,21 @@ The runner bounds the window before it has a request in hand: a 10-second header
 
 The runner answers `GET` and `HEAD` on `<mount>/health` -- `/api/health` under the default mount -- with `200` and the body `ready` followed by a newline: the runner sends `ready\n`, so an operator matching on the exact body should account for the trailing newline rather than mis-configure a probe. It sits under the mount rather than at the root so one route rule in front of the broker covers the probe and the signaling endpoint together. A query string or fragment on that path is ignored, so a probe that appends one -- `/api/health?x=1` -- is answered `200` as well; the comparison runs on the path the request target names, decoding nothing. Any other path, and any other method on the probe path, is refused with `404`: the broker handles WebSocket upgrades and this one endpoint, and nothing else is part of any wire it serves.
 
-The handler is installed and the signaling server mounted before the runner listens, so an answer means this process is accepting connections with its upgrade route attached. That is the whole of what the answer states: the body is a fixed line, since reporting registered peers or queued frames would put rendezvous metadata on an unauthenticated endpoint. What the probe does disclose -- that a broker is running here -- anyone who can reach the port already learns by opening a WebSocket, so it needs no gate of its own.
+The handler is installed and the signaling server mounted before the runner listens, so an answer means this process is accepting connections with its upgrade route attached. That is the whole of what the body states: it is a fixed line, since reporting registered peers or queued frames would put rendezvous metadata on an unauthenticated endpoint. What the probe does disclose -- that a broker is running here -- anyone who can reach the port already learns by opening a WebSocket, so it needs no gate of its own.
+
+### Deployment headers
+
+Every `200` answer, to `GET` and `HEAD` alike, also has three headers about the host's deployment, read from the files [the host pull](../../infra/host-pull/README.md) writes:
+
+| Header | Value | Read from |
+| ------ | ----- | --------- |
+| `alcove-deployed-commit` | The full commit the pull last deployed: the last whose installs passed | The deployed marker, `/var/lib/alcove-host-pull/deployed`, or the file `ALCOVE_BROKER_DEPLOYED_MARKER` names |
+| `alcove-last-pull-outcome` | The last pull run's outcome, one of those in [the pull's Outcomes](../../infra/host-pull/README.md#outcomes) | The `outcome` line of the status record, `/var/lib/alcove-host-pull/status`, or the file `ALCOVE_BROKER_PULL_STATUS` names |
+| `alcove-last-pull-time` | When that run ended, UTC, as `2026-10-13T06:04:17Z` | The `time` line of the same record |
+
+Each value is `unknown` when its file is missing, unreadable, not a regular file or larger than its cap, or when the value is not in the shape the pull writes; the probe still answers `200`. A host that does not run the pull answers `unknown` for all three. An environment variable set to an empty value counts as unset.
+
+Nothing else from the two files is published: not the record's `reason` line or its other commits, no file path and no error detail. Both values are fit for a caller without credentials: the repository is public, so a commit discloses nothing, and an outcome discloses only whether the host is current. The broker reads the files at most once a minute and answers every probe in between from that read, so a probe sees a new run's record up to a minute late. The nightly check that reads these headers is [the deployment check](../../infra/broker/README.md#the-deployment-check).
 
 ## Diagnostics
 
