@@ -323,9 +323,9 @@ describe("PUT /api/jobs/config", () => {
     const before = fs.readFileSync(path.join(dataRoot, "alcove.yaml"));
     const response = await handBack(settings);
     expect(response.status).toBe(400);
-    expect(((await response.json()) as { error: string }).error).toContain(
-      "open it again",
-    );
+    const body = (await response.json()) as { error: string; reason: string };
+    expect(body.error).toContain("Open alcove.yaml again");
+    expect(body.reason).toBe("configuration-changed");
     expect(fs.readFileSync(path.join(dataRoot, "alcove.yaml"))).toEqual(before);
   });
 
@@ -357,5 +357,17 @@ describe("PUT /api/jobs/config", () => {
     expect(
       fs.readFileSync(path.join(dataRoot, "alcove.yaml"), "utf8"),
     ).toContain("csv_delimiter: ;");
+  });
+
+  test("answers unchanged, writing nothing, for settings the file already states", async () => {
+    const dataRoot = enable();
+    writeConfiguration(dataRoot, webrtcDocuments()[0]);
+    await load();
+    expect(await (await handBack(settings)).json()).toEqual({ written: true });
+    const saved = fs.readFileSync(path.join(dataRoot, "alcove.yaml"));
+    const again = await handBack(settings);
+    expect(again.status).toBe(200);
+    expect(await again.json()).toEqual({ written: true, unchanged: true });
+    expect(fs.readFileSync(path.join(dataRoot, "alcove.yaml"))).toEqual(saved);
   });
 });

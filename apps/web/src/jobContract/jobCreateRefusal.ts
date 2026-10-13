@@ -43,8 +43,8 @@ export const MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL =
   "mounted-signing-paths-unconverted";
 
 /** The token for a webrtc run of the opened configuration refused because the
- * working folder's `alcove.yaml` no longer runs here -- gone, another channel,
- * relay settings -- or names a coordination server other than the console's. */
+ * working folder's `alcove.yaml` is no longer one the console runs in place:
+ * gone, one the console cannot open, another channel, or relay settings. */
 export const OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL =
   "opened-configuration-not-runnable";
 

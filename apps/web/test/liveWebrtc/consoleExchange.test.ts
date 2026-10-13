@@ -307,8 +307,13 @@ describe("a webrtc alcove.yaml opened in the console runs in place", () => {
       location: locationFor(started),
     });
     // The pair an inviter's `alcove invite` leaves in the working folder,
-    // naming the broker the console holds.
+    // naming the leg's broker, while the console holds another coordination
+    // server: the run dials the one the file names.
     const { host, port, path } = authoredAddress(started);
+    const elsewhere = await commands.putConsoleSignalingServer(
+      JSON.stringify({ address: "wss://coordination.invalid/" }),
+    );
+    expect(elsewhere.status, elsewhere.body).toBe(200);
     const opened = await commands.openConsoleConfiguration({
       config: stringifyYaml(
         snakeizeKeys({
@@ -333,14 +338,9 @@ describe("a webrtc alcove.yaml opened in the console runs in place", () => {
     };
     expect(answer.relaySettings).toBeUndefined();
     expect(answer.keyFileFault).toBeUndefined();
-    // The screen sets the server the file names, then saves its steps into
-    // the file before the run.
-    const address = answer.document.signalingServer;
-    expect(address).toBe(`ws://${host}:${port}${path}`);
-    const set = await commands.putConsoleSignalingServer(
-      JSON.stringify({ address }),
-    );
-    expect(set.status, set.body).toBe(200);
+    // The review step shows the server the file names, and the screen saves
+    // its steps into the file before the run.
+    expect(answer.document.signalingServer).toBe(`ws://${host}:${port}${path}`);
     const handBack: JobConfigurationHandBack = {
       linkageTerms: minted.linkageTerms,
       ...(minted.metadata !== undefined ? { metadata: minted.metadata } : {}),
@@ -351,16 +351,16 @@ describe("a webrtc alcove.yaml opened in the console runs in place", () => {
     );
     expect(saved.status, saved.body).toBe(200);
 
-    await commands.createConsoleWebrtcJob(
-      webrtcIntent(
-        inviterServerJobConfig({
-          minted,
-          inputSource: CONSOLE_INPUT,
-          transport: inviterServerJobTransport("webrtc", minted),
-          mountedConfigurationOpened: true,
-        }),
-      ),
+    const intent = webrtcIntent(
+      inviterServerJobConfig({
+        minted,
+        inputSource: CONSOLE_INPUT,
+        transport: inviterServerJobTransport("webrtc", minted, true),
+        mountedConfigurationOpened: true,
+      }),
     );
+    expect(intent.signalingServer).toBeUndefined();
+    await commands.createConsoleWebrtcJob(intent);
     const browser = await runBrowserAcceptor(minted.encoded);
     expectSameIntersection(browser, await commands.consoleWebrtcJobOutcome());
     expect(await workingFolderConnection()).toMatchObject({

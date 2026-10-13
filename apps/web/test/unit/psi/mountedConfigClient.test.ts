@@ -288,6 +288,26 @@ describe("saving the opened configuration back", () => {
     });
   });
 
+  test("a save that wrote nothing reads as unchanged", async () => {
+    const { fetchImpl } = answering(200, { written: true, unchanged: true });
+    expect(await saveOpenedConfiguration(HAND_BACK, fetchImpl)).toEqual({
+      kind: "written",
+      unchanged: true,
+    });
+  });
+
+  test("a refusal over a changed file says opening it again is the way on", async () => {
+    const { fetchImpl } = answering(400, {
+      error: "Open it again.",
+      reason: "configuration-changed",
+    });
+    expect(await saveOpenedConfiguration(HAND_BACK, fetchImpl)).toEqual({
+      kind: "refused",
+      error: "Open it again.",
+      changedSinceOpened: true,
+    });
+  });
+
   test("a refusal with no text still says the save stopped", async () => {
     const { fetchImpl } = answering(400, undefined);
     const answer = await saveOpenedConfiguration(HAND_BACK, fetchImpl);

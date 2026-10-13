@@ -573,7 +573,7 @@ describe("a webrtc configuration stating a relay opens for review with its run w
 
   test("the review step's create is held, naming the channel", () => {
     const reason = runWithheldReason(state.mountedConfiguration);
-    expect(reason).toContain("webrtc");
+    expect(reason).toContain("WebRTC configuration");
     const status = inviterCreateStatus({
       runWithheld: reason,
       offlineBlocked: false,
@@ -622,6 +622,18 @@ describe("a webrtc configuration stating no relay opens to run in place", () => 
     });
     expect(state.mountedConfiguration).not.toHaveProperty("notConducted");
     expect(runWithheldReason(state.mountedConfiguration)).toBeUndefined();
+  });
+
+  test("opening it again clears a refused start's alert", () => {
+    const refused = inviterScreenReducer(state, {
+      type: "mint-failed",
+      alert: { title: "t", message: "m", reopensConfiguration: true },
+    });
+    expect(refused.createAlert?.reopensConfiguration).toBe(true);
+    expect(
+      inviterScreenReducer(refused, { type: "mounted-configuration-reading" })
+        .createAlert,
+    ).toBeUndefined();
   });
 });
 

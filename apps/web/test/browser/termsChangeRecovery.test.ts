@@ -75,4 +75,38 @@ describe("TermsChangeRecovery: applying the change from the command line", () =>
       ` apply @${JOB_ID}/alcove.proposed-terms`,
     );
   });
+
+  test("names the proposal beside alcove.yaml for a run of the working folder's own file", async () => {
+    stubApplyRunTermsDiffer();
+    app.render(
+      createElement(TermsChangeRecovery, {
+        termsChange: {
+          proposalWritten: true,
+          delta: {
+            received: undefined,
+            sent: undefined,
+            partnerDeduplicate: undefined,
+            otherTerms: ["linkage rule set"],
+          },
+        },
+        jobId: JOB_ID,
+        canApply: true,
+        inWorkingFolder: true,
+        onApplied: () => undefined,
+        onReviewApplied: () => undefined,
+      }),
+    );
+
+    await page.getByRole("button", { name: APPLY_TERMS_LABEL }).click();
+
+    await expect
+      .element(
+        page.getByText("Apply the change from the command line with", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(" apply alcove.proposed-terms");
+    expect(app.container.textContent).not.toContain(`@${JOB_ID}/`);
+  });
 });

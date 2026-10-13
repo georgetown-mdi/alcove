@@ -225,6 +225,34 @@ describe("inviterServerJobConfig", () => {
     expect(inviterServerJobTransport("sftp", {})).toEqual({ channel: "sftp" });
   });
 
+  test("a run of the opened configuration names no server, dialing its file's", () => {
+    const transport = inviterServerJobTransport(
+      "webrtc",
+      {
+        connectionEndpoint: {
+          channel: "webrtc",
+          host: "elsewhere.test",
+          path: "/",
+        },
+      },
+      true,
+    );
+    expect(transport).toEqual({ channel: "webrtc" });
+    const intent = intentFor(
+      inviterServerJobConfig({
+        minted: { ...minted, sharedSecret: VALID_SHARED_SECRET },
+        inputSource: { kind: "inline", csv: inputCsv },
+        transport,
+        mountedConfigurationOpened: true,
+      }),
+    );
+    expect(intent).not.toHaveProperty("signalingServer");
+    expect(intent).toMatchObject({ mountedConfigurationOpened: true });
+    expect(
+      jobExchangeIntentSchema.safeParse(intent).error?.issues,
+    ).toBeUndefined();
+  });
+
   test("forwards the operator's conversion of the opened configuration", () => {
     const config = inviterServerJobConfig({
       minted,

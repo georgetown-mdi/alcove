@@ -539,15 +539,16 @@ describe("POST /api/jobs on the webrtc channel", () => {
     },
   );
 
-  test("a run of an opened configuration naming another server is refused with its token", async () => {
+  test("a run of an opened configuration stating a relay is refused with its token, and one naming another server runs", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
-    const configuration = (host: string): string =>
+    const configuration = (relay: boolean): string =>
       stringifyYaml({
         connection: {
           channel: "webrtc",
           role: "inviter",
-          server: { host, path: "/psi/" },
+          server: { host: "elsewhere.test", path: "/psi/" },
+          ...(relay ? { turn: [{ url: "turns:relay.example.org:5349" }] } : {}),
         },
         linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
       });
@@ -557,7 +558,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
     );
     fs.writeFileSync(
       path.join(root, JOB_FILE_NAMES.config),
-      configuration("elsewhere.test"),
+      configuration(true),
     );
     const before = fs.readFileSync(path.join(root, JOB_FILE_NAMES.config));
     const response = await postJob(
@@ -577,7 +578,7 @@ describe("POST /api/jobs on the webrtc channel", () => {
 
     fs.writeFileSync(
       path.join(root, JOB_FILE_NAMES.config),
-      configuration("peers.test"),
+      configuration(false),
     );
     const admitted = await postJob(
       validWebrtcIntent({

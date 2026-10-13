@@ -626,8 +626,9 @@ describe("failureFor", () => {
       "webrtc",
     );
     expect(failure.category).toBe("config");
-    expect(failure.title).toBe("Your alcove.yaml changed since you opened it");
-    expect(failure.message).toMatch(/close the configuration .* open it again/);
+    expect(failure.title).toBe("The console did not run your alcove.yaml");
+    expect(failure.message).toMatch(/Start over: the console opens/);
+    expect(failure.message).not.toMatch(/coordination server/);
   });
 
   test("a WebRTC run refused for naming another coordination server sends the operator back to check it", () => {

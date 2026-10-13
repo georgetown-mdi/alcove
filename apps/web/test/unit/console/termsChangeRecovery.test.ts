@@ -15,6 +15,12 @@ import type { RelayEvent } from "@jobContract/relayEvent";
 /** A run id, the name of its folder in the working folder. */
 const JOB_ID = "3f2b8c1e-0d4a-4c6e-9a51-7e2f0b9c4d13";
 
+/** The proposal a run composed in its own folder left there. */
+const RUN_FOLDER = { jobId: JOB_ID };
+
+/** The proposal a run of the working folder's own alcove.yaml left beside it. */
+const WORKING_FOLDER = { inWorkingFolder: true } as const;
+
 const RELAYED_EVENT: RelayEvent = {
   v: 1,
   type: "error",
@@ -146,11 +152,11 @@ describe("applying the proposal from the run step", () => {
       "unavailable",
       "error",
     ] as const)
-      expect(termsApplyOutcomeText(outcome, JOB_ID)).toMatch(/\.$/);
-    expect(termsApplyOutcomeText("configuration-changed", JOB_ID)).toContain(
-      "nothing was applied",
-    );
-    expect(termsApplyOutcomeText("run-terms-differ", JOB_ID)).toContain(
+      expect(termsApplyOutcomeText(outcome, RUN_FOLDER)).toMatch(/\.$/);
+    expect(
+      termsApplyOutcomeText("configuration-changed", RUN_FOLDER),
+    ).toContain("nothing was applied");
+    expect(termsApplyOutcomeText("run-terms-differ", RUN_FOLDER)).toContain(
       "open the configuration again",
     );
   });
@@ -161,7 +167,24 @@ describe("applying the proposal from the run step", () => {
       "type=bind,src=/path/to/your/working-folder,dst=/work " +
       `${buildImageReference()} apply @${JOB_ID}/alcove.proposed-terms`;
     for (const outcome of ["run-terms-differ", "unavailable", "error"] as const)
-      expect(termsApplyOutcomeText(outcome, JOB_ID)).toContain(command);
-    expect(termsApplyOutcomeText("refused", JOB_ID)).not.toContain("docker");
+      expect(termsApplyOutcomeText(outcome, RUN_FOLDER)).toContain(command);
+    expect(termsApplyOutcomeText("refused", RUN_FOLDER)).not.toContain(
+      "docker",
+    );
+  });
+
+  test("names the proposal beside the working folder's alcove.yaml for a run of that file", () => {
+    const command =
+      "docker run --rm -it --mount " +
+      "type=bind,src=/path/to/your/working-folder,dst=/work " +
+      `${buildImageReference()} apply alcove.proposed-terms.`;
+    for (const outcome of ["unavailable", "error"] as const) {
+      const text = termsApplyOutcomeText(outcome, WORKING_FOLDER);
+      expect(text).toContain(command);
+      expect(text).not.toContain("@");
+    }
+    expect(
+      termsApplyOutcomeText("configuration-changed", WORKING_FOLDER),
+    ).toContain("after this run started");
   });
 });

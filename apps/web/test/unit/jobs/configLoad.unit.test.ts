@@ -461,6 +461,11 @@ describe("a webrtc configuration", () => {
         secure: false,
       }),
     ).toBe("ws://127.0.0.1:9000/api/");
+    expect(address({ host: "::1", port: 9000 })).toBe("wss://[::1]:9000/");
+    expect(address({ host: "[::1]" })).toBe("wss://[::1]/");
+    expect(address({ host: "Peer.Example.org" })).toBe(
+      "wss://Peer.Example.org/",
+    );
   });
 
   test("names each relay setting it states, as the file spells them", () => {
@@ -504,13 +509,8 @@ describe("a webrtc configuration", () => {
         },
       }),
     );
-    expect(mountedInPlaceConfiguration(direct)).toMatchObject({
+    expect(mountedInPlaceConfiguration(direct)).toEqual({
       source: fs.readFileSync(path.join(direct, "alcove.yaml"), "utf8"),
-      connection: {
-        channel: "webrtc",
-        role: "acceptor",
-        server: { host: "broker.example", port: 443 },
-      },
     });
     expect(
       mountedInPlaceConfiguration(mountHolding(savedSftpDocument())),

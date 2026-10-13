@@ -40,10 +40,12 @@ import { defineJobRoute } from "../jobRoute";
  * `PUT /api/jobs/config` hands the operator's edits back into that file, for a
  * webrtc configuration: the body is a {@link jobConfigurationHandBackSchema}
  * hand-back, the file's `connection` and every setting no step edits are kept
- * from the file itself, and the answer is `{ written: true }` -- nothing of the
- * document crosses back. A hand-back the file or the settings refuse is a
- * `400 { error }`, as is one over a file that changed since it was opened or
- * last saved here, or that a run is using.
+ * from the file itself, and the answer is `{ written: true }`, with
+ * `unchanged: true` where the file already stated those settings and was left
+ * as it is -- nothing of the document crosses back. A hand-back the file or
+ * the settings refuse is a `400 { error }`, as is one over a file that a run
+ * is using, or that changed since it was opened or last saved here, which
+ * adds `reason: "configuration-changed"`.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/config",
@@ -76,17 +78,25 @@ export const route = defineJobRoute({
           { error: formatFirstIssue(parsed.error.issues) },
           400,
         );
+      let written: boolean;
       try {
-        gate.manager.handBackOpenedConfiguration(parsed.data);
+        ({ written } = gate.manager.handBackOpenedConfiguration(parsed.data));
       } catch (error) {
-        if (
-          error instanceof ConfigurationLoadRefusedError ||
-          error instanceof ConfigurationHandBackRefusedError
-        )
+        if (error instanceof ConfigurationHandBackRefusedError)
+          return jobJsonResponse(
+            {
+              error: error.message,
+              ...(error.reason !== undefined ? { reason: error.reason } : {}),
+            },
+            400,
+          );
+        if (error instanceof ConfigurationLoadRefusedError)
           return jobJsonResponse({ error: error.message }, 400);
         throw error;
       }
-      return jobJsonResponse({ written: true });
+      return jobJsonResponse(
+        written ? { written: true } : { written: true, unchanged: true },
+      );
     },
   },
 });

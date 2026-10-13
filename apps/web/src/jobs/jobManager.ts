@@ -16,10 +16,13 @@ import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
 import {
+  CONFIGURATION_CHANGED_SAVE_REFUSAL,
+  JOB_FILE_NAMES,
+} from "@jobContract/intentSchemas";
+import {
   runArtifactNames,
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
-import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { zeroSetupSftpCheck } from "@jobContract/jobCreateRefusal";
 
 import {
@@ -140,7 +143,6 @@ import type {
 } from "@jobContract/sftpConnection";
 import type {
   LoadedConfigurationResponse,
-  MountedWebrtcConnection,
   OpenedMountedConfiguration,
 } from "./configLoad";
 import type { AuthoredSignalingServer } from "./signalingServer";
@@ -194,9 +196,8 @@ export class SignalingServerChangedError extends Error {
 /**
  * Thrown by {@link JobManager.createJob} when a webrtc run of the opened
  * configuration finds the working folder's `alcove.yaml` is not one it runs in
- * place -- gone, another channel, relay settings -- or names a coordination
- * server other than the one the console holds. The route maps it to a 400
- * naming the refusal.
+ * place: gone, one the console cannot open, another channel, or relay
+ * settings. The route maps it to a 400 naming the refusal.
  */
 export class OpenedConfigurationNotRunnableError extends Error {
   constructor() {
@@ -772,6 +773,12 @@ export class JobManager {
    */
   private openedConfiguration: OpenedMountedConfiguration | undefined;
   /**
+   * The text the console's own last save wrote into the mounted `alcove.yaml`
+   * ({@link handBackOpenedConfiguration}), held in memory only. A save over a
+   * file holding exactly that keeps the earlier `alcove.yaml.previous`.
+   */
+  private consoleWrittenConfiguration: string | undefined;
+  /**
    * The shutdown in progress for each record whose child {@link shutdown}
    * signalled: the promise every shutdown call returns, settled from
    * {@link reconcileTerminal} once the child's exit is observed.
@@ -828,7 +835,16 @@ export class JobManager {
     let signalingServer: AuthoredSignalingServer | undefined;
     let pairToRunOver: WorkingFolderPair | undefined;
     let inPlace: OpenedMountedConfiguration | undefined;
-    if (intent.channel === "webrtc") {
+    // A run of the opened configuration runs the working folder's own files in
+    // place, dialing the coordination server the file names, so it reads
+    // neither the console's server nor a pair of the console's: it is refused
+    // unless that file is still one the console runs.
+    if (intent.channel === "webrtc" && intent.mountedConfigurationOpened) {
+      const mounted = mountedInPlaceConfiguration(this.dataRoot);
+      if (mounted === undefined)
+        throw new OpenedConfigurationNotRunnableError();
+      inPlace = { source: mounted.source, document: undefined };
+    } else if (intent.channel === "webrtc") {
       const authored = this.authoredSignalingServer;
       if (authored === undefined && intent.signalingServer === undefined)
         throw new SignalingServerUnavailableError();
@@ -839,18 +855,7 @@ export class JobManager {
       )
         throw new SignalingServerChangedError();
       signalingServer = authored;
-      // A run of the opened configuration runs the working folder's own files
-      // in place, so it needs no pair of the console's: it is refused unless
-      // that file still runs here over the server the console holds.
-      if (intent.mountedConfigurationOpened === true) {
-        const mounted = mountedInPlaceConfiguration(this.dataRoot);
-        if (
-          mounted === undefined ||
-          !connectionNamesSignalingServer(mounted.connection, authored)
-        )
-          throw new OpenedConfigurationNotRunnableError();
-        inPlace = { source: mounted.source, document: undefined };
-      } else pairToRunOver = this.workingFolderPairToRunOver(intent);
+      pairToRunOver = this.workingFolderPairToRunOver(intent);
     }
     if (intent.channel === "filedrop") {
       if (
@@ -1770,14 +1775,18 @@ export class JobManager {
    * ({@link handBackMountedConfiguration}), only while that file holds the
    * bytes this console opened or last wrote, so a save never replaces what a
    * run or another editor wrote since, such as a partner's recorded
-   * fingerprint; and never while a run is using the file.
+   * fingerprint; and never while a run is using the file. Returns whether the
+   * file was written: a hand-back of the configuration the file already
+   * states writes nothing.
    *
    * @throws {ConfigurationHandBackRefusedError} when the file changed since,
    *   or a run is using it, or the write is refused.
    * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
    *   configuration this hand-back applies to.
    */
-  handBackOpenedConfiguration(handBack: JobConfigurationHandBack): void {
+  handBackOpenedConfiguration(handBack: JobConfigurationHandBack): {
+    written: boolean;
+  } {
     const running = this.activeSlotRecord();
     if (
       (this.slot?.phase === "starting" && this.slot.channel === "webrtc") ||
@@ -1793,9 +1802,17 @@ export class JobManager {
     )
       throw new ConfigurationHandBackRefusedError(
         CONFIGURATION_CHANGED_SINCE_OPENED_MESSAGE,
+        CONFIGURATION_CHANGED_SAVE_REFUSAL,
       );
-    const written = handBackMountedConfiguration(this.dataRoot, handBack);
+    const written = handBackMountedConfiguration(
+      this.dataRoot,
+      handBack,
+      this.consoleWrittenConfiguration,
+    );
+    if (written === undefined) return { written: false };
     this.openedConfiguration = { ...opened, source: written };
+    this.consoleWrittenConfiguration = written;
+    return { written: true };
   }
 
   /**
@@ -2506,28 +2523,6 @@ function namesSignalingServer(
     (side === "acceptor"
       ? isDeepStrictEqual(named.relay, authored.invitationRelay)
       : named.relay === undefined)
-  );
-}
-
-/**
- * Whether a configuration's webrtc connection dials the authored server: the
- * same scheme, read as TLS unless it states `secure: false`, host, port once
- * an omitted one is read as the scheme's default, and path, read as `/` where
- * it states none and once it ends in `/`, as the authored one does.
- */
-function connectionNamesSignalingServer(
-  connection: MountedWebrtcConnection,
-  authored: AuthoredSignalingServer,
-): boolean {
-  const { server } = connection;
-  const secure = server.secure ?? true;
-  const defaultPort = secure ? 443 : 80;
-  const path = server.path ?? "/";
-  return (
-    secure === authored.secure &&
-    server.host === authored.host &&
-    (server.port ?? defaultPort) === (authored.port ?? defaultPort) &&
-    (path.endsWith("/") ? path : `${path}/`) === authored.path
   );
 }
 

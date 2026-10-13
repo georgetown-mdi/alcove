@@ -1,3 +1,5 @@
+import { CONFIGURATION_CHANGED_SAVE_REFUSAL } from "@jobContract/intentSchemas";
+
 import {
   MAX_JOB_LISTING_RESPONSE_BYTES,
   MAX_JOB_STATUS_RESPONSE_BYTES,
@@ -78,6 +80,11 @@ function documentOf(value: unknown): DisclosedExchangeDocument | null {
   )
     return null;
   if (!isRecord(value.linkageTerms)) return null;
+  if (
+    value.signalingServer !== undefined &&
+    typeof value.signalingServer !== "string"
+  )
+    return null;
   return value as unknown as DisclosedExchangeDocument;
 }
 
@@ -160,10 +167,13 @@ export async function fetchMountedConfiguration(
 
 /** What one hand-back of the opened configuration answers. */
 export type ConfigurationHandBackAnswer =
-  /** The console wrote the settings into the `alcove.yaml` in the folder. */
-  | { kind: "written" }
-  /** The console refused, in its own words: what stopped it and what to do. */
-  | { kind: "refused"; error: string }
+  /** The console wrote the settings into the `alcove.yaml` in the folder, or,
+   * with `unchanged`, found the file already states them and left it. */
+  | { kind: "written"; unchanged?: true }
+  /** The console refused, in its own words: what stopped it and what to do.
+   * `changedSinceOpened` where the file is not the one the console opened or
+   * last saved, which opening it again resolves. */
+  | { kind: "refused"; error: string; changedSinceOpened?: true }
   /** The request did not answer -- a network fault, or a non-2xx that is not
    * a refusal. */
   | { kind: "unavailable" };
@@ -200,6 +210,9 @@ export async function saveOpenedConfiguration(
           typeof error === "string" && error.length > 0
             ? error
             : UNNAMED_HAND_BACK_REFUSAL,
+        ...(isRecord(body) && body.reason === CONFIGURATION_CHANGED_SAVE_REFUSAL
+          ? { changedSinceOpened: true as const }
+          : {}),
       };
     }
     if (!response.ok) return { kind: "unavailable" };
@@ -207,9 +220,11 @@ export async function saveOpenedConfiguration(
       response,
       MAX_JOB_STATUS_RESPONSE_BYTES,
     );
-    return isRecord(body) && body.written === true
-      ? { kind: "written" }
-      : { kind: "unavailable" };
+    if (!isRecord(body) || body.written !== true)
+      return { kind: "unavailable" };
+    return body.unchanged === true
+      ? { kind: "written", unchanged: true }
+      : { kind: "written" };
   } catch {
     return { kind: "unavailable" };
   }

@@ -75,6 +75,7 @@ export function InviterExchangeSection({
   onDownloadAcceptKit,
   serverJob,
   continuesOpenedExchange = false,
+  runsInWorkingFolder = false,
   jobId,
   reattached,
   reattaching,
@@ -129,6 +130,9 @@ export function InviterExchangeSection({
    * never sent: the share block gives way to a line saying so, and a retry
    * does not wait on that invitation's expiry. */
   continuesOpenedExchange?: boolean;
+  /** Whether that run uses the working folder's own alcove.yaml, where a
+   * partner terms change it stops on leaves its proposal. */
+  runsInWorkingFolder?: boolean;
   /** The console job id of a server-job run, once created. Threads the run's job
    * to the recurring hand-off panel; undefined on a browser run. */
   jobId: string | undefined;
@@ -300,6 +304,7 @@ export function InviterExchangeSection({
               termsChange={failure.termsChange}
               jobId={jobId}
               canApply={serverJob && continuesOpenedExchange}
+              inWorkingFolder={runsInWorkingFolder}
               onApplied={() => setTermsApplied(true)}
               onReviewApplied={onReviewAppliedTerms}
             />

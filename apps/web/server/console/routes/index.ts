@@ -90,8 +90,8 @@ import { defineJobRoute } from "../jobRoute";
  * `{ "reason": "mounted-key-file-invalid" }`, and a signed run of it naming
  * unconverted signing paths answers
  * `{ "reason": "mounted-signing-paths-unconverted" }`, a webrtc run of it
- * whose working folder `alcove.yaml` no longer runs here over the console's
- * coordination server answers
+ * whose working folder `alcove.yaml` is no longer one the console runs in
+ * place answers
  * `{ "reason": "opened-configuration-not-runnable" }`, and a saved SFTP
  * credential naming a console file answers its `jobCreateRefusal.ts` token.
  * Each is about console state rather than the intent, so the browser cannot

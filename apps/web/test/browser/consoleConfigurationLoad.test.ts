@@ -18,7 +18,9 @@ import {
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_CONTINUES,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
+  OPENED_SIGNALING_SERVER_NOTE,
   OPEN_CONFIGURATION_LABEL,
+  REOPEN_CONFIGURATION_LABEL,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
 import { InviterScreen } from "@exchange/InviterScreen";
@@ -126,6 +128,9 @@ const serverAddresses: Array<string> = [];
 /** The writes the job API received, in the order they arrived. */
 const writes: Array<"save" | "create"> = [];
 
+/** Each read of `GET /api/jobs/config`. */
+const configReads: Array<string> = [];
+
 /** The coordination server `wss://signal.example.org/api/` as the console
  * answers it once set. */
 const SIGNALING_PROJECTION = {
@@ -141,7 +146,12 @@ const SIGNALING_PROJECTION = {
  * the test says otherwise. */
 function stubConfigRoute(
   answer: { status: number; body: unknown },
-  mount: { files?: Array<unknown>; sftp?: unknown; saveRefusal?: string } = {},
+  mount: {
+    files?: Array<unknown>;
+    sftp?: unknown;
+    saveRefusal?: { error: string; reason?: string };
+    createRefusal?: string;
+  } = {},
 ): void {
   const realFetch = window.fetch.bind(window);
   let signalingServerSet = false;
@@ -160,7 +170,7 @@ function stubConfigRoute(
       if (url === "/api/jobs/config" && init?.method === "PUT") {
         savedBodies.push(JSON.parse(String(init.body)) as unknown);
         if (mount.saveRefusal !== undefined)
-          return json({ error: mount.saveRefusal }, 400);
+          return json(mount.saveRefusal, 400);
         writes.push("save");
         return json({ written: true });
       }
@@ -175,7 +185,10 @@ function stubConfigRoute(
           signalingServerSet ? SIGNALING_PROJECTION : { configured: false },
         );
       }
-      if (url === "/api/jobs/config") return json(answer.body, answer.status);
+      if (url === "/api/jobs/config") {
+        configReads.push(url);
+        return json(answer.body, answer.status);
+      }
       if (url === "/api/jobs/inputs")
         return json({ configured: true, files: mount.files ?? [] });
       if (url.startsWith("/api/jobs/inputs/profile"))
@@ -186,6 +199,8 @@ function stubConfigRoute(
       if (url === "/api/jobs") {
         createdBodies.push(JSON.parse(String(init?.body)) as unknown);
         writes.push("create");
+        if (mount.createRefusal !== undefined)
+          return json({ reason: mount.createRefusal }, 400);
         return json({ id: "job-7" }, 201);
       }
       if (url === "/api/jobs/job-7/events")
@@ -229,6 +244,7 @@ afterEach(() => {
   createdBodies.splice(0);
   serverAddresses.splice(0);
   writes.splice(0);
+  configReads.splice(0);
 });
 
 describe("the load offer on the file step", () => {
@@ -400,7 +416,11 @@ describe("the open configuration over the files it is derived across", () => {
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     await openConfiguration();
     await expect
-      .element(page.getByText(/uses a relay, under connection\.turn/).first())
+      .element(
+        page
+          .getByText(/This configuration sets up a relay \(connection\.turn\)/)
+          .first(),
+      )
       .toBeInTheDocument();
     await commitFile();
     await page
@@ -415,14 +435,14 @@ describe("the open configuration over the files it is derived across", () => {
     await expect
       .element(
         page
-          .getByText(/cannot run a webrtc configuration that uses a relay/)
+          .getByText(/cannot run a WebRTC configuration that sets up a relay/)
           .first(),
       )
       .toBeInTheDocument();
     expect(serverAddresses).toEqual([]);
     await expect
       .element(
-        page.getByText(/webrtc connection, its tuning and file handling/),
+        page.getByText(/WebRTC connection, its tuning and file handling/),
       )
       .toBeInTheDocument();
     await expect
@@ -452,7 +472,12 @@ describe("the open configuration over the files it is derived across", () => {
   });
 
   /** Open a webrtc configuration stating no relay and reach its review step. */
-  async function reviewInPlaceRun(saveRefusal?: string): Promise<void> {
+  async function reviewInPlaceRun(
+    refusals: {
+      saveRefusal?: { error: string; reason?: string };
+      createRefusal?: string;
+    } = {},
+  ): Promise<void> {
     stubConfigRoute(
       {
         status: 200,
@@ -463,10 +488,7 @@ describe("the open configuration over the files it is derived across", () => {
           metadata: STATED_COLUMNS,
         }),
       },
-      {
-        files: [CLIENTS_FILE],
-        ...(saveRefusal !== undefined ? { saveRefusal } : {}),
-      },
+      { files: [CLIENTS_FILE], ...refusals },
     );
     app.render(createElement(InviterScreen));
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
@@ -482,13 +504,18 @@ describe("the open configuration over the files it is derived across", () => {
 
   test("a webrtc configuration stating no relay is saved and then run in place", async () => {
     await reviewInPlaceRun();
-    expect(serverAddresses).toEqual(["wss://signal.example.org/api/"]);
     await expect
       .element(page.getByRole("radio", { name: /Over WebRTC, run here/ }))
       .toBeChecked();
     await expect
       .element(page.getByText("wss://signal.example.org/api/", { exact: true }))
       .toBeInTheDocument();
+    await expect
+      .element(page.getByText(OPENED_SIGNALING_SERVER_NOTE))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: "Change address" }))
+      .not.toBeInTheDocument();
     await expect
       .element(page.getByText(OPENED_EXCHANGE_RUNS_IN_PLACE).first())
       .toBeInTheDocument();
@@ -506,15 +533,18 @@ describe("the open configuration over the files it is derived across", () => {
     expect(createdBodies[0]).toMatchObject({
       channel: "webrtc",
       mountedConfigurationOpened: true,
-      signalingServer: { host: "signal.example.org", path: "/api/" },
     });
+    expect(createdBodies[0]).not.toHaveProperty("signalingServer");
     expect(createdBodies[0]).not.toHaveProperty("sharedSecret");
+    expect(serverAddresses).toEqual([]);
   });
 
-  test("a refused save starts no run and says why", async () => {
+  test("a save refused over a changed file starts no run and offers to open it again", async () => {
     const refusal =
       "The alcove.yaml in your working folder changed since you opened it.";
-    await reviewInPlaceRun(refusal);
+    await reviewInPlaceRun({
+      saveRefusal: { error: refusal, reason: "configuration-changed" },
+    });
     await page
       .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
       .click();
@@ -523,6 +553,45 @@ describe("the open configuration over the files it is derived across", () => {
       .toBeInTheDocument();
     await expect.element(page.getByText(refusal).first()).toBeInTheDocument();
     expect(createdBodies).toEqual([]);
+    const reads = configReads.length;
+    await page
+      .getByRole("button", { name: REOPEN_CONFIGURATION_LABEL })
+      .click();
+    await vi.waitFor(() => expect(configReads.length).toBe(reads + 1));
+    await expect
+      .element(page.getByText("Your changes were not saved to alcove.yaml"))
+      .not.toBeInTheDocument();
+  });
+
+  test("any other refused save offers no reopening", async () => {
+    await reviewInPlaceRun({ saveRefusal: { error: "Change them." } });
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await expect
+      .element(page.getByText("Change them.").first())
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: REOPEN_CONFIGURATION_LABEL }))
+      .not.toBeInTheDocument();
+  });
+
+  test("starting over after the run opens the configuration again", async () => {
+    await reviewInPlaceRun({
+      createRefusal: "opened-configuration-not-runnable",
+    });
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await expect
+      .element(page.getByText("The console did not run your alcove.yaml"))
+      .toBeInTheDocument();
+    const reads = configReads.length;
+    await page.getByRole("button", { name: "Start over" }).click();
+    await vi.waitFor(() => expect(configReads.length).toBe(reads + 1));
+    await expect
+      .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
+      .toBeInTheDocument();
   });
 
   test("a run started while it is open withholds both controls and sends no invitation", async () => {

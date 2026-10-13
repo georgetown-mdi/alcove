@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { getDefaultLinkageTerms } from "@alcove/core";
 
 import {
+  CONFIGURATION_ALREADY_SAVED,
   CONFIGURATION_LOAD_SEALED,
   CONFIGURATION_OPENED,
   CONFIGURATION_OPENED_FOR_REVIEW,
@@ -14,6 +15,7 @@ import {
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
+  OPENED_SIGNALING_SERVER_NOTE,
   RELAY_ENROLLMENT_NOTICE,
   carriedThroughNotice,
   channelNotConductedNotice,
@@ -31,6 +33,8 @@ import {
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   mountedConfigurationRead,
+  openedSignalingServer,
+  openedWebrtcEndpoint,
   opensInPlace,
   runWithheldReason,
   runsOpenedConfiguration,
@@ -308,8 +312,9 @@ describe("a webrtc configuration stating relay settings", () => {
   test("withholds the run of an opened webrtc file, naming its relay", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     const reason = runWithheldReason(state);
-    expect(reason).toContain("webrtc");
-    expect(reason).toContain("uses a relay (connection.turn)");
+    expect(reason).toContain("WebRTC configuration");
+    expect(reason).not.toContain("webrtc");
+    expect(reason).toContain("sets up a relay (connection.turn)");
     expect(reason).toMatch(/Alcove on the command line/);
     expect(reason).toMatch(/Save your changes to alcove\.yaml/);
   });
@@ -337,10 +342,13 @@ describe("a webrtc configuration stating relay settings", () => {
     expect(notices).toEqual([
       channelNotConductedNotice("webrtc", ["connection.turn"]),
     ]);
-    expect(notices[0]).toContain("uses a relay, under connection.turn");
-    expect(notices[0]).toContain("connects directly only");
+    expect(notices[0]).toContain(
+      "This configuration sets up a relay (connection.turn).",
+    );
+    expect(notices[0]).toContain("over direct connections only");
+    expect(notices[0]).not.toContain("webrtc");
     expect(notices[0]).toMatch(/save them to alcove\.yaml/);
-    expect(notices[0]).toMatch(/connection is kept exactly as your file/);
+    expect(notices[0]).toMatch(/connection is saved exactly as your file/);
   });
 
   test("one naming a relay registrar adds the enrollment step", () => {
@@ -386,6 +394,19 @@ describe("a webrtc configuration stating relay settings", () => {
       status: "failed",
       message: CONFIGURATION_SAVE_UNAVAILABLE,
     });
+    expect(
+      configurationSaveState({ kind: "written", unchanged: true }, HAND_BACK),
+    ).toEqual({
+      status: "saved",
+      handBack: JSON.stringify(HAND_BACK),
+      unchanged: true,
+    });
+    expect(
+      configurationSaveState(
+        { kind: "refused", error: "Open it again.", changedSinceOpened: true },
+        HAND_BACK,
+      ),
+    ).toEqual({ status: "failed", message: "Open it again.", reopens: true });
   });
 
   test("a written save is shown while the steps hold what it sent", () => {
@@ -409,15 +430,17 @@ describe("a webrtc configuration stating relay settings", () => {
 
   test("the saved message names the copy of the file kept beside it", () => {
     expect(CONFIGURATION_SAVED).toContain(PREVIOUS_CONFIGURATION_FILE_NAME);
+    expect(CONFIGURATION_SAVED).toContain("the console did not write itself");
+    expect(CONFIGURATION_ALREADY_SAVED).toContain("nothing was written");
   });
 
   test("its connection settings are held from the file, with a sentence", () => {
     const notice = connectionSettingsHeldNotice(
       mountedConfigurationRead(openedWebrtc()).state,
     );
-    expect(notice).toContain("webrtc connection");
+    expect(notice).toContain("WebRTC connection");
     expect(notice).toMatch(/exactly as your file states it/);
-    expect(notice).toMatch(/on the command line/);
+    expect(notice).toMatch(/Edit those settings in alcove\.yaml itself/);
   });
 
   test("a channel the console conducts holds no connection setting", () => {
@@ -438,7 +461,7 @@ describe("a webrtc configuration stating relay settings", () => {
       withTermsNotApplied(state, ["metadata"], ["metadata"]),
     );
     expect(notices).toHaveLength(3);
-    expect(notices[0]).toContain("webrtc");
+    expect(notices[0]).toContain("WebRTC");
     expect(notices[1]).toContain("metadata");
   });
 
@@ -725,9 +748,11 @@ describe("a webrtc configuration stating no relay settings", () => {
       carriedThrough: ["authentication.token_max_age_days"],
       warnings: [],
       runsInPlace: true,
+      signalingServer: "wss://signal.example.org/api/",
     });
     expect(loaded?.channel).toBe("webrtc");
     expect(opensInPlace(state)).toBe(true);
+    expect(openedSignalingServer(state)).toBe("wss://signal.example.org/api/");
     expect(runsOpenedConfiguration(state)).toBe(true);
     expect(runWithheldReason(state)).toBeUndefined();
     expect(configurationOpenedMessage(state)).toBe(CONFIGURATION_OPENED);
@@ -735,12 +760,43 @@ describe("a webrtc configuration stating no relay settings", () => {
 
   test("an sftp configuration does not run in place", () => {
     expect(opensInPlace(mountedConfigurationRead(opened()).state)).toBe(false);
+    expect(
+      openedSignalingServer(mountedConfigurationRead(opened()).state),
+    ).toBeUndefined();
+  });
+
+  test("one stating a relay shows no coordination server of its own", () => {
+    expect(
+      openedSignalingServer(
+        mountedConfigurationRead(openedWebrtcFile(["connection.turn"])).state,
+      ),
+    ).toBeUndefined();
   });
 
   test("its connection settings are held from the file, as the run uses them", () => {
     const notice = connectionSettingsHeldNotice(state);
-    expect(notice).toContain("webrtc connection");
+    expect(notice).toContain("WebRTC connection");
     expect(notice).toMatch(/the run uses it as it is/);
+  });
+
+  test("the invitation of its run names the server the file names", () => {
+    expect(openedWebrtcEndpoint("wss://signal.example.org/api/")).toEqual({
+      channel: "webrtc",
+      host: "signal.example.org",
+      path: "/api/",
+    });
+    expect(openedWebrtcEndpoint("ws://[::1]:9000/")).toEqual({
+      channel: "webrtc",
+      host: "::1",
+      port: 9000,
+      path: "/",
+    });
+    expect(openedWebrtcEndpoint("wss://Peer.Example.org/")?.host).toBe(
+      "peer.example.org",
+    );
+    expect(openedWebrtcEndpoint("wss://bad host/")).toBeUndefined();
+    expect(openedWebrtcEndpoint("https://signal.example.org/")).toBeUndefined();
+    expect(openedWebrtcEndpoint(undefined)).toBeUndefined();
   });
 
   test("names no channel notice, and no conversion", () => {
@@ -751,11 +807,27 @@ describe("a webrtc configuration stating no relay settings", () => {
     expect(withNewInvitation(state)).toBe(state);
   });
 
-  test("the review step says the run saves the file first, then runs it", () => {
+  test("the review step says the run saves any change first, then runs it", () => {
     expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toContain(
       PREVIOUS_CONFIGURATION_FILE_NAME,
     );
+    expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(/saves any change/);
+    expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(
+      /unless the console wrote that file itself/,
+    );
     expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(/as alcove exchange does/);
+    expect(OPENED_SIGNALING_SERVER_NOTE).toMatch(/^From your alcove\.yaml/);
+  });
+
+  test("an edit of its terms says starting saves them, and how to keep or change them", () => {
+    const warning = editedTermsWarning(state, {
+      termsEdited: true,
+      continuesOpenedExchange: true,
+    });
+    expect(warning).toContain("Starting the exchange saves these terms");
+    expect(warning).toContain("undo the change before you start");
+    expect(warning).toContain(`start, then run ${UPDATE_COMMAND}`);
+    expect(warning).not.toMatch(/close the configuration/);
   });
 });
 
@@ -849,7 +921,11 @@ describe("an opened configuration whose key file would refuse its run", () => {
       const state = openedWithoutKeyFile(fault, "webrtc");
       const notice = keyFileNotice(state);
       expect(notice?.message).toContain("open the configuration again");
-      expect(notice?.message).toContain("Alcove on the command line");
+      expect(notice?.message).toContain(
+        "if the key file is somewhere else, run the configuration with " +
+          "Alcove on the command line there",
+      );
+      expect(notice?.message).toContain("start again with alcove invite");
       expect(notice?.message).not.toContain(
         CREATE_INVITATION_FROM_SETTINGS_LABEL,
       );

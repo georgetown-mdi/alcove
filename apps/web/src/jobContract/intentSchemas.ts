@@ -1043,8 +1043,13 @@ export const SIGNING_IDENTITY_FILE_NAME = ".alcove-signing-identity.json";
 export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
 
 /** The copy of the mounted `alcove.yaml` as it was before the last save of an
- * opened configuration (`PUT /api/jobs/config`). */
+ * opened configuration (`PUT /api/jobs/config`) that replaced a file the
+ * console had not written itself. */
 export const PREVIOUS_CONFIGURATION_FILE_NAME = "alcove.yaml.previous";
+
+/** The `reason` of a save refused because the mounted `alcove.yaml` is not
+ * the file the console opened or last saved (`PUT /api/jobs/config`). */
+export const CONFIGURATION_CHANGED_SAVE_REFUSAL = "configuration-changed";
 
 /**
  * The fixed, server-chosen file names in a job workdir, so a client string

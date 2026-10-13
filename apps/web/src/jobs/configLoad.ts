@@ -44,6 +44,8 @@
  * the document it opened, the last refusal above holding the list to those.
  */
 
+import { isDeepStrictEqual } from "node:util";
+
 import {
   getDefaultLinkageTerms,
   parseExchangeSpec,
@@ -698,13 +700,17 @@ export function relaySettingFields(document: ExchangeSpec): Array<string> {
 }
 
 /** A webrtc connection's coordination server as the `ws://` or `wss://`
- * address the CLI dials: TLS unless `secure: false`, and the root path where
- * the file states none. */
+ * address the CLI dials: TLS unless `secure: false`, an IPv6 host in
+ * brackets, and the root path where the file states none. */
 function signalingServerAddress(
   server: MountedWebrtcConnection["server"],
 ): string {
+  const host =
+    server.host.includes(":") && !server.host.startsWith("[")
+      ? `[${server.host}]`
+      : server.host;
   const port = server.port !== undefined ? `:${server.port}` : "";
-  return `${server.secure === false ? "ws" : "wss"}://${server.host}${port}${server.path ?? "/"}`;
+  return `${server.secure === false ? "ws" : "wss"}://${host}${port}${server.path ?? "/"}`;
 }
 
 /** The connection form's own fields, read off an sftp connection. */
@@ -844,6 +850,25 @@ export function disclosedDocument(
  */
 export function mountedConfigurationDocument(source: string): ExchangeSpec {
   return openedConfiguration(source).document;
+}
+
+/**
+ * Whether `text` states the same configuration as `document`, both read by the
+ * same parse: the comparison a save makes so that writing settings the file
+ * already states leaves the file's own bytes alone.
+ */
+export function statesSameConfiguration(
+  text: string,
+  document: ExchangeSpec,
+): boolean {
+  let parsed: ExchangeSpec;
+  try {
+    parsed = parsedDocument(parsedYaml(text));
+  } catch (error) {
+    if (error instanceof ConfigurationLoadRefusedError) return false;
+    throw error;
+  }
+  return isDeepStrictEqual(parsed, document);
 }
 
 /** {@link mountedConfigurationDocument}, with the retired settings the source
@@ -1019,20 +1044,20 @@ function mountedConfigurationSource(dataRoot: string): string | null {
 }
 
 /** A webrtc configuration's connection. */
-export type MountedWebrtcConnection = Extract<
+type MountedWebrtcConnection = Extract<
   ExchangeSpec["connection"],
   { channel: "webrtc" }
 >;
 
 /**
- * The mounted configuration a run here runs in place, read as it is now: its
- * bytes and the connection of a webrtc document stating no relay setting.
- * Undefined for any other mount -- no file, one the console cannot open,
- * another channel, or relay settings.
+ * The mounted configuration a run here runs in place, read as it is now: the
+ * bytes of a webrtc document stating no relay setting. Undefined for any
+ * other mount -- no file, one the console cannot open, another channel, or
+ * relay settings.
  */
 export function mountedInPlaceConfiguration(
   dataRoot: string,
-): { source: string; connection: MountedWebrtcConnection } | undefined {
+): { source: string } | undefined {
   let source: string | null;
   let document: ExchangeSpec;
   try {
@@ -1043,13 +1068,12 @@ export function mountedInPlaceConfiguration(
     if (error instanceof ConfigurationLoadRefusedError) return undefined;
     throw error;
   }
-  const { connection } = document;
   if (
-    connection.channel !== "webrtc" ||
+    document.connection.channel !== "webrtc" ||
     relaySettingFields(document).length > 0
   )
     return undefined;
-  return { source, connection };
+  return { source };
 }
 
 /**
