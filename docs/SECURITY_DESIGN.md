@@ -159,7 +159,7 @@ The shared secret is a 32-byte value holding 256 bits of entropy, whether drawn 
 
 #### Invitation contents and confidentiality
 
-An invitation holds the linkage terms, the short-lived setup secret, and optionally a connection endpoint: a locator (a PeerJS signaling URL, an SFTP host and port, or a shared folder) telling the acceptor where to rendezvous. The invitation is confidential, so it may hold what both parties need to meet. A locator names a meeting point, not a way to authenticate at it.
+An invitation holds the linkage terms, the short-lived setup secret, and optionally a connection endpoint: a locator (a PeerJS signaling URL, an SFTP host and port, or a shared folder) telling the acceptor where to rendezvous. The invitation is confidential, so it may hold what both parties need to meet. A locator names a meeting point, not a way to authenticate at it. The token's encoding, its fields, and the checks a receiving party applies to it are specified in [INVITATION_TOKEN.md](spec/INVITATION_TOKEN.md).
 
 A connection credential may be included where its lifetime fits the invitation's acceptance window: the credential must stay valid for as long as the invitation can be accepted, which may be up to a year. A one-hour relay credential does not fit an invitation that may wait days for acceptance.
 

@@ -21,12 +21,11 @@ from an invitation** material under that document's
 covers how the artifact is constructed and what it does and does not promise. It
 does not cover the field-level meaning of any config field (see
 [EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md)), the invitation token's
-connection-endpoint sub-schemas (see [FILE_SYNC.md](FILE_SYNC.md)), or the
+wire format and connection-endpoint sub-schemas (see
+[INVITATION_TOKEN.md](INVITATION_TOKEN.md)), or the
 owner-only write discipline the key file it provisions is written under (see
-[CREDENTIAL_STORAGE.md](CREDENTIAL_STORAGE.md)). The token's own wire format --
-its encoding, its checksum, and its top-level field layout -- is specified in no
-document of this tier; `packages/core/src/config/invitation.ts` is the only
-statement of it. Intended readers are security auditors and implementors.
+[CREDENTIAL_STORAGE.md](CREDENTIAL_STORAGE.md)). Intended readers are security
+auditors and implementors.
 
 ## The artifact is the CLI config schema
 
@@ -608,8 +607,9 @@ reach across transports.
 The endpoint itself holds only a public locator (signaling URL, SFTP
 host/port/path, or a file-drop directory / split pair) and never a credential;
 the per-channel sub-schemas are `z.strictObject` and reject any field outside the
-locator allowlist. The endpoint wire format and the split-directory mirror swap
-are specified in [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories).
+locator allowlist. The endpoint wire format is specified in
+[INVITATION_TOKEN.md](INVITATION_TOKEN.md#connection-endpoint), and the
+split-directory mirror swap in [FILE_SYNC.md](FILE_SYNC.md#split-inboundoutbound-directories).
 
 ## The secret's path
 
