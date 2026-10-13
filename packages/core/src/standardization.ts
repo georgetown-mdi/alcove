@@ -48,6 +48,7 @@ import {
   swapPairFuzzyComparisonsDiffer,
   swapPairTransformsDiffer,
 } from "./linkageTermsPolicy.js";
+import { isDisclosedToPartner } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import { readRowColumn } from "./file.js";
 import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
@@ -2080,8 +2081,9 @@ interface FieldColumnResolution {
  * because the transform is the operator's own statement that the column is a
  * linkage input, or a column the input lacks, which the presence test reports.
  *
- * @internal Shared primitive for the resolution's three in-package consumers
- * (builder, satisfiability checker, default-standardization derivation);
+ * @internal Shared primitive for the resolution's in-package consumers
+ * (builder, satisfiability checker, default-standardization derivation,
+ * {@link heldBackColumnNames});
  * exported for those cross-module imports, not as a supported entry point. The
  * web and CLI paths consume {@link assessLinkageSatisfiability} /
  * {@link unsatisfiedLinkageFields}, not this directly.
@@ -2137,6 +2139,54 @@ export function resolveFieldColumns(
     resolution.set(field.name, { column: col?.name, transform: undefined });
   }
   return resolution;
+}
+
+/**
+ * The input column each linkage field a key uses reads, by field name, as
+ * {@link resolveFieldColumns} binds it. A field bound to no column is absent.
+ */
+export function matchedFieldColumns(
+  metadata: ColumnMetadata[],
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): Map<string, string> {
+  const resolution = resolveFieldColumns(terms, standardization, metadata);
+  const matched = new Map<string, string>();
+  for (const key of terms.linkageKeys)
+    for (const element of key.elements) {
+      const column = resolution.get(element.field)?.column;
+      if (column !== undefined) matched.set(element.field, column);
+    }
+  return matched;
+}
+
+/**
+ * The columns of the input the run neither sends nor matches on, in input
+ * order: declared in `metadata` and present in `inputColumns`, not disclosed
+ * ({@link isDisclosedToPartner}), and bound by {@link resolveFieldColumns} to
+ * no field a linkage key uses. A `metadata` entry the input lacks is not
+ * listed. In a direct run these are the columns whose names Alcove recognizes
+ * as linkage keys but no key of the terms reads, such as `phone`, or a second
+ * date-of-birth column.
+ */
+export function heldBackColumnNames(
+  metadata: ColumnMetadata[],
+  inputColumns: ReadonlyArray<string>,
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): Array<string> {
+  const matchedColumns = new Set(
+    matchedFieldColumns(metadata, terms, standardization).values(),
+  );
+  const declared = new Map(metadata.map((column) => [column.name, column]));
+  return inputColumns.filter((name) => {
+    const column = declared.get(name);
+    return (
+      column !== undefined &&
+      !isDisclosedToPartner(column) &&
+      !matchedColumns.has(name)
+    );
+  });
 }
 
 /**

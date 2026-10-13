@@ -795,6 +795,67 @@ function elementBreadthMarker(
   return undefined;
 }
 
+/** One compact matched-field label with the names of the fields that share it. */
+interface MatchedFieldGroup {
+  label: Displayable;
+  fields: Array<string>;
+}
+
+/** One matched-field label with the input columns its fields read. */
+export interface MatchedFieldColumns {
+  label: Displayable;
+  columns: Array<string>;
+}
+
+/**
+ * The fields the keys match on grouped by compact label, in order of first
+ * appearance: each label with the names of the fields that share it. An
+ * unresolved reference falls back to its sanitized name.
+ */
+function matchedFieldGroups(terms: LinkageTerms): Array<MatchedFieldGroup> {
+  const fieldByName = new Map(
+    terms.linkageFields.map((field) => [field.name, field.type]),
+  );
+  const groups = new Map<string, MatchedFieldGroup>();
+  for (const key of terms.linkageKeys) {
+    for (const element of key.elements) {
+      const type = fieldByName.get(element.field);
+      const label =
+        type !== undefined
+          ? COMPACT_FIELD_TYPE_LABELS[type]
+          : redactAndSanitizeForDisplay(element.field);
+      const group = groups.get(label) ?? { label, fields: [] };
+      if (!group.fields.includes(element.field))
+        group.fields.push(element.field);
+      groups.set(label, group);
+    }
+  }
+  return [...groups.values()];
+}
+
+/**
+ * The labels {@link InvitationSummary.matchedFields} lists, each with the
+ * input columns its fields read, given the field-to-column binding of
+ * {@link matchedFieldColumns}. A column shared by two fields of one label is
+ * listed once; a label whose fields read no column lists none.
+ */
+export function matchedFieldsWithColumns(
+  terms: LinkageTerms,
+  columnByField: ReadonlyMap<string, string>,
+): Array<MatchedFieldColumns> {
+  return matchedFieldGroups(terms).map(({ label, fields }) => ({
+    label,
+    columns: [
+      ...new Set(
+        fields.flatMap((field) => {
+          const column = columnByField.get(field);
+          return column === undefined ? [] : [column];
+        }),
+      ),
+    ],
+  }));
+}
+
 /**
  * Reduce one linkage key to its display summary. `fieldByName` maps a field
  * `name` to its semantic type; an unresolved element or swap reference falls
@@ -1108,20 +1169,7 @@ export function summarizeInvitation(
   // The unique matched fields, compact and in order of first appearance,
   // derived from the keys' elements (not the declared field list) through the
   // same label path as the per-key sublines.
-  const matchedFields: Array<Displayable> = [];
-  const seenMatchedFields = new Set<string>();
-  for (const key of terms.linkageKeys) {
-    for (const element of key.elements) {
-      const type = fieldByName.get(element.field);
-      const label =
-        type !== undefined
-          ? COMPACT_FIELD_TYPE_LABELS[type]
-          : redactAndSanitizeForDisplay(element.field);
-      if (seenMatchedFields.has(label)) continue;
-      seenMatchedFields.add(label);
-      matchedFields.push(label);
-    }
-  }
+  const matchedFields = matchedFieldGroups(terms).map((group) => group.label);
 
   // The consent screen shows the inviter's terms as proposed, not only what
   // today's exchange runs; the *Applied flags report the gap to the renderer.

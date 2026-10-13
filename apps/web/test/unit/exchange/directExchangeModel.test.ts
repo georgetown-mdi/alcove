@@ -73,8 +73,9 @@ function sentColumns(preview: { linkageTerms: LinkageTerms }): Array<string> {
 describe("previewInferredTerms", () => {
   test("linkage keys and fields match core inference for the same columns", () => {
     // The preview must be exactly what the CLI infers from the same columns
-    // (prepareForExchange with no spec: inferMetadata then getDefaultLinkageTerms),
-    // or the operator would confirm terms the run does not honor.
+    // (prepareForExchange with no spec, in the direct inference mode:
+    // inferMetadata then getDefaultLinkageTerms), or the operator would confirm
+    // terms the run does not honor.
     const preview = previewInferredTerms(
       LINKABLE_COLUMNS,
       "County Health",
@@ -83,7 +84,7 @@ describe("previewInferredTerms", () => {
     );
     const core = getDefaultLinkageTerms(
       "County Health",
-      inferMetadata(LINKABLE_COLUMNS, []),
+      inferMetadata(LINKABLE_COLUMNS, [], { mode: "direct" }),
     );
 
     expect(preview.linkageTerms.linkageKeys).toEqual(core.linkageKeys);
@@ -93,27 +94,35 @@ describe("previewInferredTerms", () => {
   });
 
   test("disclosed columns match core's disclosure predicate and back the display send", () => {
-    // `id` is the one inferred column that is sent; `program_code` is not
-    // recognized, so inference leaves it out and it is not sent.
-    const columns = [...LINKABLE_COLUMNS, "id"];
+    // Every column that is not a linkage key is sent, each identifier column
+    // among them; no linkage-key column is.
+    const columns = [...LINKABLE_COLUMNS, "id", "case_id"];
     const preview = previewInferredTerms(
       columns,
       DEFAULT_PREVIEW_IDENTITY,
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    const disclosed = disclosedColumnNames(inferMetadata(columns, []));
+    const disclosed = disclosedColumnNames(
+      inferMetadata(columns, [], { mode: "direct" }),
+    );
 
     // payload.send is authored from the disclosed set so the terms panel's "columns
     // sent" display is accurate rather than empty (the default terms hold no payload).
     expect(sentColumns(preview)).toEqual(disclosed);
-    expect(sentColumns(preview)).toEqual(["id"]);
-    expect(sentColumns(preview)).not.toContain("program_code");
+    expect(sentColumns(preview)).toEqual(["program_code", "id", "case_id"]);
+    for (const linkageColumn of [
+      "ssn",
+      "first_name",
+      "last_name",
+      "date_of_birth",
+    ])
+      expect(sentColumns(preview)).not.toContain(linkageColumn);
   });
 
-  test("an unrecognized header past the ceiling is not sent, so it leaves the run gate open", () => {
+  test("an unrecognized header past the ceiling is sent, so it closes the run gate", () => {
     // This spine has no disclosure control, so inference alone decides what is
-    // sent, and it sends no column it does not recognize.
+    // sent, and it sends every column that is not a linkage key.
     const past = "a".repeat(MAX_NAME_LENGTH + 1);
     const preview = previewInferredTerms(
       [...LINKABLE_COLUMNS, past],
@@ -121,11 +130,13 @@ describe("previewInferredTerms", () => {
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    expect(preview.overlongDisclosedColumns).toEqual([]);
-    expect(sentColumns(preview)).not.toContain(past);
+    expect(preview.overlongDisclosedColumns).toEqual([
+      LINKABLE_COLUMNS.length + 1,
+    ]);
+    expect(sentColumns(preview)).toContain(past);
   });
 
-  test("an unrecognized header at the ceiling is not sent and leaves the run gate open", () => {
+  test("an unrecognized header at the ceiling is sent and leaves the run gate open", () => {
     const atCeiling = "a".repeat(MAX_NAME_LENGTH);
     const preview = previewInferredTerms(
       [...LINKABLE_COLUMNS, atCeiling],
@@ -133,11 +144,11 @@ describe("previewInferredTerms", () => {
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    expect(sentColumns(preview)).not.toContain(atCeiling);
+    expect(sentColumns(preview)).toContain(atCeiling);
     expect(preview.overlongDisclosedColumns).toEqual([]);
   });
 
-  test("an unrecognized header past the ceiling in UTF-16 code units is not sent either", () => {
+  test("an unrecognized header past the ceiling in UTF-16 code units closes the run gate too", () => {
     // MAX_NAME_LENGTH astral characters: under the ceiling on a code-point count,
     // over it on the count every such bound uses.
     const astral = "\u{1D54F}".repeat(MAX_NAME_LENGTH);
@@ -148,7 +159,9 @@ describe("previewInferredTerms", () => {
       DIRECT_LINKAGE_STRATEGY_DEFAULT,
       DIRECT_DEDUPLICATE_DEFAULT,
     );
-    expect(preview.overlongDisclosedColumns).toEqual([]);
+    expect(preview.overlongDisclosedColumns).toEqual([
+      LINKABLE_COLUMNS.length + 1,
+    ]);
   });
 
   test("a file with no matchable columns is unlinkable and names the missing fields", () => {

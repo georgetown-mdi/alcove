@@ -159,16 +159,21 @@ export function sanitizedColumnsAlert(positions: ReadonlyArray<number>): {
  * are not operator-controlled content and are shown directly, while the
  * offending NAME never is (it is longer than the message that would hold it).
  *
- * Both remedies are named because the seats differ in which they offer: a seat
- * with a disclosure control clears it by unmarking the column, one without it by
- * shortening the header. Neither remedy is the file's rejection -- an oversized
- * name still matches, identifies, and is ignorable.
+ * A seat with a disclosure control clears it by unmarking the column or by
+ * shortening the header, and names both; a seat without one passes
+ * `canWithhold: false` and names only the shorter header. Neither remedy is the
+ * file's rejection -- an oversized name still matches, identifies, and is
+ * ignorable.
  */
-export function overlongColumnsAlert(positions: ReadonlyArray<number>): {
+export function overlongColumnsAlert(
+  positions: ReadonlyArray<number>,
+  options: { canWithhold: boolean } = { canWithhold: true },
+): {
   title: string;
   message: string;
 } {
   const plural = positions.length > 1;
+  const shorten = `Shorten the header${plural ? "s" : ""} in your file`;
   return {
     title: plural
       ? "These column names are too long to send"
@@ -180,8 +185,11 @@ export function overlongColumnsAlert(positions: ReadonlyArray<number>): {
       `${MAX_NAME_LENGTH} characters (a character outside the basic set, such as ` +
       `an emoji, counts as two). A column's name travels with its values, and ` +
       `your partner's copy of Alcove refuses a name that long, so the exchange ` +
-      `cannot start. Shorten the header${plural ? "s" : ""} in your file, or set ` +
-      `${plural ? "those columns" : "that column"} so ${plural ? "they are" : "it is"} not sent.`,
+      `cannot start. ` +
+      (options.canWithhold
+        ? `${shorten}, or set ${plural ? "those columns" : "that column"} so ` +
+          `${plural ? "they are" : "it is"} not sent.`
+        : `${shorten}.`),
   };
 }
 

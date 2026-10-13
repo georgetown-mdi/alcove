@@ -239,7 +239,7 @@ interface DirectTermsPreview {
    * hold ({@link overlongDisclosedColumnPositions}); non-empty means the run
    * would be refused at prepare time, so the confirm screen refuses it here
    * instead. This spine has no disclosure control -- the inferred metadata sends
-   * only an `id` or `identifier` column -- so the remedy is a shorter header. */
+   * every column that is not a linkage key -- so the remedy is a shorter header. */
   overlongDisclosedColumns: Array<number>;
   /** Why this file cannot be run under the previewed terms, or `undefined` when it
    * can. Derived from the same verdict the run boundary enforces, over the very
@@ -249,8 +249,8 @@ interface DirectTermsPreview {
 
 /**
  * Compute the direct-exchange terms preview from the input file's columns.
- * Mirrors the CLI's zero-setup inference (`prepareForExchange({}, identity,
- * rows, columns)`) so the preview matches what actually runs; `payload.send`
+ * Mirrors the CLI's zero-setup inference (`prepareForExchange` in the `direct`
+ * inference mode) so the preview matches what actually runs; `payload.send`
  * is authored from the inferred metadata's disclosed set, so the "columns
  * sent" display is accurate rather than empty. The operator's selected
  * `linkageStrategy` and `deduplicate` are applied over the inferred terms,
@@ -272,7 +272,7 @@ export function previewInferredTerms(
 ): DirectTermsPreview {
   // Preview over columns the file step already committed: it read the header,
   // holds the sanitized positions, and refuses an empty name before this runs.
-  const metadata = inferMetadata(columns, []);
+  const metadata = inferMetadata(columns, [], { mode: "direct" });
   const linkageTerms = {
     ...getDefaultLinkageTerms(identity, metadata),
     linkageStrategy,

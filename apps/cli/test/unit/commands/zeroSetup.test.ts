@@ -15,7 +15,9 @@ import YAML from "yaml";
 import {
   assertFirstRoundWithinSetMaximum,
   CONSENT_FACTS,
+  disclosedColumnNames,
   getLogger,
+  MAX_NAME_LENGTH,
   prepareForExchange,
   RoundSetLimitError,
   sanitizeErrorForDisplay,
@@ -36,7 +38,6 @@ import {
   createConnection,
   handler,
   QUICK_EXCHANGE_TRUST_NOTICE,
-  QUICK_EXCHANGE_UNDECLARED_REMEDY,
   resolvePositionals,
 } from "../../../src/commands/zeroSetup";
 import { BARE_INVOCATION_SUMMARY } from "../../../src/usageHints";
@@ -50,7 +51,6 @@ import {
   runProtocol,
   warnUndeclaredColumns,
 } from "../../../src/protocol";
-import { undeclaredColumnsNotice } from "../../../src/run/notices";
 import type { RunProtocolOptions } from "../../../src/protocol";
 import { captureFd3 } from "../../eventStreamTestSupport";
 import {
@@ -1072,44 +1072,18 @@ test("handler: the dataset is prepared before host-key trust", async () => {
   }
 });
 
-test("handler: undeclared columns are named once, before host-key trust", async () => {
-  // Host-key trust's first-use probe opens a connection to the server, so the
-  // notice must already be on stderr and fd 3 when it starts, and runProtocol
-  // must be told so, or its own pass would raise it again.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zeroundeclared-"));
+test("handler: a quick exchange declares every column, so no undeclared-columns notice is raised", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerodirect-"));
   const exitSpy = captureProcessExit();
   try {
     const input = path.join(dir, "input.csv");
     fs.writeFileSync(
       input,
-      "first_name,last_name,date_of_birth\nBob,Jones,1990-01-02\n",
+      "first_name,last_name,date_of_birth,ssn,notes,case_id,household_id\n" +
+        "Bob,Jones,1990-01-02,123456789,x,c1,h1\n",
     );
-    const undeclaredColumns = ["notes"];
-    // A quick exchange reads no configuration, so its notice ends with the
-    // remedy that writes one rather than one naming a file it has none of.
-    const notice = undeclaredColumnsNotice(
-      { undeclaredColumns },
-      QUICK_EXCHANGE_UNDECLARED_REMEDY,
-    );
-    expect(notice).not.toContain("the configuration's metadata block");
-    expect(notice).toContain("'alcove init'");
-    const realPrepare = vi.mocked(prepareForExchange).getMockImplementation();
-    if (realPrepare === undefined) throw new Error("prepare is not wrapped");
-    vi.mocked(prepareForExchange).mockImplementationOnce((...args) => ({
-      ...realPrepare(...args),
-      undeclaredColumns,
-    }));
-    let noticeEventsAtHostKeyStep: number | undefined;
+    vi.mocked(prepareForExchange).mockClear();
     vi.mocked(warnUndeclaredColumns).mockClear();
-    vi.mocked(establishHostKeyTrust).mockClear();
-    vi.mocked(establishHostKeyTrust).mockImplementationOnce((async () => {
-      noticeEventsAtHostKeyStep = vi
-        .mocked(fs.writeSync)
-        .mock.calls.filter(
-          ([fd, buffer]) =>
-            fd === 3 && String(buffer).includes('"undeclaredColumns"'),
-        ).length;
-    }) as never);
     vi.mocked(runProtocol).mockClear();
     vi.mocked(runProtocol).mockImplementationOnce((async (
       ...callArgs: unknown[]
@@ -1129,22 +1103,25 @@ test("handler: undeclared columns are named once, before host-key trust", async 
       } as unknown as Arguments),
     );
 
-    expect(notice).toBeDefined();
-    expect(vi.mocked(warnUndeclaredColumns)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(warnUndeclaredColumns).mock.results[0].value).toBe(true);
-    expect(vi.mocked(establishHostKeyTrust)).toHaveBeenCalledTimes(1);
-    const [warned] = vi.mocked(warnUndeclaredColumns).mock.invocationCallOrder;
-    const [trusted] = vi.mocked(establishHostKeyTrust).mock.invocationCallOrder;
-    expect(warned).toBeLessThan(trusted);
-    expect(noticeEventsAtHostKeyStep).toBe(1);
+    expect(vi.mocked(prepareForExchange)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(prepareForExchange).mock.calls[0][5]).toBe("direct");
+    const prepared = vi.mocked(prepareForExchange).mock.results[0]
+      .value as PreparedExchange;
+    expect(prepared.undeclaredColumns).toEqual([]);
+    expect(disclosedColumnNames(prepared.metadata)).toEqual([
+      "notes",
+      "case_id",
+      "household_id",
+    ]);
+    expect(vi.mocked(warnUndeclaredColumns)).not.toHaveBeenCalled();
+    expect(
+      optionsArg(vi.mocked(runProtocol).mock.calls[0]).undeclaredColumnsWarned,
+    ).toBeUndefined();
     expect(
       lines.filter(
         (l) => l.type === "warning" && l.source === "undeclaredColumns",
       ),
-    ).toEqual([expect.objectContaining({ message: notice })]);
-    expect(
-      optionsArg(vi.mocked(runProtocol).mock.calls[0]).undeclaredColumnsWarned,
-    ).toBe(true);
+    ).toEqual([]);
   } finally {
     exitSpy.mockRestore();
     fs.rmSync(dir, { recursive: true, force: true });
@@ -1431,6 +1408,47 @@ test("handler: a pipe file read with no named delimiter names the remedy", async
   }
 });
 
+test("handler: an over-long non-key header is refused with a remedy a quick exchange can apply", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerolongname-"));
+  const stderrChunks: string[] = [];
+  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  }) as never);
+  const exitSpy = captureProcessExit();
+  try {
+    const input = path.join(dir, "input.csv");
+    const overlong = "n".repeat(MAX_NAME_LENGTH + 1);
+    fs.writeFileSync(input, `first_name,dob,${overlong}\nBob,1990-01-02,x\n`);
+
+    await expect(
+      handler({
+        _: [platformLocalhostFileUrl("/drop").href, input],
+        $0: "alcove",
+        "config-file": path.join(dir, "alcove.yaml"),
+        "key-file": path.join(dir, ".alcove.key"),
+        identity: "Tester",
+        record: false,
+        "log-level": "error",
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
+    const stderr = stderrChunks.join("");
+    expect(stderr).toContain(`${MAX_NAME_LENGTH}-character limit`);
+    expect(stderr).toContain(
+      "Shorten the column name, or run with a configuration " +
+        "('alcove init URL INPUT_FILE') whose metadata does not transmit it.",
+    );
+    expect(stderr).not.toContain("is_payload: false");
+  } finally {
+    getLogger("alcove").setLevel("silent");
+    stderrSpy.mockRestore();
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("handler: a credential @path naming a missing file exits 64 with no host-key probe", async () => {
   // The same invariant over the other local refusal the connect path holds: a
   // `--server-password @path` whose file is not there is decided from this
@@ -1619,6 +1637,26 @@ test("handler: a run transmitting no column of its own says so", async () => {
   expect(stderr).toContain("columns you will send");
   expect(stderr).toContain("(none) -- only matched records");
   expect(stderr).not.toContain("- diagnosis");
+});
+
+test("handler: the display lists every column that is not a linkage key, and no linkage key", async () => {
+  const { stderr } = await zeroSetupRunOutput(
+    "first_name,last_name,date_of_birth,ssn,diagnosis,case_id,household_id\n" +
+      "Bob,Jones,1990-01-02,123456789,x,c1,h1\n",
+  );
+
+  const lines = stderr.split(/\r?\n/);
+  const labelIndex = lines.findIndex((line) =>
+    line.includes("columns you will send"),
+  );
+  expect(labelIndex).toBeGreaterThanOrEqual(0);
+  const sent: string[] = [];
+  for (const line of lines.slice(labelIndex + 1)) {
+    const listed = /^ {4}- (.*)$/.exec(line);
+    if (listed === null) break;
+    sent.push(listed[1]);
+  }
+  expect(sent).toEqual(["diagnosis", "case_id", "household_id"]);
 });
 
 test("handler: the whole display reaches the operator before the server is contacted", async () => {

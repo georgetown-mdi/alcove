@@ -915,7 +915,9 @@ export async function prepareDataset(
 
   displayExchangeDisclosure({
     metadata: resolved.metadata,
+    inputColumns: columns,
     linkageTerms: resolved.linkageTerms,
+    standardization: exchangeDataSpec.standardization,
     connection,
     logFile,
     log,

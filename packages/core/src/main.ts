@@ -551,7 +551,9 @@ export {
 } from "./config/metadata";
 export type {
   ColumnMetadata,
+  InferMetadataOptions,
   Metadata,
+  MetadataInferenceMode,
   OwnColumnSelection,
 } from "./config/metadata";
 export {
@@ -580,6 +582,8 @@ export type {
 } from "./records/signingIdentity";
 export {
   FAN_OUT_FUNCTION_NAMES,
+  heldBackColumnNames,
+  matchedFieldColumns,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
   StandardizedField,
   runPipeline,
@@ -616,11 +620,13 @@ export type {
 // judgment of what an acceptor is consenting to, and the escaping of every
 // partner-controlled string in it, is made once rather than per surface.
 export {
+  matchedFieldsWithColumns,
   summarizeInvitation,
   withholdsPartnerAssociationTable,
 } from "./consent/invitationSummary.js";
 export type {
   InvitationKeySummary,
+  MatchedFieldColumns,
   InvitationRuleSetSummary,
   InvitationSummary,
 } from "./consent/invitationSummary.js";
