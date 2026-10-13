@@ -193,22 +193,31 @@ function readMainActivities() {
 }
 
 /** Findings about where the deployed commit stands on main, read from this
- * checkout's origin/main and GitHub's record of main's updates. */
-export function historyFindings(deployedCommit, now) {
-  const tip = git(["rev-parse", "--verify", "origin/main^{commit}"]);
+ * checkout's origin/main and GitHub's record of main's updates. `sources`
+ * replaces the git runner, the activity reader and the ancestry test. */
+export function historyFindings(
+  deployedCommit,
+  now,
+  {
+    git: runGit = git,
+    readActivities = readMainActivities,
+    isAncestor: ancestor = isAncestor,
+  } = {},
+) {
+  const tip = runGit(["rev-parse", "--verify", "origin/main^{commit}"]);
   if (tip.status !== 0)
     throw new Error(
       "origin/main is not in this checkout; fetch main's history",
     );
   if (tip.stdout.trim() === deployedCommit) return [];
-  if (git(["cat-file", "-e", `${deployedCommit}^{commit}`]).status !== 0)
+  if (runGit(["cat-file", "-e", `${deployedCommit}^{commit}`]).status !== 0)
     return [
       {
         kind: "not-on-main",
         message: `the deployed commit ${deployedCommit} is not in this repository's history`,
       },
     ];
-  if (!isAncestor(deployedCommit, "origin/main"))
+  if (!ancestor(deployedCommit, "origin/main"))
     return [
       {
         kind: "not-on-main",
@@ -217,14 +226,14 @@ export function historyFindings(deployedCommit, now) {
     ];
   // An update whose tip is not on main's current history, such as one a force
   // push replaced, says nothing about when main moved past the deployed commit.
-  const updates = readMainActivities().filter(
+  const updates = readActivities().filter(
     (activity) =>
       COMMIT_PATTERN.test(activity.after) &&
-      git(["cat-file", "-e", `${activity.after}^{commit}`]).status === 0 &&
-      isAncestor(activity.after, "origin/main"),
+      runGit(["cat-file", "-e", `${activity.after}^{commit}`]).status === 0 &&
+      ancestor(activity.after, "origin/main"),
   );
   const since = laggingSince(updates, (after) =>
-    isAncestor(after, deployedCommit),
+    ancestor(after, deployedCommit),
   );
   if (since === null)
     return [
@@ -251,8 +260,13 @@ async function main() {
   if (
     fields.deployedCommit !== null &&
     COMMIT_PATTERN.test(fields.deployedCommit)
-  )
-    findings.push(...historyFindings(fields.deployedCommit, new Date()));
+  ) {
+    try {
+      findings.push(...historyFindings(fields.deployedCommit, new Date()));
+    } catch (error) {
+      findings.push({ kind: "unread", message: error.message });
+    }
+  }
 
   const lines = [
     `${healthUrl}`,
