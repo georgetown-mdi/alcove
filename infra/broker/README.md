@@ -37,6 +37,10 @@ The front listens on IPv4 only.
 
 ## Install
 
+These steps bring up a new host.
+Later commits reach the project's host through [the host pull](../host-pull/README.md), which stages each commit of `main` as its own tree under `/opt/alcove-broker/trees` with core's signed build, runs this directory's `install.sh` and the relay's from it, and rolls back to the previous tree when either fails; its own Install section moves the clone from step 2 into that layout.
+A host without the pull takes a later commit by repeating steps 2, 3, 5 and 6 and `install.sh`.
+
 The broker's workspace is a precondition `install.sh` checks for and does not create.
 On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` OOM-killed coturn, so the install is scoped to the broker workspace and core is built elsewhere:
 
