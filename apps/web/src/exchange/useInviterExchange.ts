@@ -525,18 +525,31 @@ function failureContentFor(
     error instanceof JobApiRequestError &&
     error.refusalReason === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
   )
-    return {
-      category: "config",
-      title: "This configuration names its own signing paths",
-      message:
-        "The console did not start this exchange. Your alcove.yaml names " +
-        "its own signing identity, and the console signs only with its own. " +
-        "Convert the configuration on the first step to sign " +
-        "with the console's identity, or turn the signed receipt off to run " +
-        "this exchange unsigned, then start the run again. With the signed " +
-        "receipt off, the configuration the console gives you to run on a " +
-        "schedule keeps your file's signing settings as they are.",
-    };
+    return channel === "webrtc"
+      ? {
+          category: "config",
+          title: "This configuration names its own signing identity",
+          message:
+            "The console did not start this exchange. Your alcove.yaml " +
+            "signs with a signing identity file of its own, and the console " +
+            "signs only with its own identity. Turn the signed receipt off " +
+            "to run this exchange unsigned, then start the run again: the " +
+            "start saves that change to alcove.yaml. Or run the file with " +
+            "Alcove on the command line, which signs with the identity it " +
+            "names.",
+        }
+      : {
+          category: "config",
+          title: "This configuration names its own signing paths",
+          message:
+            "The console did not start this exchange. Your alcove.yaml names " +
+            "its own signing identity, and the console signs only with its own. " +
+            "Convert the configuration on the first step to sign " +
+            "with the console's identity, or turn the signed receipt off to run " +
+            "this exchange unsigned, then start the run again. With the signed " +
+            "receipt off, the configuration the console gives you to run on a " +
+            "schedule keeps your file's signing settings as they are.",
+        };
   // A console job create rejected the mounted file: a 400 the driver categorizes
   // `config`. The file is the likely fault, so the alert names it -- except on
   // the sftp channel, where a vanished picked remote is equally likely, so that

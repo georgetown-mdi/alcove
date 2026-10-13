@@ -1051,13 +1051,14 @@ type MountedWebrtcConnection = Extract<
 
 /**
  * The mounted configuration a run here runs in place, read as it is now: the
- * bytes of a webrtc document stating no relay setting. Undefined for any
- * other mount -- no file, one the console cannot open, another channel, or
- * relay settings.
+ * bytes of a webrtc document stating no relay setting, and the
+ * `signing.identity_file` it names where it signs in `certificate` mode, as
+ * the file spells it. Undefined for any other mount -- no file, one the
+ * console cannot open, another channel, or relay settings.
  */
 export function mountedInPlaceConfiguration(
   dataRoot: string,
-): { source: string } | undefined {
+): { source: string; certificateIdentityFile?: string } | undefined {
   let source: string | null;
   let document: ExchangeSpec;
   try {
@@ -1073,7 +1074,10 @@ export function mountedInPlaceConfiguration(
     relaySettingFields(document).length > 0
   )
     return undefined;
-  return { source };
+  const { signing } = document;
+  return signing?.mode === "certificate" && signing.identityFile !== undefined
+    ? { source, certificateIdentityFile: signing.identityFile }
+    : { source };
 }
 
 /**

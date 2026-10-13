@@ -509,13 +509,32 @@ describe("a webrtc configuration", () => {
         },
       }),
     );
-    expect(mountedInPlaceConfiguration(direct)).toEqual({
+    expect(mountedInPlaceConfiguration(direct)).toStrictEqual({
       source: fs.readFileSync(path.join(direct, "alcove.yaml"), "utf8"),
     });
     expect(
       mountedInPlaceConfiguration(mountHolding(savedSftpDocument())),
     ).toBeUndefined();
     expect(mountedInPlaceConfiguration(scratchDir("empty"))).toBeUndefined();
+  });
+
+  test("run in place, names the identity file it signs with only in certificate mode", () => {
+    const connection = {
+      channel: "webrtc",
+      role: "acceptor",
+      server: (webrtcDocument().connection as Record<string, unknown>).server,
+    };
+    const signedWith = (mode: string) =>
+      mountedInPlaceConfiguration(
+        mountHolding(
+          webrtcDocument({
+            connection,
+            signing: { mode, identity_file: "/home/operator/identity.json" },
+          }),
+        ),
+      )?.certificateIdentityFile;
+    expect(signedWith("certificate")).toBe("/home/operator/identity.json");
+    expect(signedWith("none")).toBeUndefined();
   });
 
   test("names its key file's fault, as a run in place reads it", () => {

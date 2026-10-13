@@ -94,6 +94,7 @@ import {
   signingPathSettings,
 } from "./configLoad";
 import {
+  namesSigningIdentity,
   resolveSigningIdentityPath,
   runSigningFingerprint,
   signingCertificatePath,
@@ -340,8 +341,10 @@ export class JobSftpCredentialConsoleOwnedError extends Error {
  * a signing path of its own. The console signs only with its own identity and
  * writes the receipt only where it serves it, so running would replace the
  * operator's paths without their say. The browser withholds this run and
- * offers the conversion; this is the server's own check on it. The route maps
- * it to a 400 naming the refusal.
+ * offers the conversion; this is the server's own check on it. Also thrown
+ * for a signed run in place whose file signs with an identity file other
+ * than the console's, converted or not, since that run signs as its file
+ * states. The route maps it to a 400 naming the refusal.
  */
 export class MountedSigningPathsUnconvertedError extends Error {
   constructor() {
@@ -835,6 +838,7 @@ export class JobManager {
     let signalingServer: AuthoredSignalingServer | undefined;
     let pairToRunOver: WorkingFolderPair | undefined;
     let inPlace: OpenedMountedConfiguration | undefined;
+    let inPlaceIdentityFile: string | undefined;
     // A run of the opened configuration runs the working folder's own files in
     // place, dialing the coordination server the file names, so it reads
     // neither the console's server nor a pair of the console's: it is refused
@@ -844,6 +848,7 @@ export class JobManager {
       if (mounted === undefined)
         throw new OpenedConfigurationNotRunnableError();
       inPlace = { source: mounted.source, document: undefined };
+      inPlaceIdentityFile = mounted.certificateIdentityFile;
     } else if (intent.channel === "webrtc") {
       const authored = this.authoredSignalingServer;
       if (authored === undefined && intent.signalingServer === undefined)
@@ -901,6 +906,16 @@ export class JobManager {
     // and before the slot is claimed, so a location naming no path in the
     // secrets mount leaves the console free rather than mid-create.
     const identityPath = this.identityPathFor(intent);
+    // A run in place signs with the identity its file names, which no
+    // conversion replaces, so a signed run is refused unless that is the
+    // identity the console shows.
+    if (
+      intent.mode !== "zeroSetup" &&
+      intent.signing?.mode === "certificate" &&
+      inPlaceIdentityFile !== undefined &&
+      !namesSigningIdentity(inPlaceIdentityFile, identityPath)
+    )
+      throw new MountedSigningPathsUnconvertedError();
     // Refused rather than warned: the run would copy this party's long-lived
     // private key to the partner, and no wording recovers a disclosed key.
     // After the busy check, so a create posted to recover a lost attachment on

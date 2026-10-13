@@ -757,6 +757,27 @@ describe("failureFor", () => {
     expect(failure.message).toContain("keeps your file's signing settings");
   });
 
+  test("a signed run in place refused over the file's own signing identity offers no conversion", () => {
+    const failure = failureFor(
+      "config",
+      new JobApiRequestError(
+        400,
+        "POST /api/jobs failed with status 400",
+        undefined,
+        MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.title).toBe(
+      "This configuration names its own signing identity",
+    );
+    expect(failure.message).not.toContain("Convert");
+    expect(failure.message).toContain("Turn the signed receipt off");
+    expect(failure.message).toContain("command line");
+  });
+
   test("the acceptor mounted-file 400 names its columns-step recovery", () => {
     // The acceptor's only config recovery button returns to its columns step (whose
     // own Back link re-selects the file), not a start-over that reaches the picker, so

@@ -68,6 +68,22 @@ export function signingIdentityPath(dataRoot: string): string {
 }
 
 /**
+ * Whether a configuration's `signing.identity_file`, as the file spells it,
+ * names the identity at `identityPath`. Lexical on absolute paths: a relative
+ * or `~` path resolves against the CLI's own working directory or home, so it
+ * is never taken to name the console's identity.
+ */
+export function namesSigningIdentity(
+  identityFile: string,
+  identityPath: string,
+): boolean {
+  return (
+    path.isAbsolute(identityFile) &&
+    path.resolve(identityFile) === path.resolve(identityPath)
+  );
+}
+
+/**
  * The exported certificate's absolute path in the mounted data root -- always
  * there, never beside the identity file. The operator may keep the identity in
  * a read-only mount of its own, where an export would fail; the data root is
