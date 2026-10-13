@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  BODY_MAX_WORDS,
   BODY_WRAP_COLUMNS,
   bodyLinesOf,
   fenced,
@@ -14,6 +15,7 @@ import {
   parseArgs,
   refusals,
   violations,
+  wordCountOf,
   wrapParagraph,
 } from "./format-squash-message.mjs";
 
@@ -42,6 +44,8 @@ function run(args, input = "") {
 
 const draft = (body) => `${body}\n`;
 const bodyLines = (text) => bodyLinesOf(text).filter((l) => l !== "");
+const wordsOf = (count) =>
+  Array.from({ length: count }, (_, i) => `w${i}`).join(" ");
 
 describe("format-squash-message wrapping", () => {
   it("rewraps a paragraph written at 120 columns", () => {
@@ -228,6 +232,38 @@ describe("format-squash-message refusals", () => {
     expect(refusals("   \n\n")).toHaveLength(1);
   });
 
+  it("accepts a body of exactly the word bound", () => {
+    expect(refusedFor(wordsOf(BODY_MAX_WORDS))).toEqual([]);
+  });
+
+  it("refuses a body one word over the bound, naming both numbers", () => {
+    const found = refusedFor(wordsOf(BODY_MAX_WORDS + 1));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("101 words");
+    expect(found[0]).toContain("100");
+    expect(found[0]).toContain("Shorten");
+  });
+
+  it("exits 2 with nothing printed for a body over the word bound", () => {
+    const result = run([], draft(wordsOf(BODY_MAX_WORDS + 1)));
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("101 words");
+    expect(result.stdout).toBe("");
+  });
+
+  it("counts the words normalizing prints, not list markers", () => {
+    const items = Array.from({ length: 60 }, (_, i) => `- w${i}`);
+    expect(refusedFor(`The points:\n${items.join("\n")}`)).toEqual([]);
+  });
+
+  it("counts a link as the words normalizing prints for it", () => {
+    const body = `${wordsOf(BODY_MAX_WORDS - 1)} [docs](https://x.org)`;
+    const result = run([], draft(body));
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("Shorten");
+    expect(result.stderr).not.toContain("bug in the script");
+  });
+
   it("refuses nothing normalizing can fix without losing a word", () => {
     for (const { body } of NORMALIZED) {
       expect(refusedFor(body), body).toEqual([]);
@@ -398,8 +434,11 @@ function landedBodies(count) {
 
 describe("format-squash-message against real commit messages", () => {
   // The repository's own recent history is the only corpus that proves the
-  // rules do not fire on messages written under them.
-  const landed = landedBodies(50);
+  // rules do not fire on messages written under them. Bodies landed before
+  // the word bound existed may exceed it, so the corpus keeps those within it.
+  const landed = landedBodies(50).filter(
+    ({ body }) => wordCountOf(body) <= BODY_MAX_WORDS,
+  );
 
   it("reads a corpus of messages rather than an empty list", () => {
     expect(landed.length).toBeGreaterThan(10);
