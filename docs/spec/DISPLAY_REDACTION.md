@@ -21,6 +21,7 @@ The reach stops at that unit's boundary: each cause-chain link, and each log arg
 The cost of failing closed is that the replacement also consumes first-party text composed after the marker in the same link.
 That cost is paid off at the composition site rather than by narrowing the reach: a partner- or server-controlled fragment is passed through `redactPrivateKeyMaterial` where it is interpolated, so a planted marker is replaced inside its own fragment and no longer exists when the link is rendered.
 The function is idempotent and never lengthens its input, so the later per-link pass is a no-op on an already-redacted fragment and a display budget fitted over raw fragments still holds.
+
 Redacting per fragment narrows the reach in one measured case, recorded here rather than left implicit: where two adversary-controlled fragments are adjacent in one link, a `BEGIN` marker ending the first and the key body opening the second are no longer one string when the rule runs, so that body survives where the per-link pass alone would have consumed it.
 Adjacent fragments under different parties do occur - a partner-derived peer id beside this party's own configured id, a partner-seedable inbound path beside the operator's outbound path.
 So what bounds the loss is not common provenance but what the surviving bytes are: in every composition reachable today they are that party's own or the operator's own path or id, never an Alcove secret.
@@ -29,6 +30,7 @@ Per-fragment redaction confines a marker to the fragment holding it there too, s
 Those bytes are that chooser's own, so what the strip lets through is text they already held rather than an Alcove secret.
 The safety check exists for an unanticipated sink, and a key split across two fragments of one link is where its reach stops.
 Applying it at a composition site is redaction, not a second escaping altitude: the fragment is still interpolated raw and still escaped exactly once, at the sink.
+
 Outside the reach of the [branded type](DISPLAY_ESCAPE.md#display-sanitization-escape-format), the assignment is a convention over composition sites rather than a mechanism that enforces itself -- the renderer cannot tell a first-party span from a partner one -- so there it is stated here rather than checked.
 How much of it a test can hold varies by site, and at the two refusals of the CLI first-use host-key flow (`establishHostKeyTrust` in `apps/cli/src/hostKeyTrust.ts`) it is not pinnable at all.
 Each chooser's fragment is last on a labelled cause link of its own and the renderer redacts every link before truncating, so removing either of those composition-site calls changes no rendered byte and reddens no test.
@@ -36,6 +38,7 @@ Fitting a fragment at its composition site takes it out of that unpinnable class
 The stalled-transport builder (`transportOperationStalledError` in `apps/cli/src/connection/sftpLivenessGuard.ts`) fits each of its three fragments -- its stall detail, its path, and the dead-session arm's server-reported one -- to its link's budget after redacting it, so a key block wider than that budget renders as the replacement plus whatever followed it.
 Dropping the redaction leaves the clip cutting the block's `END` off, and the renderer's own per-link pass then consumes the dangling remainder to the end of the link, taking the truncation marker and the bytes composed behind it with it.
 `apps/cli/test/unit/connection/transportRefusalBudget.test.ts` pins that ordering at the rendered boundary.
+
 What a test does hold is five sites, each pinned at its rendered sink by a marker planted in the fragment its adversary chooses: the cross-party host-key divergence warning, the same flow's trust warning, confirm prompt, and its `write-now` and `ephemeral` pin lines, and the `probe-host-key` summary.
 That is a sample of the composition sites the assignment governs, not a roster of them -- the sweep covers the log-bound fragments that already ran through the display escape in `packages/core/src` and `apps/cli/src`, and the rest are held by the convention plus the sink pass behind it rather than by a marker test of their own.
 Those are not every fragment a log line interpolates.
@@ -193,6 +196,7 @@ Each value a partner, a server, or an unbounded config chose then takes a labell
 The remaining labelled links are the message file, its writing peer, and the rendezvous directory at the file-sync frame gate, and the inbound path at the CLI frame-size guard.
 They also include the stalled operation's path and, on the dead-session arm, the fatal error the server itself reported, at the CLI liveness guard, and the directory and the offending entry name at the CLI directory-listing guard.
 A labelled link of one's own bounds whose bytes may fill it, not how many.
+
 The three CLI guards fit each adversary-chosen value -- the directory-listing guard's directory path, the frame-size guard's inbound path, and the liveness guard's path and, on its dead-session arm, the server-reported error, none of them bounded anywhere upstream -- to `DEFAULT_MAX_DISPLAY_LENGTH` (**256**), label included, where they compose it (`clipToRenderedCost`).
 The liveness guard fits its first-party stall detail the same way, so its three links share one rule.
 The fragment is thus cut to a value's budget before it reaches a renderer whose own cap is sized for a whole composed message.
@@ -200,6 +204,7 @@ The three share one definition of that composition (`fittedCauseLink` in `apps/c
 The clip measures the rendered cost of a raw fragment and appends the truncation marker itself, so the fragment still takes its single escape at the sink and a planted `BEGIN` marker cannot consume the marker that says it was cut.
 One recorded limit: the clip measures the whole raw fragment before cutting it, so a server-chosen error of extreme width costs one full-length escape pass at composition -- measured at 578 ms and roughly 235 MB transient for 8 MB of worst-expansion input -- on a path that then terminates the exchange.
 The fragment is bounded after that measurement, not before it.
+
 One value per link is the critical half of that assignment, not a tidiness rule: two values with first-party glue between them share one budget.
 So the cap deletes the second outright at any width the first fills, and the first is then free to compose the very glue that would have introduced it -- a chooser forging the framing of a value the operator never received.
 What stays on each summary is first-party copy and the bound's own numbers, at every site.
@@ -256,12 +261,14 @@ The back-off is one marker wide and taken once, which is what bounds that unders
 A back-off repeated would walk over a run of the marker's shape spelled in a value's own printable bytes and delete them without bound, taking a shown side below the floor of its own bytes above.
 So a fitted value can end in marker-shaped bytes of its own, which is the reading a value spelling a whole marker already admits.
 That is held by a check rather than by this paragraph (`apps/cli/test/unit/config.test.ts`).
+
 The block is driven at every budget from nothing to what the whole block needs, over values built to hold the module's delimiter throughout and to spell the line's own connectives.
 Those values also spell the marker's own shape end to end, and spell a whole line of the block's own behind a line break, a carriage return, and the copy a notice opens with.
 The printable domain and the control one together are what this sweep measures.
 Each rendered line is read back as a clause skeleton under the module's own grammar, both over the raw block and over the whole refusal as the display boundary escapes it, pinned against the constructor in the same suite, as core's copy of that walk is.
 The check fails if any line leaves a run open, and fails if a cut left a fragment of a marker standing where the truncation marker follows.
 It fails if a hostile line rendered less of its own bytes than its inert twin by more than its cuts' back-offs, and fails if its clause skeleton differs at all from the skeleton the same widths render with inert values in place of the hostile ones.
+
 What the operator is not given is the boundary between a cut value and the clause around it: the marker is plain printable ASCII the escape passes through, and it stands inside the cut value's own run, which is where a value spelling its text would put it, so such a value can claim a cut that did not happen.
 What an operator can rely on is the marker's ABSENCE.
 And the fixed copy fits its budget by measurement rather than by construction, which is held by a check rather than by this paragraph (`apps/cli/test/unit/config.test.ts`).
