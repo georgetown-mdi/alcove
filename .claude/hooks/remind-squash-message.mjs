@@ -25,7 +25,7 @@ import { commandOf, eventCwd, eventForTools } from "./lib/event.mjs";
 import { git } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-03-31";
 
 const PR_BASE = "origin/staging";
 const NORMALIZER = fileURLToPath(

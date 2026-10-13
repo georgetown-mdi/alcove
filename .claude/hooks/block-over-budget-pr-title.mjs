@@ -26,7 +26,7 @@ import { commandOf, eventForTools } from "./lib/event.mjs";
 import { splitSegments, tokenize, tokenizeRaw } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-06-30";
 
 /** The `gh pr` subcommands that take a title. `new` is an alias of `create`. */
 const TITLED_SUBCOMMANDS = new Set(["create", "new", "edit"]);
