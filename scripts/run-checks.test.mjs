@@ -1,5 +1,15 @@
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import {
+  existsSync,
+  globSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
@@ -282,6 +292,103 @@ describe("the two groups", () => {
   });
 });
 
+describe("the script tests against the shared paths", () => {
+  // Shared checks write these paths and run alone; the pool runs beside the
+  // script tests, so a script test reading one is safe only because no
+  // independent check writes it. docs/notes/repo-check-scripts.md, Check runner.
+  const SHARED_PATH_LITERALS = [
+    "routeTree.gen",
+    "dist/hosted",
+    "apps/web/dist",
+    "packages/core/dist",
+    "test/vectors",
+    "VECTORS_DIRECTORY",
+  ];
+
+  // Tests that read a shared path from the real tree.
+  const READERS = [
+    "scripts/api-namespace-routes.test.mjs",
+    "scripts/broker-core-reach.test.mjs",
+    "scripts/check-protocol-version-bump.test.mjs",
+    "scripts/check-vectors-generators.test.mjs",
+    "scripts/pack-broker-core.test.mjs",
+  ];
+
+  // Tests that name a shared path only inside a fixture, a message or a
+  // string they assert on, and read nothing from it.
+  const MENTIONS_ONLY = [
+    ".claude/hooks/block-worktree-deletions.test.mjs",
+    ".claude/scripts/verify-additive-test-delta.test.mjs",
+    "scripts/broker-front.test.mjs",
+    "scripts/check-deploy-trigger-graph.test.mjs",
+    "scripts/host-pull.test.mjs",
+    "scripts/check-web-config-image-load.test.mjs",
+    "scripts/lib/distFreshness.test.mjs",
+  ];
+
+  const testScriptsProjects = () =>
+    [...scripts["test:scripts"].matchAll(/--project (\S+)/g)].map(
+      (match) => match[1],
+    );
+
+  async function scriptTestFiles() {
+    const importDefault = async (file) =>
+      (await import(pathToFileURL(resolve(ROOT, file)).href)).default;
+    const rootConfig = await importDefault("vitest.config.mts");
+    const configs = rootConfig.test.projects
+      .map((directory) => `${directory}/vitest.config.mjs`)
+      .filter((config) => existsSync(resolve(ROOT, config)));
+    const found = new Set();
+    const projects = new Set();
+    for (const config of configs) {
+      const { test } = await importDefault(config);
+      if (!testScriptsProjects().includes(test.name)) continue;
+      projects.add(test.name);
+      for (const match of globSync(test.include, { cwd: test.root })) {
+        const file = relative(ROOT, resolve(test.root, match));
+        if (!file.split("/").includes("node_modules")) found.add(file);
+      }
+    }
+    return { files: [...found].sort(), projects: [...projects].sort() };
+  }
+
+  it("finds the script tests of every project test:scripts runs", async () => {
+    const { files, projects } = await scriptTestFiles();
+    expect(projects).toEqual([...testScriptsProjects()].sort());
+    expect(files).toContain("scripts/run-checks.test.mjs");
+  });
+
+  it("is told of every script test that names a shared path, so each is classified", async () => {
+    const { files } = await scriptTestFiles();
+    const self = relative(ROOT, fileURLToPath(import.meta.url));
+    const naming = files.filter(
+      (file) =>
+        file !== self &&
+        SHARED_PATH_LITERALS.some((literal) =>
+          readFileSync(resolve(ROOT, file), "utf8").includes(literal),
+        ),
+    );
+
+    expect(
+      naming,
+      "a script test names a shared path (the route tree, the committed vectors, the core dist or the web build) that this list does not classify: decide whether it reads the path from the real tree, and add it to READERS or MENTIONS_ONLY. A reader is safe only while no independent check writes that path; docs/notes/repo-check-scripts.md, Check runner",
+    ).toEqual([...READERS, ...MENTIONS_ONLY].sort());
+  });
+
+  it("has no script test naming the hosted web build, which check:deploy-trigger-graph writes", async () => {
+    const { files } = await scriptTestFiles();
+    const self = relative(ROOT, fileURLToPath(import.meta.url));
+    expect(
+      files.filter(
+        (file) =>
+          file !== self &&
+          readFileSync(resolve(ROOT, file), "utf8").includes("dist/hosted"),
+      ),
+      "a script test names apps/web/dist/hosted, so test:scripts may depend on running after the build; the pool starts it before, so give it a place after check:deploy-trigger-graph or stop it reading the build",
+    ).toEqual([]);
+  });
+});
+
 describe("the pool's output", () => {
   // Each prints three lines to stdout and stderr in turn, 15 ms apart, so two
   // run side by side interleave their writes.
@@ -319,6 +426,30 @@ describe("the pool's output", () => {
         `${name} line 2`,
       ]);
     }
+  });
+
+  it("names each check when it starts, before any check's output", async () => {
+    const lines = [];
+    await runAll(
+      ROOT,
+      (line) => lines.push(...line.split("\n")),
+      [talker("left"), talker("right")],
+      runCheck,
+      2,
+    );
+
+    const starts = ["left", "right"].map((name) =>
+      lines.indexOf(`[start] ${name}`),
+    );
+    const firstOutput = Math.min(
+      lines.indexOf("left line 0"),
+      lines.indexOf("right line 0"),
+    );
+    expect(
+      starts.every((index) => index >= 0),
+      lines.join("\n"),
+    ).toBe(true);
+    expect(Math.max(...starts), lines.join("\n")).toBeLessThan(firstOutput);
   });
 
   it("fails a check that exits non-zero and prints what it said", async () => {
@@ -386,6 +517,85 @@ describe("the pool's output", () => {
     expect(printed).toContain("after said this");
     expect(printed).toContain("runner fault");
   });
+});
+
+describe("an interrupted run", () => {
+  const until = async (condition, what, limitMs = 10_000) => {
+    const deadline = Date.now() + limitMs;
+    while (!condition()) {
+      if (Date.now() > deadline)
+        throw new Error(`timed out waiting for ${what}`);
+      await new Promise((wake) => setTimeout(wake, 20));
+    }
+  };
+
+  it("prints the header and output so far of a check still running on SIGTERM, stops it, and exits non-zero", async () => {
+    const scratch = mkdtempSync(join(tmpdir(), "run-checks-signal-"));
+    try {
+      const ready = join(scratch, "ready");
+      const driver = join(scratch, "driver.mjs");
+      const hanging = [
+        'process.stdout.write("hang said hello\\n", () => {',
+        '  require("node:fs").writeFileSync(process.argv[1], String(process.pid));',
+        "});",
+        "setInterval(() => {}, 1000);",
+      ].join(" ");
+      writeFileSync(
+        driver,
+        [
+          `import { INDEPENDENT, runAll, runCheck } from ${JSON.stringify(pathToFileURL(resolve(ROOT, "scripts/run-checks.mjs")).href)};`,
+          `const checks = [{ script: "hang", group: INDEPENDENT, description: "hangs", command: [process.execPath, "-e", ${JSON.stringify(hanging)}, ${JSON.stringify(ready)}] }];`,
+          `await runAll(${JSON.stringify(ROOT)}, console.log, checks, runCheck, 1, { signals: process });`,
+        ].join("\n"),
+      );
+
+      const runner = spawn(process.execPath, [driver], {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let output = "";
+      runner.stdout.on("data", (chunk) => (output += chunk));
+      runner.stderr.on("data", (chunk) => (output += chunk));
+      const ended = new Promise((settle) =>
+        runner.on("close", (code, signal) => settle({ code, signal })),
+      );
+
+      try {
+        await until(
+          () => output.includes("[start] hang") && existsSync(ready),
+          `the check to start; saw ${JSON.stringify(output)}`,
+        );
+        const checkPid = Number(readFileSync(ready, "utf8"));
+        runner.kill("SIGTERM");
+        const { code, signal } = await Promise.race([
+          ended,
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("the runner did not exit")),
+              10_000,
+            ),
+          ),
+        ]);
+
+        expect({ code, signal }).toEqual({ code: 143, signal: null });
+        expect(output).toContain("[1/1] hang");
+        expect(output).toContain("  hangs");
+        expect(output).toContain("interrupted by SIGTERM: hang had not ended");
+        expect(output).toContain("hang said hello");
+        await until(() => {
+          try {
+            process.kill(checkPid, 0);
+            return false;
+          } catch {
+            return true;
+          }
+        }, "the interrupted check to stop");
+      } finally {
+        runner.kill("SIGKILL");
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
 
 describe("reporting", () => {

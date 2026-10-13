@@ -8,7 +8,10 @@
 // Runs past a failure: the summary names every failure, and the exit code is 1
 // if there was one. The `shared` checks run first, one at a time in list order
 // with their output streamed; the `independent` checks then run in a bounded
-// pool, each one's output buffered and printed whole when it ends. A check
+// pool, each one's output buffered and printed whole when it ends, with a
+// `[start]` line when it begins so a truncated log names the checks that were
+// running. On SIGINT or SIGTERM the run prints each check still running with
+// the output it had, stops them, and exits non-zero. A check
 // marked `usesBuild` needs the production web build, and the run clears
 // apps/web/dist/hosted first; one naming another in `buildFrom` reads that
 // build and is skipped with a line saying so when the build fails.
@@ -436,9 +439,11 @@ export function poolSize(cpuCount = availableParallelism()) {
  * when it started. Its output is written through as it comes, or with `buffer`
  * collected into `output` in arrival order, stdout and stderr together. A
  * command that cannot be started fails the check with the reason in `output`.
+ * `onStart`, when given, is called once the command is running with a handle
+ * holding `kill()` and `output()`, the text collected so far.
  *
  */
-export function runCheck(check, root, { buffer = false } = {}) {
+export function runCheck(check, root, { buffer = false, onStart } = {}) {
   const load = oneMinuteLoad();
   const startedAt = Date.now();
   const [file, ...args] = check.command ?? ["npm", "run", check.script];
@@ -465,6 +470,10 @@ export function runCheck(check, root, { buffer = false } = {}) {
       child.stdout.on("data", (chunk) => chunks.push(chunk));
       child.stderr.on("data", (chunk) => chunks.push(chunk));
     }
+    onStart?.({
+      kill: () => child.kill("SIGTERM"),
+      output: () => Buffer.concat(chunks).toString("utf8"),
+    });
     child.on("error", (error) => {
       chunks.push(Buffer.from(`\n${file} could not be started: ${error}\n`));
       finish(false);
@@ -501,7 +510,10 @@ export function assertRunnable(checks) {
  * Runs every check past any failure: the shared checks one at a time in list
  * order, then the independent checks `size` at a time, each printed whole when
  * it ends. A `run` that throws fails its own check and no other. Returns each
- * result in list order.
+ * result in list order. With `signals` (the process, when the runner is
+ * invoked directly), SIGINT or SIGTERM prints every check still running, with
+ * the output it had so far, stops them, and calls `exit` with 128 plus the
+ * signal's number.
  *
  */
 export async function runAll(
@@ -510,6 +522,7 @@ export async function runAll(
   checks = CHECKS,
   run = runCheck,
   size = poolSize(),
+  { signals = null, exit = process.exit } = {},
 ) {
   assertRunnable(checks);
   if (checks.some((check) => check.usesBuild)) {
@@ -520,7 +533,8 @@ export async function runAll(
     log(`\n[${checks.indexOf(check) + 1}/${checks.length}] ${check.script}`);
     log(`  ${check.description}`);
   };
-  const attempt = async (check, options) => {
+  const running = new Map();
+  const attempt = async (check, buffer) => {
     const builder = results.get(check.buildFrom);
     if (builder && !builder.ok) {
       return {
@@ -530,8 +544,13 @@ export async function runAll(
         output: `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
       };
     }
+    const entry = { check, buffer };
+    running.set(check.script, entry);
     try {
-      return await run(check, root, options);
+      return await run(check, root, {
+        buffer,
+        onStart: (handle) => Object.assign(entry, handle),
+      });
     } catch (error) {
       return {
         script: check.script,
@@ -539,31 +558,58 @@ export async function runAll(
         seconds: 0,
         output: `  the runner could not run it: ${error?.stack ?? error}`,
       };
+    } finally {
+      running.delete(check.script);
     }
   };
   const print = (result) => {
     if (result.output) log(result.output.replace(/\n$/, ""));
   };
 
-  for (const check of checks.filter((entry) => entry.group === SHARED)) {
-    header(check);
-    const result = await attempt(check, { buffer: false });
-    print(result);
-    results.set(check.script, result);
-  }
+  const interrupt = (signal, code) => {
+    for (const { check, buffer, kill, output } of [...running.values()]) {
+      if (buffer) header(check);
+      log(
+        `  interrupted by ${signal}: ${check.script} had not ended${buffer ? "; its output so far follows." : "."}`,
+      );
+      const partial = buffer ? (output?.() ?? "") : "";
+      if (partial) log(partial.replace(/\n$/, ""));
+      kill?.();
+    }
+    exit(code);
+  };
+  const handlers = signals
+    ? [
+        ["SIGINT", () => interrupt("SIGINT", 130)],
+        ["SIGTERM", () => interrupt("SIGTERM", 143)],
+      ]
+    : [];
+  for (const [signal, handler] of handlers) signals.on(signal, handler);
 
-  const queue = checks.filter((entry) => entry.group === INDEPENDENT);
-  const worker = async () => {
-    for (let check = queue.shift(); check; check = queue.shift()) {
-      const result = await attempt(check, { buffer: true });
+  try {
+    for (const check of checks.filter((entry) => entry.group === SHARED)) {
       header(check);
+      const result = await attempt(check, false);
       print(result);
       results.set(check.script, result);
     }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(Math.max(1, size), queue.length) }, worker),
-  );
+
+    const queue = checks.filter((entry) => entry.group === INDEPENDENT);
+    const worker = async () => {
+      for (let check = queue.shift(); check; check = queue.shift()) {
+        log(`[start] ${check.script}`);
+        const result = await attempt(check, true);
+        header(check);
+        print(result);
+        results.set(check.script, result);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(Math.max(1, size), queue.length) }, worker),
+    );
+  } finally {
+    for (const [signal, handler] of handlers) signals.off(signal, handler);
+  }
   return checks.map((check) => results.get(check.script));
 }
 
@@ -629,7 +675,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(inventory());
   } else {
     const startedAt = Date.now();
-    const results = await runAll(repositoryRoot());
+    const results = await runAll(
+      repositoryRoot(),
+      console.log,
+      CHECKS,
+      runCheck,
+      poolSize(),
+      { signals: process },
+    );
     const summary = summarize(
       results,
       availableParallelism(),
