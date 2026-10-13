@@ -16,6 +16,20 @@ async function refusalFor(encoded: string) {
   return invitationDecodeRefusal(error);
 }
 
+const toBase64Url = (bytes: Uint8Array): string =>
+  btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+
+async function raw(payload: string): Promise<string> {
+  const bytes = new TextEncoder().encode(payload);
+  const hash = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", bytes),
+  ).slice(0, 4);
+  return toBase64Url(bytes) + toBase64Url(hash);
+}
+
 async function validToken(): Promise<string> {
   return encodeInvitation({
     version: "1",
@@ -47,18 +61,6 @@ test("a cut, wrapped, or altered link is damaged in transit", async () => {
 });
 
 test("an intact string that is not an invitation this build reads is unreadable", async () => {
-  const toBase64Url = (bytes: Uint8Array): string =>
-    btoa(String.fromCharCode(...bytes))
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=/g, "");
-  const raw = async (payload: string) => {
-    const bytes = new TextEncoder().encode(payload);
-    const hash = new Uint8Array(
-      await crypto.subtle.digest("SHA-256", bytes),
-    ).slice(0, 4);
-    return toBase64Url(bytes) + toBase64Url(hash);
-  };
   expect((await refusalFor(await raw("not json"))).kind).toBe("unreadable");
   const schema = await refusalFor(
     await raw(JSON.stringify({ version: "1", sharedSecret: "x" })),
@@ -79,14 +81,24 @@ test("a readable invitation the page refuses keeps its own message", () => {
   });
 });
 
-test("two invitation keys that fold to one name are unreadable", () => {
-  const refusal = invitationDecodeRefusal(
-    new KeyFoldCollisionError(
-      ["transform"],
-      ["my_param", "myParam"],
-      "myParam",
-    ),
+test("two invitation keys that fold to one name are unreadable", async () => {
+  const linkageTerms = structuredClone(
+    getDefaultLinkageTerms("County Health Department"),
   );
+  const element = linkageTerms.linkageKeys[0].elements[0];
+  element.transform = [
+    { function: "lowercase", params: { my_param: 1, myParam: 2 } },
+  ];
+  const payload = JSON.stringify({
+    version: "1",
+    linkageTerms,
+    sharedSecret: generateSharedSecret(),
+  });
+  const error = await decodeInvitation(await raw(payload)).catch(
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(KeyFoldCollisionError);
+  const refusal = invitationDecodeRefusal(error);
   expect(refusal.kind).toBe("unreadable");
   if (refusal.kind === "unreadable")
     expect(refusal.detail).toContain("myParam");
