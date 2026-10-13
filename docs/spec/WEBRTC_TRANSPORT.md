@@ -125,9 +125,10 @@ The web app's acceptor and the console's accept apply the same two rules --
 one implementation, shared from `@alcove/core` -- to the `host` and `path` of
 the invitation endpoint, so `alcove accept`, the web app and the console give
 one verdict on it; the web app refuses before it constructs a peer. The rule
-judges the endpoint an acceptance will dial or write, so an acceptance that
-keeps its existing configuration dials that configuration's server, ignores the
-invitation's endpoint, and has nothing to judge. `alcove
+judges the host an acceptance writes or a run dials; an acceptance that keeps
+its existing configuration keeps that configuration's server and takes from the
+invitation's endpoint only its relay, so the host rule has nothing to judge
+there. `alcove
 invite` applies the `host` rule to the host its invitation names, before the
 invitation exists. The web app needs the rules for a
 different reason than the CLI: the PeerJS client assembles its

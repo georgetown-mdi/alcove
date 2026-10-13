@@ -467,10 +467,10 @@ export const WEBRTC_BROKER_HOST_REFUSED =
  * for the reason {@link WEBRTC_BROKER_HOST_REFUSED} states.
  */
 export const WEBRTC_INVITATION_HOST_REFUSED =
-  "this webrtc connection's server `host` is not a hostname or IP address " +
-  "alone, so no acceptor could dial an invitation naming it. Set " +
-  "`connection.server.host` to the hostname alone, with the port in " +
-  "`connection.server.port`.";
+  "this webrtc connection's server `host` is not a host name or IP address " +
+  "alone (an IPv6 address goes in square brackets), so no acceptor could dial " +
+  "an invitation naming it. Set `connection.server.host` to the host name or " +
+  "bracketed address alone, with the port in `connection.server.port`.";
 
 /** The refusal a `server.path` whose shape could move the signaling socket gets. */
 export const WEBRTC_BROKER_PATH_REFUSED =

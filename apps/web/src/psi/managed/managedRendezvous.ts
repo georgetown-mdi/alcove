@@ -146,7 +146,7 @@ export function managedAcceptorSignalingEndpoint(
     throw new ManagedSignalingEndpointRefusedError(
       record.label,
       refused === "host"
-        ? "names a host that is not a host name or IP address alone, so this build does not dial it"
+        ? "names a host that is not a host name or IP address alone (an IPv6 address in square brackets), so this app does not connect to it"
         : `names a ${refused} that could move the connection to another server`,
     );
   return endpoint;
