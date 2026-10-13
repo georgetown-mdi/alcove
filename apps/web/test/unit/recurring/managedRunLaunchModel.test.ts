@@ -195,7 +195,7 @@ describe("classifyManagedRunFailure: pre-connection benign states from the error
 
   test("a refused saved signaling address names the exchange, says the address cannot be used, and offers re-invite, not retry", () => {
     const reason =
-      "names a host that is not a plain host name, so this build does not dial it";
+      "names a host that is not a host name or IP address alone, so this build does not dial it";
     const failure = classifyAgainstOneRecord(
       new ManagedSignalingEndpointRefusedError("Riverbend quarterly", reason),
       record({ lastRun: failed("transport") }),
