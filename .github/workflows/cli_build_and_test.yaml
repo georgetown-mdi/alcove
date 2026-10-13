@@ -110,7 +110,8 @@ jobs:
           # legs that build the CLI, this one and the native sshd leg; the
           # hardened legs do not build it and skip.
           - suite: in-process sftp
-            command: npm run test:integration -w apps/cli
+            # 4 workers is a measured working value, not a derived one.
+            command: npm run test:integration -w apps/cli -- --maxWorkers=4
             build-cli: "true"
             require-worker-build: "1"
           # The WebRTC suite is a vitest project of its own
