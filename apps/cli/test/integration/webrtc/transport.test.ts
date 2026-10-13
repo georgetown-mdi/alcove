@@ -33,10 +33,12 @@ import {
 } from "../../../src/connection/webrtc/peerjsWire";
 import { snapshotDiagnosticSinkAndLevel } from "../../loggingTestSupport";
 import { startBrokerProcess } from "../../signaling/brokerProcess";
+import { startRefusingStunServer } from "./refusingStunServer";
 
 import type { BrokerLocation } from "../../../src/connection/webrtc/brokerClient";
 import type { RTCIceServer } from "werift";
 import type { BrokerProcess } from "../../signaling/brokerProcess";
+import type { RefusingStunServer } from "./refusingStunServer";
 import type { MessageConnection } from "@alcove/core";
 
 /**
@@ -53,11 +55,12 @@ import type { MessageConnection } from "@alcove/core";
  */
 
 /**
- * An unreachable STUN entry: nothing listens on this loopback port, so werift
- * gathers host candidates only. It is a real configured list, which is what
+ * The refusing loopback STUN server's entry: every binding query is answered
+ * with an error, so werift gathers host candidates only and finishes at once
+ * rather than on its 5 s timer. It is a real configured list, which is what
  * makes it the list actually used rather than the built-in default.
  */
-const HOST_ONLY_ICE = [{ urls: "stun:127.0.0.1:3478" }];
+let hostOnlyIce: Array<RTCIceServer>;
 
 /**
  * The two halves of the endpoint the transport names as werift's built-in
@@ -72,6 +75,7 @@ const BUILT_IN_STUN = ((uri: string) => {
 })(WERIFT_BUILT_IN_STUN_URI);
 
 let broker: BrokerProcess;
+let stunServer: RefusingStunServer;
 const openConnections: Array<MessageConnection> = [];
 
 snapshotDiagnosticSinkAndLevel();
@@ -96,7 +100,7 @@ function partyOptions(sharedSecret: string) {
   return {
     location: location(),
     sharedSecret,
-    iceServers: HOST_ONLY_ICE,
+    iceServers: hostOnlyIce,
     rendezvousTimeoutMs: 60_000,
     channelOpenTimeoutMs: 30_000,
     closeFlushTimeoutMs: 5_000,
@@ -121,6 +125,8 @@ const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
 
 beforeAll(async () => {
+  stunServer = await startRefusingStunServer();
+  hostOnlyIce = stunServer.iceServers;
   broker = await startBrokerProcess();
 }, 60_000);
 
@@ -134,6 +140,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await broker?.stop();
+  await stunServer?.stop();
 });
 
 test("two CLI peers exchange frames in both directions over a real channel", async () => {
@@ -375,9 +382,7 @@ test("a configured iceServers list suppresses werift's built-in Google STUN defa
   const withDefault = await stunHostsLookedUp({});
   expect([...withDefault]).toContain(BUILT_IN_STUN.host);
 
-  const withConfigured = await stunHostsLookedUp({
-    iceServers: [{ urls: "stun:127.0.0.1:3478" }],
-  });
+  const withConfigured = await stunHostsLookedUp({ iceServers: hostOnlyIce });
   expect([...withConfigured]).not.toContain(BUILT_IN_STUN.host);
 }, 60_000);
 
@@ -529,8 +534,8 @@ test("a candidate type werift does not recognize reaches no report", async () =>
   // defense against a version bump rather than the control keeping a partner's
   // text off the terminal, and only the library can hold it: the line is
   // accepted without throwing and then appears in no getStats entry.
-  const dialer = new RTCPeerConnection({ iceServers: HOST_ONLY_ICE });
-  const answerer = new RTCPeerConnection({ iceServers: HOST_ONLY_ICE });
+  const dialer = new RTCPeerConnection({ iceServers: hostOnlyIce });
+  const answerer = new RTCPeerConnection({ iceServers: hostOnlyIce });
   try {
     dialer.createDataChannel("probe");
     await dialer.setLocalDescription(await dialer.createOffer());
