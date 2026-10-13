@@ -1,5 +1,6 @@
 import {
   InvitationDecodeError,
+  KeyFoldCollisionError,
   NestingDepthExceededError,
   NodeCountExceededError,
   describeDecodeError,
@@ -44,6 +45,7 @@ export function invitationDecodeRefusal(
       : { kind: "unreadable", detail: describeDecodeError(error) };
   if (
     error instanceof ZodError ||
+    error instanceof KeyFoldCollisionError ||
     error instanceof NestingDepthExceededError ||
     error instanceof NodeCountExceededError
   )

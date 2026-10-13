@@ -207,6 +207,7 @@ export { snakeizeKey } from "./utils/camelizeKeys";
 // withoutUndefinedDeep) keeps its own depth guard as a safety check for
 // that independent recursive walk. See docs/spec/PARSED_INPUT_BOUNDS.md.
 export {
+  KeyFoldCollisionError,
   MAX_NESTING_DEPTH,
   NestingDepthExceededError,
   NodeCountExceededError,
