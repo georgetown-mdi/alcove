@@ -221,6 +221,13 @@ jobs:
           # still reports per project/file, so a failure names the suite that
           # broke.
           #
+          # The suite is CPU-bound, so it runs as two legs, each taking half of
+          # the files by vitest's --shard on a runner of its own and starting
+          # its own dev server. The second leg repeats the setup, the web build
+          # and the browser provisioning, which costs runner minutes but no wall
+          # time. Locally the two legs are one run of the whole suite
+          # (scripts/required-suites.mjs drops the --shard argument).
+          #
           # The integration project gates the web deploy on the app's own
           # behavior (independent of the CLI, whose tests live in release.yaml);
           # the browser project covers the security-relevant accept-screen
@@ -230,8 +237,13 @@ jobs:
           # projects lack, so a browser-only regression would otherwise ship
           # unnoticed. Both run on the PR gate and this workflow's push/deploy
           # path, so the deploy artifact is gated on them too.
-          - suite: integration and browser
-            command: npm run test:integration:browser -w apps/web
+          - suite: integration and browser, 1 of 2
+            command: npm run test:integration:browser -w apps/web -- --shard=1/2
+            web-suite: "true"
+            build-web: "true"
+            playwright: "true"
+          - suite: integration and browser, 2 of 2
+            command: npm run test:integration:browser -w apps/web -- --shard=2/2
             web-suite: "true"
             build-web: "true"
             playwright: "true"

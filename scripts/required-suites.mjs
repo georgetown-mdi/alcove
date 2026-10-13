@@ -56,6 +56,7 @@ const BUILD_LINE =
 const MATRIX_TRUE = /^matrix\.([\w-]+) == 'true'$/;
 const MATRIX_VALUE = /^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$/;
 const MATRIX_COMMAND = "${{ matrix.command }}";
+const SHARD_ARGUMENT = / -- --shard=\d+\/\d+$/;
 const EMPTY_BLOB = "e69de29bb2d1d6434b8b29ae775a204c9d8ab391";
 
 /** Absolute path of the repository this file sits in. */
@@ -172,8 +173,10 @@ const runLines = (run) =>
  * The legs of a workflow's suite job, each `{suite, command, builds}`:
  * `command` is the matrix command with the step's matrix-valued environment
  * prefixed, `builds` the build commands of the matrix-conditioned steps the leg
- * enables. Throws on a matrix-conditioned step that is neither a build nor named
- * in `provisioning`.
+ * enables. A trailing ` -- --shard=i/n` is dropped, so the legs CI shards one
+ * suite into share one command and the plan lists the whole suite once. Throws
+ * on a matrix-conditioned step that is neither a build nor named in
+ * `provisioning`, and on a `--shard` argument in any other shape.
  */
 export function suiteLegs(document, path, provisioning = []) {
   const job = document?.jobs?.[SUITE_JOB];
@@ -219,9 +222,19 @@ export function suiteLegs(document, path, provisioning = []) {
       )
       .map(([name, key]) => `${name}=${leg[key]} `)
       .join("");
+  const wholeSuite = (leg) => {
+    const command = String(leg.command).replace(SHARD_ARGUMENT, "");
+    if (command.includes("--shard")) {
+      throw new Error(
+        `${path}: the ${SUITE_JOB} leg "${leg.suite}" passes --shard other than as a trailing " -- --shard=i/n"; ` +
+          `teach scripts/required-suites.mjs to read it.`,
+      );
+    }
+    return command;
+  };
   return legs.map((leg) => ({
     suite: leg.suite,
-    command: `${envPrefix(leg)}${String(runStep.run).replace(MATRIX_COMMAND, leg.command)}`,
+    command: `${envPrefix(leg)}${String(runStep.run).replace(MATRIX_COMMAND, wholeSuite(leg))}`,
     builds: buildSteps
       .filter((step) => step.keys.every((key) => leg[key] === "true"))
       .flatMap((step) => step.lines),
