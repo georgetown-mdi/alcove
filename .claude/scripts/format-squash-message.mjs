@@ -20,6 +20,9 @@ import { fileURLToPath } from "node:url";
 /** CONTRIBUTING.md's body wrap: the widest a body line may be. */
 export const BODY_WRAP_COLUMNS = 70;
 
+/** The most words a body may hold: an arbitrary working value. */
+export const BODY_MAX_WORDS = 100;
+
 /** A fenced-code delimiter, whose line is dropped whole. */
 const CODE_FENCE = /^\s*(?:```|~~~)/;
 
@@ -203,10 +206,18 @@ function quoted(line) {
   return line.length <= 60 ? line : `${line.slice(0, 57)}...`;
 }
 
+/** The whitespace-separated words of the body. */
+function wordCountOf(draft) {
+  return bodyLinesOf(draft)
+    .join(" ")
+    .split(/\s+/)
+    .filter((word) => word !== "").length;
+}
+
 /**
- * What is wrong with the body that normalizing cannot fix: an empty body, or an
- * over-wide line inside an indented block. Empty means the body is ready once it
- * is normalized.
+ * What is wrong with the body that normalizing cannot fix: an empty body, a
+ * body over `BODY_MAX_WORDS`, or an over-wide line inside an indented block.
+ * Empty means the body is ready once it is normalized.
  */
 export function refusals(draft) {
   const blocks = blocksOf(bodyLinesOf(draft));
@@ -215,6 +226,13 @@ export function refusals(draft) {
   }
 
   const found = [];
+  const words = wordCountOf(draft);
+  if (words > BODY_MAX_WORDS) {
+    found.push(
+      `The body is ${words} words and CONTRIBUTING.md allows ` +
+        `${BODY_MAX_WORDS}. Shorten the body to ${BODY_MAX_WORDS} words or fewer.`,
+    );
+  }
   for (const block of blocks.filter(isVerbatim)) {
     for (const line of block.filter(
       (line) => line.length > BODY_WRAP_COLUMNS,
