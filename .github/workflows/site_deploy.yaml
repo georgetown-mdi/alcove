@@ -64,6 +64,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Set up and build core
         uses: ./.github/actions/setup
       # Fails on a relative link to a Markdown page that does not exist.

@@ -67,7 +67,7 @@ export const OUT_OF_RANGE_BY_DESIGN = [
     dependency,
     range: ">= 16.8.0 < 19.0.0",
     reason:
-      "VitePress (the project site's generator) depends on @docsearch for its Algolia search provider, and that copy resolves to the web app's React 19. The site's search provider is local, which scripts/site-deploy-trigger.test.mjs holds, so VitePress bundles none of @docsearch and its React code never runs.",
+      "VitePress (the project site's generator) depends on @docsearch for its Algolia search provider, and that copy resolves to the web app's React 19. The site's search provider is local, which scripts/site-deploy-trigger.test.mjs holds, so the site bundles no @docsearch JavaScript or React code (its stylesheet is bundled) and the React code never runs.",
   })),
   {
     dependent: "vitepress",
