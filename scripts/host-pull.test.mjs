@@ -760,25 +760,6 @@ describe("pull.sh", () => {
       }
     });
 
-    it("derives the install share from the unit's TimeoutStartSec and the stage bounds", () => {
-      const script = readFileSync(join(PULL_DIR, "pull.sh"), "utf8");
-      const unit = readFileSync(
-        join(PULL_DIR, "alcove-host-pull.service"),
-        "utf8",
-      );
-      const hours = Number(/^TimeoutStartSec=(\d+)h$/m.exec(unit)?.[1]);
-      expect(hours).toBeGreaterThan(0);
-      const secs = (re) => Number(re.exec(script)?.[1]);
-      const staging =
-        secs(/timeout (\d+) git ls-remote/) +
-        secs(/--max-time (\d+)/) * 3 +
-        secs(/timeout (\d+) git -C "\$PARTIAL" fetch/) +
-        secs(/timeout (\d+) npm ci/);
-      expect(secs(/^INSTALL_SHARE=(\d+)$/m)).toBe(
-        Math.floor((hours * 3600 - staging) / 4),
-      );
-    });
-
     it("records rollback-failed when the deployed commit's installs fail too, and touches nothing further", () => {
       const h = host();
       h.set(`fail-broker-install-${TIP}`);

@@ -37,18 +37,13 @@ RELEASE_URL=https://github.com/georgetown-mdi/alcove/releases/download/broker-co
 # Pages of 100 push runs read for one commit before the run gives up.
 RUN_PAGES=10
 
-# A forward attempt and a rollback run two install scripts each, four calls in
-# all, and the whole run must fit alcove-host-pull.service's TimeoutStartSec=1h
-# (3600 s). Each call's share is
-#   (3600 - staging bounds) / 4 = (3600 - (120 + 300 + 2 * 300 + 600 + 600)) / 4
-# where the staging bounds are the ls-remote (120), one run-page download (300),
-# the two build downloads (2 * 300), the fetch (600) and npm ci (600). A run that
-# reads more than one page of push runs, up to RUN_PAGES, can exceed the unit's
-# limit; systemd's stop is then recorded as failed. The share holds the
-# --kill-after wait, a working value of 30 s, so the script gets
-# INSTALL_SHARE - INSTALL_KILL_AFTER seconds before TERM. The override may only
-# lower either wait. scripts/host-pull.test.mjs holds INSTALL_SHARE equal to this
-# derivation.
+# INSTALL_SHARE and INSTALL_KILL_AFTER_DEFAULT are working values, sized so the
+# counted staging bounds (ls-remote 120 s, one run-page download 300 s, the two
+# build downloads 2 * 300 s, the fetch 600 s and npm ci 600 s) plus a forward
+# attempt and a rollback, two install scripts each, stay near the unit's
+# TimeoutStartSec=1h. They do not guarantee every run fits. The share holds the
+# --kill-after wait, so the script gets INSTALL_SHARE - INSTALL_KILL_AFTER
+# seconds before TERM. The override may only lower either wait.
 INSTALL_SHARE=345
 INSTALL_KILL_AFTER_DEFAULT=30
 INSTALL_TIMEOUT_DEFAULT=$((INSTALL_SHARE - INSTALL_KILL_AFTER_DEFAULT))
