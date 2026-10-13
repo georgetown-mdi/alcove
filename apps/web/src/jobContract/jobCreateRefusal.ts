@@ -42,6 +42,12 @@ export const MOUNTED_KEY_FILE_INVALID_REFUSAL = "mounted-key-file-invalid";
 export const MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL =
   "mounted-signing-paths-unconverted";
 
+/** The token for a signed webrtc run of the opened configuration refused
+ * because the file it runs in place signs with an identity file other than
+ * the console's. */
+export const MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL =
+  "mounted-signing-identity-mismatch";
+
 /** The token for a webrtc run of the opened configuration refused because the
  * working folder's `alcove.yaml` is no longer one the console runs in place:
  * gone, one the console cannot open, another channel, or relay settings. */
@@ -83,6 +89,7 @@ export type JobCreateRefusalReason =
   | typeof MOUNTED_KEY_FILE_ABSENT_REFUSAL
   | typeof MOUNTED_KEY_FILE_INVALID_REFUSAL
   | typeof MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL
+  | typeof MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL
   | typeof OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
   | typeof SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL
   | typeof WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL
@@ -103,6 +110,7 @@ export function isJobCreateRefusalReason(
     value === MOUNTED_KEY_FILE_ABSENT_REFUSAL ||
     value === MOUNTED_KEY_FILE_INVALID_REFUSAL ||
     value === MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL ||
+    value === MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL ||
     value === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL ||
     value === SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL ||
     value === WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL ||

@@ -67,16 +67,19 @@ import {
   isJobChannel,
   runsInPlace,
 } from "@jobContract/intentSchemas";
+import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { mountedKeyFileFault } from "./mountedKeyFile";
 import { readBoundedMountedFile } from "./boundedMountedFile";
 
 import { composeConfigDocument, composeSftpConfigSpec } from "./intentConfig";
+import { consoleSigningIdentityLocation } from "./signingIdentity";
 import { resolveWorkdirFile } from "./workdir";
 
 import type {
   DisclosedExchangeDocument,
   DisclosedFileSyncOptions,
   DisclosedSftpServer,
+  InPlaceSigningIdentity,
   OpenedChannel,
 } from "@jobContract/disclosedConfiguration";
 import type { ExchangeSpec, FileSyncOptions } from "@alcove/core";
@@ -157,6 +160,10 @@ export interface LoadedConfigurationResponse {
   /** The relay settings a webrtc configuration states, as it spells them
    * ({@link relaySettingFields}). Absent where it states none. */
   relaySettings?: Array<string>;
+  /** The identity file a webrtc configuration run in place signs with, as the
+   * file spells it ({@link inPlaceSigningIdentityFile}). Absent where the file
+   * names none, and for any other configuration. */
+  inPlaceSigningIdentity?: InPlaceSigningIdentity;
   /** Why the `.alcove.key` beside the configuration would refuse its run: no
    * file at the name, or one that is not a key file. Absent where the key file
    * is usable. Nothing read from the file is sent. */
@@ -948,10 +955,17 @@ export interface OpenedMountedConfiguration {
  * something in the folder to fix rather than being pointed at authoring a
  * configuration that already exists.
  *
+ * A webrtc configuration run in place states the identity file it signs with,
+ * placed among the console's own identity locations under `dataRoot` and
+ * `secretsDir` ({@link consoleSigningIdentityLocation}).
+ *
  * @throws {ConfigurationLoadRefusedError} when the file is not a configuration
  *   the console can open.
  */
-export function openMountedConfiguration(dataRoot: string): {
+export function openMountedConfiguration(
+  dataRoot: string,
+  secretsDir?: string,
+): {
   response: LoadedConfigurationResponse;
   opened: OpenedMountedConfiguration | undefined;
 } {
@@ -973,10 +987,25 @@ export function openMountedConfiguration(dataRoot: string): {
     isJobChannel(channel) || runsInPlace(channel)
       ? mountedKeyFileFault(dataRoot)
       : undefined;
+  const identityFile = runsInPlaceHere(document)
+    ? inPlaceSigningIdentityFile(document)
+    : undefined;
+  const consoleLocation =
+    identityFile === undefined
+      ? undefined
+      : consoleSigningIdentityLocation(identityFile, { dataRoot, secretsDir });
   return {
     response: {
       ...responseFor(opened),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
+      ...(identityFile !== undefined
+        ? {
+            inPlaceSigningIdentity: {
+              identityFile,
+              ...(consoleLocation !== undefined ? { consoleLocation } : {}),
+            },
+          }
+        : {}),
     },
     opened: {
       source,
@@ -995,8 +1024,9 @@ export function openMountedConfiguration(dataRoot: string): {
  */
 export function loadMountedConfiguration(
   dataRoot: string,
+  secretsDir?: string,
 ): LoadedConfigurationResponse {
-  return openMountedConfiguration(dataRoot).response;
+  return openMountedConfiguration(dataRoot, secretsDir).response;
 }
 
 /**
@@ -1049,15 +1079,39 @@ type MountedWebrtcConnection = Extract<
   { channel: "webrtc" }
 >;
 
+/** Whether the console runs `document` in place: a webrtc document stating no
+ * relay setting. */
+export function runsInPlaceHere(document: ExchangeSpec): boolean {
+  return (
+    document.connection.channel === "webrtc" &&
+    relaySettingFields(document).length === 0
+  );
+}
+
+/**
+ * The `signing.identity_file` a document names, as the file spells it, in any
+ * mode: a save turning the signed receipt on keeps it. Undefined where it names
+ * none or the hand-off's placeholder, which names no file this console has.
+ */
+export function inPlaceSigningIdentityFile(
+  document: ExchangeSpec,
+): string | undefined {
+  const identityFile = document.signing?.identityFile;
+  return identityFile === HANDOFF_SIGNING_IDENTITY_PLACEHOLDER
+    ? undefined
+    : identityFile;
+}
+
 /**
  * The mounted configuration a run here runs in place, read as it is now: the
- * bytes of a webrtc document stating no relay setting. Undefined for any
- * other mount -- no file, one the console cannot open, another channel, or
- * relay settings.
+ * bytes of a webrtc document stating no relay setting, and the
+ * `signing.identity_file` it names where it signs in `certificate` mode, as
+ * the file spells it. Undefined for any other mount -- no file, one the
+ * console cannot open, another channel, or relay settings.
  */
 export function mountedInPlaceConfiguration(
   dataRoot: string,
-): { source: string } | undefined {
+): { source: string; certificateIdentityFile?: string } | undefined {
   let source: string | null;
   let document: ExchangeSpec;
   try {
@@ -1068,12 +1122,11 @@ export function mountedInPlaceConfiguration(
     if (error instanceof ConfigurationLoadRefusedError) return undefined;
     throw error;
   }
-  if (
-    document.connection.channel !== "webrtc" ||
-    relaySettingFields(document).length > 0
-  )
-    return undefined;
-  return { source };
+  if (!runsInPlaceHere(document)) return undefined;
+  const { signing } = document;
+  return signing?.mode === "certificate" && signing.identityFile !== undefined
+    ? { source, certificateIdentityFile: signing.identityFile }
+    : { source };
 }
 
 /**

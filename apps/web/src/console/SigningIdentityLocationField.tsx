@@ -2,11 +2,14 @@ import { useEffect, useRef } from "react";
 
 import { Button, Group, Stack, Text } from "@mantine/core";
 
+import { sanitizeForDisplay } from "@alcove/core";
+
 import { fingerprintCommand, identityLocationLabel } from "@psi/receiptsModel";
 import { SIGNING_IDENTITY_BROWSE_PURPOSE } from "@jobContract/mountBrowsePurpose";
 
 import styles from "@styles/app.module.css";
 
+import { IN_PLACE_IDENTITY_FILE_NOTICE } from "./mountedConfiguration";
 import { SecretsFilePicker } from "./SecretsFilePicker";
 
 import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
@@ -29,12 +32,17 @@ import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
  */
 export function SigningIdentityLocationField({
   location,
+  fileIdentity,
   pickerOpen,
   onPickerOpen,
   onPickerClose,
   onChange,
 }: {
   location: JobSigningIdentityLocation | undefined;
+  /** The identity file an opened configuration run in place signs with, as
+   * the file spells it, where that is not `location`: shown as the one in use
+   * in its place. */
+  fileIdentity?: string;
   pickerOpen: boolean;
   onPickerOpen: () => void;
   onPickerClose: () => void;
@@ -64,7 +72,9 @@ export function SigningIdentityLocationField({
       <Group gap="xs" align="center">
         <Text size="sm">In use:</Text>
         <span className={styles.mono} data-testid="signing-identity-location">
-          {identityLocationLabel(location)}
+          {fileIdentity !== undefined
+            ? sanitizeForDisplay(fileIdentity)
+            : identityLocationLabel(location)}
         </span>
         {location !== undefined && (
           <Button
@@ -76,6 +86,11 @@ export function SigningIdentityLocationField({
           </Button>
         )}
       </Group>
+      {fileIdentity !== undefined && (
+        <Text size="sm" c="red">
+          {IN_PLACE_IDENTITY_FILE_NOTICE}
+        </Text>
+      )}
 
       {pickerOpen ? (
         <div ref={pickerRef} tabIndex={-1} style={{ outline: "none" }}>

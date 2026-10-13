@@ -8,7 +8,10 @@ import {
   readJsonOrNull,
 } from "./jobApiBody";
 
-import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
+import type {
+  DisclosedExchangeDocument,
+  InPlaceSigningIdentity,
+} from "@jobContract/disclosedConfiguration";
 import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 
 /**
@@ -45,6 +48,8 @@ export type MountedConfigurationAnswer =
       /** The `.alcove.key` beside the configuration would refuse its run: none
        * is there, or the file is not a key file. */
       keyFileFault?: "absent" | "invalid";
+      /** The identity file a webrtc configuration run in place signs with. */
+      inPlaceSigningIdentity?: InPlaceSigningIdentity;
     }
   /** The console refused the file, in its own words: the route's text names the
    * settings to fix as the file spells them. */
@@ -86,6 +91,31 @@ function documentOf(value: unknown): DisclosedExchangeDocument | null {
   )
     return null;
   return value as unknown as DisclosedExchangeDocument;
+}
+
+/** The in-place signing identity off a body, or null when it is not one. */
+function inPlaceSigningIdentityOf(
+  value: unknown,
+): InPlaceSigningIdentity | null {
+  if (
+    !isRecord(value) ||
+    typeof value.identityFile !== "string" ||
+    value.identityFile.length === 0
+  )
+    return null;
+  const { identityFile, consoleLocation } = value;
+  if (consoleLocation === undefined) return { identityFile };
+  if (!isRecord(consoleLocation)) return null;
+  if (consoleLocation.mount === "folder")
+    return { identityFile, consoleLocation: { mount: "folder" } };
+  const subPath = namesOf(consoleLocation.subPath);
+  if (
+    consoleLocation.mount !== "secrets" ||
+    subPath === null ||
+    subPath.length === 0
+  )
+    return null;
+  return { identityFile, consoleLocation: { mount: "secrets", subPath } };
 }
 
 /**
@@ -132,7 +162,12 @@ export async function fetchMountedConfiguration(
     const relaySettings =
       body.relaySettings === undefined ? [] : namesOf(body.relaySettings);
     const { relayRegistrarNamed, keyFileFault } = body;
+    const inPlaceSigningIdentity =
+      body.inPlaceSigningIdentity === undefined
+        ? undefined
+        : inPlaceSigningIdentityOf(body.inPlaceSigningIdentity);
     if (
+      inPlaceSigningIdentity === null ||
       document === null ||
       carriedThrough === null ||
       warnings === null ||
@@ -159,6 +194,9 @@ export async function fetchMountedConfiguration(
         : {}),
       ...(relaySettings.length > 0 ? { relaySettings } : {}),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
+      ...(inPlaceSigningIdentity !== undefined
+        ? { inPlaceSigningIdentity }
+        : {}),
     };
   } catch {
     return { kind: "unavailable" };

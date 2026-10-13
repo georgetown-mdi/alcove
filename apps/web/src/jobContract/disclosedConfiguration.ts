@@ -5,6 +5,8 @@
 
 import type { ExchangeSpec, SigningConfig } from "@alcove/core";
 
+import type { JobSigningIdentityLocation } from "./intentSchemas";
+
 /** A channel the console opens a configuration on. */
 export type OpenedChannel = "sftp" | "filedrop" | "webrtc";
 
@@ -29,11 +31,26 @@ export interface DisclosedSftpServer {
 }
 
 /** The `signing` settings the receipts card edits. The identity file is a
- * path, so it is not disclosed: the response names it where the file states it
- * (`signingPathSettings` in `@jobs/configLoad`). */
+ * path, so it is not in the document: the response names the setting where the
+ * file states it (`signingPathSettings` in `@jobs/configLoad`), and states the
+ * path only for a file run in place ({@link InPlaceSigningIdentity}). */
 export interface DisclosedSigning {
   mode: SigningConfig["mode"];
   partnerFingerprint?: string;
+}
+
+/**
+ * The `signing.identity_file` a webrtc configuration the console runs in place
+ * names: `identityFile` as the file spells it, the path that run signs with,
+ * and `consoleLocation` where that path is one of the console's own identity
+ * locations -- `folder` for the default in the working folder, or a file in
+ * the secrets mount -- so the browser can compare it with the location the
+ * receipts card holds. Absent `consoleLocation` is a path the console never
+ * signs with.
+ */
+export interface InPlaceSigningIdentity {
+  identityFile: string;
+  consoleLocation?: { mount: "folder" } | JobSigningIdentityLocation;
 }
 
 /**

@@ -2,6 +2,7 @@ import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
@@ -20,6 +21,7 @@ import {
   JobRendezvousUnavailableError,
   JobSftpCredentialConsoleOwnedError,
   JobSigningIdentityExposedError,
+  MountedSigningIdentityMismatchError,
   MountedSigningPathsUnconvertedError,
   OpenedConfigurationNotRunnableError,
   SftpUnavailableError,
@@ -167,6 +169,13 @@ export const route = defineJobRoute({
         if (error instanceof MountedSigningPathsUnconvertedError)
           return jobJsonResponse(
             { reason: MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL },
+            400,
+          );
+        // A signed run in place of a file signing with another identity than
+        // the console's.
+        if (error instanceof MountedSigningIdentityMismatchError)
+          return jobJsonResponse(
+            { reason: MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL },
             400,
           );
         if (error instanceof OpenedConfigurationNotRunnableError)

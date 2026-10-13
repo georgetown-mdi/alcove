@@ -139,6 +139,45 @@ describe("a definitive answer", () => {
     expect(answer.relayRegistrarNamed).toBe(true);
   });
 
+  test("the identity file a webrtc configuration run in place signs with reaches the answer", async () => {
+    const webrtcBody = (inPlaceSigningIdentity: unknown) =>
+      answering(200, {
+        configured: true,
+        present: true,
+        document: {
+          channel: "webrtc",
+          linkageTerms: getDefaultLinkageTerms("County Health"),
+        },
+        carriedThrough: [],
+        warnings: [],
+        signingPathSettings: [],
+        folderPathSettings: [],
+        inPlaceSigningIdentity,
+      }).fetchImpl;
+    for (const identity of [
+      { identityFile: "/home/operator/id.json" },
+      { identityFile: "/data/id.json", consoleLocation: { mount: "folder" } },
+      {
+        identityFile: "/secrets/keys/id.json",
+        consoleLocation: { mount: "secrets", subPath: ["keys", "id.json"] },
+      },
+    ]) {
+      const answer = await fetchMountedConfiguration(webrtcBody(identity));
+      if (answer.kind !== "opened")
+        throw new Error("expected an opened answer");
+      expect(answer.inPlaceSigningIdentity).toEqual(identity);
+    }
+    for (const unreadable of [
+      "/home/operator/id.json",
+      { identityFile: "" },
+      { identityFile: "/x", consoleLocation: { mount: "secrets" } },
+      { identityFile: "/x", consoleLocation: { mount: "elsewhere" } },
+    ])
+      expect(await fetchMountedConfiguration(webrtcBody(unreadable))).toEqual({
+        kind: "unavailable",
+      });
+  });
+
   test("a relay registrar flag that is not true is a body it cannot read", async () => {
     const { fetchImpl } = answering(200, {
       configured: true,

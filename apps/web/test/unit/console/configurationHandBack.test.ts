@@ -117,4 +117,35 @@ describe("the hand-back the review step sends", () => {
       }).signing,
     ).toEqual({ mode: "session-derived" });
   });
+
+  test("states the card's identity location for a signed save, and the schema admits it only then", () => {
+    const editor = editorFromCsv("County Health", acquired());
+    const terms = reviewed(editor);
+    const identityLocation = {
+      mount: "secrets" as const,
+      subPath: ["keys", "id.json"],
+    };
+    const signed = configurationHandBack({
+      editor,
+      terms,
+      csvDelimiter: undefined,
+      receipts: { ...RECEIPTS_DEFAULT, mode: "certificate", identityLocation },
+    });
+    expect(signed.signing).toEqual({ mode: "certificate", identityLocation });
+    expect(jobConfigurationHandBackSchema.safeParse(signed).success).toBe(true);
+    expect(
+      configurationHandBack({
+        editor,
+        terms,
+        csvDelimiter: undefined,
+        receipts: { ...RECEIPTS_DEFAULT, mode: "none", identityLocation },
+      }).signing,
+    ).toEqual({ mode: "none" });
+    expect(
+      jobConfigurationHandBackSchema.safeParse({
+        ...signed,
+        signing: { mode: "none", identityLocation },
+      }).success,
+    ).toBe(false);
+  });
 });

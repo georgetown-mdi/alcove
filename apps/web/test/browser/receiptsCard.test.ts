@@ -10,15 +10,21 @@ import { createElement, useState } from "react";
 import "@mantine/core/styles.css";
 
 import {
+  IDENTITY_DEFAULT_LOCATION_LABEL,
   IDENTITY_LABEL_REQUIRED_REASON,
   RECEIPTS_DEFAULT,
   SIGNING_IDENTITY_DIVERGENCE_POINTER,
 } from "@psi/receiptsModel";
+import {
+  IN_PLACE_IDENTITY_FILE_NOTICE,
+  IN_PLACE_IDENTITY_WRITTEN_NOTICE,
+} from "@console/mountedConfiguration";
 import { ReceiptsCard } from "@console/ReceiptsCard";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
 import { openDisclosure } from "./collapsePanels";
 
+import type { InPlaceSigningIdentityShown } from "@console/mountedConfiguration";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
 import type { ReactElement } from "react";
 import type { ReceiptsDraft } from "@psi/receiptsModel";
@@ -187,12 +193,19 @@ const SINGLE_MOUNT_RENDEZVOUS: JobRendezvousConfig = {
  * instead, it lands after the render an assertion on the screen already saw,
  * and a test reading it there would read the draft before last.
  */
-function ReceiptsHarness({ identity }: { identity: string }): ReactElement {
+function ReceiptsHarness({
+  identity,
+  inPlaceSigningIdentity,
+}: {
+  identity: string;
+  inPlaceSigningIdentity?: InPlaceSigningIdentityShown;
+}): ReactElement {
   const [draft, setDraft] = useState<ReceiptsDraft>(RECEIPTS_DEFAULT);
   return createElement(ReceiptsCard, {
     draft,
     identity,
     rendezvous: SINGLE_MOUNT_RENDEZVOUS,
+    inPlaceSigningIdentity,
     onChange: (next: ReceiptsDraft) => {
       latestDraft = next;
       setDraft(next);
@@ -241,8 +254,13 @@ async function pickIdentityLocation(name: string): Promise<void> {
   await page.getByRole("button", { name: `Use ${name}` }).click();
 }
 
-async function renderCard(identity: string = IDENTITY): Promise<void> {
-  app.render(createElement(ReceiptsHarness, { identity }));
+async function renderCard(
+  identity: string = IDENTITY,
+  inPlaceSigningIdentity?: InPlaceSigningIdentityShown,
+): Promise<void> {
+  app.render(
+    createElement(ReceiptsHarness, { identity, inPlaceSigningIdentity }),
+  );
   // The card starts collapsed on both screens, so the test opens it the way an
   // operator does.
   await openDisclosure(RECEIPTS_CARD);
@@ -825,5 +843,56 @@ describe("ReceiptsCard: a failed request", () => {
       .element(page.getByLabelText("Your certificate fingerprint"))
       .toMatchTextContent(FINGERPRINT);
     expect(app.container.textContent).not.toContain(BUSY_FAILURE);
+  });
+});
+
+describe("ReceiptsCard: the identity a configuration run in place signs with", () => {
+  const inUse = () => page.getByTestId("signing-identity-location");
+
+  test("a file naming none is told the run writes the identity in use into it", async () => {
+    stubSigningApi();
+    await renderCard(IDENTITY, { kind: "written" });
+    await chooseCertificateMode();
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_WRITTEN_NOTICE))
+      .toBeInTheDocument();
+    await expect
+      .element(inUse())
+      .toHaveTextContent(IDENTITY_DEFAULT_LOCATION_LABEL);
+    expect(app.container.textContent).not.toContain(
+      IN_PLACE_IDENTITY_FILE_NOTICE,
+    );
+  });
+
+  test("a file naming the identity in use shows it as any run does", async () => {
+    stubSigningApi();
+    await renderCard(IDENTITY, { kind: "console" });
+    await chooseCertificateMode();
+    await expect
+      .element(inUse())
+      .toHaveTextContent(IDENTITY_DEFAULT_LOCATION_LABEL);
+    expect(app.container.textContent).not.toContain(
+      IN_PLACE_IDENTITY_WRITTEN_NOTICE,
+    );
+    expect(app.container.textContent).not.toContain(
+      IN_PLACE_IDENTITY_FILE_NOTICE,
+    );
+  });
+
+  test("a file naming another identity shows its path in place of the console's, escaped", async () => {
+    stubSigningApi();
+    await renderCard(IDENTITY, {
+      kind: "file",
+      identityFile: "/home/operator/\u202eid.json",
+      consoleLocation: false,
+    });
+    await chooseCertificateMode();
+    await expect
+      .element(inUse())
+      .toHaveTextContent("/home/operator/\\u202eid.json");
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_FILE_NOTICE))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain("Your working folder");
   });
 });

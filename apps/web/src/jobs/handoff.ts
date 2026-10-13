@@ -345,6 +345,7 @@ function withPathsAsRead(
               : {}),
           },
           mountedDocument.signing,
+          undefined,
         )
       : mountedDocument.signing;
   const read = mountedDocument.connection;
@@ -544,12 +545,15 @@ function heldTopLevelKeys(
  * machine and no browser reads it; the enforcement records no step edits; and
  * every top-level key outside {@link COMPOSED_BLOCKS}. Handed back the values it
  * opened with, a document is written as `serializeExchangeDocument` writes it.
+ * `inPlaceIdentityFile` is the console's identity path, given for a document
+ * the console runs in place ({@link handBackSigning}).
  *
  * @throws {ZodError} if the merged document fails exchange-file validation.
  */
 export function handBackConfigDocument(
   handBack: JobConfigurationHandBack,
   mountedDocument: ExchangeSpec,
+  inPlaceIdentityFile?: string,
 ): string {
   if (isJobChannel(mountedDocument.connection.channel))
     throw new Error(
@@ -563,7 +567,11 @@ export function handBackConfigDocument(
     csvDelimiter,
     retentionDisposition,
   } = handBack;
-  const signing = handBackSigning(handBack.signing, mountedDocument.signing);
+  const signing = handBackSigning(
+    handBack.signing,
+    mountedDocument.signing,
+    inPlaceIdentityFile,
+  );
   const composed: ExchangeSpec = {
     connection: mountedDocument.connection,
     linkageTerms: handBack.linkageTerms,
@@ -583,18 +591,27 @@ export function handBackConfigDocument(
 /**
  * The `signing` block a hand-back writes. A mode the file already states keeps
  * its block unchanged; `certificate` keeps the file's identity path, which is
- * the operator's own, and names the placeholder identity where the file names
- * none; `none` writes no block, the CLI's "sign nothing".
+ * the operator's own, and where the file names none, or only the placeholder,
+ * names `inPlaceIdentityFile` for a file the console runs here and the
+ * placeholder identity for one completed elsewhere; `none` writes no block,
+ * the CLI's "sign nothing".
  */
 function handBackSigning(
   choice: JobHandBackSigning,
   mounted: SigningConfig | undefined,
+  inPlaceIdentityFile: string | undefined,
 ): SigningConfig | undefined {
+  const mountedIdentityFile =
+    mounted?.identityFile === HANDOFF_SIGNING_IDENTITY_PLACEHOLDER
+      ? undefined
+      : mounted?.identityFile;
   if (choice.mode === "certificate")
     return {
       mode: "certificate",
       identityFile:
-        mounted?.identityFile ?? HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+        mountedIdentityFile ??
+        inPlaceIdentityFile ??
+        HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       ...(choice.partnerFingerprint !== undefined
         ? { partnerFingerprint: choice.partnerFingerprint }
         : {}),

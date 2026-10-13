@@ -94,6 +94,7 @@ import {
   signingPathSettings,
 } from "./configLoad";
 import {
+  namesSigningIdentity,
   resolveSigningIdentityPath,
   runSigningFingerprint,
   signingCertificatePath,
@@ -349,6 +350,23 @@ export class MountedSigningPathsUnconvertedError extends Error {
       "the opened configuration states signing paths of its own and was not converted to the console's",
     );
     this.name = "MountedSigningPathsUnconvertedError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} for a signed run in place whose file
+ * signs with an identity file other than the one the intent's identity
+ * location resolves to: that run signs as its file states, and the console
+ * signs only with its own identity. The browser withholds this run; this is
+ * the server's own check on it. The route maps it to a 400 naming the
+ * refusal.
+ */
+export class MountedSigningIdentityMismatchError extends Error {
+  constructor() {
+    super(
+      "the configuration run in place signs with an identity file other than the console's",
+    );
+    this.name = "MountedSigningIdentityMismatchError";
   }
 }
 
@@ -835,6 +853,7 @@ export class JobManager {
     let signalingServer: AuthoredSignalingServer | undefined;
     let pairToRunOver: WorkingFolderPair | undefined;
     let inPlace: OpenedMountedConfiguration | undefined;
+    let inPlaceIdentityFile: string | undefined;
     // A run of the opened configuration runs the working folder's own files in
     // place, dialing the coordination server the file names, so it reads
     // neither the console's server nor a pair of the console's: it is refused
@@ -844,6 +863,7 @@ export class JobManager {
       if (mounted === undefined)
         throw new OpenedConfigurationNotRunnableError();
       inPlace = { source: mounted.source, document: undefined };
+      inPlaceIdentityFile = mounted.certificateIdentityFile;
     } else if (intent.channel === "webrtc") {
       const authored = this.authoredSignalingServer;
       if (authored === undefined && intent.signalingServer === undefined)
@@ -901,6 +921,16 @@ export class JobManager {
     // and before the slot is claimed, so a location naming no path in the
     // secrets mount leaves the console free rather than mid-create.
     const identityPath = this.identityPathFor(intent);
+    // A run in place signs with the identity its file names, which no
+    // conversion replaces, so a signed run is refused unless that is the
+    // identity the console shows.
+    if (
+      intent.mode !== "zeroSetup" &&
+      intent.signing?.mode === "certificate" &&
+      inPlaceIdentityFile !== undefined &&
+      !namesSigningIdentity(inPlaceIdentityFile, identityPath)
+    )
+      throw new MountedSigningIdentityMismatchError();
     // Refused rather than warned: the run would copy this party's long-lived
     // private key to the partner, and no wording recovers a disclosed key.
     // After the busy check, so a create posted to recover a lost attachment on
@@ -1766,7 +1796,10 @@ export class JobManager {
    */
   openMountedConfiguration(): LoadedConfigurationResponse {
     this.openedConfiguration = undefined;
-    const { response, opened } = openMountedConfiguration(this.dataRoot);
+    const { response, opened } = openMountedConfiguration(
+      this.dataRoot,
+      this.jobSecretsDir,
+    );
     this.openedConfiguration = opened;
     return response;
   }
@@ -1778,12 +1811,15 @@ export class JobManager {
    * run or another editor wrote since, such as a partner's recorded
    * fingerprint; and never while a run is using the file. Returns whether the
    * file was written: a hand-back of the configuration the file already
-   * states writes nothing.
+   * states writes nothing. A signed save of a file run in place that names no
+   * identity file writes the path `signing.identityLocation` resolves to.
    *
    * @throws {ConfigurationHandBackRefusedError} when the file changed since,
    *   or a run is using it, or the write is refused.
    * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
    *   configuration this hand-back applies to.
+   * @throws {SigningIdentityLocationError} when that location does not resolve
+   *   in the secrets mount.
    */
   handBackOpenedConfiguration(handBack: JobConfigurationHandBack): {
     written: boolean;
@@ -1809,6 +1845,12 @@ export class JobManager {
       this.dataRoot,
       handBack,
       this.consoleWrittenConfiguration,
+      () =>
+        resolveSigningIdentityPath({
+          dataRoot: this.dataRoot,
+          secretsDir: this.jobSecretsDir,
+          location: handBack.signing.identityLocation,
+        }),
     );
     if (written === undefined) return { written: false };
     this.openedConfiguration = { ...opened, source: written };

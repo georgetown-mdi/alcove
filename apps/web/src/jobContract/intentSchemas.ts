@@ -980,11 +980,13 @@ export const jobCreateIntentSchema: z.ZodType<JobCreateIntent> = z
   );
 
 /** The signing choice a hand-back states: any mode the file may hold
- * (`session-derived` included) and the pin under `certificate`. The file keeps
- * its own identity path. */
+ * (`session-derived` included), and under `certificate` the pin and the
+ * console's identity location. A file naming an identity path keeps it; the
+ * location is the one a file run in place that names none is given. */
 export interface JobHandBackSigning {
   mode: SigningConfig["mode"];
   partnerFingerprint?: string;
+  identityLocation?: JobSigningIdentityLocation;
 }
 
 /**
@@ -1007,6 +1009,7 @@ const jobHandBackSigningSchema: z.ZodType<JobHandBackSigning> = z
   .strictObject({
     mode: z.enum(["none", "session-derived", "certificate"]),
     partnerFingerprint: partnerFingerprintSchema.optional(),
+    identityLocation: jobSigningIdentityLocationSchema.optional(),
   })
   .refine(
     (signing) =>
@@ -1016,6 +1019,15 @@ const jobHandBackSigningSchema: z.ZodType<JobHandBackSigning> = z
       message:
         "partnerFingerprint is only admissible with signing mode 'certificate'",
       path: ["partnerFingerprint"],
+    },
+  )
+  .refine(
+    (signing) =>
+      signing.mode === "certificate" || signing.identityLocation === undefined,
+    {
+      message:
+        "identityLocation is only admissible with signing mode 'certificate'",
+      path: ["identityLocation"],
     },
   );
 

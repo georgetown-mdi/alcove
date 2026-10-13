@@ -15,6 +15,7 @@ import {
   COORDINATION_SERVER_CHANGED_REFUSAL,
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
+  MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
   OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
@@ -736,25 +737,52 @@ describe("failureFor", () => {
     },
   );
 
-  test("a signed run refused over the configuration's own signing paths offers the conversion", () => {
+  test.each(["filedrop", "webrtc"] as const)(
+    "a signed %s run refused over the configuration's own signing paths offers the conversion",
+    (channel) => {
+      const failure = failureFor(
+        "config",
+        new JobApiRequestError(
+          400,
+          "POST /api/jobs failed with status 400",
+          undefined,
+          MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+        ),
+        WORK_FILE,
+        channel,
+      );
+      expect(failure.category).toBe("config");
+      expect(failure.title).toBe(
+        "This configuration names its own signing paths",
+      );
+      expect(failure.message).toContain("Convert the configuration");
+      expect(failure.message).toContain("turn the signed receipt off");
+      expect(failure.message).toContain("keeps your file's signing settings");
+    },
+  );
+
+  test("a signed run in place refused over the file's own signing identity offers no conversion", () => {
     const failure = failureFor(
       "config",
       new JobApiRequestError(
         400,
         "POST /api/jobs failed with status 400",
         undefined,
-        MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+        MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL,
       ),
       WORK_FILE,
-      "filedrop",
+      "webrtc",
     );
     expect(failure.category).toBe("config");
     expect(failure.title).toBe(
-      "This configuration names its own signing paths",
+      "This configuration names its own signing identity",
     );
-    expect(failure.message).toContain("Convert the configuration");
+    expect(failure.message).not.toContain("Convert");
     expect(failure.message).toContain("turn the signed receipt off");
-    expect(failure.message).toContain("keeps your file's signing settings");
+    expect(failure.message).toContain("command line");
+    expect(failure.message).toContain(
+      "choose that file under Where your signing identity is kept",
+    );
   });
 
   test("the acceptor mounted-file 400 names its columns-step recovery", () => {

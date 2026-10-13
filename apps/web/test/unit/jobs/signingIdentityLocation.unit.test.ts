@@ -17,7 +17,10 @@ import {
 import {
   SIGNING_CERTIFICATE_FILE_NAME,
   SigningIdentityLocationError,
+  consoleSigningIdentityLocation,
+  namesSigningIdentity,
   resolveSigningIdentityPath,
+  signingIdentityPath,
 } from "@jobs/signingIdentity";
 
 import { route as FingerprintRoute } from "../../../server/console/routes/signing/fingerprint";
@@ -911,5 +914,96 @@ describe("the intent schema bounds the location", () => {
     expect(composedSigning(path.join(root, id))).toMatchObject({
       identity_file: path.join(fs.realpathSync(secrets), PICKED_IDENTITY_NAME),
     });
+  });
+});
+
+describe("whether a configuration's identity file names the console's", () => {
+  test("a link to the identity names it, through a linked mount too", () => {
+    const secrets = scratchDir("secrets");
+    const identity = path.join(secrets, PICKED_IDENTITY_NAME);
+    writeIdentity(identity);
+    const linkedMount = path.join(scratchDir("links"), "secrets");
+    fs.symlinkSync(secrets, linkedMount);
+    const linkedFile = path.join(scratchDir("links"), "identity.json");
+    fs.symlinkSync(identity, linkedFile);
+    const resolved = resolveSigningIdentityPath({
+      dataRoot: scratchDir("data"),
+      secretsDir: secrets,
+      location: { mount: "secrets", subPath: [PICKED_IDENTITY_NAME] },
+    });
+    expect(
+      namesSigningIdentity(
+        path.join(linkedMount, PICKED_IDENTITY_NAME),
+        resolved,
+      ),
+    ).toBe(true);
+    expect(namesSigningIdentity(linkedFile, resolved)).toBe(true);
+  });
+
+  test("a different file does not name it", () => {
+    const secrets = scratchDir("secrets");
+    const identity = path.join(secrets, PICKED_IDENTITY_NAME);
+    const other = path.join(secrets, "other.json");
+    writeIdentity(identity);
+    writeIdentity(other);
+    expect(namesSigningIdentity(other, identity)).toBe(false);
+  });
+
+  test("a relative or ~ spelling never names it", () => {
+    const dataRoot = scratchDir("data");
+    const identity = signingIdentityPath(dataRoot);
+    writeIdentity(identity);
+    expect(namesSigningIdentity(SIGNING_IDENTITY_FILE_NAME, identity)).toBe(
+      false,
+    );
+    expect(
+      namesSigningIdentity(`~/${SIGNING_IDENTITY_FILE_NAME}`, identity),
+    ).toBe(false);
+  });
+
+  test("a path not there yet names it by its folder's real path", () => {
+    const dataRoot = scratchDir("data");
+    const linkedRoot = path.join(scratchDir("links"), "data");
+    fs.symlinkSync(dataRoot, linkedRoot);
+    expect(
+      namesSigningIdentity(
+        path.join(linkedRoot, SIGNING_IDENTITY_FILE_NAME),
+        signingIdentityPath(dataRoot),
+      ),
+    ).toBe(true);
+  });
+
+  test("is placed among the console's own locations", () => {
+    const dataRoot = scratchDir("data");
+    const secrets = scratchDir("secrets");
+    fs.mkdirSync(path.join(secrets, "keys"));
+    const picked = path.join(secrets, "keys", PICKED_IDENTITY_NAME);
+    writeIdentity(picked);
+    const linkedMount = path.join(scratchDir("links"), "secrets");
+    fs.symlinkSync(secrets, linkedMount);
+    const mounts = { dataRoot, secretsDir: secrets };
+    expect(
+      consoleSigningIdentityLocation(signingIdentityPath(dataRoot), mounts),
+    ).toEqual({ mount: "folder" });
+    for (const spelled of [
+      picked,
+      path.join(linkedMount, "keys", PICKED_IDENTITY_NAME),
+    ])
+      expect(consoleSigningIdentityLocation(spelled, mounts)).toEqual({
+        mount: "secrets",
+        subPath: ["keys", PICKED_IDENTITY_NAME],
+      });
+    expect(
+      consoleSigningIdentityLocation("/home/operator/identity.json", mounts),
+    ).toBeUndefined();
+    expect(
+      consoleSigningIdentityLocation(PICKED_IDENTITY_NAME, mounts),
+    ).toBeUndefined();
+    expect(
+      consoleSigningIdentityLocation(picked, {
+        dataRoot,
+        secretsDir: undefined,
+      }),
+    ).toBeUndefined();
   });
 });
