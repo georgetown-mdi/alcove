@@ -247,9 +247,11 @@ stage() {
 }
 
 # script. Runs it under timeout in a session of its own, and once it fails
-# sends KILL to every process left in that session: the kill-after KILL of
-# uutils timeout, the timeout on Ubuntu 26.04, reaches the script alone, so a
-# child ignoring TERM would otherwise outlive the bound.
+# sends KILL to the install's process group: the script and every descendant
+# that stays in that group. A descendant that starts its own process group,
+# such as a probe run through timeout, is not killed and ends at its own bound.
+# The kill-after KILL of uutils timeout, the timeout on Ubuntu 26.04, reaches
+# the script alone, so a child ignoring TERM would otherwise outlive the bound.
 bounded() {
   local session status=0
   setsid timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$1" >&2 &
