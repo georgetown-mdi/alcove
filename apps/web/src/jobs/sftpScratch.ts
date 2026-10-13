@@ -13,7 +13,7 @@ import { isPathWithin } from "./pathContainment";
  * works with only the data root mounted. A pasted secret lives at rest only
  * here, as a server-owned 0600 file the CLI child reads as an `@path`, for as
  * long as the authored connection holds it: clearing or replacing the
- * connection, or deleting the exchange, deletes it, and it outlasts every run
+ * connection deletes it, and it outlasts every run and every deleted exchange
  * in between. The directory is owner-only (0700) and swept clean
  * at server start, so a credential orphaned by a restart never lingers --
  * unlike a workdir, an SSH credential must not inherit the "lingers until
