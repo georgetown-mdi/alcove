@@ -9,8 +9,11 @@ import {
   resolveWebAppSignalingServer,
 } from "@alcove/core";
 
+import {
+  OWN_RELAY_REFUSED_PREFIX,
+  jobOwnRelaySchema,
+} from "@jobContract/signalingServer";
 import { jobInvitationRelaySchema } from "@jobContract/intentSchemas";
-import { jobOwnRelaySchema } from "@jobContract/signalingServer";
 
 import { JobApiConfigError } from "./gate";
 
@@ -71,7 +74,7 @@ const BODY_REFUSED =
 /** The refusal of a relay setting core's rules refuse, naming the first
  * rule it breaks. */
 function ownRelayRefused(rule: string): string {
-  return `The relay is refused: ${rule}. Correct it and set it again.`;
+  return `${OWN_RELAY_REFUSED_PREFIX}${rule}. Correct it and set it again.`;
 }
 
 const TYPE_INSTEAD =

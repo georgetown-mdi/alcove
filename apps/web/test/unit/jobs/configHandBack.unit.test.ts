@@ -452,6 +452,42 @@ describe("the signing block a hand-back writes", () => {
     });
   });
 
+  test("turning it on names the placeholder identity where a file the console does not run names none", () => {
+    const { server } = webrtcDocument().connection as Record<string, unknown>;
+    const dir = mountHolding(
+      webrtcDocument({
+        connection: {
+          channel: "webrtc",
+          role: "inviter",
+          server,
+          ice_provision: {
+            host: "ice.example.org",
+            auth: { bearer: "ice-bearer-token" },
+          },
+        },
+        signing: undefined,
+      }),
+    );
+    const opened = readBack(dir);
+    handBackMountedConfiguration(
+      dir,
+      {
+        ...unchangedHandBack(opened),
+        signing: {
+          mode: "certificate",
+          partnerFingerprint: PARTNER_FINGERPRINT,
+        },
+      },
+      undefined,
+      () => "/data/.alcove-signing-identity.json",
+    );
+    expect(readBack(dir).signing).toEqual({
+      mode: "certificate",
+      identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+      partnerFingerprint: PARTNER_FINGERPRINT,
+    });
+  });
+
   test("turning it on names the console's identity where a file run here names none", () => {
     const { turn: _turn, ...direct } = webrtcDocument().connection as Record<
       string,

@@ -158,6 +158,9 @@ export interface LoadedConfigurationResponse {
   retiredSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
+  /** A webrtc file states `connection.ice_provision`, which no run here or
+   * on the command line supports; the block's own settings are not sent. */
+  iceProvisionNamed?: true;
   /** The identity file a webrtc configuration run in place signs with, as the
    * file spells it ({@link inPlaceSigningIdentityFile}). Absent where the file
    * names none, and for any other configuration. */
@@ -679,6 +682,13 @@ function namesRelayRegistrar(document: ExchangeSpec): boolean {
   );
 }
 
+function namesIceProvision(document: ExchangeSpec): boolean {
+  const { connection } = document;
+  return (
+    connection.channel === "webrtc" && connection.iceProvision !== undefined
+  );
+}
+
 /**
  * The TURN urls a run of a webrtc document relays through, chosen as the CLI
  * chooses them ({@link selectRunRelay}): an accepted invitation's where it
@@ -920,6 +930,9 @@ function responseFor({
     ...(namesRelayRegistrar(document)
       ? { relayRegistrarNamed: true as const }
       : {}),
+    ...(namesIceProvision(document)
+      ? { iceProvisionNamed: true as const }
+      : {}),
   };
 }
 
@@ -1069,9 +1082,12 @@ type MountedWebrtcConnection = Extract<
   { channel: "webrtc" }
 >;
 
-/** Whether the console runs `document` in place: a webrtc document. */
+/** Whether the console runs `document` in place: a webrtc document stating no
+ * `connection.ice_provision`, whose run the command line refuses. */
 export function runsInPlaceHere(document: ExchangeSpec): boolean {
-  return document.connection.channel === "webrtc";
+  return (
+    document.connection.channel === "webrtc" && !namesIceProvision(document)
+  );
 }
 
 /**
@@ -1092,7 +1108,8 @@ export function inPlaceSigningIdentityFile(
  * The mounted configuration a run here runs in place, read as it is now: the
  * bytes of a webrtc document, and the `signing.identity_file` it names where
  * it signs in `certificate` mode, as the file spells it. Undefined for any
- * other mount -- no file, one the console cannot open, or another channel.
+ * other mount -- no file, one the console cannot open, another channel, or
+ * one stating `connection.ice_provision`, whose run the command line refuses.
  */
 export function mountedInPlaceConfiguration(
   dataRoot: string,

@@ -607,6 +607,38 @@ describe("a webrtc configuration", () => {
     });
   });
 
+  test("names ice_provision by the fact alone, and is not run in place", () => {
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    const provisioned = webrtcDocument({
+      connection: {
+        channel: "webrtc",
+        role: "inviter",
+        server: connection.server,
+        ice_provision: {
+          host: "ice.example.org",
+          auth: { bearer: "ice-bearer-token" },
+        },
+      },
+    });
+    const response = loadDocument(provisioned);
+    expect(response.iceProvisionNamed).toBe(true);
+    const body = JSON.stringify(response);
+    expect(body).not.toContain("ice.example.org");
+    expect(body).not.toContain("ice-bearer-token");
+    expect(mountedInPlaceConfiguration(mountHolding(provisioned))).toBe(
+      undefined,
+    );
+    expect(loadDocument(webrtcDocument()).iceProvisionNamed).toBeUndefined();
+    expect(
+      loadMountedConfiguration(
+        mountHolding({
+          ...provisioned,
+          signing: { mode: "none", identity_file: "/home/operator/id.json" },
+        }),
+      ).inPlaceSigningIdentity,
+    ).toBeUndefined();
+  });
+
   test("names its key file's fault, as a run in place reads it", () => {
     const dir = mountHolding(webrtcDocument());
     expect(loadMountedConfiguration(dir).keyFileFault).toBe("absent");

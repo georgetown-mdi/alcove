@@ -47,14 +47,14 @@ export const COORDINATION_SERVER_MISSING =
  * whether a coordination server is set. */
 export const COORDINATION_SERVER_LOADING = "Checking the coordination server.";
 
-/** What the review step says when the coordination server changed between
- * this page reading it and the create: no invitation was made. */
+/** What the review step says when the coordination server or relay changed
+ * between this page reading it and the create: no invitation was made. */
 export const SIGNALING_SERVER_CHANGED_ALERT = {
-  title: "The coordination server changed",
+  title: "The coordination server or relay changed",
   message:
-    "The coordination server set on this console changed since this page " +
-    "showed it, so no invitation was created. Check the coordination server " +
-    "above, then create the invitation again.",
+    "The coordination server or relay set on this console changed since " +
+    "this page showed it, so no invitation was created. Check them above, " +
+    "then create the invitation again.",
 };
 
 /** Whether `a` and `b` are the same server, reached the same way, found

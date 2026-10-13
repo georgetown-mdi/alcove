@@ -105,6 +105,9 @@ interface StubOptions {
    * answers `webrtcSet`, which it reports from then on; unset, none is set. */
   webrtc?: unknown;
   webrtcSet?: unknown;
+  /** When set, `PUT /api/jobs/webrtc` is refused with a 400 holding this
+   * error, and the server held is unchanged. */
+  webrtcRefusal?: string;
   /** Withholds the `GET /api/jobs/webrtc` answer until `releaseWebrtc()`. */
   holdWebrtc?: boolean;
   coverageStatus?: number;
@@ -255,8 +258,17 @@ function stubJobApi(options: StubOptions = {}): {
           jsonResponse(options.rendezvous ?? { configured: false }),
         );
       if (url === "/api/jobs/webrtc") {
+        if (
+          (init?.method ?? "GET") === "PUT" &&
+          options.webrtcRefusal !== undefined
+        )
+          return Promise.resolve(
+            jsonResponse({ error: options.webrtcRefusal }, 400),
+          );
         if ((init?.method ?? "GET") === "PUT")
           webrtc = options.webrtcSet ?? { configured: false };
+        if ((init?.method ?? "GET") === "DELETE")
+          webrtc = { configured: false };
         if (options.holdWebrtc === true && (init?.method ?? "GET") === "GET")
           return webrtcGate.then(() => jsonResponse(webrtc));
         return Promise.resolve(jsonResponse(webrtc));
@@ -986,7 +998,7 @@ describe("console inviter over WebRTC", () => {
       .getByRole("button", { name: "Use the Alcove web app's server" })
       .click();
     await expect.element(field).toHaveValue("https://psi.data-bridge.org");
-    await page.getByRole("button", { name: "Set address" }).click();
+    await page.getByRole("button", { name: "Set address and relay" }).click();
     await expect
       .element(page.getByText("wss://signal.example.org:8443/api/"))
       .toBeInTheDocument();
@@ -1072,7 +1084,7 @@ describe("console inviter over WebRTC", () => {
     );
     const turnField = page.getByLabelText("Relay (TURN) servers, optional");
     await userEvent.fill(turnField, "turn:county:secret@relay.example.org");
-    await page.getByRole("button", { name: "Set address" }).click();
+    await page.getByRole("button", { name: "Set address and relay" }).click();
     await expect
       .element(page.getByText(/^Line 1: .*names a user before its host/))
       .toBeInTheDocument();
@@ -1092,7 +1104,7 @@ describe("console inviter over WebRTC", () => {
       page.getByLabelText("Exchange id at the registrar"),
       ownRelay.relayRegistrar.exchangeId,
     );
-    await page.getByRole("button", { name: "Set address" }).click();
+    await page.getByRole("button", { name: "Set address and relay" }).click();
     await expect
       .element(page.getByText("Enroll this exchange at your relay"))
       .toBeInTheDocument();
@@ -1142,6 +1154,62 @@ describe("console inviter over WebRTC", () => {
     });
   });
 
+  test("change, cancel, then clear leaves an empty form", async () => {
+    stubJobApi({
+      webrtc: {
+        configured: true,
+        host: "signal.example.org",
+        path: "/api/",
+        secure: true,
+        ownRelay: { turn: ["turns:relay.example.org:443?transport=tcp"] },
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await page.getByRole("button", { name: "Change address or relay" }).click();
+    await expect
+      .element(page.getByLabelText("Relay (TURN) servers, optional"))
+      .toHaveValue("turns:relay.example.org:443?transport=tcp");
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await page.getByRole("button", { name: "Clear address and relay" }).click();
+    await expect
+      .element(page.getByLabelText("Coordination server or web app address"))
+      .toHaveValue("");
+    await expect
+      .element(page.getByLabelText("Relay (TURN) servers, optional"))
+      .toHaveValue("");
+  });
+
+  test("shows the console's refusal of the relay on the relay field", async () => {
+    const refusal =
+      "The relay is refused: the relay names more than 8 turn urls. " +
+      "Correct it and set it again.";
+    stubJobApi({ webrtcRefusal: refusal });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await userEvent.fill(
+      page.getByLabelText("Coordination server or web app address"),
+      "wss://signal.example.org/api/",
+    );
+    await userEvent.fill(
+      page.getByLabelText("Relay (TURN) servers, optional"),
+      "turns:relay.example.org:443?transport=tcp",
+    );
+    await page.getByRole("button", { name: "Set address and relay" }).click();
+    await expect.element(page.getByText(refusal)).toBeInTheDocument();
+    await expect
+      .element(page.getByLabelText("Relay (TURN) servers, optional"))
+      .toHaveAttribute("aria-invalid", "true");
+    await expect
+      .element(page.getByLabelText("Coordination server or web app address"))
+      .not.toHaveAttribute("aria-invalid", "true");
+  });
+
   test("holds the create without asking for a server while the console has not answered", async () => {
     const api = stubJobApi({ holdWebrtc: true });
     app.render(createElement(InviterScreen));
@@ -1186,7 +1254,7 @@ describe("console inviter over WebRTC", () => {
     api.setWebrtc({ ...shown, host: "other.example.org" });
     await page.getByRole("button", { name: "Create the invitation" }).click();
     await expect
-      .element(page.getByText("The coordination server changed"))
+      .element(page.getByText("The coordination server or relay changed"))
       .toBeInTheDocument();
     // The review step shows the server the console now holds, and no run
     // started.

@@ -19,6 +19,7 @@ import {
   deleteSignalingServer,
   putSignalingServer,
 } from "@psi/jobClient/signalingServerClient";
+import { OWN_RELAY_REFUSED_PREFIX } from "@jobContract/signalingServer";
 
 import {
   EMPTY_OWN_RELAY_DRAFT,
@@ -126,6 +127,16 @@ export function SignalingServerCard({
       onSet(result.server);
       return;
     }
+    if (
+      result.kind === "refused" &&
+      result.message.startsWith(OWN_RELAY_REFUSED_PREFIX)
+    ) {
+      setRelayProblems({
+        ...NO_RELAY_PROBLEMS,
+        turn: [sanitizeForDisplay(result.message)],
+      });
+      return;
+    }
     setRefusal(
       result.kind === "refused"
         ? sanitizeForDisplay(result.message)
@@ -137,6 +148,9 @@ export function SignalingServerCard({
 
   async function clear() {
     await deleteSignalingServer();
+    setAddress("");
+    setRelay(EMPTY_OWN_RELAY_DRAFT);
+    setRelayProblems(NO_RELAY_PROBLEMS);
     onCleared();
   }
 
@@ -246,7 +260,7 @@ export function SignalingServerCard({
             color="red"
             onClick={() => void clear()}
           >
-            Clear address
+            Clear address and relay
           </Button>
         </Group>
       </Stack>
@@ -300,7 +314,7 @@ export function SignalingServerCard({
           disabled={address.trim() === ""}
           onClick={() => void save()}
         >
-          Set address
+          Set address and relay
         </Button>
         <Button
           size="xs"

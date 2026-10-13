@@ -42,6 +42,9 @@ export type MountedConfigurationAnswer =
       /** The retired settings the file states, which the console ignores. */
       retiredSettings?: Array<string>;
       relayRegistrarNamed?: true;
+      /** The file states `connection.ice_provision`, which withholds its run
+       * here. */
+      iceProvisionNamed?: true;
       /** The `.alcove.key` beside the configuration would refuse its run: none
        * is there, or the file is not a key file. */
       keyFileFault?: "absent" | "invalid";
@@ -161,7 +164,7 @@ export async function fetchMountedConfiguration(
     const folderPathSettings = namesOf(body.folderPathSettings);
     const retiredSettings =
       body.retiredSettings === undefined ? [] : namesOf(body.retiredSettings);
-    const { relayRegistrarNamed, keyFileFault } = body;
+    const { relayRegistrarNamed, iceProvisionNamed, keyFileFault } = body;
     const inPlaceSigningIdentity =
       body.inPlaceSigningIdentity === undefined
         ? undefined
@@ -175,6 +178,7 @@ export async function fetchMountedConfiguration(
       folderPathSettings === null ||
       retiredSettings === null ||
       (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
+      (iceProvisionNamed !== undefined && iceProvisionNamed !== true) ||
       (keyFileFault !== undefined &&
         keyFileFault !== "absent" &&
         keyFileFault !== "invalid")
@@ -190,6 +194,9 @@ export async function fetchMountedConfiguration(
       ...(retiredSettings.length > 0 ? { retiredSettings } : {}),
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
+        : {}),
+      ...(iceProvisionNamed === true
+        ? { iceProvisionNamed: true as const }
         : {}),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
       ...(inPlaceSigningIdentity !== undefined

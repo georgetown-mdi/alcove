@@ -445,11 +445,11 @@ function failureContentFor(
             "server setting changed, or the console did not answer, while " +
             "the exchange was starting. Try again.",
         };
-  // A WebRTC run whose invitation names a coordination server other than the
-  // one the console holds: it was changed or cleared since the invitation was
-  // created, or, for an accept, since the accept set it. The inviter starts
-  // over at the review step, where the server is set; the acceptor's retry
-  // sets it again.
+  // A WebRTC run whose invitation names a coordination server or relay other
+  // than the one the console holds: it was changed or cleared since the
+  // invitation was created, or, for an accept, since the accept set it. The
+  // inviter starts over at the review step, where the server is set; the
+  // acceptor's retry sets it again.
   if (
     error instanceof JobApiRequestError &&
     error.refusalReason === COORDINATION_SERVER_CHANGED_REFUSAL
@@ -466,12 +466,13 @@ function failureContentFor(
         }
       : {
           category: "config",
-          title: "The coordination server changed",
+          title: "The coordination server or relay changed",
           message:
-            "The console did not start this exchange. The coordination server " +
-            "set on this console is not the one this invitation names, so your " +
-            "partner would not find you. Start over, check the coordination " +
-            "server, then create a fresh invitation.",
+            "The console did not start this exchange. The coordination " +
+            "server or relay set on this console is not the one this " +
+            "invitation names, so your partner could not connect to you. " +
+            "Start over, check the coordination server and relay, then " +
+            "create a fresh invitation.",
         };
   // A WebRTC run of the opened configuration whose file is no longer one the
   // console runs in place. Classified `config`: a retry refuses identically
@@ -485,9 +486,10 @@ function failureContentFor(
       title: "The console did not run your alcove.yaml",
       message:
         "The alcove.yaml in your working folder is no longer a WebRTC " +
-        "configuration the console can run: it is gone, cannot be read, or " +
-        "runs over another channel. Start over: the console opens the " +
-        "configuration again and shows what it holds.",
+        "configuration the console can run: it is gone, cannot be read, " +
+        "runs over another channel, or states connection.ice_provision. " +
+        "Start over: the console opens the configuration again and shows " +
+        "what it holds.",
     };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified

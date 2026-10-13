@@ -82,7 +82,9 @@ export type MountedConfigurationState =
    * operator's choice to convert: until then the hand-off states those paths as
    * read, and a signed run is withheld while `signingPaths` names any
    * ({@link unconvertedSigningWithheldReason}). `relayEnrollment` is a file
-   * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}).
+   * naming `connection.relay_registrar` ({@link RELAY_ENROLLMENT_NOTICE}),
+   * and `iceProvision` one stating `connection.ice_provision`, whose run is
+   * withheld ({@link ICE_PROVISION_RUN_WITHHELD}).
    * `keyFileFault` is why the `.alcove.key` beside the file would refuse its
    * run ({@link keyFileNotice}), `retiredSettings` the settings the file
    * states that Alcove no longer reads ({@link retiredSettingsNotices}), and
@@ -96,6 +98,7 @@ export type MountedConfigurationState =
       folderPaths?: Array<string>;
       converted?: true;
       relayEnrollment?: true;
+      iceProvision?: true;
       keyFileFault?: "absent" | "invalid";
       retiredSettings?: Array<string>;
       newInvitation?: true;
@@ -165,8 +168,9 @@ export const OPENED_EXCHANGE_RUNS_IN_PLACE =
  * opened configuration it runs in place. */
 export const OPENED_SIGNALING_SERVER_NOTE =
   "From your alcove.yaml: the run connects through the coordination server " +
-  "and any relay the file names. To change them, edit connection.server or " +
-  "connection.turn in alcove.yaml, then open the configuration again.";
+  "and any relay the file names. To change them, edit connection.server, " +
+  "and connection.invitation_relay where the file has one, else " +
+  "connection.turn, in alcove.yaml, then open the configuration again.";
 
 /** Whether the opened configuration runs in place. */
 export function opensInPlace(state: MountedConfigurationState): boolean {
@@ -336,16 +340,26 @@ export const RELAY_ENROLLMENT_NOTICE =
   ".alcove.key, run alcove enroll-relay in the folder holding alcove.yaml " +
   `and that key file. ${ENROLL_RELAY_TOKEN_STEP}`;
 
+/** Why the review step withholds the run of a configuration stating
+ * `connection.ice_provision`, which the CLI refuses to run. */
+export const ICE_PROVISION_RUN_WITHHELD =
+  "Neither the console nor Alcove on the command line can run a " +
+  "configuration that states connection.ice_provision. List its servers " +
+  "under connection.stun and connection.turn in alcove.yaml instead, then " +
+  "open the configuration again.";
+
 /**
  * Why the review step withholds its run control, or undefined where nothing
- * open withholds it: a configuration it runs in place whose key file would
- * refuse the run. Read off the state the load derived once, so no run starts
- * and then fails on it. The steps can still be saved back.
+ * open withholds it: a configuration stating `connection.ice_provision`, or
+ * one it runs in place whose key file would refuse the run. Read off the
+ * state the load derived once, so no run starts and then fails on it. The
+ * steps can still be saved back.
  */
 export function runWithheldReason(
   state: MountedConfigurationState,
 ): string | undefined {
   if (state.status !== "opened") return undefined;
+  if (state.iceProvision === true) return ICE_PROVISION_RUN_WITHHELD;
   if (state.runsInPlace === true && state.keyFileFault !== undefined)
     return (
       "The console cannot run this configuration without a usable " +
@@ -1051,6 +1065,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
             : {}),
           ...(answer.relayRegistrarNamed === true
             ? { relayEnrollment: true as const }
+            : {}),
+          ...(answer.iceProvisionNamed === true
+            ? { iceProvision: true as const }
             : {}),
           ...(answer.keyFileFault !== undefined
             ? { keyFileFault: answer.keyFileFault }

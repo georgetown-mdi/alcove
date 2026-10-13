@@ -10,6 +10,7 @@ import {
   CONFIGURATION_SAVE_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
   CREATE_INVITATION_FROM_SETTINGS_LABEL,
+  ICE_PROVISION_RUN_WITHHELD,
   IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
@@ -321,6 +322,22 @@ describe("a webrtc configuration stating a relay", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     expect(runWithheldReason(state)).toBeUndefined();
     expect(runsOpenedConfiguration(state)).toBe(true);
+  });
+
+  test("withholds the run of one stating ice_provision, naming what to list instead", () => {
+    const answer = openedWebrtcFile([]);
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    const { state } = mountedConfigurationRead({
+      ...answer,
+      iceProvisionNamed: true,
+    });
+    expect(state).toMatchObject({ iceProvision: true, runsInPlace: true });
+    expect(runWithheldReason(state)).toBe(ICE_PROVISION_RUN_WITHHELD);
+    expect(ICE_PROVISION_RUN_WITHHELD).toContain("connection.ice_provision");
+    expect(ICE_PROVISION_RUN_WITHHELD).toMatch(
+      /under connection\.stun and connection\.turn in alcove\.yaml/,
+    );
+    expect(ICE_PROVISION_RUN_WITHHELD).toMatch(/open the configuration again/);
   });
 
   test("a channel the console conducts withholds nothing", () => {
@@ -802,6 +819,9 @@ describe("a webrtc configuration stating no relay settings", () => {
     );
     expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(/as alcove exchange does/);
     expect(OPENED_SIGNALING_SERVER_NOTE).toMatch(/^From your alcove\.yaml/);
+    expect(OPENED_SIGNALING_SERVER_NOTE).toContain(
+      "connection.invitation_relay where the file has one, else connection.turn",
+    );
   });
 
   test("an edit of its terms says starting saves them, and how to keep or change them", () => {

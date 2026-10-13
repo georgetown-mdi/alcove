@@ -22,6 +22,10 @@ export interface JobOwnRelay {
   relayRegistrar?: RelayRegistrar;
 }
 
+/** How the refusal of an `ownRelay` the console's rules refuse begins, so the
+ * browser shows it on the relay fields rather than on the address. */
+export const OWN_RELAY_REFUSED_PREFIX = "The relay is refused: ";
+
 /** {@link JobOwnRelay}'s validator: core's `turn` url rule under the bounds
  * of an invitation's relay, and core's registrar rule. An entry is a url and
  * nothing else, so no credential is representable. */
