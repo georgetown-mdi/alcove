@@ -319,7 +319,7 @@ Browser SFTP path, after the relay path, re-scoped from the earlier note's list:
 
 Each with its options, the trade, a recommendation, and the maintainer's ruling; the linked section carries the argument.
 Each ruling is quoted as the maintainer gave it on 2026-10-09.
-The reading after a ruling is how the working session that recorded it applied the ruling to the fork, not the maintainer's words.
+The reading after a ruling is how this note applies the ruling to the fork, not the maintainer's words.
 
 1. **How the hosted relay admits an exchange**: a registered per-exchange key, as the TURN relay today, or possession of a pairing secret with quotas and no registration, as the broker.
    Registration serves saved exchanges and CLI parties and leaves a one-shot browser exchange without a relay; possession serves every exchange and makes the hosted relay a quota-bounded public service, which runs against the standing direction that a relay is never public ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
