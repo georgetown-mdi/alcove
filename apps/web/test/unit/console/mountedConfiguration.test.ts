@@ -12,6 +12,7 @@ import {
   CONFIGURATION_SAVE_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
   CREATE_INVITATION_FROM_SETTINGS_LABEL,
+  IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
@@ -29,6 +30,8 @@ import {
   convertedStatement,
   credentialWarningNotice,
   editedTermsWarning,
+  inPlaceSigningIdentityShown,
+  inPlaceSigningIdentityWithheldReason,
   keyFileNotice,
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
@@ -49,7 +52,10 @@ import {
 import { PREVIOUS_CONFIGURATION_FILE_NAME } from "@jobContract/intentSchemas";
 import { buildImageReference } from "@psi/dockerRunCommand";
 
-import type { DisclosedExchangeDocument } from "@jobContract/disclosedConfiguration";
+import type {
+  DisclosedExchangeDocument,
+  InPlaceSigningIdentity,
+} from "@jobContract/disclosedConfiguration";
 import type { JobConfigurationHandBack } from "@jobContract/intentSchemas";
 import type { MountedConfigurationAnswer } from "@psi/jobClient/mountedConfigClient";
 
@@ -828,6 +834,114 @@ describe("a webrtc configuration stating no relay settings", () => {
     expect(warning).toContain("undo the change before you start");
     expect(warning).toContain(`start, then run ${UPDATE_COMMAND}`);
     expect(warning).not.toMatch(/close the configuration/);
+  });
+});
+
+describe("the identity a signed run in place signs with", () => {
+  const picked = { mount: "secrets" as const, subPath: ["keys", "id.json"] };
+
+  function inPlaceWith(
+    inPlaceSigningIdentity?: InPlaceSigningIdentity,
+    relaySettings: Array<string> = [],
+  ) {
+    return mountedConfigurationRead({
+      ...openedWebrtcFile(relaySettings),
+      ...(inPlaceSigningIdentity !== undefined
+        ? { inPlaceSigningIdentity }
+        : {}),
+    }).state;
+  }
+
+  const signed = { mode: "certificate" as const, identityLocation: undefined };
+
+  test("a file naming none has the console's written into it, and runs", () => {
+    const state = inPlaceWith();
+    expect(inPlaceSigningIdentityShown(state, signed)).toEqual({
+      kind: "written",
+    });
+    expect(inPlaceSigningIdentityWithheldReason(state, signed)).toBeUndefined();
+    expect(IN_PLACE_IDENTITY_WRITTEN_NOTICE).toContain(
+      "writes the identity in use here into it as signing.identity_file",
+    );
+  });
+
+  test("a file naming the identity the card holds runs as it is", () => {
+    const folder = inPlaceWith({
+      identityFile: "/data/.alcove-signing-identity.json",
+      consoleLocation: { mount: "folder" },
+    });
+    expect(inPlaceSigningIdentityShown(folder, signed)).toEqual({
+      kind: "console",
+    });
+    expect(
+      inPlaceSigningIdentityWithheldReason(folder, signed),
+    ).toBeUndefined();
+    const secrets = inPlaceWith({
+      identityFile: "/secrets/keys/id.json",
+      consoleLocation: picked,
+    });
+    expect(
+      inPlaceSigningIdentityShown(secrets, {
+        mode: "certificate",
+        identityLocation: { mount: "secrets", subPath: ["keys", "id.json"] },
+      }),
+    ).toEqual({ kind: "console" });
+  });
+
+  test("a file naming another identity shows its path and withholds the run", () => {
+    const other = inPlaceWith({ identityFile: "/home/operator/id.json" });
+    expect(inPlaceSigningIdentityShown(other, signed)).toEqual({
+      kind: "file",
+      identityFile: "/home/operator/id.json",
+      consoleLocation: false,
+    });
+    const reason = inPlaceSigningIdentityWithheldReason(other, signed);
+    expect(reason).toContain("the console signs only with its own");
+    expect(reason).toContain("Turn the signed receipt off");
+    expect(reason).toContain("saves that change to alcove.yaml");
+    expect(reason).toContain("command line");
+    expect(reason).not.toContain("Choose the file it names");
+  });
+
+  test("a file naming a console identity the card does not hold says where to choose it", () => {
+    const folder = inPlaceWith({
+      identityFile: "/data/.alcove-signing-identity.json",
+      consoleLocation: { mount: "folder" },
+    });
+    const elsewhere = {
+      mode: "certificate" as const,
+      identityLocation: picked,
+    };
+    expect(inPlaceSigningIdentityShown(folder, elsewhere)).toMatchObject({
+      kind: "file",
+      consoleLocation: true,
+    });
+    expect(inPlaceSigningIdentityWithheldReason(folder, elsewhere)).toContain(
+      "Choose the file it names",
+    );
+    const secrets = inPlaceWith({
+      identityFile: "/secrets/keys/id.json",
+      consoleLocation: picked,
+    });
+    expect(inPlaceSigningIdentityShown(secrets, signed)?.kind).toBe("file");
+  });
+
+  test("an unsigned run, or a file not run in place, is not withheld", () => {
+    const other = { identityFile: "/home/operator/id.json" };
+    expect(
+      inPlaceSigningIdentityShown(inPlaceWith(other), {
+        mode: "none",
+        identityLocation: undefined,
+      }),
+    ).toBeUndefined();
+    const relay = inPlaceWith(other, ["connection.turn"]);
+    expect(inPlaceSigningIdentityShown(relay, signed)).toBeUndefined();
+    expect(
+      inPlaceSigningIdentityWithheldReason(
+        mountedConfigurationRead(opened()).state,
+        signed,
+      ),
+    ).toBeUndefined();
   });
 });
 

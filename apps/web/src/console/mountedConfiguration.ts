@@ -20,8 +20,9 @@ import type {
   JobChannel,
   JobConfigurationHandBack,
 } from "@jobContract/intentSchemas";
+import type { ReceiptsDraft, ReceiptsSigningMode } from "@psi/receiptsModel";
+import type { InPlaceSigningIdentity } from "@jobContract/disclosedConfiguration";
 import type { LoadedAuthoringState } from "./loadedConfig";
-import type { ReceiptsSigningMode } from "@psi/receiptsModel";
 import type { WebRTCEndpoint } from "@alcove/core";
 
 /**
@@ -83,9 +84,11 @@ export type MountedConfigurationState =
    * exchange of it, a webrtc file stating `relaySettings`, derived once at the
    * read: it withholds the run and replaces every notice about the run with
    * the one naming those settings. `runsInPlace` is a webrtc file the console
-   * runs in place ({@link OPENED_EXCHANGE_RUNS_IN_PLACE}), and
+   * runs in place ({@link OPENED_EXCHANGE_RUNS_IN_PLACE}),
    * `signalingServer` the coordination server address it names, which the
-   * review step shows and does not edit.
+   * review step shows and does not edit, and `inPlaceSigningIdentity` the
+   * identity file it signs with, where it names one
+   * ({@link inPlaceSigningIdentityShown}).
    * `signingPaths` and `folderPaths` are the paths the file states that a
    * conversion replaces with the console's own, and `converted` is the
    * operator's choice to convert: until then the hand-off states those paths as
@@ -112,6 +115,7 @@ export type MountedConfigurationState =
       relaySettings?: Array<string>;
       runsInPlace?: true;
       signalingServer?: string;
+      inPlaceSigningIdentity?: InPlaceSigningIdentity;
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
       notCovered?: Array<string>;
@@ -614,6 +618,89 @@ export function unconvertedSigningWithheldReason(
 }
 
 /**
+ * Which identity a signed run of the open configuration in place signs with,
+ * as the receipts card shows it: `written` where the file names none, so the
+ * save writes the console's identity into it; `console` where it names the
+ * identity the card holds; `file` where it names another, which the console
+ * does not sign with. Undefined where no signed run in place is set up.
+ */
+export type InPlaceSigningIdentityShown =
+  | { kind: "written" }
+  | { kind: "console" }
+  | { kind: "file"; identityFile: string; consoleLocation: boolean };
+
+/** What the receipts card says where the file run in place names no identity
+ * file. */
+export const IN_PLACE_IDENTITY_WRITTEN_NOTICE =
+  "Your alcove.yaml names no signing identity file. Starting the run writes " +
+  "the identity in use here into it as signing.identity_file.";
+
+/** What the receipts card says beside the identity file the file run in place
+ * names, where that is not the identity the card holds. */
+export const IN_PLACE_IDENTITY_FILE_NOTICE =
+  "Your alcove.yaml signs with this file, and the console signs only with " +
+  "its own signing identity, so this run does not start.";
+
+/** {@link InPlaceSigningIdentityShown} for the open configuration and the
+ * receipts card's mode and identity location. */
+export function inPlaceSigningIdentityShown(
+  state: MountedConfigurationState,
+  receipts: Pick<ReceiptsDraft, "mode" | "identityLocation">,
+): InPlaceSigningIdentityShown | undefined {
+  if (
+    receipts.mode !== "certificate" ||
+    state.status !== "opened" ||
+    state.runsInPlace !== true
+  )
+    return undefined;
+  const named = state.inPlaceSigningIdentity;
+  if (named === undefined) return { kind: "written" };
+  const location = named.consoleLocation;
+  const held = receipts.identityLocation;
+  const namesHeld =
+    location !== undefined &&
+    (location.mount === "folder"
+      ? held === undefined
+      : held !== undefined &&
+        held.subPath.length === location.subPath.length &&
+        held.subPath.every((segment, i) => segment === location.subPath[i]));
+  return namesHeld
+    ? { kind: "console" }
+    : {
+        kind: "file",
+        identityFile: named.identityFile,
+        consoleLocation: location !== undefined,
+      };
+}
+
+/**
+ * Why a signed run of the open configuration in place is withheld, or
+ * undefined where it is not: the file signs with an identity file other than
+ * the one the receipts card holds ({@link inPlaceSigningIdentityShown}).
+ */
+export function inPlaceSigningIdentityWithheldReason(
+  state: MountedConfigurationState,
+  receipts: Pick<ReceiptsDraft, "mode" | "identityLocation">,
+): string | undefined {
+  const shown = inPlaceSigningIdentityShown(state, receipts);
+  if (shown?.kind !== "file") return undefined;
+  return [
+    "This configuration signs with a signing identity file of its own, and " +
+      "the console signs only with its own signing identity.",
+    ...(shown.consoleLocation
+      ? [
+          "Choose the file it names under Where your signing identity is " +
+            "kept to sign with that identity here.",
+          "Or turn the signed receipt off to run this exchange unsigned.",
+        ]
+      : ["Turn the signed receipt off to run this exchange unsigned."]),
+    "Starting the run saves that change to alcove.yaml.",
+    "Or run the file with Alcove on the command line, which signs with the " +
+      "identity it names.",
+  ].join(" ");
+}
+
+/**
  * The sentence standing in for the cards that edit an opened configuration's
  * connection block -- connection tuning and file handling -- where the console
  * keeps that block exactly as the file states it, so an edit there would reach
@@ -1047,6 +1134,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(inPlace ? { runsInPlace: true as const } : {}),
           ...(inPlace && answer.document.signalingServer !== undefined
             ? { signalingServer: answer.document.signalingServer }
+            : {}),
+          ...(inPlace && answer.inPlaceSigningIdentity !== undefined
+            ? { inPlaceSigningIdentity: answer.inPlaceSigningIdentity }
             : {}),
           ...(isJobChannel(loaded.channel) || inPlace
             ? {}

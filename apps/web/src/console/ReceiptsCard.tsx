@@ -45,9 +45,11 @@ import styles from "@styles/app.module.css";
 
 import { DisclosureSection } from "../components/DisclosureSection";
 
+import { IN_PLACE_IDENTITY_WRITTEN_NOTICE } from "./mountedConfiguration";
 import { SigningIdentityLocationField } from "./SigningIdentityLocationField";
 
 import type { ReceiptsDraft, ReceiptsSigningMode } from "@psi/receiptsModel";
+import type { InPlaceSigningIdentityShown } from "./mountedConfiguration";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
 import type { SigningFingerprintOutcome } from "@psi/jobClient/signingIdentityClient";
 
@@ -170,6 +172,7 @@ export function ReceiptsCard({
   identity,
   rendezvous,
   maxAgeOffered = true,
+  inPlaceSigningIdentity,
   onChange,
 }: {
   draft: ReceiptsDraft;
@@ -190,6 +193,11 @@ export function ReceiptsCard({
    * opened configuration the console saves back rather than runs keeps the one
    * its file states. */
   maxAgeOffered?: boolean;
+  /** The identity a signed run of an opened configuration in place signs
+   * with (`inPlaceSigningIdentityShown`): the card says where the file
+   * names none that the run writes the one in use, and shows the file's own
+   * path in its place where it names another. */
+  inPlaceSigningIdentity?: InPlaceSigningIdentityShown;
   onChange: (draft: ReceiptsDraft) => void;
 }) {
   const requestProblemId = useId();
@@ -313,11 +321,19 @@ export function ReceiptsCard({
           <>
             <SigningIdentityLocationField
               location={draft.identityLocation}
+              {...(inPlaceSigningIdentity?.kind === "file"
+                ? { fileIdentity: inPlaceSigningIdentity.identityFile }
+                : {})}
               pickerOpen={locationPickerOpen}
               onPickerOpen={() => setLocationPickerOpen(true)}
               onPickerClose={() => setLocationPickerOpen(false)}
               onChange={(location) => set("identityLocation", location)}
             />
+            {inPlaceSigningIdentity?.kind === "written" && (
+              <Text size="sm" c="dimmed">
+                {IN_PLACE_IDENTITY_WRITTEN_NOTICE}
+              </Text>
+            )}
 
             <Stack gap="xs">
               <Text size="sm" fw={600}>

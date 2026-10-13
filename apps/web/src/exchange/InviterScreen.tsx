@@ -136,6 +136,8 @@ import {
   connectionSettingsHeldNotice,
   conversionStatement,
   editedTermsWarning,
+  inPlaceSigningIdentityShown,
+  inPlaceSigningIdentityWithheldReason,
   openedSignalingServer,
   openedWebrtcEndpoint,
   opensInPlace,
@@ -604,10 +606,19 @@ export function InviterScreen() {
     loadedTermsFile === acquired &&
     termsEditedSinceOpened(loadedTermsBaseline, editor);
   // A signed console run of an opened configuration naming signing paths of
-  // its own waits for the operator to convert it to the console's.
+  // its own waits for the operator to convert it to the console's; one run in
+  // place whose file signs with another identity than the card's is withheld.
   const signingWithheld =
     chosenRunMode === "server-job"
-      ? unconvertedSigningWithheldReason(mountedConfiguration, receipts.mode)
+      ? (unconvertedSigningWithheldReason(
+          mountedConfiguration,
+          receipts.mode,
+        ) ??
+        inPlaceSigningIdentityWithheldReason(mountedConfiguration, receipts))
+      : undefined;
+  const inPlaceSigningIdentity =
+    chosenRunMode === "server-job"
+      ? inPlaceSigningIdentityShown(mountedConfiguration, receipts)
       : undefined;
   const signingWithheldConversion =
     signingWithheld === undefined
@@ -1870,6 +1881,7 @@ export function InviterScreen() {
                   dispatch({ type: "run-diagnostics-chosen", draft })
                 }
                 receipts={receipts}
+                inPlaceSigningIdentity={inPlaceSigningIdentity}
                 onReceipts={(draft) =>
                   dispatch({ type: "receipts-chosen", draft })
                 }

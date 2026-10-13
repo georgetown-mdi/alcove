@@ -18,8 +18,10 @@ import {
   openMountedConfiguration,
   readMountedConfiguration,
 } from "@jobs/configLoad";
+import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { authoringStateFromDocument } from "@console/loadedConfig";
 import { composeSftpConfigSpec } from "@jobs/intentConfig";
+import { signingIdentityPath } from "@jobs/signingIdentity";
 
 import {
   testSftpServerEntry,
@@ -535,6 +537,54 @@ describe("a webrtc configuration", () => {
       )?.certificateIdentityFile;
     expect(signedWith("certificate")).toBe("/home/operator/identity.json");
     expect(signedWith("none")).toBeUndefined();
+  });
+
+  test("run in place, the load states the identity file it signs with", () => {
+    const connection = {
+      channel: "webrtc",
+      role: "acceptor",
+      server: (webrtcDocument().connection as Record<string, unknown>).server,
+    };
+    const loadedSigning = (
+      signing: Record<string, unknown> | undefined,
+      dir = scratchDir("configload"),
+      relay = false,
+    ) => {
+      fs.writeFileSync(
+        path.join(dir, "alcove.yaml"),
+        stringifyYaml(
+          webrtcDocument({
+            ...(relay ? {} : { connection }),
+            ...(signing !== undefined ? { signing } : {}),
+          }),
+        ),
+      );
+      return loadMountedConfiguration(dir).inPlaceSigningIdentity;
+    };
+    expect(loadedSigning(undefined)).toBeUndefined();
+    expect(
+      loadedSigning({
+        mode: "certificate",
+        identity_file: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+      }),
+    ).toBeUndefined();
+    const own = scratchDir("configload");
+    expect(
+      loadedSigning(
+        { mode: "certificate", identity_file: signingIdentityPath(own) },
+        own,
+      ),
+    ).toEqual({
+      identityFile: signingIdentityPath(own),
+      consoleLocation: { mount: "folder" },
+    });
+    const other = { mode: "none", identity_file: "/home/operator/id.json" };
+    expect(loadedSigning(other)).toStrictEqual({
+      identityFile: "/home/operator/id.json",
+    });
+    expect(
+      loadedSigning(other, scratchDir("configload"), true),
+    ).toBeUndefined();
   });
 
   test("names its key file's fault, as a run in place reads it", () => {

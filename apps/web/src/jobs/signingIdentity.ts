@@ -21,6 +21,7 @@ import {
 import { resolveMountPath } from "./mountBrowse";
 import { runCapturedCliChild } from "./capturedCliChild";
 
+import type { InPlaceSigningIdentity } from "@jobContract/disclosedConfiguration";
 import type { JobSigningIdentityLocation } from "@jobContract/intentSchemas";
 
 /**
@@ -68,10 +69,31 @@ export function signingIdentityPath(dataRoot: string): string {
 }
 
 /**
+ * `filePath` with its links resolved: the real path of what is there, else the
+ * real path of its directory joined with its name, else the lexical absolute
+ * path where neither is there.
+ */
+function realOrLexicalPath(filePath: string): string {
+  try {
+    return fs.realpathSync(filePath);
+  } catch {
+    try {
+      return path.join(
+        fs.realpathSync(path.dirname(filePath)),
+        path.basename(filePath),
+      );
+    } catch {
+      return path.resolve(filePath);
+    }
+  }
+}
+
+/**
  * Whether a configuration's `signing.identity_file`, as the file spells it,
- * names the identity at `identityPath`. Lexical on absolute paths: a relative
- * or `~` path resolves against the CLI's own working directory or home, so it
- * is never taken to name the console's identity.
+ * names the identity at `identityPath`. Both sides are compared as real paths
+ * ({@link realOrLexicalPath}), so a file naming the identity through a linked
+ * mount names it. A relative or `~` path resolves against the CLI's own working
+ * directory or home, so it is never taken to name the console's identity.
  */
 export function namesSigningIdentity(
   identityFile: string,
@@ -79,8 +101,49 @@ export function namesSigningIdentity(
 ): boolean {
   return (
     path.isAbsolute(identityFile) &&
-    path.resolve(identityFile) === path.resolve(identityPath)
+    realOrLexicalPath(identityFile) === realOrLexicalPath(identityPath)
   );
+}
+
+/**
+ * Which of the console's own identity locations a configuration's
+ * `signing.identity_file` names, as a location the receipts card can hold: the
+ * default in the data root, or the secrets-mount path that resolves to the same
+ * file, spelled relative to the mount as the file spells it where it can be,
+ * else as its real path is. Undefined for any other path, a relative or `~`
+ * one included ({@link namesSigningIdentity}).
+ */
+export function consoleSigningIdentityLocation(
+  identityFile: string,
+  mounts: { dataRoot: string; secretsDir: string | undefined },
+): InPlaceSigningIdentity["consoleLocation"] {
+  if (!path.isAbsolute(identityFile)) return undefined;
+  if (namesSigningIdentity(identityFile, signingIdentityPath(mounts.dataRoot)))
+    return { mount: "folder" };
+  const { secretsDir } = mounts;
+  if (secretsDir === undefined) return undefined;
+  const spellings: Array<[string, string]> = [
+    [path.resolve(secretsDir), path.resolve(identityFile)],
+    [realOrLexicalPath(secretsDir), realOrLexicalPath(identityFile)],
+  ];
+  for (const [root, file] of spellings) {
+    const relative = path.relative(root, file);
+    if (
+      relative === "" ||
+      relative === ".." ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    )
+      continue;
+    const subPath = relative.split(path.sep);
+    const resolved = resolveMountPath(secretsDir, subPath);
+    if (
+      resolved !== null &&
+      namesSigningIdentity(identityFile, resolved.absolutePath)
+    )
+      return { mount: "secrets", subPath };
+  }
+  return undefined;
 }
 
 /**

@@ -341,10 +341,8 @@ export class JobSftpCredentialConsoleOwnedError extends Error {
  * a signing path of its own. The console signs only with its own identity and
  * writes the receipt only where it serves it, so running would replace the
  * operator's paths without their say. The browser withholds this run and
- * offers the conversion; this is the server's own check on it. Also thrown
- * for a signed run in place whose file signs with an identity file other
- * than the console's, converted or not, since that run signs as its file
- * states. The route maps it to a 400 naming the refusal.
+ * offers the conversion; this is the server's own check on it. The route maps
+ * it to a 400 naming the refusal.
  */
 export class MountedSigningPathsUnconvertedError extends Error {
   constructor() {
@@ -352,6 +350,23 @@ export class MountedSigningPathsUnconvertedError extends Error {
       "the opened configuration states signing paths of its own and was not converted to the console's",
     );
     this.name = "MountedSigningPathsUnconvertedError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} for a signed run in place whose file
+ * signs with an identity file other than the one the intent's identity
+ * location resolves to: that run signs as its file states, and the console
+ * signs only with its own identity. The browser withholds this run; this is
+ * the server's own check on it. The route maps it to a 400 naming the
+ * refusal.
+ */
+export class MountedSigningIdentityMismatchError extends Error {
+  constructor() {
+    super(
+      "the configuration run in place signs with an identity file other than the console's",
+    );
+    this.name = "MountedSigningIdentityMismatchError";
   }
 }
 
@@ -915,7 +930,7 @@ export class JobManager {
       inPlaceIdentityFile !== undefined &&
       !namesSigningIdentity(inPlaceIdentityFile, identityPath)
     )
-      throw new MountedSigningPathsUnconvertedError();
+      throw new MountedSigningIdentityMismatchError();
     // Refused rather than warned: the run would copy this party's long-lived
     // private key to the partner, and no wording recovers a disclosed key.
     // After the busy check, so a create posted to recover a lost attachment on
@@ -1781,7 +1796,10 @@ export class JobManager {
    */
   openMountedConfiguration(): LoadedConfigurationResponse {
     this.openedConfiguration = undefined;
-    const { response, opened } = openMountedConfiguration(this.dataRoot);
+    const { response, opened } = openMountedConfiguration(
+      this.dataRoot,
+      this.jobSecretsDir,
+    );
     this.openedConfiguration = opened;
     return response;
   }
@@ -1793,12 +1811,15 @@ export class JobManager {
    * run or another editor wrote since, such as a partner's recorded
    * fingerprint; and never while a run is using the file. Returns whether the
    * file was written: a hand-back of the configuration the file already
-   * states writes nothing.
+   * states writes nothing. A signed save of a file run in place that names no
+   * identity file writes the path `signing.identityLocation` resolves to.
    *
    * @throws {ConfigurationHandBackRefusedError} when the file changed since,
    *   or a run is using it, or the write is refused.
    * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
    *   configuration this hand-back applies to.
+   * @throws {SigningIdentityLocationError} when that location does not resolve
+   *   in the secrets mount.
    */
   handBackOpenedConfiguration(handBack: JobConfigurationHandBack): {
     written: boolean;
@@ -1824,6 +1845,12 @@ export class JobManager {
       this.dataRoot,
       handBack,
       this.consoleWrittenConfiguration,
+      () =>
+        resolveSigningIdentityPath({
+          dataRoot: this.dataRoot,
+          secretsDir: this.jobSecretsDir,
+          location: handBack.signing.identityLocation,
+        }),
     );
     if (written === undefined) return { written: false };
     this.openedConfiguration = { ...opened, source: written };

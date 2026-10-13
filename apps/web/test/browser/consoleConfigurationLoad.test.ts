@@ -15,6 +15,7 @@ import {
   CONFIGURATION_SAVED,
   CONVERT_CONFIGURATION_LABEL,
   EDITED_TERMS_TITLE,
+  IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_CONTINUES,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
@@ -189,6 +190,13 @@ function stubConfigRoute(
         configReads.push(url);
         return json(answer.body, answer.status);
       }
+      if (url === "/api/jobs/signing/fingerprint")
+        return json({
+          status: "ok",
+          fingerprint: "B".repeat(42) + "A",
+          created: false,
+          identityFileName: ".alcove-signing-identity.json",
+        });
       if (url === "/api/jobs/inputs")
         return json({ configured: true, files: mount.files ?? [] });
       if (url.startsWith("/api/jobs/inputs/profile"))
@@ -477,16 +485,25 @@ describe("the open configuration over the files it is derived across", () => {
       saveRefusal?: { error: string; reason?: string };
       createRefusal?: string;
     } = {},
+    signing?: { inPlaceSigningIdentity?: unknown },
   ): Promise<void> {
     stubConfigRoute(
       {
         status: 200,
-        body: openedBody({
-          channel: "webrtc",
-          signalingServer: "wss://signal.example.org/api/",
-          linkageTerms: CONFIG_DOCUMENT.linkageTerms,
-          metadata: STATED_COLUMNS,
-        }),
+        body: {
+          ...(openedBody({
+            channel: "webrtc",
+            signalingServer: "wss://signal.example.org/api/",
+            linkageTerms: CONFIG_DOCUMENT.linkageTerms,
+            metadata: STATED_COLUMNS,
+            ...(signing !== undefined
+              ? { signing: { mode: "certificate" } }
+              : {}),
+          }) as Record<string, unknown>),
+          ...(signing?.inPlaceSigningIdentity !== undefined
+            ? { inPlaceSigningIdentity: signing.inPlaceSigningIdentity }
+            : {}),
+        },
       },
       { files: [CLIENTS_FILE], ...refusals },
     );
@@ -537,6 +554,63 @@ describe("the open configuration over the files it is derived across", () => {
     expect(createdBodies[0]).not.toHaveProperty("signalingServer");
     expect(createdBodies[0]).not.toHaveProperty("sharedSecret");
     expect(serverAddresses).toEqual([]);
+  });
+
+  test("a signed run of a file naming no identity file starts, and the save names the card's identity", async () => {
+    await reviewInPlaceRun({}, {});
+    await openDisclosure(/Receipts and record keeping/);
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_WRITTEN_NOTICE))
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Create or show my fingerprint" })
+      .click();
+    await expect
+      .element(page.getByLabelText("Your certificate fingerprint"))
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(savedBodies[0]).toMatchObject({ signing: { mode: "certificate" } });
+  });
+
+  test("a signed run of a file signing with another identity is withheld until the receipt is off", async () => {
+    await reviewInPlaceRun(
+      {},
+      { inPlaceSigningIdentity: { identityFile: "/home/operator/id.json" } },
+    );
+    await expect
+      .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
+      .toBeDisabled();
+    await expect
+      .element(
+        page.getByText(/signs with a signing identity file of its own/).first(),
+      )
+      .toBeInTheDocument();
+    await openDisclosure(/Receipts and record keeping/);
+    await expect
+      .element(page.getByTestId("signing-identity-location"))
+      .toHaveTextContent("/home/operator/id.json");
+    await page
+      .getByRole("button", { name: "Create or show my fingerprint" })
+      .click();
+    await expect
+      .element(page.getByLabelText("Your certificate fingerprint"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
+      .toBeDisabled();
+    await userEvent.selectOptions(
+      page.getByLabelText("What this exchange produces"),
+      "none",
+    );
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(savedBodies[0]).toMatchObject({ signing: { mode: "none" } });
+    expect(writes).toEqual(["save", "create"]);
   });
 
   test("a save refused over a changed file starts no run and offers to open it again", async () => {

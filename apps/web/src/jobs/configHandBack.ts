@@ -10,7 +10,9 @@ import {
 } from "@jobContract/intentSchemas";
 
 import {
+  inPlaceSigningIdentityFile,
   mountedUnconductedDocument,
+  runsInPlaceHere,
   statesSameConfiguration,
 } from "./configLoad";
 import { formatFirstIssue } from "./schemaIssueMessage";
@@ -84,6 +86,9 @@ export const CONFIGURATION_IN_USE_MESSAGE =
  * the {@link PREVIOUS_CONFIGURATION_FILE_NAME} copy as it is, so the copy
  * keeps the last file the console did not write.
  *
+ * A signed hand-back of a file the console runs in place that names no
+ * identity file writes `consoleIdentityPath()`, the path the run signs with.
+ *
  * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
  *   configuration this hand-back applies to (see `mountedUnconductedDocument`).
  * @throws {ConfigurationHandBackRefusedError} when the settings do not make a
@@ -93,11 +98,23 @@ export function handBackMountedConfiguration(
   dataRoot: string,
   handBack: JobConfigurationHandBack,
   consoleWritten?: string,
+  consoleIdentityPath?: () => string,
 ): string | undefined {
   const mountedDocument = mountedUnconductedDocument(dataRoot);
+  const inPlaceIdentityFile =
+    consoleIdentityPath !== undefined &&
+    handBack.signing.mode === "certificate" &&
+    runsInPlaceHere(mountedDocument) &&
+    inPlaceSigningIdentityFile(mountedDocument) === undefined
+      ? consoleIdentityPath()
+      : undefined;
   let text: string;
   try {
-    text = handBackConfigDocument(handBack, mountedDocument);
+    text = handBackConfigDocument(
+      handBack,
+      mountedDocument,
+      inPlaceIdentityFile,
+    );
   } catch (error) {
     if (error instanceof ZodError)
       throw new ConfigurationHandBackRefusedError(

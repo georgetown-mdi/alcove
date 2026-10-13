@@ -3,6 +3,9 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { stringify as stringifyYaml } from "yaml";
+
+import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
 import {
   JOB_FILE_NAMES,
@@ -39,6 +42,7 @@ import {
   STUB_CLI_PATH,
   TEST_HOST_KEY_FINGERPRINT,
   TEST_RUN_STAMP,
+  VALID_SHARED_SECRET,
   composedServer,
   multiChunkText,
   readBodyChunks,
@@ -47,6 +51,7 @@ import {
   validInputFileIntent,
   validIntent,
   validSftpIntent,
+  validWebrtcIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
 
@@ -3007,6 +3012,46 @@ describe("POST /api/jobs and the key file beside the opened configuration", () =
       expect(await response.json()).toEqual({ reason });
     },
   );
+});
+
+describe("POST /api/jobs and the identity a configuration run in place signs with", () => {
+  test("a signed run over a file signing with another identity is a 400 naming the refusal", async () => {
+    const root = enableJobApi();
+    fs.mkdirSync(root, { recursive: true });
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.config),
+      stringifyYaml({
+        connection: {
+          channel: "webrtc",
+          role: "acceptor",
+          server: { host: "peers.test" },
+        },
+        linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
+        signing: {
+          mode: "certificate",
+          identity_file: "/home/operator/identity.json",
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.key),
+      JSON.stringify({ sharedSecret: VALID_SHARED_SECRET }),
+    );
+    const response = (await handlersOf(CreateRoute).POST({
+      request: createRequest(
+        validWebrtcIntent({
+          sharedSecret: undefined,
+          mountedConfigurationOpened: true,
+          signing: { mode: "certificate" },
+        }),
+      ),
+      params: {},
+    })) as Response;
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      reason: "mounted-signing-identity-mismatch",
+    });
+  });
 });
 
 describe("POST /api/jobs and a saved fingerprint list", () => {

@@ -12,7 +12,8 @@ import type { ReceiptsDraft } from "@psi/receiptsModel";
  * invitation minted from these steps would put in a run's configuration, read
  * off the same draft -- the reviewed terms, the column metadata, the cleaning
  * reconciled to those terms, the own-column choice narrowed to them, the
- * delimiter, and the receipt card's mode, pin, and retention note.
+ * delimiter, and the receipt card's mode, pin, identity location, and
+ * retention note.
  *
  * The receipt mode is sent as the card holds it, `session-derived` included,
  * so a file stating a mode the card offers disabled keeps its block. Pure, so
@@ -43,6 +44,10 @@ export function configurationHandBack({
       mode: receipts.mode,
       ...(receipts.mode === "certificate" && pin !== ""
         ? { partnerFingerprint: pin }
+        : {}),
+      ...(receipts.mode === "certificate" &&
+      receipts.identityLocation !== undefined
+        ? { identityLocation: receipts.identityLocation }
         : {}),
     },
     ...(note !== "" ? { retentionDisposition: note } : {}),

@@ -85,7 +85,10 @@ import type { AcquiredCsv, InviterEditor } from "@psi/inviterEditor";
 import type { SpineProblem, SpineTarget } from "@psi/inviterModel";
 import type { Transport } from "@psi/transportChooser";
 
-import type { ConfigurationSaveState } from "@console/mountedConfiguration";
+import type {
+  ConfigurationSaveState,
+  InPlaceSigningIdentityShown,
+} from "@console/mountedConfiguration";
 import type { ConnectionTuningDraft } from "@console/connectionTuningModel";
 import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 import type { JobRendezvousConfig } from "@psi/jobClient/workInputClient";
@@ -145,6 +148,7 @@ export function ReviewCreateSection({
   runDiagnostics,
   onRunDiagnostics,
   receipts,
+  inPlaceSigningIdentity,
   onReceipts,
   onLifetime,
   onDirection,
@@ -226,6 +230,9 @@ export function ReviewCreateSection({
   /** The operator's receipt-signing and retention choices for the same run,
    * offered on the same transports the three cards above are. */
   receipts: ReceiptsDraft;
+  /** The identity a signed run of an opened configuration in place signs
+   * with, which the receipts card shows. */
+  inPlaceSigningIdentity?: InPlaceSigningIdentityShown;
   onReceipts: (draft: ReceiptsDraft) => void;
   onLifetime: (seconds: number) => void;
   onDirection: (direction: OutputDirection) => void;
@@ -611,6 +618,7 @@ export function ReviewCreateSection({
             identity={termsIdentity}
             rendezvous={rendezvous}
             maxAgeOffered={connectionSettingsEditable}
+            inPlaceSigningIdentity={inPlaceSigningIdentity}
             onChange={onReceipts}
           />
         </>

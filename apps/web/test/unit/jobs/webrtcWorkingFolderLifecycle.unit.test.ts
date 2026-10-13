@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
@@ -12,12 +12,13 @@ import {
 } from "@jobContract/intentSchemas";
 import {
   JobManager,
-  MountedSigningPathsUnconvertedError,
+  MountedSigningIdentityMismatchError,
   OpenedConfigurationNotRunnableError,
   SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
 import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
+import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { partnerCertificatePinnedNotice } from "@jobs/partnerPinNotice";
 import { signingIdentityPath } from "@jobs/signingIdentity";
@@ -570,7 +571,7 @@ describe("a run of the webrtc configuration the operator opened", () => {
         { ...signedRun, mountedConfigurationConverted: true },
       ])
         await expect(manager.createJob(intent)).rejects.toBeInstanceOf(
-          MountedSigningPathsUnconvertedError,
+          MountedSigningIdentityMismatchError,
         );
       expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
       expect(manager.occupiedSlotId()).toBeNull();
@@ -583,7 +584,7 @@ describe("a run of the webrtc configuration the operator opened", () => {
         signedBy(SIGNING_IDENTITY_FILE_NAME),
       );
       await expect(manager.createJob(signedRun)).rejects.toBeInstanceOf(
-        MountedSigningPathsUnconvertedError,
+        MountedSigningIdentityMismatchError,
       );
     });
 
@@ -603,6 +604,96 @@ describe("a run of the webrtc configuration the operator opened", () => {
       const id = await manager.createJob(signedRun);
       await exited(manager, id);
       expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
+    });
+
+    /** The hand-back a Start with the signed receipt on sends. */
+    const signedSave = {
+      linkageTerms: getDefaultLinkageTerms("County Health"),
+      signing: { mode: "certificate" as const },
+    };
+
+    function identityFileIn(dataRoot: string): unknown {
+      const document = parseYaml(
+        fs.readFileSync(configPathIn(dataRoot), "utf8"),
+      ) as { signing?: { identity_file?: unknown } };
+      return document.signing?.identity_file;
+    }
+
+    test.each([
+      ["names no signing block", {}],
+      ["names no identity file", { signing: { mode: "none" } }],
+      [
+        "names the hand-off's placeholder",
+        {
+          signing: {
+            mode: "certificate",
+            identity_file: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+          },
+        },
+      ],
+    ])(
+      "a signed start over a file that %s writes the console's identity, and runs",
+      async (_label, settings) => {
+        const { manager, dataRoot } = await opened(
+          {
+            STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+            STUB_EXIT_CODE: "69",
+          },
+          {},
+          settings,
+        );
+        expect(manager.handBackOpenedConfiguration(signedSave)).toEqual({
+          written: true,
+        });
+        expect(identityFileIn(dataRoot)).toBe(signingIdentityPath(dataRoot));
+        const id = await manager.createJob(signedRun);
+        await exited(manager, id);
+      },
+    );
+
+    test("a signed start writes the secrets-mount identity the card holds", async () => {
+      const dataRoot = scratchDir("webrtc-folder");
+      const secretsDir = scratchDir("webrtc-secrets");
+      fs.writeFileSync(path.join(secretsDir, "identity.json"), "{}\n");
+      const manager = new JobManager({
+        dataRoot,
+        jobSecretsDir: secretsDir,
+        binaryPath: STUB_CLI_PATH,
+        childEnv: {
+          STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+          STUB_EXIT_CODE: "69",
+        },
+      });
+      managers.push(manager);
+      fs.writeFileSync(configPathIn(dataRoot), operatorConfiguration());
+      fs.writeFileSync(keyPathIn(dataRoot), ORIGINAL_KEY);
+      manager.openMountedConfiguration();
+      const identityLocation = {
+        mount: "secrets" as const,
+        subPath: ["identity.json"],
+      };
+      manager.handBackOpenedConfiguration({
+        ...signedSave,
+        signing: { mode: "certificate", identityLocation },
+      });
+      expect(identityFileIn(dataRoot)).toBe(
+        fs.realpathSync(path.join(secretsDir, "identity.json")),
+      );
+      const id = await manager.createJob({
+        ...signedRun,
+        signing: { mode: "certificate", identityLocation },
+      });
+      await exited(manager, id);
+    });
+
+    test("a signed start keeps the identity file a file names", async () => {
+      const { manager, dataRoot } = await opened(
+        {},
+        {},
+        { csv_delimiter: ";", ...signedBy("/home/operator/identity.json") },
+      );
+      manager.handBackOpenedConfiguration(signedSave);
+      expect(identityFileIn(dataRoot)).toBe("/home/operator/identity.json");
     });
 
     test("runs unsigned over a file signing with another identity", async () => {

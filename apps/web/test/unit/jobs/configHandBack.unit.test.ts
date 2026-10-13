@@ -430,17 +430,52 @@ describe("the signing block a hand-back writes", () => {
     expect(readBack(dir).signing).toBeUndefined();
   });
 
-  test("turning it on names the placeholder identity where the file names none", () => {
+  test("turning it on names the placeholder identity where a file run elsewhere names none", () => {
     const dir = mountHolding(webrtcDocument({ signing: undefined }));
     const opened = readBack(dir);
-    handBackMountedConfiguration(dir, {
-      ...unchangedHandBack(opened),
-      signing: { mode: "certificate", partnerFingerprint: PARTNER_FINGERPRINT },
-    });
+    handBackMountedConfiguration(
+      dir,
+      {
+        ...unchangedHandBack(opened),
+        signing: {
+          mode: "certificate",
+          partnerFingerprint: PARTNER_FINGERPRINT,
+        },
+      },
+      undefined,
+      () => "/data/.alcove-signing-identity.json",
+    );
     expect(readBack(dir).signing).toEqual({
       mode: "certificate",
       identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
       partnerFingerprint: PARTNER_FINGERPRINT,
+    });
+  });
+
+  test("turning it on names the console's identity where a file run here names none", () => {
+    const { turn: _turn, ...direct } = webrtcDocument().connection as Record<
+      string,
+      unknown
+    >;
+    const dir = mountHolding(
+      webrtcDocument({
+        connection: { ...direct, ice_transport_policy: "all" },
+        signing: undefined,
+      }),
+    );
+    const opened = readBack(dir);
+    handBackMountedConfiguration(
+      dir,
+      {
+        ...unchangedHandBack(opened),
+        signing: { mode: "certificate" },
+      },
+      undefined,
+      () => "/data/.alcove-signing-identity.json",
+    );
+    expect(readBack(dir).signing).toEqual({
+      mode: "certificate",
+      identityFile: "/data/.alcove-signing-identity.json",
     });
   });
 

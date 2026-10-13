@@ -6,10 +6,18 @@ import {
 import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
 import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { ConfigurationLoadRefusedError } from "@jobs/configLoad";
+import { SigningIdentityLocationError } from "@jobs/signingIdentity";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
 
 import { defineJobRoute } from "../jobRoute";
+
+/** The save's refusal where the identity location the receipts card holds
+ * names no path in the secrets mount, so there is no identity path to write. */
+const SIGNING_IDENTITY_LOCATION_UNRESOLVED_MESSAGE =
+  "The console could not find the signing identity file chosen under " +
+  "Receipts and record keeping in your secrets folder. Choose the file " +
+  "again, then try again.";
 
 /**
  * `GET /api/jobs/config` -- the command-line configuration the operator mounted
@@ -26,7 +34,9 @@ import { defineJobRoute } from "../jobRoute";
  * no passphrase, no `@path` reference value, no shared secret, and no container
  * path. `carriedThrough` names the settings the console holds without an editor
  * and `warnings` the credential fields it cannot pre-fill -- names only in both,
- * since a setting's value is what can be the credential.
+ * since a setting's value is what can be the credential. The one path the body
+ * states is `inPlaceSigningIdentity`, for a webrtc file run in place: the
+ * identity file that run signs with, as the file spells it.
  *
  * The configuration as this read found it is what a run of the opened
  * configuration composes its recurring-run hand-off from, so a file changed
@@ -43,7 +53,8 @@ import { defineJobRoute } from "../jobRoute";
  * from the file itself, and the answer is `{ written: true }`, with
  * `unchanged: true` where the file already stated those settings and was left
  * as it is -- nothing of the document crosses back. A hand-back the file or
- * the settings refuse is a `400 { error }`, as is one over a file that a run
+ * the settings refuse is a `400 { error }`, as is one whose identity location
+ * names nothing in the secrets mount, and one over a file that a run
  * is using, or that changed since it was opened or last saved here, which
  * adds `reason: "configuration-changed"`.
  */
@@ -92,6 +103,11 @@ export const route = defineJobRoute({
           );
         if (error instanceof ConfigurationLoadRefusedError)
           return jobJsonResponse({ error: error.message }, 400);
+        if (error instanceof SigningIdentityLocationError)
+          return jobJsonResponse(
+            { error: SIGNING_IDENTITY_LOCATION_UNRESOLVED_MESSAGE },
+            400,
+          );
         throw error;
       }
       return jobJsonResponse(
