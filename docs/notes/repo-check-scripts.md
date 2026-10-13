@@ -1058,12 +1058,42 @@ it has no path filter, and the merge-gating workflows beside it are each scoped 
 So the set only grows.
 The job is a single step invoking the runner, which is also the command a contributor runs before pushing rather than meeting a check when CI fails.
 
-### Why serial and past a failure
+### Why two groups, and past a failure
 
 Two checks regenerate a file in the working tree and restore it:
 `check:routetree` rewrites `apps/web/src/routeTree.gen.ts`, and `check:vectors` the known-answer vectors,
 so nothing else may read those paths while they run.
+`check:deploy-trigger-graph` builds into `apps/web/dist/hosted`, and the two web-config loads run the web build tooling.
+Those are the `shared` group: they run first, one at a time, in list order.
+
+Every other check only reads the tree, and the `independent` group runs them in a pool once the shared group has ended.
+The pool's size follows the CPU count up to a small working ceiling.
+Each check's output is buffered and printed whole when it ends, so two checks' lines never interleave.
+A `[start]` line names each check as the pool takes it, and on SIGINT or SIGTERM the runner prints every check still running with the output it had before stopping them, so a cancelled or timed-out job's log says which checks were in flight.
 It runs past a failure so one red check does not hide the state of the rest.
+
+### Why the route tree check runs before the vitest loads
+
+Loading the root vitest config, or the web workspace's, runs the route codegen,
+which rewrites `routeTree.gen.ts` when it is stale and leaves it untouched when it is not.
+`test:scripts` and `check:config-integrity` both load it.
+Run before `check:routetree`, either would regenerate a stale committed tree,
+and the route tree check would then pass on the regenerated file.
+In the independent group they run after it, when the tree is already known to be fresh,
+or the run is already red: a rewrite then does not change that the run fails, though it may add a failure in a script test that reads the tree while it is rewritten, and it leaves the regenerated tree in the working tree.
+
+The rule for the shared paths (the route tree, the committed vectors, the core `dist/`, the hosted web build) is that shared checks write them and independent checks only read them.
+The test `is told of every script test that names a shared path, so each is classified` in `scripts/run-checks.test.mjs` names the script tests that read them, and fails when a new one appears unclassified;
+a second test fails when any script test names `apps/web/dist/hosted`.
+That an independent check starts writing a shared path, and so must be reclassified shared, is not checked mechanically.
+
+### Why test:scripts runs on at least four workers
+
+Measured on the 10-CPU dev container (2026-10-13), the suite took 160.5 s on three workers and 118.8 s on four, at a one-minute load near 7 for both.
+CI ran it on three workers on its four-CPU runner.
+So the entry asks for four, from the standalone three-against-four measurement above, or one fewer than the CPUs where that is more: inside a full `check:all` on that container, the suite's default worker count took 73 s where four took 108 s, which is what the second arm rests on.
+Neither measurement is of the four-CPU runner with the pool running beside the suite, the case the floor of four changes in CI; that case is unmeasured.
+It is listed first so the pool starts the longest check first.
 
 ### Why the typecheck, lint and format trio is not listed
 
