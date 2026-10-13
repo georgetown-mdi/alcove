@@ -69,6 +69,13 @@ on:
       - ".github/workflows/image_smoke.yaml"
       # The exception list the vulnerability scan below reads.
       - ".github/trivyignore.yaml"
+      # A change under a test tree or to Markdown is never copied into an image,
+      # so it does not run the smoke. The negations must stay after the
+      # includes they narrow.
+      - "!apps/*/test/**"
+      - "!packages/*/test/**"
+      - "!packages/testkit/**"
+      - "!**/*.md"
   # Weekly re-run against a refreshed vulnerability database. The base images
   # are pinned by digest, so a vulnerability published against one of them
   # reaches an operator with nothing in this repository changed -- no path above
