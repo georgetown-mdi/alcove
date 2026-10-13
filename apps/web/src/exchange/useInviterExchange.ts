@@ -485,9 +485,9 @@ function failureContentFor(
       title: "The console did not run your alcove.yaml",
       message:
         "The alcove.yaml in your working folder is no longer a WebRTC " +
-        "configuration the console can run: it is gone, cannot be read, " +
-        "runs over another channel, or sets up a relay. Start over: the " +
-        "console opens the configuration again and shows what it holds.",
+        "configuration the console can run: it is gone, cannot be read, or " +
+        "runs over another channel. Start over: the console opens the " +
+        "configuration again and shows what it holds.",
     };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
@@ -884,8 +884,9 @@ function failureContentFor(
 /**
  * The transport a console server-job run rides. No arm has a connection
  * field: the console holds the authored SFTP connection and coordination
- * server. The webrtc arm names the server the invitation sends the partner
- * to, for the console to refuse the run unless it is the one it holds. An
+ * server. The webrtc arm names the server and relay the invitation sends the
+ * partner to, for the console to refuse the run unless they are the ones it
+ * holds. An
  * endpoint the console cannot mint (no host or no path) throws. A run of the
  * opened configuration, `mountedConfigurationOpened`, dials the server its
  * file names, so its webrtc arm names none.
@@ -909,6 +910,7 @@ export function inviterServerJobTransport(
       host: endpoint.host,
       ...(endpoint.port !== undefined ? { port: endpoint.port } : {}),
       path: endpoint.path,
+      ...(endpoint.relay !== undefined ? { relay: endpoint.relay } : {}),
     },
   };
 }

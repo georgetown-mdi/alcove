@@ -430,7 +430,7 @@ describe("the signing block a hand-back writes", () => {
     expect(readBack(dir).signing).toBeUndefined();
   });
 
-  test("turning it on names the placeholder identity where a file run elsewhere names none", () => {
+  test("turning it on names the console's identity where a file stating a relay names none", () => {
     const dir = mountHolding(webrtcDocument({ signing: undefined }));
     const opened = readBack(dir);
     handBackMountedConfiguration(
@@ -447,7 +447,7 @@ describe("the signing block a hand-back writes", () => {
     );
     expect(readBack(dir).signing).toEqual({
       mode: "certificate",
-      identityFile: HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+      identityFile: "/data/.alcove-signing-identity.json",
       partnerFingerprint: PARTNER_FINGERPRINT,
     });
   });

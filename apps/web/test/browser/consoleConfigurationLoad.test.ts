@@ -22,6 +22,7 @@ import {
   OPENED_EXCHANGE_RUNS_IN_PLACE,
   OPENED_SIGNALING_SERVER_NOTE,
   OPEN_CONFIGURATION_LABEL,
+  RELAY_ENROLLMENT_NOTICE,
   REOPEN_CONFIGURATION_LABEL,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
@@ -410,7 +411,7 @@ describe("the open configuration over the files it is derived across", () => {
       .toHaveValue("payload");
   });
 
-  test("a webrtc configuration stating a relay opens for review and holds the create", async () => {
+  test("a webrtc configuration with no usable key file beside it is saved back and its run held", async () => {
     stubConfigRoute(
       {
         status: 200,
@@ -421,7 +422,7 @@ describe("the open configuration over the files it is derived across", () => {
             linkageTerms: CONFIG_DOCUMENT.linkageTerms,
             metadata: STATED_COLUMNS,
           }) as Record<string, unknown>),
-          relaySettings: ["connection.turn"],
+          keyFileFault: "absent",
         },
       },
       {
@@ -440,7 +441,7 @@ describe("the open configuration over the files it is derived across", () => {
     await expect
       .element(
         page
-          .getByText(/This configuration sets up a relay \(connection\.turn\)/)
+          .getByText(/Your folder has no \.alcove\.key for this configuration/)
           .first(),
       )
       .toBeInTheDocument();
@@ -452,20 +453,13 @@ describe("the open configuration over the files it is derived across", () => {
       .getByRole("button", { name: "Continue to review & create" })
       .click();
     await expect
-      .element(page.getByRole("button", { name: "Create the invitation" }))
-      .toBeDisabled();
-    await expect
       .element(
-        page
-          .getByText(/cannot run a WebRTC configuration that sets up a relay/)
-          .first(),
+        page.getByText(/without a usable \.alcove\.key beside it/).first(),
       )
       .toBeInTheDocument();
     expect(serverAddresses).toEqual([]);
     await expect
-      .element(
-        page.getByText(/WebRTC connection, its tuning and file handling/),
-      )
+      .element(page.getByText(/WebRTC connection, its tuning included/))
       .toBeInTheDocument();
     await expect
       .element(disclosureToggle(/Connection tuning/))
@@ -493,30 +487,47 @@ describe("the open configuration over the files it is derived across", () => {
       .not.toBeInTheDocument();
   });
 
+  /** The relay an in-place webrtc configuration states: none unless
+   * `relayTurnUrls` names its TURN urls. */
+  interface InPlaceRelay {
+    relayTurnUrls: Array<string>;
+    relayRegistrarNamed?: true;
+  }
+
   /** The body the console answers a read of the in-place webrtc configuration
-   * with, signed or not. */
-  function inPlaceBody(signing?: {
-    mode?: "certificate" | "none";
-    inPlaceSigningIdentity?: unknown;
-  }): Record<string, unknown> {
+   * with, signed or not, and stating `relay`. */
+  function inPlaceBody(
+    signing?: {
+      mode?: "certificate" | "none";
+      inPlaceSigningIdentity?: unknown;
+    },
+    relay: InPlaceRelay = { relayTurnUrls: [] },
+  ): Record<string, unknown> {
     return {
       ...(openedBody({
         channel: "webrtc",
         signalingServer: "wss://signal.example.org/api/",
+        ...(relay.relayTurnUrls.length > 0
+          ? { relayTurnUrls: relay.relayTurnUrls }
+          : {}),
         linkageTerms: CONFIG_DOCUMENT.linkageTerms,
         metadata: STATED_COLUMNS,
         ...(signing !== undefined
           ? { signing: { mode: signing.mode ?? "certificate" } }
           : {}),
       }) as Record<string, unknown>),
+      ...(relay.relayRegistrarNamed === true
+        ? { relayRegistrarNamed: true }
+        : {}),
       ...(signing?.inPlaceSigningIdentity !== undefined
         ? { inPlaceSigningIdentity: signing.inPlaceSigningIdentity }
         : {}),
     };
   }
 
-  /** Open a webrtc configuration stating no relay and reach its review step.
-   * `afterSave` is what the file reads as once the start's save wrote it. */
+  /** Open a webrtc configuration, stating no relay unless `relay` names its
+   * TURN urls, and reach its review step. `afterSave` is what the file reads
+   * as once the start's save wrote it. */
   async function reviewInPlaceRun(
     refusals: {
       saveRefusal?: { error: string; reason?: string };
@@ -525,20 +536,25 @@ describe("the open configuration over the files it is derived across", () => {
     } = {},
     signing?: { inPlaceSigningIdentity?: unknown },
     afterSave?: Parameters<typeof inPlaceBody>[0],
+    relay: InPlaceRelay = { relayTurnUrls: [] },
   ): Promise<void> {
     stubConfigRoute(
-      { status: 200, body: inPlaceBody(signing) },
+      { status: 200, body: inPlaceBody(signing, relay) },
       {
         files: [CLIENTS_FILE],
         ...refusals,
         ...(afterSave !== undefined
-          ? { afterSave: inPlaceBody(afterSave) }
+          ? { afterSave: inPlaceBody(afterSave, relay) }
           : {}),
       },
     );
     app.render(createElement(InviterScreen));
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
     await openConfiguration();
+    if (relay.relayRegistrarNamed === true)
+      await expect
+        .element(page.getByText(RELAY_ENROLLMENT_NOTICE).first())
+        .toBeInTheDocument();
     await commitFile();
     await page
       .getByRole("button", { name: "Continue to matching & sharing" })
@@ -560,7 +576,7 @@ describe("the open configuration over the files it is derived across", () => {
       .element(page.getByText(OPENED_SIGNALING_SERVER_NOTE))
       .toBeInTheDocument();
     await expect
-      .element(page.getByRole("button", { name: "Change address" }))
+      .element(page.getByRole("button", { name: "Change address or relay" }))
       .not.toBeInTheDocument();
     await expect
       .element(page.getByText(OPENED_EXCHANGE_RUNS_IN_PLACE).first())
@@ -728,6 +744,29 @@ describe("the open configuration over the files it is derived across", () => {
     expect(app.container.textContent).not.toContain(
       IN_PLACE_IDENTITY_FILE_NOTICE,
     );
+  });
+
+  test("a webrtc configuration stating a relay runs in place, its relay and enrollment step shown", async () => {
+    await reviewInPlaceRun({}, undefined, undefined, {
+      relayTurnUrls: ["turns:relay.example.org:443?transport=tcp"],
+      relayRegistrarNamed: true,
+    });
+    await expect
+      .element(
+        page.getByText("turns:relay.example.org:443?transport=tcp", {
+          exact: true,
+        }),
+      )
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    expect(writes).toEqual(["save", "create"]);
+    expect(createdBodies[0]).toMatchObject({
+      channel: "webrtc",
+      mountedConfigurationOpened: true,
+    });
   });
 
   test("a save refused over a changed file starts no run and offers to open it again", async () => {

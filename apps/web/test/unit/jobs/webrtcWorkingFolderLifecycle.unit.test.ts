@@ -527,17 +527,29 @@ describe("a run of the webrtc configuration the operator opened", () => {
     expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
   });
 
-  test("is refused over a file stating a relay, with nothing written", async () => {
+  test("runs a file stating a relay in place, as the file states it", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
     const { manager, dataRoot } = await opened(
-      {},
-      { turn: [{ url: "turns:relay.example.org:5349" }] },
+      {
+        STUB_ARGV_FILE: argvFile,
+        STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+        STUB_EXIT_CODE: "69",
+      },
+      {
+        role: "inviter",
+        turn: [{ url: "turns:relay.example.org:5349" }],
+        relay_registrar: {
+          url: "https://registrar.example.org",
+          exchange_id: "q3-linkage-7f2c",
+        },
+        ice_transport_policy: "relay",
+      },
     );
     const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
-    await expect(manager.createJob(openedRun)).rejects.toBeInstanceOf(
-      OpenedConfigurationNotRunnableError,
-    );
+    const id = await manager.createJob(openedRun);
+    await exited(manager, id);
+    expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
     expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
-    expect(manager.occupiedSlotId()).toBeNull();
   });
 
   test("is refused once the file is gone", async () => {

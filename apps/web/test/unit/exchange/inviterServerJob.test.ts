@@ -225,6 +225,32 @@ describe("inviterServerJobConfig", () => {
     expect(inviterServerJobTransport("sftp", {})).toEqual({ channel: "sftp" });
   });
 
+  test("the webrtc arm names the relay its invitation names", () => {
+    const relay = { turn: ["turns:relay.example.org:443?transport=tcp"] };
+    const transport = inviterServerJobTransport("webrtc", {
+      connectionEndpoint: {
+        channel: "webrtc",
+        host: "peers.test",
+        path: "/psi/",
+        relay,
+      },
+    });
+    expect(transport).toEqual({
+      channel: "webrtc",
+      signalingServer: { host: "peers.test", path: "/psi/", relay },
+    });
+    const intent = intentFor(
+      inviterServerJobConfig({
+        minted: { ...minted, sharedSecret: VALID_SHARED_SECRET },
+        inputSource: { kind: "inline", csv: inputCsv },
+        transport,
+      }),
+    );
+    expect(
+      jobExchangeIntentSchema.safeParse(intent).error?.issues,
+    ).toBeUndefined();
+  });
+
   test("a run of the opened configuration names no server, dialing its file's", () => {
     const transport = inviterServerJobTransport(
       "webrtc",

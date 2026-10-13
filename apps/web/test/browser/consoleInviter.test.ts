@@ -1044,6 +1044,104 @@ describe("console inviter over WebRTC", () => {
     });
   });
 
+  test("sets a relay beside the server, states its enrollment before the run, and names it in the invitation", async () => {
+    const ownRelay = {
+      turn: ["turns:relay.example.org:443?transport=tcp"],
+      relayRegistrar: {
+        url: "https://registrar.example.org",
+        exchangeId: "q3-linkage-7f2c",
+      },
+    };
+    const api = stubJobApi({
+      webrtcSet: {
+        configured: true,
+        host: "signal.example.org",
+        path: "/api/",
+        secure: true,
+        ownRelay,
+        warnings: [],
+      },
+    });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+
+    await page.getByLabelText("Over WebRTC, run here").click();
+    await userEvent.fill(
+      page.getByLabelText("Coordination server or web app address"),
+      "wss://signal.example.org/api/",
+    );
+    const turnField = page.getByLabelText("Relay (TURN) servers, optional");
+    await userEvent.fill(turnField, "turn:county:secret@relay.example.org");
+    await page.getByRole("button", { name: "Set address" }).click();
+    await expect
+      .element(page.getByText(/^Line 1: .*names a user before its host/))
+      .toBeInTheDocument();
+    expect(
+      api.captured.some(
+        (request) =>
+          request.url === "/api/jobs/webrtc" && request.method === "PUT",
+      ),
+    ).toBe(false);
+
+    await userEvent.fill(turnField, ownRelay.turn[0]);
+    await userEvent.fill(
+      page.getByLabelText("Relay registrar address, optional"),
+      ownRelay.relayRegistrar.url,
+    );
+    await userEvent.fill(
+      page.getByLabelText("Exchange id at the registrar"),
+      ownRelay.relayRegistrar.exchangeId,
+    );
+    await page.getByRole("button", { name: "Set address" }).click();
+    await expect
+      .element(page.getByText("Enroll this exchange at your relay"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText(/run alcove enroll-relay in that folder/))
+      .toBeInTheDocument();
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(put?.body ?? "{}")).toEqual({
+      address: "wss://signal.example.org/api/",
+      ownRelay,
+    });
+
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Your invitation is ready");
+    await page.getByRole("button", { name: "Show full invitation" }).click();
+    const encoded = (
+      document.querySelector(`.${styles.revealArea}`) as HTMLTextAreaElement
+    ).value;
+    const token = await decodeInvitation(encoded);
+    expect(token.connectionEndpoint).toStrictEqual({
+      channel: "webrtc",
+      host: "signal.example.org",
+      path: "/api/",
+      relay: { turn: ownRelay.turn },
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        api.captured.some(
+          (request) => request.url === "/api/jobs" && request.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    const post = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    const intent = JSON.parse(post?.body ?? "{}") as Record<string, unknown>;
+    expect(intent.signalingServer).toStrictEqual({
+      host: "signal.example.org",
+      path: "/api/",
+      relay: { turn: ownRelay.turn },
+    });
+  });
+
   test("holds the create without asking for a server while the console has not answered", async () => {
     const api = stubJobApi({ holdWebrtc: true });
     app.render(createElement(InviterScreen));

@@ -50,7 +50,7 @@ export const MOUNTED_SIGNING_IDENTITY_MISMATCH_REFUSAL =
 
 /** The token for a webrtc run of the opened configuration refused because the
  * working folder's `alcove.yaml` is no longer one the console runs in place:
- * gone, one the console cannot open, another channel, or relay settings. */
+ * gone, one the console cannot open, or another channel. */
 export const OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL =
   "opened-configuration-not-runnable";
 

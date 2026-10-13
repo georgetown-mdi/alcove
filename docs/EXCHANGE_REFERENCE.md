@@ -1678,11 +1678,11 @@ The cells:
 | `connection.server.username` (webrtc) | not applicable | not applicable | refused |
 | `connection.role` | authored | not applicable | carried |
 | `connection.stun` | carried | not applicable | refused |
-| `connection.turn` | carried | not applicable | refused, except beside `connection.relay_registrar` (see that row and [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)) |
-| `connection.invitation_relay` | authored (recorded on accept) | not applicable | carried (recorded on accept; the browser relays through it on each re-run) |
-| `connection.relay_registrar` | carried | not applicable | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
-| `connection.ice_transport_policy` | carried | not applicable | refused |
-| `connection.ice_provision` | refused | not applicable | refused |
+| `connection.turn` | carried | carried (its urls shown on the review step) | refused, except beside `connection.relay_registrar` (see that row and [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)) |
+| `connection.invitation_relay` | authored (recorded on accept) | carried (its turn urls shown on the review step) | carried (recorded on accept; the browser relays through it on each re-run) |
+| `connection.relay_registrar` | carried | carried with a notice (the enrollment step) | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
+| `connection.ice_transport_policy` | carried | carried | refused |
+| `connection.ice_provision` | refused | refused (by the run, as on the command line) | refused |
 | `connection.options.peer_timeout_ms` | authored | authored | refused |
 | `connection.options.inactivity_timeout_ms` | authored | authored | refused |
 | `connection.options.server_connect_timeout_ms` | authored | authored | refused |

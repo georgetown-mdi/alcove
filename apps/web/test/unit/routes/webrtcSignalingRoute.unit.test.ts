@@ -43,6 +43,15 @@ const INVITATION_RELAY = {
 /** A relay other than {@link INVITATION_RELAY}. */
 const OTHER_RELAY = { turn: ["turn:other.test"] };
 
+/** The relay the operator sets for this console's own invitations. */
+const OWN_RELAY = {
+  turn: ["turns:own-relay.test:443?transport=tcp"],
+  relayRegistrar: {
+    url: "https://registrar.own-relay.test",
+    exchangeId: "q3-linkage-7f2c",
+  },
+};
+
 type Handler = (ctx: {
   request: Request;
   params: Record<string, string>;
@@ -284,6 +293,109 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
     expect(await getWebrtc()).not.toHaveProperty("invitationRelay");
   });
 
+  test("holds the console's own relay beside the server, and a later PUT without one drops it", async () => {
+    seedManager();
+    const put = await putWebrtc({
+      address: "wss://peers.test/psi",
+      ownRelay: OWN_RELAY,
+    });
+    expect(put.status).toBe(200);
+    expect(await put.json()).toMatchObject({ ownRelay: OWN_RELAY });
+    expect(await getWebrtc()).toMatchObject({
+      host: "peers.test",
+      ownRelay: OWN_RELAY,
+    });
+    expect((await putWebrtc({ address: "wss://peers.test/psi" })).status).toBe(
+      200,
+    );
+    expect(await getWebrtc()).not.toHaveProperty("ownRelay");
+  });
+
+  test("admits each turn url scheme and transport core's rule admits", async () => {
+    seedManager();
+    const turn = [
+      "turn:relay.test",
+      "turn:relay.test:3478?transport=udp",
+      "turns:relay.test:443?transport=tcp",
+      "  turns:padded.test:5349  ",
+    ];
+    expect(
+      (await putWebrtc({ address: "wss://peers.test/psi", ownRelay: { turn } }))
+        .status,
+    ).toBe(200);
+    expect(await getWebrtc()).toMatchObject({
+      ownRelay: {
+        turn: [
+          "turn:relay.test",
+          "turn:relay.test:3478?transport=udp",
+          "turns:relay.test:443?transport=tcp",
+          "turns:padded.test:5349",
+        ],
+      },
+    });
+  });
+
+  test.each([
+    ["a url that is not turn:", { turn: ["stun:relay.test:3478"] }, /turn:/],
+    ["an https url", { turn: ["https://relay.test/"] }, /turn:/],
+    [
+      "a user before the host",
+      { turn: ["turn:user:pass@relay.test"] },
+      /names a user before its host/,
+    ],
+    [
+      "a credential in the query",
+      { turn: ["turn:relay.test?password=secret"] },
+      /no query parameter other than transport/,
+    ],
+    [
+      "udp on a turns: url",
+      { turn: ["turns:relay.test?transport=udp"] },
+      /tcp/,
+    ],
+    [
+      "an entry holding a credential",
+      {
+        turn: [{ url: "turn:relay.test", username: "u", credential: "secret" }],
+      },
+      /The relay is refused/,
+    ],
+    [
+      "a credential beside the urls",
+      { ...OWN_RELAY, credential: "secret" },
+      /has no key credential/,
+    ],
+    ["an empty list", { turn: [] }, /names no turn url/],
+    [
+      "more urls than an invitation names",
+      { turn: Array.from({ length: 9 }, (_, i) => `turn:r${i}.test`) },
+      /more than 8/,
+    ],
+    [
+      "a registrar that is not https",
+      {
+        turn: ["turn:relay.test"],
+        relayRegistrar: { url: "http://reg.test", exchangeId: "x1" },
+      },
+      /relay_registrar\.url must be an https/,
+    ],
+  ])(
+    "refuses an own relay with %s, naming the rule and not the url",
+    async (_, ownRelay, rule) => {
+      seedManager();
+      const response = await putWebrtc({
+        address: "wss://peers.test/psi",
+        ownRelay,
+      });
+      expect(response.status).toBe(400);
+      const { error } = (await response.json()) as { error: string };
+      expect(error).toMatch(rule);
+      expect(error).not.toContain("secret");
+      expect(error).not.toContain("pass@");
+      expect(await getWebrtc()).toEqual({ configured: false });
+    },
+  );
+
   test.each([
     ["an empty relay", {}],
     ["a relay credential", { ...INVITATION_RELAY, username: "u" }],
@@ -486,6 +598,77 @@ describe("POST /api/jobs on the webrtc channel", () => {
     });
   });
 
+  test("composes an inviter's run with the console's own relay as url-only turn entries and its registrar", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      ownRelay: OWN_RELAY,
+    });
+    const response = await postJob(
+      validWebrtcIntent({
+        signalingServer: {
+          ...TEST_SIGNALING_SERVER,
+          relay: { turn: OWN_RELAY.turn },
+        },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).toEqual({
+      channel: "webrtc",
+      server: { host: "peers.test", path: "/psi/" },
+      role: "inviter",
+      turn: [{ url: "turns:own-relay.test:443?transport=tcp" }],
+      relay_registrar: {
+        url: "https://registrar.own-relay.test",
+        exchange_id: "q3-linkage-7f2c",
+      },
+    });
+  });
+
+  test("composes no own relay for an acceptor's run", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      ownRelay: OWN_RELAY,
+    });
+    expect(
+      (await postJob(validWebrtcIntent({ side: "acceptor" }))).status,
+    ).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).not.toHaveProperty("turn");
+    expect(composed.connection).not.toHaveProperty("relay_registrar");
+  });
+
+  test.each([
+    ["names no relay while one is set", undefined],
+    ["names another relay", OTHER_RELAY],
+    ["names the relay's registrar too", OWN_RELAY],
+  ] as const)(
+    "refuses an inviter whose invitation %s, leaving nothing on disk",
+    async (_, relay) => {
+      const { manager, root } = seedManager();
+      await manager.authorSignalingServer({
+        address: TEST_SIGNALING_ADDRESS,
+        ownRelay: OWN_RELAY,
+      });
+      const response = await postJob(
+        validWebrtcIntent({
+          signalingServer: {
+            ...TEST_SIGNALING_SERVER,
+            ...(relay !== undefined ? { relay } : {}),
+          },
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(fs.readdirSync(root)).toEqual([]);
+    },
+  );
+
   test("composes no relay for an inviter's run while the console holds an accepted one", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({
@@ -539,47 +722,28 @@ describe("POST /api/jobs on the webrtc channel", () => {
     },
   );
 
-  test("a run of an opened configuration stating a relay is refused with its token, and one naming another server runs", async () => {
+  test("a run of an opened configuration stating a relay runs it in place", async () => {
     const { manager, root } = seedManager();
     await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
-    const configuration = (relay: boolean): string =>
-      stringifyYaml({
-        connection: {
-          channel: "webrtc",
-          role: "inviter",
-          server: { host: "elsewhere.test", path: "/psi/" },
-          ...(relay ? { turn: [{ url: "turns:relay.example.org:5349" }] } : {}),
+    const relayed = stringifyYaml({
+      connection: {
+        channel: "webrtc",
+        role: "inviter",
+        server: { host: "elsewhere.test", path: "/psi/" },
+        turn: [{ url: "turns:relay.example.org:5349" }],
+        relay_registrar: {
+          url: "https://registrar.example.org",
+          exchange_id: "q3-linkage-7f2c",
         },
-        linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
-      });
+        ice_transport_policy: "relay",
+      },
+      linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
+    });
     fs.writeFileSync(
       path.join(root, JOB_FILE_NAMES.key),
       JSON.stringify({ sharedSecret: VALID_SHARED_SECRET }),
     );
-    fs.writeFileSync(
-      path.join(root, JOB_FILE_NAMES.config),
-      configuration(true),
-    );
-    const before = fs.readFileSync(path.join(root, JOB_FILE_NAMES.config));
-    const response = await postJob(
-      validWebrtcIntent({
-        sharedSecret: undefined,
-        mountedConfigurationOpened: true,
-      }),
-    );
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      reason: "opened-configuration-not-runnable",
-    });
-    expect(fs.readFileSync(path.join(root, JOB_FILE_NAMES.config))).toEqual(
-      before,
-    );
-    expect(manager.occupiedSlotId()).toBeNull();
-
-    fs.writeFileSync(
-      path.join(root, JOB_FILE_NAMES.config),
-      configuration(false),
-    );
+    fs.writeFileSync(path.join(root, JOB_FILE_NAMES.config), relayed);
     const admitted = await postJob(
       validWebrtcIntent({
         sharedSecret: undefined,
@@ -587,6 +751,35 @@ describe("POST /api/jobs on the webrtc channel", () => {
       }),
     );
     expect(admitted.status).toBe(201);
+    expect(
+      fs.readFileSync(path.join(root, JOB_FILE_NAMES.config), "utf8"),
+    ).toBe(relayed);
+  });
+
+  test("a run of an opened configuration on another channel is refused with its token", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.key),
+      JSON.stringify({ sharedSecret: VALID_SHARED_SECRET }),
+    );
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.config),
+      stringifyYaml({
+        connection: { channel: "filedrop", path: "/data/rendezvous" },
+        linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
+      }),
+    );
+    const refused = await postJob(
+      validWebrtcIntent({
+        sharedSecret: undefined,
+        mountedConfigurationOpened: true,
+      }),
+    );
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({
+      reason: "opened-configuration-not-runnable",
+    });
   });
 
   test("takes the scheme's default port and a path without its slash as the held server's", async () => {

@@ -26,10 +26,10 @@
  *
  * A webrtc configuration is not composed into a job folder: the browser edits
  * its settings, the edits are saved back into the file
- * ({@link ./configHandBack}), and a run here runs that file in place, unless
- * it states relay settings ({@link relaySettingFields}), whose run the browser
- * withholds. Its `connection` is not measured, since no run here composes or
- * replaces it, and only its coordination server's address is disclosed.
+ * ({@link ./configHandBack}), and a run here runs that file in place. Its
+ * `connection` is not measured, since no run here composes or replaces it,
+ * and only its coordination server's address and the TURN urls its run
+ * relays through ({@link relayTurnUrls}) are disclosed.
  *
  * A `@path` credential reference is a WARNING and not a refusal: the operator
  * owns this mount and the reference is their own choice, so the load proceeds
@@ -52,6 +52,7 @@ import {
   parseSensitiveYaml,
   retiredSigningSetting,
   safeParseExchangeSpec,
+  selectRunRelay,
   snakeizeKey,
 } from "@alcove/core";
 
@@ -157,9 +158,6 @@ export interface LoadedConfigurationResponse {
   retiredSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
-  /** The relay settings a webrtc configuration states, as it spells them
-   * ({@link relaySettingFields}). Absent where it states none. */
-  relaySettings?: Array<string>;
   /** The identity file a webrtc configuration run in place signs with, as the
    * file spells it ({@link inPlaceSigningIdentityFile}). Absent where the file
    * names none, and for any other configuration. */
@@ -682,28 +680,19 @@ function namesRelayRegistrar(document: ExchangeSpec): boolean {
 }
 
 /**
- * The settings of a webrtc document that bring in a relay, as the file spells
- * them. A run here connects directly, so a document stating any of them is
- * edited and saved back, and not run.
+ * The TURN urls a run of a webrtc document relays through, chosen as the CLI
+ * chooses them ({@link selectRunRelay}): an accepted invitation's where it
+ * names any, else the document's own `turn` entries'. Empty where it names
+ * none. A url holds no credential under core's `turn` url rule.
  */
-export function relaySettingFields(document: ExchangeSpec): Array<string> {
+export function relayTurnUrls(document: ExchangeSpec): Array<string> {
   const { connection } = document;
   if (connection.channel !== "webrtc") return [];
-  return [
-    ...(connection.turn !== undefined ? ["connection.turn"] : []),
-    ...(connection.invitationRelay !== undefined
-      ? ["connection.invitation_relay"]
-      : []),
-    ...(connection.relayRegistrar !== undefined
-      ? ["connection.relay_registrar"]
-      : []),
-    ...(connection.iceProvision !== undefined
-      ? ["connection.ice_provision"]
-      : []),
-    ...(connection.iceTransportPolicy === "relay"
-      ? ["connection.ice_transport_policy"]
-      : []),
-  ];
+  const { turn } = selectRunRelay(connection);
+  if (turn === undefined) return [];
+  return turn.source === "invitation"
+    ? [...turn.urls]
+    : turn.servers.map((server) => server.url);
 }
 
 /** A webrtc connection's coordination server as the `ws://` or `wss://`
@@ -814,6 +803,9 @@ export function disclosedDocument(
     ...(connection.channel === "webrtc"
       ? { signalingServer: signalingServerAddress(connection.server) }
       : {}),
+    ...(relayTurnUrls(document).length > 0
+      ? { relayTurnUrls: relayTurnUrls(document) }
+      : {}),
     ...(options !== undefined ? { options: disclosedOptions(options) } : {}),
     linkageTerms: document.linkageTerms,
     ...(document.metadata !== undefined ? { metadata: document.metadata } : {}),
@@ -916,7 +908,6 @@ function responseFor({
   document: ExchangeSpec;
   retiredSettings: Array<string>;
 }): LoadedConfigurationResponse {
-  const relaySettings = relaySettingFields(document);
   return {
     configured: true,
     present: true,
@@ -929,7 +920,6 @@ function responseFor({
     ...(namesRelayRegistrar(document)
       ? { relayRegistrarNamed: true as const }
       : {}),
-    ...(relaySettings.length > 0 ? { relaySettings } : {}),
   };
 }
 
@@ -1079,13 +1069,9 @@ type MountedWebrtcConnection = Extract<
   { channel: "webrtc" }
 >;
 
-/** Whether the console runs `document` in place: a webrtc document stating no
- * relay setting. */
+/** Whether the console runs `document` in place: a webrtc document. */
 export function runsInPlaceHere(document: ExchangeSpec): boolean {
-  return (
-    document.connection.channel === "webrtc" &&
-    relaySettingFields(document).length === 0
-  );
+  return document.connection.channel === "webrtc";
 }
 
 /**
@@ -1104,10 +1090,9 @@ export function inPlaceSigningIdentityFile(
 
 /**
  * The mounted configuration a run here runs in place, read as it is now: the
- * bytes of a webrtc document stating no relay setting, and the
- * `signing.identity_file` it names where it signs in `certificate` mode, as
- * the file spells it. Undefined for any other mount -- no file, one the
- * console cannot open, another channel, or relay settings.
+ * bytes of a webrtc document, and the `signing.identity_file` it names where
+ * it signs in `certificate` mode, as the file spells it. Undefined for any
+ * other mount -- no file, one the console cannot open, or another channel.
  */
 export function mountedInPlaceConfiguration(
   dataRoot: string,

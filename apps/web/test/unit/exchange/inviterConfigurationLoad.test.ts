@@ -530,7 +530,7 @@ describe("a new invitation from an opened configuration's settings", () => {
   });
 });
 
-describe("a webrtc configuration stating a relay opens for review with its run withheld", () => {
+describe("a webrtc configuration stating a relay opens to run in place", () => {
   const state = inviterScreenReducer(INVITER_SCREEN_INITIAL, {
     type: "mounted-configuration-read",
     answer: {
@@ -538,13 +538,13 @@ describe("a webrtc configuration stating a relay opens for review with its run w
       document: {
         channel: "webrtc",
         signalingServer: "wss://signal.example.org/api/",
+        relayTurnUrls: ["turns:relay.example.org:443?transport=tcp"],
         linkageTerms: getDefaultLinkageTerms("County Health"),
         csvDelimiter: "|",
         retentionDisposition: "Filed with the 2026 intake.",
       },
       carriedThrough: [],
       warnings: [],
-      relaySettings: ["connection.turn"],
     },
   });
 
@@ -559,21 +559,18 @@ describe("a webrtc configuration stating a relay opens for review with its run w
     expect(state.loadedSftpForm).toBeUndefined();
   });
 
-  test("it selects no transport, and names its relay settings instead", () => {
-    expect(state.loadedConfiguration?.transport).toBeUndefined();
+  test("it selects the WebRTC transport, names its relay, and withholds nothing", () => {
+    expect(state.loadedConfiguration?.transport).toBe("webrtc");
     expect(state.mountedConfiguration).toMatchObject({
       status: "opened",
-      notConducted: "webrtc",
-      relaySettings: ["connection.turn"],
+      runsInPlace: true,
+      relayTurnUrls: ["turns:relay.example.org:443?transport=tcp"],
     });
     expect(state.mountedConfiguration).not.toHaveProperty(
       "transportUnavailable",
     );
-  });
-
-  test("the review step's create is held, naming the channel", () => {
     const reason = runWithheldReason(state.mountedConfiguration);
-    expect(reason).toContain("WebRTC configuration");
+    expect(reason).toBeUndefined();
     const status = inviterCreateStatus({
       runWithheld: reason,
       offlineBlocked: false,
@@ -587,15 +584,7 @@ describe("a webrtc configuration stating a relay opens for review with its run w
       signingIdentityDivergence: undefined,
       problemCount: 0,
     });
-    expect(status.ready).toBe(false);
-    expect(status.statusLine).toBe(reason);
-  });
-
-  test("closing it releases the run", () => {
-    const closed = inviterScreenReducer(state, {
-      type: "loaded-configuration-discarded",
-    });
-    expect(runWithheldReason(closed.mountedConfiguration)).toBeUndefined();
+    expect(status.ready).toBe(true);
   });
 });
 
@@ -620,7 +609,7 @@ describe("a webrtc configuration stating no relay opens to run in place", () => 
       status: "opened",
       runsInPlace: true,
     });
-    expect(state.mountedConfiguration).not.toHaveProperty("notConducted");
+    expect(state.mountedConfiguration).not.toHaveProperty("relayTurnUrls");
     expect(runWithheldReason(state.mountedConfiguration)).toBeUndefined();
   });
 

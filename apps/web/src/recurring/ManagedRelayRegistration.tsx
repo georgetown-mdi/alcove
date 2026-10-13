@@ -19,6 +19,7 @@ import {
 } from "@alcove/core";
 
 import {
+  EXCHANGE_ID_PRIVACY,
   enrollManagedRelayRegistrar,
   managedRelayEnrollmentFailureMessage,
   relayRegistrarExchangeIdProblems,
@@ -65,10 +66,6 @@ export const STOPPED_OWN_RELAY_TEXT =
   "The shared secret changes after every run that completes its handshake, " +
   "so from the next such run the relay refuses this exchange unless its key " +
   "is registered with the relay again after each run.";
-
-const EXCHANGE_ID_PRIVACY =
-  "The registrar's answers let anyone learn whether an id is enrolled, so " +
-  "choose one that names neither party.";
 
 /** What the last enrollment or removal on this page came to. */
 type Outcome =

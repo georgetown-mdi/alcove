@@ -18,15 +18,30 @@ import {
   openMountedConfiguration,
   readMountedConfiguration,
 } from "@jobs/configLoad";
+import {
+  RELAY_ENROLLMENT_NOTICE,
+  mountedConfigurationNotices,
+  mountedConfigurationRead,
+  openedRelayTurnUrls,
+  openedSignalingServer,
+  opensInPlace,
+  runWithheldReason,
+} from "@console/mountedConfiguration";
+import {
+  composeKeyFileDocument,
+  composeSftpConfigSpec,
+  composeWebrtcConfigDocument,
+} from "@jobs/intentConfig";
 import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobContract/handoffBindPaths";
 import { authoringStateFromDocument } from "@console/loadedConfig";
-import { composeSftpConfigSpec } from "@jobs/intentConfig";
+import { fetchMountedConfiguration } from "@psi/jobClient/mountedConfigClient";
 import { signingIdentityPath } from "@jobs/signingIdentity";
 
 import {
   testSftpServerEntry,
   trackScratchDirs,
   validSftpIntent,
+  validWebrtcIntent,
 } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
@@ -436,16 +451,21 @@ describe("a webrtc configuration", () => {
     expect(document?.linkageTerms.identity).toBe("County Health");
   });
 
-  test("discloses only its coordination server's address of its connection", () => {
+  test("discloses its coordination server's address and its relay's urls of its connection, and no credential", () => {
     const response = loadDocument(webrtcDocument());
     expect(response.document?.server).toBeUndefined();
     expect(response.document?.options).toBeUndefined();
     expect(response.document?.signalingServer).toBe(
       "wss://broker.example:443/",
     );
+    expect(response.document?.relayTurnUrls).toEqual([
+      "turn:turn.example.org:3478",
+    ]);
     const body = JSON.stringify(response);
-    expect(body).not.toContain("turn.example.org");
+    expect(body).not.toContain("county");
+    expect(body).not.toContain("turn-credential");
     expect(body).not.toContain("broker-key");
+    expect(body).not.toContain("stun.example.org");
     expect(body).not.toMatch(/"@/);
   });
 
@@ -470,11 +490,7 @@ describe("a webrtc configuration", () => {
     );
   });
 
-  test("names each relay setting it states, as the file spells them", () => {
-    expect(loadDocument(webrtcDocument()).relaySettings).toEqual([
-      "connection.turn",
-      "connection.ice_transport_policy",
-    ]);
+  test("names the TURN urls its run relays through, as the command line chooses them", () => {
     const connection = webrtcDocument().connection as Record<string, unknown>;
     const direct = {
       channel: "webrtc",
@@ -482,26 +498,30 @@ describe("a webrtc configuration", () => {
       server: connection.server,
       stun: connection.stun,
     };
+    const relayed = (extra: Record<string, unknown>) =>
+      loadDocument(webrtcDocument({ connection: { ...direct, ...extra } }))
+        .document?.relayTurnUrls;
+    expect(relayed({})).toBeUndefined();
     expect(
-      loadDocument(webrtcDocument({ connection: direct })).relaySettings,
-    ).toBeUndefined();
+      relayed({ turn: [{ url: "turns:own.example.org:443?transport=tcp" }] }),
+    ).toEqual(["turns:own.example.org:443?transport=tcp"]);
     expect(
-      loadDocument(
-        webrtcDocument({
-          connection: {
-            ...direct,
-            invitation_relay: { turn: ["turns:relay.example.org:5349"] },
-          },
-        }),
-      ).relaySettings,
-    ).toEqual(["connection.invitation_relay"]);
+      relayed({
+        turn: [{ url: "turns:own.example.org:443" }],
+        invitation_relay: { turn: ["turns:relay.example.org:5349"] },
+      }),
+    ).toEqual(["turns:relay.example.org:5349"]);
+    expect(
+      loadDocument(webrtcDocument({ connection: direct })),
+    ).not.toHaveProperty("relaySettings");
   });
 
-  test("is run in place only where it states no relay setting", () => {
+  test("is run in place, a relay setting included", () => {
     const connection = webrtcDocument().connection as Record<string, unknown>;
-    expect(mountedInPlaceConfiguration(mountHolding(webrtcDocument()))).toBe(
-      undefined,
-    );
+    const relayed = mountHolding(webrtcDocument());
+    expect(mountedInPlaceConfiguration(relayed)).toEqual({
+      source: fs.readFileSync(path.join(relayed, "alcove.yaml"), "utf8"),
+    });
     const direct = mountHolding(
       webrtcDocument({
         connection: {
@@ -582,9 +602,9 @@ describe("a webrtc configuration", () => {
     expect(loadedSigning(other)).toStrictEqual({
       identityFile: "/home/operator/id.json",
     });
-    expect(
-      loadedSigning(other, scratchDir("configload"), true),
-    ).toBeUndefined();
+    expect(loadedSigning(other, scratchDir("configload"), true)).toStrictEqual({
+      identityFile: "/home/operator/id.json",
+    });
   });
 
   test("names its key file's fault, as a run in place reads it", () => {
@@ -660,6 +680,58 @@ describe("a webrtc configuration", () => {
       openMountedConfiguration(mountHolding(savedSftpDocument())).opened
         ?.document?.connection.channel,
     ).toBe("sftp");
+  });
+});
+
+describe("the console's own relay through alcove.yaml", () => {
+  const { scratchDir, cleanup } = trackScratchDirs();
+  afterEach(() => {
+    cleanup();
+  });
+
+  const TURN_URL = "turns:relay.example.org:443?transport=tcp";
+
+  test("is written by an inviter's run, opened again, and shown for its run with the step that enrolls it", async () => {
+    const dir = scratchDir("own-relay");
+    fs.writeFileSync(
+      path.join(dir, "alcove.yaml"),
+      composeWebrtcConfigDocument(validWebrtcIntent(), {
+        host: "peers.test",
+        path: "/psi/",
+        secure: true,
+        ownRelay: {
+          turn: [TURN_URL],
+          relayRegistrar: {
+            url: "https://registrar.example.org",
+            exchangeId: "q3-linkage-7f2c",
+          },
+        },
+      }),
+    );
+    fs.writeFileSync(
+      path.join(dir, ".alcove.key"),
+      composeKeyFileDocument(validWebrtcIntent()),
+    );
+    expect(mountedInPlaceConfiguration(dir)).toBeDefined();
+
+    const response = loadMountedConfiguration(dir);
+    const answer = await fetchMountedConfiguration(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(response), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    const { state } = mountedConfigurationRead(answer);
+    expect(opensInPlace(state)).toBe(true);
+    expect(openedSignalingServer(state)).toBe("wss://peers.test/psi/");
+    expect(openedRelayTurnUrls(state)).toEqual([TURN_URL]);
+    expect(runWithheldReason(state)).toBeUndefined();
+    expect(mountedConfigurationNotices(state)).toContain(
+      RELAY_ENROLLMENT_NOTICE,
+    );
+    expect(JSON.stringify(response)).not.toContain("registrar.example.org");
   });
 });
 

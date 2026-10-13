@@ -302,10 +302,10 @@ export function transportChooserCopy(
       : "Saves an exchange file that runs the command-line tool over your SFTP server. Your partner accepts with the same invitation.",
     webrtcLabel: "Over WebRTC, run here",
     webrtcDescription: openedRunsInPlace
-      ? "Runs the alcove.yaml you opened here, connecting directly to your partner through the coordination server it names, shown below. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect."
+      ? "Runs the alcove.yaml you opened here, connecting to your partner through the coordination server and any relay it names, shown below. Your file is read on this console, not uploaded from your browser."
       : configurationOpened
         ? "Unavailable while a configuration from your folder is open: this exchange writes its own alcove.yaml into your folder. Close the configuration on the first step to set the exchange up here."
-        : "Runs the exchange here, connecting directly to your partner through the coordination server you set below. Your partner accepts in the Alcove web app or with the command-line tool. Your file is read on this console, not uploaded from your browser. Direct connections only: if a firewall on either side blocks them, the exchange cannot connect.",
+        : "Runs the exchange here, connecting to your partner through the coordination server you set below, and through the relay you set there when a direct connection fails. Your partner accepts in the Alcove web app or with the command-line tool. Your file is read on this console, not uploaded from your browser.",
     capabilityNote: capabilityNoteFor(consoleBuild, available),
   };
 }
