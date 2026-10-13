@@ -22,13 +22,19 @@ before proceeding -- its Session lifecycle section defines this state.
 1. Start nothing new: take no new board item and spawn no agent for one. A
    review round, fix round or CI fix on a branch already in flight is part of
    finishing it, not new work.
-2. Bring each branch in flight to its intended final state. For an
-   implementation branch that is an open PR with its review rounds done and
-   green CI, as the ruleset's Review flow section describes; for a run already
-   under way -- a benchmark, a stress test, a host handoff -- it is the run's
-   result. A run not yet started is not started.
+2. Take everything already started to its full conclusion: each branch, run
+   and host handoff. For an implementation branch that is an open PR with its
+   review rounds done and green CI, as the ruleset's Review flow section
+   describes; a step that branch's flow calls for -- its review rounds, its PR,
+   a handoff its item needs -- is part of the branch and is taken, not skipped.
+   For a run already under way -- a benchmark, a stress test, a host handoff --
+   it is the run's result. The only thing not started is a new board item.
 3. Keep the continuation brief current as each branch lands.
-4. When nothing is left in flight, report in a few lines: each branch and its
-   PR, and anything that could not land, with the reason. Then hold. Start
-   neither the docket nor the filing pass nor a close-out; the owner's next
-   command picks the state.
+4. When everything started has concluded, report in a few lines: each branch
+   and its PR, and what waits on the owner -- a host step, a ruling -- with
+   what it waits on. A branch that cannot reach its conclusion without the
+   owner -- a step-back trigger, a failure nobody can diagnose -- is parked as
+   a Decision item and reported as waiting on that ruling; anything else
+   unfinished is finished first, not reported. Then hold. Start neither the
+   docket nor the filing pass nor a close-out; the owner's next command picks
+   the state.
