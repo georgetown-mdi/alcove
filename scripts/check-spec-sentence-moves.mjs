@@ -16,16 +16,22 @@
 // an inline Markdown link outside a code span (its text is compared), and any
 // file outside docs/spec/ or not ending in .md.
 //
-// docs/spec/wording-changes.txt lists each unit added, dropped or reworded,
-// one `- ` line per change and per occurrence, each side the unit's text as
-// above and `-` standing for none; a line naming both sides pairs two units of
-// one kind. A pull request changing docs/spec/ replaces the list; the file is
-// read only when it differs from the merge base, so an earlier pull request's
-// list is never matched. Lines starting with `#` are comments:
+// A pull request changing docs/spec/ writes its own list file,
+// docs/spec/wording-changes/<branch>.txt, listing each unit added, dropped or
+// reworded, one `- ` line per change and per occurrence, each side the unit's
+// text as above and `-` standing for none; a line naming both sides pairs two
+// units of one kind. Lines starting with `#` are comments:
 //
 //   - The sentence as it was. -> The sentence as it is.
 //   - - -> A sentence the pull request adds.
 //   - A sentence the pull request drops. -> -
+//
+// The branch's list is every file under docs/spec/wording-changes/ it added or
+// modified since the merge base, apart from README.txt; a file it did not
+// touch or deleted is not read. A file the branch added is read whole; a file
+// it modified is read only for the lines the branch added, so a branch name
+// that reuses a merged pull request's file appends to it and the earlier
+// entries are never matched. Each branch name maps to one file.
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -40,8 +46,17 @@ const STAGING_BRANCH = "staging";
 /** The base revision when none is given. */
 export const DEFAULT_BASE = "origin/staging";
 
-/** The file listing the wording changes, read at the head revision. */
-export const WORDING_CHANGES_FILE = "docs/spec/wording-changes.txt";
+/** The directory holding one wording-change list file per branch. */
+export const WORDING_CHANGES_DIRECTORY = "docs/spec/wording-changes/";
+
+/** The file in that directory describing it, never read as a list. */
+export const WORDING_CHANGES_README = `${WORDING_CHANGES_DIRECTORY}README.txt`;
+
+/** The file name stem a branch named README maps to, README.txt being skipped. */
+const README_BRANCH = "README-branch";
+
+/** The file name a branch name maps to when it cannot be determined. */
+const UNKNOWN_BRANCH = "<branch>";
 
 /** The separator between the old and the new side of a listed change. */
 export const CHANGE_SEPARATOR = " -> ";
@@ -189,7 +204,7 @@ export function specUnits(markdown) {
 }
 
 /**
- * The changes listed in the wording-changes file, one per line: a `- ` line
+ * The changes listed in a wording-change list file, one per line: a `- ` line
  * gives its text after the marker, a blank line or one starting with `#` gives
  * none, and any other line is returned whole and read like a `- ` line's text.
  */
@@ -300,11 +315,24 @@ export function compareSpecFiles(baseFiles, headFiles, wordingChanges = []) {
   };
 }
 
-const LIST_INSTRUCTION = `list them in ${WORDING_CHANGES_FILE}, in place of any list an earlier pull request left there, joining a dropped and an added line of one kind into one where the change rewords a unit:`;
+/**
+ * The list file a branch writes: its name with every character outside
+ * `A-Za-z0-9._-` replaced by `-` (`README-branch` for a branch named
+ * README), or a `<branch>` placeholder when the name is unknown.
+ */
+export function listFileFor(branch) {
+  const name =
+    branch === null || branch === undefined || branch === ""
+      ? UNKNOWN_BRANCH
+      : branch.replace(/[^A-Za-z0-9._-]/g, "-");
+  if (name === "README")
+    return `${WORDING_CHANGES_DIRECTORY}${README_BRANCH}.txt`;
+  return `${WORDING_CHANGES_DIRECTORY}${name}.txt`;
+}
 
 /**
  * The lines listing a comparison's unlisted differences, one per occurrence,
- * ready to paste into the wording-changes file. Empty when there are none.
+ * ready to paste into a list file. Empty when there are none.
  */
 export function formatWordingChanges(result) {
   const lines = [];
@@ -323,9 +351,13 @@ export function formatWordingChanges(result) {
 
 /**
  * Formats a comparison's failures, each unlisted difference named with its
- * files and followed by the section that would list it. Empty when it passes.
+ * files and followed by the lines to write to `listFile`; an unmatched listed
+ * line is named with `readFrom`, the list files read. Empty when it passes.
  */
-export function formatFailures(result) {
+export function formatFailures(
+  result,
+  { listFile = listFileFor(null), readFrom = [] } = {},
+) {
   const lines = [];
   const differences = [
     ...result.dropped.map((entry) => ({ ...entry, side: "dropped" })),
@@ -340,7 +372,7 @@ export function formatFailures(result) {
   if (differences.length > 0) {
     lines.push(
       "",
-      `To accept these, ${LIST_INSTRUCTION}`,
+      `To accept these, list them in ${listFile}, joining a dropped and an added line of one kind into one where the change rewords a unit:`,
       "",
       ...formatWordingChanges(result),
     );
@@ -348,7 +380,7 @@ export function formatFailures(result) {
   if (result.unmatched.length > 0) {
     if (lines.length > 0) lines.push("");
     lines.push(
-      `Listed in ${WORDING_CHANGES_FILE} but matching no difference; correct or remove each:`,
+      `Listed in ${readFrom.length > 0 ? readFrom.join(", ") : WORDING_CHANGES_DIRECTORY} but matching no difference; correct or remove each:`,
     );
     for (const line of result.unmatched) lines.push(`  - ${line}`);
   }
@@ -401,9 +433,56 @@ function readAt(root, commit, file) {
 }
 
 /**
+ * The list files a range added or modified under the wording-changes
+ * directory, README.txt aside, sorted, each `{ path, added }` with `added`
+ * true when the range created the file.
+ */
+function branchListChanges(root, from, to) {
+  const fields = git(root, [
+    "diff",
+    "--name-status",
+    "--no-renames",
+    "-z",
+    from,
+    to,
+    "--",
+    WORDING_CHANGES_DIRECTORY,
+  ]).split("\0");
+  const listFiles = [];
+  for (let at = 0; at + 1 < fields.length; at += 2) {
+    const [status, path] = [fields[at], fields[at + 1]];
+    if (status !== "D" && path !== WORDING_CHANGES_README) {
+      listFiles.push({ path, added: status === "A" });
+    }
+  }
+  return listFiles.sort((left, right) => (left.path < right.path ? -1 : 1));
+}
+
+/** The paths of the list files a range added or modified. */
+export function branchListFiles(root, from, to) {
+  return branchListChanges(root, from, to).map((change) => change.path);
+}
+
+/**
+ * The text of a list file the range changed that counts as the branch's: the
+ * whole file when the range added it, otherwise only the lines it added.
+ */
+function branchListText(root, from, to, { path, added }) {
+  if (added) return readAt(root, to, path);
+  const diff = git(root, ["diff", "--no-renames", "-U0", from, to, "--", path]);
+  const lines = [];
+  let inHunk = false;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("@@")) inHunk = true;
+    else if (inHunk && line.startsWith("+")) lines.push(line.slice(1));
+  }
+  return lines.join("\n");
+}
+
+/**
  * Runs the comparison between the merge base of `base` and `head`, and `head`,
- * against the wording-changes file at `head` when it differs from the merge
- * base. Returns `{ files, listChanged, result }`, or `{ error }` when a
+ * against the entries of the list files the range added (whole) or modified
+ * (the added lines only), read at `head`. Returns `{ files, listFiles, result }`, or `{ error }` when a
  * revision does not resolve.
  */
 export function compareRevisions(root, base, head) {
@@ -424,14 +503,34 @@ export function compareRevisions(root, base, head) {
   const headFiles = new Map(
     files.map((file) => [file, readAt(root, headCommit, file)]),
   );
-  const list = readAt(root, headCommit, WORDING_CHANGES_FILE);
-  const listChanged = list !== readAt(root, mergeBase, WORDING_CHANGES_FILE);
-  const wordingChanges = listChanged ? parseWordingChanges(list) : [];
+  const changes = branchListChanges(root, mergeBase, headCommit);
+  const listFiles = changes.map((change) => change.path);
+  const wordingChanges = changes.flatMap((change) =>
+    parseWordingChanges(branchListText(root, mergeBase, headCommit, change)),
+  );
   return {
     files,
-    listChanged,
+    listFiles,
     result: compareSpecFiles(baseFiles, headFiles, wordingChanges),
   };
+}
+
+/**
+ * The branch the list file is named for: the pull request's head branch on
+ * the runner, otherwise `head` when it names a local branch or is `HEAD` on
+ * one, otherwise null.
+ */
+export function currentBranch(root, head, env) {
+  if (head === "HEAD" && env.GITHUB_HEAD_REF) return env.GITHUB_HEAD_REF;
+  try {
+    if (head === "HEAD") {
+      return git(root, ["symbolic-ref", "--quiet", "--short", "HEAD"]).trim();
+    }
+    git(root, ["show-ref", "--verify", "--quiet", `refs/heads/${head}`]);
+    return head;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -492,14 +591,15 @@ function main(argv, env) {
     console.error(`${PREFIX} ${comparison.error}`);
     return 2;
   }
-  const { files, listChanged, result } = comparison;
+  const { files, listFiles, result } = comparison;
   if (files.length === 0 && result.unmatched.length === 0) {
     console.log(
       `${PREFIX} no Markdown file under ${SPEC_DIRECTORY} changed since the merge base with ${base}.`,
     );
     return 0;
   }
-  const failures = formatFailures(result);
+  const listFile = listFileFor(currentBranch(root, options.head, env));
+  const failures = formatFailures(result, { listFile, readFrom: listFiles });
   if (failures.length === 0) {
     console.log(
       `${PREFIX} passed over ${files.length} changed file${files.length === 1 ? "" : "s"} under ${SPEC_DIRECTORY}.`,
@@ -510,9 +610,10 @@ function main(argv, env) {
     files.length === 0
       ? `no Markdown file under ${SPEC_DIRECTORY} changed between the merge base with ${base} and ${options.head}.`
       : `the units of ${files.join(", ")} differ between the merge base with ${base} and ${options.head}.`;
-  const read = listChanged
-    ? `Wording changes were read from ${WORDING_CHANGES_FILE} at ${options.head}.`
-    : `${WORDING_CHANGES_FILE} is unchanged since the merge base, so it lists no change on this branch.`;
+  const read =
+    listFiles.length > 0
+      ? `Wording changes were read from ${listFiles.join(", ")} at ${options.head}.`
+      : `No file under ${WORDING_CHANGES_DIRECTORY} was added or modified since the merge base, so this branch lists no change; write its list to ${listFile}.`;
   console.error(`${PREFIX} ${compared} ${read}\n`);
   for (const line of failures) console.error(line);
   return 1;

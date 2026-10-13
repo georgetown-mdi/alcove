@@ -47,7 +47,8 @@
 //
 // Where it reads: every tracked or untracked-but-not-ignored file that is not
 // Markdown and holds no NUL byte, apart from FIXTURE_FILES below, which names
-// docs/spec/wording-changes.txt and the reason it is not read.
+// the docs/spec/wording-changes/ directory and the reason it is not read; an
+// entry ending in `/` names every file under that directory.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -60,17 +61,27 @@ import { stripFences } from "./lib/markdownFences.mjs";
 
 export const SPEC_DIRECTORY = "docs/spec/";
 
-/** Files whose spec citations are test fixtures, dead on purpose. */
+/** Files, and directories ending in `/`, whose spec citations are dead on purpose. */
 export const FIXTURE_FILES = new Map([
   [
     ".claude/scripts/check-review-ledger-dispositions.test.mjs",
     "Its ledger fixtures cite anchors in a spec file that does not exist.",
   ],
   [
-    "docs/spec/wording-changes.txt",
-    "Its old sides quote text from before a change, retired anchors included; its new sides repeat text the spec files already hold.",
+    "docs/spec/wording-changes/",
+    "The wording-change lists: their old sides quote text from before a change, retired anchors included; their new sides repeat text the spec files already hold.",
   ],
 ]);
+
+/** Whether FIXTURE_FILES names a file, itself or by a directory entry. */
+export function isFixture(file) {
+  for (const entry of FIXTURE_FILES.keys()) {
+    if (entry.endsWith("/") ? file.startsWith(entry) : file === entry) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const REFERENCE = /(?<![\w./-])((?:[\w.-]+\/)*)([\w-]+\.md)\\?`?/g;
 const BARE_CAPITALIZED = /^[A-Z][A-Z0-9_]*\.md$/;
@@ -298,7 +309,7 @@ export function main(root) {
   );
   const citing = [];
   for (const file of files) {
-    if (file.endsWith(".md") || FIXTURE_FILES.has(file)) continue;
+    if (file.endsWith(".md") || isFixture(file)) continue;
     const source = readFileSync(resolve(root, file), "utf8");
     if (!source.includes("\0")) citing.push({ file, source });
   }

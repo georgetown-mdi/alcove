@@ -132,12 +132,18 @@ describe("path classification", () => {
     expect(classifyPath("README.MD")).toBe("exempt");
   });
 
-  it("exempts the spec wording-change list, whose content only the sentence check reads", () => {
-    expect(classifyPath("docs/spec/wording-changes.txt")).toBe("exempt");
-    expect(
-      verdictOf("old line\n", "new line\n", "docs/spec/wording-changes.txt"),
-    ).toBe("exempt");
+  it("exempts the spec wording-change lists, whose content only the sentence check reads", () => {
+    const list = "docs/spec/wording-changes/some-branch.txt";
+    expect(classifyPath(list)).toBe("exempt");
+    expect(classifyPath("docs/spec/wording-changes/README.txt")).toBe("exempt");
+    expect(verdictOf("old line\n", "new line\n", list)).toBe("exempt");
     expect(classifyPath("docs/spec/other.txt")).toBe("unverifiable");
+    expect(classifyPath("docs/spec/wording-changes/planted.sh")).toBe(
+      "unverifiable",
+    );
+    expect(classifyPath("docs/spec/wording-changes/planted.mjs")).toBe(
+      "source",
+    );
   });
 
   it("treats .yml and .yaml as parseable YAML", () => {

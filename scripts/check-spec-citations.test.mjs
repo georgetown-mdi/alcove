@@ -10,6 +10,7 @@ import {
   citableNames,
   citationProblems,
   citations,
+  isFixture,
   main,
 } from "./check-spec-citations.mjs";
 
@@ -316,13 +317,13 @@ describe("spec citation check over a planted tree", () => {
     expect(errors[3]).toMatch(/3 spec citation\(s\)/);
   });
 
-  it("does not read the wording list, whose old sides cite retired anchors", () => {
+  it("does not read the wording lists, whose old sides cite retired anchors", () => {
     dir = mkdtempSync(resolve(tmpdir(), "spec-citations-"));
     execFileSync("git", ["init", "-q"], { cwd: dir, stdio: "ignore" });
     const files = {
       [SPEC]: GUIDE,
       "src/planted.ts": `// ${SPEC}#the-memory-ceiling-and-the-csv-intake-cap`,
-      "docs/spec/wording-changes.txt": `- Old text citing ${SPEC}#gone-anchor. -> New text.`,
+      "docs/spec/wording-changes/some-branch.txt": `- Old text citing ${SPEC}#gone-anchor. -> New text.`,
     };
     for (const [file, text] of Object.entries(files)) {
       mkdirSync(resolve(dir, dirname(file)), { recursive: true });
@@ -334,5 +335,12 @@ describe("spec citation check over a planted tree", () => {
 
     expect(main(dir)).toBe(0);
     expect(errors).toEqual([]);
+  });
+
+  it("skips a file under a fixture directory, and only under it", () => {
+    expect(isFixture("docs/spec/wording-changes/README.txt")).toBe(true);
+    expect(isFixture("docs/spec/wording-changes/a-branch.txt")).toBe(true);
+    expect(isFixture("docs/spec/wording-changes.txt")).toBe(false);
+    expect(isFixture("docs/spec/wording-changes-other/a.txt")).toBe(false);
   });
 });

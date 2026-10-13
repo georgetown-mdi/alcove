@@ -159,6 +159,6 @@ except the first two:
 A control already in the tier is reshaped into this order when an issue
 changes that control, not in a pass of its own. The reshape moves sentences
 without rewording them, keeps each qualifying sentence with the claim it
-qualifies, and lists any sentence it does reword in
-[wording-changes.txt](wording-changes.txt)
+qualifies, and lists any sentence it does reword in the pull request's own
+file under [wording-changes/](wording-changes/README.txt)
 ([CONTRIBUTING.md](../../CONTRIBUTING.md#documentation)).

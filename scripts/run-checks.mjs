@@ -264,7 +264,7 @@ export const CHECKS = [
     script: "check:spec-sentences",
     expiresOn: "2027-01-31",
     description:
-      "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed in docs/spec/wording-changes.txt, so text moved between spec files arrives unchanged. On a failure it prints the lines to list.",
+      "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed in the branch's own file under docs/spec/wording-changes/, so text moved between spec files arrives unchanged. On a failure it prints the lines to list.",
   },
   {
     script: "check:release-signing",
