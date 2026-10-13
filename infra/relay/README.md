@@ -89,7 +89,8 @@ other repository-level coupling is the docker Dependabot entry for
    it; nothing defaults to a hostname.
 3. Put `/etc/alcove-relay/acme.env` from [`certs/env.example`](certs/env.example)
    at mode 600, with the DNS provider's credential.
-4. Run `install.sh` as root. It installs a container runtime, builds the image,
+4. Run `install.sh` as root. It adds [`/swapfile`](#os-updates) where it is not
+   set up, installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
    renders the configuration, installs the unit and the three timers, and on
    Amazon Linux 2023 the [OS update](#os-updates) timer,
@@ -509,7 +510,8 @@ so the front sees what any network hop on the path sees.
   on an instance with 412 MB and no headroom (a full `npm ci` there
   OOM-killed coturn). On the project's host, without a registrar, its cgroup
   measured 8.08 MB and `free` reported 20 MB less available memory, mostly
-  page cache, with no out-of-memory kill.
+  page cache, with no out-of-memory kill. `install.sh` adds disk swap for
+  dnf's runs; see [OS updates](#os-updates).
 
 What was measured on the project's relay host on 2026-10-12, and what has
 not been -- the registrar behind the front, and a relayed exchange from a
@@ -656,6 +658,43 @@ way the daily verification checks it. A failed upgrade or a failed verification
 fails `alcove-relay-os-update.service`:
 `journalctl -u alcove-relay-os-update.service -u alcove-relay-verify.service`
 shows which.
+
+**The swapfile.** dnf needs more memory than a 412 MB instance has: on the
+project's t4g.nano with only Amazon Linux 2023's zram swap, reading the newest
+release's package metadata ran out of memory, and the out-of-memory killer
+stopped the relay and the broker. So `install.sh`, on every distribution, adds
+a disk swapfile before it installs anything:
+
+- `/swapfile`, 2048 MB when `/` has at least 4096 MB free and 1024 MB when it
+  has at least 2560 MB, leaving room for dnf's downloads. With less free, it
+  adds none and warns, naming the free space; the daily upgrade on that host
+  can run out of memory.
+- Made with `fallocate`, or with `dd` where `swapon` refuses the fallocated
+  file, at mode 600, enabled with `swapon -p 10`, and listed in `/etc/fstab` as
+  `/swapfile none swap defaults,pri=10 0 0`. Priority 10 is below zram's 100,
+  so zram fills first and the disk takes the overflow. `vm.swappiness` is left
+  as the distribution sets it.
+- Where `/swapfile` exists or `/etc/fstab` names it, `install.sh` adds
+  nothing but a missing `/etc/fstab` line for a file that is in use as swap,
+  and logs its `swapon --show` line, or warns when it is not in use.
+
+**Measured.** On the project's host, a t4g.nano with a 1024 MB swapfile, on
+2026-10-13:
+
+- The upgrade, run through `alcove-relay-os-update.service`, took 23 min 17 s
+  of dnf for 92 package upgrades and a new kernel, with no out-of-memory kill
+  and the verification passing after it. Swap in use peaked at 601 MB in total;
+  over the run zram sat full at 411 MB and the swapfile reached 192 MB at its
+  own peak. Sampled from outside, the relay refused one connection, at the
+  Docker package's restart (What restarts, above).
+- A dry run before it, reading the newest release's metadata, peaked higher:
+  740 MB of swap in total, zram full and the swapfile reaching 328 MB. Some of
+  the relay's answers from outside took 3 to 7 seconds; none failed.
+- `systemctl show -p MemoryPeak` prints nothing on Amazon Linux 2023's
+  systemd 252. To see what a run uses, read `memory.current` and
+  `memory.swap.current` under
+  `/sys/fs/cgroup/system.slice/alcove-relay-os-update.service/` while it runs;
+  the measured upgrade peaked at 141 MB of memory and 285 MB of swap there.
 
 ## Portability
 

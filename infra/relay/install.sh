@@ -4,8 +4,9 @@
 #
 #   install.sh [--skip-verify]
 #
-# What it does, in order: installs a container runtime, builds the 443 front's
-# image and checks its configuration with nginx -t, builds the relay's image,
+# What it does, in order: adds /swapfile where it is not set up, installs
+# a container runtime, builds the 443 front's image and checks its
+# configuration with nginx -t, builds the relay's image,
 # creates the data directory that holds the per-exchange secrets table, installs
 # the scripts under /opt, obtains a certificate if none is present, renders
 # coturn's configuration, installs the units and the three timers, on Amazon
@@ -79,6 +80,73 @@ if [ ! -s "$ETC/certs/fullchain.pem" ] && [ ! -f "${ALCOVE_RELAY_ACME_ENV:-$ETC/
 fi
 "$HERE/render-front.sh" > /dev/null \
   || die "the front's routes in $ENV_FILE are refused (above); nothing was installed or restarted"
+
+# --- the swapfile -------------------------------------------------------------
+# Disk swap below the distribution's own (zram on Amazon Linux 2023, at priority
+# 100, fills first), added before this script's dnf and image builds and the OS
+# update timer: on a 412 MB instance dnf without it ran out of memory and the
+# OOM killer took the relay and the broker. vm.swappiness is left as found.
+# A measured working choice: 1024 MB peaked at 328 MB used on a 412 MB t4g.nano.
+SWAPFILE_SMALL_MB=1024
+SWAPFILE_LARGE_MB=2048
+# Each leaves at least 1.5 GB of / free for dnf's downloads.
+SWAPFILE_SMALL_MIN_FREE_MB=2560
+SWAPFILE_LARGE_MIN_FREE_MB=4096
+# A hand-edited fstab need not end in a newline, and an append onto one would
+# land on the end of whatever the operator typed last.
+add_swapfile_to_fstab() {
+  if [ -s /etc/fstab ] && [ -n "$(tail -c 1 /etc/fstab)" ]; then
+    printf '\n' >> /etc/fstab
+  fi
+  printf '/swapfile none swap defaults,pri=10 0 0\n' >> /etc/fstab
+  log "swap: added /swapfile to /etc/fstab: $1"
+}
+if [ -e /swapfile ] || grep -qs '^/swapfile[[:space:]]' /etc/fstab; then
+  SWAPFILE_LINE="$(swapon --show=NAME,TYPE,SIZE,USED,PRIO --noheadings 2>/dev/null | awk '$1 == "/swapfile"' || true)"
+  if [ -n "$SWAPFILE_LINE" ]; then
+    if grep -qs '^/swapfile[[:space:]]' /etc/fstab; then
+      log "swap: keeping /swapfile: $SWAPFILE_LINE"
+    else
+      add_swapfile_to_fstab "$SWAPFILE_LINE"
+    fi
+  else
+    log "WARNING: /swapfile exists or /etc/fstab names it, but it is not in use as swap; check it with swapon --show and /etc/fstab"
+  fi
+else
+  ROOT_FREE_MB="$(df -BM --output=avail / | tail -1 | tr -dc 0-9 || true)"
+  SWAPFILE_MB=
+  if [ -z "$ROOT_FREE_MB" ]; then
+    log "WARNING: could not read the free space on /, so no swapfile was added; on a host with under 1 GB of memory the daily OS update can run out of memory. Check df / and run install.sh again"
+  elif [ "$ROOT_FREE_MB" -ge "$SWAPFILE_LARGE_MIN_FREE_MB" ]; then
+    SWAPFILE_MB=$SWAPFILE_LARGE_MB
+  elif [ "$ROOT_FREE_MB" -ge "$SWAPFILE_SMALL_MIN_FREE_MB" ]; then
+    SWAPFILE_MB=$SWAPFILE_SMALL_MB
+  else
+    log "WARNING: / has ${ROOT_FREE_MB} MB free, under the ${SWAPFILE_SMALL_MIN_FREE_MB} MB a ${SWAPFILE_SMALL_MB} MB swapfile needs, so none was added; on a host with under 1 GB of memory the daily OS update can run out of memory. Free space on / and run install.sh again"
+  fi
+  if [ -n "$SWAPFILE_MB" ]; then
+    log "adding a ${SWAPFILE_MB} MB swapfile at /swapfile (${ROOT_FREE_MB} MB free on /)"
+    SWAPFILE_STATUS=0
+    if fallocate -l "${SWAPFILE_MB}M" /swapfile && chmod 600 /swapfile && mkswap /swapfile > /dev/null; then
+      if ! swapon -p 10 /swapfile; then
+        # Some filesystems refuse a swapfile with unwritten extents.
+        log "swapon refused the fallocated file; writing it out with dd instead"
+        rm -f /swapfile
+        { dd if=/dev/zero of=/swapfile bs=1M count="$SWAPFILE_MB" oflag=direct status=none \
+            && chmod 600 /swapfile && mkswap /swapfile > /dev/null && swapon -p 10 /swapfile; } \
+          || SWAPFILE_STATUS=$?
+      fi
+    else
+      SWAPFILE_STATUS=1
+    fi
+    if [ "$SWAPFILE_STATUS" = 0 ]; then
+      add_swapfile_to_fstab "$(swapon --show=NAME,TYPE,SIZE,USED,PRIO --noheadings | awk '$1 == "/swapfile"')"
+    else
+      rm -f /swapfile
+      log "WARNING: /swapfile could not be made swap (above), so none was added; on a host with under 1 GB of memory the daily OS update can run out of memory. Fix the cause above, or add swap by hand, and run install.sh again"
+    fi
+  fi
+fi
 
 # --- the container runtime --------------------------------------------------
 # podman where the distribution carries it, docker where it does not. Measured on
