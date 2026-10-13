@@ -9,15 +9,20 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 ## What a run does
 
 1. Reads the tip of `main` with `git ls-remote` over HTTPS.
-   When the broker's tree link, `/opt/alcove-broker/src`, already names that commit, the run records `unchanged` and stops.
-2. Reads the tip's check runs from GitHub's API without a token, one request a run.
-   It goes on only when the commit has at least one check run and every one completed as `success`, `neutral` or `skipped`.
-   It reads check runs and never the combined status endpoint, which answers `pending` for a commit whose every check run passed, since this repository reports through check runs only.
+   When the deployed marker, `/var/lib/alcove-host-pull/deployed`, and the broker's tree link, `/opt/alcove-broker/src`, both name that commit, the run records `unchanged` and stops.
+   Only a run whose installs and `verify.sh` all passed writes the marker.
+   When the link names the tip and the marker does not, an earlier run switched the link and did not finish installing.
+   If that tree's build still matches its `SHA256SUMS`, the run goes straight to step 5 on it; otherwise it starts again from step 2.
+2. Reads the tip's GitHub Actions workflow runs from GitHub's API without a token: `GET /repos/georgetown-mdi/alcove/actions/runs?head_sha=<commit>&event=push&per_page=100`, reading further pages while the answer's `total_count` is larger than the runs read, up to 10 pages.
+   The tip is green when it has at least one workflow run triggered by a `push` and every one has completed with conclusion `success`.
+   A push of the commit to `staging` counts as well as its push to `main`.
+   Runs triggered by any other event, such as the scheduled nightly workflows or Dependabot's, do not gate the pull.
 3. Downloads `alcove-broker-core-<commit>.tar.gz` and its Sigstore bundle from the `broker-core-build` prerelease ([docs/RELEASES.md](../../docs/RELEASES.md#the-broker-core-build)) and verifies the signature with the command in [`infra/broker/README.md`, Install](../broker/README.md#install), step 5.
    The identity is the publishing workflow on `refs/heads/main`, and `--certificate-github-workflow-sha` is the tip from step 1, so a correctly signed build of any other commit is refused.
 4. Fetches `main` into a new tree, `/opt/alcove-broker/trees/<commit>`, and refuses it unless the fetched commit is the tip from step 1.
    It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci` at low priority, and makes the tree owned by root and readable by all.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
+   When both pass, it writes the tip to the deployed marker.
 
 It never builds core.
 It never runs code from a tree it is about to replace: the timer runs the copy of `pull.sh` this directory's `install.sh` put under `/opt/alcove-host-pull`.
@@ -41,15 +46,16 @@ A host that is down at 06:00 skips the day rather than pulling at boot.
 | outcome | exit | when |
 | --- | --- | --- |
 | `unchanged` | 0 | the tip of `main` is the deployed commit |
-| `skipped` | 0 | a check run has not completed, no check run has reported yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
-| `refused` | 1 | a check run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` |
-| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, either install script or `verify.sh`, or a precondition below |
+| `skipped` | 0 | a push-triggered workflow run has not completed, none has started yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
+| `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` |
+| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, either install script or `verify.sh`, a precondition below, or the run was stopped by a signal, such as systemd's at `TimeoutStartSec=` |
 | `updated` | 0 | both install scripts and `verify.sh` passed on the new commit |
 
 Every run writes its outcome to `/var/lib/alcove-host-pull/status`, renamed into place and readable by all, outside `/root` and `/home` so a unit run under `ProtectHome=` can read it:
 
 ```text
-deployed_commit=<the commit /opt/alcove-broker/src links to>
+deployed_commit=<the commit in the deployed marker: the last whose installs passed>
+linked_commit=<the commit /opt/alcove-broker/src links to>
 main_commit=<the tip of main this run read>
 outcome=<one of the outcomes above>
 reason=<one line, also in the journal>
@@ -76,7 +82,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
    `pull.sh` refuses to run while `/opt/alcove-broker/src` is a directory, or a link to anything but a tree under `/opt/alcove-broker/trees`.
    The broker unit's `WorkingDirectory=` has not yet been measured through the link on a host.
 2. From a checkout of this directory, as root: `./install.sh`.
-   It installs `pull.sh` and `check-runs.mjs` under `/opt/alcove-host-pull` and the service and timer under `/etc/systemd/system`, and enables nothing.
+   It installs `pull.sh` and `workflow-runs.mjs` under `/opt/alcove-host-pull` and the service and timer under `/etc/systemd/system`, and enables nothing.
    Run it again from a newer checkout to update the pull itself: a pull never rewrites its own copy.
 3. Enable the timer: `systemctl enable --now alcove-host-pull.timer`.
    To pull once by hand: `systemctl start alcove-host-pull.service`.
@@ -84,6 +90,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 ## Limits
 
 - **No rollback.** A failed install or `verify.sh` leaves `/opt/alcove-broker/src` on the new commit with the units as far as the install got, and records `failed`; the previous tree stays under `/opt/alcove-broker/trees`.
+  The deployed marker keeps the previous commit, so the next run installs the new one again, and records `failed` again until the installs pass.
 - **Every tree is kept.** Nothing removes a tree, so each update adds one, with its `node_modules`, to the disk.
 - **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
@@ -94,7 +101,7 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 | path | what it is |
 | --- | --- |
 | `pull.sh` | One run, as above. Installed as `/opt/alcove-host-pull/pull.sh` |
-| `check-runs.mjs` | Reads the check-runs answer and prints whether the commit passed, is pending or did not pass; `pull.sh` runs it with the host's Node |
+| `workflow-runs.mjs` | Reads the pages of the workflow-runs answer and prints whether the commit's push runs passed, are pending or did not pass; `pull.sh` runs it with the host's Node |
 | `alcove-host-pull.service`, `.timer` | Run `pull.sh` daily in the window above |
 | `install.sh` | Installs the three above; enables nothing |
 

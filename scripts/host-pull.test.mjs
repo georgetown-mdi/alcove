@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -69,9 +69,10 @@ case "$1" in
   *) exit 99 ;;
 esac`;
 
-// Serves $F/served/<name>, <name> being the URL's last segment, or check-runs
-// for the API's; a .code file beside it overrides the status, a .exit file
-// makes the transfer fail.
+// Serves $F/served/<name>, <name> being the URL's last segment, or runs for the
+// API's workflow runs, which API_FAKE answers from $F/runs.json unless a runs
+// file overrides the body; a .code file beside it overrides the status, a .exit
+// file makes the transfer fail.
 const CURL_STUB = String.raw`
 printf 'curl %s\n' "$*" >> "$F/calls"
 out=; url=
@@ -84,16 +85,36 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$url" in
-  */check-runs\?per_page=100) name=check-runs ;;
+  */actions/runs\?*) name=runs ;;
   *) name="$(basename "$url")" ;;
 esac
 served="$F/served/$name"
 if [ -e "$served.exit" ]; then printf 000; exit "$(cat "$served.exit")"; fi
-if [ -e "$served.code" ]; then code="$(cat "$served.code")"
-elif [ -e "$served" ]; then code=200
-else code=404; fi
-if [ -e "$served" ]; then cp "$served" "$out"; else printf 'Not Found' > "$out"; fi
+if [ "$name" = runs ] && [ ! -e "$served" ]; then
+  node "$F/api.mjs" "$url" "$F/runs.json" > "$out"; code=200
+elif [ -e "$served" ]; then cp "$served" "$out"; code=200
+else printf 'Not Found' > "$out"; code=404; fi
+if [ -e "$served.code" ]; then code="$(cat "$served.code")"; fi
 printf '%s' "$code"`;
+
+// The list-workflow-runs endpoint over every run of the fixture's repository:
+// filtered by head_sha and event, and paged by per_page and page.
+const API_FAKE = String.raw`
+import { readFileSync } from "node:fs";
+const query = new URL(process.argv[2]).searchParams;
+const matching = JSON.parse(readFileSync(process.argv[3], "utf8")).filter(
+  (run) =>
+    run.head_sha === query.get("head_sha") &&
+    (!query.has("event") || run.event === query.get("event")),
+);
+const perPage = Number(query.get("per_page") ?? 30);
+const page = Number(query.get("page") ?? 1);
+process.stdout.write(
+  JSON.stringify({
+    total_count: matching.length,
+    workflow_runs: matching.slice((page - 1) * perPage, page * perPage),
+  }),
+);`;
 
 // Passes only for the README's identity and issuer, and a workflow SHA equal
 // to the commit the fixture's build was signed for.
@@ -119,6 +140,7 @@ done
 const NPM_STUB = String.raw`
 printf 'npm %s in %s\n' "$*" "$PWD" >> "$F/calls"
 [ ! -e "$F/fail-npm" ] || exit 1
+if [ -e "$F/slow-npm" ]; then : > "$F/npm-started"; sleep 30; fi
 mkdir -p node_modules/.bin && : > node_modules/.bin/tsx`;
 
 // An install script inside the fetched tree: records where the broker's link
@@ -159,19 +181,45 @@ const buildArchive = (root, path, { corrupt = false } = {}) => {
   expect(tar.status).toBe(0);
 };
 
-const checkRuns = (runs) =>
-  JSON.stringify({
-    total_count: runs.length,
-    check_runs: runs.map(([name, status, conclusion]) => ({
-      name,
-      status,
-      conclusion,
-    })),
-  });
+/** One workflow run of TIP, completed as success on a push to main unless overridden. */
+const workflowRun = (name, overrides = {}) => ({
+  name,
+  head_sha: TIP,
+  head_branch: "main",
+  event: "push",
+  status: "completed",
+  conclusion: "success",
+  ...overrides,
+});
+const workflowRuns = (runs) =>
+  JSON.stringify(runs.map((run, index) => ({ id: 1000 + index, ...run })));
+// The promotion's push runs, the same commit's earlier push to staging, and
+// runs of other events that do not gate: a failed nightly and Dependabot's.
 const GREEN = [
-  ["Typecheck, Lint, Format", "completed", "success"],
-  ["CodeQL", "completed", "neutral"],
-  ["Native Alpine", "completed", "skipped"],
+  workflowRun("Static Checks", { head_branch: "staging" }),
+  workflowRun("CLI Build and Test", { head_branch: "staging" }),
+  workflowRun("CodeQL"),
+  workflowRun("Deploy to Cloudflare Pages"),
+];
+const NOT_GATING = [
+  workflowRun("Nightly Platform Tests", {
+    event: "schedule",
+    conclusion: "failure",
+  }),
+  workflowRun("Nightly Core Stress Tests", {
+    event: "schedule",
+    status: "in_progress",
+    conclusion: null,
+  }),
+  workflowRun("npm_and_yarn in /. - Update", {
+    event: "dynamic",
+    head_branch: "staging",
+    conclusion: "failure",
+  }),
+  workflowRun("CI on another commit", {
+    head_sha: OTHER,
+    conclusion: "failure",
+  }),
 ];
 
 const ARCHIVE = `alcove-broker-core-${TIP}.tar.gz`;
@@ -179,16 +227,21 @@ const BUNDLE = `${ARCHIVE}.sigstore.json`;
 
 /**
  * A host under a fixture root whose main is at TIP, CI green, the build
- * published and signed for TIP, and the broker linked to the tree of DEPLOYED.
+ * published and signed for TIP, and the broker linked to the tree of DEPLOYED,
+ * the commit the deployed marker names.
  */
 const host = () => {
   const root = fixtureDir("host-pull-");
   const bin = join(root, "bin");
   const served = join(root, "served");
   const broker = join(root, "opt/alcove-broker");
+  const state = join(root, "var/lib/alcove-host-pull");
   mkdirSync(served, { recursive: true });
+  mkdirSync(state, { recursive: true });
   mkdirSync(join(broker, "trees", DEPLOYED), { recursive: true });
   symlinkSync(`trees/${DEPLOYED}`, join(broker, "src"));
+  writeFileSync(join(state, "deployed"), `${DEPLOYED}\n`);
+  writeFileSync(join(root, "api.mjs"), API_FAKE);
   const head = `F='${root}'`;
   writeStub(join(bin, "git"), `${head}\n${GIT_STUB}`);
   writeStub(join(bin, "curl"), `${head}\n${CURL_STUB}`);
@@ -216,26 +269,22 @@ const host = () => {
   writeFileSync(join(root, "remote/package.json"), "{}\n");
   writeFileSync(join(root, "tip"), TIP);
   writeFileSync(join(root, "signed-for"), TIP);
-  writeFileSync(join(served, "check-runs"), checkRuns(GREEN));
+  const runs = (list) =>
+    writeFileSync(join(root, "runs.json"), workflowRuns(list));
+  runs([...GREEN, ...NOT_GATING]);
   buildArchive(root, join(served, ARCHIVE));
   writeFileSync(join(served, BUNDLE), '{"fixture":"bundle"}\n');
 
   const set = (name, value = "") => writeFileSync(join(root, name), value);
-  const run = (script = join(PULL_DIR, "pull.sh")) => {
-    writeFileSync(join(root, "calls"), "");
-    const result = spawnSync(BASH, [script], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        ALCOVE_HOST_PULL_INSTALL_ROOT: root,
-      },
-    });
-    const calls = readFileSync(join(root, "calls"), "utf8")
-      .split("\n")
-      .filter(Boolean);
-    const statusPath = join(root, "var/lib/alcove-host-pull/status");
-    const record = existsSync(statusPath)
+  const unset = (name) => rmSync(join(root, name));
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH}`,
+    ALCOVE_HOST_PULL_INSTALL_ROOT: root,
+  };
+  const record = () => {
+    const statusPath = join(state, "status");
+    return existsSync(statusPath)
       ? Object.fromEntries(
           readFileSync(statusPath, "utf8")
             .split("\n")
@@ -243,12 +292,28 @@ const host = () => {
             .map((line) => line.split(/=(.*)/s).slice(0, 2)),
         )
       : undefined;
-    return { ...result, calls, record };
+  };
+  const marker = () => {
+    const path = join(state, "deployed");
+    return existsSync(path) ? readFileSync(path, "utf8") : undefined;
+  };
+  const run = (script = join(PULL_DIR, "pull.sh")) => {
+    writeFileSync(join(root, "calls"), "");
+    const result = spawnSync(BASH, [script], { encoding: "utf8", env });
+    const calls = readFileSync(join(root, "calls"), "utf8")
+      .split("\n")
+      .filter(Boolean);
+    return { ...result, calls, record: record() };
   };
   return {
     root,
     broker,
+    env,
     set,
+    unset,
+    runs,
+    record,
+    marker,
     serve: (name, text) => writeFileSync(join(served, name), text),
     unserve: (name) => rmSync(join(served, name)),
     archive: (options) => buildArchive(root, join(served, ARCHIVE), options),
@@ -259,7 +324,8 @@ const host = () => {
 };
 
 const REPOSITORY_URL = "https://github.com/georgetown-mdi/alcove.git";
-const CHECK_RUNS_URL = `https://api.github.com/repos/georgetown-mdi/alcove/commits/${TIP}/check-runs?per_page=100`;
+const runsUrl = (page) =>
+  `https://api.github.com/repos/georgetown-mdi/alcove/actions/runs?head_sha=${TIP}&event=push&per_page=100&page=${page}`;
 const RELEASE_URL =
   "https://github.com/georgetown-mdi/alcove/releases/download/broker-core-build";
 
@@ -271,6 +337,7 @@ const downloads = (calls) =>
 const untouched = (h) => {
   expect(h.link()).toBe(`trees/${DEPLOYED}`);
   expect(h.trees()).toEqual([DEPLOYED]);
+  expect(h.marker()).toBe(`${DEPLOYED}\n`);
   expect(named(h.lastCalls, "systemctl")).toEqual([]);
 };
 
@@ -290,10 +357,16 @@ describe("pull.sh", () => {
     const r = outcome(h, "updated", 0);
     expect(r.record).toMatchObject({
       deployed_commit: TIP,
+      linked_commit: TIP,
       main_commit: TIP,
       reason: `deployed ${TIP}`,
     });
     expect(r.record.time).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+    expect(r.stderr).toContain(`every push run on ${TIP} succeeded (4)`);
+    expect(h.marker()).toBe(`${TIP}\n`);
+    expect(
+      lstatSync(join(h.root, "var/lib/alcove-host-pull/deployed")).mode & 0o777,
+    ).toBe(0o644);
     expect(h.link()).toBe(`trees/${TIP}`);
     expect(h.trees()).toEqual([TIP, DEPLOYED]);
     const tree = join(h.broker, "trees", TIP);
@@ -309,7 +382,7 @@ describe("pull.sh", () => {
     const work = join(h.root, "var/lib/alcove-host-pull/work");
     const steps = [
       `git ls-remote --exit-code ${REPOSITORY_URL} refs/heads/main`,
-      CHECK_RUNS_URL,
+      runsUrl(1),
       `${RELEASE_URL}/${ARCHIVE}`,
       `${RELEASE_URL}/${BUNDLE}`,
       [
@@ -350,6 +423,7 @@ describe("pull.sh", () => {
     const r = outcome(h, "unchanged", 0);
     expect(r.record).toMatchObject({
       deployed_commit: DEPLOYED,
+      linked_commit: DEPLOYED,
       main_commit: DEPLOYED,
     });
     expect(r.calls).toEqual([
@@ -358,17 +432,38 @@ describe("pull.sh", () => {
     untouched(h);
   });
 
+  it("installs again when the marker names the tip and the link does not", () => {
+    const h = host();
+    h.set("var/lib/alcove-host-pull/deployed", `${TIP}\n`);
+    outcome(h, "updated", 0);
+    expect(h.link()).toBe(`trees/${TIP}`);
+  });
+
+  it("goes on past a failed scheduled run, a Dependabot run and another commit's run", () => {
+    const h = host();
+    const r = outcome(h, "updated", 0);
+    expect(named(r.calls, "curl ")[0]).toContain("event=push");
+    expect(r.stderr).not.toContain("Nightly");
+  });
+
   it.each([
     [
-      "a check run has not completed",
-      [...GREEN, ["CLI Build and Test", "in_progress", null]],
+      "a push run has not completed",
+      [
+        ...GREEN,
+        workflowRun("Native Addon (Alpine/musl)", {
+          head_branch: "staging",
+          status: "in_progress",
+          conclusion: null,
+        }),
+      ],
       "CI has not finished on",
-      "CLI Build and Test",
+      "Native Addon (Alpine/musl) (staging)",
     ],
-    ["no check run has reported", [], "no check run has reported", ""],
+    ["no push run has started", NOT_GATING, "no push run has reported", ""],
   ])("skips the day when %s", (_, runs, reason, name) => {
     const h = host();
-    h.serve("check-runs", checkRuns(runs));
+    h.runs(runs);
     const r = outcome(h, "skipped", 0);
     expect(r.record.reason).toContain(reason);
     expect(r.record.reason).toContain(name);
@@ -377,42 +472,86 @@ describe("pull.sh", () => {
     untouched(h);
   });
 
-  it("refuses a tip with a check run that did not pass, even beside a pending one", () => {
+  it("refuses a tip with a push run that did not succeed, even beside a pending one", () => {
     const h = host();
-    h.serve(
-      "check-runs",
-      checkRuns([
-        ...GREEN,
-        ["CLI Build and Test", "completed", "failure"],
-        ["Static Checks", "completed", "cancelled"],
-        ["Image Smoke", "queued", null],
-      ]),
-    );
+    h.runs([
+      ...GREEN,
+      ...NOT_GATING,
+      workflowRun("CLI Build and Test", { conclusion: "failure" }),
+      workflowRun("Static Checks", { conclusion: "cancelled" }),
+      workflowRun("CodeQL", { head_branch: "staging", conclusion: "neutral" }),
+      workflowRun("Image Smoke", { status: "queued", conclusion: null }),
+    ]);
     const r = outcome(h, "refused", 1);
-    expect(r.record.reason).toContain("CLI Build and Test, Static Checks");
+    expect(r.record.reason).toContain(
+      "CLI Build and Test (main), Static Checks (main), CodeQL (staging)",
+    );
     expect(r.record.reason).not.toContain("Image Smoke");
+    expect(r.record.reason).not.toContain("Nightly");
     expect(downloads(r.calls)).toEqual([]);
     untouched(h);
   });
 
+  it("reads every page of push runs, and refuses a failure on the last", () => {
+    const h = host();
+    const many = Array.from({ length: 230 }, (_, index) =>
+      workflowRun(`Run ${index}`),
+    );
+    h.runs(many);
+    const green = outcome(h, "updated", 0);
+    expect(named(green.calls, "curl ").slice(0, 3)).toEqual(
+      [1, 2, 3].map((page) => expect.stringContaining(runsUrl(page))),
+    );
+    expect(green.stderr).toContain("succeeded (230)");
+
+    const h2 = host();
+    many[229] = workflowRun("Run 229", { conclusion: "failure" });
+    h2.runs(many);
+    const red = outcome(h2, "refused", 1);
+    expect(red.record.reason).toContain("Run 229 (main)");
+    untouched(h2);
+  });
+
+  it("fails on a commit with more push runs than ten pages hold", () => {
+    const h = host();
+    h.runs(
+      Array.from({ length: 1001 }, (_, index) => workflowRun(`Run ${index}`)),
+    );
+    const r = outcome(h, "failed", 1);
+    expect(r.record.reason).toContain(
+      "more push runs than 10 pages of 100 hold",
+    );
+    expect(named(r.calls, "curl ")).toHaveLength(10);
+    untouched(h);
+  });
+
   it.each([
+    ["an answer that is not JSON", "<html>"],
     [
-      "more check runs than one page holds",
-      () => JSON.stringify({ total_count: 120, check_runs: [] }),
+      "an answer listing a run of another event",
+      JSON.stringify({
+        total_count: 1,
+        workflow_runs: [
+          { id: 1, ...workflowRun("Nightly", { event: "schedule" }) },
+        ],
+      }),
     ],
-    ["an answer that is not JSON", () => "<html>"],
+    [
+      "an answer short of its total_count",
+      JSON.stringify({ total_count: 3, workflow_runs: [] }),
+    ],
   ])("fails on %s", (_, body) => {
     const h = host();
-    h.serve("check-runs", body());
+    h.serve("runs", body);
     const r = outcome(h, "failed", 1);
     expect(r.record.reason).toContain("were not read");
     expect(downloads(r.calls)).toEqual([]);
     untouched(h);
   });
 
-  it("fails when GitHub refuses the check-runs read", () => {
+  it("fails when GitHub refuses the workflow-runs read", () => {
     const h = host();
-    h.serve("check-runs.code", "403");
+    h.serve("runs.code", "403");
     const r = outcome(h, "failed", 1);
     expect(r.record.reason).toContain("HTTP 403");
     untouched(h);
@@ -485,13 +624,109 @@ describe("pull.sh", () => {
       const h = host();
       h.set(`fail-${name}`);
       const r = outcome(h, "failed", 1);
-      expect(r.record).toMatchObject({ deployed_commit: TIP });
+      expect(r.record).toMatchObject({
+        deployed_commit: DEPLOYED,
+        linked_commit: TIP,
+      });
       expect(r.record.reason).toContain(reason);
       expect(h.link()).toBe(`trees/${TIP}`);
+      expect(h.marker()).toBe(`${DEPLOYED}\n`);
       expect(named(r.calls, "broker-install")).toHaveLength(1);
       expect(named(r.calls, "relay-install")).toHaveLength(brokerRan ? 1 : 0);
     },
   );
+
+  it("installs a tree whose installs failed again on the next run, without downloading it", () => {
+    const h = host();
+    h.set("fail-relay-install");
+    outcome(h, "failed", 1);
+
+    const again = outcome(h, "failed", 1);
+    expect(again.record).toMatchObject({
+      deployed_commit: DEPLOYED,
+      linked_commit: TIP,
+      main_commit: TIP,
+    });
+    expect(again.record.reason).toContain("infra/relay/install.sh");
+    expect(again.calls).toEqual([
+      `git ls-remote --exit-code ${REPOSITORY_URL} refs/heads/main`,
+      "systemctl try-restart alcove-broker.service",
+      `broker-install trees/${TIP}`,
+      `relay-install trees/${TIP}`,
+    ]);
+
+    h.unset("fail-relay-install");
+    const passed = outcome(h, "updated", 0);
+    expect(passed.record).toMatchObject({
+      deployed_commit: TIP,
+      linked_commit: TIP,
+    });
+    expect(h.marker()).toBe(`${TIP}\n`);
+    expect(named(passed.calls, "curl ")).toEqual([]);
+
+    outcome(h, "unchanged", 0);
+  });
+
+  it("stages the tip again when the linked tree's build no longer matches its SHA256SUMS", () => {
+    const h = host();
+    h.set("fail-broker-install");
+    outcome(h, "failed", 1);
+    writeFileSync(
+      join(h.broker, "trees", TIP, "packages/core/dist/shared2.esm.js"),
+      "tampered\n",
+    );
+    h.unset("fail-broker-install");
+
+    const r = outcome(h, "updated", 0);
+    expect(downloads(r.calls)).toHaveLength(2);
+    expect(named(r.calls, "npm ci")).toHaveLength(1);
+    expect(h.trees()).toEqual([TIP, DEPLOYED]);
+    expect(h.link()).toBe(`trees/${TIP}`);
+    expect(
+      readFileSync(
+        join(h.broker, "trees", TIP, "packages/core/dist/shared2.esm.js"),
+        "utf8",
+      ),
+    ).toBe("export const shared = 1;\n");
+    expect(h.marker()).toBe(`${TIP}\n`);
+  });
+
+  it("records failed when a signal stops it during a long step", async () => {
+    const h = host();
+    h.set("slow-npm");
+    const child = spawn(BASH, [join(PULL_DIR, "pull.sh")], {
+      env: h.env,
+      detached: true,
+      stdio: "ignore",
+    });
+    const exited = new Promise((done) => child.on("exit", done));
+    try {
+      const deadline = Date.now() + 10_000;
+      while (!existsSync(join(h.root, "npm-started"))) {
+        expect(Date.now()).toBeLessThan(deadline);
+        await new Promise((done) => setTimeout(done, 20));
+      }
+      // systemd stops a unit by signalling its whole control group.
+      process.kill(-child.pid, "SIGTERM");
+      expect(await exited).toBe(1);
+    } finally {
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch {
+        // The group has already exited.
+      }
+    }
+    expect(h.record()).toMatchObject({
+      outcome: "failed",
+      reason: "pull.sh was stopped by a signal",
+      deployed_commit: DEPLOYED,
+      main_commit: TIP,
+    });
+    expect(h.link()).toBe(`trees/${DEPLOYED}`);
+    expect(existsSync(join(h.root, "var/lib/alcove-host-pull/work"))).toBe(
+      false,
+    );
+  });
 
   it("fails when main cannot be read", () => {
     const h = host();
@@ -523,7 +758,10 @@ describe("pull.sh", () => {
     const h = host();
     make(h);
     const r = outcome(h, "failed", 1);
-    expect(r.record.deployed_commit).toBe("");
+    expect(r.record).toMatchObject({
+      deployed_commit: DEPLOYED,
+      linked_commit: "",
+    });
     expect(r.calls).toEqual([]);
   });
 
@@ -543,7 +781,7 @@ describe("install.sh", () => {
     const h = host();
     const r = h.run(join(PULL_DIR, "install.sh"));
     expect(r.status, r.stderr).toBe(0);
-    for (const file of ["pull.sh", "check-runs.mjs"]) {
+    for (const file of ["pull.sh", "workflow-runs.mjs"]) {
       const installed = join(h.root, "opt/alcove-host-pull", file);
       expect(readFileSync(installed, "utf8")).toBe(
         readFileSync(join(PULL_DIR, file), "utf8"),
@@ -575,7 +813,7 @@ describe("install.sh", () => {
   it.each([
     [BASH, "-n", "pull.sh"],
     [BASH, "-n", "install.sh"],
-    [process.execPath, "--check", "check-runs.mjs"],
+    [process.execPath, "--check", "workflow-runs.mjs"],
   ])("%s %s %s parses", (command, flag, file) => {
     const result = spawnSync(command, [flag, join(PULL_DIR, file)], {
       encoding: "utf8",
