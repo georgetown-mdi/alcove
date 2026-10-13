@@ -946,6 +946,7 @@ So every source the deployed build reads has to match the filter that redeploys 
 
 The deploy holds a Cloudflare token able to replace the public site, and a job holding it that also ran repository code would hand that token to whatever a pull request merged into that code.
 So the upload job checks nothing out and only uploads the artifact the gate built, and no other job, in any workflow, holds the token or runs in the GitHub environments the token is set on.
+The project site's deploy, `site_deploy.yaml`, reads the same token, so its upload job is held to the same terms: one such job in each of the two deploy workflows, and none anywhere else.
 A second deploy path, or a build step moved into the upload job, would hold the same token without that separation, and nothing but review would notice; the check turns either into a failure.
 
 ### Why the graph is read from a real build

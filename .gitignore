@@ -6,6 +6,8 @@ node_modules
 .claude/worktrees/
 dist
 coverage
+# The project site's dev-server cache (`npm run site:dev`).
+docs/.vitepress/cache
 *.local*
 count.txt
 .env

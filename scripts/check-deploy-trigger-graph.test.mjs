@@ -12,6 +12,7 @@ import {
   RECORDER_MODULE,
   RECORD_ENV,
   REQUIRED_GRAPH_ROOTS,
+  SITE_DEPLOY_WORKFLOW,
   classifyGraph,
   collectGraph,
   compileFilter,
@@ -468,7 +469,7 @@ describe("wiring", () => {
   });
 });
 
-describe("the single-deploy rule", () => {
+describe("the deploy-credential rule", () => {
   const uploadJob = (overrides = {}) => ({
     "runs-on": "ubuntu-latest",
     environment: "Production",
@@ -485,6 +486,10 @@ describe("the single-deploy rule", () => {
     path: DEPLOY_WORKFLOW,
     document: { jobs: { gate: { uses: "./gate.yaml" }, deploy: job } },
   });
+  const siteWorkflow = () => ({
+    path: SITE_DEPLOY_WORKFLOW,
+    document: { jobs: { build: { steps: [] }, deploy: uploadJob() } },
+  });
   const other = (jobs, extra = {}) => ({
     path: ".github/workflows/other.yaml",
     document: { jobs, ...extra },
@@ -494,8 +499,24 @@ describe("the single-deploy rule", () => {
     expect(deployCredentialFindings(parsedWorkflows(repoRoot))).toEqual([]);
   });
 
-  it("passes one credential-free upload job in the deploy workflow", () => {
-    expect(deployCredentialFindings([deployWorkflow()])).toEqual([]);
+  it("passes one credential-free upload job in each deploy workflow", () => {
+    expect(
+      deployCredentialFindings([deployWorkflow(), siteWorkflow()]),
+    ).toEqual([]);
+  });
+
+  it("refuses a deploy workflow with no upload job", () => {
+    expect(deployCredentialFindings([deployWorkflow()]).join("\n")).toMatch(
+      /Exactly one job in .*site_deploy\.yaml.*found 0/,
+    );
+  });
+
+  it("refuses a second upload job in a deploy workflow", () => {
+    const site = siteWorkflow();
+    site.document.jobs.second = uploadJob();
+    expect(
+      deployCredentialFindings([deployWorkflow(), site]).join("\n"),
+    ).toMatch(/Exactly one job in .*site_deploy\.yaml.*found 2/);
   });
 
   it.each([
@@ -505,18 +526,26 @@ describe("the single-deploy rule", () => {
       { steps: [{ run: "echo", env: { T: "${{ secrets.CLOUDFLARE_X }}" } }] },
     ],
     ["a GitHub environment", { environment: "Staging", steps: [] }],
-  ])("refuses a second job holding %s", (_label, job) => {
+  ])("refuses a job outside the deploy workflows holding %s", (_label, job) => {
     const findings = deployCredentialFindings([
       deployWorkflow(),
+      siteWorkflow(),
       other({ leak: job }),
     ]);
-    expect(findings.join("\n")).toMatch(/Exactly one job.*found 2/);
+    expect(findings).toContainEqual(
+      expect.stringMatching(/^No job outside .*other\.yaml job leak\.$/),
+    );
+    expect(findings.join("\n")).not.toMatch(/Exactly one job/);
   });
 
-  it("refuses an upload job outside the deploy workflow", () => {
-    expect(
-      deployCredentialFindings([other({ deploy: uploadJob() })]).join("\n"),
-    ).toMatch(/Exactly one job.*other\.yaml job deploy/);
+  it("refuses an upload job outside the deploy workflows", () => {
+    const findings = deployCredentialFindings([other({ deploy: uploadJob() })]);
+    expect(findings.join("\n")).toMatch(
+      /No job outside.*other\.yaml job deploy/,
+    );
+    expect(findings.join("\n")).toMatch(
+      /Exactly one job in .*pages_deploy\.yaml.*found 0/,
+    );
   });
 
   it.each([
@@ -526,15 +555,18 @@ describe("the single-deploy rule", () => {
   ])("refuses the upload job carrying %s", (_label, step, message) => {
     const job = uploadJob();
     job.steps = [step, ...job.steps];
-    expect(deployCredentialFindings([deployWorkflow(job)]).join("\n")).toMatch(
-      message,
-    );
+    expect(
+      deployCredentialFindings([deployWorkflow(job), siteWorkflow()]).join(
+        "\n",
+      ),
+    ).toMatch(message);
   });
 
   it("refuses the upload job calling a workflow", () => {
     expect(
       deployCredentialFindings([
         deployWorkflow({ uses: "./x.yaml", environment: "Production" }),
+        siteWorkflow(),
       ]).join("\n"),
     ).toMatch(/calls \.\/x\.yaml/);
   });
@@ -542,6 +574,7 @@ describe("the single-deploy rule", () => {
   it("refuses secrets: inherit, toJSON(secrets) and a workflow-level secret", () => {
     const findings = deployCredentialFindings([
       deployWorkflow(),
+      siteWorkflow(),
       other(
         {
           a: { uses: "./x.yaml", secrets: "inherit" },

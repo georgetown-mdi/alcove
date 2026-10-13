@@ -7,3 +7,26 @@
 # adds, drops or rewords, "-" standing for none. A unit moved unchanged, or
 # whose only change is a link target, is not listed. The check reads this file
 # only when the branch changes it.
+
+- An edge meant to stand is recorded with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, which is empty; an override-forced edge fails until it is recorded, and a recorded edge that comes back into range fails until its entry is deleted. -> An edge meant to stand is recorded with its reason in the check's `OUT_OF_RANGE_BY_DESIGN` list, whose only entries are the three React peer edges of `@docsearch/react`, the Algolia search package the project site's generator installs and the site does not build, and the `vite` edge of `vitepress` the root override forces; an override-forced edge fails until it is recorded, and a recorded edge that comes back into range fails until its entry is deleted.
+- The source class a verdict is read against therefore comes from the override's own spec, over the flat `"<name>": "<spec>"` form only: -> The source class a verdict is read against therefore comes from the override's own spec, read in the flat `"<name>": "<spec>"` form and the one nested form below:
+- - -> **A nested per-parent object whose every spec is a comparator-set range** (`"vitepress": { "vite": "6.4.3" }`) rewrites only the edges under that parent, and leaves the identity model untouched for the same reason as the flat range.
+- - -> Measured 2026-10-12 on npm 11.20.0, that override fails the install `ESTRICTALLOWSCRIPTS` naming the `esbuild@0.25.12` vite 6.4.3 resolves to, and installs clean under a verdict keyed at 0.25.12.
+- **Every other form is refused** in the register of the key-shape refusal above: a nested per-parent object, a `"."` -> **Every other form is refused** in the register of the key-shape refusal above: a nested object holding a source spec or any other unmodeled spec, a `"."`
+- Three records of what npm's resolver leaves behind in this workspace: the packages the release SBOM omits, what a root `overrides` block does to the lockfile it is added to or removed from and to later installs, and the `brace-expansion` copy the development tree holds. -> Four records of what npm's resolver leaves behind in this workspace: the packages the release SBOM omits, what a root `overrides` block does to the lockfile it is added to or removed from and to later installs, the one override the root `package.json` holds, and the `brace-expansion` copy the development tree holds.
+- Their normative residue is short -- the root `package.json` holds no `overrides` block, and two CI checks watch what an `overrides` block leaves behind, the out-of-range edges and the split hoist. -> Their normative residue is short -- the root `package.json` holds one `overrides` entry, for the project site's `vite`, and two CI checks watch what an `overrides` block leaves behind, the out-of-range edges and the split hoist.
+- The root `package.json` holds no `overrides` block. -> The root `package.json` holds one `overrides` entry, recorded in [The project site's vite override](#the-project-sites-vite-override).
+- Adding one is the answer of last resort here rather than a routine fix, for the three npm behaviors below: the block is not applied or removed by an ordinary install, it can hand a dependent a version its declared range excludes, and its mere presence changes how a later range bump is hoisted. -> Adding another is the answer of last resort here rather than a routine fix, for the three npm behaviors below: the block is not applied or removed by an ordinary install, it can hand a dependent a version its declared range excludes, and its mere presence changes how a later range bump is hoisted.
+- - -> The project site's vite override
+- - -> The root `package.json` holds `"overrides": { "vitepress": { "vite": "6.4.3" } }`.
+- - -> VitePress 1.6.4, the newest non-prerelease, declares `vite` `^5.4.14`, and every vite 5 release depends on an esbuild below 0.25, which GHSA-67mh-4wv8-2f99 covers (a website can send requests to esbuild's development server and read the response).
+- - -> Without the override, `npm audit --package-lock-only` reports esbuild 0.21.5, vite 5.4.21 and vitepress 1.6.4 with no fix available.
+- - -> vite 6.4.3 is the lowest release outside the advisory's range and depends on esbuild `^0.25.0`, which resolves to 0.25.12.
+- - -> Measured 2026-10-12 on npm 11.20.0 with the override in force:
+- - -> `npm audit --package-lock-only` answers `found 0 vulnerabilities`.
+- - -> `npm run site:build` completes, with VitePress's dead-link check running.
+- - -> The lockfile change is confined to the entries under `node_modules/vitepress/node_modules`, applied by the route [above](#what-a-root-overrides-block-changes-about-later-installs): delete those `vite`, `esbuild` and `@esbuild/*` entries, then `npm install --package-lock-only`.
+- - -> `esbuild@0.25.12` declares an install script, and the `allowScripts` map denies it as it denied 0.21.5; the site build above runs with that script blocked.
+- - -> `npm run site:dev` serves the site on the overridden copy.
+- - -> The edge is recorded in `OUT_OF_RANGE_BY_DESIGN`, and the nested form is one the `allowScripts` check reads.
+- - -> Remove the override when a non-prerelease VitePress declares a `vite` range outside the advisory.

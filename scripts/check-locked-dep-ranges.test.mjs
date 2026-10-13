@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  OUT_OF_RANGE_BY_DESIGN,
   assess,
   classifyEdges,
   lookupPaths,
@@ -241,13 +242,26 @@ describe("the verdict over a lockfile", () => {
 });
 
 describe("the committed tree", () => {
-  it("passes, with no out-of-range edge", () => {
+  it("passes, with no out-of-range edge but the recorded ones", () => {
     const result = assess(committedLock());
     expect(result.ok, text(result)).toBe(true);
-    const outOfRange = classifyEdges(committedLock()).filter(
-      (edge) => edge.status === "out-of-range",
+    const outOfRange = classifyEdges(committedLock())
+      .filter((edge) => edge.status === "out-of-range")
+      .map(({ dependent, dependency, range }) => ({
+        dependent,
+        dependency,
+        range,
+      }));
+    expect(outOfRange).toEqual(
+      expect.arrayContaining(
+        OUT_OF_RANGE_BY_DESIGN.map(({ dependent, dependency, range }) => ({
+          dependent,
+          dependency,
+          range,
+        })),
+      ),
     );
-    expect(outOfRange).toEqual([]);
+    expect(outOfRange).toHaveLength(OUT_OF_RANGE_BY_DESIGN.length);
   });
 
   it("exits 0 as a script against the committed lockfile", () => {
