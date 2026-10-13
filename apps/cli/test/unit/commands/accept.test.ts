@@ -1880,6 +1880,50 @@ describe("accepting and running a webrtc exchange in one command", () => {
     }
   });
 
+  test("validateAccept: a configuration-only acceptance refuses a ported endpoint host before the terms, writing nothing", async () => {
+    for (const host of ["h.example:99", "h.example:443", "h.example:"]) {
+      const encoded = await encodeInvitation(
+        sampleToken(FUTURE(), { ...WEBRTC_ENDPOINT, host }),
+      );
+      const options = testOptions();
+      const shown: string[] = [];
+      let refusal: unknown;
+      try {
+        await validateAccept({
+          resolved: { mode: "offline", invitation: encoded },
+          options,
+          log: recordingLog(shown),
+        });
+      } catch (err) {
+        refusal = err;
+      }
+      expect(refusal).toBeInstanceOf(UsageError);
+      expect((refusal as Error).message).toBe(
+        INVITATION_BROKER_ADDRESS_REFUSED,
+      );
+      expect(exitCodeForError(refusal)).toBe(64);
+      expect(shown).toEqual([]);
+      expect(fs.existsSync(options.configFile)).toBe(false);
+      expect(fs.existsSync(options.keyFile)).toBe(false);
+    }
+  });
+
+  test("validateAccept: a configuration-only acceptance accepts a bracketed IPv6 host with a separate port", async () => {
+    const encoded = await encodeInvitation(
+      sampleToken(FUTURE(), {
+        ...WEBRTC_ENDPOINT,
+        host: "[2001:db8::1]",
+        port: 8443,
+      }),
+    );
+    const ready = await validateAccept({
+      resolved: { mode: "offline", invitation: encoded },
+      options: testOptions(),
+      log: silentLog,
+    });
+    expect(ready.mode).toBe("offline");
+  });
+
   test("validateAccept: an OUTPUT_FOLDER an acceptance cannot honor is reported, not dropped", async () => {
     // The result destination belongs to a run. An acceptance that writes only a
     // configuration and key file has no result to send there, so the positional is

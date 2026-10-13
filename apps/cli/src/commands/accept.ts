@@ -733,19 +733,27 @@ export async function validateAccept(params: {
     log,
   });
 
-  if (runnableConnection !== undefined && rows !== undefined) {
-    // Resolve the partner-supplied locator into the broker location the dial
-    // would use, here rather than inside the exchange: any shape
-    // `webRtcDialFrom` refuses -- an undialable port, or a delimiter that ends
-    // up in the host or path -- is a usage error before the terms are
-    // displayed, costing no confirmation or written file. This is the same
-    // resolver the dial itself calls, so nothing here decides what is dialable.
-    // The warn callback is a no-op because the dial below runs in this same
-    // process and emits the plaintext advisory itself.
-    const brokerLocation = brokerLocationFromConnection(
-      runnableConnection.server,
-      () => {},
-    );
+  // Resolve the partner-supplied locator into the broker location the dial
+  // would use, here rather than inside the exchange and for the configuration-
+  // only acceptance as much as the run: any shape `webRtcDialFrom` refuses --
+  // an undialable port, or a delimiter that ends up in the host or path -- is a
+  // usage error before the terms are displayed, costing no confirmation or
+  // written file. This is the same resolver the dial itself calls, so nothing
+  // here decides what is dialable. The warn callback is a no-op because a run
+  // dials in this same process and emits the plaintext advisory itself. A kept
+  // configuration is exempt: its own connection block governs the exchange.
+  const brokerAuthority =
+    endpointRoleConnection.channel === "webrtc" && !reuseExistingConfig
+      ? dialedBrokerHostAndPort(
+          brokerLocationFromConnection(endpointRoleConnection.server, () => {}),
+        )
+      : undefined;
+
+  if (
+    runnableConnection !== undefined &&
+    rows !== undefined &&
+    brokerAuthority !== undefined
+  ) {
     const prepared = await prepareForOnlineExchange(dataSpec, myIdentity, rows);
     // The same binding the URL-driven mode sets on its prepared exchange, for
     // the same single run: the cardinality side the invitation declared for
@@ -763,7 +771,7 @@ export async function validateAccept(params: {
       // contacts (see dialedBrokerHostAndPort). It runs the same authority parse
       // the dial does, so a locator that fails it fails identically at the dial,
       // here before the terms are displayed.
-      brokerAuthority: dialedBrokerHostAndPort(brokerLocation),
+      brokerAuthority,
       dataSpec,
       prepared,
       reuseExistingConfig,
