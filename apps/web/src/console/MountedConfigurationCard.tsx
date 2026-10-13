@@ -218,7 +218,7 @@ export function MountedConfigurationCard({
             >
               <Stack gap="xs" align="flex-start">
                 <Text size="sm">{keyFile.message}</Text>
-                {!sealed && (
+                {!sealed && state.runsInPlace !== true && (
                   <Button size="xs" onClick={onNewInvitation}>
                     {CREATE_INVITATION_FROM_SETTINGS_LABEL}
                   </Button>

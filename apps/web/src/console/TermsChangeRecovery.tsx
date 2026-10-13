@@ -35,6 +35,7 @@ export function TermsChangeRecovery({
   termsChange,
   jobId,
   canApply,
+  inWorkingFolder = false,
   onApplied,
   onReviewApplied,
 }: {
@@ -43,6 +44,9 @@ export function TermsChangeRecovery({
   /** Whether this run's proposal is one the console can apply: a run of the
    * opened configuration that wrote one. */
   canApply: boolean;
+  /** Whether the run used the working folder's own alcove.yaml, so its
+   * proposal is beside that file rather than in the run's folder. */
+  inWorkingFolder?: boolean;
   onApplied: () => void;
   onReviewApplied: () => void;
 }) {
@@ -75,7 +79,10 @@ export function TermsChangeRecovery({
       )}
       {state.status === "failed" && jobId !== undefined && (
         <Text size="sm" mt="xs" role="status">
-          {termsApplyOutcomeText(state.outcome, jobId)}
+          {termsApplyOutcomeText(
+            state.outcome,
+            inWorkingFolder ? { inWorkingFolder: true } : { jobId },
+          )}
         </Text>
       )}
       {state.status === "applied" && (

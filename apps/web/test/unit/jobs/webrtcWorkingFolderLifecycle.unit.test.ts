@@ -2,12 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { stringify as stringifyYaml } from "yaml";
+
+import { getDefaultLinkageTerms, snakeizeKeys } from "@alcove/core";
 
 import {
   JobManager,
+  OpenedConfigurationNotRunnableError,
   SignalingServerChangedError,
   SignalingServerUnavailableError,
 } from "@jobs/jobManager";
+import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { WorkingFolderFilesRefusedError } from "@jobs/workingFolderExchangeFiles";
 import { partnerCertificatePinnedNotice } from "@jobs/partnerPinNotice";
@@ -431,5 +436,242 @@ describe("the coordination server the invitation names", () => {
       manager.createJob(validWebrtcIntent({ signalingServer: undefined })),
     ).rejects.toBeInstanceOf(SignalingServerUnavailableError);
     expect(fs.readdirSync(dataRoot)).toEqual([]);
+  });
+});
+
+describe("a run of the webrtc configuration the operator opened", () => {
+  /** The operator's own alcove.yaml, as the command line wrote it, over the
+   * server the console holds unless `server` names another. */
+  function operatorConfiguration(
+    connection: Record<string, unknown> = {},
+    settings: Record<string, unknown> = {},
+  ): string {
+    return stringifyYaml({
+      connection: {
+        channel: "webrtc",
+        role: "acceptor",
+        server: { host: "peers.test", path: "/psi/" },
+        ...connection,
+      },
+      linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
+      ...settings,
+    });
+  }
+
+  /** A manager over a folder holding the operator's pair, opened. */
+  async function opened(
+    childEnv: Record<string, string>,
+    connection: Record<string, unknown> = {},
+    settings: Record<string, unknown> = {},
+  ): Promise<{ manager: JobManager; dataRoot: string }> {
+    const prepared = await managerFor(childEnv);
+    fs.writeFileSync(
+      configPathIn(prepared.dataRoot),
+      operatorConfiguration(connection, settings),
+    );
+    fs.writeFileSync(keyPathIn(prepared.dataRoot), ORIGINAL_KEY);
+    prepared.manager.openMountedConfiguration();
+    return prepared;
+  }
+
+  const openedRun = validWebrtcIntent({
+    sharedSecret: undefined,
+    mountedConfigurationOpened: true,
+  });
+
+  test("runs the folder's own files in place, and discarding it leaves both", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
+    const { manager, dataRoot } = await opened({
+      STUB_ARGV_FILE: argvFile,
+      STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+      STUB_EXIT_CODE: "69",
+    });
+    const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    const id = await manager.createJob(openedRun);
+    await exited(manager, id);
+    expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
+    expect(argvFlag(argvFile, "--key-file")).toBe(keyPathIn(dataRoot));
+    await discard(manager, id);
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
+    expect(fs.readFileSync(keyPathIn(dataRoot), "utf8")).toBe(ORIGINAL_KEY);
+    const retry = await manager.createJob(openedRun);
+    await exited(manager, retry);
+  });
+
+  test("runs a file naming another coordination server than the console's, naming none itself", async () => {
+    const argvFile = path.join(scratchDir("webrtc-argv"), "argv.json");
+    const { manager, dataRoot } = await opened(
+      {
+        STUB_ARGV_FILE: argvFile,
+        STUB_FD3_EVENTS: JSON.stringify([DROPPED]),
+        STUB_EXIT_CODE: "69",
+      },
+      { server: { host: "Elsewhere.Test", secure: false } },
+    );
+    manager.clearAuthoredSignalingServer();
+    const id = await manager.createJob(
+      validWebrtcIntent({
+        sharedSecret: undefined,
+        mountedConfigurationOpened: true,
+        signalingServer: undefined,
+      }),
+    );
+    await exited(manager, id);
+    expect(argvFlag(argvFile, "--config-file")).toBe(configPathIn(dataRoot));
+  });
+
+  test("is refused over a file stating a relay, with nothing written", async () => {
+    const { manager, dataRoot } = await opened(
+      {},
+      { turn: [{ url: "turns:relay.example.org:5349" }] },
+    );
+    const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    await expect(manager.createJob(openedRun)).rejects.toBeInstanceOf(
+      OpenedConfigurationNotRunnableError,
+    );
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
+    expect(manager.occupiedSlotId()).toBeNull();
+  });
+
+  test("is refused once the file is gone", async () => {
+    const { manager, dataRoot } = await opened({});
+    fs.rmSync(configPathIn(dataRoot));
+    await expect(manager.createJob(openedRun)).rejects.toBeInstanceOf(
+      OpenedConfigurationNotRunnableError,
+    );
+  });
+
+  test("a partner terms change it stops on is applied to the file it ran", async () => {
+    const { manager, dataRoot } = await opened({
+      STUB_EXIT_CODE: "64",
+      STUB_TERMS_PROPOSAL: "proposal",
+      STUB_FD3_EVENTS: JSON.stringify([
+        {
+          v: 1,
+          type: "error",
+          category: "config",
+          message: "this run is not attended.",
+          termsChange: { proposalWritten: true, otherTerms: [] },
+        },
+      ]),
+    });
+    const id = await manager.createJob(openedRun);
+    const record = await exited(manager, id);
+    expect(record.termsProposal).toBe("available");
+    expect(fs.existsSync(path.join(dataRoot, "alcove.proposed-terms"))).toBe(
+      true,
+    );
+    const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(await manager.applyTermsProposal(id)).toEqual({ kind: "applied" });
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).not.toBe(before);
+  });
+
+  test("a save is refused while the run uses the file, and after it recorded a pin there", async () => {
+    const { manager, dataRoot } = await opened({
+      STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
+      STUB_DELAY_MS: "300",
+      STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, RESULT]),
+    });
+    const handBack = {
+      linkageTerms: getDefaultLinkageTerms("County Health"),
+      signing: { mode: "certificate" as const },
+    };
+    const id = await manager.createJob(openedRun);
+    expect(() => manager.handBackOpenedConfiguration(handBack)).toThrow(
+      ConfigurationHandBackRefusedError,
+    );
+    expect(() => manager.handBackOpenedConfiguration(handBack)).toThrow(
+      /An exchange is running/,
+    );
+    await exited(manager, id);
+    const pinned = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(pinned).toContain(ADOPTED_FINGERPRINT);
+    let refusal: unknown;
+    try {
+      manager.handBackOpenedConfiguration(handBack);
+    } catch (error) {
+      refusal = error;
+    }
+    expect(refusal).toBeInstanceOf(ConfigurationHandBackRefusedError);
+    expect((refusal as ConfigurationHandBackRefusedError).message).toMatch(
+      /changed since you opened it/,
+    );
+    expect((refusal as ConfigurationHandBackRefusedError).reason).toBe(
+      "configuration-changed",
+    );
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(pinned);
+  });
+
+  test("opened again after a run recorded a pin, the next start saves nothing and runs", async () => {
+    const { manager, dataRoot } = await opened(
+      {
+        STUB_PARTNER_PIN: ADOPTED_FINGERPRINT,
+        STUB_FD3_EVENTS: JSON.stringify([HANDSHAKE, RESULT]),
+      },
+      {},
+      {
+        signing: {
+          mode: "certificate",
+          identity_file: "/home/county/.alcove/identity.json",
+        },
+      },
+    );
+    const first = await manager.createJob(openedRun);
+    await exited(manager, first);
+    await discard(manager, first);
+    const pinned = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    manager.openMountedConfiguration();
+    expect(
+      manager.handBackOpenedConfiguration({
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+        signing: {
+          mode: "certificate",
+          partnerFingerprint: ADOPTED_FINGERPRINT,
+        },
+      }),
+    ).toEqual({ written: false });
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(pinned);
+    const second = await manager.createJob(openedRun);
+    await exited(manager, second);
+  });
+
+  test("a start that changes nothing leaves the operator's file and makes no copy", async () => {
+    const { manager, dataRoot } = await opened({});
+    const before = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    expect(
+      manager.handBackOpenedConfiguration({
+        linkageTerms: getDefaultLinkageTerms("County Health"),
+        signing: { mode: "none" },
+      }),
+    ).toEqual({ written: false });
+    expect(fs.readFileSync(configPathIn(dataRoot), "utf8")).toBe(before);
+    expect(fs.existsSync(path.join(dataRoot, "alcove.yaml.previous"))).toBe(
+      false,
+    );
+  });
+
+  test("the copy keeps the operator's own file across the console's later saves", async () => {
+    const { manager, dataRoot } = await opened({});
+    const original = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    const previous = (): string =>
+      fs.readFileSync(path.join(dataRoot, "alcove.yaml.previous"), "utf8");
+    for (const csvDelimiter of [";", "|"])
+      expect(
+        manager.handBackOpenedConfiguration({
+          linkageTerms: getDefaultLinkageTerms("County Health"),
+          csvDelimiter,
+          signing: { mode: "none" },
+        }),
+      ).toEqual({ written: true });
+    expect(previous()).toBe(original);
+    fs.appendFileSync(configPathIn(dataRoot), "# edited by hand\n");
+    const edited = fs.readFileSync(configPathIn(dataRoot), "utf8");
+    manager.openMountedConfiguration();
+    manager.handBackOpenedConfiguration({
+      linkageTerms: getDefaultLinkageTerms("County Health"),
+      csvDelimiter: "\t",
+      signing: { mode: "none" },
+    });
+    expect(previous()).toBe(edited);
   });
 });

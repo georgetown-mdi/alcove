@@ -14,6 +14,7 @@ import { RECEIPTS_DEFAULT } from "@psi/receiptsModel";
 import {
   MOUNTED_CONFIGURATION_UNREAD,
   mountedConfigurationRead,
+  opensInPlace,
   withConversion,
   withNewInvitation,
   withTermsNotApplied,
@@ -101,6 +102,12 @@ export function isInviterSpineStep(
   return (INVITER_SPINE_ORDER as ReadonlyArray<Section>).includes(section);
 }
 
+/** A refused mint's alert. `reopensConfiguration` where opening the mounted
+ * configuration again is the way on, which the alert then offers. */
+export interface CreateAlert extends AlertContent {
+  reopensConfiguration?: true;
+}
+
 /** The inviter console's whole state. */
 export interface InviterScreenState {
   /** The inviter's own party name, typed on step 1 and held as the draft's identity. */
@@ -148,7 +155,7 @@ export interface InviterScreenState {
   /** Whether a mint is in flight. */
   minting: boolean;
   /** What a refused mint was about. */
-  createAlert: AlertContent | undefined;
+  createAlert: CreateAlert | undefined;
   /** The keys tab's expert authoring switch. */
   expertMode: boolean;
   /** The console's live region for edits that report what they changed. */
@@ -374,7 +381,7 @@ export type InviterScreenAction =
       acceptKitExchange?: AcceptKitExchange;
     }
   /** The mint was refused, and settled either way. */
-  | { type: "mint-failed"; alert: AlertContent }
+  | { type: "mint-failed"; alert: CreateAlert }
   | { type: "mint-finished" }
   /** The terms were sealed and routed to the save surface, which mints the code
    * and the config file together rather than minting here. Carries the editor
@@ -739,7 +746,11 @@ function applyAction(
       };
     case "mounted-configuration-reading":
       if (state.editor?.sealed === true) return state;
-      return { ...state, mountedConfiguration: { status: "reading" } };
+      return {
+        ...state,
+        mountedConfiguration: { status: "reading" },
+        createAlert: undefined,
+      };
     case "mounted-configuration-read": {
       // A sealed draft is an invitation already minted from other terms: the
       // load would fill the cards and the records while leaving those terms
@@ -756,11 +767,12 @@ function applyAction(
       // build this offer is rendered on (`InviterScreen`). An unresolved mount
       // reads as no mount, the same conservative reading the chooser itself
       // gives it, so the load never selects a transport this console has not
-      // confirmed it can run. A channel no job conducts selects none, and the
-      // read's own state already withholds its run.
-      const conducted = isJobChannel(loaded.channel)
-        ? loaded.channel
-        : undefined;
+      // confirmed it can run. A webrtc file runs in place over webrtc; one with
+      // relay settings selects none, and the read's own state already
+      // withholds its run.
+      const inPlace = opensInPlace(read.state);
+      const conducted =
+        isJobChannel(loaded.channel) || inPlace ? loaded.channel : undefined;
       const offeredTransport =
         conducted !== undefined &&
         transportOffered(
@@ -768,6 +780,9 @@ function applyAction(
             true,
             state.sftpInfo?.connection != null,
             state.rendezvous?.configured === true,
+            false,
+            true,
+            inPlace,
           ),
           conducted,
         )

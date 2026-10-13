@@ -29,6 +29,7 @@ import {
   MOUNTED_KEY_FILE_ABSENT_REFUSAL,
   MOUNTED_KEY_FILE_INVALID_REFUSAL,
   MOUNTED_SIGNING_PATHS_UNCONVERTED_REFUSAL,
+  OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL,
   SFTP_CREDENTIAL_CONSOLE_FILE_REFUSAL,
   SIGNING_IDENTITY_IN_RENDEZVOUS_REFUSAL,
   WORKING_FOLDER_CONFIGURATION_PRESENT_REFUSAL,
@@ -471,6 +472,22 @@ function failureContentFor(
             "partner would not find you. Start over, check the coordination " +
             "server, then create a fresh invitation.",
         };
+  // A WebRTC run of the opened configuration whose file is no longer one the
+  // console runs in place. Classified `config`: a retry refuses identically
+  // until the file is fixed and opened again.
+  if (
+    error instanceof JobApiRequestError &&
+    error.refusalReason === OPENED_CONFIGURATION_NOT_RUNNABLE_REFUSAL
+  )
+    return {
+      category: "config",
+      title: "The console did not run your alcove.yaml",
+      message:
+        "The alcove.yaml in your working folder is no longer a WebRTC " +
+        "configuration the console can run: it is gone, cannot be read, " +
+        "runs over another channel, or sets up a relay. Start over: the " +
+        "console opens the configuration again and shows what it holds.",
+    };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
   // `config`: a retry refuses identically until the folder is fixed.
@@ -850,13 +867,16 @@ function failureContentFor(
  * field: the console holds the authored SFTP connection and coordination
  * server. The webrtc arm names the server the invitation sends the partner
  * to, for the console to refuse the run unless it is the one it holds. An
- * endpoint the console cannot mint (no host or no path) throws.
+ * endpoint the console cannot mint (no host or no path) throws. A run of the
+ * opened configuration, `mountedConfigurationOpened`, dials the server its
+ * file names, so its webrtc arm names none.
  */
 export function inviterServerJobTransport(
   channel: Exclude<Transport, "browser">,
   minted: Pick<GeneratedInvitation, "connectionEndpoint">,
+  mountedConfigurationOpened = false,
 ): ServerJobExchangeTransport {
-  if (channel !== "webrtc") return { channel };
+  if (channel !== "webrtc" || mountedConfigurationOpened) return { channel };
   const endpoint = minted.connectionEndpoint;
   if (endpoint?.channel !== "webrtc") return { channel };
   if (endpoint.host === "" || endpoint.path === undefined)
@@ -1271,7 +1291,11 @@ export function useInviterExchange({
     const serverJobTransport = (): ServerJobExchangeTransport => {
       if (channel === "browser")
         throw new Error("a browser exchange reached the server-job driver");
-      return inviterServerJobTransport(channel, minted);
+      return inviterServerJobTransport(
+        channel,
+        minted,
+        mountedConfigurationOpened === true,
+      );
     };
 
     // The console conducts the exchange: the driver POSTs the sealed

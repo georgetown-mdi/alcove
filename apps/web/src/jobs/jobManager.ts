@@ -16,10 +16,13 @@ import { INTERNAL_FAULT_EXIT_CODE } from "@alcove/cli-contract";
 import { ERROR_MESSAGE_CHAIN_FIELD } from "@psi/relayErrorChain";
 
 import {
+  CONFIGURATION_CHANGED_SAVE_REFUSAL,
+  JOB_FILE_NAMES,
+} from "@jobContract/intentSchemas";
+import {
   runArtifactNames,
   stampOfResultPath,
 } from "@jobContract/runArtifactNames";
-import { JOB_FILE_NAMES } from "@jobContract/intentSchemas";
 import { zeroSetupSftpCheck } from "@jobContract/jobCreateRefusal";
 
 import {
@@ -73,6 +76,12 @@ import {
 } from "./jobRendezvous";
 
 import {
+  CONFIGURATION_CHANGED_SINCE_OPENED_MESSAGE,
+  CONFIGURATION_IN_USE_MESSAGE,
+  ConfigurationHandBackRefusedError,
+  handBackMountedConfiguration,
+} from "./configHandBack";
+import {
   buildSynthesizedWarningEvent,
   resolveCliBinaryPath,
   spawnExchangeJob,
@@ -80,6 +89,7 @@ import {
 } from "./cliDriver";
 import {
   mountedConfigurationUnchanged,
+  mountedInPlaceConfiguration,
   openMountedConfiguration,
   signingPathSettings,
 } from "./configLoad";
@@ -111,6 +121,7 @@ import type {
   JobTerminalState,
 } from "./cliDriver";
 import type {
+  JobConfigurationHandBack,
   JobCreateIntent,
   JobExchangeIntent,
   JobInputFileReference,
@@ -179,6 +190,19 @@ export class SignalingServerChangedError extends Error {
   constructor() {
     super("the webrtc intent names another coordination server");
     this.name = "SignalingServerChangedError";
+  }
+}
+
+/**
+ * Thrown by {@link JobManager.createJob} when a webrtc run of the opened
+ * configuration finds the working folder's `alcove.yaml` is not one it runs in
+ * place: gone, one the console cannot open, another channel, or relay
+ * settings. The route maps it to a 400 naming the refusal.
+ */
+export class OpenedConfigurationNotRunnableError extends Error {
+  constructor() {
+    super("the working folder's alcove.yaml is not the opened one to run");
+    this.name = "OpenedConfigurationNotRunnableError";
   }
 }
 
@@ -506,9 +530,13 @@ export interface JobRecord {
    * folder's.
    */
   exchangeFiles: ExchangeFilePaths | null;
-  /** For a webrtc run, the working folder's pair it runs over; null for every
-   * other run. */
+  /** For a webrtc run over the pair the console wrote, that pair; null for
+   * every other run, a run of the opened configuration among them, whose
+   * files the console never removes. */
   workingFolderPair: WorkingFolderPair | null;
+  /** Whether the run's configuration is the working folder's `alcove.yaml`,
+   * as every webrtc run's is, so what the CLI records in it stays there. */
+  runsInWorkingFolder: boolean;
   status: JobStatus;
   events: Array<BufferedEvent>;
   /** True once a terminal event has been buffered; the SSE stream closes after it. */
@@ -538,7 +566,8 @@ export interface JobRecord {
   /**
    * For a run of the opened configuration, what applying the terms proposal
    * it may end on is checked against: the key file beside the configuration,
-   * and the bytes the open read, undefined where the console held no open.
+   * and the bytes the open read, undefined where the console held no open --
+   * or, for a run in place, the bytes the file held when the run started.
    * Null on every other run, whose configuration is composed per run and so
    * has nothing on the mount to apply a proposal to.
    */
@@ -744,6 +773,12 @@ export class JobManager {
    */
   private openedConfiguration: OpenedMountedConfiguration | undefined;
   /**
+   * The text the console's own last save wrote into the mounted `alcove.yaml`
+   * ({@link handBackOpenedConfiguration}), held in memory only. A save over a
+   * file holding exactly that keeps the earlier `alcove.yaml.previous`.
+   */
+  private consoleWrittenConfiguration: string | undefined;
+  /**
    * The shutdown in progress for each record whose child {@link shutdown}
    * signalled: the promise every shutdown call returns, settled from
    * {@link reconcileTerminal} once the child's exit is observed.
@@ -799,7 +834,17 @@ export class JobManager {
     }
     let signalingServer: AuthoredSignalingServer | undefined;
     let pairToRunOver: WorkingFolderPair | undefined;
-    if (intent.channel === "webrtc") {
+    let inPlace: OpenedMountedConfiguration | undefined;
+    // A run of the opened configuration runs the working folder's own files in
+    // place, dialing the coordination server the file names, so it reads
+    // neither the console's server nor a pair of the console's: it is refused
+    // unless that file is still one the console runs.
+    if (intent.channel === "webrtc" && intent.mountedConfigurationOpened) {
+      const mounted = mountedInPlaceConfiguration(this.dataRoot);
+      if (mounted === undefined)
+        throw new OpenedConfigurationNotRunnableError();
+      inPlace = { source: mounted.source, document: undefined };
+    } else if (intent.channel === "webrtc") {
       const authored = this.authoredSignalingServer;
       if (authored === undefined && intent.signalingServer === undefined)
         throw new SignalingServerUnavailableError();
@@ -839,9 +884,10 @@ export class JobManager {
       ? checkedMountedKeyFilePath(this.dataRoot)
       : undefined;
     // Captured before any await, so an open landing while the run writes its
-    // documents affects only a later run.
+    // documents affects only a later run. A run in place is of the file as
+    // it stands, which its terms proposal is applied to.
     const opened = runsOpenedConfiguration
-      ? this.openedConfiguration
+      ? (inPlace ?? this.openedConfiguration)
       : undefined;
     if (
       intent.mode !== "zeroSetup" &&
@@ -885,7 +931,11 @@ export class JobManager {
           ? this.resolveWorkInputPath(intent.inputFile)
           : undefined;
       let workingFolderPair = pairToRunOver;
-      if (intent.channel === "webrtc" && workingFolderPair === undefined) {
+      if (
+        intent.channel === "webrtc" &&
+        !runsOpenedConfiguration &&
+        workingFolderPair === undefined
+      ) {
         pairCreated = this.createWorkingFolderPair(
           intent,
           signalingServer,
@@ -1414,11 +1464,12 @@ export class JobManager {
     // zero-setup writes NEITHER -- its connection rides argv and it has no
     // shared secret, so the workdir holds only input (when inline) and the run's
     // own artifacts. A webrtc run writes neither there: it runs on the
-    // working folder's pair.
+    // working folder's pair, the console's or the one the operator opened.
+    const runsInWorkingFolder = intent.channel === "webrtc";
     let exchangeDocuments: ExchangeFilePaths | undefined;
-    if (workingFolderPair !== undefined)
+    if (runsInWorkingFolder)
       exchangeDocuments = workingFolderExchangeFilePaths(this.dataRoot);
-    else if (intent.mode !== "zeroSetup" && intent.channel !== "webrtc")
+    else if (intent.mode !== "zeroSetup")
       exchangeDocuments = await this.writeExchangeDocuments(
         intent,
         workdir,
@@ -1448,9 +1499,10 @@ export class JobManager {
     const runsOpenedConfiguration =
       intent.mode !== "zeroSetup" && intent.mountedConfigurationOpened === true;
     const mountedDocument = opened?.document;
-    const openedConfigurationNotice = runsOpenedConfiguration
-      ? openedConfigurationWarning(this.dataRoot, opened)
-      : undefined;
+    const openedConfigurationNotice =
+      runsOpenedConfiguration && !runsInWorkingFolder
+        ? openedConfigurationWarning(this.dataRoot, opened)
+        : undefined;
     const handoff = composedFromIntent(() =>
       buildJobHandoff(intent, serverEntry, {
         credentialPasted: this.authoredMaterializedCredentialPath !== undefined,
@@ -1479,6 +1531,7 @@ export class JobManager {
         intent.signing?.partnerFingerprint !== undefined,
       exchangeFiles: exchangeDocuments ?? null,
       workingFolderPair: workingFolderPair ?? null,
+      runsInWorkingFolder,
       status: "running",
       events: [],
       terminalEmitted: false,
@@ -1718,6 +1771,51 @@ export class JobManager {
   }
 
   /**
+   * Write the operator's edits into the opened configuration's file
+   * ({@link handBackMountedConfiguration}), only while that file holds the
+   * bytes this console opened or last wrote, so a save never replaces what a
+   * run or another editor wrote since, such as a partner's recorded
+   * fingerprint; and never while a run is using the file. Returns whether the
+   * file was written: a hand-back of the configuration the file already
+   * states writes nothing.
+   *
+   * @throws {ConfigurationHandBackRefusedError} when the file changed since,
+   *   or a run is using it, or the write is refused.
+   * @throws {ConfigurationLoadRefusedError} when the mount no longer holds a
+   *   configuration this hand-back applies to.
+   */
+  handBackOpenedConfiguration(handBack: JobConfigurationHandBack): {
+    written: boolean;
+  } {
+    const running = this.activeSlotRecord();
+    if (
+      (this.slot?.phase === "starting" && this.slot.channel === "webrtc") ||
+      (running !== null &&
+        running.runsInWorkingFolder &&
+        running.terminal === null)
+    )
+      throw new ConfigurationHandBackRefusedError(CONFIGURATION_IN_USE_MESSAGE);
+    const opened = this.openedConfiguration;
+    if (
+      opened === undefined ||
+      !mountedConfigurationUnchanged(this.dataRoot, opened.source)
+    )
+      throw new ConfigurationHandBackRefusedError(
+        CONFIGURATION_CHANGED_SINCE_OPENED_MESSAGE,
+        CONFIGURATION_CHANGED_SAVE_REFUSAL,
+      );
+    const written = handBackMountedConfiguration(
+      this.dataRoot,
+      handBack,
+      this.consoleWrittenConfiguration,
+    );
+    if (written === undefined) return { written: false };
+    this.openedConfiguration = { ...opened, source: written };
+    this.consoleWrittenConfiguration = written;
+    return { written: true };
+  }
+
+  /**
    * The active record when the slot holds one matching this id and it has not
    * been deleted, else undefined. A deleted (but not-yet-freed) slot shows
    * 404 here.
@@ -1854,7 +1952,7 @@ export class JobManager {
       const result = await runTermsProposalApply({
         binaryPath: this.binaryPath,
         dataRoot: this.dataRoot,
-        workdir: record.workdir,
+        workdir: record.runsInWorkingFolder ? this.dataRoot : record.workdir,
         keyPath: basis.keyPath,
         ...(this.childEnv !== undefined ? { childEnv: this.childEnv } : {}),
       });
@@ -2540,7 +2638,7 @@ function rewrittenPartnerPinNotice(
     ...event,
     message: partnerCertificatePinnedNotice(
       recordedPartnerFingerprint(runConfigurationPath(record)),
-      record.workingFolderPair !== null,
+      record.runsInWorkingFolder,
     ),
   };
 }

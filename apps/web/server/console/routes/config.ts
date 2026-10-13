@@ -1,17 +1,10 @@
 import {
-  ConfigurationHandBackRefusedError,
-  handBackMountedConfiguration,
-} from "@jobs/configHandBack";
-import {
   MAX_CONFIG_HAND_BACK_BODY_BYTES,
   gateJobRoute,
   readJobRequestBody,
 } from "@jobs/routeSupport";
-import {
-  jobEmptyResponse,
-  jobJsonResponse,
-  readJobApiConfig,
-} from "@jobs/gate";
+import { jobEmptyResponse, jobJsonResponse } from "@jobs/gate";
+import { ConfigurationHandBackRefusedError } from "@jobs/configHandBack";
 import { ConfigurationLoadRefusedError } from "@jobs/configLoad";
 import { formatFirstIssue } from "@jobs/schemaIssueMessage";
 import { jobConfigurationHandBackSchema } from "@jobContract/intentSchemas";
@@ -45,11 +38,14 @@ import { defineJobRoute } from "../jobRoute";
  * is not.
  *
  * `PUT /api/jobs/config` hands the operator's edits back into that file, for a
- * configuration on a channel the console does not conduct: the body is a
- * {@link jobConfigurationHandBackSchema} hand-back, the file's `connection` and
- * every setting no step edits are kept from the file itself, and the answer is
- * `{ written: true }` -- nothing of the document crosses back. A hand-back the
- * file or the settings refuse is a `400 { error }`.
+ * webrtc configuration: the body is a {@link jobConfigurationHandBackSchema}
+ * hand-back, the file's `connection` and every setting no step edits are kept
+ * from the file itself, and the answer is `{ written: true }`, with
+ * `unchanged: true` where the file already stated those settings and was left
+ * as it is -- nothing of the document crosses back. A hand-back the file or
+ * the settings refuse is a `400 { error }`, as is one over a file that a run
+ * is using, or that changed since it was opened or last saved here, which
+ * adds `reason: "configuration-changed"`.
  */
 export const route = defineJobRoute({
   path: "/api/jobs/config",
@@ -82,17 +78,25 @@ export const route = defineJobRoute({
           { error: formatFirstIssue(parsed.error.issues) },
           400,
         );
+      let written: boolean;
       try {
-        handBackMountedConfiguration(readJobApiConfig().dataRoot, parsed.data);
+        ({ written } = gate.manager.handBackOpenedConfiguration(parsed.data));
       } catch (error) {
-        if (
-          error instanceof ConfigurationLoadRefusedError ||
-          error instanceof ConfigurationHandBackRefusedError
-        )
+        if (error instanceof ConfigurationHandBackRefusedError)
+          return jobJsonResponse(
+            {
+              error: error.message,
+              ...(error.reason !== undefined ? { reason: error.reason } : {}),
+            },
+            400,
+          );
+        if (error instanceof ConfigurationLoadRefusedError)
           return jobJsonResponse({ error: error.message }, 400);
         throw error;
       }
-      return jobJsonResponse({ written: true });
+      return jobJsonResponse(
+        written ? { written: true } : { written: true, unchanged: true },
+      );
     },
   },
 });

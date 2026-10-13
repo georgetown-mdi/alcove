@@ -1,6 +1,7 @@
 import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   isJobChannel,
+  runsInPlace,
 } from "@jobContract/intentSchemas";
 import { retiredSettingNotice } from "@alcove/core";
 import { workingFolderCommand } from "@psi/dockerRunCommand";
@@ -21,6 +22,7 @@ import type {
 } from "@jobContract/intentSchemas";
 import type { LoadedAuthoringState } from "./loadedConfig";
 import type { ReceiptsSigningMode } from "@psi/receiptsModel";
+import type { WebRTCEndpoint } from "@alcove/core";
 
 /**
  * The console's offer to open the command-line configuration sitting in its
@@ -40,16 +42,20 @@ import type { ReceiptsSigningMode } from "@psi/receiptsModel";
  * exactly as the file did (docs/spec/EXCHANGE_FILE.md, "The record that must
  * survive"). Having no control, each one is named in the carry-through notice.
  *
- * A configuration on a channel the console does not conduct opens all the same:
- * the steps below start from it and save back into its file, and the run is
- * withheld by the one derived field {@link runWithheldReason} reads, which
- * names the channel.
+ * A webrtc configuration runs in place: the run saves the steps into its file
+ * and runs that file with the key file beside it, as `alcove exchange` does in
+ * the working folder. One stating relay settings opens all the same, but the
+ * console connects directly only, so the steps below save back into its file
+ * and the run is withheld by the one derived field {@link runWithheldReason}
+ * reads, which names the relay settings.
  */
 
 /** The channel a configuration the console can open runs over. */
 export type LoadedChannel = LoadedAuthoringState["channel"];
 
-/** A channel the console opens a configuration on but does not conduct. */
+/** A channel whose opened configuration the console does not compose into a
+ * job folder: it runs in place, or not at all where it states relay
+ * settings. */
 type UnconductedChannel = Exclude<LoadedChannel, JobChannel>;
 
 /** A conducted channel this console can be left with nothing to run over: a
@@ -73,9 +79,13 @@ export type MountedConfigurationState =
    * had it; `notApplied` names the settings the operator's own input file could
    * not supply and `notCovered` the settings whose own column set does not
    * reach every column that file has, both settled once the held terms reach
-   * it. `notConducted` is the file's channel where the console conducts no
-   * exchange over it at all, derived once at the read: it withholds the run and
-   * replaces every notice about the run with the one naming the channel.
+   * it. `notConducted` is the file's channel where the console runs no
+   * exchange of it, a webrtc file stating `relaySettings`, derived once at the
+   * read: it withholds the run and replaces every notice about the run with
+   * the one naming those settings. `runsInPlace` is a webrtc file the console
+   * runs in place ({@link OPENED_EXCHANGE_RUNS_IN_PLACE}), and
+   * `signalingServer` the coordination server address it names, which the
+   * review step shows and does not edit.
    * `signingPaths` and `folderPaths` are the paths the file states that a
    * conversion replaces with the console's own, and `converted` is the
    * operator's choice to convert: until then the hand-off states those paths as
@@ -99,6 +109,9 @@ export type MountedConfigurationState =
       retiredSettings?: Array<string>;
       newInvitation?: true;
       notConducted?: UnconductedChannel;
+      relaySettings?: Array<string>;
+      runsInPlace?: true;
+      signalingServer?: string;
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
       notCovered?: Array<string>;
@@ -146,6 +159,87 @@ export const OPENED_EXCHANGE_CONTINUES =
   ".alcove.key beside it. No new invitation is made: your partner runs " +
   "their side as they usually do.";
 
+/** What the review step says for a run of an opened webrtc configuration,
+ * which runs the file itself. */
+export const OPENED_EXCHANGE_RUNS_IN_PLACE =
+  "Starting the exchange first saves any change on these steps to " +
+  "alcove.yaml in your working folder. A save copies the file it replaces " +
+  `to ${PREVIOUS_CONFIGURATION_FILE_NAME}, unless the console wrote that ` +
+  "file itself, so the copy keeps your own last version. The run then uses " +
+  "alcove.yaml and the .alcove.key beside it, as alcove exchange does in " +
+  "that folder. No new invitation is made: your partner runs their side as " +
+  "they usually do.";
+
+/** What the review step says under the coordination server of an opened
+ * configuration it runs in place. */
+export const OPENED_SIGNALING_SERVER_NOTE =
+  "From your alcove.yaml: the run connects through the coordination server " +
+  "the file names. To change it, edit connection.server in alcove.yaml, " +
+  "then open the configuration again.";
+
+/** Whether the opened configuration runs in place. */
+export function opensInPlace(state: MountedConfigurationState): boolean {
+  return state.status === "opened" && state.runsInPlace === true;
+}
+
+/** The coordination server address an opened configuration run in place
+ * names, or undefined for any other state. */
+export function openedSignalingServer(
+  state: MountedConfigurationState,
+): string | undefined {
+  return state.status === "opened" && state.runsInPlace === true
+    ? state.signalingServer
+    : undefined;
+}
+
+/**
+ * The endpoint the invitation of a run in place names: the coordination
+ * server address the opened configuration names, read as a URL. Undefined
+ * where there is none, or it is not a `ws://` or `wss://` address with a host.
+ * The run dials the file's own server and the invitation is never sent, so
+ * this only lets the mint name the server the run uses.
+ */
+export function openedWebrtcEndpoint(
+  address: string | undefined,
+): WebRTCEndpoint | undefined {
+  if (address === undefined) return undefined;
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return undefined;
+  }
+  if (
+    (url.protocol !== "wss:" && url.protocol !== "ws:") ||
+    url.hostname === ""
+  )
+    return undefined;
+  const host = url.hostname.startsWith("[")
+    ? url.hostname.slice(1, -1)
+    : url.hostname;
+  return {
+    channel: "webrtc",
+    host,
+    ...(url.port !== "" ? { port: Number(url.port) } : {}),
+    path: url.pathname,
+  };
+}
+
+/** What the review step says when the coordination server address an opened
+ * configuration names cannot be read. */
+export const OPENED_SIGNALING_SERVER_UNREADABLE = {
+  title: "The console did not run your alcove.yaml",
+  message:
+    "The console cannot read the coordination server address in your " +
+    "alcove.yaml (connection.server). Correct it in the file, then open the " +
+    "configuration again.",
+};
+
+/** The plain name of a channel the console does not compose, for prose. */
+const UNCONDUCTED_CHANNEL_NAMES: Record<UnconductedChannel, string> = {
+  webrtc: "WebRTC",
+};
+
 /** The label of the control that turns an opened configuration whose key
  * file is missing into a new invitation built from its settings. */
 export const CREATE_INVITATION_FROM_SETTINGS_LABEL =
@@ -167,9 +261,13 @@ export function keyFileNotice(
   )
     return undefined;
   const choice =
-    `or choose ${CREATE_INVITATION_FROM_SETTINGS_LABEL}: the steps below keep ` +
-    "this configuration's terms and connection, and your partner accepts the " +
-    "new invitation to start a new exchange with you.";
+    state.runsInPlace === true
+      ? "or, if the key file is somewhere else, run the configuration with " +
+        "Alcove on the command line there. If the key file is lost, start " +
+        "again with alcove invite."
+      : `or choose ${CREATE_INVITATION_FROM_SETTINGS_LABEL}: the steps below ` +
+        "keep this configuration's terms and connection, and your partner " +
+        "accepts the new invitation to start a new exchange with you.";
   if (state.keyFileFault === "absent")
     return {
       title: "Your folder has no .alcove.key for this configuration",
@@ -199,11 +297,16 @@ export const NEW_INVITATION_FROM_SETTINGS =
 
 /** The opened configuration taken as the settings of a new invitation rather
  * than an exchange to continue. Any other state, and a configuration the
- * console does not conduct, is returned unchanged. */
+ * console does not compose into a job folder, is returned unchanged: a new
+ * webrtc invitation writes its own alcove.yaml, which the folder holds. */
 export function withNewInvitation(
   state: MountedConfigurationState,
 ): MountedConfigurationState {
-  if (state.status !== "opened" || state.notConducted !== undefined)
+  if (
+    state.status !== "opened" ||
+    state.notConducted !== undefined ||
+    state.runsInPlace === true
+  )
     return state;
   return { ...state, newInvitation: true };
 }
@@ -242,16 +345,20 @@ export function configurationOpenedMessage(
     : CONFIGURATION_OPENED;
 }
 
-/** What the operator is told beside the load about a configuration on a channel
- * the console does not conduct, naming the channel as the file spells it. */
-export function channelNotConductedNotice(channel: UnconductedChannel): string {
+/** What the operator is told beside the load about a configuration the
+ * console runs no exchange of: a webrtc one stating relay settings, named as
+ * the file spells them. */
+export function channelNotConductedNotice(
+  channel: UnconductedChannel,
+  relaySettings: ReadonlyArray<string>,
+): string {
   return (
-    `This configuration runs over ${channel}, and the console runs a ` +
-    `${channel} exchange only when it is set up here, not from a file you ` +
-    "open. Change its settings in the steps below, " +
-    `then save them to alcove.yaml on the review step: its ${channel} ` +
-    "connection is kept exactly as your file states it. Run the saved file " +
-    `with Alcove on the command line, which conducts ${channel} exchanges.`
+    `This configuration sets up a relay (${nameList(relaySettings)}). The ` +
+    `console runs a ${UNCONDUCTED_CHANNEL_NAMES[channel]} configuration you ` +
+    "open over direct connections only, so change its settings in the steps " +
+    "below, save them to alcove.yaml on the review step, and run it with " +
+    "Alcove on the command line. Its connection is saved exactly as your " +
+    "file states it."
   );
 }
 
@@ -266,20 +373,29 @@ export const RELAY_ENROLLMENT_NOTICE =
 
 /**
  * Why the review step withholds its run control, or undefined where nothing
- * open withholds it: a configuration on a channel the console does not
- * conduct. Read off the state the load derived once, so no run starts and then
- * fails on the channel.
+ * open withholds it: a configuration the console runs no exchange of, or one
+ * it runs in place whose key file would refuse the run. Read off the state the
+ * load derived once, so no run starts and then fails on it. Either way the
+ * steps can still be saved back.
  */
 export function runWithheldReason(
   state: MountedConfigurationState,
 ): string | undefined {
-  if (state.status !== "opened" || state.notConducted === undefined)
-    return undefined;
-  return (
-    `The console cannot run a ${state.notConducted} configuration opened ` +
-    "from your folder. Save your changes to alcove.yaml, then run it with " +
-    "Alcove on the command line."
-  );
+  if (state.status !== "opened") return undefined;
+  if (state.notConducted !== undefined)
+    return (
+      "The console cannot run a " +
+      `${UNCONDUCTED_CHANNEL_NAMES[state.notConducted]} configuration that ` +
+      `sets up a relay (${nameList(state.relaySettings ?? [])}). Save your ` +
+      "changes to alcove.yaml, then run it with Alcove on the command line."
+    );
+  if (state.runsInPlace === true && state.keyFileFault !== undefined)
+    return (
+      "The console cannot run this configuration without a usable " +
+      ".alcove.key beside it. Put that key file back and open the " +
+      "configuration again, or save your changes to alcove.yaml."
+    );
+  return undefined;
 }
 
 /** The title of the warning an edit of an opened configuration's terms draws
@@ -322,6 +438,15 @@ export function editedTermsWarning(
       "prints to your partner to apply with alcove apply."
     );
   if (!continuesOpenedExchange) return undefined;
+  if (state.runsInPlace === true)
+    return (
+      changed +
+      "Starting the exchange saves these terms to alcove.yaml, and your " +
+      "partner refuses the run until they apply them. To keep the terms " +
+      "your partner holds, undo the change before you start. To change " +
+      `them, start, then run ${TERMS_UPDATE_COMMAND} and send what it ` +
+      "prints to your partner to apply with alcove apply."
+    );
   return (
     changed +
     "This run is refused wherever the two differ. To run the terms your " +
@@ -497,31 +622,52 @@ export function unconvertedSigningWithheldReason(
 export function connectionSettingsHeldNotice(
   state: MountedConfigurationState,
 ): string | undefined {
-  if (state.status !== "opened" || state.notConducted === undefined)
-    return undefined;
-  return (
-    `This configuration's ${state.notConducted} connection, its tuning and ` +
-    "file handling included, is saved exactly as your file states it. Edit " +
-    "it in alcove.yaml on the command line."
-  );
+  if (state.status !== "opened") return undefined;
+  if (state.notConducted !== undefined)
+    return (
+      "This configuration's " +
+      `${UNCONDUCTED_CHANNEL_NAMES[state.notConducted]} connection, its ` +
+      "tuning and file handling included, is saved exactly as your file " +
+      "states it. Edit those settings in alcove.yaml itself."
+    );
+  if (state.runsInPlace === true)
+    return (
+      "This configuration's WebRTC connection, its tuning included, is kept " +
+      "exactly as your file states it, and the run uses it as it is. Edit " +
+      "those settings in alcove.yaml itself."
+    );
+  return undefined;
 }
 
 /** Where saving the opened configuration back to the folder stands. A save
  * that was written holds the hand-back it sent, as JSON, so whether the steps
  * still hold what was saved is derived by comparison
- * ({@link configurationSaveShown}). */
+ * ({@link configurationSaveShown}); `unchanged` where the file already held
+ * those settings and was left as it is. A failed save sets `reopens` where
+ * opening the configuration again is the way on. */
 export type ConfigurationSaveState =
   | { status: "idle" }
   | { status: "saving" }
-  | { status: "saved"; handBack: string }
-  | { status: "failed"; message: string };
+  | { status: "saved"; handBack: string; unchanged?: true }
+  | { status: "failed"; message: string; reopens?: true };
 
 /** What the review step says once the settings are written to the folder. */
 export const CONFIGURATION_SAVED =
   "Saved your changes to alcove.yaml in your working folder, with its " +
-  "connection as your file stated it. The file as it was before this save " +
-  `is kept beside it as ${PREVIOUS_CONFIGURATION_FILE_NAME}. Run it with ` +
-  "Alcove on the command line.";
+  "connection as your file stated it. The last version of the file the " +
+  "console did not write itself is kept beside it as " +
+  `${PREVIOUS_CONFIGURATION_FILE_NAME}. Run it with Alcove on the command ` +
+  "line.";
+
+/** What the review step says when the file already held the settings, so the
+ * save wrote nothing. */
+export const CONFIGURATION_ALREADY_SAVED =
+  "The alcove.yaml in your working folder already holds these settings, so " +
+  "nothing was written. Run it with Alcove on the command line.";
+
+/** The label of the control that opens the configuration again after a save
+ * refused over a file that changed since it was opened. */
+export const REOPEN_CONFIGURATION_LABEL = "Open alcove.yaml again";
 
 /** What the review step says when the save did not answer. */
 export const CONFIGURATION_SAVE_UNAVAILABLE =
@@ -536,9 +682,19 @@ export function configurationSaveState(
 ): ConfigurationSaveState {
   switch (answer.kind) {
     case "written":
-      return { status: "saved", handBack: JSON.stringify(sent) };
+      return {
+        status: "saved",
+        handBack: JSON.stringify(sent),
+        ...(answer.unchanged === true ? { unchanged: true as const } : {}),
+      };
     case "refused":
-      return { status: "failed", message: answer.error };
+      return {
+        status: "failed",
+        message: answer.error,
+        ...(answer.changedSinceOpened === true
+          ? { reopens: true as const }
+          : {}),
+      };
     case "unavailable":
       return { status: "failed", message: CONFIGURATION_SAVE_UNAVAILABLE };
   }
@@ -786,7 +942,12 @@ export function mountedConfigurationNotices(
   if (state.status !== "opened") return [];
   const aboutTheRun =
     state.notConducted !== undefined
-      ? [channelNotConductedNotice(state.notConducted)]
+      ? [
+          channelNotConductedNotice(
+            state.notConducted,
+            state.relaySettings ?? [],
+          ),
+        ]
       : [
           state.transportUnavailable === undefined
             ? undefined
@@ -851,6 +1012,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
       return { state: { status: "refused", error: answer.error } };
     case "opened": {
       const loaded = authoringStateFromDocument(answer.document);
+      const relaySettings = answer.relaySettings ?? [];
+      const inPlace = runsInPlace(loaded.channel) && relaySettings.length === 0;
+      const runnable = isJobChannel(loaded.channel) || inPlace;
       return {
         state: {
           status: "opened",
@@ -877,12 +1041,16 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
           ...(answer.relayRegistrarNamed === true
             ? { relayEnrollment: true as const }
             : {}),
-          ...(answer.keyFileFault !== undefined && isJobChannel(loaded.channel)
+          ...(answer.keyFileFault !== undefined && runnable
             ? { keyFileFault: answer.keyFileFault }
             : {}),
-          ...(isJobChannel(loaded.channel)
+          ...(inPlace ? { runsInPlace: true as const } : {}),
+          ...(inPlace && answer.document.signalingServer !== undefined
+            ? { signalingServer: answer.document.signalingServer }
+            : {}),
+          ...(isJobChannel(loaded.channel) || inPlace
             ? {}
-            : { notConducted: loaded.channel }),
+            : { notConducted: loaded.channel, relaySettings }),
         },
         loaded,
       };

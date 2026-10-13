@@ -2,9 +2,13 @@ import { createServer } from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+  WEB_APP_ADDRESS_REFUSED,
+  getDefaultLinkageTerms,
+  snakeizeKeys,
+} from "@alcove/core";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { WEB_APP_ADDRESS_REFUSED } from "@alcove/core";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 import {
   SIGNALING_ADDRESS_CREDENTIALS_REFUSED,
@@ -534,6 +538,56 @@ describe("POST /api/jobs on the webrtc channel", () => {
       expect(fs.readdirSync(root)).toEqual([]);
     },
   );
+
+  test("a run of an opened configuration stating a relay is refused with its token, and one naming another server runs", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+    const configuration = (relay: boolean): string =>
+      stringifyYaml({
+        connection: {
+          channel: "webrtc",
+          role: "inviter",
+          server: { host: "elsewhere.test", path: "/psi/" },
+          ...(relay ? { turn: [{ url: "turns:relay.example.org:5349" }] } : {}),
+        },
+        linkage_terms: snakeizeKeys(getDefaultLinkageTerms("County Health")),
+      });
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.key),
+      JSON.stringify({ sharedSecret: VALID_SHARED_SECRET }),
+    );
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.config),
+      configuration(true),
+    );
+    const before = fs.readFileSync(path.join(root, JOB_FILE_NAMES.config));
+    const response = await postJob(
+      validWebrtcIntent({
+        sharedSecret: undefined,
+        mountedConfigurationOpened: true,
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      reason: "opened-configuration-not-runnable",
+    });
+    expect(fs.readFileSync(path.join(root, JOB_FILE_NAMES.config))).toEqual(
+      before,
+    );
+    expect(manager.occupiedSlotId()).toBeNull();
+
+    fs.writeFileSync(
+      path.join(root, JOB_FILE_NAMES.config),
+      configuration(false),
+    );
+    const admitted = await postJob(
+      validWebrtcIntent({
+        sharedSecret: undefined,
+        mountedConfigurationOpened: true,
+      }),
+    );
+    expect(admitted.status).toBe(201);
+  });
 
   test("takes the scheme's default port and a path without its slash as the held server's", async () => {
     const { manager } = seedManager();

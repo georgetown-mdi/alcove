@@ -24,11 +24,12 @@
  * - a setting inside a block the composition writes, which the export could not
  *   write back unchanged ({@link assertHeldSettingsSurvive}).
  *
- * A configuration on a channel the console opens but does not conduct -- webrtc
- * -- is not refused here: the browser edits its settings and withholds the
- * run, and the edits are saved back into the file ({@link ./configHandBack}).
- * Its `connection` is neither disclosed nor measured, since no run here
- * composes or replaces it.
+ * A webrtc configuration is not composed into a job folder: the browser edits
+ * its settings, the edits are saved back into the file
+ * ({@link ./configHandBack}), and a run here runs that file in place, unless
+ * it states relay settings ({@link relaySettingFields}), whose run the browser
+ * withholds. Its `connection` is not measured, since no run here composes or
+ * replaces it, and only its coordination server's address is disclosed.
  *
  * A `@path` credential reference is a WARNING and not a refusal: the operator
  * owns this mount and the reference is their own choice, so the load proceeds
@@ -42,6 +43,8 @@
  * surface holds without an editor -- the settings the export writes back from
  * the document it opened, the last refusal above holding the list to those.
  */
+
+import { isDeepStrictEqual } from "node:util";
 
 import {
   getDefaultLinkageTerms,
@@ -59,7 +62,11 @@ import {
   retiredSettingsRefusal,
 } from "@psi/exchangeDocumentRefusal";
 
-import { JOB_FILE_NAMES, isJobChannel } from "@jobContract/intentSchemas";
+import {
+  JOB_FILE_NAMES,
+  isJobChannel,
+  runsInPlace,
+} from "@jobContract/intentSchemas";
 import { mountedKeyFileFault } from "./mountedKeyFile";
 import { readBoundedMountedFile } from "./boundedMountedFile";
 
@@ -147,10 +154,12 @@ export interface LoadedConfigurationResponse {
   retiredSettings?: Array<string>;
   /** The block's own settings are not sent ({@link namesRelayRegistrar}). */
   relayRegistrarNamed?: true;
-  /** Why the `.alcove.key` beside a configuration on a conducted channel
-   * would refuse its run: no file at the name, or one that is not a key file.
-   * Absent where the key file is usable, and for a channel the console does
-   * not run. Nothing read from the file is sent. */
+  /** The relay settings a webrtc configuration states, as it spells them
+   * ({@link relaySettingFields}). Absent where it states none. */
+  relaySettings?: Array<string>;
+  /** Why the `.alcove.key` beside the configuration would refuse its run: no
+   * file at the name, or one that is not a key file. Absent where the key file
+   * is usable. Nothing read from the file is sent. */
   keyFileFault?: MountedKeyFileFault;
 }
 
@@ -665,6 +674,45 @@ function namesRelayRegistrar(document: ExchangeSpec): boolean {
   );
 }
 
+/**
+ * The settings of a webrtc document that bring in a relay, as the file spells
+ * them. A run here connects directly, so a document stating any of them is
+ * edited and saved back, and not run.
+ */
+export function relaySettingFields(document: ExchangeSpec): Array<string> {
+  const { connection } = document;
+  if (connection.channel !== "webrtc") return [];
+  return [
+    ...(connection.turn !== undefined ? ["connection.turn"] : []),
+    ...(connection.invitationRelay !== undefined
+      ? ["connection.invitation_relay"]
+      : []),
+    ...(connection.relayRegistrar !== undefined
+      ? ["connection.relay_registrar"]
+      : []),
+    ...(connection.iceProvision !== undefined
+      ? ["connection.ice_provision"]
+      : []),
+    ...(connection.iceTransportPolicy === "relay"
+      ? ["connection.ice_transport_policy"]
+      : []),
+  ];
+}
+
+/** A webrtc connection's coordination server as the `ws://` or `wss://`
+ * address the CLI dials: TLS unless `secure: false`, an IPv6 host in
+ * brackets, and the root path where the file states none. */
+function signalingServerAddress(
+  server: MountedWebrtcConnection["server"],
+): string {
+  const host =
+    server.host.includes(":") && !server.host.startsWith("[")
+      ? `[${server.host}]`
+      : server.host;
+  const port = server.port !== undefined ? `:${server.port}` : "";
+  return `${server.secure === false ? "ws" : "wss"}://${host}${port}${server.path ?? "/"}`;
+}
+
 /** The connection form's own fields, read off an sftp connection. */
 function disclosedServer(document: ExchangeSpec): DisclosedSftpServer {
   const { connection } = document;
@@ -756,6 +804,9 @@ export function disclosedDocument(
     ...(connection.channel === "sftp"
       ? { server: disclosedServer(document) }
       : {}),
+    ...(connection.channel === "webrtc"
+      ? { signalingServer: signalingServerAddress(connection.server) }
+      : {}),
     ...(options !== undefined ? { options: disclosedOptions(options) } : {}),
     linkageTerms: document.linkageTerms,
     ...(document.metadata !== undefined ? { metadata: document.metadata } : {}),
@@ -801,6 +852,25 @@ export function mountedConfigurationDocument(source: string): ExchangeSpec {
   return openedConfiguration(source).document;
 }
 
+/**
+ * Whether `text` states the same configuration as `document`, both read by the
+ * same parse: the comparison a save makes so that writing settings the file
+ * already states leaves the file's own bytes alone.
+ */
+export function statesSameConfiguration(
+  text: string,
+  document: ExchangeSpec,
+): boolean {
+  let parsed: ExchangeSpec;
+  try {
+    parsed = parsedDocument(parsedYaml(text));
+  } catch (error) {
+    if (error instanceof ConfigurationLoadRefusedError) return false;
+    throw error;
+  }
+  return isDeepStrictEqual(parsed, document);
+}
+
 /** {@link mountedConfigurationDocument}, with the retired settings the source
  * states that the parse dropped. */
 function openedConfiguration(source: string): {
@@ -839,6 +909,7 @@ function responseFor({
   document: ExchangeSpec;
   retiredSettings: Array<string>;
 }): LoadedConfigurationResponse {
+  const relaySettings = relaySettingFields(document);
   return {
     configured: true,
     present: true,
@@ -851,6 +922,7 @@ function responseFor({
     ...(namesRelayRegistrar(document)
       ? { relayRegistrarNamed: true as const }
       : {}),
+    ...(relaySettings.length > 0 ? { relaySettings } : {}),
   };
 }
 
@@ -896,9 +968,11 @@ export function openMountedConfiguration(dataRoot: string): {
     };
   const opened = openedConfiguration(source);
   const { document } = opened;
-  const keyFileFault = isJobChannel(document.connection.channel)
-    ? mountedKeyFileFault(dataRoot)
-    : undefined;
+  const { channel } = document.connection;
+  const keyFileFault =
+    isJobChannel(channel) || runsInPlace(channel)
+      ? mountedKeyFileFault(dataRoot)
+      : undefined;
   return {
     response: {
       ...responseFor(opened),
@@ -969,10 +1043,44 @@ function mountedConfigurationSource(dataRoot: string): string | null {
   }
 }
 
+/** A webrtc configuration's connection. */
+type MountedWebrtcConnection = Extract<
+  ExchangeSpec["connection"],
+  { channel: "webrtc" }
+>;
+
+/**
+ * The mounted configuration a run here runs in place, read as it is now: the
+ * bytes of a webrtc document stating no relay setting. Undefined for any
+ * other mount -- no file, one the console cannot open, another channel, or
+ * relay settings.
+ */
+export function mountedInPlaceConfiguration(
+  dataRoot: string,
+): { source: string } | undefined {
+  let source: string | null;
+  let document: ExchangeSpec;
+  try {
+    source = mountedConfigurationSource(dataRoot);
+    if (source === null) return undefined;
+    document = mountedConfigurationDocument(source);
+  } catch (error) {
+    if (error instanceof ConfigurationLoadRefusedError) return undefined;
+    throw error;
+  }
+  if (
+    document.connection.channel !== "webrtc" ||
+    relaySettingFields(document).length > 0
+  )
+    return undefined;
+  return { source };
+}
+
 /**
  * The mounted configuration a hand-back is written over: the document the
- * operator opened on a channel the console does not conduct, read again at the
- * moment of the write so the connection it keeps is the one the file holds now.
+ * operator opened on a channel the console does not compose into a job folder,
+ * read again at the moment of the write so the connection it keeps is the one
+ * the file holds now.
  *
  * @throws {ConfigurationLoadRefusedError} when the mount holds no configuration,
  *   one the console cannot open, or one on a channel the console runs itself --

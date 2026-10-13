@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 
-import { Alert, VisuallyHidden } from "@mantine/core";
+import { Alert, Button, Group, VisuallyHidden } from "@mantine/core";
 import { IconAlertCircle } from "@tabler/icons-react";
 
 import {
@@ -128,11 +128,17 @@ import {
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 
 import {
+  CONFIGURATION_SAVE_UNAVAILABLE,
+  OPENED_SIGNALING_SERVER_UNREADABLE,
+  REOPEN_CONFIGURATION_LABEL,
   configurationSaveShown,
   configurationSaveState,
   connectionSettingsHeldNotice,
   conversionStatement,
   editedTermsWarning,
+  openedSignalingServer,
+  openedWebrtcEndpoint,
+  opensInPlace,
   runWithheldReason,
   runsOpenedConfiguration,
   unconvertedSigningWithheldReason,
@@ -472,11 +478,14 @@ export function InviterScreen() {
   }, [mountedConfiguration.status]);
 
   // The hand-back the steps hold now, where the opened configuration is one
-  // the console saves back rather than runs: what a save sends, and what a
-  // written save is compared against to say whether it still holds.
+  // the console saves back rather than runs, or saves before it runs it in
+  // place: what a save sends, and what a written save is compared against to
+  // say whether it still holds.
   const saveBackOffered = runWithheldReason(mountedConfiguration) !== undefined;
+  const openedRunsInPlace = opensInPlace(mountedConfiguration);
   const currentHandBack = useMemo(() => {
-    if (!saveBackOffered || editor === undefined) return undefined;
+    if ((!saveBackOffered && !openedRunsInPlace) || editor === undefined)
+      return undefined;
     const validation = reviewValidation(editor);
     if (!validation.canGenerate || validation.terms === undefined)
       return undefined;
@@ -486,7 +495,7 @@ export function InviterScreen() {
       csvDelimiter,
       receipts,
     });
-  }, [saveBackOffered, editor, csvDelimiter, receipts]);
+  }, [saveBackOffered, openedRunsInPlace, editor, csvDelimiter, receipts]);
 
   // Write the settings these steps edit into the opened configuration's file,
   // for a channel the console does not conduct: the console keeps the file's
@@ -573,6 +582,7 @@ export function InviterScreen() {
     rendezvousConfigured,
     sftpSaveFilePreferred,
     configurationOpened,
+    openedRunsInPlace,
   );
   const transport = editor?.transport ?? available.defaultTransport;
   // How the chosen transport runs, from the chooser's own policy (which offers a
@@ -753,6 +763,23 @@ export function InviterScreen() {
   // already torn down; the hook drops the run state), and the operator lands
   // back on Review & create, where the next create mints a fresh secret.
   function startOver() {
+    leaveRun();
+    // A run of the opened configuration in place may have changed its file,
+    // recording a partner's pin, so the steps are read from the file again
+    // and the next save is over the bytes the run left.
+    if (openedRunsInPlace) void openMountedConfiguration();
+  }
+
+  // After the partner's changed terms were applied to the mounted
+  // configuration: start over, then open the configuration again, so the
+  // draft takes the terms the file now holds and the next run is composed
+  // from them rather than from the terms this run was refused under.
+  function reviewAppliedTerms() {
+    leaveRun();
+    void openMountedConfiguration();
+  }
+
+  function leaveRun() {
     // A server-job run the operator is leaving is abandoned: cancel-if-running
     // and DELETE, which also frees the console's single slot for the fresh
     // create. A no-op on a browser run.
@@ -763,15 +790,6 @@ export function InviterScreen() {
     if (transport === "webrtc")
       void fetchSignalingServer().then(setSignalingServer);
     goTo("review");
-  }
-
-  // After the partner's changed terms were applied to the mounted
-  // configuration: start over, then open the configuration again, so the
-  // draft takes the terms the file now holds and the next run is composed
-  // from them rather than from the terms this run was refused under.
-  function reviewAppliedTerms() {
-    startOver();
-    void openMountedConfiguration();
   }
 
   // Deposit a managed-exchange record for this exchange as the inviter: the
@@ -1227,7 +1245,50 @@ export function InviterScreen() {
     // partner's own invitation already contains.
     let kitEndpoint: AcceptKitEndpoint | undefined;
     let location = invitationLocation();
-    if (transport === "webrtc") {
+    if (
+      transport === "webrtc" &&
+      continuesOpenedExchange &&
+      openedRunsInPlace
+    ) {
+      // A run of the opened configuration runs its file in place, so the
+      // settings on these steps are saved into it first, as an operator edits
+      // alcove.yaml before running alcove exchange. The run dials the server
+      // the file names; the invitation is never sent, and names that server.
+      const endpoint = openedWebrtcEndpoint(
+        openedSignalingServer(mountedConfiguration),
+      );
+      if (endpoint === undefined) {
+        dispatch({
+          type: "mint-failed",
+          alert: {
+            ...OPENED_SIGNALING_SERVER_UNREADABLE,
+            reopensConfiguration: true,
+          },
+        });
+        return;
+      }
+      if (currentHandBack === undefined) return;
+      dispatch({ type: "mint-started" });
+      const saved = await saveOpenedConfiguration(currentHandBack);
+      if (saved.kind !== "written") {
+        dispatch({
+          type: "mint-failed",
+          alert: {
+            title: "Your changes were not saved to alcove.yaml",
+            message:
+              saved.kind === "refused"
+                ? saved.error
+                : CONFIGURATION_SAVE_UNAVAILABLE,
+            ...(saved.kind === "refused" && saved.changedSinceOpened === true
+              ? { reopensConfiguration: true as const }
+              : {}),
+          },
+        });
+        dispatch({ type: "mint-finished" });
+        return;
+      }
+      connectionEndpoint = endpoint;
+    } else if (transport === "webrtc") {
       // The endpoint names the coordination server the console run dials and
       // no relay. The link opens in the web app the server was found through;
       // with no web app there is no link to share (`shareLink` below). The
@@ -1759,6 +1820,10 @@ export function InviterScreen() {
                 signalingServer={signalingServer}
                 onSignalingServer={setSignalingServer}
                 configurationOpened={configurationOpened}
+                openedRunsInPlace={openedRunsInPlace}
+                openedSignalingServer={openedSignalingServer(
+                  mountedConfiguration,
+                )}
                 loadedSftpForm={loadedSftpForm}
                 sftpSaveFilePreferred={sftpSaveFilePreferred}
                 runWithheld={
@@ -1777,7 +1842,11 @@ export function InviterScreen() {
                   currentHandBack,
                 )}
                 {...(saveBackOffered
-                  ? { onSaveConfiguration: () => void saveConfiguration() }
+                  ? {
+                      onSaveConfiguration: () => void saveConfiguration(),
+                      onReopenConfiguration: () =>
+                        void openMountedConfiguration(),
+                    }
                   : {})}
                 {...(signingWithheldConversion !== undefined
                   ? {
@@ -1851,6 +1920,16 @@ export function InviterScreen() {
                   <span style={{ whiteSpace: "pre-line" }}>
                     {createAlert.message}
                   </span>
+                  {createAlert.reopensConfiguration === true && (
+                    <Group mt="sm">
+                      <Button
+                        variant="default"
+                        onClick={() => void openMountedConfiguration()}
+                      >
+                        {REOPEN_CONFIGURATION_LABEL}
+                      </Button>
+                    </Group>
+                  )}
                 </Alert>
               )}
             </>
@@ -1977,6 +2056,11 @@ export function InviterScreen() {
               }
               serverJob={chosenRunMode === "server-job"}
               continuesOpenedExchange={continuesOpenedExchange}
+              runsInWorkingFolder={
+                continuesOpenedExchange &&
+                openedRunsInPlace &&
+                transport === "webrtc"
+              }
               jobId={jobId}
               reattached={reattached}
               reattaching={reattaching}

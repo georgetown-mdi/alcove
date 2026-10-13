@@ -100,7 +100,8 @@ function statedLinkageTerms(source: string): LinkageTerms | undefined {
  *
  * The console showed the change against the run's configuration in
  * `workdir`, so nothing runs unless that configuration's linkage terms are
- * the mounted file's.
+ * the mounted file's. A run in place passes the data root as `workdir`, its
+ * configuration and proposal being the mounted ones.
  */
 export async function runTermsProposalApply(args: {
   binaryPath: string;

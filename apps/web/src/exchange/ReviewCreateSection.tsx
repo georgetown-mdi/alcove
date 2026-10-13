@@ -5,9 +5,12 @@ import {
   Button,
   NativeSelect,
   Radio,
+  Stack,
+  Text,
   VisuallyHidden,
 } from "@mantine/core";
 import { IconAlertTriangle } from "@tabler/icons-react";
+import { sanitizeForDisplay } from "@alcove/core";
 
 import {
   buildAdvancedTerms,
@@ -37,9 +40,14 @@ import {
 import { runDiagnosticsProblems } from "@psi/runDiagnosticsModel";
 
 import {
+  CONFIGURATION_ALREADY_SAVED,
   CONFIGURATION_SAVED,
   CONVERT_CONFIGURATION_LABEL,
   OPENED_EXCHANGE_CONTINUES,
+  OPENED_EXCHANGE_RUNS_IN_PLACE,
+  OPENED_SIGNALING_SERVER_NOTE,
+  OPENED_SIGNALING_SERVER_UNREADABLE,
+  REOPEN_CONFIGURATION_LABEL,
   START_OPENED_EXCHANGE_LABEL,
 } from "@console/mountedConfiguration";
 import {
@@ -121,6 +129,8 @@ export function ReviewCreateSection({
   signalingServer,
   onSignalingServer,
   configurationOpened = false,
+  openedRunsInPlace = false,
+  openedSignalingServer,
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
@@ -148,6 +158,7 @@ export function ReviewCreateSection({
   onNavigate,
   configurationSave,
   onSaveConfiguration,
+  onReopenConfiguration,
   conversion,
 }: {
   editor: InviterEditor;
@@ -167,6 +178,12 @@ export function ReviewCreateSection({
   /** Whether a configuration from the mounted folder is open, which withholds
    * WebRTC: its run writes an alcove.yaml of its own into that folder. */
   configurationOpened?: boolean;
+  /** Whether that configuration is a webrtc one the run runs in place, which
+   * offers WebRTC for it. */
+  openedRunsInPlace?: boolean;
+  /** The coordination server address that configuration names, shown in
+   * place of the console's own server, which its run does not use. */
+  openedSignalingServer?: string;
   /** The connection form a configuration opened from the mounted folder seeds,
    * forwarded to the SFTP card for the case where no connection is authored yet. */
   loadedSftpForm?: SftpConnectionFormValues;
@@ -231,6 +248,9 @@ export function ReviewCreateSection({
    * Offered only where that configuration withholds the run
    * ({@link runWithheld}), since a run hands back its own configuration. */
   onSaveConfiguration?: () => void;
+  /** Open the configuration again, offered beside a save refused over a file
+   * that changed since it was opened. */
+  onReopenConfiguration?: () => void;
   /** The conversion of the opened configuration to the console's own paths,
    * offered here where it is what releases the withheld run: the statement of
    * what it replaces (`conversionStatement`), and the action. */
@@ -268,6 +288,7 @@ export function ReviewCreateSection({
     rendezvousConfigured,
     sftpSaveFilePreferred,
     configurationOpened,
+    openedRunsInPlace,
   );
   const transport = editor.transport ?? available.defaultTransport;
   const disabledFor = (candidate: Transport): boolean =>
@@ -304,6 +325,7 @@ export function ReviewCreateSection({
         : {}),
     },
     configurationOpened,
+    openedRunsInPlace,
   );
   // An sftp exchange chosen to run here cannot be created until a connection is
   // set up: block the seal and say so, rather than minting a code with no
@@ -311,16 +333,24 @@ export function ReviewCreateSection({
   const connectionIncomplete = transport === "sftp" && sftpAuthoringRequired;
   // Likewise a WebRTC exchange with no coordination server to name, or one
   // chosen before a configuration was opened.
+  // A run of an opened configuration in place dials the server its file names,
+  // whatever the console holds.
+  const showsOpenedServer =
+    openedRunsInPlace && transport === "webrtc" && !webrtcDisabled;
   const coordinationServerHeld =
     transport !== "webrtc"
       ? undefined
       : webrtcDisabled
         ? webrtcDescription
-        : signalingServer === undefined
-          ? COORDINATION_SERVER_LOADING
-          : signalingServer === null
-            ? COORDINATION_SERVER_MISSING
-            : undefined;
+        : showsOpenedServer
+          ? openedSignalingServer === undefined
+            ? OPENED_SIGNALING_SERVER_UNREADABLE.message
+            : undefined
+          : signalingServer === undefined
+            ? COORDINATION_SERVER_LOADING
+            : signalingServer === null
+              ? COORDINATION_SERVER_MISSING
+              : undefined;
   // The console conducts the run there, so its settings cards are offered
   // there and nowhere else: a browser exchange has no shared directory, and a
   // save-a-file transport hands the settings to the operator's own command
@@ -522,13 +552,29 @@ export function ReviewCreateSection({
               label={webrtcLabel}
               description={webrtcDescription}
             />
-            {transport === "webrtc" && !webrtcDisabled && (
-              <SignalingServerCard
-                server={signalingServer}
-                onSet={(server) => onSignalingServer?.(server)}
-                onCleared={() => onSignalingServer?.(null)}
-              />
+            {showsOpenedServer && openedSignalingServer !== undefined && (
+              <Stack gap="xs" mt="xs">
+                <Text size="sm">
+                  Connects through{" "}
+                  <span className={styles.mono}>
+                    {sanitizeForDisplay(openedSignalingServer)}
+                  </span>
+                  .
+                </Text>
+                <Text size="sm" c="dimmed">
+                  {OPENED_SIGNALING_SERVER_NOTE}
+                </Text>
+              </Stack>
             )}
+            {transport === "webrtc" &&
+              !webrtcDisabled &&
+              !showsOpenedServer && (
+                <SignalingServerCard
+                  server={signalingServer}
+                  onSet={(server) => onSignalingServer?.(server)}
+                  onCleared={() => onSignalingServer?.(null)}
+                />
+              )}
           </div>
         )}
         <p className={`${styles.small} ${styles.sub}`}>{capabilityNote}</p>
@@ -663,11 +709,20 @@ export function ReviewCreateSection({
             }
           >
             {configurationSave?.status === "saved"
-              ? CONFIGURATION_SAVED
+              ? configurationSave.unchanged === true
+                ? CONFIGURATION_ALREADY_SAVED
+                : CONFIGURATION_SAVED
               : configurationSave?.status === "failed"
                 ? configurationSave.message
                 : ""}
           </p>
+          {configurationSave?.status === "failed" &&
+            configurationSave.reopens === true &&
+            onReopenConfiguration !== undefined && (
+              <Button variant="default" onClick={onReopenConfiguration}>
+                {REOPEN_CONFIGURATION_LABEL}
+              </Button>
+            )}
         </div>
       )}
       {conversion !== undefined && (
@@ -680,7 +735,11 @@ export function ReviewCreateSection({
       )}
       <EditedTermsNotice warning={editedTermsWarning} />
       {continuesOpenedExchange && (
-        <p className={styles.small}>{OPENED_EXCHANGE_CONTINUES}</p>
+        <p className={styles.small}>
+          {openedRunsInPlace && transport === "webrtc"
+            ? OPENED_EXCHANGE_RUNS_IN_PLACE
+            : OPENED_EXCHANGE_CONTINUES}
+        </p>
       )}
       <div className={styles.workFoot}>
         <Button disabled={!canCreate} loading={minting} onClick={onCreate}>

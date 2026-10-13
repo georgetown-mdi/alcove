@@ -426,6 +426,7 @@ export interface JobExchangeIntentBase {
    * Whether this run was composed from the configuration opened off the mount:
    * the run then reads the `.alcove.key` beside it, and the hand-off merges
    * that document into its template (`buildJobHandoff` in `@jobs/handoff`).
+   * A webrtc run of it runs the mounted file itself ({@link runsInPlace}).
    */
   mountedConfigurationOpened?: boolean;
   /**
@@ -461,13 +462,12 @@ export interface JobSftpExchangeIntent extends JobExchangeIntentBase {
 /**
  * A webrtc exchange intent: the coordination server is the one the operator
  * authored on the server, and `side` is required, since it is the run's
- * `role`. A run of an opened configuration is not representable: an opened
- * webrtc configuration is edited and saved back, not run.
+ * `role`. A run of an opened configuration runs that file in place
+ * ({@link runsInPlace}), with the role and server it states.
  */
 export interface JobWebrtcExchangeIntent extends JobExchangeIntentBase {
   channel: "webrtc";
   side: JobExchangeSide;
-  mountedConfigurationOpened?: false;
   /**
    * The coordination server the invitation names, which the create refuses
    * unless it is the one the console holds, so the run dials the server the
@@ -547,9 +547,9 @@ export type JobZeroSetupIntent =
 export type JobCreateIntent = JobExchangeIntent | JobZeroSetupIntent;
 
 /**
- * The channels an opened configuration runs over. A webrtc job is created
- * only from the console's own authoring, so an opened webrtc configuration
- * is edited and saved back instead.
+ * The channels an opened configuration is run over by composing it into the
+ * job's own folder. An opened webrtc configuration runs in place instead
+ * ({@link runsInPlace}).
  */
 export type JobChannel = Extract<
   JobCreateIntent["channel"],
@@ -566,6 +566,16 @@ const JOB_CHANNELS: ReadonlySet<string> = new Set<JobChannel>([
  * allowlist, so a channel the schema adds later is not run until named here. */
 export function isJobChannel(channel: string): channel is JobChannel {
   return JOB_CHANNELS.has(channel);
+}
+
+/**
+ * Whether an opened configuration on `channel` runs in place: over the
+ * working folder's own `alcove.yaml` and `.alcove.key`, as `alcove exchange`
+ * runs there, after the console saves the operator's edits into that file.
+ * An allowlist, as {@link isJobChannel} is.
+ */
+export function runsInPlace(channel: string): channel is "webrtc" {
+  return channel === "webrtc";
 }
 
 /**
@@ -787,7 +797,6 @@ const jobWebrtcExchangeIntentSchema = z
     channel: z.literal("webrtc"),
     ...jobExchangeIntentCommonFields,
     side: z.enum(["inviter", "acceptor"]),
-    mountedConfigurationOpened: z.literal(false).optional(),
     signalingServer: jobSignalingServerEndpointSchema.optional(),
     options: jobWebrtcExchangeOptionsSchema.optional(),
   })
@@ -1034,8 +1043,13 @@ export const SIGNING_IDENTITY_FILE_NAME = ".alcove-signing-identity.json";
 export const TERMS_PROPOSAL_FILE_NAME = "alcove.proposed-terms";
 
 /** The copy of the mounted `alcove.yaml` as it was before the last save of an
- * opened configuration (`PUT /api/jobs/config`). */
+ * opened configuration (`PUT /api/jobs/config`) that replaced a file the
+ * console had not written itself. */
 export const PREVIOUS_CONFIGURATION_FILE_NAME = "alcove.yaml.previous";
+
+/** The `reason` of a save refused because the mounted `alcove.yaml` is not
+ * the file the console opened or last saved (`PUT /api/jobs/config`). */
+export const CONFIGURATION_CHANGED_SAVE_REFUSAL = "configuration-changed";
 
 /**
  * The fixed, server-chosen file names in a job workdir, so a client string

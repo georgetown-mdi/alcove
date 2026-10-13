@@ -20,10 +20,13 @@ import {
   readMountedConfiguration,
 } from "@jobs/configLoad";
 import {
+  HANDOFF_SIGNING_IDENTITY_PLACEHOLDER,
+  handBackConfigDocument,
+} from "@jobs/handoff";
+import {
   PREVIOUS_CONFIGURATION_FILE_NAME,
   jobConfigurationHandBackSchema,
 } from "@jobContract/intentSchemas";
-import { HANDOFF_SIGNING_IDENTITY_PLACEHOLDER } from "@jobs/handoff";
 import { trackScratchDirs } from "../../utils/jobFixtures";
 
 import type { ExchangeSpec } from "@alcove/core";
@@ -145,19 +148,26 @@ function readBack(dir: string): ExchangeSpec {
 }
 
 describe("a webrtc configuration handed back unchanged", () => {
-  test("is the file Alcove writes for that document, byte for byte", () => {
+  test("is composed as the file Alcove writes for that document, byte for byte", () => {
     const dir = mountHolding(webrtcDocument());
     const opened = readBack(dir);
-    handBackMountedConfiguration(dir, unchangedHandBack(opened));
-    expect(mountedText(dir)).toBe(serializeExchangeDocument(opened));
+    expect(handBackConfigDocument(unchangedHandBack(opened), opened)).toBe(
+      serializeExchangeDocument(opened),
+    );
   });
 
-  test("re-writes to itself", () => {
+  test("writes nothing, keeping the operator's own bytes and making no copy", () => {
     const dir = mountHolding(webrtcDocument());
-    handBackMountedConfiguration(dir, unchangedHandBack(readBack(dir)));
-    const first = mountedText(dir);
-    handBackMountedConfiguration(dir, unchangedHandBack(readBack(dir)));
-    expect(mountedText(dir)).toBe(first);
+    fs.appendFileSync(
+      path.join(dir, "alcove.yaml"),
+      "# the operator's own comment\n",
+    );
+    const before = mountedText(dir);
+    expect(
+      handBackMountedConfiguration(dir, unchangedHandBack(readBack(dir))),
+    ).toBeUndefined();
+    expect(mountedText(dir)).toBe(before);
+    expect(fs.readdirSync(dir)).toEqual(["alcove.yaml"]);
   });
 });
 
@@ -245,12 +255,37 @@ describe("a webrtc configuration handed back with edits", () => {
     expect(readBack(dir).linkageTerms.identity).toBe("County Health West");
   });
 
-  test("a second save keeps the file the first one wrote", () => {
+  test("a second save over the console's own write keeps the operator's file as the copy", () => {
     const dir = mountHolding(webrtcDocument());
-    handBackMountedConfiguration(dir, editedHandBack(readBack(dir)));
-    const firstSaved = mountedText(dir);
-    handBackMountedConfiguration(dir, unchangedHandBack(readBack(dir)));
-    expect(previousText(dir)).toBe(firstSaved);
+    const original = mountedText(dir);
+    const firstSaved = handBackMountedConfiguration(
+      dir,
+      editedHandBack(readBack(dir)),
+    );
+    expect(firstSaved).toBe(mountedText(dir));
+    handBackMountedConfiguration(
+      dir,
+      { ...unchangedHandBack(readBack(dir)), csvDelimiter: "\t" },
+      firstSaved,
+    );
+    expect(readBack(dir).csvDelimiter).toBe("\t");
+    expect(previousText(dir)).toBe(original);
+  });
+
+  test("a save over a file changed since the console's own write copies it", () => {
+    const dir = mountHolding(webrtcDocument());
+    const firstSaved = handBackMountedConfiguration(
+      dir,
+      editedHandBack(readBack(dir)),
+    );
+    fs.appendFileSync(path.join(dir, "alcove.yaml"), "# edited by hand\n");
+    const changed = mountedText(dir);
+    handBackMountedConfiguration(
+      dir,
+      { ...unchangedHandBack(readBack(dir)), csvDelimiter: "\t" },
+      firstSaved,
+    );
+    expect(previousText(dir)).toBe(changed);
   });
 
   test("a copy that cannot be written leaves the file unreplaced", () => {
@@ -420,7 +455,10 @@ describe("the signing block a hand-back writes", () => {
       }),
     );
     const opened = readBack(dir);
-    handBackMountedConfiguration(dir, unchangedHandBack(opened));
+    handBackMountedConfiguration(dir, {
+      ...unchangedHandBack(opened),
+      csvDelimiter: ";",
+    });
     expect(mountedText(dir)).not.toContain("receipt_output");
     expect(readBack(dir).signing).toEqual({
       mode: "certificate",
