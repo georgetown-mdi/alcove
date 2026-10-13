@@ -23,13 +23,14 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
    It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
    No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, and `tsx`'s optional, darwin-only `fsevents` (which Linux skips) declare one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
-   When both pass, it writes the tip to the deployed marker and removes old trees (step 7).
+   When both pass, it writes the tip to the deployed marker and trees are removed as step 7 says.
 6. When the restart, either install script or `verify.sh` fails, it rolls back: it points `/opt/alcove-broker/src` at the tree of the commit the deployed marker names, which holds that commit's core build, restarts the broker and runs that tree's two install scripts again.
    When they pass, it removes the tip's tree and records `rolled-back`; when they fail, it records `rollback-failed` and stops, removing nothing.
    It rolls back only to the tree the marker names.
    When the marker is absent or names the tip, or the marked commit's tree is not a directory under `/opt/alcove-broker/trees`, it does not roll back: it records `failed` and leaves the link on the tip's tree.
    The marker keeps the previous commit, so the next run takes the tip again from step 2.
-7. Keeps two trees: the deployed commit's and the one deployed before it.
+7. Before step 4, removes every tree it created except the deployed commit's, so at most two exist at once: the deployed commit's and the one being staged.
+   After an update the two on disk are the new deployed commit's and the one deployed before it, until the next run's removal; a rollback uses only the tree the marker names (step 6).
    It removes a tree only when it created that tree itself and lists its commit in `/var/lib/alcove-host-pull/created-trees`, and never the tree the link or the marker names.
    It builds each path it removes from a listed commit, `/opt/alcove-broker/trees/<commit>`, never from a pattern, and ignores a line of the list that is not a full commit.
    A tree it did not create, such as the one Install step 1 moves into place, stays until the operator removes it.
@@ -118,7 +119,8 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
   Each such run restarts the relay's services twice.
 - **A rollback restores the units, not every file.** It runs the previous tree's install scripts, which converge what they install; a file the newer commit's scripts added and the older ones do not name stays on the host.
 - **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved, and a rollback runs it a second time.
-- **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured.
+- **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `failed` or `rollback-failed` leaves the tip's tree, and the next run removes it before staging.
+- **Each install script is cut off after 15 minutes.** A forward attempt and a rollback run two scripts each, which fit in the service's `TimeoutStartSec=1h`; a script that hangs is an ordinary failure and is rolled back.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
 - **The tree is not signed.** Only core's build is. What binds the tree to `main` is the fetch over HTTPS from github.com and the check that the fetched commit is the tip `git ls-remote` named.
 

@@ -150,6 +150,8 @@ mkdir -p node_modules/.bin && : > node_modules/.bin/tsx`;
 const treeStub = (name, last = "") => String.raw`
 linked="$(readlink "$F/opt/alcove-broker/src")"
 printf '%s %s\n' "${name}" "$linked" >> "$F/calls"
+ls "$F/opt/alcove-broker/trees" | wc -l >> "$F/tree-counts"
+[ ! -e "$F/hang-${name}-$(basename "$linked")" ] || exec sleep 30
 [ ! -e "$F/fail-${name}-$(basename "$linked")" ] || exit 1
 ${last}`;
 const TREE_STUBS = {
@@ -345,6 +347,15 @@ const host = () => {
     serve: (name, text) => writeFileSync(join(served, name), text),
     unserve: (name) => rmSync(join(served, name)),
     archive: (options) => buildArchive(root, join(served, ARCHIVE), options),
+    peakTrees: () =>
+      existsSync(join(root, "tree-counts"))
+        ? Math.max(
+            ...readFileSync(join(root, "tree-counts"), "utf8")
+              .split("\n")
+              .filter(Boolean)
+              .map(Number),
+          )
+        : 0,
     link: () => readlinkSync(join(broker, "src")),
     trees: () => readdirSync(join(broker, "trees")).sort(),
     run,
@@ -700,6 +711,34 @@ describe("pull.sh", () => {
       },
     );
 
+    it("cuts off an install script that hangs and rolls back", () => {
+      const h = host();
+      h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
+      h.set(`hang-relay-install-${TIP}`);
+      const r = outcome(h, "rolled-back", 1);
+      expect(r.record.reason).toBe(
+        `infra/relay/install.sh or its verify.sh failed at ${TIP}; rolled back to ${DEPLOYED}`,
+      );
+      expect(h.link()).toBe(`trees/${DEPLOYED}`);
+      expect(h.trees()).toEqual([DEPLOYED]);
+    });
+
+    it("bounds each install script at a quarter of the unit's TimeoutStartSec", () => {
+      const script = readFileSync(join(PULL_DIR, "pull.sh"), "utf8");
+      const unit = readFileSync(
+        join(PULL_DIR, "alcove-host-pull.service"),
+        "utf8",
+      );
+      const bound = Number(
+        /^INSTALL_TIMEOUT="\$\{ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-(\d+)\}"$/m.exec(
+          script,
+        )?.[1],
+      );
+      const hours = Number(/^TimeoutStartSec=(\d+)h$/m.exec(unit)?.[1]);
+      expect(hours).toBeGreaterThan(0);
+      expect(bound).toBe((hours * 3600) / 4);
+    });
+
     it("records rollback-failed when the deployed commit's installs fail too, and touches nothing further", () => {
       const h = host();
       h.set(`fail-broker-install-${TIP}`);
@@ -836,7 +875,7 @@ describe("pull.sh", () => {
       expect(h.trees()).toEqual([C2, C3, OTHER, DEPLOYED].sort());
     });
 
-    it("keeps the tree a rollback returned to and the one before it", () => {
+    it("keeps the tree a rollback returned to, and removes the one before it", () => {
       const h = host();
       update(h, C1);
       update(h, C2);
@@ -844,8 +883,29 @@ describe("pull.sh", () => {
       h.set(`fail-broker-install-${C3}`);
       const r = outcome(h, "rolled-back", 1);
       expect(r.record.linked_commit).toBe(C2);
-      expect(h.trees()).toEqual([C1, C2, DEPLOYED]);
-      expect(h.created()).toEqual([C1, C2]);
+      expect(h.trees()).toEqual([C2, DEPLOYED]);
+      expect(h.created()).toEqual([C2]);
+    });
+
+    it("never has more than two pull-created trees on disk, over updates and failed runs", () => {
+      const h = host();
+      const C4 = "4".repeat(40);
+      h.listCreated([DEPLOYED]);
+      update(h, C1);
+      update(h, C2);
+      h.publish(C3);
+      h.set(`fail-broker-install-${C3}`);
+      h.set(`fail-broker-install-${C2}`);
+      outcome(h, "rollback-failed", 1);
+      expect(h.trees()).toEqual([C2, C3]);
+      h.unset(`fail-broker-install-${C3}`);
+      h.unset(`fail-broker-install-${C2}`);
+      update(h, C3);
+      h.publish(C4);
+      h.set(`fail-verify-${C4}`);
+      outcome(h, "rolled-back", 1);
+      expect(h.trees()).toEqual([C3]);
+      expect(h.peakTrees()).toBeLessThanOrEqual(2);
     });
   });
 

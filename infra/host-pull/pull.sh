@@ -37,6 +37,11 @@ RELEASE_URL=https://github.com/georgetown-mdi/alcove/releases/download/broker-co
 # Pages of 100 push runs read for one commit before the run gives up.
 RUN_PAGES=10
 
+# Each install script call is cut off after this many seconds, so a forward
+# attempt and a rollback (two calls each) fit in alcove-host-pull.service's
+# TimeoutStartSec=1h: 3600 / 4. scripts/host-pull.test.mjs holds the two equal.
+INSTALL_TIMEOUT="${ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-900}"
+
 TIP=""
 PARTIAL=""
 FAILURE=""
@@ -241,10 +246,10 @@ install_tree() {
   # and a switched tree is not one.
   systemctl try-restart alcove-broker.service \
     || { FAILURE="alcove-broker.service did not restart on $1"; return 1; }
-  "$tree/infra/broker/install.sh" >&2 \
+  timeout "$INSTALL_TIMEOUT" "$tree/infra/broker/install.sh" >&2 \
     || { FAILURE="infra/broker/install.sh failed at $1"; return 1; }
   # Ends with verify.sh against the relay's private address.
-  "$tree/infra/relay/install.sh" >&2 \
+  timeout "$INSTALL_TIMEOUT" "$tree/infra/relay/install.sh" >&2 \
     || { FAILURE="infra/relay/install.sh or its verify.sh failed at $1"; return 1; }
 }
 
@@ -282,15 +287,16 @@ roll_back() {
 }
 
 require_green
+# Only the deployed tree stays while the tip's is staged, so at most two trees
+# exist at once. After an update the kept pair is the new deployed tree and the
+# one before it, which a failed later run rolls back to.
+for commit in $(created_trees); do
+  remove_tree "$commit"
+done
 stage
 
 if install_tree "$TIP"; then
-  previous="$(deployed)"
   printf '%s\n' "$TIP" | replace "$MARKER"
-  # The deployed tree and the one deployed before it stay, for a rollback.
-  for commit in $(created_trees); do
-    [ "$commit" = "$previous" ] || remove_tree "$commit"
-  done
   finish updated 0 "deployed $TIP"
 fi
 roll_back
