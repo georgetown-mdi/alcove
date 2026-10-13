@@ -449,7 +449,12 @@ const outcome = (h, name, status) => {
   return r;
 };
 
-describe("pull.sh", () => {
+// pull.sh runs on a Linux systemd host: it takes util-linux flock, ionice and
+// setsid and GNU sha256sum, and the timeout stub above execs GNU timeout from
+// /usr/bin, none of which macOS has.
+const describeOnScriptHost = describe.skipIf(process.platform !== "linux");
+
+describeOnScriptHost("pull.sh", () => {
   it("installs a green, signed tip in a new tree, then both installs, and records it", () => {
     const h = host();
     const r = outcome(h, "updated", 0);

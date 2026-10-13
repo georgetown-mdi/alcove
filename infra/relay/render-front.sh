@@ -14,6 +14,8 @@ ENV_FILE="${ALCOVE_RELAY_ENV_FILE:-/etc/alcove-relay/relay.env}"
 TMPL="${ALCOVE_RELAY_FRONT_TEMPLATE:-$HERE/front.conf.tmpl}"
 
 die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
+# Not ${1,,}: the tests run this under macOS's bash 3.2, which lacks it.
+lowercase() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
 [ -f "$ENV_FILE" ] || die "no $ENV_FILE; copy relay.env.example, fill it in, and run install.sh"
 # shellcheck disable=SC1090
@@ -24,7 +26,7 @@ die() { printf 'ABORTING: %s\n' "$*" >&2; exit 1; }
 # name absolute.
 REALM="${ALCOVE_RELAY_REALM:-}"
 REALM="${REALM%.}"
-REALM="${REALM,,}"
+REALM="$(lowercase "$REALM")"
 [ -n "$REALM" ] || die "ALCOVE_RELAY_REALM is unset in $ENV_FILE; refusing to guess a realm"
 
 ROUTES=()
@@ -70,7 +72,7 @@ add_route() {
 # its token, so that port is taken whether or not the registrar has a name.
 REGISTRAR_NAME="${ALCOVE_RELAY_REGISTRAR_NAME:-}"
 REGISTRAR_NAME="${REGISTRAR_NAME%.}"
-REGISTRAR_NAME="${REGISTRAR_NAME,,}"
+REGISTRAR_NAME="$(lowercase "$REGISTRAR_NAME")"
 REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
 REGISTRAR_TOKEN_FILE="${ALCOVE_RELAY_REGISTRAR_TOKEN_FILE:-/etc/alcove-relay/registrar-token}"
 if [ -n "$REGISTRAR_NAME" ]; then
