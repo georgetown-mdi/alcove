@@ -80,7 +80,7 @@ On a host the size of the relay's (412 MB of memory), a full-workspace `npm ci` 
    ```
 
    The identity names the publishing workflow on `main`, and `--certificate-github-workflow-sha` refuses a correctly signed build of any other commit.
-   Measured on the relay host (Amazon Linux 2023, t4g.nano) on 2026-10-13, Cosign v3.0.6 verified a signed archive with no token or cloud credential in its environment, refused a bundle for another identity, another commit and an altered archive, and peaked at about 66 MB of memory.
+   Measured on the relay host (Amazon Linux 2023, t4g.nano) on 2026-10-12, Cosign v3.0.6 verified a signed archive with no token or cloud credential in its environment, refused a bundle for another identity, another commit and an altered archive, and peaked at about 66 MB of memory.
    The prerelease holds the latest commit on `main` only.
    For any other commit, build core on another machine at that commit (`npm run build -w packages/core`), pack it with `node scripts/pack-broker-core.mjs packages/core/dist <out-dir>`, and copy the files `<out-dir>` holds into the clone's `packages/core/dist/`, checking the manifest on arrival.
 6. Leave the tree owned by root and readable by all, so the broker's account cannot rewrite the code it runs: `chown -R root:root /opt/alcove-broker && chmod -R u=rwX,go=rX /opt/alcove-broker`.
