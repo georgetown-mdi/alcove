@@ -22,7 +22,7 @@ import { eventCwd, eventForTools, workflowArgs } from "./lib/event.mjs";
 import { git } from "./lib/shell.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-06-30";
 
 const QUOTED_SPAN = /"([^"]*)"/g;
 const ABSENCES_SHOWN = 8;

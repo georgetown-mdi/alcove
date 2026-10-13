@@ -53,7 +53,7 @@ import {
 } from "./lib/worktrees.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-06-30";
 
 const CLAUDE_DIR = ".claude";
 const WORKTREES_DIR = "worktrees";

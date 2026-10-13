@@ -43,7 +43,7 @@ import { git } from "./lib/shell.mjs";
 import { worktreeRecords } from "./lib/worktrees.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-06-30";
 
 const DIRTY_ENTRIES_SHOWN = 10;
 const UNCONFIRMED = "could not confirm a clean tree; commit and retry";

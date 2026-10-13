@@ -36,7 +36,7 @@
 import { NOT_AN_EVENT, readEvent } from "./lib/event.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-03-31";
 
 const OVERRIDE_MARKER = "[accept-model-drop]";
 const UNCONFIRMED =

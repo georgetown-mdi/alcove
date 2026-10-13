@@ -42,7 +42,7 @@ import { leadingCdDestination } from "./lib/shell.mjs";
 import { isInside, worktreeContext } from "./lib/worktrees.mjs";
 
 /** The last date, YYYY-MM-DD, this hook stands before it is renewed or deleted. */
-export const EXPIRES_ON = "2026-12-31";
+export const EXPIRES_ON = "2027-06-30";
 
 function block(tree) {
   process.stderr.write(

@@ -13,8 +13,11 @@
 //     shape scripts/check-no-legacy-names.mjs set.
 //
 // A date is the last day, UTC, the entry passes. A new check or hook picks its
-// own date when it is proposed. 2026-12-31, on every entry older than this
-// check, is an arbitrary working value the first review below re-fits.
+// own date when it is proposed. A renewal follows the entry's record since its
+// last review: one that refused a call or failed a run renews to a later date
+// than one that did neither, so the review reaches the unexercised entries
+// first. A hook that only records state another hook reads takes that hook's
+// date, and a check with an expiry of its own takes that date.
 //
 // REVIEW AT EACH RETRO. Run
 //
