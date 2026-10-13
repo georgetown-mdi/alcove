@@ -106,6 +106,13 @@ other repository-level coupling is the docker Dependabot entry for
 `install.sh` is idempotent. Run it again after an edit to the template, the unit,
 or the Dockerfile and it converges.
 
+These steps bring up a new host. On the project's host, later commits of
+`main` reach the relay through [the host pull](../host-pull/README.md), which
+runs this directory's `install.sh`, and so `verify.sh`, from each new commit's
+tree, and rolls back to the previous commit when either fails. The pull is
+opt-in: a host built from this reference without it takes a later commit only
+when its operator runs `install.sh` from that commit's checkout.
+
 ## The files
 
 | path | what it is |

@@ -138,17 +138,46 @@ done
 [ "$identity" = "${IDENTITY}" ] && [ "$issuer" = "${ISSUER}" ] || exit 1
 [ "$sha" = "$(cat "$F/signed-for")" ] || { echo "Error: none of the expected identities matched" >&2; exit 1; }`;
 
+// While $F/script-only-kill exists, a timeout whose signals reach the command
+// alone, as the kill-after KILL of uutils timeout (Ubuntu 26.04) does, on a
+// host whose /usr/bin/timeout is GNU's and signals the whole process group.
+const TIMEOUT_STUB = String.raw`
+printf '%s\n' "$*" >> "$F/timeouts"
+[ -e "$F/script-only-kill" ] && [ "$1" = -k ] || exec /usr/bin/timeout "$@"
+after="$2"; bound="$3"; shift 3
+"$@" &
+script=$!
+{ sleep "$bound"; kill -TERM "$script"; sleep "$after"; kill -KILL "$script"; } >/dev/null 2>&1 &
+watch=$!
+wait "$script"; status=$?
+kill "$watch" 2>/dev/null
+exit "$status"`;
+
 const NPM_STUB = String.raw`
 printf 'npm %s in %s\n' "$*" "$PWD" >> "$F/calls"
 [ ! -e "$F/fail-npm" ] || exit 1
 if [ -e "$F/slow-npm" ]; then : > "$F/npm-started"; sleep 30; fi
 mkdir -p node_modules/.bin && : > node_modules/.bin/tsx`;
 
-// An install script inside the fetched tree: records where the broker's link
-// pointed when it ran.
-const installStub = (name) => String.raw`
-printf '%s %s\n' "${name}" "$(readlink "$F/opt/alcove-broker/src")" >> "$F/calls"
-[ ! -e "$F/fail-${name}" ] || exit 1`;
+// A script inside a tree: records where the broker's link pointed when it ran,
+// and fails while $F/fail-<name>-<that commit> exists. The relay's install
+// script ends by running its tree's verify.sh, as infra/relay/install.sh does.
+const treeStub = (name, last = "") => String.raw`
+linked="$(readlink "$F/opt/alcove-broker/src")"
+printf '%s %s\n' "${name}" "$linked" >> "$F/calls"
+ls "$F/opt/alcove-broker/trees" | wc -l >> "$F/tree-counts"
+[ ! -e "$F/hang-${name}-$(basename "$linked")" ] || exec sleep 30
+if [ -e "$F/deaf-${name}-$(basename "$linked")" ]; then trap '' TERM; sleep 30; fi
+[ ! -e "$F/fail-${name}-$(basename "$linked")" ] || exit 1
+${last}`;
+const TREE_STUBS = {
+  "infra/broker/install.sh": treeStub("broker-install"),
+  "infra/relay/install.sh": treeStub(
+    "relay-install",
+    '"$(dirname "$0")/verify.sh"',
+  ),
+  "infra/relay/verify.sh": treeStub("verify"),
+};
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
 
@@ -231,6 +260,8 @@ const BUNDLE = `${ARCHIVE}.sigstore.json`;
  * published and signed for TIP, and the broker linked to the tree of DEPLOYED,
  * the commit the deployed marker names.
  */
+const DEFAULT_BOUND = 315;
+
 const host = () => {
   const root = fixtureDir("host-pull-");
   const bin = join(root, "bin");
@@ -252,6 +283,7 @@ const host = () => {
     join(bin, "systemctl"),
     `${head}\nprintf 'systemctl %s\\n' "$*" >> "$F/calls"`,
   );
+  writeStub(join(bin, "timeout"), `${head}\n${TIMEOUT_STUB}`);
   writeStub(
     join(bin, "chown"),
     `${head}\nprintf 'chown %s\\n' "$*" >> "$F/calls"`,
@@ -260,12 +292,10 @@ const host = () => {
     join(bin, "id"),
     `if [ "$1" = -u ]; then cat '${root}/uid' 2>/dev/null || echo 0; else exec /usr/bin/id "$@"; fi`,
   );
-  for (const name of ["broker-install", "relay-install"]) {
-    const dir = name === "broker-install" ? "broker" : "relay";
-    writeStub(
-      join(root, "remote/infra", dir, "install.sh"),
-      `${head}\n${installStub(name)}`,
-    );
+  for (const [path, body] of Object.entries(TREE_STUBS)) {
+    for (const tree of ["remote", `opt/alcove-broker/trees/${DEPLOYED}`]) {
+      writeStub(join(root, tree, path), `${head}\n${body}`);
+    }
   }
   writeFileSync(join(root, "remote/package.json"), "{}\n");
   writeFileSync(join(root, "tip"), TIP);
@@ -298,6 +328,21 @@ const host = () => {
     const path = join(state, "deployed");
     return existsSync(path) ? readFileSync(path, "utf8") : undefined;
   };
+  const createdPath = join(state, "created-trees");
+  const createdTrees = () =>
+    existsSync(createdPath)
+      ? readFileSync(createdPath, "utf8").split("\n").filter(Boolean).sort()
+      : [];
+  // main moves to the commit, with its push runs green and its build published
+  // and signed for it.
+  const publish = (commit) => {
+    writeFileSync(join(root, "tip"), commit);
+    writeFileSync(join(root, "signed-for"), commit);
+    runs(GREEN.map((run) => ({ ...run, head_sha: commit })));
+    const archive = `alcove-broker-core-${commit}.tar.gz`;
+    buildArchive(root, join(served, archive));
+    writeFileSync(join(served, `${archive}.sigstore.json`), "{}\n");
+  };
   const run = (script = join(PULL_DIR, "pull.sh")) => {
     writeFileSync(join(root, "calls"), "");
     const result = spawnSync(BASH, [script], { encoding: "utf8", env });
@@ -315,9 +360,21 @@ const host = () => {
     runs,
     record,
     marker,
+    created: createdTrees,
+    listCreated: (lines) => writeFileSync(createdPath, lines.join("\n")),
+    publish,
     serve: (name, text) => writeFileSync(join(served, name), text),
     unserve: (name) => rmSync(join(served, name)),
     archive: (options) => buildArchive(root, join(served, ARCHIVE), options),
+    peakTrees: () =>
+      existsSync(join(root, "tree-counts"))
+        ? Math.max(
+            ...readFileSync(join(root, "tree-counts"), "utf8")
+              .split("\n")
+              .filter(Boolean)
+              .map(Number),
+          )
+        : 0,
     link: () => readlinkSync(join(broker, "src")),
     trees: () => readdirSync(join(broker, "trees")).sort(),
     run,
@@ -364,17 +421,23 @@ const fullRun = (h) => {
     "git checkout -q --detach FETCH_HEAD",
     "npm ci --no-audit --no-fund --ignore-scripts --workspace packages/peerjs-broker in ",
     "chown -R 0:0 ",
-    "systemctl try-restart alcove-broker.service",
-    `broker-install trees/${TIP}`,
-    `relay-install trees/${TIP}`,
+    ...installs(TIP),
   ];
 };
 
-const expectFullRun = (h, calls) => {
-  const steps = fullRun(h);
+/** Restarting the broker on a commit's tree, then the tree's three scripts. */
+const installs = (commit) => [
+  "systemctl try-restart alcove-broker.service",
+  `broker-install trees/${commit}`,
+  `relay-install trees/${commit}`,
+  `verify trees/${commit}`,
+];
+
+const expectSteps = (calls, steps) => {
   expect(calls).toHaveLength(steps.length);
   steps.forEach((step, index) => expect(calls[index]).toContain(step));
 };
+const expectFullRun = (h, calls) => expectSteps(calls, fullRun(h));
 
 const outcome = (h, name, status) => {
   const r = h.run();
@@ -633,46 +696,279 @@ describe("pull.sh", () => {
     untouched(h);
   });
 
-  it.each([
-    ["broker-install", "infra/broker/install.sh failed", false],
-    ["relay-install", "infra/relay/install.sh or its verify.sh failed", true],
-  ])(
-    "records a failed %s and leaves the broker on the new tree",
-    (name, reason, brokerRan) => {
+  describe("when the tip's installs fail", () => {
+    // The calls a run makes up to the step that failed at the tip.
+    const upTo = (h, failed) => {
+      const steps = fullRun(h);
+      return steps.slice(
+        0,
+        steps.findIndex((step) => step === `${failed} trees/${TIP}`) + 1,
+      );
+    };
+
+    it.each([
+      ["broker-install", "infra/broker/install.sh failed"],
+      ["relay-install", "infra/relay/install.sh or its verify.sh failed"],
+      ["verify", "infra/relay/install.sh or its verify.sh failed"],
+    ])(
+      "rolls back after a failed %s: the deployed commit's tree, both installs, and the tip's tree removed",
+      (failed, reason) => {
+        const h = host();
+        h.set(`fail-${failed}-${TIP}`);
+        const r = outcome(h, "rolled-back", 1);
+        expect(r.record).toMatchObject({
+          deployed_commit: DEPLOYED,
+          linked_commit: DEPLOYED,
+          main_commit: TIP,
+          reason: `${reason} at ${TIP}; rolled back to ${DEPLOYED}`,
+        });
+        expectSteps(r.calls, [...upTo(h, failed), ...installs(DEPLOYED)]);
+        expect(h.link()).toBe(`trees/${DEPLOYED}`);
+        expect(h.marker()).toBe(`${DEPLOYED}\n`);
+        expect(h.trees()).toEqual([DEPLOYED]);
+        expect(h.created()).toEqual([]);
+      },
+    );
+
+    it("cuts off an install script that hangs and rolls back", () => {
       const h = host();
-      h.set(`fail-${name}`);
-      const r = outcome(h, "failed", 1);
+      h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
+      h.set(`hang-relay-install-${TIP}`);
+      const r = outcome(h, "rolled-back", 1);
+      expect(r.record.reason).toBe(
+        `infra/relay/install.sh or its verify.sh failed at ${TIP}; rolled back to ${DEPLOYED}`,
+      );
+      expect(h.link()).toBe(`trees/${DEPLOYED}`);
+      expect(h.trees()).toEqual([DEPLOYED]);
+    });
+
+    it.each([
+      ["the host's timeout", false],
+      ["a timeout whose signals reach the script alone", true],
+    ])(
+      "kills an install script that ignores TERM, and its children, under %s, and rolls back",
+      (_label, scriptOnlyKill) => {
+        const h = host();
+        h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
+        h.env.ALCOVE_HOST_PULL_KILL_AFTER = "1";
+        h.set(`deaf-relay-install-${TIP}`);
+        if (scriptOnlyKill) h.set("script-only-kill");
+        const started = Date.now();
+        outcome(h, "rolled-back", 1);
+        expect(Date.now() - started).toBeLessThan(20000);
+        expect(h.link()).toBe(`trees/${DEPLOYED}`);
+      },
+    );
+
+    it.each([
+      ["unset", undefined, DEFAULT_BOUND],
+      ["0", "0", DEFAULT_BOUND],
+      ["abc", "abc", DEFAULT_BOUND],
+      ["larger than the default", String(DEFAULT_BOUND + 1), DEFAULT_BOUND],
+      ["a smaller positive integer", "7", 7],
+    ])("reads the install bound override %s", (_label, value, expected) => {
+      const h = host();
+      if (value !== undefined) h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = value;
+      outcome(h, "updated", 0);
+      const bounds = readFileSync(join(h.root, "timeouts"), "utf8")
+        .split("\n")
+        .filter((l) => l.includes("install.sh"));
+      expect(bounds).toHaveLength(2);
+      for (const line of bounds) {
+        expect(line).toMatch(new RegExp(`^-k 30 ${expected} `));
+      }
+    });
+
+    it("records rollback-failed when the deployed commit's installs fail too, and touches nothing further", () => {
+      const h = host();
+      h.set(`fail-broker-install-${TIP}`);
+      h.set(`fail-relay-install-${DEPLOYED}`);
+      const r = outcome(h, "rollback-failed", 1);
       expect(r.record).toMatchObject({
         deployed_commit: DEPLOYED,
-        linked_commit: TIP,
+        linked_commit: DEPLOYED,
+        main_commit: TIP,
+        reason:
+          `infra/broker/install.sh failed at ${TIP}; rolling back to ${DEPLOYED}` +
+          ` failed: infra/relay/install.sh or its verify.sh failed at ${DEPLOYED}`,
       });
-      expect(r.record.reason).toContain(reason);
-      expect(h.link()).toBe(`trees/${TIP}`);
+      expectSteps(r.calls, [
+        ...upTo(h, "broker-install"),
+        ...installs(DEPLOYED).slice(0, 3),
+      ]);
       expect(h.marker()).toBe(`${DEPLOYED}\n`);
-      expect(named(r.calls, "broker-install")).toHaveLength(1);
-      expect(named(r.calls, "relay-install")).toHaveLength(brokerRan ? 1 : 0);
-    },
-  );
+      expect(h.trees()).toEqual([TIP, DEPLOYED]);
+      expect(h.created()).toEqual([TIP]);
+    });
+
+    it.each([
+      [
+        "the deployed marker is absent",
+        (h) => h.unset("var/lib/alcove-host-pull/deployed"),
+        "names no commit other than",
+        "",
+      ],
+      [
+        "the deployed marker names the tip",
+        (h) => h.set("var/lib/alcove-host-pull/deployed", `${TIP}\n`),
+        "names no commit other than",
+        TIP,
+      ],
+      [
+        "the marked commit has no tree",
+        (h) => h.set("var/lib/alcove-host-pull/deployed", `${OTHER}\n`),
+        `${OTHER}, the deployed commit's tree, is missing`,
+        OTHER,
+      ],
+      [
+        "the marked commit's tree is a link",
+        (h) => {
+          h.set("var/lib/alcove-host-pull/deployed", `${OTHER}\n`);
+          symlinkSync(DEPLOYED, join(h.broker, "trees", OTHER));
+        },
+        `${OTHER}, the deployed commit's tree, is missing`,
+        OTHER,
+      ],
+    ])(
+      "does not roll back when %s, and leaves the tip linked",
+      (_, make, reason, marked) => {
+        const h = host();
+        make(h);
+        h.set(`fail-relay-install-${TIP}`);
+        const r = outcome(h, "failed", 1);
+        expect(r.record).toMatchObject({
+          deployed_commit: marked,
+          linked_commit: TIP,
+        });
+        expect(r.record.reason).toContain(
+          `infra/relay/install.sh or its verify.sh failed at ${TIP}; `,
+        );
+        expect(r.record.reason).toContain(reason);
+        expectSteps(r.calls, upTo(h, "verify").slice(0, -1));
+        expect(h.link()).toBe(`trees/${TIP}`);
+        expect(h.trees()).toContain(TIP);
+        expect(h.trees()).toContain(DEPLOYED);
+      },
+    );
+
+    it("tries the tip again on the next run, and updates once its installs pass", () => {
+      const h = host();
+      h.set(`fail-verify-${TIP}`);
+      outcome(h, "rolled-back", 1);
+      const again = outcome(h, "rolled-back", 1);
+      expectSteps(again.calls, [...upTo(h, "verify"), ...installs(DEPLOYED)]);
+
+      h.unset(`fail-verify-${TIP}`);
+      const passed = outcome(h, "updated", 0);
+      expectFullRun(h, passed.calls);
+      expect(h.marker()).toBe(`${TIP}\n`);
+      expect(h.trees()).toEqual([TIP, DEPLOYED]);
+    });
+  });
+
+  describe("the trees it keeps", () => {
+    const C1 = "1".repeat(40);
+    const C2 = "2".repeat(40);
+    const C3 = "3".repeat(40);
+    const update = (h, commit) => {
+      h.publish(commit);
+      const r = outcome(h, "updated", 0);
+      expect(h.link()).toBe(`trees/${commit}`);
+      expect(h.marker()).toBe(`${commit}\n`);
+      return r;
+    };
+
+    it("keeps exactly the deployed tree and the one before it over three updates", () => {
+      const h = host();
+      h.listCreated([DEPLOYED]);
+      update(h, C1);
+      expect(h.trees()).toEqual([C1, DEPLOYED]);
+      const r = update(h, C2);
+      expect(r.stderr).toContain(
+        `removed ${join(h.broker, "trees", DEPLOYED)}`,
+      );
+      expect(h.trees()).toEqual([C1, C2]);
+      update(h, C3);
+      expect(h.trees()).toEqual([C2, C3]);
+      expect(h.created()).toEqual([C2, C3]);
+    });
+
+    it("never removes a tree it did not create", () => {
+      const h = host();
+      update(h, C1);
+      update(h, C2);
+      update(h, C3);
+      expect(h.trees()).toEqual([C2, C3, DEPLOYED]);
+      expect(h.created()).toEqual([C2, C3]);
+    });
+
+    it("acts only on whole commits in its record, never on a path or pattern", () => {
+      const h = host();
+      const beside = join(h.broker, "beside");
+      mkdirSync(beside);
+      mkdirSync(join(h.broker, "trees", OTHER));
+      h.listCreated(["../beside", "*", "", ".", OTHER.slice(1), "/"]);
+      update(h, C1);
+      update(h, C2);
+      update(h, C3);
+      expect(existsSync(beside)).toBe(true);
+      expect(h.trees()).toEqual([C2, C3, OTHER, DEPLOYED].sort());
+    });
+
+    it("keeps the tree a rollback returned to, and removes the one before it", () => {
+      const h = host();
+      update(h, C1);
+      update(h, C2);
+      h.publish(C3);
+      h.set(`fail-broker-install-${C3}`);
+      const r = outcome(h, "rolled-back", 1);
+      expect(r.record.linked_commit).toBe(C2);
+      expect(h.trees()).toEqual([C2, DEPLOYED]);
+      expect(h.created()).toEqual([C2]);
+    });
+
+    it("never has more than two pull-created trees on disk, over updates and failed runs", () => {
+      const h = host();
+      const C4 = "4".repeat(40);
+      h.listCreated([DEPLOYED]);
+      update(h, C1);
+      update(h, C2);
+      h.publish(C3);
+      h.set(`fail-broker-install-${C3}`);
+      h.set(`fail-broker-install-${C2}`);
+      outcome(h, "rollback-failed", 1);
+      expect(h.trees()).toEqual([C2, C3]);
+      h.unset(`fail-broker-install-${C3}`);
+      h.unset(`fail-broker-install-${C2}`);
+      update(h, C3);
+      h.publish(C4);
+      h.set(`fail-verify-${C4}`);
+      outcome(h, "rolled-back", 1);
+      expect(h.trees()).toEqual([C3]);
+      expect(h.peakTrees()).toBeLessThanOrEqual(2);
+    });
+  });
 
   it("checks, downloads, verifies and stages a fresh tree on the run after a failed install", () => {
     const h = host();
-    h.set("fail-relay-install");
+    h.unset("var/lib/alcove-host-pull/deployed");
+    h.set(`fail-verify-${TIP}`);
     outcome(h, "failed", 1);
     const leftover = join(h.broker, "trees", TIP, "left-by-the-failed-run");
     writeFileSync(leftover, "");
 
     const again = outcome(h, "failed", 1);
     expect(again.record).toMatchObject({
-      deployed_commit: DEPLOYED,
+      deployed_commit: "",
       linked_commit: TIP,
       main_commit: TIP,
     });
-    expect(again.record.reason).toContain("infra/relay/install.sh");
+    expect(again.record.reason).toContain("verify.sh failed at");
     expectFullRun(h, again.calls);
     expect(existsSync(leftover)).toBe(false);
     expect(h.trees()).toEqual([TIP, DEPLOYED]);
 
-    h.unset("fail-relay-install");
+    h.unset(`fail-verify-${TIP}`);
     const passed = outcome(h, "updated", 0);
     expect(passed.record).toMatchObject({
       deployed_commit: TIP,
@@ -852,6 +1148,16 @@ describe("install.sh", () => {
         "host-pull",
       );
     }
+  });
+
+  // pull.sh rolls back on a failed verify.sh only through the relay install's
+  // exit status: its last command must be verify.sh, with nothing after it.
+  it("runs verify.sh as infra/relay/install.sh's last command", () => {
+    const lines = readFileSync(join(repo, "infra/relay/install.sh"), "utf8")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    expect(lines.at(-1)).toMatch(/^(\w+="[^"]*" )*"\$LIBEXEC\/verify\.sh"$/);
   });
 
   it.each([

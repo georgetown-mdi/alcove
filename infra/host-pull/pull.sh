@@ -6,13 +6,16 @@
 #
 #   pull.sh
 #
-# Each run ends with one outcome in the status file (README.md, The status
-# file): unchanged or updated, skipped when there is nothing to take yet (exit
-# 0), refused when the commit or its build fails a check, and failed when a
-# step could not run (both exit 1). It holds no credential and builds nothing.
-# Only an updated run rewrites the deployed marker, so a commit whose installs
-# did not complete is checked, downloaded, staged and installed again by the
-# next run; a tree already on disk is never reused.
+# Each run ends with one outcome in the status file (README.md, Outcomes):
+# unchanged or updated, skipped when there is nothing to take yet (exit 0),
+# refused when the commit or its build fails a check, failed when a step could
+# not run, rolled-back when the tip's installs failed and the deployed commit's
+# passed again, and rollback-failed when those failed too (all exit 1). It
+# holds no credential and builds nothing. Only an updated run rewrites the
+# deployed marker, so a commit whose installs did not complete is checked,
+# downloaded, staged and installed again by the next run; a tree already on
+# disk is never reused. It removes only trees it created and lists in
+# $CREATED, never the one $SRC or the marker names.
 set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -22,6 +25,7 @@ ROOT="${ALCOVE_HOST_PULL_INSTALL_ROOT:-}"
 STATE="$ROOT/var/lib/alcove-host-pull"
 STATUS="$STATE/status"
 MARKER="$STATE/deployed"
+CREATED="$STATE/created-trees"
 WORK="$STATE/work"
 BROKER_DIR="$ROOT/opt/alcove-broker"
 SRC="$BROKER_DIR/src"
@@ -33,8 +37,28 @@ RELEASE_URL=https://github.com/georgetown-mdi/alcove/releases/download/broker-co
 # Pages of 100 push runs read for one commit before the run gives up.
 RUN_PAGES=10
 
+# INSTALL_SHARE and INSTALL_KILL_AFTER_DEFAULT are working values, sized so the
+# counted staging bounds (ls-remote 120 s, one run-page download 300 s, the two
+# build downloads 2 * 300 s, the fetch 600 s and npm ci 600 s) plus a forward
+# attempt and a rollback, two install scripts each, stay near the unit's
+# TimeoutStartSec=1h. They do not guarantee every run fits. The share holds the
+# --kill-after wait, so the script gets INSTALL_SHARE - INSTALL_KILL_AFTER
+# seconds before TERM. The override may only lower either wait.
+INSTALL_SHARE=345
+INSTALL_KILL_AFTER_DEFAULT=30
+INSTALL_TIMEOUT_DEFAULT=$((INSTALL_SHARE - INSTALL_KILL_AFTER_DEFAULT))
+
+# Prints the override when it is a positive integer no larger than the default,
+# and the default otherwise.
+lowered() {
+  if [[ "$1" =~ ^[1-9][0-9]{0,8}$ ]] && [ "$1" -le "$2" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+INSTALL_TIMEOUT="$(lowered "${ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-}" "$INSTALL_TIMEOUT_DEFAULT")"
+INSTALL_KILL_AFTER="$(lowered "${ALCOVE_HOST_PULL_KILL_AFTER:-}" "$INSTALL_KILL_AFTER_DEFAULT")"
+
 TIP=""
 PARTIAL=""
+FAILURE=""
 
 [ "$#" -eq 0 ] || { printf 'usage: pull.sh\n' >&2; exit 2; }
 
@@ -56,6 +80,11 @@ deployed() {
   if [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
     printf '%s' "$commit"
   fi
+}
+
+# The commits whose trees this script created and has not removed.
+created_trees() {
+  grep -Ex '[0-9a-f]{40}' "$CREATED" 2>/dev/null || true
 }
 
 # path; the content on stdin. Written to a new file renamed over the old, so a
@@ -88,7 +117,7 @@ trap cleanup EXIT
 trap 'finish failed 1 "pull.sh stopped at line $LINENO"' ERR
 trap 'finish failed 1 "pull.sh was stopped by a signal"' TERM INT
 
-for tool in git curl cosign node npm sha256sum tar nice ionice; do
+for tool in git curl cosign node npm sha256sum tar nice ionice setsid; do
   command -v "$tool" >/dev/null 2>&1 || finish failed 1 "$tool is not installed; see README.md, Install"
 done
 if [ -L "$SRC" ]; then
@@ -150,7 +179,7 @@ require_green() {
   esac
 }
 
-# Downloads and verifies the tip's build, stages its tree and links $SRC to it.
+# Downloads and verifies the tip's build and stages its tree.
 stage() {
   local archive="alcove-broker-core-$TIP.tar.gz"
   local bundle="$archive.sigstore.json"
@@ -193,7 +222,7 @@ stage() {
   [ -s "$dist/untrusted-text.esm.js" ] || finish refused 1 "$archive has no untrusted-text.esm.js"
 
   # No package's install script runs as root (README.md, What a run does).
-  (cd "$PARTIAL" && nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --ignore-scripts \
+  (cd "$PARTIAL" && nice -n 10 ionice -c 3 timeout 600 npm ci --no-audit --no-fund --ignore-scripts \
     --workspace packages/peerjs-broker) >&2 \
     || finish failed 1 "npm ci of the broker workspace failed at $TIP"
 
@@ -209,25 +238,94 @@ stage() {
   if [ -e "$tree" ]; then mv -T "$tree" "$replaced"; fi
   mv -T "$PARTIAL" "$tree"
   PARTIAL=""
+  # Listed only once the tree is in place, so a run stopped before then leaves
+  # an unlisted tree, which is never removed, rather than a listed tree it did
+  # not create.
+  { grep -vxF -- "$TIP" "$CREATED" 2>/dev/null || true; printf '%s\n' "$TIP"; } \
+    | replace "$CREATED"
   rm -rf "$replaced"
+}
 
-  rm -f "$BROKER_DIR/.src.new"
-  ln -s "trees/$TIP" "$BROKER_DIR/.src.new"
-  mv -fT "$BROKER_DIR/.src.new" "$SRC"
-  log "$SRC links to $TIP"
+# script. Runs it under timeout in a session of its own, and once it fails
+# sends KILL to the install's process group: the script and every descendant
+# that stays in that group. A descendant that starts its own process group,
+# such as a probe run through timeout, is not killed and ends at its own bound.
+# The kill-after KILL of uutils timeout, the timeout on Ubuntu 26.04, reaches
+# the script alone, so a child ignoring TERM would otherwise outlive the bound.
+bounded() {
+  local session status=0
+  setsid timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$1" >&2 &
+  session=$!
+  wait "$session" || status=$?
+  if [ "$status" != 0 ]; then kill -KILL -- "-$session" 2>/dev/null || true; fi
+  return "$status"
+}
+
+# commit. Links $SRC to the commit's tree, restarts the broker and runs the
+# tree's two install scripts. Sets FAILURE and returns 1 at the first step that
+# fails. Each step tests its own status: the callers run this as a condition,
+# where neither set -e nor the ERR trap applies.
+install_tree() {
+  local tree="$TREES/$1"
+  { rm -f "$BROKER_DIR/.src.new" && ln -s "trees/$1" "$BROKER_DIR/.src.new" \
+      && mv -fT "$BROKER_DIR/.src.new" "$SRC"; } \
+    || { FAILURE="$SRC could not be linked to $tree"; return 1; }
+  log "$SRC links to $1"
+  # The broker's install.sh restarts the broker only for a changed unit file,
+  # and a switched tree is not one.
+  systemctl try-restart alcove-broker.service \
+    || { FAILURE="alcove-broker.service did not restart on $1"; return 1; }
+  bounded "$tree/infra/broker/install.sh" \
+    || { FAILURE="infra/broker/install.sh failed at $1"; return 1; }
+  # Ends with verify.sh against the relay's private address.
+  bounded "$tree/infra/relay/install.sh" \
+    || { FAILURE="infra/relay/install.sh or its verify.sh failed at $1"; return 1; }
+}
+
+# commit. Removes the commit's tree, by its path under $TREES, only when
+# $CREATED lists it and neither $SRC nor the deployed marker names it.
+remove_tree() {
+  grep -qxF -- "$1" "$CREATED" 2>/dev/null || return 0
+  if [ "$1" = "$(linked)" ] || [ "$1" = "$(deployed)" ]; then return 0; fi
+  if ! rm -rf -- "$TREES/$1"; then
+    log "could not remove $TREES/$1; a later run tries again"
+    return 0
+  fi
+  { grep -vxF -- "$1" "$CREATED" || true; } | replace "$CREATED"
+  log "removed $TREES/$1"
+}
+
+# The installs at the tip failed: link $SRC back to the tree of the commit the
+# deployed marker names, which holds that commit's core build, and run both
+# installs from it. A tree the marker does not name is never a rollback target.
+roll_back() {
+  local failure="$FAILURE" previous
+  previous="$(deployed)"
+  log "$failure"
+  if [ -z "$previous" ] || [ "$previous" = "$TIP" ]; then
+    finish failed 1 "$failure; the deployed marker names no commit other than $TIP, so nothing was rolled back"
+  fi
+  if [ -L "$TREES/$previous" ] || [ ! -d "$TREES/$previous" ]; then
+    finish failed 1 "$failure; $TREES/$previous, the deployed commit's tree, is missing, so nothing was rolled back"
+  fi
+  log "rolling back to $previous"
+  install_tree "$previous" \
+    || finish rollback-failed 1 "$failure; rolling back to $previous failed: $FAILURE"
+  remove_tree "$TIP"
+  finish rolled-back 1 "$failure; rolled back to $previous"
 }
 
 require_green
+# Only the deployed tree stays while the tip's is staged, so at most two trees
+# exist at once. After an update the kept pair is the new deployed tree and the
+# one before it, which a failed later run rolls back to.
+for commit in $(created_trees); do
+  remove_tree "$commit"
+done
 stage
 
-# The broker's install.sh restarts the broker only for a changed unit file, and
-# a switched tree is not one.
-systemctl try-restart alcove-broker.service \
-  || finish failed 1 "alcove-broker.service did not restart on $TIP"
-"$TREES/$TIP/infra/broker/install.sh" >&2 \
-  || finish failed 1 "infra/broker/install.sh failed at $TIP"
-# Ends with verify.sh against the relay's private address.
-"$TREES/$TIP/infra/relay/install.sh" >&2 \
-  || finish failed 1 "infra/relay/install.sh or its verify.sh failed at $TIP"
-printf '%s\n' "$TIP" | replace "$MARKER"
-finish updated 0 "deployed $TIP"
+if install_tree "$TIP"; then
+  printf '%s\n' "$TIP" | replace "$MARKER"
+  finish updated 0 "deployed $TIP"
+fi
+roll_back

@@ -10,7 +10,7 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
 
 1. Reads the tip of `main` with `git ls-remote` over HTTPS.
    When the deployed marker, `/var/lib/alcove-host-pull/deployed`, and the broker's tree link, `/opt/alcove-broker/src`, both name that commit, the run records `unchanged` and stops.
-   Only a run whose installs and `verify.sh` all passed writes the marker.
+   Only a run whose installs and `verify.sh` all passed writes the marker; Install step 1 writes its first value.
    Otherwise the run takes every step below, even when the link already names the tip because an earlier run switched it and did not finish installing.
    A tree already on disk for the tip is never reused: step 4 stages a new one and replaces it.
 2. Reads the tip's GitHub Actions workflow runs from GitHub's API without a token: `GET /repos/georgetown-mdi/alcove/actions/runs?head_sha=<commit>&event=push&per_page=100`, reading further pages while the answer's `total_count` is larger than the runs read, up to 10 pages.
@@ -23,7 +23,17 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
    It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
    No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, and `tsx`'s optional, darwin-only `fsevents` (which Linux skips) declare one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
-   When both pass, it writes the tip to the deployed marker.
+   When both pass, it writes the tip to the deployed marker and trees are removed as step 7 says.
+6. When the restart, either install script or `verify.sh` fails, it rolls back: it points `/opt/alcove-broker/src` at the tree of the commit the deployed marker names, which holds that commit's core build, restarts the broker and runs that tree's two install scripts again.
+   When they pass, it removes the tip's tree and records `rolled-back`; when they fail, it records `rollback-failed` and stops, removing nothing.
+   It rolls back only to the tree the marker names.
+   When the marker is absent or names the tip, or the marked commit's tree is not a directory under `/opt/alcove-broker/trees`, it does not roll back: it records `failed` and leaves the link on the tip's tree.
+   The marker keeps the previous commit, so the next run takes the tip again from step 2.
+7. Before step 4, removes every tree it created except the deployed commit's, so at most two exist at once: the deployed commit's and the one being staged.
+   After an update the two on disk are the new deployed commit's and the one deployed before it, until the next run's removal; a rollback uses only the tree the marker names (step 6).
+   It removes a tree only when it created that tree itself and lists its commit in `/var/lib/alcove-host-pull/created-trees`, and never the tree the link or the marker names.
+   It builds each path it removes from a listed commit, `/opt/alcove-broker/trees/<commit>`, never from a pattern, and ignores a line of the list that is not a full commit.
+   A tree it did not create, such as the one Install step 1 moves into place, stays until the operator removes it, except that when the tip's own path already holds a tree, the pull replaces it with the verified build of the same commit.
 
 It never builds core.
 It never runs code from a tree it is about to replace: the timer runs the copy of `pull.sh` this directory's `install.sh` put under `/opt/alcove-host-pull`.
@@ -49,7 +59,9 @@ A host that is down at 06:00 skips the day rather than pulling at boot.
 | `unchanged` | 0 | the tip of `main` is the deployed commit |
 | `skipped` | 0 | a push-triggered workflow run has not completed, none has started yet, the prerelease does not yet have the tip's build, or `main` moved during the run |
 | `refused` | 1 | a push-triggered workflow run completed with another conclusion, the signature does not verify, or the unpacked files do not match `SHA256SUMS` |
-| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, either install script or `verify.sh`, a precondition below, or the run was stopped by a signal, such as systemd's at `TimeoutStartSec=` |
+| `failed` | 1 | a step could not run: a download, the fetch, `npm ci`, a precondition below, the installs at the tip when there was no deployed commit to roll back to, or the run was stopped by a signal, such as systemd's at `TimeoutStartSec=` |
+| `rolled-back` | 1 | the installs at the tip failed, and both install scripts and `verify.sh` passed again on the deployed commit |
+| `rollback-failed` | 1 | the installs at the tip failed, and so did those on the deployed commit; the units are as far as the second attempt got |
 | `updated` | 0 | both install scripts and `verify.sh` passed on the new commit |
 
 Every run writes its outcome to `/var/lib/alcove-host-pull/status`, renamed into place and readable by all, outside `/root` and `/home` so a unit run under `ProtectHome=` can read it:
@@ -62,6 +74,8 @@ outcome=<one of the outcomes above>
 reason=<one line, also in the journal>
 time=<the run's end, UTC>
 ```
+
+After `rolled-back` or `rollback-failed`, `main_commit` is the commit whose installs failed and `reason` names the step that failed on it, then the rollback's result.
 
 `journalctl -u alcove-host-pull.service` shows each step of every run.
 
@@ -82,6 +96,17 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 
    `pull.sh` refuses to run while `/opt/alcove-broker/src` is a directory, or a link to anything but a tree under `/opt/alcove-broker/trees`.
    The broker unit's `WorkingDirectory=` has not yet been measured through the link on a host.
+
+   The moved tree is the first run's rollback target only once the deployed marker names it.
+   Write the marker only when the relay's `install.sh` last ran from a checkout at the same commit, so that a rollback reinstalls what the host ran:
+
+   ```sh
+   install -d -m 755 /var/lib/alcove-host-pull
+   printf '%s\n' "${commit}" > /var/lib/alcove-host-pull/deployed
+   ```
+
+   Without the marker, a first run whose installs fail is not rolled back.
+   The pull never removes the moved tree, because it did not create it: remove it by hand once the marker names another commit.
 2. From a checkout of this directory, as root: `./install.sh`.
    It installs `pull.sh` and `workflow-runs.mjs` under `/opt/alcove-host-pull` and the service and timer under `/etc/systemd/system`, and enables nothing.
    Run it again from a newer checkout to update the pull itself: a pull never rewrites its own copy.
@@ -90,10 +115,14 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 
 ## Limits
 
-- **No rollback.** A failed install or `verify.sh` leaves `/opt/alcove-broker/src` on the new commit with the units as far as the install got, and records `failed`; the previous tree stays under `/opt/alcove-broker/trees`.
-  The deployed marker keeps the previous commit, so the next run checks, downloads and stages the new one again from step 2 and installs it, and records `failed` again until the installs pass.
-- **Every tree is kept.** Nothing removes a tree, so each update adds one, with its `node_modules`, to the disk.
-- **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved.
+- **A failing commit is tried every day.** A commit whose installs fail is rolled back, then staged and installed again by the next day's run, until `main` moves or its installs pass.
+  Each such run restarts the relay's services twice.
+- **A rollback restores the units, not every file.** It runs the previous tree's install scripts, which converge what they install; a file the newer commit's scripts added and the older ones do not name stays on the host.
+- **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved, and a rollback runs it a second time.
+- **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `rollback-failed` leaves the tip's tree, and the next run removes it before staging. A run that ends `failed` leaves the link on the tip's tree, which stays until the link moves to another tree.
+- **Each install script is cut off after 5 minutes 15 seconds, and killed 30 seconds later if it ignores the stop.** Each runs in a session of its own, and when it fails or is cut off, the script and every descendant still in its process group are killed before the run goes on. A forward attempt and a rollback run two scripts each. A script that hangs is an ordinary failure and is rolled back. `ALCOVE_HOST_PULL_INSTALL_TIMEOUT` can only lower the bound; an unset, zero, non-numeric or larger value uses the default. `ALCOVE_HOST_PULL_KILL_AFTER` sets the wait before the kill and likewise can only lower it.
+- **A probe in its own process group is not killed.** Relay `verify.sh` runs its probes through `timeout`, which starts a process group of its own, so a probe still running when an install fails (each at most its own timeout, the longest 150 seconds) can still be running when the rollback restarts the relay. They are read-only checks.
+- **A run can still outlast `TimeoutStartSec=1h`.** A run whose unbounded steps (cosign trust fetches, restarts, git, tar and checksum steps) or many pages of push runs push it past `TimeoutStartSec` is stopped by systemd mid-step and recorded `failed`, not rolled back. The next run retries the full path, and the lag check reports it.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
 - **The tree is not signed.** Only core's build is. What binds the tree to `main` is the fetch over HTTPS from github.com and the check that the fetched commit is the tip `git ls-remote` named.
 
@@ -106,4 +135,4 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
 | `alcove-host-pull.service`, `.timer` | Run `pull.sh` daily in the window above |
 | `install.sh` | Installs the three above; enables nothing |
 
-[`scripts/host-pull.test.mjs`](../../scripts/host-pull.test.mjs) drives `pull.sh` through each outcome against a fixture host with `git`, `curl`, `cosign`, `npm`, `systemctl` and both install scripts stubbed, and holds the timer to the window above.
+[`scripts/host-pull.test.mjs`](../../scripts/host-pull.test.mjs) drives `pull.sh` through each outcome against a fixture host with `git`, `curl`, `cosign`, `npm`, `systemctl`, both install scripts and `verify.sh` stubbed, including a rollback after each failing step, a rollback that fails, and the trees kept over three updates, and holds the timer to the window above.
