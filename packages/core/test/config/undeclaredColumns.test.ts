@@ -21,7 +21,11 @@ import {
   termsAsTheRunStatedThem,
   termsStatingDeclaredPayloadSend,
 } from "../../src/payloadExchange";
-import { resolveFieldColumns } from "../../src/standardization";
+import {
+  heldBackColumnNames,
+  matchedFieldColumns,
+  resolveFieldColumns,
+} from "../../src/standardization";
 import {
   DISPLAY_TRUNCATION_MARKER,
   WARNING_MESSAGE_MAX_DISPLAY_LENGTH,
@@ -721,5 +725,103 @@ describe("an invited or recurring run keeps the declared-only rule", () => {
     );
     expect(resolved.metadata).toBe(metadata);
     expect(resolved.undeclaredColumns).toEqual(["notes"]);
+  });
+});
+
+describe("the columns the run holds back", () => {
+  const linkageTerms: LinkageTerms = {
+    version: "1.0.0",
+    identity: "alice",
+    date: "2026-01-01",
+    algorithm: "psi",
+    linkageStrategy: "cascade",
+    output: { expectsOutput: true, shareWithPartner: true },
+    deduplicate: false,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "date_of_birth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN_DOB",
+        elements: [{ field: "first_name" }, { field: "date_of_birth" }],
+      },
+    ],
+  };
+  const column = (name: string, type: Metadata[number]["type"]) => ({
+    name,
+    type,
+    role: "linkage" as const,
+    isPayload: false,
+  });
+
+  test("an authored metadata entry the input lacks is not listed", () => {
+    const metadata: Metadata = [
+      column("first_name", "first_name"),
+      column("dob", "date_of_birth"),
+      column("ghost_phone", "phone_number"),
+    ];
+    expect(
+      heldBackColumnNames(
+        metadata,
+        ["id", "first_name", "dob"],
+        linkageTerms,
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  test("the columns follow the input order, not the metadata order", () => {
+    const metadata: Metadata = [
+      column("email", "email_address"),
+      column("first_name", "first_name"),
+      column("dob", "date_of_birth"),
+      column("phone", "phone_number"),
+    ];
+    expect(
+      heldBackColumnNames(
+        metadata,
+        ["phone", "first_name", "dob", "id", "email"],
+        linkageTerms,
+        undefined,
+      ),
+    ).toEqual(["phone", "email"]);
+  });
+
+  test("a column the metadata does not declare is not listed", () => {
+    const metadata: Metadata = [
+      column("first_name", "first_name"),
+      column("dob", "date_of_birth"),
+    ];
+    expect(
+      heldBackColumnNames(
+        metadata,
+        ["first_name", "dob", "notes"],
+        linkageTerms,
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  test("the matched columns are the ones each field reads", () => {
+    const metadata: Metadata = [
+      column("first_name", "first_name"),
+      column("dob", "date_of_birth"),
+      column("date_of_birth", "date_of_birth"),
+    ];
+    expect(matchedFieldColumns(metadata, linkageTerms, undefined)).toEqual(
+      new Map([
+        ["first_name", "first_name"],
+        ["date_of_birth", "dob"],
+      ]),
+    );
+    expect(
+      heldBackColumnNames(
+        metadata,
+        ["first_name", "dob", "date_of_birth"],
+        linkageTerms,
+        undefined,
+      ),
+    ).toEqual(["date_of_birth"]);
   });
 });

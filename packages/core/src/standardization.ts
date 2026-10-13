@@ -2142,30 +2142,51 @@ export function resolveFieldColumns(
 }
 
 /**
- * The declared columns the run neither sends nor matches on, in metadata
- * order: not disclosed ({@link isDisclosedToPartner}) and bound by
- * {@link resolveFieldColumns} to no field a linkage key uses. In a direct run
- * these are the columns whose names Alcove recognizes as linkage keys but no
- * key of the terms reads, such as `phone`, or a second date-of-birth column.
+ * The input column each linkage field a key uses reads, by field name, as
+ * {@link resolveFieldColumns} binds it. A field bound to no column is absent.
  */
-export function heldBackColumnNames(
+export function matchedFieldColumns(
   metadata: ColumnMetadata[],
   terms: LinkageTerms,
   standardization: Standardization | undefined,
-): Array<string> {
+): Map<string, string> {
   const resolution = resolveFieldColumns(terms, standardization, metadata);
-  const matchedColumns = new Set<string>();
+  const matched = new Map<string, string>();
   for (const key of terms.linkageKeys)
     for (const element of key.elements) {
       const column = resolution.get(element.field)?.column;
-      if (column !== undefined) matchedColumns.add(column);
+      if (column !== undefined) matched.set(element.field, column);
     }
-  return metadata
-    .filter(
-      (column) =>
-        !isDisclosedToPartner(column) && !matchedColumns.has(column.name),
-    )
-    .map((column) => column.name);
+  return matched;
+}
+
+/**
+ * The columns of the input the run neither sends nor matches on, in input
+ * order: declared in `metadata` and present in `inputColumns`, not disclosed
+ * ({@link isDisclosedToPartner}), and bound by {@link resolveFieldColumns} to
+ * no field a linkage key uses. A `metadata` entry the input lacks is not
+ * listed. In a direct run these are the columns whose names Alcove recognizes
+ * as linkage keys but no key of the terms reads, such as `phone`, or a second
+ * date-of-birth column.
+ */
+export function heldBackColumnNames(
+  metadata: ColumnMetadata[],
+  inputColumns: ReadonlyArray<string>,
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): Array<string> {
+  const matchedColumns = new Set(
+    matchedFieldColumns(metadata, terms, standardization).values(),
+  );
+  const declared = new Map(metadata.map((column) => [column.name, column]));
+  return inputColumns.filter((name) => {
+    const column = declared.get(name);
+    return (
+      column !== undefined &&
+      !isDisclosedToPartner(column) &&
+      !matchedColumns.has(name)
+    );
+  });
 }
 
 /**

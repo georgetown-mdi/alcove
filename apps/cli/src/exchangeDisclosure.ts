@@ -16,6 +16,8 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   disclosedColumnNames,
   heldBackColumnNames,
+  matchedFieldColumns,
+  matchedFieldsWithColumns,
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
   redactAndSanitizeForDisplay,
@@ -202,12 +204,14 @@ function displayContradictedRuleSetCitation(
  *
  * `standardization` is the run's authored one, `undefined` where it has none:
  * it decides which column each linkage field reads, so which declared columns
- * the run holds back ({@link heldBackColumnNames}).
+ * the run holds back ({@link heldBackColumnNames}). `inputColumns` is the
+ * header the run read, in input order, which the held back line lists from.
  */
 export function renderExchangeDisclosure(
   emit: ConsentSurfaceSink,
   linkageTerms: LinkageTerms,
   metadata: Metadata,
+  inputColumns: ReadonlyArray<string>,
   standardization: Standardization | undefined,
 ): void {
   const summary = summarizeInvitation({ linkageTerms });
@@ -318,12 +322,35 @@ export function renderExchangeDisclosure(
     emit(`    ${CONSENT_FACTS.candidateSetChainsGrouping.note}`);
   }
 
-  if (summary.matchedFields.length > 0)
+  // The summary's own labels, each followed by the input column it reads where
+  // that column's name differs, so the line names the column matched as the
+  // held back line names the columns left out.
+  const matched = matchedFieldsWithColumns(
+    linkageTerms,
+    matchedFieldColumns(metadata, linkageTerms, standardization),
+  );
+  if (matched.length > 0)
     emit(
       `  ${marked("matched on", "matchedFields")}: ` +
-        summary.matchedFields.join(", "),
+        matched
+          .map(({ label, columns }) => {
+            const named = columns.filter(
+              (column) => spokenForm(column) !== spokenForm(label),
+            );
+            return named.length === 0
+              ? label
+              : `${label} (${named
+                  .map((column) => redactAndSanitizeForDisplay(column))
+                  .join(", ")})`;
+          })
+          .join(", "),
     );
-  const heldBack = heldBackColumnNames(metadata, linkageTerms, standardization);
+  const heldBack = heldBackColumnNames(
+    metadata,
+    inputColumns,
+    linkageTerms,
+    standardization,
+  );
   if (heldBack.length > 0)
     emit(
       `  ${marked("held back", "heldBackColumnsSelfAuthored")}: ` +
@@ -503,12 +530,24 @@ export function lastRecordedDisclosureDigest(
 }
 
 /**
+ * A name as it reads aloud, for deciding whether a column name says what its
+ * field label already does: `first_name` and `First Name` both read as
+ * `first name`. Used only to choose whether the matched on line names a
+ * column, never to match or bind one.
+ */
+function spokenForm(name: string): string {
+  return name.replace(/[_-]+/g, " ").trim().toLowerCase();
+}
+
+/**
  * Show what this run will disclose and match on, before any credential, terms,
  * or data are sent.
  */
 export function displayExchangeDisclosure(params: {
   /** The metadata this run resolved -- the source of what it would transmit. */
   metadata: Metadata;
+  /** The input header this run read, in input order. */
+  inputColumns: ReadonlyArray<string>;
   /** The terms this run resolved, which decide what it matches on. */
   linkageTerms: LinkageTerms;
   /** The configuration's standardization, which binds fields to columns. */
@@ -523,6 +562,7 @@ export function displayExchangeDisclosure(params: {
 }): void {
   const {
     metadata,
+    inputColumns,
     linkageTerms,
     standardization,
     connection,
@@ -532,7 +572,13 @@ export function displayExchangeDisclosure(params: {
   } = params;
   showDisclosure({
     render: (emit) =>
-      renderExchangeDisclosure(emit, linkageTerms, metadata, standardization),
+      renderExchangeDisclosure(
+        emit,
+        linkageTerms,
+        metadata,
+        inputColumns,
+        standardization,
+      ),
     linkageTerms,
     connection,
     logFile,
@@ -569,13 +615,15 @@ export function displayZeroSetupDisclosure(params: {
 }): void {
   const { prepared, connection, logFile, log, unattended } = params;
   // A zero-setup run authors no standardization: each field reads the column
-  // its type infers, as the prepare step bound it.
+  // its type infers, as the prepare step bound it. Its direct-mode metadata
+  // declares every column of the header it read, in header order.
   showDisclosure({
     render: (emit) =>
       renderExchangeDisclosure(
         emit,
         prepared.linkageTerms,
         prepared.metadata,
+        prepared.metadata.map((column) => column.name),
         undefined,
       ),
     linkageTerms: prepared.linkageTerms,

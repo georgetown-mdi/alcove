@@ -102,6 +102,7 @@ function rendered(terms: LinkageTerms, columns: string[] = []): string[] {
     (line) => lines.push(line),
     terms,
     metadataDisclosing(columns),
+    ["first_name", "last_name", ...columns],
     undefined,
   );
   return lines;
@@ -386,6 +387,7 @@ test("no name in the display puts a control character or a digest line into the 
     (line) => lines.push(line),
     terms,
     metadata,
+    metadata.map((column) => column.name),
     undefined,
   );
   // Held non-vacuous: each hostile name is in the display, escaped.
@@ -403,6 +405,7 @@ test("no name in the display puts a control character or a digest line into the 
   try {
     displayExchangeDisclosure({
       metadata,
+      inputColumns: metadata.map((column) => column.name),
       linkageTerms: terms,
       standardization: undefined,
       connection: TEST_CONNECTION,
@@ -650,6 +653,7 @@ function renderedForHeader(
     (line) => lines.push(line),
     localTerms,
     inferMetadata(header, [], { mode: "direct" }),
+    header,
     standardization,
   );
   return lines;
@@ -690,6 +694,59 @@ test("a column a standardization binds to a key's field is not held back", () =>
   expect(
     renderedForHeader(["first_name", "last_name", "lname"], standardization),
   ).toContain("  held back (enforced): last_name");
+});
+
+test("the matched-on line names a column whose name differs from the field label", () => {
+  const dobTerms: LinkageTerms = {
+    ...localTerms,
+    linkageFields: [
+      { name: "first_name", type: "first_name" },
+      { name: "date_of_birth", type: "date_of_birth" },
+    ],
+    linkageKeys: [
+      {
+        name: "FN_DOB",
+        elements: [{ field: "first_name" }, { field: "date_of_birth" }],
+      },
+    ],
+  };
+  const header = ["id", "first_name", "dob", "date_of_birth", "notes"];
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    dobTerms,
+    inferMetadata(header, [], { mode: "direct" }),
+    header,
+    undefined,
+  );
+  expect(lines).toContain(
+    "  matched on (enforced): first name, date of birth (dob)",
+  );
+  expect(lines).toContain("  held back (enforced): date_of_birth");
+});
+
+test("a held-back line lists only columns the input holds, in input order", () => {
+  const metadata: Metadata = [
+    ...inferMetadata(["email", "first_name", "last_name"], [], {
+      mode: "direct",
+    }),
+    {
+      name: "ghost_phone",
+      type: "phone_number",
+      role: "linkage",
+      isPayload: false,
+    },
+  ];
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    localTerms,
+    metadata,
+    ["last_name", "first_name", "email"],
+    undefined,
+  );
+  expect(lines).toContain("  held back (enforced): email");
+  expect(lines.join("\n")).not.toContain("ghost_phone");
 });
 
 test("a file whose recognized columns all feed a key states no held-back line", () => {
@@ -1026,6 +1083,7 @@ test("a different identity or destination prints a display an unattended run had
     try {
       displayExchangeDisclosure({
         metadata: metadataDisclosing([]),
+        inputColumns: ["first_name", "last_name"],
         linkageTerms: terms,
         standardization: undefined,
         connection,
