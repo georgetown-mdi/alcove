@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, relative } from "node:path";
+import { basename, delimiter, dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createGitFixtures } from "./lib/gitFixture.mjs";
@@ -110,6 +110,10 @@ function run(args, { bin, env = {}, cwd } = {}) {
 
 const newDir = () => join(fixtures.makeTempDir("host-build-out-"), "alcove");
 
+// The script prints --dir with its parent resolved by `pwd -P`, so a temp dir
+// under a symlink (macOS /var -> /private/var) shows as its real path.
+const printedAs = (dir) => join(realpathSync(dirname(dir)), basename(dir));
+
 describe("host-build.sh arguments", () => {
   it("prints its usage on --help", () => {
     const result = run(["--help"]);
@@ -147,7 +151,7 @@ describe("host-build.sh arguments", () => {
     const result = run(["--from", sourceRepo().dir, "--dir", dir], { bin });
     expect(result.status).toBe(1);
     expect(result.stderrLines).toEqual([
-      `host-build: ${dir} already exists and is not empty; pass a new --dir.`,
+      `host-build: ${printedAs(dir)} already exists and is not empty; pass a new --dir.`,
     ]);
     expect(readdirSync(dir)).toEqual(["keep.txt"]);
     expect(calls()).toEqual([]);
@@ -191,14 +195,15 @@ describe("host-build.sh without Docker", () => {
     const result = run(["--from", source.dir, "--dir", dir], { bin });
     expect(result.stderrLines).toEqual([]);
     expect(result.status).toBe(0);
+    const printed = printedAs(dir);
     expect(calls()).toEqual([
-      `npm ci --no-audit --no-fund @ ${dir}`,
-      `npm run build -w packages/core @ ${dir}`,
-      `npm run build -w packages/cli-contract @ ${dir}`,
-      `npm run build -w apps/cli @ ${dir}`,
+      `npm ci --no-audit --no-fund @ ${printed}`,
+      `npm run build -w packages/core @ ${printed}`,
+      `npm run build -w packages/cli-contract @ ${printed}`,
+      `npm run build -w apps/cli @ ${printed}`,
     ]);
     expect(result.stdout.trim().split("\n").at(-1)).toBe(
-      `host-build: done: commit ${source.first} built in ${dir}`,
+      `host-build: done: commit ${source.first} built in ${printed}`,
     );
   });
 });
@@ -314,8 +319,8 @@ describe("host-build.sh clone and build", () => {
       `host-build: DOCKER_DEFAULT_PLATFORM=linux/riscv64 is set in this shell; images build for ${HOST_PLATFORM}.`,
     );
     expect(calls().slice(4)).toEqual([
-      `docker buildx build -f Dockerfile.fips --platform ${HOST_PLATFORM} --progress=plain -t alcove:fips-probe --load . @ ${dir}`,
-      `docker buildx build -f Dockerfile --platform ${HOST_PLATFORM} --progress=plain -t alcove:probe --load . @ ${dir}`,
+      `docker buildx build -f Dockerfile.fips --platform ${HOST_PLATFORM} --progress=plain -t alcove:fips-probe --load . @ ${printedAs(dir)}`,
+      `docker buildx build -f Dockerfile --platform ${HOST_PLATFORM} --progress=plain -t alcove:probe --load . @ ${printedAs(dir)}`,
     ]);
   });
 
@@ -338,7 +343,7 @@ describe("host-build.sh clone and build", () => {
     );
     expect(result.status).toBe(0);
     expect(calls()).toEqual([
-      `docker buildx build -f Dockerfile --platform linux/amd64 --progress=plain -t alcove:probe --load . @ ${dir}`,
+      `docker buildx build -f Dockerfile --platform linux/amd64 --progress=plain -t alcove:probe --load . @ ${printedAs(dir)}`,
     ]);
   });
 
