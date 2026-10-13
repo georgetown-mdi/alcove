@@ -551,7 +551,9 @@ export {
 } from "./config/metadata";
 export type {
   ColumnMetadata,
+  InferMetadataOptions,
   Metadata,
+  MetadataInferenceMode,
   OwnColumnSelection,
 } from "./config/metadata";
 export {

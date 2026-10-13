@@ -92,7 +92,11 @@ import {
   UsageError,
   AlgorithmDivergenceError,
 } from "./errors.js";
-import type { Metadata, OwnColumnSelection } from "./config/metadata.js";
+import type {
+  Metadata,
+  MetadataInferenceMode,
+  OwnColumnSelection,
+} from "./config/metadata.js";
 import type { Standardization } from "./config/standardizationSchema.js";
 import { safeParseLinkageTerms } from "./config/linkageTermsSchema.js";
 import type { LinkageTerms } from "./config/linkageTermsSchema.js";
@@ -524,6 +528,11 @@ export function resolveLinkageCardinality(
  * naming it rather than the header-row causes; one handed a column list passes
  * an empty list, saying so at the call site.
  *
+ * `inferenceMode` is the rule metadata inferred from the header follows
+ * ({@link MetadataInferenceMode}): `direct` for a run on an input file with
+ * no invitation or configuration, and the `declaredOnly` default for every
+ * other exchange. It does not apply to a spec that holds a `metadata` block.
+ *
  * Also resolves the input columns the metadata does not declare
  * ({@link undeclaredColumnNames}), which the run does not send, and refuses
  * metadata that declares a sent column the input does not hold
@@ -534,6 +543,7 @@ export function resolveExchangeInputs(
   identity: string | undefined,
   columnNames: Array<string>,
   sanitizedColumnPositions: ReadonlyArray<number>,
+  inferenceMode: MetadataInferenceMode = "declaredOnly",
 ): {
   metadata: Metadata;
   metadataInferred: boolean;
@@ -543,7 +553,9 @@ export function resolveExchangeInputs(
   const metadataInferred = exchangeDataSpec.metadata === undefined;
   const metadata =
     exchangeDataSpec.metadata ??
-    inferMetadata(columnNames, sanitizedColumnPositions);
+    inferMetadata(columnNames, sanitizedColumnPositions, {
+      mode: inferenceMode,
+    });
   assertDeclaredPayloadColumnsPresent(metadata, columnNames);
   return {
     metadata,
@@ -601,6 +613,10 @@ export function undeclaredColumnsForOwnResult(
  *                the header-row causes. Defaults to none for a caller handed a
  *                column list rather than a read of its own, which then states
  *                those causes.
+ * @param inferenceMode The rule metadata inferred from the header follows
+ *                ({@link resolveExchangeInputs}): `direct` for a run on an
+ *                input file with no invitation or configuration, else the
+ *                `declaredOnly` default.
  */
 export function prepareForExchange(
   exchangeDataSpec: ExchangeDataSpec,
@@ -608,6 +624,7 @@ export function prepareForExchange(
   rawRows: Array<CSVRow>,
   columnNames: Array<string>,
   sanitizedColumnPositions: ReadonlyArray<number> = [],
+  inferenceMode: MetadataInferenceMode = "declaredOnly",
 ): PreparedExchange {
   const log = getLogger("exchange");
 
@@ -617,6 +634,7 @@ export function prepareForExchange(
       identity,
       columnNames,
       sanitizedColumnPositions,
+      inferenceMode,
     );
 
   // Fail closed on an algorithm with no run path before any credential,

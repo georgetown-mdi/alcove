@@ -15,7 +15,12 @@ import {
   resolveExchangeInputs,
   undeclaredColumnsForOwnResult,
 } from "../../src/exchange";
-import { buildOutputTable, preparePayload } from "../../src/payloadExchange";
+import {
+  buildOutputTable,
+  preparePayload,
+  termsAsTheRunStatedThem,
+  termsStatingDeclaredPayloadSend,
+} from "../../src/payloadExchange";
 import { resolveFieldColumns } from "../../src/standardization";
 import {
   DISPLAY_TRUNCATION_MARKER,
@@ -502,4 +507,204 @@ test("an input with no recognized column gets default terms with no key", () => 
   );
   expect(linkageTerms.linkageKeys).toEqual([]);
   expect(undeclaredColumns).toEqual(["first_name|last_name|dob"]);
+});
+
+describe("direct-mode inference sends every column that is not a linkage key", () => {
+  const columns = [
+    "first_name",
+    "last_name",
+    "dob",
+    "ssn",
+    "phone",
+    "email",
+    "zip",
+    "notes",
+    "case_id",
+    "household_id",
+  ];
+  const row = {
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "1980-01-02",
+    ssn: "123456789",
+    phone: "5551234567",
+    email: "ann@example.org",
+    zip: "20001",
+    notes: "x",
+    case_id: "c1",
+    household_id: "h1",
+  };
+  const linkageKeyColumns = [
+    "first_name",
+    "last_name",
+    "dob",
+    "ssn",
+    "phone",
+    "email",
+    "zip",
+  ];
+
+  test("a non-key column and every _id column are sent; no linkage key is", () => {
+    const metadata = inferMetadata(columns, [], { mode: "direct" });
+    expect(disclosedColumnNames(metadata)).toEqual([
+      "notes",
+      "case_id",
+      "household_id",
+    ]);
+    for (const name of linkageKeyColumns)
+      expect(metadata.find((column) => column.name === name)).toMatchObject({
+        role: "linkage",
+        isPayload: false,
+      });
+  });
+
+  test("several identifier columns are all sent, and id keeps the identifier role", () => {
+    expect(
+      inferMetadata(["id", "case_id", "person_id", "dob"], [], {
+        mode: "direct",
+      }),
+    ).toEqual([
+      { name: "id", type: "identifier", role: "identifier", isPayload: true },
+      { name: "case_id", type: "identifier", role: "payload", isPayload: true },
+      {
+        name: "person_id",
+        type: "identifier",
+        role: "payload",
+        isPayload: true,
+      },
+      {
+        name: "dob",
+        type: "date_of_birth",
+        role: "linkage",
+        isPayload: false,
+      },
+    ]);
+  });
+
+  test("a sole _id column is the identifier and is sent", () => {
+    expect(
+      inferMetadata(["case_id", "dob"], [], { mode: "direct" }),
+    ).toContainEqual({
+      name: "case_id",
+      type: "identifier",
+      role: "identifier",
+      isPayload: true,
+    });
+  });
+
+  test("leaves no column undeclared, whatever the header", () => {
+    const headers = [
+      columns,
+      ["notes"],
+      ["constructor", "__proto__", "toString"],
+      ["ID", "Identifier", "x_ID", "a", "a"],
+      ["first_name|last_name|dob"],
+    ];
+    for (const header of headers) {
+      expect(
+        inferMetadataForEveryColumn(header, [], { mode: "direct" }).map(
+          (column) => column.role,
+        ),
+      ).not.toContain("ignored");
+      expect(
+        undeclaredColumnNames(
+          header,
+          inferMetadata(header, [], { mode: "direct" }),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  test("refuses an empty name as the default mode does", () => {
+    expect(() => inferMetadata(["a", ""], [], { mode: "direct" })).toThrow(
+      UsageError,
+    );
+  });
+
+  test("prepareForExchange in direct mode puts those columns on the payload frame", () => {
+    const prepared = prepareForExchange(
+      {},
+      "alice",
+      [row],
+      columns,
+      [],
+      "direct",
+    );
+    expect(prepared.undeclaredColumns).toEqual([]);
+    const payload = preparePayload([row], prepared.metadata, [[0], [0]]);
+    expect(payload).toMatchObject({
+      hasData: true,
+      columns: ["notes", "case_id", "household_id"],
+    });
+  });
+
+  test("the terms a direct run states name those columns as its send set", () => {
+    const { metadata, linkageTerms } = resolveExchangeInputs(
+      {},
+      "alice",
+      columns,
+      [],
+      "direct",
+    );
+    expect(
+      termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send,
+    ).toEqual([
+      { name: "notes" },
+      { name: "case_id" },
+      { name: "household_id" },
+    ]);
+  });
+});
+
+describe("an invited or recurring run keeps the declared-only rule", () => {
+  const columns = ["id", "first_name", "last_name", "dob", "notes", "case_id"];
+  const row = {
+    id: "1",
+    first_name: "Ann",
+    last_name: "Lee",
+    dob: "1980-01-02",
+    notes: "x",
+    case_id: "c1",
+  };
+
+  test("prepareForExchange by default withholds a column the metadata does not name", () => {
+    const prepared = prepareForExchange({}, "alice", [row], columns);
+    expect(prepared.undeclaredColumns).toEqual(["notes", "case_id"]);
+    expect(preparePayload([row], prepared.metadata, [[0], [0]])).toMatchObject({
+      hasData: true,
+      columns: ["id"],
+    });
+  });
+
+  test("a configuration with no metadata block states the same payload.send", () => {
+    const { metadata, linkageTerms } = resolveExchangeInputs(
+      {},
+      "alice",
+      columns,
+      [],
+    );
+    expect(
+      termsStatingDeclaredPayloadSend(linkageTerms, metadata).payload?.send,
+    ).toEqual([{ name: "id" }]);
+    expect(
+      termsAsTheRunStatedThem(linkageTerms, {
+        inputHeader: { columns, sanitizedColumnPositions: [] },
+      }).terms.payload?.send,
+    ).toEqual([{ name: "id" }]);
+  });
+
+  test("an authored metadata block is used as written in direct mode too", () => {
+    const metadata: Metadata = [
+      { name: "dob", type: "date_of_birth", role: "linkage", isPayload: false },
+    ];
+    const resolved = resolveExchangeInputs(
+      { metadata },
+      "alice",
+      ["dob", "notes"],
+      [],
+      "direct",
+    );
+    expect(resolved.metadata).toBe(metadata);
+    expect(resolved.undeclaredColumns).toEqual(["notes"]);
+  });
 });

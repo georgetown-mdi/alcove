@@ -330,8 +330,13 @@ How a party arrives at its list, by exchange mode:
   list the acceptor consented to is the one every later run compares. An
   inviter whose own `payload.receive` is unset fills it on its first run.
 - **Zero-setup.** Neither party holds the other's metadata in advance, so the
-  first exchange compares nothing. A `--save` run fills `payload.receive` from
+  first exchange compares nothing. Each party infers its metadata in direct
+  mode, so its send set is every input column that is not a linkage key
+  ([DEFAULT_STANDARDIZATION.md](DEFAULT_STANDARDIZATION.md#type-inference-from-column-names)).
+  A `--save` run fills `payload.receive` from
   the partner's declared send set and writes it into the config it saves.
+  It writes its own inferred metadata there too, so the recurring run that
+  follows states the same send set.
 - **Recurring.** Both parties' configurations hold both lists, and each run's
   terms exchange compares them.
 

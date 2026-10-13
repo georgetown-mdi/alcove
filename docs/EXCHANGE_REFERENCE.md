@@ -1368,7 +1368,7 @@ Optional field-level descriptions of the input dataset. If omitted, semantic typ
 
 What a party sends is exactly what its metadata declares:
 
-- A column the metadata does not name is undeclared. Where the block is inferred, that is every column that inference does not recognize (see the table below). An undeclared column is never sent and never indexes a record. It is not matched on unless a standardization transform names it as its `input`, in which case it is used for matching exactly as that transform states.
+- A column the metadata does not name is undeclared. Where the block is inferred for a configuration or an invitation, that is every column that inference does not recognize (see the table below); a [quick exchange](CLI.md#quick-exchange) infers an entry for every column, so it has none. An undeclared column is never sent and never indexes a record. It is not matched on unless a standardization transform names it as its `input`, in which case it is used for matching exactly as that transform states.
 - Before it connects, a run names its undeclared columns: `alcove` logs a warning and, with `--event-stream`, emits a `warning` event with source `undeclaredColumns` ([CLI_EVENTS.md](spec/CLI_EVENTS.md#warning-sources)); the console and the web app show the same notice on the run. An input with none shows nothing. To send one, declare it here with `is_payload: true`; to leave it out without the notice, declare it with `role: ignored`.
 - A column the metadata declares as sent (`is_payload: true` with a role other than `ignored`) that the input file does not hold is refused before the run connects, naming the column, and `alcove exchange` exits 64. Add the column to the input file, or set `is_payload: false` on it.
 
@@ -1431,22 +1431,25 @@ metadata:
 
 **Authoring a `metadata` block is all-or-nothing per column.** `type`, `role`, and `is_payload` are each required on every column the block lists; there is no per-field fallback, and a column missing any of them is rejected at config parse. Inference is the alternative to authoring, not a filler for a partial block: it runs only when the whole `metadata` block is absent, over the input file's header row.
 
-What inference assigns, when it runs:
+What inference assigns, when it runs, depends on the kind of exchange:
 
-| Column | `type` | `role` | `is_payload` |
-|--------|--------|--------|--------------|
-| A recognized linkage name (`ssn`, `dob`, `first_name`, `phone`, `email`, `zip`, and their aliases) | the matching semantic type | `linkage` | `false` |
-| `id` or `identifier` | `identifier` | `identifier` | `true` |
-| A name ending in `_id` | `identifier` | `identifier` when it is the header's only `identifier`-typed column; otherwise undeclared | `false` |
-| Anything else | undeclared: no entry, not sent | | |
+- **Configuration or invitation.** An `alcove exchange` configuration with no `metadata` block, and an invitation composed from an input file, infer only the columns they recognize; every other column is undeclared and not sent.
+- **Quick exchange.** A run on an input file with no invitation and no configuration -- the [quick exchange](CLI.md#quick-exchange) on the command line and in the console -- declares every column: each column that is not a linkage key is sent, every id column among them.
+
+| Column | `type` | Configuration or invitation: `role`, `is_payload` | Quick exchange: `role`, `is_payload` |
+|--------|--------|------------------------------------|--------------------------------------|
+| A recognized linkage name (`ssn`, `dob`, `first_name`, `phone`, `email`, `zip`, and their aliases) | the matching semantic type | `linkage`, `false` | `linkage`, `false` |
+| `id` or `identifier` | `identifier` | `identifier`, `true` | `identifier`, `true` |
+| A name ending in `_id` | `identifier` | `identifier` when it is the header's only `identifier`-typed column, otherwise undeclared; `false` | `identifier` when it is the header's only `identifier`-typed column, otherwise `payload`; `true` |
+| Anything else | `other` | undeclared: no entry, not sent | `payload`, `true` |
 
 The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names).
 
-Both identifier rows produce `type: identifier`, and that type is what decides the `role`: a header carrying exactly one `identifier`-typed column roles it `identifier` whatever its name, so a lone `case_id` indexes the records. A header carrying several gives `role: identifier` to a column named `id` or `identifier` when one is present, and to no column at all otherwise -- two `_id` columns and nothing else leaves both undeclared, so none of this party's columns indexes its own records in the result.
+Both identifier rows produce `type: identifier`, and that type is what decides the `role`: a header carrying exactly one `identifier`-typed column roles it `identifier` whatever its name, so a lone `case_id` indexes the records. A header carrying several gives `role: identifier` to a column named `id` or `identifier` when one is present, and to no column at all otherwise -- two `_id` columns and nothing else leaves both undeclared, or on a quick exchange sends both as payload, and either way none of this party's columns indexes its own records in the result.
 
-The `id` or `identifier` row is the one to check before an exchange: that inferred column is transmitted, so a party that does not intend to disclose its own record keys authors a `metadata` block and sets `is_payload: false` on it. A lone `_id`-suffixed column becomes the identifier instead, and is not transmitted.
+The `id` or `identifier` row is the one to check before an exchange: that inferred column is transmitted, so a party that does not intend to disclose its own record keys authors a `metadata` block and sets `is_payload: false` on it. A lone `_id`-suffixed column becomes the identifier instead; a quick exchange transmits it, and a configuration or invitation does not.
 
-`role` and `is_payload` are partially independent. A column used for linkage or as an identifier can also have `is_payload: true`, meaning it participates in the PSI protocol *and* is transmitted as payload for matched members. For example, a phone-number column can have `role: linkage` and `is_payload: true` so that it both links records and is delivered to the partner for matched rows. A column that is neither used for linkage nor an identifier is sent only when declared: give it `role: payload` and `is_payload: true`.
+`role` and `is_payload` are partially independent. A column used for linkage or as an identifier can also have `is_payload: true`, meaning it participates in the PSI protocol *and* is transmitted as payload for matched members. For example, a phone-number column can have `role: linkage` and `is_payload: true` so that it both links records and is delivered to the partner for matched rows. A column that is neither used for linkage nor an identifier is sent only when declared: give it `role: payload` and `is_payload: true`. A quick exchange declares every such column that way.
 
 `role: ignored` declares a column present in the input but used for nothing. An ignored column is never used for linkage, never treated as an identifier, and never transmitted as payload -- the role wins over `is_payload`, so an ignored column is not sent even if it has `is_payload: true`. An undeclared column is treated the same way, except that a standardization transform naming it as its `input` matches on it. Declaring it `ignored` states that this exchange must not touch it -- a transform naming it then binds nothing -- and drops the column from the run's notice. Inference never assigns `ignored`; the web app's and console's column settings list an undeclared column as ignored so it can be chosen.
 

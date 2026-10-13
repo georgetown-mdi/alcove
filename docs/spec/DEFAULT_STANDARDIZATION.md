@@ -606,12 +606,19 @@ Each multi-word type lists its snake_case spelling and its no-separator
 spelling, so a single-token column export (`firstname`, `dateofbirth`) infers
 as well as a separated one.
 
-Two rules sit outside the table:
+Two rules sit outside the table, and each depends on the inference mode.
+Direct mode is a run on an input file with no invitation and no
+configuration: the CLI's zero-setup run and the console's quick exchange.
+Every other inference is declared-only: a configuration with no `metadata`
+block, and an invitation composed from an input file.
 
-- A name absent from the table but ending in `_id` infers `type: identifier`,
-  `is_payload: false`, and has a role only if the second pass below makes it
-  the identifier.
-- Any other name absent from the table infers nothing.
+- A name absent from the table but ending in `_id` infers `type: identifier`.
+  Declared-only, it infers `is_payload: false` and has a role only if the
+  second pass below makes it the identifier. In direct mode it infers
+  `role: payload` and `is_payload: true`, and the second pass may still make it
+  the identifier, sent.
+- Any other name absent from the table infers nothing when declared-only, and
+  `type: other`, `role: payload`, `is_payload: true` in direct mode.
 
 A second pass then decides which column indexes this party's own records: a
 header with exactly one `identifier`-typed column promotes that column to
@@ -619,10 +626,13 @@ header with exactly one `identifier`-typed column promotes that column to
 promotion to a column literally named `id` or `identifier` if one is present,
 and to no column at all otherwise.
 
-A column that ends the second pass with no role is undeclared: the inferred
+A column that ends the second pass with no role is undeclared, which only
+declared-only inference leaves: the inferred
 metadata has no entry for it, so the run does not index by it or send it, and
-matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares, and the
-table's `identifier` row is the one inferred entry with `is_payload: true`. The
+matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
+Declared-only, the table's `identifier` row is the one inferred entry with
+`is_payload: true`; in direct mode every column the table does not list is sent
+as well, and every linkage-key row still infers `is_payload: false`. The
 run names its undeclared columns before it connects; the operator-facing
 detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
 

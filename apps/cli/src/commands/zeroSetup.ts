@@ -93,7 +93,6 @@ import {
   runProtocol,
   checkRunMemoryBudget,
   emitPrepareRefusal,
-  warnUndeclaredColumns,
   WEBRTC_RENDEZVOUS_SECRET_REQUIRED,
   type ProtocolConnectionConfig,
 } from "../protocol";
@@ -119,20 +118,12 @@ export const QUICK_EXCHANGE_USAGE =
   "  $0 [--save] [options] URL INPUT_FILE [OUTPUT_FOLDER]\n\n" +
   "Run 'alcove COMMAND --help' for a command's own options. Without a\n" +
   "command, alcove runs a quick exchange through the server or shared\n" +
-  "folder at URL; the options below are the quick exchange's. A quick\n" +
-  "exchange sends matches only: your id for each matched record, and no\n" +
-  "other column. Each step waits up to one poll interval\n" +
-  "(--polling-frequency), so even a small practice run takes a minute or\n" +
-  "more.";
-
-/**
- * How a quick exchange's undeclared-columns notice ends: the run reads no
- * configuration, so the remedy is to write one and run from it.
- */
-export const QUICK_EXCHANGE_UNDECLARED_REMEDY =
-  "A quick exchange sends matches only. To send one of these columns, run " +
-  "'alcove init' with this run's URL and input file, uncomment the column's " +
-  "entry under metadata in the file it writes, and run 'alcove exchange'.";
+  "folder at URL; the options below are the quick exchange's. For each\n" +
+  "matched record, a quick exchange sends your partner every column that\n" +
+  "is not a linkage key, id columns included. Linkage keys (names, date of\n" +
+  "birth, SSN, phone, email, ZIP) are matched on and never sent. Each step\n" +
+  "waits up to one poll interval (--polling-frequency), so even a small\n" +
+  "practice run takes a minute or more.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -159,8 +150,9 @@ export function builder(cmd: Argv): Argv {
               "Both parties run the quick exchange against the same server URL.\n" +
               "Linkage terms are inferred from each party's input file. No\n" +
               "configuration files are required or written unless --save is given.\n" +
-              "It sends matches only: your id for each matched record, and no\n" +
-              "other column; to send columns, write a configuration with\n" +
+              "For each matched record it sends every column that is not a\n" +
+              "linkage key, id columns included; linkage keys are matched on and\n" +
+              "never sent. To choose the columns sent, write a configuration with\n" +
               "'alcove init URL INPUT_FILE' and run 'alcove exchange'. Each step\n" +
               "waits up to one poll interval (--polling-frequency), so even a\n" +
               "small practice run takes a minute or more.\n" +
@@ -440,13 +432,15 @@ async function prepareDataset(
   );
   // The prepare resolves the metadata from this read's own columns, so it takes
   // this read's changed positions with them: a header the removal emptied is
-  // refused naming the removal rather than the header-row causes.
+  // refused naming the removal rather than the header-row causes. The direct
+  // mode declares every column, so the run raises no undeclared-columns notice.
   const prepared = prepareForExchange(
     {},
     identity,
     rawRows,
     columns,
     sanitizedColumnPositions,
+    "direct",
   );
   // Apply the operator's --linkage-strategy and --deduplicate onto the terms
   // prepareForExchange authored (a no-op for cascade and for the closed
@@ -856,18 +850,6 @@ export async function handler(argv: Arguments): Promise<void> {
         connection,
         options.serverProvisionRead,
       );
-      // Raised here, before the host-key step, so the undeclared-columns notice
-      // precedes that step's probe connection, as in `alcove exchange` (see
-      // docs/spec/CLI_EVENTS.md).
-      const undeclaredColumnsWarned = warnUndeclaredColumns({
-        prepared,
-        alreadyWarned: false,
-        remedy: QUICK_EXCHANGE_UNDECLARED_REMEDY,
-        log,
-        emit: (fn) => {
-          if (eventStreamEmitter !== undefined) fn(eventStreamEmitter);
-        },
-      });
       let memoryBudgetReported = false;
       try {
         checkRunMemoryBudget({
@@ -983,7 +965,6 @@ export async function handler(argv: Arguments): Promise<void> {
           interactive,
           log,
         }),
-        undeclaredColumnsWarned,
         memoryBudgetReported,
         writeOutcomeLine: outcomeLineWriter(log, writePlainLine),
         fileSyncRuntime: {
