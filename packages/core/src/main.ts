@@ -582,6 +582,7 @@ export type {
 } from "./records/signingIdentity";
 export {
   FAN_OUT_FUNCTION_NAMES,
+  heldBackColumnNames,
   STANDARDIZATION_FUNCTION_DESCRIPTORS,
   StandardizedField,
   runPipeline,

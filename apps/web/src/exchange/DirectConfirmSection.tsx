@@ -162,7 +162,9 @@ export function DirectConfirmSection({
   // flow for choosing which columns are shared.
   const overlongAlert =
     preview.overlongDisclosedColumns.length > 0
-      ? overlongColumnsAlert(preview.overlongDisclosedColumns)
+      ? overlongColumnsAlert(preview.overlongDisclosedColumns, {
+          canWithhold: false,
+        })
       : undefined;
 
   // What the parse removed from this file's header, stated on the screen the

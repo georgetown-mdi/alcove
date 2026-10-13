@@ -122,11 +122,12 @@ export const QUICK_EXCHANGE_USAGE =
   "matched record, a quick exchange sends your partner every column that\n" +
   "is not a linkage key, id columns included. Columns whose names Alcove\n" +
   "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
-  "phone, email, zip) are matched on and never sent; a column under\n" +
-  "another name is sent, and the display shown before the run lists\n" +
-  "every column it sends. Each step waits up to one poll interval\n" +
-  "(--polling-frequency), so even a small practice run takes a minute\n" +
-  "or more.";
+  "phone, email, zip) are never sent: the ones a built-in key uses are\n" +
+  "matched on and the rest are held back. A column under another name\n" +
+  "is sent. The display shown before the run lists the columns it\n" +
+  "sends and the ones it holds back. Each step waits up to one poll\n" +
+  "interval (--polling-frequency), so even a small practice run takes a\n" +
+  "minute or more.";
 
 /** Logged when a quick exchange starts. */
 export const QUICK_EXCHANGE_TRUST_NOTICE =
@@ -156,10 +157,11 @@ export function builder(cmd: Argv): Argv {
               "For each matched record it sends every column that is not a\n" +
               "linkage key, id columns included. Columns whose names Alcove\n" +
               "recognizes as linkage keys (such as first_name, date_of_birth, ssn,\n" +
-              "phone, email, zip) are matched on and never sent; a column under\n" +
-              "another name is sent, and the display shown before the run lists\n" +
-              "every column it sends. To choose the columns sent, write a\n" +
-              "configuration with 'alcove init URL INPUT_FILE' and run\n" +
+              "phone, email, zip) are never sent: the ones a built-in key uses\n" +
+              "are matched on and the rest are held back. A column under another\n" +
+              "name is sent. The display shown before the run lists the columns\n" +
+              "it sends and the ones it holds back. To choose the columns sent,\n" +
+              "write a configuration with 'alcove init URL INPUT_FILE' and run\n" +
               "'alcove exchange'. Each step waits up to one poll interval\n" +
               "(--polling-frequency), so even a small practice run takes a minute\n" +
               "or more.\n" +

@@ -12,6 +12,7 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   DEFAULT_LINKAGE_RULE_SET,
+  inferMetadata,
   LINKAGE_RULE_SET_VERDICT_COPY,
   linkageRuleSetVerdictNote,
   setDiagnosticSink,
@@ -20,7 +21,12 @@ import {
   SELF_AUTHORED_EXCHANGE_FACTS,
   consentRepresentationProbes,
 } from "@alcove/core/testing";
-import type { ExchangeDataSpec, LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  ExchangeDataSpec,
+  LinkageTerms,
+  Metadata,
+  Standardization,
+} from "@alcove/core";
 import type { ConsentFact } from "@alcove/core/testing";
 
 import { prepareDataset } from "../../src/commands/exchange";
@@ -96,6 +102,7 @@ function rendered(terms: LinkageTerms, columns: string[] = []): string[] {
     (line) => lines.push(line),
     terms,
     metadataDisclosing(columns),
+    undefined,
   );
   return lines;
 }
@@ -364,14 +371,28 @@ test("no name in the display puts a control character or a digest line into the 
     ...localTerms,
     linkageKeys: [{ ...localTerms.linkageKeys[0], name: hostile("FN_LN") }],
   };
-  const metadata = metadataDisclosing([hostile("diagnosis")]);
+  const metadata: Metadata = [
+    ...metadataDisclosing([hostile("diagnosis")]),
+    {
+      name: hostile("phone"),
+      type: "phone_number",
+      role: "linkage",
+      isPayload: false,
+    },
+  ];
 
   const lines: string[] = [];
-  renderExchangeDisclosure((line) => lines.push(line), terms, metadata);
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    terms,
+    metadata,
+    undefined,
+  );
   // Held non-vacuous: each hostile name is in the display, escaped.
   const shown = lines.join("\n");
   expect(shown).toContain("diagnosis\\x0a");
   expect(shown).toContain("FN_LN\\x0a");
+  expect(shown).toContain("held back (enforced): phone\\x0a");
   for (const line of lines) expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
 
   const logFile = path.join(dir, "run.log");
@@ -383,6 +404,7 @@ test("no name in the display puts a control character or a digest line into the 
     displayExchangeDisclosure({
       metadata,
       linkageTerms: terms,
+      standardization: undefined,
       connection: TEST_CONNECTION,
       logFile,
       log: logger,
@@ -615,6 +637,64 @@ test("a key splitting one value states what the run matches on", () => {
   expect(rendered(localTerms).join("\n")).not.toContain(
     "several values per record",
   );
+});
+
+/** Every line {@link renderExchangeDisclosure} emits for a direct-mode run on
+ * a file with `header`, under {@link localTerms}. */
+function renderedForHeader(
+  header: string[],
+  standardization?: Standardization,
+): string[] {
+  const lines: string[] = [];
+  renderExchangeDisclosure(
+    (line) => lines.push(line),
+    localTerms,
+    inferMetadata(header, [], { mode: "direct" }),
+    standardization,
+  );
+  return lines;
+}
+
+test("recognized columns no key uses are listed as held back", () => {
+  // phone and email infer as linkage keys, so they are not sent, and no key of
+  // these terms reads them, so the matched-on line does not name them either.
+  const lines = renderedForHeader([
+    "id",
+    "first_name",
+    "last_name",
+    "phone",
+    "email",
+    "notes",
+  ]);
+  expect(lines).toContain("  held back (enforced): phone, email");
+  const shown = lines.join("\n");
+  expect(shown).toContain("\n    - id\n    - notes");
+  expect(shown).toContain("matched on (enforced): first name, last name");
+  expect(lines.indexOf("  held back (enforced): phone, email")).toBe(
+    lines.findIndex((line) => line.startsWith("  matched on")) + 1,
+  );
+});
+
+test("a second column of a matched type is held back", () => {
+  // The run reads the first linkage column of a field's type, so a second one
+  // is neither matched on nor sent.
+  expect(
+    renderedForHeader(["first_name", "last_name", "lname", "notes"]),
+  ).toContain("  held back (enforced): lname");
+});
+
+test("a column a standardization binds to a key's field is not held back", () => {
+  const standardization: Standardization = [
+    { output: "last_name", input: "lname", steps: [] },
+  ];
+  expect(
+    renderedForHeader(["first_name", "last_name", "lname"], standardization),
+  ).toContain("  held back (enforced): last_name");
+});
+
+test("a file whose recognized columns all feed a key states no held-back line", () => {
+  const lines = renderedForHeader(["id", "first_name", "last_name", "notes"]);
+  expect(lines.join("\n")).not.toContain("held back");
 });
 
 test("a candidate set beside this party's own grouping states what it groups", () => {
@@ -947,6 +1027,7 @@ test("a different identity or destination prints a display an unattended run had
       displayExchangeDisclosure({
         metadata: metadataDisclosing([]),
         linkageTerms: terms,
+        standardization: undefined,
         connection,
         logFile,
         log: logger,

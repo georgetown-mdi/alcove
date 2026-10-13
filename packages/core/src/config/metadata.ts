@@ -431,7 +431,8 @@ function assertColumnNamesNonEmpty(
  *   identifier-typed column (`id`, `identifier`, a name ending in `_id`) is
  *   sent. Every column is declared, so none is undeclared.
  *
- * A linkage-key alias infers alike under both, matched on and never sent.
+ * A linkage-key alias infers alike under both and is never sent; it is
+ * matched on only where a linkage key reads it.
  */
 export type MetadataInferenceMode = "declaredOnly" | "direct";
 

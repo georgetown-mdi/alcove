@@ -48,6 +48,7 @@ import {
   swapPairFuzzyComparisonsDiffer,
   swapPairTransformsDiffer,
 } from "./linkageTermsPolicy.js";
+import { isDisclosedToPartner } from "./config/metadata.js";
 import type { ColumnMetadata } from "./config/metadata.js";
 import { readRowColumn } from "./file.js";
 import { DistinctValues, SCAN_UP_TO_VALUES } from "./utils/distinctValues.js";
@@ -2080,8 +2081,9 @@ interface FieldColumnResolution {
  * because the transform is the operator's own statement that the column is a
  * linkage input, or a column the input lacks, which the presence test reports.
  *
- * @internal Shared primitive for the resolution's three in-package consumers
- * (builder, satisfiability checker, default-standardization derivation);
+ * @internal Shared primitive for the resolution's in-package consumers
+ * (builder, satisfiability checker, default-standardization derivation,
+ * {@link heldBackColumnNames});
  * exported for those cross-module imports, not as a supported entry point. The
  * web and CLI paths consume {@link assessLinkageSatisfiability} /
  * {@link unsatisfiedLinkageFields}, not this directly.
@@ -2137,6 +2139,33 @@ export function resolveFieldColumns(
     resolution.set(field.name, { column: col?.name, transform: undefined });
   }
   return resolution;
+}
+
+/**
+ * The declared columns the run neither sends nor matches on, in metadata
+ * order: not disclosed ({@link isDisclosedToPartner}) and bound by
+ * {@link resolveFieldColumns} to no field a linkage key uses. In a direct run
+ * these are the columns whose names Alcove recognizes as linkage keys but no
+ * key of the terms reads, such as `phone`, or a second date-of-birth column.
+ */
+export function heldBackColumnNames(
+  metadata: ColumnMetadata[],
+  terms: LinkageTerms,
+  standardization: Standardization | undefined,
+): Array<string> {
+  const resolution = resolveFieldColumns(terms, standardization, metadata);
+  const matchedColumns = new Set<string>();
+  for (const key of terms.linkageKeys)
+    for (const element of key.elements) {
+      const column = resolution.get(element.field)?.column;
+      if (column !== undefined) matchedColumns.add(column);
+    }
+  return metadata
+    .filter(
+      (column) =>
+        !isDisclosedToPartner(column) && !matchedColumns.has(column.name),
+    )
+    .map((column) => column.name);
 }
 
 /**

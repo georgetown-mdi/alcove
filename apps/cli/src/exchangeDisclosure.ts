@@ -15,6 +15,7 @@ import {
   DEDUPLICATE_PARTNER_DECLARED_DISCLOSURE_STATEMENT,
   DEDUPLICATE_PARTNER_DECLARED_SIDE_NOTE,
   disclosedColumnNames,
+  heldBackColumnNames,
   InternalConsistencyError,
   linkageRuleSetVerdictNote,
   redactAndSanitizeForDisplay,
@@ -39,6 +40,7 @@ import type {
   LinkageTerms,
   Metadata,
   PreparedExchange,
+  Standardization,
   getLogger,
 } from "@alcove/core";
 
@@ -197,11 +199,16 @@ function displayContradictedRuleSetCitation(
  * surfaces render. The COPY is this seat's own -- the terms are the operator's
  * own file rather than a partner's proposal, so no line names an inviting or
  * accepting party.
+ *
+ * `standardization` is the run's authored one, `undefined` where it has none:
+ * it decides which column each linkage field reads, so which declared columns
+ * the run holds back ({@link heldBackColumnNames}).
  */
 export function renderExchangeDisclosure(
   emit: ConsentSurfaceSink,
   linkageTerms: LinkageTerms,
   metadata: Metadata,
+  standardization: Standardization | undefined,
 ): void {
   const summary = summarizeInvitation({ linkageTerms });
   emit(DISCLOSURE_HEADING);
@@ -315,6 +322,12 @@ export function renderExchangeDisclosure(
     emit(
       `  ${marked("matched on", "matchedFields")}: ` +
         summary.matchedFields.join(", "),
+    );
+  const heldBack = heldBackColumnNames(metadata, linkageTerms, standardization);
+  if (heldBack.length > 0)
+    emit(
+      `  ${marked("held back", "heldBackColumnsSelfAuthored")}: ` +
+        heldBack.map((name) => redactAndSanitizeForDisplay(name)).join(", "),
     );
   emit(`  ${marked("linkage keys", "linkageKeys")}:`);
   // One line per key: its name and the fields it combines, both already escaped
@@ -498,6 +511,8 @@ export function displayExchangeDisclosure(params: {
   metadata: Metadata;
   /** The terms this run resolved, which decide what it matches on. */
   linkageTerms: LinkageTerms;
+  /** The configuration's standardization, which binds fields to columns. */
+  standardization: Standardization | undefined;
   /** The connection this run uses; only its destination is hashed. */
   connection: ProtocolConnectionConfig;
   /** The operator's `--log-file`, so the log keeps a copy of the surface. */
@@ -506,10 +521,18 @@ export function displayExchangeDisclosure(params: {
   /** No terminal can answer a question on this run. */
   unattended: boolean;
 }): void {
-  const { metadata, linkageTerms, connection, logFile, log, unattended } =
-    params;
+  const {
+    metadata,
+    linkageTerms,
+    standardization,
+    connection,
+    logFile,
+    log,
+    unattended,
+  } = params;
   showDisclosure({
-    render: (emit) => renderExchangeDisclosure(emit, linkageTerms, metadata),
+    render: (emit) =>
+      renderExchangeDisclosure(emit, linkageTerms, metadata, standardization),
     linkageTerms,
     connection,
     logFile,
@@ -545,9 +568,16 @@ export function displayZeroSetupDisclosure(params: {
   unattended: boolean;
 }): void {
   const { prepared, connection, logFile, log, unattended } = params;
+  // A zero-setup run authors no standardization: each field reads the column
+  // its type infers, as the prepare step bound it.
   showDisclosure({
     render: (emit) =>
-      renderExchangeDisclosure(emit, prepared.linkageTerms, prepared.metadata),
+      renderExchangeDisclosure(
+        emit,
+        prepared.linkageTerms,
+        prepared.metadata,
+        undefined,
+      ),
     linkageTerms: prepared.linkageTerms,
     connection,
     logFile,

@@ -438,6 +438,16 @@ export const CONSENT_FACTS = {
       "The fields the linkage keys are computed over -- what the exchange " +
       "actually hashes and compares.",
   },
+  heldBackColumnsSelfAuthored: {
+    basis: "enforced",
+    reason:
+      "This party's own declared columns that the payload step does not " +
+      "transmit and no linkage key reads, from `heldBackColumnNames` " +
+      "(standardization.ts), which applies the predicate the payload step " +
+      "sends on and the column binding the run matches on. Stated at the " +
+      "seat that wrote its own terms, so a column recognized as a linkage " +
+      "key that no key uses is listed rather than absent from every line.",
+  },
   personalDataCategories: {
     basis: "enforced",
     reason:
@@ -684,6 +694,7 @@ export const ACCEPTOR_DEDUPLICATE_CONTROL_FACTS = [
 export const SELF_AUTHORED_EXCHANGE_FACTS = [
   "outboundSendSelfAuthored",
   "partnerOwnMembershipWithheldSelfAuthored",
+  "heldBackColumnsSelfAuthored",
 ] as const satisfies ReadonlyArray<ConsentFactId>;
 
 /**

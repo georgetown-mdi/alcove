@@ -80,12 +80,23 @@ describe("overlongColumnsAlert", () => {
     expect(alert.message).toContain("their names are");
   });
 
-  test("offers both remedies, since the seats differ in which they have", () => {
-    // A seat with a disclosure control clears this by unmarking the column; one
-    // without it (the direct-exchange spine) by shortening the header.
+  test("offers both remedies at a seat with a disclosure control", () => {
     const alert = overlongColumnsAlert([2]);
-    expect(alert.message).toContain("Shorten the header");
-    expect(alert.message).toContain("not sent");
+    expect(alert.message).toMatch(
+      /Shorten the header in your file, or set that column so it is not sent\.$/,
+    );
+    expect(overlongColumnsAlert([2], { canWithhold: true })).toEqual(alert);
+  });
+
+  test("offers only a shorter header at a seat with no disclosure control", () => {
+    const single = overlongColumnsAlert([2], { canWithhold: false });
+    expect(single.message).toMatch(
+      /cannot start\. Shorten the header in your file\.$/,
+    );
+    expect(single.message).not.toContain("not sent");
+    const plural = overlongColumnsAlert([1, 2], { canWithhold: false });
+    expect(plural.message).toMatch(/Shorten the headers in your file\.$/);
+    expect(plural.message).not.toContain("not sent");
   });
 });
 
