@@ -78,6 +78,18 @@ describe("the plan for each path class, read from the live workflows", () => {
     ]);
   });
 
+  it("lists a suite CI shards across legs once, unsharded", () => {
+    const plan = requiredPlan(ROOT, ["apps/web/src/main.tsx"]);
+    const commands = legCommands(plan);
+
+    expect(commands.filter((command) => command === WEB_BROWSER)).toHaveLength(
+      1,
+    );
+    expect(commands.filter((command) => command.includes("--shard"))).toEqual(
+      [],
+    );
+  });
+
   it("rebuilds the CLI contract for a change to its sources", () => {
     const plan = requiredPlan(ROOT, ["packages/cli-contract/src/events.ts"]);
 
@@ -201,6 +213,46 @@ ${extraStep}
         /fixture\.yaml: the suite step "Build B" has an unrecognized matrix condition/,
       );
     }
+  });
+
+  it("drops a trailing shard argument and refuses one in any other shape", () => {
+    const sharded = (first, second) =>
+      parseWorkflow(
+        "fixture.yaml",
+        `
+jobs:
+  suite:
+    strategy:
+      matrix:
+        include:
+          - suite: half 1
+            command: ${first}
+          - suite: half 2
+            command: ${second}
+    steps:
+      - name: Run
+        run: \${{ matrix.command }}
+`,
+      );
+
+    expect(
+      suiteLegs(
+        sharded(
+          "npm run test -w a -- --shard=1/2",
+          "npm run test -w a -- --shard=2/2",
+        ),
+        "fixture.yaml",
+      ).map((leg) => leg.command),
+    ).toEqual(["npm run test -w a", "npm run test -w a"]);
+    expect(() =>
+      suiteLegs(
+        sharded(
+          "npm run test -w a -- --shard 1/2",
+          "npm run test -w a -- --shard 2/2",
+        ),
+        "fixture.yaml",
+      ),
+    ).toThrow(/the suite leg "half 1" passes --shard other than as a trailing/);
   });
 
   it("names a matrix job by the values its matrix lists", () => {
