@@ -5,16 +5,18 @@
 // check's reasons are reached from its own script header. OUT_OF_CHECK_ALL
 // lists the checks that stay off the list, each with what puts it there.
 //
-// Runs serially and past a failure: the summary names every failure, and the
-// exit code is 1 if there was one. A check marked `usesBuild` needs the
-// production web build, and the run clears apps/web/dist/hosted first; one
-// naming another in `buildFrom` reads that build and is skipped with a line
-// saying so when the build fails. scripts/run-checks.test.mjs holds every
-// `check:*` script in the root package.json to one list or the other, and the
-// repo-guards job to this one step plus the dependency audit. Rationale:
-// docs/notes/repo-check-scripts.md.
+// Runs past a failure: the summary names every failure, and the exit code is 1
+// if there was one. The `shared` checks run first, one at a time in list order
+// with their output streamed; the `independent` checks then run in a bounded
+// pool, each one's output buffered and printed whole when it ends. A check
+// marked `usesBuild` needs the production web build, and the run clears
+// apps/web/dist/hosted first; one naming another in `buildFrom` reads that
+// build and is skipped with a line saying so when the build fails.
+// scripts/run-checks.test.mjs holds every `check:*` script in the root
+// package.json to one list or the other, and the repo-guards job to this one
+// step plus the dependency audit. Rationale: docs/notes/repo-check-scripts.md.
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { availableParallelism, loadavg } from "node:os";
 import { dirname, resolve } from "node:path";
@@ -22,268 +24,331 @@ import { fileURLToPath } from "node:url";
 
 import { BUILD_OUTPUT } from "./check-deploy-trigger-graph.mjs";
 
+/** A check that runs alone: see `group` on CHECKS. */
+export const SHARED = "shared";
+
+/** A check that may run beside the other independent checks. */
+export const INDEPENDENT = "independent";
+
 /**
- * The checks `npm run check:all` runs, in order. `script` is a root
- * package.json script name; `command`, when present, is run instead of the npm
- * script; `usesBuild` marks a check that reads the shared web build and
- * `buildFrom` names the check that makes it; `description` states in one line
- * what the check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands before it
- * is renewed or deleted, held by scripts/check-expiry-dates.mjs as on every
- * entry in the two lists below.
+ * The checks `npm run check:all` runs. `script` is a root package.json script
+ * name; `command`, when present, is run instead of the npm script; `group` is
+ * SHARED for a check that writes a tracked file or a build output, which runs
+ * alone, and INDEPENDENT for one that writes nothing another check reads, which
+ * runs beside the others in its group after every shared check has ended (the
+ * one exception, the route tree the web tooling rewrites only when it is
+ * stale: docs/notes/repo-check-scripts.md, Check runner);
+ * `usesBuild` marks a check that reads the shared web build and `buildFrom`
+ * names the check that makes it; `description` states in one line what the
+ * check holds; `expiresOn` is the last date, YYYY-MM-DD, the entry stands
+ * before it is renewed or deleted, held by scripts/check-expiry-dates.mjs as
+ * on every entry in the two lists below. The pool starts its checks in list
+ * order, so the longest independent check is listed first.
  */
 export const CHECKS = [
   {
+    script: "test:scripts",
+    // At least four vitest workers, measured faster than the three the
+    // four-CPU runner gave it: docs/notes/repo-check-scripts.md, Check runner.
+    command: [
+      "npm",
+      "run",
+      "test:scripts",
+      "--",
+      `--maxWorkers=${Math.max(4, availableParallelism() - 1)}`,
+    ],
+    group: INDEPENDENT,
+    expiresOn: "2027-06-30",
+    description:
+      "The vitest projects outside the workspaces: scripts/, .claude/scripts/, the hooks, and the harness.",
+  },
+  {
     script: "check:config-integrity",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "The configs the gates rest on still say what they are held to: every guarded tsconfig resolves with its strictness options over every source file in its workspace, and every vitest config declares the projects its suites run under.",
   },
   {
     script: "linkcheck",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "Every Markdown link target and heading anchor across the repository resolves.",
   },
   {
     script: "check:no-legacy-names",
+    group: INDEPENDENT,
     expiresOn: "2026-12-24",
     description:
       "No tracked file or path holds the product's earlier name outside the reasoned allowlist; past its expiry date the check fails until it is deleted.",
   },
   {
     script: "check:contributing",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "CONTRIBUTING.md stays a quickstart: no heading outside its allowlist, no node_modules/ source path.",
   },
   {
     script: "check:claudemd-budget",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "CLAUDE.md stays under the byte budget every agent session pays to load it, so a new rule relocates its own weight.",
   },
   {
     script: "check:comment-narration",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "No comment line a change adds or modifies narrates how the repository changed rather than stating what the code does.",
   },
   {
     script: "check:command-inventory",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "Every CLI subcommand the parser registers is named in docs/DESIGN.md and docs/CLI.md.",
   },
   {
     script: "check:image-capabilities",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every Alcove argument vector the file-drop support scripts use has an image_smoke.yaml capability gate exercising it.",
   },
   {
     script: "check:enforcement-claims",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every enforcement claim in CLAUDE.md and the orchestration ruleset names a hook that exists, is registered, and matches the tool the rule is about, and every hook has a test.",
   },
   {
     script: "check:expiry-dates",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "Every entry on these lists and every hook .claude/settings.json registers states an expiry date, and none has passed.",
   },
   {
     script: "check:rule-ledgers",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "CLAUDE.md and the orchestration ruleset share no enforcement claim and no heading, CLAUDE.md points at the ruleset once, and every front door loads it.",
   },
   {
     script: "check:rule-citations",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "Every `<file>, <section>` citation in CLAUDE.md, CONTRIBUTING.md and .claude/ names a heading the cited instruction file has.",
   },
   {
     script: "check:spec-citations",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "Every anchored, quoted-heading or heading-prefix citation of a docs/spec/ file outside Markdown names a heading or bold paragraph label the file has; the forms it does not resolve are in its --help.",
   },
   {
     script: "check:egress-claims",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "No absolute URL literal in shipped source outside the reasoned allowlist, which is what PRIVACY.md's no-egress statement rests on.",
   },
   {
     script: "check:workflow-agent-models",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every agent() call in a committed Workflow script pins a literal model tier and a literal effort rather than inheriting the session's.",
   },
   {
     script: "check:workflow-args-resolve",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every committed Workflow script reads its arguments through resolveWorkflowArgs, which fails closed on a shape it cannot use.",
   },
   {
     script: "check:action-pin-drift",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every action pin in .github/actions is mirrored by one in .github/workflows, the path Dependabot is configured against.",
   },
   {
     script: "check:checkout-ref-override",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "No workflow triggered by a pull request hands actions/checkout a ref or sha, so a gate runs the head merged with the base tip.",
   },
   {
     script: "check:merge-gate-identities",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "No gating job is renamed out from under the required check that names it, no path filter is added to a gating workflow, every gating workflow but the exempt ones runs on push to staging, and every workflow declaring a required job is on the list held filter-free. The branch-rule half needs a token and states a skip without one.",
   },
   {
     script: "check:dependabot-ignore-shape",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every github-actions pin under a within-major Dependabot ignore floats within its major, so the ignore does not freeze it.",
   },
   {
     script: "check:dependabot-pin-coverage",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every package with an upgrade checklist in docs/spec/DEPENDENCY_PINS.md is excluded from the batched npm Dependabot groups.",
   },
   {
     script: "check:nested-root-package",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "No package the committed lockfile installs at the root is also installed under a workspace.",
   },
   {
     script: "check:locked-dep-ranges",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every dependency the committed lockfile locks lies inside the range its dependent declared, outside the reasoned allowlist.",
   },
   {
     script: "check:routetree",
+    group: SHARED,
     expiresOn: "2027-06-30",
     description:
       "The checked-in apps/web/src/routeTree.gen.ts matches what the pinned generator produces.",
   },
   {
     script: "check:web-config-native-load",
+    group: SHARED,
     expiresOn: "2027-06-30",
     description:
       "apps/web/vite.config.ts and its import graph load under the strip-only type stripping Vite's native config loader and a plain node import use.",
   },
   {
     script: "check:web-config-image-load",
+    group: SHARED,
     expiresOn: "2027-06-30",
     description:
       "apps/web/vite.config.ts loads from the file subset the Dockerfile builder stage copies, so the image build resolves no module the image does not have.",
   },
   {
     script: "check:core-barrel-wildcards",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "packages/core/src/main.ts publishes a named list, with no wildcard re-export putting a module's whole surface on the main entry.",
   },
   {
     script: "check:internal-fault-throws",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       'No exhaustiveness branch or "internal error" guard in packages/core/src or apps/cli/src throws a plain Error, which the CLI would exit 69 rather than 70.',
   },
   {
     script: "check:vectors",
+    group: SHARED,
     expiresOn: "2027-06-30",
     description:
       "Every known-answer vector under packages/core/test/vectors/ still reproduces from its generator.",
   },
   {
     script: "check:protocol-version-bump",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "A wire-format change from the first published release onward moves PROTOCOL_VERSION.",
   },
   {
     script: "check:exchange-record-version",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "EXCHANGE_RECORD_VERSION stands where the disclosure-accounting recovery was driven against it, and is the reset value at and above the release marker apps/cli/package.json states, not below.",
   },
   {
     script: "check:stun-default-claims",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every hand-written copy of the WebRTC library's built-in STUN default matches the one constant the CLI measures against the library.",
   },
   {
     script: "check:webrtc-provider-options-unread",
+    group: INDEPENDENT,
     expiresOn: "2027-06-30",
     description:
       "No WebRTC transport or entry point on either side reads connection.provider_options, which the spec states is inert on that channel.",
   },
   {
     script: "check:run-failure-sink",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every render of a failed run's message or reported cause in apps/web/src goes through that piece's own sink, so no alert collapses a relayed cause chain onto one line.",
   },
   {
     script: "check:alert-roles",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every red or runtime-color Alert in apps/web/src sets a role a screen reader announces (alert, status, or alertRoleFor of its own color), except the documented sites whose text a separate live region announces.",
   },
   {
     script: "check:zero-setup-keys",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every built-in linkage key is built from the built-in field set, so a zero-setup exchange strands no party over a field its file lacks.",
   },
   {
     script: "check:init-template-coverage",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "Every configuration-schema option is documented in the template alcove init writes or listed with the reason it is left out, and the template documents no key the schema lacks.",
   },
   {
     script: "check:built-in-set-versions",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "The built-in field set and key set match the pin recorded for the version each declares, cascade order included.",
   },
   {
     script: "check:spec-sentences",
+    group: INDEPENDENT,
     expiresOn: "2027-01-31",
     description:
       "Every sentence, heading, table row and code line the branch adds, drops or rewords across docs/spec/ is listed in the branch's own file under docs/spec/wording-changes/, so text moved between spec files arrives unchanged. On a failure it prints the lines to list.",
   },
   {
     script: "check:release-signing",
+    group: INDEPENDENT,
     expiresOn: "2027-03-31",
     description:
       "The cosign verify command docs/RELEASES.md publishes, the release workflow's self-verify step, and the publish sequence name one release identity.",
   },
   {
     script: "check:deploy-trigger-graph",
+    group: SHARED,
     usesBuild: true,
     expiresOn: "2027-06-30",
     description:
       "Every repository source the hosted static web build reads matches a push filter of pages_deploy.yaml, so an edit to the deployed site always triggers a deploy, and the upload jobs of that workflow and of site_deploy.yaml are the only jobs holding the deploy credentials and run no repository code.",
-  },
-  {
-    script: "test:scripts",
-    expiresOn: "2027-06-30",
-    description:
-      "The vitest projects outside the workspaces: scripts/, .claude/scripts/, the hooks, and the harness.",
   },
 ];
 
@@ -357,66 +422,162 @@ export function oneMinuteLoad() {
   return process.platform === "win32" ? null : loadavg()[0];
 }
 
-/**
- * Runs one check and reports how it went, with the one-minute load average
- * when it started.
- *
- */
-export function runCheck(check, root) {
-  const load = oneMinuteLoad();
-  const startedAt = Date.now();
-  const [file, ...args] = check.command ?? ["npm", "run", check.script];
-  const result = spawnSync(file, args, {
-    cwd: root,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
-  return {
-    script: check.script,
-    ok: result.status === 0,
-    seconds: (Date.now() - startedAt) / 1000,
-    load,
-  };
+// A working value: the CI runner has four CPUs, and test:scripts, in the pool,
+// spreads over vitest workers of its own.
+const POOL_CEILING = 4;
+
+/** How many independent checks run at once on a machine of `cpuCount` CPUs. */
+export function poolSize(cpuCount = availableParallelism()) {
+  return Math.max(1, Math.min(cpuCount, POOL_CEILING));
 }
 
 /**
- * Runs every check in CHECKS, in order, past any failure. Returns each result
- * in the order run.
+ * Runs one check and resolves with how it went and the one-minute load average
+ * when it started. Its output is written through as it comes, or with `buffer`
+ * collected into `output` in arrival order, stdout and stderr together. A
+ * command that cannot be started fails the check with the reason in `output`.
  *
  */
-export function runAll(
+export function runCheck(check, root, { buffer = false } = {}) {
+  const load = oneMinuteLoad();
+  const startedAt = Date.now();
+  const [file, ...args] = check.command ?? ["npm", "run", check.script];
+  return new Promise((settle) => {
+    const chunks = [];
+    let settled = false;
+    const finish = (ok) => {
+      if (settled) return;
+      settled = true;
+      settle({
+        script: check.script,
+        ok,
+        seconds: (Date.now() - startedAt) / 1000,
+        load,
+        output: Buffer.concat(chunks).toString("utf8"),
+      });
+    };
+    const child = spawn(file, args, {
+      cwd: root,
+      stdio: buffer ? ["ignore", "pipe", "pipe"] : "inherit",
+      shell: process.platform === "win32",
+    });
+    if (buffer) {
+      child.stdout.on("data", (chunk) => chunks.push(chunk));
+      child.stderr.on("data", (chunk) => chunks.push(chunk));
+    }
+    child.on("error", (error) => {
+      chunks.push(Buffer.from(`\n${file} could not be started: ${error}\n`));
+      finish(false);
+    });
+    child.on("close", (code) => finish(code === 0));
+  });
+}
+
+/**
+ * Throws unless every check names a known group and every `buildFrom` names a
+ * shared check listed before it, which has ended before the pool starts.
+ *
+ */
+export function assertRunnable(checks) {
+  for (const [index, check] of checks.entries()) {
+    if (check.group !== SHARED && check.group !== INDEPENDENT) {
+      throw new Error(
+        `${check.script} has group ${JSON.stringify(check.group)}; set it to SHARED or INDEPENDENT in scripts/run-checks.mjs.`,
+      );
+    }
+    if (check.buildFrom === undefined) continue;
+    const builder = checks.findIndex(
+      (candidate) => candidate.script === check.buildFrom,
+    );
+    if (builder < 0 || builder >= index || checks[builder].group !== SHARED) {
+      throw new Error(
+        `${check.script} reads the build of ${check.buildFrom}, which is not a shared check listed before it.`,
+      );
+    }
+  }
+}
+
+/**
+ * Runs every check past any failure: the shared checks one at a time in list
+ * order, then the independent checks `size` at a time, each printed whole when
+ * it ends. A `run` that throws fails its own check and no other. Returns each
+ * result in list order.
+ *
+ */
+export async function runAll(
   root,
   log = console.log,
   checks = CHECKS,
   run = runCheck,
+  size = poolSize(),
 ) {
+  assertRunnable(checks);
   if (checks.some((check) => check.usesBuild)) {
     rmSync(resolve(root, BUILD_OUTPUT), { recursive: true, force: true });
   }
-  const results = [];
-  for (const [index, check] of checks.entries()) {
-    log(`\n[${index + 1}/${checks.length}] ${check.script}`);
+  const results = new Map();
+  const header = (check) => {
+    log(`\n[${checks.indexOf(check) + 1}/${checks.length}] ${check.script}`);
     log(`  ${check.description}`);
-    const builder = results.find((result) => result.script === check.buildFrom);
+  };
+  const attempt = async (check, options) => {
+    const builder = results.get(check.buildFrom);
     if (builder && !builder.ok) {
-      log(
-        `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
-      );
-      results.push({ script: check.script, ok: false, seconds: 0 });
-      continue;
+      return {
+        script: check.script,
+        ok: false,
+        seconds: 0,
+        output: `  skipped: the web build it reads failed in ${check.buildFrom}, whose output is above.`,
+      };
     }
-    results.push(run(check, root));
+    try {
+      return await run(check, root, options);
+    } catch (error) {
+      return {
+        script: check.script,
+        ok: false,
+        seconds: 0,
+        output: `  the runner could not run it: ${error?.stack ?? error}`,
+      };
+    }
+  };
+  const print = (result) => {
+    if (result.output) log(result.output.replace(/\n$/, ""));
+  };
+
+  for (const check of checks.filter((entry) => entry.group === SHARED)) {
+    header(check);
+    const result = await attempt(check, { buffer: false });
+    print(result);
+    results.set(check.script, result);
   }
-  return results;
+
+  const queue = checks.filter((entry) => entry.group === INDEPENDENT);
+  const worker = async () => {
+    for (let check = queue.shift(); check; check = queue.shift()) {
+      const result = await attempt(check, { buffer: true });
+      header(check);
+      print(result);
+      results.set(check.script, result);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(1, size), queue.length) }, worker),
+  );
+  return checks.map((check) => results.get(check.script));
 }
 
 /**
  * Formats the closing summary: one line per check with the one-minute load
  * average it started under, then the failures. `cpuCount` puts the load in
- * scale.
+ * scale; `wallSeconds`, when given, states how long the whole run took.
  *
  */
-export function summarize(results, cpuCount = availableParallelism()) {
+export function summarize(
+  results,
+  cpuCount = availableParallelism(),
+  wallSeconds,
+) {
   const width = Math.max(...results.map((result) => result.script.length));
   const loadText = (load) =>
     typeof load === "number" ? `load ${load.toFixed(2)}` : "load n/a";
@@ -429,6 +590,11 @@ export function summarize(results, cpuCount = availableParallelism()) {
   lines.push(
     `\n${results.length - failed.length} of ${results.length} checks passed in ${total.toFixed(1)}s, on ${cpuCount} CPUs; each load is the one-minute load average when the check started.`,
   );
+  if (typeof wallSeconds === "number") {
+    lines.push(
+      `The run took ${wallSeconds.toFixed(1)}s; the independent checks ran beside each other, so the times above add up to more.`,
+    );
+  }
   if (failed.length > 0) {
     lines.push(
       `Failed: ${failed.map((result) => result.script).join(", ")}. Each check's output is above, and its reasoning is in its own script header.`,
@@ -462,8 +628,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (process.argv.includes("--list")) {
     console.log(inventory());
   } else {
-    const results = runAll(repositoryRoot());
-    const summary = summarize(results);
+    const startedAt = Date.now();
+    const results = await runAll(repositoryRoot());
+    const summary = summarize(
+      results,
+      availableParallelism(),
+      (Date.now() - startedAt) / 1000,
+    );
     const failed = results.some((result) => !result.ok);
     (failed ? console.error : console.log)(`\n${summary}`);
     if (failed) process.exit(1);

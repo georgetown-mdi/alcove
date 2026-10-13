@@ -5,9 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHECKS,
+  INDEPENDENT,
   OUT_OF_CHECK_ALL,
   SEPARATE_WORKFLOW_STEPS,
+  SHARED,
+  assertRunnable,
   inventory,
+  poolSize,
   runAll,
   runCheck,
   rootScripts,
@@ -98,15 +102,21 @@ describe("the repo-guards job against the list", () => {
 
 describe("the shared web build", () => {
   const checks = [
-    { script: "a", usesBuild: true, description: "" },
-    { script: "b", buildFrom: "a", usesBuild: true, description: "" },
-    { script: "c", description: "" },
+    { script: "a", group: SHARED, usesBuild: true, description: "" },
+    {
+      script: "b",
+      group: SHARED,
+      buildFrom: "a",
+      usesBuild: true,
+      description: "",
+    },
+    { script: "c", group: INDEPENDENT, description: "" },
   ];
 
-  it("skips the check reading a build whose maker failed, and runs the rest", () => {
+  it("skips the check reading a build whose maker failed, and runs the rest", async () => {
     const ran = [];
     const lines = [];
-    const results = runAll(
+    const results = await runAll(
       "/nonexistent-root",
       (line) => lines.push(line),
       checks,
@@ -120,9 +130,9 @@ describe("the shared web build", () => {
     expect(lines.join("\n")).toContain("web build it reads failed in a");
   });
 
-  it("runs the dependent check when the build succeeded", () => {
+  it("runs the dependent check when the build succeeded", async () => {
     const ran = [];
-    runAll(
+    await runAll(
       "/nonexistent-root",
       () => {},
       checks,
@@ -132,6 +142,249 @@ describe("the shared web build", () => {
       },
     );
     expect(ran).toEqual(["a", "b", "c"]);
+  });
+
+  it("refuses a check reading the build of one that is not shared", () => {
+    expect(() =>
+      assertRunnable([
+        { script: "a", group: INDEPENDENT, description: "" },
+        { script: "b", group: SHARED, buildFrom: "a", description: "" },
+      ]),
+    ).toThrow("b reads the build of a");
+  });
+});
+
+describe("the two groups", () => {
+  it("puts every check in one of them, and every builder in the shared one", () => {
+    for (const check of CHECKS) {
+      expect([SHARED, INDEPENDENT], check.script).toContain(check.group);
+    }
+    expect(() => assertRunnable(CHECKS)).not.toThrow();
+  });
+
+  it("refuses a check with no group", () => {
+    expect(() =>
+      assertRunnable([{ script: "unsorted", description: "" }]),
+    ).toThrow("unsorted has group undefined");
+  });
+
+  it("runs the checks that rewrite tracked files or build output alone", () => {
+    const shared = CHECKS.filter((check) => check.group === SHARED).map(
+      (check) => check.script,
+    );
+    expect(shared).toEqual(
+      expect.arrayContaining([
+        "check:routetree",
+        "check:vectors",
+        "check:deploy-trigger-graph",
+      ]),
+    );
+  });
+
+  it("never runs a shared check beside another, and ends the shared group before the pool starts", async () => {
+    const running = new Set();
+    const overlaps = [];
+    const started = [];
+    let widest = 0;
+    await runAll(
+      "/nonexistent-root",
+      () => {},
+      CHECKS,
+      async (check) => {
+        const sharedRunning = [...running].filter(
+          (script) =>
+            CHECKS.find((entry) => entry.script === script).group === SHARED,
+        );
+        if (check.group === SHARED ? running.size > 0 : sharedRunning.length) {
+          overlaps.push(`${check.script} beside ${[...running].join(", ")}`);
+        }
+        started.push(check);
+        running.add(check.script);
+        widest = Math.max(widest, running.size);
+        await new Promise((wake) => setTimeout(wake, 2));
+        running.delete(check.script);
+        return { script: check.script, ok: true, seconds: 0, output: "" };
+      },
+      4,
+    );
+
+    expect(overlaps).toEqual([]);
+    const lastShared = started.findLastIndex((check) => check.group === SHARED);
+    const firstIndependent = started.findIndex(
+      (check) => check.group === INDEPENDENT,
+    );
+    expect(lastShared).toBeLessThan(firstIndependent);
+    expect(widest).toBe(4);
+  });
+
+  it("runs check:routetree before the checks that load the web vitest config, which regenerate a stale route tree", async () => {
+    const ran = [];
+    await runAll(
+      "/nonexistent-root",
+      () => {},
+      CHECKS,
+      (check) => {
+        ran.push(check.script);
+        return { script: check.script, ok: true, seconds: 0 };
+      },
+    );
+    for (const loader of ["check:config-integrity", "test:scripts"]) {
+      expect(ran.indexOf("check:routetree"), loader).toBeLessThan(
+        ran.indexOf(loader),
+      );
+    }
+  });
+
+  it("runs the shared group in list order", async () => {
+    const ran = [];
+    await runAll(
+      "/nonexistent-root",
+      () => {},
+      CHECKS,
+      (check) => {
+        ran.push(check.script);
+        return { script: check.script, ok: true, seconds: 0 };
+      },
+      1,
+    );
+    const shared = CHECKS.filter((check) => check.group === SHARED).map(
+      (check) => check.script,
+    );
+    expect(ran.slice(0, shared.length)).toEqual(shared);
+  });
+
+  it("returns the results in list order whatever order they end in", async () => {
+    const checks = ["slow", "fast"].map((script) => ({
+      script,
+      group: INDEPENDENT,
+      description: "",
+    }));
+    const results = await runAll(
+      "/nonexistent-root",
+      () => {},
+      checks,
+      async (check) => {
+        await new Promise((wake) =>
+          setTimeout(wake, check.script === "slow" ? 30 : 0),
+        );
+        return { script: check.script, ok: true, seconds: 0 };
+      },
+      2,
+    );
+    expect(results.map((result) => result.script)).toEqual(["slow", "fast"]);
+  });
+
+  it("sizes the pool from the CPU count, capped", () => {
+    expect(poolSize(1)).toBe(1);
+    expect(poolSize(2)).toBe(2);
+    expect(poolSize(64)).toBe(poolSize(1024));
+    expect(poolSize(64)).toBeLessThan(64);
+  });
+});
+
+describe("the pool's output", () => {
+  // Each prints three lines to stdout and stderr in turn, 15 ms apart, so two
+  // run side by side interleave their writes.
+  const talker = (name) => ({
+    script: name,
+    group: INDEPENDENT,
+    description: `${name} talks`,
+    command: [
+      process.execPath,
+      "-e",
+      `let n = 0; const tick = () => { const stream = n % 2 ? process.stderr : process.stdout; stream.write("${name} line " + n + "\\n"); if (++n < 3) setTimeout(tick, 15); }; tick();`,
+    ],
+  });
+
+  it("prints each check's output whole, under its own header", async () => {
+    const lines = [];
+    const results = await runAll(
+      ROOT,
+      (line) => lines.push(...line.split("\n")),
+      [talker("left"), talker("right")],
+      runCheck,
+      2,
+    );
+
+    expect(results.every((result) => result.ok)).toBe(true);
+    for (const name of ["left", "right"]) {
+      const header = lines.findIndex(
+        (line) => line === `[${name === "left" ? 1 : 2}/2] ${name}`,
+      );
+      expect(header, lines.join("\n")).toBeGreaterThanOrEqual(0);
+      expect(lines.slice(header + 1, header + 5)).toEqual([
+        `  ${name} talks`,
+        `${name} line 0`,
+        `${name} line 1`,
+        `${name} line 2`,
+      ]);
+    }
+  });
+
+  it("fails a check that exits non-zero and prints what it said", async () => {
+    const lines = [];
+    const [result] = await runAll(
+      ROOT,
+      (line) => lines.push(line),
+      [
+        {
+          script: "loud-failure",
+          group: INDEPENDENT,
+          description: "",
+          command: [
+            process.execPath,
+            "-e",
+            'console.error("the reason"); process.exit(3)',
+          ],
+        },
+      ],
+      runCheck,
+      2,
+    );
+    expect(result.ok).toBe(false);
+    expect(lines.join("\n")).toContain("the reason");
+  });
+
+  it("fails a check whose command cannot start, with the reason", async () => {
+    const result = await runCheck(
+      {
+        script: "absent",
+        command: [resolve(ROOT, "no-such-command-anywhere")],
+      },
+      ROOT,
+      { buffer: true },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.output).toContain("could not be started");
+  });
+
+  it("keeps the other checks' output when one crashes the runner", async () => {
+    const lines = [];
+    const checks = ["before", "crash", "after"].map((script) => ({
+      script,
+      group: INDEPENDENT,
+      description: "",
+    }));
+    const results = await runAll(
+      "/nonexistent-root",
+      (line) => lines.push(line),
+      checks,
+      async (check) => {
+        if (check.script === "crash") throw new Error("runner fault");
+        return {
+          script: check.script,
+          ok: true,
+          seconds: 0,
+          output: `${check.script} said this`,
+        };
+      },
+      3,
+    );
+    expect(results.map((result) => result.ok)).toEqual([true, false, true]);
+    const printed = lines.join("\n");
+    expect(printed).toContain("before said this");
+    expect(printed).toContain("after said this");
+    expect(printed).toContain("runner fault");
   });
 });
 
@@ -172,8 +425,18 @@ describe("reporting", () => {
     );
   });
 
-  it("records the load average a real check started under", () => {
-    const result = runCheck(
+  it("states the run's wall-clock time when given it", () => {
+    const summary = summarize(
+      [{ script: "linkcheck", ok: true, seconds: 1.24, load: 0.5 }],
+      8,
+      12.5,
+    );
+    expect(summary).toContain("1 of 1 checks passed in 1.2s, on 8 CPUs;");
+    expect(summary).toContain("The run took 12.5s;");
+  });
+
+  it("records the load average a real check started under", async () => {
+    const result = await runCheck(
       { script: "probe", command: [process.execPath, "-e", ""] },
       ROOT,
     );
