@@ -111,6 +111,19 @@ export interface ConsoleLegStart {
   expectedReadinessBody: string;
 }
 
+/** A console route's answer, passed back to the page whole. */
+export interface ConsoleAnswer {
+  status: number;
+  body: string;
+}
+
+/** The console's working folder after a webrtc run. */
+export interface ConsoleWorkingFolderFiles {
+  /** The `alcove.yaml` there, or null when there is none. */
+  config: string | null;
+  keyPresent: boolean;
+}
+
 /** How the console's webrtc job ended, read once it left `running`. */
 export interface ConsoleJobOutcome {
   /** The job's `status`, still `running` when the harness deadline came

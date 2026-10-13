@@ -12,6 +12,10 @@ import {
 } from "@alcove/core";
 
 import {
+  AcceptedSignalingServerUnsetError,
+  putSignalingServer,
+} from "@psi/jobClient/signalingServerClient";
+import {
   createFetchJobApiClient,
   createServerJobExchangeDriver,
 } from "@psi/jobClient/serverJobExchangeDriver";
@@ -64,6 +68,7 @@ import type {
   ServerJobExchangeDriverConfig,
   ServerJobExchangeTransport,
 } from "@psi/jobClient/serverJobExchangeDriver";
+import type { AcceptedSignalingServer } from "@console/signalingServerModel";
 import type { ExchangeDriver } from "@psi/exchangeDriver";
 import type { ExchangeRun } from "./exchangeRun";
 import type { JobExchangeOptions } from "@jobContract/intentSchemas";
@@ -80,26 +85,30 @@ const log = getLogger("useAcceptorExchange");
 type AcceptEndpointChannel = AcceptableInvitation["endpoint"]["channel"];
 
 const ENDPOINT_CHANNEL_TRANSPORT: Record<AcceptEndpointChannel, Transport> = {
-  webrtc: "browser",
+  webrtc: "webrtc",
   filedrop: "filedrop",
   sftp: "sftp",
 };
 
-/** Map an accepted invitation's connection-endpoint channel to the console
- * {@link Transport} the driver selector keys on. Keying off the endpoint channel
- * type means a widened channel union fails to build here until it is mapped. */
+/** Map an accepted invitation's connection-endpoint channel to the
+ * {@link Transport} the driver selector keys on: a WebRTC endpoint runs in this
+ * browser off the console. Keying off the endpoint channel type means a widened
+ * channel union fails to build here until it is mapped. */
 function transportForEndpointChannel(
   channel: AcceptEndpointChannel,
+  consoleBuild: boolean,
 ): Transport {
+  if (channel === "webrtc" && !consoleBuild) return "browser";
   return ENDPOINT_CHANNEL_TRANSPORT[channel];
 }
 
 /**
  * Assemble the {@link ServerJobExchangeDriverConfig} for a console server-job
- * accept -- a file-drop or an SFTP exchange the console runs on this party's
- * behalf. The SFTP arm has no connection field: the console reads the
+ * accept -- a file-drop, SFTP or WebRTC exchange the console runs on this
+ * party's behalf. The SFTP arm has no connection field: the console reads the
  * operator-authored connection off `GET /api/jobs/sftp`, so no host, credential,
- * or fingerprint transits the browser.
+ * or fingerprint transits the browser. The WebRTC arm names the coordination
+ * server the console was set to, for the console to compare only.
  *
  * `linkageTerms` are the acceptor's OWN-PERSPECTIVE terms
  * ({@link deriveAcceptedLinkageTerms}, the same derivation
@@ -242,6 +251,37 @@ export interface AcceptorLaunch {
    * Undefined reads and writes commas, core's default for a party that named
    * none. */
   csvDelimiter?: string;
+  /** For a console WebRTC accept, the coordination server the review step
+   * showed, which the console is set to before the run is created. */
+  signalingServer?: AcceptedSignalingServer;
+}
+
+/**
+ * Set the console to the coordination server and relay a WebRTC accept dials,
+ * and return the transport whose create names them, so the console refuses
+ * the run if a later change replaced them.
+ *
+ * @throws {AcceptedSignalingServerUnsetError} when the console is not set to it.
+ */
+export async function acceptorWebrtcTransport(
+  accepted: AcceptedSignalingServer,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ServerJobExchangeTransport> {
+  const put = await putSignalingServer(
+    accepted.address,
+    fetchImpl,
+    accepted.signalingServer.relay,
+  );
+  if (put.kind === "refused")
+    throw new AcceptedSignalingServerUnsetError(true, put.message);
+  if (put.kind !== "ok")
+    throw new AcceptedSignalingServerUnsetError(
+      false,
+      put.kind === "superseded"
+        ? "The coordination server setting changed while it was being set."
+        : "The console did not answer when it was set.",
+    );
+  return { channel: "webrtc", signalingServer: accepted.signalingServer };
 }
 
 /** Resolve an {@link AcceptorLaunchSource} to the driver's {@link JobInputSource}:
@@ -408,10 +448,12 @@ export function useAcceptorExchange({
     const { token, endpoint } = invitation;
     // The console transport this endpoint runs over, threaded to failureFor so a
     // console mounted-file create rejection (a workFile 400) names the file cause
-    // and routes recovery to the file step. On a console build this is `filedrop`
-    // or `sftp` (both -> server-job); every other admitted endpoint is `browser`
-    // (-> WebRTC).
-    const channel = transportForEndpointChannel(endpoint.channel);
+    // and routes recovery to the file step. On a console build this is `filedrop`,
+    // `sftp` or `webrtc` (each -> server-job); off it, `browser` (-> WebRTC).
+    const channel = transportForEndpointChannel(
+      endpoint.channel,
+      deploymentProfile() === "console",
+    );
 
     // Output-generation half. The URLs the build creates are revoked when the
     // outputs are replaced or the console unmounts (effect above); a throw
@@ -494,15 +536,29 @@ export function useAcceptorExchange({
         generateOutput,
       });
 
-    // The intent arm the console runs this accept over: an SFTP endpoint rides
-    // the sftp arm (the console connects to the operator-authored server), every
-    // other server-job endpoint the filedrop arm. Neither holds connection
-    // material -- the SFTP host/credential/fingerprint live on the console, read
-    // off the operator-authored connection, never the browser.
-    const serverJobTransport: ServerJobExchangeTransport =
+    // The intent arm the console runs this accept over: an SFTP endpoint takes
+    // the sftp arm (the console connects to the operator-authored server), a
+    // WebRTC endpoint the webrtc arm, every other server-job endpoint the
+    // filedrop arm. None holds connection material -- the SFTP
+    // host/credential/fingerprint and the coordination server live on the
+    // console, and the webrtc arm names the server only for the console to
+    // compare with the one it holds.
+    const fixedTransport: ServerJobExchangeTransport | undefined =
       endpoint.channel === "sftp"
         ? { channel: "sftp" }
-        : { channel: "filedrop" };
+        : endpoint.channel === "filedrop"
+          ? { channel: "filedrop" }
+          : undefined;
+    const { signalingServer } = current;
+    const serverJobTransport =
+      async (): Promise<ServerJobExchangeTransport> => {
+        if (fixedTransport !== undefined) return fixedTransport;
+        if (signalingServer === undefined)
+          throw new Error(
+            "a console WebRTC accept was launched without its coordination server",
+          );
+        return acceptorWebrtcTransport(signalingServer);
+      };
 
     // The console performs the server-job exchange: the driver POSTs the
     // acceptor's OWN-PERSPECTIVE terms, the shared secret, and the input source
@@ -517,13 +573,14 @@ export function useAcceptorExchange({
     let jobInputSource: JobInputSource | undefined;
     const serverJobDriver = async (): Promise<ExchangeDriver<RunOutputs>> => {
       jobInputSource = await resolveJobInputSource(inputSource);
+      const transport = await serverJobTransport();
       return createServerJobExchangeDriver({
         ...acceptorServerJobConfig({
           token,
           acceptorName,
           edits,
           inputSource: jobInputSource,
-          transport: serverJobTransport,
+          transport,
           deduplicate,
           ...(csvDelimiter !== undefined ? { csvDelimiter } : {}),
           ...(options !== undefined ? { options } : {}),
@@ -538,14 +595,15 @@ export function useAcceptorExchange({
           writeAttachment({
             jobId,
             seat: "acceptor",
-            channel: serverJobTransport.channel,
+            channel: transport.channel,
           });
         },
       });
     };
 
     // The launch reaches this hook only for an endpoint prepareAcceptedInvitation
-    // admitted -- WebRTC (-> browser) or a console filedrop/sftp (-> server-job) --
+    // admitted -- WebRTC off the console (-> browser), or any console accept
+    // (-> server-job) --
     // so the selection is one of those two live kinds. A residual non-drivable kind
     // (a save-file, which the guard fails closed before a launch can exist) is
     // shown as the run's own failure alert rather than thrown out of the start
@@ -662,6 +720,7 @@ export function useAcceptorExchange({
     abortRef.current = undefined;
     const channel = transportForEndpointChannel(
       retryLaunch.invitation.endpoint.channel,
+      deploymentProfile() === "console",
     );
     const runMode = selectExchangeDriver(
       channel,

@@ -3,9 +3,13 @@
  * operator set, and the invitation endpoint it mints from it. No React.
  */
 
+import { publishedSignalingServerURL } from "@alcove/core";
+
 import { invitationReach } from "@exchange/invitationReach";
+import { refusedSignalingEndpointField } from "@psi/transport/signalingAddress";
 
 import type { InvitationReach } from "@exchange/invitationReach";
+import type { JobSignalingServerEndpoint } from "@jobContract/intentSchemas";
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
 import type { WebRTCEndpoint } from "@alcove/core";
 
@@ -94,6 +98,68 @@ export function signalingServerReachProblem(
     (reach === "thisComputer" ? "this computer" : "your local network") +
     ", so a partner elsewhere cannot reach it. Set a server your partner " +
     "can reach as well, such as the Alcove web app's."
+  );
+}
+
+/** The coordination server a console accept dials: the address the console
+ * is set to, and the server and relay the run names to the console. */
+export interface AcceptedSignalingServer {
+  address: string;
+  signalingServer: JobSignalingServerEndpoint;
+}
+
+/**
+ * The coordination server a console accept of `endpoint` dials, as the CLI
+ * reads the endpoint: its path, else `/`. It is reached over `ws://` only
+ * where the console already holds that same server at a `ws://` address, as
+ * an operator testing with a server on this machine sets it; otherwise over
+ * `wss://`, as `alcove accept` dials it. Undefined when the endpoint's host
+ * and path do not make an address the console can hold, as written or as
+ * parsed.
+ */
+export function acceptedSignalingServer(
+  endpoint: WebRTCEndpoint,
+  held: SignalingServerProjection | null,
+): AcceptedSignalingServer | undefined {
+  if (
+    refusedSignalingEndpointField({
+      host: endpoint.host,
+      path: endpoint.path ?? "/",
+    }) !== undefined
+  )
+    return undefined;
+  const port = endpoint.port !== undefined ? `:${endpoint.port}` : "";
+  const authority = `${endpoint.host}${port}${endpoint.path ?? "/"}`;
+  let url = publishedSignalingServerURL(`wss://${authority}`);
+  if (url === undefined) return undefined;
+  if (held !== null && !held.secure && heldNames(held, url, endpoint.port))
+    url = publishedSignalingServerURL(`ws://${authority}`);
+  // The console checks the parsed address again when it is set, where a
+  // percent-escape the parser wrote into the path is refused.
+  if (url === undefined || publishedSignalingServerURL(url.href) === undefined)
+    return undefined;
+  return {
+    address: url.href,
+    signalingServer: {
+      host: url.hostname,
+      ...(url.port !== "" ? { port: Number(url.port) } : {}),
+      path: url.pathname,
+      ...(endpoint.relay !== undefined ? { relay: endpoint.relay } : {}),
+    },
+  };
+}
+
+/** Whether `held`, a `ws://` server, is the one `url` names on the port the
+ * endpoint states or, where it states none, the `ws://` default. */
+function heldNames(
+  held: SignalingServerProjection,
+  url: URL,
+  endpointPort: number | undefined,
+): boolean {
+  return (
+    held.host === url.hostname &&
+    (held.port ?? 80) === (endpointPort ?? 80) &&
+    held.path === url.pathname
   );
 }
 

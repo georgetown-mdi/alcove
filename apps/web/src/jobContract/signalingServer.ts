@@ -1,3 +1,5 @@
+import type { RelayLocator } from "@alcove/core";
+
 /**
  * The coordination server a console webrtc job dials, as `GET` and `PUT
  * /api/jobs/webrtc` report it. Nothing in it is a credential. Contract:
@@ -14,6 +16,9 @@ export interface SignalingServerProjection {
   /** The web app whose published file named the server, when the operator
    * gave the web app's address rather than the server's. */
   webAppOrigin?: string;
+  /** The relay an accepted invitation names, which only an acceptor's run
+   * uses. */
+  invitationRelay?: RelayLocator;
   /** Advisories about the address, each shown to the operator as written. */
   warnings: Array<string>;
 }

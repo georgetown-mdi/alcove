@@ -48,6 +48,7 @@ import {
   discardServerJob,
   writeAttachment,
 } from "@psi/jobClient/consoleJobAttachment";
+import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 import { consoleFailureForCause } from "@console/consoleFailureCause";
 import { consoleJobColumnRefusalAlert } from "@psi/columnNames";
@@ -421,23 +422,55 @@ function failureContentFor(
         "working folder. Check that the folder is mounted writable, then try " +
         "again.",
     };
+  // A console WebRTC accept that did not set the console to the invitation's
+  // coordination server. A refused address is refused again on a retry; a
+  // setting changed meanwhile, or a console that did not answer, is not.
+  if (error instanceof AcceptedSignalingServerUnsetError)
+    return error.refused
+      ? {
+          category: "config",
+          title: "This console cannot use the invitation's coordination server",
+          message:
+            "The console did not start this exchange: it cannot use the " +
+            "coordination server this invitation names. Ask your partner for " +
+            "an invitation through another coordination server.",
+        }
+      : {
+          category: "exchange",
+          title: "The coordination server could not be set",
+          message:
+            "The console did not start this exchange: its coordination " +
+            "server setting changed, or the console did not answer, while " +
+            "the exchange was starting. Try again.",
+        };
   // A WebRTC run whose invitation names a coordination server other than the
   // one the console holds: it was changed or cleared since the invitation was
-  // created. Classified `config`: start-over returns to the review step,
-  // where the server is set.
+  // created, or, for an accept, since the accept set it. The inviter starts
+  // over at the review step, where the server is set; the acceptor's retry
+  // sets it again.
   if (
     error instanceof JobApiRequestError &&
     error.refusalReason === COORDINATION_SERVER_CHANGED_REFUSAL
   )
-    return {
-      category: "config",
-      title: "The coordination server changed",
-      message:
-        "The console did not start this exchange. The coordination server " +
-        "set on this console is not the one this invitation names, so your " +
-        "partner would not find you. Start over, check the coordination " +
-        "server, then create a fresh invitation.",
-    };
+    return seat === "acceptor"
+      ? {
+          category: "exchange",
+          title: "The coordination server changed",
+          message:
+            "The console did not start this exchange. Its coordination " +
+            "server was changed in another tab while the exchange was " +
+            "starting. Try again, and leave that setting alone until this " +
+            "exchange finishes.",
+        }
+      : {
+          category: "config",
+          title: "The coordination server changed",
+          message:
+            "The console did not start this exchange. The coordination server " +
+            "set on this console is not the one this invitation names, so your " +
+            "partner would not find you. Start over, check the coordination " +
+            "server, then create a fresh invitation.",
+        };
   // A run of the opened configuration refused over the key file beside it.
   // Above the mounted-file branch: the input file is not at fault. Classified
   // `config`: a retry refuses identically until the folder is fixed.

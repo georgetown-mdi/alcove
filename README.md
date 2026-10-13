@@ -148,7 +148,7 @@ For a first recurring exchange step by step, every command, and what each exit c
 
 ## Web Console Quickstart
 
-The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP, a shared folder, or WebRTC) on that machine rather than in the browser. It serves one party and is never shared beyond that host. A partner who has only a browser accepts a WebRTC invitation from the console in the [web app](#web-app); the console does not run an exchange in which both parties are browsers.
+The same Docker image serves the guided web experience from your own machine, with no Node.js setup, and runs the exchange (over SFTP, a shared folder, or WebRTC) on that machine rather than in the browser. It serves one party and is never shared beyond that host. A partner who has only a browser uses the [web app](#web-app) to accept a WebRTC invitation from the console, or to send one the console accepts; the console does not run an exchange in which both parties are browsers.
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 2. From a directory holding your input CSV, for Mac / Linux, run the command below. Replace `/path/to/shared-folder` with the folder your sync tool shares with your partner, and `shared-folder` on the line above it with the name you and your partner know that folder by:

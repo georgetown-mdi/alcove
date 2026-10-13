@@ -40,6 +40,7 @@ import type { ExchangeFilesDraft } from "@console/exchangeFilesModel";
 
 import type { AlertContent } from "@components/csvIntake";
 import type { SftpConnectionProjection } from "@jobContract/sftpConnection";
+import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 /**
  * The acceptor console's whole state and the transitions that move it: the decoded
@@ -182,6 +183,9 @@ export interface AcceptorScreenState {
    * where the console can name it, and the only value this seat may show as the
    * shared folder's name. */
   rendezvous: JobRendezvousConfig | undefined;
+  /** The coordination server the console held when a WebRTC invitation was
+   * read, null when none: what decides the scheme the accept dials. */
+  heldSignalingServer: SignalingServerProjection | null;
   /** The console's effective SFTP connection for an accepted SFTP endpoint.
    * Undefined before the accept SFTP endpoint is known; `connection` is null when
    * none is authored, else the credential-free locator. An accepted SFTP exchange
@@ -222,6 +226,7 @@ export const ACCEPTOR_SCREEN_INITIAL: AcceptorScreenState = {
   runDiagnostics: RUN_DIAGNOSTICS_DEFAULT,
   receipts: RECEIPTS_DEFAULT,
   rendezvous: undefined,
+  heldSignalingServer: null,
   sftpInfo: undefined,
   manageOffer: MANAGE_OFFER_IDLE,
   launched: undefined,
@@ -239,6 +244,7 @@ export type AcceptorScreenAction =
       type: "invitation-decoded";
       invitation: AcceptableInvitation;
       rendezvous: JobRendezvousConfig;
+      heldSignalingServer?: SignalingServerProjection | null;
     }
   /** The work column shows a step and, on the columns step, its sub-section. The
    * browser's own history push is the screen's. */
@@ -361,6 +367,7 @@ export function acceptorScreenReducer(
       return {
         ...state,
         rendezvous: action.rendezvous,
+        heldSignalingServer: action.heldSignalingServer ?? null,
         decode: { status: "ready", invitation: action.invitation },
       };
     case "step-shown":

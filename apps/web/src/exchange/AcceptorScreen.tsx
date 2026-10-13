@@ -42,6 +42,7 @@ import { columnSamplesFromRows } from "@psi/columnSamples";
 import { createManagedExchange } from "@psi/managed/managedExchangeStore";
 import { deleteSftpConnection } from "@psi/jobClient/sftpAuthoringClient";
 import { fetchJobRendezvous } from "@psi/jobClient/workInputClient";
+import { fetchSignalingServer } from "@psi/jobClient/signalingServerClient";
 import { loadCSVFileOffMainThread } from "@psi/workers/csvParseController";
 
 import {
@@ -86,16 +87,19 @@ import {
 import {
   FILEDROP_CONNECTION_TUNING,
   SFTP_CONNECTION_TUNING,
+  WEBRTC_CONNECTION_TUNING,
   connectionTuningProblems,
   withConnectionTuning,
 } from "@console/connectionTuningModel";
 import { AcceptorSftpConnectionCard } from "@console/AcceptorSftpConnectionCard";
+import { AcceptorSignalingServerNotice } from "@console/AcceptorSignalingServerNotice";
 import { ConnectionTuningCard } from "@console/ConnectionTuningCard";
 import { ExchangeFilesCard } from "@console/ExchangeFilesCard";
 import { ReceiptsCard } from "@console/ReceiptsCard";
 import { RunDiagnosticsCard } from "@console/RunDiagnosticsCard";
 import { ServerFilePicker } from "@console/ServerFilePicker";
 import { SharedFolderExposureNotice } from "@console/SharedFolderExposureNotice";
+import { acceptedSignalingServer } from "@console/signalingServerModel";
 import { consoleAcquiredCsv } from "@console/consoleAcquiredCsv";
 import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice";
 
@@ -282,6 +286,7 @@ function AcceptorInvitationScreen({
     exchangeFiles,
     fieldErrors,
     file,
+    heldSignalingServer,
     launched,
     manageOffer,
     parseAlert,
@@ -332,11 +337,18 @@ function AcceptorInvitationScreen({
         const rvz = consoleBuild
           ? await fetchJobRendezvous()
           : { configured: false };
+        // Likewise the coordination server the console holds, which decides
+        // the address a console WebRTC accept shows and dials.
+        const held =
+          consoleBuild && invitation.endpoint.channel === "webrtc"
+            ? await fetchSignalingServer()
+            : null;
         if (!controller.signal.aborted)
           dispatch({
             type: "invitation-decoded",
             invitation,
             rendezvous: rvz,
+            heldSignalingServer: held,
           });
       } catch (error) {
         if (controller.signal.aborted) return;
@@ -352,18 +364,27 @@ function AcceptorInvitationScreen({
 
   // A console accept whose endpoint this console cannot run, decided by the endpoint
   // SHAPE against this console's own provisioning ({@link acceptUnsupported}): a
-  // WebRTC accept is out of scope here, a split-directory SFTP accept needs the
-  // command-line tool, and a file-drop accept needs mounts of the shape the
-  // invitation names. Shown at the review step BEFORE consent or intake, so the
-  // operator meets a block naming where it CAN run rather than a doomed run.
-  // Off the console every admitted endpoint runs in the browser, so this is undefined
-  // there.
+  // WebRTC accept needs a coordination server address the console can hold, a
+  // split-directory SFTP accept needs the command-line tool, and a file-drop
+  // accept needs mounts of the shape the invitation names. Shown at the review
+  // step BEFORE consent or intake, so the operator meets a block naming where it
+  // CAN run rather than a doomed run. Off the console every admitted endpoint
+  // runs in the browser, so this is undefined there.
   const unsupported =
     consoleBuild && decode.status === "ready"
       ? acceptUnsupported(
           decode.invitation.endpoint,
           rendezvous ?? { configured: false },
         )
+      : undefined;
+
+  // The coordination server a console WebRTC accept dials, shown read-only at
+  // the review step and set on the console when the run starts.
+  const acceptSignaling =
+    consoleBuild &&
+    decode.status === "ready" &&
+    decode.invitation.endpoint.channel === "webrtc"
+      ? acceptedSignalingServer(decode.invitation.endpoint, heldSignalingServer)
       : undefined;
 
   // Whether the pair this party's own `deduplicate` makes with the invitation's
@@ -765,11 +786,17 @@ function AcceptorInvitationScreen({
     unsupported === undefined &&
     decode.invitation.endpoint.channel === "filedrop";
   // The SFTP session mode applies only where a session exists, so the tuning card
-  // withholds it on a shared-directory accept.
+  // withholds it on a shared-directory accept, and a WebRTC accept, which checks
+  // no folder and handles no exchange files, offers neither the check interval
+  // nor the file-handling settings.
+  const acceptChannel = ready ? decode.invitation.endpoint.channel : undefined;
   const tuningCapabilities =
-    ready && decode.invitation.endpoint.channel === "sftp"
+    acceptChannel === "sftp"
       ? SFTP_CONNECTION_TUNING
-      : FILEDROP_CONNECTION_TUNING;
+      : acceptChannel === "webrtc"
+        ? WEBRTC_CONNECTION_TUNING
+        : FILEDROP_CONNECTION_TUNING;
+  const fileSyncAccept = acceptChannel !== "webrtc";
   // The split precondition belongs to the channel the accept runs on, so the
   // accept's own channel decides it before the console's mounts are consulted:
   // a filedrop accept rendezvouses through those mounts, and a split pair needs
@@ -836,11 +863,11 @@ function AcceptorInvitationScreen({
     // fixed into the launch alongside the edits so a later edit to either card
     // cannot retune a run already going.
     const options = withConnectionTuning(
-      exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES),
+      fileSyncAccept
+        ? exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES)
+        : undefined,
       connectionTuning,
-      decode.invitation.endpoint.channel === "sftp"
-        ? SFTP_CONNECTION_TUNING
-        : FILEDROP_CONNECTION_TUNING,
+      tuningCapabilities,
     );
     return {
       invitation: decode.invitation,
@@ -851,10 +878,17 @@ function AcceptorInvitationScreen({
       inputSource,
       deduplicate: launched.deduplicate,
       ...(options !== undefined ? { options } : {}),
-      runDiagnostics: runDiagnosticsIntentFields(runDiagnostics),
+      runDiagnostics: runDiagnosticsIntentFields(
+        fileSyncAccept
+          ? runDiagnostics
+          : { ...runDiagnostics, sweepExchangeFiles: false },
+      ),
       receipts: receiptsIntentFields(receipts),
       ...(committedCsvDelimiter !== undefined
         ? { csvDelimiter: committedCsvDelimiter }
+        : {}),
+      ...(acceptSignaling !== undefined
+        ? { signalingServer: acceptSignaling }
         : {}),
     };
     // `launched` is the launch key: it is set once, from the same render that
@@ -1281,6 +1315,9 @@ function AcceptorInvitationScreen({
               headingOrder={1}
               headingRef={termsHeadingRef}
             />
+            {acceptSignaling !== undefined && (
+              <AcceptorSignalingServerNotice accepted={acceptSignaling} />
+            )}
             {/* This console cannot run this endpoint's shape, or no acceptance
                 can run these terms: stop here, before consent or intake, with a
                 state naming what the operator can do rather than a doomed
@@ -1639,13 +1676,15 @@ function AcceptorInvitationScreen({
               exchangeFilesSection={
                 acceptServerJob ? (
                   <>
-                    <ExchangeFilesCard
-                      draft={exchangeFiles}
-                      capabilities={CONFIG_EXCHANGE_FILES}
-                      onChange={(draft) =>
-                        dispatch({ type: "exchange-files-chosen", draft })
-                      }
-                    />
+                    {fileSyncAccept && (
+                      <ExchangeFilesCard
+                        draft={exchangeFiles}
+                        capabilities={CONFIG_EXCHANGE_FILES}
+                        onChange={(draft) =>
+                          dispatch({ type: "exchange-files-chosen", draft })
+                        }
+                      />
+                    )}
                     <ConnectionTuningCard
                       draft={connectionTuning}
                       capabilities={tuningCapabilities}
@@ -1655,6 +1694,7 @@ function AcceptorInvitationScreen({
                     />
                     <RunDiagnosticsCard
                       draft={runDiagnostics}
+                      sweepOffered={fileSyncAccept}
                       onChange={(draft) =>
                         dispatch({ type: "run-diagnostics-chosen", draft })
                       }
@@ -1672,6 +1712,7 @@ function AcceptorInvitationScreen({
               }
               exchangeFilesBlocked={
                 acceptServerJob &&
+                fileSyncAccept &&
                 exchangeFilesProblems(exchangeFiles, CONFIG_EXCHANGE_FILES)
                   .length > 0
               }
@@ -1748,8 +1789,10 @@ function AcceptorInvitationScreen({
             {/* The manage offer is webrtc-only (its record composes a webrtc
                 locator from the invitation's endpoint) and is skippable: leaving
                 it untouched keeps the exchange one-off. It appears once the
-                exchange completes and holds the secret it rotated to. */}
+                exchange completes and holds the secret it rotated to. A
+                console run keeps that secret in the working folder instead. */}
             {decode.invitation.endpoint.channel === "webrtc" &&
+              !acceptServerJob &&
               launched !== undefined &&
               outputs !== undefined &&
               rotatedSecret !== undefined &&

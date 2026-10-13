@@ -21,6 +21,8 @@ import {
 } from "@exchange/acceptorModel";
 import {
   SERVER_JOB_KEEP_OPEN_BODY,
+  SERVER_JOB_PEER_WINDOW_BODY,
+  SERVER_JOB_WEBRTC_PEER_WINDOW_BODY,
   UNDESCRIBABLE_RECORD_CONFIRM_BODY,
   UNTAKEN_RECORD_CONFIRM_BODY,
 } from "@exchange/RunSurface";
@@ -29,6 +31,7 @@ import {
   UNDESCRIBABLE_RECORD_LEAD,
 } from "@exchange/RecordDownload";
 import { AcceptorScreen } from "@exchange/AcceptorScreen";
+import { COORDINATION_SERVER_CHANGED_REFUSAL } from "@jobContract/jobCreateRefusal";
 import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 
@@ -46,10 +49,11 @@ import type { JobHandoff } from "@jobContract/jobHandoff";
 
 // This suite exercises the CONSOLE acceptor seat: the accurate unsupported-shape
 // gate, the shared-folder confirmation, and the server-job run surface (the
-// keep-open callout through a stubbed filedrop accept). The dev server has no
-// rendezvous mount configured, so a WebRTC accept is out of scope on the console,
-// and a single-directory file-drop accept needs JOB_RENDEZVOUS_DIR; both stop at
-// review with an accurate state naming where the operator CAN run the exchange.
+// keep-open callout through a stubbed filedrop accept), and the WebRTC accept the
+// console runs through the invitation's coordination server. The dev server has no
+// rendezvous mount configured, so a single-directory file-drop accept needs
+// JOB_RENDEZVOUS_DIR and stops at review with an accurate state naming where the
+// operator CAN run the exchange.
 // The hosted acceptor journey stays pinned by acceptJourney.test.ts.
 
 // The exchange screens and their recovery links touch the router boundary.
@@ -208,20 +212,21 @@ describe("console acceptor unsupported-shape gate", () => {
     ).toBeNull();
   });
 
-  test("a webrtc invitation is out of scope on the console, pointing at the web app", async () => {
-    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+  test("a webrtc invitation with a query in its server path is blocked, asking for a new invitation", async () => {
+    const endpoint: ConnectionEndpoint = {
+      ...WEBRTC_ENDPOINT,
+      path: "/api/?key=x",
+    };
+    window.location.hash = await encodeToken(endpoint);
     app.render(createElement(AcceptorScreen));
 
-    await expect
-      .element(page.getByText("Invitation from County Health Department"))
-      .toBeInTheDocument();
     await expect
       .element(page.getByText(ACCEPT_UNSUPPORTED_TITLE))
       .toBeInTheDocument();
     await expect
       .element(
         page.getByText(
-          acceptUnsupported(WEBRTC_ENDPOINT, { configured: false })!.message,
+          acceptUnsupported(endpoint, { configured: false })!.message,
         ),
       )
       .toBeInTheDocument();
@@ -233,28 +238,220 @@ describe("console acceptor unsupported-shape gate", () => {
   });
 });
 
-describe("console acceptor never renders the recurring-save offer", () => {
-  // The offer's only acceptor render site is gated on a webrtc endpoint reaching the
-  // launched step (AcceptorScreen: `endpoint.channel === "webrtc" && launched`). A
-  // console build classifies a webrtc accept as unsupported and stops it at the review
-  // step, so the offer -- whose /saved link is gated out of the console build -- never
-  // mounts. Pin the webrtc accept blocked at review, before the launched step, with no
-  // offer panel.
-  test("a webrtc invitation is blocked at review with no offer", async () => {
+describe("console acceptor of a webrtc invitation", () => {
+  test("shows the coordination server it dials read-only and goes on to consent", async () => {
+    stubServerJobAccept();
     window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
     app.render(createElement(AcceptorScreen));
 
-    // The unsupported block replaces the Continue action, so the flow never reaches the
-    // launched step the offer needs.
     await expect
-      .element(page.getByText(ACCEPT_UNSUPPORTED_TITLE))
+      .element(page.getByText("How this console connects"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("wss://127.0.0.1:3000/api/"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("The run connects directly", { exact: false }))
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("replacing any server or web app address you set", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText("To reach a test server on this machine over ws://", {
+          exact: false,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(page.getByText(ACCEPT_UNSUPPORTED_TITLE).query()).toBeNull();
+    expect(page.getByRole("textbox", { name: /server/i }).query()).toBeNull();
+    await expect
+      .element(
+        page.getByRole("button", { name: "Continue: consent & your file" }),
+      )
+      .toBeInTheDocument();
+  });
+
+  test("dials over ws:// where the console already holds that server at ws://", async () => {
+    stubServerJobAccept({
+      signalingServer: {
+        configured: true,
+        host: "127.0.0.1",
+        port: 3000,
+        path: "/api/",
+        secure: false,
+        warnings: [],
+      },
+    });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+
+    await expect
+      .element(page.getByText("ws://127.0.0.1:3000/api/"))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByText("which is not encrypted", { exact: false }))
       .toBeInTheDocument();
     expect(
       page
-        .getByRole("button", { name: "Continue: consent & your file" })
+        .getByText("To reach a test server on this machine over ws://", {
+          exact: false,
+        })
         .query(),
     ).toBeNull();
+  });
+
+  test("sets the console to the invitation's server and relay, then creates a run naming them", async () => {
+    const relay = { turn: ["turn:relay.example.org:3478"] };
+    const api = stubServerJobAccept();
+    window.location.hash = await encodeToken({ ...WEBRTC_ENDPOINT, relay });
+    app.render(createElement(AcceptorScreen));
+    await expect
+      .element(page.getByText("The run uses the relay", { exact: false }))
+      .toBeInTheDocument();
+    await reachAcceptColumns();
+    // A WebRTC run handles no exchange files, so their settings are not offered.
+    expect(
+      page.getByRole("button", { name: /How files are handled/ }).query(),
+    ).toBeNull();
+    await page.getByRole("button", { name: "Start the exchange" }).click();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange in progress");
+    await expect
+      .element(page.getByText(SERVER_JOB_WEBRTC_PEER_WINDOW_BODY))
+      .toBeInTheDocument();
+    expect(page.getByText(SERVER_JOB_PEER_WINDOW_BODY).query()).toBeNull();
+
+    const put = api.captured.find(
+      (request) =>
+        request.url === "/api/jobs/webrtc" && request.method === "PUT",
+    );
+    expect(JSON.parse(String(put?.body))).toEqual({
+      address: "wss://127.0.0.1:3000/api/",
+      invitationRelay: relay,
+    });
+    const createIndex = api.captured.findIndex(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    expect(createIndex).toBeGreaterThan(api.captured.indexOf(put!));
+    const intent = JSON.parse(String(api.captured[createIndex]?.body)) as {
+      channel: string;
+      side: string;
+      signalingServer: unknown;
+      options?: unknown;
+    };
+    expect(intent.channel).toBe("webrtc");
+    expect(intent.side).toBe("acceptor");
+    expect(intent.signalingServer).toEqual({
+      host: "127.0.0.1",
+      port: 3000,
+      path: "/api/",
+      relay,
+    });
+    expect(intent.options).toBeUndefined();
+
+    // The console keeps the rotated secret in the working folder, so the
+    // recurring-save offer, whose /saved link is gated out of the console
+    // build, never mounts.
+    await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+    api.emitEvent({ v: 1, type: "result", resultWritten: true });
+    api.closeEvents();
+    await expect
+      .element(page.getByRole("heading", { level: 1 }))
+      .toMatchTextContent("Exchange complete");
     expect(page.getByText("Save as a recurring exchange").query()).toBeNull();
+  });
+
+  test("stops before any run is created when the console refuses the server, asking for another invitation", async () => {
+    expectConsole(
+      "error",
+      "AcceptedSignalingServerUnsetError: That address is refused. Type another.",
+    );
+    const api = stubServerJobAccept({
+      signalingRefusal: "That address is refused. Type another.",
+    });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachAcceptStart();
+
+    await expect
+      .element(
+        page.getByText(
+          "This console cannot use the invitation's coordination server",
+        ),
+      )
+      .toBeInTheDocument();
+    await expect
+      .element(
+        page.getByText(
+          "Ask your partner for an invitation through another coordination server.",
+          { exact: false },
+        ),
+      )
+      .toBeInTheDocument();
+    expect(page.getByRole("button", { name: "Try again" }).query()).toBeNull();
+    expect(
+      api.captured.some(
+        (request) => request.url === "/api/jobs" && request.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  test("offers Try again when the server setting changed while it was being set, which sets it again", async () => {
+    expectConsole("error", /^AcceptedSignalingServerUnsetError: /);
+    const api = stubServerJobAccept({ signalingSupersededOnce: true });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachAcceptStart();
+
+    await expect
+      .element(page.getByText("The coordination server could not be set"))
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Try again" }).click();
+    await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+    expect(
+      api.captured.filter(
+        (request) =>
+          request.url === "/api/jobs/webrtc" && request.method === "PUT",
+      ),
+    ).toHaveLength(2);
+  });
+
+  test("offers Try again when the server changed between setting it and creating the run", async () => {
+    expectConsole(
+      "error",
+      "JobApiRequestError: POST /api/jobs failed with status 400",
+    );
+    const api = stubServerJobAccept({
+      createRefusalOnce: COORDINATION_SERVER_CHANGED_REFUSAL,
+    });
+    window.location.hash = await encodeToken(WEBRTC_ENDPOINT);
+    app.render(createElement(AcceptorScreen));
+    await reachAcceptStart();
+
+    await expect
+      .element(
+        page.getByText(
+          "changed in another tab while the exchange was starting",
+          {
+            exact: false,
+          },
+        ),
+      )
+      .toBeInTheDocument();
+    await page.getByRole("button", { name: "Try again" }).click();
+    await vi.waitFor(() => expect(api.hasEventStream()).toBe(true));
+    expect(
+      api.captured.filter(
+        (request) =>
+          request.url === "/api/jobs/webrtc" && request.method === "PUT",
+      ),
+    ).toHaveLength(2);
   });
 });
 
@@ -476,6 +673,17 @@ interface AcceptStubOptions {
   /** When true every `DELETE /api/jobs/job-7` is held open until
    * `releaseDeletes()`, so a test can act while a discard is still in flight. */
   holdDeletes?: boolean;
+  /** The body `GET /api/jobs/webrtc` serves; none is set when unset. */
+  signalingServer?: unknown;
+  /** When set, `PUT /api/jobs/webrtc` is a 400 with this message; otherwise
+   * it reports the invitation's server set. */
+  signalingRefusal?: string;
+  /** When true, the first `PUT /api/jobs/webrtc` is a 409, as when another
+   * tab changed the server meanwhile; later ones set it. */
+  signalingSupersededOnce?: boolean;
+  /** When set, the first `POST /api/jobs` is a 400 refusal with this reason;
+   * later ones create the run. */
+  createRefusalOnce?: string;
 }
 
 // The full same-origin job API a console server-job accept drives: a mounted
@@ -508,6 +716,8 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
     releaseProbe = resolve;
   });
   let firstProbeHeld = false;
+  let signalingSupersededPending = options.signalingSupersededOnce === true;
+  let createRefusalPending = options.createRefusalOnce;
   let releaseDeletes: (() => void) | undefined;
   const deleteGate = new Promise<void>((resolve) => {
     releaseDeletes = resolve;
@@ -549,12 +759,40 @@ function stubServerJobAccept(options: AcceptStubOptions = {}): {
         return Promise.resolve(jsonResponse(options.profile ?? ACCEPT_PROFILE));
       if (url === "/api/jobs/inputs/coverage")
         return Promise.resolve(jsonResponse({ rates: [] }));
-      if (url === "/api/jobs")
+      if (url === "/api/jobs/webrtc") {
+        if ((init?.method ?? "GET") === "GET")
+          return Promise.resolve(
+            jsonResponse(options.signalingServer ?? { configured: false }),
+          );
+        if (signalingSupersededPending) {
+          signalingSupersededPending = false;
+          return Promise.resolve(jsonResponse({}, 409));
+        }
+        return Promise.resolve(
+          options.signalingRefusal !== undefined
+            ? jsonResponse({ error: options.signalingRefusal }, 400)
+            : jsonResponse({
+                configured: true,
+                host: "127.0.0.1",
+                port: 3000,
+                path: "/api/",
+                secure: true,
+                warnings: [],
+              }),
+        );
+      }
+      if (url === "/api/jobs") {
+        if (createRefusalPending !== undefined) {
+          const reason = createRefusalPending;
+          createRefusalPending = undefined;
+          return Promise.resolve(jsonResponse({ reason }, 400));
+        }
         return Promise.resolve(
           options.conflict !== undefined
             ? jsonResponse({ id: options.conflict.jobId }, 409)
             : jsonResponse({ id: "job-7" }, 201),
         );
+      }
       if (url.endsWith("/handoff"))
         return Promise.resolve(
           options.handoff !== undefined

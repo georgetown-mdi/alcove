@@ -33,6 +33,7 @@ import {
   WEBRTC_ENDPOINT_PATH_REFUSED,
   dialAsAcceptor,
 } from "@psi/transport/rendezvous";
+import { AcceptedSignalingServerUnsetError } from "@psi/jobClient/signalingServerClient";
 import { CSV_DELIMITER_SINGLE_COLUMN_REMEDY } from "@components/csvDelimiterChoice";
 import { failureFor } from "@exchange/useInviterExchange";
 
@@ -627,6 +628,61 @@ describe("failureFor", () => {
     expect(failure.title).toBe("The coordination server changed");
     expect(failure.message).toMatch(
       /Start over, check the coordination server/,
+    );
+  });
+
+  test("an accept refused for naming another coordination server offers the retry that sets it again", () => {
+    const failure = failureFor(
+      "exchange",
+      new JobApiRequestError(
+        400,
+        "refused",
+        undefined,
+        COORDINATION_SERVER_CHANGED_REFUSAL,
+      ),
+      WORK_FILE,
+      "webrtc",
+      "acceptor",
+    );
+    expect(failure.category).toBe("exchange");
+    expect(failure.retry).toBe("offered");
+    expect(failure.title).toBe("The coordination server changed");
+    expect(failure.message).toBe(
+      "The console did not start this exchange. Its coordination server was " +
+        "changed in another tab while the exchange was starting. Try again, " +
+        "and leave that setting alone until this exchange finishes.",
+    );
+  });
+
+  test("an accept whose coordination server the console refused asks for another invitation, with no retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new AcceptedSignalingServerUnsetError(true, "Correct the address."),
+    );
+    expect(failure.category).toBe("config");
+    expect(failure.retry).toBe("withheld");
+    expect(failure.title).toBe(
+      "This console cannot use the invitation's coordination server",
+    );
+    expect(failure.message).toBe(
+      "The console did not start this exchange: it cannot use the " +
+        "coordination server this invitation names. Ask your partner for an " +
+        "invitation through another coordination server.",
+    );
+  });
+
+  test("an accept whose coordination server could not be set offers a retry", () => {
+    const failure = failureFor(
+      "exchange",
+      new AcceptedSignalingServerUnsetError(false, "no answer"),
+    );
+    expect(failure.category).toBe("exchange");
+    expect(failure.retry).toBe("offered");
+    expect(failure.title).toBe("The coordination server could not be set");
+    expect(failure.message).toBe(
+      "The console did not start this exchange: its coordination server " +
+        "setting changed, or the console did not answer, while the exchange " +
+        "was starting. Try again.",
     );
   });
 

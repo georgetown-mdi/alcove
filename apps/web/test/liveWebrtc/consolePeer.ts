@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
@@ -15,7 +15,12 @@ import { cliEntry, pairsFromResultText } from "../interop/cliParty.ts";
 
 import { LEG_ENVIRONMENT_FAILURE } from "./legTypes.ts";
 
-import type { ConsoleJobOutcome, ConsoleLegStart } from "./legTypes.ts";
+import type {
+  ConsoleAnswer,
+  ConsoleJobOutcome,
+  ConsoleLegStart,
+  ConsoleWorkingFolderFiles,
+} from "./legTypes.ts";
 import type { ChildProcess } from "node:child_process";
 
 /**
@@ -45,8 +50,14 @@ const JOB_READ_TIMEOUT_MS = 10_000;
 export interface ConsoleParty {
   /** The coordination server as the console reported it. */
   signaling: ConsoleLegStart["signaling"];
+  /** Send `body` as a `PUT /api/jobs/webrtc`, resolving the console's
+   * answer. */
+  putSignalingServer: (body: string) => Promise<ConsoleAnswer>;
   /** Create the webrtc job from `intent`, resolving its id. */
   createJob: (intent: unknown) => Promise<string>;
+  /** The working folder's `alcove.yaml` and whether a `.alcove.key` is
+   * beside it. */
+  workingFolderFiles: () => ConsoleWorkingFolderFiles;
   /** Wait for the job to leave `running` and report what it did. */
   outcome: () => Promise<ConsoleJobOutcome>;
   /** Stop the server and its CLI child, and remove the data root.
@@ -130,6 +141,25 @@ export async function startConsoleParty(
       );
     const projection = (await authored.json()) as ConsoleLegStart["signaling"];
 
+    const putSignalingServer = async (body: string): Promise<ConsoleAnswer> => {
+      const response = await fetch(`${origin}/api/jobs/webrtc`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      return { status: response.status, body: await response.text() };
+    };
+
+    const workingFolderFiles = (): ConsoleWorkingFolderFiles => {
+      const configPath = path.join(dataRoot, "alcove.yaml");
+      return {
+        config: existsSync(configPath)
+          ? readFileSync(configPath, "utf8")
+          : null,
+        keyPresent: existsSync(path.join(dataRoot, ".alcove.key")),
+      };
+    };
+
     const createJob = async (intent: unknown): Promise<string> => {
       const created = await fetch(`${origin}/api/jobs`, {
         method: "POST",
@@ -194,7 +224,14 @@ export async function startConsoleParty(
       return { status, exitCode, pairs, events };
     };
 
-    return { signaling: projection, createJob, outcome, stop };
+    return {
+      signaling: projection,
+      putSignalingServer,
+      createJob,
+      workingFolderFiles,
+      outcome,
+      stop,
+    };
   } catch (error) {
     await stop().catch((stopError: unknown) => {
       console.error(

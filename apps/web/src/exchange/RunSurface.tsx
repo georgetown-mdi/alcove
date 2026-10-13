@@ -105,6 +105,15 @@ export const SERVER_JOB_PEER_WINDOW_BODY =
   "partner before the exchange stops; if it stops, coordinate a time and run " +
   "it again.";
 
+/** {@link SERVER_JOB_PEER_WINDOW_BODY} for a console WebRTC accept, whose
+ * inviting partner runs the web app or the command-line tool. */
+export const SERVER_JOB_WEBRTC_PEER_WINDOW_BODY =
+  "Your partner's side must be open while yours runs: their Alcove web app " +
+  "page or their alcove command. Yours waits about " +
+  `${peerWindowDurationPhrase(DEFAULT_PEER_TIMEOUT_MS)} for them before the ` +
+  "exchange stops; if it stops, agree a time with your partner and run it " +
+  "again.";
+
 const PREVIEW_EDGE_CHARS = 8;
 const COPY_STATUS_CLEAR_MS = 2000;
 

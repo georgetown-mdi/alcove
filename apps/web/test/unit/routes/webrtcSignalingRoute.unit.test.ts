@@ -30,6 +30,15 @@ import {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 
+/** The relay an accepted invitation names. */
+const INVITATION_RELAY = {
+  turn: ["turn:relay.test:3478?transport=udp"],
+  stun: ["stun:relay.test:3478"],
+};
+
+/** A relay other than {@link INVITATION_RELAY}. */
+const OTHER_RELAY = { turn: ["turn:other.test"] };
+
 type Handler = (ctx: {
   request: Request;
   params: Record<string, string>;
@@ -254,6 +263,37 @@ describe("PUT/GET/DELETE /api/jobs/webrtc (the coordination server)", () => {
       expect((await putWebrtc(body)).status).toBe(400);
   });
 
+  test("holds an accepted invitation's relay beside the server, and a later PUT without one drops it", async () => {
+    seedManager();
+    const put = await putWebrtc({
+      address: "wss://peers.test/psi",
+      invitationRelay: INVITATION_RELAY,
+    });
+    expect(put.status).toBe(200);
+    expect(await getWebrtc()).toMatchObject({
+      host: "peers.test",
+      invitationRelay: INVITATION_RELAY,
+    });
+    expect((await putWebrtc({ address: "wss://peers.test/psi" })).status).toBe(
+      200,
+    );
+    expect(await getWebrtc()).not.toHaveProperty("invitationRelay");
+  });
+
+  test.each([
+    ["an empty relay", {}],
+    ["a relay credential", { ...INVITATION_RELAY, username: "u" }],
+    ["a url that is not turn:", { turn: ["https://relay.test/"] }],
+    ["an empty list", { turn: [] }],
+  ])("refuses an invitation relay with %s", async (_, invitationRelay) => {
+    seedManager();
+    expect(
+      (await putWebrtc({ address: "wss://peers.test/psi", invitationRelay }))
+        .status,
+    ).toBe(400);
+    expect(await getWebrtc()).toEqual({ configured: false });
+  });
+
   test("resolves a web app address through the server it publishes", async () => {
     seedManager();
     const app = await webApp(publishing("ws://signal.test:9000/api"));
@@ -416,6 +456,94 @@ describe("POST /api/jobs on the webrtc channel", () => {
     expect(handoff?.template.argv.slice(0, 2)).toEqual(["alcove", "exchange"]);
     expect(handoff?.template.kind).toBe("workingFolder");
     expect(handoff?.template).not.toHaveProperty("yaml");
+  });
+
+  test("composes an acceptor's run with the accepted invitation's relay, as alcove accept writes it", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      invitationRelay: INVITATION_RELAY,
+    });
+    const response = await postJob(
+      validWebrtcIntent({
+        side: "acceptor",
+        signalingServer: { ...TEST_SIGNALING_SERVER, relay: INVITATION_RELAY },
+      }),
+    );
+    expect(response.status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).toEqual({
+      channel: "webrtc",
+      server: { host: "peers.test", path: "/psi/" },
+      role: "acceptor",
+      invitation_relay: INVITATION_RELAY,
+    });
+  });
+
+  test("composes no relay for an inviter's run while the console holds an accepted one", async () => {
+    const { manager, root } = seedManager();
+    await manager.authorSignalingServer({
+      address: TEST_SIGNALING_ADDRESS,
+      invitationRelay: INVITATION_RELAY,
+    });
+    expect((await postJob(validWebrtcIntent())).status).toBe(201);
+    const composed = parseYaml(
+      fs.readFileSync(`${root}/alcove.yaml`, "utf8"),
+    ) as { connection: Record<string, unknown> };
+    expect(composed.connection).not.toHaveProperty("invitation_relay");
+  });
+
+  test.each([
+    [
+      "an acceptor naming no relay while one is held",
+      "acceptor",
+      undefined,
+      true,
+    ],
+    ["an acceptor naming another relay", "acceptor", OTHER_RELAY, true],
+    [
+      "an acceptor naming a relay while none is held",
+      "acceptor",
+      INVITATION_RELAY,
+      false,
+    ],
+    ["an inviter naming a relay", "inviter", INVITATION_RELAY, true],
+  ] as const)(
+    "refuses %s, leaving nothing on disk",
+    async (_, side, relay, held) => {
+      const { manager, root } = seedManager();
+      await manager.authorSignalingServer({
+        address: TEST_SIGNALING_ADDRESS,
+        ...(held ? { invitationRelay: INVITATION_RELAY } : {}),
+      });
+      const response = await postJob(
+        validWebrtcIntent({
+          side,
+          signalingServer: {
+            ...TEST_SIGNALING_SERVER,
+            ...(relay !== undefined ? { relay } : {}),
+          },
+        }),
+      );
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        reason: "coordination-server-changed",
+      });
+      expect(fs.readdirSync(root)).toEqual([]);
+    },
+  );
+
+  test("takes the scheme's default port and a path without its slash as the held server's", async () => {
+    const { manager } = seedManager();
+    await manager.authorSignalingServer({ address: TEST_SIGNALING_ADDRESS });
+    const response = await postJob(
+      validWebrtcIntent({
+        signalingServer: { host: "peers.test", port: 443, path: "/psi" },
+      }),
+    );
+    expect(response.status).toBe(201);
   });
 
   test("states secure: false for a ws:// server", async () => {
