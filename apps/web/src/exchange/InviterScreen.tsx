@@ -1298,6 +1298,7 @@ export function InviterScreen() {
         dispatch({ type: "mint-finished" });
         return;
       }
+      if (saved.unchanged !== true) await openMountedConfiguration();
       connectionEndpoint = endpoint;
     } else if (transport === "webrtc") {
       // The endpoint names the coordination server the console run dials and

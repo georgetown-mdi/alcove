@@ -778,8 +778,11 @@ describe("failureFor", () => {
       "This configuration names its own signing identity",
     );
     expect(failure.message).not.toContain("Convert");
-    expect(failure.message).toContain("Turn the signed receipt off");
+    expect(failure.message).toContain("turn the signed receipt off");
     expect(failure.message).toContain("command line");
+    expect(failure.message).toContain(
+      "choose that file under Where your signing identity is kept",
+    );
   });
 
   test("the acceptor mounted-file 400 names its columns-step recovery", () => {

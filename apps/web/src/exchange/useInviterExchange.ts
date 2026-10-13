@@ -549,10 +549,12 @@ function failureContentFor(
         "The console did not start this exchange. Your alcove.yaml signs " +
         "with a signing identity file other than the one under Receipts and " +
         "record keeping, and the console signs only with its own identity. " +
-        "Turn the signed receipt off to run this exchange unsigned, then " +
-        "start the run again: the start saves that change to alcove.yaml. Or " +
-        "run the file with Alcove on the command line, which signs with the " +
-        "identity it names.",
+        "If the file names one of this console's identity files, choose that " +
+        "file under Where your signing identity is kept. Or turn the signed " +
+        "receipt off to run this exchange unsigned, then start the run " +
+        "again: the start saves that change to alcove.yaml. Or run the file " +
+        "with Alcove on the command line, which signs with the identity it " +
+        "names.",
     };
   // A console job create rejected the mounted file: a 400 the driver categorizes
   // `config`. The file is the likely fault, so the alert names it -- except on

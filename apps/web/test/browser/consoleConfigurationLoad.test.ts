@@ -15,6 +15,7 @@ import {
   CONFIGURATION_SAVED,
   CONVERT_CONFIGURATION_LABEL,
   EDITED_TERMS_TITLE,
+  IN_PLACE_IDENTITY_FILE_NOTICE,
   IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_CONTINUES,
@@ -152,10 +153,14 @@ function stubConfigRoute(
     sftp?: unknown;
     saveRefusal?: { error: string; reason?: string };
     createRefusal?: string;
+    /** The body `GET /api/jobs/config` answers once a save was written. */
+    afterSave?: unknown;
+    secretsEntries?: Array<{ name: string; kind: "dir" | "file" }>;
   } = {},
 ): void {
   const realFetch = window.fetch.bind(window);
   let signalingServerSet = false;
+  let saved = false;
   vi.stubGlobal(
     "fetch",
     (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -173,6 +178,7 @@ function stubConfigRoute(
         if (mount.saveRefusal !== undefined)
           return json(mount.saveRefusal, 400);
         writes.push("save");
+        saved = true;
         return json({ written: true });
       }
       if (url === "/api/jobs/webrtc") {
@@ -188,8 +194,16 @@ function stubConfigRoute(
       }
       if (url === "/api/jobs/config") {
         configReads.push(url);
-        return json(answer.body, answer.status);
+        return saved && mount.afterSave !== undefined
+          ? json(mount.afterSave)
+          : json(answer.body, answer.status);
       }
+      if (url.startsWith("/api/jobs/mounts/secrets/entries"))
+        return json({
+          configured: true,
+          readable: true,
+          entries: mount.secretsEntries ?? [],
+        });
       if (url === "/api/jobs/signing/fingerprint")
         return json({
           status: "ok",
@@ -479,33 +493,48 @@ describe("the open configuration over the files it is derived across", () => {
       .not.toBeInTheDocument();
   });
 
-  /** Open a webrtc configuration stating no relay and reach its review step. */
+  /** The body the console answers a read of the in-place webrtc configuration
+   * with, signed or not. */
+  function inPlaceBody(signing?: {
+    mode?: "certificate" | "none";
+    inPlaceSigningIdentity?: unknown;
+  }): Record<string, unknown> {
+    return {
+      ...(openedBody({
+        channel: "webrtc",
+        signalingServer: "wss://signal.example.org/api/",
+        linkageTerms: CONFIG_DOCUMENT.linkageTerms,
+        metadata: STATED_COLUMNS,
+        ...(signing !== undefined
+          ? { signing: { mode: signing.mode ?? "certificate" } }
+          : {}),
+      }) as Record<string, unknown>),
+      ...(signing?.inPlaceSigningIdentity !== undefined
+        ? { inPlaceSigningIdentity: signing.inPlaceSigningIdentity }
+        : {}),
+    };
+  }
+
+  /** Open a webrtc configuration stating no relay and reach its review step.
+   * `afterSave` is what the file reads as once the start's save wrote it. */
   async function reviewInPlaceRun(
     refusals: {
       saveRefusal?: { error: string; reason?: string };
       createRefusal?: string;
+      secretsEntries?: Array<{ name: string; kind: "dir" | "file" }>;
     } = {},
     signing?: { inPlaceSigningIdentity?: unknown },
+    afterSave?: Parameters<typeof inPlaceBody>[0],
   ): Promise<void> {
     stubConfigRoute(
+      { status: 200, body: inPlaceBody(signing) },
       {
-        status: 200,
-        body: {
-          ...(openedBody({
-            channel: "webrtc",
-            signalingServer: "wss://signal.example.org/api/",
-            linkageTerms: CONFIG_DOCUMENT.linkageTerms,
-            metadata: STATED_COLUMNS,
-            ...(signing !== undefined
-              ? { signing: { mode: "certificate" } }
-              : {}),
-          }) as Record<string, unknown>),
-          ...(signing?.inPlaceSigningIdentity !== undefined
-            ? { inPlaceSigningIdentity: signing.inPlaceSigningIdentity }
-            : {}),
-        },
+        files: [CLIENTS_FILE],
+        ...refusals,
+        ...(afterSave !== undefined
+          ? { afterSave: inPlaceBody(afterSave) }
+          : {}),
       },
-      { files: [CLIENTS_FILE], ...refusals },
     );
     app.render(createElement(InviterScreen));
     await userEvent.fill(page.getByLabelText("Your name"), "Dana Okafor");
@@ -611,6 +640,94 @@ describe("the open configuration over the files it is derived across", () => {
     await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
     expect(savedBodies[0]).toMatchObject({ signing: { mode: "none" } });
     expect(writes).toEqual(["save", "create"]);
+  });
+
+  const START_OVER_LABEL = "Start over";
+
+  test("a start whose save wrote the identity re-reads the file, so the card is judged against what was saved", async () => {
+    await reviewInPlaceRun(
+      {
+        createRefusal: "mounted-signing-identity-mismatch",
+        secretsEntries: [{ name: "other-id.json", kind: "file" }],
+      },
+      {},
+      {
+        inPlaceSigningIdentity: {
+          identityFile: "/work/.alcove-signing-identity.json",
+          consoleLocation: { mount: "folder" },
+        },
+      },
+    );
+    await openDisclosure(/Receipts and record keeping/);
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_WRITTEN_NOTICE))
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: "Create or show my fingerprint" })
+      .click();
+    await expect
+      .element(page.getByLabelText("Your certificate fingerprint"))
+      .toBeInTheDocument();
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await expect
+      .element(
+        page.getByText("This configuration names its own signing identity"),
+      )
+      .toBeInTheDocument();
+    expect(configReads).toHaveLength(2);
+    await page.getByRole("button", { name: START_OVER_LABEL }).click();
+    await openDisclosure(/Receipts and record keeping/);
+    await expect
+      .element(page.getByTestId("signing-identity-location"))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(
+      IN_PLACE_IDENTITY_WRITTEN_NOTICE,
+    );
+    await page
+      .getByRole("button", { name: "Choose a file from the secrets folder" })
+      .click();
+    await page.getByRole("button", { name: "Use other-id.json" }).click();
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_FILE_NOTICE))
+      .toBeInTheDocument();
+    await expect
+      .element(page.getByRole("button", { name: START_OPENED_EXCHANGE_LABEL }))
+      .toBeDisabled();
+  });
+
+  test("turning the receipt off and on again after a start saved no identity shows no stale mismatch", async () => {
+    await reviewInPlaceRun(
+      { createRefusal: "opened-configuration-not-runnable" },
+      { inPlaceSigningIdentity: { identityFile: "/home/operator/id.json" } },
+      { mode: "none" },
+    );
+    await openDisclosure(/Receipts and record keeping/);
+    await userEvent.selectOptions(
+      page.getByLabelText("What this exchange produces"),
+      "none",
+    );
+    await page
+      .getByRole("button", { name: START_OPENED_EXCHANGE_LABEL })
+      .click();
+    await vi.waitFor(() => expect(createdBodies).toHaveLength(1));
+    await expect
+      .element(page.getByRole("button", { name: START_OVER_LABEL }))
+      .toBeInTheDocument();
+    expect(configReads).toHaveLength(2);
+    await page.getByRole("button", { name: START_OVER_LABEL }).click();
+    await openDisclosure(/Receipts and record keeping/);
+    await userEvent.selectOptions(
+      page.getByLabelText("What this exchange produces"),
+      "certificate",
+    );
+    await expect
+      .element(page.getByText(IN_PLACE_IDENTITY_WRITTEN_NOTICE))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(
+      IN_PLACE_IDENTITY_FILE_NOTICE,
+    );
   });
 
   test("a save refused over a changed file starts no run and offers to open it again", async () => {
