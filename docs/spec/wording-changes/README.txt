@@ -9,5 +9,7 @@
 # target, is not listed.
 #
 # The check reads only the files in this directory that the branch adds or
-# modifies, and never this one. The list of a merged pull request is read by
-# nothing, and any pull request may delete it.
+# modifies, and never this one. A file the branch adds is read whole; in a file
+# it modifies, only the lines it adds count. A branch named README writes
+# README-branch.txt. A branch whose name matches a merged list appends to that
+# file, and the merged entries are not read.

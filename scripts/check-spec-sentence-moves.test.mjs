@@ -287,6 +287,21 @@ describe("the comparison", () => {
     );
   });
 
+  it("reads only the lines the branch appended to a list file that already held merged entries", () => {
+    const merged = "- One. -> -\n- Two. -> -\n- Three. -> -\n";
+    const dropped = `- ${CHANGED_SENTENCE} -> -\n`;
+    const added = `- - -> ${CHANGED_SENTENCE.replace("MUST", "SHOULD")}\n`;
+    withMove(
+      { ...ONE_WORD_CHANGED, [BRANCH_LIST]: `${merged}${dropped}${added}` },
+      (dir) => {
+        const { listFiles, result } = compareRevisions(dir, "staging", "HEAD");
+        expect(listFiles).toEqual([BRANCH_LIST]);
+        expect(result).toEqual({ dropped: [], added: [], unmatched: [] });
+      },
+      { [BRANCH_LIST]: merged },
+    );
+  });
+
   it("reads neither the directory's README nor a list file the branch deleted", () => {
     withMove(
       {
@@ -311,6 +326,9 @@ describe("the comparison", () => {
       `${WORDING_CHANGES_DIRECTORY}feature-a-b.txt`,
     );
     expect(listFileFor(null)).toBe(`${WORDING_CHANGES_DIRECTORY}<branch>.txt`);
+    expect(listFileFor("README")).toBe(
+      `${WORDING_CHANGES_DIRECTORY}README-branch.txt`,
+    );
   });
 
   it("does not require a unit whose only change is a link target", () => {

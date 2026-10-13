@@ -28,8 +28,10 @@
 //
 // The branch's list is every file under docs/spec/wording-changes/ it added or
 // modified since the merge base, apart from README.txt; a file it did not
-// touch or deleted is not read, so an earlier pull request's list is never
-// matched and two branches never write one file.
+// touch or deleted is not read. A file the branch added is read whole; a file
+// it modified is read only for the lines the branch added, so a branch name
+// that reuses a merged pull request's file appends to it and the earlier
+// entries are never matched. Each branch name maps to one file.
 
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -49,6 +51,9 @@ export const WORDING_CHANGES_DIRECTORY = "docs/spec/wording-changes/";
 
 /** The file in that directory describing it, never read as a list. */
 export const WORDING_CHANGES_README = `${WORDING_CHANGES_DIRECTORY}README.txt`;
+
+/** The file name stem a branch named README maps to, README.txt being skipped. */
+const README_BRANCH = "README-branch";
 
 /** The file name a branch name maps to when it cannot be determined. */
 const UNKNOWN_BRANCH = "<branch>";
@@ -312,14 +317,16 @@ export function compareSpecFiles(baseFiles, headFiles, wordingChanges = []) {
 
 /**
  * The list file a branch writes: its name with every character outside
- * `A-Za-z0-9._-` replaced by `-`, or a `<branch>` placeholder when the name is
- * unknown.
+ * `A-Za-z0-9._-` replaced by `-` (`README-branch` for a branch named
+ * README), or a `<branch>` placeholder when the name is unknown.
  */
 export function listFileFor(branch) {
   const name =
     branch === null || branch === undefined || branch === ""
       ? UNKNOWN_BRANCH
       : branch.replace(/[^A-Za-z0-9._-]/g, "-");
+  if (name === "README")
+    return `${WORDING_CHANGES_DIRECTORY}${README_BRANCH}.txt`;
   return `${WORDING_CHANGES_DIRECTORY}${name}.txt`;
 }
 
@@ -427,9 +434,10 @@ function readAt(root, commit, file) {
 
 /**
  * The list files a range added or modified under the wording-changes
- * directory, README.txt aside, sorted.
+ * directory, README.txt aside, sorted, each `{ path, added }` with `added`
+ * true when the range created the file.
  */
-export function branchListFiles(root, from, to) {
+function branchListChanges(root, from, to) {
   const fields = git(root, [
     "diff",
     "--name-status",
@@ -443,15 +451,38 @@ export function branchListFiles(root, from, to) {
   const listFiles = [];
   for (let at = 0; at + 1 < fields.length; at += 2) {
     const [status, path] = [fields[at], fields[at + 1]];
-    if (status !== "D" && path !== WORDING_CHANGES_README) listFiles.push(path);
+    if (status !== "D" && path !== WORDING_CHANGES_README) {
+      listFiles.push({ path, added: status === "A" });
+    }
   }
-  return listFiles.sort();
+  return listFiles.sort((left, right) => (left.path < right.path ? -1 : 1));
+}
+
+/** The paths of the list files a range added or modified. */
+export function branchListFiles(root, from, to) {
+  return branchListChanges(root, from, to).map((change) => change.path);
+}
+
+/**
+ * The text of a list file the range changed that counts as the branch's: the
+ * whole file when the range added it, otherwise only the lines it added.
+ */
+function branchListText(root, from, to, { path, added }) {
+  if (added) return readAt(root, to, path);
+  const diff = git(root, ["diff", "--no-renames", "-U0", from, to, "--", path]);
+  const lines = [];
+  let inHunk = false;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("@@")) inHunk = true;
+    else if (inHunk && line.startsWith("+")) lines.push(line.slice(1));
+  }
+  return lines.join("\n");
 }
 
 /**
  * Runs the comparison between the merge base of `base` and `head`, and `head`,
- * against the entries of the list files the range added or modified, read at
- * `head`. Returns `{ files, listFiles, result }`, or `{ error }` when a
+ * against the entries of the list files the range added (whole) or modified
+ * (the added lines only), read at `head`. Returns `{ files, listFiles, result }`, or `{ error }` when a
  * revision does not resolve.
  */
 export function compareRevisions(root, base, head) {
@@ -472,9 +503,10 @@ export function compareRevisions(root, base, head) {
   const headFiles = new Map(
     files.map((file) => [file, readAt(root, headCommit, file)]),
   );
-  const listFiles = branchListFiles(root, mergeBase, headCommit);
-  const wordingChanges = listFiles.flatMap((file) =>
-    parseWordingChanges(readAt(root, headCommit, file)),
+  const changes = branchListChanges(root, mergeBase, headCommit);
+  const listFiles = changes.map((change) => change.path);
+  const wordingChanges = changes.flatMap((change) =>
+    parseWordingChanges(branchListText(root, mergeBase, headCommit, change)),
   );
   return {
     files,
