@@ -138,6 +138,21 @@ done
 [ "$identity" = "${IDENTITY}" ] && [ "$issuer" = "${ISSUER}" ] || exit 1
 [ "$sha" = "$(cat "$F/signed-for")" ] || { echo "Error: none of the expected identities matched" >&2; exit 1; }`;
 
+// While $F/script-only-kill exists, a timeout whose signals reach the command
+// alone, as the kill-after KILL of uutils timeout (Ubuntu 26.04) does, on a
+// host whose /usr/bin/timeout is GNU's and signals the whole process group.
+const TIMEOUT_STUB = String.raw`
+printf '%s\n' "$*" >> "$F/timeouts"
+[ -e "$F/script-only-kill" ] && [ "$1" = -k ] || exec /usr/bin/timeout "$@"
+after="$2"; bound="$3"; shift 3
+"$@" &
+script=$!
+{ sleep "$bound"; kill -TERM "$script"; sleep "$after"; kill -KILL "$script"; } >/dev/null 2>&1 &
+watch=$!
+wait "$script"; status=$?
+kill "$watch" 2>/dev/null
+exit "$status"`;
+
 const NPM_STUB = String.raw`
 printf 'npm %s in %s\n' "$*" "$PWD" >> "$F/calls"
 [ ! -e "$F/fail-npm" ] || exit 1
@@ -268,10 +283,7 @@ const host = () => {
     join(bin, "systemctl"),
     `${head}\nprintf 'systemctl %s\\n' "$*" >> "$F/calls"`,
   );
-  writeStub(
-    join(bin, "timeout"),
-    `${head}\nprintf '%s\\n' "$*" >> "$F/timeouts"\nexec /usr/bin/timeout "$@"`,
-  );
+  writeStub(join(bin, "timeout"), `${head}\n${TIMEOUT_STUB}`);
   writeStub(
     join(bin, "chown"),
     `${head}\nprintf 'chown %s\\n' "$*" >> "$F/calls"`,
@@ -730,16 +742,23 @@ describe("pull.sh", () => {
       expect(h.trees()).toEqual([DEPLOYED]);
     });
 
-    it("kills an install script that ignores TERM, and rolls back", () => {
-      const h = host();
-      h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
-      h.env.ALCOVE_HOST_PULL_KILL_AFTER = "1";
-      h.set(`deaf-relay-install-${TIP}`);
-      const started = Date.now();
-      outcome(h, "rolled-back", 1);
-      expect(Date.now() - started).toBeLessThan(20000);
-      expect(h.link()).toBe(`trees/${DEPLOYED}`);
-    });
+    it.each([
+      ["the host's timeout", false],
+      ["a timeout whose signals reach the script alone", true],
+    ])(
+      "kills an install script that ignores TERM, and its children, under %s, and rolls back",
+      (_label, scriptOnlyKill) => {
+        const h = host();
+        h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
+        h.env.ALCOVE_HOST_PULL_KILL_AFTER = "1";
+        h.set(`deaf-relay-install-${TIP}`);
+        if (scriptOnlyKill) h.set("script-only-kill");
+        const started = Date.now();
+        outcome(h, "rolled-back", 1);
+        expect(Date.now() - started).toBeLessThan(20000);
+        expect(h.link()).toBe(`trees/${DEPLOYED}`);
+      },
+    );
 
     it.each([
       ["unset", undefined, DEFAULT_BOUND],

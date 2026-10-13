@@ -117,7 +117,7 @@ trap cleanup EXIT
 trap 'finish failed 1 "pull.sh stopped at line $LINENO"' ERR
 trap 'finish failed 1 "pull.sh was stopped by a signal"' TERM INT
 
-for tool in git curl cosign node npm sha256sum tar nice ionice; do
+for tool in git curl cosign node npm sha256sum tar nice ionice setsid; do
   command -v "$tool" >/dev/null 2>&1 || finish failed 1 "$tool is not installed; see README.md, Install"
 done
 if [ -L "$SRC" ]; then
@@ -246,6 +246,19 @@ stage() {
   rm -rf "$replaced"
 }
 
+# script. Runs it under timeout in a session of its own, and once it fails
+# sends KILL to every process left in that session: the kill-after KILL of
+# uutils timeout, the timeout on Ubuntu 26.04, reaches the script alone, so a
+# child ignoring TERM would otherwise outlive the bound.
+bounded() {
+  local session status=0
+  setsid timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$1" >&2 &
+  session=$!
+  wait "$session" || status=$?
+  if [ "$status" != 0 ]; then kill -KILL -- "-$session" 2>/dev/null || true; fi
+  return "$status"
+}
+
 # commit. Links $SRC to the commit's tree, restarts the broker and runs the
 # tree's two install scripts. Sets FAILURE and returns 1 at the first step that
 # fails. Each step tests its own status: the callers run this as a condition,
@@ -260,10 +273,10 @@ install_tree() {
   # and a switched tree is not one.
   systemctl try-restart alcove-broker.service \
     || { FAILURE="alcove-broker.service did not restart on $1"; return 1; }
-  timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$tree/infra/broker/install.sh" >&2 \
+  bounded "$tree/infra/broker/install.sh" \
     || { FAILURE="infra/broker/install.sh failed at $1"; return 1; }
   # Ends with verify.sh against the relay's private address.
-  timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$tree/infra/relay/install.sh" >&2 \
+  bounded "$tree/infra/relay/install.sh" \
     || { FAILURE="infra/relay/install.sh or its verify.sh failed at $1"; return 1; }
 }
 
