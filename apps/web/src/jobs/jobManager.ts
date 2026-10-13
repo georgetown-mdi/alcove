@@ -922,11 +922,11 @@ export class JobManager {
     // secrets mount leaves the console free rather than mid-create.
     const identityPath = this.identityPathFor(intent);
     // A run in place signs with the identity its file names, which no
-    // conversion replaces, so a signed run is refused unless that is the
-    // identity the console shows.
+    // conversion replaces, so a run of a file signing with another identity is
+    // refused whatever the intent says, unless that is the identity the console
+    // shows.
     if (
       intent.mode !== "zeroSetup" &&
-      intent.signing?.mode === "certificate" &&
       inPlaceIdentityFile !== undefined &&
       !namesSigningIdentity(inPlaceIdentityFile, identityPath)
     )
