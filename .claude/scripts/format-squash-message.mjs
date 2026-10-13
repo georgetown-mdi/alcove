@@ -206,10 +206,9 @@ function quoted(line) {
   return line.length <= 60 ? line : `${line.slice(0, 57)}...`;
 }
 
-/** The whitespace-separated words of the body. */
-function wordCountOf(draft) {
-  return bodyLinesOf(draft)
-    .join(" ")
+/** The whitespace-separated words of the body as normalizing prints it. */
+export function wordCountOf(draft) {
+  return normalizeDraft(draft)
     .split(/\s+/)
     .filter((word) => word !== "").length;
 }

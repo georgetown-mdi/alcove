@@ -15,6 +15,7 @@ import {
   parseArgs,
   refusals,
   violations,
+  wordCountOf,
   wrapParagraph,
 } from "./format-squash-message.mjs";
 
@@ -250,6 +251,19 @@ describe("format-squash-message refusals", () => {
     expect(result.stdout).toBe("");
   });
 
+  it("counts the words normalizing prints, not list markers", () => {
+    const items = Array.from({ length: 60 }, (_, i) => `- w${i}`);
+    expect(refusedFor(`The points:\n${items.join("\n")}`)).toEqual([]);
+  });
+
+  it("counts a link as the words normalizing prints for it", () => {
+    const body = `${wordsOf(BODY_MAX_WORDS - 1)} [docs](https://x.org)`;
+    const result = run([], draft(body));
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain("Shorten");
+    expect(result.stderr).not.toContain("bug in the script");
+  });
+
   it("refuses nothing normalizing can fix without losing a word", () => {
     for (const { body } of NORMALIZED) {
       expect(refusedFor(body), body).toEqual([]);
@@ -423,7 +437,7 @@ describe("format-squash-message against real commit messages", () => {
   // rules do not fire on messages written under them. Bodies landed before
   // the word bound existed may exceed it, so the corpus keeps those within it.
   const landed = landedBodies(50).filter(
-    ({ body }) => body.split(/\s+/).filter(Boolean).length <= BODY_MAX_WORDS,
+    ({ body }) => wordCountOf(body) <= BODY_MAX_WORDS,
   );
 
   it("reads a corpus of messages rather than an empty list", () => {
