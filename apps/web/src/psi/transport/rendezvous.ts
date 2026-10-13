@@ -218,9 +218,9 @@ function inviterSignalingLocation(): SignalingLocation {
  */
 export const WEBRTC_ENDPOINT_HOST_REFUSED =
   "this invitation's signaling endpoint names a host that could move the " +
-  "connection to another server: the host must contain none of @ / ? # \\ or " +
-  "whitespace. Ask your partner to send a new invitation created from their " +
-  "own address.";
+  "connection to another server: it must be a hostname or IP address alone, " +
+  "with no port and none of @ / ? # \\ or whitespace. Ask your partner to send " +
+  "a new invitation.";
 
 /**
  * The refusal an invitation endpoint whose `path` could move the dialed address

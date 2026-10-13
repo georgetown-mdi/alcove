@@ -1846,7 +1846,11 @@ describe("accepting and running a webrtc exchange in one command", () => {
     // block on this path the operator could go and check.
     const input = writeInputCSV(["first_name", "last_name", "dob", "ssn"]);
     try {
-      for (const host of ["peer.example.org:9000", "[::1"]) {
+      for (const host of [
+        "peer.example.org:9000",
+        "peer.example.org:443",
+        "[::1",
+      ]) {
         const encoded = await encodeInvitation(
           sampleToken(FUTURE(), { ...WEBRTC_ENDPOINT, host }),
         );

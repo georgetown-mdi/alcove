@@ -93,6 +93,52 @@ const HOST_AUTHORITY_DELIMITERS = /[@/?#\\]|\s/;
  */
 const PATH_AUTHORITY_DELIMITERS = /[@?#\\]|\s/;
 
+/**
+ * The `wss:` URL, or `ws:` where `secure` is false, that a signaling `host`
+ * parses to with no port set, or `undefined` when `host` is not a bare
+ * authority: it holds a {@link HOST_AUTHORITY_DELIMITERS} character, fails the
+ * URL parser's host parse, or contributes userinfo, a port or a path of its
+ * own. A bracketed IPv6 literal is a bare authority. The verdict is the same
+ * for either scheme. This is the one host rule every app's accept applies
+ * (docs/spec/WEBRTC_TRANSPORT.md#broker-socket).
+ */
+export function bareSignalingAuthority(
+  host: string,
+  secure: boolean,
+): URL | undefined {
+  if (HOST_AUTHORITY_DELIMITERS.test(host)) return undefined;
+  let authority: URL;
+  try {
+    authority = new URL(`${secure ? "wss" : "ws"}://${host}`);
+  } catch {
+    return undefined;
+  }
+  if (
+    authority.username !== "" ||
+    authority.password !== "" ||
+    authority.port !== "" ||
+    authority.pathname !== "/" ||
+    authority.search !== "" ||
+    authority.hash !== ""
+  )
+    return undefined;
+  // The parser drops an empty port and one equal to the scheme's default, so
+  // a `:` outside an IPv6 literal's brackets is refused on the text.
+  const pastLiteral = host.startsWith("[")
+    ? host.slice(host.indexOf("]") + 1)
+    : host;
+  if (pastLiteral.includes(":")) return undefined;
+  return authority;
+}
+
+/**
+ * Whether a signaling `host` is a bare authority by
+ * {@link bareSignalingAuthority}, for a caller that dials nothing itself.
+ */
+export function isBareSignalingHost(host: string): boolean {
+  return bareSignalingAuthority(host, true) !== undefined;
+}
+
 /** The half of a signaling location a refusal names. */
 export type SignalingLocationField = "host" | "path";
 

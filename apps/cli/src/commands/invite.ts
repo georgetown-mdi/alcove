@@ -28,6 +28,7 @@ import {
   TurnUrlSchema,
   InternalConsistencyError,
   UsageError,
+  isBareSignalingHost,
   isWebAppAddress,
 } from "@alcove/core";
 import type {
@@ -98,6 +99,7 @@ import { withWebRTCPeerRole } from "../webrtcPeerRole";
 import {
   brokerLocationFromConnection,
   DEFAULT_RENDEZVOUS_TIMEOUT_MS,
+  WEBRTC_INVITATION_HOST_REFUSED,
 } from "../connection/webrtc/weriftPeer";
 import {
   addCommonBootstrapOptions,
@@ -265,17 +267,20 @@ export function relayUrlFlag(
 
 /**
  * The invitation endpoint for `connection`, refused as a {@link UsageError}
- * before the token exists when its relay names more urls, or a longer url,
- * than an invitation holds; the token schema would otherwise throw a raw
- * ZodError. `relayFields` names where the operator set each list: the flags
- * online, the configuration fields offline. The url itself is never echoed,
- * since it may hold a pasted credential.
+ * before the token exists when a webrtc host is not one every acceptor dials,
+ * or when its relay names more urls, or a longer url, than an invitation
+ * holds; the token schema would otherwise throw a raw ZodError. `relayFields`
+ * names where the operator set each list: the flags online, the configuration
+ * fields offline. The url itself is never echoed, since it may hold a pasted
+ * credential.
  */
 function invitationEndpoint(
   connection: Parameters<typeof endpointFromConnection>[0],
   relayFields: { turn: string; stun: string },
 ): ConnectionEndpoint {
   const endpoint = endpointFromConnection(connection);
+  if (endpoint.channel === "webrtc" && !isBareSignalingHost(endpoint.host))
+    throw new UsageError(WEBRTC_INVITATION_HOST_REFUSED);
   if (endpoint.channel !== "webrtc" || endpoint.relay === undefined)
     return endpoint;
   for (const name of ["turn", "stun"] as const) {

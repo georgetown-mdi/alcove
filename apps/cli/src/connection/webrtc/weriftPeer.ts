@@ -460,6 +460,18 @@ export const WEBRTC_BROKER_HOST_REFUSED =
   "another server: it must include none of @ / ? # \\ or whitespace. Set `host` " +
   "to the hostname alone, with the port in `port` and the mount point in `path`.";
 
+/**
+ * The refusal an invite gets for a `connection.server.host` that is not a
+ * bare authority by core's `isBareSignalingHost`, the rule every acceptor
+ * applies, so no invitation goes out naming a host no acceptor dials. Value-free
+ * for the reason {@link WEBRTC_BROKER_HOST_REFUSED} states.
+ */
+export const WEBRTC_INVITATION_HOST_REFUSED =
+  "this webrtc connection's server `host` is not a hostname or IP address " +
+  "alone, so no acceptor could dial an invitation naming it. Set " +
+  "`connection.server.host` to the hostname alone, with the port in " +
+  "`connection.server.port`.";
+
 /** The refusal a `server.path` whose shape could move the signaling socket gets. */
 export const WEBRTC_BROKER_PATH_REFUSED =
   "this webrtc connection's server `path` could move the signaling socket to " +
@@ -481,9 +493,10 @@ export const WEBRTC_BROKER_PATH_REFUSED =
  * here -- an operator's `alcove.yaml` and the invitation endpoint an offline
  * accept persists -- can hold a partner-supplied value. The rule is core's
  * {@link authorityMovingSignalingField}, shared with the browser acceptor so
- * both refuse the same delimiters; the CLI additionally requires a bare
- * authority (no port or path in the host), which the browser does not check.
- * The refused characters and both routes are recorded in
+ * both refuse the same delimiters. The rest of the bare-authority rule (no port
+ * in the host) is core's `bareSignalingAuthority`, which the dial applies
+ * through `brokerAuthority` and the browser acceptor applies with the
+ * delimiters. The refused characters and both routes are recorded in
  * docs/spec/WEBRTC_TRANSPORT.md.
  * `key` needs no equivalent refusal: it cannot appear on an invitation
  * endpoint and is encoded as a query parameter.

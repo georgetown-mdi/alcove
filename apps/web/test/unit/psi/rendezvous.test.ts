@@ -563,6 +563,11 @@ describe("an invitation endpoint that could move the dialed address", () => {
     ["a backslash", "inviter.example.org\\evil.example.org"],
     ["a space", "inviter.example.org evil.example.org"],
     ["a tab", "inviter.example.org\tevil.example.org"],
+    // The bare-authority rule `alcove accept` applies: a port belongs in the
+    // endpoint's own port field.
+    ["a port", "h.example:99"],
+    ["the scheme's default port", "h.example:443"],
+    ["an unterminated IPv6 literal", "[::1"],
   ];
 
   const refusedPaths: Array<[string, string]> = [
@@ -625,6 +630,30 @@ describe("an invitation endpoint that could move the dialed address", () => {
     ).catch((e: unknown) => e);
 
     expect((rejection as Error).message).not.toContain("evil.example.org");
+  });
+
+  test("a bracketed IPv6 literal host is dialed as written", async () => {
+    stubWindow();
+    const fake = new FakePeer();
+    let capturedOptions: PeerOptions | undefined;
+    const controller = new AbortController();
+    const promise = dialAsAcceptor(
+      generateSharedSecret(),
+      { ...endpoint, host: "[2001:db8::1]" },
+      {
+        signal: controller.signal,
+        peerFactory: (_id, options) => {
+          capturedOptions = options;
+          return fake as unknown as Peer;
+        },
+      },
+    );
+
+    await vi.waitFor(() => expect(capturedOptions).toBeDefined());
+    expect(capturedOptions?.host).toBe("[2001:db8::1]");
+
+    controller.abort();
+    await expect(promise).rejects.toThrow(/aborted/i);
   });
 
   test("an endpoint omitting the path takes this app's own mount point", async () => {

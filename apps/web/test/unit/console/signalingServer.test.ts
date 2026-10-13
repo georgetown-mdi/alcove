@@ -257,6 +257,41 @@ describe("the coordination server a console accept dials", () => {
       expect(acceptedSignalingServer(endpoint, null)).toBe(undefined);
   });
 
+  // With no port field, the address the console builds would parse with the
+  // host's port as its own; the bare-authority rule `alcove accept` applies
+  // refuses it first.
+  test("is none where the invitation's host holds a port and the endpoint states none", () => {
+    for (const host of ["h.example:99", "h.example:443", "[::1"])
+      expect(
+        acceptedSignalingServer(
+          { channel: "webrtc", host, path: "/api/" },
+          null,
+        ),
+      ).toBe(undefined);
+  });
+
+  test("is the invitation's server where its host is a bracketed IPv6 literal", () => {
+    for (const port of [8443, undefined])
+      expect(
+        acceptedSignalingServer(
+          {
+            channel: "webrtc",
+            host: "[2001:db8::1]",
+            ...(port !== undefined ? { port } : {}),
+            path: "/api/",
+          },
+          null,
+        ),
+      ).toEqual({
+        address: `wss://[2001:db8::1]${port !== undefined ? `:${port}` : ""}/api/`,
+        signalingServer: {
+          host: "[2001:db8::1]",
+          ...(port !== undefined ? { port } : {}),
+          path: "/api/",
+        },
+      });
+  });
+
   test("is set on the console with the invitation's relay, and named to the create", async () => {
     const accepted = acceptedSignalingServer(
       { ...ENDPOINT, relay: RELAY },

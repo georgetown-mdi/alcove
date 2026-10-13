@@ -86,7 +86,8 @@ Endpoint keys are not case-folded, so `inbound_path` is an unknown key and refus
 | `sftp` | `channel`; `host` (required); `port`; `path`; `inboundPath`; `outboundPath` |
 | `filedrop` | `channel`; `path`; `inboundPath`; `outboundPath` |
 
-- `host` is a string of 1 to `MAX_ENDPOINT_HOST_LENGTH` (**256**) UTF-16 code units, checked for length only.
+- `host` is a string of 1 to `MAX_ENDPOINT_HOST_LENGTH` (**256**) UTF-16 code units, the only check the schema makes.
+  A `webrtc` host must also be a bare authority, with no port of its own, which every acceptor checks before it dials ([WEBRTC_TRANSPORT.md](WEBRTC_TRANSPORT.md#broker-socket)).
 - `port` is an integer from 1 to 65535.
   Port 0 is refused, which is stricter than the connection configuration, since an OS-assigned port is never a connect target.
 - `path`, `inboundPath` and `outboundPath` are each a string of 1 to `MAX_ENDPOINT_PATH_LENGTH` (**4096**) UTF-16 code units.
