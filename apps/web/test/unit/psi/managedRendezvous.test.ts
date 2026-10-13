@@ -313,12 +313,12 @@ describe("an acceptor's saved signaling address that fails validation", () => {
     [
       "a host holding @",
       { host: "partner.example@attacker.example", port: 443, path: "/api/" },
-      /names a host that could move the connection/,
+      /names a host that is not a host name or IP address alone/,
     ],
     [
       "a host holding /",
       { host: "attacker.example/x", path: "/api/" },
-      /names a host that could move the connection/,
+      /names a host that is not a host name or IP address alone/,
     ],
     [
       "a path not starting with /",

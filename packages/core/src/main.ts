@@ -814,8 +814,10 @@ export {
 export type { AuthResult } from "./auth";
 export {
   authorityMovingSignalingField,
+  bareSignalingAuthority,
   deriveRendezvousPeerId,
   handshakeRoleForRendezvousRole,
+  isBareSignalingHost,
 } from "./rendezvous";
 export type { RendezvousRole, SignalingLocationField } from "./rendezvous";
 export {

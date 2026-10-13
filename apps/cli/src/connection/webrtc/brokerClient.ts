@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import {
   AuthenticationError,
+  bareSignalingAuthority,
   chainDetailCauses,
   ConnectionError,
   markStatesItsOwnNextStep,
@@ -338,6 +339,9 @@ export const BROKER_AUTHORITY_REFUSED =
  * so a host holding one is refused rather than dialed. The port comes from
  * `port` alone.
  *
+ * The rule is core's {@link bareSignalingAuthority}, the one the web app and
+ * the console apply to an invitation's host.
+ *
  * The refusal is a {@link UsageError} rather than a transport failure, and so
  * exits 64 wherever it is raised, because it is decided by the location alone:
  * every retry of the same locator reaches it again, and a 69 would set an
@@ -350,23 +354,8 @@ function brokerAuthority(
   location: BrokerLocation,
   refusal: string = BROKER_ADDRESS_REFUSED,
 ): URL {
-  const scheme = location.secure ? "wss" : "ws";
-  let authority: URL;
-  try {
-    authority = new URL(`${scheme}://${location.host}`);
-  } catch {
-    throw new UsageError(refusal);
-  }
-  if (
-    authority.username !== "" ||
-    authority.password !== "" ||
-    authority.port !== "" ||
-    authority.pathname !== "/" ||
-    authority.search !== "" ||
-    authority.hash !== ""
-  ) {
-    throw new UsageError(refusal);
-  }
+  const authority = bareSignalingAuthority(location.host, location.secure);
+  if (authority === undefined) throw new UsageError(refusal);
   authority.port = String(location.port);
   return authority;
 }

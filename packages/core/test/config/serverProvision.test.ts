@@ -781,6 +781,20 @@ test("real fetch: an answer stalled mid-body times out as a transport failure", 
   expect((err as ConnectionError).kind).toBe("transport");
 });
 
+test.each([
+  ["2001:db8::1", "[2001:db8::1]"],
+  ["sftp-1.example.org", "sftp-1.example.org"],
+  ["192.0.2.7", "192.0.2.7"],
+])("withProvisionedServerAddress writes host %s as %s", (host, written) => {
+  const connection = {
+    channel: "sftp" as const,
+    server: { host: "pending", username: "alice", provision: createProvision },
+  };
+  expect(withProvisionedServerAddress(connection, { host }).server.host).toBe(
+    written,
+  );
+});
+
 test("withProvisionedServerAddress replaces host, keeps an unstated port and path, and keeps the provision block", () => {
   const connection = {
     channel: "sftp" as const,

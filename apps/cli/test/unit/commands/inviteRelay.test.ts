@@ -27,6 +27,7 @@ import {
   validateInvite,
 } from "../../../src/commands/invite";
 import { saveConfig } from "../../../src/config";
+import { WEBRTC_INVITATION_HOST_REFUSED } from "../../../src/connection/webrtc/weriftPeer";
 import { exitCodeForError } from "../../../src/util/exit";
 import type { CommonBootstrapOptions } from "../../../src/optionDefinitions";
 
@@ -440,6 +441,61 @@ describe("offline invite from a webrtc configuration", () => {
       }),
     ).rejects.toThrow(UsageError);
     expect(fs.existsSync(options.keyFile)).toBe(false);
+  });
+
+  // The host is copied into the invitation as written, so the bare-authority
+  // rule every acceptor applies is applied here first. A default port is
+  // refused too, though the URL parser would drop it.
+  test.each([
+    ["a port", "peers.example.org:9000", undefined],
+    ["a port beside the port field", "peers.example.org:9000", 8443],
+    ["the scheme's default port", "peers.example.org:443", undefined],
+    ["an empty port", "peers.example.org:", undefined],
+    ["an unterminated IPv6 literal", "[2001:db8::1", undefined],
+  ])(
+    "refuses a host with %s before the invitation exists",
+    async (_shape, host, port) => {
+      const dir = scratch();
+      const configPath = writeWebRTCConfig(dir, {
+        server: { host, ...(port !== undefined ? { port } : {}) },
+      });
+      const options = optionsIn(dir, { configFile: configPath });
+      let refusal: unknown;
+      try {
+        await validateInvite({
+          resolved: { mode: "offline" },
+          options,
+          acceptTimeout: 900,
+          log: quietLog("invite-relay-offline-host-port").log,
+        });
+      } catch (err) {
+        refusal = err;
+      }
+      expect(refusal).toBeInstanceOf(UsageError);
+      expect((refusal as Error).message).toBe(WEBRTC_INVITATION_HOST_REFUSED);
+      expect(exitCodeForError(refusal)).toBe(64);
+      expect(fs.existsSync(options.keyFile)).toBe(false);
+    },
+  );
+
+  test("names a bracketed IPv6 literal host as written", async () => {
+    const dir = scratch();
+    const configPath = writeWebRTCConfig(dir, {
+      server: { host: "[2001:db8::1]", port: 8443 },
+    });
+    const ready = await validateInvite({
+      resolved: { mode: "offline" },
+      options: optionsIn(dir, { configFile: configPath }),
+      acceptTimeout: 900,
+      log: quietLog("invite-relay-offline-ipv6").log,
+    });
+    const token = await decodeInvitation(ready.invitation);
+    expect(token.connectionEndpoint).toEqual({
+      channel: "webrtc",
+      host: "[2001:db8::1]",
+      port: 8443,
+      path: "/",
+    });
   });
 
   test("names no relay when every turn entry has a static credential", async () => {

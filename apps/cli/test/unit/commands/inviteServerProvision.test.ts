@@ -192,6 +192,24 @@ test("a webrtc create-mode configuration names the returned coordination server"
   });
 });
 
+test("a webrtc create-mode configuration given a bare IPv6 address names it bracketed", async () => {
+  const dir = scratch();
+  writeConfig(dir, webrtcCreate);
+  stubFetch(JSON.stringify({ host: "2001:db8::1", path: "/psi" }));
+  const ready = await validateInvite({
+    resolved: { mode: "offline" },
+    options: optionsIn(dir),
+    acceptTimeout: 900,
+    log: quietLog(),
+  });
+  const token = await decodeInvitation(ready.invitation);
+  expect(token.connectionEndpoint).toEqual({
+    channel: "webrtc",
+    host: "[2001:db8::1]",
+    path: "/psi",
+  });
+});
+
 test.each([
   [
     "sftp",

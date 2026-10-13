@@ -230,13 +230,15 @@ test("an API key cannot reach past its own query parameter", async () => {
 test("a host that is not a bare authority is refused, opening nothing", async () => {
   // Each shape reaches past the field: userinfo moves the dial to another host,
   // a `/` silently drops the configured port into the path, a `:` supplies a
-  // second port, and whitespace or an empty value does not parse at all (the
-  // connection schema requires a non-empty host, so the last is the fail-closed
-  // floor rather than a reachable config).
+  // second port, even the scheme's default the URL parser would drop, and
+  // whitespace or an empty value does not parse at all (the connection schema
+  // requires a non-empty host, so the last is the fail-closed floor rather than
+  // a reachable config).
   for (const host of [
     "evil@attacker.example",
     "signal.example/x",
     "signal.example:99",
+    "signal.example:80",
     "bad host",
     "",
   ]) {
@@ -315,10 +317,11 @@ test("the consent-surface authority normalizes the host and always shows the por
       }),
     ).toEqual({ host: "signal.example", port });
   // An IPv6 literal keeps its brackets, so the port stays readable as a port.
-  expect(dialedBrokerHostAndPort({ ...LOCATION, host: "[::1]" })).toEqual({
-    host: "[::1]",
-    port: 9000,
-  });
+  for (const host of ["[::1]", "[2001:db8::1]"])
+    expect(dialedBrokerHostAndPort({ ...LOCATION, host })).toEqual({
+      host,
+      port: 9000,
+    });
   // The same refusal the dial makes: a host that could move the authority is not
   // rendered on a consent surface either. It names the invitation the locator
   // came from rather than a connection block this operator never authored, and

@@ -3,7 +3,9 @@ import { describe, expect, test } from "vitest";
 import {
   RENDEZVOUS_ROLES,
   authorityMovingSignalingField,
+  bareSignalingAuthority,
   deriveRendezvousPeerId,
+  isBareSignalingHost,
 } from "../src/rendezvous";
 import { generateSharedSecret } from "../src/config/connection";
 import { fromBase64Url, toHex } from "../src/utils/crypto";
@@ -146,5 +148,45 @@ describe("authorityMovingSignalingField", () => {
         path: "api/",
       }),
     ).toBe("host");
+  });
+});
+
+describe("bareSignalingAuthority", () => {
+  const HOST = "broker.example.org";
+
+  test.each([
+    ["a hostname", HOST, HOST],
+    ["a bracketed IPv6 literal", "[2001:db8::1]", "[2001:db8::1]"],
+    ["an IPv4 literal", "192.0.2.1", "192.0.2.1"],
+  ])("admits %s for either scheme", (_shape, host, hostname) => {
+    for (const secure of [true, false]) {
+      const authority = bareSignalingAuthority(host, secure);
+      expect(authority?.hostname).toBe(hostname);
+      expect(authority?.protocol).toBe(secure ? "wss:" : "ws:");
+      expect(authority?.port).toBe("");
+      expect(isBareSignalingHost(host)).toBe(true);
+    }
+  });
+
+  // The URL parser elides a port equal to the scheme's default, and an empty
+  // one, so the default-port cases pin the text test beside the parse.
+  test.each([
+    ["a port", `${HOST}:99`],
+    ["the wss: default port", `${HOST}:443`],
+    ["the ws: default port", `${HOST}:80`],
+    ["an empty port", `${HOST}:`],
+    ["a port past an IPv6 literal", "[2001:db8::1]:99"],
+    ["a default port past an IPv6 literal", "[2001:db8::1]:443"],
+    ["an unterminated IPv6 literal", "[::1"],
+    ["an unbracketed IPv6 literal", "2001:db8::1"],
+    ["userinfo", `${HOST}@evil.example.org`],
+    ["a path of its own", `${HOST}/x`],
+    ["a tab the parser would strip", `${HOST}\tx`],
+    ["a percent-escaped colon", `${HOST}%3A99`],
+    ["no host", ""],
+  ])("refuses a host with %s for either scheme", (_shape, host) => {
+    for (const secure of [true, false])
+      expect(bareSignalingAuthority(host, secure)).toBeUndefined();
+    expect(isBareSignalingHost(host)).toBe(false);
   });
 });

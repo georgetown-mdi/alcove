@@ -112,7 +112,7 @@ each can otherwise contain the delimiters that move a URL's authority:
 
 | Field | Refused |
 | ----- | ------- |
-| `host` | any of `@ / ? # \` or whitespace, and any value that does not parse as a bare authority (one contributing userinfo, a port, or a path of its own) |
+| `host` | any of `@ / ? # \` or whitespace, and any value that does not parse as a bare authority (one contributing userinfo, a port, or a path of its own); a port equal to the scheme's default, or an empty one, is refused too, and a bracketed IPv6 literal is a bare authority |
 | `path` | a value not beginning with `/`, or containing any of `@ ? # \` or whitespace |
 
 `key` takes no equivalent rule: an invitation endpoint is a strict
@@ -121,10 +121,17 @@ query parameter rather than interpolated. The finished address is checked
 against the configured host once more before the socket is constructed, so an
 address naming another authority opens nothing.
 
-The browser acceptor applies the same two delimiter rules -- one
-implementation, shared from `@alcove/core` -- to the `host` and `path` of the
-invitation endpoint it dials, and refuses before it constructs a peer. It needs
-them for a different reason than the CLI: the PeerJS client assembles its
+The web app's acceptor and the console's accept apply the same two rules --
+one implementation, shared from `@alcove/core` -- to the `host` and `path` of
+the invitation endpoint, so `alcove accept`, the web app and the console give
+one verdict on it; the web app refuses before it constructs a peer. The rule
+judges the host an acceptance writes or a run dials; an acceptance that keeps
+its existing configuration keeps that configuration's server and takes from the
+invitation's endpoint only its relay, so the host rule has nothing to judge
+there. `alcove
+invite` applies the `host` rule to the host its invitation names, before the
+invitation exists. The web app needs the rules for a
+different reason than the CLI: the PeerJS client assembles its
 address by concatenating scheme, `host`, `:`, `port`, `path` and `peerjs?key=`,
 so a delimiter in either field is read as part of the address rather than as a
 value inside it. What each shape does to the assembled address is measured

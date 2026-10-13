@@ -423,7 +423,7 @@ describe("a due window in the open runtime", () => {
       ),
       new ManagedSignalingEndpointRefusedError(
         "Riverbend quarterly",
-        "names a host that could move the connection to another server",
+        "names a host that is not a host name or IP address alone (an IPv6 address in square brackets), so this app does not connect to it",
       ),
     ]) {
       const runner = harness({

@@ -2,7 +2,10 @@ import {
   SIGNALING_SCHEME_MISMATCH,
   signalingSchemeMatchesPage,
 } from "@utils/signalingScheme";
-import { authorityMovingSignalingField } from "@alcove/core";
+import {
+  authorityMovingSignalingField,
+  isBareSignalingHost,
+} from "@alcove/core";
 
 import { signalingServerSetting } from "@utils/clientConfig";
 
@@ -29,14 +32,16 @@ export const OWN_SIGNALING_PATH = "/api/";
 
 /**
  * The field of a webrtc endpoint whose shape could move the address a dial
- * reaches, or `undefined` when neither does: core's
- * {@link authorityMovingSignalingField} over the endpoint's host and the path a
- * dial uses, {@link OWN_SIGNALING_PATH} where the endpoint states none. A fresh
- * accept and a saved exchange's later run both refuse by this one rule.
+ * reaches, or `undefined` when neither does: the host when core's
+ * {@link isBareSignalingHost} refuses it, the rule `alcove accept` applies,
+ * else core's {@link authorityMovingSignalingField} over the path a dial uses,
+ * {@link OWN_SIGNALING_PATH} where the endpoint states none. A fresh accept, a
+ * console accept and a saved exchange's later run all refuse by this one rule.
  */
 export function refusedSignalingEndpointField(
   endpoint: Pick<WebRTCEndpoint, "host" | "path">,
 ): SignalingLocationField | undefined {
+  if (!isBareSignalingHost(endpoint.host)) return "host";
   return authorityMovingSignalingField({
     host: endpoint.host,
     path: endpoint.path ?? OWN_SIGNALING_PATH,
