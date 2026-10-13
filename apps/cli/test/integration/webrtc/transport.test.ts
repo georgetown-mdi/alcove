@@ -294,10 +294,11 @@ test("a configured iceServers list is the list the peer connection is built with
   // a configured list reaches werift unchanged -- not suppression of the
   // built-in default, which no readable API can show.
   const sharedSecret = generateSharedSecret();
+  const refusingUrl = (stunServer.iceServers[0] as { urls: string }).urls;
   const configured = [
-    { urls: ["stun:127.0.0.1:3478", "stun:127.0.0.1:3479"] },
+    { urls: [refusingUrl, refusingUrl] },
     {
-      urls: "turn:127.0.0.1:3480",
+      urls: "turn:127.0.0.1:3480?transport=tcp",
       username: "alcove",
       credential: "not-a-real-credential",
     },
