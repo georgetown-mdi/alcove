@@ -197,8 +197,8 @@ export class SignalingServerChangedError extends Error {
 /**
  * Thrown by {@link JobManager.createJob} when a webrtc run of the opened
  * configuration finds the working folder's `alcove.yaml` is not one it runs in
- * place: gone, one the console cannot open, another channel, or relay
- * settings. The route maps it to a 400 naming the refusal.
+ * place: gone, one the console cannot open, or another channel. The route
+ * maps it to a 400 naming the refusal.
  */
 export class OpenedConfigurationNotRunnableError extends Error {
   constructor() {
@@ -1316,6 +1316,7 @@ export class JobManager {
       ...(server.invitationRelay !== undefined
         ? { invitationRelay: server.invitationRelay }
         : {}),
+      ...(server.ownRelay !== undefined ? { ownRelay: server.ownRelay } : {}),
       warnings: this.authoredSignalingWarnings,
     };
   }
@@ -2542,9 +2543,9 @@ function openedConfigurationWarning(
 /**
  * Whether `named` is the authored server: the same host, the same port once
  * an omitted one is read as the authored scheme's default, and the same path
- * once it ends in `/`, as the authored one does. An acceptor's run also names
- * the authored relay, or none where none is authored; an inviter's names no
- * relay.
+ * once it ends in `/`, as the authored one does. A run also names the relay
+ * it uses, or none where none is authored: an acceptor's the accepted
+ * invitation's, and an inviter's the TURN urls of the console's own.
  */
 function namesSignalingServer(
   named: NonNullable<JobWebrtcExchangeIntent["signalingServer"]>,
@@ -2559,7 +2560,12 @@ function namesSignalingServer(
     path === authored.path &&
     (side === "acceptor"
       ? isDeepStrictEqual(named.relay, authored.invitationRelay)
-      : named.relay === undefined)
+      : isDeepStrictEqual(
+          named.relay,
+          authored.ownRelay !== undefined
+            ? { turn: authored.ownRelay.turn }
+            : undefined,
+        ))
   );
 }
 

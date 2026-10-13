@@ -8,7 +8,11 @@ import {
   connectionTuningSummary,
 } from "@console/connectionTuningModel";
 import {
+  REGISTRAR_WITHOUT_RELAY,
   acceptedSignalingServer,
+  ownRelayDraft,
+  ownRelayEnrollmentNotice,
+  ownRelayFromDraft,
   sameSignalingServer,
   signalingServerAddress,
   signalingServerReachProblem,
@@ -19,6 +23,7 @@ import {
   putSignalingServer,
   signalingServerProjectionOf,
 } from "@psi/jobClient/signalingServerClient";
+import { ENROLL_RELAY_TOKEN_STEP } from "@console/mountedConfiguration";
 import { acceptorWebrtcTransport } from "@exchange/useAcceptorExchange";
 
 import type { SignalingServerProjection } from "@jobContract/signalingServer";
@@ -31,6 +36,14 @@ const HOSTED: SignalingServerProjection = {
   secure: true,
   webAppOrigin: "https://app.example.org",
   warnings: [],
+};
+
+const OWN_RELAY = {
+  turn: ["turns:relay.example.org:443?transport=tcp"],
+  relayRegistrar: {
+    url: "https://registrar.example.org",
+    exchangeId: "q3-linkage-7f2c",
+  },
 };
 
 function answering(status: number, body: unknown): typeof fetch {
@@ -112,13 +125,28 @@ describe("the console's coordination server", () => {
     ).toBe("ws://127.0.0.1/");
   });
 
-  test("mints an endpoint with its host, port and path and no relay", () => {
+  test("mints an endpoint with its host, port and path and no relay where none is set", () => {
     expect(webrtcEndpointForSignalingServer(HOSTED)).toStrictEqual({
       channel: "webrtc",
       host: "signal.example.org",
       port: 8443,
       path: "/api/",
     });
+  });
+
+  test("mints an endpoint naming its relay's turn urls and not its registrar", () => {
+    const endpoint = webrtcEndpointForSignalingServer({
+      ...HOSTED,
+      ownRelay: OWN_RELAY,
+    });
+    expect(endpoint).toStrictEqual({
+      channel: "webrtc",
+      host: "signal.example.org",
+      port: 8443,
+      path: "/api/",
+      relay: { turn: OWN_RELAY.turn },
+    });
+    expect(JSON.stringify(endpoint)).not.toContain("registrar");
   });
 
   test("names a server a partner elsewhere cannot reach", () => {
@@ -168,8 +196,153 @@ describe("sameSignalingServer", () => {
       { ...HOSTED, path: "/" },
       { ...HOSTED, secure: false },
       { ...HOSTED, webAppOrigin: undefined },
+      { ...HOSTED, ownRelay: OWN_RELAY },
     ])
       expect(sameSignalingServer(HOSTED, other)).toBe(false);
+    const relayed = { ...HOSTED, ownRelay: OWN_RELAY };
+    expect(sameSignalingServer(relayed, structuredClone(relayed))).toBe(true);
+    for (const ownRelay of [
+      { turn: ["turn:other.example.org"] },
+      { turn: OWN_RELAY.turn },
+      {
+        ...OWN_RELAY,
+        relayRegistrar: { ...OWN_RELAY.relayRegistrar, exchangeId: "other" },
+      },
+    ])
+      expect(sameSignalingServer(relayed, { ...HOSTED, ownRelay })).toBe(false);
+  });
+});
+
+describe("the relay set for the console's own invitations", () => {
+  const draft = (turn: string, registrarUrl = "", exchangeId = "") =>
+    ownRelayFromDraft({ turn, registrarUrl, exchangeId });
+
+  test("is none where every field is empty", () => {
+    expect(draft("  \n")).toEqual({ ok: true, ownRelay: undefined });
+  });
+
+  test("takes one url per line under each scheme core's turn rule admits", () => {
+    expect(
+      draft(
+        "turn:relay.example.org\n\n turns:relay.example.org:443?transport=tcp \nturn:relay.example.org:3478?transport=udp",
+      ),
+    ).toEqual({
+      ok: true,
+      ownRelay: {
+        turn: [
+          "turn:relay.example.org",
+          "turns:relay.example.org:443?transport=tcp",
+          "turn:relay.example.org:3478?transport=udp",
+        ],
+      },
+    });
+  });
+
+  test.each([
+    ["a stun url", "stun:relay.example.org:3478", /must begin with turn:/],
+    ["an https url", "https://relay.example.org/", /must begin with turn:/],
+    [
+      "a user and password before the host",
+      "turn:county:secret@relay.example.org",
+      /names a user before its host/,
+    ],
+    [
+      "a credential in the query",
+      "turn:relay.example.org?credential=secret",
+      /no query parameter other than transport/,
+    ],
+  ])("refuses %s by line, without repeating it", (_, line, rule) => {
+    const read = draft(`turn:ok.example.org\n${line}`);
+    if (read.ok) throw new Error("expected a refusal");
+    expect(read.turnProblems).toHaveLength(1);
+    expect(read.turnProblems[0]).toMatch(/^Line 2: /);
+    expect(read.turnProblems[0]).toMatch(rule);
+    expect(read.turnProblems[0]).not.toContain("secret");
+  });
+
+  test("refuses more urls than an invitation names", () => {
+    const read = draft(
+      Array.from({ length: 9 }, (_, i) => `turn:r${i}.example.org`).join("\n"),
+    );
+    expect(read.ok).toBe(false);
+  });
+
+  test("takes a registrar under core's rule, only beside a turn url", () => {
+    expect(
+      draft(
+        OWN_RELAY.turn[0],
+        OWN_RELAY.relayRegistrar.url,
+        OWN_RELAY.relayRegistrar.exchangeId,
+      ),
+    ).toEqual({ ok: true, ownRelay: OWN_RELAY });
+    const alone = draft("", OWN_RELAY.relayRegistrar.url, "q3");
+    if (alone.ok) throw new Error("expected a refusal");
+    expect(alone.turnProblems).toEqual([REGISTRAR_WITHOUT_RELAY]);
+    const insecure = draft(OWN_RELAY.turn[0], "http://registrar.test", "q3");
+    if (insecure.ok) throw new Error("expected a refusal");
+    expect(insecure.registrarUrlProblems.join(" ")).toMatch(/https/);
+    const badId = draft(OWN_RELAY.turn[0], OWN_RELAY.relayRegistrar.url, "-x");
+    if (badId.ok) throw new Error("expected a refusal");
+    expect(badId.exchangeIdProblems.join(" ")).toMatch(/names neither party/);
+  });
+
+  test("fills the fields from the relay it holds", () => {
+    expect(ownRelayFromDraft(ownRelayDraft(OWN_RELAY))).toEqual({
+      ok: true,
+      ownRelay: OWN_RELAY,
+    });
+    expect(ownRelayDraft(undefined)).toEqual({
+      turn: "",
+      registrarUrl: "",
+      exchangeId: "",
+    });
+  });
+
+  test("states the step that enrolls the exchange's key before the run", () => {
+    expect(ownRelayEnrollmentNotice(undefined)).toBeUndefined();
+    const enroll = ownRelayEnrollmentNotice(OWN_RELAY);
+    expect(enroll).toContain("alcove enroll-relay");
+    expect(enroll).toContain("Before your partner connects");
+    expect(enroll).toContain(ENROLL_RELAY_TOKEN_STEP);
+    const noRegistrar = ownRelayEnrollmentNotice({ turn: OWN_RELAY.turn });
+    expect(noRegistrar).toContain("relay's owner");
+    expect(noRegistrar).toContain("registrar");
+  });
+
+  test("is read off the console's answer, and a malformed one is no server", () => {
+    expect(
+      signalingServerProjectionOf({
+        configured: true,
+        ...HOSTED,
+        ownRelay: OWN_RELAY,
+      }),
+    ).toEqual({ ...HOSTED, ownRelay: OWN_RELAY });
+    for (const ownRelay of [
+      { turn: ["https://relay.example.org/"] },
+      { turn: [] },
+      { ...OWN_RELAY, credential: "x" },
+    ])
+      expect(
+        signalingServerProjectionOf({ configured: true, ...HOSTED, ownRelay }),
+      ).toBeNull();
+  });
+
+  test("is sent with the address", async () => {
+    let sent: unknown;
+    await putSignalingServer(
+      "wss://signal.example.org:8443/api/",
+      (_, init) => {
+        sent = JSON.parse(String(init?.body));
+        return answering(200, { configured: true, ...HOSTED })(
+          "/api/jobs/webrtc",
+        );
+      },
+      { ownRelay: OWN_RELAY },
+    );
+    expect(sent).toEqual({
+      address: "wss://signal.example.org:8443/api/",
+      ownRelay: OWN_RELAY,
+    });
   });
 });
 

@@ -9,17 +9,24 @@ import {
   resolveWebAppSignalingServer,
 } from "@alcove/core";
 
+import {
+  OWN_RELAY_REFUSED_PREFIX,
+  jobOwnRelaySchema,
+} from "@jobContract/signalingServer";
 import { jobInvitationRelaySchema } from "@jobContract/intentSchemas";
 
 import { JobApiConfigError } from "./gate";
 
+import type { JobOwnRelay } from "@jobContract/signalingServer";
 import type { RelayLocator } from "@alcove/core";
 
 /**
  * The coordination server the operator authored for a webrtc job: where the
  * run dials, as its `connection.server` states it, plus the web app the
- * address was resolved through and, for an accepted invitation, the relay it
- * names. Contract: docs/spec/SERVER_JOB_API.md, "The coordination server".
+ * address was resolved through and the relay a run uses: for an accepted
+ * invitation the one it names, and for this console's own invitations the
+ * one the operator set. Contract: docs/spec/SERVER_JOB_API.md, "The
+ * coordination server".
  */
 export interface AuthoredSignalingServer {
   host: string;
@@ -32,6 +39,10 @@ export interface AuthoredSignalingServer {
   /** The relay an accepted invitation names, which only an acceptor's run
    * uses, as `connection.invitation_relay`. */
   invitationRelay?: RelayLocator;
+  /** The relay the operator set for this console's invitations, which only
+   * an inviter's run uses, as `connection.turn` and
+   * `connection.relay_registrar`. */
+  ownRelay?: JobOwnRelay;
 }
 
 /**
@@ -57,7 +68,14 @@ export interface ResolveAuthoredSignalingServerOptions {
 const BODY_REFUSED =
   "The request body must be an object with address, a string of at most " +
   `${MAX_SIGNALING_SERVER_URL_LENGTH} characters, and optionally ` +
-  "invitationRelay, the turn and stun lists of an accepted invitation's relay.";
+  "invitationRelay, the turn and stun lists of an accepted invitation's " +
+  "relay, and ownRelay, the turn urls and registrar of this console's relay.";
+
+/** The refusal of a relay setting core's rules refuse, naming the first
+ * rule it breaks. */
+function ownRelayRefused(rule: string): string {
+  return `${OWN_RELAY_REFUSED_PREFIX}${rule}. Correct it and set it again.`;
+}
 
 const TYPE_INSTEAD =
   "Type the coordination server's wss:// address or the web app's https:// " +
@@ -96,6 +114,7 @@ export const SIGNALING_UNENCRYPTED_WARNING =
 const authorBodySchema = z.strictObject({
   address: z.string().check(maxCodeUnits(MAX_SIGNALING_SERVER_URL_LENGTH)),
   invitationRelay: jobInvitationRelaySchema.optional(),
+  ownRelay: z.unknown().optional(),
 });
 
 /** The server a web app address names, through the file it publishes. */
@@ -125,7 +144,8 @@ async function serverPublishedBy(
  * to the server it publishes, or an `http:`/`https:` web app address resolved
  * through the server that app publishes. A `ws:` server is admitted with
  * {@link SIGNALING_UNENCRYPTED_WARNING}. An `invitationRelay` is held beside
- * it, each url held to core's TURN or STUN url rule.
+ * it, each url held to core's TURN or STUN url rule, and so is an `ownRelay`
+ * under {@link jobOwnRelaySchema}, refused with the rule it breaks.
  *
  * @throws {JobApiConfigError} when the body or address is refused, or the web
  *   app publishes no usable server.
@@ -137,6 +157,15 @@ export async function resolveAuthoredSignalingServer(
 ): Promise<{ server: AuthoredSignalingServer; warnings: Array<string> }> {
   const body = authorBodySchema.safeParse(rawBody);
   if (!body.success) throw new JobApiConfigError(BODY_REFUSED);
+  let ownRelay: JobOwnRelay | undefined;
+  if (body.data.ownRelay !== undefined) {
+    const parsed = jobOwnRelaySchema.safeParse(body.data.ownRelay);
+    if (!parsed.success)
+      throw new JobApiConfigError(
+        ownRelayRefused(parsed.error.issues[0]?.message ?? "it is malformed"),
+      );
+    ownRelay = parsed.data;
+  }
   const text = body.data.address.trim();
   let address: URL;
   try {
@@ -167,6 +196,7 @@ export async function resolveAuthoredSignalingServer(
     secure,
     ...(webAppOrigin !== undefined ? { webAppOrigin } : {}),
     ...(invitationRelay !== undefined ? { invitationRelay } : {}),
+    ...(ownRelay !== undefined ? { ownRelay } : {}),
   };
   return { server, warnings: secure ? [] : [SIGNALING_UNENCRYPTED_WARNING] };
 }

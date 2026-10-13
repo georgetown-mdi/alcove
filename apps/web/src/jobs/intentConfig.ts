@@ -192,11 +192,13 @@ export function composeSftpConfigSpec(
 /**
  * Compose the validated exchange spec a webrtc job runs under: the connection
  * dials the operator-authored coordination server with `role` set from the
- * intent's `side`, and states no STUN, TURN or relay setting of this party's
- * own. An acceptor's run states the accepted invitation's relay as
- * `invitation_relay`, as `alcove accept` writes it; any other run takes a
- * direct connection or none. Every other block is composed as on the sftp
- * path.
+ * intent's `side`. An acceptor's run states the accepted invitation's relay
+ * as `invitation_relay`, as `alcove accept` writes it, and no relay of its
+ * own. An inviter's run states the console's own relay, where one is set, as
+ * `turn` entries holding only a url, whose credential the run mints from the
+ * shared secret, and its registrar as `relay_registrar`; the invitation names
+ * those urls as `alcove invite` names them. Every other block is composed as
+ * on the sftp path.
  */
 export function composeWebrtcConfigSpec(
   intent: JobWebrtcExchangeIntent,
@@ -204,7 +206,9 @@ export function composeWebrtcConfigSpec(
   signingPaths?: JobSigningPaths,
 ): ExchangeSpec {
   const options = intentOptionsToFileSyncOptions(intent.options);
-  const { host, port, path, secure, invitationRelay } = signalingServer;
+  const { host, port, path, secure, invitationRelay, ownRelay } =
+    signalingServer;
+  const inviterRelay = intent.side === "inviter" ? ownRelay : undefined;
   return assembledConfigSpec(
     intent,
     {
@@ -218,6 +222,12 @@ export function composeWebrtcConfigSpec(
       role: intent.side,
       ...(intent.side === "acceptor" && invitationRelay !== undefined
         ? { invitationRelay }
+        : {}),
+      ...(inviterRelay !== undefined
+        ? { turn: inviterRelay.turn.map((url) => ({ url })) }
+        : {}),
+      ...(inviterRelay?.relayRegistrar !== undefined
+        ? { relayRegistrar: inviterRelay.relayRegistrar }
         : {}),
       ...(options !== undefined ? { options } : {}),
     },

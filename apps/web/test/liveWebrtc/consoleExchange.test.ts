@@ -332,11 +332,10 @@ describe("a webrtc alcove.yaml opened in the console runs in place", () => {
     });
     expect(opened.status, opened.body).toBe(200);
     const answer = JSON.parse(opened.body) as {
-      document: { signalingServer?: string };
-      relaySettings?: Array<string>;
+      document: { signalingServer?: string; relayTurnUrls?: Array<string> };
       keyFileFault?: string;
     };
-    expect(answer.relaySettings).toBeUndefined();
+    expect(answer.document.relayTurnUrls).toBeUndefined();
     expect(answer.keyFileFault).toBeUndefined();
     // The review step shows the server the file names, and the screen saves
     // its steps into the file before the run.

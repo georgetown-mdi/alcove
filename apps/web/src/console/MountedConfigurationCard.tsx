@@ -8,6 +8,7 @@ import { useDeferredAnnouncement } from "@components/useDeferredAnnouncement";
 import {
   CLOSE_CONFIGURATION_LABEL,
   CONFIGURATION_LOAD_SEALED,
+  CONFIGURATION_OPENED,
   CONFIGURATION_READ_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
   CREATE_INVITATION_FROM_SETTINGS_LABEL,
@@ -16,7 +17,6 @@ import {
   NO_CONFIGURATION_IN_FOLDER,
   OPEN_CONFIGURATION_INVITATION,
   OPEN_CONFIGURATION_LABEL,
-  configurationOpenedMessage,
   conversionOffered,
   conversionStatement,
   convertedStatement,
@@ -193,7 +193,7 @@ export function MountedConfigurationCard({
       {state.status === "opened" && (
         <>
           <Alert color="blue" role="presentation" title={OPENED_TITLE}>
-            <Text size="sm">{configurationOpenedMessage(state)}</Text>
+            <Text size="sm">{CONFIGURATION_OPENED}</Text>
           </Alert>
           {!sealed && (
             <Button size="xs" variant="default" onClick={onClose}>

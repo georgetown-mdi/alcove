@@ -5,23 +5,21 @@ import { getDefaultLinkageTerms } from "@alcove/core";
 import {
   CONFIGURATION_ALREADY_SAVED,
   CONFIGURATION_LOAD_SEALED,
-  CONFIGURATION_OPENED,
-  CONFIGURATION_OPENED_FOR_REVIEW,
   CONFIGURATION_READ_UNAVAILABLE,
   CONFIGURATION_SAVED,
   CONFIGURATION_SAVE_UNAVAILABLE,
   CONVERT_CONFIGURATION_LABEL,
   CREATE_INVITATION_FROM_SETTINGS_LABEL,
+  ICE_PROVISION_RUN_WITHHELD,
   IN_PLACE_IDENTITY_WRITTEN_NOTICE,
   MOUNTED_CONFIGURATION_UNREAD,
   NO_CONFIGURATION_IN_FOLDER,
   OPENED_EXCHANGE_RUNS_IN_PLACE,
   OPENED_SIGNALING_SERVER_NOTE,
   RELAY_ENROLLMENT_NOTICE,
+  RELAY_OWNER_ENROLLMENT_NOTICE,
   carriedThroughNotice,
-  channelNotConductedNotice,
   columnsNotCoveredNotice,
-  configurationOpenedMessage,
   configurationSaveShown,
   configurationSaveState,
   connectionSettingsHeldNotice,
@@ -36,6 +34,7 @@ import {
   mountedConfigurationNotices,
   mountedConfigurationOfferable,
   mountedConfigurationRead,
+  openedRelayTurnUrls,
   openedSignalingServer,
   openedWebrtcEndpoint,
   opensInPlace,
@@ -270,10 +269,13 @@ describe("an opened configuration's own paths, until converted", () => {
   });
 });
 
-/** A webrtc configuration as the load answers it, stating the relay settings
- * named, or none. */
+/** The TURN url a relayed configuration's run relays through. */
+const RELAY_TURN_URL = "turns:relay.example.org:443?transport=tcp";
+
+/** A webrtc configuration as the load answers it, naming the TURN urls its
+ * run relays through, or none. */
 function openedWebrtcFile(
-  relaySettings: Array<string>,
+  relayTurnUrls: Array<string>,
   overrides: Partial<DisclosedExchangeDocument> = {},
   carriedThrough: Array<string> = ["authentication.token_max_age_days"],
 ): MountedConfigurationAnswer {
@@ -283,22 +285,22 @@ function openedWebrtcFile(
       channel: "webrtc",
       signalingServer: "wss://signal.example.org/api/",
       linkageTerms: getDefaultLinkageTerms("County Health"),
+      ...(relayTurnUrls.length > 0 ? { relayTurnUrls } : {}),
       ...overrides,
     },
     carriedThrough,
     warnings: [],
-    ...(relaySettings.length > 0 ? { relaySettings } : {}),
   };
 }
 
-describe("a webrtc configuration stating relay settings", () => {
+describe("a webrtc configuration stating a relay", () => {
   function openedWebrtc(
     overrides: Partial<DisclosedExchangeDocument> = {},
   ): MountedConfigurationAnswer {
-    return openedWebrtcFile(["connection.turn"], overrides);
+    return openedWebrtcFile([RELAY_TURN_URL], overrides);
   }
 
-  test("opens with its channel named on the state, and every step seeded", () => {
+  test("opens to run in place, its relay shown beside its server, and every step seeded", () => {
     const read = mountedConfigurationRead(
       openedWebrtc({ csvDelimiter: "|", retentionDisposition: "Filed." }),
     );
@@ -306,23 +308,37 @@ describe("a webrtc configuration stating relay settings", () => {
       status: "opened",
       carriedThrough: ["authentication.token_max_age_days"],
       warnings: [],
-      notConducted: "webrtc",
-      relaySettings: ["connection.turn"],
+      runsInPlace: true,
+      signalingServer: "wss://signal.example.org/api/",
+      relayTurnUrls: [RELAY_TURN_URL],
     });
+    expect(openedRelayTurnUrls(read.state)).toEqual([RELAY_TURN_URL]);
     expect(read.loaded?.channel).toBe("webrtc");
     expect(read.loaded?.sftpForm).toBeUndefined();
     expect(read.loaded?.csvDelimiter.option).toBe("|");
     expect(read.loaded?.receipts.retentionDisposition).toBe("Filed.");
   });
 
-  test("withholds the run of an opened webrtc file, naming its relay", () => {
+  test("withholds no run for its relay", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
-    const reason = runWithheldReason(state);
-    expect(reason).toContain("WebRTC configuration");
-    expect(reason).not.toContain("webrtc");
-    expect(reason).toContain("sets up a relay (connection.turn)");
-    expect(reason).toMatch(/Alcove on the command line/);
-    expect(reason).toMatch(/Save your changes to alcove\.yaml/);
+    expect(runWithheldReason(state)).toBeUndefined();
+    expect(runsOpenedConfiguration(state)).toBe(true);
+  });
+
+  test("withholds the run of one stating ice_provision, naming what to list instead", () => {
+    const answer = openedWebrtcFile([]);
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    const { state } = mountedConfigurationRead({
+      ...answer,
+      iceProvisionNamed: true,
+    });
+    expect(state).toMatchObject({ iceProvision: true, runsInPlace: true });
+    expect(runWithheldReason(state)).toBe(ICE_PROVISION_RUN_WITHHELD);
+    expect(ICE_PROVISION_RUN_WITHHELD).toContain("connection.ice_provision");
+    expect(ICE_PROVISION_RUN_WITHHELD).toMatch(
+      /under connection\.stun and connection\.turn in alcove\.yaml/,
+    );
+    expect(ICE_PROVISION_RUN_WITHHELD).toMatch(/open the configuration again/);
   });
 
   test("a channel the console conducts withholds nothing", () => {
@@ -340,33 +356,23 @@ describe("a webrtc configuration stating relay settings", () => {
     ).toBeUndefined();
   });
 
-  test("the channel notice stands in place of every notice about a run", () => {
-    const { state } = mountedConfigurationRead(
-      openedWebrtc({ expectedPartnerDeduplicate: true }),
-    );
-    const notices = mountedConfigurationNotices(state, {});
-    expect(notices).toEqual([
-      channelNotConductedNotice("webrtc", ["connection.turn"]),
+  test("its notices are those of any run here", () => {
+    const { state } = mountedConfigurationRead(openedWebrtc());
+    expect(mountedConfigurationNotices(state, {})).toEqual([
+      carriedThroughNotice(["authentication.token_max_age_days"]),
     ]);
-    expect(notices[0]).toContain(
-      "This configuration sets up a relay (connection.turn).",
-    );
-    expect(notices[0]).toContain("over direct connections only");
-    expect(notices[0]).not.toContain("webrtc");
-    expect(notices[0]).toMatch(/save them to alcove\.yaml/);
-    expect(notices[0]).toMatch(/connection is saved exactly as your file/);
   });
 
-  test("one naming a relay registrar adds the enrollment step", () => {
+  test("one naming a relay registrar adds the enrollment step before its run", () => {
     const answer = openedWebrtc();
     if (answer.kind !== "opened") throw new Error("expected an opened answer");
     const { state } = mountedConfigurationRead({
       ...answer,
       relayRegistrarNamed: true,
     });
-    expect(state).toMatchObject({ relayEnrollment: true });
+    expect(state).toMatchObject({ relayEnrollment: true, runsInPlace: true });
     expect(mountedConfigurationNotices(state, {})).toEqual([
-      channelNotConductedNotice("webrtc", ["connection.turn"]),
+      carriedThroughNotice(["authentication.token_max_age_days"]),
       RELAY_ENROLLMENT_NOTICE,
     ]);
     expect(RELAY_ENROLLMENT_NOTICE).toMatch(/^If this exchange is not yet/);
@@ -377,11 +383,37 @@ describe("a webrtc configuration stating relay settings", () => {
     );
   });
 
+  test("one with own relay entries and no registrar says the relay's owner registers the key", () => {
+    const { state } = mountedConfigurationRead(
+      openedWebrtc({ relayCredentialMinted: true }),
+    );
+    expect(state).toMatchObject({ relayCredentialMinted: true });
+    const notices = mountedConfigurationNotices(state, {});
+    expect(notices).toContain(RELAY_OWNER_ENROLLMENT_NOTICE);
+    expect(notices).not.toContain(RELAY_ENROLLMENT_NOTICE);
+    expect(RELAY_OWNER_ENROLLMENT_NOTICE).toContain("relay's owner");
+  });
+
+  test("one with both a registrar and own relay entries says to enroll with the registrar", () => {
+    const answer = openedWebrtc({ relayCredentialMinted: true });
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    const { state } = mountedConfigurationRead({
+      ...answer,
+      relayRegistrarNamed: true,
+    });
+    const notices = mountedConfigurationNotices(state, {});
+    expect(notices).toContain(RELAY_ENROLLMENT_NOTICE);
+    expect(notices).not.toContain(RELAY_OWNER_ENROLLMENT_NOTICE);
+  });
+
   test("one naming no relay registrar adds nothing about it", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     expect(state).not.toHaveProperty("relayEnrollment");
     expect(mountedConfigurationNotices(state, {})).not.toContain(
       RELAY_ENROLLMENT_NOTICE,
+    );
+    expect(mountedConfigurationNotices(state, {})).not.toContain(
+      RELAY_OWNER_ENROLLMENT_NOTICE,
     );
   });
 
@@ -467,19 +499,8 @@ describe("a webrtc configuration stating relay settings", () => {
       withTermsNotApplied(state, ["metadata"], ["metadata"]),
     );
     expect(notices).toHaveLength(3);
-    expect(notices[0]).toContain("WebRTC");
+    expect(notices[0]).toContain("token_max_age_days");
     expect(notices[1]).toContain("metadata");
-  });
-
-  test("the control says the configuration is open for review", () => {
-    expect(
-      configurationOpenedMessage(
-        mountedConfigurationRead(openedWebrtc()).state,
-      ),
-    ).toBe(CONFIGURATION_OPENED_FOR_REVIEW);
-    expect(
-      configurationOpenedMessage(mountedConfigurationRead(opened()).state),
-    ).toBe(CONFIGURATION_OPENED);
   });
 });
 
@@ -761,7 +782,7 @@ describe("a webrtc configuration stating no relay settings", () => {
     expect(openedSignalingServer(state)).toBe("wss://signal.example.org/api/");
     expect(runsOpenedConfiguration(state)).toBe(true);
     expect(runWithheldReason(state)).toBeUndefined();
-    expect(configurationOpenedMessage(state)).toBe(CONFIGURATION_OPENED);
+    expect(openedRelayTurnUrls(state)).toEqual([]);
   });
 
   test("an sftp configuration does not run in place", () => {
@@ -771,12 +792,14 @@ describe("a webrtc configuration stating no relay settings", () => {
     ).toBeUndefined();
   });
 
-  test("one stating a relay shows no coordination server of its own", () => {
-    expect(
-      openedSignalingServer(
-        mountedConfigurationRead(openedWebrtcFile(["connection.turn"])).state,
-      ),
-    ).toBeUndefined();
+  test("one stating a relay shows its coordination server and its relay", () => {
+    const relayed = mountedConfigurationRead(
+      openedWebrtcFile([RELAY_TURN_URL]),
+    ).state;
+    expect(openedSignalingServer(relayed)).toBe(
+      "wss://signal.example.org/api/",
+    );
+    expect(openedRelayTurnUrls(relayed)).toEqual([RELAY_TURN_URL]);
   });
 
   test("its connection settings are held from the file, as the run uses them", () => {
@@ -823,6 +846,9 @@ describe("a webrtc configuration stating no relay settings", () => {
     );
     expect(OPENED_EXCHANGE_RUNS_IN_PLACE).toMatch(/as alcove exchange does/);
     expect(OPENED_SIGNALING_SERVER_NOTE).toMatch(/^From your alcove\.yaml/);
+    expect(OPENED_SIGNALING_SERVER_NOTE).toContain(
+      "connection.invitation_relay where the file has one, else connection.turn",
+    );
   });
 
   test("an edit of its terms says starting saves them, and how to keep or change them", () => {
@@ -842,10 +868,10 @@ describe("the identity a signed run in place signs with", () => {
 
   function inPlaceWith(
     inPlaceSigningIdentity?: InPlaceSigningIdentity,
-    relaySettings: Array<string> = [],
+    relayTurnUrls: Array<string> = [],
   ) {
     return mountedConfigurationRead({
-      ...openedWebrtcFile(relaySettings),
+      ...openedWebrtcFile(relayTurnUrls),
       ...(inPlaceSigningIdentity !== undefined
         ? { inPlaceSigningIdentity }
         : {}),
@@ -903,6 +929,17 @@ describe("the identity a signed run in place signs with", () => {
     expect(reason).not.toContain("Choose the file it names");
   });
 
+  test("a file stating a relay runs in place, its identity judged as any other", () => {
+    const relay = inPlaceWith({ identityFile: "/home/operator/id.json" }, [
+      RELAY_TURN_URL,
+    ]);
+    expect(inPlaceSigningIdentityShown(relay, signed)).toEqual({
+      kind: "file",
+      identityFile: "/home/operator/id.json",
+      consoleLocation: false,
+    });
+  });
+
   test("a file naming a console identity the card does not hold says where to choose it", () => {
     const folder = inPlaceWith({
       identityFile: "/data/.alcove-signing-identity.json",
@@ -934,8 +971,6 @@ describe("the identity a signed run in place signs with", () => {
         identityLocation: undefined,
       }),
     ).toBeUndefined();
-    const relay = inPlaceWith(other, ["connection.turn"]);
-    expect(inPlaceSigningIdentityShown(relay, signed)).toBeUndefined();
     expect(
       inPlaceSigningIdentityWithheldReason(
         mountedConfigurationRead(opened()).state,
@@ -947,9 +982,6 @@ describe("the identity a signed run in place signs with", () => {
 
 describe("the terms of an opened configuration changed here", () => {
   const conducted = mountedConfigurationRead(opened()).state;
-  const saveBackOnly = mountedConfigurationRead(
-    openedWebrtcFile(["connection.turn"], {}, []),
-  ).state;
 
   test("a run of the opened configuration names update and apply", () => {
     const warning = editedTermsWarning(conducted, {
@@ -962,24 +994,13 @@ describe("the terms of an opened configuration changed here", () => {
     expect(warning).toContain("to apply with alcove apply.");
   });
 
-  test("a configuration saved back names update and apply after the save", () => {
-    const warning = editedTermsWarning(saveBackOnly, {
-      termsEdited: true,
-      continuesOpenedExchange: false,
-    });
-    expect(warning).toContain(`after you save, run ${UPDATE_COMMAND} and`);
-    expect(warning).toContain("to apply with alcove apply.");
-    expect(warning).not.toMatch(/This run is refused/);
-  });
-
   test("unchanged terms raise nothing", () => {
-    for (const state of [conducted, saveBackOnly])
-      expect(
-        editedTermsWarning(state, {
-          termsEdited: false,
-          continuesOpenedExchange: true,
-        }),
-      ).toBeUndefined();
+    expect(
+      editedTermsWarning(conducted, {
+        termsEdited: false,
+        continuesOpenedExchange: true,
+      }),
+    ).toBeUndefined();
   });
 
   test("a run that makes a new invitation raises nothing", () => {
@@ -1005,13 +1026,11 @@ describe("an opened configuration whose key file would refuse its run", () => {
   function openedWithoutKeyFile(
     fault: "absent" | "invalid" = "absent",
     channel: DisclosedExchangeDocument["channel"] = "sftp",
-    relaySettings: Array<string> = [],
   ) {
     return mountedConfigurationRead({
       ...opened({ channel }),
       signingPathSettings: ["signing.identity_file"],
       keyFileFault: fault,
-      ...(relaySettings.length > 0 ? { relaySettings } : {}),
     } as MountedConfigurationAnswer).state;
   }
 
@@ -1022,12 +1041,6 @@ describe("an opened configuration whose key file would refuse its run", () => {
       expect(notice?.message).toContain("open the configuration again");
       expect(notice?.message).toContain(CREATE_INVITATION_FROM_SETTINGS_LABEL);
     }
-  });
-
-  test("a configuration the console does not run names no key file", () => {
-    const state = openedWithoutKeyFile("absent", "webrtc", ["connection.turn"]);
-    expect(keyFileNotice(state)).toBeUndefined();
-    expect(withNewInvitation(state)).toBe(state);
   });
 
   test("a webrtc one run in place withholds the run and offers no new invitation", () => {

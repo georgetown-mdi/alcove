@@ -645,9 +645,9 @@ describe("failureFor", () => {
       "webrtc",
     );
     expect(failure.category).toBe("config");
-    expect(failure.title).toBe("The coordination server changed");
+    expect(failure.title).toBe("The coordination server or relay changed");
     expect(failure.message).toMatch(
-      /Start over, check the coordination server/,
+      /Start over, check the coordination server and relay/,
     );
   });
 

@@ -42,9 +42,9 @@ export type MountedConfigurationAnswer =
       /** The retired settings the file states, which the console ignores. */
       retiredSettings?: Array<string>;
       relayRegistrarNamed?: true;
-      /** The relay settings a webrtc configuration states, which withhold its
-       * run here. */
-      relaySettings?: Array<string>;
+      /** The file states `connection.ice_provision`, which withholds its run
+       * here. */
+      iceProvisionNamed?: true;
       /** The `.alcove.key` beside the configuration would refuse its run: none
        * is there, or the file is not a key file. */
       keyFileFault?: "absent" | "invalid";
@@ -88,6 +88,16 @@ function documentOf(value: unknown): DisclosedExchangeDocument | null {
   if (
     value.signalingServer !== undefined &&
     typeof value.signalingServer !== "string"
+  )
+    return null;
+  if (
+    value.relayTurnUrls !== undefined &&
+    namesOf(value.relayTurnUrls) === null
+  )
+    return null;
+  if (
+    value.relayCredentialMinted !== undefined &&
+    value.relayCredentialMinted !== true
   )
     return null;
   return value as unknown as DisclosedExchangeDocument;
@@ -159,9 +169,7 @@ export async function fetchMountedConfiguration(
     const folderPathSettings = namesOf(body.folderPathSettings);
     const retiredSettings =
       body.retiredSettings === undefined ? [] : namesOf(body.retiredSettings);
-    const relaySettings =
-      body.relaySettings === undefined ? [] : namesOf(body.relaySettings);
-    const { relayRegistrarNamed, keyFileFault } = body;
+    const { relayRegistrarNamed, iceProvisionNamed, keyFileFault } = body;
     const inPlaceSigningIdentity =
       body.inPlaceSigningIdentity === undefined
         ? undefined
@@ -174,8 +182,8 @@ export async function fetchMountedConfiguration(
       signingPathSettings === null ||
       folderPathSettings === null ||
       retiredSettings === null ||
-      relaySettings === null ||
       (relayRegistrarNamed !== undefined && relayRegistrarNamed !== true) ||
+      (iceProvisionNamed !== undefined && iceProvisionNamed !== true) ||
       (keyFileFault !== undefined &&
         keyFileFault !== "absent" &&
         keyFileFault !== "invalid")
@@ -192,7 +200,9 @@ export async function fetchMountedConfiguration(
       ...(relayRegistrarNamed === true
         ? { relayRegistrarNamed: true as const }
         : {}),
-      ...(relaySettings.length > 0 ? { relaySettings } : {}),
+      ...(iceProvisionNamed === true
+        ? { iceProvisionNamed: true as const }
+        : {}),
       ...(keyFileFault !== undefined ? { keyFileFault } : {}),
       ...(inPlaceSigningIdentity !== undefined
         ? { inPlaceSigningIdentity }

@@ -194,6 +194,29 @@ describe("a definitive answer", () => {
     });
   });
 
+  test("a webrtc configuration stating ice_provision says so, and only as true", async () => {
+    const body = (iceProvisionNamed: unknown) =>
+      answering(200, {
+        configured: true,
+        present: true,
+        document: {
+          channel: "webrtc",
+          linkageTerms: getDefaultLinkageTerms("County Health"),
+        },
+        carriedThrough: [],
+        warnings: [],
+        signingPathSettings: [],
+        folderPathSettings: [],
+        iceProvisionNamed,
+      }).fetchImpl;
+    const answer = await fetchMountedConfiguration(body(true));
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    expect(answer.iceProvisionNamed).toBe(true);
+    expect(await fetchMountedConfiguration(body("yes"))).toEqual({
+      kind: "unavailable",
+    });
+  });
+
   test("a refusal keeps the console's own text", async () => {
     const error = "This configuration runs over ftp.";
     const { fetchImpl } = answering(400, { error });

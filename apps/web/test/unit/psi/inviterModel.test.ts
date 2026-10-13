@@ -1113,12 +1113,13 @@ describe("transport chooser copy by deployment", () => {
     );
   });
 
-  test("a console build offers WebRTC through a coordination server, direct only", () => {
+  test("a console build offers WebRTC through a coordination server and a relay", () => {
     const copy = transportChooserCopy(true, false, true);
     expect(copy.webrtcLabel).toBe("Over WebRTC, run here");
     expect(copy.webrtcDescription).toContain("coordination server");
     expect(copy.webrtcDescription).toContain("Alcove web app");
-    expect(copy.webrtcDescription).toContain("Direct connections only");
+    expect(copy.webrtcDescription).toContain("through the relay you set there");
+    expect(copy.webrtcDescription).not.toContain("Direct connections only");
     expect(copy.capabilityNote).toContain("WebRTC exchanges here");
     const opened = transportChooserCopy(true, false, true, false, {}, true);
     expect(opened.webrtcDescription).toContain(

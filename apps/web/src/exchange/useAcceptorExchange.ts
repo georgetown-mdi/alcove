@@ -267,10 +267,11 @@ export async function acceptorWebrtcTransport(
   accepted: AcceptedSignalingServer,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ServerJobExchangeTransport> {
+  const { relay } = accepted.signalingServer;
   const put = await putSignalingServer(
     accepted.address,
     fetchImpl,
-    accepted.signalingServer.relay,
+    relay !== undefined ? { invitationRelay: relay } : undefined,
   );
   if (put.kind === "refused")
     throw new AcceptedSignalingServerUnsetError(true, put.message);

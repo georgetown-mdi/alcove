@@ -84,6 +84,14 @@ export interface DisclosedExchangeDocument {
    * address the run dials: its host, port, path and scheme, and not its key
    * or user name. */
   signalingServer?: string;
+  /** The TURN urls a webrtc run of the file relays through, as the CLI
+   * chooses them: an accepted invitation's relay, else the file's own
+   * `turn` entries, each entry's url alone. Absent where it names none. */
+  relayTurnUrls?: Array<string>;
+  /** The run mints a credential for the file's own `turn` entries, which
+   * state none, so the relay accepts the run only once it holds the exchange's
+   * key. Absent otherwise. */
+  relayCredentialMinted?: true;
   options?: DisclosedFileSyncOptions;
   linkageTerms: ExchangeSpec["linkageTerms"];
   metadata?: ExchangeSpec["metadata"];

@@ -1,11 +1,16 @@
+import { jobOwnRelaySchema } from "@jobContract/signalingServer";
+
 import {
   MAX_JOB_STATUS_RESPONSE_BYTES,
   isRecord,
   readJsonOrNull,
 } from "./jobApiBody";
 
+import type {
+  JobOwnRelay,
+  SignalingServerProjection,
+} from "@jobContract/signalingServer";
 import type { RelayLocator } from "@alcove/core";
-import type { SignalingServerProjection } from "@jobContract/signalingServer";
 
 /**
  * The browser-side client for the coordination server a console webrtc run
@@ -24,7 +29,7 @@ export function signalingServerProjectionOf(
   body: unknown,
 ): SignalingServerProjection | null {
   if (!isRecord(body) || body.configured !== true) return null;
-  const { host, port, path, secure, webAppOrigin, warnings } = body;
+  const { host, port, path, secure, webAppOrigin, ownRelay, warnings } = body;
   if (typeof host !== "string" || host.length === 0) return null;
   if (
     port !== undefined &&
@@ -37,12 +42,16 @@ export function signalingServerProjectionOf(
   if (typeof path !== "string" || !path.startsWith("/")) return null;
   if (typeof secure !== "boolean") return null;
   if (webAppOrigin !== undefined && !isWebOrigin(webAppOrigin)) return null;
+  const relay =
+    ownRelay === undefined ? undefined : jobOwnRelaySchema.safeParse(ownRelay);
+  if (relay?.success === false) return null;
   return {
     host,
     ...(port !== undefined ? { port } : {}),
     path,
     secure,
     ...(webAppOrigin !== undefined ? { webAppOrigin } : {}),
+    ...(relay !== undefined ? { ownRelay: relay.data } : {}),
     warnings: Array.isArray(warnings)
       ? warnings.filter((entry): entry is string => typeof entry === "string")
       : [],
@@ -110,22 +119,25 @@ export class AcceptedSignalingServerUnsetError extends Error {
   }
 }
 
-/** Set the coordination server from the address the operator typed, or
- * from an accepted invitation's server and relay. */
+/** The relay a `PUT` sets beside the address: an accepted invitation's, or
+ * the one the operator set for this console's own invitations. */
+export type SignalingServerRelay =
+  { invitationRelay: RelayLocator } | { ownRelay: JobOwnRelay };
+
+/** Set the coordination server from the address the operator typed, with
+ * the relay they set beside it, or from an accepted invitation's server and
+ * relay. */
 export async function putSignalingServer(
   address: string,
   fetchImpl: typeof fetch = fetch,
-  invitationRelay?: RelayLocator,
+  relay?: SignalingServerRelay,
 ): Promise<PutSignalingServerResult> {
   let response: Response;
   try {
     response = await fetchImpl(ROUTE, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        address,
-        ...(invitationRelay !== undefined ? { invitationRelay } : {}),
-      }),
+      body: JSON.stringify({ address, ...relay }),
     });
   } catch {
     return { kind: "error" };

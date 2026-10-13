@@ -138,6 +138,7 @@ import {
   editedTermsWarning,
   inPlaceSigningIdentityShown,
   inPlaceSigningIdentityWithheldReason,
+  openedRelayTurnUrls,
   openedSignalingServer,
   openedWebrtcEndpoint,
   opensInPlace,
@@ -1302,11 +1303,11 @@ export function InviterScreen() {
       connectionEndpoint = endpoint;
     } else if (transport === "webrtc") {
       // The endpoint names the coordination server the console run dials and
-      // no relay. The link opens in the web app the server was found through;
-      // with no web app there is no link to share (`shareLink` below). The
-      // server is read again first: another tab or a console restart may
-      // have changed it since this page read it, and the invitation must
-      // name the one the run dials.
+      // the relay it uses. The link opens in the web app the server was found
+      // through; with no web app there is no link to share (`shareLink`
+      // below). The server is read again first: another tab or a console
+      // restart may have changed it since this page read it, and the
+      // invitation must name the one the run dials.
       if (signalingServer == null) return;
       dispatch({ type: "mint-started" });
       const current = await fetchSignalingServer();
@@ -1836,6 +1837,7 @@ export function InviterScreen() {
                 openedSignalingServer={openedSignalingServer(
                   mountedConfiguration,
                 )}
+                openedRelayTurnUrls={openedRelayTurnUrls(mountedConfiguration)}
                 loadedSftpForm={loadedSftpForm}
                 sftpSaveFilePreferred={sftpSaveFilePreferred}
                 runWithheld={

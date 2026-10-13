@@ -134,6 +134,7 @@ export function ReviewCreateSection({
   configurationOpened = false,
   openedRunsInPlace = false,
   openedSignalingServer,
+  openedRelayTurnUrls = [],
   loadedSftpForm,
   sftpSaveFilePreferred,
   runWithheld,
@@ -188,6 +189,9 @@ export function ReviewCreateSection({
   /** The coordination server address that configuration names, shown in
    * place of the console's own server, which its run does not use. */
   openedSignalingServer?: string;
+  /** The TURN urls that configuration's run relays through, shown beside its
+   * coordination server; empty where it names none. */
+  openedRelayTurnUrls?: ReadonlyArray<string>;
   /** The connection form a configuration opened from the mounted folder seeds,
    * forwarded to the SFTP card for the case where no connection is authored yet. */
   loadedSftpForm?: SftpConnectionFormValues;
@@ -568,6 +572,15 @@ export function ReviewCreateSection({
                   </span>
                   .
                 </Text>
+                {openedRelayTurnUrls.length > 0 && (
+                  <Text size="sm">
+                    Relays through{" "}
+                    <span className={styles.mono}>
+                      {sanitizeForDisplay(openedRelayTurnUrls.join(", "))}
+                    </span>{" "}
+                    when a direct connection fails.
+                  </Text>
+                )}
                 <Text size="sm" c="dimmed">
                   {OPENED_SIGNALING_SERVER_NOTE}
                 </Text>

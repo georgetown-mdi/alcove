@@ -1654,7 +1654,7 @@ The cells:
 | `linkage_terms.payload.send` (`description`) | carried | carried with a notice | carried with a notice |
 | `linkage_terms.payload.receive` | authored (recorded on accept, on save, or on the first run) | carried with a notice (left out once you choose not to receive the results) | carried with a notice |
 | **[Connection](#connection)** | | | |
-| `connection.channel` | authored | authored (`sftp`, `filedrop`); `webrtc` opens but is refused at run | carried (`webrtc`); `sftp` and `filedrop` open but are refused at run |
+| `connection.channel` | authored | authored (`sftp`, `filedrop`); `webrtc` runs the file in place | carried (`webrtc`); `sftp` and `filedrop` open but are refused at run |
 | `connection.path` (filedrop) | authored | carried with a notice (the run uses the mounted folder; converting replaces it) | not applicable |
 | `connection.inbound_path`, `connection.outbound_path` (filedrop) | authored | carried with a notice (the run uses the mounted folders; converting replaces them) | not applicable |
 | `connection.server.host` (sftp) | authored | authored | not applicable |
@@ -1671,18 +1671,18 @@ The cells:
 | `connection.server.certificate` | refused | refused | refused |
 | `connection.server.known_hosts` | refused | refused | refused |
 | `connection.server.provision` (sftp) | carried | refused | not applicable |
-| `connection.server.provision` (webrtc) | carried | not applicable | refused |
-| `connection.server.host`, `port`, `path` (webrtc) | authored | not applicable | carried |
-| `connection.server.secure` (webrtc) | authored | not applicable | refused |
-| `connection.server.key` (webrtc) | carried | not applicable | refused |
+| `connection.server.provision` (webrtc) | carried | carried (refused while the server has no `host` yet) | refused |
+| `connection.server.host`, `port`, `path` (webrtc) | authored | carried (shown on the review step) | carried |
+| `connection.server.secure` (webrtc) | authored | carried (shown on the review step as the address's scheme) | refused |
+| `connection.server.key` (webrtc) | carried | carried | refused |
 | `connection.server.username` (webrtc) | not applicable | not applicable | refused |
-| `connection.role` | authored | not applicable | carried |
-| `connection.stun` | carried | not applicable | refused |
-| `connection.turn` | carried | not applicable | refused, except beside `connection.relay_registrar` (see that row and [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)) |
-| `connection.invitation_relay` | authored (recorded on accept) | not applicable | carried (recorded on accept; the browser relays through it on each re-run) |
-| `connection.relay_registrar` | carried | not applicable | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
-| `connection.ice_transport_policy` | carried | not applicable | refused |
-| `connection.ice_provision` | refused | not applicable | refused |
+| `connection.role` | authored | carried | carried |
+| `connection.stun` | carried | carried | refused |
+| `connection.turn` | carried | carried (its urls shown on the review step) | refused, except beside `connection.relay_registrar` (see that row and [MANAGED_EXCHANGE_RECORD.md](spec/MANAGED_EXCHANGE_RECORD.md#what-the-exports-write)) |
+| `connection.invitation_relay` | authored (recorded on accept) | carried (its turn urls shown on the review step) | carried (recorded on accept; the browser relays through it on each re-run) |
+| `connection.relay_registrar` | carried | carried with a notice (the enrollment step) | authored (enrolled under Relay registration; read from a file imported with its key file, refused in one imported alone) |
+| `connection.ice_transport_policy` | carried | carried | refused |
+| `connection.ice_provision` | refused | refused (opens; its run is withheld) | refused |
 | `connection.options.peer_timeout_ms` | authored | authored | refused |
 | `connection.options.inactivity_timeout_ms` | authored | authored | refused |
 | `connection.options.server_connect_timeout_ms` | authored | authored | refused |

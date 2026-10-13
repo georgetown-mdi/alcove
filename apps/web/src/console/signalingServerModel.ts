@@ -3,15 +3,32 @@
  * operator set, and the invitation endpoint it mints from it. No React.
  */
 
-import { publishedSignalingServerURL } from "@alcove/core";
+import {
+  RelayRegistrarSchema,
+  publishedSignalingServerURL,
+} from "@alcove/core";
 
+import {
+  EXCHANGE_ID_PRIVACY,
+  relayRegistrarExchangeIdProblems,
+  relayRegistrarUrlProblems,
+} from "@psi/managed/managedRelayRegistration";
 import { invitationReach } from "@exchange/invitationReach";
+import { parseRelayUrlLines } from "@psi/transport/ownRelaySetting";
 import { refusedSignalingEndpointField } from "@psi/transport/signalingAddress";
 
+import {
+  ENROLL_RELAY_TOKEN_STEP,
+  RELAY_OWNER_ENROLLMENT_NOTICE,
+} from "./mountedConfiguration";
+
+import type {
+  JobOwnRelay,
+  SignalingServerProjection,
+} from "@jobContract/signalingServer";
+import type { RelayRegistrar, WebRTCEndpoint } from "@alcove/core";
 import type { InvitationReach } from "@exchange/invitationReach";
 import type { JobSignalingServerEndpoint } from "@jobContract/intentSchemas";
-import type { SignalingServerProjection } from "@jobContract/signalingServer";
-import type { WebRTCEndpoint } from "@alcove/core";
 
 /** The public Alcove web app, which publishes the coordination server it uses
  * at `/alcove.json`. The console fills it in only when the operator asks. */
@@ -33,25 +50,39 @@ export const COORDINATION_SERVER_MISSING =
  * whether a coordination server is set. */
 export const COORDINATION_SERVER_LOADING = "Checking the coordination server.";
 
-/** What the review step says when the coordination server changed between
- * this page reading it and the create: no invitation was made. */
+/** What the review step says when the coordination server or relay changed
+ * between this page reading it and the create: no invitation was made. */
 export const SIGNALING_SERVER_CHANGED_ALERT = {
-  title: "The coordination server changed",
+  title: "The coordination server or relay changed",
   message:
-    "The coordination server set on this console changed since this page " +
-    "showed it, so no invitation was created. Check the coordination server " +
-    "above, then create the invitation again.",
+    "The coordination server or relay set on this console changed since " +
+    "this page showed it, so no invitation was created. Check them above, " +
+    "then create the invitation again.",
 };
 
-/** Whether `a` and `b` are the same server, reached the same way and found
- * through the same web app. */
+/** Whether `a` and `b` are the same server, reached the same way, found
+ * through the same web app, and set with the same relay. */
 export function sameSignalingServer(
   a: SignalingServerProjection,
   b: SignalingServerProjection,
 ): boolean {
   return (
     signalingServerAddress(a) === signalingServerAddress(b) &&
-    a.webAppOrigin === b.webAppOrigin
+    a.webAppOrigin === b.webAppOrigin &&
+    sameOwnRelay(a.ownRelay, b.ownRelay)
+  );
+}
+
+function sameOwnRelay(
+  a: JobOwnRelay | undefined,
+  b: JobOwnRelay | undefined,
+): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return (
+    a.turn.length === b.turn.length &&
+    a.turn.every((url, index) => url === b.turn[index]) &&
+    a.relayRegistrar?.url === b.relayRegistrar?.url &&
+    a.relayRegistrar?.exchangeId === b.relayRegistrar?.exchangeId
   );
 }
 
@@ -64,9 +95,10 @@ export function signalingServerAddress(
 }
 
 /**
- * The invitation endpoint for `server`: its host, port and path, and no
- * relay, since a console run connects directly. An endpoint names no scheme:
- * the partner dials it over `wss://`.
+ * The invitation endpoint for `server`: its host, port and path, and the TURN
+ * urls of the relay set for this console's invitations, as `alcove invite`
+ * names its own `turn` entries. An endpoint names no scheme: the partner
+ * dials it over `wss://`. The registrar is this party's own and is not named.
  */
 export function webrtcEndpointForSignalingServer(
   server: SignalingServerProjection,
@@ -76,7 +108,143 @@ export function webrtcEndpointForSignalingServer(
     host: server.host,
     ...(server.port !== undefined ? { port: server.port } : {}),
     path: server.path,
+    ...(server.ownRelay !== undefined
+      ? { relay: { turn: [...server.ownRelay.turn] } }
+      : {}),
   };
+}
+
+/** The relay fields of the coordination server form, as typed: TURN urls one
+ * per line, and the registrar's address and exchange id. */
+export interface OwnRelayDraft {
+  turn: string;
+  registrarUrl: string;
+  exchangeId: string;
+}
+
+/** The relay fields of a form that sets none. */
+export const EMPTY_OWN_RELAY_DRAFT: OwnRelayDraft = {
+  turn: "",
+  registrarUrl: "",
+  exchangeId: "",
+};
+
+/** What the relay fields come to: the relay to set, none where every field
+ * is empty, or the problems of each field, in core's own words. */
+export type OwnRelayDraftResult =
+  | { ok: true; ownRelay: JobOwnRelay | undefined }
+  | {
+      ok: false;
+      turnProblems: Array<string>;
+      registrarUrlProblems: Array<string>;
+      exchangeIdProblems: Array<string>;
+    };
+
+/** The problem of a registrar set with no relay url to register for. */
+export const REGISTRAR_WITHOUT_RELAY =
+  "Enter your relay's turn: or turns: url to use its registrar.";
+
+/**
+ * Read the relay fields under the rules `PUT /api/jobs/webrtc` applies:
+ * each TURN line under core's `turn` url rule and the list bound, and a
+ * registrar, given either of its fields, under core's registrar rule and only
+ * beside a TURN url.
+ */
+export function ownRelayFromDraft(draft: OwnRelayDraft): OwnRelayDraftResult {
+  const lines = parseRelayUrlLines(draft.turn, "turn");
+  const turnProblems = lines.ok
+    ? []
+    : lines.problems.map((problem) =>
+        problem.line === undefined
+          ? `Relay servers: ${problem.message}.`
+          : `Line ${problem.line}: ${problem.message}.`,
+      );
+  const urls = lines.ok ? lines.urls : [];
+  const registrarStated =
+    draft.registrarUrl.trim() !== "" || draft.exchangeId.trim() !== "";
+  let registrarUrlProblems: Array<string> = [];
+  let exchangeIdProblems: Array<string> = [];
+  let relayRegistrar: RelayRegistrar | undefined;
+  if (registrarStated) {
+    if (lines.ok && urls.length === 0)
+      turnProblems.push(REGISTRAR_WITHOUT_RELAY);
+    const parsed = RelayRegistrarSchema.safeParse({
+      url: draft.registrarUrl,
+      exchangeId: draft.exchangeId.trim(),
+    });
+    if (parsed.success) relayRegistrar = parsed.data;
+    else {
+      registrarUrlProblems = relayRegistrarUrlProblems(parsed.error.issues);
+      const idProblems = relayRegistrarExchangeIdProblems(parsed.error.issues);
+      exchangeIdProblems =
+        idProblems.length > 0 ? [...idProblems, EXCHANGE_ID_PRIVACY] : [];
+    }
+  }
+  if (
+    turnProblems.length > 0 ||
+    registrarUrlProblems.length > 0 ||
+    exchangeIdProblems.length > 0
+  )
+    return {
+      ok: false,
+      turnProblems,
+      registrarUrlProblems,
+      exchangeIdProblems,
+    };
+  if (urls.length === 0) return { ok: true, ownRelay: undefined };
+  return {
+    ok: true,
+    ownRelay: {
+      turn: urls,
+      ...(relayRegistrar !== undefined ? { relayRegistrar } : {}),
+    },
+  };
+}
+
+/** The relay fields showing `relay`, for changing it. */
+export function ownRelayDraft(relay: JobOwnRelay | undefined): OwnRelayDraft {
+  if (relay === undefined) return EMPTY_OWN_RELAY_DRAFT;
+  return {
+    turn: relay.turn.join("\n"),
+    registrarUrl: relay.relayRegistrar?.url ?? "",
+    exchangeId: relay.relayRegistrar?.exchangeId ?? "",
+  };
+}
+
+/** What the WebRTC option says when no relay is set: the run connects
+ * directly, and what that costs. */
+export const NO_RELAY_NOTE =
+  "No relay is set, so the exchange connects directly, and a network that " +
+  "blocks direct connections on either side stops it from connecting. Set a " +
+  "relay (TURN) server to connect through it when a direct connection fails.";
+
+/**
+ * What the operator is told before the run about a relay whose key must be
+ * enrolled: the relay accepts the run's credential only once it holds the key
+ * derived from this exchange's shared secret. With a registrar, the step is
+ * `alcove enroll-relay` in the working folder once the console wrote the
+ * exchange's files; with none, the relay's owner registers the key.
+ * Undefined where no relay is set.
+ */
+export function ownRelayEnrollmentNotice(
+  relay: JobOwnRelay | undefined,
+): string | undefined {
+  if (relay === undefined) return undefined;
+  const accepts =
+    "Your relay accepts this exchange's connection only once it holds the " +
+    "key derived from the exchange's shared secret.";
+  if (relay.relayRegistrar === undefined)
+    return (
+      `${RELAY_OWNER_ENROLLMENT_NOTICE} Or set your relay's registrar here ` +
+      "so that you can enroll the exchange and each run registers its new key."
+    );
+  return (
+    `${accepts} When you create the invitation, the console writes ` +
+    "alcove.yaml and .alcove.key into your working folder. Before your " +
+    "partner connects, run alcove enroll-relay in that folder to enroll the " +
+    `exchange at your relay's registrar. ${ENROLL_RELAY_TOKEN_STEP} Each run ` +
+    "after that registers its new key without the token."
+  );
 }
 
 /** Who can reach `server`, judged from its host as an invitation link is. */

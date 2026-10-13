@@ -544,6 +544,11 @@ export async function stopManagedRelayRegistration(
   return deps.withLock(id, () => deps.removeRegistrar(id));
 }
 
+/** What a form taking a registrar's exchange id adds to a refusal of it. */
+export const EXCHANGE_ID_PRIVACY =
+  "The registrar's answers let anyone learn whether an id is enrolled, so " +
+  "choose one that names neither party.";
+
 type RelayRegistrarIssues = ReadonlyArray<{
   path: ReadonlyArray<PropertyKey>;
   message: string;
