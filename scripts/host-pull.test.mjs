@@ -152,6 +152,7 @@ linked="$(readlink "$F/opt/alcove-broker/src")"
 printf '%s %s\n' "${name}" "$linked" >> "$F/calls"
 ls "$F/opt/alcove-broker/trees" | wc -l >> "$F/tree-counts"
 [ ! -e "$F/hang-${name}-$(basename "$linked")" ] || exec sleep 30
+if [ -e "$F/deaf-${name}-$(basename "$linked")" ]; then trap '' TERM; sleep 30; fi
 [ ! -e "$F/fail-${name}-$(basename "$linked")" ] || exit 1
 ${last}`;
 const TREE_STUBS = {
@@ -244,6 +245,8 @@ const BUNDLE = `${ARCHIVE}.sigstore.json`;
  * published and signed for TIP, and the broker linked to the tree of DEPLOYED,
  * the commit the deployed marker names.
  */
+const DEFAULT_BOUND = 315;
+
 const host = () => {
   const root = fixtureDir("host-pull-");
   const bin = join(root, "bin");
@@ -264,6 +267,10 @@ const host = () => {
   writeStub(
     join(bin, "systemctl"),
     `${head}\nprintf 'systemctl %s\\n' "$*" >> "$F/calls"`,
+  );
+  writeStub(
+    join(bin, "timeout"),
+    `${head}\nprintf '%s\\n' "$*" >> "$F/timeouts"\nexec /usr/bin/timeout "$@"`,
   );
   writeStub(
     join(bin, "chown"),
@@ -723,20 +730,53 @@ describe("pull.sh", () => {
       expect(h.trees()).toEqual([DEPLOYED]);
     });
 
-    it("bounds each install script at a quarter of the unit's TimeoutStartSec", () => {
+    it("kills an install script that ignores TERM, and rolls back", () => {
+      const h = host();
+      h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = "1";
+      h.env.ALCOVE_HOST_PULL_KILL_AFTER = "1";
+      h.set(`deaf-relay-install-${TIP}`);
+      const started = Date.now();
+      outcome(h, "rolled-back", 1);
+      expect(Date.now() - started).toBeLessThan(20000);
+      expect(h.link()).toBe(`trees/${DEPLOYED}`);
+    });
+
+    it.each([
+      ["unset", undefined, DEFAULT_BOUND],
+      ["0", "0", DEFAULT_BOUND],
+      ["abc", "abc", DEFAULT_BOUND],
+      ["larger than the default", String(DEFAULT_BOUND + 1), DEFAULT_BOUND],
+      ["a smaller positive integer", "7", 7],
+    ])("reads the install bound override %s", (_label, value, expected) => {
+      const h = host();
+      if (value !== undefined) h.env.ALCOVE_HOST_PULL_INSTALL_TIMEOUT = value;
+      outcome(h, "updated", 0);
+      const bounds = readFileSync(join(h.root, "timeouts"), "utf8")
+        .split("\n")
+        .filter((l) => l.includes("install.sh"));
+      expect(bounds).toHaveLength(2);
+      for (const line of bounds) {
+        expect(line).toMatch(new RegExp(`^-k 30 ${expected} `));
+      }
+    });
+
+    it("derives the install share from the unit's TimeoutStartSec and the stage bounds", () => {
       const script = readFileSync(join(PULL_DIR, "pull.sh"), "utf8");
       const unit = readFileSync(
         join(PULL_DIR, "alcove-host-pull.service"),
         "utf8",
       );
-      const bound = Number(
-        /^INSTALL_TIMEOUT="\$\{ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-(\d+)\}"$/m.exec(
-          script,
-        )?.[1],
-      );
       const hours = Number(/^TimeoutStartSec=(\d+)h$/m.exec(unit)?.[1]);
       expect(hours).toBeGreaterThan(0);
-      expect(bound).toBe((hours * 3600) / 4);
+      const secs = (re) => Number(re.exec(script)?.[1]);
+      const staging =
+        secs(/timeout (\d+) git ls-remote/) +
+        secs(/--max-time (\d+)/) * 3 +
+        secs(/timeout (\d+) git -C "\$PARTIAL" fetch/) +
+        secs(/timeout (\d+) npm ci/);
+      expect(secs(/^INSTALL_SHARE=(\d+)$/m)).toBe(
+        Math.floor((hours * 3600 - staging) / 4),
+      );
     });
 
     it("records rollback-failed when the deployed commit's installs fail too, and touches nothing further", () => {

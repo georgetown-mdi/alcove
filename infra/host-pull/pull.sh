@@ -37,10 +37,29 @@ RELEASE_URL=https://github.com/georgetown-mdi/alcove/releases/download/broker-co
 # Pages of 100 push runs read for one commit before the run gives up.
 RUN_PAGES=10
 
-# Each install script call is cut off after this many seconds, so a forward
-# attempt and a rollback (two calls each) fit in alcove-host-pull.service's
-# TimeoutStartSec=1h: 3600 / 4. scripts/host-pull.test.mjs holds the two equal.
-INSTALL_TIMEOUT="${ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-900}"
+# A forward attempt and a rollback run two install scripts each, four calls in
+# all, and the whole run must fit alcove-host-pull.service's TimeoutStartSec=1h
+# (3600 s). Each call's share is
+#   (3600 - staging bounds) / 4 = (3600 - (120 + 300 + 2 * 300 + 600 + 600)) / 4
+# where the staging bounds are the ls-remote (120), one run-page download (300),
+# the two build downloads (2 * 300), the fetch (600) and npm ci (600). A run that
+# reads more than one page of push runs, up to RUN_PAGES, can exceed the unit's
+# limit; systemd's stop is then recorded as failed. The share holds the
+# --kill-after wait, a working value of 30 s, so the script gets
+# INSTALL_SHARE - INSTALL_KILL_AFTER seconds before TERM. The override may only
+# lower either wait. scripts/host-pull.test.mjs holds INSTALL_SHARE equal to this
+# derivation.
+INSTALL_SHARE=345
+INSTALL_KILL_AFTER_DEFAULT=30
+INSTALL_TIMEOUT_DEFAULT=$((INSTALL_SHARE - INSTALL_KILL_AFTER_DEFAULT))
+
+# Prints the override when it is a positive integer no larger than the default,
+# and the default otherwise.
+lowered() {
+  if [[ "$1" =~ ^[1-9][0-9]{0,8}$ ]] && [ "$1" -le "$2" ]; then printf '%s' "$1"; else printf '%s' "$2"; fi
+}
+INSTALL_TIMEOUT="$(lowered "${ALCOVE_HOST_PULL_INSTALL_TIMEOUT:-}" "$INSTALL_TIMEOUT_DEFAULT")"
+INSTALL_KILL_AFTER="$(lowered "${ALCOVE_HOST_PULL_KILL_AFTER:-}" "$INSTALL_KILL_AFTER_DEFAULT")"
 
 TIP=""
 PARTIAL=""
@@ -208,7 +227,7 @@ stage() {
   [ -s "$dist/untrusted-text.esm.js" ] || finish refused 1 "$archive has no untrusted-text.esm.js"
 
   # No package's install script runs as root (README.md, What a run does).
-  (cd "$PARTIAL" && nice -n 10 ionice -c 3 npm ci --no-audit --no-fund --ignore-scripts \
+  (cd "$PARTIAL" && nice -n 10 ionice -c 3 timeout 600 npm ci --no-audit --no-fund --ignore-scripts \
     --workspace packages/peerjs-broker) >&2 \
     || finish failed 1 "npm ci of the broker workspace failed at $TIP"
 
@@ -246,10 +265,10 @@ install_tree() {
   # and a switched tree is not one.
   systemctl try-restart alcove-broker.service \
     || { FAILURE="alcove-broker.service did not restart on $1"; return 1; }
-  timeout "$INSTALL_TIMEOUT" "$tree/infra/broker/install.sh" >&2 \
+  timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$tree/infra/broker/install.sh" >&2 \
     || { FAILURE="infra/broker/install.sh failed at $1"; return 1; }
   # Ends with verify.sh against the relay's private address.
-  timeout "$INSTALL_TIMEOUT" "$tree/infra/relay/install.sh" >&2 \
+  timeout -k "$INSTALL_KILL_AFTER" "$INSTALL_TIMEOUT" "$tree/infra/relay/install.sh" >&2 \
     || { FAILURE="infra/relay/install.sh or its verify.sh failed at $1"; return 1; }
 }
 

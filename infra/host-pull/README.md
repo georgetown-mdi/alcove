@@ -33,7 +33,7 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
    After an update the two on disk are the new deployed commit's and the one deployed before it, until the next run's removal; a rollback uses only the tree the marker names (step 6).
    It removes a tree only when it created that tree itself and lists its commit in `/var/lib/alcove-host-pull/created-trees`, and never the tree the link or the marker names.
    It builds each path it removes from a listed commit, `/opt/alcove-broker/trees/<commit>`, never from a pattern, and ignores a line of the list that is not a full commit.
-   A tree it did not create, such as the one Install step 1 moves into place, stays until the operator removes it.
+   A tree it did not create, such as the one Install step 1 moves into place, stays until the operator removes it, except that when the tip's own path already holds a tree, the pull replaces it with the verified build of the same commit.
 
 It never builds core.
 It never runs code from a tree it is about to replace: the timer runs the copy of `pull.sh` this directory's `install.sh` put under `/opt/alcove-host-pull`.
@@ -119,8 +119,8 @@ On a host already set up as [`infra/broker/README.md`, Install](../broker/README
   Each such run restarts the relay's services twice.
 - **A rollback restores the units, not every file.** It runs the previous tree's install scripts, which converge what they install; a file the newer commit's scripts added and the older ones do not name stays on the host.
 - **Relayed exchanges drop on an update.** `infra/relay/install.sh` restarts coturn, the 443 front and the registrar on every run, which drops allocations in progress. The pull installs only when `main` moved, and a rollback runs it a second time.
-- **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `failed` or `rollback-failed` leaves the tip's tree, and the next run removes it before staging.
-- **Each install script is cut off after 15 minutes.** A forward attempt and a rollback run two scripts each, which fit in the service's `TimeoutStartSec=1h`; a script that hangs is an ordinary failure and is rolled back.
+- **Two trees on disk.** Each holds its `node_modules`; the host's free disk after two trees has not been measured. A run that ends `rollback-failed` leaves the tip's tree, and the next run removes it before staging. A run that ends `failed` leaves the link on the tip's tree, which stays until the link moves to another tree.
+- **Each install script is cut off after 5 minutes 15 seconds, and killed 30 seconds later if it ignores the stop.** A forward attempt and a rollback run two scripts each; with the pull's download, fetch and `npm ci` limits, they fit in the service's `TimeoutStartSec=1h` when the run reads one page of push runs. A script that hangs is an ordinary failure and is rolled back. `ALCOVE_HOST_PULL_INSTALL_TIMEOUT` can only lower the bound; an unset, zero, non-numeric or larger value uses the default.
 - **Node is not updated.** The host's Node is the tarball under `/usr/local/lib/nodejs`, which neither this pull nor the OS updates touch.
 - **The tree is not signed.** Only core's build is. What binds the tree to `main` is the fetch over HTTPS from github.com and the check that the fetched commit is the tip `git ls-remote` named.
 
