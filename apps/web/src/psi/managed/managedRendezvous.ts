@@ -145,7 +145,9 @@ export function managedAcceptorSignalingEndpoint(
   if (refused !== undefined)
     throw new ManagedSignalingEndpointRefusedError(
       record.label,
-      `names a ${refused} that could move the connection to another server`,
+      refused === "host"
+        ? "names a host that is not a plain host name, so this build does not dial it"
+        : `names a ${refused} that could move the connection to another server`,
     );
   return endpoint;
 }

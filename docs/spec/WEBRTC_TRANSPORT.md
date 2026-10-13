@@ -124,9 +124,9 @@ address naming another authority opens nothing.
 The web app's acceptor and the console's accept apply the same two rules --
 one implementation, shared from `@alcove/core` -- to the `host` and `path` of
 the invitation endpoint, so `alcove accept`, the web app and the console give
-one verdict on it; the web app refuses before it constructs a peer. An offline
-`alcove invite` applies the `host` rule to the host it copies from its
-configuration, before the invitation exists. The web app needs the rules for a
+one verdict on it; the web app refuses before it constructs a peer. `alcove
+invite` applies the `host` rule to the host its invitation names, before the
+invitation exists. The web app needs the rules for a
 different reason than the CLI: the PeerJS client assembles its
 address by concatenating scheme, `host`, `:`, `port`, `path` and `peerjs?key=`,
 so a delimiter in either field is read as part of the address rather than as a

@@ -168,8 +168,8 @@ describe("an accepting party's re-run", () => {
       .element(
         page.getByText(
           `The saved exchange "${LABEL}" cannot run: the coordination server ` +
-            "address it saved names a host that could move the connection " +
-            "to another server.",
+            "address it saved names a host that is not a plain host name, " +
+            "so this build does not dial it.",
           { exact: false },
         ),
       )

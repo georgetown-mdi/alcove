@@ -457,7 +457,8 @@ export async function requestProvisionedServerAddress(
  * The connection with the address a create-mode endpoint returned in place of
  * its own, or in the place a configuration left empty for it: `host` always,
  * `port` and `path` when the answer states them. The `provision` block is
- * kept, the record the next invitation creates a server from.
+ * kept, the record the next invitation creates a server from. A bare IPv6
+ * address is written bracketed, the form a dial and an invitation take.
  */
 export function withProvisionedServerAddress<
   C extends Exclude<ConnectionConfigAwaitingAddress, FileDropConnectionConfig>,
@@ -466,7 +467,9 @@ export function withProvisionedServerAddress<
     ...connection,
     server: {
       ...connection.server,
-      host: address.host,
+      host: isBareIpv6Address(address.host)
+        ? `[${address.host}]`
+        : address.host,
       ...(address.port !== undefined ? { port: address.port } : {}),
       ...(address.path !== undefined ? { path: address.path } : {}),
     },
