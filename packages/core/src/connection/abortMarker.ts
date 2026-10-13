@@ -77,6 +77,9 @@ interface AbortWriteInputs {
   // marker.
   body: Buffer;
   client: FileTransportClient;
+  // Write the marker straight to its final name, with no temp and no rename.
+  // A torn body fails the peer's verification and reads as no marker.
+  publishWithoutRename: boolean;
 }
 
 // The transport-budget primitives the subsystem borrows from FileSyncConnection,
@@ -173,6 +176,7 @@ export class AbortMarkerSubsystem {
     id: string,
     writeDir: string | undefined,
     rawClient: FileTransportClient,
+    publishWithoutRename = false,
   ): void {
     this.selfAbortToken = selfToken;
     this.peerAbortToken = peerToken;
@@ -205,6 +209,7 @@ export class AbortMarkerSubsystem {
               "utf-8",
             ),
             client: rawClient,
+            publishWithoutRename,
           };
   }
 
@@ -235,8 +240,9 @@ export class AbortMarkerSubsystem {
     return this.pendingAbortWrite;
   }
 
-  // The actual temp-then-rename write (atomic appearance), short-bounded on
-  // both ops so a sick directory cannot hang teardown. The marker is not
+  // The actual temp-then-rename write (atomic appearance), or the direct write
+  // publishWithoutRename asks for, short-bounded on every op so a sick
+  // directory cannot hang teardown. The marker is not
   // tracked in responsibleFiles, so this party's own cleanup() never sweeps
   // it and it persists for the peer to read. On timeout/failure (put
   // succeeds but rename rejects) the budget rejects and the op is
@@ -256,8 +262,24 @@ export class AbortMarkerSubsystem {
     // BEFORE close() runs (close() also signals, but may lose that race). No-op on
     // a transport that does not implement it.
     inputs.client.beginTeardown?.();
-    const tempPath = joinFileSyncPath(inputs.path, `temp-${uuidv4()}.tmp`);
     const finalPath = joinFileSyncPath(inputs.path, inputs.finalName);
+    if (inputs.publishWithoutRename) {
+      await this.deps.runBudgeted(
+        inputs.client.put(inputs.body, finalPath, {
+          flags: "w",
+          encoding: "utf-8",
+        }),
+        ABORT_MARKER_WRITE_BUDGET_MS,
+        () =>
+          this.deps.stalledError(
+            `abort marker write to ${finalPath}`,
+            ABORT_MARKER_WRITE_BUDGET_MS,
+          ),
+      );
+      this.markWritten(inputs.finalName);
+      return;
+    }
+    const tempPath = joinFileSyncPath(inputs.path, `temp-${uuidv4()}.tmp`);
     await this.deps.runBudgeted(
       inputs.client.put(inputs.body, tempPath, {
         flags: "w",
@@ -279,10 +301,14 @@ export class AbortMarkerSubsystem {
           ABORT_MARKER_WRITE_BUDGET_MS,
         ),
     );
+    this.markWritten(inputs.finalName);
+  }
+
+  private markWritten(finalName: string): void {
     this.abortMarkerWritten = true;
     this.deps
       .log()
-      .debug(`[${this.deps.role()}] wrote abort marker ${inputs.finalName}`);
+      .debug(`[${this.deps.role()}] wrote abort marker ${finalName}`);
   }
 
   /**

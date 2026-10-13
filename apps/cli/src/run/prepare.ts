@@ -55,6 +55,8 @@ import {
   entryHelloResidueGuidance,
   payloadSendBeyondConfigurationNotice,
   peerSilenceGuidance,
+  PUBLISH_WITHOUT_RENAME_WARNING,
+  RENAME_REFUSED_GUIDANCE,
   SIGNING_WITHOUT_RECORD_WARNING,
   undeclaredColumnsNotice,
 } from "./notices";
@@ -687,6 +689,14 @@ export async function prepareTransport(
     if (checked.runRelayCredential !== undefined)
       log.info(relayCredentialNotice(connection, checked.runRelayCredential));
   } else {
+    const publishWithoutRename =
+      connection.options?.publishWithoutRename === true;
+    if (publishWithoutRename) {
+      log.warn(PUBLISH_WITHOUT_RENAME_WARNING);
+      emit((e) =>
+        e.warning("publishWithoutRename", PUBLISH_WITHOUT_RENAME_WARNING),
+      );
+    }
     const client =
       connection.channel === "filedrop"
         ? new LocalFSClient()
@@ -712,6 +722,7 @@ export async function prepareTransport(
         forceRetainSweep: fileSyncRuntime.forceRetainSweep,
       }),
       inactivityTimeoutGuidance: INACTIVITY_TIMEOUT_GUIDANCE,
+      renameRefusedGuidance: RENAME_REFUSED_GUIDANCE,
     });
     build.fileSync = fileSyncConn;
 

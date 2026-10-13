@@ -77,6 +77,7 @@ function fileSyncOptions(variant: Variant) {
     peerId: text(variant, "county"),
     unexpectedFiles: pick(variant, "warn", "ignore"),
     connectionPerPoll: flipped(variant, false),
+    publishWithoutRename: flipped(variant, true),
   };
 }
 

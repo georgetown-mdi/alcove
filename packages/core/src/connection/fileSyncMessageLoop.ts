@@ -35,6 +35,7 @@ import {
 } from "../errors";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
+import { renameOwnTemp } from "./fileSyncPublish";
 import {
   MESSAGE_ENVELOPE_VERSION,
   MESSAGE_TYPE_OBJECT,
@@ -48,6 +49,7 @@ import {
 import type { DeserializedMessage } from "./fileSyncFraming";
 import {
   HELLO_SUFFIX,
+  JOINING_SUFFIX,
   LOCK_SUFFIX,
   parseMessageByteCount,
   parseTimestampedMessageNNN,
@@ -133,8 +135,10 @@ export function resolveUnexpectedFilesPolicy(options: {
 // and, for the unbounded-name cases, anything matching the terminal grammar
 // token -- a message byte count (own writes only; a peer message is taken by
 // the scan above) or `ack` (either writer's rendezvous or message ack).
-// `joining` is absent: it is a rendezvous-phase sentinel a correct exchange
-// never leaves on disk once the loop is running.
+// The peer's `<peerId>-joining.json` is recognized by exact name: a lock
+// joiner publishing without rename deletes its sentinel only after its hello
+// is written, so the sentinel can still be listed once this party's loop has
+// started. This party's own sentinel is never recognized.
 //
 // Anchored to the grammar discriminant, not a bare `<id>-*` glob, so a
 // conflict copy or partial download (e.g.
@@ -194,6 +198,7 @@ export function isRecognizedLoopFile(
     name === `${peerId}-${selfId}${LOCK_SUFFIX}`
   )
     return true;
+  if (name === `${peerId}${JOINING_SUFFIX}`) return true;
   const stem = name.slice(0, -".json".length);
   const token = stem.slice(stem.lastIndexOf("-") + 1);
   // Our own messages hold a variable counter/byte-count terminal, so they
@@ -258,6 +263,8 @@ export interface MessageLoopOptions {
   pollingFrequency: number;
   unexpectedFiles?: "error" | "warn" | "ignore";
   inactivityTimeoutGuidance?: string;
+  publishWithoutRename?: boolean;
+  renameRefusedGuidance?: string;
 }
 
 const INACTIVITY_LIMIT_CLAUSE = ` (the limit ${INACTIVITY_TIMEOUT_KEY} sets)`;
@@ -557,6 +564,11 @@ export class FileSyncMessageLoop {
           `[${deps.role()}] message seq=${seq}, type=${type}, ` +
             `${byteLength} bytes`,
         );
+      if (deps.options().publishWithoutRename) {
+        await this.publishDirect(header, payloadBytes, outPath, outName, seq);
+        return;
+      }
+
       deps.log().debug(`[${deps.role()}] writing message ${tempFile}`);
       // Hand put() the header and payload as a two-chunk list rather than a
       // single concatenated buffer: prepending the header no longer copies the
@@ -571,7 +583,13 @@ export class FileSyncMessageLoop {
 
       deps.log().debug(`[${deps.role()}] renaming ${tempFile} to ${outName}`);
       try {
-        await deps.client().rename(tempPath, outPath);
+        await renameOwnTemp(
+          deps.client(),
+          tempPath,
+          outPath,
+          outName,
+          deps.options().renameRefusedGuidance,
+        );
       } catch (renameErr: unknown) {
         if (!(renameErr instanceof TransportPublishIndeterminateError))
           throw renameErr;
@@ -600,10 +618,53 @@ export class FileSyncMessageLoop {
       // (the retain ack-wait and the delete-mode consume-wait) can throw
       // before the put -- a UsageError on timeout, or a ConnectionClosedError
       // if close() aborts the wait. safeDelete is idempotent over an absent
-      // file, so the unconditional sweep is correct.
-      await deps.client().safeDelete(tempPath);
+      // file, so the sweep needs no record of whether the put ran. A direct
+      // publish names no temp at all.
+      if (!deps.options().publishWithoutRename)
+        await deps.client().safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));
     }
+  }
+
+  // send()'s publish under publishWithoutRename: the message is written
+  // straight to its final name, tracked first in delete mode (I4a) because a
+  // put that throws can leave that name on disk. A throwing put is an
+  // unsettled publish, as an undetermined rename is: the file may be on disk
+  // in full and already read, so the seq is spent and the rejection is a
+  // TransportPublishIndeterminateError.
+  private async publishDirect(
+    header: Uint8Array,
+    payloadBytes: Uint8Array,
+    outPath: string,
+    outName: string,
+    seq: number,
+  ): Promise<void> {
+    const { deps } = this;
+    if (!deps.options().retainFiles) deps.responsibleFiles.add(outName);
+    deps.log().debug(`[${deps.role()}] writing message ${outName}`);
+    try {
+      await deps.client().put([header, payloadBytes], outPath, {
+        flags: "w",
+        encoding: null,
+      });
+    } catch (putErr: unknown) {
+      this.indeterminatePublish = {
+        seq,
+        error: new TransportPublishIndeterminateError(
+          `the write of ${outName} did not complete`,
+          { cause: putErr },
+        ),
+      };
+      throw markStatesItsOwnNextStep(
+        new TransportPublishIndeterminateError(
+          `the message may or may not have reached the partner: its write ` +
+            `did not complete. ${CLEAN_DIRECTORY_RESTART_REMEDY}`,
+          { cause: putErr },
+        ),
+      );
+    }
+    this.lastSentFile = outName;
+    this.seq = seq + 1;
   }
 
   private handleUnexpectedFiles(names: string[], path: string): void {

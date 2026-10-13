@@ -744,6 +744,12 @@ const IceProvisionSchema: z.ZodType<IceProvision> = z.object({
 export const INACTIVITY_TIMEOUT_KEY = "inactivity_timeout_ms";
 
 /**
+ * The config key the operator sets {@link FileSyncOptions.publishWithoutRename}
+ * by, as written in the configuration file.
+ */
+export const PUBLISH_WITHOUT_RENAME_KEY = "publish_without_rename";
+
+/**
  * Channel-agnostic tuning parameters shared by all connection types.
  */
 interface SharedOptions {
@@ -1004,6 +1010,21 @@ export interface FileSyncOptions extends SharedOptions {
    * `sftp`.
    */
   connectionPerPoll?: boolean;
+  /**
+   * When `true`, this party writes every exchange file straight to its final
+   * name instead of writing a `temp-*.tmp` and renaming it into place, so an
+   * exchange can run against a server that refuses `rename`. Default `false`.
+   *
+   * The operator vouches that the shared folder never delivers a file to the
+   * partner while it is still being written; Alcove cannot check this. The
+   * partner's readers already wait for a complete file (a message's declared
+   * byte count, the hello read gate), so the partner needs no matching setting.
+   *
+   * **Local, not bilateral.** Not advertised in the hello or the invitation:
+   * the directory holds the same final names either way. See
+   * docs/spec/FILE_SYNC.md, Publishing without rename.
+   */
+  publishWithoutRename?: boolean;
 }
 
 /**
@@ -1053,6 +1074,7 @@ const FileSyncOptionsSchema: z.ZodType<FileSyncOptions> = z
     retainFiles: z.boolean().optional(),
     unexpectedFiles: z.enum(["error", "warn", "ignore"]).optional(),
     connectionPerPoll: z.boolean().optional(),
+    publishWithoutRename: z.boolean().optional(),
   })
   .refine((opts) => !opts.peerId || opts.timestampInFilename === true, {
     message:

@@ -209,6 +209,8 @@ A server reporting a missing rename source as code 4 rather than `SSH_FX_NO_SUCH
 The rejection is caller-neutral by design: `rename` is shared machinery, and four publishes reach it -- the message loop's `send()`, its ack, the rendezvous `joining` -> `hello` rename, and the abort marker -- which share no recovery.
 So its message names a *publish* rather than a message, prescribes no next step, and is not marked with `markStatesItsOwnNextStep`; a caller whose recovery is established restates it as its own marked error holding this one as the `cause`.
 The consumer-side consequence is in [FILE_SYNC.md](FILE_SYNC.md) (I8): the sequence number such a publish spent is not reusable, the next `send()` is refused rather than writing a second message under a sequence number the peer may already have delivered one under, and `send()` is the one caller that does restate this rejection with a remedy.
+A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put`, re-issued verbatim, and a message whose `put` rejects spends its sequence number the same way.
+A first attempt a server refuses with `SSH_FX_NO_SUCH_FILE`, which is how a server that does not allow renames answers, is not a re-issue: it propagates as itself, and core restates it naming that option.
 
 ### Operations concurrent with a re-dial or a release
 

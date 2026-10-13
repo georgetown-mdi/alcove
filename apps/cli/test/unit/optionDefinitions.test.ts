@@ -295,6 +295,32 @@ test("warnOptionsOverridesIgnoredOffline: names --connection-per-poll when set",
   expect(log.messages[0]).toContain("--connection-per-poll");
 });
 
+// --- --publish-without-rename --------------------------------------------------
+
+test("connectionOverridesFrom: fans publishWithoutRename into the options override block", () => {
+  const overrides = connectionOverridesFrom({ publishWithoutRename: true });
+  expect(overrides.options?.publishWithoutRename).toBe(true);
+});
+
+test("warnUnsupportedFileSyncFlags: --publish-without-rename warns on webrtc only", () => {
+  for (const channel of ["sftp", "filedrop"] as const) {
+    const log = warnCollector();
+    warnUnsupportedFileSyncFlags(channel, { publishWithoutRename: true }, log);
+    expect(log.messages).toHaveLength(0);
+  }
+  const log = warnCollector();
+  warnUnsupportedFileSyncFlags("webrtc", { publishWithoutRename: true }, log);
+  expect(log.messages).toHaveLength(1);
+  expect(log.messages[0]).toContain("--publish-without-rename");
+});
+
+test("warnOptionsOverridesIgnoredOffline: names --publish-without-rename when set", () => {
+  const log = warnCollector();
+  warnOptionsOverridesIgnoredOffline({ publishWithoutRename: true }, log);
+  expect(log.messages).toHaveLength(1);
+  expect(log.messages[0]).toContain("--publish-without-rename");
+});
+
 // --- serverProvisionFlag -------------------------------------------------------
 
 test("serverProvisionFlag: no flag states no block", () => {

@@ -687,6 +687,7 @@ export async function validateInvite(params: {
           fileSyncOptions?.connectionPerPoll === true,
         peerId: options.peerId,
         timestampInFilename: options.timestampInFilename,
+        publishWithoutRename: options.publishWithoutRename,
       },
       log,
     );

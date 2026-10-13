@@ -31,6 +31,7 @@ import { ackMarkerName } from "./fileSyncNames";
 import { FileSyncMessageLoop } from "./fileSyncMessageLoop";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
+import { renameOwnTemp } from "./fileSyncPublish";
 import type { PresentedHostKey } from "./sftpConnect";
 import { AbortMarkerSubsystem } from "./abortMarker";
 import { SftpSession } from "./sftpSession";
@@ -188,6 +189,12 @@ interface Options {
   // A sentence appended to a timeout failure naming the setting that bounds
   // it. Unset leaves the message bare.
   inactivityTimeoutGuidance?: string;
+  // Write every exchange file straight to its final name, never through a
+  // temp and a rename. See FileSyncOptions.publishWithoutRename.
+  publishWithoutRename: boolean;
+  // The remedy sentence a refused rename of this party's own temp ends on.
+  // Unset names the configuration key (DEFAULT_RENAME_REFUSED_GUIDANCE).
+  renameRefusedGuidance?: string;
 }
 
 const getDefaultOptions = (): Options => {
@@ -200,6 +207,7 @@ const getDefaultOptions = (): Options => {
     sweepExchangeFiles: false,
     forceRetainSweep: false,
     joinerRecoveryMs: DEFAULT_JOINER_RECOVERY_MS,
+    publishWithoutRename: false,
   };
 };
 
@@ -660,6 +668,8 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.options.retainFiles = config.options.retainFiles;
     if (config.options?.unexpectedFiles !== undefined)
       this.options.unexpectedFiles = config.options.unexpectedFiles;
+    if (config.options?.publishWithoutRename !== undefined)
+      this.options.publishWithoutRename = config.options.publishWithoutRename;
     if (config.options?.peerId !== undefined) {
       this.options.peerId = config.options.peerId;
       this.id = config.options.peerId;
@@ -859,6 +869,7 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
       this.id,
       this.outboundPath,
       this.rawClient,
+      this.options.publishWithoutRename,
     );
   }
 
@@ -1098,8 +1109,21 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
   // retain-mode message ack; `originalName` omits `.json`. The name depends only
   // on this party's id and `originalName`, so a re-write after a reprocess
   // cannot duplicate it. Returns the marker's file name.
+  //
+  // With publishWithoutRename on, the marker is written to its final name,
+  // tracked first in delete mode so a put that throws after creating it
+  // still leaves it to cleanup() (I4a).
   private async writeAck(dir: string, originalName: string): Promise<string> {
     const name = ackMarkerName(this.id, originalName);
+    const finalPath = joinFileSyncPath(dir, name);
+    if (this.options.publishWithoutRename) {
+      if (!this.options.retainFiles) this.responsibleFiles.add(name);
+      await this.client.put(Buffer.alloc(0), finalPath, {
+        flags: "w",
+        encoding: null,
+      });
+      return name;
+    }
     const tempFile = `temp-${uuidv4()}.tmp`;
     const tempPath = joinFileSyncPath(dir, tempFile);
     try {
@@ -1107,7 +1131,13 @@ export class FileSyncConnection extends EventEmitter<Events, never> {
         flags: "w",
         encoding: null,
       });
-      await this.client.rename(tempPath, joinFileSyncPath(dir, name));
+      await renameOwnTemp(
+        this.client,
+        tempPath,
+        finalPath,
+        name,
+        this.options.renameRefusedGuidance,
+      );
     } catch (err) {
       await this.client.safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));

@@ -125,6 +125,16 @@ export interface SftpFaultInjection {
   /** Fail RENAME with the generic-failure status this many times, then succeed. */
   renameFailuresRemaining: number;
   /**
+   * Answer every RENAME with SSH_FX_NO_SUCH_FILE (status 2) and move nothing,
+   * as a server in front of a share that does not allow renames answers.
+   * Off by default.
+   */
+  refuseEveryRename: boolean;
+  /** RENAME requests received since the server started, refused or not. */
+  renamesReceived: number;
+  /** The path of every OPEN with the write flag, in arrival order. */
+  pathsOpenedForWrite: string[];
+  /**
    * Cap each READDIR to at most this many entries (realistic batching); 0
    * leaves the width to the backend.
    *

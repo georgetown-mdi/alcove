@@ -426,6 +426,32 @@ test("no name in the display puts a control character or a digest line into the 
   expect(recorded).not.toBe(forged);
 });
 
+test("a file-sync run publishing without rename says so on the display, and only then", () => {
+  const shownFor = (connection: ProtocolConnectionConfig): string => {
+    const stdio = captureStdio();
+    try {
+      displayExchangeDisclosure({
+        metadata: metadataDisclosing([]),
+        linkageTerms: localTerms,
+        connection,
+        logFile: undefined,
+        log: getLogger("exchange"),
+        unattended: false,
+      });
+      return stdio.stderrWrites.join("");
+    } finally {
+      stdio.restore();
+    }
+  };
+  const line =
+    "exchange files written directly under their final names, without a " +
+    "rename: yes (publish_without_rename)";
+  expect(
+    shownFor({ ...TEST_CONNECTION, options: { publishWithoutRename: true } }),
+  ).toContain(line);
+  expect(shownFor(TEST_CONNECTION)).not.toContain(line);
+});
+
 // --- The shapes the columns line takes ---------------------------------------
 
 test("a partner entitled to no result is told no payload is sent", () => {

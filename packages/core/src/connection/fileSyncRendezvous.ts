@@ -51,6 +51,7 @@ import {
 } from "./fileSyncConstants";
 import { MAX_FRAME_SIZE_BYTES } from "./frameSize";
 import { joinFileSyncPath } from "./fileSyncPath";
+import { renameOwnTemp } from "./fileSyncPublish";
 import {
   HELLO_SUFFIX,
   LOCK_SUFFIX,
@@ -650,6 +651,8 @@ export interface RendezvousOptions {
   sweepExchangeFiles: boolean;
   forceRetainSweep: boolean;
   joinerRecoveryMs: number;
+  publishWithoutRename?: boolean;
+  renameRefusedGuidance?: string;
 }
 
 const partnerNeverArrived = (deps: RendezvousDeps): Error =>
@@ -773,17 +776,38 @@ export class FileSyncRendezvous {
   // never tracked in responsibleFiles, matching send()/writeAck(). The
   // caller tracks the final name immediately after this resolves, with no
   // throwable statement between it and the rename (I4a).
-  private async publishHello(dir: string, helloPath: string): Promise<void> {
+  //
+  // With publishWithoutRename on, the body is written straight to `dir/name`,
+  // and where the caller tracks the name (`track`) it is added to
+  // responsibleFiles first in delete mode: a put that throws can leave the
+  // final name on disk, the case the lock's pre-track covers (I4a).
+  private async publishHello(
+    dir: string,
+    name: string,
+    track: boolean,
+  ): Promise<void> {
     const { deps } = this;
+    const finalPath = joinFileSyncPath(dir, name);
+    const body = serializeEnvelope(helloEnvelope(deps.options()));
+    if (deps.options().publishWithoutRename) {
+      if (track && !deps.options().retainFiles) deps.responsibleFiles.add(name);
+      await deps
+        .client()
+        .put(body, finalPath, { flags: "w", encoding: "utf-8" });
+      return;
+    }
     const tempPath = joinFileSyncPath(dir, helloTempName());
     try {
       await deps
         .client()
-        .put(serializeEnvelope(helloEnvelope(deps.options())), tempPath, {
-          flags: "w",
-          encoding: "utf-8",
-        });
-      await deps.client().rename(tempPath, helloPath);
+        .put(body, tempPath, { flags: "w", encoding: "utf-8" });
+      await renameOwnTemp(
+        deps.client(),
+        tempPath,
+        finalPath,
+        name,
+        deps.options().renameRefusedGuidance,
+      );
     } catch (err: unknown) {
       await deps.client().safeDelete(tempPath);
       throw err instanceof Error ? err : new Error(errorMessage(err));
@@ -1358,7 +1382,6 @@ export class FileSyncRendezvous {
   // cannot mask the refusal (exit 64) the caller throws next.
   private async advertiseHelloBeforeRefusal(
     scope: RendezvousScope,
-    helloPath: string,
   ): Promise<void> {
     const { deps } = this;
     for (
@@ -1367,7 +1390,11 @@ export class FileSyncRendezvous {
       attempt++
     ) {
       try {
-        await this.publishHello(scope.outboundPath, helloPath);
+        await this.publishHello(
+          scope.outboundPath,
+          `${deps.id()}${HELLO_SUFFIX}`,
+          false,
+        );
         return;
       } catch (writeErr: unknown) {
         // The literal `joiner`, not `this.role`: the role is committed only
@@ -1422,7 +1449,9 @@ export class FileSyncRendezvous {
   //   A list
   //   A delete B hello
   //
-  // This is B.
+  // This is B. With publishWithoutRename on, the rename step becomes
+  // "B hello" (written directly) then "B delete joining", so A may list the
+  // sentinel beside B's hello, or after its own loop has started.
   private async rendezvousAsLockJoiner(
     scope: RendezvousScope,
     peerHello: FileInfo,
@@ -1465,7 +1494,7 @@ export class FileSyncRendezvous {
       bilateralMismatch(peerEnvelope, deps.options()) ??
       peerIdPairRefusal(deps.id(), peerId);
     if (refusal) {
-      await this.advertiseHelloBeforeRefusal(scope, helloPath);
+      await this.advertiseHelloBeforeRefusal(scope);
       // Reset role/peer fields, mirroring the outer catch.
       deps.setPeerId(undefined);
       deps.setRole("unknown role");
@@ -1499,7 +1528,7 @@ export class FileSyncRendezvous {
       // fully-valid `<id>-hello.json` the peer reads through its gate; the
       // peer itself matches the sentinel by name existence and never reads
       // it. Published temp-then-rename like the hello.
-      await this.publishHello(scope.inboundPath, joiningPath);
+      await this.publishHello(scope.inboundPath, joiningName, true);
       // Track the sentinel only until the peer hello is deleted: before that
       // point a failure leaves the peer hello intact, so cleanup() may safely
       // sweep the sentinel (the peer is no worse off than if we never
@@ -1519,7 +1548,23 @@ export class FileSyncRendezvous {
       if (!deps.options().retainFiles)
         deps.responsibleFiles.delete(joiningName);
 
-      await deps.client().rename(joiningPath, helloPath);
+      if (deps.options().publishWithoutRename) {
+        // The hello is written beside the sentinel (pre-tracked, so a put
+        // that throws leaves it to cleanup() while the untracked sentinel
+        // stays as the peer's recovery signal), and only then is the
+        // sentinel deleted. The peer tolerates its sentinel beside its hello
+        // (waitForPeer) and in its message loop (isRecognizedLoopFile).
+        await this.publishHello(scope.outboundPath, helloName, true);
+        await deps.client().delete(joiningPath);
+      } else {
+        await renameOwnTemp(
+          deps.client(),
+          joiningPath,
+          helloPath,
+          helloName,
+          deps.options().renameRefusedGuidance,
+        );
+      }
       // The sentinel is now our hello: stop tracking the (gone) sentinel name
       // and own the hello so cleanup() sweeps it at close().
       if (!deps.options().retainFiles) deps.responsibleFiles.add(helloName);
@@ -1578,11 +1623,12 @@ export class FileSyncRendezvous {
     deps
       .log()
       .debug(`[${deps.role()}] creating initial ${deps.id()}${HELLO_SUFFIX}`);
-    await this.publishHello(outboundPath, helloPath);
+    await this.publishHello(outboundPath, `${deps.id()}${HELLO_SUFFIX}`, true);
     // Tracked after the durable rename (delete mode only), with no throwable
     // statement between it and the rename inside publishHello, exactly as the
     // ack write does: the final name only appears at that atomic step, so there
-    // is no orphan window a pre-track would cover (I4a).
+    // is no orphan window a pre-track would cover (I4a). A direct write is
+    // pre-tracked inside publishHello instead.
     if (!deps.options().retainFiles)
       deps.responsibleFiles.add(`${deps.id()}${HELLO_SUFFIX}`);
     let lockPath: string | undefined;
@@ -1700,6 +1746,14 @@ export class FileSyncRendezvous {
               .debug(
                 `[${deps.role()}] writing handshake ack for ` +
                   `${redactAndSanitizeForDisplay(peerHello.name)}`,
+              );
+            // A direct write can leave the ack on disk when it throws, so its
+            // path is known to the outer catch's sweep before the write, as
+            // lockPath is before createExclusive.
+            if (deps.options().publishWithoutRename)
+              ackPath = joinFileSyncPath(
+                outboundPath,
+                ackMarkerName(deps.id(), peerHelloStem),
               );
             const ackName = await deps.writeAck(outboundPath, peerHelloStem);
             ackPath = joinFileSyncPath(outboundPath, ackName);
@@ -1940,12 +1994,14 @@ export class FileSyncRendezvous {
 
         // A peer hello is present: the joiner's rename landed (or both
         // parties wrote hellos), so the recovery timer is stale. A
-        // sentinel may still be visible in one benign case: the peer's own
+        // sentinel may still be visible in two benign cases: the peer's own
         // rename is mid-propagation on a sync-mediated transport, so its
         // `<peerId>-joining.json` and `<peerId>-hello.json` momentarily
         // coexist (the rename is atomic at the SFTP layer, not necessarily
-        // at the sync-tool layer); that same-id sentinel is the peer we
-        // are about to rendezvous with, so tolerate it. A sentinel whose id
+        // at the sync-tool layer), or the peer publishes without rename and
+        // deletes its sentinel only after writing its hello. That same-id
+        // sentinel is the peer we are about to rendezvous with, so tolerate
+        // it. A sentinel whose id
         // matches no peer hello is a third party in the directory -- the
         // same contamination the multi-hello and multi-lock guards reject
         // -- so report it as a UsageError rather than completing against
