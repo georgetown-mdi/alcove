@@ -4,9 +4,11 @@ title: "The Web Application's WebSocket Transport Path"
 
 # The web application's WebSocket transport path: a relay for networks that stop TURN, and the browser SFTP proxy
 
-_Status: design only; nothing here is decided or built.
+_Status: design only; nothing here is built.
+The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
+What remains open is the spikes S1 to S8, none of which has run, and what the rulings left conditional on one: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is weighed after S3.
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
-The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes and the choices still open.
+The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
 Nothing here is normative: the wrap rule is in
 [CHANNEL_SECURITY.md](../spec/CHANNEL_SECURITY.md#which-channels-request-it),
 the transport's bounds and budgets in
@@ -263,7 +265,8 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   PASS: the WebSocket connection completes and the TURN allocation is refused, with the proxy's log naming the refusal; the capture of each Client Hello is recorded for the ALPN question.
   If TURN passes every enforcement the tool offers, the result is recorded and the relay's case rests on the maintainer's field reports, stated as such.
 - **S2. Signaling and relay names on 443.**
-  A second public address on the relay instance, the broker front moved to 443 on it, coturn unchanged.
+  The one 443 front on the relay instance routes the broker's name and the relay's name, and coturn takes the connections no route claims ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+  A second public address on the relay instance, with the broker front on 443 there, is the fallback if the host measurement of TURN through that front fails.
   PASS: the registrar-path row repeated with TCP admitted only to 443 of the broker and relay names -- a browser with UDP refused completes a relayed exchange with a CLI party -- and the broker README's limit is deleted.
 - **S3. Relay forwarding under load.**
   A prototype relay with pause-and-resume forwarding; two Node parties, then Chromium against Node, sending frames up to 268,435,456 bytes in chunks, with one receiver throttled.
@@ -288,7 +291,7 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 
 Relay path, in order:
 
-- **Second address and 443 for the broker front** -- `infra/broker` and `infra/relay/aws`, and the limit in the broker README.
+- **The broker's and the relay's names on the 443 front** -- `infra/broker` and `infra/relay/aws`, and the limit in the broker README; a second address only if the TURN-through-front measurement fails.
 - **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
@@ -312,24 +315,39 @@ Browser SFTP path, after the relay path, re-scoped from the earlier note's list:
 - **Exchange driver for browser SFTP** in `exchangeDriverSelection.ts`, on the hosted profile only.
 - **Documentation and tests** as the earlier note lists them, with the `CLAUDE.md` Applications scope of the public application updated for both paths.
 
-## Forks left open
+## The forks and their rulings
 
-Each with its options, the trade, and a recommendation; the linked section carries the argument.
+Each with its options, the trade, a recommendation, and the maintainer's ruling; the linked section carries the argument.
+Each ruling is quoted as the maintainer gave it on 2026-10-09.
+The reading after a ruling is how this note applies the ruling to the fork, not the maintainer's words.
 
 1. **How the hosted relay admits an exchange**: a registered per-exchange key, as the TURN relay today, or possession of a pairing secret with quotas and no registration, as the broker.
    Registration serves saved exchanges and CLI parties and leaves a one-shot browser exchange without a relay; possession serves every exchange and makes the hosted relay a quota-bounded public service, which runs against the standing direction that a relay is never public ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
    Recommendation: registration, for consistency with the TURN relay, with possession presented to the maintainer as the alternative since the hosted application's one-shot exchanges are where the direction bites ([The WebSocket relay, as recommended](#the-websocket-relay-as-recommended)).
+   Ruling (2026-10-09): "Use your recommendation for this item."
+   Reading: registration, a proof under the enrolled exchange's relay key checked against the table coturn reads; that a one-shot browser exchange has no relay is a stated limit, and opening the hosted relay to one-shot exchanges is weighed after S3.
 2. **Explicit relay path first, or automatic fallback first**: the explicit policy is smaller and verifiable alone; the fallback is the experience a party wants.
    Recommendation: explicit first with the start frame in the wire from the first cut, fallback as the next item ([How the parties choose it](#the-websocket-relay-as-recommended)).
+   Ruling (2026-10-09): "Use your recommendation for this item."
+   Reading: the explicit relay path first, with the start message in the wire from the first cut, and automatic fallback as the next item.
 3. **Chunk size on the relay path**: PeerJS's 16,300 bytes, or a larger chunk since no SCTP ceiling applies.
    Larger means fewer messages and less relay overhead; the same size means one framing and one set of fixtures.
    Recommendation: the same size until S3 shows the overhead matters ([How the relay fits the existing bounds](#how-the-relay-fits-the-existing-bounds)).
+   Ruling (2026-10-09): "Keep 16,300 bytes."
+   Reading: the relay path uses 16,300 bytes, and S3 still measures a larger chunk on the same run.
 4. **Where the relay's reference deployment lives**: beside coturn in `infra/relay`, under the one registrar and table, or a directory of its own as the broker has.
    Beside coturn shares the key table by construction; apart keeps each reference small.
    Recommendation: beside coturn, since the table is the authentication ([Who runs it, and what it costs](#who-runs-it-and-what-it-costs)).
+   Ruling (2026-10-09): "Beside coturn under infra/relay."
 5. **A per-exchange proof for the SFTP proxy**: `Origin` only with an off-the-shelf relay, or a first-party proxy that checks a proof under the relay key.
    Recommendation: `Origin` only, with the proof as a later option for a deployment that asks ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 5).
+   Ruling (2026-10-09): "Use your recommendation for this item."
+   Reading: an `Origin` check only, with an off-the-shelf relay; a first-party proxy that checks a proof is a later option for a deployment that asks.
 6. **The proxy on the invitation**: the SFTP endpoint names the proxy, or the browser-local setting alone.
    Recommendation: the endpoint names it, with the browser-local override ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 6).
+   Ruling (2026-10-09): "Use your recommendation for this item."
+   Reading: the invitation's SFTP endpoint names the proxy -- host and path, no scheme, under the signaling host's delimiter rules -- and the browser-local setting is kept as the override.
 7. **Scheduled SFTP credentials in the browser**: a non-extractable WebCrypto key pair, a stored password or key, or entry at each run.
    Recommendation: the key pair, conditional on S8 ([Question 3](#question-3-the-browser-sftp-forks-under-the-ruling), fork 8).
+   Ruling (2026-10-09): "OK, use WebCrypto then."
+   Reading: a non-extractable WebCrypto P-256 key pair, conditional on S8; a one-off exchange enters its credential at each run.
