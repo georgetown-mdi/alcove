@@ -199,6 +199,13 @@ broker and the real `peerjs`/`peerjs-js-binarypack` packages, and the
 assumptions that follow are held as checks -- see
 [docs/spec/DEPENDENCY_PINS.md](spec/DEPENDENCY_PINS.md#upgrading-the-cli-webrtc-peer-werift).
 
+The peers' ICE server list names a second loopback harness server,
+`apps/cli/test/integration/webrtc/refusingStunServer.ts`: a STUN server on an
+ephemeral port that answers every binding request with an error. werift waits
+out a fixed 5 s gathering timer on a STUN entry nobody answers, once per peer
+connection, and a refusal ends the query at once with the same host-only
+candidates.
+
 The harness takes further runner arguments and environment entries, which is
 what `brokerStandaloneSurface.test.ts` beside it uses to drive the runner's
 operator surface -- the address and port it binds, the readiness probe a
