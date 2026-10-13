@@ -137,6 +137,7 @@ describe("path classification", () => {
     expect(classifyPath(list)).toBe("exempt");
     expect(classifyPath("docs/spec/wording-changes/README.txt")).toBe("exempt");
     expect(verdictOf("old line\n", "new line\n", list)).toBe("exempt");
+    expect(classifyPath("docs/spec/wording-changes.txt")).toBe("exempt");
     expect(classifyPath("docs/spec/other.txt")).toBe("unverifiable");
     expect(classifyPath("docs/spec/wording-changes/planted.sh")).toBe(
       "unverifiable",
@@ -703,6 +704,23 @@ describe("against a real git repository", () => {
     expect(result).toMatchObject({ holds: true, exitCode: 0 });
     expect(result.deltas).toEqual([]);
     expect(result.unverifiable).toEqual([]);
+  });
+
+  it("holds for a head whose only change deletes the legacy wording-change file and adds a per-branch list", () => {
+    const { git, write, remove, commit } = makeFixture();
+    write("docs/spec/wording-changes.txt", "- old -> base\n");
+    const attested = commit("Base");
+
+    remove("docs/spec/wording-changes.txt");
+    write("docs/spec/wording-changes/branch.txt", "- old -> branch\n");
+    const head = commit("Move the list");
+
+    const verdicts = collectVerdicts({ attested, head, git });
+    expect(byPath(verdicts)).toEqual({
+      "docs/spec/wording-changes.txt": "exempt",
+      "docs/spec/wording-changes/branch.txt": "exempt",
+    });
+    expect(summarize(verdicts)).toMatchObject({ holds: true, exitCode: 0 });
   });
 
   it("sees a rename as a delete plus an add, so a moved module is a delta", () => {

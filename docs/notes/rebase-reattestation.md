@@ -28,7 +28,8 @@ unchanged by the rebase:
 - the same paths, and
 - the same program at each path, at both ends of the move, once comments are
   removed and markdown and the spec wording-change lists
-  (the `.txt` files under `docs/spec/wording-changes/`) are excluded.
+  (the `.txt` files under `docs/spec/wording-changes/` and the legacy
+  `docs/spec/wording-changes.txt`) are excluded.
 
 `.claude/scripts/verify-rebase-invariance.mjs` decides it by running the
 non-executable-delta comparison twice over exactly the paths the branch's diff
