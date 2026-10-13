@@ -17,7 +17,10 @@ import { invitationReach } from "@exchange/invitationReach";
 import { parseRelayUrlLines } from "@psi/transport/ownRelaySetting";
 import { refusedSignalingEndpointField } from "@psi/transport/signalingAddress";
 
-import { ENROLL_RELAY_TOKEN_STEP } from "./mountedConfiguration";
+import {
+  ENROLL_RELAY_TOKEN_STEP,
+  RELAY_OWNER_ENROLLMENT_NOTICE,
+} from "./mountedConfiguration";
 
 import type {
   JobOwnRelay,
@@ -232,10 +235,8 @@ export function ownRelayEnrollmentNotice(
     "key derived from the exchange's shared secret.";
   if (relay.relayRegistrar === undefined)
     return (
-      `${accepts} The key changes after every run. Have your relay's owner ` +
-      "register it before your partner connects, or set your relay's " +
-      "registrar here so that you can enroll the exchange and each run " +
-      "registers its new key."
+      `${RELAY_OWNER_ENROLLMENT_NOTICE} Or set your relay's registrar here ` +
+      "so that you can enroll the exchange and each run registers its new key."
     );
   return (
     `${accepts} When you create the invitation, the console writes ` +

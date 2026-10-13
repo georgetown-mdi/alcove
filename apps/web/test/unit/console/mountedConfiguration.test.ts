@@ -17,6 +17,7 @@ import {
   OPENED_EXCHANGE_RUNS_IN_PLACE,
   OPENED_SIGNALING_SERVER_NOTE,
   RELAY_ENROLLMENT_NOTICE,
+  RELAY_OWNER_ENROLLMENT_NOTICE,
   carriedThroughNotice,
   columnsNotCoveredNotice,
   configurationSaveShown,
@@ -382,11 +383,37 @@ describe("a webrtc configuration stating a relay", () => {
     );
   });
 
+  test("one with own relay entries and no registrar says the relay's owner registers the key", () => {
+    const { state } = mountedConfigurationRead(
+      openedWebrtc({ relayCredentialMinted: true }),
+    );
+    expect(state).toMatchObject({ relayCredentialMinted: true });
+    const notices = mountedConfigurationNotices(state, {});
+    expect(notices).toContain(RELAY_OWNER_ENROLLMENT_NOTICE);
+    expect(notices).not.toContain(RELAY_ENROLLMENT_NOTICE);
+    expect(RELAY_OWNER_ENROLLMENT_NOTICE).toContain("relay's owner");
+  });
+
+  test("one with both a registrar and own relay entries says to enroll with the registrar", () => {
+    const answer = openedWebrtc({ relayCredentialMinted: true });
+    if (answer.kind !== "opened") throw new Error("expected an opened answer");
+    const { state } = mountedConfigurationRead({
+      ...answer,
+      relayRegistrarNamed: true,
+    });
+    const notices = mountedConfigurationNotices(state, {});
+    expect(notices).toContain(RELAY_ENROLLMENT_NOTICE);
+    expect(notices).not.toContain(RELAY_OWNER_ENROLLMENT_NOTICE);
+  });
+
   test("one naming no relay registrar adds nothing about it", () => {
     const { state } = mountedConfigurationRead(openedWebrtc());
     expect(state).not.toHaveProperty("relayEnrollment");
     expect(mountedConfigurationNotices(state, {})).not.toContain(
       RELAY_ENROLLMENT_NOTICE,
+    );
+    expect(mountedConfigurationNotices(state, {})).not.toContain(
+      RELAY_OWNER_ENROLLMENT_NOTICE,
     );
   });
 

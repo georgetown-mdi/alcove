@@ -75,8 +75,10 @@ export type MountedConfigurationState =
    * ({@link OPENED_EXCHANGE_RUNS_IN_PLACE}), `signalingServer` the
    * coordination server address it names and `relayTurnUrls` the TURN urls
    * its run relays through, which the review step shows and does not edit,
-   * and `inPlaceSigningIdentity` the identity file it signs with, where it
-   * names one ({@link inPlaceSigningIdentityShown}).
+   * `relayCredentialMinted` that the run mints a credential for its own
+   * `turn` entries ({@link RELAY_OWNER_ENROLLMENT_NOTICE}), and
+   * `inPlaceSigningIdentity` the identity file it signs with, where it names
+   * one ({@link inPlaceSigningIdentityShown}).
    * `signingPaths` and `folderPaths` are the paths the file states that a
    * conversion replaces with the console's own, and `converted` is the
    * operator's choice to convert: until then the hand-off states those paths as
@@ -105,6 +107,7 @@ export type MountedConfigurationState =
       runsInPlace?: true;
       signalingServer?: string;
       relayTurnUrls?: Array<string>;
+      relayCredentialMinted?: true;
       inPlaceSigningIdentity?: InPlaceSigningIdentity;
       transportUnavailable?: UnofferedChannel;
       notApplied?: Array<string>;
@@ -339,6 +342,14 @@ export const RELAY_ENROLLMENT_NOTICE =
   "first run: after alcove invite or alcove accept has written its " +
   ".alcove.key, run alcove enroll-relay in the folder holding alcove.yaml " +
   `and that key file. ${ENROLL_RELAY_TOKEN_STEP}`;
+
+/** What the operator is told about a relay whose owner registers the key of
+ * the exchange's shared secret: the relay accepts the run's minted credential
+ * only once it holds that key, which changes after every run. */
+export const RELAY_OWNER_ENROLLMENT_NOTICE =
+  "Your relay accepts this exchange's connection only once it holds the key " +
+  "derived from the exchange's shared secret. The key changes after every " +
+  "run. Have your relay's owner register it before your partner connects.";
 
 /** Why the review step withholds the run of a configuration stating
  * `connection.ice_provision`, which the CLI refuses to run. */
@@ -983,7 +994,11 @@ export function mountedConfigurationNotices(
       : TRANSPORT_UNAVAILABLE_NOTICE[state.transportUnavailable],
     carriedThroughNotice(carriedThroughStated(state.carriedThrough, run)),
     credentialWarningNotice(state.warnings),
-    state.relayEnrollment === true ? RELAY_ENROLLMENT_NOTICE : undefined,
+    state.relayEnrollment === true
+      ? RELAY_ENROLLMENT_NOTICE
+      : state.relayCredentialMinted === true
+        ? RELAY_OWNER_ENROLLMENT_NOTICE
+        : undefined,
     termsNotAppliedNotice(state.notApplied ?? []),
     columnsNotCoveredNotice(state.notCovered ?? []),
     ...retiredSettingsNotices(state.retiredSettings ?? []),
@@ -1077,6 +1092,9 @@ export function mountedConfigurationRead(answer: MountedConfigurationAnswer): {
             ? { signalingServer: answer.document.signalingServer }
             : {}),
           ...(inPlace && relayTurnUrls.length > 0 ? { relayTurnUrls } : {}),
+          ...(inPlace && answer.document.relayCredentialMinted === true
+            ? { relayCredentialMinted: true as const }
+            : {}),
           ...(inPlace && answer.inPlaceSigningIdentity !== undefined
             ? { inPlaceSigningIdentity: answer.inPlaceSigningIdentity }
             : {}),

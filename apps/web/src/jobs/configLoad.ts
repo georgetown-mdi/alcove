@@ -705,6 +705,22 @@ export function relayTurnUrls(document: ExchangeSpec): Array<string> {
     : turn.servers.map((server) => server.url);
 }
 
+/**
+ * Whether the run mints a TURN credential for an entry of the document's own
+ * `turn` list: the CLI mints one for an entry stating no credential. False
+ * where the run relays through an invitation's urls, whose relay the partner
+ * enrolls, or states every credential itself.
+ */
+export function mintsOwnRelayCredential(document: ExchangeSpec): boolean {
+  const { connection } = document;
+  if (connection.channel !== "webrtc") return false;
+  const { turn } = selectRunRelay(connection);
+  return (
+    turn?.source === "own" &&
+    turn.servers.some((server) => server.credential === undefined)
+  );
+}
+
 /** A webrtc connection's coordination server as the `ws://` or `wss://`
  * address the CLI dials: TLS unless `secure: false`, an IPv6 host in
  * brackets, and the root path where the file states none. */
@@ -815,6 +831,9 @@ export function disclosedDocument(
       : {}),
     ...(relayTurnUrls(document).length > 0
       ? { relayTurnUrls: relayTurnUrls(document) }
+      : {}),
+    ...(mintsOwnRelayCredential(document)
+      ? { relayCredentialMinted: true as const }
       : {}),
     ...(options !== undefined ? { options: disclosedOptions(options) } : {}),
     linkageTerms: document.linkageTerms,

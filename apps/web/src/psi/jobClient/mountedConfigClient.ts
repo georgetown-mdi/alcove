@@ -95,6 +95,11 @@ function documentOf(value: unknown): DisclosedExchangeDocument | null {
     namesOf(value.relayTurnUrls) === null
   )
     return null;
+  if (
+    value.relayCredentialMinted !== undefined &&
+    value.relayCredentialMinted !== true
+  )
+    return null;
   return value as unknown as DisclosedExchangeDocument;
 }
 

@@ -516,6 +516,31 @@ describe("a webrtc configuration", () => {
     ).not.toHaveProperty("relaySettings");
   });
 
+  test("flags the run minting a credential only for its own entries stating none", () => {
+    const connection = webrtcDocument().connection as Record<string, unknown>;
+    const direct = {
+      channel: "webrtc",
+      role: "inviter",
+      server: connection.server,
+    };
+    const minted = (extra: Record<string, unknown>) =>
+      loadDocument(webrtcDocument({ connection: { ...direct, ...extra } }))
+        .document?.relayCredentialMinted;
+    expect(minted({})).toBeUndefined();
+    expect(minted({ turn: [{ url: "turn:own.example.org" }] })).toBe(true);
+    expect(
+      minted({
+        turn: [{ url: "turn:own.example.org", username: "u", credential: "c" }],
+      }),
+    ).toBeUndefined();
+    expect(
+      minted({
+        turn: [{ url: "turn:own.example.org" }],
+        invitation_relay: { turn: ["turns:relay.example.org:5349"] },
+      }),
+    ).toBeUndefined();
+  });
+
   test("is run in place, a relay setting included", () => {
     const connection = webrtcDocument().connection as Record<string, unknown>;
     const relayed = mountHolding(webrtcDocument());
