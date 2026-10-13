@@ -1212,8 +1212,9 @@ export class JobManager {
   }
 
   /**
-   * Validate and hold an in-app authored SFTP connection for the single
-   * exchange, via {@link validateAuthoredSftpServer}. A validation failure
+   * Validate and hold an in-app authored SFTP connection in console
+   * memory until it is cleared, replaced, an SFTP invitation is opened, or the
+   * console restarts, via {@link validateAuthoredSftpServer}. A validation failure
    * throws before the slot is touched, so a rejected body never replaces a
    * previously authored connection. A `mountRef` credential locator is
    * resolved against the secrets mount here, and a `raw` (pasted) credential
