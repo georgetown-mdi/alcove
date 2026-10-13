@@ -1,6 +1,7 @@
 import { expect, test } from "vitest";
 
 import {
+  KeyFoldCollisionError,
   UsageError,
   decodeInvitation,
   encodeInvitation,
@@ -76,6 +77,19 @@ test("a readable invitation the page refuses keeps its own message", () => {
     kind: "refused",
     message: "This invitation has expired. Ask your partner to send a new one.",
   });
+});
+
+test("two invitation keys that fold to one name are unreadable", () => {
+  const refusal = invitationDecodeRefusal(
+    new KeyFoldCollisionError(
+      ["transform"],
+      ["my_param", "myParam"],
+      "myParam",
+    ),
+  );
+  expect(refusal.kind).toBe("unreadable");
+  if (refusal.kind === "unreadable")
+    expect(refusal.detail).toContain("myParam");
 });
 
 test("a non-Zod error holding an issues array is refused, not unreadable", () => {
