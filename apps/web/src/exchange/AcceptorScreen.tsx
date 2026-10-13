@@ -460,11 +460,13 @@ function AcceptorInvitationScreen({
 
   // Start unauthored for a console SFTP accept: a prior in-app connection is NOT
   // assumed valid for this partner, so the operator authors fresh, pre-filled from
-  // THIS invitation's locator. Keyed on the stable endpoint (not the per-render
-  // locator object), so it fires once rather than on every render.
+  // THIS invitation's locator, and the console forgets the held one and any pasted
+  // credential. Fires once per mount; Try again re-runs within the mount, so it
+  // keeps the connection. Keyed on the stable endpoint, not the locator object.
   useEffect(() => {
     if (acceptSftpEndpoint === undefined || sftpInfo !== undefined) return;
     dispatch({ type: "accept-sftp-endpoint-resolved" });
+    void deleteSftpConnection();
   }, [acceptSftpEndpoint, sftpInfo]);
 
   // The effective SFTP connection. `sftpConnection` is undefined while the accept
@@ -1171,7 +1173,8 @@ function AcceptorInvitationScreen({
   // The operator authored an in-console SFTP connection to the partner's server
   // (its credential-free projection): hold it so launch unblocks. The connection
   // material -- credential and host-key fingerprint -- lives in console memory,
-  // scoped to this one exchange; the browser holds only the locator. A freshly
+  // until cleared, replaced, an SFTP invitation is opened, or the console
+  // restarts; the browser holds only the locator. A freshly
   // authored server is a different shared folder, so any sweep
   // confirmation is re-asked.
   const authorSftpConnection = (connection: SftpConnectionProjection) =>

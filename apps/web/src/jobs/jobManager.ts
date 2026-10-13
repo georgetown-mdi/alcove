@@ -701,10 +701,10 @@ export class JobManager {
   private readonly jobSecretsDir: string | undefined;
   private readonly credentialScratchDir: string | undefined;
   /**
-   * The in-app authored SFTP connection, held in memory for the single exchange
-   * only (never persisted; a restart forgets it). Set by {@link authorSftpServer},
-   * cleared by {@link clearAuthoredSftpServer} and when the active exchange is
-   * deleted.
+   * The in-app authored SFTP connection, held in memory (never persisted; a
+   * restart forgets it). Set by {@link authorSftpServer} and cleared by
+   * {@link clearAuthoredSftpServer}; deleting an exchange keeps it, since a
+   * retry deletes the failed exchange before creating the next.
    */
   private authoredSftpServer: JobSftpServerEntry | undefined;
   /**
@@ -718,7 +718,7 @@ export class JobManager {
   /**
    * The server-owned scratch file the authored connection's PASTED credential was
    * materialized to, when it arrived that way. Tracked so it is deleted with the
-   * connection (clear, exchange delete, or a re-author that replaces it); absent
+   * connection (clear, or a re-author that replaces it); absent
    * when the authored credential is a file reference the operator owns. A pasted
    * secret must not outlive the connection it belongs to.
    */
@@ -1212,8 +1212,9 @@ export class JobManager {
   }
 
   /**
-   * Validate and hold an in-app authored SFTP connection for the single
-   * exchange, via {@link validateAuthoredSftpServer}. A validation failure
+   * Validate and hold an in-app authored SFTP connection in console
+   * memory until it is cleared, replaced, an SFTP invitation is opened, or the
+   * console restarts, via {@link validateAuthoredSftpServer}. A validation failure
    * throws before the slot is touched, so a rejected body never replaces a
    * previously authored connection. A `mountRef` credential locator is
    * resolved against the secrets mount here, and a `raw` (pasted) credential
@@ -2254,12 +2255,6 @@ export class JobManager {
       // exit, which removes the pair then.
       if (record.workingFolderPair !== null && record.terminal !== null)
         this.removeUnchangedPair(record.workingFolderPair, "was discarded");
-      // The authored connection is scoped to this single exchange; deleting the
-      // exchange forgets it and its warnings (and deletes any materialized pasted
-      // credential), so the next exchange starts from a clean slate.
-      this.discardMaterializedCredential();
-      this.authoredSftpServer = undefined;
-      this.authoredCredentialWarnings = [];
       const workdir = resolveWorkdir(this.dataRoot, id);
       if (workdir !== null) await removeWorkdir(workdir);
       this.maybeFreeSlot(record);

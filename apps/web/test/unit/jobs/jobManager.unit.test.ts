@@ -1274,16 +1274,15 @@ describe("the in-app authored sftp connection", () => {
     expect(manager.sftpProjection()).toBeNull();
   });
 
-  test("deleting the exchange forgets the authored connection", async () => {
+  test("deleting the exchange keeps the authored connection", async () => {
     const manager = makeManager({ events: [RESULT_EVENT], exitCode: 0 });
-    manager.authorSftpServer(authoredBody());
+    const shown = manager.authorSftpServer(authoredBody());
     const id = await manager.createJob(validSftpIntent());
     const record = manager.getJob(id)!;
     await awaitTerminalEmitted(record);
     await vi.waitFor(() => expect(record.terminal).not.toBeNull());
     expect(await manager.deleteJob(id)).toBe(true);
-    // Scoped to the single exchange: deleting it clears the authored connection.
-    expect(manager.sftpProjection()).toBeNull();
+    expect(manager.sftpProjection()).toEqual(shown);
   });
 
   test("a rejected authoring body never replaces a held connection", () => {
@@ -1364,24 +1363,6 @@ describe("the in-app authored sftp connection", () => {
     expect(manager.sftpProjection()?.host).toBe("file.example");
   });
 
-  test("deleting the exchange deletes the materialized pasted credential", async () => {
-    const scratch = scratchDir("cred-scratch");
-    const manager = makeManager({
-      events: [RESULT_EVENT],
-      exitCode: 0,
-      credentialScratchDir: scratch,
-    });
-    manager.authorSftpServer(rawBody());
-    expect(fs.readdirSync(scratch)).toHaveLength(1);
-    const id = await manager.createJob(validSftpIntent());
-    const record = manager.getJob(id)!;
-    await awaitTerminalEmitted(record);
-    await vi.waitFor(() => expect(record.terminal).not.toBeNull());
-    expect(await manager.deleteJob(id)).toBe(true);
-    expect(fs.readdirSync(scratch)).toEqual([]);
-    expect(manager.sftpProjection()).toBeNull();
-  });
-
   test("a pasted credential composes into the sftp config as an @path, not a value", async () => {
     const scratch = scratchDir("cred-scratch");
     const manager = makeManager({
@@ -1400,6 +1381,32 @@ describe("the in-app authored sftp connection", () => {
     expect(configYaml).toContain("channel: sftp");
     expect(String(server.password).startsWith(`@${scratch}/`)).toBe(true);
     expect(configYaml).not.toContain("s3cret-in-config");
+  });
+
+  test("a retry after deleting a failed job runs over the connection the console still shows", async () => {
+    const scratch = scratchDir("cred-scratch");
+    const manager = makeManager({ exitCode: 1, credentialScratchDir: scratch });
+    manager.authorSftpServer(rawBody("s3cret-for-retry"));
+    const shown = manager.sftpProjection();
+    const failedId = await manager.createJob(validSftpIntent());
+    const failed = manager.getJob(failedId)!;
+    await awaitTerminalEmitted(failed);
+    await vi.waitFor(() => expect(failed.terminal).not.toBeNull());
+    expect(failed.status).not.toBe("succeeded");
+    // Try again deletes the failed job before it creates the next one.
+    expect(await manager.deleteJob(failedId)).toBe(true);
+    expect(manager.sftpProjection()).toEqual(shown);
+
+    const retryId = await manager.createJob(validSftpIntent());
+    const retry = manager.getJob(retryId)!;
+    await awaitTerminalEmitted(retry);
+    const server = composedServer(
+      fs.readFileSync(`${retry.workdir}/alcove.yaml`, "utf8"),
+    );
+    expect(server.host).toBe(shown?.host);
+    const credentialPath = String(server.password).slice(1);
+    expect(path.dirname(credentialPath)).toBe(scratch);
+    expect(fs.readFileSync(credentialPath, "utf8")).toBe("s3cret-for-retry");
   });
 
   test("a raw paste with no scratch dir configured is refused", () => {
