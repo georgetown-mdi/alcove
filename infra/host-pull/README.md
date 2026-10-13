@@ -21,7 +21,7 @@ Neither [`infra/relay/install.sh`](../relay/install.sh) nor [`infra/broker/insta
    The identity is the publishing workflow on `refs/heads/main`, and `--certificate-github-workflow-sha` is the tip from step 1, so a correctly signed build of any other commit is refused.
 4. Fetches `main` into a new tree, `/opt/alcove-broker/trees/<commit>`, and refuses it unless the fetched commit is the tip from step 1.
    It unpacks the build into the tree's `packages/core/dist`, checks the archive's `SHA256SUMS`, installs the broker workspace with `npm ci --ignore-scripts` at low priority, and makes the tree owned by root and readable by all.
-   No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, declares one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
+   No package's install script runs: in the broker workspace's dependencies only `esbuild`, through `tsx`, and `tsx`'s optional, darwin-only `fsevents` (which Linux skips) declare one, and the broker started without it when that was measured, at `esbuild` 0.28.1.
 5. Points `/opt/alcove-broker/src` at the new tree, restarts `alcove-broker.service` if it is running, and runs the tree's `infra/broker/install.sh`, then its `infra/relay/install.sh`, which ends with `verify.sh`.
    When both pass, it writes the tip to the deployed marker.
 
