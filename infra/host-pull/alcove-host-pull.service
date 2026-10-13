@@ -1,0 +1,16 @@
+[Unit]
+Description=Bring the Alcove relay host to the tip of main
+Documentation=https://github.com/georgetown-mdi/alcove/blob/main/infra/host-pull/README.md
+After=network-online.target alcove-relay-os-update.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/alcove-host-pull/pull.sh
+# npm and git as root read their configuration from here.
+Environment=HOME=/root
+StateDirectory=alcove-host-pull
+StateDirectoryMode=0755
+# A fetch or an image build that hangs would hold this unit active, and the
+# timer starts no run while it is.
+TimeoutStartSec=1h
