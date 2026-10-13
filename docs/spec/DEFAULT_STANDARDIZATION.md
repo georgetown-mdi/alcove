@@ -632,7 +632,10 @@ metadata has no entry for it, so the run does not index by it or send it, and
 matches on it only when a standardization transform names it as its `input`. What a party sends is exactly what its metadata declares.
 Declared-only, the table's `identifier` row is the one inferred entry with
 `is_payload: true`; in direct mode every column the table does not list is sent
-as well, and every linkage-key row still infers `is_payload: false`. The
+as well, and every linkage-key row still infers `is_payload: false`.
+A column is a linkage key only when its lowercased name is a name in the table,
+so in direct mode a linkage column under any other name, such as `First Name`
+or `Date of Birth`, infers `role: payload` and is sent. The
 run names its undeclared columns before it connects; the operator-facing
 detail is in [Input metadata](../EXCHANGE_REFERENCE.md#input-metadata).
 

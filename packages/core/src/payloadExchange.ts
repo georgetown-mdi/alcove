@@ -530,6 +530,9 @@ export function assertPayloadSendDisclosed(
  * @param output This party's own output declaration, from the same
  *   {@link LinkageTerms} the metadata is prepared against. Required so every
  *   call site states the direction.
+ * @param metadataInferredInDirectMode Whether `metadata` was inferred in
+ *   direct mode, a run with no configuration to set a column not to
+ *   transmit, so the remedy names writing one instead.
  * @throws {UsageError} when a disclosed column's name exceeds
  *   {@link MAX_NAME_LENGTH} UTF-16 code units. A {@link UsageError} so the CLI
  *   classifies it as a configuration error (exit 64), not a transport failure.
@@ -537,11 +540,17 @@ export function assertPayloadSendDisclosed(
 export function assertDisclosedNamesCarriable(
   metadata: Metadata,
   output: Output,
+  metadataInferredInDirectMode = false,
 ): void {
   if (!output.shareWithPartner) return;
   const positions = overlongDisclosedColumnPositions(metadata);
   if (positions.length === 0) return;
   const plural = positions.length > 1;
+  const notTransmitRemedy = metadataInferredInDirectMode
+    ? `run with a configuration ('alcove init URL INPUT_FILE') whose metadata ` +
+      `does not transmit ${plural ? "them" : "it"}.`
+    : `set the metadata not to transmit ${plural ? "them" : "it"} ` +
+      `(is_payload: false or role ignored).`;
   throw new UsageError(
     `metadata column${plural ? "s" : ""} ${positions.join(", ")} ` +
       `(counted in the metadata's own order, which is the file's header order ` +
@@ -553,8 +562,7 @@ export function assertDisclosedNamesCarriable(
       `two). A payload column's name travels with its values: the partner's parse ` +
       `of the payload frame refuses a longer name, as does the exchange record ` +
       `this party writes, so the exchange could not complete. Shorten the ` +
-      `column name${plural ? "s" : ""}, or set the metadata not to transmit ` +
-      `${plural ? "them" : "it"} (is_payload: false or role ignored).`,
+      `column name${plural ? "s" : ""}, or ${notTransmitRemedy}`,
   );
 }
 

@@ -1383,7 +1383,7 @@ A signed receipt or exchange record written from such a header holds the column 
 The length ceiling on a column name is enforced on the inferred path too, but only where the name is actually transmitted: a column the metadata transmits (`is_payload: true` with a role other than `ignored`) whose name is longer than the ceiling is refused during data preparation, before any credential, terms, or data are sent.
 
 - A party whose partner is entitled to no result (`output.share_with_partner: false`) transmits no column at all, so the bound does not apply to it.
-- A payload column's name travels with its values -- the partner refuses a longer one when it parses the payload, and the exchange record cannot record it -- so the exchange could not complete. Shorten the header, or set the column not to transmit.
+- A payload column's name travels with its values -- the partner refuses a longer one when it parses the payload, and the exchange record cannot record it -- so the exchange could not complete. Shorten the header, or set the column not to transmit; a [quick exchange](CLI.md#quick-exchange) has no metadata to set, so there the second remedy is a configuration written with `alcove init URL INPUT_FILE`.
 - A column used only for matching or ignored transmits its name nowhere, so an over-long header on one of those is no obstacle and the file is not refused over it.
 - The record identifier is not exempt: an inferred `id` or `identifier` column keeps `is_payload: true` and is transmitted (see the identifier rows below), so its name is bounded like any other payload column unless the column is set not to transmit.
 - The web app applies the same bound where the columns are marked to send, so an oversized name is refused before anything is transmitted rather than after.
@@ -1434,16 +1434,16 @@ metadata:
 What inference assigns, when it runs, depends on the kind of exchange:
 
 - **Configuration or invitation.** An `alcove exchange` configuration with no `metadata` block, and an invitation composed from an input file, infer only the columns they recognize; every other column is undeclared and not sent.
-- **Quick exchange.** A run on an input file with no invitation and no configuration -- the [quick exchange](CLI.md#quick-exchange) on the command line and in the console -- declares every column: each column that is not a linkage key is sent, every id column among them.
+- **Quick exchange.** A run on an input file with no invitation and no configuration -- the [quick exchange](CLI.md#quick-exchange) on the command line and in the console -- declares every column: each column whose name is not a recognized linkage name is sent, every id column among them. A linkage column under a name the table does not list, such as `First Name`, is sent, and the display the run shows before it connects lists it.
 
 | Column | `type` | Configuration or invitation: `role`, `is_payload` | Quick exchange: `role`, `is_payload` |
 |--------|--------|------------------------------------|--------------------------------------|
 | A recognized linkage name (`ssn`, `dob`, `first_name`, `phone`, `email`, `zip`, and their aliases) | the matching semantic type | `linkage`, `false` | `linkage`, `false` |
 | `id` or `identifier` | `identifier` | `identifier`, `true` | `identifier`, `true` |
 | A name ending in `_id` | `identifier` | `identifier` when it is the header's only `identifier`-typed column, otherwise undeclared; `false` | `identifier` when it is the header's only `identifier`-typed column, otherwise `payload`; `true` |
-| Anything else | `other` | undeclared: no entry, not sent | `payload`, `true` |
+| A name the table does not list | `other` | undeclared: no entry, not sent | `payload`, `true` |
 
-The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names).
+The complete list of column names that infer each type, with the role and payload default each assigns, is in [DEFAULT_STANDARDIZATION.md](spec/DEFAULT_STANDARDIZATION.md#type-inference-from-column-names). Those names are the only ones recognized: a header is matched whole after lowercasing, exactly, so `ZIP` is recognized while `First Name`, `Date of Birth`, `E-mail` and `zip_area` are not.
 
 Both identifier rows produce `type: identifier`, and that type is what decides the `role`: a header carrying exactly one `identifier`-typed column roles it `identifier` whatever its name, so a lone `case_id` indexes the records. A header carrying several gives `role: identifier` to a column named `id` or `identifier` when one is present, and to no column at all otherwise -- two `_id` columns and nothing else leaves both undeclared, or on a quick exchange sends both as payload, and either way none of this party's columns indexes its own records in the result.
 

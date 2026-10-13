@@ -144,6 +144,9 @@ test("assertDisclosedNamesCarriable: refuses as a UsageError naming positions, n
   const message = String(thrown);
   expect(message).toMatch(/metadata column 2 /);
   expect(message).toContain(`${MAX_NAME_LENGTH}-character limit`);
+  expect(message).toContain(
+    "or set the metadata not to transmit it (is_payload: false or role ignored).",
+  );
   // The offending name is longer than any message that would hold it, so it is
   // located rather than echoed.
   expect(message).not.toContain(pastCeiling);

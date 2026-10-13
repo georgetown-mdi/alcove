@@ -673,7 +673,11 @@ export function prepareForExchange(
   // frame is sent. Refused again at the run boundary (runExchange), so the
   // refusal holds for a PreparedExchange built without this function. See
   // assertDisclosedNamesCarriable.
-  assertDisclosedNamesCarriable(metadata, linkageTerms.output);
+  assertDisclosedNamesCarriable(
+    metadata,
+    linkageTerms.output,
+    metadataInferred && inferenceMode === "direct",
+  );
 
   // The effective key count the agreed terms declare: the sum over their
   // keys of the width each key's elements declare. Sizes the pre-flight

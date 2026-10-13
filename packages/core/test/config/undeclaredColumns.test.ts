@@ -592,6 +592,21 @@ describe("direct-mode inference sends every column that is not a linkage key", (
     });
   });
 
+  test("a linkage key is recognized by its exact lowercased name, so First Name is sent", () => {
+    const metadata = inferMetadata(["First Name", "first_name"], [], {
+      mode: "direct",
+    });
+    expect(metadata).toEqual([
+      { name: "First Name", type: "other", role: "payload", isPayload: true },
+      {
+        name: "first_name",
+        type: "first_name",
+        role: "linkage",
+        isPayload: false,
+      },
+    ]);
+  });
+
   test("leaves no column undeclared, whatever the header", () => {
     const headers = [
       columns,

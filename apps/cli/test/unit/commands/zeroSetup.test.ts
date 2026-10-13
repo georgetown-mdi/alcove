@@ -17,6 +17,7 @@ import {
   CONSENT_FACTS,
   disclosedColumnNames,
   getLogger,
+  MAX_NAME_LENGTH,
   prepareForExchange,
   RoundSetLimitError,
   sanitizeErrorForDisplay,
@@ -1399,6 +1400,47 @@ test("handler: a pipe file read with no named delimiter names the remedy", async
     expect(stderr).toContain("single column");
     expect(stderr).toContain("CSV delimiter");
     expect(stderr).toContain("detect");
+  } finally {
+    getLogger("alcove").setLevel("silent");
+    stderrSpy.mockRestore();
+    exitSpy.mockRestore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handler: an over-long non-key header is refused with a remedy a quick exchange can apply", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alcove-zerolongname-"));
+  const stderrChunks: string[] = [];
+  const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+  ) => {
+    stderrChunks.push(String(chunk));
+    return true;
+  }) as never);
+  const exitSpy = captureProcessExit();
+  try {
+    const input = path.join(dir, "input.csv");
+    const overlong = "n".repeat(MAX_NAME_LENGTH + 1);
+    fs.writeFileSync(input, `first_name,dob,${overlong}\nBob,1990-01-02,x\n`);
+
+    await expect(
+      handler({
+        _: [platformLocalhostFileUrl("/drop").href, input],
+        $0: "alcove",
+        "config-file": path.join(dir, "alcove.yaml"),
+        "key-file": path.join(dir, ".alcove.key"),
+        identity: "Tester",
+        record: false,
+        "log-level": "error",
+      } as unknown as Arguments),
+    ).rejects.toThrow("exit:64");
+    const stderr = stderrChunks.join("");
+    expect(stderr).toContain(`${MAX_NAME_LENGTH}-character limit`);
+    expect(stderr).toContain(
+      "Shorten the column name, or run with a configuration " +
+        "('alcove init URL INPUT_FILE') whose metadata does not transmit it.",
+    );
+    expect(stderr).not.toContain("is_payload: false");
   } finally {
     getLogger("alcove").setLevel("silent");
     stderrSpy.mockRestore();
