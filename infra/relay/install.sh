@@ -4,7 +4,7 @@
 #
 #   install.sh [--skip-verify]
 #
-# What it does, in order: adds a disk swapfile where none is set up, installs
+# What it does, in order: adds /swapfile where it is not set up, installs
 # a container runtime, builds the 443 front's image and checks its
 # configuration with nginx -t, builds the relay's image,
 # creates the data directory that holds the per-exchange secrets table, installs
@@ -92,10 +92,23 @@ SWAPFILE_LARGE_MB=2048
 # Each leaves at least 1.5 GB of / free for dnf's downloads.
 SWAPFILE_SMALL_MIN_FREE_MB=2560
 SWAPFILE_LARGE_MIN_FREE_MB=4096
+# A hand-edited fstab need not end in a newline, and an append onto one would
+# land on the end of whatever the operator typed last.
+add_swapfile_to_fstab() {
+  if [ -s /etc/fstab ] && [ -n "$(tail -c 1 /etc/fstab)" ]; then
+    printf '\n' >> /etc/fstab
+  fi
+  printf '/swapfile none swap defaults,pri=10 0 0\n' >> /etc/fstab
+  log "swap: added /swapfile to /etc/fstab: $1"
+}
 if [ -e /swapfile ] || grep -qs '^/swapfile[[:space:]]' /etc/fstab; then
   SWAPFILE_LINE="$(swapon --show=NAME,TYPE,SIZE,USED,PRIO --noheadings 2>/dev/null | awk '$1 == "/swapfile"' || true)"
   if [ -n "$SWAPFILE_LINE" ]; then
-    log "swap: keeping /swapfile: $SWAPFILE_LINE"
+    if grep -qs '^/swapfile[[:space:]]' /etc/fstab; then
+      log "swap: keeping /swapfile: $SWAPFILE_LINE"
+    else
+      add_swapfile_to_fstab "$SWAPFILE_LINE"
+    fi
   else
     log "WARNING: /swapfile exists or /etc/fstab names it, but it is not in use as swap; check it with swapon --show and /etc/fstab"
   fi
@@ -127,11 +140,7 @@ else
       SWAPFILE_STATUS=1
     fi
     if [ "$SWAPFILE_STATUS" = 0 ]; then
-      if [ -s /etc/fstab ] && [ -n "$(tail -c 1 /etc/fstab)" ]; then
-        printf '\n' >> /etc/fstab
-      fi
-      printf '/swapfile none swap defaults,pri=10 0 0\n' >> /etc/fstab
-      log "swap: added /swapfile to /etc/fstab: $(swapon --show=NAME,TYPE,SIZE,USED,PRIO --noheadings | awk '$1 == "/swapfile"')"
+      add_swapfile_to_fstab "$(swapon --show=NAME,TYPE,SIZE,USED,PRIO --noheadings | awk '$1 == "/swapfile"')"
     else
       rm -f /swapfile
       log "WARNING: /swapfile could not be made swap (above), so none was added; on a host with under 1 GB of memory the daily OS update can run out of memory. Fix the cause above, or add swap by hand, and run install.sh again"

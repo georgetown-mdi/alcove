@@ -89,7 +89,7 @@ other repository-level coupling is the docker Dependabot entry for
    it; nothing defaults to a hostname.
 3. Put `/etc/alcove-relay/acme.env` from [`certs/env.example`](certs/env.example)
    at mode 600, with the DNS provider's credential.
-4. Run `install.sh` as root. It adds a [swapfile](#os-updates) where none is
+4. Run `install.sh` as root. It adds [`/swapfile`](#os-updates) where it is not
    set up, installs a container runtime, builds the image,
    creates the data directory for the secrets table, obtains a certificate,
    renders the configuration, installs the unit and the three timers, and on
@@ -674,20 +674,22 @@ a disk swapfile before it installs anything:
   `/swapfile none swap defaults,pri=10 0 0`. Priority 10 is below zram's 100,
   so zram fills first and the disk takes the overflow. `vm.swappiness` is left
   as the distribution sets it.
-- Where `/swapfile` exists or `/etc/fstab` names it, `install.sh` changes
-  nothing and logs its `swapon --show` line, or warns when it is not in use.
+- Where `/swapfile` exists or `/etc/fstab` names it, `install.sh` adds
+  nothing but a missing `/etc/fstab` line for a file that is in use as swap,
+  and logs its `swapon --show` line, or warns when it is not in use.
 
 **Measured.** On the project's host, a t4g.nano with a 1024 MB swapfile, on
 2026-10-13:
 
 - The upgrade, run through `alcove-relay-os-update.service`, took 23 min 17 s
   of dnf for 92 package upgrades and a new kernel, with no out-of-memory kill
-  and the verification passing after it. Swap in use peaked at 601 MB: zram's
-  411 MB full and 192 MB on the swapfile. Sampled from outside, the relay refused one
-  connection, at the Docker package's restart (What restarts, above).
+  and the verification passing after it. Swap in use peaked at 601 MB in total;
+  over the run zram sat full at 411 MB and the swapfile reached 192 MB at its
+  own peak. Sampled from outside, the relay refused one connection, at the
+  Docker package's restart (What restarts, above).
 - A dry run before it, reading the newest release's metadata, peaked higher:
-  740 MB of swap, zram full and 328 MB on the swapfile. Some of the relay's answers
-  from outside took 3 to 7 seconds; none failed.
+  740 MB of swap in total, zram full and the swapfile reaching 328 MB. Some of
+  the relay's answers from outside took 3 to 7 seconds; none failed.
 - `systemctl show -p MemoryPeak` prints nothing on Amazon Linux 2023's
   systemd 252. To see what a run uses, read `memory.current` and
   `memory.swap.current` under

@@ -62,7 +62,14 @@ const STUBS = {
 };
 
 /** Runs the step once in a fixture directory; returns its output and state. */
-const run = ({ freeMb, refusals = 0, fstab = "", swapfile = false, root }) => {
+const run = ({
+  freeMb,
+  refusals = 0,
+  fstab = "",
+  swapfile = false,
+  active = false,
+  root,
+}) => {
   const dir = root ?? mkdtempSync(join(tmpdir(), "relay-swapfile-"));
   if (!root) tmpDirs.push(dir);
   const bin = join(dir, "bin");
@@ -82,6 +89,9 @@ const run = ({ freeMb, refusals = 0, fstab = "", swapfile = false, root }) => {
       typeof fstab === "function" ? fstab(swapPath) : fstab,
     );
     if (swapfile) writeFileSync(swapPath, "");
+    if (active) {
+      writeFileSync(join(state, "active"), `${swapPath} file 1024M 0B 10\n`);
+    }
   }
   const script = [
     "set -euo pipefail",
@@ -192,6 +202,37 @@ describe("install.sh's swapfile step", () => {
     expect(r.calls).toEqual([]);
     expect(r.swapfileExists).toBe(false);
     expect(r.log).toContain("not in use as swap");
+  });
+
+  it("appends the fstab line once when /swapfile is in use and /etc/fstab lacks it", () => {
+    const r = run({
+      freeMb: 3675,
+      fstab: "UUID=x / xfs defaults 0 0\n",
+      swapfile: true,
+      active: true,
+    });
+    expect(r.status).toBe(0);
+    expect(r.calls).toEqual([]);
+    expect(r.fstab).toBe(
+      `UUID=x / xfs defaults 0 0\n${r.swapPath} none swap defaults,pri=10 0 0\n`,
+    );
+    expect(r.log).toContain(
+      `added ${r.swapPath} to ${r.dir}/fstab: ${r.swapPath} file`,
+    );
+
+    const again = run({ freeMb: 3675, root: r.dir });
+    expect(again.fstab).toBe(r.fstab);
+    expect(again.log).toContain(`keeping ${r.swapPath}`);
+  });
+
+  it("appends nothing when /swapfile is in use and /etc/fstab names it", () => {
+    const fstab = (swapPath) => `${swapPath} none swap defaults,pri=10 0 0\n`;
+    const r = run({ freeMb: 3675, fstab, swapfile: true, active: true });
+    expect(r.status).toBe(0);
+    expect(r.calls).toEqual([]);
+    expect(r.fstab).toBe(fstab(r.swapPath));
+    expect(r.log).toContain(`keeping ${r.swapPath}: ${r.swapPath} file`);
+    expect(r.log).not.toContain("added");
   });
 
   it("runs before the OS update timer is enabled, and leaves vm.swappiness alone", () => {
