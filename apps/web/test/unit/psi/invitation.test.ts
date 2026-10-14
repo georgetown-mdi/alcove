@@ -37,7 +37,12 @@ import { prepareAcceptedInvitation } from "../../../src/psi/acceptInvitation.js"
 import { webrtcEndpointForSignalingServer } from "../../../src/console/signalingServerModel.js";
 import { writeOwnRelaySetting } from "../../../src/psi/transport/ownRelaySetting.js";
 
-import type { LinkageTerms, Metadata } from "@alcove/core";
+import type {
+  LinkageTerms,
+  Metadata,
+  RelayRegistrationOutcome,
+  enrollRelayKeyWithoutToken,
+} from "@alcove/core";
 import type { InvitationLocation } from "../../../src/psi/invitation.js";
 
 const signaling = {
@@ -248,6 +253,94 @@ describe("generateInvitation", () => {
         path: "/api/",
         relay: ownRelay,
       });
+    });
+  });
+
+  // The registrar client is mocked; core's suite holds the request it sends.
+  describe("with a default relay in the build", () => {
+    const DEFAULT_RELAY = {
+      turnUrl: "turns:turn.example.org:443?transport=tcp",
+      registrarUrl: "https://registrar.example.org",
+    };
+    const WEBRTC_ENDPOINT = {
+      channel: "webrtc",
+      host: "example.org",
+      port: 8443,
+      path: "/api/",
+    };
+
+    function answering(outcome: RelayRegistrationOutcome) {
+      return vi.fn<typeof enrollRelayKeyWithoutToken>(() =>
+        Promise.resolve(outcome),
+      );
+    }
+
+    test("enrolls the invitation's key and names the relay once enrolled", async () => {
+      const enroll = answering({
+        kind: "registered",
+        maxAgeDays: null,
+        lapsesAt: "2026-10-15T13:10:00Z",
+      });
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: { setting: () => DEFAULT_RELAY, enroll },
+      });
+      expect(enroll).toHaveBeenCalledExactlyOnceWith(
+        {
+          registrarUrl: DEFAULT_RELAY.registrarUrl,
+          sharedSecret: minted.sharedSecret,
+        },
+        {},
+      );
+      const token = await decodeInvitation(minted.encoded);
+      expect(token.connectionEndpoint).toStrictEqual({
+        ...WEBRTC_ENDPOINT,
+        relay: { turn: [DEFAULT_RELAY.turnUrl] },
+      });
+      expect(minted.defaultRelayNotEnrolled).toBeUndefined();
+    });
+
+    test.each<[string, RelayRegistrationOutcome]>([
+      ["a 409", { kind: "refused", status: 409 }],
+      ["a 429", { kind: "unavailable", status: 429, reason: "too many" }],
+      ["no answer", { kind: "unavailable", reason: "it could not be reached" }],
+    ])(
+      "names no relay it could not enroll, after %s, and says so",
+      async (_case, outcome) => {
+        const minted = await generateInvitation({
+          inviterName: "County Health Dept",
+          profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+          location,
+          defaultRelay: {
+            setting: () => DEFAULT_RELAY,
+            enroll: answering(outcome),
+          },
+        });
+        const token = await decodeInvitation(minted.encoded);
+        expect(token.connectionEndpoint).toStrictEqual(WEBRTC_ENDPOINT);
+        expect(minted.defaultRelayNotEnrolled).toBe(true);
+      },
+    );
+
+    test("contacts no registrar for an sftp invitation or with no default relay", async () => {
+      const enroll = answering({ kind: "refused", status: 409 });
+      await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        connectionEndpoint: { channel: "sftp", host: "sftp.example.org" },
+        defaultRelay: { setting: () => DEFAULT_RELAY, enroll },
+      });
+      const minted = await generateInvitation({
+        inviterName: "County Health Dept",
+        profiledColumns: ["ssn", "first_name", "last_name", "dob"],
+        location,
+        defaultRelay: { setting: () => undefined, enroll },
+      });
+      expect(enroll).not.toHaveBeenCalled();
+      expect(minted.defaultRelayNotEnrolled).toBeUndefined();
     });
   });
 

@@ -57,7 +57,7 @@ export async function enrollAtDefaultRelay(
   const status = outcome.status === undefined ? "" : ` ${outcome.status}`;
   log.warn(
     `the default relay's registrar did not enroll this exchange ` +
-      `(${outcome.kind}${status}), so this run does not list the default relay`,
+      `(${outcome.kind}${status}), so the default relay is left out`,
   );
   return { kind: "not-enrolled", turnUrl: setting.turnUrl };
 }

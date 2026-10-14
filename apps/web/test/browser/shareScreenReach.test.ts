@@ -8,7 +8,10 @@ import { createElement } from "react";
 
 import "@mantine/core/styles.css";
 
-import { InviterExchangeSection } from "@exchange/InviterExchangeSection";
+import {
+  DEFAULT_RELAY_NOT_NAMED_COPY,
+  InviterExchangeSection,
+} from "@exchange/InviterExchangeSection";
 import { initialRun } from "@exchange/exchangeRun";
 
 import { createAppMount, flushPendingUpdates } from "./renderApp";
@@ -200,6 +203,58 @@ describe("share screen for a console WebRTC invitation", () => {
     expect(app.container.textContent).not.toContain("only works on");
     expect(app.container.textContent).toContain(
       "Accept an invitation you were sent",
+    );
+  });
+});
+
+describe("share screen default relay notice", () => {
+  function renderWith(invitation: GeneratedInvitation): void {
+    app.render(
+      createElement(InviterExchangeSection, {
+        invitation,
+        inviterName: "County Health Department",
+        run: initialRun("inviter"),
+        outputs: undefined,
+        failure: undefined,
+        runRecord: undefined,
+        warnings: [],
+        partnerAcceptsByCli: false,
+        serverJob: false,
+        jobId: undefined,
+        reattached: undefined,
+        reattaching: false,
+        onTryAgain: () => {},
+        onStartOver: () => {},
+        onReviewAppliedTerms: () => {},
+        onAbandon: () => {},
+      }),
+    );
+  }
+
+  test("an invitation the relay could not be set up for says so, and what to do", async () => {
+    renderWith({
+      ...invitationAt("https://psi.data-bridge.org"),
+      defaultRelayNotEnrolled: true,
+    });
+    await expect
+      .element(
+        page.getByRole("status", {
+          name: DEFAULT_RELAY_NOT_NAMED_COPY.title,
+        }),
+      )
+      .toBeInTheDocument();
+    expect(app.container.textContent).toContain(
+      DEFAULT_RELAY_NOT_NAMED_COPY.message,
+    );
+  });
+
+  test("an invitation that names the relay shows no notice", async () => {
+    renderWith(invitationAt("https://psi.data-bridge.org"));
+    await expect
+      .element(page.getByText("Share this invitation"))
+      .toBeInTheDocument();
+    expect(app.container.textContent).not.toContain(
+      DEFAULT_RELAY_NOT_NAMED_COPY.title,
     );
   });
 });

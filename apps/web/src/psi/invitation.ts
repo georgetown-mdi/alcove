@@ -1,6 +1,7 @@
 import {
   INVITATION_ACCEPT_ROUTE_PATH,
   INVITATION_LIFETIME_SECONDS,
+  MAX_RELAY_LOCATOR_URLS,
   assertFanOutImplemented,
   assertInvitationLifetimeSeconds,
   assertPayloadSendDisclosed,
@@ -27,6 +28,11 @@ import { ownColumnsField } from "./ownColumnsModel";
 import { relayForRun } from "./transport/ownRelaySetting";
 import { standardizationForTerms } from "./authoring/advancedInviteTerms";
 
+import {
+  enrollAtDefaultRelay,
+  withDefaultRelay,
+} from "./transport/defaultRelay";
+
 import type {
   CSVRow,
   ConnectionEndpoint,
@@ -40,6 +46,7 @@ import type {
   WebRTCEndpoint,
 } from "@alcove/core";
 
+import type { DefaultRelayDependencies } from "./transport/defaultRelay";
 import type { LinkageRefusal } from "./linkageRefusal";
 import type { OwnColumnsChoice } from "./ownColumnsModel";
 import type { RelayUrls } from "./transport/ownRelaySetting";
@@ -140,6 +147,12 @@ export interface GeneratedInvitation {
   includeOwnColumns?: OwnColumnSelection;
   /** Where the token sends the partner: the endpoint inside {@link encoded}. */
   connectionEndpoint?: ConnectionEndpoint;
+  /**
+   * Set when the build names a default relay and its registrar did not enroll
+   * this invitation's relay key, so the invitation does not name that relay.
+   * Never in the token.
+   */
+  defaultRelayNotEnrolled?: true;
 }
 
 /** Why {@link generateInvitation} refused the inviter's file. Each is
@@ -258,16 +271,35 @@ export function tokenFromInput(input: string): string {
 export type ConnectionEndpointRequest =
   { channel: "webrtc" } | WebRTCEndpoint | SFTPEndpoint | FileDropEndpoint;
 
-/** Resolve a request to the token's endpoint; this app's own webrtc locator
- * names the relay this inviter's own run uses ({@link relayForRun}), and a
- * webrtc endpoint naming its host is taken as given. */
-function resolveConnectionEndpoint(
+/**
+ * Resolve a request to the token's endpoint. This app's own webrtc locator
+ * names the relay this inviter's own run uses ({@link relayForRun}) and the
+ * build's default relay once the registrar has enrolled the relay key
+ * `sharedSecret` derives ({@link enrollAtDefaultRelay}); a default relay that
+ * would take the locator past {@link MAX_RELAY_LOCATOR_URLS} TURN urls is left
+ * out. A webrtc endpoint naming its host is taken as given.
+ */
+async function resolveConnectionEndpoint(
   request: ConnectionEndpointRequest,
   location: InvitationLocation,
-): ConnectionEndpoint {
-  if (request.channel === "webrtc" && !("host" in request))
-    return invitationWebrtcEndpoint(location, relayForRun());
-  return request;
+  sharedSecret: string,
+  defaultRelay: DefaultRelayDependencies | undefined,
+): Promise<{ endpoint: ConnectionEndpoint; defaultRelayNotEnrolled: boolean }> {
+  if (request.channel !== "webrtc" || "host" in request)
+    return { endpoint: request, defaultRelayNotEnrolled: false };
+  // A build with no signaling address refuses here, before the registrar is
+  // contacted for an invitation it cannot mint.
+  invitationSignalingAddress(location);
+  const ownRelay = relayForRun();
+  const enrollment = await enrollAtDefaultRelay(sharedSecret, defaultRelay);
+  const named =
+    (ownRelay?.turn.length ?? 0) < MAX_RELAY_LOCATOR_URLS
+      ? withDefaultRelay(ownRelay, enrollment)
+      : ownRelay;
+  return {
+    endpoint: invitationWebrtcEndpoint(location, named),
+    defaultRelayNotEnrolled: enrollment.kind === "not-enrolled",
+  };
 }
 
 /**
@@ -341,6 +373,9 @@ export async function generateInvitation(params: {
   /** Which of the inviter's own columns its result file includes, narrowed
    * against the emitted terms and returned. Omitted on the quick path. */
   includeOwnColumns?: OwnColumnsChoice;
+  /** How the default relay is read and enrolled; the build's own when
+   * omitted. */
+  defaultRelay?: DefaultRelayDependencies;
 }): Promise<GeneratedInvitation> {
   const {
     inviterName,
@@ -485,10 +520,13 @@ export async function generateInvitation(params: {
     connectionEndpoint,
     retainsFiles,
   });
-  const resolvedEndpoint = resolveConnectionEndpoint(
-    connectionEndpoint,
-    location,
-  );
+  const { endpoint: resolvedEndpoint, defaultRelayNotEnrolled } =
+    await resolveConnectionEndpoint(
+      connectionEndpoint,
+      location,
+      sharedSecret,
+      params.defaultRelay,
+    );
   const token: InvitationToken = {
     version: "1",
     linkageTerms,
@@ -512,5 +550,6 @@ export async function generateInvitation(params: {
     // Terms that leave this party no result file omit the field.
     ...ownColumnsField(includeOwnColumns, linkageTerms),
     connectionEndpoint: resolvedEndpoint,
+    ...(defaultRelayNotEnrolled ? { defaultRelayNotEnrolled: true } : {}),
   };
 }
