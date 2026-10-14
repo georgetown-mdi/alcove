@@ -1672,7 +1672,7 @@ class Negotiation {
     const { peer } = this;
     await peer.setRemoteDescription({ type: "offer", sdp: description.sdp });
     this.markRemoteDescriptionSet();
-    await this.applyPendingRemoteCandidates();
+    this.applyPendingRemoteCandidates();
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
     if (this.finished) return;
@@ -1714,7 +1714,7 @@ class Negotiation {
       sdp: description.sdp,
     });
     this.markRemoteDescriptionSet();
-    await this.applyPendingRemoteCandidates();
+    this.applyPendingRemoteCandidates();
   }
 
   /**
@@ -1737,9 +1737,15 @@ class Negotiation {
     await this.addRemoteCandidate(candidate);
   }
 
-  private async applyPendingRemoteCandidates(): Promise<void> {
+  /**
+   * Hand every held candidate to the ICE agent without waiting on any of
+   * them. werift resolves a `.local` host candidate, which a browser sends by
+   * default, by an mDNS query that takes 10 s to fail, so awaiting each would
+   * hold the candidates behind it, and an inviter's answer, that long.
+   */
+  private applyPendingRemoteCandidates(): void {
     for (const candidate of this.pendingRemoteCandidates.splice(0)) {
-      await this.addRemoteCandidate(candidate);
+      void this.addRemoteCandidate(candidate);
     }
   }
 
