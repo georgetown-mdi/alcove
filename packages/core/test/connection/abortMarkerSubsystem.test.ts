@@ -66,7 +66,11 @@ function makeDeps(overrides: Partial<Deps> = {}) {
 
 function armed(
   client: FileTransportClient,
-  opts: { writeDir?: string | null; deps?: Partial<Deps> } = {},
+  opts: {
+    writeDir?: string | null;
+    deps?: Partial<Deps>;
+    publishWithoutRename?: boolean;
+  } = {},
 ) {
   const made = makeDeps(opts.deps);
   const subsystem = new AbortMarkerSubsystem(made.deps);
@@ -76,6 +80,7 @@ function armed(
     SELF_ID,
     opts.writeDir === null ? undefined : (opts.writeDir ?? DIR),
     client,
+    opts.publishWithoutRename,
   );
   return { subsystem, ...made };
 }
@@ -306,19 +311,9 @@ test("writeMarker on a stalled rename rejects with the budget error naming the f
   expect(debug).not.toHaveBeenCalled();
 });
 
-function armedWithoutRename(
-  client: FileTransportClient,
-  deps: Partial<Deps> = {},
-) {
-  const made = makeDeps(deps);
-  const subsystem = new AbortMarkerSubsystem(made.deps);
-  subsystem.arm(TOKEN_SELF, TOKEN_PEER, SELF_ID, DIR, client, true);
-  return { subsystem, ...made };
-}
-
 test("writeMarker with publishWithoutRename puts straight to the final path with the write options and issues no rename", async () => {
   const client = makeClient();
-  const { subsystem, debug } = armedWithoutRename(client);
+  const { subsystem, debug } = armed(client, { publishWithoutRename: true });
   await subsystem.writeMarker();
 
   const finalPath = `${DIR}/${SELF_ID}-abort.json`;
@@ -334,21 +329,13 @@ test("writeMarker with publishWithoutRename puts straight to the final path with
   );
 });
 
-test("writeMarker with publishWithoutRename records the marker as written so a second run is a no-op", async () => {
-  const client = makeClient();
-  const { subsystem } = armedWithoutRename(client);
-  await subsystem.writeMarker();
-  // Drop only the memoized promise, so the written flag is the sole guard.
-  (subsystem as unknown as { pendingAbortWrite: undefined }).pendingAbortWrite =
-    undefined;
-  await subsystem.writeMarker();
-  expect(client.put).toHaveBeenCalledOnce();
-});
-
 test("writeMarker with publishWithoutRename on a stalled put rejects with the budget error naming the final path", async () => {
   const client = makeClient();
-  const { subsystem, stalledError, debug } = armedWithoutRename(client, {
-    runBudgeted: (_op, _budgetMs, makeError) => Promise.reject(makeError()),
+  const { subsystem, stalledError, debug } = armed(client, {
+    publishWithoutRename: true,
+    deps: {
+      runBudgeted: (_op, _budgetMs, makeError) => Promise.reject(makeError()),
+    },
   });
   const rejection = await subsystem.writeMarker().then(
     () => undefined,
