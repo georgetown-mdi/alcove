@@ -50,7 +50,6 @@ The pieces a WebSocket path would build on, with where each is stated:
   `relay_key = HKDF(secret, "alcove-relay-key-v2")`, registered at the relay's table per exchange, from which each party mints a time-limited TURN credential without contacting the relay ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation); `packages/core/src/relayCredential.ts`).
   The registrar's proof shows the pattern for a second use of the key under its own label ([PROTOCOL.md](../spec/PROTOCOL.md#the-registrar-request-proof)).
   Enrolling an exchange needs the relay-owner token: the CLI's `alcove enroll-relay`, or a saved exchange's page in the browser ([MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#when-your-relay-runs-a-registrar)); a one-shot browser exchange enrolls nothing ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), the registrar row).
-  A ruling of 2026-10-14 adds enrollment without the token for the production web application's exchanges, not yet built ([fork 1](#the-forks-and-their-rulings)).
 - **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)).
   The browser keeps its own relay setting in `localStorage` (`apps/web/src/psi/transport/ownRelaySetting.ts`).
 - **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host, and one listener on 443, the relay's 443 front, which passes each connection unopened to coturn or the broker's front by the server name it asks for ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs); [infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
@@ -273,7 +272,7 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   On the AWS harness of the relay measurement, class B with the inspecting proxy configured to enforce HTTP inside TLS (the spike names the tool and the rule it used), a CLI party and a browser party each try TURN over TLS on 443 and then a minimal WebSocket echo relay on 443.
   PASS: the WebSocket connection completes and the TURN allocation is refused, with the proxy's log naming the refusal; the capture of each Client Hello is recorded for the ALPN question.
   If TURN passes every enforcement the tool offers, the result is recorded and the relay's case rests on the maintainer's field reports, stated as such.
-- **S2. Signaling and relay names on 443.**
+- **S2. A relayed exchange through the 443 front.**
   The one 443 front on the relay instance is built and routes the broker's name; the relay's name is one more route on it ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
   What S2 still measures is the case the deployment record lists as not measured: a relayed exchange through the front from a client admitted to 443 only.
   That run needs a registrar behind the front to enroll the exchange's key, which the project's relay host does not yet run.
@@ -300,9 +299,10 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 
 ### Implementation items implied, not filed
 
+The front on 443 and the broker's route on it are already built. Its open measurements, the registrar behind it and a relayed exchange from a 443-only client ([S2](#the-spikes)), are a prerequisite of this path.
+
 Relay path, in order:
 
-- **The 443 front's open measurements** -- the registrar behind it and a relayed exchange from a 443-only client ([S2](#the-spikes)); the front and the broker's route on it are built, so this is a prerequisite and not an item of this path.
 - **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
@@ -340,7 +340,7 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
 
    **A later ruling, on the TURN relay (2026-10-14).**
    The maintainer ruled on the project's TURN relay for the production web application, whose exchanges list no relay unless the inviter configured one (`buildIceServers` in `apps/web/src/psi/transport/rendezvous.ts`).
-   The rulings were relayed by the session that recorded them; only the quoted sentence is the maintainer's own words:
+   The rulings below are paraphrased, except for the quoted sentence, which is the maintainer's own words:
 
    - The project's standing relay (`turns:turn.data-bridge.org:443?transport=tcp`) is a public default, used by the production web application; this reverses the "No public relay" direction ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
    - The browser enrolls the exchange's relay key ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)) at the registrar without the relay-owner token, bounded by per-address enrollment limits, short key lifetimes and the relay's quotas; enrollment can happen when the invitation is created.
