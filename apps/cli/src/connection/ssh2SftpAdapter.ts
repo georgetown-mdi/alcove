@@ -3009,9 +3009,10 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // blind could re-create a file the partner has consumed, or truncate one it is
   // reading, so the destination is probed first. Only a short file is re-issued:
   // no reader acts on one, because a message reader waits for the byte count its
-  // name states and a hello reader retries a short read, and an ack or sentinel
-  // is zero-length and so never short. The probes go through the once-layer, as
-  // the rename arm's do and for the same reason.
+  // name states and a hello reader retries a short read, an ack is zero-length
+  // and so never short, and the sentinel is matched by name and never read. The
+  // probes go through the once-layer, as the rename arm's do and for the same
+  // reason.
   private async reissueDirectPut(
     run: () => Promise<unknown>,
     lost: unknown,

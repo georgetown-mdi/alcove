@@ -35,7 +35,7 @@
 - - -> The sentinel still spans the window in which the peer hello is gone and the joiner's is not yet written, so the peer's bounded recovery wait is unchanged.
 - - -> The new window is the one after the hello is written and before the sentinel is deleted, in which the peer can list both.
 - - -> The peer tolerates that during rendezvous because the sentinel's id matches the hello it completes against (Phase 1, lock path), and in its message loop because the peer's sentinel is in the recognized-for-the-loop set (site 3).
-- - -> Both tolerances are the peer's own, whatever the peer's setting, which is what keeps the option per-party.
+- - -> Both tolerances are the peer's own, whatever the peer's setting, which is what keeps the option per-party; the loop tolerance is this release's, so a peer on an earlier build whose loop lists the sentinel before the delete lands fails with an unexpected-file error, an availability failure rather than a disclosure, which the pre-publication lock-step upgrade rule covers.
 - - -> A sentinel delete that fails does not fail the rendezvous, since the hello is already visible and the peer may have read it: the joiner warns, tracks the sentinel again so `cleanup()` removes it at close in delete mode, and its own loop recognizes it by name meanwhile.
 - - -> Requiring lockless rendezvous for the mode would have avoided the sentinel, but `lockless_rendezvous` is bilateral and advertised in the hello, so it would set the partner's configuration.
 - - -> **Write tracking.**
@@ -53,7 +53,7 @@
 - - -> A `put` to any other name is a direct publish, whose re-issue is below.
 - - -> A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put` to the final name, and a reply lost to a drop is resolved by probing that destination, never by re-issuing the `put` blind.
 - - -> A destination present at the source's full byte length is the publish landed, and the `put` resolves without a re-issue.
-- - -> A destination present but shorter is a `put` that stopped short, on which no reader has acted (a message reader waits for the byte count its name declares, the hello reader retries a short read, and an ack or sentinel is zero-length), so the truncate-overwrite `put` is re-issued once.
+- - -> A destination present but shorter is a `put` that stopped short, on which no reader has acted (a message reader waits for the byte count its name declares, the hello reader retries a short read, an ack is zero-length, and the sentinel is matched by name and never read), so the truncate-overwrite `put` is re-issued once.
 - - -> A destination absent, longer than the source, or that the probe could not read is rejected as `TransportPublishIndeterminateError`: in delete mode the partner may already have consumed it, and nothing the adapter can read separates that from a `put` that never landed.
 - - -> A message whose `put` rejects spends its sequence number the same way.
 - - -> A first attempt a server refuses with `SSH_FX_NO_SUCH_FILE`, which is how a server that does not allow renames answers, is not a re-issue: it propagates as itself, and core restates it naming that option.
