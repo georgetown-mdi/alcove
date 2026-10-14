@@ -142,7 +142,7 @@ server and is not the relay.
   so give the partner the printed address each time.
 - **Port 22.** The instance's security group `sftp-demo` must allow inbound TCP
   22 from anywhere so a partner can connect. This is a standing rule, added once
-  (not yet run):
+  (added on 2026-10-14 with this command):
 
   ```
   aws ec2 authorize-security-group-ingress --profile alcove --region us-west-2 \
