@@ -1714,7 +1714,7 @@ The cells:
 | `connection.options.peer_id` | authored | authored | not applicable |
 | `connection.options.unexpected_files` | carried | authored | not applicable |
 | `connection.options.connection_per_poll` | authored | authored | not applicable |
-| `connection.options.publish_without_rename` | authored | refused | not applicable |
+| `connection.options.publish_without_rename` | authored | authored | not applicable |
 | `connection.provider_options` (sftp) | carried | refused | not applicable |
 | `connection.provider_options` (webrtc) | not applicable | not applicable | refused |
 | **[Authentication](#authentication)** | | | |

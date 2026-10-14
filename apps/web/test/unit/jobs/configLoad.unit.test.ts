@@ -1122,6 +1122,40 @@ describe("a setting inside a block the composition writes", () => {
     expect(response.carriedThrough).toEqual([]);
     expect(response.document?.tokenMaxAgeDays).toBe(30);
   });
+
+  test.each([
+    ["sftp", savedSftpDocument()],
+    [
+      "filedrop",
+      {
+        connection: { channel: "filedrop", path: "/srv/partner-drop" },
+        linkage_terms: snakeizeKeys(terms()),
+      },
+    ],
+  ])(
+    "publish_without_rename on %s is adopted into the file-handling card",
+    (_channel, document) => {
+      const connection = document.connection as Record<string, unknown>;
+      const response = loadDocument({
+        ...document,
+        connection: {
+          ...connection,
+          options: {
+            ...(connection.options as object | undefined),
+            publish_without_rename: true,
+          },
+        },
+      });
+      expect(response.carriedThrough).toEqual([]);
+      expect(response.document?.options?.publishWithoutRename).toBe(true);
+      if (response.document === undefined)
+        throw new Error("the load disclosed no document");
+      expect(
+        authoringStateFromDocument(response.document).exchangeFiles
+          .publishWithoutRename,
+      ).toBe(true);
+    },
+  );
 });
 
 describe("the records that must survive a load", () => {
@@ -1218,6 +1252,7 @@ describe("the disclosed projection", () => {
           retainFiles: true,
           unexpectedFiles: "warn",
           connectionPerPoll: true,
+          publishWithoutRename: true,
         },
       },
       linkageTerms: terms(),
@@ -1235,6 +1270,7 @@ describe("the disclosed projection", () => {
         "retainFiles",
         "unexpectedFiles",
         "connectionPerPoll",
+        "publishWithoutRename",
       ].sort(),
     );
   });

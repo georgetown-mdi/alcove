@@ -55,6 +55,7 @@ import {
   validIntent,
   validLinkageTerms,
   validSftpIntent,
+  validWebrtcIntent,
   validZeroSetupIntent,
   validZeroSetupSftpIntent,
 } from "../../utils/jobFixtures";
@@ -916,6 +917,38 @@ describe("the sftp intent arm", () => {
     };
     expect(doc.connection.options?.connection_per_poll).toBe(true);
   });
+
+  test("publishWithoutRename is admitted on sftp and filedrop, and refused on webrtc", () => {
+    for (const intent of [
+      validSftpIntent({ options: { publishWithoutRename: true } }),
+      validIntent({ options: { publishWithoutRename: true } }),
+    ])
+      expect(jobExchangeIntentSchema.safeParse(intent).success).toBe(true);
+    expect(
+      jobExchangeIntentSchema.safeParse(
+        validWebrtcIntent({ options: { publishWithoutRename: true } }),
+      ).success,
+    ).toBe(false);
+  });
+
+  test("publishWithoutRename reaches the composed sftp and filedrop configs", () => {
+    const composed = [
+      composeSftpConfigDocument(
+        validSftpIntent({ options: { publishWithoutRename: true } }),
+        testSftpServerEntry(),
+      ),
+      composeConfigDocument(
+        validIntent({ options: { publishWithoutRename: true } }),
+        "/data/rendezvous",
+      ),
+    ];
+    for (const yaml of composed) {
+      const doc = parseYaml(yaml) as {
+        connection: { options?: Record<string, unknown> };
+      };
+      expect(doc.connection.options?.publish_without_rename).toBe(true);
+    }
+  });
 });
 
 // Each tuning setting authored on the console must survive to the config the CLI
@@ -1168,6 +1201,13 @@ describe("zeroSetupOptionsArgv", () => {
 
   test("emits no session-mode flag when the mode is off", () => {
     expect(zeroSetupOptionsArgv({ connectionPerPoll: false })).toEqual([]);
+  });
+
+  test("emits the publish-without-rename flag only when it is on", () => {
+    expect(zeroSetupOptionsArgv({ publishWithoutRename: true })).toEqual([
+      "--publish-without-rename",
+    ]);
+    expect(zeroSetupOptionsArgv({ publishWithoutRename: false })).toEqual([]);
   });
 });
 
@@ -1532,6 +1572,14 @@ describe("the zero-setup arms admit only what their argv can hold", () => {
         }),
       ).success,
     ).toBe(true);
+  });
+
+  test("accepts publishWithoutRename on both arms", () => {
+    for (const intent of [
+      validZeroSetupSftpIntent({ options: { publishWithoutRename: true } }),
+      validZeroSetupIntent({ options: { publishWithoutRename: true } }),
+    ])
+      expect(jobZeroSetupIntentSchema.safeParse(intent).success).toBe(true);
   });
 
   test("refuses connectionPerPoll on the filedrop arm, as the exchange mode does", () => {

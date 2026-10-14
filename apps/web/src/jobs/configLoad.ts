@@ -212,6 +212,7 @@ function probeIntentFields(): JobExchangeIntentBase {
       peerId: "probe",
       retainFiles: true,
       unexpectedFiles: "warn",
+      publishWithoutRename: true,
     },
   };
 }
@@ -803,6 +804,9 @@ function disclosedOptions(options: FileSyncOptions): DisclosedFileSyncOptions {
       : {}),
     ...(options.connectionPerPoll !== undefined
       ? { connectionPerPoll: options.connectionPerPoll }
+      : {}),
+    ...(options.publishWithoutRename !== undefined
+      ? { publishWithoutRename: options.publishWithoutRename }
       : {}),
   };
 }

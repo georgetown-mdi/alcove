@@ -655,6 +655,7 @@ describe("the fields the two cards contribute", () => {
     locklessRendezvous: "on",
     peerId: "alpha",
     unexpectedFiles: "warn",
+    publishWithoutRename: true,
   };
 
   test("are disjoint, so the merge overwrites no authored choice", () => {

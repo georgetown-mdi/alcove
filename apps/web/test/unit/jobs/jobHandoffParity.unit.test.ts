@@ -75,6 +75,7 @@ const MAXIMAL_OPTIONS: Required<JobExchangeOptions> = {
   serverConnectTimeoutMs: 45_000,
   maxReconnectAttempts: 12,
   connectionPerPoll: true,
+  publishWithoutRename: true,
 };
 
 /** Where each of those options graduates, for the values above. */
@@ -122,6 +123,10 @@ const TUNING_OPTION_ROUTES: Record<
   connectionPerPoll: {
     configKey: "connection_per_poll",
     flag: "--connection-per-poll",
+  },
+  publishWithoutRename: {
+    configKey: "publish_without_rename",
+    flag: "--publish-without-rename",
   },
 };
 
@@ -410,6 +415,7 @@ describe("every authorable option graduates into the hand-off", () => {
       "--connection-timeout=45s",
       "--max-reconnect-attempts=12",
       "--connection-per-poll",
+      "--publish-without-rename",
       "--identity=County Health",
       "--linkage-strategy=single-pass",
       "--deduplicate",
@@ -517,6 +523,7 @@ describe("the composed config stays one format with one validator", () => {
       serverConnectTimeoutMs: 45_000,
       maxReconnectAttempts: 12,
       connectionPerPoll: true,
+      publishWithoutRename: true,
     });
   });
 });

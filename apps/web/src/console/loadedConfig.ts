@@ -197,6 +197,9 @@ export function exchangeFilesFromOptions(
     peerId: stated.peerId ?? EXCHANGE_FILES_DEFAULT.peerId,
     unexpectedFiles:
       stated.unexpectedFiles ?? EXCHANGE_FILES_DEFAULT.unexpectedFiles,
+    publishWithoutRename:
+      stated.publishWithoutRename ??
+      EXCHANGE_FILES_DEFAULT.publishWithoutRename,
   };
 }
 

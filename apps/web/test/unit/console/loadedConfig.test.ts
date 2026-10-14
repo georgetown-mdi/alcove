@@ -237,6 +237,7 @@ describe("the file-handling draft a loaded options block seeds", () => {
       locklessRendezvous: true,
       peerId: "county",
       unexpectedFiles: "warn" as const,
+      publishWithoutRename: true,
     };
     expect(exchangeFilesOptions(exchangeFilesFromOptions(stated))).toEqual(
       stated,
