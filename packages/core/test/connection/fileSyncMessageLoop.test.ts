@@ -169,10 +169,11 @@ describe("isRecognizedLoopFile", () => {
     expect(recognized("alice-x-hello.json")).toBe(false);
   });
 
-  test("the peer's joining sentinel matches by exact name, this party's own does not", () => {
+  test("both joining sentinels match by exact name only", () => {
     expect(recognized("bob-joining.json")).toBe(true);
-    expect(recognized("alice-joining.json")).toBe(false);
+    expect(recognized("alice-joining.json")).toBe(true);
     expect(recognized("bob-x-joining.json")).toBe(false);
+    expect(recognized("carol-joining.json")).toBe(false);
   });
 
   test("the lock matches by exact name in either arrival order", () => {

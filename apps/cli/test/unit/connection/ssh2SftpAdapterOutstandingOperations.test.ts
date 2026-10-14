@@ -374,7 +374,10 @@ describe("an operation outstanding across a session transition", () => {
     {
       op: "put" as const,
       run: (a: SSH2SFTPClientAdapter) =>
-        a.put(Buffer.from("payload"), "/r/x.json"),
+        a.put(
+          Buffer.from("payload"),
+          "/r/temp-3b1f5d0e-6a4c-4f2e-9d8b-7c6a5e4f3d2c.tmp",
+        ),
     },
     {
       op: "exists" as const,

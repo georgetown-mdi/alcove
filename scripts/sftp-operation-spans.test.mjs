@@ -107,9 +107,10 @@ function classesDeclaringTheEntry(sourceFile) {
 }
 
 /**
- * The function bodies an outstanding span encloses: each `runOperation` body
- * argument, plus the body of every method it reaches through a `this.<method>()`
- * call on the class declaring the entry point, transitively.
+ * The function bodies an outstanding span encloses: each `runOperation`
+ * argument -- the body and the recovery spec -- plus the body of every method it
+ * reaches through a `this.<method>()` call on the class declaring the entry
+ * point, transitively.
  */
 export function operationSpanBodies(sourceFile) {
   const entryClasses = classesDeclaringTheEntry(sourceFile);
@@ -158,7 +159,9 @@ export function operationSpanBodies(sourceFile) {
     )
       continue;
     seeds += 1;
-    enter(unwrap(node.arguments[node.arguments.length - 1]));
+    // Every argument, not only the body: a `reissued` spec's re-issue runs
+    // inside the same span, as the recovery round the span covers.
+    for (const argument of node.arguments) enter(unwrap(argument));
   }
 
   while (queue.length > 0) {

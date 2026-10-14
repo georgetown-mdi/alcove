@@ -584,7 +584,7 @@ describe("session recovery", () => {
     expect(connect).toHaveBeenCalledTimes(2);
   });
 
-  test("recovers a re-runnable put (Buffer) via one re-dial", async () => {
+  test("recovers a re-runnable put (Buffer) to a protocol temp via one re-dial", async () => {
     // A Buffer source is re-runnable: the re-issue rebuilds it and re-streams the
     // identical payload. retries: 0 keeps put()'s inner retry loop from burning
     // attempts on the dropped session before the recovery re-dial takes over.
@@ -605,7 +605,11 @@ describe("session recovery", () => {
     state.live = false;
 
     await expect(
-      adapter.put(Buffer.from("payload"), "/remote/out.tmp", { flags: "w" }),
+      adapter.put(
+        Buffer.from("payload"),
+        "/remote/temp-3b1f5d0e-6a4c-4f2e-9d8b-7c6a5e4f3d2c.tmp",
+        { flags: "w" },
+      ),
     ).resolves.toBe("ok");
     expect(connect).toHaveBeenCalledTimes(2);
     // Only the re-issue reached the server; the first attempt saw the cleared
@@ -1413,7 +1417,11 @@ describe("session recovery", () => {
     state.live = false;
 
     await expect(
-      adapter.put(Buffer.from("abort"), "/remote/id-abort.tmp", { flags: "w" }),
+      adapter.put(
+        Buffer.from("abort"),
+        "/remote/temp-3b1f5d0e-6a4c-4f2e-9d8b-7c6a5e4f3d2c.tmp",
+        { flags: "w" },
+      ),
     ).resolves.toBe("ok");
     // The re-dial happened despite the exhausted budget: the marker landed.
     expect(connect).toHaveBeenCalledTimes(2);

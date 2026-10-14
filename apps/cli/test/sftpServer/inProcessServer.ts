@@ -232,6 +232,7 @@ export async function startInProcessSftpServer(): Promise<InProcessSftpServer> {
     renameFailuresRemaining: 0,
     refuseEveryRename: false,
     renamesReceived: 0,
+    tearAtWriteClose: null,
     pathsOpenedForWrite: [],
     readdirBatchSize: 0,
     emptyNonEofReaddirBatches: 0,
@@ -472,6 +473,8 @@ function openFlagsToFsFlags(flags: number): string | number {
 interface FileHandle {
   type: "file";
   fd: number;
+  // The host path of a file opened for writing, for the write-close tear.
+  writtenPath?: string;
 }
 interface DirHandle {
   type: "dir";
@@ -604,7 +607,14 @@ function attachSftpHandlers(
           return sftp.status(reqid, STATUS_CODE.NO_SUCH_FILE);
         return sftp.status(reqid, STATUS_CODE.FAILURE);
       }
-      sftp.handle(reqid, newHandle({ type: "file", fd }));
+      sftp.handle(
+        reqid,
+        newHandle(
+          flags & OPEN_MODE.WRITE
+            ? { type: "file", fd, writtenPath: resolve(filename) }
+            : { type: "file", fd },
+        ),
+      );
     });
   });
 
@@ -662,7 +672,22 @@ function attachSftpHandlers(
     if (!h) return sftp.status(reqid, STATUS_CODE.FAILURE);
     handles.delete(id);
     if (h.type === "file") {
-      fs.close(h.fd, () => sftp.status(reqid, STATUS_CODE.OK));
+      const writtenPath = h.writtenPath;
+      const tear = writtenPath === undefined ? null : inject.tearAtWriteClose;
+      fs.close(h.fd, () => {
+        if (tear === null || writtenPath === undefined)
+          return sftp.status(reqid, STATUS_CODE.OK);
+        inject.tearAtWriteClose = null;
+        // Synchronous and `force`d, as the rename tear's removal is, so a failure
+        // cannot throw out of an fs callback; the case asserts on the file.
+        if (tear === "remove") fs.rmSync(writtenPath, { force: true });
+        if (tear === "truncate")
+          fs.truncateSync(
+            writtenPath,
+            Math.floor(fs.statSync(writtenPath).size / 2),
+          );
+        tearSession();
+      });
     } else {
       sftp.status(reqid, STATUS_CODE.OK);
     }

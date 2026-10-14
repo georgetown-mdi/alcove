@@ -1,7 +1,7 @@
 // Publishing without rename (docs/spec/FILE_SYNC.md, Publishing without
 // rename): with the option on, every publish site writes its final name
 // directly, pre-tracks it in delete mode, and issues no rename; with it off,
-// a rename the server answers "no such file" ends the run naming the option.
+// a rename the server refuses ends the run naming the option.
 
 import { describe, expect, test } from "vitest";
 
@@ -11,9 +11,11 @@ import {
 } from "../../src/connection/fileSyncConnection";
 import { DEFAULT_RENAME_REFUSED_GUIDANCE } from "../../src/connection/fileSyncPublish";
 import {
+  TransportOperationStalledError,
   TransportPublishIndeterminateError,
   statesItsOwnNextStep,
 } from "../../src/errors";
+import { withCapturedLogs } from "../../src/testing";
 import { makeMockClient } from "../utils/support";
 import { responsibleFilesOf } from "../utils/fileSyncConnectionFixture";
 
@@ -27,11 +29,13 @@ const baseName = (p: string): string => p.slice(p.lastIndexOf("/") + 1);
 // rename and delete it issues by file name. `failPutTo` makes a put write its
 // bytes and then reject, as a connection lost after the server created the
 // file does. `holdDelete` parks a delete until the returned promise settles.
+// `failDeleteOnce` makes the first delete of that name reject without deleting.
 function recordingClient(
   files: Map<string, Buffer>,
   opts: {
     failPutTo?: (name: string) => boolean;
     holdDelete?: (name: string) => Promise<void> | undefined;
+    failDeleteOnce?: string;
     renameError?: Error;
   } = {},
 ): {
@@ -47,6 +51,7 @@ function recordingClient(
   });
   const ops: string[] = [];
   const written = new Map<string, Buffer>();
+  let deleteFailurePending = opts.failDeleteOnce !== undefined;
   return {
     ops,
     written,
@@ -65,6 +70,12 @@ function recordingClient(
       },
       delete: async (p) => {
         ops.push(`delete:${baseName(p)}`);
+        if (deleteFailurePending && baseName(p) === opts.failDeleteOnce) {
+          deleteFailurePending = false;
+          throw Object.assign(new Error("_delete: Permission denied"), {
+            code: 3,
+          });
+        }
         await opts.holdDelete?.(baseName(p));
         return client.delete(p);
       },
@@ -258,6 +269,47 @@ describe("a lock joiner publishing without rename, against a peer without the mo
   });
 });
 
+test("a lock joiner whose sentinel delete fails after its hello is written completes, warns, and removes the sentinel at close", async () => {
+  const files = new Map<string, Buffer>();
+  const sentinel = `${ID_B}-joining.json`;
+  const a = recordingClient(files);
+  const b = recordingClient(files, { failDeleteOnce: sentinel });
+  const errorsB: unknown[] = [];
+
+  // The parties are built inside the capture so their loggers bind to it.
+  const [, logs] = await withCapturedLogs(async () => {
+    const connA = party(ID_A, a.client, {});
+    const connB = party(ID_B, b.client, { publishWithoutRename: true });
+    connB.on("error", (err) => errorsB.push(err));
+    const syncA = connA.synchronize();
+    await expect.poll(() => files.has(`${DIR}/${ID_A}-hello.json`)).toBe(true);
+    await Promise.all([syncA, connB.synchronize()]);
+
+    expect(connB.peerId).toBe(ID_A);
+    expect(files.has(`${DIR}/${sentinel}`)).toBe(true);
+    expect(responsibleFilesOf(connB).has(sentinel)).toBe(true);
+
+    // B's loop lists its own lingering sentinel without reporting it.
+    const aGot = nextData(connA);
+    const bGot = nextData(connB);
+    connA.start();
+    connB.start();
+    await connB.send({ from: "b" });
+    expect(await aGot).toEqual({ from: "b" });
+    await connA.send({ from: "a" });
+    expect(await bGot).toEqual({ from: "a" });
+    await Promise.all([connA.close(), connB.close()]);
+  });
+
+  expect(errorsB).toEqual([]);
+  expect(files.has(`${DIR}/${sentinel}`)).toBe(false);
+  const warnings = logs.filter(
+    (entry) => entry.level === "WARN" && entry.message.includes(sentinel),
+  );
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0].message).toContain("Permission denied");
+});
+
 describe("a direct write that throws leaves its final name tracked for cleanup()", () => {
   test("the hello", async () => {
     const files = new Map<string, Buffer>();
@@ -360,7 +412,7 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
   });
 });
 
-describe("with the mode off, a rename answered 'no such file' names the option", () => {
+describe("with the mode off, a refused rename names the option", () => {
   const noSuchFile = (): Error =>
     Object.assign(new Error("_rename: No such file"), { code: 2 });
 
@@ -395,13 +447,55 @@ describe("with the mode off, a rename answered 'no such file' names the option",
     );
   });
 
-  test("a rename failing with any other status is reported as itself", async () => {
+  test.each([
+    {
+      refusal: "SFTP permission denied",
+      error: () =>
+        Object.assign(new Error("_rename: Permission denied"), { code: 3 }),
+      quoted: "with SFTP status 3 (_rename: Permission denied)",
+    },
+    {
+      refusal: "a folder's EPERM",
+      error: () =>
+        Object.assign(
+          new Error("EPERM: operation not permitted, rename 'a' -> 'b'"),
+          { code: "EPERM" },
+        ),
+      quoted: "(EPERM: operation not permitted, rename 'a' -> 'b')",
+    },
+    {
+      refusal: "the generic SFTP failure",
+      error: () => Object.assign(new Error("_rename: Failure"), { code: 4 }),
+      quoted: "with SFTP status 4 (_rename: Failure)",
+    },
+  ])(
+    "a rename refused with $refusal is quoted and names the option",
+    async ({ error, quoted }) => {
+      const files = new Map<string, Buffer>();
+      const refusal = error();
+      const a = recordingClient(files, { renameError: refusal });
+      const conn = party(ID_A, a.client, {});
+
+      const err = await conn.synchronize().then(
+        () => undefined,
+        (e: unknown) => e as Error,
+      );
+      expect(err?.message).toContain(
+        `renaming the temporary file this party had just written failed ${quoted}. ` +
+          "The server may not allow renames.",
+      );
+      expect(err?.message).toContain(DEFAULT_RENAME_REFUSED_GUIDANCE);
+      expect(err?.cause).toBe(refusal);
+    },
+  );
+
+  test("a rename failure that states its own next step is reported as itself", async () => {
     const files = new Map<string, Buffer>();
-    const failure = Object.assign(new Error("_rename: Failure"), { code: 4 });
-    const a = recordingClient(files, { renameError: failure });
+    const stalled = new TransportOperationStalledError("file rename stalled");
+    const a = recordingClient(files, { renameError: stalled });
     const conn = party(ID_A, a.client, {});
 
-    await expect(conn.synchronize()).rejects.toBe(failure);
+    await expect(conn.synchronize()).rejects.toBe(stalled);
   });
 });
 

@@ -39,6 +39,7 @@ import {
   UsageError,
   BilateralModeMismatchError,
   FrameSizeExceededError,
+  TransportPublishIndeterminateError,
   chainDetailCauses,
   markPeerWaitTimeout,
   markStatesItsOwnNextStep,
@@ -1555,7 +1556,7 @@ export class FileSyncRendezvous {
         // sentinel deleted. The peer tolerates its sentinel beside its hello
         // (waitForPeer) and in its message loop (isRecognizedLoopFile).
         await this.publishHello(scope.outboundPath, helloName, true);
-        await deps.client().delete(joiningPath);
+        await this.deleteOwnSentinel(joiningPath, joiningName);
       } else {
         await renameOwnTemp(
           deps.client(),
@@ -1585,6 +1586,31 @@ export class FileSyncRendezvous {
     deps.setHandshakeRole("initiator");
     deps.setRole("joiner");
     deps.setPeerId(peerId);
+  }
+
+  // The joiner's sentinel delete after a direct hello write. The hello is
+  // already visible and the partner may have read it, so a failed delete must
+  // not fail the rendezvous: the sentinel is left to cleanup() at close (delete
+  // mode), and this party's loop recognizes it by name meanwhile.
+  private async deleteOwnSentinel(
+    joiningPath: string,
+    joiningName: string,
+  ): Promise<void> {
+    const { deps } = this;
+    try {
+      await deps.client().delete(joiningPath);
+    } catch (err: unknown) {
+      if (err instanceof TransportPublishIndeterminateError) throw err;
+      if (!deps.options().retainFiles) deps.responsibleFiles.add(joiningName);
+      deps
+        .log()
+        .warn(
+          `[joiner] could not delete ${redactAndSanitizeForDisplay(joiningName)} ` +
+            `after writing this party's hello ` +
+            `(${redactAndSanitizeForDisplay(errorMessage(err))}); it is ` +
+            "removed when the exchange closes.",
+        );
+    }
   }
 
   // Symmetric hello-exchange rendezvous: this party writes its own hello, then

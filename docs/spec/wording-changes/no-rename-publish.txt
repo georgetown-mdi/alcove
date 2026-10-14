@@ -4,12 +4,14 @@
 - - -> The rows above describe the default publish.
 - - -> A party with `publish_without_rename` on writes no `temp-*.tmp` and no `temp-hello-*.tmp`: every row it would publish temp-then-rename it writes directly under the final name, and every such row tracked in `responsibleFiles` is tracked before the write rather than after it ([Publishing without rename](#publishing-without-rename)).
 - - -> The two temp rows still describe a partner without the option.
-- - -> The set also holds the peer's `<peerId>-joining.json`, by exact name: a lock joiner [publishing without rename](#publishing-without-rename) deletes its sentinel only after writing its hello, so the sentinel can still be listed once this party's loop has started; this party's own sentinel is not in the set.
+- - -> The set also holds both parties' `<id>-joining.json`, by exact name: a lock joiner [publishing without rename](#publishing-without-rename) deletes its sentinel only after writing its hello, so the peer's sentinel can still be listed once this party's loop has started, and this party's own outlives a delete that failed until `cleanup()` removes it.
 - - -> A joiner [publishing without rename](#publishing-without-rename) writes its hello directly and then deletes the sentinel, so the peer can list both until that delete lands.
 - - -> Under [`publish_without_rename`](#publishing-without-rename) every temp-then-rename write above is a direct write instead and is pre-tracked like the `lock`; a body another party reads is then complete under its final name only by the operator's stated assumption, and what absorbs one read early is the reader's own gate (I5a for the hello, the byte count for a message).
 - - -> A peer [publishing without rename](#publishing-without-rename) makes the name visible from the start of its write, so the read can also wait out a write in progress; the bound is the same, and a hello still torn when it expires fails the rendezvous as below.
-- - -> A server that does not allow renames answers each of these with `SSH_FX_NO_SUCH_FILE` (status 2), the same status a source that really vanished gets, so the refusal is terminal at the first attempt.
-- - -> Where the source is a temp this party has just written, the error says the server may not allow renames and names `publish_without_rename`, as the likely cause rather than a finding.
+- - -> The server observed refusing renames answered each of these with `SSH_FX_NO_SUCH_FILE` (status 2), the same status a source that really vanished gets, so its refusal is terminal at the first attempt.
+- - -> Another server may refuse with `SSH_FX_PERMISSION_DENIED` (3) or `SSH_FX_OP_UNSUPPORTED` (8), and a synced folder with `EPERM` or `EACCES`.
+- - -> Where the source is a temp this party has just written, every terminal rename failure states the failure's own status or message, says the server may not allow renames, and names `publish_without_rename` as the possible remedy rather than a finding.
+- - -> Two failures are reported as themselves instead: an undetermined publish, and a failure the transport has already classified with its own next step, such as a stalled operation or an exhausted reconnection budget.
 - - -> A party with that option on issues none of these renames ([Publishing without rename](#publishing-without-rename)).
 - - -> Publishing without rename
 - - -> `publish_without_rename` (`--publish-without-rename`) replaces every temp-then-rename publish in this model with a single `put` straight to the final name, for a party whose server refuses `rename`.
@@ -34,16 +36,24 @@
 - - -> The new window is the one after the hello is written and before the sentinel is deleted, in which the peer can list both.
 - - -> The peer tolerates that during rendezvous because the sentinel's id matches the hello it completes against (Phase 1, lock path), and in its message loop because the peer's sentinel is in the recognized-for-the-loop set (site 3).
 - - -> Both tolerances are the peer's own, whatever the peer's setting, which is what keeps the option per-party.
+- - -> A sentinel delete that fails does not fail the rendezvous, since the hello is already visible and the peer may have read it: the joiner warns, tracks the sentinel again so `cleanup()` removes it at close in delete mode, and its own loop recognizes it by name meanwhile.
 - - -> Requiring lockless rendezvous for the mode would have avoided the sentinel, but `lockless_rendezvous` is bilateral and advertised in the hello, so it would set the partner's configuration.
 - - -> **Write tracking.**
 - - -> In delete mode, a write the default publish tracks after its rename is tracked before its `put` instead, as the `lock` is ([I4a](#invariants)), because a `put` that throws can still leave the final name on disk.
 - - -> That covers the hello, the joining sentinel (released once the peer hello is deleted, as before), the joiner's hello, the lockless rendezvous ack (whose path the [terminal rendezvous rollback](#phase-1----terminal-rendezvous-failure) also holds before the write), and the message.
 - - -> The abort marker and the hello a refusing joiner advertises stay untracked, as they are by default, because both must persist for the peer to read.
 - - -> A message whose direct write throws is an unsettled publish, as an undetermined rename is ([I8](#invariants)): the file may be on disk in full and already read, so `send()` rejects with `TransportPublishIndeterminateError` and the clean-directory remedy, the NNN is spent, and the next `send()` refuses.
+- - -> Over SFTP, a `put` whose reply a dropped session lost is decided by what the re-dialed session finds under the final name: complete, the publish landed and the `put` resolves; short, the `put` is re-issued once; absent, longer, or unreadable, the publish is undetermined, as above ([SFTP_SESSION_RECOVERY.md](SFTP_SESSION_RECOVERY.md#re-issuing-an-operation)).
 - - -> **Limits.**
 - - -> A hard kill mid-`put` can leave a torn `<id>-hello.json`, the case the temp-then-rename hello publish exists to prevent.
 - - -> The next run's I5a gate fails it within the rendezvous read bound, and `--sweep-exchange-files` clears it.
 - - -> Whether a given sync service delays a direct-written file's size relative to its name more than a renamed file's is not measured; the byte-count gate and the I5a gate are what absorb it, and the I5a bound (six poll cycles under the wall-clock floor) has not been measured against such a write.
 - - -> Policing the sync, and detecting a partial file beyond those gates, are out of scope.
-- - -> A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put`, re-issued verbatim, and a message whose `put` rejects spends its sequence number the same way.
+- `list`/`get`/`exists`/`put` re-issue verbatim (`put`'s `flags:"w"` truncate-overwrite is effect-idempotent, and its bounded source is rebuilt from the retained Buffer/chunk list; a one-shot stream source is never re-issued). -> `list`/`get`/`exists` re-issue verbatim, and so does a `put` to a protocol temp (`temp-<uuid>.tmp` or `temp-hello-<uuid>.tmp`): its `flags:"w"` truncate-overwrite is effect-idempotent, no reader acts on a temp, and its bounded source is rebuilt from the retained Buffer/chunk list; a one-shot stream source is never re-issued.
+- - -> A `put` to any other name is a direct publish, whose re-issue is below.
+- - -> A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put` to the final name, and a reply lost to a drop is resolved by probing that destination, never by re-issuing the `put` blind.
+- - -> A destination present at the source's full byte length is the publish landed, and the `put` resolves without a re-issue.
+- - -> A destination present but shorter is a `put` that stopped short, on which no reader has acted (a message reader waits for the byte count its name declares, the hello reader retries a short read, and an ack or sentinel is zero-length), so the truncate-overwrite `put` is re-issued once.
+- - -> A destination absent, longer than the source, or that the probe could not read is rejected as `TransportPublishIndeterminateError`: in delete mode the partner may already have consumed it, and nothing the adapter can read separates that from a `put` that never landed.
+- - -> A message whose `put` rejects spends its sequence number the same way.
 - - -> A first attempt a server refuses with `SSH_FX_NO_SUCH_FILE`, which is how a server that does not allow renames answers, is not a re-issue: it propagates as itself, and core restates it naming that option.

@@ -3,7 +3,12 @@
 // the final name directly. docs/spec/FILE_SYNC.md, Publishing without rename.
 
 import { PUBLISH_WITHOUT_RENAME_KEY } from "../config/connection";
-import { TransportPublishIndeterminateError } from "../errors";
+import {
+  TransportPublishIndeterminateError,
+  UsageError,
+  errorMessage,
+  statesItsOwnNextStep,
+} from "../errors";
 import { redactPrivateKeyMaterial } from "../utils/sanitizeErrorForDisplay";
 import type { FileTransportClient } from "./fileSyncConnection";
 
@@ -16,18 +21,26 @@ export const DEFAULT_RENAME_REFUSED_GUIDANCE =
   `If it does not, set ${PUBLISH_WITHOUT_RENAME_KEY}: true in the ` +
   "connection options and run again.";
 
-// A server that refuses renames answers with "no such file": SFTP status 2
-// (SSH_FX_NO_SUCH_FILE), or ENOENT from a local folder. A source that really
-// vanished gets the same answer, so the message built from it hedges.
-function isNoSuchFileError(err: unknown): boolean {
+// How a failed rename is quoted in the refusal, following "failed". "No such
+// file" is SFTP status 2 (SSH_FX_NO_SUCH_FILE) or ENOENT from a local folder;
+// any other failure is quoted by its own status or code and message.
+function describeRenameFailure(err: unknown): string {
   const code = (err as { code?: unknown } | null | undefined)?.code;
-  return code === 2 || code === "ENOENT";
+  if (code === 2 || code === "ENOENT") return 'with "no such file"';
+  const message = errorMessage(err).replace(/\.+$/, "");
+  if (typeof code === "number") return `with SFTP status ${code} (${message})`;
+  if (typeof code === "string" && !message.includes(code))
+    return `with ${code} (${message})`;
+  return `(${message})`;
 }
 
 /**
  * Renames `tempPath`, which this party has just written, to `finalPath`. A
- * "no such file" answer is rethrown as an error naming the likely cause, a
- * server that does not allow renames, and ending on `guidance`.
+ * terminal failure is rethrown as an error quoting it, naming the possible
+ * cause, a server that does not allow renames, and ending on `guidance`. An
+ * undetermined publish, and a failure that already states its own next step
+ * (a stalled operation, an exhausted reconnection budget), are rethrown as
+ * themselves.
  *
  * @internal
  */
@@ -43,13 +56,14 @@ export async function renameOwnTemp(
   } catch (err: unknown) {
     if (
       err instanceof TransportPublishIndeterminateError ||
-      !isNoSuchFileError(err)
+      err instanceof UsageError ||
+      statesItsOwnNextStep(err)
     )
       throw err;
     throw new Error(
       `${redactPrivateKeyMaterial(finalName)} could not be published: ` +
         "renaming the temporary file this party had just written failed " +
-        'with "no such file". The server may not allow renames. ' +
+        `${describeRenameFailure(err)}. The server may not allow renames. ` +
         (guidance ?? DEFAULT_RENAME_REFUSED_GUIDANCE),
       { cause: err },
     );

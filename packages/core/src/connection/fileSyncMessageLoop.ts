@@ -135,10 +135,11 @@ export function resolveUnexpectedFilesPolicy(options: {
 // and, for the unbounded-name cases, anything matching the terminal grammar
 // token -- a message byte count (own writes only; a peer message is taken by
 // the scan above) or `ack` (either writer's rendezvous or message ack).
-// The peer's `<peerId>-joining.json` is recognized by exact name: a lock
+// Both parties' `<id>-joining.json` are recognized by exact name: a lock
 // joiner publishing without rename deletes its sentinel only after its hello
-// is written, so the sentinel can still be listed once this party's loop has
-// started. This party's own sentinel is never recognized.
+// is written, so the peer's sentinel can still be listed once this party's
+// loop has started, and this party's own outlives a delete that failed until
+// cleanup() removes it.
 //
 // Anchored to the grammar discriminant, not a bare `<id>-*` glob, so a
 // conflict copy or partial download (e.g.
@@ -198,7 +199,11 @@ export function isRecognizedLoopFile(
     name === `${peerId}-${selfId}${LOCK_SUFFIX}`
   )
     return true;
-  if (name === `${peerId}${JOINING_SUFFIX}`) return true;
+  if (
+    name === `${peerId}${JOINING_SUFFIX}` ||
+    name === `${selfId}${JOINING_SUFFIX}`
+  )
+    return true;
   const stem = name.slice(0, -".json".length);
   const token = stem.slice(stem.lastIndexOf("-") + 1);
   // Our own messages hold a variable counter/byte-count terminal, so they
