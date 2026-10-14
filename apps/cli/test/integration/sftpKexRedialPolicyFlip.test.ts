@@ -12,7 +12,12 @@ import { withCapturedLogs } from "@alcove/core/testing";
 
 import { startInProcessSftpServer } from "../sftpServer";
 import { serverAuth } from "../sftpServer/testContext";
-import { APPENDED_MARKERS, createKexinitRecordingRelay } from "./kexOfferWire";
+import {
+  APPENDED_MARKERS,
+  createKexinitRecordingRelay,
+  SSH_MSG_DISCONNECT,
+  type RelayedDial,
+} from "./kexOfferWire";
 import type { KexPrimitive } from "../../src/connection/sftpKexCapability";
 import { inProcessOnly } from "../sftpBackendGate";
 import { waitFor } from "../support";
@@ -159,6 +164,19 @@ function expectOneConstrainedOfferThroughout(offers: string[][]): void {
   for (const offer of offers.slice(1)) expect(offer).toEqual(offers[0]);
 }
 
+/**
+ * A dial ended before the server's identification reached it sends
+ * SSH_MSG_DISCONNECT first and offers nothing
+ * (backendAgnostic/kexOfferRelay.test.ts): no policy refused it, so it counts
+ * toward neither the refusals nor the offers these arms read. Any other first
+ * packet is one this relay cannot account for.
+ */
+function expectEveryDialOfferedOrDisconnected(dials: RelayedDial[]): void {
+  for (const dial of dials)
+    if (dial.firstMessage !== undefined && dial.offer === undefined)
+      expect(dial.firstMessage).toBe(SSH_MSG_DISCONNECT);
+}
+
 inProcessOnly(
   "a cycle-start re-dial into a key exchange this process cannot perform ends " +
     "the exchange at once, naming the primitive",
@@ -285,6 +303,7 @@ inProcessOnly(
       // forced verdict this arm classifies on.
       expect(outcome.cycleStartRedials).toBeGreaterThanOrEqual(1);
       expectOneConstrainedOfferThroughout(outcome.offersUpToTheFlip);
+      expectEveryDialOfferedOrDisconnected(relay.dials);
       // And that cycle was ended rather than skipped -- the two are the branches
       // this leg separates, and the skip promises a next tick that never comes.
       expect(
@@ -374,20 +393,29 @@ inProcessOnly(
           const dialsBefore = relay.accepted();
           await waitFor(() => relay.accepted() > dialsBefore, {
             what: "a cycle-start re-dial through the relay",
+            timeoutMs: 30_000,
           });
 
           relay.pointAt(restricted);
           // More than one cycle has to meet the flipped policy: a single one
           // could be an exchange that ended, and what this measures is a loop
-          // still ticking after the refusal.
+          // still ticking after the refusal. Counted as offers the restricted
+          // listener received, since a dial that offered nothing was not refused.
+          const offersRefused = (): number =>
+            relay.dials.filter(
+              (dial) =>
+                dial.upstreamPort === restricted.port &&
+                dial.offer !== undefined,
+            ).length;
+          // An exchange ended here leaves nothing to wait for, so report what
+          // ended it rather than spending the whole bound on a tick that cannot
+          // come.
+          const unlessEnded = (met: () => boolean) => (): boolean => {
+            if (failures.length > 0) throw failures[0] as Error;
+            return met();
+          };
           await waitFor(
-            () => {
-              // An exchange ended here leaves nothing to wait for, so report
-              // what ended it rather than spending the whole bound on a tick
-              // that cannot come.
-              if (failures.length > 0) throw failures[0] as Error;
-              return restricted.connections() >= 2;
-            },
+            unlessEnded(() => offersRefused() >= 2),
             {
               what: "two cycles refused by the flipped policy",
               timeoutMs: 30_000,
@@ -395,11 +423,16 @@ inProcessOnly(
           );
           relay.pointAt(srv.handle);
 
-          const message = new Promise((resolve) =>
-            receiver.once("data", resolve),
-          );
+          let received: unknown;
+          receiver.once("data", (data: unknown) => (received = data));
           await sender.send({ message: "past the refused cycles" });
-          const received = await message;
+          await waitFor(
+            unlessEnded(() => received !== undefined),
+            {
+              what: "the message sent past the refused cycles",
+              timeoutMs: 30_000,
+            },
+          );
           receiver.stop();
           return received;
         },
@@ -413,24 +446,26 @@ inProcessOnly(
       // Each refused cycle told the operator what it did and what happens next,
       // over ssh2's own message: with nothing unavailable there is no primitive
       // to name and no diagnostic to raise.
-      const skipped = logs.filter((entry) =>
-        entry.message.includes("ephemeral SFTP re-dial failed"),
+      const refused = logs.filter(
+        (entry) =>
+          entry.message.includes("ephemeral SFTP re-dial failed") &&
+          entry.message.includes("no matching key exchange algorithm"),
       );
-      expect(skipped.length).toBeGreaterThanOrEqual(2);
-      expect(skipped[0].level).toBe("WARN");
-      expect(skipped[0].message).toContain(
-        "skipping this poll cycle and retrying on the next tick",
-      );
-      expect(skipped[0].message).toContain(
-        "no matching key exchange algorithm",
-      );
-      expect(skipped[0].message).not.toContain("X25519");
+      expect(refused.length).toBeGreaterThanOrEqual(2);
+      for (const entry of refused) {
+        expect(entry.level).toBe("WARN");
+        expect(entry.message).toContain(
+          "skipping this poll cycle and retrying on the next tick",
+        );
+        expect(entry.message).not.toContain("X25519");
+      }
       // The wire this arm shares with the one above: the operator's own
       // algorithms.kex withheld on every dial what the forced verdict withholds
       // there, so the refusal both arms classify is the same refusal of the same
       // offer.
       expect(relay.offers.length).toBeGreaterThanOrEqual(2);
       expectOneConstrainedOfferThroughout(relay.offers);
+      expectEveryDialOfferedOrDisconnected(relay.dials);
     } finally {
       receiver.stop();
       relay.pointAt(srv.handle);
