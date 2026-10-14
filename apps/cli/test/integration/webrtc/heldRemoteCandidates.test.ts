@@ -242,8 +242,23 @@ test.each(["acceptor", "inviter"] as const)(
         return peer;
       },
     });
-    const [session, partnerSession] = await Promise.all([underTest, partner]);
+    const settled = await Promise.allSettled([underTest, partner]);
     const openedAt = performance.now();
+    const [underTestResult, partnerResult] = settled;
+    if (
+      underTestResult.status === "rejected" ||
+      partnerResult.status === "rejected"
+    ) {
+      for (const result of settled)
+        if (result.status === "fulfilled") await result.value.close();
+      const firstRejection = settled.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      throw firstRejection?.reason;
+    }
+    const session = underTestResult.value;
+    const partnerSession = partnerResult.value;
     try {
       if (timeline.descriptionAt === undefined)
         throw new Error("the partner's description never reached the party");
@@ -254,7 +269,7 @@ test.each(["acceptor", "inviter"] as const)(
           (timeline.answerSentAt ?? Infinity) - timeline.descriptionAt,
         ).toBeLessThan(OPEN_BOUND_MS);
       }
-      const report = await readIceStats(peers[0]);
+      const report = await readIceStats(peers[peers.length - 1]);
       expect(report?.selected?.remoteType).toBe("srflx");
     } finally {
       await session.close();
