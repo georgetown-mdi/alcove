@@ -128,3 +128,32 @@ box, behind a self-signed certificate. Once this instance is serving:
 `install.sh` ends by running `verify.sh`, which is the only step that says
 whether the result carries an exchange rather than merely starting. Read its
 output; a relay that starts and cannot allocate looks identical from the console.
+
+## Demo box: start and stop
+
+The demo box is the EC2 instance `sftp-demo` in us-west-2. It has the demo SFTP
+server and is not the relay.
+
+- **Env file.** Copy [`env.example`](env.example) to `env` (gitignored) and set
+  the instance id, region `us-west-2`, and profile `alcove`. The profile has no
+  default region, so the region must be in the file.
+- **Start.** `infra/relay/aws/demo-up.sh` starts the instance and prints its
+  public address. There is no DNS name, and the address changes on every start,
+  so give the partner the printed address each time.
+- **Port 22.** The instance's security group `sftp-demo` must allow inbound TCP
+  22 from anywhere so a partner can connect. This is a standing rule, added once
+  (not yet run):
+
+  ```
+  aws ec2 authorize-security-group-ingress --profile alcove --region us-west-2 \
+    --group-name sftp-demo --protocol tcp --port 22 --cidr 0.0.0.0/0
+  ```
+
+- **Accounts.** `usera` and `userb` log in by password only and get SFTP only,
+  chrooted under `/srv/sftp`. The passwords are not in the repository.
+- **Many keys in the ssh agent.** A client with several keys can fail with "Too
+  many authentication failures" before the password prompt. The box's sshd has
+  `PubkeyAuthentication no` in its `Match Group sftpusers` block to prevent
+  this; it is a box-local setting, so a rebuilt box needs it again.
+- **Stop.** `infra/relay/aws/demo-down.sh` stops the instance. That ends
+  instance-hour charges only; the root volume still bills.
