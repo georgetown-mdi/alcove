@@ -292,7 +292,11 @@ describe("the acceptor seat's dial of an invitation endpoint", () => {
       generateSharedSecret(),
     );
     const urls = config.iceServers?.flatMap((server) => server.urls);
-    expect(urls).toEqual([...DEFAULT_STUN_ENTRY.urls, ...OWN.stun, ...OWN.turn]);
+    expect(urls).toEqual([
+      ...DEFAULT_STUN_ENTRY.urls,
+      ...OWN.stun,
+      ...OWN.turn,
+    ]);
   });
 
   test("with neither is built with the unchanged configuration", async () => {

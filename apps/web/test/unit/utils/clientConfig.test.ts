@@ -201,8 +201,14 @@ describe("parseClientConfig", () => {
   });
 
   test.each([
-    [{ DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443" }, /VITE_DEFAULT_RELAY_REGISTRAR_URL: is not set/],
-    [{ DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org" }, /VITE_DEFAULT_RELAY_TURN_URL: is not set/],
+    [
+      { DEFAULT_RELAY_TURN_URL: "turns:turn.example.org:443" },
+      /VITE_DEFAULT_RELAY_REGISTRAR_URL: is not set/,
+    ],
+    [
+      { DEFAULT_RELAY_REGISTRAR_URL: "https://registrar.example.org" },
+      /VITE_DEFAULT_RELAY_TURN_URL: is not set/,
+    ],
     [
       {
         DEFAULT_RELAY_TURN_URL: "stun:stun.example.org:3478",

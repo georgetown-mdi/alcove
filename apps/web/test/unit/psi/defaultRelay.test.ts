@@ -73,10 +73,14 @@ describe("relayWithDefaultForRun", () => {
 
   test("contacts no registrar when the build names no default relay", async () => {
     const enroll = answering({ kind: "refused", status: 409 });
-    const run = await relayWithDefaultForRun(generateSharedSecret(), undefined, {
-      setting: () => undefined,
-      enroll,
-    });
+    const run = await relayWithDefaultForRun(
+      generateSharedSecret(),
+      undefined,
+      {
+        setting: () => undefined,
+        enroll,
+      },
+    );
     expect(enroll).not.toHaveBeenCalled();
     expect(run).toEqual({ relay: undefined, defaultRelayNotEnrolled: false });
   });

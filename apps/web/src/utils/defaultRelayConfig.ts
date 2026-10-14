@@ -50,12 +50,15 @@ export function defaultRelayConfigProblems(
   )
     problems.push({
       variable: "DEFAULT_RELAY_REGISTRAR_URL",
-      message: "must be an https:// url naming only a host and an optional port",
+      message:
+        "must be an https:// url naming only a host and an optional port",
     });
   if ((turnUrl === "") !== (registrarUrl === ""))
     problems.push({
       variable:
-        turnUrl === "" ? "DEFAULT_RELAY_TURN_URL" : "DEFAULT_RELAY_REGISTRAR_URL",
+        turnUrl === ""
+          ? "DEFAULT_RELAY_TURN_URL"
+          : "DEFAULT_RELAY_REGISTRAR_URL",
       message: `is not set; ${PAIRING}`,
     });
   return problems;
