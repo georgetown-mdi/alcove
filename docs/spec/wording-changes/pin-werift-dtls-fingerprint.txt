@@ -1,6 +1,5 @@
 - - -> **werift refuses a DTLS certificate whose fingerprint the SDP did not name.**
-- - -> The CLI's `webrtc` channel adds no application-layer encryption, so the data channel is protected by the DTLS session alone, and a session to any certificate other than the one a description's `a=fingerprint` line names must not complete.
+- - -> The CLI's `webrtc` channel adds no application-layer encryption ([CHANNEL_SECURITY.md](CHANNEL_SECURITY.md#which-channels-request-it)), so the data channel is protected by the DTLS session alone, and a session to any certificate other than the one a description's `a=fingerprint` line names must not complete.
 - - -> Driven with two real peers on loopback, one side's description handed over with its fingerprint value changed in one digit, werift 0.25.0 ends with a peer's `connectionState` at `failed`, no data channel opened and no message delivered, whichever of the offer and the answer is changed; the same pair with the descriptions unaltered opens both channels and delivers a message each way (`test/integration/webrtc/dtlsFingerprint.test.ts`).
 - - -> Run `npm run test:integration:webrtc -w apps/cli -- test/integration/webrtc/dtlsFingerprint.test.ts` for the fingerprint check.
-- - -> It negotiates two real werift peers with one side's `a=fingerprint` altered, in each direction, and holds that neither channel opens and no message is delivered, and that the same pair unaltered delivers a message each way.
 - - -> A bump that accepted a certificate the description did not name reddens there.
