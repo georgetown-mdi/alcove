@@ -12,7 +12,8 @@ Authorization header: "Bearer <token>", the relay-owner token, which enrolls
 the exchange has registered, which rotates (PUT) and revokes (DELETE). Where
 ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is "on", a POST with no
 Authorization header enrolls too, under a per-address rate limit, a lapse the
-registrar fixes, and a ceiling on such rows not yet lapsed. Any other request
+registrar fixes, a cap on the rows one address holds not yet lapsed, and a
+ceiling on all such rows. Any other request
 is answered 401 before its body is parsed. Authentication reads that header and nothing else, and no answer allows
 credentials, so a browser's cookies never authenticate a call. A write is one
 transaction through relay_table.py beside this file, the secrets table's one
@@ -65,7 +66,7 @@ NAME = os.environ.get("ALCOVE_RELAY_REGISTRAR_NAME") or ""
 FRONT_PORT = os.environ.get("ALCOVE_RELAY_REGISTRAR_FRONT_PORT") or "8445"
 TOKENLESS_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT") or "off"
 # README.md, Enrollment without a token, The ceiling, derives the default.
-DEFAULT_TOKENLESS_CEILING = 140
+DEFAULT_TOKENLESS_CEILING = 1800
 TOKENLESS_CEILING_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING") or str(
     DEFAULT_TOKENLESS_CEILING
 )
@@ -126,6 +127,8 @@ TOKENLESS_LIFETIME_SECONDS = 4200
 TOKENLESS_ENROLLMENTS_PER_WINDOW = 20
 TOKENLESS_WINDOW_SECONDS = 600
 MAX_TRACKED_ADDRESSES = 4096
+# Rows enrolled without a token and not yet lapsed that one client key holds.
+TOKENLESS_ROWS_PER_CLIENT = 10
 COUNTERS_WRITE_SECONDS = 10
 PROXY_HEADER_SECONDS = 5
 # The longest PROXY protocol version 1 header, its CRLF included.
@@ -146,7 +149,16 @@ TOKENLESS_CEILING_REFUSAL = (
     "the relay holds as many exchanges enrolled without a token as it serves; try again in %d s, or run the "
     "exchange without this relay"
 )
-COUNTER_NAMES = ("tokenless_enrollments", "rate_limit_refusals", "tokenless_ceiling_refusals")
+TOKENLESS_CLIENT_CAP_REFUSAL = (
+    "this address holds %d exchanges enrolled without a token that have not lapsed; try again in %d s, or run "
+    "the exchange without this relay"
+)
+COUNTER_NAMES = (
+    "tokenless_enrollments",
+    "rate_limit_refusals",
+    "client_cap_refusals",
+    "tokenless_ceiling_refusals",
+)
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
 
@@ -258,6 +270,21 @@ def client_key(address):
     return str(parsed)
 
 
+def site_key(address):
+    """The key the cap on each client's rows counts `address` under: an IPv4
+    address, or the /48 holding an IPv6 one, the prefix one site is commonly
+    assigned (README.md, Enrollment without a token, The cap on each client)."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return UNKNOWN_CLIENT
+    if parsed.version == 6 and parsed.ipv4_mapped is not None:
+        return str(parsed.ipv4_mapped)
+    if parsed.version == 6:
+        return str(ipaddress.ip_network((parsed, 48), strict=False))
+    return str(parsed)
+
+
 def is_loopback(address):
     """Whether `address`, the socket's or the PROXY header's, is this host's own."""
     try:
@@ -303,6 +330,35 @@ class EnrollmentLimiter:
     @staticmethod
     def wait(started, now):
         return max(1, math.ceil(started + TOKENLESS_WINDOW_SECONDS - now))
+
+
+class TokenlessRowClients:
+    """The client key that enrolled each row without a token, held in memory
+    until the row lapses or the registrar revokes it, and written nowhere. A
+    write reads and changes it under the registrar's table lock."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        # exchange id -> (client key, fixed lapse), in the order enrolled, so
+        # the lapsed ones are first.
+        self.rows = collections.OrderedDict()
+
+    def held_by(self, client, now):
+        """The (exchange id, fixed lapse) of each row `client` enrolled that
+        has not lapsed at `now`, a Unix time."""
+        with self.lock:
+            while self.rows and next(iter(self.rows.values()))[1] <= now:
+                self.rows.popitem(last=False)
+            return [(exchange_id, lapse) for exchange_id, (holder, lapse) in self.rows.items() if holder == client]
+
+    def add(self, exchange_id, client, fixed_lapse_at):
+        with self.lock:
+            self.rows.pop(exchange_id, None)
+            self.rows[exchange_id] = (client, fixed_lapse_at)
+
+    def forget(self, exchange_id):
+        with self.lock:
+            self.rows.pop(exchange_id, None)
 
 
 class Counters:
@@ -764,12 +820,38 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return
         now = time.time()
         fixed_lapse_at = int(now) + TOKENLESS_LIFETIME_SECONDS
-        try:
-            enrollment = self.write_table(
-                lambda conn: relay_table.enroll(
-                    conn, REALM, exchange_id, key, None, now, from_this_host, fixed_lapse_at, self.server.ceiling
-                )
+        client = site_key(self.client_address[0])
+        row_clients = self.server.row_clients
+
+        def write(conn):
+            registration = relay_table.enroll(
+                conn,
+                REALM,
+                exchange_id,
+                key,
+                None,
+                now,
+                from_this_host,
+                fixed_lapse_at,
+                self.server.ceiling,
+                row_clients.held_by(client, now),
+                TOKENLESS_ROWS_PER_CLIENT,
             )
+            if registration["outcome"] == "registered":
+                row_clients.add(exchange_id, client, fixed_lapse_at)
+            return registration
+
+        try:
+            enrollment = self.write_table(write)
+        except relay_table.ClientCapReached as full:
+            self.server.counters.add("client_cap_refusals")
+            wait = max(1, math.ceil(full.earliest_lapse - time.time()))
+            self.send_json(
+                429,
+                {"error": TOKENLESS_CLIENT_CAP_REFUSAL % (TOKENLESS_ROWS_PER_CLIENT, wait)},
+                (("Retry-After", str(wait)),),
+            )
+            return
         except relay_table.CeilingReached as full:
             self.server.counters.add("tokenless_ceiling_refusals")
             wait = max(1, math.ceil(full.earliest_lapse - time.time()))
@@ -826,9 +908,14 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         if exchange_id is None:
             return
         now = time.time()
+
+        def forgetting(revocation):
+            self.server.row_clients.forget(exchange_id)
+            return revocation
+
         if credential is TOKEN:
             closing = self.discard_body()
-            revocation = self.write_table(lambda conn: relay_table.revoke(conn, exchange_id), closing)
+            revocation = self.write_table(lambda conn: forgetting(relay_table.revoke(conn, exchange_id)), closing)
             authority = AUTHORITY_TOKEN
         else:
             closing = ()
@@ -841,7 +928,9 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
 
             if not self.proof_holds(exchange_id, holds):
                 return
-            revocation = self.write_table(lambda conn: relay_table.revoke_with_proof(conn, exchange_id, holds))
+            revocation = self.write_table(
+                lambda conn: forgetting(relay_table.revoke_with_proof(conn, exchange_id, holds))
+            )
             authority = AUTHORITY_PROOF
         if revocation is None:
             return
@@ -886,6 +975,7 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
         self.handler_slots = shared.handler_slots
         self.busy_slots = shared.busy_slots
         self.limiter = shared.limiter
+        self.row_clients = shared.row_clients
         self.counters = shared.counters
         self.tokenless = shared.tokenless
         self.ceiling = shared.ceiling
@@ -942,6 +1032,7 @@ def shared_state(token, tokenless, ceiling, started):
         handler_slots=threading.BoundedSemaphore(MAX_HANDLERS),
         busy_slots=threading.BoundedSemaphore(MAX_BUSY_ANSWERS),
         limiter=EnrollmentLimiter(),
+        row_clients=TokenlessRowClients(),
         counters=Counters(COUNTERS_FILE, started),
         tokenless=tokenless,
         ceiling=ceiling,
@@ -1002,8 +1093,14 @@ def main():
     if shared.tokenless:
         sys.stdout.write(
             "enrollment without a token is on: %d per address in %d s, each lapsing %d s after it is made, "
-            "at most %d not yet lapsed\n"
-            % (TOKENLESS_ENROLLMENTS_PER_WINDOW, TOKENLESS_WINDOW_SECONDS, TOKENLESS_LIFETIME_SECONDS, shared.ceiling)
+            "at most %d not yet lapsed from one address and %d in all\n"
+            % (
+                TOKENLESS_ENROLLMENTS_PER_WINDOW,
+                TOKENLESS_WINDOW_SECONDS,
+                TOKENLESS_LIFETIME_SECONDS,
+                TOKENLESS_ROWS_PER_CLIENT,
+                shared.ceiling,
+            )
         )
     sys.stdout.write("Alcove relay registrar listening on port %d\n" % server.server_address[1])
     sys.stdout.flush()

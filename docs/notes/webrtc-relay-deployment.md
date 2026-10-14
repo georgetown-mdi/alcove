@@ -634,7 +634,9 @@ without a token. A revocation writes the same
 line with `outcome=revoked`. No registrar line names the
 caller's address, the key, the token, or the proof. The rate limit on
 enrollment without a token holds each enrolling address in the registrar's
-memory until its window ends, at most 600 s, and writes it nowhere.
+memory until its window ends, at most 600 s, and the cap on each client's
+rows holds it until the last row that address enrolled lapses, 70 minutes
+after that enrollment; neither writes it anywhere.
 `scripts/relay-exchange-keys.test.mjs` holds the format, the outcomes, and the
 absence of any address, key, token or proof in the whole journal across
 registrations, revocations, refusals and a connection error.

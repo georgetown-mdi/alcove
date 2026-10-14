@@ -14,9 +14,14 @@
 - - -> **The rate limit.**
 - - -> The registrar limits enrollments without a token from each client address within a window, and answers one past the limit 429 with `Retry-After`, the seconds until the window ends, writing nothing.
 - - -> Its values are the registrar's (`infra/relay/README.md`, Enrollment without a token).
+- - -> **The cap on each client.**
+- - -> The registrar holds at most a set number of rows enrolled without a token that have not lapsed for each client address, and answers an enrollment of an id not yet held past it 429 with `Retry-After`, the seconds until the first of that address's rows lapses, writing nothing; an enrollment naming the key an id already holds is still answered 200.
+- - -> The cap is a small fraction of the ceiling below, so one address cannot fill the ceiling alone.
+- - -> Its value, and the prefix an IPv6 address counts under, are the registrar's (`infra/relay/README.md`, Enrollment without a token).
 - - -> **The ceiling.**
 - - -> The registrar holds at most a set number of rows enrolled without a token that have not lapsed, and answers an enrollment of an id not yet held past it 503 with `Retry-After`, the seconds until the first of those rows lapses, writing nothing; an enrollment naming the key an id already holds is still answered 200.
-- - -> Its value, derived from the relay's allocation quota, is the registrar's (`infra/relay/README.md`, Enrollment without a token).
+- - -> Its value, derived from what each row adds to the relay's authentication of every credential, is the registrar's (`infra/relay/README.md`, Enrollment without a token).
+- - -> Many addresses, each at its cap, can still reach it.
 - - -> At the ceiling, a browser run that could not enroll dials without the default relay, by STUN alone, until rows lapse.
 - - -> **The exchange id.**
 - - -> Any id in the registrar's id alphabet.

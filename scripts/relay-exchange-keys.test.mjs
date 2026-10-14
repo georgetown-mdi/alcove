@@ -3499,6 +3499,149 @@ describe.skipIf(runningAsRoot)(
       expect(afterRevoke.status, afterRevoke.text).toBe(200);
     });
 
+    it("answers 429 past the cap on one address's rows, writing nothing, still answers its held key 200, and counts the refusal", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 2,
+        COUNTERS_WRITE_SECONDS: 0.2,
+      });
+      const from = (address, id, key) =>
+        callThroughFront(
+          frontPort,
+          proxyHeaderFor(address),
+          "POST",
+          `/exchanges/${id}`,
+          keyBody(key),
+        );
+      for (const [id, key] of [
+        ["exchange-1", KEY_A],
+        ["exchange-2", KEY_B],
+      ]) {
+        const response = await from("203.0.113.7", id, key);
+        expect(response.status, response.text).toBe(200);
+      }
+      const mappingAtCap = host.mapping();
+      const rowsAtCap = host.rows();
+      const refused = await from("203.0.113.7", "exchange-3", KEY_C);
+      expect(refused.status).toBe(429);
+      const wait = Number(refused.headers["retry-after"]);
+      expect(wait).toBeGreaterThanOrEqual(1);
+      expect(wait).toBeLessThanOrEqual(TOKENLESS_LIFETIME_SECONDS);
+      expect(refused.headers["access-control-expose-headers"]).toBe(
+        "Retry-After",
+      );
+      expect(JSON.parse(refused.text).error).toBe(
+        `this address holds 2 exchanges enrolled without a token that have not lapsed; try again in ${wait} s, or run the exchange without this relay`,
+      );
+      expect(host.mapping()).toEqual(mappingAtCap);
+      expect(host.rows()).toEqual(rowsAtCap);
+
+      const again = await from("203.0.113.7", "exchange-1", KEY_A);
+      expect(again.status, again.text).toBe(200);
+      expect(JSON.parse(again.text).message).toContain("nothing changed");
+
+      const otherClient = await from("198.51.100.9", "exchange-3", KEY_C);
+      expect(otherClient.status, otherClient.text).toBe(200);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+        "exchange-3",
+      ]);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "3",
+          rate_limit_refusals: "0",
+          client_cap_refusals: "1",
+          tokenless_ceiling_refusals: "0",
+        }),
+      );
+      expect(log.stderr).not.toContain("203.0.113.7");
+      expect(log.stderr).not.toContain("198.51.100.9");
+    });
+
+    it("frees a slot under an address's cap once one of its rows is revoked or lapses", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 1,
+        TOKENLESS_LIFETIME_SECONDS: 3,
+      });
+      const first = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const atCap = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(atCap.status).toBe(429);
+      expect(Number(atCap.headers["retry-after"])).toBeLessThanOrEqual(3);
+      const revoked = await proven(port, "DELETE", "exchange-1", KEY_A);
+      expect(revoked.status, revoked.text).toBe(200);
+      const afterRevoke = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(afterRevoke.status, afterRevoke.text).toBe(200);
+
+      const stillAtCap = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(stillAtCap.status).toBe(429);
+      await new Promise((resolveWait) =>
+        setTimeout(
+          resolveWait,
+          Math.max(
+            0,
+            Date.parse(JSON.parse(afterRevoke.text).lapsesAt) - Date.now(),
+          ) + 1100,
+        ),
+      );
+      const afterLapse = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(afterLapse.status, afterLapse.text).toBe(200);
+    });
+
+    it("counts an IPv6 address under its /48 for the cap on rows", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(host, {
+        TOKENLESS_ROWS_PER_CLIENT: 1,
+      });
+      const from = (address, id, key) =>
+        callThroughFront(
+          frontPort,
+          `PROXY TCP6 ${address} ::1 40000 443\r\n`,
+          "POST",
+          `/exchanges/${id}`,
+          keyBody(key),
+        );
+      const first = await from("2001:db8:1:1::7", "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const sameSite = await from("2001:db8:1:2::7", "exchange-2", KEY_B);
+      expect(sameSite.status).toBe(429);
+      const otherSite = await from("2001:db8:2:1::7", "exchange-2", KEY_B);
+      expect(otherSite.status, otherSite.text).toBe(200);
+    });
+
+    it("holds the ceiling across addresses each under its own cap", async () => {
+      const host = fixtureHost();
+      const { frontPort } = await startOpenRegistrar(
+        host,
+        { TOKENLESS_ROWS_PER_CLIENT: 2, COUNTERS_WRITE_SECONDS: 0.2 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "5" },
+      );
+      const statuses = [];
+      for (let n = 0; n < 4; n += 1) {
+        for (let m = 0; m < 2; m += 1) {
+          const response = await callThroughFront(
+            frontPort,
+            proxyHeaderFor(`203.0.113.${n + 1}`),
+            "POST",
+            `/exchanges/exchange-${n}-${m}`,
+            keyBody(`${n}${m}`.repeat(32)),
+          );
+          statuses.push(response.status);
+        }
+      }
+      expect(statuses).toEqual([200, 200, 200, 200, 200, 503, 503, 503]);
+      expect(host.mapping()).toHaveLength(5);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "5",
+          client_cap_refusals: "0",
+          tokenless_ceiling_refusals: "3",
+        }),
+      );
+    });
+
     it("refuses to start with a ceiling that is not a whole number of at least 1", () => {
       const host = fixtureHost();
       const result = spawnSync("python3", [join(relay, "registrar.py")], {

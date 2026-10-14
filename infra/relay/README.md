@@ -467,7 +467,9 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   request line, is replaced by a fixed placeholder, since it could hold a key
   sent in the wrong place. Neither the token, a key, nor the caller's address
   is logged. The rate limit below holds each address that enrolled without a
-  token in memory, until its window ends, and writes it nowhere.
+  token in memory until its window ends, and the cap on each client's rows
+  until the last row that address enrolled lapses; neither writes it
+  anywhere.
 
 ### Enrollment without a token
 
@@ -523,56 +525,94 @@ start: to turn it off, set it to `off` and
   Retries) sends a request that gets no answer, or a 429, three times in
   all, so 20 in 10 minutes -- the length of the inviter's wait -- admits
   about ten exchanges set up at once behind one address, such as a facility's
-  shared network address, or three whose every request was retried. An
-  address taking all 20 holds at most about 160 rows at once, at 20 a window
-  over a row's 81 minutes.
+  shared network address, or three whose every request was retried. The cap
+  on each client, below, bounds the rows an address holds.
 - **The client's address.** On the registrar's own port, the connection's
   address. Through the front, the address in its PROXY header, since every
   connection the front passes comes from `127.0.0.1` (Where it listens,
-  above). An IPv6 address counts as its /64, which one host commonly holds
-  whole.
+  above). For the rate limit, an IPv6 address counts as its /64, which one
+  host commonly holds whole; for the cap on each client, below, as its /48.
+- **The cap on each client.** At most 10 rows enrolled without a token and
+  not yet lapsed are held for one client address
+  (`TOKENLESS_ROWS_PER_CLIENT`), counted inside the enrollment's own write.
+  Past it, an enrollment of an id not yet held is answered 429 with
+  `Retry-After`, the seconds until the first of that address's rows lapses,
+  and nothing is written; an enrollment naming the key an id already holds
+  is still answered 200. A row revoked, or lapsed, no longer counts.
+  - **Why 10.** An arbitrary working value, raised on request. A row lives
+    70 minutes whether its exchange relays or not, so the cap is the number
+    of exchanges one address can set up within any 70 minutes. An exchange
+    holds one row whichever of its parties enrolls it, so 10 admits the
+    about ten exchanges set up at once behind a facility's one shared
+    address that the rate limit above is sized for. One address holds at
+    most 10 / 1800 of the ceiling below, about half of one percent.
+  - **IPv6.** The cap counts an IPv6 address as its /48, not its /64: a
+    site is commonly assigned a /56 or a /48, so counting /64s would give
+    one holder 256 to 65,536 caps. A site on IPv6 then shares one cap
+    across its /48, as a facility on IPv4 shares one across its address.
+    The reference deployment's names are DNS A records only
+    ([aws/provision.md](aws/provision.md)), so there every client reaches
+    the registrar, and is counted, by its IPv4 address.
+  - **Held in memory.** Which address enrolled each row is held in the
+    registrar's memory until the row lapses or the registrar revokes it,
+    and written nowhere. A restart of the registrar clears it, so after one
+    an address can enroll up to 10 more while its earlier rows still hold;
+    the ceiling below still bounds them all.
 - **How many addresses.** At most 4096 addresses' windows are held at once
   (`MAX_TRACKED_ADDRESSES`, an arbitrary working value). With all of them
   taken, an enrollment from another address is answered 429, until the
   oldest window ends, and writes nothing.
-- **The ceiling.** At most 140 rows enrolled without a token and not yet
+- **The ceiling.** At most 1800 rows enrolled without a token and not yet
   lapsed are held in the realm at once
-  (`ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING` in `relay.env`, 140 where
+  (`ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING` in `relay.env`, 1800 where
   unset), counted inside the enrollment's own write. Past it, an enrollment
   of an id not yet held is answered 503 with `Retry-After`, the seconds until
   the first of those rows lapses, and nothing is written; an enrollment
   naming the key an id already holds is still answered 200. Every such row is
-  a secret in coturn's `turn_secret` for the realm, which every allocation's
-  authentication is checked against, so the ceiling bounds what callers
-  holding no credential can add there. The rate limit does not: 4096
-  addresses at 20 a window could hold about 4096 x 160 rows.
-  - **Where 140 comes from.** From what the relay can serve, at the
-    defaults in `relay.env.example`. `total-quota` (40,
-    `ALCOVE_RELAY_TOTAL_QUOTA`) allows 20 relayed exchanges at once, at two
-    allocations each. Taking one allocation lifetime, `max-allocate-lifetime`'s
-    600 s in `turnserver.conf.tmpl`, as how long a relayed exchange holds its
-    two allocations, the quota serves 20 exchanges every 600 s, 2 a minute.
-    Each exchange holds one row, and a row lapses after 70 minutes, so use at
-    full relay capacity holds 2 x 70 = 140 rows not yet lapsed. `user-quota`
-    (6) bounds one credential's allocations, not the number of exchanges, so
-    it does not enter. The formula is `total-quota / 2 x 4200 / 600`, which
-    is `total-quota x 3.5`: on changing the quota, set the ceiling to match.
+  a secret in coturn's `turn_secret` for the realm, and coturn checks a
+  credential against every secret the realm holds, so the ceiling bounds the
+  work callers holding no credential can add to each authentication.
+  - **Where 1800 comes from.** From what a row costs, not from what the
+    relay serves:
+    - **Authentication.** A request with a wrong credential is checked
+      against every row. A model of one check -- two HMAC-SHA1s and an MD5, in Python --
+      measured about 5.5 microseconds a row on a development machine. The
+      bound is a full scan of about 10 ms, an arbitrary working value, and
+      10 ms / 5.5 microseconds is about 1800 rows.
+    - **Size.** About 400 bytes a row in `turndb`, measured on the same
+      machine, so 1800 rows add under 1 MB and 18,000 about 7 MB, small
+      beside the instance's memory. The size does not set the ceiling.
+    - **Use.** Use at full relay capacity holds about 140 rows, under a
+      tenth of the ceiling: `total-quota` (40, `ALCOVE_RELAY_TOTAL_QUOTA`)
+      allows 20 relayed exchanges at once, at two allocations each; taking
+      `max-allocate-lifetime`'s 600 s as how long an exchange holds them,
+      that is 2 exchanges a minute, each holding one row for 70 minutes. The
+      formula is `total-quota x 3.5`: on raising the quota, keep the
+      ceiling well above it.
+    - **On the relay host.** The cost of a row is an estimate. Timing an
+      allocation on the relay host with no rows added, with 1800 and with
+      18,000 confirms the ceiling, or lowers it to 10 ms over the measured
+      cost of a row.
+
     A lapsed row is not counted, and the sweep deletes it within about
-    eleven minutes, so a flood holds at most about 140 x 81 / 70, about 162,
-    such rows in the table.
-  - **The limit.** At the ceiling, an enrollment without a token of a new id
-    is refused until rows lapse, so a browser run that could not enroll
-    dials without the default relay, by STUN alone. One address at its rate
-    limit reaches the ceiling by itself (about 160 rows, above), so a flood
-    from one address refuses every other caller's enrollment without a token
-    for up to 70 minutes. A run that never relays still holds a row, so
-    legitimate use setting up more than 2 exchanges a minute reaches it too.
-    Each refusal is counted (What it counts, below).
+    eleven minutes, so a flood holds at most about 1800 x 81 / 70, about
+    2100, such rows in the table.
+  - **The limit.** One address holds at most 10 rows (The cap on each
+    client, above), so filling the ceiling takes 180 client addresses, IPv4
+    addresses or IPv6 /48s, fewer by the rows legitimate use holds. Many
+    addresses can still fill it: then an enrollment without a token of a new
+    id is refused until rows lapse, up to 70 minutes, and a browser run that
+    could not enroll dials without the default relay, by STUN alone. A run
+    that never relays still holds a row, so legitimate use setting up more
+    than about 25 exchanges a minute reaches it too. Each refusal is counted
+    (What it counts, below), for the relay's monitoring.
 
 ### What it counts
 
 The registrar counts the enrollments without a token it wrote, the 429s it
-answered, and the 503s it answered at [the ceiling](#enrollment-without-a-token),
+answered at the rate limit (`rate_limit_refusals`) and at the cap on each
+client (`client_cap_refusals`), and the 503s it answered at
+[the ceiling](#enrollment-without-a-token) (`tokenless_ceiling_refusals`),
 and writes the counts to `/var/lib/alcove-relay/registrar-counters`
 (beside the secrets table), for the relay's monitoring to read:
 
@@ -581,6 +621,7 @@ started=2026-10-15T12:00:00Z
 updated=2026-10-15T12:34:50Z
 tokenless_enrollments=12
 rate_limit_refusals=3
+client_cap_refusals=0
 tokenless_ceiling_refusals=0
 ```
 

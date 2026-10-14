@@ -105,6 +105,16 @@ class CeilingReached(Exception):
         self.earliest_lapse = earliest_lapse
 
 
+class ClientCapReached(Exception):
+    """An enrollment with a fixed lapse refused because the rows its client
+    enrolled, not yet lapsed, already number the client's cap; nothing
+    changed. `earliest_lapse` is the Unix time the first of them lapses."""
+
+    def __init__(self, earliest_lapse):
+        super().__init__("the client holds as many rows with a fixed lapse as its cap allows")
+        self.earliest_lapse = earliest_lapse
+
+
 class ProofRefused(Refused):
     """A rotation or revocation whose proof does not verify against the key the
     exchange holds when the write takes the table's lock."""
@@ -283,14 +293,44 @@ def register(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=F
     return _registration(outcome, realm, exchange_id, max_age_days, now)
 
 
-def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=False, fixed_lapse_at=None, ceiling=None):
+def _live_lapses(conn, realm, client_rows, now):
+    """The lapse of each (exchange_id, fixed_lapse_at) in `client_rows` that the
+    realm still holds with that lapse, after `now`."""
+    lapses = []
+    for exchange_id, fixed_lapse_at in client_rows:
+        row = conn.execute(
+            "SELECT fixed_lapse_at FROM alcove_exchange "
+            "WHERE exchange_id = ? AND realm = ? AND fixed_lapse_at = ? AND fixed_lapse_at > ?",
+            (exchange_id, realm, fixed_lapse_at, now),
+        ).fetchone()
+        if row is not None:
+            lapses.append(row[0])
+    return lapses
+
+
+def enroll(
+    conn,
+    realm,
+    exchange_id,
+    key,
+    max_age_days,
+    now,
+    allow_verify_id=False,
+    fixed_lapse_at=None,
+    ceiling=None,
+    client_rows=(),
+    client_cap=None,
+):
     """Adds the key's row and maps an exchange this relay does not yet hold.
     Enrolling an exchange again with the key it holds changes nothing and
     returns its registration as held; any other key for an id already mapped
     is refused. With `fixed_lapse_at`, a Unix time after `now`, the row lapses
-    then and max_age_days must be None; with `ceiling` too, a new row is
-    refused with CeilingReached while the realm holds that many rows with a
-    fixed lapse after `now`. Returns the registration."""
+    then and max_age_days must be None. A new row with a fixed lapse is then
+    refused with ClientCapReached while `client_cap` of the rows
+    `client_rows` names, (exchange_id, fixed_lapse_at) pairs the caller's
+    client enrolled, are held with that lapse after `now`, and with
+    CeilingReached while the realm holds `ceiling` rows with a fixed lapse
+    after `now`. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
@@ -305,6 +345,10 @@ def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=Fal
             (exchange_id,),
         ).fetchone()
         if held is None:
+            if fixed_lapse_at is not None and client_cap is not None:
+                client_lapses = _live_lapses(conn, realm, client_rows, now)
+                if len(client_lapses) >= client_cap:
+                    raise ClientCapReached(min(client_lapses))
             if fixed_lapse_at is not None and ceiling is not None:
                 live, earliest_lapse = conn.execute(
                     "SELECT COUNT(*), MIN(fixed_lapse_at) FROM alcove_exchange "
