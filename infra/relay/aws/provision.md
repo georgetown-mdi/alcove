@@ -59,6 +59,65 @@ ACME authority and the DNS provider's API.
 No plain TURN listener is configured, so 3478 stays closed. Nothing in the
 configuration listens on it.
 
+## The instance role
+
+The project's host is administered through SSM, so its instance profile's
+role holds the AWS managed policy `AmazonSSMManagedInstanceCore`. On that
+host the role is `always-on-ssm`, which the demo box's profile names too.
+
+Where [the counts publisher](../README.md#monitoring) runs, the role also
+needs `cloudwatch:PutMetricData`, which takes no resource, so it is held to
+the publisher's namespace and to the relay instance:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublishRelayCounts",
+      "Effect": "Allow",
+      "Action": "cloudwatch:PutMetricData",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": { "cloudwatch:namespace": "Alcove/Relay" },
+        "ArnEquals": {
+          "ec2:SourceInstanceARN": "arn:aws:ec2:<region>:<account>:instance/<instance-id>"
+        }
+      }
+    }
+  ]
+}
+```
+
+The role needs nothing else for the alarms: CloudWatch reads the instance's
+own metrics and the billing metric without it.
+
+## Alarms
+
+The alarms and their topics are created by hand; the relay's OpenTofu root
+imports them once it exists. Their thresholds are derived as
+[the README](../README.md#the-alarms) states, and the values set on the
+project's account are read back with
+`aws cloudwatch describe-alarms --alarm-name-prefix alcove-` in each region.
+
+- **Topics.** SNS `alcove-relay-alarms` in the instance's region and
+  `alcove-billing-alarms` in us-east-1, each with the owner's email address
+  subscribed and confirmed. An alarm notifies only a topic in its own region.
+- **Billing metrics.** `EstimatedCharges` is published only once billing
+  alerts are on in the account's billing preferences.
+- **Every alarm.** One evaluation period of one datapoint,
+  `GreaterThanThreshold`, missing data `notBreaching`, the topic as its alarm
+  action and no OK action.
+
+| alarm | region | namespace, metric, dimensions | statistic, period |
+| --- | --- | --- | --- |
+| `alcove-account-estimated-charges` | us-east-1 | `AWS/Billing`, `EstimatedCharges`, `Currency=USD` | `Maximum`, 21600 |
+| `alcove-relay-network-out` | the instance's | `AWS/EC2`, `NetworkOut`, `InstanceId=<instance-id>` | `Sum`, 3600 |
+| `alcove-relay-tokenless-enrollments` | the instance's | `Alcove/Relay`, `tokenless_enrollments`, none | `Sum`, 3600 |
+| `alcove-relay-rate-limit-refusals` | the instance's | `Alcove/Relay`, `rate_limit_refusals`, none | `Sum`, 3600 |
+| `alcove-relay-client-cap-refusals` | the instance's | `Alcove/Relay`, `client_cap_refusals`, none | `Sum`, 3600 |
+| `alcove-relay-tokenless-ceiling-refusals` | the instance's | `Alcove/Relay`, `tokenless_ceiling_refusals`, none | `Sum`, 3600 |
+
 ## User-data
 
 Cloud-init fetches this directory and runs `install.sh`. The realm is the one
