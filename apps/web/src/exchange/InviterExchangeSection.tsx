@@ -288,7 +288,7 @@ export function InviterExchangeSection({
       </h1>
       {/* Run status rather than a notice: the pair the terms exchange fixed
           is shown beneath the heading from the moment it is known until the
-          run ends. */}
+          run completes. */}
       {phase !== "done" && run.matching !== undefined && (
         <p className={styles.sub}>{describeResolvedMatching(run.matching)}</p>
       )}
