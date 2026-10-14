@@ -421,8 +421,11 @@ Ratified by the owner:
   invitation's or its own) with a credential derived from the current shared
   secret and registered every run; the relay holds only the current key; no
   relay credential or owner token is stored outside the operator's own
-  settings or shipped in a bundle; and a CLI-to-browser exchange with the
-  browser on a UDP-blocked network completes over a relayed pair.
+  settings or shipped in a bundle; a CLI-to-browser exchange with the browser
+  on a UDP-blocked network completes over a relayed pair; and the production
+  web app relays through the project's relay by default, its key enrolled
+  without the owner token, so a browser-to-browser exchange with one party on
+  a UDP-blocked network completes over a relayed pair.
 - **Repo review 2026-09** (boards 9 and 10) -- Done is: every finding in the
   2026-09 repo review's consolidated lists, including those its own review
   rounds raised, is landed or recorded as refused with a reason, and no source
