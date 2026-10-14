@@ -10,11 +10,14 @@ import {
   type FileTransportClient,
 } from "../../src/connection/fileSyncConnection";
 import { DEFAULT_RENAME_REFUSED_GUIDANCE } from "../../src/connection/fileSyncPublish";
+import { fromEventConnection } from "../../src/connection/messageConnection";
 import {
   TransportOperationStalledError,
   TransportPublishIndeterminateError,
+  causeChainSome,
   statesItsOwnNextStep,
 } from "../../src/errors";
+import { exchangePayloads } from "../../src/payloadExchange";
 import { withCapturedLogs } from "../../src/testing";
 import { makeMockClient } from "../utils/support";
 import { responsibleFilesOf } from "../utils/fileSyncConnectionFixture";
@@ -412,6 +415,67 @@ describe("a direct write that throws leaves its final name tracked for cleanup()
   });
 });
 
+describe("a payload send whose put throws, through the message bridge", () => {
+  async function payloadSendReport(
+    publishWithoutRename: boolean,
+    failPutTo: (name: string) => boolean,
+  ): Promise<{ raised: unknown; reported: number }> {
+    const files = new Map<string, Buffer>();
+    const a = recordingClient(files, { failPutTo });
+    const conn = party(ID_A, a.client, { publishWithoutRename });
+    conn.peerId = ID_B;
+    const messages = fromEventConnection(conn);
+    let reported = 0;
+    const raised = await exchangePayloads(
+      messages,
+      "initiator",
+      { hasData: false },
+      1_000,
+      () => reported++,
+    ).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    await messages.close().catch(() => {});
+    await conn.cleanup();
+    return { raised, reported };
+  }
+
+  test("with the mode on, a direct write of the message opens the record obligation", async () => {
+    const { raised, reported } = await payloadSendReport(
+      true,
+      (n) => n.startsWith(`${ID_A}-`) && n !== `${ID_A}-hello.json`,
+    );
+    expect(
+      causeChainSome(
+        raised,
+        (link) => link instanceof TransportPublishIndeterminateError,
+      ),
+    ).toBe(true);
+    expect(reported).toBe(1);
+  });
+
+  test("with the mode off, a put of the temp before any rename does not", async () => {
+    const { raised, reported } = await payloadSendReport(false, (n) =>
+      n.startsWith("temp-"),
+    );
+    expect(
+      causeChainSome(
+        raised,
+        (link) =>
+          link instanceof Error && link.message.includes("connection lost"),
+      ),
+    ).toBe(true);
+    expect(
+      causeChainSome(
+        raised,
+        (link) => link instanceof TransportPublishIndeterminateError,
+      ),
+    ).toBe(false);
+    expect(reported).toBe(0);
+  });
+});
+
 describe("with the mode off, a refused rename names the option", () => {
   const noSuchFile = (): Error =>
     Object.assign(new Error("_rename: No such file"), { code: 2 });
@@ -496,6 +560,15 @@ describe("with the mode off, a refused rename names the option", () => {
     const conn = party(ID_A, a.client, {});
 
     await expect(conn.synchronize()).rejects.toBe(stalled);
+  });
+
+  test("a rename failure with no status or error code, a refused host key on re-dial, is reported as itself", async () => {
+    const files = new Map<string, Buffer>();
+    const hostDenied = new Error("Host denied (verification failed)");
+    const a = recordingClient(files, { renameError: hostDenied });
+    const conn = party(ID_A, a.client, {});
+
+    await expect(conn.synchronize()).rejects.toBe(hostDenied);
   });
 });
 

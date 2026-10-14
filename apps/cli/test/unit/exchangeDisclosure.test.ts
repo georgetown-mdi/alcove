@@ -429,10 +429,13 @@ test("no name in the display puts a control character or a digest line into the 
 test("a file-sync run publishing without rename says so on the display, and only then", () => {
   const shownFor = (connection: ProtocolConnectionConfig): string => {
     const stdio = captureStdio();
+    const metadata = metadataDisclosing([]);
     try {
       displayExchangeDisclosure({
-        metadata: metadataDisclosing([]),
+        metadata,
+        inputColumns: metadata.map((column) => column.name),
         linkageTerms: localTerms,
+        standardization: undefined,
         connection,
         logFile: undefined,
         log: getLogger("exchange"),

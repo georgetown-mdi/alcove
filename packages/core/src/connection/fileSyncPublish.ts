@@ -36,11 +36,11 @@ function describeRenameFailure(err: unknown): string {
 
 /**
  * Renames `tempPath`, which this party has just written, to `finalPath`. A
- * terminal failure is rethrown as an error quoting it, naming the possible
- * cause, a server that does not allow renames, and ending on `guidance`. An
- * undetermined publish, and a failure that already states its own next step
- * (a stalled operation, an exhausted reconnection budget), are rethrown as
- * themselves.
+ * terminal failure the server or folder answered with a status or error code
+ * is rethrown as an error quoting it, naming the possible cause, a server that
+ * does not allow renames, and ending on `guidance`. Every other failure (an
+ * undetermined publish, one that already states its own next step, a dropped
+ * session, a refused host key on re-dial) is rethrown as itself.
  *
  * @internal
  */
@@ -54,10 +54,12 @@ export async function renameOwnTemp(
   try {
     await client.rename(tempPath, finalPath);
   } catch (err: unknown) {
+    const code = (err as { code?: unknown } | null | undefined)?.code;
     if (
       err instanceof TransportPublishIndeterminateError ||
       err instanceof UsageError ||
-      statesItsOwnNextStep(err)
+      statesItsOwnNextStep(err) ||
+      (typeof code !== "number" && typeof code !== "string")
     )
       throw err;
     throw new Error(
