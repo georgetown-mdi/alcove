@@ -9,7 +9,7 @@
 # Safe to run twice. An instance that is already stopped is reported and left
 # alone.
 #
-# UNTESTED LIVE: not run against an account.
+# Run against the live account on 2026-10-13.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
