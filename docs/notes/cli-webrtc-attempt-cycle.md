@@ -64,9 +64,9 @@ attempt, below), since the ID-taken retry window, the registration and the
 channel-open budget can all pass after the credential is minted. It also equals the default rendezvous budget and the
 browser's own wait, so a run at the default makes exactly one attempt and
 behaves as before, and it is the cadence the load figure above was scaled to.
-At that length the refresh timers and relay allocations a wait holds are
+At that length the relay allocations a wait holds are
 bounded by the attempt count: one or two while attempts run their full length,
-more when a partner restarts attempts sooner (below). Shorter attempts would multiply both, and the boundary cost below,
+more when a partner restarts attempts sooner (below). Shorter attempts would multiply them, and the boundary cost below,
 for no gain the measurement showed.
 
 **The last attempt stretches by up to half.** A remainder under half an

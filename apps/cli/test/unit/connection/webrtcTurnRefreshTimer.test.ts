@@ -12,9 +12,11 @@ import { expect, test } from "vitest";
  * The TURN allocation refresh timer, pinned because the CLI's teardown cannot
  * reach it: werift re-arms REFRESH from the granted lifetime, and a timer left
  * armed after `close()` holds the event loop for about five sixths of that
- * lifetime past the end of a relayed exchange. werift's own close disarms it,
- * which is what lets such a run return once its work is done
- * (docs/spec/DEPENDENCY_PINS.md); a release that leaves it armed fails here.
+ * lifetime past the end of a relayed exchange. Held here: a live allocation
+ * draws a REFRESH at five sixths of the grant; the allocation arms one timer,
+ * which `close()` removes from Node's active timers; and no REFRESH follows
+ * the close (docs/spec/DEPENDENCY_PINS.md). A release that leaves the timer
+ * armed fails here. It observes the timer, not a whole run's exit.
  */
 
 type Address = ConstructorParameters<typeof TurnProtocol>[0];
@@ -34,6 +36,10 @@ const REQUESTED_LIFETIME = 600;
 const GRANTED_LIFETIME = 1;
 /** Five sixths of the grant, less the slack a loaded machine takes. */
 const EARLIEST_REFRESH_MS = 700;
+
+/** The timers armed in this process, by Node's own count of its resources. */
+const armedTimeouts = (): number =>
+  process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
 
 interface ScriptedRelay {
   transport: IceTransport;
@@ -140,8 +146,13 @@ test("close disarms the TURN refresh timer", async () => {
     REQUESTED_LIFETIME,
     relay.transport,
   );
+  const beforeAllocation = armedTimeouts();
   await turn.connectionMade();
+  // The allocation arms exactly one timer, the refresh, and the close takes it
+  // off the event loop rather than leaving it to fire.
+  expect(armedTimeouts()).toBe(beforeAllocation + 1);
   await turn.close();
+  expect(armedTimeouts()).toBe(beforeAllocation);
 
   // Still armed, it would fire within five sixths of the grant.
   await expect(
