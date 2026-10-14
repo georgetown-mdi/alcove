@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; nothing here is built.
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S1 to S8, none of which has run, and what the rulings left conditional on one: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is weighed after S3.
+What remains open is the spikes S1 to S8, none of which has run, and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is open again after a later ruling on the TURN relay (2026-10-14, [fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
 Nothing here is normative: the wrap rule is in
@@ -52,7 +52,7 @@ The pieces a WebSocket path would build on, with where each is stated:
   Enrolling an exchange needs the relay-owner token: the CLI's `alcove enroll-relay`, or a saved exchange's page in the browser ([MANAGED_EXCHANGE.md](../MANAGED_EXCHANGE.md#when-your-relay-runs-a-registrar)); a one-shot browser exchange enrolls nothing ([PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-observe), the registrar row).
 - **The invitation carries the inviter's relay locator**, TURN and STUN urls and no credential, and the acceptor relays through it ([PROTOCOL.md](../spec/PROTOCOL.md#the-invitations-relay-locator)).
   The browser keeps its own relay setting in `localStorage` (`apps/web/src/psi/transport/ownRelaySetting.ts`).
-- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host; a network admitting outbound TCP to 443 alone reaches the broker only where the host's 443 front routes its name ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
+- **What the project operates for the hosted application:** the broker behind an nginx TLS front on port **8443**, beside coturn on the same host, and one listener on 443, the relay's 443 front, which passes each connection unopened to coturn or the broker's front by the server name it asks for ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs); [infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)).
   The front closes a WebSocket idle for 300 s; the PeerJS heartbeat every 5 s keeps a signaling socket alive.
 - **What the relay measurements established.**
   TURN over TLS on 443 carried a UDP-blocked CLI party on a real path, and through a TLS-inspecting proxy once that proxy's CA was trusted on the CLI host; the interception point read the STUN and TURN envelope in the clear and passed it ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-1-does-turn-over-tls-on-443-carry-a-restrictive-network)).
@@ -84,7 +84,7 @@ What a middlebox can do with it depends on how far it looks:
 | **TURN over TLS on 443, public certificate** (built, measured) | TLS to a name; under inspection, STUN and TURN messages where an HTTP request is expected | Addresses, timing, volume; DTLS ciphertext it does not terminate ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#what-the-relay-sees)) | A party, the project for the hosted app, or a managed vendor | Yes: the data channel is unchanged |
 | **TURN over TCP on 443, no TLS** | STUN and TURN in the clear | As above | As above | Yes; strictly worse under any inspection, and `turn:` with `transport=tcp` is already expressible ([EXCHANGE_REFERENCE.md](../EXCHANGE_REFERENCE.md#connectionturn)) |
 | **TURN through an explicit proxy** (`CONNECT`) | An HTTP `CONNECT` to the relay's name, then TLS; an enforcing proxy inside the tunnel sees TURN as above | As above | As above | Browsers: only under `disable_non_proxied_udp`, where Chrome moves WebRTC onto the proxy ([turn-provisioning-governance.md](turn-provisioning-governance.md#outbound-tls-on-443-to-a-partners-relay-against-outbound-sftp)); the CLI's TURN client through a proxy is unmeasured |
-| **The exchange's frames through the signaling broker** | A WebSocket on 443 (today 8443): HTTP upgrade, then text frames | Every frame's bytes, in JSON text | The project (hosted app) or a party | No: see below |
+| **The exchange's frames through the signaling broker** | A WebSocket on 443 through the relay's front, or on 8443: HTTP upgrade, then text frames | Every frame's bytes, in JSON text | The project (hosted app) or a party | No: see below |
 | **A WebSocket relay of its own on 443** | A WebSocket: a TLS session carrying an HTTP `GET` with `Upgrade: websocket`, then binary frames; an enforcing proxy reads a valid HTTP request and WebSocket frames, which is what the network exists to carry; an explicit proxy tunnels it as browsers do for every WebSocket | Addresses, timing, volume, the pairing of two parties, the handshake frames in the clear, and every later frame as the wrap's AEAD envelope | The project for the hosted app; a party from a reference deployment; no managed vendor offers it | Yes, with the framing and bounds the two implementations already share, and with the wrap |
 | **Not candidates** | WebTransport and anything over QUIC are UDP, which the measured classes block outright; ICE-TCP host candidates need a reachable address on one side, which a party behind the inspecting network does not have | | | |
 
@@ -171,11 +171,19 @@ The rows it adds to [PRIVACY.md](../../PRIVACY.md#what-supporting-services-can-o
 
 **Port 443 is a prerequisite, not a detail.**
 The broker and the relay each need 443 for the reason TURN does.
-The owner's choice (2026-10-04) is one proxy on 443, and the relay reference builds it: [the 443 front](../../infra/relay/README.md#the-443-front) routes each TLS connection by its server name, gives coturn every connection no route claims, and takes the relay as one more named route.
-It puts a proxy between coturn and the client's address, which TURN reports back to the client; whether TURN clients complete a relayed exchange through it is a host measurement ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
-The alternative, kept for that measurement, is a second public address on the relay instance, with the nginx front serving the broker and the relay on 443 there under their own names.
-At the rate the relay measurement computed, a public address is about $0.005 an hour, about $3.60 a month, with no rate here confirmed against a bill ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#question-2-what-exchange-provisioned-means)).
-The fix serves the WebRTC path too: a 443-only network reaches signaling only through it ([infra/broker/README.md](../../infra/broker/README.md#port-8443-and-443-through-the-relays-front)), so [S2](#the-spikes) comes before any relay work.
+The owner's choice (2026-10-04) is one proxy on 443, and the relay reference builds it as [the 443 front](../../infra/relay/README.md#the-443-front):
+
+- **What it does.** It reads each connection's TLS server name and passes the connection, TLS unopened, to a service on loopback; coturn takes every connection no route claims.
+  It has no key, so each service presents its own certificate.
+- **Where it runs.** It is installed on the project's relay host, routing the broker's name to the broker's front ([DEPLOYMENT.md](../DEPLOYMENT.md#what-the-deployment-logs)).
+  TURN allocations and a signaling WebSocket passed through it there; a relayed exchange from a client admitted to 443 only is not yet measured ([webrtc-relay-deployment.md, One listener on 443](webrtc-relay-deployment.md#one-listener-on-443)).
+- **What the relay adds.** One more route, its own name to its loopback port, with a certificate for that name and no listener of its own ([infra/relay/README.md, The 443 front](../../infra/relay/README.md#the-443-front), The WebSocket relay).
+- **What the relay loses.** Behind the front every connection arrives from `127.0.0.1`, so the relay cannot read a client's address for the per-address quota above.
+  Whether the front passes the address on to the relay's route alone (the PROXY protocol; unverified for nginx's stream module per route, which a run of the front would verify), or the relay's quotas key on the exchange alone, is open.
+  A per-address limit on enrollment without a token ([fork 1](#the-forks-and-their-rulings)) meets the same question at the registrar.
+
+A second public address on the relay instance is the deployment record's fallback should a TURN client fail through the front, at about $3.60 a month ([webrtc-relay-deployment.md](webrtc-relay-deployment.md#one-listener-on-443)); this path does not plan for it.
+[S2](#the-spikes) comes before any relay work.
 
 ### How the relay fits the existing bounds
 
@@ -264,10 +272,12 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   On the AWS harness of the relay measurement, class B with the inspecting proxy configured to enforce HTTP inside TLS (the spike names the tool and the rule it used), a CLI party and a browser party each try TURN over TLS on 443 and then a minimal WebSocket echo relay on 443.
   PASS: the WebSocket connection completes and the TURN allocation is refused, with the proxy's log naming the refusal; the capture of each Client Hello is recorded for the ALPN question.
   If TURN passes every enforcement the tool offers, the result is recorded and the relay's case rests on the maintainer's field reports, stated as such.
-- **S2. Signaling and relay names on 443.**
-  The one 443 front on the relay instance routes the broker's name and the relay's name, and coturn takes the connections no route claims ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
-  A second public address on the relay instance, with the broker front on 443 there, is the fallback if the host measurement of TURN through that front fails.
-  PASS: the registrar-path row repeated with TCP admitted only to 443 of the broker and relay names -- a browser with UDP refused completes a relayed exchange with a CLI party -- and the broker README's limit is deleted.
+- **S2. A relayed exchange through the 443 front.**
+  The one 443 front on the relay instance is built and routes the broker's name; the relay's name is one more route on it ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+  What S2 still measures is the case the deployment record lists as not measured: a relayed exchange through the front from a client admitted to 443 only.
+  That run needs a registrar behind the front to enroll the exchange's key, which the project's relay host does not yet run.
+  PASS: the registrar-path row repeated with TCP admitted only to 443 of the relay host's names -- a browser with UDP refused completes a relayed exchange with a CLI party.
+  A failure of TURN through the front is answered by the deployment record's fallback, a second public address, and not by this path.
 - **S3. Relay forwarding under load.**
   A prototype relay with pause-and-resume forwarding; two Node parties, then Chromium against Node, sending frames up to 268,435,456 bytes in chunks, with one receiver throttled.
   PASS: a round of the largest measured exchange's size, 539,000,000 bytes one way, completes; the relay's resident set stays under 100 MB throughout with the slow reader; a sender above the per-pairing rate is paced and not disconnected.
@@ -289,13 +299,14 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
 
 ### Implementation items implied, not filed
 
+The front on 443 and the broker's route on it are already built. Its open measurements, the registrar behind it and a relayed exchange from a 443-only client ([S2](#the-spikes)), are a prerequisite of this path.
+
 Relay path, in order:
 
-- **The broker's and the relay's names on the 443 front** -- `infra/broker` and `infra/relay/aws`, and the limit in the broker README; a second address only if the TURN-through-front measurement fails.
 - **Move the CLI's framing and bounded reassembler to core** -- `peerjsWire.ts` and `inboundBounds.ts` become core modules both WebSocket transports import; the CLI's WebRTC transport imports them from there.
 - **Relay proof derivation and spec row** -- the derived key and its label in core, with vectors, beside the registrar proof in PROTOCOL.md.
 - **The relay service** -- a workspace beside the broker's: hello, proof check against the shared table, pairing by role, pause-and-resume forwarding, per-message cap, quotas, pings, close ordering, the broker's upgrade bounds.
-- **Relay deployment reference** -- a unit beside coturn in `infra/relay`, nginx front on 443, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
+- **Relay deployment reference** -- a unit beside coturn in `infra/relay`, its route and certificate on the 443 front, the client's address behind the front for its quotas, journald retention, a `verify.sh` probe that pairs two sockets and forwards one frame.
 - **Browser WebSocket transport** -- a `MessageConnection` over a browser WebSocket with the shared reassembler and the pacing window.
 - **CLI WebSocket transport** -- the same over `ws`, with the connection-block entry and the transport policy.
 - **The wrap on the web side** -- request it on the relay transport, apply the decorator when negotiated, keep the WebRTC refusal.
@@ -326,6 +337,30 @@ The reading after a ruling is how this note applies the ruling to the fork, not 
    Recommendation: registration, for consistency with the TURN relay, with possession presented to the maintainer as the alternative since the hosted application's one-shot exchanges are where the direction bites ([The WebSocket relay, as recommended](#the-websocket-relay-as-recommended)).
    Ruling (2026-10-09): "Use your recommendation for this item."
    Reading: registration, a proof under the enrolled exchange's relay key checked against the table coturn reads; that a one-shot browser exchange has no relay is a stated limit, and opening the hosted relay to one-shot exchanges is weighed after S3.
+
+   **A later ruling, on the TURN relay (2026-10-14).**
+   The maintainer ruled on the project's TURN relay for the production web application, whose exchanges list no relay unless the inviter configured one (`buildIceServers` in `apps/web/src/psi/transport/rendezvous.ts`).
+   The rulings below are paraphrased, except for the quoted sentence, which is the maintainer's own words:
+
+   - The project's standing relay (`turns:turn.data-bridge.org:443?transport=tcp`) is a public default, used by the production web application; this reverses the "No public relay" direction ([turn-provisioning-governance.md](turn-provisioning-governance.md#what-this-record-assumes)).
+   - The browser enrolls the exchange's relay key ([PROTOCOL.md](../spec/PROTOCOL.md#relay-credential-derivation)) at the registrar without the relay-owner token, bounded by per-address enrollment limits, short key lifetimes and the relay's quotas; enrollment can happen when the invitation is created.
+   - The relay is always in the browser's ICE servers, not added on a retry: "I want the production site to work without frictions, so whatever that takes."
+   - The relay is monitored for abuse.
+
+   None of it is built.
+   What it changes for this fork:
+
+   - **The one-shot gap's cause goes away once that enrollment is built.** A one-shot production exchange will have a row in the table coturn reads, the table this fork's reading checks the relay's proof against, so registration as ruled would admit it with no change to the mechanism, if the later ruling reaches this relay (below).
+   - **The trade's argument against possession is weaker.** It rested on the direction that a relay is never public, which the later ruling reverses for the TURN relay; whether for this relay too is the first open question below.
+
+   What it leaves open, for the maintainer:
+
+   - Whether the later ruling reaches the WebSocket relay at all.
+     It names the TURN relay, and the WebSocket relay's operator sees more: the pairing, the handshake frames and every frame's AEAD envelope ([What the relay's operator sees](#what-the-relays-operator-sees-stated-for-the-disclosure-documents)).
+   - Whether one-shot admission is still weighed after S3, as the reading has it, or is decided by the later ruling.
+   - Whether a key enrolled for a short lifetime outlasts a relayed exchange, since the relay checks the proof at the hello.
+   - How the relay's per-address quota reads a client's address behind the 443 front ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
+
 2. **Explicit relay path first, or automatic fallback first**: the explicit policy is smaller and verifiable alone; the fallback is the experience a party wants.
    Recommendation: explicit first with the start frame in the wire from the first cut, fallback as the next item ([How the parties choose it](#the-websocket-relay-as-recommended)).
    Ruling (2026-10-09): "Use your recommendation for this item."
