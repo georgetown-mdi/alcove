@@ -133,8 +133,7 @@ COUNTERS_WRITE_SECONDS = 10
 PROXY_HEADER_SECONDS = 5
 # The longest PROXY protocol version 1 header, its CRLF included.
 PROXY_HEADER_BYTES = 107
-PROXY_HEADER = re.compile(r"PROXY (TCP4|TCP6) (\S+) (\S+) ([0-9]{1,5}) ([0-9]{1,5})\r\n|PROXY UNKNOWN[^\r\n]*\r\n")
-UNKNOWN_CLIENT = "unknown"
+PROXY_HEADER = re.compile(r"PROXY (TCP4|TCP6) (\S+) (\S+) ([0-9]{1,5}) ([0-9]{1,5})\r\n")
 TOKENLESS_MAX_AGE_REFUSAL = (
     'an enrollment without a token sends "maxAgeDays": null; the registrar sets its lapse, which the '
     "answer's lapsesAt states"
@@ -227,8 +226,10 @@ class ProxyHeaderError(Exception):
 
 def read_proxy_header(sock, deadline):
     """The client address the PROXY protocol version 1 header at the start of
-    `sock` names, UNKNOWN_CLIENT for a header naming none, read by the byte so
-    nothing past it is consumed. `deadline` is a time.monotonic() value."""
+    `sock` names, read by the byte so nothing past it is consumed. The UNKNOWN
+    form is refused: nginx never sends it for a TCP client, and accepting it
+    would put every such connection in one client's limits. `deadline` is a
+    time.monotonic() value."""
     header = b""
     while not header.endswith(b"\r\n"):
         if len(header) >= PROXY_HEADER_BYTES:
@@ -244,8 +245,6 @@ def read_proxy_header(sock, deadline):
     match = PROXY_HEADER.fullmatch(header.decode("ascii", "replace"))
     if match is None:
         raise ProxyHeaderError("the 443 front's PROXY header is malformed")
-    if match.group(1) is None:
-        return UNKNOWN_CLIENT
     try:
         address = ipaddress.ip_address(match.group(2))
         ipaddress.ip_address(match.group(3))
@@ -259,10 +258,7 @@ def read_proxy_header(sock, deadline):
 def client_key(address):
     """The key the rate limit counts `address` under: an IPv4 address, or the
     /64 holding an IPv6 one, since one host commonly holds a whole /64."""
-    try:
-        parsed = ipaddress.ip_address(address)
-    except ValueError:
-        return UNKNOWN_CLIENT
+    parsed = ipaddress.ip_address(address)
     if parsed.version == 6 and parsed.ipv4_mapped is not None:
         return str(parsed.ipv4_mapped)
     if parsed.version == 6:
@@ -274,10 +270,7 @@ def site_key(address):
     """The key the cap on each client's rows counts `address` under: an IPv4
     address, or the /48 holding an IPv6 one, the prefix one site is commonly
     assigned (README.md, Enrollment without a token, The cap on each client)."""
-    try:
-        parsed = ipaddress.ip_address(address)
-    except ValueError:
-        return UNKNOWN_CLIENT
+    parsed = ipaddress.ip_address(address)
     if parsed.version == 6 and parsed.ipv4_mapped is not None:
         return str(parsed.ipv4_mapped)
     if parsed.version == 6:

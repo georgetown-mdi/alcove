@@ -428,8 +428,10 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   name there, so its address is `https://<that name>`, on 443. Each
   connection on that port starts with the front's PROXY protocol (version 1)
   header naming the client's address, which the registrar reads, within 5 s
-  (`PROXY_HEADER_SECONDS`), before the TLS handshake; a connection that does
-  not start with a well-formed one is closed unanswered. The port listens on
+  (`PROXY_HEADER_SECONDS`), before the TLS handshake. A connection that does
+  not start with a well-formed one is closed unanswered and writes nothing,
+  including the header's `UNKNOWN` form, which names no client and which
+  nginx does not send for a TCP connection. The port listens on
   loopback only, so only a process on the host can name an address there.
   The certificate is issued for the name beside the realm.
 - **Who must reach it.** Every machine that registers: the machine
@@ -466,10 +468,11 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   it is a standard one; any other path or method, and any part of a malformed
   request line, is replaced by a fixed placeholder, since it could hold a key
   sent in the wrong place. Neither the token, a key, nor the caller's address
-  is logged. The rate limit below holds each address that enrolled without a
-  token in memory until its window ends, and the cap on each client's rows
-  until the last row that address enrolled lapses; neither writes it
-  anywhere.
+  is logged. The rate limit below and the cap on each client's rows hold each
+  address that enrolled without a token in the registrar's memory, and
+  neither writes it anywhere. An entry that has ended is dropped only when a
+  later enrollment without a token arrives, so on a registrar that receives
+  none the address stays in memory until one does or the registrar restarts.
 
 ### Enrollment without a token
 
@@ -554,8 +557,9 @@ start: to turn it off, set it to `off` and
     ([aws/provision.md](aws/provision.md)), so there every client reaches
     the registrar, and is counted, by its IPv4 address.
   - **Held in memory.** Which address enrolled each row is held in the
-    registrar's memory until the row lapses or the registrar revokes it,
-    and written nowhere. A restart of the registrar clears it, so after one
+    registrar's memory, and written nowhere. A row the registrar revokes is
+    dropped at once; a lapsed row is dropped only when a later enrollment
+    without a token arrives. A restart of the registrar clears it, so after one
     an address can enroll up to 10 more while its earlier rows still hold;
     the ceiling below still bounds them all.
 - **How many addresses.** At most 4096 addresses' windows are held at once

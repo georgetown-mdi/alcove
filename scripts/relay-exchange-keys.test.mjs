@@ -3072,6 +3072,21 @@ const callThroughFront = (
     raw.on("error", () => resolveResponse({ closed: true }));
   });
 
+// Writes `opening` to the registrar's front port and nothing after it, ending
+// the connection when `endAfterWrite`. Resolves with the bytes the registrar
+// sent before it closed the connection.
+const openFrontConnection = (frontPort, opening, endAfterWrite) =>
+  new Promise((resolveAnswer) => {
+    const received = [];
+    const raw = netConnect({ host: "127.0.0.1", port: frontPort }, () => {
+      if (endAfterWrite) raw.end(opening);
+      else raw.write(opening);
+    });
+    raw.on("data", (chunk) => received.push(chunk));
+    raw.on("close", () => resolveAnswer(Buffer.concat(received)));
+    raw.on("error", () => {});
+  });
+
 const proxyHeaderFor = (address) =>
   `PROXY TCP4 ${address} 127.0.0.1 40000 443\r\n`;
 
@@ -3367,6 +3382,12 @@ describe.skipIf(runningAsRoot)(
       ["a malformed header", "PROXY TCP4 not-an-address 127.0.0.1 1 2\r\n"],
       ["an address of the wrong family", "PROXY TCP4 ::1 ::1 1 2\r\n"],
       ["a header over 107 bytes", `PROXY TCP4 ${"1".repeat(120)}\r\n`],
+      ["the UNKNOWN form", "PROXY UNKNOWN\r\n"],
+      [
+        "the UNKNOWN form with addresses",
+        "PROXY UNKNOWN 127.0.0.1 127.0.0.1 1 2\r\n",
+      ],
+      ["non-ASCII bytes", "PROXY TCP4 éé 127.0.0.1 1 2\r\n"],
     ])(
       "closes a front connection starting with %s unanswered, and writes nothing",
       async (_, opening) => {
@@ -3387,6 +3408,42 @@ describe.skipIf(runningAsRoot)(
         expect(log.stderr).not.toContain("not-an-address");
       },
     );
+
+    it("closes a front connection whose header ends before its line does, and writes nothing", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host);
+      const answer = await openFrontConnection(
+        frontPort,
+        "PROXY TCP4 203.0.113.7 127.0.0.1 4",
+        true,
+      );
+      expect(answer.length).toBe(0);
+      expect(host.mapping()).toEqual([]);
+      await vi.waitFor(() =>
+        expect(log.stderr).toContain(
+          "connection ended: the connection closed before the 443 front's PROXY header ended",
+        ),
+      );
+    });
+
+    it("closes a front connection whose header never completes at the deadline, and writes nothing", async () => {
+      const host = fixtureHost();
+      const { frontPort, log } = await startOpenRegistrar(host, {
+        PROXY_HEADER_SECONDS: 0.5,
+      });
+      const started = Date.now();
+      const answer = await openFrontConnection(
+        frontPort,
+        "PROXY TCP4 203.0.113.7 127.0.0.1 4",
+        false,
+      );
+      expect(Date.now() - started).toBeGreaterThanOrEqual(400);
+      expect(answer.length).toBe(0);
+      expect(host.mapping()).toEqual([]);
+      await vi.waitFor(() =>
+        expect(log.stderr).toContain("connection ended: timed out"),
+      );
+    });
 
     it("refuses an address past the number of addresses it tracks", async () => {
       const host = fixtureHost();
@@ -3664,23 +3721,18 @@ describe.skipIf(runningAsRoot)(
       const host = fixtureHost();
       const { port, frontPort } = await startOpenRegistrar(host);
       const verifyRun = { "Alcove-Relay-Verify-Run": "1" };
-      for (const opening of [
+      const refused = await callThroughFront(
+        frontPort,
         proxyHeaderFor("203.0.113.7"),
-        "PROXY UNKNOWN\r\n",
-      ]) {
-        const refused = await callThroughFront(
-          frontPort,
-          opening,
-          "POST",
-          "/exchanges/alcove-verify-registrar",
-          keyBody(KEY_A),
-          verifyRun,
-        );
-        expect(refused.status).toBe(400);
-        expect(JSON.parse(refused.text).error).toContain(
-          "may not start with 'alcove-verify-'",
-        );
-      }
+        "POST",
+        "/exchanges/alcove-verify-registrar",
+        keyBody(KEY_A),
+        verifyRun,
+      );
+      expect(refused.status).toBe(400);
+      expect(JSON.parse(refused.text).error).toContain(
+        "may not start with 'alcove-verify-'",
+      );
       expect(host.mapping()).toEqual([]);
       expect(host.rows()).toEqual([listed(KEY_LISTED)]);
 
@@ -3713,7 +3765,7 @@ describe.skipIf(runningAsRoot)(
     it("counts the IPv6 addresses of one /64 as one client", () => {
       const keys = python(
         `import json, registrar
-print(json.dumps([registrar.client_key(a) for a in ["2001:db8:1:2::5", "2001:db8:1:2:ffff::9", "2001:db8:1:3::5", "::ffff:203.0.113.7", "203.0.113.7", "unknown"]]))`,
+print(json.dumps([registrar.client_key(a) for a in ["2001:db8:1:2::5", "2001:db8:1:2:ffff::9", "2001:db8:1:3::5", "::ffff:203.0.113.7", "203.0.113.7"]]))`,
       );
       expect(keys).toEqual([
         "2001:db8:1:2::/64",
@@ -3721,7 +3773,6 @@ print(json.dumps([registrar.client_key(a) for a in ["2001:db8:1:2::5", "2001:db8
         "2001:db8:1:3::/64",
         "203.0.113.7",
         "203.0.113.7",
-        "unknown",
       ]);
     });
 
