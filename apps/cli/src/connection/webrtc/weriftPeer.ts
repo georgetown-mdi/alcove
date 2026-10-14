@@ -263,9 +263,9 @@ export interface WebRtcPeerSession {
   /**
    * Install the handler called when the peer connection leaves the connected
    * state. The only signal a party gets that its partner has gone without
-   * saying so: werift does not raise the data channel's own `close` when the
-   * remote peer connection is torn down, so a consumer waiting on the channel
-   * alone would wait out its inactivity budget instead. werift's
+   * saying so: a partner that crashes or drops off the network sends nothing,
+   * so the data channel's own `close` never comes and a consumer waiting on
+   * the channel alone would wait out its inactivity budget instead. werift's
    * consent-freshness check reaches this in about thirty seconds.
    */
   onDisconnected: (handler: () => void) => void;

@@ -135,7 +135,7 @@ offer-following without rebuilding anything in place.
   acceptor's unreported-offer re-send (30 s) recovers it; a browser
   acceptor's dial fails at its 30 s open timeout instead.
 - Every relayed attempt leaves its allocation on the relay for its granted
-  lifetime and one werift timer armed until it fires. A fired timer is not
-  armed again (held by `webrtcTurnRefreshTimer.test.ts`), which is what keeps
-  them from accumulating; retiring them needs a werift release that disarms
-  the timer ([DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).
+  lifetime. The werift refresh timer the measurement above found armed per
+  attempt is disarmed by the close on the pinned werift (held by
+  `webrtcTurnRefreshTimer.test.ts`;
+  [DEPENDENCY_PINS.md](../spec/DEPENDENCY_PINS.md#the-behavioural-assumptions)).

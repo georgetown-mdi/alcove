@@ -803,8 +803,6 @@ Two things follow from it. A run so configured has no direct path to fall back t
 
 **A key the connection block does not define is refused.** `ice_transport_polcy` for `ice_transport_policy`, or a `server` key written beside it rather than under it, is a usage error (exit 64) naming the key, before anything is dialed. A setting that decides which addresses this party offers cannot be dropped in silence and leave the run on a policy you did not choose.
 
-**A run that allocates against a relay leaves a timer armed behind it.** The allocation a relay hands out is held open by a refresh timer the exchange's teardown cannot cancel, and it stays armed for five sixths of the lifetime the relay granted -- roughly eight minutes where a relay grants the usual ten. What it holds is the event loop rather than the command: the result file, the exchange record and the receipt are all written before it, nothing is transferred during it, and the process [returns once that work is done](#logs-and-what-the-exit-code-tells-the-scheduler), naming the resource kinds still open on stderr. The mechanism and its measurement are in [WEBRTC_TRANSPORT.md](spec/WEBRTC_TRANSPORT.md#budgets).
-
 #### Registering the relay key at your relay
 
 A relay that holds one key per exchange, like the [reference relay](../infra/relay/README.md#per-exchange-keys), accepts only credentials derived from the key it holds, and that key changes each time the shared secret rotates. When your own relay runs the reference registrar, name it in [`connection.relay_registrar`](EXCHANGE_REFERENCE.md#connectionrelay_registrar) and every run keeps it current:

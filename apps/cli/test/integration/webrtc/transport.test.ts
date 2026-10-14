@@ -669,9 +669,10 @@ test("closing after the partner has vanished ends on the flush ceiling and repor
   // what ends the close instead of the peer-loss signal, and the close says
   // the frame was not confirmed rather than reporting a clean close.
   //
-  // The partner is torn down at the session, not through its message
-  // connection, so no close sentinel reaches this side -- otherwise the peer
-  // would not have vanished at all.
+  // The partner is cut off from the network before it is torn down, and torn
+  // down at the session rather than through its message connection: werift's
+  // close tells the remote side, as a close sentinel would, and a peer that
+  // says it is going has not vanished.
   const common = partyOptions(generateSharedSecret());
   const [vanishing, acceptor] = await Promise.all([
     openWebRtcPeerSession({ ...common, role: "inviter" }),
@@ -687,6 +688,22 @@ test("closing after the partner has vanished ends on the flush ceiling and repor
     tag: "stranded",
     body: new Uint8Array(4 * 1024 * 1024),
   });
+  const protocols = (
+    vanishing.channel as unknown as {
+      sctp: {
+        transport: {
+          iceTransport: {
+            connection: {
+              protocols: Array<{ transport: { send: () => Promise<void> } }>;
+            };
+          };
+        };
+      };
+    }
+  ).sctp.transport.iceTransport.connection.protocols;
+  expect(protocols.length).toBeGreaterThan(0);
+  for (const protocol of protocols)
+    protocol.transport.send = () => Promise.resolve();
   await vanishing.close();
 
   const started = Date.now();
