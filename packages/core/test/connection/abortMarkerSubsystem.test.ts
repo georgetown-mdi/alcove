@@ -306,6 +306,64 @@ test("writeMarker on a stalled rename rejects with the budget error naming the f
   expect(debug).not.toHaveBeenCalled();
 });
 
+function armedWithoutRename(
+  client: FileTransportClient,
+  deps: Partial<Deps> = {},
+) {
+  const made = makeDeps(deps);
+  const subsystem = new AbortMarkerSubsystem(made.deps);
+  subsystem.arm(TOKEN_SELF, TOKEN_PEER, SELF_ID, DIR, client, true);
+  return { subsystem, ...made };
+}
+
+test("writeMarker with publishWithoutRename puts straight to the final path with the write options and issues no rename", async () => {
+  const client = makeClient();
+  const { subsystem, debug } = armedWithoutRename(client);
+  await subsystem.writeMarker();
+
+  const finalPath = `${DIR}/${SELF_ID}-abort.json`;
+  expect(client.put).toHaveBeenCalledOnce();
+  expect(vi.mocked(client.put).mock.calls[0][1]).toBe(finalPath);
+  expect(vi.mocked(client.put).mock.calls[0][2]).toStrictEqual({
+    flags: "w",
+    encoding: "utf-8",
+  });
+  expect(client.rename).not.toHaveBeenCalled();
+  expect(debug).toHaveBeenCalledWith(
+    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+  );
+});
+
+test("writeMarker with publishWithoutRename records the marker as written so a second run is a no-op", async () => {
+  const client = makeClient();
+  const { subsystem } = armedWithoutRename(client);
+  await subsystem.writeMarker();
+  // Drop only the memoized promise, so the written flag is the sole guard.
+  (subsystem as unknown as { pendingAbortWrite: undefined }).pendingAbortWrite =
+    undefined;
+  await subsystem.writeMarker();
+  expect(client.put).toHaveBeenCalledOnce();
+});
+
+test("writeMarker with publishWithoutRename on a stalled put rejects with the budget error naming the final path", async () => {
+  const client = makeClient();
+  const { subsystem, stalledError, debug } = armedWithoutRename(client, {
+    runBudgeted: (_op, _budgetMs, makeError) => Promise.reject(makeError()),
+  });
+  const rejection = await subsystem.writeMarker().then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(rejection).toBeInstanceOf(TransportOperationStalledError);
+  expect(stalledError).toHaveBeenCalledWith(
+    `abort marker write to ${DIR}/${SELF_ID}-abort.json`,
+    WRITE_BUDGET_MS,
+  );
+  expect(rejection).toBe(stalledError.mock.results[0].value);
+  expect(client.rename).not.toHaveBeenCalled();
+  expect(debug).not.toHaveBeenCalled();
+});
+
 const listing = (size: number, name = PEER_MARKER): FileInfo[] => [
   { name, modifyTime: 0, size },
 ];
