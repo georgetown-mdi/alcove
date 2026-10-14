@@ -51,6 +51,7 @@ export interface ExchangeFilesDraft {
   locklessRendezvous: FileSyncToggle;
   peerId: string;
   unexpectedFiles: UnexpectedFilesChoice;
+  publishWithoutRename: boolean;
 }
 
 /** The card's starting state: retain mode off and every other choice left to
@@ -61,7 +62,19 @@ export const EXCHANGE_FILES_DEFAULT: ExchangeFilesDraft = {
   locklessRendezvous: "auto",
   peerId: "",
   unexpectedFiles: "auto",
+  publishWithoutRename: false,
 };
+
+/**
+ * What the card states while publishing without rename is on: the assumption
+ * the CLI's start warning names (docs/EXCHANGE_REFERENCE.md,
+ * publish_without_rename), shown while the operator can still turn it off.
+ */
+export const PUBLISH_WITHOUT_RENAME_NOTICE =
+  "Each exchange file is written directly under its final name, so it is " +
+  "visible before it is complete. This is only safe if the shared " +
+  "folder never passes a file to your partner while it is still being " +
+  "written. Alcove cannot check this.";
 
 /**
  * What the card states about retain mode before the run starts, mirroring the
@@ -115,6 +128,7 @@ export function exchangeFilesOptions(
     ...(capabilities.unexpectedFiles && draft.unexpectedFiles !== "auto"
       ? { unexpectedFiles: draft.unexpectedFiles }
       : {}),
+    ...(draft.publishWithoutRename ? { publishWithoutRename: true } : {}),
   };
   const resolved = withRetainModeImplications(stated);
   return Object.keys(resolved).length === 0 ? undefined : resolved;

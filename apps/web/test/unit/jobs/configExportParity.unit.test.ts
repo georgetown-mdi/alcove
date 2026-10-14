@@ -23,7 +23,12 @@ import {
   disclosedDocument,
   mountedConfigurationDocument,
 } from "@jobs/configLoad";
+import {
+  CONFIG_EXCHANGE_FILES,
+  exchangeFilesOptions,
+} from "@console/exchangeFilesModel";
 import { authoringStateFromDocument } from "@console/loadedConfig";
+import { composeConfigDocument } from "@jobs/intentConfig";
 
 import {
   TEST_HOST_KEY_FINGERPRINT,
@@ -536,6 +541,44 @@ describe("the settings a loaded configuration keeps in the export", () => {
       },
       authentication: { tokenMaxAgeDays: 90 },
     });
+  });
+
+  test("publish_without_rename survives the load, the run and the hand-off", () => {
+    const document = openedThroughTheConsole(
+      {},
+      {
+        connection: {
+          channel: "filedrop",
+          path: MOUNTED_RENDEZVOUS_PATH,
+          options: { publishWithoutRename: true },
+        },
+      },
+    );
+    expect(carriedThroughFields(document)).toEqual([]);
+    const { exchangeFiles } = authoringStateFromDocument(
+      disclosedDocument(document),
+    );
+    const options = exchangeFilesOptions(exchangeFiles, CONFIG_EXCHANGE_FILES);
+    expect(options).toEqual({ publishWithoutRename: true });
+
+    const run = parseExchangeSpec(
+      parseSensitiveYaml(
+        composeConfigDocument(
+          validIntent({ linkageTerms: validLinkageTerms(), options }),
+          "/data/rendezvous",
+        ),
+        "run composition",
+      ),
+    );
+    expect(run.connection).toMatchObject({
+      options: { publishWithoutRename: true },
+    });
+    expect(
+      exportedValue(
+        exportOver(document, { options }),
+        "connection.options.publish_without_rename",
+      ),
+    ).toBe(true);
   });
 
   test("a shared secret in the document reaches no export", () => {

@@ -145,8 +145,8 @@ export function zeroSetupFiledropArgv(
  * zero-setup arms admit has one here (see
  * the zero-setup options schema in `@jobContract/intentSchemas`).
  *
- * Only an enabled toggle is emitted: each of the three booleans is `false`
- * by default in core, and a zero-setup run loads no configuration file for
+ * Only an enabled toggle is emitted: each boolean is `false` by default in
+ * core, and a zero-setup run loads no configuration file for
  * a flag to override, so an explicitly-off toggle and an unset one select
  * the same behaviour. `peerId` rides a single `--peer-id=<value>` token and
  * reaches this point only through {@link isAdmissiblePeerId}, so it is a
@@ -177,5 +177,7 @@ export function zeroSetupOptionsArgv(
   if (options.maxReconnectAttempts !== undefined)
     argv.push(`--max-reconnect-attempts=${options.maxReconnectAttempts}`);
   if (options.connectionPerPoll === true) argv.push("--connection-per-poll");
+  if (options.publishWithoutRename === true)
+    argv.push("--publish-without-rename");
   return argv;
 }

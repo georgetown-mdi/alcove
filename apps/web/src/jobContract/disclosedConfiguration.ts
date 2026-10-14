@@ -70,6 +70,7 @@ export interface DisclosedFileSyncOptions {
   retainFiles?: boolean;
   unexpectedFiles?: "error" | "warn" | "ignore";
   connectionPerPoll?: boolean;
+  publishWithoutRename?: boolean;
 }
 
 /**

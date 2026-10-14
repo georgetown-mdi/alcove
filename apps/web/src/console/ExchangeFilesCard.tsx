@@ -15,6 +15,7 @@ import { MAX_PEER_ID_LENGTH } from "@jobContract/intentSchemas";
 import { DisclosureSection } from "../components/DisclosureSection";
 
 import {
+  PUBLISH_WITHOUT_RENAME_NOTICE,
   RETAIN_MODE_BILATERAL_NOTICE,
   exchangeFilesProblems,
 } from "./exchangeFilesModel";
@@ -43,15 +44,20 @@ const UNEXPECTED_FILES_CHOICES: ReadonlyArray<{
   { value: "ignore", label: "Ignore" },
 ];
 
-/** The collapsed summary, so a closed card is not a blind box: it names the one
- * choice that changes what the exchange leaves behind. */
+/** The collapsed summary, so a closed card is not a blind box: it names the
+ * choices that change what the exchange leaves behind or how it writes. */
 function draftSummary(draft: ExchangeFilesDraft): string {
-  return draft.retainFiles ? "Keeping every file" : "Default";
+  const named = [
+    ...(draft.retainFiles ? ["Keeping every file"] : []),
+    ...(draft.publishWithoutRename ? ["Writing without renaming"] : []),
+  ];
+  return named.length === 0 ? "Default" : named.join(", ");
 }
 
 /**
  * The console's "How files are handled" card: retain mode and the file-sync
- * toggles that travel with it, for an SFTP or shared-directory exchange. Offered
+ * toggles that travel with it, and writing without a rename for a server that
+ * refuses renames, for an SFTP or shared-directory exchange. Offered
  * as a closed disclosure, since the defaults are right for a first run and these
  * are the settings an operator reaches for in a specific situation -- a durable
  * transcript, or a synced folder whose behaviour needs the lockless rendezvous.
@@ -197,6 +203,31 @@ export function ExchangeFilesCard({
               )
             }
           />
+        )}
+
+        <Checkbox
+          checked={draft.publishWithoutRename}
+          onChange={(event) =>
+            set("publishWithoutRename", event.currentTarget.checked)
+          }
+          label="Write files without renaming them"
+          description={
+            "Write each exchange file directly under its final name instead " +
+            "of writing a temporary file and renaming it. Use it when the " +
+            "server does not allow renames, such as an SFTP server in front " +
+            "of a synced network share. This is your side's choice alone. " +
+            "Your partner neither sees it nor has to match it."
+          }
+        />
+
+        {draft.publishWithoutRename && (
+          <Alert
+            color="yellow"
+            icon={<IconAlertTriangle aria-hidden />}
+            title="Only safe on some shared folders"
+          >
+            {PUBLISH_WITHOUT_RENAME_NOTICE}
+          </Alert>
         )}
 
         {problems.length > 0 && (

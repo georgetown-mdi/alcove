@@ -206,6 +206,22 @@ describe(
       expect(parsed.stderr).toContain("input.csv does not exist");
     });
 
+    test("the publish-without-rename token survives a real parse", async () => {
+      const optionArgs = zeroSetupOptionsArgv(
+        exchangeFilesOptions(
+          { ...EXCHANGE_FILES_DEFAULT, publishWithoutRename: true },
+          ZERO_SETUP_EXCHANGE_FILES,
+        ),
+      );
+      expect(optionArgs).toEqual(["--publish-without-rename"]);
+      const { argv, dir } = await captureFiledropArgv(optionArgs);
+
+      const parsed = parseWithRealCli(argv, dir);
+      expect(parsed.stderr).not.toContain("Unknown option");
+      expect(parsed.status).not.toBe(EXIT_USAGE);
+      expect(parsed.stderr).toContain("input.csv does not exist");
+    });
+
     test("the diagnostic-run and sweep tokens survive a real parse on the exchange form too", async () => {
       // The per-run controls ride BOTH invocation forms, and the two commands
       // declare their options separately, so the exchange form gets the same
