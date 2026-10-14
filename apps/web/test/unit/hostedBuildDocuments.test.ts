@@ -9,7 +9,11 @@ import {
   matchesRoutePattern,
 } from "../../hosted/declaredRoutes";
 import hostedConfig from "../../vite.hosted.config";
-import { requireHostedSignalingServer } from "../../vite.config";
+
+import {
+  requireHostedSignalingServer,
+  requireValidDefaultRelay,
+} from "../../vite.config";
 import { routeDocumentFileName } from "../../hosted/routeDocuments";
 import { serviceWorkerStringArray } from "../../hosted/serviceWorkerSource";
 
@@ -99,6 +103,37 @@ describe("the hosted build's signaling control", () => {
   test("builds when the variable holds a value", () => {
     vi.stubEnv("VITE_SIGNALING_SERVER_URL", "wss://signaling.example.org/api/");
     expect(resolve()).toHaveProperty("build.outDir", "dist/hosted");
+  });
+});
+
+describe("the build's default relay control", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  const check = () =>
+    requireValidDefaultRelay({ command: "build", mode: "production" });
+
+  test("builds with both variables set, or neither", () => {
+    vi.stubEnv("VITE_DEFAULT_RELAY_TURN_URL", undefined);
+    vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
+    expect(check).not.toThrow();
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_TURN_URL",
+      "turns:turn.example.org:443?transport=tcp",
+    );
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_REGISTRAR_URL",
+      "https://registrar.example.org",
+    );
+    expect(check).not.toThrow();
+  });
+
+  test("refuses a build with one set alone, naming the other", () => {
+    vi.stubEnv(
+      "VITE_DEFAULT_RELAY_TURN_URL",
+      "turns:turn.example.org:443?transport=tcp",
+    );
+    vi.stubEnv("VITE_DEFAULT_RELAY_REGISTRAR_URL", undefined);
+    expect(check).toThrow(/VITE_DEFAULT_RELAY_REGISTRAR_URL is not set/);
   });
 });
 

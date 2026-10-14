@@ -6,7 +6,9 @@ import {
   SIGNALING_SCHEME_MISMATCH,
   signalingSchemeMatchesPage,
 } from "./signalingScheme";
+import { defaultRelayConfigProblems } from "./defaultRelayConfig";
 
+import type { DefaultRelaySetting } from "./defaultRelayConfig";
 import type { LogLevelDesc } from "loglevel";
 import type { ZodType } from "zod";
 
@@ -85,7 +87,21 @@ export interface ClientConfig {
    * the deployment, never read from an invitation.
    */
   SIGNALING_SERVER_URL: SignalingServerSetting | undefined;
+  /**
+   * The default relay every browser exchange this build runs lists: a
+   * `turn:` or `turns:` url, its credential minted from the exchange's shared
+   * secret. Empty, the build has none. Set with
+   * {@link ClientConfig.DEFAULT_RELAY_REGISTRAR_URL} or not at all.
+   */
+  DEFAULT_RELAY_TURN_URL: string;
+  /**
+   * The `https://` address of the default relay's registrar, where each run
+   * enrolls its relay key without a token. Empty, the build has none.
+   */
+  DEFAULT_RELAY_REGISTRAR_URL: string;
 }
+
+export type { DefaultRelaySetting };
 
 // Vite hands every env value over as a string, so a number arrives as its
 // decimal text; a blank one is refused rather than read as zero.
@@ -159,21 +175,35 @@ const LOG_LEVELS = [
 // PeerJS's LogLevel runs from Disabled (0) to All (3).
 const PEERJS_MAX_DEBUG_LEVEL = 3;
 
-const clientConfigSchema: ZodType<ClientConfig> = z.object({
-  PEERJS_DEBUG_LEVEL: numberFromEnv
-    .pipe(z.number().int().min(0).max(PEERJS_MAX_DEBUG_LEVEL))
-    .default(1),
-  LOG_LEVEL: z.preprocess(
-    (value) => (typeof value === "string" ? value.toUpperCase() : value),
-    z.enum(LOG_LEVELS).default("INFO"),
-  ),
-  DEPLOYMENT_PROFILE: z.enum(DEPLOYMENT_PROFILES).default("hosted"),
-  ALCOVE_VERSION: z.string().default(""),
-  SIGNALING_SERVER_URL: z
-    .string()
-    .default("")
-    .transform(parseSignalingServerUrl),
-});
+const clientConfigSchema: ZodType<ClientConfig> = z
+  .object({
+    PEERJS_DEBUG_LEVEL: numberFromEnv
+      .pipe(z.number().int().min(0).max(PEERJS_MAX_DEBUG_LEVEL))
+      .default(1),
+    LOG_LEVEL: z.preprocess(
+      (value) => (typeof value === "string" ? value.toUpperCase() : value),
+      z.enum(LOG_LEVELS).default("INFO"),
+    ),
+    DEPLOYMENT_PROFILE: z.enum(DEPLOYMENT_PROFILES).default("hosted"),
+    ALCOVE_VERSION: z.string().default(""),
+    SIGNALING_SERVER_URL: z
+      .string()
+      .default("")
+      .transform(parseSignalingServerUrl),
+    DEFAULT_RELAY_TURN_URL: z.string().trim().default(""),
+    DEFAULT_RELAY_REGISTRAR_URL: z.string().trim().default(""),
+  })
+  .superRefine((value, context) => {
+    for (const problem of defaultRelayConfigProblems(
+      value.DEFAULT_RELAY_TURN_URL,
+      value.DEFAULT_RELAY_REGISTRAR_URL,
+    ))
+      context.addIssue({
+        code: "custom",
+        path: [problem.variable],
+        message: problem.message,
+      });
+  });
 
 /**
  * Resolves a {@link ClientConfig} from `data`, keyed by the unprefixed names.
@@ -248,6 +278,15 @@ export function logLevel(): LogLevelDesc {
  * browser parties use this app's own origin. */
 export function signalingServerSetting(): SignalingServerSetting | undefined {
   return config.SIGNALING_SERVER_URL;
+}
+
+/** The default relay this build names, or undefined when it names none. */
+export function defaultRelaySetting(): DefaultRelaySetting | undefined {
+  if (config.DEFAULT_RELAY_TURN_URL === "") return undefined;
+  return {
+    turnUrl: config.DEFAULT_RELAY_TURN_URL,
+    registrarUrl: config.DEFAULT_RELAY_REGISTRAR_URL,
+  };
 }
 
 /** The PeerJS client's log level before diagnostic mode raises it. */

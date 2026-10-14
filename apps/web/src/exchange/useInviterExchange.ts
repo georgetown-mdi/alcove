@@ -63,6 +63,11 @@ import { quickExchangeSftpRefusalCopy } from "@console/quickExchangeSftpRefusal"
 import { relayForRun } from "@psi/transport/ownRelaySetting";
 
 import {
+  connectNoticingDefaultRelay,
+  relayWithDefaultForRun,
+} from "@psi/transport/defaultRelay";
+
+import {
   DEFAULT_PEER_WAIT_TIMEOUT_MS,
   PartnerNoShowError,
   waitForIncomingConnection,
@@ -1275,29 +1280,40 @@ export function useInviterExchange({
       // connection. Destroy the peer on a wait failure so acquisition stays
       // atomic (the lifecycle's teardown only ever covers a returned
       // {peer, conn}).
-      const peer = await listenAsInviter(minted.sharedSecret, {
-        signal,
-        relay: relayForRun(),
-      });
-      // The wait ends at the partner-wait ceiling, or sooner where the
-      // invitation expires first, and the share screen states that deadline.
-      const waitUntil = new Date(
-        Math.min(
-          Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
-          Date.parse(minted.expires),
-        ),
+      const runRelay = await relayWithDefaultForRun(
+        minted.sharedSecret,
+        relayForRun(),
+        { signal },
       );
-      if (!signal.aborted) setListeningUntil(waitUntil);
-      try {
-        const conn = await waitForIncomingConnection(peer, {
-          signal,
-          until: waitUntil,
-        });
-        return { peer, conn, psi, prepared };
-      } catch (error) {
-        peer.destroy();
-        throw error;
-      }
+      return connectNoticingDefaultRelay(
+        runRelay,
+        { onRunNotice, signal },
+        async () => {
+          const peer = await listenAsInviter(minted.sharedSecret, {
+            signal,
+            relay: runRelay.relay,
+          });
+          // The wait ends at the partner-wait ceiling, or sooner where the
+          // invitation expires first, and the share screen states that deadline.
+          const waitUntil = new Date(
+            Math.min(
+              Date.now() + DEFAULT_PEER_WAIT_TIMEOUT_MS,
+              Date.parse(minted.expires),
+            ),
+          );
+          if (!signal.aborted) setListeningUntil(waitUntil);
+          try {
+            const conn = await waitForIncomingConnection(peer, {
+              signal,
+              until: waitUntil,
+            });
+            return { peer, conn, psi, prepared };
+          } catch (error) {
+            peer.destroy();
+            throw error;
+          }
+        },
+      );
     };
 
     const browserDriver = (): ExchangeDriver<RunOutputs> =>

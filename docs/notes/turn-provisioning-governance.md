@@ -55,6 +55,24 @@ stand.
   where the invitation names none. Delivering a relay sealed at rendezvous is a
   later option and not part of this cut.
 
+**Superseded 2026-10-14, by an owner ruling on the hosted web application.**
+"No public relay" is reversed for the hosted web application; the rest of this
+record stands.
+
+- **The project's relay is public to the hosted web application.** Every
+  browser exchange on the production site lists the project's standing relay
+  ([infra/relay/README.md](../../infra/relay/README.md)), whatever relay the
+  invitation or the browser's own setting names, so a party on a network that
+  blocks direct paths still connects. Access is still by per-exchange,
+  time-limited credentials derived from the shared secret; the key behind them
+  is enrolled at the relay's registrar without a token, bounded by a per-address
+  rate limit, a short key lifetime and the relay's quotas
+  ([PROTOCOL.md](../spec/PROTOCOL.md#enrolling-at-a-default-relay)).
+- **The project learns both parties' addresses** on every production browser
+  exchange, relayed or not, as the relay's operator
+  ([PRIVACY.md](../../PRIVACY.md#hosted-web-application)). The command line is
+  unchanged: it lists only the relays its configuration or the invitation names.
+
 Taken from the relay measurement rather than measured again: TURN over TLS on
 443 relays a UDP-blocked CLI party, through TLS interception once the
 interception CA is trusted on the CLI host; the recommended shape is a shared,

@@ -45,6 +45,7 @@ import {
   classifyManagedRunFailure,
   managedRunRetryable,
 } from "../../../src/recurring/managedRunLaunchModel.js";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../../../src/psi/transport/defaultRelay.js";
 import { appendDisclosureRecordToStore } from "../../../src/psi/disclosureAccountingStore.js";
 import { authenticateExchange } from "../../../src/psi/authenticateExchange.js";
 import { buildRunOutputs } from "../../../src/psi/runOutputs.js";
@@ -335,11 +336,16 @@ function acquireResources(side: RendezvousRole = "acceptor") {
   const conn = { close: vi.fn() };
   mockedRendezvous.mockResolvedValue(
     side === "inviter"
-      ? { side: "inviter", peer: peer as unknown as Peer }
+      ? {
+          side: "inviter",
+          peer: peer as unknown as Peer,
+          defaultRelayNotEnrolled: false,
+        }
       : {
           side: "acceptor",
           peer: peer as unknown as Peer,
           conn: conn as unknown as DataConnection,
+          defaultRelayNotEnrolled: false,
         },
   );
   // The inviter listens, so its channel arrives through the inbound wait rather
@@ -509,6 +515,27 @@ describe("runManagedExchangeInBrowser", () => {
 
     expect(rejection).toBe(noShow);
     expect(peer.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  test("an inviter whose default relay was not enrolled says so when no partner connects", async () => {
+    const peer = { disconnect: vi.fn(), destroy: vi.fn() };
+    mockedRendezvous.mockResolvedValue({
+      side: "inviter",
+      peer: peer as unknown as Peer,
+      defaultRelayNotEnrolled: true,
+    });
+    const noShow = new PartnerNoShowError("nobody arrived");
+    mockedWaitForIncoming.mockRejectedValue(noShow);
+    const onWarning = vi.fn();
+
+    const rejection = await runDriver(
+      new AbortController().signal,
+      onWarning,
+      recordForSide("inviter"),
+    ).catch((error: unknown) => error);
+
+    expect(rejection).toBe(noShow);
+    expect(onWarning.mock.calls).toEqual([[DEFAULT_RELAY_NOT_ENROLLED_NOTICE]]);
   });
 
   test("records a receive list the terms exchange fills, then says which columns were taken", async () => {
@@ -953,6 +980,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
+      onRunNotice: expect.any(Function),
     });
     expect(rendezvousOptions().inboundWait).toEqual({
       signal: controller.signal,
@@ -977,6 +1005,7 @@ describe("the peer-wait bound", () => {
 
     expect(rendezvousOptions().acquisition).toEqual({
       signal: controller.signal,
+      onRunNotice: expect.any(Function),
       peerWaitTimeoutMs: 90_000,
     });
     expect(rendezvousOptions().inboundWait).toEqual({

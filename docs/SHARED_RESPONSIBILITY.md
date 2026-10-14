@@ -1,7 +1,7 @@
 ---
 title: "Alcove Deployment Model and Shared Responsibility"
 review_owner: "Alcove maintainers"
-last_reviewed: "2026-10-12"
+last_reviewed: "2026-10-14"
 ---
 
 # Deployment model and shared responsibility
@@ -88,7 +88,7 @@ An exchange relies on services operated by one of the parties, by the project, o
 | Coordination host (AWS) | Amazon Web Services, which provides the infrastructure the project's coordination server and its TLS front run on; not present when the agency deploys the coordination server itself | The host's network metadata (client IP addresses, connection timing and volume) and its disk. It sees no exchange content: the coordination server relays only opaque setup messages, and the exchange runs browser to browser under DTLS. |
 | Peer coordination (signaling) | The project, for the hosted web application; the agency, if it deploys the web application itself; or a public third-party service the agency points at | Rendezvous identifiers, connection timing, and client IP addresses. Never data-channel content. |
 | STUN | A third party. The hosted web application is configured by default with one public STUN server | The client IP address that queried it, and nothing further. |
-| TURN relay | Whoever the agency configures: in the container deployment's connection block, or in the browser's own relay setting for the web application; commonly a commercial ICE service. The project runs a relay at turn.data-bridge.org, used only when a party's relay setting or connection configuration names it | Each party's network address, whether or not traffic is relayed, and the traffic volume between them. It forwards encrypted DTLS packets without terminating the session. |
+| TURN relay | Whoever the agency configures: in the container deployment's connection block, or in the browser's own relay setting for the web application; commonly a commercial ICE service. The project runs a relay at turn.data-bridge.org, which every browser exchange on the hosted web application lists, and which a party's relay setting or connection configuration may name | Each party's network address, whether or not traffic is relayed, and the traffic volume between them. It forwards encrypted DTLS packets without terminating the session. |
 | Shared SFTP server or shared folder | One of the two parties, or a third party both trust | The exchange's files. On a recurring, authenticated exchange: ciphertext and file timing, plus the rendezvous files, key-exchange handshake frames, and abort marker that sit outside the application-layer wrap and hold no exchange data ([COMPLIANCE.md](COMPLIANCE.md#nist-sp-800-53), SC-8). On a quick exchange: readable content, since it relies on the transport alone. |
 | Container registry | A public registry the project does not operate | That an image pull happened. The project receives only whatever aggregate pull counts the registry publishes to image owners. |
 

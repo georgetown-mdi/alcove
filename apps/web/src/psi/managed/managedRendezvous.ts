@@ -37,6 +37,16 @@ import {
 import { refusedSignalingEndpointField } from "../transport/signalingAddress";
 import { relayForRun } from "../transport/ownRelaySetting";
 
+import {
+  connectNoticingDefaultRelay,
+  relayWithDefaultForRun,
+} from "../transport/defaultRelay";
+
+import type {
+  DefaultRelayDependencies,
+  RunRelay,
+} from "../transport/defaultRelay";
+
 import type { ExchangeSpec, WebRTCEndpoint } from "@alcove/core";
 import type { DataConnection } from "peerjs";
 import type Peer from "peerjs";
@@ -173,9 +183,11 @@ export function assertManagedRendezvousPossible(
  * peer with no channel yet (the caller awaits the acceptor's inbound connection);
  * the acceptor returns both the peer and the opened channel.
  */
-type ManagedRendezvousAcquisition =
+type ManagedRendezvousAcquisition = (
   | { side: "inviter"; peer: Peer }
-  | { side: "acceptor"; peer: Peer; conn: DataConnection };
+  | { side: "acceptor"; peer: Peer; conn: DataConnection }
+) &
+  Pick<RunRelay, "defaultRelayNotEnrolled">;
 
 /**
  * Begin the side-dispatched rendezvous. Returns the inviter's registered peer
@@ -197,7 +209,10 @@ type ManagedRendezvousAcquisition =
  *
  * Both flows gather against the relay {@link relayForRun} selects from the
  * stored connection's `invitationRelay` and this browser's own setting, read at
- * the start of each run.
+ * the start of each run, and the build's default relay once this run's key is
+ * enrolled there (`relayWithDefaultForRun`). A failed enrollment is returned
+ * as `defaultRelayNotEnrolled`, and reported through `onRunNotice` when the
+ * flow itself fails.
  */
 export async function beginManagedRendezvous(
   record: ManagedRendezvousRecord,
@@ -205,6 +220,8 @@ export async function beginManagedRendezvous(
     signal?: AbortSignal;
     flows?: ManagedRendezvousFlows;
     peerWaitTimeoutMs?: number;
+    defaultRelay?: DefaultRelayDependencies;
+    onRunNotice?: (message: string) => void;
   } = {},
 ): Promise<ManagedRendezvousAcquisition> {
   const flows = options.flows ?? defaultFlows;
@@ -214,9 +231,18 @@ export async function beginManagedRendezvous(
   const endpoint =
     side === "acceptor" ? managedAcceptorSignalingEndpoint(record) : undefined;
   const connection = exchangeFile.connection;
-  const relay = relayForRun(
-    connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+  const runRelay = await relayWithDefaultForRun(
+    sharedSecret,
+    relayForRun(
+      connection.channel === "webrtc" ? connection.invitationRelay : undefined,
+    ),
+    { ...options.defaultRelay, ...(signal !== undefined ? { signal } : {}) },
   );
+  const { relay, defaultRelayNotEnrolled } = runRelay;
+  const noticing = {
+    onRunNotice: options.onRunNotice ?? (() => {}),
+    ...(signal !== undefined ? { signal } : {}),
+  };
   const peerWaitTimeoutMs = options.peerWaitTimeoutMs;
   const registrationBound =
     peerWaitTimeoutMs !== undefined
@@ -228,20 +254,27 @@ export async function beginManagedRendezvous(
         }
       : {};
   if (endpoint === undefined) {
-    const peer = await flows.listenAsInviter(sharedSecret, {
-      signal,
-      relay,
-      ...registrationBound,
-    });
-    return { side: "inviter", peer };
+    const peer = await connectNoticingDefaultRelay(runRelay, noticing, () =>
+      flows.listenAsInviter(sharedSecret, {
+        signal,
+        relay,
+        ...registrationBound,
+      }),
+    );
+    return { side: "inviter", peer, defaultRelayNotEnrolled };
   }
-  const [peer, conn] = await flows.dialAsAcceptor(sharedSecret, endpoint, {
-    signal,
-    relay,
-    ...registrationBound,
-    ...(peerWaitTimeoutMs !== undefined
-      ? { totalTimeoutMs: peerWaitTimeoutMs }
-      : {}),
-  });
-  return { side: "acceptor", peer, conn };
+  const [peer, conn] = await connectNoticingDefaultRelay(
+    runRelay,
+    noticing,
+    () =>
+      flows.dialAsAcceptor(sharedSecret, endpoint, {
+        signal,
+        relay,
+        ...registrationBound,
+        ...(peerWaitTimeoutMs !== undefined
+          ? { totalTimeoutMs: peerWaitTimeoutMs }
+          : {}),
+      }),
+  );
+  return { side: "acceptor", peer, conn, defaultRelayNotEnrolled };
 }

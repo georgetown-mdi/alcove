@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import {
+  deriveRelayExchangeId,
   deriveRelayKey,
   mintRelayCredential,
   mintRunRelayCredential,
@@ -8,7 +9,10 @@ import {
   RUN_RELAY_CREDENTIAL_LABEL,
   selectRunRelay,
 } from "../src/relayCredential";
-import { generateSharedSecret } from "../src/config/connection";
+import {
+  generateSharedSecret,
+  RelayRegistrarSchema,
+} from "../src/config/connection";
 
 // Bytes 0x00..0x1f, base64url-encoded.
 const FIXED_SECRET = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
@@ -46,6 +50,38 @@ describe("deriveRelayKey", () => {
     );
     await expect(deriveRelayKey(FIXED_SECRET.slice(1))).rejects.toThrow(
       /SHARED_SECRET_REGEX/,
+    );
+  });
+});
+
+// Computed outside this code, by OpenSSL 3.0, as FIXED_RELAY_KEY with
+// -keylen 16 and -kdfopt info:alcove-relay-exchange-id-v1.
+const FIXED_RELAY_EXCHANGE_ID = "6ca2d911f5f27da95df0b014a8b2b014";
+
+describe("deriveRelayExchangeId", () => {
+  test("matches the known-answer id for a fixed secret", async () => {
+    expect(await deriveRelayExchangeId(FIXED_SECRET)).toBe(
+      FIXED_RELAY_EXCHANGE_ID,
+    );
+  });
+
+  test("is 16 bytes of lowercase hex the registrar takes as an exchange id", async () => {
+    const secret = generateSharedSecret();
+    const id = await deriveRelayExchangeId(secret);
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(await deriveRelayExchangeId(secret)).toBe(id);
+    expect(id).not.toBe((await deriveRelayKey(secret)).slice(0, 32));
+    expect(
+      RelayRegistrarSchema.safeParse({
+        url: "https://registrar.example.org",
+        exchangeId: id,
+      }).success,
+    ).toBe(true);
+  });
+
+  test("refuses a value that is not a 32-byte base64url secret", async () => {
+    await expect(deriveRelayExchangeId("not-a-secret")).rejects.toThrow(
+      /deriveRelayExchangeId: .*SHARED_SECRET_REGEX/,
     );
   });
 });

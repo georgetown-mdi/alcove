@@ -16,6 +16,7 @@ import { RENDEZVOUS_ROLES } from "../src/rendezvous";
 const SINGLE_LABELS: readonly string[] = [
   "alcove-shared-secret-rotation-v2",
   "alcove-relay-key-v2",
+  "alcove-relay-exchange-id-v1",
   "alcove-signed-receipt-content/v3",
   "alcove-signing-cert-signature/v2",
   "alcove-signing-cert-fingerprint/v2",

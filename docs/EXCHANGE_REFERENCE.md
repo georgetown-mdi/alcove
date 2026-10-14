@@ -860,7 +860,10 @@ An inviter names its relay from its own settings: the `url` of each `turn` entry
 - **`alcove invite` over a `ws://` or `wss://` URL** takes the relay from `--turn` and `--stun` ([CLI.md](CLI.md#inviting-over-webrtc)), and the configuration it writes holds them as url-only `turn` entries and a `stun` list.
 - **An offline `alcove invite` from a configuration whose connection is `webrtc`** names that connection's coordination server and its relay, from `turn` and `stun` as above. A configuration with neither names no relay.
 
-The web app follows the same rules with the browser's own relay setting (the Relay server page, `/relay`) in place of `turn` and `stun`: an acceptance and each re-run of a saved exchange relay through the invitation's relay, and a web inviter names its own relay setting's urls in the invitation.
+The web app chooses between the invitation's relay and its own the same way, with the browser's own relay setting (the Relay server page, `/relay`) in place of `turn` and `stun`: an acceptance and each re-run of a saved exchange relay through the invitation's relay, and a web inviter names its own relay setting's urls in the invitation. Two things differ from the CLI:
+
+- **The default STUN server stays.** The browser always lists its default STUN server, and the chosen STUN urls are added beside it rather than in its place.
+- **A build's default relay is added.** A web app built with a default relay, as the hosted one is ([DEPLOYMENT.md](DEPLOYMENT.md#the-default-relay)), lists that relay in every run, beside the relay the invitation or the setting names, once the run has enrolled the exchange's relay key at that relay's registrar.
 
 ```yaml
 connection:

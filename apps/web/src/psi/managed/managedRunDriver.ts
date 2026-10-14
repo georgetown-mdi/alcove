@@ -46,6 +46,7 @@ import { buildRunOutputs } from "../runOutputs";
 import { undeclaredColumnsRunNotice } from "../runWarnings";
 
 import { CLOSE_OUTCOME_WARNINGS } from "../exchangeLifecycle";
+import { DEFAULT_RELAY_NOT_ENROLLED_NOTICE } from "../transport/defaultRelay";
 import { appendDisclosureRecordToStore } from "../disclosureAccountingStore";
 import { authenticateExchange } from "../authenticateExchange";
 import { createBrowserPsiEngineFactory } from "../workers/psiCryptoController";
@@ -320,6 +321,7 @@ export function runManagedExchangeInBrowser(
 
         const acquisition = await beginManagedRendezvous(current, {
           signal,
+          onRunNotice: emitRunNotice,
           ...(peerWaitTimeoutMs !== undefined ? { peerWaitTimeoutMs } : {}),
         });
         let peer: Peer;
@@ -339,6 +341,8 @@ export function runManagedExchangeInBrowser(
           }
         } catch (error) {
           acquisition.peer.destroy();
+          if (acquisition.defaultRelayNotEnrolled)
+            emitRunNotice(DEFAULT_RELAY_NOT_ENROLLED_NOTICE);
           throw error;
         }
 
