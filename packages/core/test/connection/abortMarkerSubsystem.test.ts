@@ -66,7 +66,11 @@ function makeDeps(overrides: Partial<Deps> = {}) {
 
 function armed(
   client: FileTransportClient,
-  opts: { writeDir?: string | null; deps?: Partial<Deps> } = {},
+  opts: {
+    writeDir?: string | null;
+    deps?: Partial<Deps>;
+    publishWithoutRename?: boolean;
+  } = {},
 ) {
   const made = makeDeps(opts.deps);
   const subsystem = new AbortMarkerSubsystem(made.deps);
@@ -76,6 +80,7 @@ function armed(
     SELF_ID,
     opts.writeDir === null ? undefined : (opts.writeDir ?? DIR),
     client,
+    opts.publishWithoutRename,
   );
   return { subsystem, ...made };
 }
@@ -303,6 +308,46 @@ test("writeMarker on a stalled rename rejects with the budget error naming the f
     WRITE_BUDGET_MS,
   );
   expect(rejection).toBe(stalledError.mock.results[0].value);
+  expect(debug).not.toHaveBeenCalled();
+});
+
+test("writeMarker with publishWithoutRename puts straight to the final path with the write options and issues no rename", async () => {
+  const client = makeClient();
+  const { subsystem, debug } = armed(client, { publishWithoutRename: true });
+  await subsystem.writeMarker();
+
+  const finalPath = `${DIR}/${SELF_ID}-abort.json`;
+  expect(client.put).toHaveBeenCalledOnce();
+  expect(vi.mocked(client.put).mock.calls[0][1]).toBe(finalPath);
+  expect(vi.mocked(client.put).mock.calls[0][2]).toStrictEqual({
+    flags: "w",
+    encoding: "utf-8",
+  });
+  expect(client.rename).not.toHaveBeenCalled();
+  expect(debug).toHaveBeenCalledWith(
+    `[sender] wrote abort marker ${SELF_ID}-abort.json`,
+  );
+});
+
+test("writeMarker with publishWithoutRename on a stalled put rejects with the budget error naming the final path", async () => {
+  const client = makeClient();
+  const { subsystem, stalledError, debug } = armed(client, {
+    publishWithoutRename: true,
+    deps: {
+      runBudgeted: (_op, _budgetMs, makeError) => Promise.reject(makeError()),
+    },
+  });
+  const rejection = await subsystem.writeMarker().then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(rejection).toBeInstanceOf(TransportOperationStalledError);
+  expect(stalledError).toHaveBeenCalledWith(
+    `abort marker write to ${DIR}/${SELF_ID}-abort.json`,
+    WRITE_BUDGET_MS,
+  );
+  expect(rejection).toBe(stalledError.mock.results[0].value);
+  expect(client.rename).not.toHaveBeenCalled();
   expect(debug).not.toHaveBeenCalled();
 });
 
