@@ -71,6 +71,13 @@ const CANDIDATE_B = {
   sdpMid: "0",
   sdpMLineIndex: 0,
 };
+/** A browser's mDNS host candidate, the shape a browser sends by default. */
+const MDNS_CANDIDATE = {
+  candidate:
+    "candidate:3 1 udp 2122260223 8f0e5a5e-1d2b-4c3d-9e8f-0a1b2c3d4e5f.local 54321 typ host",
+  sdpMid: "0",
+  sdpMLineIndex: 0,
+};
 
 /**
  * werift hands the negotiation an `RTCIceCandidate` instance whose `toJSON`
@@ -214,8 +221,22 @@ class ScriptedPeer {
   }
 
   rejectCandidates = false;
+  /** Every candidate handed to `addIceCandidate`, settled or not. */
+  readonly handedCandidates: Array<unknown> = [];
+  /**
+   * Candidate strings whose application never settles, as werift's does not
+   * while an mDNS lookup for a `.local` candidate is unanswered.
+   */
+  readonly unsettledCandidates = new Set<string>();
 
   addIceCandidate(candidate: unknown): Promise<void> {
+    this.handedCandidates.push(candidate);
+    if (
+      this.unsettledCandidates.has(
+        (candidate as { candidate: string }).candidate,
+      )
+    )
+      return new Promise<void>(() => {});
     if (this.rejectCandidates)
       return Promise.reject(new Error("unparseable candidate"));
     this.remoteCandidates.push(candidate);
@@ -1075,6 +1096,95 @@ test("a remote candidate is held until a remote description can apply it", async
   });
   await new Promise((resolve) => setTimeout(resolve, 10));
   expect(peer.remoteCandidates).toEqual([CANDIDATE_A]);
+  peer.channels[0].open();
+  await session;
+});
+
+test("a held candidate whose application has not settled does not delay the held candidates after it", async () => {
+  const { socket, peer, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+  });
+  peer.unsettledCandidates.add(MDNS_CANDIDATE.candidate);
+  for (const candidate of [MDNS_CANDIDATE, CANDIDATE_A, CANDIDATE_B]) {
+    socket.deliver({
+      type: BROKER_MESSAGE.candidate,
+      src: inviterId,
+      payload: { candidate },
+    });
+  }
+  socket.deliver({
+    type: BROKER_MESSAGE.answer,
+    src: inviterId,
+    payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
+  });
+  await waitFor(() => peer.remoteCandidates.length === 2, NEGOTIATION_POLL);
+  expect(peer.handedCandidates).toEqual([
+    MDNS_CANDIDATE,
+    CANDIDATE_A,
+    CANDIDATE_B,
+  ]);
+  expect(peer.remoteCandidates).toEqual([CANDIDATE_A, CANDIDATE_B]);
+  peer.channels[0].open();
+  await session;
+});
+
+test("a held candidate whose application has not settled delays neither the answer nor the held candidates after it", async () => {
+  const { socket, peer, session, acceptorId } = await startRendezvous({
+    role: "inviter",
+  });
+  peer.unsettledCandidates.add(MDNS_CANDIDATE.candidate);
+  for (const candidate of [MDNS_CANDIDATE, CANDIDATE_A, CANDIDATE_B]) {
+    socket.deliver({
+      type: BROKER_MESSAGE.candidate,
+      src: acceptorId,
+      payload: { candidate, connectionId: "dc_fromtheirside" },
+    });
+  }
+  socket.deliver({
+    type: BROKER_MESSAGE.offer,
+    src: acceptorId,
+    payload: {
+      sdp: { type: "offer", sdp: "v=0\r\noffer\r\n" },
+      type: "data",
+      connectionId: "dc_fromtheirside",
+      serialization: "binary",
+    },
+  });
+  await waitFor(
+    () => socket.ofType(BROKER_MESSAGE.answer).length === 1,
+    NEGOTIATION_POLL,
+  );
+  expect(peer.handedCandidates).toEqual([
+    MDNS_CANDIDATE,
+    CANDIDATE_A,
+    CANDIDATE_B,
+  ]);
+  expect(peer.remoteCandidates).toEqual([CANDIDATE_A, CANDIDATE_B]);
+  const channel = new FakeChannel("dc_fromtheirside");
+  peer.ondatachannel?.({ channel });
+  channel.open();
+  await session;
+});
+
+test("held candidates the ICE agent rejects leave the rendezvous to complete", async () => {
+  const { socket, peer, session, inviterId } = await startRendezvous({
+    role: "acceptor",
+  });
+  peer.rejectCandidates = true;
+  for (const candidate of [CANDIDATE_A, CANDIDATE_B]) {
+    socket.deliver({
+      type: BROKER_MESSAGE.candidate,
+      src: inviterId,
+      payload: { candidate },
+    });
+  }
+  socket.deliver({
+    type: BROKER_MESSAGE.answer,
+    src: inviterId,
+    payload: { sdp: { type: "answer", sdp: "v=0\r\nanswer\r\n" } },
+  });
+  await waitFor(() => peer.handedCandidates.length === 2, NEGOTIATION_POLL);
+  expect(peer.remoteCandidates).toEqual([]);
   peer.channels[0].open();
   await session;
 });

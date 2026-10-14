@@ -343,6 +343,17 @@ broker. Both stacks fire candidates during `setLocalDescription`, before the
 description can have reached the broker, and a PeerJS peer discards a candidate
 it cannot yet apply -- silently, from the sender's side.
 
+The CLI holds a remote candidate that arrives before the remote description,
+within the cap in [Budgets](#budgets), and hands every held candidate to the
+ICE agent once the description is applied, without waiting for any of them to
+be applied first, and an inviter sends its answer without waiting for them
+either. A candidate arriving after the description is handed over as it
+arrives, independently of the others. werift takes 10 s to give up on a
+browser's `.local` host candidate that no host answers for
+([DEPENDENCY_PINS.md](DEPENDENCY_PINS.md#the-behavioural-assumptions)), so
+waiting on each in turn would delay every candidate behind it, and the
+answer, by that much.
+
 ## Framing
 
 PeerJS's chunking is a convention inside BinaryPack messages, not a protocol of
