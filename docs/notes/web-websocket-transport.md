@@ -6,7 +6,7 @@ title: "The Web Application's WebSocket Transport Path"
 
 _Status: design only; nothing here is built.
 The maintainer ruled on the seven forks on 2026-10-09 ([The forks and their rulings](#the-forks-and-their-rulings)).
-What remains open is the spikes S1 to S8, none of which has run, and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is open again after a later ruling on the TURN relay (2026-10-14, [fork 1](#the-forks-and-their-rulings)).
+What remains open is the spikes S2 to S8, none of which has run (S1 passed, [recorded below](#the-spikes)), and what the rulings left conditional or open: the credential for a scheduled browser SFTP run waits on S8, and whether the hosted relay admits one-shot exchanges is open again after a later ruling on the TURN relay (2026-10-14, [fork 1](#the-forks-and-their-rulings)).
 The public web application is the consumer of both paths and the console ships neither, by the maintainer's ruling.
 The note recommends a WebSocket relay for networks whose inspection stops TURN as the first thing to build, answers whether that relay and the browser SFTP proxy are one component, re-answers the browser SFTP note's open choices under the ruling, and ends with the sequence, the spikes, and the forks with the maintainer's rulings on them.
 Nothing here is normative: the wrap rule is in
@@ -88,8 +88,8 @@ What a middlebox can do with it depends on how far it looks:
 | **A WebSocket relay of its own on 443** | A WebSocket: a TLS session carrying an HTTP `GET` with `Upgrade: websocket`, then binary frames; an enforcing proxy reads a valid HTTP request and WebSocket frames, which is what the network exists to carry; an explicit proxy tunnels it as browsers do for every WebSocket | Addresses, timing, volume, the pairing of two parties, the handshake frames in the clear, and every later frame as the wrap's AEAD envelope | The project for the hosted app; a party from a reference deployment; no managed vendor offers it | Yes, with the framing and bounds the two implementations already share, and with the wrap |
 | **Not candidates** | WebTransport and anything over QUIC are UDP, which the measured classes block outright; ICE-TCP host candidates need a reachable address on one side, which a party behind the inspecting network does not have | | | |
 
-Unverified, and what would verify it: that an enforcing proxy passes a WebSocket and refuses TURN over TLS is reasoning from what each protocol puts after the TLS handshake, not a measurement.
-The spike that settles it is [S1](#the-spikes), on the AWS harness the relay measurement built, with a proxy configured to enforce HTTP inside TLS; the harness's class-B proxy did not enforce.
+Measured by [S1](#the-spikes), through a proxy that enforces HTTP inside TLS: it stopped TURN over TLS and passed a WebSocket upgrade on 443, so the relay path stands on such a network.
+That a given gateway classifies on ALPN or the Client Hello is still unverified.
 A WebSocket's own exposure is a gateway that blocks WebSocket upgrades as a policy, which breaks ordinary web applications and is therefore rare; whether a given partner's gateway does is a question for onboarding, as the TURN name is.
 
 ### Why not carry the exchange through the broker
@@ -272,6 +272,25 @@ Each is an experiment with a PASS a reviewer can read off the result, run before
   On the AWS harness of the relay measurement, class B with the inspecting proxy configured to enforce HTTP inside TLS (the spike names the tool and the rule it used), a CLI party and a browser party each try TURN over TLS on 443 and then a minimal WebSocket echo relay on 443.
   PASS: the WebSocket connection completes and the TURN allocation is refused, with the proxy's log naming the refusal; the capture of each Client Hello is recorded for the ALPN question.
   If TURN passes every enforcement the tool offers, the result is recorded and the relay's case rests on the maintainer's field reports, stated as such.
+  **Result: S1 PASS, measured 2026-10-14**, in a narrower form than the text above.
+  Squid 6.13 ran as a transparent proxy between a client on the owner's Mac and the project relay's 443 front.
+  Each level was probed for TURN over TLS and for a WebSocket held open 30 s:
+  - Splice only (L1): TURN reached coturn, which answered 401 naming its realm, and the WebSocket held.
+  - TLS interception (L2), and interception with HTTP enforcement inside TLS (L3): the TURN allocation got no reply and stalled, while the WebSocket upgrade passed and held.
+  - L4, which also refuses WebSocket upgrades: both stopped.
+  - Direct runs before and after (L0, L0b) matched, so the relay did not change mid-run.
+
+  What it means: on a network that inspects TLS and enforces HTTP inside it, a WebSocket relay on 443 connects where TURN does not, so the relay path stands.
+  A network that also refuses upgrades stops both.
+  How the run differed from the text above:
+  - It used the project relay's 443 front, not the AWS harness.
+  - The signaling server's WebSocket stood in for a minimal echo relay.
+  - No browser or werift client ran and no Client Hello was captured, so the ALPN question stays open.
+  - The TURN probes were a raw Allocate and `turnutils_uclient` with a wrong credential; the 401 proves the request reached coturn.
+  - TURN stopped by a stall, not a refusal: Squid answered zero bytes and logged the stop only after the client gave up, so the log did not name a refusal.
+
+  For anyone repeating it: Squid 6.13 matches the upgrade protocol name case-sensitively, so `http_upgrade_request_protocols` needed `websocket` in lower case for the upgrade to pass.
+  The run record is host-local and not in the repository.
 - **S2. A relayed exchange through the 443 front.**
   The one 443 front on the relay instance is built and routes the broker's name; the relay's name is one more route on it ([Port 443 is a prerequisite](#who-runs-it-and-what-it-costs)).
   What S2 still measures is the case the deployment record lists as not measured: a relayed exchange through the front from a client admitted to 443 only.
