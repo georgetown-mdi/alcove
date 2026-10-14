@@ -38,8 +38,11 @@ import {
   DIRECT_DEDUPLICATE_SIDE_NOTICE,
   DIRECT_LINKAGE_STRATEGY_AGREEMENT_NOTICE,
 } from "@exchange/directExchangeModel";
+import {
+  PUBLISH_WITHOUT_RENAME_NOTICE,
+  RETAIN_MODE_BILATERAL_NOTICE,
+} from "@console/exchangeFilesModel";
 import { DirectExchangeScreen } from "@exchange/DirectExchangeScreen";
-import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import { SPLIT_DIRECTORY_RETAIN_SUMMARY } from "@console/sftpConnectionForm";
 import { SPLIT_RENDEZVOUS_RETAIN_REQUIREMENT } from "@console/filedropRendezvousChoice";
 import { UNDESCRIBABLE_RECORD_LEAD } from "@exchange/RecordDownload";
@@ -1528,6 +1531,29 @@ describe("direct exchange file-handling gate", () => {
         page.getByRole("button", { name: "Continue to confirm and run" }),
       )
       .toBeEnabled();
+  });
+
+  test("writing without renaming states its caveat and summarizes the closed card", async () => {
+    stubJobApi({ sftp: CONFIGURED_SFTP });
+    app.render(createElement(DirectExchangeScreen));
+    await openExchangeFiles();
+    expect(app.container.textContent).not.toContain(
+      PUBLISH_WITHOUT_RENAME_NOTICE,
+    );
+
+    await page.getByLabelText("Write files without renaming them").click();
+    await expect
+      .element(page.getByLabelText("Write files without renaming them"))
+      .toBeChecked();
+    expect(app.container.textContent).toContain(PUBLISH_WITHOUT_RENAME_NOTICE);
+    await expect
+      .element(page.getByLabelText("Keep every exchange file"))
+      .not.toBeChecked();
+
+    await page.getByRole("button", { name: /How files are handled/ }).click();
+    await expect
+      .element(page.getByText("Writing without renaming"))
+      .toBeInTheDocument();
   });
 
   test("an inadmissible draft blocks Continue, in core's own words", async () => {

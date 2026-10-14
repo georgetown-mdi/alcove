@@ -19,6 +19,10 @@ import {
   UNTAKEN_RECORD_CONFIRM_BODY,
 } from "@exchange/RunSurface";
 import {
+  PUBLISH_WITHOUT_RENAME_NOTICE,
+  RETAIN_MODE_BILATERAL_NOTICE,
+} from "@console/exchangeFilesModel";
+import {
   RECORD_UNANSWERED_LEAD,
   TERMINATED_RECORD_KEYS_NOTICE,
   TERMINATED_RECORD_LEAD,
@@ -34,7 +38,6 @@ import {
 } from "@psi/runDiagnosticsModel";
 import { InviterScreen } from "@exchange/InviterScreen";
 import { RECEIPT_MISSING_LEAD } from "@exchange/ReceiptDownload";
-import { RETAIN_MODE_BILATERAL_NOTICE } from "@console/exchangeFilesModel";
 import styles from "@styles/app.module.css";
 
 import {
@@ -794,6 +797,45 @@ describe("console inviter file-handling gate", () => {
     await expect
       .element(page.getByRole("button", { name: "Create the invitation" }))
       .toBeEnabled();
+  });
+
+  test("writing without renaming states its caveat, summarizes the closed card and reaches the run", async () => {
+    const api = stubJobApi({ sftp: RUN_HERE_SFTP });
+    app.render(createElement(InviterScreen));
+    await reachReviewCreate();
+    await openExchangeFiles();
+    expect(app.container.textContent).not.toContain(
+      PUBLISH_WITHOUT_RENAME_NOTICE,
+    );
+
+    await setCheckbox("Write files without renaming them", true);
+    expect(app.container.textContent).toContain(PUBLISH_WITHOUT_RENAME_NOTICE);
+    // The choice is its own: retain mode stays off.
+    await expect
+      .element(page.getByLabelText("Keep every exchange file"))
+      .not.toBeChecked();
+
+    await page.getByRole("button", { name: /How files are handled/ }).click();
+    await expect
+      .element(page.getByText("Writing without renaming"))
+      .toBeInTheDocument();
+
+    await page.getByRole("button", { name: "Create the invitation" }).click();
+    await vi.waitFor(() => {
+      expect(
+        api.captured.some(
+          (request) => request.url === "/api/jobs" && request.method === "POST",
+        ),
+      ).toBe(true);
+    });
+    const post = api.captured.find(
+      (request) => request.url === "/api/jobs" && request.method === "POST",
+    );
+    const intent = JSON.parse(post?.body ?? "{}") as {
+      options?: Record<string, unknown>;
+    };
+    expect(intent.options?.publishWithoutRename).toBe(true);
+    expect(intent.options?.retainFiles).toBeUndefined();
   });
 
   test("an inadmissible draft blocks the mint and says why", async () => {
