@@ -366,7 +366,12 @@ whose operator gave it none; that is turned on in `relay.env` -- see
   value that fails them 400 with a fixed message naming the field, never the
   value, before anything is written. An id starting with `alcove-verify-` is
   refused 400 unless the request carries `Alcove-Relay-Verify-Run: 1`, which
-  `verify.sh` sends and which the preflight does not allow a browser to send. A
+  `verify.sh` sends and which the preflight does not allow a browser to send.
+  An enrollment without a token of such an id is also refused 400 unless its
+  client address is loopback -- the connection's own on the registrar's port,
+  the one the front's PROXY header names on the front's -- since any other
+  client can send that header; `verify.sh`, which runs on the relay host,
+  sends those enrollments to `127.0.0.1`. A
   body that is not that JSON object is answered 400, one over 1024 bytes 413,
   and one without a `Content-Length` 411; a revocation under a proof may send
   no body, which it signs as empty. A request line or header block the
@@ -470,7 +475,7 @@ A browser party enrolls the exchange it is about to run with no token: it
 holds none, and any token a served page held would be public. Where
 `ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT=on` in `relay.env`, the
 registrar takes a `POST` with no `Authorization` header as an enrollment.
-Off, or unset, it answers that `POST` 401 as before. The setting is read at
+Off, or unset, it answers that `POST` 401. The setting is read at
 start: to turn it off, set it to `off` and
 `systemctl restart alcove-relay-registrar.service`.
 
@@ -530,11 +535,45 @@ start: to turn it off, set it to `off` and
   (`MAX_TRACKED_ADDRESSES`, an arbitrary working value). With all of them
   taken, an enrollment from another address is answered 429, until the
   oldest window ends, and writes nothing.
+- **The ceiling.** At most 140 rows enrolled without a token and not yet
+  lapsed are held in the realm at once
+  (`ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING` in `relay.env`, 140 where
+  unset), counted inside the enrollment's own write. Past it, an enrollment
+  of an id not yet held is answered 503 with `Retry-After`, the seconds until
+  the first of those rows lapses, and nothing is written; an enrollment
+  naming the key an id already holds is still answered 200. Every such row is
+  a secret in coturn's `turn_secret` for the realm, which every allocation's
+  authentication is checked against, so the ceiling bounds what callers
+  holding no credential can add there. The rate limit does not: 4096
+  addresses at 20 a window could hold about 4096 x 160 rows.
+  - **Where 140 comes from.** From what the relay can serve, at the
+    defaults in `relay.env.example`. `total-quota` (40,
+    `ALCOVE_RELAY_TOTAL_QUOTA`) allows 20 relayed exchanges at once, at two
+    allocations each. Taking one allocation lifetime, `max-allocate-lifetime`'s
+    600 s in `turnserver.conf.tmpl`, as how long a relayed exchange holds its
+    two allocations, the quota serves 20 exchanges every 600 s, 2 a minute.
+    Each exchange holds one row, and a row lapses after 70 minutes, so use at
+    full relay capacity holds 2 x 70 = 140 rows not yet lapsed. `user-quota`
+    (6) bounds one credential's allocations, not the number of exchanges, so
+    it does not enter. The formula is `total-quota / 2 x 4200 / 600`, which
+    is `total-quota x 3.5`: on changing the quota, set the ceiling to match.
+    A lapsed row is not counted, and the sweep deletes it within about
+    eleven minutes, so a flood holds at most about 140 x 81 / 70, about 162,
+    such rows in the table.
+  - **The limit.** At the ceiling, an enrollment without a token of a new id
+    is refused until rows lapse, so a browser run that could not enroll
+    dials without the default relay, by STUN alone. One address at its rate
+    limit reaches the ceiling by itself (about 160 rows, above), so a flood
+    from one address refuses every other caller's enrollment without a token
+    for up to 70 minutes. A run that never relays still holds a row, so
+    legitimate use setting up more than 2 exchanges a minute reaches it too.
+    Each refusal is counted (What it counts, below).
 
 ### What it counts
 
-The registrar counts the enrollments without a token it wrote and the 429s
-it answered, and writes the counts to `/var/lib/alcove-relay/registrar-counters`
+The registrar counts the enrollments without a token it wrote, the 429s it
+answered, and the 503s it answered at [the ceiling](#enrollment-without-a-token),
+and writes the counts to `/var/lib/alcove-relay/registrar-counters`
 (beside the secrets table), for the relay's monitoring to read:
 
 ```
@@ -542,6 +581,7 @@ started=2026-10-15T12:00:00Z
 updated=2026-10-15T12:34:50Z
 tokenless_enrollments=12
 rate_limit_refusals=3
+tokenless_ceiling_refusals=0
 ```
 
 Each count is the total since the registrar started, at `started`; a reader

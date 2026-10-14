@@ -95,6 +95,16 @@ class UsageError(Exception):
     """A command run without what it needs to name its target; exit 2."""
 
 
+class CeilingReached(Exception):
+    """An enrollment with a fixed lapse refused because the realm already holds
+    the ceiling's count of such rows not yet lapsed; nothing changed.
+    `earliest_lapse` is the Unix time the first of them lapses."""
+
+    def __init__(self, earliest_lapse):
+        super().__init__("the realm holds as many rows with a fixed lapse as its ceiling allows")
+        self.earliest_lapse = earliest_lapse
+
+
 class ProofRefused(Refused):
     """A rotation or revocation whose proof does not verify against the key the
     exchange holds when the write takes the table's lock."""
@@ -273,12 +283,14 @@ def register(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=F
     return _registration(outcome, realm, exchange_id, max_age_days, now)
 
 
-def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=False, fixed_lapse_at=None):
+def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=False, fixed_lapse_at=None, ceiling=None):
     """Adds the key's row and maps an exchange this relay does not yet hold.
     Enrolling an exchange again with the key it holds changes nothing and
     returns its registration as held; any other key for an id already mapped
     is refused. With `fixed_lapse_at`, a Unix time after `now`, the row lapses
-    then and max_age_days must be None. Returns the registration."""
+    then and max_age_days must be None; with `ceiling` too, a new row is
+    refused with CeilingReached while the realm holds that many rows with a
+    fixed lapse after `now`. Returns the registration."""
     check_registration(exchange_id, key, max_age_days, allow_verify_id)
     if not realm:
         raise Refused("ALCOVE_RELAY_REALM is unset")
@@ -293,6 +305,14 @@ def enroll(conn, realm, exchange_id, key, max_age_days, now, allow_verify_id=Fal
             (exchange_id,),
         ).fetchone()
         if held is None:
+            if fixed_lapse_at is not None and ceiling is not None:
+                live, earliest_lapse = conn.execute(
+                    "SELECT COUNT(*), MIN(fixed_lapse_at) FROM alcove_exchange "
+                    "WHERE realm = ? AND fixed_lapse_at IS NOT NULL AND fixed_lapse_at > ?",
+                    (realm, now),
+                ).fetchone()
+                if live >= ceiling:
+                    raise CeilingReached(earliest_lapse)
             outcome = _write_key(conn, realm, exchange_id, key, max_age_days, now, None, fixed_lapse_at)
             return _registration(outcome, realm, exchange_id, max_age_days, now, fixed_lapse_at)
         if (held[0], held[1]) == (realm, key):

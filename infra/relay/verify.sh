@@ -28,8 +28,9 @@
 #                 a registration and a revocation with it reach the mapping and
 #                 the table, through the front where the registrar has a name
 #                 of its own. Where enrollment without a token is on, such an
-#                 enrollment naming another key for the registered id is
-#                 answered 409, and one naming its key 200. Skipped, and said
+#                 enrollment from loopback naming another key for the
+#                 registered id is answered 409, and one naming its key 200.
+#                 Skipped, and said
 #                 so, where the host holds no token
 #
 # internal-peer is the one that cannot be inferred from allocation: a relay that
@@ -406,7 +407,7 @@ else
   REGISTRAR_PORT="${ALCOVE_RELAY_REGISTRAR_PORT:-8443}"
 fi
 registrar_status() {
-  local method="$1" token="$2" body="$3"
+  local method="$1" token="$2" body="$3" target="${4:-$CONNECT}"
   {
     printf 'url = "https://%s:%s/exchanges/%s"\n' "$REGISTRAR_HOST" "$REGISTRAR_PORT" "$VERIFY_R"
     printf 'request = "%s"\n' "$method"
@@ -416,7 +417,7 @@ registrar_status() {
       printf 'header = "Content-Type: application/json"\n'
       printf 'data = "%s"\n' "${body//\"/\\\"}"
     fi
-  } | bounded 150 curl -sS -K - --connect-to "$REGISTRAR_HOST:$REGISTRAR_PORT:$CONNECT:$REGISTRAR_PORT" \
+  } | bounded 150 curl -sS -K - --connect-to "$REGISTRAR_HOST:$REGISTRAR_PORT:$target:$REGISTRAR_PORT" \
     -o /dev/null -w '%{http_code}' 2>/dev/null
 }
 # 0 when the mapping points the id at this run's key and the table lists it, 3
@@ -430,11 +431,11 @@ registrar_read_back() {
   )
 }
 expect_status() {
-  local label="$1" want="$2" got="$3"
+  local label="$1" want="$2" got="$3" target="${4:-$CONNECT}"
   if [ "$got" = "$want" ]; then
     report pass "$label was answered $want"
   elif [ -z "$got" ] || [ "$got" = 000 ]; then
-    report unclear "$label got no answer from $CONNECT:$REGISTRAR_PORT" "is alcove-relay-registrar.service running? journalctl -u alcove-relay-registrar.service"
+    report unclear "$label got no answer from $target:$REGISTRAR_PORT" "is alcove-relay-registrar.service running? journalctl -u alcove-relay-registrar.service"
   else
     report fail "$label was answered $got, not $want"
   fi
@@ -463,12 +464,14 @@ else
   expect_status "a revocation with no token" 401 "$(registrar_status DELETE "" "")"
   # Where enrollment without a token is on, it cannot take an id another key
   # holds, and repeating the held key changes nothing. Each counts against the
-  # rate limit for this host's own address.
+  # rate limit for this host's own address. Sent to loopback, directly or with
+  # the front's PROXY header naming it, because the registrar admits a verify
+  # id without a token only from this host.
   if [ "${ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT:-off}" = on ] && [ "$REGISTERED" -eq 0 ]; then
     expect_status "an enrollment without a token naming another key" 409 \
-      "$(registrar_status POST "" "{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": null}")"
+      "$(registrar_status POST "" "{\"key\": \"$(openssl rand -hex 32)\", \"maxAgeDays\": null}" 127.0.0.1)" 127.0.0.1
     expect_status "an enrollment without a token naming the registered key" 200 \
-      "$(registrar_status POST "" "{\"key\": \"$KEY_R\", \"maxAgeDays\": null}")"
+      "$(registrar_status POST "" "{\"key\": \"$KEY_R\", \"maxAgeDays\": null}" 127.0.0.1)" 127.0.0.1
   fi
   READ_BACK=0; registrar_read_back || READ_BACK=$?
   if [ "$READ_BACK" -eq "$REGISTERED" ]; then

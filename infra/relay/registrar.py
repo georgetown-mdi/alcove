@@ -11,9 +11,9 @@ Authorization header: "Bearer <token>", the relay-owner token, which enrolls
 "Alcove-Relay-Proof ts=<unix-seconds>,mac=<hex64>", a proof of holding the key
 the exchange has registered, which rotates (PUT) and revokes (DELETE). Where
 ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is "on", a POST with no
-Authorization header enrolls too, under a per-address rate limit and a lapse
-the registrar fixes. Any other request is answered 401 before its body is
-parsed. Authentication reads that header and nothing else, and no answer allows
+Authorization header enrolls too, under a per-address rate limit, a lapse the
+registrar fixes, and a ceiling on such rows not yet lapsed. Any other request
+is answered 401 before its body is parsed. Authentication reads that header and nothing else, and no answer allows
 credentials, so a browser's cookies never authenticate a call. A write is one
 transaction through relay_table.py beside this file, the secrets table's one
 write path. infra/relay/README.md, The registrar, is the contract, and
@@ -64,6 +64,11 @@ REALM = os.environ.get("ALCOVE_RELAY_REALM") or ""
 NAME = os.environ.get("ALCOVE_RELAY_REGISTRAR_NAME") or ""
 FRONT_PORT = os.environ.get("ALCOVE_RELAY_REGISTRAR_FRONT_PORT") or "8445"
 TOKENLESS_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT") or "off"
+# README.md, Enrollment without a token, The ceiling, derives the default.
+DEFAULT_TOKENLESS_CEILING = 140
+TOKENLESS_CEILING_SETTING = os.environ.get("ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING") or str(
+    DEFAULT_TOKENLESS_CEILING
+)
 COUNTERS_FILE = os.path.join(os.path.dirname(relay_table.TURNDB), "registrar-counters")
 
 PREFIX = "/exchanges/"
@@ -137,7 +142,11 @@ TOKENLESS_LIMIT_REFUSAL = (
 TOKENLESS_FULL_REFUSAL = (
     "the registrar is answering enrollments without a token from as many addresses as it can; try again in %d s"
 )
-COUNTER_NAMES = ("tokenless_enrollments", "rate_limit_refusals")
+TOKENLESS_CEILING_REFUSAL = (
+    "the relay holds as many exchanges enrolled without a token as it serves; try again in %d s, or run the "
+    "exchange without this relay"
+)
+COUNTER_NAMES = ("tokenless_enrollments", "rate_limit_refusals", "tokenless_ceiling_refusals")
 # The journal names a request's method only from this list.
 KNOWN_METHODS = frozenset(("GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "TRACE", "CONNECT"))
 
@@ -247,6 +256,17 @@ def client_key(address):
     if parsed.version == 6:
         return str(ipaddress.ip_network((parsed, 64), strict=False))
     return str(parsed)
+
+
+def is_loopback(address):
+    """Whether `address`, the socket's or the PROXY header's, is this host's own."""
+    try:
+        parsed = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    if parsed.version == 6 and parsed.ipv4_mapped is not None:
+        parsed = parsed.ipv4_mapped
+    return parsed.is_loopback
 
 
 class EnrollmentLimiter:
@@ -730,6 +750,11 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
         exchange_id = self.target("enroll")
         if exchange_id is None:
             return
+        # verify.sh runs on the relay host; the header alone is client-sent.
+        from_this_host = is_loopback(self.client_address[0])
+        if relay_table.is_verify_id(exchange_id) and not from_this_host:
+            self.refuse(400, VERIFY_ID_REFUSAL)
+            return
         registration = self.read_registration(exchange_id)
         if registration is None:
             return
@@ -739,9 +764,17 @@ class RegistrarHandler(http.server.BaseHTTPRequestHandler):
             return
         now = time.time()
         fixed_lapse_at = int(now) + TOKENLESS_LIFETIME_SECONDS
-        enrollment = self.write_table(
-            lambda conn: relay_table.enroll(conn, REALM, exchange_id, key, None, now, True, fixed_lapse_at)
-        )
+        try:
+            enrollment = self.write_table(
+                lambda conn: relay_table.enroll(
+                    conn, REALM, exchange_id, key, None, now, from_this_host, fixed_lapse_at, self.server.ceiling
+                )
+            )
+        except relay_table.CeilingReached as full:
+            self.server.counters.add("tokenless_ceiling_refusals")
+            wait = max(1, math.ceil(full.earliest_lapse - time.time()))
+            self.send_json(503, {"error": TOKENLESS_CEILING_REFUSAL % wait}, (("Retry-After", str(wait)),))
+            return
         if enrollment is None:
             return
         if enrollment["outcome"] == "registered":
@@ -855,6 +888,7 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
         self.limiter = shared.limiter
         self.counters = shared.counters
         self.tokenless = shared.tokenless
+        self.ceiling = shared.ceiling
         self.tls = tls
         super().__init__(address, handler_class)
 
@@ -900,7 +934,7 @@ class RegistrarServer(http.server.ThreadingHTTPServer):
         sys.stderr.write("connection ended: %s\n" % error)
 
 
-def shared_state(token, tokenless, started):
+def shared_state(token, tokenless, ceiling, started):
     """What every RegistrarServer of one process shares."""
     return types.SimpleNamespace(
         token=token,
@@ -910,6 +944,7 @@ def shared_state(token, tokenless, started):
         limiter=EnrollmentLimiter(),
         counters=Counters(COUNTERS_FILE, started),
         tokenless=tokenless,
+        ceiling=ceiling,
     )
 
 
@@ -922,6 +957,11 @@ def main():
         fail_start(
             "ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT is '%s'; set it to on or off in /etc/alcove-relay/relay.env"
             % TOKENLESS_SETTING
+        )
+    if re.fullmatch(r"[1-9][0-9]{0,8}", TOKENLESS_CEILING_SETTING) is None:
+        fail_start(
+            "ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING is '%s'; set it to a whole number of at least 1 in "
+            "/etc/alcove-relay/relay.env, or leave it unset for %d" % (TOKENLESS_CEILING_SETTING, DEFAULT_TOKENLESS_CEILING)
         )
     # Port 0, which the tests use, asks the system for a free port on each.
     if NAME and (not FRONT_PORT.isdigit() or int(FRONT_PORT) > 65535 or (FRONT_PORT == PORT and PORT != "0")):
@@ -939,7 +979,7 @@ def main():
     context.sslsocket_class = DeadlineSocket
 
     started = time.time()
-    shared = shared_state(token, TOKENLESS_SETTING == "on", started)
+    shared = shared_state(token, TOKENLESS_SETTING == "on", int(TOKENLESS_CEILING_SETTING), started)
     try:
         server = RegistrarServer(("", int(PORT)), RegistrarHandler, shared)
     except OSError as error:
@@ -961,8 +1001,9 @@ def main():
         )
     if shared.tokenless:
         sys.stdout.write(
-            "enrollment without a token is on: %d per address in %d s, each lapsing %d s after it is made\n"
-            % (TOKENLESS_ENROLLMENTS_PER_WINDOW, TOKENLESS_WINDOW_SECONDS, TOKENLESS_LIFETIME_SECONDS)
+            "enrollment without a token is on: %d per address in %d s, each lapsing %d s after it is made, "
+            "at most %d not yet lapsed\n"
+            % (TOKENLESS_ENROLLMENTS_PER_WINDOW, TOKENLESS_WINDOW_SECONDS, TOKENLESS_LIFETIME_SECONDS, shared.ceiling)
         )
     sys.stdout.write("Alcove relay registrar listening on port %d\n" % server.server_address[1])
     sys.stdout.flush()

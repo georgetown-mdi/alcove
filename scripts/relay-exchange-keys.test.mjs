@@ -2213,7 +2213,7 @@ import registrar
 def refuse(*args):
     raise AssertionError("looked up a hostname")
 socket.getfqdn = socket.gethostbyaddr = refuse
-shared = registrar.shared_state(b"x", False, 0)
+shared = registrar.shared_state(b"x", False, 1, 0)
 registrar.RegistrarServer(("127.0.0.1", 0), registrar.RegistrarHandler, shared).server_close()`);
   });
 
@@ -3003,12 +3003,13 @@ const TOKENLESS_MAX_AGE_REFUSAL =
 
 // A registrar with enrollment without a token turned on, and with a name, so
 // it also listens for the 443 front.
-const startOpenRegistrar = (host, bounds = {}) =>
+const startOpenRegistrar = (host, bounds = {}, env = {}) =>
   startRegistrarWith(
     {
       ...registrarEnv(host),
       ALCOVE_RELAY_REGISTRAR_TOKENLESS_ENROLLMENT: "on",
       ALCOVE_RELAY_REGISTRAR_NAME: "registrar.relay.example",
+      ...env,
     },
     bounds,
   );
@@ -3022,7 +3023,14 @@ const enrollWithoutToken = (port, exchangeId, key, maxAgeDays = "null") =>
 // PROXY header `proxyHeader`, then TLS and the request on the same connection.
 // Resolves with the answer, or with `{ closed: true }` when the registrar
 // closes the connection without one.
-const callThroughFront = (frontPort, proxyHeader, method, path, body = "") =>
+const callThroughFront = (
+  frontPort,
+  proxyHeader,
+  method,
+  path,
+  body = "",
+  headers = {},
+) =>
   new Promise((resolveResponse) => {
     const raw = netConnect({ host: "127.0.0.1", port: frontPort }, () => {
       raw.write(proxyHeader);
@@ -3033,7 +3041,9 @@ const callThroughFront = (frontPort, proxyHeader, method, path, body = "") =>
           ca: readFileSync(join(certDir, "fullchain.pem")),
         },
         () =>
-          socket.write(rawRequest(method, path, { Connection: "close" }, body)),
+          socket.write(
+            rawRequest(method, path, { Connection: "close", ...headers }, body),
+          ),
       );
       let text = "";
       socket.on("data", (chunk) => {
@@ -3402,6 +3412,159 @@ describe.skipIf(runningAsRoot)(
       expect(JSON.parse(second.text).error).toMatch(
         /^the registrar is answering enrollments without a token from as many addresses as it can; try again in \d+ s$/,
       );
+    });
+
+    it("answers a new id 503 at the ceiling, writing nothing, still answers the held key 200, and counts the refusal", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(
+        host,
+        { COUNTERS_WRITE_SECONDS: 0.2 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "2" },
+      );
+      for (const [id, key] of [
+        ["exchange-1", KEY_A],
+        ["exchange-2", KEY_B],
+      ]) {
+        const response = await enrollWithoutToken(port, id, key);
+        expect(response.status, response.text).toBe(200);
+      }
+      const mappingAtCeiling = host.mapping();
+      const rowsAtCeiling = host.rows();
+      const refused = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(refused.status).toBe(503);
+      const wait = Number(refused.headers["retry-after"]);
+      expect(wait).toBeGreaterThanOrEqual(1);
+      expect(wait).toBeLessThanOrEqual(TOKENLESS_LIFETIME_SECONDS);
+      expect(refused.headers["access-control-expose-headers"]).toBe(
+        "Retry-After",
+      );
+      expect(JSON.parse(refused.text).error).toBe(
+        `the relay holds as many exchanges enrolled without a token as it serves; try again in ${wait} s, or run the exchange without this relay`,
+      );
+      expect(host.mapping()).toEqual(mappingAtCeiling);
+      expect(host.rows()).toEqual(rowsAtCeiling);
+
+      const again = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(again.status, again.text).toBe(200);
+      expect(JSON.parse(again.text).message).toContain("nothing changed");
+      const other = await enrollWithoutToken(port, "exchange-1", KEY_C);
+      expect(other.status).toBe(409);
+
+      const underToken = await enroll(port, "exchange-4", KEY_C, "30");
+      expect(underToken.status, underToken.text).toBe(200);
+      await vi.waitFor(() =>
+        expect(readCounters(host)).toMatchObject({
+          tokenless_enrollments: "2",
+          rate_limit_refusals: "0",
+          tokenless_ceiling_refusals: "1",
+        }),
+      );
+    });
+
+    it("admits a new id again once a row at the ceiling lapses, and once one is revoked", async () => {
+      const host = fixtureHost();
+      const { port } = await startOpenRegistrar(
+        host,
+        { TOKENLESS_LIFETIME_SECONDS: 3 },
+        { ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "1" },
+      );
+      const first = await enrollWithoutToken(port, "exchange-1", KEY_A);
+      expect(first.status, first.text).toBe(200);
+      const refused = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(refused.status).toBe(503);
+      expect(Number(refused.headers["retry-after"])).toBeLessThanOrEqual(3);
+      await new Promise((resolveWait) =>
+        setTimeout(
+          resolveWait,
+          Math.max(
+            0,
+            Date.parse(JSON.parse(first.text).lapsesAt) - Date.now(),
+          ) + 1100,
+        ),
+      );
+      const afterLapse = await enrollWithoutToken(port, "exchange-2", KEY_B);
+      expect(afterLapse.status, afterLapse.text).toBe(200);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "exchange-1",
+        "exchange-2",
+      ]);
+
+      const atCeiling = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(atCeiling.status).toBe(503);
+      const revoked = await call(port, "DELETE", "/exchanges/exchange-2", {
+        token: REGISTRAR_TOKEN,
+      });
+      expect(revoked.status, revoked.text).toBe(200);
+      const afterRevoke = await enrollWithoutToken(port, "exchange-3", KEY_C);
+      expect(afterRevoke.status, afterRevoke.text).toBe(200);
+    });
+
+    it("refuses to start with a ceiling that is not a whole number of at least 1", () => {
+      const host = fixtureHost();
+      const result = spawnSync("python3", [join(relay, "registrar.py")], {
+        encoding: "utf8",
+        env: {
+          ...registrarEnv(host),
+          PYTHONPATH: relay,
+          ALCOVE_RELAY_REGISTRAR_PORT: "0",
+          ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING: "0",
+        },
+        timeout: 10000,
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "ALCOVE_RELAY_REGISTRAR_TOKENLESS_CEILING is '0'; set it to a whole number of at least 1",
+      );
+    });
+
+    it("enrolls an id under verify.sh's prefix without a token only from loopback, whatever the request's header", async () => {
+      const host = fixtureHost();
+      const { port, frontPort } = await startOpenRegistrar(host);
+      const verifyRun = { "Alcove-Relay-Verify-Run": "1" };
+      for (const opening of [
+        proxyHeaderFor("203.0.113.7"),
+        "PROXY UNKNOWN\r\n",
+      ]) {
+        const refused = await callThroughFront(
+          frontPort,
+          opening,
+          "POST",
+          "/exchanges/alcove-verify-registrar",
+          keyBody(KEY_A),
+          verifyRun,
+        );
+        expect(refused.status).toBe(400);
+        expect(JSON.parse(refused.text).error).toContain(
+          "may not start with 'alcove-verify-'",
+        );
+      }
+      expect(host.mapping()).toEqual([]);
+      expect(host.rows()).toEqual([listed(KEY_LISTED)]);
+
+      const throughFront = await callThroughFront(
+        frontPort,
+        proxyHeaderFor("127.0.0.1"),
+        "POST",
+        "/exchanges/alcove-verify-registrar",
+        keyBody(KEY_A),
+        verifyRun,
+      );
+      expect(throughFront.status, throughFront.text).toBe(200);
+      const direct = await call(port, "POST", "/exchanges/alcove-verify-a", {
+        body: keyBody(KEY_B),
+        headers: verifyRun,
+      });
+      expect(direct.status, direct.text).toBe(200);
+      const withoutHeader = await enrollWithoutToken(
+        port,
+        "alcove-verify-b",
+        KEY_C,
+      );
+      expect(withoutHeader.status).toBe(400);
+      expect(host.mapping().map(({ id }) => id)).toEqual([
+        "alcove-verify-a",
+        "alcove-verify-registrar",
+      ]);
     });
 
     it("counts the IPv6 addresses of one /64 as one client", () => {
