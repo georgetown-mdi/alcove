@@ -71,6 +71,10 @@ export const ALLOWED_OMISSIONS = new Map([
     "A remedy for an SFTP server that caps session length; the failure that calls for it names the setting.",
   ],
   [
+    "connection.options.publish_without_rename",
+    "A remedy for a server that does not allow renames, resting on an assumption the operator vouches for; the failure that calls for it names the setting.",
+  ],
+  [
     "linkage_terms.linkage_keys.elements.name",
     "A key-element option the built-in keys the template writes do not use.",
   ],

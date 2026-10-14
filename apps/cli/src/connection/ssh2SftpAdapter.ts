@@ -19,6 +19,7 @@ import {
   UsageError,
   getLogger,
   getLoggerForVerbosity,
+  isProtocolTempName,
   retryPromise,
   sanitizeErrorForDisplay,
 } from "@alcove/core";
@@ -271,14 +272,15 @@ export type SessionTransitionKind =
 // What one data-plane operation's SECOND attempt is, where it has one (see
 // SSH2SFTPClientAdapter.runOperation). `verbatim` re-runs the operation as it
 // stands; `reissued` applies the per-operation idempotency relaxation on that
-// attempt only, so a delete-absent, rename-destination-exists or own-EEXIST
-// reading cannot leak into first-attempt semantics; `none` is an operation
-// that never enters recovery at all.
+// attempt only, so a delete-absent, rename-destination-exists, own-EEXIST or
+// direct-put-landed reading cannot leak into first-attempt semantics; `none`
+// is an operation that never enters recovery at all. `lost` is the first
+// attempt's rejection.
 type OperationRecoverySpec<T> =
   | { readonly recovery: "verbatim" }
   | {
       readonly recovery: "reissued";
-      readonly reissue: (run: () => Promise<T>) => Promise<T>;
+      readonly reissue: (run: () => Promise<T>, lost: unknown) => Promise<T>;
     }
   | { readonly recovery: "none" };
 
@@ -1154,7 +1156,8 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
   // docs/spec/SFTP_SESSION_RECOVERY.md, "SFTP mid-exchange session recovery".
   private withSessionRecovery<T>(
     op: () => Promise<T>,
-    reissue: (op: () => Promise<T>) => Promise<T> = (run) => run(),
+    reissue: (op: () => Promise<T>, lost: unknown) => Promise<T> = (run) =>
+      run(),
   ): Promise<T> {
     const gate = this.reestablishAfterIdleRelease();
     const first = gate === undefined ? op() : gate.then(op);
@@ -1196,7 +1199,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
       // A re-dial that DECLINED -- it gave up its wait for the transition ahead of
       // it -- established nothing; the re-issue below still runs and rejects with
       // the real session-loss cause.
-      return reissue(op);
+      return reissue(op, error);
     });
   }
 
@@ -2968,8 +2971,7 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // provided ReadableStream is one-shot: a first attempt half-drains it, so
     // re-issuing would re-pipe an already-consumed stream and silently upload
     // nothing. Do NOT wrap that case in recovery; a dropped session fails it
-    // terminally rather than half-re-issuing it. The peer never observes a
-    // partial because every write targets a temp-*.tmp then atomic-renames.
+    // terminally rather than half-re-issuing it.
     //
     // Only a truncate-overwrite put is re-issue-idempotent: append mode ("a")
     // would double-write the payload on a recovery re-issue, so it is never
@@ -2977,15 +2979,54 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
     // today; this is a check standing in for that (per the project convention),
     // not a live guard against an existing append caller.
     const truncateOverwrite = options?.flags !== "a";
-    const reRunnable =
-      truncateOverwrite && (Buffer.isBuffer(src) || Array.isArray(src));
-    if (!reRunnable)
+    if (!truncateOverwrite || !(Buffer.isBuffer(src) || Array.isArray(src)))
       return this.runOperation({ recovery: "none" }, () =>
         this.putOnce(src, dest, options),
       );
-    return this.runOperation({ recovery: "verbatim" }, () =>
-      this.putOnce(src, dest, options),
+    // A put to a protocol temp is re-issued verbatim: no reader acts on a temp,
+    // and the rename that follows is the publish. A put to any other name is
+    // itself the publish (publish_without_rename), which a partner may already
+    // have read or consumed, so its re-issue is decided by what the destination
+    // holds: docs/spec/SFTP_SESSION_RECOVERY.md, "Re-issuing an operation".
+    if (isProtocolTempName(dest.slice(dest.lastIndexOf("/") + 1)))
+      return this.runOperation({ recovery: "verbatim" }, () =>
+        this.putOnce(src, dest, options),
+      );
+    const sourceBytes = Buffer.isBuffer(src)
+      ? src.length
+      : src.reduce((total, part) => total + part.length, 0);
+    return this.runOperation(
+      {
+        recovery: "reissued",
+        reissue: (run, lost) =>
+          this.reissueDirectPut(run, lost, dest, sourceBytes),
+      },
+      () => this.putOnce(src, dest, options),
     );
+  }
+
+  // The second attempt of a put whose destination is the publish. Re-issuing it
+  // blind could re-create a file the partner has consumed, or truncate one it is
+  // reading, so the destination is probed first. Only a short file is re-issued:
+  // no reader acts on one, because a message reader waits for the byte count its
+  // name states and a hello reader retries a short read, an ack is zero-length
+  // and so never short, and the sentinel is matched by name and never read. The
+  // probes go through the once-layer, as the rename arm's do and for the same
+  // reason.
+  private async reissueDirectPut(
+    run: () => Promise<unknown>,
+    lost: unknown,
+    dest: string,
+    sourceBytes: number,
+  ): Promise<unknown> {
+    // Undefined is a destination the server reported absent, null a probe that
+    // answered nothing; both leave the publish undetermined.
+    const size = await this.existsOnce(dest)
+      .then((present) => (present ? this.statSizeOnce(dest) : undefined))
+      .catch(() => null);
+    if (size === sourceBytes) return undefined;
+    if (typeof size === "number" && size < sourceBytes) return run();
+    throw indeterminatePublishError(lost, dest);
   }
 
   private putOnce(
@@ -3444,6 +3485,25 @@ export class SSH2SFTPClientAdapter implements FileTransportClient {
           "stat",
         ),
         "existence check",
+        remotePath,
+      ),
+    );
+  }
+
+  // The size of a file, read with the same guard and deadline as existsOnce. Only
+  // the direct-put recovery arm reads it, so there is no public stat().
+  private statSizeOnce(remotePath: string): Promise<number> {
+    const dead = this.deadSessionError("size check", remotePath);
+    if (dead) return Promise.reject(dead);
+    return this.tracked(
+      this.warnIfSlow(
+        this.boundByDeadline(
+          this.client.stat(remotePath).then((stats) => stats.size),
+          "size check",
+          remotePath,
+          "stat",
+        ),
+        "size check",
         remotePath,
       ),
     );

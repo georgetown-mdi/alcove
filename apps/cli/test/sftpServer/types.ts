@@ -125,6 +125,25 @@ export interface SftpFaultInjection {
   /** Fail RENAME with the generic-failure status this many times, then succeed. */
   renameFailuresRemaining: number;
   /**
+   * Answer every RENAME with SSH_FX_NO_SUCH_FILE (status 2) and move nothing,
+   * as a server in front of a share that does not allow renames answers.
+   * Off by default.
+   */
+  refuseEveryRename: boolean;
+  /** RENAME requests received since the server started, refused or not. */
+  renamesReceived: number;
+  /**
+   * Tear the connection serving the next CLOSE of a file opened for writing,
+   * from inside its close callback and before its reply, so the client's put is
+   * torn off the wire with its bytes in place. `"keep"` leaves the file whole,
+   * `"remove"` unlinks it (a partner that consumed it inside the recovery
+   * window), and `"truncate"` cuts it to half its length (a drop that landed
+   * mid-transfer). One-shot: the CLOSE that fires it clears it. Null is off.
+   */
+  tearAtWriteClose: "keep" | "remove" | "truncate" | null;
+  /** The path of every OPEN with the write flag, in arrival order. */
+  pathsOpenedForWrite: string[];
+  /**
    * Cap each READDIR to at most this many entries (realistic batching); 0
    * leaves the width to the backend.
    *

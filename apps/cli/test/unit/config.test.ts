@@ -222,6 +222,33 @@ describe("connectionPerPoll", () => {
   });
 });
 
+// --- publishWithoutRename override (--publish-without-rename) ----------------
+
+describe("publishWithoutRename", () => {
+  test("override is applied on sftp and filedrop", () => {
+    const sftp = applyConnectionOverrides(baseSFTP, {
+      options: { publishWithoutRename: true },
+    }) as SFTPConnectionConfig;
+    expect(sftp.options?.publishWithoutRename).toBe(true);
+    const base: ConnectionConfig = { channel: "filedrop", path: "/mnt/drop" };
+    const filedrop = applyConnectionOverrides(base, {
+      options: { publishWithoutRename: true },
+    }) as FileDropConnectionConfig;
+    expect(filedrop.options?.publishWithoutRename).toBe(true);
+  });
+
+  test("override is dropped on webrtc", () => {
+    const result = applyConnectionOverrides(baseWebRTC, {
+      options: { publishWithoutRename: true },
+    });
+    expect(
+      (result.options as Record<string, unknown> | undefined)?.[
+        "publishWithoutRename"
+      ],
+    ).toBeUndefined();
+  });
+});
+
 // --- timeout override re-validation ------------------------------------------
 // The timeout-override block re-validates its merged options through the same
 // schema the FileSync-field block uses, so the peerTimeoutMs/serverConnectTimeoutMs

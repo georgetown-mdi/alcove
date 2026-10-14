@@ -1013,6 +1013,7 @@ These options apply to both `sftp` and `filedrop` channels.
 | `peer_id` | string | - | A stable, human-readable identifier for this party. Appears in every filename this party writes (hello, message, ack) and in server-side logs and transcripts. When unset, a UUID is generated at construction time. **Recommended for unattended and scheduled runs**, where it turns the leftover a killed run leaves into an immediate start-up refusal naming the file rather than a failed run (see [Directory exclusivity](#directory-exclusivity)); note that a stable id also makes this party's runs linkable to each other in the partner's logs. Requires `timestamp_in_filename: true`; a reused stable id without a timestamp segment can collide with a leftover file from a crashed prior session. The two parties must use distinct ids, and neither may be the other's id extended by `-` (e.g. `"site"` and `"site-2"` are rejected at rendezvous; see [FILE_SYNC.md preconditions](spec/FILE_SYNC.md#preconditions-for-a-correct-exchange)). Spaces and `-` are permitted within a `peer_id`. It is at most 211 bytes of UTF-8, and the two parties' ids together must keep every file name within 255 bytes. The value `"temp"` is reserved. Filesystem-unsafe characters (`/` and NUL on all platforms; `<`, `>`, `:`, `"`, `\`, `|`, `?`, `*` on Windows NTFS) are not validated but may cause errors at the transport layer. |
 | `retain_files` | boolean | false | When `true`, no exchange file is deleted as a protocol step: the receiver writes an [acknowledgment marker](#acknowledgment-markers) for each message it consumes, the sender gates its next write on that marker rather than on the message file disappearing, and once rendezvous completes the shared folder is a permanent transcript. It is for a transport that does not propagate deletions, and for an auditable record of what flowed each way. The mode's mechanics and its bilateral detection are in [FILE_SYNC.md](spec/FILE_SYNC.md#two-orthogonal-mode-axes); what to set beside it, and what your partner is told, are [below](#setting-retain_files). |
 | `unexpected_files` | enum | mode-coupled (see description) | How to handle a file that appears in the shared folder *during* the message loop and is neither recognized as part of this exchange nor an in-flight temporary write of its own -- a sign the directory is being shared with another process or session, or that a sync tool produced a conflict copy or partial download (see [Directory exclusivity](#directory-exclusivity)). One of `error` (fail with a usage error (exit 64) naming the file and the directory path), `warn` (log once per distinct file name and continue), or `ignore` (skip silently). **Local, not bilateral**: detecting a foreign file is an observation of one's own directory view, needs no peer agreement, and has none of the mismatch-stall risk of `lockless_rendezvous`/`retain_files`; the two parties may use different values. When unset the effective default is mode-coupled: `error` on plain delete-mode transports (ordinary `sftp`/`filedrop`) and `warn` when `retain_files` or `lockless_rendezvous` is set -- those flags signal a sync-mediated transport that legitimately produces transient conflict copies and partial downloads mid-session, where a hard fail would abort exactly the exchanges retain mode targets. An explicit value always overrides the mode-coupled default. This setting governs foreign-file detection only; a malformed *protocol* file (a peer-prefixed, message-shaped name a correctly configured peer cannot produce) is always reported regardless of this setting. |
+| `publish_without_rename` | boolean | false | When `true`, this party writes every exchange file directly under its final name, instead of writing a temporary `temp-*.tmp` file and renaming it into place. For a server that does not allow renames. Safe only where the shared folder never passes a file to your partner while it is still being written; see [below](#setting-publish_without_rename). The `--publish-without-rename` CLI flag sets it for one run. |
 
 #### Setting `retain_files`
 
@@ -1023,6 +1024,22 @@ These options apply to both `sftp` and `filedrop` channels.
 **Your partner is told before they consent.** An invitation created while retain mode is on declares it, and the accepting party is shown the retained transcript on its acceptance display, so a partner learns what the exchange leaves behind rather than meeting it at a failed run. The declaration is disclosure only: it sets nothing on the accepting side, which still configures its own half here, and a mismatch still fails at the same place ([FILE_SYNC.md](spec/FILE_SYNC.md#retain-mode-declaration-on-the-token)).
 
 **Each exchange needs a fresh directory**, enforced before the run: a stale message or ack marker from a prior session would corrupt or stall it. A rendezvous that fails before it completes is the exception and clears its own files. Reusing a retain directory is a CLI-only recovery by design; see [Directory exclusivity](#directory-exclusivity) for the guard, the flags that clear it, and what they discard.
+
+#### Setting `publish_without_rename`
+
+**When to set it.** Every file an exchange writes is normally written under a temporary name and then renamed to its final name, so your partner never sees a file before it is complete. Some servers do not allow renames: for example, an SFTP server in front of a service-synced network share. There every run fails at the start, with an error that the file this party had just written could not be renamed and that the server may not allow renames. Turn this option on (or pass `--publish-without-rename`) for that server.
+
+**What you are vouching for.** With the option on, a file is visible under its final name while it is still being written. Turn it on only where the shared folder never passes a file to your partner in that state -- for a synced share, where the sync service does not copy a file while it is being written. Alcove cannot check this. A run with the option on says so in a warning before it connects, and the display it shows before it starts includes a line stating it.
+
+**It is your setting alone.** Your partner does not need to set it, and nothing you send your partner states it. The folder holds the same files either way.
+
+**Limits.**
+
+- A run killed partway through writing its hello can leave an incomplete `<id>-hello.json` behind. The next run's start-up check fails on it within its read limit; `--sweep-exchange-files` clears it.
+- Whether a particular sync service delays a directly written file more than a renamed one has not been measured.
+- Alcove does not check what the sync service does, and does not detect a partial file beyond the checks every exchange already makes.
+
+How each file is read safely without the rename, and how the lock rendezvous changes, are in [FILE_SYNC.md](spec/FILE_SYNC.md#publishing-without-rename).
 
 #### SFTP-only options
 
@@ -1697,6 +1714,7 @@ The cells:
 | `connection.options.peer_id` | authored | authored | not applicable |
 | `connection.options.unexpected_files` | carried | authored | not applicable |
 | `connection.options.connection_per_poll` | authored | authored | not applicable |
+| `connection.options.publish_without_rename` | authored | refused | not applicable |
 | `connection.provider_options` (sftp) | carried | refused | not applicable |
 | `connection.provider_options` (webrtc) | not applicable | not applicable | refused |
 | **[Authentication](#authentication)** | | | |

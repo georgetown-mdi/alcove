@@ -86,6 +86,12 @@ export interface ConnectionOptionsOverrides {
    * drops it on `filedrop`, where the CLI reports it ignored.
    */
   connectionPerPoll?: boolean;
+  /**
+   * The `--publish-without-rename` override, feeding the connection's
+   * `publishWithoutRename`. A FileSyncOptions field, applied on `sftp` and
+   * `filedrop`.
+   */
+  publishWithoutRename?: boolean;
 }
 
 /**
@@ -218,7 +224,8 @@ export function applyConnectionOverrides(
       optionsOverrides.locklessRendezvous !== undefined ||
       optionsOverrides.peerId !== undefined ||
       optionsOverrides.retainFiles !== undefined ||
-      optionsOverrides.timestampInFilename !== undefined)
+      optionsOverrides.timestampInFilename !== undefined ||
+      optionsOverrides.publishWithoutRename !== undefined)
   ) {
     result.options = withRetainModeImplications({
       ...result.options,
@@ -236,6 +243,9 @@ export function applyConnectionOverrides(
       }),
       ...(optionsOverrides.timestampInFilename !== undefined && {
         timestampInFilename: optionsOverrides.timestampInFilename,
+      }),
+      ...(optionsOverrides.publishWithoutRename !== undefined && {
+        publishWithoutRename: optionsOverrides.publishWithoutRename,
       }),
     });
 

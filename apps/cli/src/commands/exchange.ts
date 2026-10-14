@@ -608,6 +608,7 @@ function readExchangeConfig(
           ?.connectionPerPoll === true,
       peerId: options.peerId,
       timestampInFilename: options.timestampInFilename,
+      publishWithoutRename: options.publishWithoutRename,
     },
     log,
   );

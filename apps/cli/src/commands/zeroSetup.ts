@@ -264,6 +264,7 @@ export const ZERO_SETUP_OPTION_GROUPS: ReadonlyArray<
       "lockless-rendezvous",
       "timestamp-in-filename",
       "retain-files",
+      "publish-without-rename",
       "outbound-path",
       "peer-id",
       "sweep-exchange-files",
@@ -778,6 +779,7 @@ export async function handler(argv: Arguments): Promise<void> {
             retainFiles: options.retainFiles,
             pollingFrequencyMs: options.pollingFrequencyMs,
             connectionPerPoll: options.connectionPerPoll,
+            publishWithoutRename: options.publishWithoutRename,
           },
           log,
         );

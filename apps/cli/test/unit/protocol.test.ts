@@ -8168,6 +8168,36 @@ test("runProtocol leaves ephemeralSessions unset when connection_per_poll is abs
   ).toBeUndefined();
 });
 
+// --- publish_without_rename is announced before the run connects -------------
+
+for (const publishWithoutRename of [true, false])
+  test(`runProtocol ${publishWithoutRename ? "warns once naming the assumption" : "raises no publish warning"} with publish_without_rename ${publishWithoutRename ? "on" : "off"}`, async () => {
+    mockState.warnings.length = 0;
+    await runProtocol({
+      connection: {
+        channel: "sftp",
+        server: {
+          host: "sftp.example.org",
+          hostKeyFingerprint: "SHA256:" + "A".repeat(43),
+        },
+        options: { publishWithoutRename },
+      },
+      auth: null,
+      prepared: minimalPrepared,
+      output: undefined,
+      verbosity: -1,
+      loggerName: "test",
+    }).catch(() => undefined);
+    const notices = mockState.warnings.filter((m) =>
+      m.includes("Publishing without rename"),
+    );
+    expect(notices.length).toBe(publishWithoutRename ? 1 : 0);
+    if (publishWithoutRename)
+      expect(notices[0]).toContain(
+        "never passes a file to your partner while it is still being written",
+      );
+  });
+
 // --- Security classification, end to end ---------------------------------------
 //
 // The two canonical trust-boundary failures must classify as category "security"

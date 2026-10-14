@@ -28,6 +28,7 @@ export const WARNING_SOURCES = [
   "persistenceLoss",
   "logFileLoss",
   "memoryShortfall",
+  "publishWithoutRename",
 ] as const;
 
 /** One {@link WARNING_SOURCES} value; see that list. */

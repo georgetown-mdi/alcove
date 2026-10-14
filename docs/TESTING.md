@@ -68,7 +68,8 @@ hands each test its connection details, per-party credentials, and rendezvous
 paths. The in-process backend adds two surfaces a real `sshd` cannot offer:
 
 - Fault injection -- a malformed NAME or DATA packet, a request accepted and
-  never answered, transient RENAME failures, capped READDIR batches, a run of
+  never answered, transient RENAME failures or every RENAME refused, a write
+  torn at its close (the file kept, removed or truncated), capped READDIR batches, a run of
   READDIR batches holding neither an entry nor end-of-directory (the
   progress-free flood the listing's round-trip cap exists for, and the only
   shape that reaches it), and a NAME reply of a chosen width (the hook the

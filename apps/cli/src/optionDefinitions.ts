@@ -637,6 +637,15 @@ export function addCommonBootstrapOptions(
         "applies to the sftp channel only and each party sets it " +
         "independently",
     })
+    .option("publish-without-rename", {
+      type: "boolean",
+      describe:
+        "write each exchange file directly under its final name instead of " +
+        "writing a temporary file and renaming it, for a server that does " +
+        "not allow renames. Only safe where the shared folder never passes " +
+        "a file to your partner while it is still being written. Applies " +
+        "to the sftp and filedrop channels; each party sets it independently",
+    })
     .option("outbound-path", {
       type: "string",
       describe:
@@ -698,6 +707,7 @@ export interface CommonBootstrapOptions {
   timestampInFilename?: boolean;
   retainFiles?: boolean;
   connectionPerPoll?: boolean;
+  publishWithoutRename?: boolean;
   outboundPath?: string;
   record: boolean;
   // Opt-in NDJSON machine-interface stream on fd 3 (see eventStream.ts). A
@@ -778,6 +788,7 @@ export function parseCommonBootstrapArgs(
     // Boolean toggle, so it keeps a plain cast (a repeat is valid, last-one-wins);
     // yargs yields true only when the enabling form is passed.
     connectionPerPoll: argv["connection-per-poll"] as boolean | undefined,
+    publishWithoutRename: argv["publish-without-rename"] as boolean | undefined,
     outboundPath: singleValue(argv, "outbound-path") as string | undefined,
     // yargs sets `record` to false on --no-record and true by the option's
     // default otherwise, so it is always a boolean here.
@@ -817,6 +828,7 @@ export type ConnectionOverrideOptions = Pick<
   | "timestampInFilename"
   | "retainFiles"
   | "connectionPerPoll"
+  | "publishWithoutRename"
   | "outboundPath"
 >;
 
@@ -856,6 +868,7 @@ export function connectionOverridesFrom(
       timestampInFilename: options.timestampInFilename,
       retainFiles: options.retainFiles,
       connectionPerPoll: options.connectionPerPoll,
+      publishWithoutRename: options.publishWithoutRename,
     },
   };
 }
@@ -905,6 +918,7 @@ export function warnUnsupportedFileSyncFlags(
     connectionPerPoll?: boolean;
     peerId?: string;
     timestampInFilename?: boolean;
+    publishWithoutRename?: boolean;
   },
   log: { warn: (message: string) => void },
 ): void {
@@ -944,6 +958,11 @@ export function warnUnsupportedFileSyncFlags(
   if (flags.timestampInFilename === true)
     log.warn(
       `--timestamp-in-filename has no effect on the ${channel} channel and ` +
+        "will be ignored; it is only supported on sftp and filedrop",
+    );
+  if (flags.publishWithoutRename === true)
+    log.warn(
+      `--publish-without-rename has no effect on the ${channel} channel and ` +
         "will be ignored; it is only supported on sftp and filedrop",
     );
 }
@@ -1278,13 +1297,15 @@ export type OfflineIgnoredOptionsOverrides = Pick<
   | "timestampInFilename"
   | "retainFiles"
   | "connectionPerPoll"
+  | "publishWithoutRename"
 >;
 
 /**
  * Warn that the connection-OPTIONS overrides (`--connection-timeout`,
  * `--peer-timeout`, `--polling-frequency`, `--max-reconnect-attempts`,
  * `--lockless-rendezvous`, `--peer-id`, `--timestamp-in-filename`,
- * `--retain-files`, `--connection-per-poll`) have no effect on an
+ * `--retain-files`, `--connection-per-poll`, `--publish-without-rename`) have
+ * no effect on an
  * OFFLINE invite/accept. Like the server-block overrides those paths go through
  * {@link connectionFromEndpoint}, which applies no connection overrides, but
  * these target `connection.options` -- a block the offline placeholder does not
@@ -1328,6 +1349,8 @@ export function warnOptionsOverridesIgnoredOffline(
     ignored.push("--timestamp-in-filename");
   if (options.retainFiles === true) ignored.push("--retain-files");
   if (options.connectionPerPoll === true) ignored.push("--connection-per-poll");
+  if (options.publishWithoutRename === true)
+    ignored.push("--publish-without-rename");
   if (ignored.length === 0) return;
   log.warn(
     `${ignored.join(", ")} ${ignored.length === 1 ? "has" : "have"} no effect ` +

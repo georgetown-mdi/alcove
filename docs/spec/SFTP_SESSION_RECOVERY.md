@@ -186,7 +186,8 @@ Which release outcome each reading comes from, and what session each leaves behi
 
 **Per-operation idempotency, applied only on the re-issue.**
 The relaxations below never touch the first attempt, so genuine lock-conflict and absence detection are unchanged.
-`list`/`get`/`exists`/`put` re-issue verbatim (`put`'s `flags:"w"` truncate-overwrite is effect-idempotent, and its bounded source is rebuilt from the retained Buffer/chunk list; a one-shot stream source is never re-issued).
+`list`/`get`/`exists` re-issue verbatim, and so does a `put` to a protocol temp (`temp-<uuid>.tmp` or `temp-hello-<uuid>.tmp`): its `flags:"w"` truncate-overwrite is effect-idempotent, no reader acts on a temp, and its bounded source is rebuilt from the retained Buffer/chunk list; a one-shot stream source is never re-issued.
+A `put` to any other name is a direct publish, whose re-issue is below.
 `delete` maps a source-absent re-issue (`SSH_FX_NO_SUCH_FILE`) to success, since a pre-drop delete that landed reports the source gone.
 `rename` treats a re-issue whose source is gone (or a code-4 dest-exists) as success when `exists(dest)` confirms the destination, sound because every rename destination is self-prefixed and so unambiguously this party's own landed attempt.
 The converse does not hold and is not relied on: an absent destination is not evidence the rename failed.
@@ -209,6 +210,12 @@ A server reporting a missing rename source as code 4 rather than `SSH_FX_NO_SUCH
 The rejection is caller-neutral by design: `rename` is shared machinery, and four publishes reach it -- the message loop's `send()`, its ack, the rendezvous `joining` -> `hello` rename, and the abort marker -- which share no recovery.
 So its message names a *publish* rather than a message, prescribes no next step, and is not marked with `markStatesItsOwnNextStep`; a caller whose recovery is established restates it as its own marked error holding this one as the `cause`.
 The consumer-side consequence is in [FILE_SYNC.md](FILE_SYNC.md) (I8): the sequence number such a publish spent is not reusable, the next `send()` is refused rather than writing a second message under a sequence number the peer may already have delivered one under, and `send()` is the one caller that does restate this rejection with a remedy.
+A party [publishing without rename](FILE_SYNC.md#publishing-without-rename) issues no `rename`, so neither arm above runs for it: each publish is a `put` to the final name, and a reply lost to a drop is resolved by probing that destination, never by re-issuing the `put` blind.
+A destination present at the source's full byte length is the publish landed, and the `put` resolves without a re-issue.
+A destination present but shorter is a `put` that stopped short, on which no reader has acted (a message reader waits for the byte count its name declares, the hello reader retries a short read, an ack is zero-length, and the sentinel is matched by name and never read), so the truncate-overwrite `put` is re-issued once.
+A destination absent, longer than the source, or that the probe could not read is rejected as `TransportPublishIndeterminateError`: in delete mode the partner may already have consumed it, and nothing the adapter can read separates that from a `put` that never landed.
+A message whose `put` rejects spends its sequence number the same way.
+A first attempt a server refuses with `SSH_FX_NO_SUCH_FILE`, which is how a server that does not allow renames answers, is not a re-issue: it propagates as itself, and core restates it naming that option.
 
 ### Operations concurrent with a re-dial or a release
 
