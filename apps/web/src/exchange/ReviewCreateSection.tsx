@@ -75,6 +75,7 @@ import { splitRendezvousRetainProblem } from "@console/filedropRendezvousChoice"
 import styles from "@styles/app.module.css";
 
 import { CitationDropNotice } from "./CitationDropNotice";
+import { DefaultRelayNotice } from "./DefaultRelayNotice";
 
 import {
   INVITER_RESET_STATEMENT,
@@ -496,6 +497,7 @@ export function ReviewCreateSection({
             label={browserLabel}
             description={browserDescription}
           />
+          {transport === "browser" && makesInvitation && <DefaultRelayNotice />}
         </div>
         <div
           className={
