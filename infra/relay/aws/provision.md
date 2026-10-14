@@ -146,7 +146,10 @@ server and is not the relay.
 
   ```
   aws ec2 authorize-security-group-ingress --profile alcove --region us-west-2 \
-    --group-name sftp-demo --protocol tcp --port 22 --cidr 0.0.0.0/0
+    --group-id "$(aws ec2 describe-security-groups --profile alcove \
+      --region us-west-2 --filters Name=group-name,Values=sftp-demo \
+      --query 'SecurityGroups[0].GroupId' --output text)" \
+    --protocol tcp --port 22 --cidr 0.0.0.0/0
   ```
 
 - **Accounts.** `usera` and `userb` log in by password only and get SFTP only,
